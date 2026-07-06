@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+ruby ">= 3.2"
+
+gem "ruby_llm"        # camada model-agnostic (o "pi-ai" do Ruby)
+gem "rack"            # transporte
+gem "falcon"          # servidor async — encaixe natural pro streaming SSE
+
+# Opcional, quando quiser expor/consumir tools via MCP:
+# gem "ruby_llm-mcp"
