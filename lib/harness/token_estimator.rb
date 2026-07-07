@@ -10,7 +10,7 @@ module Harness
     module_function
 
     def estimate(text)
-      (text.to_s.length / 4.0).ceil
+      text.to_s.length.ceildiv(4)
     end
   end
 end

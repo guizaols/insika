@@ -47,11 +47,10 @@ RSpec.describe Harness::AgentProfile do
     end
 
     it "limits faz merge parcial, não substituição" do
-      profile = described_class.build(id: "a", model: "m", limits: { turn_timeout: 60 })
-      expect(profile.limits[:turn_timeout]).to eq(60)
-      expect(profile.limits[:tool_timeout]).to eq(60)
-      expect(profile.limits[:context_budget]).to eq(8_000)
-      expect(profile.limits[:max_tool_calls]).to eq(50)
+      # valor distinto de qualquer default para o override não coincidir com
+      # uma chave preservada (tool_timeout também é 60 por default).
+      profile = described_class.build(id: "a", model: "m", limits: { turn_timeout: 999 })
+      expect(profile.limits).to eq(described_class::DEFAULT_LIMITS.merge(turn_timeout: 999))
     end
   end
 
