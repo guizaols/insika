@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [01-persistence-stores.md](../01-persistence-stores.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -249,3 +249,18 @@ Não aplicável — a integração da suíte com backends reais acontece nas tas
 - **`JSON.generate(..., strict: true)`**: o doc 01 §6 exige `StoreError` em falha de serialização, mas o `to_json` default da stdlib serializa quase tudo (via `to_s`) sem levantar. `strict: true` é o modo da stdlib que levanta `JSON::GeneratorError` para tipos fora do modelo JSON — é o mecanismo que torna C22 testável. Registrado aqui porque o doc 01 não nomeia o flag; não é decisão arquitetural nova, é o único jeito da stdlib cumprir §6 ("nunca grava lixo").
 - Um registry formal de stores só se justifica na Fase 2 (doc 01 §1) — **não** crie factory/registry; a injeção é manual no `config/wiring.rb` (que só ganha stores na Etapa B/C).
 - `Checkpoint = Data.define(...)` (00-overview §2) NÃO entra aqui — é do doc 02 (task 7).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-07
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 5 novos (spec do módulo puro) + 22 shared examples definidos (rodam a partir da task 3); suíte total 37 exemplos, 0 falhas
+- **Arquivos criados:** `lib/harness/store.rb`, `spec/harness/store_contract.rb`, `spec/harness/store_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require do store)
+- **Observações:**
+  - Os 22 casos C1-C22 foram escritos como `shared_examples "a harness store"`; nesta task não executam contra backend (não existe ainda) — apenas parseiam limpo (carregados via `require_relative` no `store_spec.rb`). Primeira execução real: task 3 (Memory).
+  - `require_relative "store_contract"` é idempotente entre os specs de backend (tasks 3/4) — Ruby carrega o arquivo uma vez por caminho absoluto, sem re-registro de shared examples.
+  - C22 depende de `JSON.generate(value, strict: true)` nos backends (nomeado nas Notes da task, não no doc 01) — é o único mecanismo da stdlib que cumpre o fail-fast de §6. As tasks 3/4 devem usar esse flag.
+  - Lint: o repo ainda não tem `.rubocop.yml` (nem a Fase 0 tinha); `bundle exec rubocop` do CLAUDE.md não é executável até a configuração ser adicionada. Sintaxe validada com `ruby -c`.
