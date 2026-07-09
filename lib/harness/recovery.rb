@@ -85,8 +85,13 @@ module Harness
       )
     end
 
+    # Log é observabilidade pura: uma falha do logger NUNCA pode alterar o
+    # fluxo do recovery (senão um logger com bug corromperia o sumário —
+    # ex.: id em resumed E failed). Engolimos qualquer erro do logger.
     def log(level, message)
       @logger&.public_send(level, "[recovery] #{message}")
+    rescue StandardError
+      nil
     end
   end
 end

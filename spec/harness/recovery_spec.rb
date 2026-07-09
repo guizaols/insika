@@ -230,6 +230,30 @@ RSpec.describe Harness::Recovery do
     end
   end
 
+  describe "logger com bug não afeta o fluxo (observabilidade não é controle)" do
+    subject(:recovery) do
+      described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                          command_bus: bus, logger: exploding_logger)
+    end
+
+    let(:exploding_logger) do
+      Class.new do
+        def info(*) = raise "logger caiu"
+        def warn(*) = raise "logger caiu"
+      end.new
+    end
+
+    it "não levanta e não põe o id em resumed E failed ao mesmo tempo" do
+      seed_task("t", status: :running)
+      seed_checkpoint("t")
+
+      result = nil
+      expect { result = recovery.run }.not_to raise_error
+      expect(result[:resumed]).to eq(["t"])
+      expect(result[:failed]).to be_empty
+    end
+  end
+
   describe "sumário" do
     it "é exatamente { resumed:, failed: }" do
       seed_task("r", status: :running)
