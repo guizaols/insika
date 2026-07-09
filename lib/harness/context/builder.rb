@@ -16,25 +16,37 @@ module Harness
   # pacote ao Builder. Implementa doc 04 §4 (seleção -> produção fan-out ->
   # coleta/estimativa -> orçamento com evicção -> montagem canônica).
   class ContextBuilder
-    def initialize(providers:, event_stream:, hooks: nil, estimator: TokenEstimator)
+    def initialize(providers:, event_stream:, hooks: Hooks.new, estimator: TokenEstimator)
       @providers = providers
       @event_stream = event_stream
-      @hooks = hooks # dormente até a task 16 (par before/after_prompt)
+      @hooks = hooks # par :prompt (task 16); Hooks vazio = no-op
       @estimator = estimator
     end
 
+    # O par :prompt (doc 04 §4) é envolvido AQUI, não no Executor: before_prompt
+    # pode reescrever o ContextRequest (providers rodam com o alterado);
+    # after_prompt pode reescrever o ContextPackage montado. IMPORTANTE: o
+    # Executor chama só `builder.call(request)` — NÃO envolver com
+    # around(:prompt) de novo (double-wrap dispararia os hooks 2x).
     def call(request)
+      @hooks.around(:prompt, request) { |req| build_package(req) }
+    end
+
+    private
+
+    # Passos 1-6 do doc 04 §4.
+    def build_package(request)
       selected = select_providers(request.profile)
       fragments = estimate_tokens(produce(selected, request))
       cap = request.profile.limits[:context_budget] || 8_000
       fragments, evicted = apply_budget(fragments, cap)
-      emit_warning("ContextBuilder",
-                   "orçamento: #{evicted.size} fragmento(s) evictado(s) de #{evicted.uniq}",
-                   request) unless evicted.empty?
+      unless evicted.empty?
+        emit_warning("ContextBuilder",
+                     "orçamento: #{evicted.size} fragmento(s) evictado(s) de #{evicted.uniq}",
+                     request)
+      end
       assemble(fragments, cap, evicted)
     end
-
-    private
 
     # Passo 1: seleção — enabled_for? E allowlist do perfil (D6).
     def select_providers(profile)
