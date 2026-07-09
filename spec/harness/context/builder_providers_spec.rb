@@ -56,22 +56,27 @@ RSpec.describe "ContextBuilder + providers reais" do
     profile = Harness::AgentProfile.build(id: "a", model: "m", base_prompt: "IDENTIDADE", skills: nil)
     session_store = Harness::SessionStore.new(store: Harness::Stores::Memory.new)
     session_store.create(id: "s1")
-    # 6 mensagens longas de histórico
-    6.times { |i| session_store.append_messages("s1", { role: "user", content: "mensagem longa número #{i} " * 5 }) }
+    # 6 mensagens de histórico de tamanho controlado (~44 chars -> 11 tokens cada).
+    # O Hash {role:, content:} adiciona uns tokens; usamos margem no orçamento.
+    6.times { |i| session_store.append_messages("s1", { role: "user", content: "num#{i}-#{'.' * 40}" }) }
     providers = [
       Harness::Context::Providers::Prompt.new(base: "IDENTIDADE"),
       Harness::Context::Providers::Skill.new(catalog: catalog),
       Harness::Context::Providers::Session.new(session_store: session_store)
     ]
 
-    pkg = build(providers, profile, session: session_store.find("s1"), budget: 60)
+    # orçamento que mantém identidade (pinned) + skills (80) + ALGUMAS histories
+    # (as mais recentes), cortando as mais antigas. Escolhido para sobrar >0 e <6.
+    pkg = build(providers, profile, session: session_store.find("s1"), budget: 90)
 
-    # identidade (pinned) e skills sobrevivem; parte do histórico é cortada
-    expect(pkg.system).to include("IDENTIDADE", "cardapio")
-    expect(pkg.budget[:evicted]).not_to be_empty
-    # o que sobrou do histórico são as mensagens MAIS RECENTES (as antigas caíram)
     survived = pkg.history.map { |m| m[:content] }
-    expect(survived.last).to include("número 5") if survived.any?
-    expect(survived).not_to include(a_string_including("número 0"))
+    # identidade (pinned) e skills (80 > history) sobrevivem sempre
+    expect(pkg.system).to include("IDENTIDADE", "cardapio")
+    # cortou parte, mas não tudo: prova a ordem de sacrifício
+    expect(pkg.budget[:evicted]).not_to be_empty
+    expect(survived.size).to be_between(1, 5)
+    # o que sobrou são as MAIS RECENTES; a mais antiga (num0) caiu primeiro
+    expect(survived).to include(a_string_including("num5"))
+    expect(survived).not_to include(a_string_including("num0"))
   end
 end
