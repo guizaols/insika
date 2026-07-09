@@ -178,6 +178,32 @@ RSpec.describe Harness::ContextBuilder do
     end
   end
 
+  describe "fan-out concorrente (não sequencial)" do
+    it "providers rodam em paralelo: um espera um sinal que o outro emite" do
+      cond = Async::Condition.new
+      waiter = Class.new(Harness::ContextProvider) do
+        define_method(:id) { "WAIT" }
+        define_method(:call) do |_r|
+          cond.wait # bloqueia até o SIGNAL; se fosse sequencial, estouraria o timeout
+          [Harness::ContextFragment.build(content: "waited", placement: :system, source: "WAIT")]
+        end
+      end.new
+      signaler = Class.new(Harness::ContextProvider) do
+        define_method(:id) { "SIGNAL" }
+        define_method(:call) do |_r|
+          cond.signal
+          [Harness::ContextFragment.build(content: "signaled", placement: :system, source: "SIGNAL")]
+        end
+      end.new
+
+      # provider_timeout default (5s): se rodassem em série, WAIT bloquearia
+      # sozinho e só sairia por timeout (degradando) — WAIT não apareceria.
+      pkg = build([waiter, signaler])
+
+      expect(pkg.fragments.map(&:source)).to contain_exactly("WAIT", "SIGNAL")
+    end
+  end
+
   describe "erros e degradação de provider (doc 04 §6)" do
     it "opcional que falha -> :provider_warning + resto montado" do
       bad = provider(id: "BAD", raises: RuntimeError.new("caiu"))

@@ -368,7 +368,7 @@ Não aplicável nesta task — a integração com providers reais é a task 15 e
 
 - **Concluído em:** 2026-07-09
 - **Implementado por:** Claude (execução automatizada)
-- **Testes:** 26 novos (3 fragment + 23 builder), 366 na suíte inteira, 0 falhas, 0 regressões
+- **Testes:** 24 novos (3 fragment + 21 builder, incl. prova de fan-out concorrente), 367 na suíte inteira, 0 falhas, 0 regressões
 - **Arquivos criados:** `lib/harness/context/fragment.rb`, `lib/harness/context/provider.rb`, `lib/harness/context/builder.rb`, `spec/harness/context/fragment_spec.rb`, `spec/harness/context/builder_spec.rb`
 - **Arquivos modificados:** `lib/harness.rb` (requires)
 - **Observações / decisões tomadas:**
