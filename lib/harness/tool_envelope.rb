@@ -19,18 +19,26 @@ module Harness
     ToolTimeout = Class.new(StandardError)
     private_constant :ToolTimeout
 
-    def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:)
+    def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:,
+                   skip_side_effects: [])
       super(tool)
       @state = state
       @checkpoint_store = checkpoint_store
       @tool_registry = tool_registry
       @timeout = timeout
+      @skip_side_effects = Array(skip_side_effects) # ids já concluídos no turno interrompido
     end
 
     # Ponto de entrada que o RubyLLM invoca (Tool#call na versão pinada).
     # Estouro do timeout volta ao MODELO como erro serializado (D4) — não
     # derruba o turno.
     def call(args)
+      # doc 02 L5 / doc 03 §4.1: tool call não-idempotente JÁ CONCLUÍDA no turno
+      # interrompido -> responder com marcador, NUNCA reexecutar. O marcador
+      # volta ao modelo, mantendo o protocolo de tool-use íntegro.
+      call_id = @state.current_tool_call&.id
+      return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
+
       result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
       record_side_effect! if side_effect?
       result

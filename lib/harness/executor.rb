@@ -55,10 +55,16 @@ module Harness
 
     # Estágios 2..9. Roda DENTRO do fiber da task (doc 03 §2).
     def execute(task, profile:, actor:, resume_from: nil)
-      @task_store.begin_execution(task.id)
-      # running->running é inválido (doc 02 §2): só transiciona quando queued.
-      # No resume (task 13), paused/waiting->running é feito pelo caminho de resume.
-      @task_store.transition(task.id, to: :running) if @task_store.find(task.id).status == :queued
+      # Resume de órfã de crash: a Execution do attempt interrompido ficou ABERTA
+      # (o fiber morreu). O TaskStore proíbe abrir uma segunda enquanto há aberta
+      # -> fecha a órfã como :interrupted antes de abrir a N+1 (doc 02 §3: nova
+      # entrada, nunca sobrescreve). Ver Notes da task.
+      close_orphan_execution(task) if resume_from
+      @task_store.begin_execution(task.id) # attempt N+1 (doc 02 §3)
+      # queued (spawn normal) e paused/waiting (resume) -> running. Órfã já está
+      # :running (running->running é inválido, doc 02 §2) -> sem transição.
+      status = @task_store.find(task.id).status
+      @task_store.transition(task.id, to: :running) if %i[queued paused waiting].include?(status)
       emit(:task_started, { task_id: task.id, command: command_type(task) }, task: task)
 
       actor.drain!
@@ -96,6 +102,14 @@ module Harness
     # também por robustez.
     def command_type(task)
       task.command[:type] || task.command["type"]
+    end
+
+    # Fecha a Execution órfã (aberta) de um attempt interrompido por crash,
+    # marcando-a :interrupted — o registro do que aconteceu é preservado; o
+    # attempt N+1 é aberto em seguida por begin_execution.
+    def close_orphan_execution(task)
+      open = @task_store.find(task.id).executions.last
+      @task_store.finish_execution(task.id, outcome: :interrupted) if open && open.finished_at.nil?
     end
 
     # Mapeia erro -> task :failed + eventos. `transition` com error: JÁ fecha a
@@ -145,7 +159,10 @@ module Harness
 
         # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)
         resolution = @policy_engine.decide(policy_request(profile, task))
-        state.allowed_tools = wrap_tools(Array(resolution.allowed_tools), state)
+        # no resume, tool calls já concluídas no turno interrompido são "puladas"
+        # (doc 02 L5): união chave avulsa ∪ checkpoint do turno.
+        skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
+        state.allowed_tools = wrap_tools(Array(resolution.allowed_tools), state, skip)
         state.allowed_skills = resolution.allowed_skills
         actor.drain!
 
@@ -208,11 +225,12 @@ module Harness
     # Envelopa cada tool permitida (timeout por call + registro de side-effect,
     # doc 03 §5). A LoadSkill de sistema (configure_chat) NÃO é envelopada nesta
     # fase — é tool de sistema sem side-effect e de latência trivial (ver Notes).
-    def wrap_tools(tools, state)
+    def wrap_tools(tools, state, skip_side_effects = [])
       timeout = state.profile.limits[:tool_timeout] || 60 # D4/D6
       tools.map do |tool|
         ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
-                               tool_registry: @tool_registry, timeout: timeout)
+                               tool_registry: @tool_registry, timeout: timeout,
+                               skip_side_effects: skip_side_effects)
       end
     end
 
