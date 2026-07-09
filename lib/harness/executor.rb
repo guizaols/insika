@@ -94,6 +94,79 @@ module Harness
     # stubado para simular sucesso/lentidão/erro.
     def run_pipeline(_task, _profile, _actor, _resume_from) = nil
 
+    # --- Estágios 5-7: cola RubyLLM migrada INTACTA do runner.rb da Fase 0
+    # (doc 03 §4.2, restrição "RubyLLM First"). Loop/streaming/retry nunca são
+    # reimplementados aqui — só o entorno vira estágios.
+
+    # Estágio 6 (fábrica): ÚNICO ponto que toca a gem (D9). require lazy,
+    # confinado — não coberto por unit (linha de fábrica); a task 12 o exercita
+    # com a gem/stub presente.
+    def create_chat(profile)
+      require "ruby_llm"
+      require_relative "tools/load_skill"
+      RubyLLM.chat(
+        model: profile.model,
+        provider: profile.provider,
+        assume_model_exists: !profile.provider.nil?
+      )
+    end
+
+    # Estágio 5: monta o chat com o contexto (estágio 2) e as tools da Resolution
+    # (estágio 3). `state` é o TurnState (classe na task 12; specs usam Struct).
+    def configure_chat(chat, state)
+      system = state.context.system.to_s
+      chat.with_instructions(system) unless system.empty?
+
+      # load_skill é default de SISTEMA (fora da allowlist), senão o progressive
+      # disclosure quebra — comportamento preservado da Fase 0. allowed_skills
+      # vem da RESOLUTION (policy), não do provider de contexto.
+      tools = Array(state.allowed_tools).dup
+      skill_names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
+      tools << Tools::LoadSkill.new(@skill_catalog, skill_names) unless skill_names.empty?
+      chat.with_tools(*tools) unless tools.empty?
+
+      chat
+    end
+
+    # Estágio 5: histórico vem do contexto/checkpoint. O shape {role:, content:}
+    # é o mesmo que a Fase 0 consome; tolera chaves string (JSON dos stores).
+    def seed_history(chat, messages)
+      Array(messages).each do |m|
+        chat.add_message(role: (m[:role] || m["role"]).to_sym,
+                         content: m[:content] || m["content"])
+      end
+    end
+
+    # Estágio 7: callbacks aditivos do RubyLLM viram eventos com meta (D5).
+    # load_skill vira :skill_activated — inalterado da Fase 0. Acrescenta o
+    # contador max_tool_calls (doc 03 §6/L6): o loop é do RubyLLM; aqui só
+    # CONTAMOS e abortamos.
+    def wire_callbacks(chat, state)
+      tool_calls = 0
+      max_tool_calls = state.profile.limits[:max_tool_calls] || 50 # D6
+      last_tool_name = nil
+
+      chat.before_tool_call do |tool_call|
+        tool_calls += 1
+        if tool_calls > max_tool_calls
+          raise Harness::TimeoutError.new("limite de tool calls excedido (#{max_tool_calls})",
+                                          stage: :tool_limit)
+        end
+
+        last_tool_name = tool_call.name.to_s
+        if last_tool_name == "load_skill"
+          args = tool_call.arguments || {}
+          emit(:skill_activated, { name: args["name"] || args[:name] }, task: state.task)
+        else
+          emit(:tool_call, { name: tool_call.name, arguments: tool_call.arguments }, task: state.task)
+        end
+      end
+
+      chat.after_tool_result do |result|
+        emit(:tool_result, { name: last_tool_name, result: result.to_s }, task: state.task)
+      end
+    end
+
     # Emissor único: Event com meta D5 e seq monotônico por task. @seqs não é
     # limpo ao fim da task — o resume (nova Execution) continua a numeração
     # (replay confiável, D5).

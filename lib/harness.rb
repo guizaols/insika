@@ -18,7 +18,11 @@ require_relative "harness/commands/create_session"
 require_relative "harness/commands/cancel_task"
 require_relative "harness/event_stream"
 require_relative "harness/task_actor"
+require_relative "harness/skill_catalog"
 require_relative "harness/executor"
+# NÃO requerer "harness/tools/load_skill" aqui: ele faz `require "ruby_llm"` no
+# topo (herda de RubyLLM::Tool) e puxaria a gem em load-time. O Executor o
+# carrega lazy dentro de create_chat (D9).
 
 module Harness
 end
