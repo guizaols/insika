@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -431,3 +431,17 @@ Não aplicável — tipos puros sem colaboradores. O teste de integração relev
 - Os arquivos da Fase 0 em `docs/harness_handoff/reference-implementation/` **não são apagados** — são documentação de referência do handoff. A "migração" é criação dos equivalentes em `lib/harness/` (00-overview §4: nada da Fase 0 é jogado fora).
 - Requer Ruby ≥ 3.2 (`Data.define` com override de `initialize` por keywords). A Fase 0 já usa `Data.define`.
 - Convenções (brief/Fase 0): `# frozen_string_literal: true` no topo, `Data.define` para value objects, comentários em português, classes pequenas.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-06
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 32 novos, 0 existentes, 0 falhas (`bundle exec rspec` verde, sem ruby_llm instalado)
+- **Arquivos criados:** `lib/harness.rb`, `lib/harness/{errors,event,agent_profile,token_estimator}.rb`, `spec/spec_helper.rb`, `.rspec`, `spec/harness/{errors,event,agent_profile,token_estimator}_spec.rb`, `Gemfile`, `Gemfile.lock`, `.gitignore`
+- **Arquivos modificados:** nenhum (primeiro código do repo)
+- **Observações:**
+  - Repositório git inicializado nesta task (não existia); baseline `main` com os docs, trabalho em `feature/harness-fase1` (sem `staging`/remote ainda — adaptação registrada).
+  - **Desvio pequeno do plano:** `DEFAULT_LIMITS` não pode ser atribuída dentro do bloco do `Data.define` — constante em bloco vaza para o escopo léxico (`Harness::DEFAULT_LIMITS`). Solução: classe `AgentProfile` reaberta após o `Data.define` para hospedar a constante e os métodos. Comportamento e interface idênticos aos planejados; as tasks 2+ que citarem o padrão "métodos no bloco do Data.define" devem preferir reabertura quando houver constante.
+  - Verificado load limpo: `require "harness"` não define side-effects nem carrega `ruby_llm`.

@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [01-persistence-stores.md](../01-persistence-stores.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Low
 
 ---
@@ -245,3 +245,17 @@ Não aplicável — Memory é o backend de teste; integração de domínio acont
 - O snapshot copia todos os scopes (não só os "tocados") — simplificação registrada no Step 2 que preserva a semântica observável exigida pela suíte. Se o perfil de memória virar problema (não deve: valores são strings), otimizar para copy-on-write por scope sem mudar contrato.
 - Memory não usa `Async::Semaphore` nem lock nenhum — doc 01 §5 é explícito ("fibers cooperativos não preemptam no meio de uma operação de Hash"). Não adicione sincronização especulativa.
 - Este backend é o que os specs das tasks 5-8 injetam nos stores de domínio — mantenha o construtor sem argumentos (`Memory.new`), como no doc 01 §2 (`def initialize; end`).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-07
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 23 novos (22 casos C1-C22 da suíte de contrato + edge case de ordenação lexicográfica, todos contra `Stores::Memory`); suíte total 60 exemplos, 0 falhas
+- **Arquivos criados:** `lib/harness/stores/memory.rb`, `spec/harness/stores/memory_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require do Memory)
+- **Observações:**
+  - **Correção de bug de especificação (afeta a task 4):** o task file mandava `JSON.generate(value, strict: true)`. Sob a versão de `json` que o bundle trava (2.7.1, default gem do Ruby 3.3.5), `strict: true` **rejeita Symbol**, o que quebra o caso de contrato C8 (Symbol→String). Sem `strict`, símbolos coerem (C8 ✓) mas `Object.new` vira a string-lixo `"#<Object...>"` em vez de levantar (C22 ✗). Ou seja, `strict: true` não satisfaz o próprio contrato. Substituído por validação explícita do modelo de tipos JSON (`ensure_jsonable!`: Symbol permitido/coerido, tipo fora do modelo → `StoreError`) + `JSON.generate` sem strict. Solução independente da versão do json e que dá semântica idêntica ao SQLite. **A task 4 NÃO deve usar `strict: true`** — deve reusar/replicar esta lógica (candidata a extração para um módulo compartilhado quando a task 4 chegar — evita a duplicação que o code review apontaria).
+  - Consideração para a task 26 (D9): o split de versão do `json` (bundle=2.7.1 vs. ruby puro=2.18.1) é inofensivo agora porque a serialização ficou independente de versão; se quiser determinismo total, pinar `json` no Gemfile em D9.
+  - Zero testes específicos de backend em `memory_spec.rb` (doc 01 §7) — só `it_behaves_like`.

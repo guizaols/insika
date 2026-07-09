@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [02-session-task-checkpoint.md](../02-session-task-checkpoint.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -199,3 +199,21 @@ Não aplicável — o consumo pelo estágio 8 e pelo resume é das tasks 12 e 13
 - **Limpeza de chaves avulsas no `prune`:** o doc 02 só manda o `save` apagar a chave absorvida; apagar avulsas de turnos anteriores ao menor checkpoint mantido no `prune` é extensão mínima para não vazar lixo (mesmo espírito de L6). Se preferir literalidade estrita, remova — e registre que o GC da Fase 2 as recolherá.
 - O marcador `{"skipped":"already_executed"}` e a decisão de **quem** consulta `side_effects` na retomada são do Executor/ResumeTask (doc 03 §4, task 13) — este store só fornece a consulta.
 - Tools declaram não-idempotência com `register(name, klass, side_effect: true)` (doc 06); quem decide **chamar** `record_side_effect` é o hook de tool do Executor (task 12), não este store.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 22 novos (todos passando; inclui crash-consistency D4 com fault injection no `delete`), 225 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/checkpoint.rb`, `lib/harness/checkpoint_store.rb`, `spec/harness/checkpoint_store_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (requires sem side-effects)
+- **Observações / decisões tomadas:**
+  - **Desvio do plano registrado:** o tipo `Harness::Checkpoint` (overview §2) era atribuído à task 01 mas nunca foi criado lá (task 01 só entregou `errors/event/agent_profile/token_estimator`). Introduzi-o aqui em `lib/harness/checkpoint.rb`, com a definição idêntica ao overview §2, por ser a entrada/saída deste store. Um-tipo-por-arquivo, seguindo a convenção de `event.rb`/`agent_profile.rb`.
+  - `save` sempre em `store.transaction`, all-or-nothing (D4): valida monotonicidade → consolida a chave avulsa do turno `cp.turn - 1` → grava o checkpoint → apaga a avulsa absorvida, tudo na mesma transação.
+  - **Interpretação registrada** (offset da chave avulsa): `save(cp)` absorve `sideeffects:<task>:turn:<cp.turn - 1>`; `side_effects(task, turn:)` une avulsa ∪ checkpoint do MESMO turno. Conforme as Notes; ajustável se a task 12/13 fixar outra convenção.
+  - Ordenação de turn **numérica** (`turn_of` parseia Integer) — cobre turnos esparsos e turn ≥ 10.
+  - `prune` limpa também chaves avulsas de turnos < menor turn mantido (extensão mínima de L6, anotada nas Notes); em transação para não deixar poda parcial.
+  - Crash-consistency testada injetando um backend cujo `delete` levanta: a exceção ocorre após o `set` do novo checkpoint, exercitando o rollback real da task 03 — `latest` volta ao checkpoint anterior e a avulsa permanece.
+  - `StoreError` propaga sem re-embrulhar; `ArgumentError` para turn não-monotônico. `deep_stringify` replica o padrão das tasks 05/06.
