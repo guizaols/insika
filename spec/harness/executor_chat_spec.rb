@@ -16,7 +16,8 @@ RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
   Ctx = Struct.new(:system)
   TaskStub = Struct.new(:id, :session_id)
   ProfileStub = Struct.new(:model, :provider, :limits)
-  State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task, keyword_init: true)
+  State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
+                     :current_tool_call, keyword_init: true)
 
   let(:event_stream) { RecordingEventStream.new }
   let(:inert) { Object.new }

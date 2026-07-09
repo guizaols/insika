@@ -62,22 +62,30 @@ module Harness
       emit(:task_started, { task_id: task.id, command: command_type(task) }, task: task)
 
       actor.drain!
-      run_pipeline(task, profile, actor, resume_from) # stub nesta task
-      # (caminho de sucesso completo — transition/persistência — chega na task 12)
+      run_pipeline(task, profile, actor, resume_from)
+    # Captura ÚNICA no topo do fiber (doc 03 §6/L3): um só lugar mapeia
+    # erro -> estado terminal -> eventos. Estágios não fazem rescue próprio
+    # (exceto tool, semântica RubyLLM). O fiber NUNCA re-raise.
     rescue CancelledError
+      # cancel não é erro: transition SEM error: (não fecha a Execution), depois
+      # finish_execution a fecha com outcome :cancelled.
       @task_store.transition(task.id, to: :cancelled)
       @task_store.finish_execution(task.id, outcome: :cancelled)
       emit(:task_cancelled, { task_id: task.id }, task: task)
+      emit(:error, { message: "task cancelada" }, task: task) # compat Fase 0 (D5)
+    rescue PolicyDenied => e
+      emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task) # D5
+      fail_task(task, e, stage: :policy)
+    rescue ContextError => e
+      fail_task(task, e, stage: :context)
+    rescue ProviderError => e
+      fail_task(task, e, stage: :ruby_llm)
+    rescue StoreError => e
+      fail_task(task, e, stage: :persistence)
+    rescue TimeoutError => e
+      fail_task(task, e, stage: e.stage)
     rescue StandardError => e
-      # Esqueleto: rescue genérico p/ o fiber nunca vazar exceção. O mapeamento
-      # COMPLETO erro->estado->eventos (D4/L3) chega na task 12.
-      # NB: contra o TaskStore real (task 06), `transition` com `error:` JÁ fecha
-      # a Execution aberta (finished_at/outcome/error) — por isso NÃO chamamos
-      # finish_execution aqui (seria dupla-fecho -> ArgumentError). No caminho
-      # de :cancelled, transition é sem `error:`, então lá o finish é necessário.
-      @task_store.transition(task.id, to: :failed,
-                                      error: { class: e.class.name, message: e.message })
-      emit(:task_failed, { task_id: task.id, error: e.class.name, message: e.message }, task: task)
+      fail_task(task, e, stage: :unknown)
     ensure
       @running.delete(task.id) # SEMPRE desregistra (falso-positivo de running? quebraria o resume)
     end
@@ -90,9 +98,139 @@ module Harness
       task.command[:type] || task.command["type"]
     end
 
-    # Preenchido nas tasks 11 (estágios 6-7) e 12 (2-9). Nos specs desta task é
-    # stubado para simular sucesso/lentidão/erro.
-    def run_pipeline(_task, _profile, _actor, _resume_from) = nil
+    # Mapeia erro -> task :failed + eventos. `transition` com error: JÁ fecha a
+    # Execution aberta (TaskStore real, task 06) — NÃO chamar finish_execution
+    # (dupla-fecho). Checkpoint anterior NUNCA é tocado em falha (D4). Nunca
+    # re-raise: o fiber morre limpo (doc 03 §6).
+    def fail_task(task, error, stage:)
+      @task_store.transition(task.id, to: :failed,
+                                      error: { class: error.class.name, message: error.message, stage: stage })
+      emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
+      emit(:error, { message: error.message }, task: task) # compat Fase 0 (D5)
+      nil
+    end
+
+    # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
+    ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
+                                keyword_init: true)
+    PolicyRequest  = Struct.new(:profile, :task, :candidate_skills, keyword_init: true)
+
+    # Estágios 2-9 (doc 03 §4), com drain de mailbox só nas fronteiras (L2) e
+    # turn-timeout (D4) envolvendo tudo via Async::Task#with_timeout — NUNCA
+    # Timeout.timeout da stdlib.
+    def run_pipeline(task, profile, actor, resume_from)
+      turn = resume_from ? resume_from.turn : 1
+      state = TurnState.new(task: task, profile: profile, turn: turn,
+                            message: extract_message(task))
+      turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
+
+      Async::Task.current.with_timeout(turn_timeout) do
+        # estágio 2: Context
+        request = build_context_request(task, profile, state, resume_from)
+        state.context = @hooks.around(:prompt, request) { |req| @context_builder.call(req) }
+        actor.drain!
+
+        # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)
+        resolution = @policy_engine.decide(policy_request(profile, task))
+        state.allowed_tools = wrap_tools(Array(resolution.allowed_tools), state)
+        state.allowed_skills = resolution.allowed_skills
+        actor.drain!
+
+        # estágio 4: Middleware (pode curto-circuitar setando halt_reason)
+        @middleware.call(state) do |st|
+          raise Harness::Error, "turno interrompido: #{st.halt_reason}" if st.halt_reason
+
+          # estágio 5: montar chat + checar mailbox
+          actor.drain!
+          st.chat = create_chat(profile)
+          configure_chat(st.chat, st)
+          seed_history(st.chat, st.context.history)
+          wire_callbacks(st.chat, st) # estágio 7
+
+          # estágio 6: RubyLLM — ÚNICA interação com o modelo
+          response = @hooks.around(:agent, st) do |s|
+            s.chat.ask(s.message) do |chunk|
+              emit(:content, { delta: chunk.content }, task: task) if chunk.content
+            end
+          end
+
+          # estágio 8: Persistence (ordem fixa checkpoint->session->task, doc 02 L4)
+          actor.drain! # nunca DURANTE o estágio 8 (D4)
+          persist_turn(task, profile, st, response)
+
+          # estágio 9: Response
+          emit(:done, { content: response.content }, task: task) # compat Fase 0
+          emit(:task_completed, { task_id: task.id, content: response.content }, task: task)
+        end
+
+        # halt sem executar o bloco terminal também é falha (doc 05 §4)
+        raise Harness::Error, "turno interrompido: #{state.halt_reason}" if state.halt_reason
+      end
+    rescue Async::TimeoutError
+      raise Harness::TimeoutError.new("turno excedeu #{turn_timeout}s", stage: :turn)
+    end
+
+    def extract_message(task)
+      payload = task.command["payload"] || task.command[:payload] || {}
+      payload["message"] || payload[:message]
+    end
+
+    def command_history(task)
+      payload = task.command["payload"] || task.command[:payload] || {}
+      payload["history"] || payload[:history]
+    end
+
+    def build_context_request(task, profile, state, resume_from)
+      session = task.session_id ? @session_store.find(task.session_id) : nil
+      ContextRequest.new(task: task, profile: profile, message: state.message,
+                         session: session, history: command_history(task),
+                         checkpoint: resume_from)
+    end
+
+    def policy_request(profile, task)
+      PolicyRequest.new(profile: profile, task: task,
+                        candidate_skills: @skill_catalog.effective(profile.skills))
+    end
+
+    # Envelopa cada tool permitida (timeout por call + registro de side-effect,
+    # doc 03 §5). A LoadSkill de sistema (configure_chat) NÃO é envelopada nesta
+    # fase — é tool de sistema sem side-effect e de latência trivial (ver Notes).
+    def wrap_tools(tools, state)
+      timeout = state.profile.limits[:tool_timeout] || 60 # D4/D6
+      tools.map do |tool|
+        ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
+                               tool_registry: @tool_registry, timeout: timeout)
+      end
+    end
+
+    # Estágio 8: ordem FIXA checkpoint -> session -> task (doc 02 L4). Se cair
+    # entre escritas, o pior caso é checkpoint novo com task :running -> Recovery
+    # reexecuta o turno já salvo (seguro pelo registro de side-effects).
+    def persist_turn(task, profile, state, response)
+      new_messages = [
+        { role: "user", content: state.message },
+        { role: "assistant", content: response.content }
+      ]
+      transcript = Array(state.context.history) + new_messages
+
+      @checkpoint_store.save(Harness::Checkpoint.new(
+                               task_id: task.id, turn: state.turn + 1, session_id: task.session_id,
+                               agent_id: profile.id, messages: transcript,
+                               completed_side_effects: [], created_at: Time.now.utc.iso8601
+                             ))
+
+      # sessão só quando o turno é de sessão persistida (D2); one-shot/history
+      # não persistem NA SESSÃO (mas sempre checkpointam).
+      @session_store.append_messages(task.session_id, new_messages) if task.session_id
+
+      # finish_execution (fecha a Execution) ANTES do transition(:completed) —
+      # transition sem error: não fecha, então o finish é necessário aqui.
+      @task_store.finish_execution(task.id, outcome: :completed)
+      @task_store.transition(task.id, to: :completed)
+      @checkpoint_store.prune(task.id, keep: 1) # doc 02 L6
+
+      emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
+    end
 
     # --- Estágios 5-7: cola RubyLLM migrada INTACTA do runner.rb da Fase 0
     # (doc 03 §4.2, restrição "RubyLLM First"). Loop/streaming/retry nunca são
@@ -147,6 +285,8 @@ module Harness
       last_tool_name = nil
 
       chat.before_tool_call do |tool_call|
+        # correlação call<->decorator (side-effects/skip, task 13) — 1ª linha.
+        state.current_tool_call = tool_call
         tool_calls += 1
         if tool_calls > max_tool_calls
           raise Harness::TimeoutError.new("limite de tool calls excedido (#{max_tool_calls})",
