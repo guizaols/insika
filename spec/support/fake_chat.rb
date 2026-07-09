@@ -9,6 +9,10 @@ class FakeChat
   Response = Struct.new(:content)
 
   attr_reader :instructions, :tools, :messages, :asked
+  # script: proc rodado no contexto do chat durante #ask (pode chamar
+  # emit_chunk/fire_tool_call/fire_tool_result). final_content: conteúdo da
+  # resposta final.
+  attr_accessor :script, :final_content
 
   def initialize
     @tools = []
@@ -16,6 +20,8 @@ class FakeChat
     @before_tool_call = nil
     @after_tool_result = nil
     @asked = nil
+    @script = nil
+    @final_content = "final"
   end
 
   def with_instructions(text)
@@ -53,9 +59,19 @@ class FakeChat
     @after_tool_result&.call(result)
   end
 
-  def ask(message)
+  def ask(message, &on_chunk)
     @asked = message
-    yield Response.new("chunk") if block_given?
-    Response.new("final")
+    @on_chunk = on_chunk
+    if @script
+      instance_exec(&@script) # script usa emit_chunk/fire_tool_call/fire_tool_result
+    else
+      emit_chunk("chunk")
+    end
+    Response.new(@final_content)
+  end
+
+  # Emite um chunk de streaming (como o RubyLLM faz no bloco do ask).
+  def emit_chunk(text)
+    @on_chunk&.call(Response.new(text))
   end
 end
