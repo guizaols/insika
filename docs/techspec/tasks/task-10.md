@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** High
 
 ---
@@ -376,3 +376,20 @@ Não nesta task (a integração Command→Response com chat mockado é a task 12
 - O rescue genérico do `execute` é **provisório de esqueleto**: a task 12 o substitui pela captura única completa do doc 03 §6/L3 (mapa por classe de erro, `stage` no error da Execution, evento `:error` compat, ordem checkpoint→session→task).
 - `:done`/`:task_completed` (caminho de sucesso) não são emitidos nesta task — pertencem ao estágio 9 (task 12). Não simule.
 - Gerado antes da implementação de qualquer task. Se dependências já estiverem implementadas quando você pegar esta task, leia o código real — ele prevalece sobre o estado planejado aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 23 novos (async em `Sync{}`, sem ruby_llm), 281 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/event_stream.rb`, `lib/harness/task_actor.rb`, `lib/harness/executor.rb`, `spec/harness/event_stream_spec.rb`, `spec/harness/task_actor_spec.rb`, `spec/harness/executor_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (requires; núcleo carrega sem ruby_llm)
+- **Observações / decisões tomadas:**
+  - **Divergência do código-sample da task vs. TaskStore real (código real prevalece):** o sample do `execute` chamava `transition(:failed, error:)` **e** `finish_execution(:failed)`. Mas o `TaskStore#transition` real (task 06) **já fecha** a Execution aberta quando recebe `error:` — o `finish_execution` seguinte não achava Execution aberta e levantava `ArgumentError`, matando o fiber antes de `:task_failed`. Correção: no caminho `:failed`, só `transition(error:)` (fecha + grava erro + outcome). No caminho `:cancelled`, `transition` é sem `error:`, então lá o `finish_execution` continua necessário. Achado pelo próprio teste de erro genérico.
+  - `EventStream`: fila por subscriber (`Async::Queue`), filtros por `meta` (task_id/session_id), `emit` nunca levanta (observador quebrado isolado), buffer ilimitado na Fase 1 (L4). `Subscription#close` idempotente.
+  - `TaskActor`: mailbox mínima `%i[cancel user_message]`, `post` não-bloqueante, `drain!` só nas fronteiras (nunca bloqueia), `:user_message` reservado sem produtor. `:cancel` levanta `CancelledError`; quem mapeia p/ `:cancelled` é o topo do fiber no Executor.
+  - `Executor`: estados **sempre** via `TaskStore`; `spawn` guarda contra spawn duplicado (`ValidationError`); `running?` via registro in-process; `cancel` posta `:cancel` (no-op idempotente sem fiber); `emit` com `seq` monotônico por task (`@seqs` não é limpo — replay confiável). `run_pipeline` é stub (estágios nas tasks 11-12). Rescue genérico é provisório de esqueleto (task 12 traz o mapa completo D4/L3).
+  - Sem `sleep`/`Timeout.timeout`/thread — só primitivas Async (specs usam `Async::Condition` para ceder o fiber).
+  - Introspecção branca (`@running`) nos specs para obter o actor vivo e aguardar — aceitável no esqueleto.
