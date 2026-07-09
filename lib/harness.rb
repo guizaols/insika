@@ -7,6 +7,7 @@ require_relative "harness/token_estimator"
 require_relative "harness/store"
 require_relative "harness/stores/memory"
 require_relative "harness/stores/sqlite"
+require_relative "harness/session_store"
 
 module Harness
 end
