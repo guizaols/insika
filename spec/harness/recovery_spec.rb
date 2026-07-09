@@ -254,6 +254,60 @@ RSpec.describe Harness::Recovery do
     end
   end
 
+  describe "integração com CommandBus real + handler ResumeTask (task 13)" do
+    let(:profile) { Harness::AgentProfile.build(id: "a", model: "m") }
+    let(:spawn_executor) do
+      Class.new do
+        attr_reader :spawned
+
+        def initialize = (@spawned = [])
+        def running?(_id) = false
+        def spawn(task, profile:, resume_from:) = @spawned << task.id
+      end.new
+    end
+
+    def real_bus(profiles)
+      handler = Harness::Commands::ResumeTask.new(profiles: profiles, task_store: task_store,
+                                                  checkpoint_store: checkpoint_store,
+                                                  executor: spawn_executor)
+      bus = Harness::CommandBus.new(event_stream: Harness::EventStream.new)
+      bus.register(:resume_task, handler)
+      bus
+    end
+
+    subject(:recovery) do
+      described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                          command_bus: real_bus({ "a" => profile }))
+    end
+
+    it "roteia o dispatch do Recovery até o handler real (spawn da órfã)" do
+      seed_task("t", status: :running) # running? do handler é false -> órfã elegível
+      seed_checkpoint("t")
+
+      result = recovery.run
+
+      expect(result[:resumed]).to eq(["t"])
+      expect(spawn_executor.spawned).to eq(["t"])
+    end
+
+    it "falha isolada: agente removido não derruba o boot (doc 02 §6)" do
+      seed_task("ok", status: :running)
+      seed_checkpoint("ok") # agent_id "a" -> ok
+      seed_task("bad", status: :running)
+      checkpoint_store.save(Harness::Checkpoint.new(task_id: "bad", turn: 1, session_id: nil,
+                                                    agent_id: "sumiu", messages: [],
+                                                    completed_side_effects: [], created_at: nil))
+      recovery = described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                                     command_bus: real_bus({ "a" => profile }))
+
+      result = recovery.run
+
+      expect(result[:resumed]).to eq(["ok"])
+      expect(result[:failed]).to eq(["bad"])
+      expect(task_store.find("bad").status).to eq(:failed)
+    end
+  end
+
   describe "sumário" do
     it "é exatamente { resumed:, failed: }" do
       seed_task("r", status: :running)
