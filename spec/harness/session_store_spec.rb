@@ -148,6 +148,17 @@ RSpec.describe Harness::SessionStore do
     end
   end
 
+  describe "propagação de erro do backend (doc 02 §6)" do
+    it "deixa StoreError propagar sem re-embrulhar" do
+      # valor não-JSONable força o StoreError na escrita do backend (C22);
+      # o SessionStore não deve capturar/re-embrulhar (doc 02 §6).
+      sessions.create(id: "s")
+
+      expect { sessions.update_vars("s", { obj: Object.new }) }
+        .to raise_error(Harness::StoreError)
+    end
+  end
+
   describe "smoke contra Stores::SQLite ':memory:'" do
     it "fluxo create->append->find idêntico ao Memory" do
       require "sqlite3"
