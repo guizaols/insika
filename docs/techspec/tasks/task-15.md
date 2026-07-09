@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [04-context-builder-providers.md](../04-context-builder-providers.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -376,3 +376,19 @@ Zero RubyLLM / zero API key (doc 04 §7). Fixtures de arquivo em diretório temp
 - **Formato textual do fragmento `Request`:** o techspec fixa placement/priority/condição-de-vazio, não o texto. O formato sugerido no Step 1 é deliberadamente simples e determinístico; qualquer formato equivalente serve, desde que os testes de determinismo passem.
 - **`Providers::Prompt` emite a identidade como fragmento único** (base+files concatenados) para preservar a ordem interna e a paridade byte-a-byte — a ordenação canônica da task 14 só ordena ENTRE fragmentos. Os `prompt_refs` são fragmentos separados (priority 90) porque têm prioridade própria no doc.
 - **`skill_catalog.rb` da Fase 0** migra para `lib/harness/` inalterado só na Etapa F (doc 00 §4). Se ao implementar esta task ele ainda não existir em `lib/`, use duplo/fixture nos specs do provider — o adaptador só depende da interface `effective`/`format_for_prompt`.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 26 novos (4 request + 8 prompt + 3 skill + 9 session + 2 integração), 393 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/context/providers/{request,prompt,skill,session}.rb` + 5 specs (`.../providers/*_spec.rb` e `context/builder_providers_spec.rb`)
+- **Arquivos modificados:** `lib/harness.rb` (requires)
+- **Observações / decisões tomadas:**
+  - **`SkillCatalog` já estava em `lib/`** (migrado na task 11) — o provider `Skill` usa o real (adaptador fino, sem duplicar `effective`/`format_for_prompt`).
+  - **Caracterização Fase 0:** o `Prompt` reproduz `SystemPrompt#build` (sem `skills_block`) byte-a-byte — testado contra o algoritmo portado no spec. Identidade = 1 fragmento pinned 100; `prompt_refs` = fragmentos 90 pinned (catálogo duplo); ref inexistente ou `catalog: nil` com refs → `ContextError`.
+  - **`Session` 3 fontes** na precedência checkpoint → history explícito → store; teto 79 (L7); shape `{role:, content:}` (normaliza chaves string do JSON). Requiredness condicional: falha de leitura **com sessão pedida** → `ContextError`.
+  - **Convenção pendente (registrada):** o "history explícito" (fonte 2) é lido de `request.vars[:history]` (isolado em `explicit_history` p/ trocar em 1 linha). O `ContextRequest` não tem campo `history`; alinhar com a task 12 quando o handler definir o canal real. Este é o mesmo seam do `Executor::ContextRequest` vs `Harness::ContextRequest` anotado na task 14 — a reconciliação é da integração (task 26).
+  - **Limitação conhecida da requiredness do `Session` no Builder:** como `Session.required?` é `false` (a base não recebe o request), um `ContextError` que ele levante seria **degradado** pelo Builder (task 14) em vez de abortar. O provider levanta corretamente no nível unitário (testado); a semântica de abort no Builder depende de o wiring registrar o `Session` como required quando a sessão é usada — decisão de wiring (task 26). Registrado.
