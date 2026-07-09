@@ -77,12 +77,9 @@ module Harness
     end
 
     def resume_command(task_id)
-      Harness::Command.new(
-        type: :resume_task,
-        payload: { task_id: task_id },
-        meta: { command_id: SecureRandom.uuid, transport: :recovery,
-                issued_at: Time.now.utc.iso8601 }
-      )
+      # transport: :recovery identifica a origem (boot) no meta — auditoria
+      # (o campo é Symbol livre, doc 03 §2). Usa o factory da task 09.
+      Harness::Command.build(:resume_task, { task_id: task_id }, transport: :recovery)
     end
 
     # Log é observabilidade pura: uma falha do logger NUNCA pode alterar o

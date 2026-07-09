@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -263,3 +263,20 @@ Não nesta task — o fluxo Command→fiber→eventos é coberto na task 12 (int
 - O `event_stream:` no construtor do bus (doc 03 §2) fica guardado sem uso ativo nesta task; handlers emitem por conta própria. Mantido para o contrato não mudar quando o bus precisar emitir (ex.: auditoria de dispatch, Fase 2).
 - Convenções: `# frozen_string_literal: true` em todo arquivo; comentários em português; `Data.define` para value objects.
 - Gerado antes da implementação de qualquer task. Se dependências já estiverem implementadas quando você pegar esta task, leia o código real — ele prevalece sobre o estado planejado aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 21 novos (todos passando), 258 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/command_bus.rb`, `lib/harness/commands/create_session.rb`, `lib/harness/commands/cancel_task.rb`, `spec/harness/command_spec.rb`, `spec/harness/command_bus_spec.rb`, `spec/harness/commands/create_session_spec.rb`, `spec/harness/commands/cancel_task_spec.rb`
+- **Arquivos modificados:** `lib/harness/command.rb` (estendido com `build`), `lib/harness.rb` (requires)
+- **Observações / decisões tomadas:**
+  - **Reuso, não recriação:** `lib/harness/command.rb` já existia (criado na task 08 para o Recovery). Estendi-o com o factory `Command.build` (doc 03 §2) em vez de recriar — o `Recovery` continua usando `Command.new(...)` sem quebra.
+  - `CommandBus#dispatch` roteia por `command.type`; tipo desconhecido → `ValidationError` síncrono (nunca `KeyError`/`NoMethodError`). `event_stream:` guardado sem uso ativo (contrato p/ Fase 2).
+  - Handlers de controle respondem síncrono, sem criar Task (doc 03 L1). Ambos aceitam payload com chave símbolo E string (borda do transporte HTTP).
+  - `CancelTask` é cooperativo: posta via `executor.cancel(task_id)` (duck type, real na task 10); **não** transiciona status nem toca `mailbox_state` persistido. No-op idempotente para task terminal/órfã.
+  - `CreateSession` emite `:session_created` (catálogo D5) via `event_stream.emit`.
+  - `build` aceita `payload` posicional com default `{}` (além de normalizar `nil → {}`), pequena folga sobre a assinatura do doc para ergonomia; sem impacto no contrato.

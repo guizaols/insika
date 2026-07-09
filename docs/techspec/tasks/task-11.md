@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -347,3 +347,20 @@ Não nesta task — a integração com `RubyLLM.chat` (stub da gem real) é a ta
 - **`:tool_result.name` via closure:** o callback `after_tool_result` do RubyLLM (1.15) entrega só o resultado; a correlação por `last_tool_name` assume o loop sequencial do RubyLLM (verdadeiro hoje). Se a versão pinada mudar a assinatura do callback para incluir a tool, prefira o dado oficial.
 - O `system_prompt.rb` da Fase 0 **não** migra aqui: ele é substituído pelo provider `Prompt` (doc 00 §4, task 15). Até lá, o `context.system` vem do Builder stub da task 12.
 - Gerado antes da implementação de qualquer task. Se dependências já estiverem implementadas quando você pegar esta task, leia o código real — ele prevalece sobre o estado planejado aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 21 novos (sem ruby_llm, via stub requerível), 302 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/skill_catalog.rb`, `lib/harness/tools/load_skill.rb`, `spec/support/stubs/ruby_llm.rb`, `spec/support/fake_chat.rb`, `spec/harness/skill_catalog_spec.rb`, `spec/harness/tools/load_skill_spec.rb`, `spec/harness/executor_chat_spec.rb`
+- **Arquivos modificados:** `lib/harness/executor.rb` (estágios 5-7 privados), `lib/harness.rb` (require skill_catalog, NÃO load_skill), `spec/spec_helper.rb` (carrega support + resolve ruby_llm)
+- **Observações / decisões tomadas:**
+  - `SkillCatalog`/`LoadSkill` migrados da Fase 0 **sem mudança de lógica** (só `AgentRuntime → Harness`).
+  - `configure_chat`/`seed_history`/`wire_callbacks` são reconhecivelmente o `runner.rb` da Fase 0 — nenhum loop/streaming/retry reimplementado (RubyLLM First). Diferenças previstas: `context.system` (Builder) no lugar de `SystemPrompt#build`; tools da Resolution (`state.allowed_tools`) no lugar de `registry.resolve`; `meta` D5 nos eventos; contador `max_tool_calls`.
+  - `require "ruby_llm"` confinado a `executor.rb#create_chat` (lazy) e `tools/load_skill.rb` (carregado lazy). `lib/harness.rb` **não** os alcança em load-time — confirmado (`defined?(RubyLLM)` falso após `require "harness"`).
+  - **Ajuste no andaime de teste vs. a proposta da task:** o shim originalmente proposto (`spec/support/ruby_llm_stub.rb` com `begin/rescue`) NÃO resolvia o `require "ruby_llm"` bare no topo de `load_skill.rb` (definir a constante não cria um arquivo requerível). Solução: stub **requerível** em `spec/support/stubs/ruby_llm.rb`, com o dir adicionado ao `$LOAD_PATH` pelo spec_helper **só quando a gem real está ausente** (nunca a sombreia). Descoberto pela falha de carga dos specs.
+  - Contador `max_tool_calls`: default 50 (D6); excedeu → `TimeoutError(stage: :tool_limit)`; zera por turno (variável de closure do `wire_callbacks`).
+  - `:tool_result` ganha `name` via `last_tool_name` do closure (loop sequencial do RubyLLM), conforme catálogo D5.
