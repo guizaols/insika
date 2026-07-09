@@ -136,9 +136,20 @@ RSpec.describe Harness::CheckpointStore do
     # chave avulsa.
     let(:faulty) do
       Class.new do
-        def initialize(inner) = @inner = inner
+        attr_reader :sets
+
+        def initialize(inner)
+          @inner = inner
+          @sets = 0
+        end
+
         def get(*a) = @inner.get(*a)
-        def set(*a) = @inner.set(*a)
+
+        def set(*a)
+          @sets += 1
+          @inner.set(*a)
+        end
+
         def list(*a) = @inner.list(*a)
         def transaction(&blk) = @inner.transaction(&blk)
         def delete(*) = raise Harness::StoreError, "falha simulada no delete"
@@ -153,6 +164,10 @@ RSpec.describe Harness::CheckpointStore do
 
       expect { store.save(checkpoint(turn: 4)) }.to raise_error(Harness::StoreError)
 
+      # precondição load-bearing: o set do turno 4 FOI aplicado antes do delete
+      # levantar — só assim o "latest volta a 3" prova rollback real (senão
+      # seria falso-verde por a escrita nunca ter acontecido).
+      expect(faulty.sets).to eq(1)
       # latest volta ao turno 3 (o set do turno 4 foi revertido)
       expect(checkpoints.latest("t").turn).to eq(3)
       expect(checkpoints.find("t", turn: 4)).to be_nil
