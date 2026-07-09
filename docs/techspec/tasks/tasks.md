@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 7/26 tasks complete
+> **Progress:** 8/26 tasks complete
 
 ---
 
@@ -18,7 +18,7 @@
 | 5 | `SessionStore` (schema `session:<id>`, transcript como fonte da verdade) | [task-05.md](./task-05.md) | ✅ DONE | Low | 02 §2-§3 |
 | 6 | `TaskStore` (máquina de estados validada, Executions, campos de claim reservados) | [task-06.md](./task-06.md) | ✅ DONE | Med | 02 §2-§3 |
 | 7 | `CheckpointStore` (checkpoint por turno, chave avulsa de side-effects, `prune`) | [task-07.md](./task-07.md) | ✅ DONE | Med | 02 §2-§3 |
-| 8 | `Recovery` no boot (varredura + dispatch de resume; bus como duplo até a task 13) | [task-08.md](./task-08.md) | ⬜ TODO | Med | 02 §4, §6 |
+| 8 | `Recovery` no boot (varredura + dispatch de resume; bus como duplo até a task 13) | [task-08.md](./task-08.md) | ✅ DONE | Med | 02 §4, §6 |
 | 9 | `Command` + `CommandBus` + handlers de controle (`CreateSession`, `CancelTask`) | [task-09.md](./task-09.md) | ⬜ TODO | Med | 03 §2-§3 |
 | 10 | `Executor` esqueleto: fiber por task, `TaskActor` (mailbox `cancel`), estados, `running?`, `EventStream` | [task-10.md](./task-10.md) | ⬜ TODO | High | 03 §2, §5 |
 | 11 | Migrar `runner.rb` → estágios 6-7 (build_chat/seed/callbacks RubyLLM intactos, `max_tool_calls` no hook) | [task-11.md](./task-11.md) | ⬜ TODO | Med | 03 §4.2, §6 |

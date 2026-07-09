@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [02-session-task-checkpoint.md](../02-session-task-checkpoint.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -194,3 +194,21 @@ Não aplicável nesta task. A integração real — `Recovery` despachando num `
 - **Lacuna 3 (eventos):** o §4 pede "evento por task" (`:task_failed`, §6), mas o Event Stream nasce no Executor (task 10) e o `Recovery` não recebe emissor na interface. Nesta task fica log + sumário; quando a task 13 fizer a integração real, avaliar injetar o emissor ou deixar o handler `ResumeTask`/Executor emitir.
 - `meta.transport: :recovery` no Command é escolha local (o shape de `meta` em doc 00 §2 tem o campo `transport`, sem enum fechado); se a task 09 definir valores canônicos de `transport`, alinhar.
 - O wiring real (backend → 3 stores → `Recovery` no boot, antes do listen) está descrito no doc 02 §8 e doc 07 §4 — é montado nas tasks 13/26, não aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 11 novos (todos passando; stores reais + bus duplo), 236 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/command.rb`, `lib/harness/recovery.rb`, `spec/harness/recovery_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (requires sem side-effects)
+- **Observações / decisões tomadas:**
+  - **Desvio do plano registrado:** o tipo `Harness::Command` (overview §2) era atribuído à task 01 mas nunca foi criado lá. Introduzi-o em `lib/harness/command.rb` (definição idêntica ao overview §2) porque o Recovery despacha `:resume_task`. A task 09 constrói o `CommandBus` + handlers **sobre este tipo** (deve reusar, não recriar).
+  - **Lacuna 1 (assinatura):** `initialize` recebe `checkpoint_store:` além de `task_store:`/`command_bus:` — o fluxo do §4 usa `checkpoint_store.latest`, embora o §2 só liste dois parâmetros. Divergência consciente exigida pelo próprio doc.
+  - **Lacuna 2 (`paused → failed`):** transição inválida na máquina (doc 02 §2); absorvida via rescue por-task — a task permanece `paused`, mas o id é reportado em `failed:`. Não "consertei" a máquina (Don't change the plan).
+  - **Lacuna 3 (eventos):** o §4 pede evento por task, mas o Event Stream nasce no Executor (task 10) e o Recovery não recebe emissor. Fica log opcional (`logger:` default `nil`) + sumário; reavaliar na task 13.
+  - Tolerância a falha: `StoreError` (varredura ou loop) **propaga** e aborta o boot; qualquer outro erro por-task marca `:failed` (stage `recovery`) e o loop continua. `fail_task` absorve `ArgumentError` de transição inválida mas re-propaga `StoreError`.
+  - `Recovery` não executa retomada, não abre Execution, não muda status de tasks retomáveis (D3).
+  - `meta.transport: :recovery` distingue boot de resume manual; alinhar se a task 09 fixar enum de `transport`.
