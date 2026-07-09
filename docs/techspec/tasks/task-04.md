@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [01-persistence-stores.md](../01-persistence-stores.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -361,3 +361,21 @@ end
 - **Premissa de um único processo escritor** (doc 01 §5): não implemente nada para multi-processo; `busy_timeout` 5s é rede de segurança. A revisão desta seção é pré-requisito da Fase 2 (lease/lock, D7).
 - O parâmetro `serializer:` (L3) só precisa responder a `generate(value, strict: true)` e `parse(string)` — JSON da stdlib é o default; não crie adapter.
 - `Checkpoint`/domínio não entram aqui — scopes são strings opacas para este backend (L1).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada via `/execute-task 4`)
+- **Testes:** 51 novos (contrato C1-C22 em `:memory:` + arquivo; durabilidade, WAL, 2× concorrência Async, require lazy em subprocess); 60 existentes; **111 no total, 0 falhas**
+- **Arquivos criados:** `lib/harness/stores/sqlite.rb`, `spec/harness/stores/sqlite_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require do backend), `Gemfile` + `Gemfile.lock` (`async ~> 2.0`, `sqlite3 ~> 2.0` em test)
+- **Observações — desvio deliberado do plano (código real prevalece):**
+  - **Serialização não usa `strict: true`.** O Step 2 planejado prescrevia `@serializer.generate(value, strict: true)`, mas o ambiente real (ruby 3.3.5 travado no `Gemfile.lock` → json **2.7.1**) faz `strict: true` **rejeitar Symbol**, o que quebraria **C8** (Symbol→String). Esse é exatamente o "alerta de strict:true p/ task 4" deixado no commit da task 3. Segui o código real do `Stores::Memory`: `ensure_jsonable!` (validação explícita do modelo de tipos JSON, independente da versão) + `@serializer.generate(value)` sem `strict`. Resultado: **paridade exata de semântica com o Memory (L2)** — mesmos C8 e C22.
+  - **`JSONABLE`/`ensure_jsonable!` duplicados do Memory.** Mantive a validação self-contained em cada backend (a task só autoriza tocar `sqlite.rb`; não extraí para `Store` para não mexer no arquivo da task 2 nem arriscar o contrato). Candidato natural a extração para o módulo `Store` numa refatoração futura, se um terceiro backend surgir.
+  - **`ensure_jsonable!` roda como parte do `serialize`, antes do `write`** (fail-fast, doc 01 §6): valor não serializável levanta `StoreError` sem abrir transação.
+  - **Testes de concorrência:** além do caso do doc 01 §7 (8 fibers + leitor), adicionei o caso de 2 transações no mesmo scope (DoD "escrita concorrente serializada"). Ambos verdes sem `SQLITE_BUSY`.
+  - **`require lazy`:** validado em subprocess (`ruby -Ilib -e 'require "bundler/setup"; require "harness"; ...'`) — `defined?(SQLite3)` é `nil` após `require "harness"` e passa a definido após o primeiro `new`. `async/semaphore` fica no topo do arquivo (dep do núcleo, D9); apenas `sqlite3` é lazy.
+  - **Sem linter configurado** no repo — validação foi `ruby -c` (Syntax OK) nos dois arquivos.
+  - `Gemfile.lock` foi atualizado pelo `bundle install`; a pinagem definitiva da fase segue sendo a task 26.

@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 3/26 tasks complete
+> **Progress:** 4/26 tasks complete
 
 ---
 
@@ -14,7 +14,7 @@
 | 1 | Migrar tipos base: `errors.rb`, `event.rb` (+meta), `agent_profile.rb` (+4 campos), `token_estimator.rb` | [task-01.md](./task-01.md) | ✅ DONE | Med | 00 D4-D6, D8 |
 | 2 | Interface `Harness::Store` + suíte de contrato compartilhada (shared examples) | [task-02.md](./task-02.md) | ✅ DONE | Med | 01 §2, §7 |
 | 3 | Backend `Stores::Memory` com rollback real de transação | [task-03.md](./task-03.md) | ✅ DONE | Low | 01 §2 |
-| 4 | Backend `Stores::SQLite` (WAL, tabela `kv`, semáforo de escrita) | [task-04.md](./task-04.md) | ⬜ TODO | Med | 01 §3, §5 |
+| 4 | Backend `Stores::SQLite` (WAL, tabela `kv`, semáforo de escrita) | [task-04.md](./task-04.md) | ✅ DONE | Med | 01 §3, §5 |
 | 5 | `SessionStore` (schema `session:<id>`, transcript como fonte da verdade) | [task-05.md](./task-05.md) | ⬜ TODO | Low | 02 §2-§3 |
 | 6 | `TaskStore` (máquina de estados validada, Executions, campos de claim reservados) | [task-06.md](./task-06.md) | ⬜ TODO | Med | 02 §2-§3 |
 | 7 | `CheckpointStore` (checkpoint por turno, chave avulsa de side-effects, `prune`) | [task-07.md](./task-07.md) | ⬜ TODO | Med | 02 §2-§3 |
