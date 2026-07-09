@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [05-policy-middleware-hooks.md](../05-policy-middleware-hooks.md) · [04-context-builder-providers.md](../04-context-builder-providers.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Low
 
 ---
@@ -203,3 +203,18 @@ Tudo puro — zero RubyLLM, zero IO (doc 05 §7).
 - **Divergência aparente doc 03 × doc 04 sobre quem chama `around(:prompt)`:** o doc 03 §4 (estágio 2) desenha o wrap no Executor; o doc 04 §2/§4 entrega `hooks:` ao Builder e o plano (tasks.md) diz "envolvendo o Builder". Esta task implementa o wrap dentro de `Builder#call`. Consequência para as tasks 12/19: o Executor NÃO deve envolver `builder.call` com `around(:prompt, ...)` de novo — deixar este aviso visível no código (comentário no Builder). Se, ao chegar na task 19, o time preferir mover o wrap para o Executor, é uma mudança de 3 linhas — mas um lugar só, nunca os dois.
 - **Instância compartilhada:** o mesmo objeto `Hooks` será injetado no Builder e no Executor (construtor do Executor já prevê `hooks:` — doc 03 §2); o wiring (composition root) cria UMA instância. Nesta task nenhum wiring é tocado — só a semente do contrato.
 - **Plugins registrarão hooks na task 21** (`registries: { ..., hooks: }` — doc 06 §2); `register` já é a interface que o Loader vai consumir.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 16 novos (12 hooks + 4 integração :prompt no Builder), 408 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/hooks.rb`, `spec/harness/hooks_spec.rb`
+- **Arquivos modificados:** `lib/harness/context/builder.rb` (ativa `hooks:`, wrap :prompt), `lib/harness/executor.rb` (remove wrap :prompt — evita double-wrap), `lib/harness.rb` (require), `spec/harness/context/builder_spec.rb` (casos :prompt), `spec/harness/executor_pipeline_spec.rb` (test de hooks atualizado)
+- **Observações / decisões tomadas:**
+  - `Hooks#around`: befores em ordem de registro (encadeiam o subject), afters em ordem inversa; alteração por retorno (nil É alterar para nil); sem rescue (doc 05 §6). Par fora de `PAIRS` → `ArgumentError`. Vazio = passthrough.
+  - **Reconciliação doc 03 × doc 04 (decisão registrada):** o wrap do par `:prompt` vive DENTRO de `ContextBuilder#call` (como manda o doc 04 e o plano). A task 12 tinha colocado `@hooks.around(:prompt) { builder.call }` no Executor — **removido** para não haver double-wrap. O Executor agora chama `builder.call(request)` direto e mantém só o wrap `:agent`. Comentários em ambos os arquivos alertam sobre o double-wrap. A instância de `Hooks` é única (compartilhada Builder+Executor no wiring da task 26).
+  - Test da task 12 ("hooks around") atualizado: o Executor envolve só `:agent` (com FakeContextBuilder, que não usa hooks); o `:prompt` real é exercitado nos specs do Builder.
+  - Pares `:task`/`:agent`/`:tool` têm o mecanismo pronto mas só são integrados ao Executor na task 19 (nada tocado no Executor além da remoção do double-wrap).
