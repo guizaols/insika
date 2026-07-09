@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -270,3 +270,20 @@ Simula o critério de conclusão da fase (doc 00 §6) em nível de Etapa C, com 
 - **Simulação de kill:** não use exceção para "matar" o processo no teste — ela passaria pela captura única (task 12) e marcaria `:failed`. O estado pós-`kill -9` se monta escrevendo direto nos stores (Step 5). O smoke E2E com processo real e `kill -9` de verdade é a task 26.
 - `transport: :recovery` no meta do Command é sugestão de auditoria (o campo é `Symbol` livre no doc 03 §2, não enum) — se a task 8 usou `:internal`, qualquer um dos dois é aceitável; alinhe com o código real.
 - Gerado antes da implementação de qualquer task. Se dependências já estiverem implementadas quando você pegar esta task, leia o código real — ele prevalece sobre o estado planejado aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 27 novos (10 resume_task + 2 recovery real-bus + 2 pipeline resume + 1 kill-restart-resume + os ajustes), 343 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/commands/resume_task.rb`, `spec/harness/commands/resume_task_spec.rb`, `spec/harness/integration/kill_restart_resume_spec.rb`
+- **Arquivos modificados:** `lib/harness/executor.rb` (resume path + skip), `lib/harness/tool_envelope.rb` (skip_side_effects), `lib/harness/recovery.rb` (Command.build), `lib/harness.rb`, `spec/harness/recovery_spec.rb` (real-bus), `spec/harness/executor_pipeline_spec.rb` (resume cases)
+- **Observações / decisões tomadas:**
+  - **Fecho da Execution órfã (decisão necessária, não prevista no sample):** um crash real deixa a Execution do attempt interrompido ABERTA; o `TaskStore` real proíbe abrir uma segunda com uma aberta. Então o resume fecha a órfã como `:interrupted` (`close_orphan_execution`) antes de `begin_execution` (attempt N+1). Preserva o histórico (doc 02 §3: nova entrada, nunca sobrescreve) — o attempt 1 fica registrado como interrompido. Edge case 6 do plano assumia `begin_execution` direto; conciliado com o TaskStore real.
+  - **Transição no resume:** `queued`/`paused`/`waiting` → `:running`; órfã já `:running` → sem transição (running→running inválido, doc 02 §2).
+  - **Skip de side-effects:** no resume, `skip = side_effects(task, turn: state.turn)` (avulsa ∪ checkpoint) passado ao `wrap_tools`; o `ToolEnvelope` responde `{"skipped"=>"already_executed"}` para ids já concluídos, sem reexecutar (doc 02 L5). Marcador volta ao modelo (protocolo íntegro).
+  - **Recovery no bus real:** trocado `Command.new` por `Command.build(:resume_task, {task_id:}, transport: :recovery)` (factory da task 09). Um código só para crash-recovery e resume manual (D3) — o Recovery só descobre e despacha.
+  - **Teste kill-restart-resume:** estado pós-crash montado direto em `Stores::SQLite` (arquivo temp), reboot com objetos novos no MESMO arquivo, verificação num TERCEIRO store reaberto (durabilidade real entre "processos"). Prova: `:completed`, tool NÃO reexecutada (calls==0 + marcador no `:tool_result`), 2 Executions (attempt 1 preservado), checkpoint turn 2, sessão com as mensagens uma vez.
+  - **Limitação conhecida (doc):** correlação do skip por `tool_call_id` — se o provider gerar id novo no re-run, a call reexecuta. Contrato como especificado; mitigação por assinatura seria decisão nova.
