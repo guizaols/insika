@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [02-session-task-checkpoint.md](../02-session-task-checkpoint.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Low
 
 ---
@@ -184,3 +184,18 @@ Não aplicável nesta task — a integração com `SendMessage`/`SessionProvider
 - O doc 02 não diz explicitamente quem carimba o `"at"` das mensagens; o schema §3 mostra o campo, e carimbar na borda do store (quando ausente) é a leitura mais simples que o preenche sem exigir nada do Executor. Se a task 12 decidir carimbar no Executor, remova aqui.
 - O tipo de erro para "sessão inexistente" em `append_messages`/`update_vars` não está nominalmente no doc 02 (§6 só lista `ArgumentError` para violações de domínio); `NotFoundError` de D4 ("session/task/agente inexistente → HTTP 404") é o encaixe correto para a borda HTTP do doc 07. Se preferir literalidade com o doc 02, `ArgumentError` também é defensável — registre a escolha no PR.
 - `memory_refs` fica sempre `[]` na Fase 1 (memória semântica é Fase 2, doc 00 §"Fora do escopo") — o campo existe no schema para não migrar depois.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 19 novos (todos passando), 130 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/session_store.rb`, `spec/harness/session_store_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require sem side-effects)
+- **Observações / decisões tomadas:**
+  - `NotFoundError` (D4) escolhido para `append_messages`/`update_vars` em sessão inexistente, conforme sugerido nas Notes (encaixe correto para o 404 da borda HTTP do doc 07); registrado aqui a alternativa `ArgumentError` do doc 02 §6.
+  - `"at"` das mensagens é carimbado na borda do store quando ausente (leitura mais simples que preenche o schema §3 sem exigir nada do Executor); se a task 12 decidir carimbar no Executor, remover daqui.
+  - `deep_stringify` em Ruby puro (sem ActiveSupport, restrição 3 do doc 00 §5); leitura devolve chaves string sem simetrizar de volta — mesmo shape rodando contra Memory ou SQLite, aceito por `seed_history`.
+  - Nenhuma operação usa `transaction` (a escrita transacional do estágio 8 é do CheckpointStore, task 07) — RMW sem lock (um dono por task, doc 02 §5, D7).
