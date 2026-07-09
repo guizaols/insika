@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 11/26 tasks complete
+> **Progress:** 12/26 tasks complete
 
 ---
 
@@ -22,7 +22,7 @@
 | 9 | `Command` + `CommandBus` + handlers de controle (`CreateSession`, `CancelTask`) | [task-09.md](./task-09.md) | ✅ DONE | Med | 03 §2-§3 |
 | 10 | `Executor` esqueleto: fiber por task, `TaskActor` (mailbox `cancel`), estados, `running?`, `EventStream` | [task-10.md](./task-10.md) | ✅ DONE | High | 03 §2, §5 |
 | 11 | Migrar `runner.rb` → estágios 6-7 (build_chat/seed/callbacks RubyLLM intactos, `max_tool_calls` no hook) | [task-11.md](./task-11.md) | ✅ DONE | Med | 03 §4.2, §6 |
-| 12 | Handler `SendMessage` end-to-end (providers stub) + checkpoint no estágio 8 + timeouts D4 | [task-12.md](./task-12.md) | ⬜ TODO | High | 03 §3-§4 |
+| 12 | Handler `SendMessage` end-to-end (providers stub) + checkpoint no estágio 8 + timeouts D4 | [task-12.md](./task-12.md) | ✅ DONE | High | 03 §3-§4 |
 | 13 | Handler `ResumeTask` (critério running-órfã, skip de side-effects) + integração real do Recovery | [task-13.md](./task-13.md) | ⬜ TODO | Med | 03 §3, §4.1 |
 | 14 | `ContextFragment`/`ContextProvider`/`Builder` (fan-out Async, orçamento global, pinned, evicção) | [task-14.md](./task-14.md) | ⬜ TODO | High | 04 §2-§4 |
 | 15 | Providers `Request`, `Prompt` (absorve SystemPrompt/SOUL.md + prompt_refs), `Skill`, `Session` (teto 79) | [task-15.md](./task-15.md) | ⬜ TODO | Med | 04 §2, §8 |

@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** High
 
 ---
@@ -428,3 +428,22 @@ Wiring real: `CommandBus` + handler + `Executor` + stores de domínio sobre `Sto
 - **`user_message` pendente** (mailbox): a Fase 1 não tem produtor (doc 03 §2); o loop `max_turns`/multi-turno fica dormindo — `max_turns` só é exercitado quando houver produtor (Fase 2) ou workflow multi-turno. Não implemente o loop de conversa agora; o guard `max_tool_calls` (task 11) cobre o loop real existente.
 - Os fakes do Step 7 vivem em `spec/support` de propósito: **não** criar `NullPolicyEngine` em `lib/` — o wiring de produção só se fecha na task 26, quando os componentes reais existem.
 - Gerado antes da implementação de qualquer task. Se dependências já estiverem implementadas quando você pegar esta task, leia o código real — ele prevalece sobre o estado planejado aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 24 novos (8 send_message + 11 pipeline + 5 integração), 326 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/turn_state.rb`, `lib/harness/tool_envelope.rb`, `lib/harness/commands/send_message.rb`, `spec/support/fakes.rb`, `spec/harness/commands/send_message_spec.rb`, `spec/harness/executor_pipeline_spec.rb`, `spec/harness/integration/send_message_flow_spec.rb`
+- **Arquivos modificados:** `lib/harness/executor.rb` (run_pipeline real 2-9, persist_turn, wrap_tools, captura única, current_tool_call no wire_callbacks), `lib/harness.rb` (requires), `spec/support/fake_chat.rb` (script/emit_chunk/final_content), `spec/harness/executor_chat_spec.rb` (State +current_tool_call)
+- **Observações / decisões tomadas:**
+  - **Captura única (D4/L3):** um só rescue no topo do fiber mapeia classe→estado terminal→`stage`→eventos. Reaproveitei a lição da task 10 — `transition(error:)` já fecha a Execution, então `fail_task` **não** chama `finish_execution` (evita dupla-fecho). O caminho `:cancelled` usa `transition` sem `error:` + `finish_execution`.
+  - **Estágio 8** na ordem fixa checkpoint→session→task (doc 02 L4) + `prune(keep:1)` + `:checkpoint_created`. Sessão só é tocada quando há `session_id` (D2); one-shot/history sempre checkpointam.
+  - **Timeouts (D4)** com `Async::Task#with_timeout` — turno (300s) envolvendo 2-8, tool (60s) no `ToolEnvelope`; **zero** `Timeout.timeout`. Estouro de tool volta `{error:}` ao modelo (turno segue); estouro de turno → `TimeoutError(stage: :turn)`.
+  - **`ToolEnvelope`** (SimpleDelegator): timeout por call + `record_side_effect` antes de o resultado voltar (correlação via `state.current_tool_call`, setado na 1ª linha do `before_tool_call`). `side_effect?` programa contra `tool_registry.side_effect?(name)` (seam do doc 06).
+  - **Desvio registrado:** a `LoadSkill` de sistema (adicionada em `configure_chat`) **não** é envelopada nesta fase (o doc §6 sugere envelopá-la). É tool de sistema sem side-effect e de latência trivial; envelopá-la exigiria passar timeout/checkpoint_store ao `configure_chat` (compartilhado com a task 11). Documentado; reavaliar se necessário.
+  - **Middleware halt:** o elo que curto-circuita seta `halt_reason` e não chama o bloco; verifico `halt_reason` após `@middleware.call` e levanto `Error` → captura única → `:failed`. Chat nunca é construído.
+  - Fakes das etapas D/E vivem em `spec/support/fakes.rb` (não em `lib/`) — wiring de produção só na task 26.
+  - Integração roda **sem `ruby_llm`** (create_chat stubado com FakeChat roteirizado). A variante tag `:ruby_llm` (stub de `RubyLLM.chat` real) foi deixada para quando o wiring/boot da task 26 existir — `create_chat` (linha de fábrica) segue coberto só por inspeção, como na task 11.
