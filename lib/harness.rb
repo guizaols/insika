@@ -13,6 +13,9 @@ require_relative "harness/session_store"
 require_relative "harness/task_store"
 require_relative "harness/checkpoint_store"
 require_relative "harness/recovery"
+require_relative "harness/command_bus"
+require_relative "harness/commands/create_session"
+require_relative "harness/commands/cancel_task"
 
 module Harness
 end
