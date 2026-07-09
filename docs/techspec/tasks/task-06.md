@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [02-session-task-checkpoint.md](../02-session-task-checkpoint.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -229,3 +229,21 @@ Não aplicável — a integração com Executor/Recovery é das tasks 08, 10 e 1
 - **Interpretação registrada:** o doc 02 §2 define `transition(id, to:, error: nil)` mas não diz onde `error` é gravado; o §3 diz que "`error` da Execution guarda `{class:, message:, stage:}`" e o §4 mostra o Recovery chamando `transition(..., to: :failed, error: {...})` numa task que estava `running` (logo, com Execution aberta). A leitura adotada — `error:` fecha a Execution aberta — é a única que faz esses três pontos se encaixarem sem campo novo no schema. Se a task 10/13 (Executor/Resume) precisar de outra semântica, ajuste lá e atualize aqui.
 - Lacuna do techspec anotada para a task 08: a máquina não permite `paused → failed`, mas o fluxo do Recovery (doc 02 §4) marca `:failed` qualquer task interrompida **sem checkpoint** — inclusive `paused`. Ver Notes da task 08; não "conserte" a tabela aqui (Don't change the plan).
 - `mailbox_state` é só persistido nesta task; quem o consome é a mailbox mínima do `TaskActor` (task 10, doc 03 §5).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 71 novos (todos passando; inclui a matriz 49-pares gerada programaticamente), 202 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/task_store.rb`, `spec/harness/task_store_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require sem side-effects)
+- **Observações / decisões tomadas:**
+  - Máquina de estados validada no store (L1, doc 02 §9): `transition` valida enum + tabela `TRANSITIONS`; terminais (lista vazia) e auto-transições levantam `ArgumentError`.
+  - `error:` em `transition` fecha a Execution aberta (interpretação do doc 02 §3/§4 registrada nas Notes); sem Execution aberta, transiciona e ignora o `error:` (edge case 4).
+  - Executions append-only: `begin_execution` numera `attempt = size + 1` e nunca sobrescreve; guarda contra dupla tentativa aberta.
+  - `claimed_by`/`claim_expires_at` sempre `nil` — nenhum método os escreve (D7); teste dedicado confirma no JSON persistido.
+  - `status` exposto como Symbol na borda; `command`/`mailbox_state`/`error` ficam Hash de chaves string. `create` aceita Hash ou objeto com `to_h`. `deep_stringify` replica o padrão da task 05 (helper privado por classe; sem extração compartilhada — fora do escopo do plano).
+  - `StoreError` do backend propaga sem re-embrulhar (teste dedicado).
+  - **Não** "consertei" a ausência de `paused → failed` na tabela (lacuna anotada para a task 08 — Don't change the plan).

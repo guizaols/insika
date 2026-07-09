@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 5/26 tasks complete
+> **Progress:** 6/26 tasks complete
 
 ---
 
@@ -16,7 +16,7 @@
 | 3 | Backend `Stores::Memory` com rollback real de transação | [task-03.md](./task-03.md) | ✅ DONE | Low | 01 §2 |
 | 4 | Backend `Stores::SQLite` (WAL, tabela `kv`, semáforo de escrita) | [task-04.md](./task-04.md) | ✅ DONE | Med | 01 §3, §5 |
 | 5 | `SessionStore` (schema `session:<id>`, transcript como fonte da verdade) | [task-05.md](./task-05.md) | ✅ DONE | Low | 02 §2-§3 |
-| 6 | `TaskStore` (máquina de estados validada, Executions, campos de claim reservados) | [task-06.md](./task-06.md) | ⬜ TODO | Med | 02 §2-§3 |
+| 6 | `TaskStore` (máquina de estados validada, Executions, campos de claim reservados) | [task-06.md](./task-06.md) | ✅ DONE | Med | 02 §2-§3 |
 | 7 | `CheckpointStore` (checkpoint por turno, chave avulsa de side-effects, `prune`) | [task-07.md](./task-07.md) | ⬜ TODO | Med | 02 §2-§3 |
 | 8 | `Recovery` no boot (varredura + dispatch de resume; bus como duplo até a task 13) | [task-08.md](./task-08.md) | ⬜ TODO | Med | 02 §4, §6 |
 | 9 | `Command` + `CommandBus` + handlers de controle (`CreateSession`, `CancelTask`) | [task-09.md](./task-09.md) | ⬜ TODO | Med | 03 §2-§3 |
