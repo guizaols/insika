@@ -16,6 +16,9 @@ require_relative "harness/recovery"
 require_relative "harness/command_bus"
 require_relative "harness/commands/create_session"
 require_relative "harness/commands/cancel_task"
+require_relative "harness/event_stream"
+require_relative "harness/task_actor"
+require_relative "harness/executor"
 
 module Harness
 end
