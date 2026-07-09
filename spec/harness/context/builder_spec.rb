@@ -31,10 +31,10 @@ RSpec.describe Harness::ContextBuilder do
                                 limits: { context_budget: budget, provider_timeout: provider_timeout })
   end
 
-  def build(providers, prof = profile)
+  def build(providers, prof = profile, hooks: Harness::Hooks.new)
     request = Harness::ContextRequest.new(session: nil, message: "oi", profile: prof,
                                           tenant: nil, vars: {}, checkpoint: nil)
-    builder = described_class.new(providers: providers, event_stream: event_stream)
+    builder = described_class.new(providers: providers, event_stream: event_stream, hooks: hooks)
     Sync { builder.call(request) }
   end
 
@@ -201,6 +201,52 @@ RSpec.describe Harness::ContextBuilder do
       pkg = build([waiter, signaler])
 
       expect(pkg.fragments.map(&:source)).to contain_exactly("WAIT", "SIGNAL")
+    end
+  end
+
+  describe "integração do par :prompt (task 16)" do
+    it "before_prompt reescreve o request: providers recebem o alterado" do
+      # provider que ecoa a message do request num fragmento
+      echo = Class.new(Harness::ContextProvider) do
+        define_method(:id) { "ECHO" }
+        define_method(:call) do |req|
+          [Harness::ContextFragment.build(content: req.message, placement: :system, source: "ECHO")]
+        end
+      end.new
+      hooks = Harness::Hooks.new
+      hooks.register(:prompt, before: ->(req) { req.with(message: "REESCRITO") })
+
+      pkg = build([echo], profile, hooks: hooks)
+
+      expect(pkg.system).to eq("REESCRITO")
+    end
+
+    it "after_prompt reescreve o ContextPackage montado" do
+      p = provider(id: "P", fragments: [frag("orig", source: "P")])
+      hooks = Harness::Hooks.new
+      hooks.register(:prompt, after: ->(pkg) { pkg.with(system: "SUBSTITUÍDO") })
+
+      pkg = build([p], profile, hooks: hooks)
+
+      expect(pkg.system).to eq("SUBSTITUÍDO")
+    end
+
+    it "sem hooks: saída idêntica à do Builder sem par :prompt" do
+      p = provider(id: "P", fragments: [frag("x", source: "P")])
+      expect(build([p]).system).to eq("x") # Hooks.new vazio = no-op
+    end
+
+    it "after que levanta: providers rodaram 1x, exceção propaga, sem reexecução" do
+      calls = 0
+      counting = Class.new(Harness::ContextProvider) do
+        define_method(:id) { "C" }
+        define_method(:call) { |_req| calls += 1; [] }
+      end.new
+      hooks = Harness::Hooks.new
+      hooks.register(:prompt, after: ->(_pkg) { raise "after caiu" })
+
+      expect { build([counting], profile, hooks: hooks) }.to raise_error("after caiu")
+      expect(calls).to eq(1)
     end
   end
 
