@@ -269,6 +269,74 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
+  describe "resume path" do
+    # Monta estado pós-crash (task running, execution aberta) + checkpoint.
+    def seed_crashed(turn:, messages: [], side_effect_id: nil)
+      task = make_task
+      task_store.begin_execution("t")
+      task_store.transition("t", to: :running)
+      cp = Harness::Checkpoint.new(task_id: "t", turn: turn, session_id: "s1", agent_id: "sales",
+                                   messages: messages, completed_side_effects: [], created_at: nil)
+      checkpoint_store.save(cp)
+      checkpoint_store.record_side_effect("t", turn: turn, tool_call_id: side_effect_id) if side_effect_id
+      [task, cp]
+    end
+
+    it "reexecuta o turno do checkpoint, abre nova Execution e salva o próximo turno" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      task, cp = seed_crashed(turn: 3, messages: [{ "role" => "user", "content" => "anterior" }])
+      fake = FakeChat.new
+      allow(executor).to receive(:create_chat).and_return(fake)
+
+      Sync do
+        executor.spawn(task, profile: profile, resume_from: cp)
+        executor.instance_variable_get(:@running)["t"]&.wait
+      end
+
+      stored = task_store.find("t")
+      expect(stored.status).to eq(:completed)
+      expect(stored.executions.size).to eq(2) # attempt 1 (interrupted) preservado + attempt 2
+      expect(stored.executions.first.outcome).to eq("interrupted")
+      expect(checkpoint_store.latest("t").turn).to eq(4) # turno 3 + 1
+      # histórico do checkpoint (precedência doc 04) foi semeado no chat
+      expect(fake.messages.map { |m| m[:content] }).to eq(["anterior"])
+    end
+
+    it "pula a tool call já concluída (id no skip set) e executa uma id nova" do
+      spy = Class.new do
+        attr_reader :calls
+
+        def initialize = (@calls = 0)
+        def name = "enviar"
+        def call(_args) = (@calls += 1) && "ok"
+      end.new
+      session_store.create(id: "s1")
+      executor = build_executor(policy_engine: NullPolicyEngine.new(allowed_tools: [spy]))
+      task, cp = seed_crashed(turn: 1, side_effect_id: "call_done")
+      fake = FakeChat.new
+      fake.script = proc do
+        fire_tool_call(name: "enviar", id: "call_done")
+        r1 = @tools.first.call({})
+        fire_tool_result(r1)
+        fire_tool_call(name: "enviar", id: "call_new")
+        r2 = @tools.first.call({})
+        fire_tool_result(r2)
+      end
+      allow(executor).to receive(:create_chat).and_return(fake)
+
+      Sync do
+        executor.spawn(task, profile: profile, resume_from: cp)
+        executor.instance_variable_get(:@running)["t"]&.wait
+      end
+
+      # só a call nova (call_new) executou; call_done foi pulada (marcador)
+      expect(spy.calls).to eq(1)
+      results = event_stream.events.select { |e| e.type == :tool_result }.map { |e| e.data[:result] }
+      expect(results.first).to include("already_executed")
+    end
+  end
+
   describe "cancel na fronteira" do
     it "-> :cancelled; checkpoint anterior intacto; nenhum evento após :task_cancelled" do
       session_store.create(id: "s1")
