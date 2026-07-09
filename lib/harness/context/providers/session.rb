@@ -54,7 +54,7 @@ module Harness
         # recebe o request, então o comportamento mora aqui.
         def session_messages(session)
           @session_store.find(session.id)&.messages || []
-        rescue Harness::StoreError => e
+        rescue StandardError => e # doc 04 §6: "a leitura falha (exceção/StoreError)"
           raise ContextError.new("Session provider falhou com sessão pedida: #{e.message}",
                                  provider: id)
         end
