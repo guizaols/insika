@@ -162,6 +162,20 @@ RSpec.describe Harness::TaskStore do
       expect(task.status).to eq(:cancelled)
       expect(task.executions).to eq([])
     end
+
+    it "retry: novo begin após transition(:failed, error:) abre attempt 2 e preserva a 1 (edge case 7)" do
+      tasks.begin_execution(id)
+      tasks.transition(id, to: :running)
+      tasks.transition(id, to: :failed, error: err) # fecha a Execution 1 com o erro
+      task = tasks.begin_execution(id) # retry reabre nova tentativa (não valida status)
+
+      expect(task.executions.map(&:attempt)).to eq([1, 2])
+      first = task.executions.first
+      expect(first.finished_at).not_to be_nil
+      expect(first.outcome).to eq("failed")
+      expect(first.error).to include("message" => "boom")
+      expect(task.executions.last.finished_at).to be_nil # a 2ª está aberta
+    end
   end
 
   describe "#running_or_interrupted" do
