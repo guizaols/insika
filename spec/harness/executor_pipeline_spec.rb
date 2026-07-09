@@ -46,14 +46,15 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       order = []
       allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a| order << :checkpoint; m.call(*a) }
       allow(session_store).to receive(:append_messages).and_wrap_original { |m, *a| order << :session; m.call(*a) }
+      allow(task_store).to receive(:finish_execution).and_wrap_original { |m, *a, **kw| order << :finish; m.call(*a, **kw) }
       allow(task_store).to receive(:transition).and_wrap_original do |m, id, **kw|
         order << [:transition, kw[:to]]; m.call(id, **kw)
       end
 
       run_turn(executor, make_task)
 
-      # ordem do estágio 8: checkpoint -> session -> transition(:completed)
-      expect(order).to eq([[:transition, :running], :checkpoint, :session, [:transition, :completed]])
+      # ordem do estágio 8: checkpoint -> session -> finish_execution -> transition(:completed)
+      expect(order).to eq([[:transition, :running], :checkpoint, :session, :finish, [:transition, :completed]])
       # eventos do turno
       expect(event_stream.types).to eq(
         %i[task_started content checkpoint_created done task_completed]
@@ -221,6 +222,50 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       Sync { wrapped.first.call({}) }
 
       expect(checkpoint_store.side_effects("t", turn: 1)).to eq(["call_42"])
+    end
+  end
+
+  describe "turn timeout enquanto DENTRO de uma tool (Finding 1: não pode ser engolido)" do
+    it "o timeout de turno vence e falha com stage :turn (não vira {error} de tool)" do
+      session_store.create(id: "s1")
+      fast = Harness::AgentProfile.build(id: "sales", model: "gpt",
+                                         limits: { turn_timeout: 0.05, tool_timeout: 60 })
+      # tool lenta (dentro do tool_timeout de 60s) invocada durante o estágio 6;
+      # o turn_timeout (0.05s) estoura ENQUANTO o fiber está dentro da tool.
+      slow_tool = Class.new do
+        def name = "lookup"
+        def call(_args)
+          Async::Task.current.sleep(1)
+          "nunca"
+        end
+      end.new
+      chat = FakeChat.new
+      chat.script = proc { @tools.first.call({}) } # invoca a tool envelopada (estágio 6)
+      executor = build_executor(policy_engine: NullPolicyEngine.new(allowed_tools: [slow_tool]))
+      allow(executor).to receive(:create_chat).and_return(chat)
+
+      Sync do
+        executor.spawn(make_task, profile: fast)
+        executor.instance_variable_get(:@running)["t"]&.wait
+      end
+
+      task = task_store.find("t")
+      expect(task.status).to eq(:failed)
+      expect(task.executions.last.error["stage"]).to eq("turn")
+    end
+  end
+
+  describe "falha de cleanup APÓS transition(:completed) (Finding 2: não vaza do fiber)" do
+    it "prune falhando não re-falha o turno; task fica :completed e nada vaza" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      allow(checkpoint_store).to receive(:prune).and_raise(Harness::StoreError, "prune caiu")
+
+      expect { run_turn(executor, make_task) }.not_to raise_error
+
+      task = task_store.find("t")
+      expect(task.status).to eq(:completed) # durabilidade preservada
+      expect(event_stream.types).to include(:done, :task_completed)
     end
   end
 

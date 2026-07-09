@@ -103,12 +103,25 @@ module Harness
     # (dupla-fecho). Checkpoint anterior NUNCA é tocado em falha (D4). Nunca
     # re-raise: o fiber morre limpo (doc 03 §6).
     def fail_task(task, error, stage:)
+      # Defense-in-depth: se a task já é terminal (ex.: falha em cleanup APÓS
+      # transition(:completed)), completed->failed é inválido e levantaria
+      # ArgumentError DENTRO do rescue, vazando do fiber. Nesse caso só reporta
+      # o erro — a durabilidade do turno commitado é preservada.
+      current = @task_store.find(task.id)
+      if current && TERMINAL_STATUSES.include?(current.status)
+        emit(:error, { message: error.message }, task: task)
+        return nil
+      end
+
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: stage })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
       emit(:error, { message: error.message }, task: task) # compat Fase 0 (D5)
       nil
     end
+
+    TERMINAL_STATUSES = %i[completed failed cancelled].freeze
+    private_constant :TERMINAL_STATUSES
 
     # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
     ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
@@ -227,7 +240,13 @@ module Harness
       # transition sem error: não fecha, então o finish é necessário aqui.
       @task_store.finish_execution(task.id, outcome: :completed)
       @task_store.transition(task.id, to: :completed)
-      @checkpoint_store.prune(task.id, keep: 1) # doc 02 L6
+      # prune é cleanup best-effort (L6): uma falha aqui NÃO pode re-falhar um
+      # turno já commitado (a task já é :completed e durável). Swallow.
+      begin
+        @checkpoint_store.prune(task.id, keep: 1)
+      rescue Harness::StoreError
+        nil
+      end
 
       emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
     end

@@ -11,6 +11,14 @@ module Harness
   # O loop de tools é do RubyLLM; este é um decorator sobre as instâncias — o
   # Executor nunca dirige roundtrips.
   class ToolEnvelope < SimpleDelegator
+    # Classe PRÓPRIA do timeout de tool: distinta de Async::TimeoutError para
+    # que o rescue abaixo NUNCA engula o timeout de TURNO (que usa o default do
+    # with_timeout). Sem isso, um turno estourando enquanto o fiber está dentro
+    # de uma tool seria mascarado como timeout de tool e o turno seguiria além
+    # do deadline (defeito de durabilidade D4).
+    ToolTimeout = Class.new(StandardError)
+    private_constant :ToolTimeout
+
     def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:)
       super(tool)
       @state = state
@@ -23,10 +31,10 @@ module Harness
     # Estouro do timeout volta ao MODELO como erro serializado (D4) — não
     # derruba o turno.
     def call(args)
-      result = Async::Task.current.with_timeout(@timeout) { __getobj__.call(args) }
+      result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
       record_side_effect! if side_effect?
       result
-    rescue Async::TimeoutError
+    rescue ToolTimeout
       { error: "TimeoutError: tool excedeu #{@timeout}s" }
     end
 
