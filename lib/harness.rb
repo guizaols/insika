@@ -8,6 +8,7 @@ require_relative "harness/store"
 require_relative "harness/stores/memory"
 require_relative "harness/stores/sqlite"
 require_relative "harness/session_store"
+require_relative "harness/task_store"
 
 module Harness
 end
