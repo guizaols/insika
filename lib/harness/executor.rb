@@ -71,9 +71,12 @@ module Harness
     rescue StandardError => e
       # Esqueleto: rescue genérico p/ o fiber nunca vazar exceção. O mapeamento
       # COMPLETO erro->estado->eventos (D4/L3) chega na task 12.
+      # NB: contra o TaskStore real (task 06), `transition` com `error:` JÁ fecha
+      # a Execution aberta (finished_at/outcome/error) — por isso NÃO chamamos
+      # finish_execution aqui (seria dupla-fecho -> ArgumentError). No caminho
+      # de :cancelled, transition é sem `error:`, então lá o finish é necessário.
       @task_store.transition(task.id, to: :failed,
                                       error: { class: e.class.name, message: e.message })
-      @task_store.finish_execution(task.id, outcome: :failed)
       emit(:task_failed, { task_id: task.id, error: e.class.name, message: e.message }, task: task)
     ensure
       @running.delete(task.id) # SEMPRE desregistra (falso-positivo de running? quebraria o resume)
