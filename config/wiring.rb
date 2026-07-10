@@ -21,9 +21,17 @@ module Harness
   module Wiring
     ROOT = File.expand_path("..", __dir__)
 
-    # --- Persistência (doc 01/02). Backend Memory por padrão; a task 26 troca
-    # por SQLite conforme config. ---------------------------------------------
-    BACKEND = Harness::Stores::Memory.new
+    # --- Persistência (doc 01/02). Backend por CONFIG (doc 07 §4, task 26):
+    # HARNESS_DB definido -> Stores::SQLite (durável — sobrevive a kill -9 +
+    # reboot, que é o critério da fase, doc 00 §6); ausente -> Stores::Memory
+    # (dev/efêmero). Produção DEVE definir HARNESS_DB para o Recovery ter o que
+    # retomar. A paridade Memory/SQLite é garantida pela suíte de contrato (01).
+    BACKEND =
+      if (db_path = ENV["HARNESS_DB"]) && !db_path.empty?
+        Harness::Stores::SQLite.new(path: db_path)
+      else
+        Harness::Stores::Memory.new
+      end
 
     SESSION_STORE    = Harness::SessionStore.new(store: BACKEND)
     TASK_STORE       = Harness::TaskStore.new(store: BACKEND)

@@ -34,9 +34,14 @@ module Harness
       private
 
       # Recovery despacha resume_task, que cria fibers de task — precisa de um
-      # reactor corrente. No load do config.ru pode não haver um: envolve em
-      # Sync { } quando necessário (edge case 1). Sob um reactor já corrente
-      # (teste dentro de Async), roda direto.
+      # reactor corrente. No load do config.ru (Falcon) NÃO há reactor: o Sync { }
+      # cria um e, por concorrência estruturada, só retorna quando os fibers de
+      # retomada TERMINAM (recovery + turnos concluídos antes do listen — boot
+      # mais lento, semanticamente seguro). Sob um reactor já corrente (testes
+      # dentro de Async), roda direto: retorna após o DISPATCH da retomada, com
+      # os turnos ainda em voo — também correto (doc 02 §4/§5 e edge case 1 da
+      # task 26 aceitam ambos: "recovery antes do listen" = dispatch antes do
+      # listen, não conclusão dos turnos).
       def run_recovery
         recovery = @wiring.recovery
         return recovery.run if Async::Task.current?
