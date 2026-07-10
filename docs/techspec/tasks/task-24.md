@@ -459,7 +459,7 @@ consumidos na task 25; `bind`/`port` na task 26.)
 
 - **Concluído em:** 2026-07-10
 - **Implementado por:** Claude (execução automatizada)
-- **Testes:** 32 novos (app 22, sse_body 6, legacy 4), 545 existentes, 0 falhas (577 total)
+- **Testes:** 36 novos + 4 de regressão do review, 0 falhas (581 total)
 - **Arquivos criados:** `server/app.rb`, `server/sse_body.rb`, `config/wiring.rb`,
   `spec/harness/server/app_spec.rb`, `spec/harness/server/sse_body_spec.rb`,
   `spec/harness/server/legacy_contract_spec.rb`, `spec/support/server_doubles.rb`
@@ -480,3 +480,26 @@ consumidos na task 25; `bind`/`port` na task 26.)
   - **Regra constitucional (doc 07 §4):** `server/` importa só `json`, `rack`,
     `async` e tipos do núcleo — nenhum require de Executor/RubyLLM/escrita de
     store. Teste dedicado garante que nenhum caminho do App produz status 403.
+
+### Code review (high effort, fan-out 3 finders + verificação)
+
+Confirmados e **corrigidos** nesta task:
+1. `event_stream#emit` iterava o array de subscriptions enquanto `close`
+   (disparado pelo overflow do cap) o mutava via `on_close` → o próximo
+   assinante era pulado. Fix: iterar `@subscriptions.dup`. Regressão dedicada.
+2. Cap contava eventos de **todas** as tasks (subscription sem filtro) e o
+   `:error` de overflow saía com `task_id: nil` (filtrado fora → stream trunca
+   em silêncio). Fix: `Subscription#bind(task_id:)` chamado após o dispatch.
+   Simplificação: cap por `@queue.size` (sem contador paralelo).
+3. `stream=false` reportava `:task_cancelled`/`:error` como 200 de sucesso.
+   Fix: ambos viram `error:` no corpo agregado.
+4. `GET /v1/tasks/:id` serializava `executions` como string opaca (`Data#to_h`
+   raso). Fix: `task_to_h` desce a serialização das Executions.
+5. Endurecido `turn_result?` para exigir `task_id` não-nil.
+
+**Diferido para a task 26 (fix de altitude — posse do reactor):** o fiber do
+turno nasce como **filho do fiber da request** (`TaskActor(parent:
+Async::Task.current)`); em disconnect/após-202 o runtime pode cancelar o turno,
+contrariando a garantia L4. O fix correto é o `Server::Boot` dar ao Executor um
+escopo de vida-longa — registrado nas Notes da task 26 (é pré-condição do smoke
+E2E dela). Não se aplicou bandaid no transporte.

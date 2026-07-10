@@ -372,6 +372,22 @@ localmente, mas o CI a executa.
   listen (boot mais lento, semanticamente correto); se a task 10 criar
   fibers num reactor próprio do Executor, o boot não bloqueia (preferência
   do doc 02 §5). Ambos passam nos testes deste arquivo — siga o código real.
+- **⚠️ Posse do fiber do turno vs. fiber da request (achado do review da task
+  24 — PRÉ-CONDIÇÃO DESTE SMOKE):** hoje `Executor#spawn` -> `TaskActor.new`
+  captura `parent: Async::Task.current` (task_actor.rb) e roda o turno como
+  FILHO do fiber corrente. Quando o dispatch vem do transporte HTTP (task 24),
+  esse "corrente" é o fiber EFÊMERO da request do Falcon. Consequências:
+  (a) `POST /v1/commands/send_message` responde 202 e a request termina — o
+  runtime pode cancelar o turno (filho) logo após o 202; (b) em disconnect no
+  meio de um SSE, o cancelamento da request cancela o turno, violando a
+  garantia L4 ("a execução pertence ao runtime, não à conexão") que a `SSEBody`
+  da task 24 documenta. O **fix correto é aqui**: o Boot precisa dar ao
+  Executor um escopo/reactor de vida-longa (owned pelo runtime), e o
+  `spawn` deve criar o turno como filho DESSE escopo — nunca do fiber da
+  request. Sem isso, o roteiro do Step 7 (kill no meio do turno após 202)
+  não chega ao estado "trava" e o smoke falha. Alinhar com o dono da task 10
+  (injetar `supervisor:`/`parent:` no `TaskActor`/`Executor` a partir do
+  wiring/Boot).
 - O shim do RubyLLM deve espelhar a superfície que o Executor realmente usa
   (tasks 11/12) — escreva-o **depois** de ler `lib/harness/executor.rb` real.
 - Convenções: `# frozen_string_literal: true`, comentários em português,
