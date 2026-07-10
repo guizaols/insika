@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [07-service-platform.md](../07-service-platform.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -338,3 +338,29 @@ task 26 cobre o boot com o `/admin` montado.
   consumidor, fora do `/admin`) — funciona sem header.
 - Convenções: `# frozen_string_literal: true`, comentários em português,
   ERB/CGI da stdlib, classes pequenas.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-10
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 31 novos (admin_auth 7, admin_app 24) + ajuste do app_spec; 0 falhas (606 total)
+- **Arquivos criados:** `server/admin_auth.rb`, `server/admin/app.rb`, 9 views ERB
+  (`index/sessions/session/tasks/task/events/skills/plugins/not_found`),
+  `spec/harness/server/admin_auth_spec.rb`, `spec/harness/server/admin_app_spec.rb`
+- **Arquivos modificados:** `server/app.rb` (mount `/admin`: preflight/auth/CORS +
+  `checkpoint_store:`), `config/wiring.rb` (admin_token/allowed_origins + CHECKPOINT_STORE),
+  `spec/harness/server/app_spec.rb` (o `/admin` sem token agora é 503, não 404)
+- **Observações / desvios:**
+  - `App#initialize` ganhou `checkpoint_store:` (lacuna da assinatura do doc 07
+    §2; leitura apenas — regra constitucional preservada).
+  - Fonte da lista de plugins = `Entry#plugin` dos registries (evita canal novo
+    wiring→App); agrupa tools/workflows por plugin (nil = "(sistema)").
+  - `events.erb` usa `EventSource` → `/v1/events` (same-origin, sem header de
+    auth — API do consumidor; auth de operador via curl/proxy é a "mínima" da
+    Fase 1, doc 07 §1).
+  - **Code review (fan-out, foco em segurança):** sem bug crítico. Aplicados 2
+    hardenings: CSP + `nosniff` nas páginas (defense-in-depth) e `strip`/`reject`
+    em `allowed_origins`. O preflight OPTIONS sempre-204 foi confirmado seguro
+    pelo revisor (sem body, CORS só p/ origem permitida, GET ainda exige token).
