@@ -33,10 +33,14 @@ module Harness
     def run
       resumed = []
       failed = []
-      # Ordena por created_at (P2-03 L5): tasks da MESMA sessão são reenfileiradas
-      # no SessionActor na ordem original (FIFO preservado na retomada). Ordem
-      # global por tempo é inofensiva para tasks avulsas.
+      # Ordena por created_at (P2-03 L5): tasks da MESMA sessão são reprocessadas
+      # na ordem original. Ordem global por tempo é inofensiva p/ tasks avulsas.
+      # 1) interrompidas (crash no meio) -> resume do checkpoint.
       @task_store.running_or_interrupted.sort_by(&:created_at).each { |task| process(task, resumed, failed) }
+      # 2) enfileiradas nunca iniciadas (turno na fila do SessionActor no crash,
+      #    P2-03) -> re-run do zero (o mesmo resume_task trata :queued). Sem isso,
+      #    um turno :queued na fila volátil seria perdido no kill -9.
+      @task_store.queued.sort_by(&:created_at).each { |task| process(task, resumed, failed) }
       log(:info, "recovery concluído: #{resumed.size} retomadas, #{failed.size} falhas")
       { resumed: resumed, failed: failed }
     end
@@ -46,7 +50,9 @@ module Harness
     # Falha ao retomar UMA task não derruba o boot: dispatch/latest não-store ->
     # marca :failed e segue. StoreError -> propaga (aborta o boot).
     def process(task, resumed, failed)
-      if @checkpoint_store.latest(task.id)
+      # :queued nunca iniciou (sem checkpoint) mas É recuperável — o ResumeTask
+      # re-roda do Command. Interrompida exige checkpoint; sem ele, irrecuperável.
+      if task.status == :queued || @checkpoint_store.latest(task.id)
         @command_bus.dispatch(resume_command(task.id))
         resumed << task.id
         log(:info, "resume despachado: #{task.id}")

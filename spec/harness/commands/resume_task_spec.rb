@@ -89,6 +89,21 @@ RSpec.describe Harness::Commands::ResumeTask do
     expect(executor.spawned).to be_empty
   end
 
+  it "queued (nunca iniciado): re-roda do zero via spawn_in_session (resume_from nil)" do
+    # turno que estava na fila do SessionActor no crash — sem checkpoint; recupera
+    # rodando do Command original (P2-03). Perfil vem do agente do Command.
+    task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "sales" } }, id: "q")
+
+    expect(resume("q")).to eq({ task_id: "q" })
+    expect(executor.spawned.size).to eq(1)
+    expect(executor.spawned.first[:resume_from]).to be_nil # do zero, não do checkpoint
+  end
+
+  it "queued com agente inexistente: NotFoundError" do
+    task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "ghost" } }, id: "q")
+    expect { resume("q") }.to raise_error(Harness::NotFoundError, /ghost/)
+  end
+
   it "terminais não são retomáveis" do
     %i[completed failed cancelled].each_with_index do |st, i|
       id = seed("t#{i}", status: st)

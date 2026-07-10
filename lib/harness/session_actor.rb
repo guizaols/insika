@@ -32,6 +32,10 @@ module Harness
     def running? = @running
     def depth = @queue.size
 
+    # O loop ainda está vivo? (o Executor revalida antes de reusar do cache —
+    # um loop morto black-holearia turnos enfileirados).
+    def alive? = !!@loop&.running?
+
     # Encerra o loop (shutdown do servidor / testes — o loop bloqueia p/ sempre
     # em dequeue quando ocioso).
     def stop = @loop&.stop

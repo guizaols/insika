@@ -23,7 +23,9 @@ module Harness
 
     # Transições válidas (doc 02 §2) — tudo fora disso é bug -> ArgumentError.
     TRANSITIONS = {
-      queued: %i[running cancelled],
+      # queued -> failed: P2-03, um turno enfileirado no SessionActor pode falhar
+      # ao INICIAR (erro de spawn antes do fiber) sem nunca rodar.
+      queued: %i[running cancelled failed],
       running: %i[waiting paused completed failed cancelled],
       waiting: %i[running cancelled failed],
       paused: %i[running cancelled],
@@ -122,18 +124,25 @@ module Harness
       to_task(record)
     end
 
-    # -> [Task] em running/waiting/paused. Varredura do boot (doc 02 §4);
-    # O(n) aceitável na Fase 1 (um nó, SQLite local — doc 01 §5).
-    def running_or_interrupted
-      interrupted = %i[running waiting paused]
+    # -> [Task] com um dos status dados. Varredura O(n) do boot (doc 02 §4);
+    # aceitável na Fase 1 (um nó, SQLite local — doc 01 §5).
+    def with_status(*statuses)
+      wanted = statuses.flatten
       @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
         record = @store.get(SCOPE, key)
         next if record.nil?
 
         task = to_task(record)
-        task if interrupted.include?(task.status)
+        task if wanted.include?(task.status)
       end
     end
+
+    # Interrompidas (crash no meio do turno): têm checkpoint -> resume.
+    def running_or_interrupted = with_status(:running, :waiting, :paused)
+
+    # Enfileiradas mas nunca iniciadas (P2-03: turno na fila do SessionActor no
+    # crash) — sem checkpoint; recuperar = RODAR do zero (Recovery/ResumeTask).
+    def queued = with_status(:queued)
 
     # -> enumera ids sem o prefixo "task:"; sem bloco retorna Enumerator.
     def each_id
