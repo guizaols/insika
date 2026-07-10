@@ -103,12 +103,30 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "await consome resolução JÁ bufferizada (chegou antes da suspensão) sem bloquear" do
-    Sync do
+  it "descarta resolução órfã no drain! (NÃO auto-resolve um await futuro)" do
+    Sync do |top|
       actor = described_class.new(task_id: "t")
-      actor.post(:resume) # chega numa fronteira, antes do await
-      actor.drain!        # bufferiza (não perde)
-      expect(actor.await(reason: :paused)).to eq([:resume, nil])
+      actor.post(:resume) # órfã: chega sem suspensão pendente
+      actor.drain!        # descarta (não bufferiza)
+      resolved = false
+      waiter = top.async { actor.await(reason: :paused); resolved = true }
+      top.sleep(0.02)
+      expect(resolved).to be(false) # a órfã descartada não resolveu este await
+      actor.post(:resume)           # só um :resume REAL resolve
+      waiter.wait
+      expect(resolved).to be(true)
+    end
+  end
+
+  it "await ignora :pause recebido durante a espera (não re-arma pausa)" do
+    Sync do |top|
+      actor = described_class.new(task_id: "t")
+      waiter = top.async { actor.await(reason: :paused) }
+      top.sleep(0.01)
+      actor.post(:pause)  # pausa redundante durante a espera
+      actor.post(:resume)
+      waiter.wait
+      expect(actor.pause_requested?).to be(false) # não re-armou -> sem re-pausa
     end
   end
 

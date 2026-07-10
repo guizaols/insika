@@ -15,9 +15,11 @@ Não integra o Executor ainda (task 2).
   - `:pause` → seta `@pause_requested = true`
   - `:user_message` → acumula (inalterado)
   - `:heartbeat` → incrementa `@heartbeats`
-  - `:resume`/`:approval`/`:timeout` → **não processa**; guarda em
-    `@pending_resolutions` (são respostas de `await`, não podem ser perdidas se
-    chegarem numa fronteira antes da suspensão — edge da corrida).
+  - `:resume`/`:approval`/`:timeout` órfã (sem suspensão pendente) → **descarta**
+    (no-op idempotente). NUNCA bufferiza: uma resolução guardada resolveria
+    erroneamente um `await` FUTURO (auto-resume/approve). Resolução legítima só
+    chega com o fiber já em `await` (o operador só resume/aprova o que está
+    suspenso), consumida lá. [corrigido no review da Etapa A]
 - `pause_requested?` → lê o flag; o Executor o consome e a suspensão o limpa.
 - `await(reason:)` (BLOQUEIA o fiber, cede o reactor):
   1. consome `@pending_resolutions` primeiro (resolução já chegou);

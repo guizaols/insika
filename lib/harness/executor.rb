@@ -260,7 +260,12 @@ module Harness
           content = run_agent_stage(task, st)
 
           # estágio 8: Persistence (ordem fixa checkpoint->session->task, doc 02 L4)
-          actor.drain! # nunca DURANTE o estágio 8 (D4)
+          # drain! puro (NUNCA suspende no estágio 8 — janela proibida, D4). Um
+          # :pause que chegue aqui arma pause_requested mas NÃO é honrado: é o
+          # último estágio, não há fronteira seguinte; o turno conclui e o flag é
+          # descartado com o actor. Corrida benigna: pausa perde p/ a conclusão
+          # (o operador vê a task :completed). :cancel aqui ainda levanta.
+          actor.drain!
           persist_turn(task, profile, st, content)
 
           # estágio 9: Response
