@@ -129,6 +129,7 @@ module Harness
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       checkpoint_store: CHECKPOINT_STORE, # leitura p/ /admin/tasks/:id
+      pending_action_store: PENDING_ACTION_STORE, # aprovações no /admin + read
       catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
       registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
       config: CONFIG

@@ -34,7 +34,8 @@ module Harness
       # /admin/tasks/:id — lacuna da assinatura do doc 07 §2, ver task 25). A
       # regra constitucional se mantém: server/ só LÊ stores.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
-                     catalogs:, registries:, config:, checkpoint_store: nil)
+                     catalogs:, registries:, config:, checkpoint_store: nil,
+                     pending_action_store: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -42,12 +43,16 @@ module Harness
         @catalogs = catalogs
         @registries = registries
         @config = config
+        @pending_action_store = pending_action_store # leitura p/ GET /v1/tasks/:id
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # doc 07 §6: controle síncrono
+        # Control UI de escrita (P2-04): recebe o bus (despacha os mesmos Commands
+        # da API) e o pending_action_store (aprovações). O /admin não escreve em
+        # store direto — só via Command (transporte).
         @admin = Admin::App.new(
-          session_store: session_store, task_store: task_store,
-          checkpoint_store: checkpoint_store, catalogs: catalogs,
-          registries: registries, event_stream: event_stream
+          command_bus: command_bus, session_store: session_store, task_store: task_store,
+          checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
+          catalogs: catalogs, registries: registries, event_stream: event_stream
         )
       end
 
@@ -129,8 +134,8 @@ module Harness
         headers = { "content-type" => "text/plain" }
         if origin && Array(@config[:allowed_origins]).include?(origin)
           headers.merge!(cors_headers(origin),
-                         "access-control-allow-methods" => "GET",
-                         "access-control-allow-headers" => "authorization")
+                         "access-control-allow-methods" => "GET, POST", # /admin de escrita (P2-04)
+                         "access-control-allow-headers" => "authorization, content-type")
         end
         [204, headers, []]
       end
@@ -185,7 +190,13 @@ module Harness
         task = @task_store.find(id)
         raise Harness::NotFoundError, "task inexistente: #{id}" if task.nil?
 
-        json_response(200, { task: task_to_h(task) })
+        body = { task: task_to_h(task) }
+        # aprovações pendentes (P2-02): é por aqui que o consumidor/operador vê
+        # o que precisa aprovar depois de um :approval_requested.
+        if @pending_action_store
+          body[:pending_actions] = @pending_action_store.open_for(id).map(&:to_h)
+        end
+        json_response(200, body)
       end
 
       # GET /v1/events?task_id=&session_id= — aqui os filtros SÃO conhecidos.

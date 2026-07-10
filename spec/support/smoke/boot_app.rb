@@ -11,15 +11,26 @@ require File.join(root, "lib", "harness")
 require File.join(root, "server", "app")
 require File.join(root, "server", "boot")
 
-backend          = Harness::Stores::SQLite.new(path: ENV.fetch("SMOKE_DB"))
-session_store    = Harness::SessionStore.new(store: backend)
-task_store       = Harness::TaskStore.new(store: backend)
-checkpoint_store = Harness::CheckpointStore.new(store: backend)
-event_stream     = Harness::EventStream.new
+backend              = Harness::Stores::SQLite.new(path: ENV.fetch("SMOKE_DB"))
+session_store        = Harness::SessionStore.new(store: backend)
+task_store           = Harness::TaskStore.new(store: backend)
+checkpoint_store     = Harness::CheckpointStore.new(store: backend)
+pending_action_store = Harness::PendingActionStore.new(store: backend)
+event_stream         = Harness::EventStream.new
 
 tool_registry     = Harness::ToolRegistry.new
 workflow_registry = Harness::WorkflowRegistry.new
 policy_registry   = Harness::PolicyRegistry.new
+policy_registry.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
+policy_registry.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
+
+# Tool que exige aprovação (P2-02) — usada pelo smoke da fatia A. Factory por
+# bloco devolve INSTÂNCIA (o Executor faz factory.call -> instância).
+class SmokeChargeTool
+  def name = "charge"
+  def call(_args) = "charged"
+end
+tool_registry.register("charge") { SmokeChargeTool.new }
 skill_catalog     = Harness::SkillCatalog.new([])
 prompt_catalog    = Harness::PromptCatalog.new([])
 hooks             = Harness::Hooks.new
@@ -34,9 +45,13 @@ providers = [
 context_builder = Harness::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: hooks)
 policy_engine   = Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream)
 
-# Perfil sem policies/skills/tools: o turno é puro chat (o FakeChat ignora tools).
+# "smoke": puro chat. "approver": exige aprovação da tool `charge` (P2-02).
 profiles = {
-  "smoke" => Harness::AgentProfile.build(id: "smoke", model: "fake", policies: [], skills: [])
+  "smoke" => Harness::AgentProfile.build(id: "smoke", model: "fake", policies: [], skills: []),
+  "approver" => Harness::AgentProfile.build(
+    id: "approver", model: "fake", skills: [], tools_allow: ["charge"],
+    policies: %i[tool_allowlist approval_required], approvals_required: ["charge"]
+  )
 }
 
 executor = Harness::Executor.new(
@@ -44,7 +59,8 @@ executor = Harness::Executor.new(
   middleware: middleware, hooks: hooks, tool_registry: tool_registry,
   skill_catalog: skill_catalog, profiles: profiles, session_store: session_store,
   task_store: task_store, checkpoint_store: checkpoint_store,
-  event_stream: event_stream, workflow_registry: workflow_registry
+  event_stream: event_stream, workflow_registry: workflow_registry,
+  pending_action_store: pending_action_store
 )
 # Exposto p/ o serve.rb injetar o supervisor de turnos (L4) no reactor de serving.
 SMOKE_EXECUTOR = executor
@@ -60,10 +76,16 @@ bus.register(:resume_task,
                                                checkpoint_store: checkpoint_store, executor: executor))
 bus.register(:cancel_task,
              Harness::Commands::CancelTask.new(task_store: task_store, executor: executor))
+bus.register(:pause_task,
+             Harness::Commands::PauseTask.new(task_store: task_store, executor: executor))
+bus.register(:approve_action,
+             Harness::Commands::ApproveAction.new(pending_action_store: pending_action_store,
+                                                  executor: executor, event_stream: event_stream))
 
 app = Harness::Server::App.new(
   command_bus: bus, event_stream: event_stream, session_store: session_store,
   task_store: task_store, checkpoint_store: checkpoint_store,
+  pending_action_store: pending_action_store,
   catalogs: { skills: skill_catalog, prompts: prompt_catalog },
   registries: { tools: tool_registry, workflows: workflow_registry, policies: policy_registry },
   config: { admin_token: nil, allowed_origins: [] }
