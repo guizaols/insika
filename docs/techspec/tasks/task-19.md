@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [05-policy-middleware-hooks.md](../05-policy-middleware-hooks.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -234,3 +234,20 @@ count = 0
 - **Limitação do `before_tool`**: por os callbacks do RubyLLM serem aditivos, o subject alterado não muda a call executada pelo modelo — só o que os hooks seguintes e os eventos veem. Alterar argumentos de verdade é Fase 2 (exigiria suporte do RubyLLM ou wrapper de tool). Lacuna do doc 05 §2 ("podem ALTERAR subject") aplicada ao par `:tool`; não re-decidir aqui.
 - **Subject do par `:task`**: o doc não fixa o tipo; a escolha (o `TurnState`, que já é o objeto mutável do turno — doc 03 L5) dá aos hooks `:task` o mesmo poder de alteração dos middlewares, sem criar um segundo objeto de estado. Se a task 16 tiver fixado outra convenção de subject, siga-a.
 - O comportamento de exceção em `before_tool` (escapar do callback e abortar o turno) é o que o doc 03 §6 assume para o guard-rail; se a versão pinada do RubyLLM (D9, `>= 1.15`) engolir exceções de callback, isso invalida o mecanismo do tool_limit — verificar no teste de integração da task 12 e escalar se necessário.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 12 novos (5 metades run_before/run_after + 7 integração no Executor), 464 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `spec/harness/executor_hooks_spec.rb`
+- **Arquivos modificados:** `lib/harness/hooks.rb` (metades públicas; around composto delas), `lib/harness/executor.rb` (pares :task e :tool), `spec/harness/hooks_spec.rb`, `spec/support/fakes.rb` (NullHooks ganha as metades), `spec/harness/executor_chat_spec.rb` (Hooks real), `spec/harness/executor_pipeline_spec.rb` (pairs [:task, :agent])
+- **Observações / decisões tomadas:**
+  - `around` agora é `run_after(pair, yield(run_before(pair, subject)))` — comportamento idêntico ao da task 16 (specs pré-existentes verdes). As metades são públicas porque o par `:tool` não tem bloco a envolver (o loop é do RubyLLM): elas são chamadas dos callbacks `before_tool_call`/`after_tool_result` separadamente.
+  - **`:task`** envolve os estágios do turno (2→9); o subject é o `TurnState` (via **block-param shadowing** — evita renomear todo o corpo e a mudança de assinatura de `run_pipeline`, que quebraria os stubs da task 10). Estágio 1 (begin_execution/transition/task_started) fica fora do wrap — before_task não os alteraria; documentado. Subject == resultado == `TurnState` (o content da Response vive no `:done`).
+  - **`:agent`** já vinha da task 12 (`around(:agent, st)`); a decomposição do `around` habilita os afters automaticamente. `before_agent`/`after_agent` mutam/alteram via o `TurnState` subject.
+  - **`:tool`** nos callbacks (aditivos): `run_before`/`run_after` rodam, mas **não reescrevem** a call que o modelo executa (limitação do RubyLLM aditivo, documentada no código — Fase 2). Exceção de hook `before_tool` aborta o turno (mecanismo do guard-rail).
+  - **`max_tool_calls` fica INLINE** (não como hook registrado): registrar por turno na instância de `Hooks` **compartilhada** acumularia contadores entre turnos (Hooks não tem `unregister`). Desvio consciente do Step 5, alinhado ao próprio aviso de ciclo de vida da task; o contador segue na fronteira `before_tool` (só conta e aborta com `TimeoutError(stage: :tool_limit)`).
+  - L6 verificado: `after_agent` que levanta não reexecuta o `chat.ask` (spy conta 1).
