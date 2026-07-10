@@ -106,7 +106,8 @@ module Harness
       bind: ENV.fetch("HARNESS_BIND", "http://0.0.0.0"),
       port: Integer(ENV.fetch("HARNESS_PORT", "9292")),
       admin_token: ENV["HARNESS_ADMIN_TOKEN"], # fail-closed: sem token -> /admin 503
-      allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",") # CORS estrito
+      # CORS estrito: strip/reject evita footgun de "a.com, b.com" virar " b.com"
+      allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
     }.freeze
 
     APP = Harness::Server::App.new(

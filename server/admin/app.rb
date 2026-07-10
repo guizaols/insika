@@ -16,6 +16,19 @@ module Harness
       class App
         VIEWS_DIR = File.expand_path("views", __dir__)
 
+        # Defense-in-depth (o painel renderiza transcripts de usuário/LLM; `h()`
+        # é a 1ª barreira, isto é a 2ª). CSP bloqueia carga/exfil para origens
+        # externas — `connect-src 'self'` restringe o EventSource de events.erb à
+        # mesma origem; `'unsafe-inline'` cobre o <style>/<script> inline (L3,
+        # zero asset pipeline). `nosniff` evita content-type sniffing.
+        HTML_HEADERS = {
+          "content-type" => "text/html; charset=utf-8",
+          "x-content-type-options" => "nosniff",
+          "content-security-policy" =>
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " \
+            "connect-src 'self'; base-uri 'none'; form-action 'self'"
+        }.freeze
+
         def initialize(session_store:, task_store:, checkpoint_store:,
                        catalogs:, registries:, event_stream:)
           @session_store = session_store
@@ -87,13 +100,13 @@ module Harness
         def render(view, locals = {})
           template = File.read(File.join(VIEWS_DIR, "#{view}.erb"))
           html = ERB.new(template, trim_mode: "-").result(ViewContext.new(locals).get_binding)
-          [200, { "content-type" => "text/html; charset=utf-8" }, [html]]
+          [200, HTML_HEADERS.dup, [html]]
         end
 
         def not_found
           html = ERB.new(File.read(File.join(VIEWS_DIR, "not_found.erb")))
                     .result(ViewContext.new({}).get_binding)
-          [404, { "content-type" => "text/html; charset=utf-8" }, [html]]
+          [404, HTML_HEADERS.dup, [html]]
         end
 
         # Contexto de render das views. `h` (CGI.escapeHTML) escapa TODO valor
