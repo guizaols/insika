@@ -315,9 +315,9 @@ RSpec.describe Harness::Server::App do
       expect(resp.join).to eq("not found")
     end
 
-    it "/admin* -> 404 até a task 25" do
+    it "/admin sem token configurado -> 503 fail-closed (não 404)" do
       status, = call(build_app, "GET", "/admin")
-      expect(status).to eq(404)
+      expect(status).to eq(503)
     end
 
     it "método errado numa rota conhecida -> 404" do
