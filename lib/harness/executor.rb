@@ -141,7 +141,6 @@ module Harness
     # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
     ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
                                 keyword_init: true)
-    PolicyRequest  = Struct.new(:profile, :task, :candidate_skills, keyword_init: true)
 
     # Estágios 2-9 (doc 03 §4), com drain de mailbox só nas fronteiras (L2) e
     # turn-timeout (D4) envolvendo tudo via Async::Task#with_timeout — NUNCA
@@ -168,11 +167,14 @@ module Harness
         actor.drain!
 
         # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)
-        resolution = @policy_engine.decide(policy_request(profile, task))
+        resolution = @policy_engine.decide(policy_request(profile, task, state))
         # no resume, tool calls já concluídas no turno interrompido são "puladas"
         # (doc 02 L5): união chave avulsa ∪ checkpoint do turno.
         skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
-        state.allowed_tools = wrap_tools(Array(resolution.allowed_tools), state, skip)
+        # o Executor instancia SÓ as permitidas (doc 05 §4): o Engine real
+        # devolve Entries -> factory.call; um fake que já devolve instâncias
+        # passa direto (shim de compat até o wiring da task 26).
+        state.allowed_tools = wrap_tools(instantiate_tools(resolution.allowed_tools), state, skip)
         state.allowed_skills = resolution.allowed_skills
         actor.drain!
 
@@ -271,9 +273,33 @@ module Harness
                          checkpoint: resume_from)
     end
 
-    def policy_request(profile, task)
-      PolicyRequest.new(profile: profile, task: task,
-                        candidate_skills: @skill_catalog.effective(profile.skills))
+    # Request real do doc 05 §2: command (p/ a WorkflowAllowlist), context
+    # (Context antes de Policy), candidate_tools (Entries do registry, SEM
+    # filtrar) e candidate_skills (do CATÁLOGO). Reconcilia o stub da task 12.
+    def policy_request(profile, task, state)
+      Harness::Policy::PolicyRequest.new(
+        profile: profile,
+        command: rebuild_command(task),
+        context: state.context,
+        candidate_tools: @tool_registry.respond_to?(:entries) ? @tool_registry.entries : [],
+        candidate_skills: @skill_catalog.effective(profile.skills)
+      )
+    end
+
+    # A Task persiste o Command como Hash (doc 02 §3); a WorkflowAllowlist precisa
+    # de um Command com #type (Symbol) e #payload.
+    def rebuild_command(task)
+      cmd = task.command
+      Harness::Command.new(
+        type: (cmd["type"] || cmd[:type]).to_s.to_sym,
+        payload: cmd["payload"] || cmd[:payload] || {},
+        meta: cmd["meta"] || cmd[:meta] || {}
+      )
+    end
+
+    # Engine real -> Entries (respondem a factory); fakes -> instâncias prontas.
+    def instantiate_tools(allowed)
+      Array(allowed).map { |t| t.respond_to?(:factory) ? t.factory.call : t }
     end
 
     # Envelopa cada tool permitida (timeout por call + registro de side-effect,
