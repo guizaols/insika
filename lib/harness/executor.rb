@@ -56,6 +56,25 @@ module Harness
       !actor.nil?
     end
 
+    # Ponto de acesso do PauseTask (P2): posta :pause se há fiber vivo; o turno
+    # suspende na próxima fronteira (drain_and_maybe_suspend). No-op idempotente
+    # se não há fiber. Retorna se havia fiber.
+    def pause(task_id)
+      actor = @running[task_id]
+      actor&.post(:pause)
+      !actor.nil?
+    end
+
+    # Ponto de acesso do ResumeTask para task IN-PROCESS pausada (P2 task 4):
+    # posta :resume no fiber vivo (que está bloqueado em await). Retorna se havia
+    # fiber vivo — o handler decide entre resume in-process e re-dispatch de
+    # crash conforme isso.
+    def resume_live(task_id)
+      actor = @running[task_id]
+      actor&.post(:resume)
+      !actor.nil?
+    end
+
     # Estágio 1 (parte assíncrona): cria o actor, registra e dispara o fiber.
     # Chamado pelos handlers de turno (SendMessage/ResumeTask/TriggerWorkflow).
     def spawn(task, profile:, resume_from: nil)
