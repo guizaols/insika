@@ -46,6 +46,8 @@ executor = Harness::Executor.new(
   task_store: task_store, checkpoint_store: checkpoint_store,
   event_stream: event_stream, workflow_registry: workflow_registry
 )
+# Exposto p/ o serve.rb injetar o supervisor de turnos (L4) no reactor de serving.
+SMOKE_EXECUTOR = executor
 
 bus = Harness::CommandBus.new(event_stream: event_stream)
 bus.register(:create_session,

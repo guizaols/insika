@@ -418,4 +418,70 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       expect(event_stream.types.last(2)).to eq(%i[task_cancelled error])
     end
   end
+
+  # L4 (RFC-0001 princípio: a execução pertence ao RUNTIME, não à conexão). Sob
+  # HTTP o spawn roda no fiber da request; o supervisor injetado desacopla o
+  # turno dela para sobreviver a disconnect.
+  describe "posse do fiber do turno (supervisor)" do
+    def blocking_executor(gate)
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = proc { gate.wait } # trava no estágio 6 até liberar
+      allow(executor).to receive(:create_chat).and_return(chat)
+      executor
+    end
+
+    # Poll cooperativo (sem janela fixa — robusto no CI): cede o fiber até a
+    # condição virar true ou estourar ~2s.
+    def poll_until(top)
+      200.times do
+        return true if yield
+
+        top.sleep(0.01)
+      end
+      yield
+    end
+
+    it "supervised: o turno sobrevive ao stop do fiber da request e conclui" do
+      session_store.create(id: "s1")
+      gate = Async::Condition.new
+      executor = blocking_executor(gate)
+      executor.supervised = true # arm de serving (o supervisor é criado lazy)
+
+      Sync do |top|
+        request = top.async do |req|
+          executor.spawn(make_task, profile: profile)
+          req.sleep(3600) # a request "segura a conexão" (ex.: SSE)
+        end
+        expect(poll_until(top) { executor.running?("t") }).to be(true)
+        actor = executor.instance_variable_get(:@running)["t"]
+
+        request.stop # disconnect do cliente: mata a subárvore da request
+        top.sleep(0.05) # dá ticks p/ o cancelamento propagar, SE fosse filho
+        expect(executor.running?("t")).to be(true) # turno NÃO foi cancelado (L4)
+
+        gate.signal      # libera o estágio 6
+        actor.wait       # conclusão determinística (sem janela fixa)
+        expect(task_store.find("t").status).to eq(:completed)
+        executor.instance_variable_get(:@supervisor)&.stop # deixa o Sync sair
+      end
+    end
+
+    it "não-supervised (default): o turno é filho da request e MORRE com ela" do
+      session_store.create(id: "s1")
+      gate = Async::Condition.new
+      executor = blocking_executor(gate)
+
+      Sync do |top|
+        request = top.async do |_req|
+          executor.spawn(make_task, profile: profile)
+          Async::Task.current.sleep(3600)
+        end
+        expect(poll_until(top) { executor.running?("t") }).to be(true)
+
+        request.stop # sem supervisor, o turno é filho da request -> cancelado
+        expect(poll_until(top) { !executor.running?("t") }).to be(true)
+      end
+    end
+  end
 end
