@@ -371,6 +371,27 @@ RSpec.describe Harness::Plugin::Loader do
       expect(tools.names).to eq(["wtool"]) # versão do workspace
     end
 
+    it "gem > bundled: mesmo id, a gem (root anterior na lista) vence" do
+      gem_root = File.join(@root, "gm")
+      bundled = File.join(@root, "bd")
+      write_in(gem_root, "dup", "GmB", "gtool")
+      write_in(bundled, "dup", "BdB", "btool")
+      # gem primeiro na lista + anunciada; bundled habilitado por enabled:
+      result = loader(roots: [gem_root, bundled], enabled: %w[dup], announced: [gem_root]).load_all
+      expect(result[:plugins].map(&:id)).to eq(["dup"])
+      expect(tools.names).to eq(["gtool"]) # versão da gem
+    end
+
+    it "ordem de announce: mesmo id em duas gems, a primeira na lista vence" do
+      g1 = File.join(@root, "g1")
+      g2 = File.join(@root, "g2")
+      write_in(g1, "dup", "G1mod", "t1")
+      write_in(g2, "dup", "G2mod", "t2")
+      result = loader(roots: [g1, g2], announced: [g1, g2]).load_all
+      expect(result[:plugins].map(&:id)).to eq(["dup"])
+      expect(tools.names).to eq(["t1"]) # g1 (anunciada primeiro / root anterior)
+    end
+
     it "root anunciado inexistente: load_all sem erro" do
       expect { loader(roots: [File.join(@root, "nao-existe")], announced: [File.join(@root, "nao-existe")]).load_all }
         .not_to raise_error
