@@ -4,6 +4,8 @@ require "json"
 require "rack"
 require "async"
 require_relative "sse_body"
+require_relative "admin_auth"
+require_relative "admin/app"
 
 module Harness
   module Server
@@ -28,17 +30,25 @@ module Harness
       TERMINAL_EVENTS = %i[done task_failed task_cancelled error].freeze
       private_constant :TERMINAL_EVENTS
 
+      # checkpoint_store: leitura apenas (coluna "checkpoints" de
+      # /admin/tasks/:id — lacuna da assinatura do doc 07 §2, ver task 25). A
+      # regra constitucional se mantém: server/ só LÊ stores.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
-                     catalogs:, registries:, config:)
+                     catalogs:, registries:, config:, checkpoint_store: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
         @task_store = task_store
-        @catalogs = catalogs       # guardado p/ o /admin (task 25)
-        @registries = registries   # idem
+        @catalogs = catalogs
+        @registries = registries
         @config = config
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # doc 07 §6: controle síncrono
+        @admin = Admin::App.new(
+          session_store: session_store, task_store: task_store,
+          checkpoint_store: checkpoint_store, catalogs: catalogs,
+          registries: registries, event_stream: event_stream
+        )
       end
 
       # Roteamento explícito, SEM framework (L1): ~10 rotas num `case`. Um único
@@ -64,6 +74,7 @@ module Harness
 
       def route(req)
         segments = req.path_info.split("/").reject(&:empty?)
+        return handle_admin(req) if segments.first == "admin"
 
         case [req.request_method, segments]
         in ["POST", ["v1", "commands", type]]
@@ -81,8 +92,58 @@ module Harness
         in ["POST", ["agent", "messages"]]
           handle_legacy(req)
         else
-          not_found # inclui /admin* (404 até a task 25) e método/rota errados
+          not_found # método/rota errados
         end
+      end
+
+      # Pipeline do /admin (doc 07 §2, task 25): preflight OPTIONS (sem auth —
+      # browsers não mandam Authorization em preflight) -> AdminAuth.check
+      # (fail-closed) -> headers CORS na resposta -> delega ao Admin::App. O
+      # /admin NUNCA despacha Command nem escreve em store.
+      def handle_admin(req)
+        origin = req.get_header("HTTP_ORIGIN")
+        return preflight_response(origin) if req.request_method == "OPTIONS"
+
+        cors = cors_headers(origin)
+        case Harness::Server::AdminAuth.check(@config[:admin_token], req.get_header("HTTP_AUTHORIZATION"))
+        when :disabled
+          merge_headers(admin_error(503, "admin disabled"), cors)
+        when :unauthorized
+          merge_headers(admin_error(401, "unauthorized", "www-authenticate" => "Bearer"), cors)
+        else # :ok
+          merge_headers(@admin.call(req), cors)
+        end
+      end
+
+      # CORS ESTRITO (RFC-0007 §5): só devolve headers se a Origin constar
+      # EXATAMENTE em allowed_origins (sem `*`, sem sufixos). Sem Origin (curl,
+      # mesma origem) -> {}. Default [] = nenhuma origem cross-site.
+      def cors_headers(origin)
+        return {} if origin.nil?
+        return {} unless Array(@config[:allowed_origins]).include?(origin)
+
+        { "access-control-allow-origin" => origin, "vary" => "origin" }
+      end
+
+      def preflight_response(origin)
+        headers = { "content-type" => "text/plain" }
+        if origin && Array(@config[:allowed_origins]).include?(origin)
+          headers.merge!(cors_headers(origin),
+                         "access-control-allow-methods" => "GET",
+                         "access-control-allow-headers" => "authorization")
+        end
+        [204, headers, []]
+      end
+
+      def admin_error(status, message, extra_headers = {})
+        [status,
+         { "content-type" => "application/json" }.merge(extra_headers),
+         [JSON.generate(error: { class: "Harness::Error", message: message })]]
+      end
+
+      def merge_headers(response, extra)
+        status, headers, body = response
+        [status, headers.merge(extra), body]
       end
 
       # POST /v1/commands/:type (L2) — genérica: todo Command novo já nasce com

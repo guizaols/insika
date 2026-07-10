@@ -105,13 +105,14 @@ module Harness
     CONFIG = {
       bind: ENV.fetch("HARNESS_BIND", "http://0.0.0.0"),
       port: Integer(ENV.fetch("HARNESS_PORT", "9292")),
-      admin_token: ENV["HARNESS_ADMIN_TOKEN"], # consumido na task 25
-      allowed_origins: []                       # idem
+      admin_token: ENV["HARNESS_ADMIN_TOKEN"], # fail-closed: sem token -> /admin 503
+      allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",") # CORS estrito
     }.freeze
 
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
+      checkpoint_store: CHECKPOINT_STORE, # leitura p/ /admin/tasks/:id
       catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
       registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
       config: CONFIG
