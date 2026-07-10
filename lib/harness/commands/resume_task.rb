@@ -30,6 +30,14 @@ module Harness
           return { task_id: task_id }
         end
 
+        # :queued (P2-03): turno que estava na fila do SessionActor e nunca
+        # iniciou no crash (sem checkpoint) — recuperar = RODAR do zero, do
+        # Command original. Perfil vem do agente do próprio Command.
+        if task.status == :queued
+          @executor.spawn_in_session(task, profile: profile_for(task), resume_from: nil)
+          return { task_id: task_id }
+        end
+
         # RE-DISPATCH (crash-resume): sem fiber vivo, reexecuta do checkpoint.
         # resume exige checkpoint (doc 03 §3); sem ele a task é irrecuperável (o
         # Recovery já a teria marcado :failed na varredura — doc 02 §4).
@@ -44,21 +52,30 @@ module Harness
         profile = @profiles[checkpoint.agent_id] ||
                   (raise Harness::NotFoundError, "agente '#{checkpoint.agent_id}' não configurado")
 
-        @executor.spawn(task, profile: profile, resume_from: checkpoint)
+        @executor.spawn_in_session(task, profile: profile, resume_from: checkpoint)
         { task_id: task_id }
       end
 
       private
 
+      # Perfil para re-rodar uma task :queued: do agente no Command persistido
+      # (não há checkpoint). NotFoundError se o agente saiu da config.
+      def profile_for(task)
+        payload = task.command["payload"] || task.command[:payload] || {}
+        agent = (payload["agent"] || payload[:agent]).to_s
+        @profiles[agent] || (raise Harness::NotFoundError, "agente '#{agent}' não configurado")
+      end
+
       # Matriz de elegibilidade (doc 03 §3): paused/waiting sempre; running só
-      # órfã (sem fiber vivo NESTE processo — D7, single-node); demais não.
+      # órfã (sem fiber vivo NESTE processo — D7, single-node); :queued é tratado
+      # antes (re-run); terminais não são retomáveis.
       def check_eligibility!(task)
         case task.status
         when :paused, :waiting
           nil
         when :running
           raise Harness::ValidationError, "task '#{task.id}' em execução" if @executor.running?(task.id)
-        else # :queued e terminais (:completed, :failed, :cancelled)
+        else # terminais (:completed, :failed, :cancelled)
           raise Harness::ValidationError,
                 "task '#{task.id}' com status '#{task.status}' não é retomável"
         end

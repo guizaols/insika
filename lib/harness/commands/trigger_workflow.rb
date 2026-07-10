@@ -46,7 +46,7 @@ module Harness
         end
 
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
-        @executor.spawn(task, profile: profile)
+        @executor.spawn_in_session(task, profile: profile)
         { task_id: task.id }
       end
 

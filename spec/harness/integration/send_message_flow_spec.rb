@@ -49,6 +49,12 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
     allow(executor).to receive(:create_chat).and_return(scripted_chat)
   end
 
+  TERMINAL = %w[completed failed cancelled].freeze
+
+  # Turno com session_id é SERIALIZADO pelo SessionActor (P2-03): o turno é
+  # spawnado ASSÍNCRONO pelo loop da sessão, então não dá para esperar em
+  # @running logo após o dispatch. Faz poll até o estado terminal e para os
+  # SessionActors (o loop bloqueia p/ sempre) para o Sync sair.
   def dispatch_and_wait(payload)
     result = nil
     collected = []
@@ -56,11 +62,21 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
       sub = event_stream.subscribe
       consumer = parent.async { sub.each { |e| collected << e } }
       result = bus.dispatch(Harness::Command.build(:send_message, payload))
-      executor.instance_variable_get(:@running)[result[:task_id]]&.wait
+      wait_terminal(parent, result[:task_id])
+      executor.stop_session_actors
       sub.close
       consumer.wait
     end
     [result, collected]
+  end
+
+  def wait_terminal(parent, task_id)
+    100.times do
+      t = task_store.find(task_id)
+      break if t && TERMINAL.include?(t.status.to_s)
+
+      parent.sleep(0.005)
+    end
   end
 
   it "emite a sequência canônica de eventos (doc 03 §7)" do
@@ -96,12 +112,13 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
 
   it "responde {task_id:} imediato (antes do :done)" do
     session_store.create(id: "s1")
-    # dispatch fora do wait: a resposta é síncrona
+    # a resposta é síncrona mesmo com o turno enfileirado no SessionActor (P2-03).
     Sync do
       result = bus.dispatch(Harness::Command.build(:send_message,
                                                    { agent: "sales", message: "oi", session_id: "s1" }))
       expect(result).to match({ task_id: kind_of(String) })
-      executor.instance_variable_get(:@running)[result[:task_id]]&.wait
+    ensure
+      executor.stop_session_actors # encerra o loop da sessão p/ o Sync sair
     end
   end
 

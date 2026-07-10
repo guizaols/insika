@@ -34,6 +34,7 @@ module Harness
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
       @supervised = false      # modo serving? (L4) — ver #turn_parent
       @supervisor = nil        # supervisor lazy de vida-longa (criado no serving)
+      @session_actors = {}     # session_id => SessionActor (fila FIFO, P2-03)
     end
 
     # Liga o modo SERVING (L4): a arm de serving do composition root (serve.rb /
@@ -138,6 +139,47 @@ module Harness
       task.id
     end
 
+    # Ponto de entrada de turno que RESPEITA a sessão (P2-03): turno com
+    # session_id é SERIALIZADO na fila do SessionActor daquela sessão (um por
+    # vez); sem session_id (one-shot/history, D2) vai direto ao spawn (avulso).
+    def spawn_in_session(task, profile:, resume_from: nil)
+      # SessionActor só no modo SERVING (@supervised): serializa REQUESTS
+      # concorrentes. No boot/recovery (não-supervised) o replay é sequencial e
+      # o loop de vida-longa penduraria o Sync do Boot — usa spawn direto (o
+      # dono aguarda o turno, como na Fase 1). One-shot/history (sem session_id)
+      # nunca serializa.
+      unless @supervised && task.session_id
+        return spawn(task, profile: profile, resume_from: resume_from)
+      end
+
+      session_actor(task.session_id).enqueue(task, profile: profile, resume_from: resume_from)
+    end
+
+    # Executa UM turno de forma serial (chamado pelo loop do SessionActor):
+    # spawna (turno nasce filho do supervisor, não-bloqueante) e AGUARDA sua
+    # conclusão antes de retornar — é o que serializa a sessão. Erro do turno já
+    # é mapeado a estado terminal dentro do próprio fiber (captura única); aqui
+    # só garantimos que o loop da sessão não morre.
+    def run_serial(task, profile:, resume_from: nil)
+      spawn(task, profile: profile, resume_from: resume_from)
+      @running[task.id]&.wait
+    rescue Async::Stop
+      raise # shutdown: propaga (encerra o loop da sessão)
+    rescue StandardError => e
+      # Erro SÍNCRONO do spawn (antes do fiber): a captura única do execute não
+      # age (o turno nunca rodou). Marca :failed aqui para NÃO orfanar a task
+      # como :queued sem estado terminal nem evento (o cliente ficaria pendurado).
+      fail_spawn(task, e)
+    end
+
+    # Encerra todos os SessionActors (shutdown do servidor / testes — o loop
+    # bloqueia p/ sempre em dequeue quando ocioso).
+    def stop_session_actors
+      @session_actors.each_value(&:stop)
+      @session_actors.clear
+      nil
+    end
+
     # Estágios 2..9. Roda DENTRO do fiber da task (doc 03 §2).
     def execute(task, profile:, actor:, resume_from: nil)
       # Resume de órfã de crash: a Execution do attempt interrompido ficou ABERTA
@@ -182,6 +224,32 @@ module Harness
     end
 
     private
+
+    # SessionActor lazy por sessão (P2-03), parenteado no escopo de turnos (L4):
+    # o loop da sessão sobrevive à conexão, como o supervisor. Revalida liveness:
+    # se o loop cacheado morreu (supervisor recriado/parado), cria um novo — senão
+    # os turnos enfileirados seriam black-holed num loop morto.
+    def session_actor(session_id)
+      existing = @session_actors[session_id]
+      return existing if existing&.alive?
+
+      @session_actors[session_id] =
+        SessionActor.new(session_id: session_id, executor: self, parent: turn_parent)
+    end
+
+    # Marca :failed uma task cujo turno FALHOU no spawn (antes do fiber). Idempotente
+    # contra estado terminal; StoreError re-levanta (o loop da sessão trata).
+    def fail_spawn(task, error)
+      current = @task_store.find(task.id)
+      return if current.nil? || TERMINAL_STATUSES.include?(current.status)
+
+      @task_store.transition(task.id, to: :failed,
+                                      error: { class: error.class.name, message: error.message, stage: :spawn })
+      emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
+      emit(:error, { message: error.message }, task: task)
+    rescue Harness::Error
+      nil
+    end
 
     # Parent do fiber do turno (L4). Não-serving: o fiber corrente (o dono espera
     # o turno). Serving: um supervisor de vida-longa criado lazy no BOUNDARY do
