@@ -99,7 +99,15 @@ RSpec.describe "Integração: kill -> restart -> resume" do
       summary = Harness::Recovery.new(task_store: b[:task_store],
                                       checkpoint_store: b[:checkpoint_store],
                                       command_bus: bus).run
-      b[:executor].instance_variable_get(:@running)["t"]&.wait
+      # a task tem session_id -> a retomada é SERIALIZADA no SessionActor (P2-03),
+      # spawnada assíncrona; poll até terminal e para o loop da sessão.
+      100.times do
+        t = b[:task_store].find("t")
+        break if t && %w[completed failed cancelled].include?(t.status.to_s)
+
+        parent.sleep(0.005)
+      end
+      b[:executor].stop_session_actors
       sub.close
       consumer.wait
     end

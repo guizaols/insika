@@ -13,7 +13,7 @@ RSpec.describe Harness::TaskStore do
   describe "matriz completa de transições (doc 02 §7)" do
     # Conjunto válido transcrito da tabela do doc 02 §2 (12 pares ✓).
     valid = {
-      queued: %i[running cancelled],
+      queued: %i[running cancelled failed], # +failed: P2-03 (falha ao iniciar na fila)
       running: %i[waiting paused completed failed cancelled],
       waiting: %i[running cancelled failed],
       paused: %i[running cancelled]
@@ -51,9 +51,9 @@ RSpec.describe Harness::TaskStore do
       end
     end
 
-    it "cobre os 49 pares (12 válidos, 37 inválidos)" do
+    it "cobre os 49 pares (13 válidos, 36 inválidos)" do
       valid_count = described_class::STATUSES.sum { |s| valid[s].size }
-      expect(valid_count).to eq(12)
+      expect(valid_count).to eq(13) # +1: queued->failed (P2-03)
       expect(described_class::STATUSES.size**2).to eq(49)
     end
   end
