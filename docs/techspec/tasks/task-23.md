@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [03-command-bus-executor.md](../03-command-bus-executor.md) · [06-registries-plugin-autodiscovery.md](../06-registries-plugin-autodiscovery.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -173,3 +173,19 @@ Workflow fake = **PORO callable** (lambda ou classe com `#call(input, context:, 
 - **Shape das mensagens do turno de workflow:** o doc não define que `messages` um turno de workflow persiste no checkpoint/sessão (no `SendMessage` é o transcript do chat). Siga o que o estágio 8 da task 12 faz com o TurnState; se precisar decidir um shape (ex.: `user` = input serializado, `assistant` = retorno), registre a decisão no PR — não é arquitetural, mas é contrato de dados.
 - **Eventos de tool dentro do workflow:** se o workflow chama as instâncias decoradas de `tools:`, os eventos `:tool_call`/`:tool_result` e o registro de side-effects saem de graça (wrapper do estágio 7). Se o workflow criar chats RubyLLM próprios com tools próprias, o Harness não enxerga essas calls na Fase 1 — limitação conhecida, coerente com "checkpoint intermediário por passo é Fase 2" (doc 03 §4.1).
 - `user_message` na mailbox (multi-turno de workflow) é reservado na Fase 1 (doc 03 §2) — nenhum produtor; não implemente consumo especial aqui.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 14 novos (8 handler + 6 fluxo), 544 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/commands/trigger_workflow.rb`, `spec/harness/commands/trigger_workflow_spec.rb`, `spec/harness/trigger_workflow_flow_spec.rb`
+- **Arquivos modificados:** `lib/harness/executor.rb` (estágio 6 variante + reconciliação do PolicyRequest + instanciação de Entries), `lib/harness/tool_envelope.rb` (correlação por nome), `lib/harness.rb`
+- **Observações / decisões tomadas:**
+  - `TriggerWorkflow` valida síncrono (workflow/agent/input/session; existência no `WorkflowRegistry` via `names`, não `resolve`; **chaves estritas**) e reusa a pipeline. Estágio 6 ramifica por `command.type`: `workflow.call(input, context:, tools:)` (instâncias filtradas) envolto em `around(:agent)`; estágios 1-5/8-9 idênticos. `persist_turn` passou a receber `content` (retorno do chat OU do workflow). state.message = payload.input p/ workflow.
+  - **Seam reconciliado (necessário aqui):** o Executor deixou de usar o `PolicyRequest` stub da task 12 e passou a montar o `Harness::Policy::PolicyRequest` real (command reconstruído do Command persistido, context, candidate_tools = `tool_registry.entries`, candidate_skills). Isso habilita a `WorkflowAllowlist` no estágio 3 e o Engine real. O Executor agora **instancia** os Entries permitidos via `factory.call` (doc 05 §4), com shim `respond_to?(:factory)` p/ manter os fakes (NullPolicyEngine devolve instâncias) funcionando até o wiring da task 26.
+  - **`ToolEnvelope` correlação por nome:** quando não há `current_tool_call` (workflow chama a tool direto, sem loop RubyLLM), a correlação de side-effect/skip cai no NOME da tool. Grossa (per-tool, não per-call) mas segura — pular um side-effect concluído na retomada é o objetivo (doc 03 §4.1 "registro sai de graça pelo wrapper"). Chat continua usando o id do provider.
+  - Workflow = 1 turno lógico: exatamente 1 `:checkpoint_created`; reexecuta do início na retomada (mesmo caminho do ResumeTask, D3). Limitação documentada: chats RubyLLM criados DENTRO do workflow são invisíveis ao Harness na Fase 1.
+  - Wiring (`config/wiring.rb`) fica p/ a task 26.
