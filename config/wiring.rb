@@ -144,6 +144,11 @@ module Harness
     def self.build_stores = nil
     def self.recovery = RECOVERY
     def self.app = APP
+
+    # Durabilidade do backend (doc 02 §6): SQLite sobrevive a restart, Memory
+    # não. O Boot loga isso para o operador não subir sem durabilidade por
+    # engano (HARNESS_DB não definido).
+    def self.durable? = BACKEND.is_a?(Harness::Stores::SQLite)
   end
 end
 
