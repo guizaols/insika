@@ -237,7 +237,8 @@ module Harness
         # envelopadas (estágio 7) — o workflow herda timeout/side-effect/skip.
         workflow = @workflow_registry.resolve(workflow_name(task))
         @hooks.around(:agent, state) do |s|
-          workflow.call(s.message, context: s.context, tools: s.allowed_tools)
+          # input omitido no payload -> {} (o workflow espera um Hash).
+          workflow.call(s.message || {}, context: s.context, tools: s.allowed_tools)
         end
       else
         response = @hooks.around(:agent, state) do |s|

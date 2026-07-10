@@ -50,9 +50,11 @@ module Harness
 
     # Correlação da call: o id do provider (chat RubyLLM, via before_tool_call)
     # quando existe; senão o NOME da tool — o caso do workflow (doc 03 §4.1), que
-    # chama as instâncias direto e não tem id gerado pelo provider. Correlação
-    # por nome é grossa (per-tool, não per-call), mas segura: pular um
-    # side-effect já concluído na retomada é exatamente o objetivo.
+    # chama as instâncias direto e não tem id gerado pelo provider.
+    # LIMITAÇÃO (Fase 1): a correlação por nome é per-TOOL, não per-call. Se um
+    # workflow chama a MESMA tool side-effect mais de uma vez num turno,
+    # a retomada pula TODAS as chamadas daquele nome (over-skip) — checkpoint
+    # por passo é Fase 2 (doc 03 §4.1). Uma chamada por tool é segura.
     def correlation_id
       (@state.current_tool_call&.id || __getobj__.name).to_s
     end

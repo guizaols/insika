@@ -27,10 +27,15 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
     }
   end
 
+  # O Engine emite :policy_denied no SEU stream; o Executor é a fonte
+  # correlacionada (com seq) no stream da pipeline (doc 03 L3). Streams
+  # separados evitam evento duplicado — decisão de wiring (task 26).
+  let(:engine_stream) { SpyEventStream.new }
+
   def build_executor(allowed_tools: [])
     Harness::Executor.new(
       context_builder: FakeContextBuilder.new,
-      policy_engine: Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream),
+      policy_engine: Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: engine_stream),
       middleware: PassthroughMiddleware.new, hooks: Harness::Hooks.new,
       tool_registry: tool_registry, skill_catalog: Harness::SkillCatalog.new([]),
       profiles: { "sales" => profile }, session_store: session_store,
@@ -103,7 +108,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
                                                 policies: %w[workflow_allowlist], workflows_allow: [])
     executor = Harness::Executor.new(
       context_builder: FakeContextBuilder.new,
-      policy_engine: Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream),
+      policy_engine: Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: engine_stream),
       middleware: PassthroughMiddleware.new, hooks: Harness::Hooks.new,
       tool_registry: tool_registry, skill_catalog: Harness::SkillCatalog.new([]),
       profiles: { "sales" => profile_no_wf }, session_store: session_store,
@@ -118,7 +123,23 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
 
     expect(invoked).to be(false)
     expect(task_store.find("t").status).to eq(:failed)
-    expect(event_stream.types).to include(:policy_denied)
+    # exatamente 1 :policy_denied na pipeline (o correlacionado do Executor) —
+    # sem duplicata (o do Engine foi p/ engine_stream).
+    expect(event_stream.types.count(:policy_denied)).to eq(1)
+    expect(event_stream.events.find { |e| e.type == :policy_denied }.meta[:seq]).to be_a(Integer)
+  end
+
+  it "input omitido: workflow recebe {} (não nil)" do
+    got = :unset
+    workflow_registry.register("flow", ->(input, **) { got = input; "ok" })
+    executor = build_executor
+    command = Harness::Command.build(:trigger_workflow, { workflow: "flow", agent: "sales" })
+    task = task_store.create(command: command.to_h, id: "t")
+
+    run(executor, task)
+
+    expect(got).to eq({})
+    expect(task_store.find("t").status).to eq(:completed)
   end
 
   it "workflow = 1 turno lógico: exatamente 1 checkpoint ao final; :done com o retorno" do
