@@ -3,7 +3,9 @@
 require "spec_helper"
 
 RSpec.describe "Harness::Policy builtins" do
-  Entry = Struct.new(:name, :optional)
+  # Entry como o ToolRegistry::Entry (metadata-based, doc 06 §2).
+  Entry = Struct.new(:name, :metadata)
+  def entry(name, optional: false) = Entry.new(name, { optional: optional })
   Cmd = Struct.new(:type, :payload)
 
   def profile(**over)
@@ -19,41 +21,41 @@ RSpec.describe "Harness::Policy builtins" do
     subject(:policy) { described_class.new }
 
     it "required sempre entra (allow nil, deny [])" do
-      d = policy.decide(request(profile: profile(tools_allow: nil), tools: [Entry.new("a", false)]))
+      d = policy.decide(request(profile: profile(tools_allow: nil), tools: [entry("a")]))
       expect(d.deny_tools).to eq([])
       expect(d.allow_tools).to be_nil
     end
 
     it "optional sem opt-in -> deny" do
-      d = policy.decide(request(profile: profile(tools_allow: nil), tools: [Entry.new("b", true)]))
+      d = policy.decide(request(profile: profile(tools_allow: nil), tools: [entry("b", optional: true)]))
       expect(d.deny_tools).to include("b")
     end
 
     it "optional com opt-in -> não negada" do
-      d = policy.decide(request(profile: profile(tools_allow: ["b"]), tools: [Entry.new("b", true)]))
+      d = policy.decide(request(profile: profile(tools_allow: ["b"]), tools: [entry("b", optional: true)]))
       expect(d.deny_tools).not_to include("b")
       expect(d.allow_tools).to eq(["b"])
     end
 
     it "allow não-vazia = conjunto final (sem merge)" do
       d = policy.decide(request(profile: profile(tools_allow: ["a"]),
-                                tools: [Entry.new("a", false), Entry.new("b", false)]))
+                                tools: [entry("a"), entry("b")]))
       expect(d.allow_tools).to eq(["a"])
     end
 
     it "deny sempre vence" do
       d = policy.decide(request(profile: profile(tools_allow: ["a"], tools_deny: ["a"]),
-                                tools: [Entry.new("a", false)]))
+                                tools: [entry("a")]))
       expect(d.deny_tools).to include("a")
     end
 
     it "allow [] -> conjunto vazio (D6, divergência intencional da Fase 0)" do
-      d = policy.decide(request(profile: profile(tools_allow: []), tools: [Entry.new("a", false)]))
+      d = policy.decide(request(profile: profile(tools_allow: []), tools: [entry("a")]))
       expect(d.allow_tools).to eq([])
     end
 
     it "é pura (2 chamadas -> mesmo resultado)" do
-      req = request(profile: profile(tools_allow: ["a"]), tools: [Entry.new("a", false)])
+      req = request(profile: profile(tools_allow: ["a"]), tools: [entry("a")])
       expect(policy.decide(req)).to eq(policy.decide(req))
     end
   end

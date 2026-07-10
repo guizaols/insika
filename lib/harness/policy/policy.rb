@@ -44,8 +44,10 @@ module Harness
       class ToolAllowlist < Base
         def decide(request)
           profile = request.profile
+          # optional vive no metadata da Entry (doc 06 §2); candidate_tools são
+          # ToolRegistry::Entry (Registry::Entry com metadata).
           deny = request.candidate_tools
-                 .select { |e| e.optional && !profile.tool_opted_in?(e.name) }
+                 .select { |e| e.metadata[:optional] && !profile.tool_opted_in?(e.name) }
                  .map { |e| e.name.to_s }
           deny += Array(profile.tools_deny).map(&:to_s)
 
