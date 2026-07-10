@@ -124,7 +124,7 @@ module Harness
         task = @task_store.find(id)
         raise Harness::NotFoundError, "task inexistente: #{id}" if task.nil?
 
-        json_response(200, { task: to_h(task) })
+        json_response(200, { task: task_to_h(task) })
       end
 
       # GET /v1/events?task_id=&session_id= — aqui os filtros SÃO conhecidos.
@@ -169,6 +169,13 @@ module Harness
           end
 
         task_id = result[:task_id] || result["task_id"]
+        # Vincula a subscription ao task_id agora que ele existe: o cap por-task
+        # passa a contar só eventos DESTA task (não tráfego de tasks vizinhas) e
+        # um eventual :error de overflow sai com o task_id correto (não é
+        # descartado pelo TaskFilter). Eventos já enfileirados no intervalo
+        # subscribe->dispatch são desta própria task (fiber eager) — nenhum se
+        # perde.
+        subscription.bind(task_id: task_id)
         filtered = TaskFilter.new(subscription, task_id)
         stream ? sse_response(filtered) : aggregate_response(filtered, task_id)
       end
@@ -176,23 +183,26 @@ module Harness
       # stream=false (doc 07 §3): agrega iterando a subscription filtrada no
       # próprio fiber da request. Acumula deltas de :content; responde no
       # terminal. O shape com `error:` espelha o data do :task_failed (menor
-      # extensão coerente — o estado também está em GET /v1/tasks/:id).
+      # extensão coerente — o estado também está em GET /v1/tasks/:id). Terminais
+      # não-felizes (:task_cancelled, :error de overflow) também viram `error:` —
+      # um turno cancelado/truncado NUNCA é reportado como 200 de sucesso.
       def aggregate_response(subscription, task_id)
         content = +""
         events = []
-        failure = nil
+        error = nil
 
         subscription.each do |event|
           events << event.to_h
           case event.type
-          when :content      then content << event.data[:delta].to_s
-          when :task_failed  then failure = event.data
+          when :content        then content << event.data[:delta].to_s
+          when :task_failed    then error = { class: event.data[:error], message: event.data[:message] }
+          when :task_cancelled then error = { class: "Harness::CancelledError", message: "task cancelada" }
+          when :error          then error ||= { class: nil, message: event.data[:message] }
           end
         end
 
-        if failure
-          json_response(200, { task_id: task_id, events: events,
-                               error: { class: failure[:error], message: failure[:message] } })
+        if error
+          json_response(200, { task_id: task_id, events: events, error: error })
         else
           json_response(200, { content: content, task_id: task_id, events: events })
         end
@@ -225,8 +235,10 @@ module Harness
         end
       end
 
+      # Turno = Hash com task_id PRESENTE e não-nil (doc 03 §2). Um controle que
+      # devolvesse Hash sem task_id útil não é confundido com turno.
       def turn_result?(result)
-        result.is_a?(Hash) && (result.key?(:task_id) || result.key?("task_id"))
+        result.is_a?(Hash) && !(result[:task_id] || result["task_id"]).nil?
       end
 
       # Body vazio ou sem content-type -> {} (doc 07 §4: transporte valida só
@@ -241,6 +253,14 @@ module Harness
 
       def to_h(obj)
         obj.respond_to?(:to_h) ? obj.to_h : obj
+      end
+
+      # Task#to_h é raso (Data#to_h não desce): `executions` fica como Array de
+      # Execution (Data), que JSON.generate serializaria como string opaca
+      # (`"#<data ...>"`) — ilegível para o consumidor que observa falhas por
+      # GET /v1/tasks/:id (doc 07 §6). Desce a serialização das Executions.
+      def task_to_h(task)
+        task.to_h.merge(executions: task.executions.map(&:to_h))
       end
 
       def json_response(status, body)

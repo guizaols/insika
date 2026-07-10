@@ -141,6 +141,26 @@ RSpec.describe Harness::Server::App do
       expect(bus.dispatched).to be_empty
     end
 
+    it "GET /v1/tasks/:id serializa executions como objetos JSON legíveis" do
+      execution = Harness::TaskStore::Execution.new(
+        attempt: 1, started_at: "a", finished_at: "b", outcome: "failed",
+        error: { "class" => "Harness::ProviderError", "message" => "x" }
+      )
+      task = Harness::TaskStore::Task.new(
+        id: "t-1", status: :failed, command: {}, session_id: nil,
+        executions: [execution], mailbox_state: {}, claimed_by: nil,
+        claim_expires_at: nil, created_at: "t", updated_at: "t"
+      )
+      app = build_app(task_store: ServerStoreDouble.new(task))
+
+      _status, _h, resp = call(app, "GET", "/v1/tasks/t-1")
+
+      exec = json_body(resp)["task"]["executions"].first
+      expect(exec).to be_a(Hash) # não uma string opaca "#<data ...>"
+      expect(exec["outcome"]).to eq("failed")
+      expect(exec["error"]).to eq("class" => "Harness::ProviderError", "message" => "x")
+    end
+
     it "leitura de sessão inexistente -> 404 com corpo de erro padrão" do
       app = build_app(session_store: ServerStoreDouble.new(nil))
 
@@ -232,6 +252,30 @@ RSpec.describe Harness::Server::App do
       body = json_body(resp)
       expect(status).to eq(200)
       expect(body["error"]).to eq("class" => "Harness::ProviderError", "message" => "x")
+    end
+
+    it "reporta :task_cancelled como error (nunca sucesso)" do
+      events = [event(:content, { delta: "parcial" }), event(:task_cancelled, { task_id: "t-1" })]
+      app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
+                      event_stream: ServerEventStreamDouble.new(events))
+
+      _status, _h, resp = call(app, "POST", "/v1/messages?stream=false", body: "{}")
+
+      body = json_body(resp)
+      expect(body).not_to have_key("content")
+      expect(body["error"]["class"]).to eq("Harness::CancelledError")
+    end
+
+    it "reporta :error de overflow como error (não 200 de sucesso truncado)" do
+      events = [event(:content, { delta: "a" }), event(:error, { message: "subscription overflow" })]
+      app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
+                      event_stream: ServerEventStreamDouble.new(events))
+
+      _status, _h, resp = call(app, "POST", "/v1/messages?stream=false", body: "{}")
+
+      body = json_body(resp)
+      expect(body).not_to have_key("content")
+      expect(body["error"]["message"]).to eq("subscription overflow")
     end
   end
 

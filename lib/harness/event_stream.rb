@@ -25,8 +25,16 @@ module Harness
         @session_id = session_id
         @on_close = on_close
         @queue = Async::Queue.new
-        @queued = 0     # contagem de eventos vivos na fila (push - dequeue)
-        @overflowed = false
+      end
+
+      # Liga a subscription a um task_id APÓS a criação (doc 07 §4, task 24): o
+      # transporte assina antes do dispatch — quando o task_id ainda não existe
+      # — e o vincula assim que o handler retorna. Isso mantém o cap por-task
+      # honesto (só eventos DESTA task entram na fila) e faz o :error de overflow
+      # sair com o task_id correto. Retorna self para encadear.
+      def bind(task_id:)
+        @task_id = task_id
+        self
       end
 
       # Filtro por meta (D5): nil = casa qualquer valor. Eventos sem task_id no
@@ -37,13 +45,13 @@ module Harness
           (@session_id.nil? || meta[:session_id] == @session_id)
       end
 
-      # Enfileira sem NUNCA bloquear (O(1)). Após o cap, enfileira um :error
-      # local e fecha; pushes seguintes são ignorados (já em overflow).
+      # Enfileira sem NUNCA bloquear. A profundidade real da fila é `@queue.size`
+      # (não um contador à parte — evita drift). Ao atingir o cap, enfileira um
+      # :error local e fecha; pushes após o close são ignorados (`@closed`).
       def push(event)
-        return if @overflowed
+        return if @closed
 
-        if @queued >= MAX_QUEUED
-          @overflowed = true
+        if @queue.size >= MAX_QUEUED
           @queue.enqueue(Harness::Event.new(
                            type: :error,
                            data: { message: "subscription overflow" },
@@ -53,14 +61,12 @@ module Harness
           return
         end
 
-        @queued += 1
         @queue.enqueue(event)
       end
 
       # Bloqueia o fiber do CONSUMIDOR até #close.
       def each
         while (event = @queue.dequeue) != CLOSED
-          @queued -= 1 unless @overflowed # o :error de overflow não entra na conta
           yield event
         end
       end
@@ -82,8 +88,12 @@ module Harness
 
     # NUNCA levanta: a exceção de um observador é isolada (doc 03 §2) — um
     # observador quebrado não derruba o turno. Síncrono e barato (L4/§5).
+    #
+    # Itera sobre um SNAPSHOT (`dup`): o cap de uma subscription pode fechá-la
+    # DURANTE o push (overflow -> close -> on_close remove do array); mutar o
+    # array no meio de um Array#each puro pularia o próximo assinante.
     def emit(event)
-      @subscriptions.each do |sub|
+      @subscriptions.dup.each do |sub|
         sub.push(event) if sub.matches?(event)
       rescue StandardError
         # observador quebrado não derruba o turno; nada a propagar
