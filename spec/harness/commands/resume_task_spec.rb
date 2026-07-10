@@ -22,7 +22,7 @@ RSpec.describe Harness::Commands::ResumeTask do
 
       def initialize = (@spawned = []; @resumed_live = []; @running = false)
       def running?(_id) = @running
-      def spawn(task, profile:, resume_from:) = @spawned << { task: task, profile: profile, resume_from: resume_from }
+      def spawn_in_session(task, profile:, resume_from: nil) = @spawned << { task: task, profile: profile, resume_from: resume_from }
       def resume_live(id) = @resumed_live << id
     end.new
   end

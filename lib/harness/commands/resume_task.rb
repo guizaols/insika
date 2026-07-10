@@ -44,7 +44,7 @@ module Harness
         profile = @profiles[checkpoint.agent_id] ||
                   (raise Harness::NotFoundError, "agente '#{checkpoint.agent_id}' não configurado")
 
-        @executor.spawn(task, profile: profile, resume_from: checkpoint)
+        @executor.spawn_in_session(task, profile: profile, resume_from: checkpoint)
         { task_id: task_id }
       end
 

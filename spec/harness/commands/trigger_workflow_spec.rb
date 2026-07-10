@@ -22,7 +22,7 @@ RSpec.describe Harness::Commands::TriggerWorkflow do
       attr_reader :spawned
 
       def initialize = (@spawned = [])
-      def spawn(task, profile:) = @spawned << task.id
+      def spawn_in_session(task, profile:, resume_from: nil) = @spawned << task.id
     end.new
   end
 

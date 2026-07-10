@@ -33,7 +33,10 @@ module Harness
     def run
       resumed = []
       failed = []
-      @task_store.running_or_interrupted.each { |task| process(task, resumed, failed) }
+      # Ordena por created_at (P2-03 L5): tasks da MESMA sessão são reenfileiradas
+      # no SessionActor na ordem original (FIFO preservado na retomada). Ordem
+      # global por tempo é inofensiva para tasks avulsas.
+      @task_store.running_or_interrupted.sort_by(&:created_at).each { |task| process(task, resumed, failed) }
       log(:info, "recovery concluído: #{resumed.size} retomadas, #{failed.size} falhas")
       { resumed: resumed, failed: failed }
     end
