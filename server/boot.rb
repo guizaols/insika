@@ -25,6 +25,7 @@ module Harness
       def call
         @wiring.load_plugins
         @wiring.build_stores
+        warn_if_ephemeral
         summary = run_recovery
         log("boot: recovery concluído — #{summary[:resumed].size} retomada(s), " \
             "#{summary[:failed].size} falha(s)")
@@ -47,6 +48,17 @@ module Harness
         return recovery.run if Async::Task.current?
 
         Sync { recovery.run }
+      end
+
+      # Durabilidade (doc 02 §6): sem backend durável, nada é retomado após
+      # restart — avisa alto no boot para não subir "sem rede" por engano. O
+      # wiring de teste (duplo) pode não expor `durable?`; nesse caso, silêncio.
+      def warn_if_ephemeral
+        return unless @wiring.respond_to?(:durable?)
+        return if @wiring.durable?
+
+        log("boot: AVISO — backend EFÊMERO (sem HARNESS_DB): recovery não " \
+            "retomará nada após restart (doc 02 §6).")
       end
 
       def log(message)

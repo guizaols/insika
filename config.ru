@@ -9,4 +9,12 @@ require_relative "server/boot"
 # O Boot executa plugins → stores → recovery ANTES do `run` — nenhum request é
 # servido antes de o recovery terminar (doc 07 §4). O listen é o último passo e
 # pertence ao Falcon (carrega este config.ru inteiro antes de aceitar conexões).
-run Harness::Server::Boot.new(Harness::Wiring).call
+app = Harness::Server::Boot.new(Harness::Wiring).call
+
+# Modo SERVING (L4): APÓS o recovery, os turnos passam a nascer filhos de um
+# supervisor de vida-longa (não do fiber efêmero da request) e sobrevivem ao
+# disconnect do cliente. Vale por worker sob `falcon serve` — o supervisor é
+# criado lazy no reactor de cada worker no 1º turno (boundary do reactor).
+Harness::Wiring::EXECUTOR.supervised = true
+
+run app

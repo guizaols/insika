@@ -30,7 +30,19 @@ module Harness
       @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
+      @supervised = false      # modo serving? (L4) — ver #turn_parent
+      @supervisor = nil        # supervisor lazy de vida-longa (criado no serving)
     end
+
+    # Liga o modo SERVING (L4): a arm de serving do composition root (serve.rb /
+    # config.ru) seta true APÓS o recovery. Sob HTTP o `spawn` roda no fiber
+    # EFÊMERO da request; sem isso o turno seria filho dela e o runtime o
+    # CANCELARIA no disconnect (viola L4 — "a execução pertence ao runtime, não à
+    # conexão"). Ligado, o turno nasce filho de um supervisor de vida-longa
+    # (irmão do accept loop) e sobrevive à conexão. false (default) = parenteia
+    # no fiber corrente: no recovery/boot e nos testes o dono QUER esperar o
+    # turno terminar (concorrência estruturada).
+    attr_accessor :supervised
 
     # Registro in-process de fibers vivos (critério do ResumeTask, doc 03 §3).
     def running?(task_id) = @running.key?(task_id)
@@ -48,7 +60,7 @@ module Harness
     def spawn(task, profile:, resume_from: nil)
       raise Harness::ValidationError, "task já em execução: #{task.id}" if running?(task.id)
 
-      actor = TaskActor.new(task_id: task.id)
+      actor = TaskActor.new(task_id: task.id, parent: turn_parent)
       @running[task.id] = actor
       actor.run { execute(task, profile: profile, resume_from: resume_from, actor: actor) }
       task.id
@@ -98,6 +110,21 @@ module Harness
     end
 
     private
+
+    # Parent do fiber do turno (L4). Não-serving: o fiber corrente (o dono espera
+    # o turno). Serving: um supervisor de vida-longa criado lazy no BOUNDARY do
+    # reactor — a task cujo parent é o próprio reactor (irmã do accept loop),
+    # fora da subárvore de qualquer request. Assim o turno sobrevive ao stop da
+    # request (disconnect). Um supervisor por Executor, reusado enquanto vivo.
+    def turn_parent
+      return Async::Task.current unless @supervised
+      return @supervisor if @supervisor&.running?
+
+      reactor = Async::Task.current.reactor
+      node = Async::Task.current
+      node = node.parent while node.parent && node.parent != reactor
+      @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); loop { t.sleep(3600) } }
+    end
 
     # command foi normalizado a chaves string pelo TaskStore; aceitar símbolo
     # também por robustez.
