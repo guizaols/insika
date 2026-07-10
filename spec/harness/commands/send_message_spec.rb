@@ -20,7 +20,7 @@ RSpec.describe Harness::Commands::SendMessage do
       attr_reader :spawned
 
       def initialize = (@spawned = [])
-      def spawn(task, profile:) = @spawned << [task, profile]
+      def spawn_in_session(task, profile:, resume_from: nil) = @spawned << [task, profile]
     end.new
   end
 

@@ -262,7 +262,7 @@ RSpec.describe Harness::Recovery do
 
         def initialize = (@spawned = [])
         def running?(_id) = false
-        def spawn(task, profile:, resume_from:) = @spawned << task.id
+        def spawn_in_session(task, profile:, resume_from:) = @spawned << task.id
       end.new
     end
 

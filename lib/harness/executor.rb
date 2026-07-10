@@ -143,7 +143,14 @@ module Harness
     # session_id é SERIALIZADO na fila do SessionActor daquela sessão (um por
     # vez); sem session_id (one-shot/history, D2) vai direto ao spawn (avulso).
     def spawn_in_session(task, profile:, resume_from: nil)
-      return spawn(task, profile: profile, resume_from: resume_from) if task.session_id.nil?
+      # SessionActor só no modo SERVING (@supervised): serializa REQUESTS
+      # concorrentes. No boot/recovery (não-supervised) o replay é sequencial e
+      # o loop de vida-longa penduraria o Sync do Boot — usa spawn direto (o
+      # dono aguarda o turno, como na Fase 1). One-shot/history (sem session_id)
+      # nunca serializa.
+      unless @supervised && task.session_id
+        return spawn(task, profile: profile, resume_from: resume_from)
+      end
 
       session_actor(task.session_id).enqueue(task, profile: profile, resume_from: resume_from)
     end

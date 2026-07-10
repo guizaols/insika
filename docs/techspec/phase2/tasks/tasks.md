@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs P2-01–P2-04 (a detalhar)
 > **Gerado:** 2026-07-10
-> **Progress:** 9/14 tasks complete
+> **Progress:** 10/14 tasks complete
 > **Base:** Fase 1 completa (main @ merge PR #8)
 
 ---
@@ -20,7 +20,7 @@
 | 7 | `ToolEnvelope` gate: antes de executar tool marcada, cria `PendingAction`, emite `:approval_requested`, suspende o turno em `:waiting` (via mailbox) | P2-02 | ✅ DONE | High | 0002 §9 |
 | 8 | Command `ApproveAction` (resolve o `PendingAction` + posta `:approval` na mailbox; approved → executa a tool pulada, rejected → `{error: rejected}` ao modelo) + evento `:approval_resolved` | P2-02 | ✅ DONE | High | 0007 §3 |
 | 9 | `SessionActor`: fiber por sessão + fila FIFO de turnos; registro in-process (`session_id → SessionActor`) no escopo supervisionado (L4) | P2-03 | ✅ DONE | High | 0002 §9 |
-| 10 | Integrar `SendMessage`/Executor ao `SessionActor`: turno com `session_id` enfileira (serializa); one-shot/history segue Task avulsa; recovery reidrata a fila | P2-03 | ⬜ TODO | High | 0002 §9 |
+| 10 | Integrar `SendMessage`/Executor ao `SessionActor`: turno com `session_id` enfileira (serializa); one-shot/history segue Task avulsa; recovery reidrata a fila | P2-03 | ✅ DONE | High | 0002 §9 |
 | 11 | `Server::App`: rotas de Command de escrita já cobertas pela genérica `POST /v1/commands/:type` (Fase 1) — validar `pause_task`/`approve_action`; reads de `PendingAction` (`GET /v1/tasks/:id` inclui pendências) | P2-04 | ⬜ TODO | Low | 07 §2 |
 | 12 | Control UI write: `Admin::App` vira read-write (Hotwire/Turbo vendored, sem build); Tasks com pause/resume/cancel/approve; auth de operador p/ destrutivo; evento `:operator_action` por ação | P2-04 | ⬜ TODO | High | 0007 §3-§5 |
 | 13 | Telas Chat (testar agente via `send_message` + SSE renderizado em Turbo Stream) e Config (editar perfis/políticas — read-write com validação) | P2-04 | ⬜ TODO | High | 0007 §3 |
