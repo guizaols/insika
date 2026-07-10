@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 19/26 tasks complete
+> **Progress:** 23/26 tasks complete
 
 ---
 
@@ -30,10 +30,10 @@
 | 17 | `Policy::Engine` + builtins `Tool/Skill/WorkflowAllowlist` (absorve `ToolRegistry#resolve`, fail-closed) | [task-17.md](./task-17.md) | ✅ DONE | Med | 05 §2-§4 |
 | 18 | `MiddlewareStack` rack-like (`TurnState` mutável, `halt_reason`) | [task-18.md](./task-18.md) | ✅ DONE | Low | 05 §2-§3 |
 | 19 | Pares de hook restantes (`before/after_task`, `_agent`, `_tool`) integrados ao Executor | [task-19.md](./task-19.md) | ✅ DONE | Med | 05 §2, 03 §4 |
-| 20 | `Registry` genérico + Workflow/Policy Registries + `PromptCatalog` (PROMPT.md) | [task-20.md](./task-20.md) | ⬜ TODO | Med | 06 §2 |
-| 21 | `Plugin::Loader` estendido: manifesto `harness.plugin.yml` (compat), config_schema, rollback parcial, novos registros | [task-21.md](./task-21.md) | ⬜ TODO | Med | 06 §2-§4 |
-| 22 | Autodiscovery por gem (`Plugin.announce`, precedência workspace > gem > bundled) | [task-22.md](./task-22.md) | ⬜ TODO | Low | 06 §2, §4 |
-| 23 | Handler `TriggerWorkflow` (workflow = 1 turno lógico, tools filtradas pela Resolution) | [task-23.md](./task-23.md) | ⬜ TODO | Med | 03 §4.1, 06 §2 |
+| 20 | `Registry` genérico + Workflow/Policy Registries + `PromptCatalog` (PROMPT.md) | [task-20.md](./task-20.md) | ✅ DONE | Med | 06 §2 |
+| 21 | `Plugin::Loader` estendido: manifesto `harness.plugin.yml` (compat), config_schema, rollback parcial, novos registros | [task-21.md](./task-21.md) | ✅ DONE | Med | 06 §2-§4 |
+| 22 | Autodiscovery por gem (`Plugin.announce`, precedência workspace > gem > bundled) | [task-22.md](./task-22.md) | ✅ DONE | Low | 06 §2, §4 |
+| 23 | Handler `TriggerWorkflow` (workflow = 1 turno lógico, tools filtradas pela Resolution) | [task-23.md](./task-23.md) | ✅ DONE | Med | 03 §4.1, 06 §2 |
 | 24 | Rotas formais: `POST /v1/commands/:type` + açúcar, reads GET, `/v1/events` SSE (heartbeat, cap), rota legada | [task-24.md](./task-24.md) | ⬜ TODO | Med | 07 §2-§4 |
 | 25 | Esqueleto Control UI `/admin` read-only (ERB) + `AdminAuth` fail-closed | [task-25.md](./task-25.md) | ⬜ TODO | Med | 07 §2, §6 |
 | 26 | `Gemfile` pinado + Gemfile.lock + `Server::Boot` (plugins→recovery→listen) + smoke E2E kill -9 | [task-26.md](./task-26.md) | ⬜ TODO | Med | 00 D9, 07 §4, §7 |

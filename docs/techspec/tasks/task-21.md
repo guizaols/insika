@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [06-registries-plugin-autodiscovery.md](../06-registries-plugin-autodiscovery.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -342,3 +342,21 @@ Não nesta task — a integração boot→plugins→recovery→listen é o smoke
 - **Override de config pelo operador:** o doc 06 §3 diz "operador sobrepõe" os defaults de `config:`, mas a assinatura de §2 (`roots:, registries:, enabled:, event_stream:`) não tem porta para overrides. Na Fase 1, `api.config` entrega os defaults do manifesto validados. Lacuna registrada — não adicionar kwarg por conta própria.
 - O warn de deprecação de `plugin.yml` vale "por uma fase" (doc 06 §3) — a remoção da compat é trabalho da Fase 2, não desta task.
 - A task 22 muda a regra de habilitação para roots anunciados por gem (default-enabled + `disabled:`); escreva o gate de `enabled` de forma que essa extensão seja localizada (um predicado `enabled?(id, root)`).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 19 novos (loader + ConfigSchema; fixtures PORO em tmpdir, sem ruby_llm), 513 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/plugin/loader.rb`, `plugins/weather/{harness.plugin.yml,plugin.rb,skills/weather_report/SKILL.md}`, `spec/harness/plugin/loader_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (require)
+- **Observações / decisões tomadas:**
+  - `Loader` evolui o PluginLoader da Fase 0: descoberta de `{harness.plugin.yml,plugin.yml}` (novo precede no mesmo dir; `plugin.yml` sozinho → warn deprecação); `contracts.workflows`; `capabilities` reservado (warn+ignora).
+  - `ConfigSchema` (módulo aninhado): subset próprio (type/properties/required/additionalProperties/enum), sem gem. Schema inválido **e** config que não valida caem na mesma lista → plugin não carrega, boot segue (fail-closed por plugin).
+  - `RegistrationAPI` 7 métodos: tools/workflows exigem contrato (L5); policies sem contrato (o manifesto não tem `contracts.policies` — lacuna registrada); middleware/hooks/providers são **staged** e efetivados por `commit!` só quando `register(api)` volta sem exceção — materializa o rollback ("nada parcial sobra").
+  - **Rollback (L3):** falha em `require`/`const_get`/`register` → warn+backtrace + `deregister_plugin(id)` em tools/workflows/policies (as entries carregam `plugin:`); staging descartado; plugin fora de `seen`; boot continua. Evento `:plugin_loaded` no sucesso.
+  - `enabled?(id, root)` isolado num predicado p/ a task 22 estender (roots anunciados por gem).
+  - **`config/wiring.rb` NÃO tocado** (Step 6): o arquivo não existe — o wiring completo (backend→registries→loader→catálogos→boot) é da task 26. Fixture `plugins/weather/` migrada (só exercitada no E2E da task 26, pois requer `ruby_llm`).
+  - **Lacunas do doc registradas:** sem `contracts.policies`; sem porta de override de `config` pelo operador (a Fase 1 entrega os defaults do manifesto validados).

@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [06-registries-plugin-autodiscovery.md](../06-registries-plugin-autodiscovery.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -270,3 +270,19 @@ Não aplicável — componentes puros, sem colaboradores externos. A integraçã
 - O despacho por tipo em `ToolRegistry#resolve` (nome vs profile) é a leitura mais direta de "resolve segue o caminho do doc 05 §8" (doc 06 §8) sem quebrar a assinatura do genérico. Se a task 17 já tiver removido todos os chamadores do caminho deprecated, ele pode ser um simples warn+delegação à `ToolAllowlist`.
 - A task 15 (provider `Prompt`) aceita `catalog: nil` justamente para não depender desta task (grafo: `15 → 20*`) — ao integrar, basta passar a instância do `PromptCatalog` no wiring.
 - Não criar diretório `prompts/` de exemplo no repo — fixtures vivem em tmpdir nos specs; dirs reais chegam via plugins (task 21) e workspace (wiring, task 26).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 34 novos (11 registry + 12 tool_registry + 3 workflow + 3 policy_registry + 8 prompt_catalog − ajustes), 494 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/{registry,workflow_registry,policy_registry,prompt_catalog}.rb` + 5 specs
+- **Arquivos modificados:** `lib/harness/tool_registry.rb` (reescrito herdando `Registry`), `lib/harness/policy/policy.rb` (`ToolAllowlist` lê `metadata[:optional]`), `lib/harness.rb`, `spec/harness/policy/policy_spec.rb` (Entry metadata-based), `spec/harness/tool_registry_spec.rb` (reescrito)
+- **Observações / decisões tomadas:**
+  - **Refatoração do `ToolRegistry` (task 17 → task 20):** de classe standalone para `ToolRegistry < Registry`. `optional`/`side_effect` migraram para `metadata` (defaults false); adicionado `side_effect?(name)` (consumido pelo `ToolEnvelope`). **Ripple:** `Policy::Builtin::ToolAllowlist` passou a ler `e.metadata[:optional]` (antes `e.optional`); o `policy_spec` acompanhou (Entry struct metadata-based).
+  - `Registry` genérico: Entry(name, plugin, metadata, factory), duplicata **primeiro-vence** com warn, `NotFoundError`, `deregister_plugin` (rollback do Loader, task 21). `register` sem factory → `ArgumentError` (micro-decisão registrada — o contrato `resolve → instância|NotFound` não admite factory nula).
+  - **`PolicyRegistry#resolve` instancia** a policy quando registrada como classe (o Engine chama `#decide` no resultado); `fetch` é alias (duck-type do Engine). Isso permite trocar o Hash-registry da task 17 pelo `PolicyRegistry` real no wiring (task 26) sem mudar o Engine.
+  - `ToolRegistry#resolve` despacha por tipo (AgentProfile → atalho deprecated que delega à `ToolAllowlist`; nome → genérico).
+  - `PromptCatalog` é Catalog (não Registry) — espelha `SkillCatalog` (`prompts/<name>/PROMPT.md`), sem `effective`/`format_for_prompt`.

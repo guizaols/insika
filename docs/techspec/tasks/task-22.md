@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [06-registries-plugin-autodiscovery.md](../06-registries-plugin-autodiscovery.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Low
 
 ---
@@ -212,3 +212,19 @@ Não nesta task. O fluxo real "gem no Gemfile → require → announce → boot"
 - **Habilitação de workspace:** o doc 06 §3 só distingue "bundled exige enabled" e "gem default-enabled"; para workspace mantivemos a regra Fase 0 (exige `enabled:`, como bundled) — é a leitura conservadora. Registrar no PR se preferir workspace default-enabled.
 - `reset_announced!` é suporte de teste (o acumulador é global de processo); não usar em código de produção.
 - Não implementar scan de LOAD_PATH/gems instaladas — explicitamente rejeitado pela L1.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 12 novos (5 plugin + 7 loader de habilitação por classe de root), 528 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/plugin.rb`, `spec/harness/plugin_spec.rb`
+- **Arquivos modificados:** `lib/harness/plugin/loader.rb` (initialize + enabled?/announced?), `lib/harness.rb` (require plugin antes do loader), `spec/harness/plugin/loader_spec.rb`
+- **Observações / decisões tomadas:**
+  - `Harness::Plugin.announce`/`announced_roots`/`reset_announced!` num arquivo mínimo (sem requerer o loader — a gem carrega o hook sozinha). `announce` preserva ordem de require e deduplica por path expandido; `announced_roots` congelado.
+  - `Loader#enabled?(id, plugin_dir)`: `disabled:` é veto absoluto (deny vence, D6); root anunciado → default-enabled; workspace/bundled → `enabled:` explícito (Fase 0). `announced?` compara com separador (não prefixo cru) e expande paths dos dois lados.
+  - Assinatura do Loader ganhou `announced_roots:`/`disabled:` (defaults vazios → retrocompat com a task 21 / assinatura §2 válida). Lacuna registrada (materialização de §3/L2).
+  - **Workspace mantém regra Fase 0** (`enabled:`), leitura conservadora do doc 06 §3 (que só fala de bundled vs gem).
+  - `config/wiring.rb` NÃO tocado (não existe; consolidação no boot é da task 26).
