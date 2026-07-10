@@ -56,6 +56,25 @@ module Harness
       !actor.nil?
     end
 
+    # Ponto de acesso do PauseTask (P2): posta :pause se há fiber vivo; o turno
+    # suspende na próxima fronteira (drain_and_maybe_suspend). No-op idempotente
+    # se não há fiber. Retorna se havia fiber.
+    def pause(task_id)
+      actor = @running[task_id]
+      actor&.post(:pause)
+      !actor.nil?
+    end
+
+    # Ponto de acesso do ResumeTask para task IN-PROCESS pausada (P2 task 4):
+    # posta :resume no fiber vivo (que está bloqueado em await). Retorna se havia
+    # fiber vivo — o handler decide entre resume in-process e re-dispatch de
+    # crash conforme isso.
+    def resume_live(task_id)
+      actor = @running[task_id]
+      actor&.post(:resume)
+      !actor.nil?
+    end
+
     # Estágio 1 (parte assíncrona): cria o actor, registra e dispara o fiber.
     # Chamado pelos handlers de turno (SendMessage/ResumeTask/TriggerWorkflow).
     def spawn(task, profile:, resume_from: nil)
@@ -195,7 +214,7 @@ module Harness
         # Builder e aqui (para :agent/:task/:tool).
         request = build_context_request(task, profile, state, resume_from)
         state.context = @context_builder.call(request)
-        actor.drain!
+        drain_and_maybe_suspend(task, actor)
 
         # checkpoint INICIAL do turno (doc 02 §3: "o checkpoint do turno n contém
         # o estado NO INÍCIO do turno n"). Sem ele, um crash no meio do estágio 6
@@ -215,7 +234,7 @@ module Harness
         # passa direto (shim de compat até o wiring da task 26).
         state.allowed_tools = wrap_tools(instantiate_tools(resolution.allowed_tools), state, skip)
         state.allowed_skills = resolution.allowed_skills
-        actor.drain!
+        drain_and_maybe_suspend(task, actor)
 
         # estágio 4: Middleware envolve os estágios 5-9 (doc 05 §4). O elo que
         # curto-circuita NÃO chama o terminal e seta state.halt_reason.
@@ -226,7 +245,7 @@ module Harness
           terminal_ran = true
           # estágio 5: montar chat + checar mailbox (só send_message; um workflow
           # não usa o chat do Harness — orquestra RubyLLM por dentro).
-          actor.drain!
+          drain_and_maybe_suspend(task, actor)
           unless workflow_turn?(task)
             st.chat = create_chat(profile)
             configure_chat(st.chat, st)
@@ -241,7 +260,12 @@ module Harness
           content = run_agent_stage(task, st)
 
           # estágio 8: Persistence (ordem fixa checkpoint->session->task, doc 02 L4)
-          actor.drain! # nunca DURANTE o estágio 8 (D4)
+          # drain! puro (NUNCA suspende no estágio 8 — janela proibida, D4). Um
+          # :pause que chegue aqui arma pause_requested mas NÃO é honrado: é o
+          # último estágio, não há fronteira seguinte; o turno conclui e o flag é
+          # descartado com o actor. Corrida benigna: pausa perde p/ a conclusão
+          # (o operador vê a task :completed). :cancel aqui ainda levanta.
+          actor.drain!
           persist_turn(task, profile, st, content)
 
           # estágio 9: Response
@@ -352,6 +376,23 @@ module Harness
                                tool_registry: @tool_registry, timeout: timeout,
                                skip_side_effects: skip_side_effects)
       end
+    end
+
+    # Fronteira de estágio (L2): drena a mailbox e, se o operador pediu pausa
+    # (P2-01), SUSPENDE o turno em :paused até o :resume. Cooperativo — nunca no
+    # meio de uma operação. NÃO é chamado no estágio 8 (janela proibida, D4).
+    # :cancel durante a espera vira CancelledError (captura única do topo);
+    # :timeout vira TimeoutError. O checkpoint inicial do turno já foi gravado,
+    # então um kill -9 em :paused é retomável (task 4).
+    def drain_and_maybe_suspend(task, actor)
+      actor.drain!
+      return unless actor.pause_requested?
+
+      @task_store.transition(task.id, to: :paused)
+      emit(:task_paused, { task_id: task.id }, task: task)
+      actor.await(reason: :paused) # bloqueia até :resume (ou levanta em :cancel/:timeout)
+      @task_store.transition(task.id, to: :running)
+      emit(:task_resumed, { task_id: task.id }, task: task)
     end
 
     # Checkpoint do estado inicial do turno (ver chamada no run_pipeline). Só no
