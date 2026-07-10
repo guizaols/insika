@@ -33,6 +33,10 @@ class ServerFakeSubscription
     @events.each { |e| yield e }
   end
 
+  # Paridade com a Subscription real (task 24): o transporte vincula o task_id
+  # após o dispatch. No duplo é no-op (os eventos já vêm roteirizados).
+  def bind(task_id:) = self
+
   def close = (@closed = true)
 end
 
