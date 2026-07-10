@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [07-service-platform.md](../07-service-platform.md) · [03-command-bus-executor.md](../03-command-bus-executor.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -452,3 +452,31 @@ consumidos na task 25; `bind`/`port` na task 26.)
   é melhoria compatível.
 - Convenções: `# frozen_string_literal: true`, comentários em português,
   classes pequenas; JSON da stdlib.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-10
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 32 novos (app 22, sse_body 6, legacy 4), 545 existentes, 0 falhas (577 total)
+- **Arquivos criados:** `server/app.rb`, `server/sse_body.rb`, `config/wiring.rb`,
+  `spec/harness/server/app_spec.rb`, `spec/harness/server/sse_body_spec.rb`,
+  `spec/harness/server/legacy_contract_spec.rb`, `spec/support/server_doubles.rb`
+- **Arquivos modificados:** `lib/harness/event_stream.rb` (cap de 1000 + close
+  idempotente), `Gemfile` + `Gemfile.lock` (rack ~> 3.0)
+- **Observações / desvios do plano:**
+  - **Timeout síncrono configurável.** O doc/Step 2 fixa `with_timeout(10)`;
+    implementado como `config[:sync_timeout]` com default 10 para permitir o
+    teste de 504 rodar rápido (injeta 0.05). Default honra o doc 07 §6.
+  - **`config/wiring.rb` mínimo por design.** Constrói `APP` por injeção com
+    backend Memory, `PROFILES`/catálogos vazios e os 5 handlers registrados. O
+    grafo completo (backend por config, perfis de disco, plugins, recovery,
+    `Server::Boot`) é explicitamente da task 26, que **refatora** este arquivo.
+    Não se criou `config.ru` (arquivo da task 26).
+  - **Shape do `stream=false` em falha:** corpo `{task_id:, error:{class:,
+    message:}, events:}` espelhando o data do `:task_failed` (menor extensão
+    coerente — registrado no doc como escolha, não re-decisão de arquitetura).
+  - **Regra constitucional (doc 07 §4):** `server/` importa só `json`, `rack`,
+    `async` e tipos do núcleo — nenhum require de Executor/RubyLLM/escrita de
+    store. Teste dedicado garante que nenhum caminho do App produz status 403.
