@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 25/26 tasks complete
+> **Progress:** 26/26 tasks complete
 
 ---
 
@@ -36,7 +36,7 @@
 | 23 | Handler `TriggerWorkflow` (workflow = 1 turno lógico, tools filtradas pela Resolution) | [task-23.md](./task-23.md) | ✅ DONE | Med | 03 §4.1, 06 §2 |
 | 24 | Rotas formais: `POST /v1/commands/:type` + açúcar, reads GET, `/v1/events` SSE (heartbeat, cap), rota legada | [task-24.md](./task-24.md) | ✅ DONE | Med | 07 §2-§4 |
 | 25 | Esqueleto Control UI `/admin` read-only (ERB) + `AdminAuth` fail-closed | [task-25.md](./task-25.md) | ✅ DONE | Med | 07 §2, §6 |
-| 26 | `Gemfile` pinado + Gemfile.lock + `Server::Boot` (plugins→recovery→listen) + smoke E2E kill -9 | [task-26.md](./task-26.md) | ⬜ TODO | Med | 00 D9, 07 §4, §7 |
+| 26 | `Gemfile` pinado + Gemfile.lock + `Server::Boot` (plugins→recovery→listen) + smoke E2E kill -9 | [task-26.md](./task-26.md) | ✅ DONE | Med | 00 D9, 07 §4, §7 |
 
 ### Status Legend
 - ⬜ TODO — Not started
