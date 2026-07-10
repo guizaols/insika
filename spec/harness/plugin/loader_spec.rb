@@ -314,6 +314,77 @@ RSpec.describe Harness::Plugin::Loader do
     expect(ev.data).to include(id: "ev", tools: ["t"])
   end
 
+  describe "habilitação por classe de root (task 22)" do
+    # Helper: escreve um plugin com tool numa árvore de root arbitrária.
+    def write_in(root, id, mod, tool)
+      dir = File.join(root, id)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "harness.plugin.yml"),
+                 "id: #{id}\nmodule: #{mod}\nentry: plugin.rb\ncontracts: { tools: [#{tool}] }\n")
+      File.write(File.join(dir, "plugin.rb"),
+                 poro_entry(mod, "def self.register(api) = api.register_tool('#{tool}', Class.new)"))
+      dir
+    end
+
+    def loader(roots:, enabled: [], disabled: [], announced: [])
+      described_class.new(roots: roots, registries: registries, enabled: enabled,
+                          disabled: disabled, announced_roots: announced, event_stream: event_stream)
+    end
+
+    it "gem anunciada é default-enabled (id fora de enabled:)" do
+      gem_root = File.join(@root, "gem")
+      write_in(gem_root, "g", "GmodA", "gt")
+      result = loader(roots: [gem_root], announced: [gem_root]).load_all
+      expect(result[:plugins].map(&:id)).to eq(["g"])
+    end
+
+    it "disabled: veta uma gem anunciada" do
+      gem_root = File.join(@root, "gem")
+      write_in(gem_root, "g", "GmodB", "gt")
+      result = loader(roots: [gem_root], announced: [gem_root], disabled: %w[g]).load_all
+      expect(result[:plugins]).to eq([])
+    end
+
+    it "bundled/não-anunciado continua exigindo enabled: (regra Fase 0)" do
+      b_root = File.join(@root, "bundled")
+      write_in(b_root, "b", "BmodC", "bt")
+      # sem announce e sem enabled -> não carrega
+      expect(loader(roots: [b_root]).load_all[:plugins]).to eq([])
+      # com enabled -> carrega
+      expect(loader(roots: [b_root], enabled: %w[b]).load_all[:plugins].map(&:id)).to eq(["b"])
+    end
+
+    it "veto absoluto: id em enabled: E disabled: não carrega" do
+      b_root = File.join(@root, "bundled")
+      write_in(b_root, "b", "BmodD", "bt")
+      expect(loader(roots: [b_root], enabled: %w[b], disabled: %w[b]).load_all[:plugins]).to eq([])
+    end
+
+    it "workspace > gem: mesmo id, o root do workspace (primeiro) vence" do
+      ws = File.join(@root, "ws")
+      gem_root = File.join(@root, "gm")
+      write_in(ws, "dup", "WsMod", "wtool")
+      write_in(gem_root, "dup", "GmMod", "gtool")
+      # workspace primeiro na lista; gem anunciada
+      result = loader(roots: [ws, gem_root], enabled: %w[dup], announced: [gem_root]).load_all
+      expect(result[:plugins].map(&:id)).to eq(["dup"])
+      expect(tools.names).to eq(["wtool"]) # versão do workspace
+    end
+
+    it "root anunciado inexistente: load_all sem erro" do
+      expect { loader(roots: [File.join(@root, "nao-existe")], announced: [File.join(@root, "nao-existe")]).load_all }
+        .not_to raise_error
+    end
+
+    it "retrocompat: sem announced_roots:/disabled: comporta como a task 21" do
+      b_root = File.join(@root, "bundled")
+      write_in(b_root, "b", "BmodE", "bt")
+      result = described_class.new(roots: [b_root], registries: registries,
+                                   enabled: %w[b], event_stream: event_stream).load_all
+      expect(result[:plugins].map(&:id)).to eq(["b"])
+    end
+  end
+
   describe Harness::Plugin::Loader::ConfigSchema do
     it "type incorreto" do
       expect(described_class.validate({ "type" => "integer" }, "x")).not_to be_empty
