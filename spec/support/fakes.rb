@@ -61,7 +61,8 @@ class HaltingMiddleware
   end
 end
 
-# around(pair, subject) { |s| yield s }, gravando a ordem dos pares.
+# around(pair, subject) { |s| yield s }, gravando a ordem dos pares. As
+# metades run_before/run_after (par :tool) são passthrough sem gravar.
 class NullHooks
   attr_reader :pairs
 
@@ -71,6 +72,9 @@ class NullHooks
     @pairs << pair
     yield subject
   end
+
+  def run_before(_pair, subject) = subject
+  def run_after(_pair, result) = result
 end
 
 # Event stream síncrono para asserções de ordem sem coreografia de fibers:

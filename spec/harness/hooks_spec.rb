@@ -83,4 +83,38 @@ RSpec.describe Harness::Hooks do
     hooks.around(:tool, "") { |s| seen = s }
     expect(seen).to eq("012")
   end
+
+  describe "metades run_before / run_after (task 19)" do
+    it "run_before encadeia na ordem de registro" do
+      hooks.register(:tool, before: ->(s) { "#{s}-1" })
+      hooks.register(:tool, before: ->(s) { "#{s}-2" })
+      expect(hooks.run_before(:tool, "x")).to eq("x-1-2")
+    end
+
+    it "run_after aplica na ordem INVERSA de registro" do
+      order = []
+      hooks.register(:tool, after: ->(r) { order << :a; r })
+      hooks.register(:tool, after: ->(r) { order << :b; r })
+      hooks.run_after(:tool, "x")
+      expect(order).to eq(%i[b a])
+    end
+
+    it "around ≡ run_after(yield(run_before))" do
+      hooks.register(:tool, before: ->(s) { "#{s}>b" })
+      hooks.register(:tool, after: ->(r) { "#{r}>a" })
+      via_around = hooks.around(:tool, "x") { |s| "#{s}|body" }
+      manual = hooks.run_after(:tool, "#{hooks.run_before(:tool, 'x')}|body")
+      expect(via_around).to eq(manual)
+    end
+
+    it "par sem hooks: metades devolvem o argumento intacto" do
+      expect(hooks.run_before(:agent, "x")).to eq("x")
+      expect(hooks.run_after(:agent, "y")).to eq("y")
+    end
+
+    it "par desconhecido -> ArgumentError nas metades" do
+      expect { hooks.run_before(:foo, "x") }.to raise_error(ArgumentError)
+      expect { hooks.run_after(:foo, "x") }.to raise_error(ArgumentError)
+    end
+  end
 end

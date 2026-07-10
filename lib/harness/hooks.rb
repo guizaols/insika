@@ -27,12 +27,23 @@ module Harness
     # registros -> degenera em yield(subject) (no-op). Hook que não altera
     # devolve o que recebeu; devolver nil É alterar para nil (sem caso especial).
     def around(pair, subject)
+      run_after(pair, yield(run_before(pair, subject)))
+    end
+
+    # Metades públicas do around (task 19). Necessárias para o par :tool, cujo
+    # "corpo" do estágio é o loop interno do RubyLLM (doc 03 §6) — não há bloco
+    # a envolver; as metades são chamadas dos callbacks before_tool_call/
+    # after_tool_result separadamente.
+    def run_before(pair, subject)
       raise ArgumentError, "par de hook desconhecido: #{pair.inspect}" unless PAIRS.include?(pair)
 
-      @before[pair].each { |hook| subject = hook.call(subject) }
-      result = yield(subject)
-      @after[pair].reverse_each { |hook| result = hook.call(result) }
-      result
+      @before[pair].reduce(subject) { |subj, hook| hook.call(subj) }
+    end
+
+    def run_after(pair, result)
+      raise ArgumentError, "par de hook desconhecido: #{pair.inspect}" unless PAIRS.include?(pair)
+
+      @after[pair].reverse.reduce(result) { |res, hook| hook.call(res) }
     end
   end
 end

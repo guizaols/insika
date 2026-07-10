@@ -25,7 +25,8 @@ RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
 
   subject(:executor) do
     Harness::Executor.new(
-      context_builder: inert, policy_engine: inert, middleware: inert, hooks: inert,
+      context_builder: inert, policy_engine: inert, middleware: inert,
+      hooks: Harness::Hooks.new, # wire_callbacks usa run_before/run_after(:tool)
       tool_registry: inert, skill_catalog: skill_catalog, profiles: {},
       session_store: inert, task_store: inert, checkpoint_store: inert,
       event_stream: event_stream
