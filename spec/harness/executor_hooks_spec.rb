@@ -113,6 +113,34 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(event_stream.types).to include(:tool_call, :tool_result)
   end
 
+  it "after_agent substitui a response; :done carrega o content substituído" do
+    hooks.register(:agent, after: ->(_r) { FakeChat::Response.new("SUBSTITUÍDO") })
+
+    run(build_executor)
+
+    done = event_stream.events.find { |e| e.type == :done }
+    expect(done.data[:content]).to eq("SUBSTITUÍDO")
+  end
+
+  it "contador de tool calls zera por turno (duas tasks de 2 calls, limite 3)" do
+    profile3 = Harness::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_calls: 3 })
+    executor = build_executor
+
+    %w[t1 t2].each do |id|
+      chat = FakeChat.new
+      chat.script = proc { 2.times { |i| fire_tool_call(name: "x#{i}") } }
+      allow(executor).to receive(:create_chat).and_return(chat)
+      command = Harness::Command.build(:send_message, { agent: "sales", message: "oi" })
+      task_store.create(command: command.to_h, id: id)
+      Sync do
+        executor.spawn(task_store.find(id), profile: profile3)
+        executor.instance_variable_get(:@running)[id]&.wait
+      end
+      # 2 calls < limite 3; se o contador acumulasse entre turnos, t2 estouraria
+      expect(task_store.find(id).status).to eq(:completed)
+    end
+  end
+
   it "tool_limit: 51ª tool call com max_tool_calls 50 -> TimeoutError(stage :tool_limit) -> :failed" do
     fast_profile = Harness::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_calls: 2 })
     chat = FakeChat.new
