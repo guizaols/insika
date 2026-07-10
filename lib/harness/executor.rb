@@ -163,8 +163,13 @@ module Harness
     def run_serial(task, profile:, resume_from: nil)
       spawn(task, profile: profile, resume_from: resume_from)
       @running[task.id]&.wait
-    rescue Harness::Error, StandardError
-      nil
+    rescue Async::Stop
+      raise # shutdown: propaga (encerra o loop da sessão)
+    rescue StandardError => e
+      # Erro SÍNCRONO do spawn (antes do fiber): a captura única do execute não
+      # age (o turno nunca rodou). Marca :failed aqui para NÃO orfanar a task
+      # como :queued sem estado terminal nem evento (o cliente ficaria pendurado).
+      fail_spawn(task, e)
     end
 
     # Encerra todos os SessionActors (shutdown do servidor / testes — o loop
@@ -221,10 +226,29 @@ module Harness
     private
 
     # SessionActor lazy por sessão (P2-03), parenteado no escopo de turnos (L4):
-    # o loop da sessão sobrevive à conexão, como o supervisor.
+    # o loop da sessão sobrevive à conexão, como o supervisor. Revalida liveness:
+    # se o loop cacheado morreu (supervisor recriado/parado), cria um novo — senão
+    # os turnos enfileirados seriam black-holed num loop morto.
     def session_actor(session_id)
-      @session_actors[session_id] ||=
+      existing = @session_actors[session_id]
+      return existing if existing&.alive?
+
+      @session_actors[session_id] =
         SessionActor.new(session_id: session_id, executor: self, parent: turn_parent)
+    end
+
+    # Marca :failed uma task cujo turno FALHOU no spawn (antes do fiber). Idempotente
+    # contra estado terminal; StoreError re-levanta (o loop da sessão trata).
+    def fail_spawn(task, error)
+      current = @task_store.find(task.id)
+      return if current.nil? || TERMINAL_STATUSES.include?(current.status)
+
+      @task_store.transition(task.id, to: :failed,
+                                      error: { class: error.class.name, message: error.message, stage: :spawn })
+      emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
+      emit(:error, { message: error.message }, task: task)
+    rescue Harness::Error
+      nil
     end
 
     # Parent do fiber do turno (L4). Não-serving: o fiber corrente (o dono espera

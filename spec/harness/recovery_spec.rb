@@ -290,6 +290,17 @@ RSpec.describe Harness::Recovery do
       expect(spawn_executor.spawned).to eq(["t"])
     end
 
+    it "re-enfileira task :queued (turno na fila no crash, P2-03) — não perde no kill -9" do
+      # :queued = criada mas nunca iniciada (sem checkpoint). Antes da correção,
+      # running_or_interrupted a ignorava e ela era perdida.
+      task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "a" } }, id: "q")
+
+      result = recovery.run
+
+      expect(result[:resumed]).to include("q")
+      expect(spawn_executor.spawned).to include("q") # re-rodada do zero
+    end
+
     it "falha isolada: agente removido não derruba o boot (doc 02 §6)" do
       seed_task("ok", status: :running)
       seed_checkpoint("ok") # agent_id "a" -> ok

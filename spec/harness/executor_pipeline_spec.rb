@@ -75,6 +75,19 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
+  describe "run_serial (serialização de sessão, P2-03)" do
+    it "erro de spawn marca a task :failed (não orfana :queued sem estado terminal)" do
+      executor = build_executor
+      task = make_task # status :queued
+      allow(executor).to receive(:spawn).and_raise(Harness::Error, "spawn falhou")
+
+      Sync { executor.run_serial(task, profile: profile) }
+
+      expect(task_store.find("t").status).to eq(:failed)
+      expect(event_stream.types).to include(:task_failed, :error)
+    end
+  end
+
   describe "one-shot (sem sessão)" do
     it "não toca a sessão mas grava checkpoint" do
       executor = build_executor
