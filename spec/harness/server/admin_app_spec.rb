@@ -92,6 +92,12 @@ RSpec.describe Harness::Server::Admin::App do
       end
     end
 
+    it "envia headers de segurança (CSP + nosniff) nas páginas" do
+      _s, headers, = call(build_app, "GET", "/admin")
+      expect(headers["x-content-type-options"]).to eq("nosniff")
+      expect(headers["content-security-policy"]).to include("default-src 'none'", "connect-src 'self'")
+    end
+
     it "lista sessões com ids" do
       app = build_app(sessions: { "s-1" => session("s-1"), "s-2" => session("s-2") })
       _s, _h, resp = call(app, "GET", "/admin/sessions")
