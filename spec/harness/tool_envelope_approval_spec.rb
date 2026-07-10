@@ -126,6 +126,45 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       expect(task_store.find("t").status).to eq(:running)
     end
 
+    it "fail-closed: sem PendingActionStore configurado -> Error (não pendura, não auto-aprova)" do
+      no_store = Harness::Executor.new(
+        context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
+        middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
+        tool_registry: FakeToolRegistry.new, skill_catalog: Harness::SkillCatalog.new([]),
+        profiles: {}, session_store: Harness::SessionStore.new(store: backend),
+        task_store: task_store, checkpoint_store: checkpoint_store, event_stream: event_stream
+      ) # pending_action_store: nil
+      running_task
+
+      Sync do
+        actor = Harness::TaskActor.new(task_id: "t")
+        expect { no_store.request_approval(task: task_store.find("t"), turn: 1, tool: "charge", args: {}, actor: actor) }
+          .to raise_error(Harness::Error, /PendingActionStore/)
+      end
+    end
+
+    it "fail-closed: :approval espúrio (antes de resolver) NÃO destrava — re-aguarda" do
+      task = running_task
+      decision = nil
+
+      Sync do |top|
+        actor = Harness::TaskActor.new(task_id: "t")
+        waiter = top.async do
+          decision = executor.request_approval(task: task, turn: 1, tool: "charge", args: {}, actor: actor)
+        end
+        top.sleep(0.02)
+        actor.post(:approval)   # espúrio: nada foi resolvido ainda
+        top.sleep(0.02)
+        expect(task_store.find("t").status).to eq(:waiting) # continua esperando
+
+        pending_store.resolve("t:1:charge", decision: :approved, operator: "op")
+        actor.post(:approval)   # real
+        waiter.wait
+      end
+
+      expect(decision).to eq("approved")
+    end
+
     it "reexecução: PendingAction já resolvida é reusada SEM re-suspender" do
       running_task
       pending_store.create(id: "t:1:charge", task_id: "t", turn: 1, tool: "charge", args: {})
