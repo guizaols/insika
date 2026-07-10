@@ -40,19 +40,23 @@ class ServerFakeSubscription
   def close = (@closed = true)
 end
 
-# EventStream duplo: grava os filtros pedidos e devolve a subscription falsa.
+# EventStream duplo: grava os filtros pedidos, devolve a subscription falsa e
+# grava os eventos emitidos (auditoria do /admin de escrita).
 class ServerEventStreamDouble
-  attr_reader :subscribes
+  attr_reader :subscribes, :emitted
 
   def initialize(events = [])
     @events = events
     @subscribes = []
+    @emitted = []
   end
 
   def subscribe(task_id: nil, session_id: nil)
     @subscribes << { task_id: task_id, session_id: session_id }
     ServerFakeSubscription.new(@events)
   end
+
+  def emit(event) = (@emitted << event)
 end
 
 # Store duplo: grava os ids consultados e devolve um record fixo.

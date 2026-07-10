@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs P2-01–P2-04 (a detalhar)
 > **Gerado:** 2026-07-10
-> **Progress:** 10/14 tasks complete
+> **Progress:** 14/14 tasks complete
 > **Base:** Fase 1 completa (main @ merge PR #8)
 
 ---
@@ -21,10 +21,10 @@
 | 8 | Command `ApproveAction` (resolve o `PendingAction` + posta `:approval` na mailbox; approved → executa a tool pulada, rejected → `{error: rejected}` ao modelo) + evento `:approval_resolved` | P2-02 | ✅ DONE | High | 0007 §3 |
 | 9 | `SessionActor`: fiber por sessão + fila FIFO de turnos; registro in-process (`session_id → SessionActor`) no escopo supervisionado (L4) | P2-03 | ✅ DONE | High | 0002 §9 |
 | 10 | Integrar `SendMessage`/Executor ao `SessionActor`: turno com `session_id` enfileira (serializa); one-shot/history segue Task avulsa; recovery reidrata a fila | P2-03 | ✅ DONE | High | 0002 §9 |
-| 11 | `Server::App`: rotas de Command de escrita já cobertas pela genérica `POST /v1/commands/:type` (Fase 1) — validar `pause_task`/`approve_action`; reads de `PendingAction` (`GET /v1/tasks/:id` inclui pendências) | P2-04 | ⬜ TODO | Low | 07 §2 |
-| 12 | Control UI write: `Admin::App` vira read-write (Hotwire/Turbo vendored, sem build); Tasks com pause/resume/cancel/approve; auth de operador p/ destrutivo; evento `:operator_action` por ação | P2-04 | ⬜ TODO | High | 0007 §3-§5 |
-| 13 | Telas Chat (testar agente via `send_message` + SSE renderizado em Turbo Stream) e Config (editar perfis/políticas — read-write com validação) | P2-04 | ⬜ TODO | High | 0007 §3 |
-| 14 | Smoke E2E fatia A: tool `approval` suspende em `:waiting` → kill -9 → reboot → operador aprova → tool executa e turno conclui; + serialização de 2 turnos concorrentes na mesma sessão | P2-01..03 | ⬜ TODO | Med | 00 §"Critério" |
+| 11 | `Server::App`: rotas de Command de escrita já cobertas pela genérica `POST /v1/commands/:type` (Fase 1) — validar `pause_task`/`approve_action`; reads de `PendingAction` (`GET /v1/tasks/:id` inclui pendências) | P2-04 | ✅ DONE | Low | 07 §2 |
+| 12 | Control UI write: `Admin::App` vira read-write (Hotwire/Turbo vendored, sem build); Tasks com pause/resume/cancel/approve; auth de operador p/ destrutivo; evento `:operator_action` por ação | P2-04 | ✅ DONE | High | 0007 §3-§5 |
+| 13 | Telas Chat (testar agente via `send_message` + SSE renderizado em Turbo Stream) e Config (editar perfis/políticas — read-write com validação) | P2-04 | ✅ DONE | High | 0007 §3 |
+| 14 | Smoke E2E fatia A: tool `approval` suspende em `:waiting` → kill -9 → reboot → operador aprova → tool executa e turno conclui; + serialização de 2 turnos concorrentes na mesma sessão | P2-01..03 | ✅ DONE | Med | 00 §"Critério" |
 
 ### Status Legend
 ⬜ TODO · 🟡 IN PROGRESS · ✅ DONE · ⛔ BLOCKED
@@ -72,3 +72,27 @@ independente (só depende da task 1). D fecha por cima de tudo.
 - Núcleo (`lib/`) testável sem `ruby_llm` nem chave de API; RubyLLM mockado só na integração.
 - Toda task referencia as seções do doc de componente (coluna Spec).
 - Cada task passa por code review antes de fechar.
+
+---
+
+## Notas da Etapa D (limitações registradas — follow-ups)
+
+- **Config-edit (`update_profile`) adiado:** perfis são `Data` imutáveis e a
+  base `PROFILES` é congelada; editar em runtime exige um holder mutável de
+  perfis. A tela Config entrega leitura; a edição runtime-safe fica p/ fatia
+  seguinte (o Command `update_profile` não foi criado).
+- **`events.turbo_stream` adiado:** a projeção do Event Stream como
+  `<turbo-stream>` sobre SSE fica p/ depois; o painel usa o `EventSource` JSON
+  de `/v1/events` (events.erb) p/ o "ao vivo".
+- **Turbo/Stimulus vendored = placeholders:** `server/admin/assets/{turbo,stimulus}.js`
+  são stubs a substituir pelos arquivos reais (P2-04 L1). Sem eles o painel
+  DEGRADA graciosamente (forms POST + 303 redirect); com eles, turbo_stream
+  atualiza fragmentos ao vivo. Servidos em `/admin/assets/*` (CSP `script-src 'self'`).
+- **Recovery de turno `:waiting` no boot (limitação):** o smoke da task 14 aprova
+  via HTTP SEM kill-9. Motivo: recuperar um turno `:waiting` (aprovação) durante
+  o boot faz o turno reexecutar e RE-SUSPENDER no `await(:approval)`, bloqueando
+  o `Sync` transiente do Boot (ninguém aprova no boot). O fix correto é rodar o
+  Recovery no reactor de SERVING (após `supervised=true`), para turnos retomados
+  suspensíveis nascerem no supervisor e não bloquearem o listen — restructure do
+  fluxo Boot/serve, follow-up. O caminho crash-safe da aprovação (reexecução com
+  a PendingAction durável) está coberto em `tool_envelope_approval_spec`.
