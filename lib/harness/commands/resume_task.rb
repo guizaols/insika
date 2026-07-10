@@ -21,6 +21,16 @@ module Harness
         task = @task_store.find(task_id) ||
                (raise Harness::NotFoundError, "task '#{task_id}' não encontrada")
 
+        # RESUME IN-PROCESS (P2 task 4): task :paused cujo fiber AINDA vive (blocked
+        # em await) — NÃO re-despachar (spawn duplicaria o fiber). Só posta :resume;
+        # o fiber transita paused->running e segue. (Um :waiting vivo é resolvido
+        # pelo ApproveAction, não aqui — Etapa B.)
+        if task.status == :paused && @executor.running?(task_id)
+          @executor.resume_live(task_id)
+          return { task_id: task_id }
+        end
+
+        # RE-DISPATCH (crash-resume): sem fiber vivo, reexecuta do checkpoint.
         # resume exige checkpoint (doc 03 §3); sem ele a task é irrecuperável (o
         # Recovery já a teria marcado :failed na varredura — doc 02 §4).
         checkpoint = @checkpoint_store.latest(task_id) ||
