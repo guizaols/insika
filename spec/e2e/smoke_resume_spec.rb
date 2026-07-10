@@ -23,7 +23,7 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
     port
   end
 
-  def spawn_server(port:, db:, marker:, mode:, recovery_marker: nil)
+  def spawn_server(port:, db:, marker:, mode:, recovery_marker: nil, approval: false)
     env = {
       "SMOKE_DB" => db, "SMOKE_TURN_STARTED" => marker,
       "SMOKE_BIND" => "http://127.0.0.1:#{port}",
@@ -32,6 +32,7 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
     }
     env["SMOKE_MODE"] = mode if mode
     env["SMOKE_RECOVERY_DONE"] = recovery_marker if recovery_marker
+    env["SMOKE_APPROVAL"] = "1" if approval
     Process.spawn(env, "bundle", "exec", "ruby", File.join(smoke_dir, "serve.rb"),
                   out: File.join(File.dirname(db), "serve_#{mode || "trava"}.log"),
                   err: %i[child out])
@@ -147,6 +148,55 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
         # o listen é o último passo do Boot: se o servidor respondeu, o recovery
         # (marker) já terminou — por construção, nunca serve antes do recovery.
         expect(File.exist?(recovery_marker)).to be(true)
+      ensure
+        begin
+          Process.kill(9, pid)
+          Process.wait(pid)
+        rescue Errno::ESRCH, Errno::ECHILD
+          nil
+        end
+      end
+    end
+  end
+
+  # Critério da fatia A (P2, 00-overview): tool `approval` suspende o turno em
+  # :waiting; o operador vê a pendência e aprova via HTTP -> a tool executa e o
+  # turno conclui. (O caminho CRASH-SAFE — reexecução pós-kill usando a
+  # PendingAction durável — é coberto por spec/harness/tool_envelope_approval_spec
+  # em nível de integração. Ver Notes da task 14 sobre a limitação de recovery de
+  # turno :waiting no boot.)
+  it "aprovação: tool suspende em :waiting; operador aprova via HTTP -> turno conclui", :smoke do
+    Dir.mktmpdir("harness-smoke-appr") do |dir|
+      db = File.join(dir, "s.sqlite3")
+      port = free_port
+      pid = spawn_server(port: port, db: db, marker: File.join(dir, "m"), mode: nil, approval: true)
+      begin
+        wait_alive(port)
+        sid = JSON.parse(http(port, :post, "/v1/sessions", body: "{}").body)["session"]["id"]
+        resp = http(port, :post, "/v1/commands/send_message",
+                    body: JSON.generate(agent: "approver", message: "cobra", session_id: sid))
+        task_id = JSON.parse(resp.body)["task_id"]
+
+        # a tool acionou o gate -> task :waiting com PendingAction (visível no read)
+        pending = wait_until(timeout: 15, msg: "task suspender em :waiting") do
+          t = JSON.parse(http(port, :get, "/v1/tasks/#{task_id}").body)
+          pa = t["pending_actions"]&.first
+          pa if t["task"]["status"] == "waiting" && pa
+        end
+        expect(pending["tool"]).to eq("charge")
+
+        # operador aprova via HTTP -> a tool executa e o turno conclui
+        approve = http(port, :post, "/v1/commands/approve_action",
+                       body: JSON.generate(pending_id: pending["id"], decision: "approved"))
+        expect(approve.code).to eq("200")
+
+        task = wait_until(timeout: 20, msg: "concluir pós-aprovação") do
+          t = JSON.parse(http(port, :get, "/v1/tasks/#{task_id}").body)["task"]
+          t if t["status"] == "completed"
+        end
+        expect(task["status"]).to eq("completed")
+        msgs = JSON.parse(http(port, :get, "/v1/sessions/#{sid}").body)["session"]["messages"]
+        expect(msgs.map { |m| m["content"] }.join).to include("charged")
       ensure
         begin
           Process.kill(9, pid)
