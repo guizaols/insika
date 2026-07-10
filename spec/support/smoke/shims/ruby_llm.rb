@@ -35,14 +35,24 @@ module RubyLLM
   class FakeChat
     Response = Struct.new(:content)
 
+    def initialize = (@tools = [])
     def with_instructions(_text) = self
-    def with_tools(*_tools) = self
     def add_message(role:, content:) = self
     def before_tool_call(&blk) = (@before = blk) && self
     def after_tool_result(&blk) = (@after = blk) && self
 
+    def with_tools(*tools) = (@tools.concat(tools); self)
+
     def ask(message, &on_chunk)
       on_chunk&.call(Response.new("processando... "))
+
+      # Modo APROVAÇÃO (P2-02): chama a tool `charge` — o ToolEnvelope aciona o
+      # gate e SUSPENDE o turno em :waiting até o operador aprovar (a call
+      # bloqueia aqui dentro; ao aprovar, executa e retorna). Cobre o smoke da
+      # fatia A (suspende -> kill -9 -> reboot -> aprova -> conclui).
+      if ENV["SMOKE_APPROVAL"] && (tool = @tools.find { |t| t.name.to_s == "charge" })
+        return Response.new("resultado: #{tool.call("amount" => 10)}")
+      end
 
       return Response.new("resposta final para: #{message}") if ENV["SMOKE_MODE"] == "complete"
 

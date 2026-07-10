@@ -6,6 +6,37 @@
 <p><strong>status:</strong> <%= h(@task.status) %> &nbsp;
    <strong>session:</strong> <%= h(@task.session_id) %></p>
 
+<div id="flash"></div>
+
+<%# ações de operador (P2-04): forms normais (POST) — com Turbo viram turbo_stream %>
+<h2>ações</h2>
+<form method="post" action="/admin/tasks/<%= h(@task.id) %>/pause" style="display:inline">
+  <button type="submit">pausar</button>
+</form>
+<form method="post" action="/admin/tasks/<%= h(@task.id) %>/resume" style="display:inline">
+  <button type="submit">retomar</button>
+</form>
+<form method="post" action="/admin/tasks/<%= h(@task.id) %>/cancel" style="display:inline">
+  <button type="submit">cancelar</button>
+</form>
+
+<% unless (@pending || []).empty? -%>
+  <h2>aprovações pendentes</h2>
+  <% @pending.each do |pa| -%>
+    <div>
+      <code><%= h(pa.tool) %></code> — <pre><%= h(pa.args) %></pre>
+      <form method="post" action="/admin/approvals/<%= h(pa.id) %>" style="display:inline">
+        <input type="hidden" name="decision" value="approved">
+        <button type="submit">aprovar</button>
+      </form>
+      <form method="post" action="/admin/approvals/<%= h(pa.id) %>" style="display:inline">
+        <input type="hidden" name="decision" value="rejected">
+        <button type="submit">rejeitar</button>
+      </form>
+    </div>
+  <% end -%>
+<% end -%>
+
 <h2>command</h2>
 <pre><%= h(@task.command) %></pre>
 

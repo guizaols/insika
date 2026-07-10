@@ -203,8 +203,8 @@ RSpec.describe Harness::Server::Admin::App do
       app = build_app(allowed_origins: ["https://ops.example"])
       status, headers, = call(app, "OPTIONS", "/admin/tasks", auth: nil, origin: "https://ops.example")
       expect(status).to eq(204)
-      expect(headers["access-control-allow-methods"]).to eq("GET")
-      expect(headers["access-control-allow-headers"]).to eq("authorization")
+      expect(headers["access-control-allow-methods"]).to eq("GET, POST")
+      expect(headers["access-control-allow-headers"]).to eq("authorization, content-type")
     end
 
     it "preflight OPTIONS com Origin não permitida -> 204 sem headers CORS" do
