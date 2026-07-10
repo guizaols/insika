@@ -118,6 +118,24 @@ module Harness
       registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
       config: CONFIG
     )
+
+    # Recovery do boot (doc 02 §4): descobre tasks interrompidas e as retoma pelo
+    # MESMO caminho do ResumeTask (D3), ANTES de o servidor aceitar requests.
+    RECOVERY = Harness::Recovery.new(
+      task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, command_bus: BUS
+    )
+
+    # Passos nomeados consumidos pelo Server::Boot (doc 07 §4). O grafo acima é
+    # construído de forma EAGER no require (constantes-atalho da Fase 0); os
+    # passos expõem a SEQUÊNCIA que o Boot orquestra. `load_plugins`/
+    # `build_stores` são no-op na base (sem plugins externos configurados; um
+    # deployment concreto ou a autodiscovery da task 22 os estende) — a garantia
+    # "recovery antes do listen" vem de `recovery.run` rodar dentro do Boot,
+    # antes de `run APP`.
+    def self.load_plugins = nil
+    def self.build_stores = nil
+    def self.recovery = RECOVERY
+    def self.app = APP
   end
 end
 
