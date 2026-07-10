@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [07-service-platform.md](../07-service-platform.md) · [02-session-task-checkpoint.md](../02-session-task-checkpoint.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -372,7 +372,62 @@ localmente, mas o CI a executa.
   listen (boot mais lento, semanticamente correto); se a task 10 criar
   fibers num reactor próprio do Executor, o boot não bloqueia (preferência
   do doc 02 §5). Ambos passam nos testes deste arquivo — siga o código real.
+- **⚠️ Posse do fiber do turno vs. fiber da request (achado do review da task
+  24 — PRÉ-CONDIÇÃO DESTE SMOKE):** hoje `Executor#spawn` -> `TaskActor.new`
+  captura `parent: Async::Task.current` (task_actor.rb) e roda o turno como
+  FILHO do fiber corrente. Quando o dispatch vem do transporte HTTP (task 24),
+  esse "corrente" é o fiber EFÊMERO da request do Falcon. Consequências:
+  (a) `POST /v1/commands/send_message` responde 202 e a request termina — o
+  runtime pode cancelar o turno (filho) logo após o 202; (b) em disconnect no
+  meio de um SSE, o cancelamento da request cancela o turno, violando a
+  garantia L4 ("a execução pertence ao runtime, não à conexão") que a `SSEBody`
+  da task 24 documenta. O **fix correto é aqui**: o Boot precisa dar ao
+  Executor um escopo/reactor de vida-longa (owned pelo runtime), e o
+  `spawn` deve criar o turno como filho DESSE escopo — nunca do fiber da
+  request. Sem isso, o roteiro do Step 7 (kill no meio do turno após 202)
+  não chega ao estado "trava" e o smoke falha. Alinhar com o dono da task 10
+  (injetar `supervisor:`/`parent:` no `TaskActor`/`Executor` a partir do
+  wiring/Boot).
 - O shim do RubyLLM deve espelhar a superfície que o Executor realmente usa
   (tasks 11/12) — escreva-o **depois** de ler `lib/harness/executor.rb` real.
 - Convenções: `# frozen_string_literal: true`, comentários em português,
   stdlib para tudo no shim/teste (Open3, TCPServer, FileUtils).
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-10
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** load_guard (1), boot_spec (4), smoke E2E (2), + ajustes; 613 total, 0 falhas
+- **Arquivos criados:** `server/boot.rb`, `config.ru`, `spec/harness/load_guard_spec.rb`,
+  `spec/harness/server/boot_spec.rb`, `spec/e2e/smoke_resume_spec.rb`,
+  `spec/support/smoke/{boot_app.rb,config.ru,serve.rb,shims/ruby_llm.rb}`
+- **Arquivos modificados:** `Gemfile` + `Gemfile.lock` (pinagem D9 + plataforma CI),
+  `config/wiring.rb` (RECOVERY + passos nomeados + backend por config),
+  `lib/harness/executor.rb` (checkpoint inicial do turno)
+- **Observações / desvios do plano:**
+  - **Pré-requisito de núcleo entregue:** checkpoint inicial no começo do turno
+    (commit próprio) — sem ele o kill no turno 1 seria irrecuperável (a Nota
+    "checkpoint do 1º turno" previa isso).
+  - **Falcon versão:** o doc chutou `~> 0.47`; o corrente é 0.55.5 → pinado
+    `~> 0.55`. Lock com plataformas arm64-darwin (dev) + x86_64-linux (CI).
+  - **Servidor do smoke:** `falcon serve` forka 14 workers (Async::Container),
+    e o `kill -9` do pai não mata os workers → porta presa no reboot. Troquei
+    por um `serve.rb` SINGLE-PROCESS (async-http + protocol-rack, deps do
+    Falcon) — kill -9 mata tudo e libera a porta. `config.ru` documenta o
+    caminho rackup/falcon; o teste usa `serve.rb`.
+  - **Posse do fiber (achado do review da task 24):** NÃO precisou de fix
+    dedicado — sob async (structured concurrency) o fiber da request aguarda o
+    turno-filho, então o turno alcança a trava e sobrevive até o kill -9; a
+    retomada nasce filha do `Sync` do Boot e conclui antes do listen. A
+    limitação L4 (disconnect de SSE cancelar o turno) permanece como melhoria
+    de produção documentada, não exercida pelo critério da fase.
+  - **Code review:** achado acionável corrigido — `config/wiring.rb` usava
+    Memory (produção não-durável); agora backend por `HARNESS_DB` (SQLite). O
+    2º achado (assimetria do `run_recovery`) é comportamento permitido pelo doc
+    (dispatch antes do listen), só clareado no comentário.
+
+**Critério de conclusão da fase (doc 00 §6): ATENDIDO.** Fluxo `SendMessage`
+com `session_id` sobrevive a `kill -9` + reboot retomando do checkpoint; suíte
+inteira verde (613) sem chave de API (RubyLLM mockado só na integração).

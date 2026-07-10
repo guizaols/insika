@@ -53,8 +53,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
 
       run_turn(executor, make_task)
 
-      # ordem do estágio 8: checkpoint -> session -> finish_execution -> transition(:completed)
-      expect(order).to eq([[:transition, :running], :checkpoint, :session, :finish, [:transition, :completed]])
+      # 1º :checkpoint = inicial do turno (doc 02 §3, resumabilidade de crash);
+      # depois a ordem do estágio 8: checkpoint -> session -> finish -> transition
+      expect(order).to eq([[:transition, :running], :checkpoint, :checkpoint, :session, :finish,
+                           [:transition, :completed]])
       # eventos do turno
       expect(event_stream.types).to eq(
         %i[task_started content checkpoint_created done task_completed]
@@ -407,8 +409,11 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
 
       task = task_store.find("t")
       expect(task.status).to eq(:cancelled)
-      # nenhum checkpoint gravado (cancel antes do estágio 8)
-      expect(checkpoint_store.latest("t")).to be_nil
+      # o checkpoint INICIAL do turno (turn 1) foi gravado no começo do turno;
+      # o cancel ocorreu antes do estágio 8, então NÃO há checkpoint de conclusão
+      # (turn 2) — o turno não avançou (uma task :cancelled é terminal, o Recovery
+      # não a retoma).
+      expect(checkpoint_store.latest("t").turn).to eq(1)
       # :task_cancelled é o penúltimo; só :error (compat) vem depois
       expect(event_stream.types.last(2)).to eq(%i[task_cancelled error])
     end

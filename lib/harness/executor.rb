@@ -166,6 +166,14 @@ module Harness
         state.context = @context_builder.call(request)
         actor.drain!
 
+        # checkpoint INICIAL do turno (doc 02 §3: "o checkpoint do turno n contém
+        # o estado NO INÍCIO do turno n"). Sem ele, um crash no meio do estágio 6
+        # (antes do estágio 8) deixaria a task órfã SEM checkpoint -> irrecuperável
+        # (o Recovery a marcaria :failed). Idempotente: só grava no 1º turno de uma
+        # task nova — no resume o checkpoint já existe (find != nil) e nos turnos
+        # seguintes o checkpoint de fim do turno anterior já é o "início" deste.
+        save_initial_checkpoint(task, profile, state)
+
         # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)
         resolution = @policy_engine.decide(policy_request(profile, task, state))
         # no resume, tool calls já concluídas no turno interrompido são "puladas"
@@ -313,6 +321,20 @@ module Harness
                                tool_registry: @tool_registry, timeout: timeout,
                                skip_side_effects: skip_side_effects)
       end
+    end
+
+    # Checkpoint do estado inicial do turno (ver chamada no run_pipeline). Só no
+    # 1º turno de uma task nova: no resume o checkpoint do turno já existe (não
+    # re-salva — a monotonicidade do CheckpointStore levantaria). NÃO emite
+    # evento (:checkpoint_created é só do estágio 8) nem toca side-effects.
+    def save_initial_checkpoint(task, profile, state)
+      return unless @checkpoint_store.find(task.id, turn: state.turn).nil?
+
+      @checkpoint_store.save(Harness::Checkpoint.new(
+                               task_id: task.id, turn: state.turn, session_id: task.session_id,
+                               agent_id: profile.id, messages: Array(state.context.history),
+                               completed_side_effects: [], created_at: Time.now.utc.iso8601
+                             ))
     end
 
     # Estágio 8: ordem FIXA checkpoint -> session -> task (doc 02 L4). Se cair
