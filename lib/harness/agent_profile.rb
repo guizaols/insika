@@ -23,7 +23,8 @@ module Harness
   class AgentProfile
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
-      context_budget: 8_000, max_turns: 25, max_tool_calls: 50
+      context_budget: 8_000, max_turns: 25, max_tool_calls: 50,
+      approval_timeout: 3_600 # P2-02: teto da espera por aprovação humana (~1h)
     }.freeze
 
     def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],

@@ -96,19 +96,35 @@ module Harness
     # resolvida é reusada sem re-suspender; uma :pending re-suspende.
     # -> "approved" | "rejected".
     def request_approval(task:, turn:, tool:, args:, actor:)
+      # Fail-closed: exigir aprovação sem onde persistir/consultar a decisão é
+      # misconfiguração — falha ALTO, nunca pendura nem auto-aprova.
+      if @pending_action_store.nil?
+        raise Harness::Error, "tool '#{tool}' exige aprovação mas PendingActionStore não está configurado"
+      end
+
       id = pending_id(task.id, turn, tool)
-      existing = @pending_action_store&.find(id)
-      return existing.status.to_s if existing && existing.status != :pending
+      existing = @pending_action_store.find(id)
+      return existing.status.to_s if existing && existing.status != :pending # reexecução: já resolvida
 
       unless existing
-        @pending_action_store&.create(id: id, task_id: task.id, turn: turn, tool: tool, args: args || {})
+        @pending_action_store.create(id: id, task_id: task.id, turn: turn, tool: tool, args: args || {})
         emit(:approval_requested, { pending_id: id, tool: tool.to_s, args: args }, task: task)
       end
 
       @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
-      actor.await(reason: :approval) # bloqueia até :approval (ou levanta em :cancel/:timeout)
+
+      # Aguarda a resolução DESTE pending. Um :approval espúrio (duplicado ou de
+      # outro pending do mesmo actor) que acorde antes de resolver é ignorado
+      # (re-await) — fail-closed: só a resolução real deste id destrava.
+      status = nil
+      loop do
+        actor.await(reason: :approval) # bloqueia (ou levanta em :cancel/:timeout)
+        status = @pending_action_store.find(id)&.status
+        break unless status == :pending
+      end
+
       @task_store.transition(task.id, to: :running)
-      (@pending_action_store&.find(id)&.status || :approved).to_s
+      (status || :rejected).to_s # fail-closed: record sumido -> rejeita (defensivo)
     end
 
     # Estágio 1 (parte assíncrona): cria o actor, registra e dispara o fiber.
@@ -242,6 +258,12 @@ module Harness
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
       turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
+      # Turno que PODE exigir aprovação humana (P2-02) ganha budget = approval_timeout
+      # (~1h): o with_timeout do turno não pode matar uma espera de operador
+      # legítima. O runaway do LLM já é contido por max_tool_calls/max_turns.
+      unless Array(profile.approvals_required).empty?
+        turn_timeout = [turn_timeout, profile.limits[:approval_timeout] || 3_600].max
+      end
 
       Async::Task.current.with_timeout(turn_timeout) do
         # par :task (RFC-0002 §6): envolve os estágios do turno. before_task pode
