@@ -19,6 +19,7 @@ GEM
     io-event (1.19.1)
     json (2.20.0)
     metrics (0.15.0)
+    rack (3.2.6)
     rspec (3.13.2)
       rspec-core (~> 3.13.0)
       rspec-expectations (~> 3.13.0)
@@ -40,6 +41,7 @@ PLATFORMS
 
 DEPENDENCIES
   async (~> 2.0)
+  rack (~> 3.0)
   rspec (~> 3.13)
   sqlite3 (~> 2.0)
 
@@ -53,6 +55,7 @@ CHECKSUMS
   io-event (1.19.1) sha256=851aa9a318889cbfdaa9a982b5cd266750f893748752a17f52f880d93ceb6ee6
   json (2.20.0) sha256=9362bc6e55a952b056abf9167cf053358181c904cb70cd6eee0808ea830fc32b
   metrics (0.15.0) sha256=61ded5bac95118e995b1bc9ed4a5f19bc9814928a312a85b200abbdac9039072
+  rack (3.2.6) sha256=5ed78e1f73b2e25679bec7d45ee2d4483cc4146eb1be0264fc4d94cb5ef212c2
   rspec (3.13.2) sha256=206284a08ad798e61f86d7ca3e376718d52c0bc944626b2349266f239f820587
   rspec-core (3.13.6) sha256=a8823c6411667b60a8bca135364351dda34cd55e44ff94c4be4633b37d828b2d
   rspec-expectations (3.13.5) sha256=33a4d3a1d95060aea4c94e9f237030a8f9eae5615e9bd85718fe3a09e4b58836

@@ -15,11 +15,18 @@ module Harness
       CLOSED = Object.new # sentinela interna de fim-de-stream
       private_constant :CLOSED
 
+      # Cap de eventos enfileirados por assinante (doc 07 §5). Um consumidor
+      # lento acumula na PRÓPRIA fila; ao exceder, a subscription fecha com um
+      # evento :error local — o turno nunca espera transporte (L4).
+      MAX_QUEUED = 1000
+
       def initialize(task_id: nil, session_id: nil, on_close: nil)
         @task_id = task_id
         @session_id = session_id
         @on_close = on_close
         @queue = Async::Queue.new
+        @queued = 0     # contagem de eventos vivos na fila (push - dequeue)
+        @overflowed = false
       end
 
       # Filtro por meta (D5): nil = casa qualquer valor. Eventos sem task_id no
@@ -30,17 +37,40 @@ module Harness
           (@session_id.nil? || meta[:session_id] == @session_id)
       end
 
-      def push(event) = @queue.enqueue(event)
+      # Enfileira sem NUNCA bloquear (O(1)). Após o cap, enfileira um :error
+      # local e fecha; pushes seguintes são ignorados (já em overflow).
+      def push(event)
+        return if @overflowed
+
+        if @queued >= MAX_QUEUED
+          @overflowed = true
+          @queue.enqueue(Harness::Event.new(
+                           type: :error,
+                           data: { message: "subscription overflow" },
+                           meta: { task_id: @task_id, session_id: @session_id }
+                         ))
+          close
+          return
+        end
+
+        @queued += 1
+        @queue.enqueue(event)
+      end
 
       # Bloqueia o fiber do CONSUMIDOR até #close.
       def each
         while (event = @queue.dequeue) != CLOSED
+          @queued -= 1 unless @overflowed # o :error de overflow não entra na conta
           yield event
         end
       end
 
       # Idempotente: um segundo CLOSED é inofensivo (o `each` para no primeiro).
+      # `@on_close` só dispara uma vez (evita remover a subscription 2x).
       def close
+        return if @closed
+
+        @closed = true
         @queue.enqueue(CLOSED)
         @on_close&.call(self)
       end

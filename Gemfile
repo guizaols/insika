@@ -11,6 +11,9 @@ ruby ">= 3.2"
 # sqlite3 é "apenas backend" (D9) — carregado lazy dentro do initialize,
 # então fica no grupo de teste (produção declara a gem no app).
 gem "async", "~> 2.0"
+# rack: transporte do harness-server (task 24). Pinagem exata (~> 3.0) e
+# Gemfile.lock definitivo são fechados na task 26 (D9).
+gem "rack", "~> 3.0"
 
 group :development, :test do
   gem "rspec", "~> 3.13"
