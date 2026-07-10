@@ -36,11 +36,11 @@ module Harness
       # doc 02 L5 / doc 03 §4.1: tool call não-idempotente JÁ CONCLUÍDA no turno
       # interrompido -> responder com marcador, NUNCA reexecutar. O marcador
       # volta ao modelo, mantendo o protocolo de tool-use íntegro.
-      call_id = @state.current_tool_call&.id
+      call_id = correlation_id
       return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
 
       result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
-      record_side_effect! if side_effect?
+      record_side_effect!(call_id) if side_effect?
       result
     rescue ToolTimeout
       { error: "TimeoutError: tool excedeu #{@timeout}s" }
@@ -48,18 +48,26 @@ module Harness
 
     private
 
+    # Correlação da call: o id do provider (chat RubyLLM, via before_tool_call)
+    # quando existe; senão o NOME da tool — o caso do workflow (doc 03 §4.1), que
+    # chama as instâncias direto e não tem id gerado pelo provider. Correlação
+    # por nome é grossa (per-tool, não per-call), mas segura: pular um
+    # side-effect já concluído na retomada é exatamente o objetivo.
+    def correlation_id
+      (@state.current_tool_call&.id || __getobj__.name).to_s
+    end
+
     def side_effect?
       @tool_registry.respond_to?(:side_effect?) &&
         @tool_registry.side_effect?(__getobj__.name)
     end
 
-    # Escrito ANTES de o resultado da tool voltar ao modelo (doc 02 §2). Sem
-    # tool_call corrente correlacionado, não há o que registrar.
-    def record_side_effect!
-      id = @state.current_tool_call&.id or return
+    # Escrito ANTES de o resultado da tool voltar ao modelo (doc 02 §2).
+    def record_side_effect!(call_id)
+      return if call_id.to_s.empty?
 
       @checkpoint_store.record_side_effect(@state.task.id, turn: @state.turn,
-                                                           tool_call_id: id)
+                                                           tool_call_id: call_id)
     end
   end
 end
