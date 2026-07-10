@@ -19,7 +19,7 @@ module Harness
     # de plugin, RFC-0003 §5) — o segundo é descartado com warn, nunca overwrite.
     def register(name, callable = nil, plugin: nil, **metadata, &block)
       name = name.to_s
-      factory = block || (callable && -> { callable })
+      factory = block || (callable.nil? ? nil : -> { callable })
       raise ArgumentError, "registro sem factory: #{name}" if factory.nil?
 
       if @entries.key?(name)
