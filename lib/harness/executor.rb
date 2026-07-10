@@ -15,7 +15,7 @@ module Harness
     def initialize(context_builder:, policy_engine:, middleware:, hooks:,
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
-                   event_stream:)
+                   event_stream:, workflow_registry: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -27,6 +27,7 @@ module Harness
       @task_store = task_store
       @checkpoint_store = checkpoint_store
       @event_stream = event_stream
+      @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
     end
@@ -182,27 +183,29 @@ module Harness
           raise Harness::Error, "turno interrompido: #{st.halt_reason}" if st.halt_reason
 
           terminal_ran = true
-          # estágio 5: montar chat + checar mailbox
+          # estágio 5: montar chat + checar mailbox (só send_message; um workflow
+          # não usa o chat do Harness — orquestra RubyLLM por dentro).
           actor.drain!
-          st.chat = create_chat(profile)
-          configure_chat(st.chat, st)
-          seed_history(st.chat, st.context.history)
-          wire_callbacks(st.chat, st) # estágio 7
-
-          # estágio 6: RubyLLM — ÚNICA interação com o modelo
-          response = @hooks.around(:agent, st) do |s|
-            s.chat.ask(s.message) do |chunk|
-              emit(:content, { delta: chunk.content }, task: task) if chunk.content
-            end
+          unless workflow_turn?(task)
+            st.chat = create_chat(profile)
+            configure_chat(st.chat, st)
+            seed_history(st.chat, st.context.history)
+            wire_callbacks(st.chat, st) # estágio 7
           end
+
+          # estágio 6: única interação de agente do turno. send_message ->
+          # chat.ask; trigger_workflow -> workflow.call(input, context:, tools:)
+          # (doc 03 §4.1). Ambos envoltos por hooks.around(:agent). O retorno é o
+          # conteúdo final do turno.
+          content = run_agent_stage(task, st)
 
           # estágio 8: Persistence (ordem fixa checkpoint->session->task, doc 02 L4)
           actor.drain! # nunca DURANTE o estágio 8 (D4)
-          persist_turn(task, profile, st, response)
+          persist_turn(task, profile, st, content)
 
           # estágio 9: Response
-          emit(:done, { content: response.content }, task: task) # compat Fase 0
-          emit(:task_completed, { task_id: task.id, content: response.content }, task: task)
+          emit(:done, { content: content }, task: task) # compat Fase 0
+          emit(:task_completed, { task_id: task.id, content: content }, task: task)
         end
 
         # halt (com motivo) ou curto-circuito sem terminar (violação de contrato,
@@ -220,9 +223,40 @@ module Harness
       raise Harness::TimeoutError.new("turno excedeu #{turn_timeout}s", stage: :turn)
     end
 
+    def workflow_turn?(task)
+      command_type(task).to_s == "trigger_workflow"
+    end
+
+    # Estágio 6: a única interação de agente. Retorna o conteúdo final do turno.
+    def run_agent_stage(task, state)
+      if workflow_turn?(task)
+        # workflow = callable Ruby que orquestra RubyLLM por dentro (RubyLLM
+        # First). tools: são as MESMAS instâncias filtradas pela Resolution e
+        # envelopadas (estágio 7) — o workflow herda timeout/side-effect/skip.
+        workflow = @workflow_registry.resolve(workflow_name(task))
+        @hooks.around(:agent, state) do |s|
+          workflow.call(s.message, context: s.context, tools: s.allowed_tools)
+        end
+      else
+        response = @hooks.around(:agent, state) do |s|
+          s.chat.ask(s.message) do |chunk|
+            emit(:content, { delta: chunk.content }, task: task) if chunk.content
+          end
+        end
+        response.content
+      end
+    end
+
+    def workflow_name(task)
+      payload = task.command["payload"] || task.command[:payload] || {}
+      payload["workflow"] || payload[:workflow]
+    end
+
+    # message do turno: send_message -> payload.message; trigger_workflow ->
+    # payload.input (o input vira o "user" content e o argumento do workflow).
     def extract_message(task)
       payload = task.command["payload"] || task.command[:payload] || {}
-      payload["message"] || payload[:message]
+      payload["message"] || payload[:message] || payload["input"] || payload[:input]
     end
 
     def command_history(task)
@@ -257,10 +291,10 @@ module Harness
     # Estágio 8: ordem FIXA checkpoint -> session -> task (doc 02 L4). Se cair
     # entre escritas, o pior caso é checkpoint novo com task :running -> Recovery
     # reexecuta o turno já salvo (seguro pelo registro de side-effects).
-    def persist_turn(task, profile, state, response)
+    def persist_turn(task, profile, state, content)
       new_messages = [
         { role: "user", content: state.message },
-        { role: "assistant", content: response.content }
+        { role: "assistant", content: content }
       ]
       transcript = Array(state.context.history) + new_messages
 
