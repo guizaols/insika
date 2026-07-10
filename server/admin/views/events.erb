@@ -1,0 +1,36 @@
+<%= style %>
+<h1>Events ao vivo</h1>
+<%= nav %>
+<p class="muted">
+  Stream de <code>/v1/events</code> via EventSource (mesma origem, sem header de
+  auth — API do consumidor, fora do /admin). Filtros opcionais remontam a URL.
+</p>
+
+<form id="filters" onsubmit="return connect();">
+  <label>task_id <input id="task_id" type="text"></label>
+  <label>session_id <input id="session_id" type="text"></label>
+  <button type="submit">conectar</button>
+  <button type="button" onclick="stop()">parar</button>
+</form>
+
+<pre id="log" style="height: 60vh;"></pre>
+
+<script>
+  var es = null;
+  function stop() { if (es) { es.close(); es = null; } }
+  function connect() {
+    stop();
+    var params = new URLSearchParams();
+    var t = document.getElementById("task_id").value;
+    var s = document.getElementById("session_id").value;
+    if (t) params.set("task_id", t);
+    if (s) params.set("session_id", s);
+    var url = "/v1/events" + (params.toString() ? "?" + params.toString() : "");
+    var log = document.getElementById("log");
+    es = new EventSource(url);
+    es.onmessage = function (e) { log.textContent += e.data + "\n"; };
+    es.onerror = function () { log.textContent += "[erro/desconexão]\n"; };
+    return false;
+  }
+  connect();
+</script>
