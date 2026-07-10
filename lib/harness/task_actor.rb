@@ -4,22 +4,27 @@ require "async"
 require "async/queue"
 
 module Harness
-  # Fase 1 do modelo de Actor (RFC-0002 §9): um fiber Async por Task + mailbox
-  # mínima. Cancelamento cooperativo (RFC-0001 princípio 7, doc 03 L2): o drain
-  # só acontece nas fronteiras de estágio/turno, nunca no meio de uma operação.
+  # Modelo de Actor (RFC-0002 §9): um fiber Async por Task + mailbox. Fase 1
+  # tinha só `cancel`/`user_message`; a Fase 2 completa o enum (`approval`,
+  # `pause`, `resume`, `timeout`, `heartbeat`) e adiciona o primitivo de
+  # SUSPENSÃO cooperativa (`await`). Cancelamento/suspensão só nas fronteiras de
+  # estágio (doc 03 L2) — nunca no meio de uma operação.
   class TaskActor
-    # :user_message é RESERVADO na Fase 1: o enum e o consumo existem, mas
-    # nenhum Command/rota o produz ainda (doc 03 §2). Mantido para o contrato
-    # não mudar na Fase 2.
-    MESSAGES = %i[cancel user_message].freeze
+    # `user_message` segue reservado (sem produtor). `pause`/`resume` (operador,
+    # P2-01), `approval` (human-in-the-loop, P2-02), `timeout`/`heartbeat`
+    # (watchdog/liveness, observação — P2-01 L4).
+    MESSAGES = %i[cancel user_message approval pause resume timeout heartbeat].freeze
 
-    attr_reader :task_id, :pending_user_messages
+    attr_reader :task_id, :pending_user_messages, :heartbeats
 
     def initialize(task_id:, parent: Async::Task.current)
       @task_id = task_id
       @parent = parent
       @mailbox = Async::Queue.new
       @pending_user_messages = []
+      @pending_resolutions = [] # :resume/:approval/:timeout drenados antes do await
+      @pause_requested = false
+      @heartbeats = 0
     end
 
     # Não-bloqueante (doc 03 §5). Mensagem fora do enum é bug do chamador.
@@ -30,29 +35,58 @@ module Harness
       nil
     end
 
-    # Roda o bloco num fiber Async FILHO do parent (estrutura parent→children:
-    # cancelar a task cancela a subárvore, doc 03 §5). Retorna o Async::Task.
+    # Roda o bloco num fiber Async FILHO do parent (doc 03 §5). Retorna o Task.
     def run(&turn_block)
       @async_task = @parent.async { turn_block.call(self) }
     end
 
-    # Drena a mailbox SEM bloquear (fila vazia = retorna). Chamado pelo Executor
-    # só nas fronteiras (cancelamento cooperativo, L2):
-    #   :cancel       -> raise CancelledError (quem mapeia p/ :cancelled é o
-    #                    topo do fiber no Executor, L3 — não aqui)
-    #   :user_message -> acumula em pending_user_messages (sem produtor na Fase 1)
+    # Drena a mailbox SEM bloquear (fronteiras, L2). `:cancel` levanta (o topo do
+    # fiber mapeia :cancelled). `:pause` arma a suspensão (o Executor checa
+    # `pause_requested?`). Resoluções (`:resume`/`:approval`/`:timeout`) que
+    # cheguem aqui — corrida rara antes do `await` — são BUFFERIZADAS, nunca
+    # perdidas.
     def drain!
       until @mailbox.empty?
-        message, data = @mailbox.dequeue
-        case message
-        when :cancel then raise CancelledError, "task #{@task_id} cancelada"
-        when :user_message then @pending_user_messages << data
-        end
+        route_boundary(*@mailbox.dequeue)
       end
       nil
     end
 
+    # O operador pediu pausa? (consumido pelo Executor; `await` limpa o flag).
+    def pause_requested? = @pause_requested
+
+    # BLOQUEIA o fiber do turno até uma RESOLUÇÃO (cede o reactor — sem spin).
+    # Usado pelo Executor em :paused (espera :resume) e pelo ToolEnvelope em
+    # :waiting (espera :approval). Retorna [:resume, nil] ou [:approval, data].
+    # `:cancel` -> CancelledError; `:timeout` -> TimeoutError.
+    def await(reason:)
+      @pause_requested = false # a pausa/espera está sendo tratada agora
+      loop do
+        message, data = @pending_resolutions.shift || @mailbox.dequeue
+        case message
+        when :cancel  then raise CancelledError, "task #{@task_id} cancelada"
+        when :timeout then raise Harness::TimeoutError.new("espera (#{reason}) excedeu", stage: data || reason)
+        when :resume, :approval then return [message, data]
+        else route_boundary(message, data) # :pause/:heartbeat/:user_message absorvidos
+        end
+      end
+    end
+
     # specs/boot aguardam o término do fiber.
     def wait = @async_task&.wait
+
+    private
+
+    # Roteamento das mensagens de fronteira (não-resolução). Resoluções que caem
+    # aqui (fora de um `await`) vão para o buffer.
+    def route_boundary(message, data)
+      case message
+      when :cancel then raise CancelledError, "task #{@task_id} cancelada"
+      when :pause then @pause_requested = true
+      when :user_message then @pending_user_messages << data
+      when :heartbeat then @heartbeats += 1
+      when :resume, :approval, :timeout then @pending_resolutions << [message, data]
+      end
+    end
   end
 end
