@@ -152,6 +152,12 @@ module Harness
       turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
 
       Async::Task.current.with_timeout(turn_timeout) do
+        # par :task (RFC-0002 §6): envolve os estágios do turno. before_task pode
+        # reescrever o TurnState antes do estágio 2; after_task roda após o 9.
+        # O block-param `state` sombreia o externo (usa o TurnState possivelmente
+        # reescrito pelo before_task). Subject == resultado == TurnState na Fase 1
+        # (o content da Response vive no evento :done; ver Notes da task).
+        @hooks.around(:task, state) do |state|
         # estágio 2: Context. O par de hooks :prompt é envolvido DENTRO do
         # ContextBuilder#call (task 16) — NÃO envolver aqui (double-wrap
         # dispararia os hooks 2x). O Hooks é a MESMA instância injetada no
@@ -169,10 +175,13 @@ module Harness
         state.allowed_skills = resolution.allowed_skills
         actor.drain!
 
-        # estágio 4: Middleware (pode curto-circuitar setando halt_reason)
+        # estágio 4: Middleware envolve os estágios 5-9 (doc 05 §4). O elo que
+        # curto-circuita NÃO chama o terminal e seta state.halt_reason.
+        terminal_ran = false
         @middleware.call(state) do |st|
           raise Harness::Error, "turno interrompido: #{st.halt_reason}" if st.halt_reason
 
+          terminal_ran = true
           # estágio 5: montar chat + checar mailbox
           actor.drain!
           st.chat = create_chat(profile)
@@ -196,8 +205,16 @@ module Harness
           emit(:task_completed, { task_id: task.id, content: response.content }, task: task)
         end
 
-        # halt sem executar o bloco terminal também é falha (doc 05 §4)
-        raise Harness::Error, "turno interrompido: #{state.halt_reason}" if state.halt_reason
+        # halt (com motivo) ou curto-circuito sem terminar (violação de contrato,
+        # edge case 4) -> falha do turno via captura única (doc 05 §3-§4).
+        if state.halt_reason
+          raise Harness::Error, "turno interrompido: #{state.halt_reason}"
+        elsif !terminal_ran
+          raise Harness::Error, "middleware curto-circuitou sem halt_reason"
+        end
+
+          state # subject do par :task (after_task o recebe; o caller descarta)
+        end
       end
     rescue Async::TimeoutError
       raise Harness::TimeoutError.new("turno excedeu #{turn_timeout}s", stage: :turn)
@@ -327,11 +344,22 @@ module Harness
       chat.before_tool_call do |tool_call|
         # correlação call<->decorator (side-effects/skip, task 13) — 1ª linha.
         state.current_tool_call = tool_call
+        # guard-rail max_tool_calls (doc 03 §6): fica INLINE (não como hook
+        # registrado) de propósito — registrar por turno na instância de Hooks
+        # COMPARTILHADA acumularia contadores entre turnos (o Hooks não tem
+        # unregister). O contador é o guard de sistema na fronteira before_tool;
+        # os hooks :tool externos (plugins) rodam via run_before abaixo.
         tool_calls += 1
         if tool_calls > max_tool_calls
           raise Harness::TimeoutError.new("limite de tool calls excedido (#{max_tool_calls})",
                                           stage: :tool_limit)
         end
+
+        # par :tool (task 19): os callbacks do RubyLLM são ADITIVOS — o subject
+        # alterado alimenta hooks seguintes e os eventos, mas NÃO reescreve a
+        # call que o modelo executa (isso exigiria dirigir o loop — RubyLLM
+        # First). Exceção de hook aqui aborta o turno (mecanismo do guard-rail).
+        tool_call = @hooks.run_before(:tool, tool_call)
 
         last_tool_name = tool_call.name.to_s
         if last_tool_name == "load_skill"
@@ -343,6 +371,7 @@ module Harness
       end
 
       chat.after_tool_result do |result|
+        result = @hooks.run_after(:tool, result)
         emit(:tool_result, { name: last_tool_name, result: result.to_s }, task: state.task)
       end
     end

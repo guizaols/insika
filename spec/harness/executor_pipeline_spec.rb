@@ -86,16 +86,16 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
   end
 
   describe "hooks around" do
-    it "o Executor envolve só :agent (o :prompt é envolvido dentro do Builder — task 16)" do
+    it "o Executor envolve :task (externo) e :agent (estágio 6); :prompt fica no Builder" do
       session_store.create(id: "s1")
       hooks = NullHooks.new
       executor = build_executor(hooks: hooks)
 
       run_turn(executor, make_task)
 
-      # FakeContextBuilder não usa hooks; o :prompt real é do ContextBuilder.
-      # O Executor NÃO deve envolver :prompt (senão double-wrap com o Builder).
-      expect(hooks.pairs).to eq(%i[agent])
+      # :task é o mais externo, :agent no estágio 6. :prompt é do ContextBuilder
+      # (não do Executor — evita double-wrap). FakeContextBuilder não usa hooks.
+      expect(hooks.pairs).to eq(%i[task agent])
     end
   end
 
@@ -131,6 +131,55 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
       expect(task.executions.last.error["message"]).to include("rate limit")
+    end
+  end
+
+  describe "MiddlewareStack real (task 18)" do
+    it "elo que curto-circuita com halt_reason -> task :failed, chat nunca construído" do
+      session_store.create(id: "s1")
+      halting = Class.new(Harness::Middleware) do
+        def call(state, &_nxt) = (state.halt_reason = "rate limit")
+      end.new
+      stack = Harness::MiddlewareStack.new([halting])
+      executor = build_executor(middleware: stack)
+      expect(executor).not_to receive(:create_chat)
+
+      Sync do
+        executor.spawn(make_task, profile: profile)
+        executor.instance_variable_get(:@running)["t"]&.wait
+      end
+
+      task = task_store.find("t")
+      expect(task.status).to eq(:failed)
+      expect(task.executions.last.error["message"]).to include("rate limit")
+    end
+
+    it "elo que curto-circuita SEM halt_reason (edge case 4) -> falha genérica" do
+      session_store.create(id: "s1")
+      silent = Class.new(Harness::Middleware) do
+        def call(_state, &_nxt) = nil # não chama nxt, não seta halt_reason
+      end.new
+      executor = build_executor(middleware: Harness::MiddlewareStack.new([silent]))
+
+      expect do
+        Sync do
+          executor.spawn(make_task, profile: profile)
+          executor.instance_variable_get(:@running)["t"]&.wait
+        end
+      end.not_to raise_error
+
+      task = task_store.find("t")
+      expect(task.status).to eq(:failed)
+      expect(task.executions.last.error["message"]).to include("sem halt_reason")
+    end
+
+    it "stack vazia real: turno completa normalmente" do
+      session_store.create(id: "s1")
+      executor = build_executor(middleware: Harness::MiddlewareStack.new([]))
+
+      run_turn(executor, make_task)
+
+      expect(task_store.find("t").status).to eq(:completed)
     end
   end
 
