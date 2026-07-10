@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket; origem: pacote de handoff)
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs [01](../01-persistence-stores.md)–[07](../07-service-platform.md)
 > **Generated:** 2026-07-06
-> **Progress:** 16/26 tasks complete
+> **Progress:** 17/26 tasks complete
 
 ---
 
@@ -27,7 +27,7 @@
 | 14 | `ContextFragment`/`ContextProvider`/`Builder` (fan-out Async, orçamento global, pinned, evicção) | [task-14.md](./task-14.md) | ✅ DONE | High | 04 §2-§4 |
 | 15 | Providers `Request`, `Prompt` (absorve SystemPrompt/SOUL.md + prompt_refs), `Skill`, `Session` (teto 79) | [task-15.md](./task-15.md) | ✅ DONE | Med | 04 §2, §8 |
 | 16 | Classe `Hooks` (mecanismo around) + par `before/after_prompt` envolvendo o Builder | [task-16.md](./task-16.md) | ✅ DONE | Low | 05 §2, 04 §4 |
-| 17 | `Policy::Engine` + builtins `Tool/Skill/WorkflowAllowlist` (absorve `ToolRegistry#resolve`, fail-closed) | [task-17.md](./task-17.md) | ⬜ TODO | Med | 05 §2-§4 |
+| 17 | `Policy::Engine` + builtins `Tool/Skill/WorkflowAllowlist` (absorve `ToolRegistry#resolve`, fail-closed) | [task-17.md](./task-17.md) | ✅ DONE | Med | 05 §2-§4 |
 | 18 | `MiddlewareStack` rack-like (`TurnState` mutável, `halt_reason`) | [task-18.md](./task-18.md) | ⬜ TODO | Low | 05 §2-§3 |
 | 19 | Pares de hook restantes (`before/after_task`, `_agent`, `_tool`) integrados ao Executor | [task-19.md](./task-19.md) | ⬜ TODO | Med | 05 §2, 03 §4 |
 | 20 | `Registry` genérico + Workflow/Policy Registries + `PromptCatalog` (PROMPT.md) | [task-20.md](./task-20.md) | ⬜ TODO | Med | 06 §2 |

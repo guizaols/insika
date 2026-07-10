@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [05-policy-middleware-hooks.md](../05-policy-middleware-hooks.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Med
 
 ---
@@ -237,3 +237,19 @@ Se a Etapa C já tiver criado o composition root com um duplo de `policy_engine`
 - **Lacuna observada:** o default de `profile.policies` (doc 05 §8 / D6) é `[ToolAllowlist, SkillAllowlist]` — a `WorkflowAllowlist` NÃO está no default. Um perfil que declare `workflows_allow` sem incluir `workflow_allowlist` em `policies` não terá enforcement. O wiring (task 20/21/23) deve incluí-la para agentes com workflows; registrado aqui para não passar batido.
 - O formato exato dos elementos de `profile.policies` (nomes String vs classes) foi definido na task 1/D6 como **nomes no Policy Registry** — confirme no código real de `agent_profile.rb` ao implementar.
 - A integração do Engine no estágio 3 do Executor é exercitada de verdade na task 23 (`TriggerWorkflow`) e no wiring; aqui basta o contrato standalone + a substituição do duplo se o Executor já existir.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 34 novos (12 engine + 17 policy/builtins + 5 tool_registry), 442 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/policy/policy.rb`, `lib/harness/policy/engine.rb`, `lib/harness/tool_registry.rb`, `spec/harness/policy/{engine,policy}_spec.rb`, `spec/harness/tool_registry_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (requires)
+- **Observações / decisões tomadas:**
+  - `Engine#decide` agrega por interseção de allows não-nil / união de denies (L3); primeiro deny emite `:policy_denied` + `raise PolicyDenied` e interrompe (audit registra até ali). **Fail-closed (L2):** crash de policy **e** nome não registrado viram `deny` ("policy crash: <classe>") — interpretação local registrada nas Notes.
+  - `ToolAllowlist` reproduz o `ToolRegistry#resolve` da Fase 0 (optional sem opt-in → deny; `tools_deny` → deny; allow D6). **Divergência intencional:** `tools_allow: []` = ∅ (D6), enquanto a Fase 0 ignorava allow vazia — marcada nos testes.
+  - `ToolRegistry#resolve` mantido como **atalho deprecated** (warning 1×/processo) que delega ao Engine com a `ToolAllowlist` forçada (`profile.with(policies: ["tool_allowlist"])`) e devolve instâncias — retorno compatível com a Fase 0.
+  - Sem `Async`, sem IO em `policy/` (puras). Registry é duck-type `fetch(name)` (Hash nos testes; `Registry` real na task 20).
+  - **Seam registrado:** o `Executor::PolicyRequest` (Struct do stub, task 12) difere do `Policy::PolicyRequest` (Data do doc 05). A troca do `NullPolicyEngine` pelo Engine real e o alinhamento do request são do wiring (tasks 20/23/26). `WorkflowAllowlist` não está no default de `profile.policies` — o wiring deve incluí-la para agentes com workflows (lacuna anotada).
