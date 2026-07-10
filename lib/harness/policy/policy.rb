@@ -13,16 +13,22 @@ module Harness
     # policy" (não entra na interseção); [] => conjunto vazio; deny_* é sempre
     # lista (união). verdict :deny nega o TURNO inteiro. Tudo Data imutável — a
     # pureza da policy é estrutural (doc 05 §3).
+    # `requires_approval` (P2-02): nomes de tools que exigem aprovação humana —
+    # NÃO nega nem permite; o gate real é no ToolEnvelope (estágio 6). Default [].
     Decision = Data.define(:allow_tools, :deny_tools, :allow_skills, :deny_skills,
-                           :verdict, :reason) do
-      def self.allow(allow_tools: nil, deny_tools: [], allow_skills: nil, deny_skills: [])
+                           :requires_approval, :verdict, :reason) do
+      def self.allow(allow_tools: nil, deny_tools: [], allow_skills: nil, deny_skills: [],
+                     requires_approval: [])
         new(allow_tools: allow_tools, deny_tools: deny_tools, allow_skills: allow_skills,
-            deny_skills: deny_skills, verdict: :allow, reason: nil)
+            deny_skills: deny_skills, requires_approval: requires_approval,
+            verdict: :allow, reason: nil)
       end
 
-      def self.deny(reason:, allow_tools: nil, deny_tools: [], allow_skills: nil, deny_skills: [])
+      def self.deny(reason:, allow_tools: nil, deny_tools: [], allow_skills: nil, deny_skills: [],
+                    requires_approval: [])
         new(allow_tools: allow_tools, deny_tools: deny_tools, allow_skills: allow_skills,
-            deny_skills: deny_skills, verdict: :deny, reason: reason)
+            deny_skills: deny_skills, requires_approval: requires_approval,
+            verdict: :deny, reason: reason)
       end
     end
 
@@ -77,6 +83,17 @@ module Harness
           return Decision.allow if allow.nil? || Array(allow).map(&:to_s).include?(name)
 
           Decision.deny(reason: "workflow '#{name}' fora da allowlist do agente '#{request.profile.id}'")
+        end
+      end
+
+      # Marca tools que exigem aprovação humana (P2-02, D3). Não nega/permite —
+      # anexa `requires_approval` à Resolution; o gate é no ToolEnvelope (estágio
+      # 6), onde a call ocorre. Semântica allowlist: nil = nenhuma; [names] =
+      # essas exigem aprovação. Pura/síncrona (doc 05 L1).
+      class ApprovalRequired < Base
+        def decide(request)
+          names = request.profile.approvals_required
+          Decision.allow(requires_approval: names.nil? ? [] : Array(names).map(&:to_s))
         end
       end
     end

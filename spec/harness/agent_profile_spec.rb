@@ -39,10 +39,11 @@ RSpec.describe Harness::AgentProfile do
       expect(profile.limits).to eq(described_class::DEFAULT_LIMITS)
     end
 
-    it "DEFAULT_LIMITS confere com D6" do
+    it "DEFAULT_LIMITS confere com D6 (+ approval_timeout da Fase 2)" do
       expect(described_class::DEFAULT_LIMITS).to eq(
         turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
-        context_budget: 8_000, max_turns: 25, max_tool_calls: 50
+        context_budget: 8_000, max_turns: 25, max_tool_calls: 50,
+        approval_timeout: 3_600
       )
     end
 

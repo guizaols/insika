@@ -39,6 +39,18 @@ module Harness
       call_id = correlation_id
       return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
 
+      # Gate de aprovação (P2-02): tool marcada `approval` suspende o turno em
+      # :waiting até o operador resolver. Delega ao coordenador (o Executor), que
+      # cria/consulta o PendingAction e bloqueia via a mailbox. Rejeição volta ao
+      # MODELO como erro (turno segue — L5), não derruba o turno. CancelledError/
+      # TimeoutError da espera propagam (não são ToolTimeout).
+      if approval_required?
+        decision = @state.approval_coordinator.request_approval(
+          task: @state.task, turn: @state.turn, tool: __getobj__.name, args: args, actor: @state.actor
+        )
+        return { error: "rejected by operator" } unless decision.to_s == "approved"
+      end
+
       result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
       record_side_effect!(call_id) if side_effect?
       result
@@ -47,6 +59,12 @@ module Harness
     end
 
     private
+
+    # A tool corrente exige aprovação? (nomes vêm da Resolution via state).
+    def approval_required?
+      @state.respond_to?(:requires_approval) &&
+        Array(@state.requires_approval).include?(__getobj__.name.to_s)
+    end
 
     # Correlação da call: o id do provider (chat RubyLLM, via before_tool_call)
     # quando existe; senão o NOME da tool — o caso do workflow (doc 03 §4.1), que

@@ -36,6 +36,7 @@ module Harness
     SESSION_STORE    = Harness::SessionStore.new(store: BACKEND)
     TASK_STORE       = Harness::TaskStore.new(store: BACKEND)
     CHECKPOINT_STORE = Harness::CheckpointStore.new(store: BACKEND)
+    PENDING_ACTION_STORE = Harness::PendingActionStore.new(store: BACKEND)
 
     # --- Event Stream + registries/catalogs (doc 03/06) ----------------------
     EVENT_STREAM = Harness::EventStream.new
@@ -49,6 +50,7 @@ module Harness
     POLICY_REGISTRY.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
     POLICY_REGISTRY.register(:skill_allowlist, Harness::Policy::Builtin::SkillAllowlist)
     POLICY_REGISTRY.register(:workflow_allowlist, Harness::Policy::Builtin::WorkflowAllowlist)
+    POLICY_REGISTRY.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
 
     # Catálogos: roots de skills/prompts do workspace (vazios se ausentes; a
     # task 26 acrescenta os dirs dos plugins pela precedência do doc 06 §4).
@@ -85,7 +87,7 @@ module Harness
       tool_registry: REGISTRY, skill_catalog: CATALOG, profiles: PROFILES,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       checkpoint_store: CHECKPOINT_STORE, event_stream: EVENT_STREAM,
-      workflow_registry: WORKFLOW_REGISTRY
+      workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE
     )
 
     # --- Command Bus + handlers (doc 03 §2-§3) -------------------------------
@@ -97,6 +99,9 @@ module Harness
                  Harness::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:pause_task,
                  Harness::Commands::PauseTask.new(task_store: TASK_STORE, executor: EXECUTOR))
+    BUS.register(:approve_action,
+                 Harness::Commands::ApproveAction.new(pending_action_store: PENDING_ACTION_STORE,
+                                                      executor: EXECUTOR, event_stream: EVENT_STREAM))
     BUS.register(:send_message,
                  Harness::Commands::SendMessage.new(profiles: PROFILES,
                                                     session_store: SESSION_STORE,
