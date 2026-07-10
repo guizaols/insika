@@ -76,6 +76,17 @@ module Harness
       !actor.nil?
     end
 
+    # Ponto de acesso do ApproveAction (P2 task 8): ACORDA o turno suspenso em
+    # :waiting postando :approval no fiber vivo. A decisão já foi gravada no store
+    # pelo handler ANTES deste post (request_approval a relê do store). No-op se
+    # não há fiber vivo (processo caiu) — o recovery reexecuta e usa a decisão
+    # durável. Retorna se havia fiber.
+    def approve(task_id)
+      actor = @running[task_id]
+      actor&.post(:approval)
+      !actor.nil?
+    end
+
     # Gate de aprovação (P2-02), chamado pelo ToolEnvelope no estágio 6 quando a
     # tool exige aprovação. Cria/consulta o PendingAction (id determinístico por
     # task+turn+tool — correlação por-tool como no side-effect da Fase 1),
