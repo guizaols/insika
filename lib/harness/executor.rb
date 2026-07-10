@@ -152,9 +152,12 @@ module Harness
       turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
 
       Async::Task.current.with_timeout(turn_timeout) do
-        # estágio 2: Context
+        # estágio 2: Context. O par de hooks :prompt é envolvido DENTRO do
+        # ContextBuilder#call (task 16) — NÃO envolver aqui (double-wrap
+        # dispararia os hooks 2x). O Hooks é a MESMA instância injetada no
+        # Builder e aqui (para :agent/:task/:tool).
         request = build_context_request(task, profile, state, resume_from)
-        state.context = @hooks.around(:prompt, request) { |req| @context_builder.call(req) }
+        state.context = @context_builder.call(request)
         actor.drain!
 
         # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)

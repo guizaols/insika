@@ -86,14 +86,16 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
   end
 
   describe "hooks around" do
-    it "envolve prompt (estágio 2) e agent (estágio 6), nessa ordem" do
+    it "o Executor envolve só :agent (o :prompt é envolvido dentro do Builder — task 16)" do
       session_store.create(id: "s1")
       hooks = NullHooks.new
       executor = build_executor(hooks: hooks)
 
       run_turn(executor, make_task)
 
-      expect(hooks.pairs).to eq(%i[prompt agent])
+      # FakeContextBuilder não usa hooks; o :prompt real é do ContextBuilder.
+      # O Executor NÃO deve envolver :prompt (senão double-wrap com o Builder).
+      expect(hooks.pairs).to eq(%i[agent])
     end
   end
 

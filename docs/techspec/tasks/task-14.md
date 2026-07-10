@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [04-context-builder-providers.md](../04-context-builder-providers.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** High
 
 ---
@@ -361,3 +361,21 @@ Não aplicável nesta task — a integração com providers reais é a task 15 e
 - **`meta` do `:provider_warning`:** o catálogo D5 pede `meta { task_id:, session_id:, seq:, at: }`, mas o Builder não conhece `task_id`/`seq` (correlação é do Executor). Emitir com o que houver (`at:`, e `session_id` se `request.session`); `Event#to_h` já faz `meta.compact`. Lacuna registrada — alinhar com a task 12 quando o Executor passar a correlacionar.
 - **Acesso a `limits`:** D6 declara `limits` como Hash com defaults; o doc 04 usa notação de ponto por concisão. Seguir o acesso real definido na task 1.
 - **Desempate por índice de produção** (evicção e montagem): não está literal no doc 04, mas é a única forma de tornar a ordenação/corte totalmente determinísticos em empate de `priority`+`source` (exigência handoff §6) e de honrar L7 ("descarta as mais antigas primeiro" entre histories no teto 79). É detalhe de implementação, não decisão arquitetural nova.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 24 novos (3 fragment + 21 builder, incl. prova de fan-out concorrente), 367 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/context/fragment.rb`, `lib/harness/context/provider.rb`, `lib/harness/context/builder.rb`, `spec/harness/context/fragment_spec.rb`, `spec/harness/context/builder_spec.rb`
+- **Arquivos modificados:** `lib/harness.rb` (requires)
+- **Observações / decisões tomadas:**
+  - `ContextFragment` é tipo COMPARTILHADO (`Harness::`, overview §2), criado agora (estava pendente). `ContextRequest` acompanha `provider.rb`, `ContextPackage` acompanha `builder.rb`.
+  - Fan-out com **barrier** (L6): fibers filhos do fiber corrente, `with_timeout` por provider. `Async::TimeoutError` é `StandardError` (degrada); `Async::Stop` NÃO é (cancelamento propaga) — por isso o `rescue StandardError` é suficiente e correto.
+  - Evicção global priority ASC com desempate por índice de produção; `pinned` incortável; `ContextError` (com `provider: "ContextBuilder"`) se só pinned excede. Um `:provider_warning` agregado por corte.
+  - Montagem determinística: system por `[-priority, source, índice]`; history em ordem de produção (priority só corta, não reordena); tool_context concatenado ou `nil`.
+  - `hooks:` armazenado e **dormente** (task 16).
+  - **Seam de integração registrado (não bloqueia):** o `Executor` (task 12) hoje monta um `Executor::ContextRequest` (Struct própria, com `task`/`history`) para o `FakeContextBuilder` dos testes, enquanto o Builder real consome `Harness::ContextRequest` (session/message/profile/tenant/vars/checkpoint). São constantes distintas (a aninhada não colide). A reconciliação — o Executor produzir `Harness::ContextRequest` e o histórico one-shot virar um provider (task 15) — é da integração (tasks 15/26), conforme o próprio plano.
+  - `:provider_warning` emite `meta` com `session_id`/`at` (o Builder não conhece `task_id`/`seq`) — lacuna registrada para a correlação do Executor (task 12).
