@@ -96,6 +96,17 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       expect(cmd.type).to eq(:send_message)
       expect(cmd.payload).to eq(agent: "sales", message: "oi", session_id: "s1")
     end
+
+    it "audit NÃO vaza o conteúdo da mensagem (só metadados) — /v1/events é sem auth" do
+      events = ServerEventStreamDouble.new
+      app = build_app(event_stream: events)
+      post(app, "/admin/chat", form: "agent=sales&message=segredo&session_id=s1")
+
+      op = events.emitted.find { |e| e.type == :operator_action }
+      expect(op.data[:target]).to eq(agent: "sales", session_id: "s1")
+      expect(op.data[:target]).not_to have_key(:message)
+      expect(op.meta[:session_id]).to eq("s1") # carimbado p/ correlação
+    end
   end
 
   describe "erro do Command" do

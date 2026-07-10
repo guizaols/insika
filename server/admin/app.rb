@@ -88,16 +88,29 @@ module Harness
         # (Validation/NotFound) vira turbo_stream/HTML de erro (não status HTTP —
         # o /admin é HTML).
         def act(req, type, payload)
-          operator = req.get_header("HTTP_X_OPERATOR") || "operator"
           @event_stream.emit(Harness::Event.new(
                                type: :operator_action,
-                               data: { action: type.to_s, target: payload, operator: operator },
-                               meta: { at: Time.now.utc.iso8601 }
+                               # target RESUMIDO: nunca `message`/`args` — o audit
+                               # vai ao EventStream compartilhado (que /v1/events
+                               # expõe sem auth), então não vaza conteúdo de
+                               # usuário. Só metadados de accountability.
+                               data: { action: type.to_s, target: audit_target(payload),
+                                       operator: operator_of(req) },
+                               meta: { task_id: payload[:task_id], session_id: payload[:session_id],
+                                       at: Time.now.utc.iso8601 }
                              ))
           @command_bus.dispatch(Harness::Command.build(type, payload, transport: :admin))
           respond_write(req, ok: true, action: type)
         rescue Harness::ValidationError, Harness::NotFoundError => e
           respond_write(req, ok: false, action: type, error: e.message)
+        end
+
+        def operator_of(req) = req.get_header("HTTP_X_OPERATOR") || "operator"
+
+        # Só metadados (task/pending/session/agent/decision) — NUNCA o conteúdo
+        # (message/args), que vazaria a consumidores de /v1/events.
+        def audit_target(payload)
+          payload.slice(:task_id, :pending_id, :session_id, :agent, :decision)
         end
 
         def respond_write(req, ok:, action:, error: nil)
@@ -107,8 +120,11 @@ module Harness
                    %(<div id="flash">#{CGI.escapeHTML(flash)}</div></template></turbo-stream>)
             [ok ? 200 : 422, { "content-type" => "text/vnd.turbo-stream.html; charset=utf-8" }.merge(security_headers), [body]]
           else
-            # sem Turbo: redireciona de volta (degradação graciosa — form normal)
-            [303, { "location" => "/admin/tasks" }.merge(security_headers), []]
+            # sem Turbo: redireciona de volta (degradação graciosa — form normal).
+            # Volta ao referer (a página de origem) quando presente.
+            back = req.get_header("HTTP_REFERER")
+            back = "/admin/tasks" if back.nil? || back.empty?
+            [303, { "location" => back }.merge(security_headers), []]
           end
         end
 
@@ -117,8 +133,9 @@ module Harness
 
         def approval_payload(req, pending_id)
           form = Rack::Utils.parse_query(req.body&.read.to_s)
+          # mesmo operador do audit (D6): resolved_by no store bate com o :operator_action.
           { pending_id: pending_id, decision: form["decision"] || "approved",
-            operator: req.get_header("HTTP_X_OPERATOR") }
+            operator: operator_of(req) }
         end
 
         def chat_payload(req)
