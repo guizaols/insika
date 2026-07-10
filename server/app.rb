@@ -1,0 +1,284 @@
+# frozen_string_literal: true
+
+require "json"
+require "rack"
+require "async"
+require_relative "sse_body"
+
+module Harness
+  module Server
+    # Rack app (evolui `app/server.rb` da Fase 0). RFC-0001 §4: transportes SÓ
+    # traduzem requisições em Commands — o servidor não contém lógica de
+    # negócio. Ele parseia JSON, monta `Command.build(...)`, despacha no
+    # CommandBus e projeta o Event Stream em SSE. Leituras NÃO são Commands: são
+    # reads diretos dos stores (D3, Emenda 1 da RFC-0001 §10).
+    #
+    # Regra constitucional AUDITÁVEL (doc 07 §4): `server/` não importa Executor,
+    # métodos de ESCRITA de store nem RubyLLM. Requires: json, rack, async e os
+    # tipos do núcleo (Command/Event/erros) já carregados pelo composition root.
+    class App
+      SSE_HEADERS = {
+        "content-type" => "text/event-stream",
+        "cache-control" => "no-cache",
+        "connection" => "keep-alive"
+      }.freeze
+
+      # Eventos terminais de um turno (fecham a subscription da task no
+      # transporte). :error é mantido por compat com o consumidor da Fase 0.
+      TERMINAL_EVENTS = %i[done task_failed task_cancelled error].freeze
+      private_constant :TERMINAL_EVENTS
+
+      def initialize(command_bus:, event_stream:, session_store:, task_store:,
+                     catalogs:, registries:, config:)
+        @command_bus = command_bus
+        @event_stream = event_stream
+        @session_store = session_store
+        @task_store = task_store
+        @catalogs = catalogs       # guardado p/ o /admin (task 25)
+        @registries = registries   # idem
+        @config = config
+        @heartbeat = config.fetch(:heartbeat, 15)
+        @sync_timeout = config.fetch(:sync_timeout, 10) # doc 07 §6: controle síncrono
+      end
+
+      # Roteamento explícito, SEM framework (L1): ~10 rotas num `case`. Um único
+      # `rescue` centraliza o mapeamento erro->status (doc 07 §3/§6). Só erros
+      # SÍNCRONOS (antes do fiber) viram status HTTP; falha da task viaja como
+      # evento no stream e fica em GET /v1/tasks/:id.
+      def call(env)
+        req = Rack::Request.new(env)
+        route(req)
+      rescue JSON::ParserError => e
+        error_response(400, e) # JSON malformado, antes de qualquer dispatch
+      rescue Harness::ValidationError => e
+        error_response(422, e)
+      rescue Harness::NotFoundError => e
+        error_response(404, e)
+      rescue Async::TimeoutError => e
+        error_response(504, e) # request síncrono de controle estourou o teto
+      rescue StandardError => e
+        error_response(500, e)
+      end
+
+      private
+
+      def route(req)
+        segments = req.path_info.split("/").reject(&:empty?)
+
+        case [req.request_method, segments]
+        in ["POST", ["v1", "commands", type]]
+          handle_command(req, type)
+        in ["POST", ["v1", "sessions"]]
+          handle_create_session(req)
+        in ["POST", ["v1", "messages"]]
+          handle_send_message(req)
+        in ["GET", ["v1", "sessions", id]]
+          handle_read_session(id)
+        in ["GET", ["v1", "tasks", id]]
+          handle_read_task(id)
+        in ["GET", ["v1", "events"]]
+          handle_events(req)
+        in ["POST", ["agent", "messages"]]
+          handle_legacy(req)
+        else
+          not_found # inclui /admin* (404 até a task 25) e método/rota errados
+        end
+      end
+
+      # POST /v1/commands/:type (L2) — genérica: todo Command novo já nasce com
+      # transporte. Distinção controle vs turno é PELO SHAPE do resultado (o
+      # transporte não conhece semântica — D3/L2).
+      def handle_command(req, type)
+        command = Harness::Command.build(type.to_sym, parse_body(req), transport: :http)
+        command_response(dispatch_with_timeout(command))
+      end
+
+      # POST /v1/sessions — açúcar p/ create_session; 201 {session}.
+      def handle_create_session(req)
+        body = parse_body(req)
+        command = Harness::Command.build(:create_session, { vars: body[:vars] || {} },
+                                         transport: :http)
+        session = dispatch_with_timeout(command)
+        json_response(201, { session: to_h(session) })
+      end
+
+      # POST /v1/messages — açúcar p/ send_message; ?stream ausente/"true" -> SSE,
+      # "false" -> 200 JSON agregado no evento terminal.
+      def handle_send_message(req)
+        stream = req.GET["stream"] != "false"
+        message_flow(parse_body(req), stream: stream)
+      end
+
+      # GET /v1/sessions/:id — leitura direta (não é Command — D3).
+      def handle_read_session(id)
+        session = @session_store.find(id)
+        raise Harness::NotFoundError, "sessão inexistente: #{id}" if session.nil?
+
+        json_response(200, { session: to_h(session) })
+      end
+
+      # GET /v1/tasks/:id — leitura direta. É por aqui que o consumidor observa
+      # PolicyDenied/falhas pós-202 (doc 07 §6): o estado terminal fica no Task
+      # Store; nada se perde se o cliente desconectou.
+      def handle_read_task(id)
+        task = @task_store.find(id)
+        raise Harness::NotFoundError, "task inexistente: #{id}" if task.nil?
+
+        json_response(200, { task: to_h(task) })
+      end
+
+      # GET /v1/events?task_id=&session_id= — aqui os filtros SÃO conhecidos.
+      # Stream CONTÍNUO (rota de reconexão pós-queda, doc 07 §6): não fecha em
+      # evento terminal — encerra por desconexão do cliente ou cap.
+      def handle_events(req)
+        subscription = @event_stream.subscribe(task_id: req.GET["task_id"],
+                                                session_id: req.GET["session_id"])
+        sse_response(subscription)
+      end
+
+      # POST /agent/messages — LEGADO Fase 0, byte-compatível. Traduz para
+      # send_message (o Runner não existe mais — doc 03 §8). `history` presente
+      # -> nada é persistido (paridade D2). Default de agente "sales".
+      def handle_legacy(req)
+        body = parse_body(req)
+        payload = {
+          agent: body[:agent] || "sales",
+          message: body[:message],
+          history: body[:history] || []
+        }
+        message_flow(payload, stream: true)
+      end
+
+      # --- Fluxo de turno (SSE ou agregado) ---------------------------------
+
+      # Assine ANTES de despachar (doc 07 §4): sob Async o fiber da task pode
+      # rodar eagerly e emitir :task_started antes de o dispatch retornar. O
+      # task_id só existe DEPOIS do dispatch -> assina SEM filtro e filtra no
+      # transporte (TaskFilter). Erro SÍNCRONO do handler (Validation/NotFound)
+      # acontece aqui, ANTES do SSE abrir -> fecha a subscription e propaga p/ o
+      # rescue de #call (vira status HTTP).
+      def message_flow(payload, stream:)
+        command = Harness::Command.build(:send_message, payload, transport: :http)
+        subscription = @event_stream.subscribe
+        result =
+          begin
+            @command_bus.dispatch(command)
+          rescue StandardError
+            subscription.close
+            raise
+          end
+
+        task_id = result[:task_id] || result["task_id"]
+        filtered = TaskFilter.new(subscription, task_id)
+        stream ? sse_response(filtered) : aggregate_response(filtered, task_id)
+      end
+
+      # stream=false (doc 07 §3): agrega iterando a subscription filtrada no
+      # próprio fiber da request. Acumula deltas de :content; responde no
+      # terminal. O shape com `error:` espelha o data do :task_failed (menor
+      # extensão coerente — o estado também está em GET /v1/tasks/:id).
+      def aggregate_response(subscription, task_id)
+        content = +""
+        events = []
+        failure = nil
+
+        subscription.each do |event|
+          events << event.to_h
+          case event.type
+          when :content      then content << event.data[:delta].to_s
+          when :task_failed  then failure = event.data
+          end
+        end
+
+        if failure
+          json_response(200, { task_id: task_id, events: events,
+                               error: { class: failure[:error], message: failure[:message] } })
+        else
+          json_response(200, { content: content, task_id: task_id, events: events })
+        end
+      end
+
+      def sse_response(subscription)
+        [200, SSE_HEADERS.dup, SSEBody.new(subscription: subscription, heartbeat: @heartbeat)]
+      end
+
+      # --- Dispatch e serialização -----------------------------------------
+
+      # Commands de controle podem estourar 10s -> 504 (doc 07 §6). Para
+      # Commands de turno o dispatch retorna imediato (o turno vive no fiber) —
+      # o timeout é inócuo. NUNCA Timeout.timeout da stdlib (D4). Sem reactor
+      # corrente (teste de controle puro), despacha direto.
+      def dispatch_with_timeout(command)
+        task = Async::Task.current?
+        return @command_bus.dispatch(command) if task.nil?
+
+        task.with_timeout(@sync_timeout) { @command_bus.dispatch(command) }
+      end
+
+      # Turno -> {task_id:} (doc 03 §2) -> 202. Qualquer outro shape (controle:
+      # Session/Task, que são Data) -> 200 com to_h serializado.
+      def command_response(result)
+        if turn_result?(result)
+          json_response(202, { task_id: result[:task_id] || result["task_id"] })
+        else
+          json_response(200, to_h(result))
+        end
+      end
+
+      def turn_result?(result)
+        result.is_a?(Hash) && (result.key?(:task_id) || result.key?("task_id"))
+      end
+
+      # Body vazio ou sem content-type -> {} (doc 07 §4: transporte valida só
+      # JSON bem-formado; payload é do handler). NÃO usa req.params (consumiria
+      # o body como form) — lê o corpo cru.
+      def parse_body(req)
+        raw = req.body&.read
+        return {} if raw.nil? || raw.empty?
+
+        JSON.parse(raw, symbolize_names: true)
+      end
+
+      def to_h(obj)
+        obj.respond_to?(:to_h) ? obj.to_h : obj
+      end
+
+      def json_response(status, body)
+        [status, { "content-type" => "application/json" }, [JSON.generate(body)]]
+      end
+
+      def error_response(status, error)
+        json_response(status, { error: { class: error.class.name, message: error.message } })
+      end
+
+      def not_found
+        [404, { "content-type" => "text/plain" }, ["not found"]]
+      end
+
+      # Decorator fino de Subscription (doc 07 §4, Notes da task): descarta
+      # eventos de OUTRAS tasks e FECHA a subscription após repassar o evento
+      # terminal da task. Resolve a lacuna subscribe-antes-do-task_id sem tocar
+      # na assinatura da Subscription (doc 03 §2).
+      class TaskFilter
+        def initialize(subscription, task_id)
+          @subscription = subscription
+          @task_id = task_id
+        end
+
+        def each
+          @subscription.each do |event|
+            next unless (event.meta || {})[:task_id] == @task_id
+
+            yield event
+            break if TERMINAL_EVENTS.include?(event.type)
+          end
+        ensure
+          @subscription.close
+        end
+
+        def close = @subscription.close
+      end
+      private_constant :TaskFilter
+    end
+  end
+end
