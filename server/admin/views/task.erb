@@ -1,0 +1,40 @@
+<%= style %>
+<h1>Task <%= h(@task.id) %></h1>
+<%= nav %>
+<p><a href="/admin/tasks">&larr; todas as tasks</a></p>
+
+<p><strong>status:</strong> <%= h(@task.status) %> &nbsp;
+   <strong>session:</strong> <%= h(@task.session_id) %></p>
+
+<h2>command</h2>
+<pre><%= h(@task.command) %></pre>
+
+<h2>executions (<%= h(@task.executions.size) %>)</h2>
+<% if @task.executions.empty? -%>
+  <p class="muted">Nenhuma execution.</p>
+<% else -%>
+  <table>
+    <tr><th>attempt</th><th>started</th><th>finished</th><th>outcome</th><th>error</th></tr>
+    <% @task.executions.each do |e| -%>
+      <tr>
+        <td><%= h(e.attempt) %></td>
+        <td><%= h(e.started_at) %></td>
+        <td><%= h(e.finished_at) %></td>
+        <td><%= h(e.outcome) %></td>
+        <td><pre><%= h(e.error) %></pre></td>
+      </tr>
+    <% end -%>
+  </table>
+<% end -%>
+
+<h2>checkpoint mais recente</h2>
+<% if @checkpoint.nil? -%>
+  <p class="muted">sem checkpoint</p>
+<% else -%>
+  <table>
+    <tr><th>turn</th><td><%= h(@checkpoint.turn) %></td></tr>
+    <tr><th>created_at</th><td><%= h(@checkpoint.created_at) %></td></tr>
+    <tr><th>side effects</th><td><%= h(@checkpoint.completed_side_effects) %></td></tr>
+    <tr><th>mensagens</th><td><%= h(@checkpoint.messages.size) %></td></tr>
+  </table>
+<% end -%>

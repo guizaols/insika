@@ -1,0 +1,16 @@
+<%= style %>
+<h1>Skills</h1>
+<%= nav %>
+<% if @skills.empty? -%>
+  <p class="muted">Nenhuma skill no catálogo.</p>
+<% else -%>
+  <% @skills.each do |skill| -%>
+    <h2><%= h(skill.name) %></h2>
+    <p><%= h(skill.description) %></p>
+    <p class="muted"><%= h(skill.path) %></p>
+    <details>
+      <summary>corpo</summary>
+      <pre><%= h(skill.body) %></pre>
+    </details>
+  <% end -%>
+<% end -%>

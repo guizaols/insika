@@ -1,0 +1,23 @@
+<%= style %>
+<h1>Session <%= h(@id) %></h1>
+<%= nav %>
+<p><a href="/admin/sessions">&larr; todas as sessões</a></p>
+
+<h2>vars</h2>
+<pre><%= h(@session.vars) %></pre>
+
+<h2>transcript (<%= h(@session.messages.size) %> mensagens)</h2>
+<% if @session.messages.empty? -%>
+  <p class="muted">Sem mensagens.</p>
+<% else -%>
+  <table>
+    <tr><th>role</th><th>content</th><th>at</th></tr>
+    <% @session.messages.each do |m| -%>
+      <tr>
+        <td><%= h(m["role"] || m[:role]) %></td>
+        <td><pre><%= h(m["content"] || m[:content]) %></pre></td>
+        <td><%= h(m["at"] || m[:at]) %></td>
+      </tr>
+    <% end -%>
+  </table>
+<% end -%>
