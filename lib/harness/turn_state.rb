@@ -16,6 +16,12 @@ module Harness
     # corrente <-> decorators de tool (side-effects/skip, task 13).
     attr_accessor :current_tool_call
 
+    # P2-02: gate de aprovação. `requires_approval` = nomes de tools que exigem
+    # aprovação (Resolution); `approval_coordinator` = objeto (o Executor) que
+    # cria o PendingAction/suspende/aguarda; `actor` = mailbox do turno (usada
+    # pelo coordenador para await(:approval)).
+    attr_accessor :requires_approval, :approval_coordinator, :actor
+
     def initialize(task:, profile:, turn:, message:)
       @task = task
       @profile = profile

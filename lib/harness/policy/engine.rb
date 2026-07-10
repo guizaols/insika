@@ -10,7 +10,7 @@ module Harness
     # nome não registrado vira deny. Roda INLINE no fiber (puras, sem IO — sem
     # Async, sem timeout próprio, doc 05 §5).
     class Engine
-      Resolution = Data.define(:allowed_tools, :allowed_skills, :audit)
+      Resolution = Data.define(:allowed_tools, :allowed_skills, :requires_approval, :audit)
 
       def initialize(policy_registry:, event_stream:)
         @registry = policy_registry # duck-type: fetch(name)
@@ -24,6 +24,7 @@ module Harness
         deny_tools = []
         allow_skill_sets = []
         deny_skills = []
+        requires_approval = []
 
         Array(request.profile.policies).each do |name|
           decision = evaluate(name, request)
@@ -35,11 +36,13 @@ module Harness
           deny_tools.concat(Array(decision.deny_tools).map(&:to_s))
           allow_skill_sets << decision.allow_skills.map(&:to_s) unless decision.allow_skills.nil?
           deny_skills.concat(Array(decision.deny_skills).map(&:to_s))
+          requires_approval.concat(Array(decision.requires_approval).map(&:to_s))
         end
 
         Resolution.new(
           allowed_tools: filter(request.candidate_tools, allow_tool_sets, deny_tools) { |e| e.name.to_s },
           allowed_skills: filter(request.candidate_skills, allow_skill_sets, deny_skills) { |s| s.name.to_s },
+          requires_approval: requires_approval.uniq,
           audit: audit
         )
       end
