@@ -215,6 +215,59 @@ RSpec.describe Harness::Plugin::Loader do
     expect(result[:skill_dirs]).not_to include(a_string_including("boom"))
   end
 
+  it "staging descartado: middleware fica de fora se o register levanta (L3 — nada parcial sobra)" do
+    write_plugin("partial", <<~YAML, poro_entry("PartialPlugin", <<~BODY))
+      id: partial
+      module: PartialPlugin
+      entry: plugin.rb
+      contracts: { tools: [] }
+    YAML
+      MW = Object.new
+      def self.register(api)
+        api.register_middleware(MW)
+        api.register_hook(:tools, before: ->(x) { x }) # par inválido (:tools) -> levanta no stage
+      end
+    BODY
+
+    result = nil
+    expect { result = load(enabled: %w[partial]) }.to output(/falha ao carregar/).to_stderr
+    expect(middleware).to eq([]) # middleware staged NÃO foi efetivado
+    expect(result[:plugins]).to eq([])
+  end
+
+  it "precedência de roots: mesmo id em dois roots, o primeiro vence" do
+    root_a = File.join(@root, "ra")
+    root_b = File.join(@root, "rb")
+    [root_a, root_b].each { |r| FileUtils.mkdir_p(File.join(r, "dup")) }
+    File.write(File.join(root_a, "dup", "harness.plugin.yml"),
+               "id: dup\nmodule: DupA\nentry: plugin.rb\ncontracts: { tools: [ta] }\n")
+    File.write(File.join(root_a, "dup", "plugin.rb"), poro_entry("DupA", "def self.register(api) = api.register_tool('ta', Class.new)"))
+    File.write(File.join(root_b, "dup", "harness.plugin.yml"),
+               "id: dup\nmodule: DupB\nentry: plugin.rb\ncontracts: { tools: [tb] }\n")
+    File.write(File.join(root_b, "dup", "plugin.rb"), poro_entry("DupB", "def self.register(api) = api.register_tool('tb', Class.new)"))
+
+    loader = described_class.new(roots: [root_a, root_b], registries: registries,
+                                 enabled: %w[dup], event_stream: event_stream)
+    result = loader.load_all
+
+    expect(result[:plugins].map(&:id)).to eq(["dup"])
+    expect(tools.names).to eq(["ta"]) # root_a venceu
+  end
+
+  it "ignora tool fora de contracts.tools com warn (regra Fase 0)" do
+    write_plugin("toolless", <<~YAML, poro_entry("ToollessPlugin", <<~BODY))
+      id: toolless
+      module: ToollessPlugin
+      entry: plugin.rb
+      contracts: { tools: [declarada] }
+    YAML
+      def self.register(api) = api.register_tool("naodeclarada", Class.new)
+    BODY
+
+    expect { load(enabled: %w[toolless]) }.to output(/não declarada em contracts.tools/).to_stderr
+    expect(tools.names).to eq([])
+  end
+
   it "contracts.capabilities: warn reservado + plugin carrega normalmente" do
     write_plugin("cap", <<~YAML, poro_entry("CapPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
       id: cap

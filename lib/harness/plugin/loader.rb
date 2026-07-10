@@ -201,9 +201,23 @@ module Harness
 
         def register_middleware(instance) = @staged_middleware << instance
         def register_context_provider(instance) = @staged_providers << instance
-        def register_hook(pair, before: nil, after: nil) = (@staged_hooks << [pair, before, after])
+
+        # Valida o par NA HORA do stage (não só no commit): assim um par inválido
+        # levanta DENTRO de register(api) -> o staging é descartado e o rollback
+        # cobre tudo. Se a validação ficasse só no commit!, middleware/providers
+        # já teriam sido efetivados quando o hook ruim levantasse (L3 furado).
+        def register_hook(pair, before: nil, after: nil)
+          unless Harness::Hooks::PAIRS.include?(pair)
+            raise ArgumentError, "par de hook desconhecido: #{pair.inspect}"
+          end
+
+          @staged_hooks << [pair, before, after]
+        end
+
         def config = @config
 
+        # Atômico por construção: os pares de hook já foram validados no stage,
+        # então nenhuma linha aqui levanta (arrays <<, hooks.register de par válido).
         def commit!
           @staged_middleware.each { |m| @registries[:middleware] << m }
           @staged_providers.each { |p| @registries[:context_providers] << p }
