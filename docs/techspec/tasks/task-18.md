@@ -3,7 +3,7 @@
 > **Jira:** — (sem ticket)
 > **Task Plan:** [tasks.md](./tasks.md)
 > **Tech Spec:** [00-overview.md](../00-overview.md) · [05-policy-middleware-hooks.md](../05-policy-middleware-hooks.md)
-> **Status:** ⬜ TODO
+> **Status:** ✅ DONE
 > **Complexity:** Low
 
 ---
@@ -189,3 +189,18 @@ Tratamento do halt (doc 05 §3: "task `:failed` com o motivo (ex.: rate limit), 
 - O edge case 4 (curto-circuito sem `halt_reason`) é violação de contrato não coberta pelo doc; o comportamento fail-closed com motivo genérico é interpretação local coerente com D4 — documentado no comentário da classe.
 - Nenhum middleware concreto nesta task: rate limit/tracing/custo são exemplos do doc 05 §1, não escopo da Fase 1; plugins registram elos via task 21 (doc 06). A stack da Fase 1 sobe vazia no wiring.
 - Fase 0 não tem análogo de middleware — não há teste de caracterização; o padrão de referência é o contrato do doc 05 §2 e o `TurnState` do doc 03 §3.
+
+---
+
+## Conclusão
+
+- **Concluído em:** 2026-07-09
+- **Implementado por:** Claude (execução automatizada)
+- **Testes:** 10 novos (8 middleware unit + 3 integração no Executor — halt real, edge case 4, stack vazia), 452 na suíte inteira, 0 falhas, 0 regressões
+- **Arquivos criados:** `lib/harness/middleware.rb`, `spec/harness/middleware_spec.rb`
+- **Arquivos modificados:** `lib/harness/executor.rb` (estágio 4 endurecido), `lib/harness.rb` (require), `spec/harness/executor_pipeline_spec.rb` (integração com MiddlewareStack real)
+- **Observações / decisões tomadas:**
+  - `MiddlewareStack#call` é rack clássico (reduce reverso sobre o terminal); ordem de registro = ordem de execução; curto-circuito **estrutural** (o elo não chama `nxt`). Sem rescue (exceção propaga como falha do turno, D4). Compatível com a chamada que a task 12 já fazia (`@middleware.call(state) { ... }`) — a stack vazia do wiring (task 26) é drop-in.
+  - **Endurecimento do estágio 4 (edge case 4):** flag `terminal_ran` — se um elo curto-circuita SEM setar `halt_reason` (violação de contrato), o Executor levanta `Harness::Error` genérico ("middleware curto-circuitou sem halt_reason") em vez de deixar o turno pendurado. Fail-closed coerente com D4.
+  - **Sinalização do halt:** reusa a captura única do topo do fiber (doc 03 L3) levantando `Harness::Error` base — sem subclasse nova na taxonomia D4 (decisão registrada; se preferir `MiddlewareHalt`, é mudança na task 1).
+  - Nenhum middleware concreto (rate limit/tracing chegam por plugin, task 21); a stack sobe vazia no wiring.
