@@ -49,6 +49,7 @@ module Harness
     POLICY_REGISTRY.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
     POLICY_REGISTRY.register(:skill_allowlist, Harness::Policy::Builtin::SkillAllowlist)
     POLICY_REGISTRY.register(:workflow_allowlist, Harness::Policy::Builtin::WorkflowAllowlist)
+    POLICY_REGISTRY.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
 
     # Catálogos: roots de skills/prompts do workspace (vazios se ausentes; a
     # task 26 acrescenta os dirs dos plugins pela precedência do doc 06 §4).

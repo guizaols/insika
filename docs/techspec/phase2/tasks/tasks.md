@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs P2-01–P2-04 (a detalhar)
 > **Gerado:** 2026-07-10
-> **Progress:** 5/14 tasks complete
+> **Progress:** 6/14 tasks complete
 > **Base:** Fase 1 completa (main @ merge PR #8)
 
 ---
@@ -16,7 +16,7 @@
 | 3 | Command `PauseTask` (controle: posta `:pause`, no-op idempotente se terminal/órfã) + evento `:task_paused`/`:task_resumed` | P2-01 | ✅ DONE | Low | 0002 §9 |
 | 4 | Reconciliar `ResumeTask` (Fase 1) para retomar tanto órfã-de-crash quanto `:paused`/`:waiting` (critério de elegibilidade estendido) | P2-01 | ✅ DONE | Med | 03 §3 |
 | 5 | `PendingActionStore` (record durável: task_id, turn, tool, args, requested_at, status, resolved_by, resolved_at) sobre `Harness::Store` + suíte de contrato | P2-02 | ✅ DONE | Med | 0006, 0002 §9 |
-| 6 | Policy builtin `ApprovalRequired` (allowlist de tools que exigem aprovação por agente) + campo no `AgentProfile` (`approvals_required`) | P2-02 | ⬜ TODO | Med | 05, 0002 §9 |
+| 6 | Policy builtin `ApprovalRequired` (allowlist de tools que exigem aprovação por agente) + campo no `AgentProfile` (`approvals_required`) | P2-02 | ✅ DONE | Med | 05, 0002 §9 |
 | 7 | `ToolEnvelope` gate: antes de executar tool marcada, cria `PendingAction`, emite `:approval_requested`, suspende o turno em `:waiting` (via mailbox) | P2-02 | ⬜ TODO | High | 0002 §9 |
 | 8 | Command `ApproveAction` (resolve o `PendingAction` + posta `:approval` na mailbox; approved → executa a tool pulada, rejected → `{error: rejected}` ao modelo) + evento `:approval_resolved` | P2-02 | ⬜ TODO | High | 0007 §3 |
 | 9 | `SessionActor`: fiber por sessão + fila FIFO de turnos; registro in-process (`session_id → SessionActor`) no escopo supervisionado (L4) | P2-03 | ⬜ TODO | High | 0002 §9 |

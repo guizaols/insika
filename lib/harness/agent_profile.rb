@@ -14,7 +14,8 @@ module Harness
     :workflows_allow,                 # NOVO — aplicado pela WorkflowAllowlist (doc 05 §2)
     :policies,                        # NOVO — nomes no Policy Registry (estágio 3)
     :prompt_refs,                     # NOVO — nomes do Prompt Catalog (doc 04 §2)
-    :limits                           # NOVO — timeouts/orçamentos (D4/D8)
+    :limits,                          # NOVO — timeouts/orçamentos (D4/D8)
+    :approvals_required               # P2 — tools que exigem aprovação (ApprovalRequired)
   )
 
   # Classe reaberta (não bloco do Data.define): constante atribuída dentro
@@ -28,14 +29,14 @@ module Harness
     def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], skills: nil,
                    context_providers: nil, workflows_allow: nil,
-                   policies: [], prompt_refs: [], limits: {})
+                   policies: [], prompt_refs: [], limits: {}, approvals_required: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
         tools_deny: Array(tools_deny), skills: skills,
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
-        limits: DEFAULT_LIMITS.merge(limits)
+        limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required
       )
     end
 
