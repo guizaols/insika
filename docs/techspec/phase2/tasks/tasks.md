@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + docs P2-01–P2-04 (a detalhar)
 > **Gerado:** 2026-07-10
-> **Progress:** 1/14 tasks complete
+> **Progress:** 2/14 tasks complete
 > **Base:** Fase 1 completa (main @ merge PR #8)
 
 ---
@@ -12,7 +12,7 @@
 | # | Task | Componente | Status | Complexity | Spec |
 |---|------|-----------|--------|------------|------|
 | 1 | Estender `TaskActor`: enum `%i[cancel user_message approval pause resume timeout heartbeat]` + `drain!` roteando cada um (approval/pause/resume mudam fluxo; timeout/heartbeat observam) | P2-01 | ✅ DONE | Med | 0002 §9 |
-| 2 | Ativar estados no Executor: suspensão em `:paused` (drena `:pause` na fronteira → `transition(:paused)` → aguarda `:resume`) sem perder checkpoint | P2-01 | ⬜ TODO | High | 0002 §9 |
+| 2 | Ativar estados no Executor: suspensão em `:paused` (drena `:pause` na fronteira → `transition(:paused)` → aguarda `:resume`) sem perder checkpoint | P2-01 | ✅ DONE | High | 0002 §9 |
 | 3 | Command `PauseTask` (controle: posta `:pause`, no-op idempotente se terminal/órfã) + evento `:task_paused`/`:task_resumed` | P2-01 | ⬜ TODO | Low | 0002 §9 |
 | 4 | Reconciliar `ResumeTask` (Fase 1) para retomar tanto órfã-de-crash quanto `:paused`/`:waiting` (critério de elegibilidade estendido) | P2-01 | ⬜ TODO | Med | 03 §3 |
 | 5 | `PendingActionStore` (record durável: task_id, turn, tool, args, requested_at, status, resolved_by, resolved_at) sobre `Harness::Store` + suíte de contrato | P2-02 | ⬜ TODO | Med | 0006, 0002 §9 |
