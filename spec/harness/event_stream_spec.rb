@@ -123,4 +123,25 @@ RSpec.describe Harness::EventStream do
   it "emit sem subscribers é no-op" do
     expect(stream.emit(evt)).to be_nil
   end
+
+  it "assinante não é pulado quando outro estoura (fecha) durante o mesmo emit" do
+    # A (sem filtro) satura até o cap; B (filtrado por task_id) ignora o tráfego
+    # de A. No emit crítico, A estoura -> close -> é removida do array DURANTE o
+    # each; B casa esse mesmo evento e NÃO pode ser pulado (regressão: Array#each
+    # + delete pulava o vizinho deslocado).
+    Sync do |task|
+      a = stream.subscribe                       # sem filtro: recebe tudo
+      b = stream.subscribe(task_id: "b")          # só eventos da task "b"
+      1000.times { stream.emit(evt(meta: {})) }   # enche A ao cap; B ignora
+
+      got_b = []
+      cb = task.async { b.each { |e| got_b << e } }
+      stream.emit(evt(meta: { task_id: "b" }))    # A estoura/sai; B deve receber
+      b.close
+      cb.wait
+
+      expect(got_b.size).to eq(1) # sem o snapshot em emit, seria 0 (B pulado)
+      expect(a).not_to be_nil     # A foi fechada, mas o emit não levantou
+    end
+  end
 end

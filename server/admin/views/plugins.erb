@@ -1,0 +1,31 @@
+<%= style %>
+<h1>Plugins</h1>
+<%= nav %>
+<p class="muted">Agrupado por <code>Entry#plugin</code> dos registries (nil = sistema/wiring).</p>
+<% if @groups.empty? -%>
+  <p class="muted">Nenhum registro.</p>
+<% else -%>
+  <% @groups.each do |g| -%>
+    <h2><%= g[:plugin].nil? ? "(sistema)" : h(g[:plugin]) %></h2>
+
+    <h3>tools (<%= h(g[:tools].size) %>)</h3>
+    <% unless g[:tools].empty? -%>
+      <table>
+        <tr><th>name</th><th>metadata</th></tr>
+        <% g[:tools].each do |e| -%>
+          <tr><td><%= h(e.name) %></td><td><pre><%= h(e.metadata) %></pre></td></tr>
+        <% end -%>
+      </table>
+    <% end -%>
+
+    <h3>workflows (<%= h(g[:workflows].size) %>)</h3>
+    <% unless g[:workflows].empty? -%>
+      <table>
+        <tr><th>name</th><th>metadata</th></tr>
+        <% g[:workflows].each do |e| -%>
+          <tr><td><%= h(e.name) %></td><td><pre><%= h(e.metadata) %></pre></td></tr>
+        <% end -%>
+      </table>
+    <% end -%>
+  <% end -%>
+<% end -%>
