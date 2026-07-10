@@ -90,7 +90,12 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
         task_id = JSON.parse(resp.body)["task_id"]
         expect(task_id).not_to be_nil
 
-        # o turno está no meio do estágio 6 (trava): marker gravado pelo shim
+        # o turno está no meio do estágio 6 (trava): marker gravado pelo shim.
+        # NB (L4): o POST acima já fechou a conexão (Net::HTTP encerra no fim do
+        # bloco). O marker aparecer DEPOIS disso prova que o turno sobreviveu ao
+        # disconnect — i.e., o supervisor foi criado acima da request no
+        # boundary do reactor real (async-http). Se fosse filho da conexão,
+        # morreria aqui e o marker nunca chegaria.
         wait_until(timeout: 15, msg: "turno iniciar (marker)") { File.exist?(marker) }
 
         # kill -9: morte não-cooperativa; a task fica :running órfã no SQLite

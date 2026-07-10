@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require "async/queue"
 
 module Harness
   # Coordena a execução. Não monta contexto, não decide policy, não fala com o
@@ -123,7 +124,10 @@ module Harness
       reactor = Async::Task.current.reactor
       node = Async::Task.current
       node = node.parent while node.parent && node.parent != reactor
-      @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); loop { t.sleep(3600) } }
+      # Idle sem spin nem API deprecada (Async::Task#sleep é deprecated em 2.42):
+      # bloqueia num dequeue que nunca chega. Só termina quando o escopo é parado
+      # (shutdown do servidor) — aí os turnos-filhos vão junto (aceitável).
+      @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
     end
 
     # command foi normalizado a chaves string pelo TaskStore; aceitar símbolo

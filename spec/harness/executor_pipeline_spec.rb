@@ -431,6 +431,17 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       executor
     end
 
+    # Poll cooperativo (sem janela fixa — robusto no CI): cede o fiber até a
+    # condição virar true ou estourar ~2s.
+    def poll_until(top)
+      200.times do
+        return true if yield
+
+        top.sleep(0.01)
+      end
+      yield
+    end
+
     it "supervised: o turno sobrevive ao stop do fiber da request e conclui" do
       session_store.create(id: "s1")
       gate = Async::Condition.new
@@ -442,18 +453,17 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
           executor.spawn(make_task, profile: profile)
           req.sleep(3600) # a request "segura a conexão" (ex.: SSE)
         end
-        top.sleep(0.05)
-        expect(executor.running?("t")).to be(true)
+        expect(poll_until(top) { executor.running?("t") }).to be(true)
+        actor = executor.instance_variable_get(:@running)["t"]
 
         request.stop # disconnect do cliente: mata a subárvore da request
-        top.sleep(0.05)
+        top.sleep(0.05) # dá ticks p/ o cancelamento propagar, SE fosse filho
         expect(executor.running?("t")).to be(true) # turno NÃO foi cancelado (L4)
 
-        gate.signal # libera o estágio 6
-        top.sleep(0.05)
+        gate.signal      # libera o estágio 6
+        actor.wait       # conclusão determinística (sem janela fixa)
         expect(task_store.find("t").status).to eq(:completed)
-        # encerra o supervisor lazy p/ o Sync poder sair
-        executor.instance_variable_get(:@supervisor)&.stop
+        executor.instance_variable_get(:@supervisor)&.stop # deixa o Sync sair
       end
     end
 
@@ -467,12 +477,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
           executor.spawn(make_task, profile: profile)
           Async::Task.current.sleep(3600)
         end
-        top.sleep(0.05)
-        expect(executor.running?("t")).to be(true)
+        expect(poll_until(top) { executor.running?("t") }).to be(true)
 
         request.stop # sem supervisor, o turno é filho da request -> cancelado
-        top.sleep(0.05)
-        expect(executor.running?("t")).to be(false)
+        expect(poll_until(top) { !executor.running?("t") }).to be(true)
       end
     end
   end
