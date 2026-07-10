@@ -169,10 +169,13 @@ module Harness
         state.allowed_skills = resolution.allowed_skills
         actor.drain!
 
-        # estágio 4: Middleware (pode curto-circuitar setando halt_reason)
+        # estágio 4: Middleware envolve os estágios 5-9 (doc 05 §4). O elo que
+        # curto-circuita NÃO chama o terminal e seta state.halt_reason.
+        terminal_ran = false
         @middleware.call(state) do |st|
           raise Harness::Error, "turno interrompido: #{st.halt_reason}" if st.halt_reason
 
+          terminal_ran = true
           # estágio 5: montar chat + checar mailbox
           actor.drain!
           st.chat = create_chat(profile)
@@ -196,8 +199,13 @@ module Harness
           emit(:task_completed, { task_id: task.id, content: response.content }, task: task)
         end
 
-        # halt sem executar o bloco terminal também é falha (doc 05 §4)
-        raise Harness::Error, "turno interrompido: #{state.halt_reason}" if state.halt_reason
+        # halt (com motivo) ou curto-circuito sem terminar (violação de contrato,
+        # edge case 4) -> falha do turno via captura única (doc 05 §3-§4).
+        if state.halt_reason
+          raise Harness::Error, "turno interrompido: #{state.halt_reason}"
+        elsif !terminal_ran
+          raise Harness::Error, "middleware curto-circuitou sem halt_reason"
+        end
       end
     rescue Async::TimeoutError
       raise Harness::TimeoutError.new("turno excedeu #{turn_timeout}s", stage: :turn)
