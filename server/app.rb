@@ -160,7 +160,7 @@ module Harness
         command = Harness::Command.build(:create_session, { vars: body[:vars] || {} },
                                          transport: :http)
         session = dispatch_with_timeout(command)
-        json_response(201, { session: to_h(session) })
+        json_response(201, { session: session.to_h })
       end
 
       # POST /v1/messages — açúcar p/ send_message; ?stream ausente/"true" -> SSE,
@@ -175,7 +175,7 @@ module Harness
         session = @session_store.find(id)
         raise Harness::NotFoundError, "sessão inexistente: #{id}" if session.nil?
 
-        json_response(200, { session: to_h(session) })
+        json_response(200, { session: session.to_h })
       end
 
       # GET /v1/tasks/:id — leitura direta. É por aqui que o consumidor observa
@@ -229,13 +229,11 @@ module Harness
             raise
           end
 
-        task_id = result[:task_id] || result["task_id"]
-        # Vincula a subscription ao task_id agora que ele existe: o cap por-task
-        # passa a contar só eventos DESTA task (não tráfego de tasks vizinhas) e
-        # um eventual :error de overflow sai com o task_id correto (não é
-        # descartado pelo TaskFilter). Eventos já enfileirados no intervalo
-        # subscribe->dispatch são desta própria task (fiber eager) — nenhum se
-        # perde.
+        task_id = result[:task_id]
+        # Vincula a subscription ao task_id agora que ele existe: o cap passa a
+        # contar só eventos DESTA task e o :error de overflow sai com o task_id
+        # certo. Os eventos já enfileirados (fiber eager) são desta task — nenhum
+        # se perde.
         subscription.bind(task_id: task_id)
         filtered = TaskFilter.new(subscription, task_id)
         stream ? sse_response(filtered) : aggregate_response(filtered, task_id)
@@ -290,16 +288,16 @@ module Harness
       # Session/Task, que são Data) -> 200 com to_h serializado.
       def command_response(result)
         if turn_result?(result)
-          json_response(202, { task_id: result[:task_id] || result["task_id"] })
+          json_response(202, { task_id: result[:task_id] })
         else
-          json_response(200, to_h(result))
+          json_response(200, result.to_h)
         end
       end
 
       # Turno = Hash com task_id PRESENTE e não-nil (doc 03 §2). Um controle que
       # devolvesse Hash sem task_id útil não é confundido com turno.
       def turn_result?(result)
-        result.is_a?(Hash) && !(result[:task_id] || result["task_id"]).nil?
+        result.is_a?(Hash) && !result[:task_id].nil?
       end
 
       # Body vazio ou sem content-type -> {} (doc 07 §4: transporte valida só
@@ -310,10 +308,6 @@ module Harness
         return {} if raw.nil? || raw.empty?
 
         JSON.parse(raw, symbolize_names: true)
-      end
-
-      def to_h(obj)
-        obj.respond_to?(:to_h) ? obj.to_h : obj
       end
 
       # Task#to_h é raso (Data#to_h não desce): `executions` fica como Array de
