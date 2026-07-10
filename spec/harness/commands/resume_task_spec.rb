@@ -14,15 +14,16 @@ RSpec.describe Harness::Commands::ResumeTask do
   let(:profile) { Harness::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
 
-  # Executor duplo com running?/spawn graváveis.
+  # Executor duplo com running?/spawn/resume_live graváveis.
   let(:executor) do
     Class.new do
-      attr_reader :spawned
+      attr_reader :spawned, :resumed_live
       attr_accessor :running
 
-      def initialize = (@spawned = []; @running = false)
+      def initialize = (@spawned = []; @resumed_live = []; @running = false)
       def running?(_id) = @running
       def spawn(task, profile:, resume_from:) = @spawned << { task: task, profile: profile, resume_from: resume_from }
+      def resume_live(id) = @resumed_live << id
     end.new
   end
 
@@ -51,11 +52,21 @@ RSpec.describe Harness::Commands::ResumeTask do
     handler.call(Harness::Command.build(:resume_task, { task_id: id }))
   end
 
-  it "paused com checkpoint: spawna com resume_from = checkpoint mais recente" do
+  it "paused SEM fiber vivo (crash): re-despacha com resume_from = checkpoint" do
     seed("t", status: :paused)
+    executor.running = false
     expect(resume("t")).to eq({ task_id: "t" })
     expect(executor.spawned.size).to eq(1)
     expect(executor.spawned.first[:resume_from].turn).to eq(1)
+    expect(executor.resumed_live).to be_empty
+  end
+
+  it "paused COM fiber vivo (P2): resume IN-PROCESS (posta :resume, NÃO re-despacha)" do
+    seed("t", status: :paused)
+    executor.running = true
+    expect(resume("t")).to eq({ task_id: "t" })
+    expect(executor.resumed_live).to eq(["t"])
+    expect(executor.spawned).to be_empty
   end
 
   it "waiting com checkpoint: retomável" do
