@@ -16,7 +16,7 @@ module Harness
     def initialize(context_builder:, policy_engine:, middleware:, hooks:,
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
-                   event_stream:, workflow_registry: nil)
+                   event_stream:, workflow_registry: nil, pending_action_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -29,6 +29,7 @@ module Harness
       @checkpoint_store = checkpoint_store
       @event_stream = event_stream
       @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
+      @pending_action_store = pending_action_store # gate de aprovação (P2-02)
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
       @supervised = false      # modo serving? (L4) — ver #turn_parent
@@ -73,6 +74,30 @@ module Harness
       actor = @running[task_id]
       actor&.post(:resume)
       !actor.nil?
+    end
+
+    # Gate de aprovação (P2-02), chamado pelo ToolEnvelope no estágio 6 quando a
+    # tool exige aprovação. Cria/consulta o PendingAction (id determinístico por
+    # task+turn+tool — correlação por-tool como no side-effect da Fase 1),
+    # suspende o turno em :waiting e BLOQUEIA (await(:approval)) até o operador
+    # resolver via ApproveAction (task 8). A decisão AUTORITATIVA vem do store
+    # durável (crash-safe): numa reexecução pós-crash, uma PendingAction já
+    # resolvida é reusada sem re-suspender; uma :pending re-suspende.
+    # -> "approved" | "rejected".
+    def request_approval(task:, turn:, tool:, args:, actor:)
+      id = pending_id(task.id, turn, tool)
+      existing = @pending_action_store&.find(id)
+      return existing.status.to_s if existing && existing.status != :pending
+
+      unless existing
+        @pending_action_store&.create(id: id, task_id: task.id, turn: turn, tool: tool, args: args || {})
+        emit(:approval_requested, { pending_id: id, tool: tool.to_s, args: args }, task: task)
+      end
+
+      @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
+      actor.await(reason: :approval) # bloqueia até :approval (ou levanta em :cancel/:timeout)
+      @task_store.transition(task.id, to: :running)
+      (@pending_action_store&.find(id)&.status || :approved).to_s
     end
 
     # Estágio 1 (parte assíncrona): cria o actor, registra e dispara o fiber.
@@ -148,6 +173,12 @@ module Harness
       # (shutdown do servidor) — aí os turnos-filhos vão junto (aceitável).
       @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
     end
+
+    # Id determinístico do PendingAction (P2-02): correlação por task+turn+tool.
+    # Limitação herdada do side-effect da Fase 1: a MESMA tool com aprovação mais
+    # de uma vez no turno colide (a 2ª reusa a decisão da 1ª) — checkpoint por
+    # passo é fatia futura. Uma call por tool é segura.
+    def pending_id(task_id, turn, tool) = "#{task_id}:#{turn}:#{tool}"
 
     # command foi normalizado a chaves string pelo TaskStore; aceitar símbolo
     # também por robustez.
@@ -232,6 +263,10 @@ module Harness
         # o Executor instancia SÓ as permitidas (doc 05 §4): o Engine real
         # devolve Entries -> factory.call; um fake que já devolve instâncias
         # passa direto (shim de compat até o wiring da task 26).
+        # P2-02: fia o gate de aprovação no state (o ToolEnvelope lê no estágio 6).
+        state.actor = actor
+        state.approval_coordinator = self
+        state.requires_approval = resolution.respond_to?(:requires_approval) ? resolution.requires_approval : []
         state.allowed_tools = wrap_tools(instantiate_tools(resolution.allowed_tools), state, skip)
         state.allowed_skills = resolution.allowed_skills
         drain_and_maybe_suspend(task, actor)

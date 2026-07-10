@@ -36,6 +36,7 @@ module Harness
     SESSION_STORE    = Harness::SessionStore.new(store: BACKEND)
     TASK_STORE       = Harness::TaskStore.new(store: BACKEND)
     CHECKPOINT_STORE = Harness::CheckpointStore.new(store: BACKEND)
+    PENDING_ACTION_STORE = Harness::PendingActionStore.new(store: BACKEND)
 
     # --- Event Stream + registries/catalogs (doc 03/06) ----------------------
     EVENT_STREAM = Harness::EventStream.new
@@ -86,7 +87,7 @@ module Harness
       tool_registry: REGISTRY, skill_catalog: CATALOG, profiles: PROFILES,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       checkpoint_store: CHECKPOINT_STORE, event_stream: EVENT_STREAM,
-      workflow_registry: WORKFLOW_REGISTRY
+      workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE
     )
 
     # --- Command Bus + handlers (doc 03 §2-§3) -------------------------------
