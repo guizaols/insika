@@ -20,11 +20,16 @@ module Harness
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
       # middleware:/context_providers: (coleções que respondem a <<).
-      def initialize(roots:, registries:, enabled:, event_stream:)
+      # announced_roots:/disabled: materializam a habilitação por classe de root
+      # (doc 06 §3/L2); defaults vazios mantêm a assinatura de §2 válida.
+      def initialize(roots:, registries:, enabled:, event_stream:,
+                     announced_roots: [], disabled: [])
         @roots = Array(roots)
         @registries = registries
         @enabled = Array(enabled).map(&:to_s)
         @event_stream = event_stream
+        @announced_roots = Array(announced_roots).map { |r| File.expand_path(r.to_s) }
+        @disabled = Array(disabled).map(&:to_s)
       end
 
       # -> { skill_dirs: [], prompt_dirs: [], plugins: [Discovered] }
@@ -58,12 +63,22 @@ module Harness
         { skill_dirs: skill_dirs, prompt_dirs: prompt_dirs, plugins: plugins }
       end
 
-      # Localizado de propósito p/ a task 22 estender (roots anunciados por gem).
-      def enabled?(id, _root)
-        @enabled.include?(id)
+      # Habilitação por classe de root (doc 06 §3, L2): gem anunciada é
+      # default-enabled, desabilitável por disabled:; workspace e bundled exigem
+      # enabled: explícito (regra Fase 0). disabled: é veto absoluto (deny vence,
+      # como as allowlists D6) — um id em disabled não carrega nem se em enabled.
+      def enabled?(id, plugin_dir)
+        return false if @disabled.include?(id)
+
+        announced?(plugin_dir) ? true : @enabled.include?(id)
       end
 
       private
+
+      def announced?(plugin_dir)
+        dir = File.expand_path(plugin_dir)
+        @announced_roots.any? { |root| dir == root || dir.start_with?("#{root}#{File::SEPARATOR}") }
+      end
 
       # Um manifesto por diretório: harness.plugin.yml precede plugin.yml (mesmo
       # dir). Ordem preservada (precedência de root — primeiro vence via `seen`).
