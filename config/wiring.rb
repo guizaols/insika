@@ -95,6 +95,8 @@ module Harness
                                                       event_stream: EVENT_STREAM))
     BUS.register(:cancel_task,
                  Harness::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))
+    BUS.register(:pause_task,
+                 Harness::Commands::PauseTask.new(task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:send_message,
                  Harness::Commands::SendMessage.new(profiles: PROFILES,
                                                     session_store: SESSION_STORE,
