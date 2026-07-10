@@ -22,7 +22,6 @@ module Harness
       @parent = parent
       @mailbox = Async::Queue.new
       @pending_user_messages = []
-      @pending_resolutions = [] # :resume/:approval/:timeout drenados antes do await
       @pause_requested = false
       @heartbeats = 0
     end
@@ -43,8 +42,7 @@ module Harness
     # Drena a mailbox SEM bloquear (fronteiras, L2). `:cancel` levanta (o topo do
     # fiber mapeia :cancelled). `:pause` arma a suspensão (o Executor checa
     # `pause_requested?`). Resoluções (`:resume`/`:approval`/`:timeout`) que
-    # cheguem aqui — corrida rara antes do `await` — são BUFFERIZADAS, nunca
-    # perdidas.
+    # cheguem aqui SEM suspensão pendente são DESCARTADAS (idempotente, no-op).
     def drain!
       until @mailbox.empty?
         route_boundary(*@mailbox.dequeue)
@@ -58,16 +56,23 @@ module Harness
     # BLOQUEIA o fiber do turno até uma RESOLUÇÃO (cede o reactor — sem spin).
     # Usado pelo Executor em :paused (espera :resume) e pelo ToolEnvelope em
     # :waiting (espera :approval). Retorna [:resume, nil] ou [:approval, data].
-    # `:cancel` -> CancelledError; `:timeout` -> TimeoutError.
+    # `:cancel` -> CancelledError; `:timeout` -> TimeoutError. Uma resolução
+    # legítima só chega COM o fiber já aqui bloqueado (o operador só resume/aprova
+    # o que está suspenso), então é consumida por este `dequeue` — não há corrida
+    # que exija buffer. Mensagens não-resolução recebidas durante a espera são
+    # ABSORVIDAS sem alterar o estado de suspensão (um :pause redundante não
+    # re-arma a pausa).
     def await(reason:)
       @pause_requested = false # a pausa/espera está sendo tratada agora
       loop do
-        message, data = @pending_resolutions.shift || @mailbox.dequeue
+        message, data = @mailbox.dequeue
         case message
-        when :cancel  then raise CancelledError, "task #{@task_id} cancelada"
-        when :timeout then raise Harness::TimeoutError.new("espera (#{reason}) excedeu", stage: data || reason)
+        when :cancel        then raise CancelledError, "task #{@task_id} cancelada"
+        when :timeout       then raise Harness::TimeoutError.new("espera (#{reason}) excedeu", stage: data || reason)
         when :resume, :approval then return [message, data]
-        else route_boundary(message, data) # :pause/:heartbeat/:user_message absorvidos
+        when :heartbeat     then @heartbeats += 1
+        when :user_message  then @pending_user_messages << data
+        # :pause durante a espera: já suspenso, ignora (não re-arma pause_requested)
         end
       end
     end
@@ -77,15 +82,19 @@ module Harness
 
     private
 
-    # Roteamento das mensagens de fronteira (não-resolução). Resoluções que caem
-    # aqui (fora de um `await`) vão para o buffer.
+    # Roteamento das mensagens de fronteira (não-bloqueante). Resoluções órfãs
+    # (`:resume`/`:approval`/`:timeout` sem suspensão pendente) são DESCARTADAS —
+    # NUNCA bufferizadas: uma resolução guardada resolveria erroneamente um
+    # `await` FUTURO (auto-resume/auto-approve/auto-timeout de uma suspensão que
+    # o operador não resolveu). Resoluções legítimas chegam com o fiber já em
+    # `await` (consumidas lá), então descartar aqui é seguro e idempotente.
     def route_boundary(message, data)
       case message
       when :cancel then raise CancelledError, "task #{@task_id} cancelada"
       when :pause then @pause_requested = true
       when :user_message then @pending_user_messages << data
       when :heartbeat then @heartbeats += 1
-      when :resume, :approval, :timeout then @pending_resolutions << [message, data]
+      when :resume, :approval, :timeout then nil # órfã: descarta (ver comentário)
       end
     end
   end
