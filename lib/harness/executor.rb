@@ -327,7 +327,7 @@ module Harness
 
     # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
     ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
-                                :tenant, keyword_init: true)
+                                :tenant, :vars, keyword_init: true)
 
     # Estágios 2-9 (doc 03 §4), com drain de mailbox só nas fronteiras (L2) e
     # turn-timeout (D4) envolvendo tudo via Async::Task#with_timeout — NUNCA
@@ -489,9 +489,15 @@ module Harness
 
     def build_context_request(task, profile, state, resume_from)
       session = task.session_id ? @session_store.find(task.session_id) : nil
+      hist = command_history(task)
+      # `vars` reconcilia o seam pendente da Fase 1 (o Request/Session provider já
+      # chamavam request.vars): metadados da sessão + o `history` explícito na
+      # convenção que o Session provider consome (vars["history"]).
+      vars = (session&.vars || {}).dup
+      vars["history"] = hist if hist
       ContextRequest.new(task: task, profile: profile, message: state.message,
-                         session: session, history: command_history(task),
-                         checkpoint: resume_from, tenant: command_tenant(task))
+                         session: session, history: hist, checkpoint: resume_from,
+                         tenant: command_tenant(task), vars: vars)
     end
 
     # P2C (D6): tenant do Command (Command.build(..., tenant:) -> meta[:tenant],
