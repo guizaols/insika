@@ -91,4 +91,14 @@ RSpec.describe Harness::AgentProfile do
       expect(profile.tools_deferred).to eq(%w[send_email create_invoice])
     end
   end
+
+  describe "memory (P2C, memória cross-session) — opt-in" do
+    it "default nil = OFF (paridade Fase 1)" do
+      expect(described_class.build(id: "a", model: "m").memory).to be_nil
+    end
+
+    it "aceita memory: true (ligado)" do
+      expect(described_class.build(id: "a", model: "m", memory: true).memory).to be(true)
+    end
+  end
 end
