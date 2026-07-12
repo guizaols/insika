@@ -1,6 +1,6 @@
 # HANDOFF — Fase 4 (Harness Studio) · onde paramos
 
-> **Atualizado:** 2026-07-12 (Etapa C) · **main @** merge PR #27 (`8035d3a`)
+> **Atualizado:** 2026-07-12 (Etapa D) · **main @** merge PR #29 (`50374cf`)
 > Documento de retomada: uma sessão nova continua daqui **sem** o histórico do chat.
 > Leia junto com [`00-overview.md`](./00-overview.md) (spec) e [`tasks/tasks.md`](./tasks/tasks.md) (plano).
 
@@ -39,9 +39,10 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 | #25 | `serve_real.rb` (servidor HTTP single-process) + multi-turn | merged |
 | **#26 (Etapa A)** | **`ConfigStore` + `ProfileSource` (Static/Stored) + refactor Executor/Commands p/ profiles dinâmicos** | merged |
 | **#27 (Etapa B)** | **CRUD de agente em runtime (`:create/update/delete_agent`, `:set_agent_tools`) + deployment com profiles dinâmicos + SQLite-aware** | merged |
-| **Etapa C** | **Prompts/skills por-agente: `AgentFileStore`+`SkillStore` (store-backed, D3 revisado), overlay+`reload` de catálogo, Prompt provider lê `profile.prompt_files`, 5 Commands (`:write/delete/restore_agent_file`, `:write_skill`, `:set_skill_agents`)** | PR aberto |
+| **#29 (Etapa C)** | **Prompts/skills por-agente: `AgentFileStore`+`SkillStore` (store-backed, D3 revisado), overlay+`reload` de catálogo, Prompt provider lê `profile.prompt_files`, 5 Commands (`:write/delete/restore_agent_file`, `:write_skill`, `:set_skill_agents`)** | merged |
+| **Etapa D** | **Memória + Settings + LLM: 3 Commands de memória (`:memory_put_fact/forget_fact/add_note`), `SettingsStore` + `:update_settings`, `SecretMasking` (sentinel `__OCULTO__`), `LLMProviderStore` (masked) + `LLMConfigurator` (reconfigure RubyLLM runtime) + `:upsert/delete_llm_provider`** | PR aberto |
 
-**Progresso do plano: 8/20 tasks (Etapas A + B + C).** Ver `tasks/tasks.md`.
+**Progresso do plano: 11/20 tasks (Etapas A + B + C + D).** Ver `tasks/tasks.md`.
 
 ### Arquivos-chave criados/alterados (na main)
 - `lib/harness/config_store.rb` — KV durável de configuração (scopes agents/settings/
@@ -72,6 +73,21 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 - `lib/harness/config_store.rb` — scopes `agent_files`/`skills`; `config/deployment.rb` —
   `AGENT_FILE_STORE`/`SKILL_STORE`, catálogo com overlay, provider com `agent_files:`, +5 no BUS.
 
+**Etapa D (memória + settings + LLM):**
+- `lib/harness/commands/{memory_put_fact,memory_forget_fact,memory_add_note}.rb` — memória
+  editável por HTTP (não só via tool `remember`); escopada por `tenant` (payload ou meta).
+- `lib/harness/secret_masking.rb` — sentinel `__OCULTO__` (`mask`/`reconcile`/`present?`):
+  segredo nunca volta em plaintext; sentinel preserva, "" limpa, string nova substitui.
+- `lib/harness/settings_store.rb` + `commands/update_settings.rb` — settings gerais duráveis
+  (streaming/timeouts/compaction) com DEFAULTS + deep-merge; `:update_settings` faz patch.
+- `lib/harness/llm_provider_store.rb` — providers de LLM store-backed, `api_key` mascarada nas
+  leituras de UI (`get`/`all`), real só em `get_raw`/`all_raw` (pro configurator).
+- `lib/harness/llm_configurator.rb` — reaplica `<api>_api_key=`/`<api>_api_base=` no RubyLLM
+  em runtime (require lazy, D9; `configure:` injetável p/ teste sem a gem); provider não
+  reconhecido -> `skipped` (degrada "restart recomendado"), resto aplica.
+- `commands/{upsert,delete}_llm_provider.rb` — CRUD de provider; upsert reconfigura runtime.
+- `config/deployment.rb` — `SETTINGS_STORE`/`LLM_PROVIDER_STORE`/`LLM_CONFIGURATOR` + 6 no BUS.
+
 ### Prova de "rodar de verdade"
 - Turno real multi-turn (DeepSeek): Bia chama `current_time`/`menu`/`calc`/`load_skill`,
   lembra do nome entre turnos. (`scripts/run_real.rb`, `scripts/serve_real.rb`.)
@@ -80,18 +96,26 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 
 ## 4. Estado atual dos testes
 
-`bundle exec rspec` → **908 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
-continua lazy — restrição D9 do core preservada). O "boom" no log é fixture intencional.
+`bundle exec rspec` → **962 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
+continua lazy — restrição D9 do core preservada; o `LLMConfigurator` recebe `configure:`
+falso nos specs). O "boom" no log é fixture intencional.
 
-## 5. PRÓXIMO PASSO — Etapa D (tasks 9-11)
+## 5. PRÓXIMO PASSO — Etapa E (tasks 12-14): **app Roda + auth + assets**
 
-**Memória + Settings + LLM.** Escopo:
-- Task 9: Commands de memória (`:memory_put_fact`/`:memory_forget_fact`/`:memory_add_note`) + leituras.
-- Task 10: ConfigStore settings/llm_providers + `:update_settings` + masking sentinel `__OCULTO__`.
-- Task 11: `LLMConfigurator` — reconfigure runtime por provider + `:upsert/delete_llm_provider`.
+Etapa D (memória/settings/LLM) está **feita** — o backend de config do Studio está
+completo (agentes, prompts/skills, memória, settings, LLM). Agora começa a **UI de
+verdade** (primeira etapa com HTTP/HTML):
+- Task 12: app `studio/` (Roda) montado sob `/studio` + login por cookie (D7) + CSRF.
+- Task 13: pipeline esbuild (Tailwind+Stimulus+CodeMirror) → `dist/` versionado + CSP `'self'`.
+- Task 14: shell/layout + Stimulus base + páginas login + agents(list) + playground (SSE).
 
-Depois: E (app Roda + auth + assets) → F (páginas de autoria) → G (mcp/settings/
-system-files/chats) → H (polish). Ver `tasks/tasks.md`.
+Depois: F (páginas de autoria) → G (mcp/settings/system-files/chats) → H (polish). Ver
+`tasks/tasks.md`.
+
+**Prova de "rodar de verdade" (Etapa D):** com `DEEPSEEK_API_KEY` setado, os 6 Commands
+despacham pelo BUS real de `config/deployment.rb` — `memory_put_fact/add_note/forget_fact`,
+`update_settings` (deep-merge de compaction), `upsert_llm_provider` (chave mascarada na
+resposta, real no `get_raw`, RubyLLM reconfigurado sem erro) e `delete_llm_provider`.
 
 ### Decisão D3 travada na Etapa C: **conteúdo store-backed**
 Prompts por-agente e skills autoradas vivem no **ConfigStore** (scopes novos
