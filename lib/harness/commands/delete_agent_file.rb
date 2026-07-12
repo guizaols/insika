@@ -24,11 +24,26 @@ module Harness
           raise Harness::NotFoundError, "arquivo '#{file}' não encontrado para o agente '#{agent_id}'"
         end
 
+        unregister_prompt_file(agent_id, file)
         @event_stream.emit(Harness::Event.new(
                              type: :agent_file_deleted, data: { agent_id: agent_id, file: file },
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { agent_id: agent_id, file: file }
+      end
+
+      private
+
+      # Remover o arquivo também o tira de prompt_files (a operação inversa do
+      # WriteAgentFile) — trabalho do Command, não de quem despacha.
+      def unregister_prompt_file(agent_id, file)
+        profile = @profile_source.fetch(agent_id)
+        return unless profile
+
+        files = Array(profile.prompt_files).map(&:to_s)
+        return unless files.include?(file)
+
+        @profile_source.put(Harness::AgentProfile.build(**profile.to_h.merge(prompt_files: files - [file])))
       end
     end
   end

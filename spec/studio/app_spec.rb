@@ -366,7 +366,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:memory]).to be(false)
   end
 
-  it "gravar prompt NOVO também o adiciona a prompt_files" do
+  it "gravar prompt despacha write_agent_file (o Command sincroniza prompt_files)" do
     app, bus = build_app # bia tem prompt_files: []
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -374,27 +374,16 @@ RSpec.describe Studio::App do
                   "file" => "IDENTITY.md", "content" => "# Eu", "_csrf" => csrf
                 })
     expect(bus.last(:write_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md")
-    expect(bus.last(:update_agent).payload[:prompt_files]).to eq(["IDENTITY.md"])
+    expect(bus.types).not_to include(:update_agent) # sync de prompt_files é do Command
   end
 
-  it "gravar prompt JÁ referenciado não redispara update_agent" do
-    app, bus = build_app(agents: [profile("bia", prompt_files: ["IDENTITY.md"])])
-    client = login(app)
-    csrf = csrf_from(client.get("/agents/bia").body)
-    client.post("/agents/bia/prompts", params: {
-                  "file" => "IDENTITY.md", "content" => "# Eu 2", "_csrf" => csrf
-                })
-    expect(bus.types).to include(:write_agent_file)
-    expect(bus.types).not_to include(:update_agent)
-  end
-
-  it "remover prompt despacha delete_agent_file e tira de prompt_files" do
+  it "remover prompt despacha delete_agent_file (o Command tira de prompt_files)" do
     app, bus = build_app(agents: [profile("bia", prompt_files: %w[IDENTITY.md SOUL.md])])
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
     client.post("/agents/bia/prompts/delete", params: { "file" => "SOUL.md", "_csrf" => csrf })
     expect(bus.last(:delete_agent_file).payload).to include(agent_id: "bia", file: "SOUL.md")
-    expect(bus.last(:update_agent).payload[:prompt_files]).to eq(["IDENTITY.md"])
+    expect(bus.types).not_to include(:update_agent)
   end
 
   it "restaurar prompt despacha restore_agent_file com version" do
