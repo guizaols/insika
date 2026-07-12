@@ -1,19 +1,21 @@
 <%= style %>
-<h1>Tasks</h1>
-<%= nav %>
+<%= header("Tasks", "status, executions e checkpoints") %>
 <% if @tasks.empty? -%>
-  <p class="muted">Nenhuma task.</p>
+  <div class="empty">Nenhuma task.</div>
 <% else -%>
-  <table>
-    <tr><th>id</th><th>status</th><th>session</th><th>executions</th><th>atualizada</th></tr>
-    <% @tasks.each do |t| -%>
-      <tr>
-        <td><a href="/admin/tasks/<%= h(t.id) %>"><%= h(t.id) %></a></td>
-        <td><%= h(t.status) %></td>
-        <td><%= h(t.session_id) %></td>
-        <td><%= h(t.executions.size) %></td>
-        <td><%= h(t.updated_at) %></td>
-      </tr>
-    <% end -%>
-  </table>
+  <div class="card" style="padding:.25rem .9rem">
+    <table>
+      <tr><th>id</th><th>status</th><th>session</th><th>executions</th><th>atualizada</th></tr>
+      <% @tasks.each do |t| -%>
+        <tr>
+          <td><a href="/admin/tasks/<%= h(t.id) %>"><code><%= h(t.id) %></code></a></td>
+          <td><%= status_pill(t.status) %></td>
+          <td class="mono muted"><%= t.session_id ? h(t.session_id) : "—" %></td>
+          <td class="mono"><%= h(t.executions.size) %></td>
+          <td class="mono muted"><%= h(t.updated_at) %></td>
+        </tr>
+      <% end -%>
+    </table>
+  </div>
 <% end -%>
+</div>
