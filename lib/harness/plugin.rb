@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 module Harness
-  # Boot hook por gem (RFC-0003 §2, doc 06 L1 — estilo Railtie): a gem de plugin
+  # Boot hook por gem (estilo Railtie): a gem de plugin
   # chama Harness::Plugin.announce(root) no load do seu lib/ (antes do boot); o
   # composition root consome announced_roots ao montar o Loader. Explícito e
-  # barato — NADA de scan de LOAD_PATH/gems instaladas (L1).
+  # barato — NADA de scan de LOAD_PATH/gems instaladas.
   #
   # Este arquivo é MÍNIMO e sem dependências: gems de terceiros podem carregá-lo
   # antes de qualquer outra coisa do Harness. O Loader vive em plugin/loader.rb
@@ -14,7 +14,7 @@ module Harness
 
     class << self
       # Acumula roots ANTES do boot, na ORDEM de require das gems (é ela que
-      # define a precedência entre gems, doc 06 §3). Deduplica por path expandido.
+      # define a precedência entre gems). Deduplica por path expandido.
       def announce(root)
         root = File.expand_path(root.to_s)
         @announced_roots << root unless @announced_roots.include?(root)

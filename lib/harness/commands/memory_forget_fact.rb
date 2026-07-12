@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D5): esquece (remove) um fato da
+    # Command de controle: esquece (remove) um fato da
     # memória do agente. Idempotente: esquecer o que não existe não é erro
     # (`existed: false`). Escopado por `tenant`. -> { existed: bool }.
     class MemoryForgetFact

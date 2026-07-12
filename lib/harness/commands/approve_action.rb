@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (P2-02): o operador resolve uma ação pendente
+    # Command de controle: o operador resolve uma ação pendente
     # (human-in-the-loop). Resolve o PendingAction no store (fonte da verdade,
     # durável) e ACORDA o turno suspenso em :waiting postando :approval no fiber
     # vivo. Ordem importa: RESOLVE antes de postar — quando o await acorda, o
@@ -26,7 +26,7 @@ module Harness
         decision = (p[:decision] || p["decision"]).to_s
         raise Harness::ValidationError, "pending_id é obrigatório" if pending_id.empty?
 
-        # operador: da auth do operador (Control UI, task 12) via payload; nil ok.
+        # operador: da auth do operador (Control UI) via payload; nil ok.
         operator = p[:operator] || p["operator"] || command.meta[:operator]
 
         # resolve() valida a decisão e o estado (:pending); NotFound se ausente.

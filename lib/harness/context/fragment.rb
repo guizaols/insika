@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Harness
-  # Unidade de contexto produzida por um provider (RFC-0005 §2, overview §2).
+  # Unidade de contexto produzida por um provider.
   # Tipo COMPARTILHADO (Harness::, não Harness::Context::).
   #   placement: :system | :history | :tool_context
   #   priority:  Integer; maior = mais importante (sobrevive a cortes)
-  #   tokens:    Integer | nil; estimado pelo Builder quando nil (L3)
+  #   tokens:    Integer | nil; estimado pelo Builder quando nil
   #   source:    String — id do provider (auditoria)
   #   pinned:    true -> incortável no orçamento (ex.: identidade)
   ContextFragment = Data.define(:content, :placement, :priority, :tokens,

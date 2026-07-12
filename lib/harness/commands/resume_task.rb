@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de TURNO (D3): retoma uma task do último checkpoint. Crash-recovery
-    # e resume manual usam ESTE mesmo caminho (o Recovery só descobre e despacha,
-    # task 8). Reexecuta o turno checkpointado inteiro; tools não-idempotentes já
-    # concluídas são puladas via side-effect registry (doc 02 L5, doc 03 §4.1).
+    # Command de turno: retoma uma task do último checkpoint. Crash-recovery
+    # e resume manual usam ESTE mesmo caminho (o Recovery só descobre e despacha).
+    # Reexecuta o turno checkpointado inteiro; tools não-idempotentes já
+    # concluídas são puladas via side-effect registry.
     class ResumeTask
       def initialize(profiles:, task_store:, checkpoint_store:, executor:)
         @profiles = ProfileSource.coerce(profiles)
@@ -21,16 +21,16 @@ module Harness
         task = @task_store.find(task_id) ||
                (raise Harness::NotFoundError, "task '#{task_id}' não encontrada")
 
-        # RESUME IN-PROCESS (P2 task 4): task :paused cujo fiber AINDA vive (blocked
+        # RESUME IN-PROCESS: task :paused cujo fiber AINDA vive (blocked
         # em await) — NÃO re-despachar (spawn duplicaria o fiber). Só posta :resume;
         # o fiber transita paused->running e segue. (Um :waiting vivo é resolvido
-        # pelo ApproveAction, não aqui — Etapa B.)
+        # pelo ApproveAction, não aqui.)
         if task.status == :paused && @executor.running?(task_id)
           @executor.resume_live(task_id)
           return { task_id: task_id }
         end
 
-        # :queued (P2-03): turno que estava na fila do SessionActor e nunca
+        # :queued: turno que estava na fila do SessionActor e nunca
         # iniciou no crash (sem checkpoint) — recuperar = RODAR do zero, do
         # Command original. Perfil vem do agente do próprio Command.
         if task.status == :queued
@@ -39,8 +39,8 @@ module Harness
         end
 
         # RE-DISPATCH (crash-resume): sem fiber vivo, reexecuta do checkpoint.
-        # resume exige checkpoint (doc 03 §3); sem ele a task é irrecuperável (o
-        # Recovery já a teria marcado :failed na varredura — doc 02 §4).
+        # resume exige checkpoint; sem ele a task é irrecuperável (o
+        # Recovery já a teria marcado :failed na varredura).
         checkpoint = @checkpoint_store.latest(task_id) ||
                      (raise Harness::ValidationError,
                             "task '#{task_id}' não tem checkpoint — irrecuperável")
@@ -66,8 +66,8 @@ module Harness
         @profiles[agent] || (raise Harness::NotFoundError, "agente '#{agent}' não configurado")
       end
 
-      # Matriz de elegibilidade (doc 03 §3): paused/waiting sempre; running só
-      # órfã (sem fiber vivo NESTE processo — D7, single-node); :queued é tratado
+      # Matriz de elegibilidade: paused/waiting sempre; running só
+      # órfã (sem fiber vivo NESTE processo — single-node); :queued é tratado
       # antes (re-run); terminais não são retomáveis.
       def check_eligibility!(task)
         case task.status

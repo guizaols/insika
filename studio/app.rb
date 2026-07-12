@@ -5,28 +5,22 @@ require "digest"
 require "rack/utils"
 
 module Studio
-  # Harness Studio (Fase 4) — a UI de gestão server-rendered, substituta do
-  # agent-studio do OpenClaw. FRAMEWORK NA BORDA (00-overview D1): é um app Roda
+  # Harness Studio — a UI de gestão server-rendered, substituta do
+  # agent-studio do OpenClaw. FRAMEWORK NA BORDA: é um app Roda
   # separado, montado sob `/studio`; `lib/harness` e `server/` NÃO ganham
   # dependência de Roda. Fala com o runtime pela MESMA superfície que a API:
   # despacha Commands no CommandBus e LÊ profiles/stores — nunca escreve em store
   # direto (regra constitucional do transporte).
   #
-  # Auth por SESSÃO/cookie (D7): login compara o token em tempo constante contra
+  # Auth por SESSÃO/cookie: login compara o token em tempo constante contra
   # `HARNESS_ADMIN_TOKEN`, seta cookie httpOnly SameSite=Lax e protege `/studio/*`
   # fail-closed (sem token configurado → login nunca valida → studio inacessível).
-  # Substitui o `LocalAdminShim`/Bearer manual do #25. CSRF nos POSTs.
+  # Substitui o `LocalAdminShim`/Bearer manual. CSRF nos POSTs.
   #
-  # Assets same-origin (D8): bundle esbuild versionado em `assets/dist/*`, servido
+  # Assets same-origin: bundle esbuild versionado em `assets/dist/*`, servido
   # por `/studio/assets/dist/*`. CSP estrita `'self'` (sem `unsafe-inline`).
-  #
-  # Etapa E entregou login/agents(list)/playground. Etapa F (tasks 15-17) traz as
-  # PÁGINAS DE AUTORIA: agents(detail) — config/model + prompts (island
-  # code-editor) + skills + memória + histórico —, skills (matriz + editor) e
-  # tools (matriz). Toda escrita passa pelos Commands já existentes (Etapas B-D);
-  # o Studio só monta a UI sobre eles.
   class App < Roda
-    # Cookie de sessão vive N dias (D7). 7 dias = paridade com o padrão OpenClaw.
+    # Cookie de sessão vive N dias. 7 dias = paridade com o padrão OpenClaw.
     SESSION_MAX_AGE = 7 * 24 * 3600
     ASSETS_DIR = File.expand_path("assets/dist", __dir__)
 
@@ -43,7 +37,7 @@ module Studio
     plugin :hash_branches
     plugin :h
 
-    # CSP estrita (D8): sem `unsafe-inline`. Tudo vem do bundle same-origin em
+    # CSP estrita: sem `unsafe-inline`. Tudo vem do bundle same-origin em
     # /studio/assets/dist. `connect-src 'self'` cobre o EventSource do playground
     # (SSE de /v1/events, mesma origem). `img-src data:` cobre inline SVG/ícones.
     plugin :content_security_policy do |csp|
@@ -67,7 +61,7 @@ module Studio
       # `session_secret` explícito é para os specs; em produção deriva do token de
       # admin (estável entre restarts, sem exigir mais uma env var).
       #
-      # Etapa F: além do trio de sempre (command_bus/profile_source/config), o
+      # Além do trio de sempre (command_bus/profile_source/config), o
       # Studio passa a LER stores de autoria (agent_file/skill/tool/memory/session)
       # para renderizar as páginas. Todos opcionais (default nil): páginas que
       # dependem de um store degradam para um empty-state se ele não foi injetado.
@@ -82,12 +76,12 @@ module Studio
           agent_file_store: agent_file_store, skill_store: skill_store,
           skill_catalog: skill_catalog, tool_catalog: tool_catalog,
           memory_store: memory_store, session_store: session_store,
-          # Etapa G: config-de-runtime (settings/LLM/MCP) + arquivos de sistema
+          # config-de-runtime (settings/LLM/MCP) + arquivos de sistema
           # globais + índice de conversas. Todos opcionais (empty-state se nil).
           settings_store: settings_store, llm_provider_store: llm_provider_store,
           mcp_store: mcp_store, system_file_store: system_file_store
         }.freeze
-        # Etapa H: flag de "restart recomendado" — em memória, POR PROCESSO. Uma
+        # flag de "restart recomendado" — em memória, POR PROCESSO. Uma
         # mudança de config que o runtime só relê no boot (ex.: instâncias MCP são
         # ligadas na inicialização) acende a flag; reiniciar o processo a apaga
         # naturalmente (processo novo = `configure` roda de novo = flag zerada).
@@ -113,7 +107,7 @@ module Studio
         Digest::SHA512.hexdigest("harness-studio-session-v1:#{admin_token}")
       end
 
-      # --- Restart recomendado (Etapa H) — estado por processo -----------------
+      # --- Restart recomendado — estado por processo -----------------
       def restart_needed? = @restart_needed == true
       def mark_restart_needed! = (@restart_needed = true)
       def clear_restart_needed! = (@restart_needed = false)
@@ -123,14 +117,14 @@ module Studio
       response["x-content-type-options"] = "nosniff"
       response["referrer-policy"] = "same-origin"
 
-      # Assets versionados (D8): públicos (a UI carrega o bundle ANTES do login).
+      # Assets versionados: públicos (a UI carrega o bundle ANTES do login).
       r.on "assets", "dist" do
         r.get String do |name|
           serve_asset(name)
         end
       end
 
-      # Login (D7): único caminho sem sessão. GET mostra o form; POST valida o
+      # Login: único caminho sem sessão. GET mostra o form; POST valida o
       # token em tempo constante e, se ok, marca a sessão e redireciona.
       r.is "login" do
         r.get { view("login") }
@@ -167,7 +161,7 @@ module Studio
       # `/studio` e `/studio/` → lista de agentes.
       r.root { r.redirect("/studio/agents") }
 
-      # --- Agentes: lista + detalhe/autoria (tasks 15/17) --------------------
+      # --- Agentes: lista + detalhe/autoria --------------------
       r.on "agents" do
         # /studio/agents — grid dos agentes (lê o ProfileSource).
         r.is do
@@ -176,7 +170,7 @@ module Studio
             view("agents")
           end
 
-          # POST /studio/agents — cria um agente (task de paridade: "cada um cria
+          # POST /studio/agents — cria um agente ("cada um cria
           # sua BIA"). Dispara :create_agent; redireciona pro detalhe do novo.
           r.post do
             check_csrf!
@@ -202,7 +196,7 @@ module Studio
             r.get { render_agent_detail }
           end
 
-          # Config/model (task 15) → :update_agent (merge de patch).
+          # Config/model → :update_agent (merge de patch).
           r.post "config" do
             check_csrf!
             with_flash("Configuração salva.") do
@@ -211,7 +205,7 @@ module Studio
             r.redirect(agent_path(id))
           end
 
-          # Prompts store-backed (task 15). Escrever também garante que o arquivo
+          # Prompts store-backed. Escrever também garante que o arquivo
           # entre em `prompt_files` — senão o Prompt provider não o carregaria.
           r.on "prompts" do
             r.post "delete" do
@@ -251,7 +245,7 @@ module Studio
             end
           end
 
-          # Skills do agente (task 17) → :update_agent com a allowlist `skills`.
+          # Skills do agente → :update_agent com a allowlist `skills`.
           # "todas" = nil; senão o subconjunto marcado (possivelmente []).
           r.post "skills" do
             check_csrf!
@@ -262,7 +256,7 @@ module Studio
             r.redirect(agent_path(id))
           end
 
-          # Memória do agente (task 17). Escopada por tenant = id do agente — o
+          # Memória do agente. Escopada por tenant = id do agente — o
           # MESMO tenant que o playground usa ao conversar, então o que se edita
           # aqui é o que a BIA lê no turno. Cada agente, sua memória.
           r.on "memory" do
@@ -293,7 +287,7 @@ module Studio
         end
       end
 
-      # --- Skills: catálogo + matriz de agentes + editor (task 16) -----------
+      # --- Skills: catálogo + matriz de agentes + editor -----------
       r.on "skills" do
         r.is do
           r.get { render_skills_index }
@@ -342,7 +336,7 @@ module Studio
         end
       end
 
-      # --- Tools: matriz tool × agente (task 16) -----------------------------
+      # --- Tools: matriz tool × agente -----------------------------
       r.on "tools" do
         r.is { r.get { render_tools_matrix } }
 
@@ -360,7 +354,7 @@ module Studio
         end
       end
 
-      # --- Settings gerais + providers de LLM (task 18) ----------------------
+      # --- Settings gerais + providers de LLM ----------------------
       r.on "settings" do
         r.is do
           r.get { render_settings }
@@ -393,7 +387,7 @@ module Studio
         end
       end
 
-      # --- MCP: instâncias com credenciais mascaradas (task 18) --------------
+      # --- MCP: instâncias com credenciais mascaradas --------------
       r.on "mcp" do
         r.is do
           r.get { render_mcp }
@@ -418,7 +412,7 @@ module Studio
         end
       end
 
-      # --- Arquivos de sistema globais (task 19) -----------------------------
+      # --- Arquivos de sistema globais -----------------------------
       # Valem para TODOS os agentes (o Prompt provider injeta antes da
       # identidade individual). Editor code-editor + versões, como os prompts.
       r.on "system-files" do
@@ -452,13 +446,13 @@ module Studio
         end
       end
 
-      # --- Chats: índice de conversas (task 19) ------------------------------
+      # --- Chats: índice de conversas ------------------------------
       # Read-only: lista sessões e linka pro viewer existente (/sessions/:id).
       r.on "chats" do
         r.is { r.get { render_chats } }
       end
 
-      # --- Histórico: viewer read-only de uma sessão (task 17) ---------------
+      # --- Histórico: viewer read-only de uma sessão ---------------
       r.on "sessions" do
         r.on String do |sid|
           sid = utf8(sid)
@@ -506,7 +500,7 @@ module Studio
 
     def harness = self.class.harness
 
-    # Navegação da app-bar. Etapa F acrescenta skills + tools às páginas de E.
+    # Navegação da app-bar.
     def nav_links
       {
         "agentes" => "/studio/agents",
@@ -522,7 +516,7 @@ module Studio
 
     def authenticated? = session["auth"] == true
 
-    # --- Polish (Etapa H): tema, health chip, banner de restart --------------
+    # --- Polish: tema, health chip, banner de restart --------------
 
     def restart_needed? = self.class.restart_needed?
 
@@ -697,7 +691,7 @@ module Studio
     # --- Histórico -----------------------------------------------------------
 
     # Conversas recentes (todos os agentes — a Session não carimba o agente que
-    # a produziu; ver HANDOFF §histórico). Mais recentes primeiro, capadas.
+    # a produziu). Mais recentes primeiro, capadas.
     def recent_sessions(limit: 8)
       store = harness[:session_store]
       return [] unless store
@@ -711,7 +705,7 @@ module Studio
       last && last["content"].to_s
     end
 
-    # --- Settings + LLM providers (task 18) ----------------------------------
+    # --- Settings + LLM providers ----------------------------------
 
     def render_settings
       store = harness[:settings_store]
@@ -753,7 +747,7 @@ module Studio
       }
     end
 
-    # --- MCP (task 18) -------------------------------------------------------
+    # --- MCP -------------------------------------------------------
 
     def render_mcp
       @instances = harness[:mcp_store] ? harness[:mcp_store].all : []
@@ -776,7 +770,7 @@ module Studio
       }
     end
 
-    # --- System-files (task 19) ----------------------------------------------
+    # --- System-files ----------------------------------------------
 
     def render_system_files
       store = harness[:system_file_store]
@@ -787,7 +781,7 @@ module Studio
       view("system_files")
     end
 
-    # --- Chats (task 19) -----------------------------------------------------
+    # --- Chats -----------------------------------------------------
 
     def render_chats
       @sessions = recent_sessions(limit: 100)

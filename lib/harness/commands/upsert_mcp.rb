@@ -4,12 +4,12 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa G / D6): cria/edita uma instância MCP
+    # Command de controle: cria/edita uma instância MCP
     # (transport/command/url/enabled + credenciais `env`) no McpStore. As
     # credenciais são sentinel-aware por chave (__OCULTO__ preserva; "" limpa;
     # string nova substitui). Retorna o record MASCARADO (env nunca volta em
     # plaintext). CRUD de config durável — a execução de um cliente MCP contra a
-    # instância é runtime posterior (spec, open questions).
+    # instância é runtime posterior.
     class UpsertMcp
       def initialize(mcp_store:, event_stream:)
         @mcp_store = mcp_store

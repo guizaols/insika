@@ -5,9 +5,9 @@ require_relative "message"
 module Harness
   module Server
     module A2A
-      # Projeção Task (núcleo) -> A2A Task (P3A-01, D2/D3, L4-L6). PURO.
+      # Projeção Task (núcleo) -> A2A Task. PURO.
       module TaskProjection
-        # Mapa de estado (D2). Estado desconhecido -> "unknown".
+        # Mapa de estado. Estado desconhecido -> "unknown".
         STATE = {
           queued: "submitted", running: "working", waiting: "input-required",
           paused: "working", completed: "completed", failed: "failed", cancelled: "canceled"
@@ -26,7 +26,7 @@ module Harness
           }
         end
 
-        # completed -> conteúdo; failed -> erro; demais estados sem message (L5).
+        # completed -> conteúdo; failed -> erro; demais estados sem message.
         def self.status_message(state, content, error)
           case state
           when "completed" then content && Message.agent_message(content)

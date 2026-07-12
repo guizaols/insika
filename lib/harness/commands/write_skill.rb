@@ -5,7 +5,7 @@ require "yaml"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa C): grava uma skill compartilhada
+    # Command de controle: grava uma skill compartilhada
     # (SKILL.md completo) no SkillStore e RECARREGA o catálogo — passa a valer
     # sem restart (hot). Valida o frontmatter (name obrigatório) antes de gravar.
     # -> { name, updated_at }.

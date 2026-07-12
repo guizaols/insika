@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de TURNO canônico (D3): valida tudo síncrono, cria a Task, dispara
+    # Command de turno canônico: valida tudo síncrono, cria a Task, dispara
     # o fiber e responde `{task_id:}` imediato — o resultado flui pelo Event
-    # Stream (RFC-0002 §7). Validações que falham NÃO criam Task (doc 03 §6:
-    # ValidationError/NotFoundError -> resposta HTTP direta).
+    # Stream. Validações que falham NÃO criam Task
+    # (ValidationError/NotFoundError -> resposta HTTP direta).
     class SendMessage
       def initialize(profiles:, session_store:, task_store:, executor:)
         @profiles = ProfileSource.coerce(profiles)
@@ -26,7 +26,7 @@ module Harness
         message = p[:message]
         raise Harness::ValidationError, "message é obrigatória e não-vazia" if message.to_s.strip.empty?
 
-        # D2: session_id XOR history (ambos -> erro; nenhum -> one-shot).
+        # session_id XOR history (ambos -> erro; nenhum -> one-shot).
         if p[:session_id] && p[:history]
           raise Harness::ValidationError, "session_id e history são mutuamente exclusivos (D2)"
         end
@@ -37,8 +37,8 @@ module Harness
             (raise Harness::NotFoundError, "sessão '#{p[:session_id]}' não encontrada")
         end
 
-        # command.to_h persiste o Command inteiro na Task (schema doc 02 §3);
-        # o ResumeTask relê payload.message de lá (task 13).
+        # command.to_h persiste o Command inteiro na Task;
+        # o ResumeTask relê payload.message de lá.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
         @executor.spawn_in_session(task, profile: profile)
         { task_id: task.id }

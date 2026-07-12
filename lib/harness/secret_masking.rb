@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Masking de segredos no round-trip UI↔Store (Fase 4 — Studio, D6). Padrão do
+  # Masking de segredos no round-trip UI↔Store. Padrão do
   # OpenClaw: um segredo NUNCA volta em plaintext pra tela — vira o sentinel
   # `__OCULTO__`. Ao gravar, o sentinel de volta significa "mantém o que já
   # estava"; uma string nova substitui; `""` limpa. Compartilhado por

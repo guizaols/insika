@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D6): faz merge de um patch nos
+    # Command de controle: faz merge de um patch nos
     # settings gerais (timeouts/streaming/compaction) e persiste no SettingsStore.
     # Só o que veio no patch muda; o resto (e os defaults) é preservado. Vale no
     # próximo turno que ler settings. -> Hash (settings resultante).

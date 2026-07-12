@@ -3,7 +3,7 @@
 require "time"
 
 module Harness
-  # Workspace por agente (Fase 4 — Studio, Etapa C / D3 revisado). Guarda o
+  # Workspace por agente. Guarda o
   # CONTEÚDO dos arquivos de prompt de cada agente (IDENTITY.md/SOUL.md/TOOLS.md
   # e afins) no Store durável — não em disco. É o que faz "cada um cria sua BIA
   # com identidade própria": o Prompt provider lê daqui, por agente, em vez dos

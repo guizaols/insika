@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa G): grava um arquivo de sistema GLOBAL no
+    # Command de controle: grava um arquivo de sistema GLOBAL no
     # SystemFileStore. Diferente do write_agent_file (por agente), estes arquivos
     # valem para TODOS os agentes — o Prompt provider os injeta antes da
     # identidade individual. Vale no próximo turno (hot). -> { file, updated_at }.

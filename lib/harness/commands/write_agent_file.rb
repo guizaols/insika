@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa C): grava um arquivo de prompt de um
+    # Command de controle: grava um arquivo de prompt de um
     # agente no workspace (AgentFileStore). É o que dá identidade própria a cada
     # BIA — o Prompt provider lê estes arquivos por `profile.prompt_files`. Vale
     # no próximo dispatch (hot). -> { agent_id, file, updated_at }.

@@ -4,13 +4,13 @@ require "async"
 require "async/queue"
 
 module Harness
-  # Sessions como Actors (RFC-0002 §9, P2-03): um fiber por sessão com fila FIFO
+  # Sessions como Actors: um fiber por sessão com fila FIFO
   # de turnos, executados UM POR VEZ. Restaura o invariante "um dono por vez" do
   # transcript que dois `send_message` concorrentes no mesmo `session_id`
   # quebrariam (read-modify-write no Session Store). Turnos de sessões distintas
   # seguem concorrentes; one-shot/history (sem session_id) não passam por aqui.
   #
-  # Vive no escopo SUPERVISIONADO (L4): o loop é filho do supervisor, não da
+  # Vive no escopo SUPERVISIONADO: o loop é filho do supervisor, não da
   # request — sobrevive à conexão. O turno em si (spawnado pelo Executor) também
   # nasce no supervisor; o SessionActor apenas o AGUARDA para serializar.
   class SessionActor

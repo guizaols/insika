@@ -4,7 +4,7 @@ require "async"
 
 module Harness
   module Server
-    # Transforma os componentes das 25 tasks anteriores num serviço (doc 07 §4).
+    # Transforma os componentes num serviço.
     # Ordem OBRIGATÓRIA e sem paralelismo: plugins → stores → recovery → (app
     # para o listen). "Nunca aceita request antes do recovery" é garantido POR
     # CONSTRUÇÃO: o listen (Falcon) só roda depois que `#call` retorna o app, e
@@ -19,7 +19,7 @@ module Harness
       end
 
       # -> Rack app pronto para o `run`. Falha de store no boot (arquivo
-      # corrompido → StoreError) PROPAGA e aborta o processo (doc 02 §6: subir
+      # corrompido → StoreError) PROPAGA e aborta o processo (subir
       # sem durabilidade é pior que não subir); uma task irrecuperável NÃO
       # derruba o boot (o Recovery já a marca :failed).
       def call
@@ -40,9 +40,8 @@ module Harness
       # retomada TERMINAM (recovery + turnos concluídos antes do listen — boot
       # mais lento, semanticamente seguro). Sob um reactor já corrente (testes
       # dentro de Async), roda direto: retorna após o DISPATCH da retomada, com
-      # os turnos ainda em voo — também correto (doc 02 §4/§5 e edge case 1 da
-      # task 26 aceitam ambos: "recovery antes do listen" = dispatch antes do
-      # listen, não conclusão dos turnos).
+      # os turnos ainda em voo — também correto: "recovery antes do listen" =
+      # dispatch antes do listen, não conclusão dos turnos.
       def run_recovery
         recovery = @wiring.recovery
         return recovery.run if Async::Task.current?
@@ -50,7 +49,7 @@ module Harness
         Sync { recovery.run }
       end
 
-      # Durabilidade (doc 02 §6): sem backend durável, nada é retomado após
+      # Durabilidade: sem backend durável, nada é retomado após
       # restart — avisa alto no boot para não subir "sem rede" por engano. O
       # wiring de teste (duplo) pode não expor `durable?`; nesse caso, silêncio.
       def warn_if_ephemeral

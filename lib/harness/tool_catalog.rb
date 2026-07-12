@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Harness
-  # Visão "nível 1" (progressive disclosure, RFC-0005 §5) das tools: só
-  # name+description, o análogo do SkillCatalog para tools (P2B-02 L3). NÃO lê
+  # Visão "nível 1" (progressive disclosure) das tools: só
+  # name+description, o análogo do SkillCatalog para tools. NÃO lê
   # disco (as tools já estão no ToolRegistry, registradas no boot) e NÃO herda de
   # RubyLLM::Tool — duck typing sobre `.description` (puro, testável sem a gem).
   #
@@ -31,7 +31,7 @@ module Harness
       all.select { |e| wanted.include?(e.name) }
     end
 
-    # Matcher PURO (P2B-02 L5): case-insensitive, substring/keyword, SEM
+    # Matcher PURO: case-insensitive, substring/keyword, SEM
     # embeddings. name pesa 2, description pesa 1; desempate por índice original
     # (sort_by do Ruby não é estável). `within:` restringe o universo via subset.
     def search(query, within: nil)
