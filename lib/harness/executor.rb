@@ -324,7 +324,7 @@ module Harness
 
     # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
     ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
-                                keyword_init: true)
+                                :tenant, keyword_init: true)
 
     # Estágios 2-9 (doc 03 §4), com drain de mailbox só nas fronteiras (L2) e
     # turn-timeout (D4) envolvendo tudo via Async::Task#with_timeout — NUNCA
@@ -333,6 +333,7 @@ module Harness
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
+      state.tenant = command_tenant(task) # P2C: escopo da memória (write path lê daqui)
       turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
       # Turno que PODE exigir aprovação humana (P2-02) ganha budget = approval_timeout
       # (~1h): o with_timeout do turno não pode matar uma espera de operador
@@ -487,7 +488,15 @@ module Harness
       session = task.session_id ? @session_store.find(task.session_id) : nil
       ContextRequest.new(task: task, profile: profile, message: state.message,
                          session: session, history: command_history(task),
-                         checkpoint: resume_from)
+                         checkpoint: resume_from, tenant: command_tenant(task))
+    end
+
+    # P2C (D6): tenant do Command (Command.build(..., tenant:) -> meta[:tenant],
+    # command.rb). Ausente -> nil (o MemoryStore aplica DEFAULT_TENANT). Reconcilia
+    # parte do débito da Fase 1 (o Request provider já chamava request.tenant).
+    def command_tenant(task)
+      meta = rebuild_command(task).meta
+      meta["tenant"] || meta[:tenant]
     end
 
     # Request real do doc 05 §2: command (p/ a WorkflowAllowlist), context

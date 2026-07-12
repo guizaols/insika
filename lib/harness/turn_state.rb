@@ -23,6 +23,10 @@ module Harness
     # capability_registry ou profile.capabilities vazio (paridade Fase 1).
     attr_accessor :capability_names
 
+    # Interno (P2C, memória): tenant do turno (do Command), escopo do write path
+    # (`remember` tool). Setado no run_pipeline; nil = DEFAULT_TENANT no MemoryStore.
+    attr_accessor :tenant
+
     # Interno (P2B, Tool Search): ids de side-effects já concluídos no turno
     # interrompido, propagados às tools PROMOVIDAS pelo tool_search (mesmo `skip`
     # que o wrap_tools das eager recebe). Setado no run_pipeline pela task 10;
