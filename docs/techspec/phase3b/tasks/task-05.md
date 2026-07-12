@@ -1,7 +1,7 @@
 # Task 05 (P3B): A2A::Remotes.parse (config de remotos)
 
 > **Techspec:** [P3B-02-remote-tool-and-wiring.md](../P3B-02-remote-tool-and-wiring.md) (§Remotes, D6) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Low · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Low · **Etapa:** B
 
 ## Objetivo
 

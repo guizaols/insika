@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + [P3B-01](../P3B-01-a2a-client.md) · [P3B-02](../P3B-02-remote-tool-and-wiring.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 4/7 tasks complete (PR 1 / Etapa A ✅)
+> **Progress:** 7/7 tasks complete — fatia B COMPLETA (Etapas A · B) ✅
 > **Base:** Fase 3 fatia A completa (main @ merge PR #20)
 
 ---
@@ -15,9 +15,9 @@
 | 2 | `A2A::Client#call` — send + poll `tasks/get` até terminal + encapsula erro | [task-02.md](./task-02.md) | P3B-01 | ✅ DONE | Med | D3, L4-L5 |
 | 3 | `A2A::Http` — adapter `post_json` sobre async-http (boundary; require lazy) | [task-03.md](./task-03.md) | P3B-01 | ✅ DONE | Low | D2, L6 |
 | 4 | `Tools::A2ARemote` — RubyLLM::Tool por remoto (execute→client.call; `:a2a_call`; name/desc por instância) | [task-04.md](./task-04.md) | P3B-02 | ✅ DONE | Med | D1/D4, L1-L3 |
-| 5 | `A2A::Remotes.parse` — config `id=url,..` → [Remote] | [task-05.md](./task-05.md) | P3B-02 | ⬜ TODO | Low | D6 |
-| 6 | Wiring: `A2A_CLIENT` + `Http` + registro lazy dos tools remotos + catálogo D5 (`:a2a_call`) + wiring-load spec | [task-06.md](./task-06.md) | P3B-02 | ⬜ TODO | Med | D5/D6/D7, L4-L5 |
-| 7 | Smoke E2E loopback: orchestrator chama remote_worker → inbound A2A::App roda o worker → resposta volta; erro remoto; paridade | [task-07.md](./task-07.md) | P3B-01/02 | ⬜ TODO | Med | 00 §"Critério" |
+| 5 | `A2A::Remotes.parse` — config `id=url,..` → [Remote] | [task-05.md](./task-05.md) | P3B-02 | ✅ DONE | Low | D6 |
+| 6 | Wiring: `A2A_CLIENT` + `Http` + registro lazy dos tools remotos + catálogo D5 (`:a2a_call`) + wiring-load spec | [task-06.md](./task-06.md) | P3B-02 | ✅ DONE | Med | D5/D6/D7, L4-L5 |
+| 7 | Smoke E2E loopback: orchestrator chama remote_worker → inbound A2A::App roda o worker → resposta volta; erro remoto; paridade | [task-07.md](./task-07.md) | P3B-01/02 | ✅ DONE | Med | 00 §"Critério" |
 
 ### Status Legend
 - ⬜ TODO · 🟡 IN PROGRESS · ✅ DONE · ⛔ BLOCKED
