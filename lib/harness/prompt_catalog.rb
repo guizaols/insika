@@ -23,6 +23,13 @@ module Harness
     # papel do catálogo levantar).
     def find(name) = @prompts[name.to_s]
 
+    # Rescan + troca atômica do índice (Etapa C): paridade com o SkillCatalog
+    # para reload sem restart quando o seed em disco muda.
+    def reload
+      @prompts = load_all
+      self
+    end
+
     private
 
     def load_all

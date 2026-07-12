@@ -16,8 +16,13 @@ module Harness
 
     # roots ordenados por PRECEDÊNCIA (maior primeiro): workspace, managed,
     # bundled. Mesmo nome em mais de um root: o primeiro vence.
-    def initialize(roots)
+    #
+    # store (Etapa C, opcional): um SkillStore com as skills AUTORADAS no Studio.
+    # Sobrepõem as de disco (seed) — Store vence, é a fonte da verdade (D3
+    # revisado). Nil = comportamento Fase 0 (só disco), zero regressão.
+    def initialize(roots, store: nil)
       @roots = Array(roots)
+      @store = store
       @skills = load_all
     end
 
@@ -27,6 +32,14 @@ module Harness
 
     def find(name)
       @skills[name.to_s]
+    end
+
+    # Recarrega do disco + Store e TROCA o índice atomicamente (Etapa C): uma
+    # skill autorada/editada passa a valer sem restart. Um turno em andamento
+    # capturou @skills no dispatch, então não vê a troca no meio (D3).
+    def reload
+      @skills = load_all
+      self
     end
 
     # Allowlist por agente (semântica OpenClaw):
@@ -64,17 +77,28 @@ module Harness
       found = {}
       @roots.each do |root|
         Dir.glob(File.join(root, "**", "SKILL.md")).sort.each do |file|
-          skill = parse(file)
+          skill = parse_content(File.read(file, encoding: "UTF-8"), path: file)
           next unless skill
 
           found[skill.name] ||= skill # precedência: primeiro root vence
         end
       end
+      overlay_store(found)
       found
     end
 
-    def parse(file)
-      raw = File.read(file, encoding: "UTF-8")
+    # Skills do Store sobrepõem as de disco (autorado > seed). path sentinela
+    # "store:<name>" — não é arquivo real (o load_skill usa `body`, não o path).
+    def overlay_store(found)
+      return unless @store
+
+      @store.all.each do |name, content|
+        skill = parse_content(content.to_s, path: "store:#{name}")
+        found[skill.name] = skill if skill # Store vence
+      end
+    end
+
+    def parse_content(raw, path:)
       match = raw.match(/\A---\s*\n(.*?)\n---\s*\n(.*)\z/m)
       return nil unless match
 
@@ -85,7 +109,7 @@ module Harness
       Skill.new(
         name: name.to_s,
         description: meta["description"].to_s,
-        path: file,
+        path: path,
         body: match[2].strip
       )
     end
