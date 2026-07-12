@@ -16,7 +16,8 @@ module Harness
     def initialize(context_builder:, policy_engine:, middleware:, hooks:,
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
-                   event_stream:, workflow_registry: nil, pending_action_store: nil)
+                   event_stream:, workflow_registry: nil, pending_action_store: nil,
+                   capability_registry: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -30,6 +31,7 @@ module Harness
       @event_stream = event_stream
       @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
       @pending_action_store = pending_action_store # gate de aprovação (P2-02)
+      @capability_registry = capability_registry # resolução de capability (P2B, nil = desligado)
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
       @supervised = false      # modo serving? (L4) — ver #turn_parent
@@ -211,6 +213,8 @@ module Harness
       fail_task(task, e, stage: :policy)
     rescue ContextError => e
       fail_task(task, e, stage: :context)
+    rescue CapabilityError => e
+      fail_task(task, e, stage: :capability)
     rescue ProviderError => e
       fail_task(task, e, stage: :ruby_llm)
     rescue StoreError => e
@@ -356,7 +360,13 @@ module Harness
         # seguintes o checkpoint de fim do turno anterior já é o "início" deste.
         save_initial_checkpoint(task, profile, state)
 
-        # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto)
+        # sub-passo de resolução de capability (P2B D3): ENTRE Context e Policy.
+        # Só preenche state.capability_names para a junção PÓS-Policy — o
+        # policy_request abaixo NÃO muda (candidate_tools continua tool_registry.entries).
+        state.capability_names = resolve_capabilities(profile, state.context)
+
+        # estágio 3: Policy (candidate_skills vêm do CATÁLOGO, não do contexto;
+        # candidate_tools = tool_registry.entries, SÓ tools diretas — inalterado)
         resolution = @policy_engine.decide(policy_request(profile, task, state))
         # no resume, tool calls já concluídas no turno interrompido são "puladas"
         # (doc 02 L5): união chave avulsa ∪ checkpoint do turno.
@@ -368,7 +378,7 @@ module Harness
         state.actor = actor
         state.approval_coordinator = self
         state.requires_approval = resolution.respond_to?(:requires_approval) ? resolution.requires_approval : []
-        state.allowed_tools = wrap_tools(instantiate_tools(resolution.allowed_tools), state, skip)
+        state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
         state.allowed_skills = resolution.allowed_skills
         drain_and_maybe_suspend(task, actor)
 
@@ -500,6 +510,58 @@ module Harness
     # Engine real -> Entries (respondem a factory); fakes -> instâncias prontas.
     def instantiate_tools(allowed)
       Array(allowed).map { |t| t.respond_to?(:factory) ? t.factory.call : t }
+    end
+
+    # Sub-passo de resolução ENTRE Context e Policy (RFC-0002 §7/§8, P2B D3) —
+    # NÃO alimenta candidate_tools (essas continuam SÓ tool_registry.entries,
+    # D1/L3: a capability não passa pela ToolAllowlist). Resolve cada capability
+    # do perfil para a Entry concreta já registrada no tool_registry e guarda a
+    # marcação impl_name -> capability_name p/ a junção pós-Policy. Erros
+    # (Unavailable/Ambiguous, ou impl não registrado) propagam como
+    # CapabilityError -> captura única no `execute` (stage :capability). Sem
+    # @capability_registry OU sem profile.capabilities: {} (paridade Fase 1).
+    def resolve_capabilities(profile, context)
+      return {} if @capability_registry.nil?
+
+      Array(profile.capabilities).each_with_object({}) do |cap_name, names|
+        provider = @capability_registry.resolve(cap_name, profile: profile, context: context,
+                                                           event_stream: @event_stream)
+        next if provider.kind == :workflow # exposição ao loop do agente é follow-up (L5)
+
+        entry = @tool_registry.entries.find { |e| e.name == provider.impl_name.to_s }
+        if entry.nil?
+          raise CapabilityError, "capability '#{cap_name}' resolveu para impl " \
+                                 "'#{provider.impl_name}', não registrado em tool_registry"
+        end
+
+        names[entry.name] ||= cap_name.to_s # 1ª capability a reivindicar um impl vence
+      end
+    end
+
+    # Junta as instâncias diretas (Policy/ToolAllowlist) às de origem-capability
+    # (grant = profile.capabilities — nunca passaram pela Policy, D1/L3). Evita
+    # dupla-exposição (L3): se o MESMO impl_name também foi permitido direto, a
+    # instância DIRETA é descartada — o modelo vê só o apelido da capability.
+    def assemble_tool_instances(allowed, state)
+      names = state.respond_to?(:capability_names) ? (state.capability_names || {}) : {}
+      return instantiate_tools(allowed) if names.empty?
+
+      # Dedup pelo NOME DA ENTRY (chave do registry = impl_name) ANTES de
+      # instanciar — o `.name` da INSTÂNCIA (RubyLLM) não é o nome de registro.
+      direct = Array(allowed).reject { |e| e.respond_to?(:name) && names.key?(e.name.to_s) }
+      instantiate_tools(direct) + capability_tool_instances(names)
+    end
+
+    # impl_name -> Capability::ResolvedTool(capability_name:), AINDA sem
+    # ToolEnvelope (o wrap_tools do call site embrulha o conjunto inteiro — mesma
+    # ordem impl -> ResolvedTool -> ToolEnvelope, D4). entry já validada em
+    # resolve_capabilities.
+    def capability_tool_instances(names)
+      names.map do |impl_name, capability_name|
+        entry = @tool_registry.entries.find { |e| e.name == impl_name }
+        Capability::ResolvedTool.new(entry.factory.call, capability_name: capability_name,
+                                                         impl_name: impl_name)
+      end
     end
 
     # Envelopa cada tool permitida (timeout por call + registro de side-effect,
