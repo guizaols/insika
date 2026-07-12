@@ -23,6 +23,12 @@ module Harness
     # capability_registry ou profile.capabilities vazio (paridade Fase 1).
     attr_accessor :capability_names
 
+    # Interno (P2B, Tool Search): ids de side-effects já concluídos no turno
+    # interrompido, propagados às tools PROMOVIDAS pelo tool_search (mesmo `skip`
+    # que o wrap_tools das eager recebe). Setado no run_pipeline pela task 10;
+    # nil = turno novo (Array(nil) => []).
+    attr_accessor :skip_side_effects
+
     # P2-02: gate de aprovação. `requires_approval` = nomes de tools que exigem
     # aprovação (Resolution); `approval_coordinator` = objeto (o Executor) que
     # cria o PendingAction/suspende/aguarda; `actor` = mailbox do turno (usada
