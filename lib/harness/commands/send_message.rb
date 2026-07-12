@@ -8,7 +8,7 @@ module Harness
     # ValidationError/NotFoundError -> resposta HTTP direta).
     class SendMessage
       def initialize(profiles:, session_store:, task_store:, executor:)
-        @profiles = profiles
+        @profiles = ProfileSource.coerce(profiles)
         @session_store = session_store
         @task_store = task_store
         @executor = executor
