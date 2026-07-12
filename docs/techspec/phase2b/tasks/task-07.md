@@ -1,7 +1,7 @@
 # Task 07 (P2B): `AgentProfile.tools_deferred`
 
 > **Techspec:** [P2B-02-tool-search.md](../P2B-02-tool-search.md) (L1, L2) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Low · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Low · **Etapa:** B
 
 ## Objetivo
 

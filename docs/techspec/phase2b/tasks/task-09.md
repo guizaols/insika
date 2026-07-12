@@ -1,7 +1,7 @@
 # Task 09 (P2B): `Tools::ToolSearch` — busca + promoção mid-loop
 
 > **Techspec:** [P2B-02-tool-search.md](../P2B-02-tool-search.md) (D6, L5, L6, §Riscos) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** High · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** High · **Etapa:** B
 
 ## Objetivo
 

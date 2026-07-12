@@ -1,7 +1,7 @@
 # Task 06 (P2B): `ToolCatalog` (visão name+description sobre o ToolRegistry)
 
 > **Techspec:** [P2B-02-tool-search.md](../P2B-02-tool-search.md) (L3, L5) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 
