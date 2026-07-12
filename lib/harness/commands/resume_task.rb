@@ -8,7 +8,7 @@ module Harness
     # concluídas são puladas via side-effect registry (doc 02 L5, doc 03 §4.1).
     class ResumeTask
       def initialize(profiles:, task_store:, checkpoint_store:, executor:)
-        @profiles = profiles
+        @profiles = ProfileSource.coerce(profiles)
         @task_store = task_store
         @checkpoint_store = checkpoint_store
         @executor = executor
