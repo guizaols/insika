@@ -1,7 +1,7 @@
 # Task 06 (P3B): Wiring dos tools remotos + catálogo D5
 
 > **Techspec:** [P3B-02-remote-tool-and-wiring.md](../P3B-02-remote-tool-and-wiring.md) (§Wiring/§Catálogo, D5/D6/D7, L4-L5) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

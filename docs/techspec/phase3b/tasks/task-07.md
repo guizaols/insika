@@ -1,7 +1,7 @@
 # Task 07 (P3B): Smoke E2E loopback (federação outbound→inbound)
 
 > **Techspec:** [00-overview.md](../00-overview.md) (§Critério) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

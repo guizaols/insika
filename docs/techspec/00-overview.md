@@ -186,6 +186,7 @@ end
 | `:capability_resolved` | `{ capability, chosen, candidates }` | CapabilityRegistry (P2B-01) |
 | `:tool_search` | `{ query, matched }` | Tools::ToolSearch (P2B-02) |
 | `:memory_written` | `{ kind, key }` | Tools::Remember (P2C) |
+| `:a2a_call` | `{ agent, remote_task_id, state }` | Tools::A2ARemote (P3B) |
 | `:done` | `{ content }` | Executor (compat Fase 0) |
 | `:error` | `{ message }` | qualquer estágio (compat Fase 0) |
 
