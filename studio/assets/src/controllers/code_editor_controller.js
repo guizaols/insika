@@ -30,7 +30,11 @@ export default class extends Controller {
           lang,
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) textarea.value = view.state.doc.toString()
+            if (!u.docChanged) return
+            textarea.value = view.state.doc.toString()
+            // Reflete a edição como um input real: o island dirty-guard (no form)
+            // depende deste evento para detectar mudança não salva no editor.
+            textarea.dispatchEvent(new Event("input", { bubbles: true }))
           })
         ]
       }),
