@@ -1,0 +1,113 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>settings</span></nav>
+    <h1>Settings<span class="sub">config de runtime + providers de LLM</span></h1>
+  </div>
+</header>
+
+<nav class="subnav">
+  <a href="#geral">geral</a>
+  <a href="#llm">providers de LLM</a>
+</nav>
+
+<!-- ── Settings gerais (task 18) ─────────────────────────────────────────── -->
+<section class="section" id="geral">
+  <div class="section-head">
+    <h2>Geral</h2>
+    <p class="muted">streaming, timeouts e compaction — grava via <code>update_settings</code> (durável, vale no próximo turno).</p>
+  </div>
+  <form class="card" method="post" action="/studio/settings">
+    <%== csrf_tag %>
+    <label class="check">
+      <input type="checkbox" name="streaming" value="1"<%== " checked" if @settings["streaming"] %>>
+      streaming das respostas do modelo
+    </label>
+    <div class="grid-2">
+      <label>request_timeout (s)
+        <input type="text" name="request_timeout" value="<%= @settings["request_timeout"] %>" inputmode="numeric">
+      </label>
+      <label>max_retries
+        <input type="text" name="max_retries" value="<%= @settings["max_retries"] %>" inputmode="numeric">
+      </label>
+      <label>turn_timeout (s)
+        <input type="text" name="turn_timeout" value="<%= @settings["turn_timeout"] %>" inputmode="numeric">
+      </label>
+      <label>tool_timeout (s)
+        <input type="text" name="tool_timeout" value="<%= @settings["tool_timeout"] %>" inputmode="numeric">
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
+      compaction de contexto
+    </label>
+    <label>compaction.keep_last (mensagens)
+      <input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric">
+    </label>
+    <div class="actions"><button type="submit" class="primary">salvar settings</button></div>
+  </form>
+</section>
+
+<!-- ── Providers de LLM (task 18, api_key mascarada) ─────────────────────── -->
+<section class="section" id="llm">
+  <div class="section-head">
+    <h2>Providers de LLM <span class="pill info"><%= @providers.size %></span></h2>
+    <p class="muted">chave/base/models por provider. A <code>api_key</code> nunca volta em plaintext — o campo mostra <code><%= secret_sentinel %></code> quando há uma chave salva; reenviar sem tocar preserva, apagar limpa. Aplicado no runtime (sem restart).</p>
+  </div>
+
+  <% @providers.each do |p| %>
+    <div class="card promptfile">
+      <div class="promptfile-head">
+        <strong class="mono"><%= p["api"] %></strong>
+        <form method="post" action="/studio/settings/providers/delete">
+          <%== csrf_tag %>
+          <input type="hidden" name="api" value="<%= p["api"] %>">
+          <button type="submit" class="ghost danger">remover</button>
+        </form>
+      </div>
+      <form method="post" action="/studio/settings/providers">
+        <%== csrf_tag %>
+        <input type="hidden" name="api" value="<%= p["api"] %>">
+        <div class="grid-2">
+          <label>base_url
+            <input type="text" name="base_url" value="<%= p["base_url"] %>" placeholder="https://api.deepseek.com/v1">
+          </label>
+          <label>auth_header
+            <input type="text" name="auth_header" value="<%= p["auth_header"] %>" placeholder="Authorization">
+          </label>
+        </div>
+        <label>api_key
+          <input type="password" name="api_key" value="<%= p["api_key"] %>" autocomplete="off">
+        </label>
+        <label>models <span class="muted">(vírgula ou linha)</span>
+          <input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-chat, deepseek-reasoner">
+        </label>
+        <div class="actions"><button type="submit" class="primary">salvar provider</button></div>
+      </form>
+    </div>
+  <% end %>
+
+  <details class="card newfile">
+    <summary>+ novo provider</summary>
+    <form method="post" action="/studio/settings/providers">
+      <%== csrf_tag %>
+      <div class="grid-2">
+        <label>api <span class="muted">(slug, ex.: deepseek)</span>
+          <input type="text" name="api" placeholder="openai" required>
+        </label>
+        <label>base_url
+          <input type="text" name="base_url" placeholder="https://api.openai.com/v1">
+        </label>
+      </div>
+      <label>auth_header
+        <input type="text" name="auth_header" placeholder="Authorization">
+      </label>
+      <label>api_key
+        <input type="password" name="api_key" autocomplete="off" placeholder="sk-…">
+      </label>
+      <label>models <span class="muted">(vírgula ou linha)</span>
+        <input type="text" name="models" placeholder="gpt-4o, gpt-4o-mini">
+      </label>
+      <div class="actions"><button type="submit" class="primary">criar provider</button></div>
+    </form>
+  </details>
+</section>

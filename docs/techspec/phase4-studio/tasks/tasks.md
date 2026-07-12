@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 17/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) + E (app Roda + auth + assets + primeiras páginas) + F (páginas de autoria) ✅ · **PRÓXIMO:** Etapa G (tasks 18-19 — mcp/settings/system-files/chats)
+> **Progress:** 19/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) + E (app Roda + auth + assets + primeiras páginas) + F (páginas de autoria) + G (mcp/settings/system-files/chats) ✅ · **PRÓXIMO:** Etapa H (task 20 — polish & paridade)
 > **Base:** main @ merge PR #31 (`449668c`) · Etapas A (#26) + B (#27) + C (#29) + D (#30) + E (#31) mergeadas · F (PR aberto)
 > **Retomada:** ver [HANDOFF.md](../HANDOFF.md)
 
@@ -29,8 +29,8 @@
 | 15 | Página agents(detail): config/model + island `code-editor` (prompts) | — | F | ✅ DONE | High | D3, D9 |
 | 16 | Páginas skills + tools (matriz + toggles) | — | F | ✅ DONE | Med | D4, D9 |
 | 17 | agents(detail): skills/memória/histórico | — | F | ✅ DONE | Med | D3, D5 |
-| 18 | Páginas mcp + settings (providers/models, masked-secret, dynamic-form) | [task-18.md](./task-18.md) | G | ⬜ TODO | High | D6, D9 |
-| 19 | Páginas system-files + chats (viewer read-only, `live-transcript`) | [task-19.md](./task-19.md) | G | ⬜ TODO | Med | D3, D9 |
+| 18 | Páginas mcp + settings (providers/models, masked-secret) — `McpStore`+`:upsert/delete_mcp` novos | — | G | ✅ DONE | High | D6, D9 |
+| 19 | Página system-files (store global + injeção no Prompt provider) + chats (índice + viewer) | — | G | ✅ DONE | Med | D3, D9 |
 | 20 | Polish & paridade: dirty-guards, banner de restart, health chip, empty states, tema | [task-20.md](./task-20.md) | H | ⬜ TODO | Med | D9 |
 
 ### Status Legend

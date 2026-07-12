@@ -71,6 +71,12 @@ module Deploy
     LLM_PROVIDER_STORE = Harness::LLMProviderStore.new(config_store: CONFIG_STORE)
     LLM_CONFIGURATOR  = Harness::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
 
+    # MCP + arquivos de sistema globais (Fase 4 Etapa G). Instâncias MCP com
+    # credenciais mascaradas (config durável); arquivos de sistema valem para
+    # TODOS os agentes (injetados pelo Prompt provider antes da identidade).
+    MCP_STORE          = Harness::McpStore.new(config_store: CONFIG_STORE)
+    SYSTEM_FILE_STORE  = Harness::SystemFileStore.new(config_store: CONFIG_STORE)
+
     # Catálogos com overlay do Store (Etapa C, D3 revisado): disco = seed,
     # Store = autorado (vence). reload torna edições hot (sem restart).
     CATALOG        = Harness::SkillCatalog.new([File.join(Deploy::ROOT, "deploy", "skills")], store: SKILL_STORE)
@@ -88,7 +94,7 @@ module Deploy
 
     CONTEXT_PROVIDERS = [
       Harness::Context::Providers::Request.new,
-      Harness::Context::Providers::Prompt.new(base: "", files: IDENTITY_FILES, catalog: PROMPT_CATALOG, agent_files: AGENT_FILE_STORE),
+      Harness::Context::Providers::Prompt.new(base: "", files: IDENTITY_FILES, catalog: PROMPT_CATALOG, agent_files: AGENT_FILE_STORE, system_files: SYSTEM_FILE_STORE),
       Harness::Context::Providers::Skill.new(catalog: CATALOG),
       Harness::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       Harness::Context::Providers::Memory.new(store: MEMORY_STORE),
@@ -152,6 +158,14 @@ module Deploy
     BUS.register(:update_settings, Harness::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Harness::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Harness::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, event_stream: EVENT_STREAM))
+
+    # MCP + arquivos de sistema (Fase 4 Etapa G): CRUD de instâncias MCP e dos
+    # arquivos globais que valem para todos os agentes.
+    BUS.register(:upsert_mcp, Harness::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:delete_mcp, Harness::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:write_system_file, Harness::Commands::WriteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:delete_system_file, Harness::Commands::DeleteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:restore_system_file, Harness::Commands::RestoreSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
 
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end

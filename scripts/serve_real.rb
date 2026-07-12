@@ -72,7 +72,10 @@ Studio::App.configure(
   # tools/histórico). Escrita continua só pelos Commands do BUS.
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
   skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG,
-  memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE
+  memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
+  # Etapa G: settings/LLM/MCP + arquivos de sistema globais.
+  settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
+  mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE
 )
 
 # URLMap roteia /studio -> Studio (Roda, cookie-auth) e o resto -> Server::App

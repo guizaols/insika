@@ -1,0 +1,87 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>mcp</span></nav>
+    <h1>MCP<span class="sub"><%= @instances.size %> instância(s) · credenciais mascaradas</span></h1>
+  </div>
+</header>
+
+<p class="muted matrix-hint">Instâncias de servidores MCP (config durável). As credenciais em <code>env</code> nunca voltam em plaintext — cada valor aparece como <code><%= secret_sentinel %></code>; mantê-lo preserva o segredo, trocá-lo substitui, apagar a linha limpa.</p>
+
+<% @instances.each do |m| %>
+  <div class="card promptfile">
+    <div class="promptfile-head">
+      <strong class="mono"><%= m["name"] %>
+        <% if m["enabled"] %><span class="pill ok">on</span><% else %><span class="pill warn">off</span><% end %>
+      </strong>
+      <form method="post" action="/studio/mcp/delete">
+        <%== csrf_tag %>
+        <input type="hidden" name="name" value="<%= m["name"] %>">
+        <button type="submit" class="ghost danger">remover</button>
+      </form>
+    </div>
+    <form method="post" action="/studio/mcp">
+      <%== csrf_tag %>
+      <input type="hidden" name="name" value="<%= m["name"] %>">
+      <div class="grid-2">
+        <label>transport
+          <select name="transport">
+            <% %w[stdio http sse].each do |t| %>
+              <option value="<%= t %>"<%== " selected" if m["transport"] == t %>><%= t %></option>
+            <% end %>
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="enabled" value="1"<%== " checked" if m["enabled"] %>>
+          habilitada
+        </label>
+      </div>
+      <label>command <span class="muted">(stdio)</span>
+        <input type="text" name="command" value="<%= m["command"] %>" placeholder="npx -y @modelcontextprotocol/server-...">
+      </label>
+      <label>url <span class="muted">(http/sse)</span>
+        <input type="text" name="url" value="<%= m["url"] %>" placeholder="https://mcp.exemplo.com">
+      </label>
+      <label>description
+        <input type="text" name="description" value="<%= m["description"] %>">
+      </label>
+      <label>env <span class="muted">(uma <code>CHAVE=valor</code> por linha)</span>
+        <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
+      </label>
+      <div class="actions"><button type="submit" class="primary">salvar instância</button></div>
+    </form>
+  </div>
+<% end %>
+
+<details class="card newfile">
+  <summary>+ nova instância MCP</summary>
+  <form method="post" action="/studio/mcp">
+    <%== csrf_tag %>
+    <div class="grid-2">
+      <label>name <span class="muted">(slug)</span>
+        <input type="text" name="name" placeholder="tavily" required>
+      </label>
+      <label>transport
+        <select name="transport">
+          <% %w[stdio http sse].each do |t| %><option value="<%= t %>"><%= t %></option><% end %>
+        </select>
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="enabled" value="1" checked>
+      habilitada
+    </label>
+    <label>command <span class="muted">(stdio)</span>
+      <input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-...">
+    </label>
+    <label>url <span class="muted">(http/sse)</span>
+      <input type="text" name="url" placeholder="https://mcp.exemplo.com">
+    </label>
+    <label>description
+      <input type="text" name="description">
+    </label>
+    <label>env <span class="muted">(uma <code>CHAVE=valor</code> por linha)</span>
+      <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
+    </label>
+    <div class="actions"><button type="submit" class="primary">criar instância</button></div>
+  </form>
+</details>

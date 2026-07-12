@@ -1,6 +1,6 @@
 # HANDOFF — Fase 4 (Harness Studio) · onde paramos
 
-> **Atualizado:** 2026-07-12 (Etapa F) · **main @** merge PR #31 (`449668c`)
+> **Atualizado:** 2026-07-12 (Etapa G) · **main @** merge PR #32 (`288ccbb`)
 > Documento de retomada: uma sessão nova continua daqui **sem** o histórico do chat.
 > Leia junto com [`00-overview.md`](./00-overview.md) (spec) e [`tasks/tasks.md`](./tasks/tasks.md) (plano).
 
@@ -42,9 +42,10 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 | **#29 (Etapa C)** | **Prompts/skills por-agente: `AgentFileStore`+`SkillStore` (store-backed, D3 revisado), overlay+`reload` de catálogo, Prompt provider lê `profile.prompt_files`, 5 Commands (`:write/delete/restore_agent_file`, `:write_skill`, `:set_skill_agents`)** | merged |
 | **#30 (Etapa D)** | **Memória + Settings + LLM: 3 Commands de memória (`:memory_put_fact/forget_fact/add_note`), `SettingsStore` + `:update_settings`, `SecretMasking` (sentinel `__OCULTO__`), `LLMProviderStore` (masked) + `LLMConfigurator` (reconfigure RubyLLM runtime) + `:upsert/delete_llm_provider`** | merged |
 | **#31 (Etapa E)** | **Primeira UI: app `studio/` (Roda) sob `/studio` + login por cookie (D7) + CSRF + CSP estrita; pipeline esbuild/Tailwind → `dist/` versionado (D8); shell/layout + páginas login/agents(list)/playground(SSE)** | merged |
-| **Etapa F** | **Páginas de autoria: agents(detail) — config/model + prompts (island `code-editor`) + skills + memória (tenant=agente) + histórico; skills (matriz + editor, `write_skill`/`set_skill_agents`); tools (matriz `set_agent_tools`); viewer read-only de sessão. Correção: normalização UTF-8 dos segmentos de path do Roda (bug de encoding vs SQLite `get`)** | PR aberto |
+| **#32 (Etapa F)** | **Páginas de autoria: agents(detail) — config/model + prompts (island `code-editor`) + skills + memória (tenant=agente) + histórico; skills (matriz + editor, `write_skill`/`set_skill_agents`); tools (matriz `set_agent_tools`); viewer read-only de sessão. Correção: normalização UTF-8 dos segmentos de path do Roda (bug de encoding vs SQLite `get`)** | merged |
+| **Etapa G** | **mcp + settings + system-files + chats. Backend NOVO: `McpStore` (env mascarado) + `:upsert/delete_mcp`; `SystemFileStore` (global) + `:write/delete/restore_system_file` + **injeção no core `Prompt` provider** (arquivos de sistema valem p/ TODO agente). Páginas: settings (geral + providers de LLM, api_key mascarada), mcp (env mascarado), system-files (code-editor + versões), chats (índice → viewer)** | PR aberto |
 
-**Progresso do plano: 17/20 tasks (Etapas A + B + C + D + E + F).** Ver `tasks/tasks.md`.
+**Progresso do plano: 19/20 tasks (Etapas A + B + C + D + E + F + G).** Ver `tasks/tasks.md`.
 
 ### Arquivos-chave criados/alterados (na main)
 - `lib/harness/config_store.rb` — KV durável de configuração (scopes agents/settings/
@@ -118,19 +119,65 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 
 ## 4. Estado atual dos testes
 
-`bundle exec rspec` → **1003 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
+`bundle exec rspec` → **1029 examples, 0 failures** (Etapa G: +26; sem chave de API; `require "ruby_llm"`
 continua lazy — restrição D9 do core preservada; o `LLMConfigurator` recebe `configure:`
 falso nos specs). O "boom" no log é fixture intencional. `spec/studio/app_spec.rb` (41 ex.)
 usa doubles de bus/profile_source/stores — o Studio só lê e despacha, não escreve em store
 direto; a Etapa F inclui uma regressão SQLite-real do bug de encoding de path (ver §5).
 
-## 5. PRÓXIMO PASSO — Etapa G (tasks 18-19): **mcp/settings/system-files/chats**
+## 5. PRÓXIMO PASSO — Etapa H (task 20): **polish & paridade**
 
-A Etapa F entregou as **páginas de autoria** — o Studio agora edita a BIA de ponta a
-ponta (config, prompts, skills, tools, memória, histórico). Falta a Etapa G (depende de
-E+F): página de **settings** gerais + **providers/models de LLM** (masked-secret,
-dynamic-form) e **MCP**; página **system-files** + **chats** (viewer read-only,
-`live-transcript`). Depois: H (polish & paridade). Ver `tasks/tasks.md`.
+A Etapa G fechou a superfície de config: **settings** gerais + **providers de LLM**
+(api_key mascarada) + **MCP** (instâncias com env mascarado) + **system-files** (arquivos
+globais) + **chats** (índice → viewer). Falta só a Etapa H (depende de F+G): **polish** —
+dirty-guards nos editores, banner de "restart recomendado", health chip, empty states
+consistentes, toggle de tema, e paridade fina com o agent-studio. Ver `tasks/tasks.md`.
+
+### O que a Etapa G entregou (arquivos)
+
+**Backend novo (`lib/harness`):**
+- `mcp_store.rb` — instâncias MCP store-backed (scope `mcp`), env mascarado por chave
+  (mesmo padrão `SecretMasking` das api_keys): `get`/`all` mascaram, `get_raw`/`all_raw`
+  entregam o real; `upsert` reconcilia cada valor de env (sentinel preserva/""limpa).
+- `system_file_store.rb` — arquivos de sistema GLOBAIS (scope novo `system_files`, um
+  record por arquivo), versionado como o `AgentFileStore` (write/read/list/delete/
+  versions/restore).
+- `context/providers/prompt.rb` — **mudança de CORE**: novo param `system_files:`; o
+  `build_identity` injeta os arquivos globais ANTES da identidade por-agente, para TODO
+  agente. **Paridade preservada**: store vazio/nil → `system_parts` = [] → prompt
+  byte-a-byte igual ao de antes (a injeção só existe se o operador autorou algo).
+- `commands/{upsert,delete}_mcp.rb`, `commands/{write,delete,restore}_system_file.rb` —
+  5 Commands novos. `config_store.rb`: scope `system_files` adicionado a `SCOPES`.
+- `config/deployment.rb`: `MCP_STORE`/`SYSTEM_FILE_STORE`, `system_files:` no Prompt
+  provider, +5 Commands no BUS. `lib/harness.rb`: requires.
+
+**Studio (`studio/`):**
+- `app.rb` — `configure` ganhou `settings_store`/`llm_provider_store`/`mcp_store`/
+  `system_file_store` (opcionais). Rotas: `/settings` (GET + POST `:update_settings`) +
+  `/settings/providers` (POST `:upsert_llm_provider`, `/delete` → `:delete_llm_provider`);
+  `/mcp` (GET + POST `:upsert_mcp`, `/delete`); `/system-files` (GET + POST
+  `:write_system_file`, `/delete`, `/restore`); `/chats` (índice → viewer `/sessions/:id`
+  já existente). Helpers: `settings_patch`/`provider_patch`/`mcp_patch` (env como linhas
+  `CHAVE=valor`, CSP-safe), `secret_sentinel`, `env_lines`. Nav-bar +4 links.
+- `views/{settings,mcp,system_files,chats}.erb` — reusam 100% o design system existente
+  (zero CSS novo, zero rebuild de assets). Secrets pré-preenchem com o sentinel
+  `__OCULTO__` (reenviar preserva; apagar limpa). system-files usa o island `code-editor`.
+
+### Decisão da Etapa G: **system-files é global e injeta no core** (não read-only)
+Como os prompts aqui são **por-agente** e não havia workspace global que o runtime lesse,
+a opção escolhida foi criar um `SystemFileStore` global de verdade E ligar no core (o
+Prompt provider injeta em todo agente) — em vez de um viewer read-only inócuo. É a peça
+mais invasiva da etapa (toca `lib/harness/context/providers/prompt.rb`); a regressão está
+coberta por spec de paridade (store vazio ⇒ prompt idêntico).
+
+**Prova de "rodar de verdade" (Etapa G):** `ADMIN_TOKEN=... DEEPSEEK_API_KEY=...
+HARNESS_DB=/tmp/x.db ruby scripts/serve_real.rb`. Por HTTP (curl, cookie+CSRF): login;
+`/settings` gravou `turn_timeout=222`; provider `openai` salvo com **0 vazamentos** de
+plaintext (campo mostra `__OCULTO__`); instância MCP `tavily` com env `TAVILY_API_KEY`
+**mascarado**; autorei `REGRA_GLOBAL.md` ("termine TODA resposta com CENOURA") em
+system-files — durável no SQLite. Aí no **playground** a **Bia (DeepSeek real) respondeu
+"…CENOURA"**: o arquivo de sistema autorado pela UI chegou no turno de TODO agente,
+provando a costura de core ponta a ponta.
 
 ### O que a Etapa F entregou (arquivos)
 - `studio/app.rb` — `configure` ganhou os stores de LEITURA (agent_file/skill/tool/
