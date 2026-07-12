@@ -26,9 +26,9 @@ class RaisingContextBuilder
   def call(_request) = raise Harness::ContextError.new("builder falhou", provider: :fake)
 end
 
-# Resolution-like (doc 05 §4). allowed_tools = instâncias injetadas;
-# allowed_skills = nomes (paridade Fase 0 até a task 17).
-Resolution = Struct.new(:allowed_tools, :allowed_skills)
+# Resolution-like. allowed_tools = instâncias injetadas; allowed_skills = nomes.
+# requires_approval espelha o contrato real (a Resolution sempre o tem).
+Resolution = Struct.new(:allowed_tools, :allowed_skills, :requires_approval)
 
 class NullPolicyEngine
   def initialize(allowed_tools: [])
@@ -36,7 +36,7 @@ class NullPolicyEngine
   end
 
   def decide(request)
-    Resolution.new(@allowed_tools, Array(request.candidate_skills).map(&:name))
+    Resolution.new(@allowed_tools, Array(request.candidate_skills).map(&:name), [])
   end
 end
 
@@ -97,4 +97,6 @@ class FakeToolRegistry
   def side_effect?(name)
     @side_effect_names.include?(name.to_s)
   end
+
+  def entries = [] # o Executor lê tool_registry.entries no policy_request
 end

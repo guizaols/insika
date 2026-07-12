@@ -166,7 +166,7 @@ RSpec.describe Harness::Server::App do
     it "GET /v1/tasks/:id chama o store e NÃO despacha" do
       task = Harness::TaskStore::Task.new(
         id: "t-1", status: :completed, command: {}, session_id: nil,
-        executions: [], mailbox_state: {}, claimed_by: nil, claim_expires_at: nil,
+        executions: [], mailbox_state: {},
         created_at: "t", updated_at: "t"
       )
       bus = ServerBusDouble.new
@@ -186,8 +186,7 @@ RSpec.describe Harness::Server::App do
       )
       task = Harness::TaskStore::Task.new(
         id: "t-1", status: :failed, command: {}, session_id: nil,
-        executions: [execution], mailbox_state: {}, claimed_by: nil,
-        claim_expires_at: nil, created_at: "t", updated_at: "t"
+        executions: [execution], mailbox_state: {}, created_at: "t", updated_at: "t"
       )
       app = build_app(task_store: ServerStoreDouble.new(task))
 

@@ -29,7 +29,6 @@ RSpec.describe Harness::TaskStore do
                     "id" => id, "status" => state.to_s, "command" => {},
                     "session_id" => nil, "executions" => [],
                     "mailbox_state" => { "pending" => [] },
-                    "claimed_by" => nil, "claim_expires_at" => nil,
                     "created_at" => now, "updated_at" => now
                   })
       id
@@ -65,8 +64,6 @@ RSpec.describe Harness::TaskStore do
       expect(task.status).to eq(:queued)
       expect(task.executions).to eq([])
       expect(task.mailbox_state).to eq({ "pending" => [] })
-      expect(task.claimed_by).to be_nil
-      expect(task.claim_expires_at).to be_nil
       expect { Time.iso8601(task.created_at) }.not_to raise_error
     end
 
@@ -92,19 +89,6 @@ RSpec.describe Harness::TaskStore do
     end
   end
 
-  describe "claim reservado (D7)" do
-    it "mantém claimed_by/claim_expires_at nil após create + transições + executions" do
-      id = tasks.create(command: command, id: "t").id
-      tasks.begin_execution(id)
-      tasks.transition(id, to: :running)
-      tasks.finish_execution(id, outcome: "completed")
-      tasks.transition(id, to: :completed)
-
-      record = backend.get("tasks", "task:t")
-      expect(record["claimed_by"]).to be_nil
-      expect(record["claim_expires_at"]).to be_nil
-    end
-  end
 
   describe "#begin_execution / #finish_execution" do
     let(:id) { tasks.create(command: command, id: "t").id }

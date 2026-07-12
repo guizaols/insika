@@ -12,9 +12,7 @@ module Harness
   # detectadas sem lock.
   #
   # Cada Execution é UMA tentativa; retry/resume abre nova entrada, nunca
-  # sobrescreve. `claimed_by`/`claim_expires_at`
-  # ficam SEMPRE nil — o schema já os reserva para o lease/lock futuro,
-  # nenhum método os escreve.
+  # sobrescreve.
   class TaskStore
     include Coercion
 
@@ -35,8 +33,7 @@ module Harness
     }.freeze
 
     Task      = Data.define(:id, :status, :command, :session_id, :executions,
-                            :mailbox_state, :claimed_by, :claim_expires_at,
-                            :created_at, :updated_at)
+                            :mailbox_state, :created_at, :updated_at)
     Execution = Data.define(:attempt, :started_at, :finished_at, :outcome, :error)
 
     def initialize(store:)
@@ -58,8 +55,6 @@ module Harness
         "session_id" => session_id&.to_s,
         "executions" => [],
         "mailbox_state" => { "pending" => [] },
-        "claimed_by" => nil, # reservado p/ uso futuro, nunca escrito
-        "claim_expires_at" => nil,
         "created_at" => now,
         "updated_at" => now
       }
@@ -198,8 +193,6 @@ module Harness
         session_id: record["session_id"],
         executions: record["executions"].map { |e| to_execution(e) },
         mailbox_state: record["mailbox_state"],
-        claimed_by: record["claimed_by"],
-        claim_expires_at: record["claim_expires_at"],
         created_at: record["created_at"],
         updated_at: record["updated_at"]
       )

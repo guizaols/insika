@@ -1,28 +1,6 @@
 # frozen_string_literal: true
 
 module Harness
-  # Guarda temporário — as classes definitivas vivem em errors.rb (carregado
-  # ANTES deste arquivo em lib/harness.rb). Se já existirem, este bloco é pulado
-  # (nenhuma colisão, nada a remover depois).
-  unless defined?(Harness::CapabilityUnavailable)
-    class CapabilityError < Error; end
-
-    class CapabilityUnavailable < CapabilityError
-      def initialize(capability:)
-        super("capability '#{capability}' sem provider disponível")
-      end
-    end
-
-    class CapabilityAmbiguous < CapabilityError
-      attr_reader :candidates
-
-      def initialize(capability:, candidates:)
-        @candidates = candidates
-        super("capability '#{capability}' ambígua entre #{candidates.size} candidatos")
-      end
-    end
-  end
-
   # Resolução intenção→implementação. INDIREÇÃO pura: NÃO herda
   # de `Registry` (que guarda executáveis) — guarda `Provider`s (metadados de
   # resolução) e devolve o `impl_name` que OUTRO registry instancia. Imutável
