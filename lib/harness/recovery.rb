@@ -4,22 +4,19 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Chamado UMA vez no boot, ANTES de aceitar requests (doc 07 §4). Descobre
+  # Chamado UMA vez no boot, ANTES de aceitar requests. Descobre
   # tasks interrompidas e despacha a retomada pelo MESMO caminho do ResumeTask
-  # (D3) — este componente não executa nada, não abre Execution, não muda o
+  # — este componente não executa nada, não abre Execution, não muda o
   # status das tasks retomáveis. Só descoberta + dispatch + marcação de
-  # irrecuperáveis (doc 02 §4).
+  # irrecuperáveis.
   #
-  # Durabilidade sem job runner externo (restrição 4, doc 00 §5) = stores +
-  # recovery no boot. A metade "execução" é o handler ResumeTask (task 13).
+  # Durabilidade sem job runner externo = stores +
+  # recovery no boot. A metade "execução" é o handler ResumeTask.
   #
-  # `command_bus` é consumido só pelo contrato `dispatch(command)`; até a task 13
-  # os testes injetam um duplo que grava os dispatches (doc 02 §7).
+  # `command_bus` é consumido só pelo contrato `dispatch(command)`.
   class Recovery
-    # checkpoint_store: necessário para consultar `latest` (o doc 02 §2 lista só
-    # task_store/command_bus, mas o fluxo do §4 usa checkpoint_store — lacuna do
-    # techspec, registrada nas Notes da task). logger opcional (default nil ->
-    # silencioso em teste).
+    # checkpoint_store: necessário para consultar `latest`. logger opcional
+    # (default nil -> silencioso em teste).
     def initialize(task_store:, checkpoint_store:, command_bus:, logger: nil)
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -29,16 +26,16 @@ module Harness
 
     # -> { resumed: [ids], failed: [ids] }
     # A varredura inicial roda FORA do rescue por-task: StoreError aqui aborta
-    # o boot (doc 02 §6).
+    # o boot.
     def run
       resumed = []
       failed = []
-      # Ordena por created_at (P2-03 L5): tasks da MESMA sessão são reprocessadas
+      # Ordena por created_at: tasks da MESMA sessão são reprocessadas
       # na ordem original. Ordem global por tempo é inofensiva p/ tasks avulsas.
       # 1) interrompidas (crash no meio) -> resume do checkpoint.
       @task_store.running_or_interrupted.sort_by(&:created_at).each { |task| process(task, resumed, failed) }
-      # 2) enfileiradas nunca iniciadas (turno na fila do SessionActor no crash,
-      #    P2-03) -> re-run do zero (o mesmo resume_task trata :queued). Sem isso,
+      # 2) enfileiradas nunca iniciadas (turno na fila do SessionActor no crash)
+      #    -> re-run do zero (o mesmo resume_task trata :queued). Sem isso,
       #    um turno :queued na fila volátil seria perdido no kill -9.
       @task_store.queued.sort_by(&:created_at).each { |task| process(task, resumed, failed) }
       log(:info, "recovery concluído: #{resumed.size} retomadas, #{failed.size} falhas")
@@ -72,9 +69,9 @@ module Harness
 
     # Transiciona a task para :failed gravando o erro na Execution aberta (se
     # houver). StoreError propaga (aborta o boot). ArgumentError é absorvido:
-    # `paused -> failed` não está na máquina (doc 02 §2) — a task permanece no
-    # estado atual, mas ainda a reportamos como failed no sumário. Lacuna do
-    # techspec (Notes); não "consertar" a máquina aqui.
+    # `paused -> failed` não está na máquina — a task permanece no
+    # estado atual, mas ainda a reportamos como failed no sumário. Não
+    # "consertar" a máquina aqui.
     def fail_task(id, class_name:, message:, stage: nil)
       error = { class: class_name, message: message }
       error[:stage] = stage if stage
@@ -87,7 +84,7 @@ module Harness
 
     def resume_command(task_id)
       # transport: :recovery identifica a origem (boot) no meta — auditoria
-      # (o campo é Symbol livre, doc 03 §2). Usa o factory da task 09.
+      # (o campo é Symbol livre).
       Harness::Command.build(:resume_task, { task_id: task_id }, transport: :recovery)
     end
 

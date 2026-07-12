@@ -5,7 +5,7 @@ require "json"
 module Harness
   module Server
     module A2A
-      # Adapter HTTP de produção (P3B, D2/L6): implementa o duck-type
+      # Adapter HTTP de produção: implementa o duck-type
       # `post_json(url, body) -> Hash` sobre async-http (roda no reactor do turno).
       # BOUNDARY — o require da lib fica aqui, nunca em lib/harness.rb/wiring-load.
       # O Client (a lógica) é testado com fake; este adapter, com teste leve.

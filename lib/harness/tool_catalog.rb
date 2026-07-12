@@ -1,24 +1,26 @@
 # frozen_string_literal: true
 
 module Harness
-  # Visão "nível 1" (progressive disclosure, RFC-0005 §5) das tools: só
-  # name+description, o análogo do SkillCatalog para tools (P2B-02 L3). NÃO lê
+  # Visão "nível 1" (progressive disclosure) das tools: só
+  # name+description, o análogo do SkillCatalog para tools. NÃO lê
   # disco (as tools já estão no ToolRegistry, registradas no boot) e NÃO herda de
   # RubyLLM::Tool — duck typing sobre `.description` (puro, testável sem a gem).
   #
   # A `description` canônica não vive no Entry (Registry::Entry não tem esse
-  # campo): vem da INSTÂNCIA da tool (`factory.call.description`) — o mesmo
-  # `factory.call` que o Executor já paga em instantiate_tools (estágio 3).
+  # campo): vem da INSTÂNCIA da tool (`factory.call.description`). Por isso o
+  # catálogo é LAZY: só instancia as tools na primeira consulta (`all`), não no
+  # boot. Um deployment sem `tools_deferred` nunca toca o catálogo e não paga
+  # instanciação nenhuma; um factory quebrado propaga no primeiro uso (onde o
+  # Executor também o pegaria no estágio 3), não na construção.
   class ToolCatalog
     Entry = Data.define(:name, :description)
 
     def initialize(tool_registry:)
       @tool_registry = tool_registry
-      @entries = build_entries # cache eager — mesma disciplina do SkillCatalog
     end
 
     def all
-      @entries
+      @entries ||= build_entries
     end
 
     # Recorte deferred permitido (tipicamente allowed_tools ∩ tools_deferred).
@@ -29,7 +31,7 @@ module Harness
       all.select { |e| wanted.include?(e.name) }
     end
 
-    # Matcher PURO (P2B-02 L5): case-insensitive, substring/keyword, SEM
+    # Matcher PURO: case-insensitive, substring/keyword, SEM
     # embeddings. name pesa 2, description pesa 1; desempate por índice original
     # (sort_by do Ruby não é estável). `within:` restringe o universo via subset.
     def search(query, within: nil)

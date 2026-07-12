@@ -15,7 +15,7 @@ module Harness
         end
       end
 
-      # Cliente A2A outbound (P3B, D2/D3): chama um agente A2A remoto. PURO — o
+      # Cliente A2A outbound: chama um agente A2A remoto. PURO — o
       # `http` (post_json(url, body) -> Hash) é injetado; o smoke usa loopback.
       class Client
         TERMINAL = %w[completed failed canceled rejected input-required].freeze
@@ -40,10 +40,10 @@ module Harness
           parse_envelope(@http.post_json(url, request("tasks/get", { "id" => task_id })))
         end
 
-        # Alto nível (D3): send + poll até terminal. SEMPRE faz ≥1 get_task — o
+        # Alto nível: send + poll até terminal. SEMPRE faz ≥1 get_task — o
         # message/send do inbound projeta a Task SEM `status.message` (o conteúdo
         # vem só no tasks/get). -> { text:, state:, id: } | { error:, state:, id: }.
-        # NUNCA levanta (encapsula RemoteError, L5).
+        # NUNCA levanta (encapsula RemoteError).
         def call(url, text, context_id: nil)
           sent = send_message(url, text, context_id: context_id)
           id = remote_id(sent)

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "harness/errors"
+require_relative "harness/coercion"
+require_relative "harness/allowlist"
 require_relative "harness/event"
 require_relative "harness/agent_profile"
 require_relative "harness/token_estimator"
@@ -10,6 +12,7 @@ require_relative "harness/hooks"
 require_relative "harness/middleware"
 require_relative "harness/context/fragment"
 require_relative "harness/context/provider"
+require_relative "harness/context/catalog_provider"
 require_relative "harness/context/builder"
 require_relative "harness/context/providers/request"
 require_relative "harness/context/providers/prompt"
@@ -83,6 +86,7 @@ require_relative "harness/tool_catalog"
 require_relative "harness/turn_state"
 require_relative "harness/capability/resolved_tool"
 require_relative "harness/tool_envelope"
+require_relative "harness/chat_builder"
 require_relative "harness/executor"
 # NÃO requerer "harness/tools/load_skill" aqui: ele faz `require "ruby_llm"` no
 # topo (herda de RubyLLM::Tool) e puxaria a gem em load-time. O Executor o

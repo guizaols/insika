@@ -6,9 +6,9 @@ require "async/semaphore"
 
 module Harness
   module Stores
-    # Backend SQLite — default de produção (doc 01 §3, RFC-0006 §3).
-    # Tabela única kv (L1); domínio vive nos scopes. Um handle por processo,
-    # escritas em transação serializadas por Async::Semaphore (doc 01 §5).
+    # Backend SQLite — default de produção.
+    # Tabela única kv; domínio vive nos scopes. Um handle por processo,
+    # escritas em transação serializadas por Async::Semaphore.
     class SQLite
       include Store
 
@@ -22,15 +22,15 @@ module Harness
         ) WITHOUT ROWID;
       SQL
 
-      # Tipos do modelo JSON + Symbol (coerido a String na escrita, C8).
-      # Qualquer outro tipo é "lixo" e deve ser rejeitado (C22). Idêntico ao
+      # Tipos do modelo JSON + Symbol (coerido a String na escrita).
+      # Qualquer outro tipo é "lixo" e deve ser rejeitado. Idêntico ao
       # Stores::Memory — os dois backends compartilham o MESMO modelo de tipos
-      # (L2: a suíte de contrato é honesta).
+      # (a suíte de contrato é honesta).
       JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
                   String, Symbol].freeze
       private_constant :JSONABLE
 
-      # require lazy (doc 01 §8): o núcleo instala sem a gem sqlite3
+      # require lazy: o núcleo instala sem a gem sqlite3
       # quando só o Memory é usado.
       def initialize(path:, serializer: JSON)
         require "sqlite3"
@@ -40,13 +40,12 @@ module Harness
         @write_semaphore = Async::Semaphore.new(1)
         @tx_owner = nil
 
-        @db.execute("PRAGMA journal_mode = WAL")   # RFC-0006 §6
+        @db.execute("PRAGMA journal_mode = WAL")
         @db.execute("PRAGMA synchronous = NORMAL")
-        @db.busy_timeout = 5_000                   # L6 — rede de segurança
+        @db.busy_timeout = 5_000                   # rede de segurança
         @db.execute_batch(DDL)
-        @db.execute(
-          "CREATE INDEX IF NOT EXISTS kv_scope_prefix ON kv (scope, key)"
-        )
+        # A PRIMARY KEY (scope, key) do WITHOUT ROWID já é o índice do prefixo —
+        # não há índice extra a criar.
       rescue ::SQLite3::Exception => e
         raise Harness::StoreError, "falha ao abrir #{path}: #{e.message}"
       end
@@ -67,7 +66,7 @@ module Harness
 
       def set(scope, key, value)
         serialized = serialize(value)               # fail-fast ANTES de gravar
-        write do
+        transaction do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
             "VALUES (?, ?, ?, ?)",
@@ -78,7 +77,7 @@ module Harness
       end
 
       def delete(scope, key)
-        write do
+        transaction do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
           @db.changes.positive?
         end
@@ -93,8 +92,8 @@ module Harness
         raise Harness::StoreError, e.message
       end
 
-      # BEGIN IMMEDIATE ... COMMIT/ROLLBACK, serializado pelo semáforo
-      # (doc 01 §5). Aninhada reusa a transação externa (doc 01 §2).
+      # BEGIN IMMEDIATE ... COMMIT/ROLLBACK, serializado pelo semáforo.
+      # Aninhada reusa a transação externa.
       def transaction(&blk)
         return yield if @tx_owner == Fiber.current
 
@@ -118,21 +117,14 @@ module Harness
 
       private
 
-      # Toda escrita individual passa por transaction — assim TODAS as
-      # escritas serializam no semáforo (doc 01 §5) e set/delete dentro de
-      # uma transação externa participam dela (reuso por aninhamento).
-      def write(&blk)
-        transaction(&blk)
-      end
-
-      # Enforce o modelo de tipos do contrato na borda (doc 01 §2, §6):
-      # Symbol/símbolo-chave viram String (C8); tipo fora do modelo JSON ->
-      # StoreError na ESCRITA (fail-fast; nunca grava lixo — C22).
+      # Enforce o modelo de tipos do contrato na borda:
+      # Symbol/símbolo-chave viram String; tipo fora do modelo JSON ->
+      # StoreError na ESCRITA (fail-fast; nunca grava lixo).
       #
       # NÃO usa `generate(strict: true)`: sob json 2.7.1 (a versão que vem com
       # o ruby 3.3.5 travado no Gemfile.lock) `strict` REJEITA Symbol, o que
-      # violaria C8 — foi o alerta deixado pela task 3. A validação explícita
-      # é independente da versão do json e dá a MESMA semântica do Memory (L2).
+      # violaria a coerção de Symbol. A validação explícita
+      # é independente da versão do json e dá a MESMA semântica do Memory.
       def serialize(value)
         ensure_jsonable!(value)
         @serializer.generate(value)

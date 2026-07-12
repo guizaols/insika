@@ -27,7 +27,7 @@ module Deploy
   AGENT_DIR = File.join(ROOT, "deploy", "agents", "bia")
 
   module Wiring
-    # Backend durável-aware (Fase 4): HARNESS_DB -> SQLite (config + execução
+    # Backend durável-aware: HARNESS_DB -> SQLite (config + execução
     # sobrevivem a restart — single-tenant em produção roda em SQLite com volume);
     # ausente -> Memory (dev/demo). O mesmo backend guarda execução E configuração.
     BACKEND =
@@ -56,14 +56,14 @@ module Deploy
     CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
     TOOL_CATALOG        = Harness::ToolCatalog.new(tool_registry: REGISTRY)
 
-    # Config durável (Fase 4 D2): profiles + workspace de prompts + skills
+    # Config durável: profiles + workspace de prompts + skills
     # autoradas vivem AQUI (SQLite quando HARNESS_DB; senão Memory efêmero).
     CONFIG_STORE      = Harness::ConfigStore.new(store: BACKEND)
     AGENT_FILE_STORE  = Harness::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Harness::SkillStore.new(config_store: CONFIG_STORE)
 
-    # Settings gerais + providers de LLM autoráveis em runtime (Fase 4 Etapa D,
-    # D6): durável no mesmo backend. O LLMConfigurator reaplica os providers no
+    # Settings gerais + providers de LLM autoráveis em runtime: durável no mesmo
+    # backend. O LLMConfigurator reaplica os providers no
     # RubyLLM sem restart (chave/base por-provider). Semente: o provider deepseek
     # do boot já vive na config global (RubyLLM.configure acima) — o store é a
     # fonte editável daqui pra frente.
@@ -71,13 +71,13 @@ module Deploy
     LLM_PROVIDER_STORE = Harness::LLMProviderStore.new(config_store: CONFIG_STORE)
     LLM_CONFIGURATOR  = Harness::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
 
-    # MCP + arquivos de sistema globais (Fase 4 Etapa G). Instâncias MCP com
+    # MCP + arquivos de sistema globais. Instâncias MCP com
     # credenciais mascaradas (config durável); arquivos de sistema valem para
     # TODOS os agentes (injetados pelo Prompt provider antes da identidade).
     MCP_STORE          = Harness::McpStore.new(config_store: CONFIG_STORE)
     SYSTEM_FILE_STORE  = Harness::SystemFileStore.new(config_store: CONFIG_STORE)
 
-    # Catálogos com overlay do Store (Etapa C, D3 revisado): disco = seed,
+    # Catálogos com overlay do Store: disco = seed,
     # Store = autorado (vence). reload torna edições hot (sem restart).
     CATALOG        = Harness::SkillCatalog.new([File.join(Deploy::ROOT, "deploy", "skills")], store: SKILL_STORE)
     PROMPT_CATALOG = Harness::PromptCatalog.new([])
@@ -87,7 +87,7 @@ module Deploy
 
     # Prompts padrão OpenClaw viram a IDENTIDADE (pinned) via o Prompt provider.
     # IDENTITY_FILES é o DEFAULT de deployment (usado por um agente SEM
-    # prompt_files próprios). Etapa C: um agente com `profile.prompt_files` lê o
+    # prompt_files próprios). Um agente com `profile.prompt_files` lê o
     # conteúdo do AGENT_FILE_STORE (identidade própria), não estes — resolvendo a
     # herança do prompt da Bia por agentes novos.
     IDENTITY_FILES = %w[IDENTITY.md SOUL.md TOOLS.md].map { |f| File.join(Deploy::AGENT_DIR, f) }
@@ -103,7 +103,7 @@ module Deploy
     CONTEXT_BUILDER = Harness::ContextBuilder.new(providers: CONTEXT_PROVIDERS, event_stream: EVENT_STREAM, hooks: HOOKS)
     POLICY_ENGINE   = Harness::Policy::Engine.new(policy_registry: POLICY_REGISTRY, event_stream: EVENT_STREAM)
 
-    # Profiles DINÂMICOS (Fase 4 D2): persistidos no ConfigStore (definido
+    # Profiles DINÂMICOS: persistidos no ConfigStore (definido
     # acima), editáveis em runtime pelo Studio (create/update/delete_agent). Não
     # é mais um Hash congelado — o Executor e os Commands de turno resolvem no
     # dispatch.
@@ -130,19 +130,19 @@ module Deploy
       tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE
     )
 
-    BUS = Harness::CommandBus.new(event_stream: EVENT_STREAM)
+    BUS = Harness::CommandBus.new
     BUS.register(:create_session, Harness::Commands::CreateSession.new(session_store: SESSION_STORE, event_stream: EVENT_STREAM))
     BUS.register(:send_message, Harness::Commands::SendMessage.new(profiles: PROFILE_SOURCE, session_store: SESSION_STORE, task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:resume_task, Harness::Commands::ResumeTask.new(profiles: PROFILE_SOURCE, task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, executor: EXECUTOR))
 
-    # Autoria de agente em runtime (Fase 4 Etapa B) — o "cada um cria sua BIA".
+    # Autoria de agente em runtime — o "cada um cria sua BIA".
     BUS.register(:create_agent, Harness::Commands::CreateAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:update_agent, Harness::Commands::UpdateAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:delete_agent, Harness::Commands::DeleteAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:set_agent_tools, Harness::Commands::SetAgentTools.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
-    # Prompts/skills por-agente (Fase 4 Etapa C) — "cada um cria sua BIA com
+    # Prompts/skills por-agente — "cada um cria sua BIA com
     # identidade própria". Conteúdo no Store, hot via reload/ProfileSource.
     BUS.register(:write_agent_file, Harness::Commands::WriteAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_agent_file, Harness::Commands::DeleteAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
@@ -150,7 +150,7 @@ module Deploy
     BUS.register(:write_skill, Harness::Commands::WriteSkill.new(skill_store: SKILL_STORE, skill_catalog: CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:set_skill_agents, Harness::Commands::SetSkillAgents.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
-    # Memória + settings + LLM (Fase 4 Etapa D) — a memória vira editável por HTTP
+    # Memória + settings + LLM — a memória vira editável por HTTP
     # (não só via tool `remember`); settings e providers ganham CRUD durável.
     BUS.register(:memory_put_fact, Harness::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     BUS.register(:memory_forget_fact, Harness::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
@@ -159,7 +159,7 @@ module Deploy
     BUS.register(:upsert_llm_provider, Harness::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Harness::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, event_stream: EVENT_STREAM))
 
-    # MCP + arquivos de sistema (Fase 4 Etapa G): CRUD de instâncias MCP e dos
+    # MCP + arquivos de sistema: CRUD de instâncias MCP e dos
     # arquivos globais que valem para todos os agentes.
     BUS.register(:upsert_mcp, Harness::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_mcp, Harness::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))

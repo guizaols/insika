@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D5): grava um fato estável na memória
+    # Command de controle: grava um fato estável na memória
     # do agente (MemoryStore, camada `profile`). Até agora a memória só era escrita
     # de DENTRO do turno (tool `remember`); este Command é a superfície HTTP que o
     # Studio usa pra editar fatos direto. Escopado por `tenant` (nil = _default).

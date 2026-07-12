@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D5): acrescenta uma nota livre
+    # Command de controle: acrescenta uma nota livre
     # (append-only) na memória do agente (MemoryStore, camada `notes`). Escopado
     # por `tenant`. Síncrono; não cria Task. -> Note.
     class MemoryAddNote

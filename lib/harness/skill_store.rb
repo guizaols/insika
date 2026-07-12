@@ -3,7 +3,7 @@
 require "time"
 
 module Harness
-  # Skills compartilhadas AUTORADAS (Fase 4 — Studio, Etapa C / D3 revisado).
+  # Skills compartilhadas AUTORADAS.
   # Guarda o SKILL.md completo (frontmatter + corpo) no Store durável. O
   # SkillCatalog sobrepõe estas skills sobre as de disco (seed), com o Store
   # vencendo — então editar/criar skill no Studio vale sem restart (via reload).

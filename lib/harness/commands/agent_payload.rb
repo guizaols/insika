@@ -2,8 +2,8 @@
 
 module Harness
   module Commands
-    # Normalização compartilhada do payload de autoria de agente (Fase 4 Etapa B).
-    # O transporte entrega chaves string (JSON, doc 07); o dispatch interno usa
+    # Normalização compartilhada do payload de autoria de agente.
+    # O transporte entrega chaves string (JSON); o dispatch interno usa
     # symbol. Aqui: symboliza o topo, filtra só os campos construíveis do
     # AgentProfile, e re-simboliza os campos que o runtime consome como symbol
     # (provider, policies, chaves de limits) — mesma regra do StoredProfileSource.
@@ -30,7 +30,8 @@ module Harness
         (payload || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
       end
 
-      def presence(str) = str.nil? || str.to_s.empty? ? nil : str.to_s
+      # Nome estável usado pelos handlers; a regra mora em Harness::Coercion.
+      def presence(str) = Harness::Coercion.presence(str)
     end
   end
 end

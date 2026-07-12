@@ -28,7 +28,7 @@ RSpec.describe "smoke E2E: adapter A2A inbound (fatia A)", :smoke do
   end
 
   let(:bus) do
-    Harness::CommandBus.new(event_stream: event_stream).tap do |b|
+    Harness::CommandBus.new.tap do |b|
       b.register(:create_session, Harness::Commands::CreateSession.new(session_store: session_store, event_stream: event_stream))
       b.register(:send_message, Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
       b.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: task_store, executor: executor))

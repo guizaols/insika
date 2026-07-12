@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de TURNO (D3, o 5º da Fase 1): dispara um workflow. Reusa a pipeline
-    # canônica — só o estágio 6 varia (Executor, doc 03 §4.1). Valida tudo
+    # Command de turno: dispara um workflow. Reusa a pipeline
+    # canônica — só o estágio 6 varia (Executor). Valida tudo
     # síncrono e responde `{task_id:}` imediato. A allowlist de workflow NÃO é
-    # checada aqui: é enforcement do estágio 3 via WorkflowAllowlist (doc 05 §2)
+    # checada aqui: é enforcement do estágio 3 via WorkflowAllowlist
     # -> PolicyDenied -> task :failed.
     class TriggerWorkflow
       ALLOWED_KEYS = %i[workflow agent input session_id].freeze
@@ -20,7 +20,7 @@ module Harness
 
       def call(command)
         p = normalize(command.payload)
-        reject_unknown_keys!(command.payload) # validação estrita (doc 03 §7)
+        reject_unknown_keys!(command.payload) # validação estrita
 
         workflow = p[:workflow].to_s
         raise Harness::ValidationError, "workflow é obrigatório" if workflow.empty?

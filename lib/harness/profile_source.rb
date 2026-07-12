@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Fonte de AgentProfiles (Fase 4 — Studio, D2). Até a Fase 3 os profiles eram
+  # Fonte de AgentProfiles. Antes os profiles eram
   # um Hash CONGELADO injetado no Executor e nos Commands de turno — estáticos,
   # definidos em Ruby no wiring. Para o Studio criar/editar agentes em runtime,
   # a fonte precisa ser MUTÁVEL e recarregável, sem mudar o contrato de consumo.
@@ -28,7 +28,7 @@ module Harness
     # subclasses implementam: fetch(id) -> AgentProfile|nil, all -> [AgentProfile], ids -> [String]
   end
 
-  # Fonte estática (paridade Fase 1-3): envolve o Hash {id => AgentProfile} de
+  # Fonte estática (paridade): envolve o Hash {id => AgentProfile} de
   # sempre. Comportamento IDÊNTICO ao Hash congelado — zero regressão.
   class StaticProfileSource
     include ProfileSource
@@ -49,6 +49,7 @@ module Harness
   # preservada.
   class StoredProfileSource
     include ProfileSource
+    include Coercion
 
     SCOPE = "agents"
 
@@ -64,7 +65,7 @@ module Harness
     def all = @cs.all(SCOPE).map { |r| deserialize(r) }
     def ids = @cs.keys(SCOPE)
 
-    # Escrita (usada pelos Commands :create_agent/:update_agent na Etapa B).
+    # Escrita (usada pelos Commands :create_agent/:update_agent).
     def put(profile)
       @cs.put(SCOPE, profile.id, profile.to_h)
       profile
@@ -107,7 +108,5 @@ module Harness
 
       limits.each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
     end
-
-    def presence(str) = (s = str.to_s).empty? ? nil : s
   end
 end

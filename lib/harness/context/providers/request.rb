@@ -4,8 +4,8 @@ module Harness
   module Context
     module Providers
       # Fragmento :system com metadados do turno (tenant, vars relevantes).
-      # Nada se não houver metadados (doc 04 §2). priority 40. Não é required?
-      # (metadados podem degradar — L5).
+      # Nada se não houver metadados. priority 40. Não é required?
+      # (metadados podem degradar).
       class Request < ContextProvider
         def call(request)
           lines = []

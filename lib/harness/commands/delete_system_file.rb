@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa G): remove um arquivo de sistema global
+    # Command de controle: remove um arquivo de sistema global
     # do SystemFileStore. Idempotente (`existed: false`). -> { existed: bool }.
     class DeleteSystemFile
       def initialize(system_file_store:, event_stream:)

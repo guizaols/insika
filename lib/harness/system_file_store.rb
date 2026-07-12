@@ -3,7 +3,7 @@
 require "time"
 
 module Harness
-  # Arquivos de sistema GLOBAIS (Fase 4 — Studio, Etapa G). São prompts/regras
+  # Arquivos de sistema GLOBAIS. São prompts/regras
   # que valem para TODOS os agentes do deploy — a "casa" acima da identidade
   # individual de cada BIA. Diferente do AgentFileStore (por agente), aqui não há
   # tenant: um record por arquivo no ConfigStore (scope "system_files").

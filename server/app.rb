@@ -6,17 +6,17 @@ require "async"
 require_relative "sse_body"
 require_relative "admin_auth"
 require_relative "admin/app"
-require_relative "a2a/app" # P3A: adapter A2A de borda (puxa protocol/errors/message/projection/card)
+require_relative "a2a/app" # adapter A2A de borda (puxa protocol/errors/message/projection/card)
 
 module Harness
   module Server
-    # Rack app (evolui `app/server.rb` da Fase 0). RFC-0001 §4: transportes SÓ
+    # Rack app. Transportes SÓ
     # traduzem requisições em Commands — o servidor não contém lógica de
     # negócio. Ele parseia JSON, monta `Command.build(...)`, despacha no
     # CommandBus e projeta o Event Stream em SSE. Leituras NÃO são Commands: são
-    # reads diretos dos stores (D3, Emenda 1 da RFC-0001 §10).
+    # reads diretos dos stores.
     #
-    # Regra constitucional AUDITÁVEL (doc 07 §4): `server/` não importa Executor,
+    # Regra constitucional AUDITÁVEL: `server/` não importa Executor,
     # métodos de ESCRITA de store nem RubyLLM. Requires: json, rack, async e os
     # tipos do núcleo (Command/Event/erros) já carregados pelo composition root.
     class App
@@ -27,13 +27,12 @@ module Harness
       }.freeze
 
       # Eventos terminais de um turno (fecham a subscription da task no
-      # transporte). :error é mantido por compat com o consumidor da Fase 0.
+      # transporte). :error é mantido por compat com o consumidor.
       TERMINAL_EVENTS = %i[done task_failed task_cancelled error].freeze
       private_constant :TERMINAL_EVENTS
 
       # checkpoint_store: leitura apenas (coluna "checkpoints" de
-      # /admin/tasks/:id — lacuna da assinatura do doc 07 §2, ver task 25). A
-      # regra constitucional se mantém: server/ só LÊ stores.
+      # /admin/tasks/:id). A regra constitucional se mantém: server/ só LÊ stores.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      catalogs:, registries:, config:, checkpoint_store: nil,
                      pending_action_store: nil, a2a: nil)
@@ -45,10 +44,10 @@ module Harness
         @registries = registries
         @config = config
         @pending_action_store = pending_action_store # leitura p/ GET /v1/tasks/:id
-        @a2a = a2a # A2A edge (P3A). nil = servidor não expõe A2A (paridade).
+        @a2a = a2a # A2A edge. nil = servidor não expõe A2A (paridade).
         @heartbeat = config.fetch(:heartbeat, 15)
-        @sync_timeout = config.fetch(:sync_timeout, 10) # doc 07 §6: controle síncrono
-        # Control UI de escrita (P2-04): recebe o bus (despacha os mesmos Commands
+        @sync_timeout = config.fetch(:sync_timeout, 10) # controle síncrono
+        # Control UI de escrita: recebe o bus (despacha os mesmos Commands
         # da API) e o pending_action_store (aprovações). O /admin não escreve em
         # store direto — só via Command (transporte).
         @admin = Admin::App.new(
@@ -58,8 +57,8 @@ module Harness
         )
       end
 
-      # Roteamento explícito, SEM framework (L1): ~10 rotas num `case`. Um único
-      # `rescue` centraliza o mapeamento erro->status (doc 07 §3/§6). Só erros
+      # Roteamento explícito, SEM framework: ~10 rotas num `case`. Um único
+      # `rescue` centraliza o mapeamento erro->status. Só erros
       # SÍNCRONOS (antes do fiber) viram status HTTP; falha da task viaja como
       # evento no stream e fica em GET /v1/tasks/:id.
       def call(env)
@@ -107,7 +106,7 @@ module Harness
         end
       end
 
-      # Pipeline do /admin (doc 07 §2, task 25): preflight OPTIONS (sem auth —
+      # Pipeline do /admin: preflight OPTIONS (sem auth —
       # browsers não mandam Authorization em preflight) -> AdminAuth.check
       # (fail-closed) -> headers CORS na resposta -> delega ao Admin::App. O
       # /admin NUNCA despacha Command nem escreve em store.
@@ -126,7 +125,7 @@ module Harness
         end
       end
 
-      # CORS ESTRITO (RFC-0007 §5): só devolve headers se a Origin constar
+      # CORS ESTRITO: só devolve headers se a Origin constar
       # EXATAMENTE em allowed_origins (sem `*`, sem sufixos). Sem Origin (curl,
       # mesma origem) -> {}. Default [] = nenhuma origem cross-site.
       def cors_headers(origin)
@@ -140,7 +139,7 @@ module Harness
         headers = { "content-type" => "text/plain" }
         if origin && Array(@config[:allowed_origins]).include?(origin)
           headers.merge!(cors_headers(origin),
-                         "access-control-allow-methods" => "GET, POST", # /admin de escrita (P2-04)
+                         "access-control-allow-methods" => "GET, POST", # /admin de escrita
                          "access-control-allow-headers" => "authorization, content-type")
         end
         [204, headers, []]
@@ -157,9 +156,9 @@ module Harness
         [status, headers.merge(extra), body]
       end
 
-      # POST /v1/commands/:type (L2) — genérica: todo Command novo já nasce com
+      # POST /v1/commands/:type — genérica: todo Command novo já nasce com
       # transporte. Distinção controle vs turno é PELO SHAPE do resultado (o
-      # transporte não conhece semântica — D3/L2).
+      # transporte não conhece semântica).
       def handle_command(req, type)
         command = Harness::Command.build(type.to_sym, parse_body(req), transport: :http)
         command_response(dispatch_with_timeout(command))
@@ -181,7 +180,7 @@ module Harness
         message_flow(parse_body(req), stream: stream)
       end
 
-      # GET /v1/sessions/:id — leitura direta (não é Command — D3).
+      # GET /v1/sessions/:id — leitura direta (não é Command).
       def handle_read_session(id)
         session = @session_store.find(id)
         raise Harness::NotFoundError, "sessão inexistente: #{id}" if session.nil?
@@ -190,14 +189,14 @@ module Harness
       end
 
       # GET /v1/tasks/:id — leitura direta. É por aqui que o consumidor observa
-      # PolicyDenied/falhas pós-202 (doc 07 §6): o estado terminal fica no Task
+      # PolicyDenied/falhas pós-202: o estado terminal fica no Task
       # Store; nada se perde se o cliente desconectou.
       def handle_read_task(id)
         task = @task_store.find(id)
         raise Harness::NotFoundError, "task inexistente: #{id}" if task.nil?
 
         body = { task: task_to_h(task) }
-        # aprovações pendentes (P2-02): é por aqui que o consumidor/operador vê
+        # aprovações pendentes: é por aqui que o consumidor/operador vê
         # o que precisa aprovar depois de um :approval_requested.
         if @pending_action_store
           body[:pending_actions] = @pending_action_store.open_for(id).map(&:to_h)
@@ -206,7 +205,7 @@ module Harness
       end
 
       # GET /v1/events?task_id=&session_id= — aqui os filtros SÃO conhecidos.
-      # Stream CONTÍNUO (rota de reconexão pós-queda, doc 07 §6): não fecha em
+      # Stream CONTÍNUO (rota de reconexão pós-queda): não fecha em
       # evento terminal — encerra por desconexão do cliente ou cap.
       def handle_events(req)
         subscription = @event_stream.subscribe(task_id: req.GET["task_id"],
@@ -214,9 +213,9 @@ module Harness
         sse_response(subscription)
       end
 
-      # POST /agent/messages — LEGADO Fase 0, byte-compatível. Traduz para
-      # send_message (o Runner não existe mais — doc 03 §8). `history` presente
-      # -> nada é persistido (paridade D2). Default de agente "sales".
+      # POST /agent/messages — LEGADO, byte-compatível. Traduz para
+      # send_message (o Runner não existe mais). `history` presente
+      # -> nada é persistido (paridade). Default de agente "sales".
       def handle_legacy(req)
         body = parse_body(req)
         payload = {
@@ -227,9 +226,9 @@ module Harness
         message_flow(payload, stream: true)
       end
 
-      # POST /a2a (P3A) — JSON-RPC 2.0: HTTP 200 SEMPRE (o erro viaja no envelope,
+      # POST /a2a — JSON-RPC 2.0: HTTP 200 SEMPRE (o erro viaja no envelope,
       # não no status). JSON malformado -> -32700 (envelope A2A, não o error HTTP
-      # genérico do #call). O A2A::App nunca vaza exceção (D4). Parse com chaves
+      # genérico do #call). O A2A::App nunca vaza exceção. Parse com chaves
       # STRING (o wire A2A é JSON genérico — NÃO reusa `parse_body`, que
       # symboliza para os payloads de Command).
       def handle_a2a(req)
@@ -245,7 +244,7 @@ module Harness
 
       # --- Fluxo de turno (SSE ou agregado) ---------------------------------
 
-      # Assine ANTES de despachar (doc 07 §4): sob Async o fiber da task pode
+      # Assine ANTES de despachar: sob Async o fiber da task pode
       # rodar eagerly e emitir :task_started antes de o dispatch retornar. O
       # task_id só existe DEPOIS do dispatch -> assina SEM filtro e filtra no
       # transporte (TaskFilter). Erro SÍNCRONO do handler (Validation/NotFound)
@@ -272,7 +271,7 @@ module Harness
         stream ? sse_response(filtered) : aggregate_response(filtered, task_id)
       end
 
-      # stream=false (doc 07 §3): agrega iterando a subscription filtrada no
+      # stream=false: agrega iterando a subscription filtrada no
       # próprio fiber da request. Acumula deltas de :content; responde no
       # terminal. O shape com `error:` espelha o data do :task_failed (menor
       # extensão coerente — o estado também está em GET /v1/tasks/:id). Terminais
@@ -306,9 +305,9 @@ module Harness
 
       # --- Dispatch e serialização -----------------------------------------
 
-      # Commands de controle podem estourar 10s -> 504 (doc 07 §6). Para
+      # Commands de controle podem estourar 10s -> 504. Para
       # Commands de turno o dispatch retorna imediato (o turno vive no fiber) —
-      # o timeout é inócuo. NUNCA Timeout.timeout da stdlib (D4). Sem reactor
+      # o timeout é inócuo. NUNCA Timeout.timeout da stdlib. Sem reactor
       # corrente (teste de controle puro), despacha direto.
       def dispatch_with_timeout(command)
         task = Async::Task.current?
@@ -317,7 +316,7 @@ module Harness
         task.with_timeout(@sync_timeout) { @command_bus.dispatch(command) }
       end
 
-      # Turno -> {task_id:} (doc 03 §2) -> 202. Qualquer outro shape (controle:
+      # Turno -> {task_id:} -> 202. Qualquer outro shape (controle:
       # Session/Task, que são Data) -> 200 com to_h serializado.
       def command_response(result)
         if turn_result?(result)
@@ -327,13 +326,13 @@ module Harness
         end
       end
 
-      # Turno = Hash com task_id PRESENTE e não-nil (doc 03 §2). Um controle que
+      # Turno = Hash com task_id PRESENTE e não-nil. Um controle que
       # devolvesse Hash sem task_id útil não é confundido com turno.
       def turn_result?(result)
         result.is_a?(Hash) && !result[:task_id].nil?
       end
 
-      # Body vazio ou sem content-type -> {} (doc 07 §4: transporte valida só
+      # Body vazio ou sem content-type -> {} (transporte valida só
       # JSON bem-formado; payload é do handler). NÃO usa req.params (consumiria
       # o body como form) — lê o corpo cru.
       def parse_body(req)
@@ -346,7 +345,7 @@ module Harness
       # Task#to_h é raso (Data#to_h não desce): `executions` fica como Array de
       # Execution (Data), que JSON.generate serializaria como string opaca
       # (`"#<data ...>"`) — ilegível para o consumidor que observa falhas por
-      # GET /v1/tasks/:id (doc 07 §6). Desce a serialização das Executions.
+      # GET /v1/tasks/:id. Desce a serialização das Executions.
       def task_to_h(task)
         task.to_h.merge(executions: task.executions.map(&:to_h))
       end
@@ -363,10 +362,10 @@ module Harness
         [404, { "content-type" => "text/plain" }, ["not found"]]
       end
 
-      # Decorator fino de Subscription (doc 07 §4, Notes da task): descarta
+      # Decorator fino de Subscription: descarta
       # eventos de OUTRAS tasks e FECHA a subscription após repassar o evento
       # terminal da task. Resolve a lacuna subscribe-antes-do-task_id sem tocar
-      # na assinatura da Subscription (doc 03 §2).
+      # na assinatura da Subscription.
       class TaskFilter
         def initialize(subscription, task_id)
           @subscription = subscription

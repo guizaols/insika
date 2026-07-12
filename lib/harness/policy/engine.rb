@@ -4,11 +4,11 @@ require "time"
 
 module Harness
   module Policy
-    # Estágio 3 da pipeline (doc 05 §2-§3). Agrega as policies do perfil na
-    # ordem declarada: interseção de allows não-nil, união de denies (L3 —
-    # comutativa, empate impossível por construção). Fail-closed (L2): crash ou
+    # Estágio 3 da pipeline. Agrega as policies do perfil na
+    # ordem declarada: interseção de allows não-nil, união de denies
+    # (comutativa, empate impossível por construção). Fail-closed: crash ou
     # nome não registrado vira deny. Roda INLINE no fiber (puras, sem IO — sem
-    # Async, sem timeout próprio, doc 05 §5).
+    # Async, sem timeout próprio).
     class Engine
       Resolution = Data.define(:allowed_tools, :allowed_skills, :requires_approval, :audit)
 
@@ -49,7 +49,7 @@ module Harness
 
       private
 
-      # Fail-closed (L2): qualquer exceção (bug da policy OU nome não registrado)
+      # Fail-closed: qualquer exceção (bug da policy OU nome não registrado)
       # vira deny — NUNCA fail-open.
       def evaluate(name, request)
         policy = @registry.fetch(name)

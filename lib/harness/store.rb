@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Contrato mínimo de persistência (doc 01 §2, RFC-0006 §1).
+  # Contrato mínimo de persistência.
   # KV escopado por namespace, transacional quando o backend suporta.
   # Toda implementação passa a MESMA suíte de contrato
   # (spec/harness/store_contract.rb). Valores devem ser serializáveis em JSON.
@@ -11,12 +11,12 @@ module Harness
   #
   # Regras do contrato (verificadas pela suíte):
   # - get de chave inexistente -> nil (nunca exceção)
-  # - set sobrescreve silenciosamente (last-write-wins, D7)
+  # - set sobrescreve silenciosamente (last-write-wins)
   # - round-trip preserva tipos JSON; Symbols viram Strings (domínio
-  #   normaliza na borda, doc 02)
+  #   normaliza na borda)
   # - list(scope) só retorna chaves do scope, ordenadas lexicograficamente;
   #   prefix filtra por start_with?
-  # - transaction aninhada reusa a transação externa (sem SAVEPOINT na Fase 1)
+  # - transaction aninhada reusa a transação externa (sem SAVEPOINT)
   # - falha de serialização na escrita -> Harness::StoreError (fail-fast)
   #
   # Backends fazem `include Store` e sobrescrevem os cinco métodos; qualquer

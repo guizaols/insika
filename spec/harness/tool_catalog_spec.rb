@@ -110,8 +110,20 @@ RSpec.describe Harness::ToolCatalog do
     end
   end
 
-  it "factory que levanta propaga na construção (falha alto e cedo)" do
+  it "lazy: não instancia nenhuma tool na construção (só na 1ª consulta)" do
+    instantiations = 0
+    registry.register("t") { instantiations += 1; FakeTool.new("desc") }
+    cat = described_class.new(tool_registry: registry)
+    expect(instantiations).to eq(0)  # boot não toca a tool
+    cat.all
+    expect(instantiations).to eq(1)  # instanciada no 1º uso
+    cat.all
+    expect(instantiations).to eq(1)  # memoizado — não reinstancia
+  end
+
+  it "factory que levanta propaga no 1º uso (onde o Executor também pegaria)" do
     registry.register("boom") { raise "registro quebrado" }
-    expect { described_class.new(tool_registry: registry) }.to raise_error(/registro quebrado/)
+    cat = described_class.new(tool_registry: registry)
+    expect { cat.all }.to raise_error(/registro quebrado/)
   end
 end
