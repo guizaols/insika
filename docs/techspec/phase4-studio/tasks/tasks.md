@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 3/20 tasks — Etapa A (funil de fundação) ✅
+> **Progress:** 5/20 tasks — Etapas A (fundação) + B (CRUD de agente) ✅
 > **Base:** main @ merge PR #23/#24/#25
 
 ---
@@ -14,8 +14,8 @@
 | 1 | `ConfigStore` — KV durável de configuração (scopes: agents/settings/llm_providers/mcp) sobre o backend | [task-01.md](./task-01.md) | A | ✅ DONE | Med | D2 |
 | 2 | `ProfileSource` — interface `fetch(id)`/`all`; `StaticProfileSource` (Hash de hoje) + `StoredProfileSource` (ConfigStore↔AgentProfile) | [task-02.md](./task-02.md) | A | ✅ DONE | Med | D2 |
 | 3 | Refactor Executor + Commands de turno p/ resolver profile via `ProfileSource` no dispatch (Hash→wrap automático; zero regressão) | [task-03.md](./task-03.md) | A | ✅ DONE | High | D2 |
-| 4 | `:create_agent` / `:update_agent` / `:delete_agent` — Commands CQRS + validação + auditoria | [task-04.md](./task-04.md) | B | ⬜ TODO | Med | D-API |
-| 5 | `:set_agent_tools` — allow/deny por agente (hot via ProfileSource) | [task-05.md](./task-05.md) | B | ⬜ TODO | Low | D4 |
+| 4 | `:create_agent` / `:update_agent` / `:delete_agent` — Commands CQRS + validação + auditoria | [task-04.md](./task-04.md) | B | ✅ DONE | Med | D-API |
+| 5 | `:set_agent_tools` — allow/deny por agente (hot via ProfileSource) | [task-05.md](./task-05.md) | B | ✅ DONE | Low | D4 |
 | 6 | Escrita + `reload` em `SkillCatalog`/`PromptCatalog` (troca atômica do índice) | [task-06.md](./task-06.md) | C | ⬜ TODO | Med | D3 |
 | 7 | Workspace dir por agente + `:write_agent_file`/`:delete_agent_file` + snapshots de histórico | [task-07.md](./task-07.md) | C | ⬜ TODO | Med | D3 |
 | 8 | `:restore_agent_file` + `:write_skill` + `:set_skill_agents` | [task-08.md](./task-08.md) | C | ⬜ TODO | Med | D3 |

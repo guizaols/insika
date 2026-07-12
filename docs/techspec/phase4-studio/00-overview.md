@@ -10,6 +10,15 @@
 
 ---
 
+> **Decisão de topologia (2026-07-12):** alvo = **single-tenant, multi-agent**.
+> Um dono por deploy, criando N agentes (BIAs). **Persistência = SQLite** (backend
+> durável já existente) com volume persistente — Postgres e multi-tenant ficam
+> adiados (a costura `Store`/`tenant` já está pronta pra habilitar depois sem
+> reescrever). **Revisão do D3:** conteúdo de prompts/skills passa a viver no
+> **Store** (fonte da verdade única, um arquivo SQLite pra backup), não em disco;
+> arquivo vira só import/export/seed. Sem cifra de segredos por-tenant por ora
+> (single-tenant: chave no env/DB do próprio dono).
+
 ## 1. Contexto & Objetivo
 
 O harness hoje é um **runtime de agentes** com uma **Control UI de operação** (`/admin`:
