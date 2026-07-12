@@ -1,7 +1,7 @@
 # Task 08 (P3A): Smoke E2E fatia A (A2A inbound)
 
 > **Techspec:** [00-overview.md](../00-overview.md) (§Critério) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

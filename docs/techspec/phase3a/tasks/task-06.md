@@ -1,7 +1,7 @@
 # Task 06 (P3A): Rotas A2A no `Server::App`
 
 > **Techspec:** [P3A-02-agent-card-and-wiring.md](../P3A-02-agent-card-and-wiring.md) (§Rotas no `Server::App`, L6) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

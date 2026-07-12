@@ -145,6 +145,20 @@ module Harness
       allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
     }.freeze
 
+    # --- A2A edge (P3A, RFC-0002 §1) — federação inbound, OPT-IN -------------
+    # Exposto só quando HARNESS_A2A_AGENT aponta um perfil existente (PROFILES é
+    # vazio na base — débito task-26: perfis/plugins reais são deployment
+    # concreto). Sem a env / agente inexistente -> nil -> servidor não expõe A2A.
+    A2A_APP =
+      if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && PROFILES[a2a_agent]
+        Harness::Server::A2A::App.new(
+          command_bus: BUS, task_store: TASK_STORE, session_store: SESSION_STORE,
+          profiles: PROFILES, skill_catalog: CATALOG,
+          config: { a2a_agent: a2a_agent,
+                    base_url: ENV["HARNESS_PUBLIC_URL"] || "http://localhost:#{CONFIG[:port]}" }
+        )
+      end
+
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
@@ -152,6 +166,7 @@ module Harness
       pending_action_store: PENDING_ACTION_STORE, # aprovações no /admin + read
       catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
       registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
+      a2a: A2A_APP, # P3A: nil na base (opt-in) -> rotas A2A respondem 404
       config: CONFIG
     )
 

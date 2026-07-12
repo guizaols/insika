@@ -1,7 +1,7 @@
 # Task 07 (P3A): Wiring do `A2A_APP` (opt-in)
 
 > **Techspec:** [P3A-02-agent-card-and-wiring.md](../P3A-02-agent-card-and-wiring.md) (§Wiring, L7) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Low · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Low · **Etapa:** B
 
 ## Objetivo
 
