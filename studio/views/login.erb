@@ -1,0 +1,19 @@
+<section class="auth">
+  <div class="card auth-card">
+    <div class="brand big"><span class="dot"></span>Harness <small>Studio</small></div>
+    <p class="muted">Entre com o token de operador para gerenciar seus agentes.</p>
+
+    <% if @error %>
+      <div class="flash err" role="alert"><%= @error %></div>
+    <% end %>
+
+    <form method="post" action="/studio/login">
+      <%== csrf_tag %>
+      <label>Token de operador
+        <input type="password" name="token" autocomplete="current-password" autofocus
+               placeholder="HARNESS_ADMIN_TOKEN">
+      </label>
+      <button type="submit" class="primary">Entrar</button>
+    </form>
+  </div>
+</section>

@@ -4,3 +4,7 @@
 tmp/
 .bundle/
 vendor/bundle/
+# Studio (Fase 4): node_modules NÃO versionado; assets/dist/ SIM (D8 — `ruby
+# serve` roda sem Node; só quem edita o front precisa do npm install + build).
+node_modules/
+studio/node_modules/

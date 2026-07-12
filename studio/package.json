@@ -1,0 +1,25 @@
+{
+  "name": "harness-studio-assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Front-end do Harness Studio (Fase 4). Node SÓ para build; ruby serve roda com o dist/ versionado.",
+  "scripts": {
+    "build:css": "tailwindcss -i assets/src/application.css -o assets/dist/application.css --minify",
+    "build:js": "esbuild assets/src/application.js --bundle --format=esm --minify --target=es2020 --outfile=assets/dist/application.js",
+    "build": "npm run build:css && npm run build:js",
+    "watch": "npm run build:css -- --watch & npm run build:js -- --watch"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.30.0",
+    "@hotwired/stimulus": "^3.2.2",
+    "@hotwired/turbo": "^8.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "tailwindcss": "^3.4.0"
+  }
+}

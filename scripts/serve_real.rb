@@ -18,7 +18,9 @@ require "async"
 require "async/http/server"
 require "async/http/endpoint"
 require "protocol/rack"
+require "rack/urlmap"
 require File.join(Dir.pwd, "server", "app")
+require_relative "../studio/app" # Fase 4 Etapa E: UI de gestão (Roda), sob /studio
 
 W = Deploy::Wiring
 
@@ -59,11 +61,28 @@ APP = Harness::Server::App.new(
   config: { admin_token: ADMIN_TOKEN, allowed_origins: [] }
 )
 
+# Harness Studio (Fase 4 Etapa E): app Roda montado sob /studio, com login por
+# cookie (D7) — o navegador manda o cookie de sessão, então NÃO precisa do shim
+# de Bearer que o /admin usa. O secret de sessão deriva do ADMIN_TOKEN. Login em
+# /studio/login com o ADMIN_TOKEN abaixo.
+Studio::App.configure(
+  command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
+  event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN }
+)
+
+# URLMap roteia /studio -> Studio (Roda, cookie-auth) e o resto -> Server::App
+# (com o shim de Bearer só nas rotas /admin). Um processo, um endpoint.
+DISPATCH = Rack::URLMap.new(
+  "/studio" => Studio::App,
+  "/" => LocalAdminShim.new(APP, ADMIN_TOKEN)
+)
+
 BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
-middleware = Protocol::Rack::Adapter.new(LocalAdminShim.new(APP, ADMIN_TOKEN))
+middleware = Protocol::Rack::Adapter.new(DISPATCH)
 
 puts "\e[1mHarness — servindo de verdade (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
+puts "  #{BIND}/studio       → Harness Studio (login: token \"#{ADMIN_TOKEN}\")"
 puts "  #{BIND}/admin/chat   → converse com a Bia (agente: bia · session_id: web)"
 puts "  #{BIND}/admin/events → tool-cards ao vivo (filtre por session_id: web)"
 puts "  #{BIND}/admin        → console"

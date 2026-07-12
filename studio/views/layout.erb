@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness Studio</title>
+  <link rel="stylesheet" href="/studio/assets/dist/application.css">
+  <script type="module" src="/studio/assets/dist/application.js" defer></script>
+</head>
+<body>
+  <% if authenticated? %>
+    <header class="appbar">
+      <a class="brand" href="/studio/agents"><span class="dot"></span>Harness <small>Studio</small></a>
+      <nav class="links">
+        <% nav_links.each do |label, href| %>
+          <a href="<%= href %>"<%== ' aria-current="page"' if request.path.start_with?(href.sub("/studio", "")) %>><%= label %></a>
+        <% end %>
+      </nav>
+      <form class="logout" method="post" action="/studio/logout">
+        <%== csrf_tag %>
+        <button type="submit" class="ghost">sair</button>
+      </form>
+    </header>
+  <% end %>
+
+  <% if flash["error"] %>
+    <div class="flash err" role="alert"><%= flash["error"] %></div>
+  <% end %>
+  <% if flash["notice"] %>
+    <div class="flash ok" role="status"><%= flash["notice"] %></div>
+  <% end %>
+
+  <main class="page">
+    <%== yield %>
+  </main>
+</body>
+</html>
