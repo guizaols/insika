@@ -1,6 +1,6 @@
 # HANDOFF — Fase 4 (Harness Studio) · onde paramos
 
-> **Atualizado:** 2026-07-12 (Etapa D) · **main @** merge PR #29 (`50374cf`)
+> **Atualizado:** 2026-07-12 (Etapa E) · **main @** merge PR #30 (`d138c53`)
 > Documento de retomada: uma sessão nova continua daqui **sem** o histórico do chat.
 > Leia junto com [`00-overview.md`](./00-overview.md) (spec) e [`tasks/tasks.md`](./tasks/tasks.md) (plano).
 
@@ -40,9 +40,10 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 | **#26 (Etapa A)** | **`ConfigStore` + `ProfileSource` (Static/Stored) + refactor Executor/Commands p/ profiles dinâmicos** | merged |
 | **#27 (Etapa B)** | **CRUD de agente em runtime (`:create/update/delete_agent`, `:set_agent_tools`) + deployment com profiles dinâmicos + SQLite-aware** | merged |
 | **#29 (Etapa C)** | **Prompts/skills por-agente: `AgentFileStore`+`SkillStore` (store-backed, D3 revisado), overlay+`reload` de catálogo, Prompt provider lê `profile.prompt_files`, 5 Commands (`:write/delete/restore_agent_file`, `:write_skill`, `:set_skill_agents`)** | merged |
-| **Etapa D** | **Memória + Settings + LLM: 3 Commands de memória (`:memory_put_fact/forget_fact/add_note`), `SettingsStore` + `:update_settings`, `SecretMasking` (sentinel `__OCULTO__`), `LLMProviderStore` (masked) + `LLMConfigurator` (reconfigure RubyLLM runtime) + `:upsert/delete_llm_provider`** | PR aberto |
+| **#30 (Etapa D)** | **Memória + Settings + LLM: 3 Commands de memória (`:memory_put_fact/forget_fact/add_note`), `SettingsStore` + `:update_settings`, `SecretMasking` (sentinel `__OCULTO__`), `LLMProviderStore` (masked) + `LLMConfigurator` (reconfigure RubyLLM runtime) + `:upsert/delete_llm_provider`** | merged |
+| **Etapa E** | **Primeira UI: app `studio/` (Roda) sob `/studio` + login por cookie (D7) + CSRF + CSP estrita; pipeline esbuild/Tailwind → `dist/` versionado (D8); shell/layout + páginas login/agents(list)/playground(SSE)** | PR aberto |
 
-**Progresso do plano: 11/20 tasks (Etapas A + B + C + D).** Ver `tasks/tasks.md`.
+**Progresso do plano: 14/20 tasks (Etapas A + B + C + D + E).** Ver `tasks/tasks.md`.
 
 ### Arquivos-chave criados/alterados (na main)
 - `lib/harness/config_store.rb` — KV durável de configuração (scopes agents/settings/
@@ -73,6 +74,26 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 - `lib/harness/config_store.rb` — scopes `agent_files`/`skills`; `config/deployment.rb` —
   `AGENT_FILE_STORE`/`SKILL_STORE`, catálogo com overlay, provider com `agent_files:`, +5 no BUS.
 
+**Etapa E (app Roda + auth + assets + primeiras páginas):**
+- `studio/app.rb` — `Studio::App` (Roda). FRAMEWORK NA BORDA: `lib/harness` e `server/`
+  NÃO ganham Roda. Plugins `sessions`+`route_csrf`+`content_security_policy`+`render`.
+  `configure(command_bus:/profile_source:/event_stream:/config:)` injeta as deps (mesma
+  superfície do `Server::App`); secret de sessão deriva do `admin_token` (estável entre
+  restarts). Auth fail-closed por `Rack::Utils.secure_compare`. Rotas: `/login`,
+  `/logout`, `/agents`, `/playground` (GET+POST), `/assets/dist/*`, 404 amigável.
+- `studio/views/*.erb` — layout (app-bar + flash + nav) + login + agents (grid, lê
+  `ProfileSource#all`) + playground + not_found. ERB com escape automático (erubi).
+- `studio/assets/src/` + `dist/` — bundle esbuild (D8): `application.js` (Stimulus +
+  Turbo + islands `live-transcript`/`code-editor` com CodeMirror 6), `application.css`
+  (Tailwind base + design system em `@layer components`). **dist versionado** (`ruby
+  serve` sem Node); `package.json`/`tailwind.config.js` só p/ quem edita o front.
+- `scripts/serve_real.rb` — monta `/studio` via `Rack::URLMap` (Studio cookie-auth +
+  resto no `Server::App` com o shim de Bearer). CSRF session-bound (`require_request_
+  specific_tokens: false`) por causa do PATH_INFO pós-mount. CSP estrita `'self'` (sem
+  `unsafe-inline`; todo asset same-origin).
+- Gemfile: `roda`/`tilt`/`erubi` (só na borda `studio/`). `.gitignore`: `node_modules/`
+  ignorado, `assets/dist/` versionado.
+
 **Etapa D (memória + settings + LLM):**
 - `lib/harness/commands/{memory_put_fact,memory_forget_fact,memory_add_note}.rb` — memória
   editável por HTTP (não só via tool `remember`); escopada por `tenant` (payload ou meta).
@@ -96,26 +117,35 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 
 ## 4. Estado atual dos testes
 
-`bundle exec rspec` → **962 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
+`bundle exec rspec` → **975 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
 continua lazy — restrição D9 do core preservada; o `LLMConfigurator` recebe `configure:`
-falso nos specs). O "boom" no log é fixture intencional.
+falso nos specs). O "boom" no log é fixture intencional. Etapa E: `spec/studio/app_spec.rb`
+(14 ex.) usa doubles de bus/profile_source — o Studio só lê e despacha, não escreve em store.
 
-## 5. PRÓXIMO PASSO — Etapa E (tasks 12-14): **app Roda + auth + assets**
+## 5. PRÓXIMO PASSO — Etapa F (tasks 15-17): **páginas de autoria**
 
-Etapa D (memória/settings/LLM) está **feita** — o backend de config do Studio está
-completo (agentes, prompts/skills, memória, settings, LLM). Agora começa a **UI de
-verdade** (primeira etapa com HTTP/HTML):
-- Task 12: app `studio/` (Roda) montado sob `/studio` + login por cookie (D7) + CSRF.
-- Task 13: pipeline esbuild (Tailwind+Stimulus+CodeMirror) → `dist/` versionado + CSP `'self'`.
-- Task 14: shell/layout + Stimulus base + páginas login + agents(list) + playground (SSE).
+A Etapa E entregou a **primeira UI de verdade** (app Roda + auth + assets + login/
+agents/playground). O backend de config (A–D) e a casca da UI (E) estão prontos. A
+Etapa F preenche a autoria (depende só de E):
+- Task 15: agents(detail) — config/model + island `code-editor` (CodeMirror, já
+  bundleado) para editar prompts (`:write/restore_agent_file`).
+- Task 16: skills + tools (matriz tool×agente + toggles via Turbo Frame).
+- Task 17: agents(detail) — skills/memória/histórico.
 
-Depois: F (páginas de autoria) → G (mcp/settings/system-files/chats) → H (polish). Ver
-`tasks/tasks.md`.
+Depois: G (mcp/settings/system-files/chats) → H (polish). Ver `tasks/tasks.md`.
 
-**Prova de "rodar de verdade" (Etapa D):** com `DEEPSEEK_API_KEY` setado, os 6 Commands
-despacham pelo BUS real de `config/deployment.rb` — `memory_put_fact/add_note/forget_fact`,
-`update_settings` (deep-merge de compaction), `upsert_llm_provider` (chave mascarada na
-resposta, real no `get_raw`, RubyLLM reconfigurado sem erro) e `delete_llm_provider`.
+**Como continuar a UI:** o `code-editor` (CodeMirror 6) e o `live-transcript` já vivem
+no bundle (`studio/assets/src/controllers/*`); a Etapa F só cria as PÁGINAS que os usam
+e os Commands de autoria já existem (Etapas B/C). Reaproveite os islands e o design
+system (`@layer components` em `application.css`).
+
+**Prova de "rodar de verdade" (Etapa E):** `ADMIN_TOKEN=... DEEPSEEK_API_KEY=... ruby
+scripts/serve_real.rb` → `/studio` redireciona p/ login (fail-closed); login com o token
+seta o cookie; `/studio/agents` lista a Bia (lê o `ProfileSource`); o **playground** com
+mensagem e session_id em branco despacha `:create_session` + `:send_message` pelo BUS real
+e a **Bia respondeu de verdade** (DeepSeek) — os 2 turnos ficam persistidos na sessão
+(`GET /v1/sessions/:id`). CSP estrita, assets same-origin e token errado → 401 confirmados
+por HTTP real.
 
 ### Decisão D3 travada na Etapa C: **conteúdo store-backed**
 Prompts por-agente e skills autoradas vivem no **ConfigStore** (scopes novos
@@ -139,12 +169,17 @@ com identidade própria" está provado (`spec/harness/integration/per_agent_prom
 ```bash
 # chave DeepSeek (autorizado): openclaw/.env.local → DEEPSEEK_API_KEY
 export DEEPSEEK_API_KEY=...            # NUNCA commitar/logar o valor
+export ADMIN_TOKEN=troque-isto         # token de login do Studio (D7); default "local-demo"
 export HARNESS_DB=/caminho/harness.db  # opcional: persiste config+execução (SQLite)
 
-ruby scripts/serve_real.rb             # sobe /admin + /v1 em http://localhost:9292
+ruby scripts/serve_real.rb             # sobe /studio + /admin + /v1 em http://localhost:9292
+#   /studio      → Harness Studio (login com o ADMIN_TOKEN) → agents + playground
 #   /admin/chat  → converse (agente: bia · session_id: web)
 #   /admin/events, /admin/sessions/web, /admin/tasks
 ruby scripts/run_real.rb               # 2 turnos multi-turn no terminal
+
+# Editar o front (só quem mexe em CSS/JS; o dist é versionado):
+cd studio && npm install && npm run build
 ```
 O `serve_real.rb` tem um `LocalAdminShim` que injeta o Bearer nas rotas `/admin` (o
 `/admin` é fail-closed; navegador não manda Authorization) — conveniência de demo local.
