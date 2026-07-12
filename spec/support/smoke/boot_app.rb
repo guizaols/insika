@@ -65,7 +65,7 @@ executor = Harness::Executor.new(
 # Exposto p/ o serve.rb injetar o supervisor de turnos (L4) no reactor de serving.
 SMOKE_EXECUTOR = executor
 
-bus = Harness::CommandBus.new(event_stream: event_stream)
+bus = Harness::CommandBus.new
 bus.register(:create_session,
              Harness::Commands::CreateSession.new(session_store: session_store, event_stream: event_stream))
 bus.register(:send_message,

@@ -24,7 +24,7 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
     )
   end
 
-  let(:bus) { Harness::CommandBus.new(event_stream: event_stream) }
+  let(:bus) { Harness::CommandBus.new }
   let(:handler) do
     Harness::Commands::SendMessage.new(profiles: { "sales" => profile },
                                        session_store: session_store, task_store: task_store,

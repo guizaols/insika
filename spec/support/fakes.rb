@@ -4,16 +4,17 @@
 # mínimo e determinístico. Vivem em spec/support de propósito: os componentes
 # reais chegam nas tasks 14-18; o wiring de produção fecha na task 26.
 
-# Espelho pobre do Context Builder (task 14). #call(request) -> ContextPackage
-# com system (do profile.base_prompt) e history na precedência do doc 04:
-# checkpoint.messages -> request.history -> mensagens da sessão -> [].
+# Espelho pobre do Context Builder. #call(request) -> ContextPackage com system
+# (do profile.base_prompt) e history na precedência: checkpoint.messages ->
+# history explícito (vars["history"], a convenção que o Session provider usa) ->
+# mensagens da sessão -> [].
 ContextPackage = Struct.new(:system, :history, :tool_context)
 
 class FakeContextBuilder
   def call(request)
     history =
       request.checkpoint&.messages ||
-      request.history ||
+      request.vars&.[]("history") ||
       request.session&.messages ||
       []
     ContextPackage.new(request.profile.base_prompt.to_s, history, nil)

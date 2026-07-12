@@ -44,9 +44,8 @@ module Harness
         @db.execute("PRAGMA synchronous = NORMAL")
         @db.busy_timeout = 5_000                   # rede de segurança
         @db.execute_batch(DDL)
-        @db.execute(
-          "CREATE INDEX IF NOT EXISTS kv_scope_prefix ON kv (scope, key)"
-        )
+        # A PRIMARY KEY (scope, key) do WITHOUT ROWID já é o índice do prefixo —
+        # não há índice extra a criar.
       rescue ::SQLite3::Exception => e
         raise Harness::StoreError, "falha ao abrir #{path}: #{e.message}"
       end
@@ -67,7 +66,7 @@ module Harness
 
       def set(scope, key, value)
         serialized = serialize(value)               # fail-fast ANTES de gravar
-        write do
+        transaction do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
             "VALUES (?, ?, ?, ?)",
@@ -78,7 +77,7 @@ module Harness
       end
 
       def delete(scope, key)
-        write do
+        transaction do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
           @db.changes.positive?
         end
@@ -117,13 +116,6 @@ module Harness
       end
 
       private
-
-      # Toda escrita individual passa por transaction — assim TODAS as
-      # escritas serializam no semáforo e set/delete dentro de
-      # uma transação externa participam dela (reuso por aninhamento).
-      def write(&blk)
-        transaction(&blk)
-      end
 
       # Enforce o modelo de tipos do contrato na borda:
       # Symbol/símbolo-chave viram String; tipo fora do modelo JSON ->

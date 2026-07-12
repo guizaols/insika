@@ -24,7 +24,7 @@ RSpec.describe "Integração: serialização de turnos por sessão (P2-03)" do
       task_store: task_store, checkpoint_store: checkpoint_store, event_stream: event_stream
     )
   end
-  let(:bus) { Harness::CommandBus.new(event_stream: event_stream) }
+  let(:bus) { Harness::CommandBus.new }
   let(:handler) do
     Harness::Commands::SendMessage.new(profiles: { "sales" => profile },
                                        session_store: session_store, task_store: task_store,

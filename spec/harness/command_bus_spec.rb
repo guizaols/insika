@@ -3,9 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Harness::CommandBus do
-  subject(:bus) { described_class.new(event_stream: event_stream) }
-
-  let(:event_stream) { double("event_stream") }
+  subject(:bus) { described_class.new }
 
   it "roteia dispatch para o handler registrado e retorna seu resultado" do
     bus.register(:echo, ->(command) { [:handled, command.type] })
