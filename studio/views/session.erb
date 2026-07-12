@@ -1,0 +1,36 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>sessão</span></nav>
+    <h1>Sessão <span class="mono"><%= @session.id[0, 16] %></span>
+      <span class="sub"><%= Array(@session.messages).size %> mensagem(ns) · atualizada <%= @session.updated_at %></span>
+    </h1>
+  </div>
+  <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">continuar no playground →</a>
+</header>
+
+<div class="card transcript">
+  <% if Array(@session.messages).empty? %>
+    <div class="empty">Sessão sem mensagens.</div>
+  <% else %>
+    <div class="thread">
+      <% Array(@session.messages).each do |m| %>
+        <% role = m["role"].to_s %>
+        <% content = m["content"].is_a?(String) ? m["content"] : m["content"].inspect %>
+        <% if role == "tool" %>
+          <div class="toolcard result">
+            <div class="h"><span class="arrow">←</span><strong>tool</strong></div>
+            <pre><%= content %></pre>
+          </div>
+        <% else %>
+          <div class="msg <%= role %>">
+            <div class="who"><%= role[0, 1].upcase %></div>
+            <div class="bubble">
+              <div class="muted role-tag"><%= role %></div>
+              <div class="content"><%= content %></div>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
+</div>

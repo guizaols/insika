@@ -5,11 +5,11 @@ require "digest"
 require "rack/utils"
 
 module Studio
-  # Harness Studio (Fase 4, Etapa E) — a UI de gestão server-rendered, substituta
-  # do agent-studio do OpenClaw. FRAMEWORK NA BORDA (00-overview D1): é um app
-  # Roda separado, montado sob `/studio`; `lib/harness` e `server/` NÃO ganham
+  # Harness Studio (Fase 4) — a UI de gestão server-rendered, substituta do
+  # agent-studio do OpenClaw. FRAMEWORK NA BORDA (00-overview D1): é um app Roda
+  # separado, montado sob `/studio`; `lib/harness` e `server/` NÃO ganham
   # dependência de Roda. Fala com o runtime pela MESMA superfície que a API:
-  # despacha Commands no CommandBus e lê profiles/stores — nunca escreve em store
+  # despacha Commands no CommandBus e LÊ profiles/stores — nunca escreve em store
   # direto (regra constitucional do transporte).
   #
   # Auth por SESSÃO/cookie (D7): login compara o token em tempo constante contra
@@ -19,6 +19,12 @@ module Studio
   #
   # Assets same-origin (D8): bundle esbuild versionado em `assets/dist/*`, servido
   # por `/studio/assets/dist/*`. CSP estrita `'self'` (sem `unsafe-inline`).
+  #
+  # Etapa E entregou login/agents(list)/playground. Etapa F (tasks 15-17) traz as
+  # PÁGINAS DE AUTORIA: agents(detail) — config/model + prompts (island
+  # code-editor) + skills + memória + histórico —, skills (matriz + editor) e
+  # tools (matriz). Toda escrita passa pelos Commands já existentes (Etapas B-D);
+  # o Studio só monta a UI sobre eles.
   class App < Roda
     # Cookie de sessão vive N dias (D7). 7 dias = paridade com o padrão OpenClaw.
     SESSION_MAX_AGE = 7 * 24 * 3600
@@ -60,10 +66,21 @@ module Studio
       # plugins que dependem do secret (sessions/csrf/flash) e guarda as deps.
       # `session_secret` explícito é para os specs; em produção deriva do token de
       # admin (estável entre restarts, sem exigir mais uma env var).
-      def configure(command_bus:, profile_source:, event_stream:, config:, session_secret: nil)
+      #
+      # Etapa F: além do trio de sempre (command_bus/profile_source/config), o
+      # Studio passa a LER stores de autoria (agent_file/skill/tool/memory/session)
+      # para renderizar as páginas. Todos opcionais (default nil): páginas que
+      # dependem de um store degradam para um empty-state se ele não foi injetado.
+      def configure(command_bus:, profile_source:, event_stream:, config:,
+                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
+                    tool_catalog: nil, memory_store: nil, session_store: nil,
+                    session_secret: nil)
         @harness = {
           command_bus: command_bus, profile_source: profile_source,
-          event_stream: event_stream, config: config
+          event_stream: event_stream, config: config,
+          agent_file_store: agent_file_store, skill_store: skill_store,
+          skill_catalog: skill_catalog, tool_catalog: tool_catalog,
+          memory_store: memory_store, session_store: session_store
         }.freeze
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "harness.studio", secret: secret,
@@ -125,10 +142,193 @@ module Studio
       # `/studio` e `/studio/` → lista de agentes.
       r.root { r.redirect("/studio/agents") }
 
-      # Agentes (lista) — lê do ProfileSource (mesma fonte do dispatch de turno).
-      r.get "agents" do
-        @agents = harness[:profile_source].all.sort_by(&:id)
-        view("agents")
+      # --- Agentes: lista + detalhe/autoria (tasks 15/17) --------------------
+      r.on "agents" do
+        # /studio/agents — grid dos agentes (lê o ProfileSource).
+        r.is do
+          r.get do
+            @agents = harness[:profile_source].all.sort_by(&:id)
+            view("agents")
+          end
+        end
+
+        # /studio/agents/:id — a página de autoria de um agente.
+        r.on String do |id|
+          id = utf8(id)
+          @agent = harness[:profile_source].fetch(id) || next_404
+
+          # GET /studio/agents/:id — config + prompts + skills + memória + histórico.
+          r.is do
+            r.get { render_agent_detail }
+          end
+
+          # Config/model (task 15) → :update_agent (merge de patch).
+          r.post "config" do
+            check_csrf!
+            with_flash("Configuração salva.") do
+              dispatch(:update_agent, config_patch(r))
+            end
+            r.redirect(agent_path(id))
+          end
+
+          # Prompts store-backed (task 15). Escrever também garante que o arquivo
+          # entre em `prompt_files` — senão o Prompt provider não o carregaria.
+          r.on "prompts" do
+            r.post "delete" do
+              check_csrf!
+              file = presence(r.params["file"])
+              with_flash("Prompt removido.") do
+                dispatch(:delete_agent_file, { agent_id: id, file: file })
+                remaining = Array(@agent.prompt_files).map(&:to_s) - [file]
+                dispatch(:update_agent, { id: id, prompt_files: remaining })
+              end
+              r.redirect(agent_path(id))
+            end
+
+            r.post "restore" do
+              check_csrf!
+              with_flash("Versão restaurada.") do
+                dispatch(:restore_agent_file, {
+                           agent_id: id, file: presence(r.params["file"]),
+                           version: r.params["version"]
+                         })
+              end
+              r.redirect(agent_path(id))
+            end
+
+            r.post do
+              check_csrf!
+              file = presence(r.params["file"])
+              with_flash("Prompt salvo.") do
+                dispatch(:write_agent_file, {
+                           agent_id: id, file: file, content: r.params["content"].to_s
+                         })
+                unless file.nil? || Array(@agent.prompt_files).map(&:to_s).include?(file)
+                  dispatch(:update_agent, { id: id, prompt_files: Array(@agent.prompt_files) + [file] })
+                end
+              end
+              r.redirect(agent_path(id))
+            end
+          end
+
+          # Skills do agente (task 17) → :update_agent com a allowlist `skills`.
+          # "todas" = nil; senão o subconjunto marcado (possivelmente []).
+          r.post "skills" do
+            check_csrf!
+            skills = r.params["all_skills"] == "1" ? nil : Array(r.params["skills"]).map(&:to_s)
+            with_flash("Skills atualizadas.") do
+              dispatch(:update_agent, { id: id, skills: skills })
+            end
+            r.redirect(agent_path(id))
+          end
+
+          # Memória do agente (task 17). Escopada por tenant = id do agente — o
+          # MESMO tenant que o playground usa ao conversar, então o que se edita
+          # aqui é o que a BIA lê no turno. Cada agente, sua memória.
+          r.on "memory" do
+            r.post "fact" do
+              check_csrf!
+              with_flash("Fato salvo.") do
+                dispatch(:memory_put_fact, {
+                           tenant: id, key: presence(r.params["key"]), value: r.params["value"].to_s
+                         })
+              end
+              r.redirect(agent_path(id, "memoria"))
+            end
+            r.post "forget" do
+              check_csrf!
+              with_flash("Fato esquecido.") do
+                dispatch(:memory_forget_fact, { tenant: id, key: presence(r.params["key"]) })
+              end
+              r.redirect(agent_path(id, "memoria"))
+            end
+            r.post "note" do
+              check_csrf!
+              with_flash("Nota adicionada.") do
+                dispatch(:memory_add_note, { tenant: id, text: r.params["text"].to_s })
+              end
+              r.redirect(agent_path(id, "memoria"))
+            end
+          end
+        end
+      end
+
+      # --- Skills: catálogo + matriz de agentes + editor (task 16) -----------
+      r.on "skills" do
+        r.is do
+          r.get { render_skills_index }
+          # POST /studio/skills → grava a skill (SKILL.md completo) e recarrega
+          # o catálogo (hot). Cobre "nova skill" e "salvar edição".
+          r.post do
+            check_csrf!
+            name = presence(r.params["name"])
+            with_flash("Skill salva.") do
+              dispatch(:write_skill, { name: name, content: r.params["content"].to_s })
+            end
+            r.redirect(name ? "/studio/skills/#{Rack::Utils.escape(name)}" : "/studio/skills")
+          end
+        end
+
+        # Editor de skill nova (antes do matcher genérico String).
+        r.get "new" do
+          @skill_name = ""
+          @skill_content = new_skill_template
+          view("skill_edit")
+        end
+
+        r.on String do |name|
+          name = utf8(name)
+          # GET /studio/skills/:name — editor (island code-editor).
+          r.is do
+            r.get do
+              @skill_name = name
+              @skill_content = skill_source(name)
+              view("skill_edit")
+            end
+          end
+          # Habilita/desabilita a skill em N agentes de uma vez.
+          r.post "agents" do
+            check_csrf!
+            agent_ids = Array(r.params["agent_ids"]).map(&:to_s)
+            result = with_flash("Agentes da skill atualizados.") do
+              dispatch(:set_skill_agents, { name: name, agent_ids: agent_ids })
+            end
+            skipped = Array(result && result[:skipped_all])
+            if skipped.any?
+              flash["notice"] = "#{flash['notice']} — #{skipped.size} agente(s) com 'todas' as skills ficaram intactos."
+            end
+            r.redirect("/studio/skills")
+          end
+        end
+      end
+
+      # --- Tools: matriz tool × agente (task 16) -----------------------------
+      r.on "tools" do
+        r.is { r.get { render_tools_matrix } }
+
+        # POST /studio/tools/:id — grava a allowlist de tools de um agente.
+        # "todas" = nil; senão o subconjunto marcado. `deny` é preservado.
+        r.post String do |id|
+          check_csrf!
+          id = utf8(id)
+          profile = harness[:profile_source].fetch(id) || next_404
+          allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
+          with_flash("Tools do agente '#{id}' atualizadas.") do
+            dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
+          end
+          r.redirect("/studio/tools")
+        end
+      end
+
+      # --- Histórico: viewer read-only de uma sessão (task 17) ---------------
+      r.on "sessions" do
+        r.on String do |sid|
+          sid = utf8(sid)
+          r.get do
+            @session = harness[:session_store]&.find(sid) || next_404
+            view("session")
+          end
+        end
       end
 
       # Playground: envia `send_message` (o MESMO Command da API) e streama a
@@ -168,10 +368,14 @@ module Studio
 
     def harness = self.class.harness
 
-    # Navegação da app-bar. Etapa E entrega agentes + playground; as demais
-    # páginas (skills/tools/mcp/settings/chats) chegam nas Etapas F/G.
+    # Navegação da app-bar. Etapa F acrescenta skills + tools às páginas de E.
     def nav_links
-      { "agentes" => "/studio/agents", "playground" => "/studio/playground" }
+      {
+        "agentes" => "/studio/agents",
+        "skills" => "/studio/skills",
+        "tools" => "/studio/tools",
+        "playground" => "/studio/playground"
+      }
     end
 
     def authenticated? = session["auth"] == true
@@ -191,28 +395,167 @@ module Studio
       ids.include?("bia") ? "bia" : (ids.first || "bia")
     end
 
-    # Despacha o send_message pelo MESMO bus da API (nada de escrita direta em
-    # store). Retorna o resultado (Hash com task_id) — a UI observa o turno via SSE.
-    def dispatch_send_message(agent:, session_id:, message:)
-      command = Harness::Command.build(
-        :send_message, { agent: agent, session_id: session_id, message: message },
-        transport: :studio
+    # 404 amigável a partir de qualquer ponto do roteamento (agente/sessão
+    # inexistente). `throw :halt` com a resposta já montada (padrão Roda).
+    def next_404
+      response.status = 404
+      response.write(view("not_found"))
+      request.halt
+    end
+
+    # Roda captura segmentos de path com encoding ASCII-8BIT (binário). Os keys
+    # do Store foram gravados em UTF-8; um `get` com string binária NÃO casa no
+    # backend SQLite (bind como BLOB) e ainda gravaria uma chave-duplicata se
+    # entrasse num payload de escrita. Normaliza no ÚNICO ponto onde o binário
+    # nasce — a borda Roda — para que o core (agnóstico de framework) só veja
+    # strings UTF-8. Os bytes vêm da URL já decodificada (UTF-8), então
+    # force_encoding é correto, não uma reinterpretação.
+    def utf8(str) = str.to_s.dup.force_encoding(Encoding::UTF_8)
+
+    # Despacha um Command pelo bus (mesma superfície da API) e retorna o
+    # resultado. `tenant` só é usado pela memória.
+    def dispatch(type, payload, tenant: nil)
+      harness[:command_bus].dispatch(
+        Harness::Command.build(type, payload, transport: :studio, tenant: tenant)
       )
-      harness[:command_bus].dispatch(command)
+    end
+
+    # Envolve um dispatch de escrita com flash de sucesso/erro e devolve o
+    # resultado (ou nil em erro). Erros de domínio (Validation/NotFound) viram
+    # flash vermelho — nunca 500 na cara do usuário.
+    def with_flash(success)
+      result = yield
+      flash["notice"] = success
+      result
+    rescue Harness::ValidationError, Harness::NotFoundError => e
+      flash["error"] = e.message
+      nil
+    end
+
+    # --- Leitura de detalhe de agente ----------------------------------------
+
+    def render_agent_detail
+      id = @agent.id
+      store = harness[:agent_file_store]
+      @prompt_files = Array(@agent.prompt_files).map do |name|
+        {
+          name: name.to_s,
+          content: store&.read(id, name).to_s,
+          versions: store ? store.versions(id, name) : []
+        }
+      end
+      @all_skills = harness[:skill_catalog]&.all || []
+      @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
+      mem = harness[:memory_store]
+      @facts = mem ? mem.facts(tenant: id) : []
+      @notes = mem ? mem.notes(tenant: id, limit: 20) : []
+      @recent_sessions = recent_sessions
+      view("agent_detail")
+    end
+
+    # Patch de config a partir do form (tipos nativos: memory bool, limits int).
+    # Preserva os limits existentes, sobrescrevendo só os campos do form.
+    def config_patch(r)
+      limits = @agent.limits.dup
+      { "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |field|
+        v = presence(r.params[field])
+        limits[field.to_sym] = Integer(v) if v
+      end
+      {
+        id: @agent.id,
+        model: presence(r.params["model"]) || @agent.model,
+        provider: r.params["provider"].to_s,
+        memory: r.params["memory"] == "1",
+        limits: limits
+      }
+    end
+
+    # --- Skills index --------------------------------------------------------
+
+    def render_skills_index
+      @skills = (harness[:skill_catalog]&.all || []).sort_by(&:name)
+      @stored = harness[:skill_store] ? harness[:skill_store].names : []
+      @agents = harness[:profile_source].all.sort_by(&:id)
+      view("skills")
+    end
+
+    # Conteúdo bruto para o editor: preferir o store (SKILL.md real), senão
+    # reconstruir a partir do que o catálogo parseou (edição de uma skill de
+    # disco cria um override no store — Store vence).
+    def skill_source(name)
+      raw = harness[:skill_store]&.get(name)
+      return raw if raw
+
+      skill = harness[:skill_catalog]&.find(name)
+      return new_skill_template(name) unless skill
+
+      "---\nname: #{skill.name}\ndescription: #{skill.description}\n---\n\n#{skill.body}\n"
+    end
+
+    def new_skill_template(name = "minha-skill")
+      "---\nname: #{name}\ndescription: uma frase sobre quando usar esta skill\n---\n\n" \
+        "# #{name}\n\nInstruções completas carregadas sob demanda pela tool `load_skill`.\n"
+    end
+
+    # Uma skill está ativa para um agente se ele tem `skills` = nil (todas) ou a
+    # lista inclui o nome. Usado para pré-marcar os checkboxes da matriz.
+    def skill_enabled_for?(profile, skill_name)
+      profile.skills.nil? || Array(profile.skills).map(&:to_s).include?(skill_name.to_s)
+    end
+
+    # --- Tools matrix --------------------------------------------------------
+
+    def render_tools_matrix
+      @tools = (harness[:tool_catalog]&.all || []).sort_by(&:name)
+      @agents = harness[:profile_source].all.sort_by(&:id)
+      view("tools")
+    end
+
+    # nil = todas; senão a lista. Pré-marca os checkboxes por agente.
+    def tool_allowed_for?(profile, tool_name)
+      profile.tools_allow.nil? || Array(profile.tools_allow).map(&:to_s).include?(tool_name.to_s)
+    end
+
+    # --- Histórico -----------------------------------------------------------
+
+    # Conversas recentes (todos os agentes — a Session não carimba o agente que
+    # a produziu; ver HANDOFF §histórico). Mais recentes primeiro, capadas.
+    def recent_sessions(limit: 8)
+      store = harness[:session_store]
+      return [] unless store
+
+      store.each_id.filter_map { |sid| store.find(sid) }
+           .sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
+    end
+
+    def session_preview(session)
+      last = Array(session.messages).reverse.find { |m| %w[user assistant].include?(m["role"]) }
+      last && last["content"].to_s
+    end
+
+    # --- Playground ----------------------------------------------------------
+
+    # Despacha o send_message pelo MESMO bus da API (nada de escrita direta em
+    # store). tenant = agente → a memória do turno é a do agente (paridade com a
+    # página de memória). A UI observa o turno via SSE.
+    def dispatch_send_message(agent:, session_id:, message:)
+      dispatch(:send_message, { agent: agent, session_id: session_id, message: message }, tenant: agent)
     end
 
     # Cria uma sessão nova pelo bus (create_session gera o id) e devolve o id.
     def create_session
-      result = harness[:command_bus].dispatch(
-        Harness::Command.build(:create_session, { vars: { "canal" => "studio" } }, transport: :studio)
-      )
-      result.id
+      dispatch(:create_session, { vars: { "canal" => "studio" } }).id
     end
 
     def playground_path(agent, session_id)
       query = "agent=#{Rack::Utils.escape(agent)}"
       query += "&session_id=#{Rack::Utils.escape(session_id)}" if session_id
       "/studio/playground?#{query}"
+    end
+
+    def agent_path(id, anchor = nil)
+      base = "/studio/agents/#{Rack::Utils.escape(id)}"
+      anchor ? "#{base}##{anchor}" : base
     end
 
     # Serve um asset versionado do dist. `File.basename` mata path traversal; só
