@@ -41,14 +41,9 @@ module Harness
       self
     end
 
-    # Allowlist por agente (semântica OpenClaw):
-    #   nil -> todas | [] -> nenhuma | [names] -> subconjunto final
+    # Allowlist por agente: nil -> todas | [] -> nenhuma | [names] -> subconjunto.
     def effective(skills_policy)
-      return all if skills_policy.nil?
-      return [] if skills_policy.empty?
-
-      names = Array(skills_policy).map(&:to_s)
-      all.select { |s| names.include?(s.name) }
+      Allowlist.filter(all, skills_policy) { |s| s.name }
     end
 
     # Nível 1: lista compacta injetada no system prompt. Só metadados.

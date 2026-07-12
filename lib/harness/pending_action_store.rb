@@ -13,6 +13,8 @@ module Harness
   # Normaliza symbol→string na ESCRITA (o backend só garante round-trip de tipos
   # JSON), como os demais stores de domínio.
   class PendingActionStore
+    include Coercion
+
     SCOPE = "pending_actions"
     KEY_PREFIX = "pending:"
 
@@ -101,14 +103,5 @@ module Harness
     end
 
     def timestamp = Time.now.utc.iso8601
-
-    def deep_stringify(obj)
-      case obj
-      when Hash then obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = deep_stringify(v) }
-      when Array then obj.map { |v| deep_stringify(v) }
-      when Symbol then obj.to_s
-      else obj
-      end
-    end
   end
 end

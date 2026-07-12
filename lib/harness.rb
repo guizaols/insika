@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "harness/errors"
+require_relative "harness/coercion"
+require_relative "harness/allowlist"
 require_relative "harness/event"
 require_relative "harness/agent_profile"
 require_relative "harness/token_estimator"
@@ -10,6 +12,7 @@ require_relative "harness/hooks"
 require_relative "harness/middleware"
 require_relative "harness/context/fragment"
 require_relative "harness/context/provider"
+require_relative "harness/context/catalog_provider"
 require_relative "harness/context/builder"
 require_relative "harness/context/providers/request"
 require_relative "harness/context/providers/prompt"

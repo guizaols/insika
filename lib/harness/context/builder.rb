@@ -50,16 +50,8 @@ module Harness
     # Passo 1: seleção — enabled_for? E allowlist do perfil.
     def select_providers(profile)
       @providers.select do |p|
-        p.enabled_for?(profile) && allowlisted?(p, profile.context_providers)
+        p.enabled_for?(profile) && Allowlist.allows?(profile.context_providers, p.id)
       end
-    end
-
-    # Allowlist única: nil -> todos; [] -> nenhum; [names] -> subconjunto.
-    def allowlisted?(provider, allow)
-      return true if allow.nil?
-      return false if allow.empty?
-
-      Array(allow).map(&:to_s).include?(provider.id.to_s)
     end
 
     # Passo 2: produção em fan-out com BARRIER e timeout por provider

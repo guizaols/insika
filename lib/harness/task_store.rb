@@ -16,6 +16,8 @@ module Harness
   # ficam SEMPRE nil — o schema já os reserva para o lease/lock futuro,
   # nenhum método os escreve.
   class TaskStore
+    include Coercion
+
     SCOPE = "tasks"
     KEY_PREFIX = "task:"
 
@@ -215,22 +217,6 @@ module Harness
 
     def timestamp
       Time.now.utc.iso8601
-    end
-
-    # symbol->string na escrita, Ruby puro: chaves e valores Symbol viram String,
-    # recursivo em Hash/Array; demais tipos passam intactos (o backend rejeita
-    # não-JSONable).
-    def deep_stringify(obj)
-      case obj
-      when Hash
-        obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = deep_stringify(v) }
-      when Array
-        obj.map { |v| deep_stringify(v) }
-      when Symbol
-        obj.to_s
-      else
-        obj
-      end
     end
   end
 end

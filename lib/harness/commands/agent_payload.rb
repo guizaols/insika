@@ -30,7 +30,8 @@ module Harness
         (payload || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
       end
 
-      def presence(str) = str.nil? || str.to_s.empty? ? nil : str.to_s
+      # Nome estável usado pelos handlers; a regra mora em Harness::Coercion.
+      def presence(str) = Harness::Coercion.presence(str)
     end
   end
 end
