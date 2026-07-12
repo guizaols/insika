@@ -1,7 +1,7 @@
 # Task 11 (P2B): Wiring (CapabilityRegistry + ToolCatalog) + catálogo de eventos D5
 
 > **Techspec:** [00-overview.md](../00-overview.md) (D7) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Low · **Etapa:** C
+> **Status:** ✅ DONE · **Complexity:** Low · **Etapa:** C
 
 ## Objetivo
 Ligar as duas peças que as Etapas A e B construíram de forma isolada

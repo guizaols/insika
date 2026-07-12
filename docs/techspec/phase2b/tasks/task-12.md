@@ -1,7 +1,7 @@
 # Task 12 (P2B): Smoke E2E fatia B (capability + tool search)
 
 > **Techspec:** [00-overview.md](../00-overview.md) (§Critério) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** C
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** C
 
 ## Objetivo
 

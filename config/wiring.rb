@@ -52,6 +52,13 @@ module Harness
     POLICY_REGISTRY.register(:workflow_allowlist, Harness::Policy::Builtin::WorkflowAllowlist)
     POLICY_REGISTRY.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
 
+    # --- Capability Registry + Tool Catalog (P2B-01/02, overview D7) ----------
+    # CapabilityRegistry é INDIREÇÃO (D1): guarda Providers, resolve p/ o impl_name
+    # que o REGISTRY instancia. Zero execução aqui. ToolCatalog lê metadados do
+    # REGISTRY já construído (mesmo padrão do SkillCatalog sobre os skills/).
+    CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
+    TOOL_CATALOG        = Harness::ToolCatalog.new(tool_registry: REGISTRY)
+
     # Catálogos: roots de skills/prompts do workspace (vazios se ausentes; a
     # task 26 acrescenta os dirs dos plugins pela precedência do doc 06 §4).
     CATALOG        = Harness::SkillCatalog.new([File.join(ROOT, "skills")])
@@ -65,6 +72,9 @@ module Harness
       Harness::Context::Providers::Request.new,
       Harness::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
       Harness::Context::Providers::Skill.new(catalog: CATALOG),
+      # Tool Search nível-1 (P2B-02, task 8): emite <available_tools> de
+      # profile.tools_deferred. Inerte p/ agentes sem tools_deferred (retorna []).
+      Harness::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       Harness::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
 
@@ -87,7 +97,8 @@ module Harness
       tool_registry: REGISTRY, skill_catalog: CATALOG, profiles: PROFILES,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       checkpoint_store: CHECKPOINT_STORE, event_stream: EVENT_STREAM,
-      workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE
+      workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE,
+      capability_registry: CAPABILITY_REGISTRY, tool_catalog: TOOL_CATALOG
     )
 
     # --- Command Bus + handlers (doc 03 §2-§3) -------------------------------
@@ -148,6 +159,11 @@ module Harness
     # deployment concreto ou a autodiscovery da task 22 os estende) — a garantia
     # "recovery antes do listen" vem de `recovery.run` rodar dentro do Boot,
     # antes de `run APP`.
+    # NB (débito task 26, Fase 1): quando este no-op virar um
+    # Harness::Plugin::Loader.new real, o registries hash PRECISA incluir
+    # `capabilities: CAPABILITY_REGISTRY` (contracts.capabilities, task 4 P2B) —
+    # a ausência da chave é segura (loader ignora capabilities), mas sem ela
+    # nenhum plugin consegue registrar capability.
     def self.load_plugins = nil
     def self.build_stores = nil
     def self.recovery = RECOVERY

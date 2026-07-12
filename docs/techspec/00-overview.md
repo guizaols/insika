@@ -183,12 +183,19 @@ end
 | `:task_completed` | `{ task_id, content }` | Executor |
 | `:task_failed` | `{ task_id, error, message }` | Executor |
 | `:task_cancelled` | `{ task_id }` | Executor |
+| `:capability_resolved` | `{ capability, chosen, candidates }` | CapabilityRegistry (P2B-01) |
+| `:tool_search` | `{ query, matched }` | Tools::ToolSearch (P2B-02) |
 | `:done` | `{ content }` | Executor (compat Fase 0) |
 | `:error` | `{ message }` | qualquer estágio (compat Fase 0) |
 
 `:done` e `:error` são **mantidos** pelo contrato com o consumidor atual;
 `:task_completed`/`:task_failed` são os equivalentes com correlação. Formato
 SSE inalterado: `data: {json}\n\n`.
+
+A fatia 2-B (`phase2b/00-overview.md` D7) estendeu este catálogo com
+`:capability_resolved` e `:tool_search` — falhas de resolução de capability
+NÃO ganham evento próprio, propagam como `CapabilityError` pelos eventos
+`:error`/`:task_failed` já existentes.
 
 **Motivo:** o Event Stream é concorrente ao turno (RFC-0002 §7) e alimenta
 consumidor e Control UI pelo mesmo canal (RFC-0007 §4) — sem `task_id`/`seq`
