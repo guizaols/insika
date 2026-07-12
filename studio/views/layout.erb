@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="auto">
+<html lang="pt-BR" data-theme="<%= theme_pref %>">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,11 +16,31 @@
           <a href="<%= href %>"<%== ' aria-current="page"' if request.path.start_with?(href.sub("/studio", "")) %>><%= label %></a>
         <% end %>
       </nav>
-      <form class="logout" method="post" action="/studio/logout">
-        <%== csrf_tag %>
-        <button type="submit" class="ghost">sair</button>
-      </form>
+      <div class="appbar-right">
+        <span class="pill ok health" title="<%= health_summary %>">online</span>
+        <div class="theme-switch" data-controller="theme" role="group" aria-label="tema">
+          <% { "auto" => "auto", "light" => "claro", "dark" => "escuro" }.each do |val, label| %>
+            <button type="button" class="theme-opt" data-theme-target="opt"
+                    data-theme-value-param="<%= val %>" data-action="theme#set"><%= label %></button>
+          <% end %>
+        </div>
+        <form class="logout" method="post" action="/studio/logout">
+          <%== csrf_tag %>
+          <button type="submit" class="ghost">sair</button>
+        </form>
+      </div>
     </header>
+
+    <% if restart_needed? %>
+      <div class="banner" role="status">
+        <span><strong>Restart recomendado.</strong> Mudanças de MCP entram em vigor quando o runtime é reiniciado.</span>
+        <form method="post" action="/studio/restart-ack">
+          <%== csrf_tag %>
+          <input type="hidden" name="back" value="<%= request.script_name %><%= request.path %>">
+          <button type="submit" class="ghost">dispensar</button>
+        </form>
+      </div>
+    <% end %>
   <% end %>
 
   <% if flash["error"] %>

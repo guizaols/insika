@@ -21,7 +21,7 @@
         <button type="submit" class="ghost danger">remover</button>
       </form>
     </div>
-    <form method="post" action="/studio/system-files">
+    <form method="post" action="/studio/system-files" data-controller="dirty-guard">
       <%== csrf_tag %>
       <input type="hidden" name="file" value="<%= sf[:name] %>">
       <div data-controller="code-editor" data-code-editor-language-value="markdown">
@@ -52,7 +52,7 @@
 
 <details class="card newfile">
   <summary>+ novo arquivo de sistema</summary>
-  <form method="post" action="/studio/system-files">
+  <form method="post" action="/studio/system-files" data-controller="dirty-guard">
     <%== csrf_tag %>
     <label>nome do arquivo
       <input type="text" name="file" placeholder="HOUSE_RULES.md" required>

@@ -65,9 +65,13 @@ APP = Harness::Server::App.new(
 # cookie (D7) — o navegador manda o cookie de sessão, então NÃO precisa do shim
 # de Bearer que o /admin usa. O secret de sessão deriva do ADMIN_TOKEN. Login em
 # /studio/login com o ADMIN_TOKEN abaixo.
+# Etapa H: dica de persistência para o health chip (durável em SQLite quando
+# HARNESS_DB está setado; efêmero em memória caso contrário).
+PERSISTENCE = (ENV["HARNESS_DB"].to_s.empty? ? "efêmero (memória)" : "durável (sqlite)")
+
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
-  event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN },
+  event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN, persistence: PERSISTENCE },
   # Etapa F: stores de LEITURA para as páginas de autoria (agents-detail/skills/
   # tools/histórico). Escrita continua só pelos Commands do BUS.
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,

@@ -672,4 +672,101 @@ RSpec.describe Studio::App do
     body = login(app).get("/chats").body
     expect(body).to include("Nenhuma conversa")
   end
+
+  # --- Polish & paridade (Etapa H / task 20) -------------------------------
+
+  it "a app-bar tem health chip e theme switch; o html carrega o tema (auto default)" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('data-theme="auto"')
+    expect(body).to include('data-controller="theme"')
+    expect(body).to include('class="pill ok health"')
+  end
+
+  it "aplica o tema do cookie server-side (sem flash de tema errado no load)" do
+    app, = build_app
+    client = login(app)
+    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=dark")
+    _, _, body = app.call(env)
+    html = body.each.to_a.join
+    expect(html).to include('data-theme="dark"')
+  end
+
+  it "cookie de tema inesperado cai em auto (allowlist estrita)" do
+    app, = build_app
+    client = login(app)
+    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=hackerman")
+    _, _, body = app.call(env)
+    expect(body.each.to_a.join).to include('data-theme="auto"')
+  end
+
+  it "os editores carregam o island dirty-guard (aviso de saída sem salvar)" do
+    app, = build_app(system_files: { "H.md" => "x" })
+    client = login(app)
+    expect(client.get("/agents/bia").body).to include('data-controller="dirty-guard"')
+    expect(client.get("/system-files").body).to include('data-controller="dirty-guard"')
+    expect(client.get("/skills/new").body).to include('data-controller="dirty-guard"')
+  end
+
+  # --- Criação de agente (paridade: "cada um cria sua BIA") -----------------
+
+  it "cria agente via POST /agents (dispatch create_agent) e redireciona pro detalhe" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/agents", params: {
+                        "id" => "nova", "model" => "deepseek-chat",
+                        "provider" => "deepseek", "memory" => "1", "_csrf" => csrf
+                      })
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/agents/nova")
+    cmd = bus.last(:create_agent)
+    expect(cmd.payload).to include(id: "nova", model: "deepseek-chat", provider: "deepseek", memory: true)
+  end
+
+  it "agents vazio abre o form de criação (empty-state de autoria)" do
+    app, = build_app(agents: [])
+    body = login(app).get("/agents").body
+    expect(body).to include("Crie a sua primeira BIA")
+    expect(body).to include("criar agente")
+  end
+
+  it "mcp vazio mostra empty-state" do
+    app, = build_app
+    expect(login(app).get("/mcp").body).to include("Nenhuma instância MCP")
+  end
+
+  # --- Banner de restart recomendado ---------------------------------------
+
+  it "acende o banner de restart ao mexer em MCP e some ao dispensar" do
+    app, = build_app
+    client = login(app)
+    expect(client.get("/agents").body).not_to include("Restart recomendado")
+
+    csrf = csrf_from(client.get("/mcp").body)
+    client.post("/mcp", params: { "name" => "tavily", "_csrf" => csrf })
+    expect(client.get("/agents").body).to include("Restart recomendado")
+
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "/studio/mcp" })
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/mcp")
+    expect(client.get("/agents").body).not_to include("Restart recomendado")
+  end
+
+  it "remover MCP também acende o banner de restart" do
+    app, = build_app(mcp_instances: [{ "name" => "tavily" }])
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    client.post("/mcp/delete", params: { "name" => "tavily", "_csrf" => csrf })
+    expect(client.get("/agents").body).to include("Restart recomendado")
+  end
+
+  it "restart-ack não faz open-redirect (back externo é ignorado)" do
+    app, = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "https://evil.com" })
+    expect(res.headers["location"]).to eq("/studio/agents")
+  end
 end
