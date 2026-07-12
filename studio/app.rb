@@ -189,7 +189,8 @@ module Studio
         # /studio/agents/:id — a página de autoria de um agente.
         r.on String do |id|
           id = utf8(id)
-          @agent = harness[:profile_source].fetch(id) || next_404
+          @agent = harness[:profile_source].fetch(id)
+          next_404 unless @agent
 
           # GET /studio/agents/:id — config + prompts + skills + memória + histórico.
           r.is do
@@ -207,14 +208,13 @@ module Studio
 
           # Prompts store-backed. Escrever também garante que o arquivo
           # entre em `prompt_files` — senão o Prompt provider não o carregaria.
+          # prompt_files é sincronizado pelos próprios Commands (write/delete
+          # registram/removem o arquivo) — o Studio só despacha a operação.
           r.on "prompts" do
             r.post "delete" do
               check_csrf!
-              file = presence(r.params["file"])
               with_flash("Prompt removido.") do
-                dispatch(:delete_agent_file, { agent_id: id, file: file })
-                remaining = Array(@agent.prompt_files).map(&:to_s) - [file]
-                dispatch(:update_agent, { id: id, prompt_files: remaining })
+                dispatch(:delete_agent_file, { agent_id: id, file: presence(r.params["file"]) })
               end
               r.redirect(agent_path(id))
             end
@@ -232,14 +232,10 @@ module Studio
 
             r.post do
               check_csrf!
-              file = presence(r.params["file"])
               with_flash("Prompt salvo.") do
                 dispatch(:write_agent_file, {
-                           agent_id: id, file: file, content: r.params["content"].to_s
+                           agent_id: id, file: presence(r.params["file"]), content: r.params["content"].to_s
                          })
-                unless file.nil? || Array(@agent.prompt_files).map(&:to_s).include?(file)
-                  dispatch(:update_agent, { id: id, prompt_files: Array(@agent.prompt_files) + [file] })
-                end
               end
               r.redirect(agent_path(id))
             end
@@ -345,7 +341,8 @@ module Studio
         r.post String do |id|
           check_csrf!
           id = utf8(id)
-          profile = harness[:profile_source].fetch(id) || next_404
+          profile = harness[:profile_source].fetch(id)
+          next_404 unless profile
           allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
           with_flash("Tools do agente '#{id}' atualizadas.") do
             dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
@@ -457,7 +454,8 @@ module Studio
         r.on String do |sid|
           sid = utf8(sid)
           r.get do
-            @session = harness[:session_store]&.find(sid) || next_404
+            @session = harness[:session_store]&.find(sid)
+            next_404 unless @session
             view("session")
           end
         end
