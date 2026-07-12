@@ -1,0 +1,217 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span><%= @agent.id %></span></nav>
+    <h1><span class="avatar sm"><%= @agent.id[0, 2].upcase %></span><%= @agent.id %>
+      <span class="sub"><%= @agent.model %><%== " · #{h(@agent.provider)}" if @agent.provider %></span>
+    </h1>
+  </div>
+  <a class="btn primary" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>">testar no playground →</a>
+</header>
+
+<nav class="subnav">
+  <a href="#config">config</a>
+  <a href="#prompts">prompts</a>
+  <a href="#skills">skills</a>
+  <a href="#memoria">memória</a>
+  <a href="#historico">histórico</a>
+</nav>
+
+<!-- ── Config / modelo (task 15) ─────────────────────────────────────────── -->
+<section class="section" id="config">
+  <div class="section-head"><h2>Configuração</h2><p class="muted">modelo, provider, memória e limites — grava via <code>update_agent</code>.</p></div>
+  <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/config">
+    <%== csrf_tag %>
+    <div class="grid-2">
+      <label>modelo
+        <input type="text" name="model" value="<%= @agent.model %>" placeholder="deepseek-chat">
+      </label>
+      <label>provider
+        <input type="text" name="provider" value="<%= @agent.provider %>" placeholder="deepseek">
+      </label>
+      <label>turn_timeout (s)
+        <input type="text" name="turn_timeout" value="<%= @agent.limits[:turn_timeout] %>" inputmode="numeric">
+      </label>
+      <label>tool_timeout (s)
+        <input type="text" name="tool_timeout" value="<%= @agent.limits[:tool_timeout] %>" inputmode="numeric">
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
+      memória cross-session (a BIA lembra entre conversas)
+    </label>
+    <div class="actions"><button type="submit" class="primary">salvar config</button></div>
+  </form>
+</section>
+
+<!-- ── Prompts / identidade (task 15, island code-editor) ────────────────── -->
+<section class="section" id="prompts">
+  <div class="section-head">
+    <h2>Prompts <span class="pill info"><%= @prompt_files.size %></span></h2>
+    <p class="muted">a identidade própria da BIA (store-backed, versionado). Vazio = usa o default do deployment.</p>
+  </div>
+
+  <% if @prompt_files.empty? %>
+    <div class="empty">Sem prompts autorados. Crie um arquivo abaixo (ex.: <code>IDENTITY.md</code>) para dar identidade própria a este agente.</div>
+  <% end %>
+
+  <% @prompt_files.each do |pf| %>
+    <div class="card promptfile">
+      <div class="promptfile-head">
+        <strong class="mono"><%= pf[:name] %></strong>
+        <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/delete">
+          <%== csrf_tag %>
+          <input type="hidden" name="file" value="<%= pf[:name] %>">
+          <button type="submit" class="ghost danger">remover</button>
+        </form>
+      </div>
+      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts">
+        <%== csrf_tag %>
+        <input type="hidden" name="file" value="<%= pf[:name] %>">
+        <div data-controller="code-editor" data-code-editor-language-value="markdown">
+          <textarea name="content" data-code-editor-target="source" rows="10"><%= pf[:content] %></textarea>
+        </div>
+        <div class="actions"><button type="submit" class="primary">salvar prompt</button></div>
+      </form>
+      <% unless pf[:versions].empty? %>
+        <details class="versions">
+          <summary><%= pf[:versions].size %> versão(ões) anterior(es)</summary>
+          <ul>
+            <% pf[:versions].each_with_index do |v, i| %>
+              <li>
+                <span class="muted mono"><%= v["at"] %></span>
+                <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/restore">
+                  <%== csrf_tag %>
+                  <input type="hidden" name="file" value="<%= pf[:name] %>">
+                  <input type="hidden" name="version" value="<%= i %>">
+                  <button type="submit" class="ghost">restaurar</button>
+                </form>
+              </li>
+            <% end %>
+          </ul>
+        </details>
+      <% end %>
+    </div>
+  <% end %>
+
+  <details class="card newfile">
+    <summary>+ novo arquivo de prompt</summary>
+    <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts">
+      <%== csrf_tag %>
+      <label>nome do arquivo
+        <input type="text" name="file" placeholder="IDENTITY.md" required>
+      </label>
+      <div data-controller="code-editor" data-code-editor-language-value="markdown">
+        <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# Identidade&#10;Você é..."></textarea>
+      </div>
+      <div class="actions"><button type="submit" class="primary">criar prompt</button></div>
+    </form>
+  </details>
+</section>
+
+<!-- ── Skills do agente (task 17) ────────────────────────────────────────── -->
+<section class="section" id="skills">
+  <div class="section-head">
+    <h2>Skills</h2>
+    <p class="muted">quais skills do catálogo este agente pode carregar (<code>load_skill</code>).</p>
+  </div>
+  <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/skills">
+    <%== csrf_tag %>
+    <label class="check">
+      <input type="checkbox" name="all_skills" value="1"<%== " checked" if @agent_skills.nil? %>>
+      todas as skills (allowlist aberta)
+    </label>
+    <% if @all_skills.empty? %>
+      <p class="muted">Nenhuma skill no catálogo. Crie em <a href="/studio/skills/new">skills → nova</a>.</p>
+    <% else %>
+      <div class="check-grid">
+        <% @all_skills.sort_by(&:name).each do |s| %>
+          <label class="check">
+            <input type="checkbox" name="skills[]" value="<%= s.name %>"<%== " checked" if @agent_skills&.include?(s.name) %>>
+            <span class="mono"><%= s.name %></span>
+          </label>
+        <% end %>
+      </div>
+    <% end %>
+    <div class="actions">
+      <button type="submit" class="primary">salvar skills</button>
+      <a class="btn ghost" href="/studio/tools">editar tools →</a>
+    </div>
+  </form>
+</section>
+
+<!-- ── Memória do agente (task 17, tenant = id) ──────────────────────────── -->
+<section class="section" id="memoria">
+  <div class="section-head">
+    <h2>Memória</h2>
+    <p class="muted">fatos e notas que a BIA lê no turno (tenant <code><%= @agent.id %></code>).</p>
+  </div>
+  <div class="card">
+    <h3>Fatos</h3>
+    <% if @facts.empty? %>
+      <p class="muted">Sem fatos.</p>
+    <% else %>
+      <ul class="kv">
+        <% @facts.each do |f| %>
+          <li>
+            <span class="k mono"><%= f.key %></span>
+            <span class="v"><%= f.value %></span>
+            <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/forget">
+              <%== csrf_tag %>
+              <input type="hidden" name="key" value="<%= f.key %>">
+              <button type="submit" class="ghost danger">esquecer</button>
+            </form>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+    <form class="inline-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/fact">
+      <%== csrf_tag %>
+      <input type="text" name="key" placeholder="chave (ex.: nome_cliente)" required>
+      <input type="text" name="value" placeholder="valor" required>
+      <button type="submit" class="primary">gravar fato</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Notas <span class="muted">(recentes)</span></h3>
+    <% if @notes.empty? %>
+      <p class="muted">Sem notas.</p>
+    <% else %>
+      <ul class="notes">
+        <% @notes.each do |n| %>
+          <li><span class="muted mono"><%= n.created_at %></span> <%= n.text %></li>
+        <% end %>
+      </ul>
+    <% end %>
+    <form class="inline-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/note">
+      <%== csrf_tag %>
+      <input type="text" name="text" placeholder="anotação livre…" required>
+      <button type="submit" class="primary">adicionar nota</button>
+    </form>
+  </div>
+</section>
+
+<!-- ── Histórico (task 17) ───────────────────────────────────────────────── -->
+<section class="section" id="historico">
+  <div class="section-head">
+    <h2>Histórico</h2>
+    <p class="muted">conversas recentes (todos os agentes — a sessão não carimba o autor).</p>
+  </div>
+  <% if @recent_sessions.empty? %>
+    <div class="empty">Nenhuma conversa ainda. Comece pelo <a href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>">playground</a>.</div>
+  <% else %>
+    <div class="card">
+      <ul class="history">
+        <% @recent_sessions.each do |s| %>
+          <li>
+            <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
+              <span class="mono"><%= s.id[0, 12] %></span>
+            </a>
+            <span class="muted"><%= Array(s.messages).size %> msg · <%= s.updated_at %></span>
+            <% if (p = session_preview(s)) %><span class="preview muted"><%= p[0, 80] %></span><% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</section>
