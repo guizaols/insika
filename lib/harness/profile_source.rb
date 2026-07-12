@@ -49,6 +49,7 @@ module Harness
   # preservada.
   class StoredProfileSource
     include ProfileSource
+    include Coercion
 
     SCOPE = "agents"
 
@@ -107,7 +108,5 @@ module Harness
 
       limits.each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
     end
-
-    def presence(str) = (s = str.to_s).empty? ? nil : s
   end
 end

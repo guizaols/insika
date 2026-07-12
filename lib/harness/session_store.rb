@@ -17,6 +17,8 @@ module Harness
   # tipos JSON); a LEITURA devolve os dados como vêm do backend
   # (chaves string), nunca simetriza de volta para symbols.
   class SessionStore
+    include Coercion
+
     SCOPE = "sessions"
     KEY_PREFIX = "session:"
 
@@ -127,22 +129,6 @@ module Harness
 
     def timestamp
       Time.now.utc.iso8601
-    end
-
-    # Normalização symbol->string em Ruby puro (sem ActiveSupport): chaves e
-    # valores Symbol viram String, recursivo em Hash/Array; demais tipos passam
-    # intactos (o backend rejeita não-JSONable).
-    def deep_stringify(obj)
-      case obj
-      when Hash
-        obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = deep_stringify(v) }
-      when Array
-        obj.map { |v| deep_stringify(v) }
-      when Symbol
-        obj.to_s
-      else
-        obj
-      end
     end
   end
 end

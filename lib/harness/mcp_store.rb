@@ -17,6 +17,8 @@ module Harness
   # de um cliente MCP contra estas instâncias é trabalho de runtime posterior
   # — o store é a fonte editável desde já.
   class McpStore
+    include Coercion
+
     SCOPE = "mcp"
 
     def initialize(config_store:)
@@ -109,7 +111,5 @@ module Harness
     def symbolize(attrs)
       (attrs || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
     end
-
-    def presence(str) = str.nil? || str.to_s.empty? ? nil : str.to_s
   end
 end
