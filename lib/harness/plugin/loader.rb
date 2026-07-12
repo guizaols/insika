@@ -13,10 +13,10 @@ module Harness
     # validado. Falha de um plugin não derruba o boot (rollback + warn, doc 06 §6).
     class Loader
       Discovered = Data.define(:id, :name, :root, :tool_names, :workflow_names,
-                               :skill_dirs, :prompt_dirs, :config)
+                               :capability_names, :skill_dirs, :prompt_dirs, :config)
 
       MANIFEST_GLOB = "{harness.plugin.yml,plugin.yml}"
-      SUPPORTED_CONTRACTS = %w[tools workflows].freeze
+      SUPPORTED_CONTRACTS = %w[tools workflows capabilities].freeze
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
       # middleware:/context_providers: (coleções que respondem a <<).
@@ -46,7 +46,6 @@ module Harness
           id = manifest["id"].to_s
           next if id.empty? || !enabled?(id, File.dirname(file)) || seen.key?(id)
 
-          warn_reserved(manifest, id)
           config = validate_config(manifest, id)
           next if config == :skip
 
@@ -106,12 +105,6 @@ module Harness
         nil
       end
 
-      def warn_reserved(manifest, id)
-        return unless manifest.dig("contracts", "capabilities")
-
-        warn "[plugin #{id}] contracts.capabilities é reservado (Fase 2) — ignorado"
-      end
-
       # -> config Hash (válida) | :skip (fail-closed por plugin, doc 06 §3).
       def validate_config(manifest, id)
         schema = manifest["config_schema"]
@@ -130,6 +123,7 @@ module Harness
           id: manifest["id"].to_s, name: manifest["name"].to_s, root: root,
           tool_names: Array(manifest.dig("contracts", "tools")).map(&:to_s),
           workflow_names: Array(manifest.dig("contracts", "workflows")).map(&:to_s),
+          capability_names: Array(manifest.dig("contracts", "capabilities")).map(&:to_s),
           skill_dirs: Array(manifest["skills"]).map { |d| File.join(root, d) },
           prompt_dirs: Array(manifest["prompts"]).map { |d| File.join(root, d) },
           config: config
@@ -146,6 +140,7 @@ module Harness
         api = RegistrationAPI.new(
           registries: @registries, plugin_id: discovered.id,
           tool_names: discovered.tool_names, workflow_names: discovered.workflow_names,
+          capability_names: discovered.capability_names,
           tool_metadata: manifest["tool_metadata"] || {}, config: discovered.config
         )
         require File.join(discovered.root, entry)
@@ -160,7 +155,7 @@ module Harness
       end
 
       def rollback(id)
-        %i[tools workflows policies].each { |kind| @registries[kind]&.deregister_plugin(id) }
+        %i[tools workflows policies capabilities].each { |kind| @registries[kind]&.deregister_plugin(id) }
       end
 
       def emit_loaded(discovered)
@@ -177,16 +172,19 @@ module Harness
       # STAGED e efetivados por commit! só quando register(api) volta sem exceção
       # (materializa a garantia de rollback — nada parcial sobra).
       class RegistrationAPI
-        def initialize(registries:, plugin_id:, tool_names:, workflow_names:, tool_metadata:, config:)
+        def initialize(registries:, plugin_id:, tool_names:, workflow_names:,
+                       tool_metadata:, config:, capability_names: [])
           @registries = registries
           @plugin_id = plugin_id
           @tool_names = tool_names
           @workflow_names = workflow_names
+          @capability_names = capability_names
           @tool_metadata = tool_metadata
           @config = config.freeze
           @staged_middleware = []
           @staged_providers = []
           @staged_hooks = []
+          @staged_capabilities = []
         end
 
         def register_tool(name, klass = nil, &block)
@@ -214,6 +212,40 @@ module Harness
           @registries[:policies].register(name, klass, plugin: @plugin_id)
         end
 
+        # Espelha register_tool ("não declarada -> warn + ignora"), + exclusividade
+        # tool:/workflow: e o warn L5 p/ kind :workflow (sem consumidor nesta fatia).
+        # Staged; efetivado no commit! (L3 — nada parcial se register(api) levantar).
+        def register_capability(name, tool: nil, workflow: nil, priority: nil, available: nil)
+          name = name.to_s
+          unless @capability_names.include?(name)
+            warn "[plugin #{@plugin_id}] capability '#{name}' não declarada em contracts.capabilities — ignorada"
+            return
+          end
+
+          if tool && workflow
+            warn "[plugin #{@plugin_id}] capability '#{name}': informe apenas tool: OU workflow:, não os dois — ignorada"
+            return
+          end
+
+          impl_name, kind =
+            if tool then [tool.to_s, :tool]
+            elsif workflow then [workflow.to_s, :workflow]
+            end
+
+          if impl_name.nil?
+            warn "[plugin #{@plugin_id}] capability '#{name}': informe tool: ou workflow: — ignorada"
+            return
+          end
+
+          if kind == :workflow
+            warn "[plugin #{@plugin_id}] capability '#{name}' (kind: workflow) registrada sem consumidor " \
+                 "nesta fatia — exposição ao agente é follow-up (P2B-01 L5)"
+          end
+
+          @staged_capabilities << { capability: name, impl_name: impl_name, kind: kind,
+                                    priority: priority, available: available }
+        end
+
         def register_middleware(instance) = @staged_middleware << instance
         def register_context_provider(instance) = @staged_providers << instance
 
@@ -237,6 +269,11 @@ module Harness
           @staged_middleware.each { |m| @registries[:middleware] << m }
           @staged_providers.each { |p| @registries[:context_providers] << p }
           @staged_hooks.each { |pair, before, after| @registries[:hooks].register(pair, before: before, after: after) }
+          @staged_capabilities.each do |c|
+            @registries[:capabilities].register(c[:capability], impl_name: c[:impl_name], kind: c[:kind],
+                                                                 plugin: @plugin_id, priority: c[:priority],
+                                                                 available: c[:available])
+          end
         end
       end
 
