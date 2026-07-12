@@ -215,27 +215,161 @@ module Harness
 
           def h(value) = CGI.escapeHTML(value.to_s)
 
+          # Design system do console (RFC-0007). Tudo inline (CSP: 'unsafe-inline'
+          # cobre <style>/<script>; nenhum asset externo — CSP bloqueia mesmo).
+          # Tema-aware: tokens em :root, redefinidos sob prefers-color-scheme:dark.
           def style
             <<~CSS
               <style>
-                body { font-family: system-ui, sans-serif; margin: 2rem; color: #222; }
-                a { color: #0a58ca; }
-                table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-                th, td { border: 1px solid #ccc; padding: .35rem .6rem; text-align: left; vertical-align: top; }
-                th { background: #f4f4f4; }
-                pre { background: #f7f7f7; padding: .6rem; overflow-x: auto; white-space: pre-wrap; }
-                nav a { margin-right: 1rem; }
-                .muted { color: #777; }
+                :root {
+                  --bg:#f6f7f9; --surface:#fff; --surface-2:#f0f2f5; --border:#e4e7ec;
+                  --text:#1a1d26; --muted:#6b7280; --accent:#6366f1; --accent-weak:#eef0fe;
+                  --ok:#16a34a; --warn:#d97706; --err:#dc2626; --run:#2563eb; --info:#0891b2;
+                  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+                  --radius:10px; --shadow:0 1px 2px rgba(16,20,40,.06),0 1px 3px rgba(16,20,40,.04);
+                }
+                @media (prefers-color-scheme: dark) {
+                  :root {
+                    --bg:#0e0f13; --surface:#171923; --surface-2:#1e212c; --border:#2a2e3a;
+                    --text:#e6e8ee; --muted:#98a0ad; --accent:#818cf8; --accent-weak:#20233a;
+                    --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --run:#60a5fa; --info:#22d3ee;
+                    --shadow:0 1px 2px rgba(0,0,0,.4);
+                  }
+                }
+                * { box-sizing: border-box; }
+                body {
+                  font-family: system-ui,-apple-system,"Segoe UI",sans-serif; margin: 0;
+                  color: var(--text); background: var(--bg); line-height: 1.5;
+                  -webkit-font-smoothing: antialiased;
+                }
+                .appbar {
+                  display:flex; align-items:center; gap:1.25rem; padding:.7rem 1.25rem;
+                  background:var(--surface); border-bottom:1px solid var(--border);
+                  position:sticky; top:0; z-index:10; flex-wrap:wrap;
+                }
+                .appbar .brand { display:flex; align-items:center; gap:.5rem; font-weight:650; letter-spacing:-.01em; }
+                .appbar .brand .dot { width:.6rem; height:.6rem; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-weak); }
+                .appbar .brand small { color:var(--muted); font-weight:500; }
+                .appbar .links { display:flex; gap:.15rem; flex-wrap:wrap; margin-left:auto; }
+                .appbar .links a {
+                  color:var(--muted); text-decoration:none; font-size:.9rem; font-weight:500;
+                  padding:.35rem .6rem; border-radius:7px;
+                }
+                .appbar .links a:hover { color:var(--text); background:var(--surface-2); }
+                .appbar .links a[aria-current="page"] { color:var(--accent); background:var(--accent-weak); }
+                .page { max-width: 1000px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+                h1 { font-size:1.5rem; letter-spacing:-.02em; margin:.2rem 0 .1rem; text-wrap:balance; }
+                h1 .sub { display:block; font-size:.85rem; font-weight:400; color:var(--muted); letter-spacing:0; margin-top:.15rem; }
+                h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:2rem 0 .6rem; }
+                a { color:var(--accent); }
+                .muted { color: var(--muted); }
+                .card {
+                  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+                  padding:1rem 1.15rem; box-shadow:var(--shadow); margin:.6rem 0;
+                }
+                .grid { display:grid; gap:.75rem; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); }
+                .grid .card { margin:0; }
+                .grid .card .k { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+                .grid .card .v { font-size:1.35rem; font-weight:600; margin-top:.15rem; }
+                table { border-collapse:collapse; width:100%; margin:.5rem 0; font-size:.9rem; }
+                th,td { border-bottom:1px solid var(--border); padding:.5rem .65rem; text-align:left; vertical-align:top; }
+                th { color:var(--muted); font-weight:600; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em; }
+                tr:last-child td { border-bottom:0; }
+                code, .mono { font-family:var(--mono); font-size:.86em; }
+                pre {
+                  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+                  padding:.7rem .8rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word;
+                  font-family:var(--mono); font-size:.82rem; margin:.4rem 0;
+                }
+                .pill {
+                  display:inline-flex; align-items:center; gap:.35rem; font-size:.75rem; font-weight:600;
+                  padding:.15rem .55rem; border-radius:999px; border:1px solid transparent; text-transform:lowercase;
+                }
+                .pill::before { content:""; width:.45rem; height:.45rem; border-radius:50%; background:currentColor; }
+                .pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent);}
+                .pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);}
+                .pill.err{color:var(--err);background:color-mix(in srgb,var(--err) 12%,transparent);}
+                .pill.run{color:var(--run);background:color-mix(in srgb,var(--run) 12%,transparent);}
+                .pill.info{color:var(--info);background:color-mix(in srgb,var(--info) 12%,transparent);}
+                button {
+                  font:inherit; font-size:.85rem; font-weight:550; cursor:pointer; color:var(--text);
+                  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+                  padding:.4rem .8rem; box-shadow:var(--shadow);
+                }
+                button:hover { border-color:var(--accent); color:var(--accent); }
+                button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+                button.primary:hover { filter:brightness(1.08); color:#fff; }
+                button.danger:hover { border-color:var(--err); color:var(--err); }
+                input[type=text] {
+                  font:inherit; padding:.4rem .55rem; border:1px solid var(--border); border-radius:8px;
+                  background:var(--surface); color:var(--text);
+                }
+                .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+                /* chat bubbles */
+                .thread { display:flex; flex-direction:column; gap:.85rem; }
+                .msg { display:flex; gap:.6rem; max-width:82%; }
+                .msg .who { flex:0 0 1.9rem; height:1.9rem; border-radius:50%; display:grid; place-items:center;
+                  font-size:.8rem; font-weight:700; color:#fff; }
+                .msg .bubble { border:1px solid var(--border); border-radius:12px; padding:.6rem .8rem; background:var(--surface); box-shadow:var(--shadow); }
+                .msg .bubble .content { white-space:pre-wrap; word-break:break-word; }
+                .msg .meta { font-size:.7rem; color:var(--muted); margin-top:.3rem; }
+                .msg.user { align-self:flex-end; flex-direction:row-reverse; }
+                .msg.user .who { background:var(--accent); }
+                .msg.user .bubble { background:var(--accent-weak); border-color:transparent; }
+                .msg.assistant .who { background:#0f766e; }
+                .msg.tool .who { background:var(--warn); }
+                /* tool-card */
+                .toolcard { border:1px solid var(--border); border-left:3px solid var(--warn); border-radius:8px;
+                  background:var(--surface); padding:.55rem .75rem; margin:.4rem 0; box-shadow:var(--shadow); }
+                .toolcard.result { border-left-color:var(--ok); }
+                .toolcard.skill { border-left-color:var(--accent); }
+                .toolcard .h { display:flex; align-items:center; gap:.5rem; font-family:var(--mono); font-size:.82rem; }
+                .toolcard .h .arrow { color:var(--muted); }
+                .toolcard pre { margin:.4rem 0 0; background:var(--surface-2); }
+                .empty { color:var(--muted); padding:1.5rem; text-align:center; border:1px dashed var(--border); border-radius:var(--radius); }
               </style>
             CSS
           end
 
+          NAV_LINKS = { "índice" => "/admin", "chat" => "/admin/chat",
+                        "sessions" => "/admin/sessions", "tasks" => "/admin/tasks",
+                        "events" => "/admin/events", "skills" => "/admin/skills",
+                        "plugins" => "/admin/plugins" }.freeze
+
+          # App-bar (marca + navegação). O link ativo é marcado no cliente por
+          # location.pathname — evita threadar o path do request até a view.
           def nav
-            links = { "índice" => "/admin", "chat" => "/admin/chat",
-                      "sessions" => "/admin/sessions", "tasks" => "/admin/tasks",
-                      "events" => "/admin/events", "skills" => "/admin/skills",
-                      "plugins" => "/admin/plugins" }
-            "<nav>#{links.map { |label, href| "<a href=\"#{href}\">#{label}</a>" }.join}</nav>"
+            links = NAV_LINKS.map { |label, href| "<a href=\"#{href}\">#{h(label)}</a>" }.join
+            <<~HTML
+              <header class="appbar">
+                <span class="brand"><span class="dot"></span>Harness <small>Control UI</small></span>
+                <nav class="links">#{links}</nav>
+              </header>
+              <script>
+                (function(){var p=location.pathname;var best="";document.querySelectorAll(".appbar .links a").forEach(function(a){var h=a.getAttribute("href");if(p===h||(h!=="/admin"&&p.indexOf(h)===0)){if(h.length>best.length)best=h;}});document.querySelectorAll(".appbar .links a").forEach(function(a){if(a.getAttribute("href")===best)a.setAttribute("aria-current","page");});})();
+              </script>
+            HTML
+          end
+
+          # Cabeçalho de página: app-bar + título (com subtítulo opcional). Views
+          # chamam <%= header("Título", "sub") %> e abrem <div class="page">.
+          def header(title, sub = nil)
+            subhtml = sub ? "<span class=\"sub\">#{h(sub)}</span>" : ""
+            "#{nav}<div class=\"page\"><h1>#{h(title)}#{subhtml}</h1>"
+          end
+
+          # Pill de status semântica (completed=ok, running=run, waiting/queued=warn,
+          # failed/cancelled=err). Reusada em tasks/sessions.
+          def status_pill(status)
+            s = status.to_s
+            cls = case s
+                  when "completed" then "ok"
+                  when "running" then "run"
+                  when "waiting", "queued", "paused" then "warn"
+                  when "failed", "cancelled" then "err"
+                  else "info"
+                  end
+            "<span class=\"pill #{cls}\">#{h(s)}</span>"
           end
 
           def get_binding = binding
