@@ -1,7 +1,7 @@
 # Task 06 (P2C): Executor — cabeia `remember` de sistema (gate memory)
 
 > **Techspec:** [P2C-02-remember-tool-and-wiring.md](../P2C-02-remember-tool-and-wiring.md) (§Integração no Executor, L2) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 
