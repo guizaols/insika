@@ -49,43 +49,4 @@ RSpec.describe Harness::ToolRegistry do
     end
   end
 
-  describe "#resolve(profile) — atalho DEPRECATED (paridade Fase 0)" do
-    before do
-      registry.register("a", tool_class(:a))                 # required
-      registry.register("b", tool_class(:b), optional: true) # optional
-    end
-
-    def resolve_markers(prof)
-      silence_deprecation { registry.resolve(prof) }.map { |t| t.new.marker }
-    end
-
-    it "required entra; optional sem opt-in fica de fora" do
-      expect(resolve_markers(profile(tools_allow: nil))).to eq([:a])
-    end
-
-    it "optional com opt-in entra" do
-      expect(resolve_markers(profile(tools_allow: %w[a b]))).to contain_exactly(:a, :b)
-    end
-
-    it "deny sempre vence" do
-      expect(resolve_markers(profile(tools_allow: %w[a], tools_deny: %w[a]))).to eq([])
-    end
-
-    it "allow [] -> nenhuma (D6, divergência intencional da Fase 0)" do
-      expect(resolve_markers(profile(tools_allow: []))).to eq([])
-    end
-
-    it "emite deprecation warning" do
-      expect { registry.resolve(profile(tools_allow: nil)) }
-        .to output(/DEPRECATION.*ToolRegistry#resolve/).to_stderr
-    end
-  end
-
-  def silence_deprecation
-    original = $stderr
-    $stderr = StringIO.new
-    yield
-  ensure
-    $stderr = original
-  end
 end

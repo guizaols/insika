@@ -8,11 +8,9 @@ module Harness
   # Sem lock/mutex: um reactor, fibers cooperativos; `dispatch`
   # não faz IO próprio.
   class CommandBus
-    # event_stream: guardado para uso futuro (ex.: auditoria de dispatch).
     # Handlers recebem suas dependências no próprio construtor e emitem por
-    # conta própria.
-    def initialize(event_stream:)
-      @event_stream = event_stream
+    # conta própria — o bus só roteia.
+    def initialize
       @handlers = {}
     end
 

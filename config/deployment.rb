@@ -130,7 +130,7 @@ module Deploy
       tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE
     )
 
-    BUS = Harness::CommandBus.new(event_stream: EVENT_STREAM)
+    BUS = Harness::CommandBus.new
     BUS.register(:create_session, Harness::Commands::CreateSession.new(session_store: SESSION_STORE, event_stream: EVENT_STREAM))
     BUS.register(:send_message, Harness::Commands::SendMessage.new(profiles: PROFILE_SOURCE, session_store: SESSION_STORE, task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))

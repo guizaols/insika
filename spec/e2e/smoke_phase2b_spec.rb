@@ -72,7 +72,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
   end
 
   let(:bus) do
-    Harness::CommandBus.new(event_stream: event_stream).tap do |b|
+    Harness::CommandBus.new.tap do |b|
       b.register(:send_message,
                  Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store,
                                                     task_store: task_store, executor: executor))

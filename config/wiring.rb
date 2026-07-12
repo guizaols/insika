@@ -112,7 +112,7 @@ module Harness
     )
 
     # --- Command Bus + handlers -------------------------------
-    BUS = Harness::CommandBus.new(event_stream: EVENT_STREAM)
+    BUS = Harness::CommandBus.new
     BUS.register(:create_session,
                  Harness::Commands::CreateSession.new(session_store: SESSION_STORE,
                                                       event_stream: EVENT_STREAM))

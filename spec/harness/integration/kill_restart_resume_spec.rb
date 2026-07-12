@@ -78,7 +78,7 @@ RSpec.describe "Integração: kill -> restart -> resume" do
       profiles: { "sales" => profile }, task_store: b[:task_store],
       checkpoint_store: b[:checkpoint_store], executor: b[:executor]
     )
-    bus = Harness::CommandBus.new(event_stream: b[:event_stream])
+    bus = Harness::CommandBus.new
     bus.register(:resume_task, handler)
 
     # modelo re-pede a MESMA tool call (mesmo id) e depois responde final.

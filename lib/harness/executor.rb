@@ -327,10 +327,6 @@ module Harness
     TERMINAL_STATUSES = %i[completed failed cancelled].freeze
     private_constant :TERMINAL_STATUSES
 
-    # Correlação call<->execução p/ side-effects/skip (interno).
-    ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
-                                :tenant, :vars, keyword_init: true)
-
     # Estágios 2-9, com drain de mailbox só nas fronteiras e
     # turn-timeout envolvendo tudo via Async::Task#with_timeout — NUNCA
     # Timeout.timeout da stdlib.
@@ -495,9 +491,10 @@ module Harness
       # convenção que o Session provider consome (vars["history"]).
       vars = (session&.vars || {}).dup
       vars["history"] = hist if hist
-      ContextRequest.new(task: task, profile: profile, message: state.message,
-                         session: session, history: hist, checkpoint: resume_from,
-                         tenant: command_tenant(task), vars: vars)
+      # O tipo único é Harness::ContextRequest (Data); o `history` explícito viaja
+      # em vars["history"] (convenção do Session provider), não num campo próprio.
+      ContextRequest.new(profile: profile, message: state.message, session: session,
+                         checkpoint: resume_from, tenant: command_tenant(task), vars: vars)
     end
 
     # tenant do Command (Command.build(..., tenant:) -> meta[:tenant],

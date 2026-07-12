@@ -34,7 +34,7 @@ RSpec.describe "smoke E2E: federação A2A loopback (fatia B)", :smoke do
       profiles: profiles, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: events
     )
-    bus = Harness::CommandBus.new(event_stream: events).tap do |b|
+    bus = Harness::CommandBus.new.tap do |b|
       b.register(:create_session, Harness::Commands::CreateSession.new(session_store: session_store, event_stream: events))
       b.register(:send_message, Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
       b.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: task_store, executor: executor))
