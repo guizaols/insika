@@ -67,7 +67,12 @@ APP = Harness::Server::App.new(
 # /studio/login com o ADMIN_TOKEN abaixo.
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
-  event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN }
+  event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN },
+  # Etapa F: stores de LEITURA para as páginas de autoria (agents-detail/skills/
+  # tools/histórico). Escrita continua só pelos Commands do BUS.
+  agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
+  skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG,
+  memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE
 )
 
 # URLMap roteia /studio -> Studio (Roda, cookie-auth) e o resto -> Server::App

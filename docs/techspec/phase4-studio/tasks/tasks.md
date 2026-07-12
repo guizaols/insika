@@ -2,8 +2,8 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 14/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) + E (app Roda + auth + assets + primeiras páginas) ✅ · **PRÓXIMO:** Etapa F (tasks 15-17 — páginas de autoria)
-> **Base:** main @ merge PR #30 (`d138c53`) · Etapas A (#26) + B (#27) + C (#29) + D (#30) mergeadas · E (PR aberto)
+> **Progress:** 17/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) + E (app Roda + auth + assets + primeiras páginas) + F (páginas de autoria) ✅ · **PRÓXIMO:** Etapa G (tasks 18-19 — mcp/settings/system-files/chats)
+> **Base:** main @ merge PR #31 (`449668c`) · Etapas A (#26) + B (#27) + C (#29) + D (#30) + E (#31) mergeadas · F (PR aberto)
 > **Retomada:** ver [HANDOFF.md](../HANDOFF.md)
 
 ---
@@ -26,9 +26,9 @@
 | 12 | App `studio/` (Roda) + boot/mount sob `/studio` + auth por cookie (login) + CSRF | — | E | ✅ DONE | High | D1, D7 |
 | 13 | Pipeline esbuild (Tailwind+Stimulus+CodeMirror) → `dist/` versionado + CSP `'self'` | — | E | ✅ DONE | Med | D8 |
 | 14 | Shell/layout + Stimulus base + páginas login + agents(list) + playground (SSE) | — | E | ✅ DONE | Med | D9 |
-| 15 | Página agents(detail): config/model + island `code-editor` (prompts) | [task-15.md](./task-15.md) | F | ⬜ TODO | High | D3, D9 |
-| 16 | Páginas skills + tools (matriz + toggles via Turbo Frame) | [task-16.md](./task-16.md) | F | ⬜ TODO | Med | D4, D9 |
-| 17 | agents(detail): skills/memória/histórico | [task-17.md](./task-17.md) | F | ⬜ TODO | Med | D3, D5 |
+| 15 | Página agents(detail): config/model + island `code-editor` (prompts) | — | F | ✅ DONE | High | D3, D9 |
+| 16 | Páginas skills + tools (matriz + toggles) | — | F | ✅ DONE | Med | D4, D9 |
+| 17 | agents(detail): skills/memória/histórico | — | F | ✅ DONE | Med | D3, D5 |
 | 18 | Páginas mcp + settings (providers/models, masked-secret, dynamic-form) | [task-18.md](./task-18.md) | G | ⬜ TODO | High | D6, D9 |
 | 19 | Páginas system-files + chats (viewer read-only, `live-transcript`) | [task-19.md](./task-19.md) | G | ⬜ TODO | Med | D3, D9 |
 | 20 | Polish & paridade: dirty-guards, banner de restart, health chip, empty states, tema | [task-20.md](./task-20.md) | H | ⬜ TODO | Med | D9 |

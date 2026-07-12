@@ -1,0 +1,39 @@
+<header class="page-head">
+  <h1>Tools<span class="sub"><%= @tools.size %> registrada(s) · allow/denylist por agente</span></h1>
+</header>
+
+<% if @agents.empty? %>
+  <div class="empty">Nenhum agente configurado.</div>
+<% else %>
+  <p class="muted matrix-hint">Cada agente escolhe suas tools. “todas” = allowlist aberta (nil); senão, só as marcadas. O denylist do agente é preservado.</p>
+  <div class="tool-list">
+    <% @agents.each do |a| %>
+      <form class="card tool-card" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
+        <%== csrf_tag %>
+        <div class="tool-card-head">
+          <div class="agent-id mono"><%= a.id %></div>
+          <label class="check">
+            <input type="checkbox" name="all_tools" value="1"<%== " checked" if a.tools_allow.nil? %>>
+            todas as tools
+          </label>
+        </div>
+        <% if @tools.empty? %>
+          <p class="muted">Nenhuma tool registrada no runtime.</p>
+        <% else %>
+          <div class="check-grid">
+            <% @tools.each do |t| %>
+              <label class="check" title="<%= t.description %>">
+                <input type="checkbox" name="tools[]" value="<%= t.name %>"<%== " checked" if tool_allowed_for?(a, t.name) %>>
+                <span class="mono"><%= t.name %></span>
+              </label>
+            <% end %>
+          </div>
+        <% end %>
+        <% unless Array(a.tools_deny).empty? %>
+          <p class="muted deny">deny: <span class="mono"><%= Array(a.tools_deny).join(", ") %></span></p>
+        <% end %>
+        <div class="actions"><button type="submit" class="primary">salvar tools</button></div>
+      </form>
+    <% end %>
+  </div>
+<% end %>
