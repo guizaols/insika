@@ -1,11 +1,32 @@
 <%= style %>
-<h1>Harness — Control UI</h1>
-<%= nav %>
-<p class="muted">Painel read-only da Fase 1 (RFC-0007). Nenhuma ação de escrita.</p>
-<ul>
-  <li><a href="/admin/sessions">Sessions</a> — sessões e transcripts</li>
-  <li><a href="/admin/tasks">Tasks</a> — status, executions e checkpoints</li>
-  <li><a href="/admin/events">Events</a> — stream ao vivo</li>
-  <li><a href="/admin/skills">Skills</a> — catálogo de skills</li>
-  <li><a href="/admin/plugins">Plugins</a> — tools/workflows por plugin</li>
-</ul>
+<%= header("Control UI", "Console read-mostly do gateway — RFC-0007") %>
+<p class="muted">Painel de operação do runtime: sessões, tasks, stream ao vivo, catálogos de skills e plugins.</p>
+
+<h2>navegação</h2>
+<div class="grid">
+  <a class="card" href="/admin/sessions" style="text-decoration:none;color:inherit">
+    <div class="k">Sessions</div><div class="v">🧵</div>
+    <div class="muted" style="font-size:.82rem">sessões e transcripts</div>
+  </a>
+  <a class="card" href="/admin/tasks" style="text-decoration:none;color:inherit">
+    <div class="k">Tasks</div><div class="v">⚙️</div>
+    <div class="muted" style="font-size:.82rem">status, executions, checkpoints</div>
+  </a>
+  <a class="card" href="/admin/events" style="text-decoration:none;color:inherit">
+    <div class="k">Events</div><div class="v">📡</div>
+    <div class="muted" style="font-size:.82rem">stream ao vivo (tool-cards)</div>
+  </a>
+  <a class="card" href="/admin/skills" style="text-decoration:none;color:inherit">
+    <div class="k">Skills</div><div class="v">📚</div>
+    <div class="muted" style="font-size:.82rem">catálogo (progressive disclosure)</div>
+  </a>
+  <a class="card" href="/admin/plugins" style="text-decoration:none;color:inherit">
+    <div class="k">Plugins</div><div class="v">🔌</div>
+    <div class="muted" style="font-size:.82rem">tools/workflows por plugin</div>
+  </a>
+  <a class="card" href="/admin/chat" style="text-decoration:none;color:inherit">
+    <div class="k">Chat</div><div class="v">💬</div>
+    <div class="muted" style="font-size:.82rem">enviar mensagem a um agente</div>
+  </a>
+</div>
+</div>

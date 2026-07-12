@@ -1,38 +1,49 @@
 <%= style %>
-<h1>Task <%= h(@task.id) %></h1>
-<%= nav %>
+<%= header("Task", h(@task.id)) %>
 <p><a href="/admin/tasks">&larr; todas as tasks</a></p>
 
-<p><strong>status:</strong> <%= h(@task.status) %> &nbsp;
-   <strong>session:</strong> <%= h(@task.session_id) %></p>
+<div class="card toolbar">
+  <span>status: <%= status_pill(@task.status) %></span>
+  <% if @task.session_id -%>
+    <span class="muted">·</span>
+    <span>session: <a href="/admin/sessions/<%= h(@task.session_id) %>"><code><%= h(@task.session_id) %></code></a></span>
+  <% end -%>
+</div>
 
 <div id="flash"></div>
 
 <%# ações de operador (P2-04): forms normais (POST) — com Turbo viram turbo_stream %>
 <h2>ações</h2>
-<form method="post" action="/admin/tasks/<%= h(@task.id) %>/pause" style="display:inline">
-  <button type="submit">pausar</button>
-</form>
-<form method="post" action="/admin/tasks/<%= h(@task.id) %>/resume" style="display:inline">
-  <button type="submit">retomar</button>
-</form>
-<form method="post" action="/admin/tasks/<%= h(@task.id) %>/cancel" style="display:inline">
-  <button type="submit">cancelar</button>
-</form>
+<div class="toolbar">
+  <form method="post" action="/admin/tasks/<%= h(@task.id) %>/pause">
+    <button type="submit">pausar</button>
+  </form>
+  <form method="post" action="/admin/tasks/<%= h(@task.id) %>/resume">
+    <button type="submit" class="primary">retomar</button>
+  </form>
+  <form method="post" action="/admin/tasks/<%= h(@task.id) %>/cancel">
+    <button type="submit" class="danger">cancelar</button>
+  </form>
+</div>
 
 <% unless (@pending || []).empty? -%>
   <h2>aprovações pendentes</h2>
   <% @pending.each do |pa| -%>
-    <div>
-      <code><%= h(pa.tool) %></code> — <pre><%= h(pa.args) %></pre>
-      <form method="post" action="/admin/approvals/<%= h(pa.id) %>" style="display:inline">
-        <input type="hidden" name="decision" value="approved">
-        <button type="submit">aprovar</button>
-      </form>
-      <form method="post" action="/admin/approvals/<%= h(pa.id) %>" style="display:inline">
-        <input type="hidden" name="decision" value="rejected">
-        <button type="submit">rejeitar</button>
-      </form>
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between">
+        <span><code><%= h(pa.tool) %></code></span>
+        <span class="toolbar">
+          <form method="post" action="/admin/approvals/<%= h(pa.id) %>">
+            <input type="hidden" name="decision" value="approved">
+            <button type="submit" class="primary">aprovar</button>
+          </form>
+          <form method="post" action="/admin/approvals/<%= h(pa.id) %>">
+            <input type="hidden" name="decision" value="rejected">
+            <button type="submit" class="danger">rejeitar</button>
+          </form>
+        </span>
+      </div>
+      <pre><%= h(pa.args) %></pre>
     </div>
   <% end -%>
 <% end -%>
@@ -40,34 +51,40 @@
 <h2>command</h2>
 <pre><%= h(@task.command) %></pre>
 
-<h2>executions (<%= h(@task.executions.size) %>)</h2>
+<h2>executions · <%= h(@task.executions.size) %></h2>
 <% if @task.executions.empty? -%>
-  <p class="muted">Nenhuma execution.</p>
+  <div class="empty">Nenhuma execution.</div>
 <% else -%>
-  <table>
-    <tr><th>attempt</th><th>started</th><th>finished</th><th>outcome</th><th>error</th></tr>
-    <% @task.executions.each do |e| -%>
-      <tr>
-        <td><%= h(e.attempt) %></td>
-        <td><%= h(e.started_at) %></td>
-        <td><%= h(e.finished_at) %></td>
-        <td><%= h(e.outcome) %></td>
-        <td><pre><%= h(e.error) %></pre></td>
-      </tr>
-    <% end -%>
-  </table>
+  <div class="card" style="padding:.25rem .9rem">
+    <table>
+      <tr><th>attempt</th><th>started</th><th>finished</th><th>outcome</th><th>error</th></tr>
+      <% @task.executions.each do |e| -%>
+        <tr>
+          <td class="mono"><%= h(e.attempt) %></td>
+          <td class="mono"><%= h(e.started_at) %></td>
+          <td class="mono"><%= h(e.finished_at) %></td>
+          <td><%= status_pill(e.outcome) %></td>
+          <td><% if e.error %><pre><%= h(e.error) %></pre><% else %><span class="muted">—</span><% end %></td>
+        </tr>
+      <% end -%>
+    </table>
+  </div>
 <% end -%>
 
 <h2>checkpoint mais recente</h2>
 <% if @checkpoint.nil? -%>
-  <p class="muted">sem checkpoint</p>
+  <div class="empty">sem checkpoint</div>
 <% else -%>
-  <table>
-    <tr><th>turn</th><td><%= h(@checkpoint.turn) %></td></tr>
-    <tr><th>created_at</th><td><%= h(@checkpoint.created_at) %></td></tr>
-    <tr><th>side effects</th><td><%= h(@checkpoint.completed_side_effects) %></td></tr>
-    <tr><th>mensagens</th><td><%= h(@checkpoint.messages.size) %></td></tr>
-  </table>
+  <div class="grid">
+    <div class="card"><div class="k">turn</div><div class="v"><%= h(@checkpoint.turn) %></div></div>
+    <div class="card"><div class="k">mensagens</div><div class="v"><%= h(@checkpoint.messages.size) %></div></div>
+    <div class="card"><div class="k">side effects</div><div class="v"><%= h(@checkpoint.completed_side_effects.size) %></div></div>
+    <div class="card"><div class="k">created</div><div class="mono" style="margin-top:.35rem"><%= h(@checkpoint.created_at) %></div></div>
+  </div>
+  <% unless @checkpoint.completed_side_effects.empty? -%>
+    <pre><%= h(@checkpoint.completed_side_effects) %></pre>
+  <% end -%>
 <% end -%>
 
 <script src="/admin/assets/turbo.js"></script>
+</div>
