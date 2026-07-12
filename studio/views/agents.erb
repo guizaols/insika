@@ -9,21 +9,22 @@
   <div class="agent-grid">
     <% @agents.each do |a| %>
       <article class="card agent">
-        <div class="agent-head">
+        <a class="agent-head" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">
           <span class="avatar"><%= a.id[0, 2].upcase %></span>
           <div>
             <div class="agent-id"><%= a.id %></div>
             <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
           </div>
           <% if a.memory %><span class="pill info">memória</span><% end %>
-        </div>
+        </a>
         <dl class="agent-meta">
           <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "todas" : a.tools_allow.size %></dd></div>
-          <div><dt>skills</dt><dd><%= Array(a.skills).size %></dd></div>
-          <div><dt>políticas</dt><dd><%= Array(a.policies).size %></dd></div>
+          <div><dt>skills</dt><dd><%= a.skills.nil? ? "todas" : Array(a.skills).size %></dd></div>
+          <div><dt>prompts</dt><dd><%= Array(a.prompt_files).size %></dd></div>
         </dl>
         <div class="agent-actions">
-          <a class="btn ghost" href="/studio/playground?agent=<%= a.id %>">testar</a>
+          <a class="btn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">editar</a>
+          <a class="btn ghost" href="/studio/playground?agent=<%= Rack::Utils.escape(a.id) %>">testar</a>
         </div>
       </article>
     <% end %>

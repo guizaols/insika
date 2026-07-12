@@ -11,32 +11,79 @@ require_relative "../../studio/app"
 # store direto) — a mesma superfície do Server::App.
 RSpec.describe Studio::App do
   SessionDouble = Struct.new(:id)
+  StoredSession = Struct.new(:id, :messages, :vars, :updated_at, keyword_init: true)
 
   BusDouble = Struct.new(:dispatched) do
     def dispatch(command)
       dispatched << command
-      command.type == :create_session ? SessionDouble.new("sess-new") : { task_id: "task-1" }
+      case command.type
+      when :create_session then SessionDouble.new("sess-new")
+      when :send_message then { task_id: "task-1" }
+      when :set_skill_agents then { name: "x", enabled_for: [], skipped_all: [] }
+      when :write_agent_file, :write_skill then { updated_at: "2026-07-12T00:00:00Z" }
+      else { ok: true }
+      end
     end
+
+    def last(type) = dispatched.reverse.find { |c| c.type == type }
+    def types = dispatched.map(&:type)
   end
 
-  # ProfileSource duck-type: `all` (lista) + `ids`.
+  # ProfileSource duck-type: `all` (lista) + `ids` + `fetch`.
   ProfileSourceDouble = Struct.new(:profiles) do
     def all = profiles
     def ids = profiles.map(&:id)
+    def fetch(id) = profiles.find { |p| p.id == id }
+  end
+
+  # Stores de leitura da Etapa F (só o que as páginas consomem).
+  SkillEntry = Struct.new(:name, :description, keyword_init: true)
+  AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
+    def read(agent, name) = files[[agent, name.to_s]]
+    def versions(_agent, _name) = []
+  end
+  SkillCatalogDouble = Struct.new(:skills) do
+    def all = skills
+    def find(name) = skills.find { |s| s.name == name.to_s }
+  end
+  SkillStoreDouble = Struct.new(:store) do # store: { name => content }
+    def names = store.keys
+    def get(name) = store[name.to_s]
+  end
+  ToolCatalogDouble = Struct.new(:tools) do
+    def all = tools
+  end
+  MemoryStoreDouble = Struct.new(:by_tenant) do # by_tenant: { tenant => { facts:, notes: } }
+    def facts(tenant:) = (by_tenant[tenant] || {})[:facts] || []
+    def notes(tenant:, limit: nil) = (by_tenant[tenant] || {})[:notes] || []
+  end
+  SessionStoreDouble = Struct.new(:sessions) do # sessions: { id => StoredSession }
+    def each_id(&blk) = block_given? ? sessions.keys.each(&blk) : sessions.keys.each
+    def find(id) = sessions[id]
   end
 
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
-              tools_allow: %w[menu calc], skills: %w[pedido])
+              tools_allow: %w[menu calc], skills: %w[pedido], prompt_files: [])
     Harness::AgentProfile.build(id: id, model: model, provider: provider,
-                                memory: memory, tools_allow: tools_allow, skills: skills)
+                                memory: memory, tools_allow: tools_allow,
+                                skills: skills, prompt_files: prompt_files)
   end
 
-  def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")])
+  def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
+                agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
+                stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
+                memory: {}, sessions: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: nil, config: { admin_token: admin_token },
+      agent_file_store: AgentFileStoreDouble.new(agent_files),
+      skill_store: SkillStoreDouble.new(stored_skills),
+      skill_catalog: SkillCatalogDouble.new(skills),
+      tool_catalog: ToolCatalogDouble.new(tools),
+      memory_store: MemoryStoreDouble.new(memory),
+      session_store: SessionStoreDouble.new(sessions),
       session_secret: "x" * 64
     )
     [app, bus]
@@ -221,5 +268,255 @@ RSpec.describe Studio::App do
     res = client.get("/inexistente")
     expect(res.status).to eq(404)
     expect(res.body).to include("404")
+  end
+
+  it "playground manda tenant = agente no send_message (memória por-agente)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/playground").body)
+    client.post("/playground", params: { "agent" => "chef", "session_id" => "s1",
+                                          "message" => "oi", "_csrf" => csrf })
+    expect(bus.last(:send_message).meta[:tenant]).to eq("chef")
+  end
+
+  it "a app-bar tem os links de skills e tools (Etapa F)" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('href="/studio/skills"')
+    expect(body).to include('href="/studio/tools"')
+  end
+
+  # --- Agents (detail) — task 15/17 ----------------------------------------
+
+  it "renderiza o detalhe do agente com config, prompts, skills, memória e histórico" do
+    app, = build_app
+    res = login(app).get("/agents/bia")
+    expect(res.status).to eq(200)
+    %w[config prompts skills memoria historico].each { |a| expect(res.body).to include("id=\"#{a}\"") }
+    expect(res.body).to include('name="model"')
+    expect(res.body).to include('data-controller="code-editor"')
+  end
+
+  it "404 no detalhe de agente inexistente" do
+    app, = build_app
+    expect(login(app).get("/agents/nao-existe").status).to eq(404)
+  end
+
+  # Regressão (encontrada rodando de verdade): o matcher String do Roda entrega
+  # o segmento de path em ASCII-8BIT; um `get` no store SQLite com chave binária
+  # não casa a chave gravada em UTF-8 (bind como BLOB) e o detalhe 404-ava. A
+  # borda normaliza para UTF-8 (`utf8`). Doubles não reproduzem (String#== é
+  # encoding-agnóstico p/ ASCII) — este teste usa SQLite real + PATH_INFO binário.
+  it "resolve id de path binário contra o store SQLite (regressão de encoding)" do
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      store = Harness::Stores::SQLite.new(path: File.join(dir, "cfg.db"))
+      src = Harness::StoredProfileSource.new(config_store: Harness::ConfigStore.new(store: store))
+      src.put(Harness::AgentProfile.build(id: "bia", model: "m", provider: :deepseek, memory: true))
+      app = Class.new(Studio::App)
+      app.configure(command_bus: BusDouble.new([]), profile_source: src, event_stream: nil,
+                    config: { admin_token: "s3cret" },
+                    agent_file_store: AgentFileStoreDouble.new({}),
+                    skill_catalog: SkillCatalogDouble.new([]),
+                    memory_store: MemoryStoreDouble.new({}),
+                    session_store: SessionStoreDouble.new({}), session_secret: "x" * 64)
+      client = login(app)
+      env = Rack::MockRequest.env_for("/agents/bia", "HTTP_COOKIE" => client.cookie)
+      env["PATH_INFO"] = env["PATH_INFO"].dup.force_encoding(Encoding::ASCII_8BIT)
+      status, = app.call(env)
+      expect(status).to eq(200)
+    end
+  end
+
+  it "config despacha update_agent com memory bool e limits int" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    res = client.post("/agents/bia/config", params: {
+                        "model" => "deepseek-reasoner", "provider" => "deepseek",
+                        "memory" => "1", "turn_timeout" => "90", "_csrf" => csrf
+                      })
+    expect(res.status).to eq(302)
+    cmd = bus.last(:update_agent)
+    expect(cmd.payload[:model]).to eq("deepseek-reasoner")
+    expect(cmd.payload[:memory]).to be(true)
+    expect(cmd.payload[:limits][:turn_timeout]).to eq(90)
+  end
+
+  it "config sem checkbox de memória grava memory=false" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:memory]).to be(false)
+  end
+
+  it "gravar prompt NOVO também o adiciona a prompt_files" do
+    app, bus = build_app # bia tem prompt_files: []
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/prompts", params: {
+                  "file" => "IDENTITY.md", "content" => "# Eu", "_csrf" => csrf
+                })
+    expect(bus.last(:write_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md")
+    expect(bus.last(:update_agent).payload[:prompt_files]).to eq(["IDENTITY.md"])
+  end
+
+  it "gravar prompt JÁ referenciado não redispara update_agent" do
+    app, bus = build_app(agents: [profile("bia", prompt_files: ["IDENTITY.md"])])
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/prompts", params: {
+                  "file" => "IDENTITY.md", "content" => "# Eu 2", "_csrf" => csrf
+                })
+    expect(bus.types).to include(:write_agent_file)
+    expect(bus.types).not_to include(:update_agent)
+  end
+
+  it "remover prompt despacha delete_agent_file e tira de prompt_files" do
+    app, bus = build_app(agents: [profile("bia", prompt_files: %w[IDENTITY.md SOUL.md])])
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/prompts/delete", params: { "file" => "SOUL.md", "_csrf" => csrf })
+    expect(bus.last(:delete_agent_file).payload).to include(agent_id: "bia", file: "SOUL.md")
+    expect(bus.last(:update_agent).payload[:prompt_files]).to eq(["IDENTITY.md"])
+  end
+
+  it "restaurar prompt despacha restore_agent_file com version" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/prompts/restore", params: {
+                  "file" => "IDENTITY.md", "version" => "2", "_csrf" => csrf
+                })
+    expect(bus.last(:restore_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md", version: "2")
+  end
+
+  it "skills 'todas' despacha update_agent com skills nil" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/skills", params: { "all_skills" => "1", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload).to include(skills: nil)
+  end
+
+  it "skills subconjunto despacha update_agent com a lista marcada" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/skills", params: { "skills" => ["pedido"], "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload).to include(skills: ["pedido"])
+  end
+
+  it "memória: fato/esquecer/nota despacham escopados por tenant = id do agente" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/memory/fact", params: { "key" => "nome", "value" => "Ana", "_csrf" => csrf })
+    client.post("/agents/bia/memory/forget", params: { "key" => "nome", "_csrf" => csrf })
+    client.post("/agents/bia/memory/note", params: { "text" => "gosta de doce", "_csrf" => csrf })
+    expect(bus.last(:memory_put_fact).payload).to include(tenant: "bia", key: "nome", value: "Ana")
+    expect(bus.last(:memory_forget_fact).payload).to include(tenant: "bia", key: "nome")
+    expect(bus.last(:memory_add_note).payload).to include(tenant: "bia", text: "gosta de doce")
+  end
+
+  it "detalhe mostra os fatos da memória do agente (tenant = id)" do
+    fact = Harness::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
+    app, = build_app(memory: { "bia" => { facts: [fact], notes: [] } })
+    body = login(app).get("/agents/bia").body
+    expect(body).to include("nome")
+    expect(body).to include("Ana")
+  end
+
+  # --- Skills (index + editor) — task 16 -----------------------------------
+
+  it "lista as skills e a matriz de agentes" do
+    app, = build_app
+    body = login(app).get("/skills").body
+    expect(body).to include("pedido")               # skill do catálogo
+    expect(body).to include('name="agent_ids[]"')   # matriz
+  end
+
+  it "editor de skill nova traz o template com frontmatter" do
+    app, = build_app
+    body = login(app).get("/skills/new").body
+    expect(body).to include('data-controller="code-editor"')
+    expect(body).to include("name:")
+  end
+
+  it "editor de skill existente traz o conteúdo do store" do
+    app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\n---\ncorpo autorado" })
+    body = login(app).get("/skills/pedido").body
+    expect(body).to include("corpo autorado")
+  end
+
+  it "salvar skill despacha write_skill" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/new").body)
+    res = client.post("/skills", params: { "name" => "reembolso", "content" => "---\nname: reembolso\n---\nx", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(bus.last(:write_skill).payload).to include(name: "reembolso")
+  end
+
+  it "aplicar skill aos agentes despacha set_skill_agents com agent_ids" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/skills").body)
+    client.post("/skills/pedido/agents", params: { "agent_ids" => %w[bia chef], "_csrf" => csrf })
+    cmd = bus.last(:set_skill_agents)
+    expect(cmd.payload[:name]).to eq("pedido")
+    expect(cmd.payload[:agent_ids]).to eq(%w[bia chef])
+  end
+
+  # --- Tools (matriz) — task 16 --------------------------------------------
+
+  it "lista a matriz de tools por agente" do
+    app, = build_app
+    body = login(app).get("/tools").body
+    expect(body).to include("menu")               # tool do catálogo
+    expect(body).to include('name="all_tools"')
+  end
+
+  it "tools 'todas' despacha set_agent_tools com allow nil" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/tools").body)
+    client.post("/tools/bia", params: { "all_tools" => "1", "_csrf" => csrf })
+    expect(bus.last(:set_agent_tools).payload).to include(id: "bia", allow: nil)
+  end
+
+  it "tools subconjunto despacha set_agent_tools com a lista e preserva o deny" do
+    app, bus = build_app(agents: [profile("bia", tools_allow: %w[menu calc])])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools").body)
+    client.post("/tools/bia", params: { "tools" => ["menu"], "_csrf" => csrf })
+    cmd = bus.last(:set_agent_tools)
+    expect(cmd.payload[:allow]).to eq(["menu"])
+    expect(cmd.payload).to have_key(:deny)
+  end
+
+  # --- Histórico (viewer read-only) — task 17 ------------------------------
+
+  it "viewer de sessão renderiza o transcript read-only" do
+    sess = StoredSession.new(id: "sess-xyz", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "oi" },
+                                        { "role" => "assistant", "content" => "olá!" }])
+    app, = build_app(sessions: { "sess-xyz" => sess })
+    body = login(app).get("/sessions/sess-xyz").body
+    expect(body).to include("olá!")
+    expect(body).to include("continuar no playground")
+  end
+
+  it "404 em sessão inexistente" do
+    app, = build_app
+    expect(login(app).get("/sessions/nope").status).to eq(404)
+  end
+
+  it "o histórico do detalhe lista as conversas recentes" do
+    sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-abc123456789" => sess })
+    body = login(app).get("/agents/bia").body
+    expect(body).to include("/studio/sessions/sess-abc123456789")
   end
 end

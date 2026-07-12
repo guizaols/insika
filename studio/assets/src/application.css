@@ -144,6 +144,79 @@
   .toolcard pre, pre { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:.8rem; margin:.4rem 0 0; }
 
   /* CodeMirror (island code-editor, Etapa F) */
-  .cm-editor { border:1px solid var(--border); border-radius:9px; background:var(--surface); }
+  .cm-editor { border:1px solid var(--border); border-radius:9px; background:var(--surface); max-height:60vh; }
   .cm-editor.cm-focused { outline:2px solid var(--accent-weak); }
+  .cm-scroller { font-family:var(--mono); font-size:.82rem; }
+
+  /* ── Etapa F: páginas de autoria ─────────────────────────────────────── */
+
+  /* Agentes: card clicável + breadcrumbs + subnav de âncoras */
+  a.agent-head { color:inherit; }
+  a.agent-head:hover .agent-id { color:var(--accent); }
+  .agent-actions { display:flex; gap:.5rem; }
+  .avatar.sm { display:inline-grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:7px; font-size:.72rem; color:#fff; background:var(--accent); vertical-align:middle; margin-right:.3rem; }
+  .crumbs { font-size:.8rem; color:var(--muted); margin-bottom:.15rem; }
+  .crumbs a { color:var(--muted); }
+  .crumbs a:hover { color:var(--accent); }
+  .subnav { display:flex; gap:.3rem; flex-wrap:wrap; margin-bottom:1.25rem; position:sticky; top:3.1rem; background:var(--bg); padding:.35rem 0; z-index:5; }
+  .subnav a { font-size:.82rem; color:var(--muted); padding:.3rem .6rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); }
+  .subnav a:hover { color:var(--accent); border-color:var(--accent); }
+
+  /* Seções da página de detalhe */
+  .section { margin-bottom:2rem; scroll-margin-top:6rem; }
+  .section > .card { margin-top:.6rem; }
+  .section-head h2 { font-size:1.1rem; letter-spacing:-.01em; margin:.1rem 0; display:flex; align-items:center; gap:.5rem; }
+  .section-head p { margin:.1rem 0 0; font-size:.85rem; }
+  .section h3 { font-size:.95rem; margin:.2rem 0 .5rem; }
+
+  /* Forms densos: grid de 2 colunas, checkboxes inline, form em linha */
+  .grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:0 1rem; }
+  label.check { display:flex; align-items:center; gap:.5rem; font-weight:500; color:var(--text); margin:.5rem 0; cursor:pointer; }
+  label.check input { width:auto; margin:0; }
+  .check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.1rem .8rem; margin:.4rem 0; }
+  .actions { display:flex; align-items:center; gap:.6rem; margin-top:.75rem; flex-wrap:wrap; }
+  .inline-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.6rem; }
+  .inline-form input[type=text] { width:auto; flex:1; min-width:140px; margin-top:0; }
+  button.danger, .btn.danger { color:var(--err); }
+  button.danger:hover, .btn.danger:hover { border-color:var(--err); color:var(--err); }
+
+  /* Prompts (arquivos por-agente + versões) */
+  .promptfile { margin-top:.75rem; }
+  .promptfile-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; }
+  .promptfile-head form { margin:0; }
+  .versions { margin-top:.6rem; font-size:.85rem; }
+  .versions summary { cursor:pointer; color:var(--muted); }
+  .versions ul { list-style:none; padding:0; margin:.5rem 0 0; display:flex; flex-direction:column; gap:.3rem; }
+  .versions li { display:flex; align-items:center; gap:.6rem; }
+  .versions li form { margin:0; }
+  .newfile { margin-top:.75rem; }
+  .newfile summary { cursor:pointer; font-weight:600; }
+
+  /* Memória (fatos chave-valor + notas) */
+  ul.kv, ul.notes, ul.history { list-style:none; padding:0; margin:.3rem 0; display:flex; flex-direction:column; gap:.35rem; }
+  ul.kv li { display:flex; align-items:center; gap:.6rem; padding:.35rem .1rem; border-bottom:1px solid var(--border); }
+  ul.kv .k { flex:0 0 auto; font-weight:600; }
+  ul.kv .v { flex:1; word-break:break-word; }
+  ul.kv li form { margin:0; }
+  ul.notes li { padding:.3rem 0; border-bottom:1px solid var(--border); font-size:.9rem; }
+
+  /* Skills (cards com matriz de agentes) */
+  .skill-list, .tool-list { display:flex; flex-direction:column; gap:.9rem; }
+  .skill-card-head, .tool-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:.4rem; }
+  .skill-name { font-weight:650; display:flex; align-items:center; gap:.5rem; }
+  .skill-desc { font-size:.85rem; margin-top:.15rem; }
+  .tool-card-head .agent-id { font-weight:650; font-size:1rem; }
+  .tool-card-head label.check { margin:0; }
+  .matrix-hint { margin:0 0 1rem; }
+  .deny { font-size:.82rem; margin:.4rem 0 0; }
+
+  /* Histórico */
+  ul.history li { display:flex; align-items:center; gap:.7rem; padding:.4rem 0; border-bottom:1px solid var(--border); font-size:.88rem; }
+  ul.history .preview { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Transcript read-only (viewer de sessão) */
+  .msg.user { flex-direction:row-reverse; margin-left:auto; }
+  .msg.user .who { background:var(--accent); }
+  .msg.system .who { background:var(--muted); }
+  .role-tag { font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.2rem; }
 }
