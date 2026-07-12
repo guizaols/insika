@@ -16,6 +16,11 @@
 
 require_relative "../lib/harness"
 require_relative "../server/app"
+# A2A outbound (P3B): client/http/remotes NÃO puxam ruby_llm no load (só o bloco
+# de registro do tool remoto puxa, D5/D9). O tool em si (a2a_remote.rb) é lazy.
+require_relative "../server/a2a/client"
+require_relative "../server/a2a/http"
+require_relative "../server/a2a/remotes"
 
 module Harness
   module Wiring
@@ -158,6 +163,24 @@ module Harness
                     base_url: ENV["HARNESS_PUBLIC_URL"] || "http://localhost:#{CONFIG[:port]}" }
         )
       end
+
+    # --- A2A outbound (P3B, RFC-0002 §1) — federação de saída, OPT-IN --------
+    # O harness chama agentes A2A remotos como tools. Um tool por remoto de
+    # HARNESS_A2A_REMOTES ("id=url,.."); sem a env -> nada registrado (paridade,
+    # D6). O `require` da gem fica NO BLOCO (carregado na 1ª instância, turn time
+    # -> wiring-load continua gem-free, D5/D9).
+    A2A_CLIENT = Harness::Server::A2A::Client.new(http: Harness::Server::A2A::Http.new)
+    Harness::Server::A2A::Remotes.parse(ENV["HARNESS_A2A_REMOTES"].to_s).each do |remote|
+      REGISTRY.register("remote_#{remote.id}", plugin: "a2a") do
+        require "ruby_llm"
+        require_relative "../lib/harness/tools/a2a_remote"
+        Harness::Tools::A2ARemote.new(
+          client: A2A_CLIENT, url: remote.url, tool_name: "remote_#{remote.id}",
+          description: remote.description || "Delega a tarefa ao agente A2A remoto '#{remote.id}'.",
+          event_stream: EVENT_STREAM
+        )
+      end
+    end
 
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,

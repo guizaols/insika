@@ -29,4 +29,9 @@ RSpec.describe Harness::Wiring do
     expect(described_class::A2A_APP).to be_nil # sem HARNESS_A2A_AGENT / PROFILES vazio
     expect(described_class::APP).to be_a(Harness::Server::App) # aceita a2a: nil
   end
+
+  it "A2A_CLIENT construído; sem HARNESS_A2A_REMOTES nenhum tool remote_* registrado (P3B)" do
+    expect(described_class::A2A_CLIENT).to be_a(Harness::Server::A2A::Client)
+    expect(described_class::REGISTRY.names.grep(/^remote_/)).to eq([])
+  end
 end
