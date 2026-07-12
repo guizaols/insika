@@ -2,7 +2,7 @@
 
 > **Autor:** Claude (AI-generated, pendente de revisão humana)
 > **Criado:** 2026-07-12
-> **Status:** Draft
+> **Status:** Em andamento — Etapas A+B mergeadas. Retomada: [HANDOFF.md](./HANDOFF.md)
 > **Base:** main @ merge PR #23/#24/#25 (deployment real + Control UI + serve_real)
 > **Fonte da verdade:** RFC-0002 (pipeline canônica), RFC-0004 (capabilities),
 > RFC-0005 (context/memory), RFC-0007 (Control UI/serving). Referência de produto:

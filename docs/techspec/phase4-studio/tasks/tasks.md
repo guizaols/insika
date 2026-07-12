@@ -2,8 +2,9 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 5/20 tasks — Etapas A (fundação) + B (CRUD de agente) ✅
-> **Base:** main @ merge PR #23/#24/#25
+> **Progress:** 5/20 tasks — Etapas A (fundação) + B (CRUD de agente) ✅ · **PRÓXIMO:** Etapa C (tasks 6-8)
+> **Base:** main @ merge PR #27 (`8035d3a`) · Etapas A (#26) + B (#27) mergeadas
+> **Retomada:** ver [HANDOFF.md](../HANDOFF.md)
 
 ---
 
