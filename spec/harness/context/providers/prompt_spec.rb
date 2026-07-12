@@ -12,8 +12,8 @@ RSpec.describe Harness::Context::Providers::Prompt do
     parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
   end
 
-  def profile(prompt_refs: nil)
-    Harness::AgentProfile.build(id: "a", model: "m", prompt_refs: prompt_refs)
+  def profile(prompt_refs: nil, prompt_files: [], id: "a")
+    Harness::AgentProfile.build(id: id, model: "m", prompt_refs: prompt_refs, prompt_files: prompt_files)
   end
 
   def request(prof = profile)
@@ -84,6 +84,52 @@ RSpec.describe Harness::Context::Providers::Prompt do
       frags = described_class.new(base: "id", catalog: catalog).call(request(profile(prompt_refs: [])))
       expect(frags.size).to eq(1)
       expect(frags.first.priority).to eq(100)
+    end
+  end
+
+  # Etapa C (Fase 4): identidade POR-AGENTE. profile.prompt_files vence sobre os
+  # files do wiring; o conteúdo vem do AgentFileStore (ou de disco, compat).
+  describe "identidade por-agente (Etapa C)" do
+    let(:agent_files) do
+      Harness::AgentFileStore.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new))
+    end
+
+    it "sem prompt_files: usa os files do wiring (paridade Fase 0 — não regride)" do
+      soul = File.join(@dir, "SOUL.md")
+      File.write(soul, "Identidade default do deployment.")
+      provider = described_class.new(base: "base", files: [soul], agent_files: agent_files)
+
+      frag = provider.call(request(profile(prompt_files: []))).first
+      expect(frag.content).to eq("base\n\nIdentidade default do deployment.")
+    end
+
+    it "com prompt_files: lê o conteúdo do agente no Store, NÃO os files do wiring" do
+      wiring_soul = File.join(@dir, "SOUL.md")
+      File.write(wiring_soul, "IDENTIDADE DA BIA")             # default do wiring
+      agent_files.write("chef", "IDENTITY.md", "Sou o Chef, especialista em massas.")
+      provider = described_class.new(base: "", files: [wiring_soul], agent_files: agent_files)
+
+      frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md]))).first
+      expect(frag.content).to eq("Sou o Chef, especialista em massas.")   # própria, não a da Bia
+      expect(frag.content).not_to include("IDENTIDADE DA BIA")
+    end
+
+    it "concatena vários prompt_files do agente na ordem declarada" do
+      agent_files.write("chef", "IDENTITY.md", "IDENT")
+      agent_files.write("chef", "SOUL.md", "ALMA")
+      provider = described_class.new(base: "B", agent_files: agent_files)
+
+      frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md SOUL.md]))).first
+      expect(frag.content).to eq("B\n\nIDENT\n\nALMA")
+    end
+
+    it "prompt_files como caminho de disco: fallback a File.read (compat/seed)" do
+      disk = File.join(@dir, "IDENTITY.md")
+      File.write(disk, "do disco")
+      provider = described_class.new(base: "", agent_files: agent_files)
+
+      frag = provider.call(request(profile(id: "chef", prompt_files: [disk]))).first
+      expect(frag.content).to eq("do disco")
     end
   end
 end

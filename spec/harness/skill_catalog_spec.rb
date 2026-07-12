@@ -66,6 +66,40 @@ RSpec.describe Harness::SkillCatalog do
     end
   end
 
+  describe "overlay do Store + reload (Etapa C)" do
+    let(:store) { Harness::SkillStore.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
+    def skill_md(name, body) = "---\nname: #{name}\ndescription: d\n---\n#{body}\n"
+
+    it "skills autoradas no Store aparecem junto com as de disco" do
+      write_skill(@root, "cardapio", name: "cardapio", body: "disco")
+      store.write("pedido", skill_md("pedido", "do store"))
+
+      catalog = described_class.new(@root, store: store)
+
+      expect(catalog.all.map(&:name)).to contain_exactly("cardapio", "pedido")
+      expect(catalog.find("pedido").body).to eq("do store")
+    end
+
+    it "Store VENCE o disco para o mesmo nome (autorado > seed)" do
+      write_skill(@root, "pedido", name: "pedido", body: "seed do disco")
+      store.write("pedido", skill_md("pedido", "editado no studio"))
+
+      catalog = described_class.new(@root, store: store)
+
+      expect(catalog.find("pedido").body).to eq("editado no studio")
+    end
+
+    it "reload pega uma skill gravada no Store depois do boot (hot, sem restart)" do
+      catalog = described_class.new(@root, store: store)
+      expect(catalog.find("pedido")).to be_nil
+
+      store.write("pedido", skill_md("pedido", "nova"))
+      catalog.reload
+
+      expect(catalog.find("pedido").body).to eq("nova")
+    end
+  end
+
   describe "SKILL.md malformado" do
     it "ignora arquivo sem frontmatter" do
       path = File.join(@root, "bad")
