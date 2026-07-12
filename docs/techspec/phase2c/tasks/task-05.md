@@ -1,7 +1,7 @@
 # Task 05 (P2C): `Tools::Remember` (write path)
 
 > **Techspec:** [P2C-02-remember-tool-and-wiring.md](../P2C-02-remember-tool-and-wiring.md) (§Tools::Remember, L1–L5) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + [P2C-01](../P2C-01-memory-store-and-read.md) · [P2C-02](../P2C-02-remember-tool-and-wiring.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 4/8 tasks complete (PR 1 / Etapa A ✅)
+> **Progress:** 8/8 tasks complete — fatia C COMPLETA (Etapas A · B) ✅
 > **Base:** Fase 2-B completa (main @ merge PR #16)
 
 ---
@@ -15,10 +15,10 @@
 | 2 | `AgentProfile.memory` (opt-in; nil = OFF, paridade) | [task-02.md](./task-02.md) | P2C-01 | ✅ DONE | Low | 0005 §6, D5 |
 | 3 | Threading de tenant: `Executor::ContextRequest` + `:tenant`, `command_tenant` helper, `TurnState#tenant` no `run_pipeline` | [task-03.md](./task-03.md) | P2C-01 | ✅ DONE | Med | D6 |
 | 4 | `Context::Providers::Memory` (read: facts + N notes recentes → fragmento `:system` p75; `enabled_for?` por `profile.memory`) | [task-04.md](./task-04.md) | P2C-01 | ✅ DONE | Med | 0005 §6, L5-L8 |
-| 5 | `Tools::Remember` builtin (fato/note via `MemoryStore` + `:memory_written` + `def name`) | [task-05.md](./task-05.md) | P2C-02 | ⬜ TODO | Med | 0005 §6, D3/D4 |
-| 6 | Executor `configure_chat`: cabeia `remember` de sistema (gate `@memory_store` + `profile.memory`) + `create_chat` lazy require | [task-06.md](./task-06.md) | P2C-02 | ⬜ TODO | Med | 0002 §6, L2 |
-| 7 | Wiring: `MEMORY_STORE` + provider em `CONTEXT_PROVIDERS` + inject no Executor + catálogo D5 (`:memory_written`) + wiring-load spec | [task-07.md](./task-07.md) | P2C-02 | ⬜ TODO | Low | D8 |
-| 8 | Smoke E2E fatia C: grava fato/note na sessão 1 → sessão 2 (mesmo tenant) lembra; paridade `memory:nil` | [task-08.md](./task-08.md) | P2C-01/02 | ⬜ TODO | Med | 00 §"Critério" |
+| 5 | `Tools::Remember` builtin (fato/note via `MemoryStore` + `:memory_written` + `def name`) | [task-05.md](./task-05.md) | P2C-02 | ✅ DONE | Med | 0005 §6, D3/D4 |
+| 6 | Executor `configure_chat`: cabeia `remember` de sistema (gate `@memory_store` + `profile.memory`) + `create_chat` lazy require | [task-06.md](./task-06.md) | P2C-02 | ✅ DONE | Med | 0002 §6, L2 |
+| 7 | Wiring: `MEMORY_STORE` + provider em `CONTEXT_PROVIDERS` + inject no Executor + catálogo D5 (`:memory_written`) + wiring-load spec | [task-07.md](./task-07.md) | P2C-02 | ✅ DONE | Low | D8 |
+| 8 | Smoke E2E fatia C: grava fato/note na sessão 1 → sessão 2 (mesmo tenant) lembra; paridade `memory:nil` | [task-08.md](./task-08.md) | P2C-01/02 | ✅ DONE | Med | 00 §"Critério" |
 
 ### Status Legend
 - ⬜ TODO — Not started
@@ -58,8 +58,8 @@ de 6 (a task 6 lê `state.tenant` que a task 3 seta).
 - **Total tasks:** 8
 - **Estimated total complexity:** Med (0 High — fatia deliberadamente enxuta e determinística; 5 Med, 3 Low)
 - **Suggested PR grouping** (1 PR por etapa):
-  - **PR 1 — Etapa A** (tasks 1–4): `MemoryStore` + `AgentProfile.memory` + tenant threading + read provider.
-  - **PR 2 — Etapa B** (tasks 5–8): `Tools::Remember` + executor/wiring + smoke E2E.
+  - **PR 1 — Etapa A** (tasks 1–4) ✅ **DONE**: `MemoryStore` + `AgentProfile.memory` + tenant threading + read provider. Suíte verde (798 exemplos).
+  - **PR 2 — Etapa B** (tasks 5–8) ✅ **DONE**: `Tools::Remember` + executor/wiring + smoke E2E. Suíte verde (812 exemplos).
 
 ### Cobertura da tech spec
 - **P2C-01** (store + read): store (1), profile (2), tenant (3), provider (4). Decisões D1/D2/D5/D6/D7 + L1–L8.

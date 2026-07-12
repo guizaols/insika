@@ -1,7 +1,7 @@
 # Task 07 (P2C): Wiring (`MEMORY_STORE` + provider) + catálogo de eventos D5
 
 > **Techspec:** [P2C-02-remember-tool-and-wiring.md](../P2C-02-remember-tool-and-wiring.md) (§Wiring/§Catálogo, D8) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Low · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Low · **Etapa:** B
 
 ## Objetivo
 
