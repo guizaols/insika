@@ -7,6 +7,10 @@
 
 <p class="muted matrix-hint">Instâncias de servidores MCP (config durável). As credenciais em <code>env</code> nunca voltam em plaintext — cada valor aparece como <code><%= secret_sentinel %></code>; mantê-lo preserva o segredo, trocá-lo substitui, apagar a linha limpa.</p>
 
+<% if @instances.empty? %>
+  <div class="empty">Nenhuma instância MCP. Adicione uma abaixo (ex.: <code>tavily</code>) para expor um servidor MCP às tools dos agentes.</div>
+<% end %>
+
 <% @instances.each do |m| %>
   <div class="card promptfile">
     <div class="promptfile-head">

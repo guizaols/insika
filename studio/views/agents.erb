@@ -4,7 +4,7 @@
 </header>
 
 <% if @agents.empty? %>
-  <div class="empty">Nenhum agente ainda. A criação de agentes chega na próxima etapa (autoria).</div>
+  <div class="empty">Nenhum agente ainda. Crie a sua primeira BIA abaixo (id + modelo) e dê identidade a ela na página de detalhe.</div>
 <% else %>
   <div class="agent-grid">
     <% @agents.each do |a| %>
@@ -30,3 +30,26 @@
     <% end %>
   </div>
 <% end %>
+
+<details class="card newfile"<%== " open" if @agents.empty? %>>
+  <summary>+ novo agente</summary>
+  <form method="post" action="/studio/agents">
+    <%== csrf_tag %>
+    <div class="grid-2">
+      <label>id <span class="muted">(slug único, ex.: bia)</span>
+        <input type="text" name="id" placeholder="bia" required>
+      </label>
+      <label>modelo
+        <input type="text" name="model" placeholder="deepseek-chat" required>
+      </label>
+    </div>
+    <label>provider <span class="muted">(opcional)</span>
+      <input type="text" name="provider" placeholder="deepseek">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="memory" value="1" checked>
+      memória cross-session (a BIA lembra entre conversas)
+    </label>
+    <div class="actions"><button type="submit" class="primary">criar agente</button></div>
+  </form>
+</details>

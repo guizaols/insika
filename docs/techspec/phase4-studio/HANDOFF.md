@@ -1,6 +1,6 @@
 # HANDOFF — Fase 4 (Harness Studio) · onde paramos
 
-> **Atualizado:** 2026-07-12 (Etapa G) · **main @** merge PR #32 (`288ccbb`)
+> **Atualizado:** 2026-07-12 (Etapa H) · **main @** merge PR #33 (`40c3526`)
 > Documento de retomada: uma sessão nova continua daqui **sem** o histórico do chat.
 > Leia junto com [`00-overview.md`](./00-overview.md) (spec) e [`tasks/tasks.md`](./tasks/tasks.md) (plano).
 
@@ -43,9 +43,10 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 | **#30 (Etapa D)** | **Memória + Settings + LLM: 3 Commands de memória (`:memory_put_fact/forget_fact/add_note`), `SettingsStore` + `:update_settings`, `SecretMasking` (sentinel `__OCULTO__`), `LLMProviderStore` (masked) + `LLMConfigurator` (reconfigure RubyLLM runtime) + `:upsert/delete_llm_provider`** | merged |
 | **#31 (Etapa E)** | **Primeira UI: app `studio/` (Roda) sob `/studio` + login por cookie (D7) + CSRF + CSP estrita; pipeline esbuild/Tailwind → `dist/` versionado (D8); shell/layout + páginas login/agents(list)/playground(SSE)** | merged |
 | **#32 (Etapa F)** | **Páginas de autoria: agents(detail) — config/model + prompts (island `code-editor`) + skills + memória (tenant=agente) + histórico; skills (matriz + editor, `write_skill`/`set_skill_agents`); tools (matriz `set_agent_tools`); viewer read-only de sessão. Correção: normalização UTF-8 dos segmentos de path do Roda (bug de encoding vs SQLite `get`)** | merged |
-| **Etapa G** | **mcp + settings + system-files + chats. Backend NOVO: `McpStore` (env mascarado) + `:upsert/delete_mcp`; `SystemFileStore` (global) + `:write/delete/restore_system_file` + **injeção no core `Prompt` provider** (arquivos de sistema valem p/ TODO agente). Páginas: settings (geral + providers de LLM, api_key mascarada), mcp (env mascarado), system-files (code-editor + versões), chats (índice → viewer)** | PR aberto |
+| **#33 (Etapa G)** | **mcp + settings + system-files + chats. Backend NOVO: `McpStore` (env mascarado) + `:upsert/delete_mcp`; `SystemFileStore` (global) + `:write/delete/restore_system_file` + **injeção no core `Prompt` provider** (arquivos de sistema valem p/ TODO agente). Páginas: settings (geral + providers de LLM, api_key mascarada), mcp (env mascarado), system-files (code-editor + versões), chats (índice → viewer)** | merged |
+| **Etapa H** | **polish & paridade: dirty-guards (island + evento sintético do code-editor), banner de restart (flag por processo, acesa por mudança de MCP, dispensável), health chip na app-bar (contagens + persistência), toggle de tema (auto/claro/escuro via cookie, aplicado server-side — sem flash), empty states consistentes, e criação de agente pela UI (`:create_agent`)** | PR aberto |
 
-**Progresso do plano: 19/20 tasks (Etapas A + B + C + D + E + F + G).** Ver `tasks/tasks.md`.
+**Progresso do plano: 20/20 tasks (Etapas A + B + C + D + E + F + G + H). FASE 4 COMPLETA.** Ver `tasks/tasks.md`.
 
 ### Arquivos-chave criados/alterados (na main)
 - `lib/harness/config_store.rb` — KV durável de configuração (scopes agents/settings/
@@ -119,19 +120,65 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 
 ## 4. Estado atual dos testes
 
-`bundle exec rspec` → **1029 examples, 0 failures** (Etapa G: +26; sem chave de API; `require "ruby_llm"`
+`bundle exec rspec` → **1039 examples, 0 failures** (Etapa H: +10; sem chave de API; `require "ruby_llm"`
 continua lazy — restrição D9 do core preservada; o `LLMConfigurator` recebe `configure:`
-falso nos specs). O "boom" no log é fixture intencional. `spec/studio/app_spec.rb` (41 ex.)
+falso nos specs). O "boom" no log é fixture intencional. `spec/studio/app_spec.rb` (64 ex.)
 usa doubles de bus/profile_source/stores — o Studio só lê e despacha, não escreve em store
-direto; a Etapa F inclui uma regressão SQLite-real do bug de encoding de path (ver §5).
+direto; a Etapa F inclui uma regressão SQLite-real do bug de encoding de path (ver §5b/histórico).
 
-## 5. PRÓXIMO PASSO — Etapa H (task 20): **polish & paridade**
+## 5. Etapa H (task 20) — **polish & paridade** ✅ (FASE 4 COMPLETA)
 
-A Etapa G fechou a superfície de config: **settings** gerais + **providers de LLM**
-(api_key mascarada) + **MCP** (instâncias com env mascarado) + **system-files** (arquivos
-globais) + **chats** (índice → viewer). Falta só a Etapa H (depende de F+G): **polish** —
-dirty-guards nos editores, banner de "restart recomendado", health chip, empty states
-consistentes, toggle de tema, e paridade fina com o agent-studio. Ver `tasks/tasks.md`.
+Última etapa. Fecha o produto com o polish de UX que faltava e a criação de agente
+pela UI. Sem novo backend de core (só a borda `studio/` + rebuild do bundle).
+
+### O que a Etapa H entregou (arquivos)
+
+**Studio (`studio/`):**
+- `app.rb` — flag **`restart_needed`** POR PROCESSO (class-level, zerada no `configure`):
+  `mark_restart_needed!`/`clear_restart_needed!`/`restart_needed?`. Acesa por mudança de
+  **MCP** (upsert/delete) — os servidores MCP são ligados no boot, então a instância nova
+  só vale após restart. Rota **`POST /restart-ack`** dispensa o banner (com `safe_back`
+  contra open-redirect — só caminho local). Rota **`POST /agents`** cria agente via
+  `:create_agent`. Helpers novos: `theme_pref` (lê o cookie `harness.theme`, allowlist
+  `auto/light/dark` → default `auto`), `health_summary` (contagens de agentes/providers/
+  MCP + persistência de `config[:persistence]`), `safe_back`.
+- `views/layout.erb` — `<html data-theme="<%= theme_pref %>">` (tema aplicado
+  **server-side**, sem flash); app-bar ganhou `.appbar-right` com **health chip** (`pill ok`
+  + `title` com o resumo) e **theme switch** (segmented `auto/claro/escuro`, `data-controller
+  =theme`); **banner de restart** dispensável (form `POST /restart-ack`, `back` = path atual).
+- `views/agents.erb` — empty-state atualizado + **form "+ novo agente"** (id/model/provider/
+  memória → `:create_agent`), aberto por padrão quando não há agentes.
+- `views/mcp.erb` — empty-state. Editores (`agent_detail`/`system_files`/`skill_edit`)
+  ganharam `data-controller="dirty-guard"` nos forms de edição.
+- `assets/src/controllers/theme_controller.js` (NOVO) — troca `data-theme` + grava cookie
+  (sem reload); `dirty_guard_controller.js` (NOVO) — `beforeunload` + `turbo:before-visit`
+  com confirm ao sair com edição pendente; `code_editor_controller.js` passou a **disparar
+  um `input` sintético** no `<textarea>` a cada edição do CodeMirror (senão o dirty-guard
+  não veria mudança no editor). `application.js` registra os 2 islands; `application.css`
+  ganhou `.appbar-right`/`.health`/`.theme-switch`/`.theme-opt`/`.banner`. **Bundle
+  rebuildado** (`npm run build` → `dist/` versionado).
+- `scripts/serve_real.rb` — passa `persistence:` no `config` (`durável (sqlite)` quando
+  `HARNESS_DB`, senão `efêmero (memória)`) para o health chip.
+
+**Decisão da Etapa H:** o banner de restart é uma **flag em memória por processo**, não de
+sessão. A sessão sobrevive ao restart (o secret deriva do token), então uma flag de sessão
+ficaria presa acesa; a flag de processo apaga sozinha no boot seguinte (semântica correta:
+"reinicie" → reiniciou → flag limpa). A `api_key`/env de LLM são **hot** (sem restart, via
+`LLMConfigurator`); só o MCP acende o banner hoje.
+
+**Prova de "rodar de verdade" (Etapa H):** `ADMIN_TOKEN=... DEEPSEEK_API_KEY=...
+HARNESS_DB=/tmp/h.db ruby scripts/serve_real.rb`. Por HTTP real (curl, cookie+CSRF
+url-encoded — o token tem `+`/`/`): login; `/agents` renderiza `data-theme="auto"`, health
+chip com título `1 agente(s) · 0 provider(s) LLM · 0 MCP · durável (sqlite)`, theme switch e
+form de criação; cookie `harness.theme=dark` → `data-theme="dark"` server-side (sem flash);
+**criei o agente `chef`** pela UI (redirect pro detalhe, aparece na lista `bia chef`); salvei
+uma instância **MCP `tavily`** (env `TAVILY_API_KEY` mascarado, **0 vazamento** de plaintext)
+→ **banner "Restart recomendado" apareceu**; `POST /restart-ack` dispensou e redirecionou pro
+`/studio/mcp`. Fim: no playground a **Bia (DeepSeek real) respondeu "PRONTO"** — o turno de
+core segue intacto sob o novo layout. **Suíte: 1039 examples, 0 failures** (`spec/studio/
+app_spec.rb`: 64 ex., +10 na Etapa H).
+
+## 5b. Superfície anterior — Etapa G (histórico)
 
 ### O que a Etapa G entregou (arquivos)
 

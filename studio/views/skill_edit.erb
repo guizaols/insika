@@ -5,7 +5,7 @@
   </div>
 </header>
 
-<form class="card" method="post" action="/studio/skills">
+<form class="card" method="post" action="/studio/skills" data-controller="dirty-guard">
   <%== csrf_tag %>
   <% unless @skill_name.empty? %>
     <input type="hidden" name="name" value="<%= @skill_name %>">
