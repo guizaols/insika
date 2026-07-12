@@ -22,6 +22,23 @@ require File.join(Dir.pwd, "server", "app")
 
 W = Deploy::Wiring
 
+# O /admin é fail-closed (503 sem token) e o navegador não manda Authorization
+# ao navegar. Para o demo LOCAL, um token fixo + um shim que injeta o Bearer nas
+# rotas /admin — deixa o /admin aberto SÓ neste processo local (bind localhost).
+# O core de auth (AdminAuth) fica intacto; isto é conveniência do script de demo.
+ADMIN_TOKEN = ENV.fetch("ADMIN_TOKEN", "local-demo")
+
+class LocalAdminShim
+  def initialize(app, token) = (@app = app; @token = token)
+
+  def call(env)
+    if env["PATH_INFO"].to_s.start_with?("/admin")
+      env["HTTP_AUTHORIZATION"] ||= "Bearer #{@token}"
+    end
+    @app.call(env)
+  end
+end
+
 # Completa o BUS com os Commands de controle do /admin (pause/approve) — o
 # deployment base registra só o essencial de turno.
 W::BUS.register(:pause_task, Harness::Commands::PauseTask.new(task_store: W::TASK_STORE, executor: W::EXECUTOR))
@@ -39,12 +56,12 @@ APP = Harness::Server::App.new(
   checkpoint_store: W::CHECKPOINT_STORE, pending_action_store: W::PENDING_ACTION_STORE,
   catalogs: { skills: W::CATALOG, prompts: W::PROMPT_CATALOG },
   registries: { tools: W::REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
-  config: { admin_token: nil, allowed_origins: [] }
+  config: { admin_token: ADMIN_TOKEN, allowed_origins: [] }
 )
 
 BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
-middleware = Protocol::Rack::Adapter.new(APP)
+middleware = Protocol::Rack::Adapter.new(LocalAdminShim.new(APP, ADMIN_TOKEN))
 
 puts "\e[1mHarness — servindo de verdade (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
 puts "  #{BIND}/admin/chat   → converse com a Bia (agente: bia · session_id: web)"
