@@ -24,4 +24,9 @@ RSpec.describe Harness::Wiring do
     expect(described_class::MEMORY_STORE).to be_a(Harness::MemoryStore)
     expect(described_class::CONTEXT_PROVIDERS).to include(a_kind_of(Harness::Context::Providers::Memory))
   end
+
+  it "A2A_APP é nil por default (opt-in; PROFILES vazio na base) e o APP constrói (P3A)" do
+    expect(described_class::A2A_APP).to be_nil # sem HARNESS_A2A_AGENT / PROFILES vazio
+    expect(described_class::APP).to be_a(Harness::Server::App) # aceita a2a: nil
+  end
 end
