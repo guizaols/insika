@@ -5,6 +5,11 @@ module Harness
   # Semântica de allowlist ÚNICA para tools, skills, providers e workflows
   # (nil = todas [+ opt-in p/ tools optional]; [] = nenhuma p/ skills/allow;
   # [names] = conjunto final; deny sempre vence) — uma regra só, testada uma vez.
+  #
+  # EXCEÇÃO deliberada: `capabilities` (P2B, RFC-0004 §6) NÃO segue a regra do
+  # `nil = todas`. nil/ausente = NENHUMA capability (opt-in explícito — expor
+  # toda capability registrada por engano acoplaria o agente a plugins que ele
+  # não pediu). NÃO "corrija" para ficar consistente com tools_allow.
   AgentProfile = Data.define(
     :id, :model, :provider,           # Fase 0
     :base_prompt, :prompt_files,      # Fase 0
@@ -15,7 +20,9 @@ module Harness
     :policies,                        # NOVO — nomes no Policy Registry (estágio 3)
     :prompt_refs,                     # NOVO — nomes do Prompt Catalog (doc 04 §2)
     :limits,                          # NOVO — timeouts/orçamentos (D4/D8)
-    :approvals_required               # P2 — tools que exigem aprovação (ApprovalRequired)
+    :approvals_required,              # P2 — tools que exigem aprovação (ApprovalRequired)
+    :capabilities                     # P2B — intenções que o agente pode acionar
+    #                                   (RFC-0004 §6). nil = NENHUMA (opt-in, ver acima).
   )
 
   # Classe reaberta (não bloco do Data.define): constante atribuída dentro
@@ -30,14 +37,16 @@ module Harness
     def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], skills: nil,
                    context_providers: nil, workflows_allow: nil,
-                   policies: [], prompt_refs: [], limits: {}, approvals_required: nil)
+                   policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
+                   capabilities: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
         tools_deny: Array(tools_deny), skills: skills,
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
-        limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required
+        limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
+        capabilities: capabilities
       )
     end
 

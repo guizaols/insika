@@ -45,4 +45,33 @@ module Harness
       super(message || "timeout no estágio #{stage}")
     end
   end
+
+  # Resolução de capability falhou (RFC-0004 §5, P2B-01 D2) -> task :failed no
+  # estágio :capability. Base da subárvore; NÃO ganha evento próprio (P2B overview
+  # D7) — propaga pelos eventos :error/:task_failed já existentes, mesma
+  # disciplina da taxonomia D4 da Fase 1. Nunca levantada direto (só as subclasses).
+  class CapabilityError < Error; end
+
+  # 0 candidatos sobraram após disponibilidade + deny (P2B-01 D2/L3).
+  class CapabilityUnavailable < CapabilityError
+    attr_reader :capability
+
+    def initialize(message = nil, capability: nil)
+      @capability = capability
+      super(message || "capability #{capability} sem provider disponível")
+    end
+  end
+
+  # >=2 candidatos empatados no topo (mesma priority E mesmo plugin) -> erro de
+  # configuração, NUNCA escolha silenciosa (P2B-01 D2/L4). `candidates` carrega o
+  # suficiente para o operador desempatar no manifesto.
+  class CapabilityAmbiguous < CapabilityError
+    attr_reader :capability, :candidates
+
+    def initialize(message = nil, capability: nil, candidates: [])
+      @capability = capability
+      @candidates = candidates
+      super(message || "capability #{capability} ambígua entre #{candidates.inspect}")
+    end
+  end
 end

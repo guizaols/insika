@@ -46,7 +46,7 @@ module Harness
       # TimeoutError da espera propagam (não são ToolTimeout).
       if approval_required?
         decision = @state.approval_coordinator.request_approval(
-          task: @state.task, turn: @state.turn, tool: __getobj__.name, args: args, actor: @state.actor
+          task: @state.task, turn: @state.turn, tool: real_name, args: args, actor: @state.actor
         )
         return { error: "rejected by operator" } unless decision.to_s == "approved"
       end
@@ -60,10 +60,18 @@ module Harness
 
     private
 
+    # impl_name real quando o delegate é um Capability::ResolvedTool (P2B D4/L7):
+    # side_effect?/approval/correlação operam sobre o nome REAL registrado no
+    # tool_registry (o apelido da capability não existe lá). Tool direta = #name
+    # (comportamento Fase 1 inalterado).
+    def real_name
+      __getobj__.respond_to?(:impl_name) ? __getobj__.impl_name.to_s : __getobj__.name.to_s
+    end
+
     # A tool corrente exige aprovação? (nomes vêm da Resolution via state).
     def approval_required?
       @state.respond_to?(:requires_approval) &&
-        Array(@state.requires_approval).include?(__getobj__.name.to_s)
+        Array(@state.requires_approval).include?(real_name)
     end
 
     # Correlação da call: o id do provider (chat RubyLLM, via before_tool_call)
@@ -74,12 +82,12 @@ module Harness
     # a retomada pula TODAS as chamadas daquele nome (over-skip) — checkpoint
     # por passo é Fase 2 (doc 03 §4.1). Uma chamada por tool é segura.
     def correlation_id
-      (@state.current_tool_call&.id || __getobj__.name).to_s
+      (@state.current_tool_call&.id || real_name).to_s
     end
 
     def side_effect?
       @tool_registry.respond_to?(:side_effect?) &&
-        @tool_registry.side_effect?(__getobj__.name)
+        @tool_registry.side_effect?(real_name)
     end
 
     # Escrito ANTES de o resultado da tool voltar ao modelo (doc 02 §2).
