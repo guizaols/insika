@@ -24,7 +24,8 @@ module Harness
       @hooks = hooks
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
-      @profiles = profiles
+      # Hash legado -> StaticProfileSource; um ProfileSource passa direto (D2).
+      @profiles = ProfileSource.coerce(profiles)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store

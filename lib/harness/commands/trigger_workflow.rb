@@ -11,7 +11,7 @@ module Harness
       ALLOWED_KEYS = %i[workflow agent input session_id].freeze
 
       def initialize(profiles:, session_store:, task_store:, executor:, workflow_registry:)
-        @profiles = profiles
+        @profiles = ProfileSource.coerce(profiles)
         @session_store = session_store
         @task_store = task_store
         @executor = executor

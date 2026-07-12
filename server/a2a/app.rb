@@ -18,7 +18,7 @@ module Harness
           @command_bus = command_bus
           @task_store = task_store
           @session_store = session_store
-          @profiles = profiles
+          @profiles = Harness::ProfileSource.coerce(profiles)
           @skill_catalog = skill_catalog
           @config = config # { a2a_agent:, base_url: }
         end
