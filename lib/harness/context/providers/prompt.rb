@@ -15,11 +15,12 @@ module Harness
       # para caminhos em disco (compat/seed). Sem prompt_files -> usa os `files:`
       # do wiring (default de deployment; paridade byte-a-byte da Fase 0).
       class Prompt < ContextProvider
-        def initialize(base: "", files: [], catalog: nil, agent_files: nil)
+        def initialize(base: "", files: [], catalog: nil, agent_files: nil, system_files: nil)
           @base = base
           @files = Array(files)
           @catalog = catalog
           @agent_files = agent_files
+          @system_files = system_files
         end
 
         def required? = true
@@ -47,6 +48,7 @@ module Harness
         # ordem. Sem prompt_files, cai nos @files do wiring (paridade Fase 0).
         def build_identity(profile)
           parts = [@base]
+          parts.concat(system_parts) # arquivos de sistema globais, para TODO agente
           sources = Array(profile&.prompt_files)
           if sources.empty?
             @files.each { |f| parts << File.read(f, encoding: "UTF-8") if File.exist?(f) }
@@ -54,6 +56,16 @@ module Harness
             sources.each { |src| parts << read_source(profile&.id, src.to_s) }
           end
           parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
+        end
+
+        # Arquivos de sistema GLOBAIS (Etapa G): valem para todos os agentes,
+        # injetados ANTES da identidade individual. Store vazio/ausente -> [] ->
+        # prompt byte-a-byte idêntico ao de antes (a injeção só existe se o
+        # operador autorou algo). Ordem lexicográfica (SystemFileStore#list).
+        def system_parts
+          return [] unless @system_files
+
+          @system_files.list.map { |name| @system_files.read(name).to_s }
         end
 
         # Store por-agente primeiro (D3 revisado), disco depois (compat/seed).

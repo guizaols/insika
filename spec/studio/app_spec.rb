@@ -72,9 +72,22 @@ RSpec.describe Studio::App do
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
-                memory: {}, sessions: {})
+                memory: {}, sessions: {}, settings: nil, llm_providers: [],
+                mcp_instances: [], system_files: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
+    # Stores de config da Etapa G: REAIS sobre um ConfigStore em memória (o
+    # Studio lê deles ao renderizar; escreve via os Commands do bus). Semeados
+    # pelos params para exercitar o read-path de settings/LLM/MCP/system-files.
+    cfg = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
+    settings_store = Harness::SettingsStore.new(config_store: cfg)
+    settings_store.update(settings) if settings
+    provider_store = Harness::LLMProviderStore.new(config_store: cfg)
+    llm_providers.each { |p| provider_store.upsert(p) }
+    mcp_store = Harness::McpStore.new(config_store: cfg)
+    mcp_instances.each { |m| mcp_store.upsert(m) }
+    system_file_store = Harness::SystemFileStore.new(config_store: cfg)
+    system_files.each { |name, content| system_file_store.write(name, content) }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: nil, config: { admin_token: admin_token },
@@ -84,6 +97,8 @@ RSpec.describe Studio::App do
       tool_catalog: ToolCatalogDouble.new(tools),
       memory_store: MemoryStoreDouble.new(memory),
       session_store: SessionStoreDouble.new(sessions),
+      settings_store: settings_store, llm_provider_store: provider_store,
+      mcp_store: mcp_store, system_file_store: system_file_store,
       session_secret: "x" * 64
     )
     [app, bus]
@@ -518,5 +533,143 @@ RSpec.describe Studio::App do
     app, = build_app(sessions: { "sess-abc123456789" => sess })
     body = login(app).get("/agents/bia").body
     expect(body).to include("/studio/sessions/sess-abc123456789")
+  end
+
+  # --- Settings (task 18) --------------------------------------------------
+
+  it "a app-bar tem os links da Etapa G (mcp/sistema/chats/settings)" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    %w[/studio/mcp /studio/system-files /studio/chats /studio/settings].each do |href|
+      expect(body).to include("href=\"#{href}\"")
+    end
+  end
+
+  it "settings renderiza os defaults e despacha update_settings com tipos nativos" do
+    app, bus = build_app
+    client = login(app)
+    res = client.get("/settings")
+    expect(res.status).to eq(200)
+    expect(res.body).to include('name="turn_timeout"')
+    csrf = csrf_from(res.body)
+    client.post("/settings", params: {
+                  "streaming" => "1", "turn_timeout" => "300", "keep_last" => "40",
+                  "compaction_enabled" => "1", "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch["streaming"]).to be(true)
+    expect(patch["turn_timeout"]).to eq(300)
+    expect(patch["compaction"]).to eq({ "enabled" => true, "keep_last" => 40 })
+  end
+
+  it "settings sem checkbox de streaming manda streaming=false" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings", params: { "turn_timeout" => "90", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["streaming"]).to be(false)
+  end
+
+  it "settings lista providers com a chave MASCARADA (nunca plaintext)" do
+    app, = build_app(llm_providers: [{ "api" => "deepseek", "api_key" => "sk-secret", "models" => %w[deepseek-chat] }])
+    body = login(app).get("/settings").body
+    expect(body).to include("deepseek")
+    expect(body).to include("__OCULTO__")
+    expect(body).not_to include("sk-secret")
+  end
+
+  it "salvar provider despacha upsert_llm_provider com models parseados" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings/providers", params: {
+                  "api" => "openai", "base_url" => "https://api.openai.com/v1",
+                  "api_key" => "sk-1", "models" => "gpt-4o, gpt-4o-mini", "_csrf" => csrf
+                })
+    cmd = bus.last(:upsert_llm_provider)
+    expect(cmd.payload[:api]).to eq("openai")
+    expect(cmd.payload[:models]).to eq(%w[gpt-4o gpt-4o-mini])
+  end
+
+  it "remover provider despacha delete_llm_provider" do
+    app, bus = build_app(llm_providers: [{ "api" => "openai", "api_key" => "sk-1" }])
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings/providers/delete", params: { "api" => "openai", "_csrf" => csrf })
+    expect(bus.last(:delete_llm_provider).payload).to include(api: "openai")
+  end
+
+  # --- MCP (task 18) -------------------------------------------------------
+
+  it "mcp lista instâncias com env MASCARADO e despacha upsert_mcp (env por linhas)" do
+    app, bus = build_app(mcp_instances: [{ "name" => "tavily", "env" => { "TAVILY_KEY" => "tvly-real" } }])
+    client = login(app)
+    res = client.get("/mcp")
+    expect(res.status).to eq(200)
+    expect(res.body).to include("tavily")
+    expect(res.body).to include("TAVILY_KEY=__OCULTO__")
+    expect(res.body).not_to include("tvly-real")
+    csrf = csrf_from(res.body)
+    client.post("/mcp", params: {
+                  "name" => "github", "transport" => "stdio",
+                  "command" => "npx server", "enabled" => "1",
+                  "env" => "GITHUB_TOKEN=ghp-1\n# comentário\nEMPTY=", "_csrf" => csrf
+                })
+    cmd = bus.last(:upsert_mcp)
+    expect(cmd.payload[:name]).to eq("github")
+    expect(cmd.payload[:enabled]).to be(true)
+    expect(cmd.payload[:env]).to eq({ "GITHUB_TOKEN" => "ghp-1", "EMPTY" => "" })
+  end
+
+  it "remover instância MCP despacha delete_mcp" do
+    app, bus = build_app(mcp_instances: [{ "name" => "tavily" }])
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    client.post("/mcp/delete", params: { "name" => "tavily", "_csrf" => csrf })
+    expect(bus.last(:delete_mcp).payload).to include(name: "tavily")
+  end
+
+  # --- System-files (task 19) ----------------------------------------------
+
+  it "system-files lista arquivos globais e usa o island code-editor" do
+    app, = build_app(system_files: { "HOUSE.md" => "regras da casa" })
+    body = login(app).get("/system-files").body
+    expect(body).to include("HOUSE.md")
+    expect(body).to include("regras da casa")
+    expect(body).to include('data-controller="code-editor"')
+  end
+
+  it "salvar arquivo de sistema despacha write_system_file" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/system-files").body)
+    client.post("/system-files", params: { "file" => "RULES.md", "content" => "# Regras", "_csrf" => csrf })
+    expect(bus.last(:write_system_file).payload).to include(file: "RULES.md", content: "# Regras")
+  end
+
+  it "remover/restaurar arquivo de sistema despacham seus Commands" do
+    app, bus = build_app(system_files: { "H.md" => "x" })
+    client = login(app)
+    csrf = csrf_from(client.get("/system-files").body)
+    client.post("/system-files/delete", params: { "file" => "H.md", "_csrf" => csrf })
+    client.post("/system-files/restore", params: { "file" => "H.md", "version" => "0", "_csrf" => csrf })
+    expect(bus.last(:delete_system_file).payload).to include(file: "H.md")
+    expect(bus.last(:restore_system_file).payload).to include(file: "H.md", version: "0")
+  end
+
+  # --- Chats (task 19) -----------------------------------------------------
+
+  it "chats lista as conversas e linka pro viewer" do
+    sess = StoredSession.new(id: "sess-chat-000001", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-chat-000001" => sess })
+    body = login(app).get("/chats").body
+    expect(body).to include("/studio/sessions/sess-chat-000001")
+  end
+
+  it "chats vazio mostra empty-state" do
+    app, = build_app
+    body = login(app).get("/chats").body
+    expect(body).to include("Nenhuma conversa")
   end
 end
