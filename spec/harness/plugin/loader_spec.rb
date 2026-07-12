@@ -13,13 +13,14 @@ RSpec.describe Harness::Plugin::Loader do
   let(:tools) { Harness::ToolRegistry.new }
   let(:workflows) { Harness::WorkflowRegistry.new }
   let(:policies) { Harness::PolicyRegistry.new }
+  let(:capabilities) { Harness::CapabilityRegistry.new }
   let(:hooks) { Harness::Hooks.new }
   let(:middleware) { [] }
   let(:context_providers) { [] }
   let(:event_stream) { SpyEventStream.new } # spec/support/fakes.rb
 
   def registries
-    { tools: tools, workflows: workflows, policies: policies,
+    { tools: tools, workflows: workflows, policies: policies, capabilities: capabilities,
       hooks: hooks, middleware: middleware, context_providers: context_providers }
   end
 
@@ -268,17 +269,127 @@ RSpec.describe Harness::Plugin::Loader do
     expect(tools.names).to eq([])
   end
 
-  it "contracts.capabilities: warn reservado + plugin carrega normalmente" do
-    write_plugin("cap", <<~YAML, poro_entry("CapPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
-      id: cap
-      module: CapPlugin
-      entry: plugin.rb
-      contracts: { tools: [t], capabilities: [foo] }
-    YAML
+  describe "contracts.capabilities (P2B task 4)" do
+    it "declarada em contracts mas sem register_capability: carrega SEM warn de reservado" do
+      write_plugin("cap", <<~YAML, poro_entry("CapPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
+        id: cap
+        module: CapPlugin
+        entry: plugin.rb
+        contracts: { tools: [t], capabilities: [foo] }
+      YAML
 
-    result = nil
-    expect { result = load(enabled: %w[cap]) }.to output(/capabilities é reservado/).to_stderr
-    expect(result[:plugins].map(&:id)).to eq(["cap"])
+      result = nil
+      expect { result = load(enabled: %w[cap]) }.not_to output(/reservado/).to_stderr
+      expect(result[:plugins].map(&:id)).to eq(["cap"])
+      expect(capabilities.capabilities).to eq([])
+    end
+
+    it "expõe capability_names em Discovered" do
+      write_plugin("cap", "id: cap\ncontracts: { capabilities: [a, b] }\n", nil)
+      result = load(enabled: %w[cap])
+      expect(result[:plugins].first.capability_names).to eq(%w[a b])
+    end
+
+    it "register_capability com tool: registra um Provider :tool no CapabilityRegistry" do
+      write_plugin("cap", <<~YAML, poro_entry("CapToolPlugin", <<~BODY))
+        id: cap
+        module: CapToolPlugin
+        entry: plugin.rb
+        contracts: { tools: [browse_impl], capabilities: [browse] }
+      YAML
+        def self.register(api)
+          api.register_tool("browse_impl", Class.new)
+          api.register_capability(:browse, tool: "browse_impl", priority: 100)
+        end
+      BODY
+
+      load(enabled: %w[cap])
+      providers = capabilities.providers(:browse)
+      expect(providers.size).to eq(1)
+      expect(providers.first).to have_attributes(impl_name: "browse_impl", kind: :tool,
+                                                 plugin: "cap", priority: 100)
+    end
+
+    it "register_capability com workflow: registra :workflow + warn 'sem consumidor'" do
+      write_plugin("cap", <<~YAML, poro_entry("CapWfPlugin", <<~BODY))
+        id: cap
+        module: CapWfPlugin
+        entry: plugin.rb
+        contracts: { workflows: [research_wf], capabilities: [research] }
+      YAML
+        def self.register(api)
+          api.register_workflow("research_wf", -> {})
+          api.register_capability(:research, workflow: "research_wf")
+        end
+      BODY
+
+      expect { load(enabled: %w[cap]) }.to output(/sem consumidor/).to_stderr
+      expect(capabilities.providers(:research).first.kind).to eq(:workflow)
+    end
+
+    it "capability NÃO declarada em contracts: warn + nada registrado" do
+      write_plugin("cap", <<~YAML, poro_entry("CapUndeclPlugin", <<~BODY))
+        id: cap
+        module: CapUndeclPlugin
+        entry: plugin.rb
+        contracts: { tools: [t], capabilities: [] }
+      YAML
+        def self.register(api)
+          api.register_tool("t", Class.new)
+          api.register_capability(:undeclared, tool: "t")
+        end
+      BODY
+
+      expect { load(enabled: %w[cap]) }.to output(/não declarada em contracts.capabilities/).to_stderr
+      expect(capabilities.capabilities).to eq([])
+    end
+
+    it "tool: e workflow: juntos: warn + nada registrado" do
+      write_plugin("cap", <<~YAML, poro_entry("CapBothPlugin", <<~BODY))
+        id: cap
+        module: CapBothPlugin
+        entry: plugin.rb
+        contracts: { capabilities: [x] }
+      YAML
+        def self.register(api) = api.register_capability(:x, tool: "t", workflow: "w")
+      BODY
+
+      expect { load(enabled: %w[cap]) }.to output(/apenas tool: OU workflow:/).to_stderr
+      expect(capabilities.capabilities).to eq([])
+    end
+
+    it "sem tool: nem workflow: warn + nada registrado" do
+      write_plugin("cap", <<~YAML, poro_entry("CapNeitherPlugin", <<~BODY))
+        id: cap
+        module: CapNeitherPlugin
+        entry: plugin.rb
+        contracts: { capabilities: [x] }
+      YAML
+        def self.register(api) = api.register_capability(:x)
+      BODY
+
+      expect { load(enabled: %w[cap]) }.to output(/informe tool: ou workflow:/).to_stderr
+      expect(capabilities.capabilities).to eq([])
+    end
+
+    it "rollback: entry registra capability e levanta -> nada residual no CapabilityRegistry" do
+      write_plugin("cap", <<~YAML, poro_entry("CapBoomPlugin", <<~BODY))
+        id: cap
+        module: CapBoomPlugin
+        entry: plugin.rb
+        contracts: { tools: [t], capabilities: [browse] }
+      YAML
+        def self.register(api)
+          api.register_tool("t", Class.new)
+          api.register_capability(:browse, tool: "t")
+          raise "boom"
+        end
+      BODY
+
+      expect { load(enabled: %w[cap]) }.to output(/boom/).to_stderr
+      expect(tools.names).to eq([])
+      expect(capabilities.capabilities).to eq([])
+    end
   end
 
   it "gating por enabled: id fora de enabled não carrega" do

@@ -65,4 +65,19 @@ RSpec.describe Harness::AgentProfile do
       expect(profile.prompt_refs).to eq(["r"])
     end
   end
+
+  describe "capabilities (P2B, RFC-0004 §6) — assimetria opt-in" do
+    it "default nil = NENHUMA capability (não 'todas', ao contrário de tools_allow)" do
+      expect(described_class.build(id: "a", model: "m").capabilities).to be_nil
+    end
+
+    it "aceita a lista explícita de intenções" do
+      profile = described_class.build(id: "a", model: "m", capabilities: [:browse, :search])
+      expect(profile.capabilities).to eq([:browse, :search])
+    end
+
+    it "perfil da Fase 1 (sem o kwarg) continua construível" do
+      expect { described_class.build(id: "a", model: "m") }.not_to raise_error
+    end
+  end
 end

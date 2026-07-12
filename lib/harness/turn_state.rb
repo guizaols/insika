@@ -16,6 +16,13 @@ module Harness
     # corrente <-> decorators de tool (side-effects/skip, task 13).
     attr_accessor :current_tool_call
 
+    # Interno (P2B, D4): impl_name(String) -> nome ESTÁVEL da capability que o
+    # resolveu, calculado por resolve_capabilities ANTES do policy_request e
+    # consultado DEPOIS de @policy_engine.decide, na junção pós-Policy, para
+    # decidir quais impls entram como Capability::ResolvedTool. {} = sem
+    # capability_registry ou profile.capabilities vazio (paridade Fase 1).
+    attr_accessor :capability_names
+
     # P2-02: gate de aprovação. `requires_approval` = nomes de tools que exigem
     # aprovação (Resolution); `approval_coordinator` = objeto (o Executor) que
     # cria o PendingAction/suspende/aguarda; `actor` = mailbox do turno (usada
@@ -27,6 +34,7 @@ module Harness
       @profile = profile
       @turn = turn
       @message = message
+      @capability_names = {}
     end
   end
 end
