@@ -17,7 +17,7 @@ module Harness
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
-                   capability_registry: nil, tool_catalog: nil)
+                   capability_registry: nil, tool_catalog: nil, memory_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -36,6 +36,9 @@ module Harness
       # particionada, mesmo que um profile declare `tools_deferred` — paridade
       # Fase 1/2-A (todo wiring existente cabeia 100% eager, L2).
       @tool_catalog = tool_catalog
+      # Memória cross-session (P2C): MemoryStore opcional. nil = sem read/write de
+      # memória, mesmo com profile.memory — paridade Fase 1 (gate duplo, P2C-02).
+      @memory_store = memory_store
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
       @supervised = false      # modo serving? (L4) — ver #turn_parent
@@ -669,6 +672,7 @@ module Harness
       require "ruby_llm"
       require_relative "tools/load_skill"
       require_relative "tools/tool_search" # P2B: builtin de Tool Search (lazy, como load_skill)
+      require_relative "tools/remember"    # P2C: builtin de escrita de memória (lazy)
       RubyLLM.chat(
         model: profile.model,
         provider: profile.provider,
@@ -713,6 +717,15 @@ module Harness
       # vem da RESOLUTION (policy), não do provider de contexto.
       skill_names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
       tools << Tools::LoadSkill.new(@skill_catalog, skill_names) unless skill_names.empty?
+
+      # remember (P2C-02, L2): tool de SISTEMA de escrita da memória — cabeada só
+      # com @memory_store presente E profile.memory (gate duplo = paridade Fase 1
+      # por omissão de qualquer um). Nunca envelopada (como load_skill/tool_search).
+      if @memory_store && state.profile.memory
+        tools << Tools::Remember.new(@memory_store, state.tenant,
+                                     event_stream: @event_stream, state: state)
+      end
+
       chat.with_tools(*tools) unless tools.empty?
 
       chat
