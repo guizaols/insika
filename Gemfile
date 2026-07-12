@@ -14,6 +14,13 @@ gem "falcon", "~> 0.55"    # servidor async (apenas em harness-server)
 gem "sqlite3", "~> 2.0"    # apenas backend SQLite
 gem "rack", "~> 3.0"       # transporte (apenas em harness-server)
 
+# Studio (Fase 4 — UI de gestão). FRAMEWORK NA BORDA: usado SÓ pelo app `studio/`
+# (roteador em árvore fino sob Falcon, sem ActiveRecord); `lib/harness` e `server/`
+# NÃO dependem de Roda. tilt+erubi rendem os templates ERB com escape automático.
+gem "roda", "~> 3.85"      # apenas em harness-studio
+gem "tilt", "~> 2.8"       # render de templates (studio)
+gem "erubi", "~> 1.13"     # ERB com escape automático (XSS-safe) para o studio
+
 group :development, :test do
   gem "rspec"
 end

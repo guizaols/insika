@@ -1,0 +1,31 @@
+<header class="page-head">
+  <h1>Agentes<span class="sub"><%= @agents.size %> configurado(s) · cada um a sua BIA</span></h1>
+  <a class="btn primary" href="/studio/playground">testar no playground →</a>
+</header>
+
+<% if @agents.empty? %>
+  <div class="empty">Nenhum agente ainda. A criação de agentes chega na próxima etapa (autoria).</div>
+<% else %>
+  <div class="agent-grid">
+    <% @agents.each do |a| %>
+      <article class="card agent">
+        <div class="agent-head">
+          <span class="avatar"><%= a.id[0, 2].upcase %></span>
+          <div>
+            <div class="agent-id"><%= a.id %></div>
+            <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
+          </div>
+          <% if a.memory %><span class="pill info">memória</span><% end %>
+        </div>
+        <dl class="agent-meta">
+          <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "todas" : a.tools_allow.size %></dd></div>
+          <div><dt>skills</dt><dd><%= Array(a.skills).size %></dd></div>
+          <div><dt>políticas</dt><dd><%= Array(a.policies).size %></dd></div>
+        </dl>
+        <div class="agent-actions">
+          <a class="btn ghost" href="/studio/playground?agent=<%= a.id %>">testar</a>
+        </div>
+      </article>
+    <% end %>
+  </div>
+<% end %>
