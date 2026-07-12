@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + [P2B-01](../P2B-01-capability-registry.md) · [P2B-02](../P2B-02-tool-search.md)
 > **Gerado:** 2026-07-10
-> **Progress:** 10/12 tasks complete (PR 1 / Etapa A ✅ · PR 2 / Etapa B ✅)
+> **Progress:** 12/12 tasks complete — fatia B COMPLETA (Etapas A · B · C) ✅
 > **Base:** Fase 2-A completa (main @ merge PR #13)
 
 ---
@@ -21,8 +21,8 @@
 | 8 | `Context::Providers::ToolSearch` (fragmento `<available_tools>`) | [task-08.md](./task-08.md) | P2B-02 | ✅ DONE | Med | 0005 §2/§5, L4 |
 | 9 | `Tools::ToolSearch` builtin: matcher + promoção `chat.with_tools` mid-loop + `:tool_search` | [task-09.md](./task-09.md) | P2B-02 | ✅ DONE | High | 0005 §5, D6/L5 |
 | 10 | Executor `configure_chat`: partição eager/deferred + `ToolSearch` de sistema (catálogo vem do provider, task 8) | [task-10.md](./task-10.md) | P2B-02 | ✅ DONE | Med | 0005 §5, L6 |
-| 11 | Wiring (`CAPABILITY_REGISTRY`+`TOOL_CATALOG`+provider) + catálogo de eventos D5 (`:capability_resolved`/`:tool_search`) | [task-11.md](./task-11.md) | P2B-01/02 | ⬜ TODO | Low | 00 D7 |
-| 12 | Smoke E2E fatia B: resolução por priority/ambíguo/indisponível + promoção deferred no turno | [task-12.md](./task-12.md) | P2B-01..02 | ⬜ TODO | Med | 00 §"Critério" |
+| 11 | Wiring (`CAPABILITY_REGISTRY`+`TOOL_CATALOG`+provider) + catálogo de eventos D5 (`:capability_resolved`/`:tool_search`) | [task-11.md](./task-11.md) | P2B-01/02 | ✅ DONE | Low | 00 D7 |
+| 12 | Smoke E2E fatia B: resolução por priority/ambíguo/indisponível + promoção deferred no turno | [task-12.md](./task-12.md) | P2B-01..02 | ✅ DONE | Med | 00 §"Critério" |
 
 ### Status Legend
 - ⬜ TODO — Not started
@@ -80,7 +80,8 @@ paralelos que tocam o mesmo arquivo):
   - **PR 2 — Etapa B** (tasks 6–10) ✅ **DONE**: Tool Catalog + Tool Search (provider
     + builtin, promoção mid-loop) + partição eager/deferred no Executor + fix do nome
     do `LoadSkill`. Suíte verde (767 exemplos).
-  - **PR 3 — Etapa C** (tasks 11–12): wiring + catálogo de eventos + smoke E2E.
+  - **PR 3 — Etapa C** (tasks 11–12) ✅ **DONE**: wiring (composition root) +
+    catálogo de eventos D5 + smoke E2E dos 4 critérios. Suíte verde (775 exemplos).
 
 ### Cobertura da tech spec
 - **P2B-01** (capability): registry+resolução (1), erros+ResolvedTool (2), profile
