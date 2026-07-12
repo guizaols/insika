@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Taxonomia única de erros da Fase 1 (00-overview D4).
+  # Taxonomia única de erros.
   # Regra geral: erro vira evento, task tem estado terminal explícito,
   # checkpoint nunca é corrompido.
   class Error < StandardError; end
@@ -36,7 +36,7 @@ module Harness
 
   # Estouro de timeout de estágio. Dentro do namespace Harness a constante
   # sombreia ::Timeout::Error da stdlib — referencie sem :: aqui dentro
-  # (D4 proíbe Timeout.timeout de stdlib de qualquer forma).
+  # (o contrato proíbe Timeout.timeout de stdlib de qualquer forma).
   class TimeoutError < Error
     attr_reader :stage
 
@@ -46,13 +46,13 @@ module Harness
     end
   end
 
-  # Resolução de capability falhou (RFC-0004 §5, P2B-01 D2) -> task :failed no
-  # estágio :capability. Base da subárvore; NÃO ganha evento próprio (P2B overview
-  # D7) — propaga pelos eventos :error/:task_failed já existentes, mesma
-  # disciplina da taxonomia D4 da Fase 1. Nunca levantada direto (só as subclasses).
+  # Resolução de capability falhou -> task :failed no
+  # estágio :capability. Base da subárvore; NÃO ganha evento próprio —
+  # propaga pelos eventos :error/:task_failed já existentes, mesma
+  # disciplina da taxonomia. Nunca levantada direto (só as subclasses).
   class CapabilityError < Error; end
 
-  # 0 candidatos sobraram após disponibilidade + deny (P2B-01 D2/L3).
+  # 0 candidatos sobraram após disponibilidade + deny.
   class CapabilityUnavailable < CapabilityError
     attr_reader :capability
 
@@ -63,7 +63,7 @@ module Harness
   end
 
   # >=2 candidatos empatados no topo (mesma priority E mesmo plugin) -> erro de
-  # configuração, NUNCA escolha silenciosa (P2B-01 D2/L4). `candidates` carrega o
+  # configuração, NUNCA escolha silenciosa. `candidates` carrega o
   # suficiente para o operador desempatar no manifesto.
   class CapabilityAmbiguous < CapabilityError
     attr_reader :capability, :candidates

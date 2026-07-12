@@ -3,7 +3,7 @@
 module Harness
   module Server
     module A2A
-      # Config dos agentes A2A remotos (P3B, D6). Parse de "id=url,id2=url2".
+      # Config dos agentes A2A remotos. Parse de "id=url,id2=url2".
       module Remotes
         Remote = Data.define(:id, :url, :description)
 

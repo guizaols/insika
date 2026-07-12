@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa B): cria um agente (AgentProfile) em
+    # Command de controle: cria um agente (AgentProfile) em
     # RUNTIME e persiste no ProfileSource (ConfigStore). É o "cada um cria sua
     # BIA". Síncrono; não cria Task. -> AgentProfile (round-tripado do store).
     class CreateAgent

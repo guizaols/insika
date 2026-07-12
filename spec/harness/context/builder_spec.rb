@@ -120,6 +120,18 @@ RSpec.describe Harness::ContextBuilder do
       tokens = pkg.fragments.map(&:tokens)
       expect(tokens).to include(2, 999)
     end
+
+    it "history: estima no texto da mensagem, não no Hash#to_s" do
+      body = "x" * 40
+      p = provider(id: "P", fragments: [
+                     frag({ role: "user", content: body }, placement: :history, source: "P")
+                   ])
+      pkg = build([p])
+      # conta os valores ("user " + body = 45 chars -> ceil(45/4)=12), NÃO o
+      # inspect "{:role=>\"user\", :content=>\"xxxx...\"}" (que daria ~24).
+      expect(pkg.fragments.first.tokens).to eq(("user #{body}").length.ceildiv(4))
+      expect(pkg.fragments.first.tokens).to be < "{role: \"user\", content: \"#{body}\"}".length.ceildiv(4)
+    end
   end
 
   describe "orçamento (D8, L1)" do

@@ -3,7 +3,7 @@
 module Harness
   module Server
     module A2A
-      # Tradução de message parts (P3A-01, D4/L3): só TextPart nesta fatia.
+      # Tradução de message parts: só TextPart nesta fatia.
       # Tolera `kind` (A2A ~v0.2+) e `type` (spec mais antigo) na borda.
       module Message
         # A2A Message (Hash) -> String (concatena os TextPart). "" se nenhum.

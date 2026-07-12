@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Providers de LLM autorados em runtime (Fase 4 — Studio, D6). Um record por
+  # Providers de LLM autorados em runtime. Um record por
   # provider no ConfigStore (scope "llm_providers"), keyed pelo slug da API
   # (`deepseek`, `openai`, ...). Guarda base_url/auth_header/models e a `api_key`.
   #
@@ -11,6 +11,8 @@ module Harness
   # Na escrita, o sentinel de volta preserva a chave; string nova substitui; ""
   # limpa (ver Harness::SecretMasking).
   class LLMProviderStore
+    include Coercion
+
     SCOPE = "llm_providers"
 
     def initialize(config_store:)
@@ -77,7 +79,5 @@ module Harness
     def symbolize(attrs)
       (attrs || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
     end
-
-    def presence(str) = str.nil? || str.to_s.empty? ? nil : str.to_s
   end
 end

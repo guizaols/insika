@@ -4,19 +4,21 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de domínio das sessões (doc 02 §2-§3). Persiste transcript + vars
-  # sobre um Harness::Store injetado (doc 01 §4), com schema fixo
+  # Store de domínio das sessões. Persiste transcript + vars
+  # sobre um Harness::Store injetado, com schema fixo
   # `session:<id>` no scope "sessions".
   #
   # O transcript persistido é a FONTE DA VERDADE para reconstrução; eventos ao
-  # vivo são só estado de entrega (doc 02 §3, RFC-0006 §2.1). O shape das
+  # vivo são só estado de entrega. O shape das
   # mensagens (`{"role"=>, "content"=>}`, role ∈ user|assistant|system|tool) é
   # o mesmo que `Runner#seed_history` já consome — o Executor não converte nada.
   #
   # Normaliza symbol→string na ESCRITA (o backend só garante round-trip de
-  # tipos JSON, doc 01 §2); a LEITURA devolve os dados como vêm do backend
+  # tipos JSON); a LEITURA devolve os dados como vêm do backend
   # (chaves string), nunca simetriza de volta para symbols.
   class SessionStore
+    include Coercion
+
     SCOPE = "sessions"
     KEY_PREFIX = "session:"
 
@@ -24,14 +26,14 @@ module Harness
                           :created_at, :updated_at)
 
     # store: qualquer Harness::Store (Memory, SQLite, ...) — injetado pelo
-    # composition root (config/wiring.rb, doc 01 §4). O SessionStore não conhece
+    # composition root (config/wiring.rb). O SessionStore não conhece
     # backend concreto.
     def initialize(store:)
       @store = store
     end
 
     # -> Session; ArgumentError se id já existe (sessão duplicada é violação de
-    # domínio, doc 02 §6 — não sobrescreve silenciosamente).
+    # domínio — não sobrescreve silenciosamente).
     def create(id: SecureRandom.uuid, vars: {})
       key = key_for(id)
       raise ArgumentError, "sessão já existe: #{id}" unless @store.get(SCOPE, key).nil?
@@ -56,7 +58,7 @@ module Harness
     end
 
     # -> Session (transcript += messages). Read-modify-write no fiber da própria
-    # task, sem lock (um nó, um dono por task — doc 02 §5, D7). Cada mensagem
+    # task, sem lock (um nó, um dono por task). Cada mensagem
     # ganha "at" (ISO8601 UTC) se não vier. NotFoundError se a sessão não existe.
     def append_messages(id, messages)
       record = fetch!(id)
@@ -69,7 +71,7 @@ module Harness
     end
 
     # -> Session (merge RASO: chave aninhada existente é substituída inteira,
-    # não fundida — doc 02 §2). NotFoundError se ausente.
+    # não fundida). NotFoundError se ausente.
     def update_vars(id, vars)
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
@@ -78,12 +80,12 @@ module Harness
       to_session(record)
     end
 
-    # -> bool (delega ao backend: false para id inexistente, doc 01 §2)
+    # -> bool (delega ao backend: false para id inexistente)
     def delete(id)
       @store.delete(SCOPE, key_for(id))
     end
 
-    # -> enumera ids sem o prefixo "session:" (Control UI, doc 07). Sem bloco,
+    # -> enumera ids sem o prefixo "session:". Sem bloco,
     # retorna Enumerator.
     def each_id
       return enum_for(:each_id) unless block_given?
@@ -99,7 +101,7 @@ module Harness
       "#{KEY_PREFIX}#{id}"
     end
 
-    # Carrega o record cru; NotFoundError se ausente (D4: sessão inexistente ->
+    # Carrega o record cru; NotFoundError se ausente (sessão inexistente ->
     # HTTP 404). Erros do backend (StoreError) propagam sem re-embrulhar.
     def fetch!(id)
       record = @store.get(SCOPE, key_for(id))
@@ -127,22 +129,6 @@ module Harness
 
     def timestamp
       Time.now.utc.iso8601
-    end
-
-    # Normalização symbol->string em Ruby puro (sem ActiveSupport, restrição 3
-    # do doc 00 §5): chaves e valores Symbol viram String, recursivo em
-    # Hash/Array; demais tipos passam intactos (o backend rejeita não-JSONable).
-    def deep_stringify(obj)
-      case obj
-      when Hash
-        obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = deep_stringify(v) }
-      when Array
-        obj.map { |v| deep_stringify(v) }
-      when Symbol
-        obj.to_s
-      else
-        obj
-      end
     end
   end
 end

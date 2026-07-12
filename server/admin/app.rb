@@ -8,10 +8,10 @@ require "time"
 module Harness
   module Server
     module Admin
-      # Esqueleto read-only do Control UI (RFC-0007, doc 07 §1-§2). Fase 1: só
+      # Esqueleto read-only do Control UI: só
       # LEITURA de stores/catálogos/registries já injetados no Server::App — não
-      # despacha Command nem escreve em store (regra constitucional doc 07 §4).
-      # Render com ERB da stdlib (L3): zero deps, zero asset pipeline.
+      # despacha Command nem escreve em store (regra constitucional).
+      # Render com ERB da stdlib: zero deps, zero asset pipeline.
       #
       # A auth (AdminAuth) e o CORS são aplicados ANTES pelo Server::App; este
       # app só roteia GETs e renderiza.
@@ -21,9 +21,9 @@ module Harness
         # Defense-in-depth (o painel renderiza transcripts de usuário/LLM; `h()`
         # é a 1ª barreira, isto é a 2ª). CSP bloqueia carga/exfil para origens
         # externas — `connect-src 'self'` restringe o EventSource de events.erb à
-        # mesma origem; `'unsafe-inline'` cobre o <style>/<script> inline (L3,
-        # zero asset pipeline). `nosniff` evita content-type sniffing.
-        # `script-src 'self'` (P2-04): permite o Turbo/Stimulus vendored em
+        # mesma origem; `'unsafe-inline'` cobre o <style>/<script> inline (zero
+        # asset pipeline). `nosniff` evita content-type sniffing.
+        # `script-src 'self'`: permite o Turbo/Stimulus vendored em
         # /admin/assets/*; `'unsafe-inline'` cobre o <style> inline. `connect-src
         # 'self'` casa com o EventSource same-origin.
         HTML_HEADERS = {
@@ -47,7 +47,7 @@ module Harness
         end
 
         # req: Rack::Request (path já validado como /admin*; auth/CORS no Server::App).
-        # GET = leitura; POST = ação de escrita (P2-04). Outros métodos -> 404.
+        # GET = leitura; POST = ação de escrita. Outros métodos -> 404.
         def call(req)
           segments = req.path_info.split("/").reject(&:empty?)
           return write(req, segments) if req.post?
@@ -70,7 +70,7 @@ module Harness
 
         private
 
-        # --- Escrita (P2-04): traduz a ação da UI em Command, audita e responde
+        # --- Escrita: traduz a ação da UI em Command, audita e responde
         # Turbo Stream (se o cliente aceita) ou 303 redirect (degradação sem JS).
         def write(req, segments)
           case segments
@@ -83,7 +83,7 @@ module Harness
           end
         end
 
-        # Auditoria SEMPRE antes do dispatch (D6): mesmo que o Command falhe, a
+        # Auditoria SEMPRE antes do dispatch: mesmo que o Command falhe, a
         # tentativa do operador fica registrada no Event Stream. Erro do Command
         # (Validation/NotFound) vira turbo_stream/HTML de erro (não status HTTP —
         # o /admin é HTML).
@@ -133,7 +133,7 @@ module Harness
 
         def approval_payload(req, pending_id)
           form = Rack::Utils.parse_query(req.body&.read.to_s)
-          # mesmo operador do audit (D6): resolved_by no store bate com o :operator_action.
+          # mesmo operador do audit: resolved_by no store bate com o :operator_action.
           { pending_id: pending_id, decision: form["decision"] || "approved",
             operator: operator_of(req) }
         end
@@ -143,7 +143,7 @@ module Harness
           { agent: form["agent"], message: form["message"], session_id: form["session_id"] }.compact
         end
 
-        # Assets vendored (P2-04 L1): Turbo/Stimulus servidos localmente (sem CDN
+        # Assets vendored: Turbo/Stimulus servidos localmente (sem CDN
         # p/ respeitar a CSP, sem build). content-type js + cache curto.
         def asset(name)
           path = File.join(VIEWS_DIR, "..", "assets", File.basename(name))
@@ -182,8 +182,8 @@ module Harness
         end
 
         # Plugins carregados = agrupamento das Entry#plugin dos registries
-        # (doc 06 §2; nil = registrado direto no wiring/sistema). Evita um canal
-        # novo wiring->App (Notes da task).
+        # (nil = registrado direto no wiring/sistema). Evita um canal
+        # novo wiring->App.
         def plugin_groups
           tools = @registries[:tools].entries.group_by(&:plugin)
           workflows = @registries[:workflows].entries.group_by(&:plugin)
@@ -206,7 +206,7 @@ module Harness
 
         # Contexto de render das views. `h` (CGI.escapeHTML) escapa TODO valor
         # dinâmico — transcripts/payloads carregam conteúdo de usuário/LLM que
-        # encontra o browser do operador aqui (edge case XSS #1). `style`/`nav`
+        # encontra o browser do operador aqui (edge case XSS). `style`/`nav`
         # são parciais compartilhadas sem asset externo.
         class ViewContext
           def initialize(locals)
@@ -215,7 +215,7 @@ module Harness
 
           def h(value) = CGI.escapeHTML(value.to_s)
 
-          # Design system do console (RFC-0007). Tudo inline (CSP: 'unsafe-inline'
+          # Design system do console. Tudo inline (CSP: 'unsafe-inline'
           # cobre <style>/<script>; nenhum asset externo — CSP bloqueia mesmo).
           # Tema-aware: tokens em :root, redefinidos sob prefers-color-scheme:dark.
           def style

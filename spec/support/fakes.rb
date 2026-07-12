@@ -4,16 +4,17 @@
 # mínimo e determinístico. Vivem em spec/support de propósito: os componentes
 # reais chegam nas tasks 14-18; o wiring de produção fecha na task 26.
 
-# Espelho pobre do Context Builder (task 14). #call(request) -> ContextPackage
-# com system (do profile.base_prompt) e history na precedência do doc 04:
-# checkpoint.messages -> request.history -> mensagens da sessão -> [].
+# Espelho pobre do Context Builder. #call(request) -> ContextPackage com system
+# (do profile.base_prompt) e history na precedência: checkpoint.messages ->
+# history explícito (vars["history"], a convenção que o Session provider usa) ->
+# mensagens da sessão -> [].
 ContextPackage = Struct.new(:system, :history, :tool_context)
 
 class FakeContextBuilder
   def call(request)
     history =
       request.checkpoint&.messages ||
-      request.history ||
+      request.vars&.[]("history") ||
       request.session&.messages ||
       []
     ContextPackage.new(request.profile.base_prompt.to_s, history, nil)
@@ -25,9 +26,9 @@ class RaisingContextBuilder
   def call(_request) = raise Harness::ContextError.new("builder falhou", provider: :fake)
 end
 
-# Resolution-like (doc 05 §4). allowed_tools = instâncias injetadas;
-# allowed_skills = nomes (paridade Fase 0 até a task 17).
-Resolution = Struct.new(:allowed_tools, :allowed_skills)
+# Resolution-like. allowed_tools = instâncias injetadas; allowed_skills = nomes.
+# requires_approval espelha o contrato real (a Resolution sempre o tem).
+Resolution = Struct.new(:allowed_tools, :allowed_skills, :requires_approval)
 
 class NullPolicyEngine
   def initialize(allowed_tools: [])
@@ -35,7 +36,7 @@ class NullPolicyEngine
   end
 
   def decide(request)
-    Resolution.new(@allowed_tools, Array(request.candidate_skills).map(&:name))
+    Resolution.new(@allowed_tools, Array(request.candidate_skills).map(&:name), [])
   end
 end
 
@@ -96,4 +97,6 @@ class FakeToolRegistry
   def side_effect?(name)
     @side_effect_names.include?(name.to_s)
   end
+
+  def entries = [] # o Executor lê tool_registry.entries no policy_request
 end

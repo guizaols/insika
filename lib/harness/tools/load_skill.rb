@@ -8,10 +8,9 @@ module Harness
     # sob demanda. Respeita a allowlist do agente (o modelo não carrega uma
     # skill que a política não expôs).
     #
-    # Migrado da Fase 0 sem mudança de lógica — só o módulo AgentRuntime ->
-    # Harness (doc 00 §4). `require "ruby_llm"` fica NESTE arquivo (herda de
+    # `require "ruby_llm"` fica NESTE arquivo (herda de
     # RubyLLM::Tool), por isso ele NÃO entra em lib/harness.rb: o Executor o
-    # carrega lazy dentro de create_chat (D9).
+    # carrega lazy dentro de create_chat.
     class LoadSkill < RubyLLM::Tool
       description "Carrega as instruções completas (SKILL.md) de uma skill pelo nome"
       param :name, desc: "Nome exato da skill, conforme listado em <available_skills>"
@@ -19,7 +18,7 @@ module Harness
       # RubyLLM::Tool#name deriva de self.class.name — p/ classe aninhada produz
       # "harness--tools--load_skill", não "load_skill" (o que wire_callbacks/
       # :skill_activated e o SkillCatalog#format_for_prompt assumem). Override
-      # explícito (fix do bug latente da Fase 0 — P2B-02 L7). Coexiste com
+      # explícito. Coexiste com
       # `param :name` (verificado: a param continua presente).
       def name = "load_skill"
 

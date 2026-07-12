@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa C): restaura uma versão antiga de um
+    # Command de controle: restaura uma versão antiga de um
     # arquivo de prompt como o conteúdo atual (nova escrita — o histórico é
     # linear, sem rebobinar). `version` = índice em `versions` (0 = mais recente
     # antiga). -> { agent_id, file, updated_at }.

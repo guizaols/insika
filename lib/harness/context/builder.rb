@@ -4,7 +4,7 @@ require "async"
 require "time"
 
 module Harness
-  # Saída do Builder (doc 04 §2), consumida pelo Executor no estágio 5.
+  # Saída do Builder, consumida pelo Executor no estágio 5.
   #   system:       String (concatenação final p/ with_instructions)
   #   history:      [{role:, content:}] (p/ seed do chat)
   #   tool_context: String | nil
@@ -12,9 +12,9 @@ module Harness
   #   budget:       { cap:, used:, evicted: [source] }
   ContextPackage = Data.define(:system, :history, :tool_context, :fragments, :budget)
 
-  # Estágio 2 da pipeline (doc 03 §4): o Runtime NUNCA monta prompt — pede o
-  # pacote ao Builder. Implementa doc 04 §4 (seleção -> produção fan-out ->
-  # coleta/estimativa -> orçamento com evicção -> montagem canônica).
+  # Estágio 2 da pipeline: o Runtime NUNCA monta prompt — pede o
+  # pacote ao Builder. Implementa seleção -> produção fan-out ->
+  # coleta/estimativa -> orçamento com evicção -> montagem canônica.
   class ContextBuilder
     def initialize(providers:, event_stream:, hooks: Hooks.new, estimator: TokenEstimator)
       @providers = providers
@@ -23,7 +23,7 @@ module Harness
       @estimator = estimator
     end
 
-    # O par :prompt (doc 04 §4) é envolvido AQUI, não no Executor: before_prompt
+    # O par :prompt é envolvido AQUI, não no Executor: before_prompt
     # pode reescrever o ContextRequest (providers rodam com o alterado);
     # after_prompt pode reescrever o ContextPackage montado. IMPORTANTE: o
     # Executor chama só `builder.call(request)` — NÃO envolver com
@@ -34,7 +34,6 @@ module Harness
 
     private
 
-    # Passos 1-6 do doc 04 §4.
     def build_package(request)
       selected = select_providers(request.profile)
       fragments = estimate_tokens(produce(selected, request))
@@ -48,24 +47,16 @@ module Harness
       assemble(fragments, cap, evicted)
     end
 
-    # Passo 1: seleção — enabled_for? E allowlist do perfil (D6).
+    # Passo 1: seleção — enabled_for? E allowlist do perfil.
     def select_providers(profile)
       @providers.select do |p|
-        p.enabled_for?(profile) && allowlisted?(p, profile.context_providers)
+        p.enabled_for?(profile) && Allowlist.allows?(profile.context_providers, p.id)
       end
     end
 
-    # Allowlist única (D6): nil -> todos; [] -> nenhum; [names] -> subconjunto.
-    def allowlisted?(provider, allow)
-      return true if allow.nil?
-      return false if allow.empty?
-
-      Array(allow).map(&:to_s).include?(provider.id.to_s)
-    end
-
-    # Passo 2: produção em fan-out com BARRIER (L6) e timeout por provider
-    # (D4, with_timeout — nunca Timeout.timeout). Cada provider é um fiber FILHO
-    # do fiber corrente: cancelar a task cancela a produção em voo (doc 04 §5).
+    # Passo 2: produção em fan-out com BARRIER e timeout por provider
+    # (with_timeout — nunca Timeout.timeout). Cada provider é um fiber FILHO
+    # do fiber corrente: cancelar a task cancela a produção em voo.
     def produce(selected, request)
       timeout = request.profile.limits[:provider_timeout] || 5
       tasks = selected.map do |provider|
@@ -82,7 +73,7 @@ module Harness
       fragments
     end
 
-    # Doc 04 §6 (D4, linha Context Builder): required falha -> ContextError
+    # required falha -> ContextError
     # (aborta o turno, quem mapeia é o Executor); opcional falha -> warning +
     # degradação graciosa (fragmentos omitidos, turno segue).
     def handle_provider_failure(provider, error, request)
@@ -94,15 +85,27 @@ module Harness
       emit_warning(provider.id, error.message, request)
     end
 
-    # Passo 3: estimativa de tokens só quando o provider não informou (L3).
+    # Passo 3: estimativa de tokens só quando o provider não informou.
     def estimate_tokens(fragments)
-      fragments.map { |f| f.tokens ? f : f.with(tokens: @estimator.estimate(f.content)) }
+      fragments.map { |f| f.tokens ? f : f.with(tokens: @estimator.estimate(estimable_text(f.content))) }
     end
 
-    # Passos 4-5: orçamento GLOBAL (L1). Corta não-pinned do menor priority p/ o
+    # Fragmentos de history carregam um Hash {role:, content:} como conteúdo;
+    # estimar em cima do Hash contaria o texto do `#to_s` (":role=>", aspas,
+    # símbolos), inflando cada mensagem e enviesando a evicção. Conta os valores,
+    # não a representação Ruby.
+    def estimable_text(content)
+      case content
+      when String then content
+      when Hash then content.values.map(&:to_s).join(" ")
+      else content.to_s
+      end
+    end
+
+    # Passos 4-5: orçamento GLOBAL. Corta não-pinned do menor priority p/ o
     # maior; empate -> menor índice de produção primeiro (corte estável: entre
-    # histories, a mais antiga cai primeiro, L7). pinned é incortável (D8); se só
-    # pinned já excede -> ContextError (não truncar identidade, doc 04 §6).
+    # histories, a mais antiga cai primeiro). pinned é incortável; se só
+    # pinned já excede -> ContextError (não truncar identidade).
     def apply_budget(fragments, cap)
       used = fragments.sum(&:tokens)
       return [fragments, []] if used <= cap
@@ -130,7 +133,7 @@ module Harness
       [survivors, evicted_sources]
     end
 
-    # Passo 6: montagem em ordem canônica DETERMINÍSTICA (doc 04 §3, L2).
+    # Passo 6: montagem em ordem canônica DETERMINÍSTICA.
     def assemble(fragments, cap, evicted)
       system_frags = fragments.select { |f| f.placement == :system }
                               .sort_by.with_index { |f, i| [-f.priority, f.source.to_s, i] }
@@ -148,8 +151,8 @@ module Harness
       )
     end
 
-    # :provider_warning (D5). O Builder não conhece task_id/seq (correlação é do
-    # Executor, task 12) — emite com o que tem; Event#to_h faz meta.compact.
+    # :provider_warning. O Builder não conhece task_id/seq (correlação é do
+    # Executor) — emite com o que tem; Event#to_h faz meta.compact.
     def emit_warning(provider_id, message, request)
       @event_stream.emit(Harness::Event.new(
                            type: :provider_warning,

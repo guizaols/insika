@@ -5,13 +5,12 @@ require "async/queue"
 
 module Harness
   # Coordena a execução. Não monta contexto, não decide policy, não fala com o
-  # provider (doc 03 §1). Este arquivo NÃO requer ruby_llm em load-time (D9) —
-  # o require é lazy dentro dos métodos de chat (task 11).
+  # provider. Este arquivo NÃO requer ruby_llm em load-time —
+  # o require é lazy dentro dos métodos de chat.
   #
-  # Esqueleto (task 10): entorno dos estágios — spawn, lifecycle de estados
-  # (sempre via TaskStore, doc 02 L1), drain de mailbox nas fronteiras, registro
-  # in-process de fibers vivos (running?) e o emissor com meta D5 + seq. O miolo
-  # (run_pipeline) é stub até as tasks 11 (estágios 6-7) e 12 (2-9).
+  # Entorno dos estágios: spawn, lifecycle de estados
+  # (sempre via TaskStore), drain de mailbox nas fronteiras, registro
+  # in-process de fibers vivos (running?) e o emissor com meta + seq.
   class Executor
     def initialize(context_builder:, policy_engine:, middleware:, hooks:,
                    tool_registry:, skill_catalog:, profiles:,
@@ -24,43 +23,45 @@ module Harness
       @hooks = hooks
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
-      # Hash legado -> StaticProfileSource; um ProfileSource passa direto (D2).
+      # Hash legado -> StaticProfileSource; um ProfileSource passa direto.
       @profiles = ProfileSource.coerce(profiles)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
       @event_stream = event_stream
-      @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
-      @pending_action_store = pending_action_store # gate de aprovação (P2-02)
-      @capability_registry = capability_registry # resolução de capability (P2B, nil = desligado)
-      # Tool Search (P2B-02): ToolCatalog opcional. nil = nenhuma tool deferred é
-      # particionada, mesmo que um profile declare `tools_deferred` — paridade
-      # Fase 1/2-A (todo wiring existente cabeia 100% eager, L2).
-      @tool_catalog = tool_catalog
-      # Memória cross-session (P2C): MemoryStore opcional. nil = sem read/write de
-      # memória, mesmo com profile.memory — paridade Fase 1 (gate duplo, P2C-02).
-      @memory_store = memory_store
+      @workflow_registry = workflow_registry # estágio 6 do trigger_workflow
+      @pending_action_store = pending_action_store # gate de aprovação
+      @capability_registry = capability_registry # resolução de capability (nil = desligado)
+      # Cola RubyLLM (estágios 5-7): montagem do chat delegada ao ChatBuilder. As
+      # deps opcionais tool_catalog (Tool Search) e memory_store (memória
+      # cross-session) só a ele importam — nil = paridade (deferred
+      # não particionado; sem remember de sistema).
+      @chat_builder = ChatBuilder.new(
+        tool_registry: tool_registry, skill_catalog: skill_catalog,
+        checkpoint_store: checkpoint_store, event_stream: event_stream, hooks: hooks,
+        tool_catalog: tool_catalog, memory_store: memory_store
+      )
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
-      @seqs = Hash.new(0)      # contador monotônico por task (D5)
-      @supervised = false      # modo serving? (L4) — ver #turn_parent
+      @seqs = Hash.new(0)      # contador monotônico por task
+      @supervised = false      # modo serving? — ver #turn_parent
       @supervisor = nil        # supervisor lazy de vida-longa (criado no serving)
-      @session_actors = {}     # session_id => SessionActor (fila FIFO, P2-03)
+      @session_actors = {}     # session_id => SessionActor (fila FIFO)
     end
 
-    # Liga o modo SERVING (L4): a arm de serving do composition root (serve.rb /
+    # Liga o modo SERVING: a arm de serving do composition root (serve.rb /
     # config.ru) seta true APÓS o recovery. Sob HTTP o `spawn` roda no fiber
     # EFÊMERO da request; sem isso o turno seria filho dela e o runtime o
-    # CANCELARIA no disconnect (viola L4 — "a execução pertence ao runtime, não à
-    # conexão"). Ligado, o turno nasce filho de um supervisor de vida-longa
+    # CANCELARIA no disconnect (viola o contrato: "a execução pertence ao runtime,
+    # não à conexão"). Ligado, o turno nasce filho de um supervisor de vida-longa
     # (irmão do accept loop) e sobrevive à conexão. false (default) = parenteia
     # no fiber corrente: no recovery/boot e nos testes o dono QUER esperar o
     # turno terminar (concorrência estruturada).
     attr_accessor :supervised
 
-    # Registro in-process de fibers vivos (critério do ResumeTask, doc 03 §3).
+    # Registro in-process de fibers vivos (critério do ResumeTask).
     def running?(task_id) = @running.key?(task_id)
 
-    # Ponto de acesso do CancelTask (task 9): posta :cancel se há fiber vivo.
+    # Ponto de acesso do CancelTask: posta :cancel se há fiber vivo.
     # No-op idempotente se não há (terminal/órfã). Retorna se havia fiber.
     def cancel(task_id)
       actor = @running[task_id]
@@ -68,7 +69,7 @@ module Harness
       !actor.nil?
     end
 
-    # Ponto de acesso do PauseTask (P2): posta :pause se há fiber vivo; o turno
+    # Ponto de acesso do PauseTask: posta :pause se há fiber vivo; o turno
     # suspende na próxima fronteira (drain_and_maybe_suspend). No-op idempotente
     # se não há fiber. Retorna se havia fiber.
     def pause(task_id)
@@ -77,7 +78,7 @@ module Harness
       !actor.nil?
     end
 
-    # Ponto de acesso do ResumeTask para task IN-PROCESS pausada (P2 task 4):
+    # Ponto de acesso do ResumeTask para task IN-PROCESS pausada:
     # posta :resume no fiber vivo (que está bloqueado em await). Retorna se havia
     # fiber vivo — o handler decide entre resume in-process e re-dispatch de
     # crash conforme isso.
@@ -87,7 +88,7 @@ module Harness
       !actor.nil?
     end
 
-    # Ponto de acesso do ApproveAction (P2 task 8): ACORDA o turno suspenso em
+    # Ponto de acesso do ApproveAction: ACORDA o turno suspenso em
     # :waiting postando :approval no fiber vivo. A decisão já foi gravada no store
     # pelo handler ANTES deste post (request_approval a relê do store). No-op se
     # não há fiber vivo (processo caiu) — o recovery reexecuta e usa a decisão
@@ -98,11 +99,11 @@ module Harness
       !actor.nil?
     end
 
-    # Gate de aprovação (P2-02), chamado pelo ToolEnvelope no estágio 6 quando a
+    # Gate de aprovação, chamado pelo ToolEnvelope no estágio 6 quando a
     # tool exige aprovação. Cria/consulta o PendingAction (id determinístico por
-    # task+turn+tool — correlação por-tool como no side-effect da Fase 1),
+    # task+turn+tool — correlação por-tool como no side-effect),
     # suspende o turno em :waiting e BLOQUEIA (await(:approval)) até o operador
-    # resolver via ApproveAction (task 8). A decisão AUTORITATIVA vem do store
+    # resolver via ApproveAction. A decisão AUTORITATIVA vem do store
     # durável (crash-safe): numa reexecução pós-crash, uma PendingAction já
     # resolvida é reusada sem re-suspender; uma :pending re-suspende.
     # -> "approved" | "rejected".
@@ -149,14 +150,14 @@ module Harness
       task.id
     end
 
-    # Ponto de entrada de turno que RESPEITA a sessão (P2-03): turno com
+    # Ponto de entrada de turno que RESPEITA a sessão: turno com
     # session_id é SERIALIZADO na fila do SessionActor daquela sessão (um por
-    # vez); sem session_id (one-shot/history, D2) vai direto ao spawn (avulso).
+    # vez); sem session_id (one-shot/history) vai direto ao spawn (avulso).
     def spawn_in_session(task, profile:, resume_from: nil)
       # SessionActor só no modo SERVING (@supervised): serializa REQUESTS
       # concorrentes. No boot/recovery (não-supervised) o replay é sequencial e
       # o loop de vida-longa penduraria o Sync do Boot — usa spawn direto (o
-      # dono aguarda o turno, como na Fase 1). One-shot/history (sem session_id)
+      # dono aguarda o turno). One-shot/history (sem session_id)
       # nunca serializa.
       unless @supervised && task.session_id
         return spawn(task, profile: profile, resume_from: resume_from)
@@ -190,23 +191,23 @@ module Harness
       nil
     end
 
-    # Estágios 2..9. Roda DENTRO do fiber da task (doc 03 §2).
+    # Estágios 2..9. Roda DENTRO do fiber da task.
     def execute(task, profile:, actor:, resume_from: nil)
       # Resume de órfã de crash: a Execution do attempt interrompido ficou ABERTA
       # (o fiber morreu). O TaskStore proíbe abrir uma segunda enquanto há aberta
-      # -> fecha a órfã como :interrupted antes de abrir a N+1 (doc 02 §3: nova
-      # entrada, nunca sobrescreve). Ver Notes da task.
+      # -> fecha a órfã como :interrupted antes de abrir a N+1 (nova
+      # entrada, nunca sobrescreve).
       close_orphan_execution(task) if resume_from
-      @task_store.begin_execution(task.id) # attempt N+1 (doc 02 §3)
+      @task_store.begin_execution(task.id) # attempt N+1
       # queued (spawn normal) e paused/waiting (resume) -> running. Órfã já está
-      # :running (running->running é inválido, doc 02 §2) -> sem transição.
+      # :running (running->running é inválido) -> sem transição.
       status = @task_store.find(task.id).status
       @task_store.transition(task.id, to: :running) if %i[queued paused waiting].include?(status)
       emit(:task_started, { task_id: task.id, command: command_type(task) }, task: task)
 
       actor.drain!
       run_pipeline(task, profile, actor, resume_from)
-    # Captura ÚNICA no topo do fiber (doc 03 §6/L3): um só lugar mapeia
+    # Captura ÚNICA no topo do fiber: um só lugar mapeia
     # erro -> estado terminal -> eventos. Estágios não fazem rescue próprio
     # (exceto tool, semântica RubyLLM). O fiber NUNCA re-raise.
     rescue CancelledError
@@ -215,9 +216,9 @@ module Harness
       @task_store.transition(task.id, to: :cancelled)
       @task_store.finish_execution(task.id, outcome: :cancelled)
       emit(:task_cancelled, { task_id: task.id }, task: task)
-      emit(:error, { message: "task cancelada" }, task: task) # compat Fase 0 (D5)
+      emit(:error, { message: "task cancelada" }, task: task) # compat legada
     rescue PolicyDenied => e
-      emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task) # D5
+      emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
       fail_task(task, e, stage: :policy)
     rescue ContextError => e
       fail_task(task, e, stage: :context)
@@ -237,7 +238,7 @@ module Harness
 
     private
 
-    # SessionActor lazy por sessão (P2-03), parenteado no escopo de turnos (L4):
+    # SessionActor lazy por sessão, parenteado no escopo de turnos:
     # o loop da sessão sobrevive à conexão, como o supervisor. Revalida liveness:
     # se o loop cacheado morreu (supervisor recriado/parado), cria um novo — senão
     # os turnos enfileirados seriam black-holed num loop morto.
@@ -263,7 +264,7 @@ module Harness
       nil
     end
 
-    # Parent do fiber do turno (L4). Não-serving: o fiber corrente (o dono espera
+    # Parent do fiber do turno. Não-serving: o fiber corrente (o dono espera
     # o turno). Serving: um supervisor de vida-longa criado lazy no BOUNDARY do
     # reactor — a task cujo parent é o próprio reactor (irmã do accept loop),
     # fora da subárvore de qualquer request. Assim o turno sobrevive ao stop da
@@ -281,8 +282,8 @@ module Harness
       @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
     end
 
-    # Id determinístico do PendingAction (P2-02): correlação por task+turn+tool.
-    # Limitação herdada do side-effect da Fase 1: a MESMA tool com aprovação mais
+    # Id determinístico do PendingAction: correlação por task+turn+tool.
+    # Limitação herdada do side-effect: a MESMA tool com aprovação mais
     # de uma vez no turno colide (a 2ª reusa a decisão da 1ª) — checkpoint por
     # passo é fatia futura. Uma call por tool é segura.
     def pending_id(task_id, turn, tool) = "#{task_id}:#{turn}:#{tool}"
@@ -302,9 +303,9 @@ module Harness
     end
 
     # Mapeia erro -> task :failed + eventos. `transition` com error: JÁ fecha a
-    # Execution aberta (TaskStore real, task 06) — NÃO chamar finish_execution
-    # (dupla-fecho). Checkpoint anterior NUNCA é tocado em falha (D4). Nunca
-    # re-raise: o fiber morre limpo (doc 03 §6).
+    # Execution aberta (TaskStore real) — NÃO chamar finish_execution
+    # (dupla-fecho). Checkpoint anterior NUNCA é tocado em falha. Nunca
+    # re-raise: o fiber morre limpo.
     def fail_task(task, error, stage:)
       # Defense-in-depth: se a task já é terminal (ex.: falha em cleanup APÓS
       # transition(:completed)), completed->failed é inválido e levantaria
@@ -319,27 +320,23 @@ module Harness
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: stage })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
-      emit(:error, { message: error.message }, task: task) # compat Fase 0 (D5)
+      emit(:error, { message: error.message }, task: task) # compat legada
       nil
     end
 
     TERMINAL_STATUSES = %i[completed failed cancelled].freeze
     private_constant :TERMINAL_STATUSES
 
-    # Correlação call<->execução p/ side-effects/skip (interno; doc 03 §3 Notes).
-    ContextRequest = Struct.new(:task, :profile, :message, :session, :history, :checkpoint,
-                                :tenant, :vars, keyword_init: true)
-
-    # Estágios 2-9 (doc 03 §4), com drain de mailbox só nas fronteiras (L2) e
-    # turn-timeout (D4) envolvendo tudo via Async::Task#with_timeout — NUNCA
+    # Estágios 2-9, com drain de mailbox só nas fronteiras e
+    # turn-timeout envolvendo tudo via Async::Task#with_timeout — NUNCA
     # Timeout.timeout da stdlib.
     def run_pipeline(task, profile, actor, resume_from)
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
-      state.tenant = command_tenant(task) # P2C: escopo da memória (write path lê daqui)
-      turn_timeout = profile.limits[:turn_timeout] || 300 # D4/D6
-      # Turno que PODE exigir aprovação humana (P2-02) ganha budget = approval_timeout
+      state.tenant = command_tenant(task) # escopo da memória (write path lê daqui)
+      turn_timeout = profile.limits[:turn_timeout] || 300
+      # Turno que PODE exigir aprovação humana ganha budget = approval_timeout
       # (~1h): o with_timeout do turno não pode matar uma espera de operador
       # legítima. O runaway do LLM já é contido por max_tool_calls/max_turns.
       unless Array(profile.approvals_required).empty?
@@ -347,21 +344,21 @@ module Harness
       end
 
       Async::Task.current.with_timeout(turn_timeout) do
-        # par :task (RFC-0002 §6): envolve os estágios do turno. before_task pode
+        # par :task: envolve os estágios do turno. before_task pode
         # reescrever o TurnState antes do estágio 2; after_task roda após o 9.
         # O block-param `state` sombreia o externo (usa o TurnState possivelmente
-        # reescrito pelo before_task). Subject == resultado == TurnState na Fase 1
-        # (o content da Response vive no evento :done; ver Notes da task).
+        # reescrito pelo before_task). Subject == resultado == TurnState
+        # (o content da Response vive no evento :done).
         @hooks.around(:task, state) do |state|
         # estágio 2: Context. O par de hooks :prompt é envolvido DENTRO do
-        # ContextBuilder#call (task 16) — NÃO envolver aqui (double-wrap
+        # ContextBuilder#call — NÃO envolver aqui (double-wrap
         # dispararia os hooks 2x). O Hooks é a MESMA instância injetada no
         # Builder e aqui (para :agent/:task/:tool).
         request = build_context_request(task, profile, state, resume_from)
         state.context = @context_builder.call(request)
         drain_and_maybe_suspend(task, actor)
 
-        # checkpoint INICIAL do turno (doc 02 §3: "o checkpoint do turno n contém
+        # checkpoint INICIAL do turno ("o checkpoint do turno n contém
         # o estado NO INÍCIO do turno n"). Sem ele, um crash no meio do estágio 6
         # (antes do estágio 8) deixaria a task órfã SEM checkpoint -> irrecuperável
         # (o Recovery a marcaria :failed). Idempotente: só grava no 1º turno de uma
@@ -369,7 +366,7 @@ module Harness
         # seguintes o checkpoint de fim do turno anterior já é o "início" deste.
         save_initial_checkpoint(task, profile, state)
 
-        # sub-passo de resolução de capability (P2B D3): ENTRE Context e Policy.
+        # sub-passo de resolução de capability: ENTRE Context e Policy.
         # Só preenche state.capability_names para a junção PÓS-Policy — o
         # policy_request abaixo NÃO muda (candidate_tools continua tool_registry.entries).
         state.capability_names = resolve_capabilities(profile, state.context)
@@ -378,23 +375,23 @@ module Harness
         # candidate_tools = tool_registry.entries, SÓ tools diretas — inalterado)
         resolution = @policy_engine.decide(policy_request(profile, task, state))
         # no resume, tool calls já concluídas no turno interrompido são "puladas"
-        # (doc 02 L5): união chave avulsa ∪ checkpoint do turno.
+        # (união chave avulsa ∪ checkpoint do turno).
         skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
-        # P2B: propaga o `skip` às tools PROMOVIDAS pelo tool_search (mesma
+        # propaga o `skip` às tools PROMOVIDAS pelo tool_search (mesma
         # resume-safety das eager); a builtin lê Array(state.skip_side_effects).
         state.skip_side_effects = skip
-        # o Executor instancia SÓ as permitidas (doc 05 §4): o Engine real
+        # o Executor instancia SÓ as permitidas: o Engine real
         # devolve Entries -> factory.call; um fake que já devolve instâncias
-        # passa direto (shim de compat até o wiring da task 26).
-        # P2-02: fia o gate de aprovação no state (o ToolEnvelope lê no estágio 6).
+        # passa direto (shim de compat).
+        # fia o gate de aprovação no state (o ToolEnvelope lê no estágio 6).
         state.actor = actor
         state.approval_coordinator = self
-        state.requires_approval = resolution.respond_to?(:requires_approval) ? resolution.requires_approval : []
+        state.requires_approval = resolution.requires_approval
         state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
         state.allowed_skills = resolution.allowed_skills
         drain_and_maybe_suspend(task, actor)
 
-        # estágio 4: Middleware envolve os estágios 5-9 (doc 05 §4). O elo que
+        # estágio 4: Middleware envolve os estágios 5-9. O elo que
         # curto-circuita NÃO chama o terminal e seta state.halt_reason.
         terminal_ran = false
         @middleware.call(state) do |st|
@@ -406,19 +403,17 @@ module Harness
           drain_and_maybe_suspend(task, actor)
           unless workflow_turn?(task)
             st.chat = create_chat(profile)
-            configure_chat(st.chat, st)
-            seed_history(st.chat, st.context.history)
-            wire_callbacks(st.chat, st) # estágio 7
+            @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
           end
 
           # estágio 6: única interação de agente do turno. send_message ->
           # chat.ask; trigger_workflow -> workflow.call(input, context:, tools:)
-          # (doc 03 §4.1). Ambos envoltos por hooks.around(:agent). O retorno é o
+          # Ambos envoltos por hooks.around(:agent). O retorno é o
           # conteúdo final do turno.
           content = run_agent_stage(task, st)
 
-          # estágio 8: Persistence (ordem fixa checkpoint->session->task, doc 02 L4)
-          # drain! puro (NUNCA suspende no estágio 8 — janela proibida, D4). Um
+          # estágio 8: Persistence (ordem fixa checkpoint->session->task)
+          # drain! puro (NUNCA suspende no estágio 8 — janela proibida). Um
           # :pause que chegue aqui arma pause_requested mas NÃO é honrado: é o
           # último estágio, não há fronteira seguinte; o turno conclui e o flag é
           # descartado com o actor. Corrida benigna: pausa perde p/ a conclusão
@@ -427,12 +422,12 @@ module Harness
           persist_turn(task, profile, st, content)
 
           # estágio 9: Response
-          emit(:done, { content: content }, task: task) # compat Fase 0
+          emit(:done, { content: content }, task: task) # compat legada
           emit(:task_completed, { task_id: task.id, content: content }, task: task)
         end
 
-        # halt (com motivo) ou curto-circuito sem terminar (violação de contrato,
-        # edge case 4) -> falha do turno via captura única (doc 05 §3-§4).
+        # halt (com motivo) ou curto-circuito sem terminar (violação de
+        # contrato) -> falha do turno via captura única.
         if state.halt_reason
           raise Harness::Error, "turno interrompido: #{state.halt_reason}"
         elsif !terminal_ran
@@ -491,38 +486,38 @@ module Harness
     def build_context_request(task, profile, state, resume_from)
       session = task.session_id ? @session_store.find(task.session_id) : nil
       hist = command_history(task)
-      # `vars` reconcilia o seam pendente da Fase 1 (o Request/Session provider já
+      # `vars` reconcilia o seam (o Request/Session provider já
       # chamavam request.vars): metadados da sessão + o `history` explícito na
       # convenção que o Session provider consome (vars["history"]).
       vars = (session&.vars || {}).dup
       vars["history"] = hist if hist
-      ContextRequest.new(task: task, profile: profile, message: state.message,
-                         session: session, history: hist, checkpoint: resume_from,
-                         tenant: command_tenant(task), vars: vars)
+      # O tipo único é Harness::ContextRequest (Data); o `history` explícito viaja
+      # em vars["history"] (convenção do Session provider), não num campo próprio.
+      ContextRequest.new(profile: profile, message: state.message, session: session,
+                         checkpoint: resume_from, tenant: command_tenant(task), vars: vars)
     end
 
-    # P2C (D6): tenant do Command (Command.build(..., tenant:) -> meta[:tenant],
-    # command.rb). Ausente -> nil (o MemoryStore aplica DEFAULT_TENANT). Reconcilia
-    # parte do débito da Fase 1 (o Request provider já chamava request.tenant).
+    # tenant do Command (Command.build(..., tenant:) -> meta[:tenant],
+    # command.rb). Ausente -> nil (o MemoryStore aplica DEFAULT_TENANT).
     def command_tenant(task)
       meta = rebuild_command(task).meta
       meta["tenant"] || meta[:tenant]
     end
 
-    # Request real do doc 05 §2: command (p/ a WorkflowAllowlist), context
+    # Request real: command (p/ a WorkflowAllowlist), context
     # (Context antes de Policy), candidate_tools (Entries do registry, SEM
-    # filtrar) e candidate_skills (do CATÁLOGO). Reconcilia o stub da task 12.
+    # filtrar) e candidate_skills (do CATÁLOGO).
     def policy_request(profile, task, state)
       Harness::Policy::PolicyRequest.new(
         profile: profile,
         command: rebuild_command(task),
         context: state.context,
-        candidate_tools: @tool_registry.respond_to?(:entries) ? @tool_registry.entries : [],
+        candidate_tools: @tool_registry.entries,
         candidate_skills: @skill_catalog.effective(profile.skills)
       )
     end
 
-    # A Task persiste o Command como Hash (doc 02 §3); a WorkflowAllowlist precisa
+    # A Task persiste o Command como Hash; a WorkflowAllowlist precisa
     # de um Command com #type (Symbol) e #payload.
     def rebuild_command(task)
       cmd = task.command
@@ -538,21 +533,21 @@ module Harness
       Array(allowed).map { |t| t.respond_to?(:factory) ? t.factory.call : t }
     end
 
-    # Sub-passo de resolução ENTRE Context e Policy (RFC-0002 §7/§8, P2B D3) —
+    # Sub-passo de resolução ENTRE Context e Policy —
     # NÃO alimenta candidate_tools (essas continuam SÓ tool_registry.entries,
-    # D1/L3: a capability não passa pela ToolAllowlist). Resolve cada capability
+    # a capability não passa pela ToolAllowlist). Resolve cada capability
     # do perfil para a Entry concreta já registrada no tool_registry e guarda a
     # marcação impl_name -> capability_name p/ a junção pós-Policy. Erros
     # (Unavailable/Ambiguous, ou impl não registrado) propagam como
     # CapabilityError -> captura única no `execute` (stage :capability). Sem
-    # @capability_registry OU sem profile.capabilities: {} (paridade Fase 1).
+    # @capability_registry OU sem profile.capabilities: {} (paridade).
     def resolve_capabilities(profile, context)
       return {} if @capability_registry.nil?
 
       Array(profile.capabilities).each_with_object({}) do |cap_name, names|
         provider = @capability_registry.resolve(cap_name, profile: profile, context: context,
                                                            event_stream: @event_stream)
-        next if provider.kind == :workflow # exposição ao loop do agente é follow-up (L5)
+        next if provider.kind == :workflow # exposição ao loop do agente é follow-up
 
         entry = @tool_registry.entries.find { |e| e.name == provider.impl_name.to_s }
         if entry.nil?
@@ -565,8 +560,8 @@ module Harness
     end
 
     # Junta as instâncias diretas (Policy/ToolAllowlist) às de origem-capability
-    # (grant = profile.capabilities — nunca passaram pela Policy, D1/L3). Evita
-    # dupla-exposição (L3): se o MESMO impl_name também foi permitido direto, a
+    # (grant = profile.capabilities — nunca passaram pela Policy). Evita
+    # dupla-exposição: se o MESMO impl_name também foi permitido direto, a
     # instância DIRETA é descartada — o modelo vê só o apelido da capability.
     def assemble_tool_instances(allowed, state)
       names = state.respond_to?(:capability_names) ? (state.capability_names || {}) : {}
@@ -580,7 +575,7 @@ module Harness
 
     # impl_name -> Capability::ResolvedTool(capability_name:), AINDA sem
     # ToolEnvelope (o wrap_tools do call site embrulha o conjunto inteiro — mesma
-    # ordem impl -> ResolvedTool -> ToolEnvelope, D4). entry já validada em
+    # ordem impl -> ResolvedTool -> ToolEnvelope). entry já validada em
     # resolve_capabilities.
     def capability_tool_instances(names)
       names.map do |impl_name, capability_name|
@@ -590,11 +585,11 @@ module Harness
       end
     end
 
-    # Envelopa cada tool permitida (timeout por call + registro de side-effect,
-    # doc 03 §5). A LoadSkill de sistema (configure_chat) NÃO é envelopada nesta
-    # fase — é tool de sistema sem side-effect e de latência trivial (ver Notes).
+    # Envelopa cada tool permitida (timeout por call + registro de side-effect).
+    # A LoadSkill de sistema (configure_chat) NÃO é envelopada — é tool de
+    # sistema sem side-effect e de latência trivial.
     def wrap_tools(tools, state, skip_side_effects = [])
-      timeout = state.profile.limits[:tool_timeout] || 60 # D4/D6
+      timeout = state.profile.limits[:tool_timeout] || 60
       tools.map do |tool|
         ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
                                tool_registry: @tool_registry, timeout: timeout,
@@ -602,12 +597,12 @@ module Harness
       end
     end
 
-    # Fronteira de estágio (L2): drena a mailbox e, se o operador pediu pausa
-    # (P2-01), SUSPENDE o turno em :paused até o :resume. Cooperativo — nunca no
-    # meio de uma operação. NÃO é chamado no estágio 8 (janela proibida, D4).
+    # Fronteira de estágio: drena a mailbox e, se o operador pediu pausa,
+    # SUSPENDE o turno em :paused até o :resume. Cooperativo — nunca no
+    # meio de uma operação. NÃO é chamado no estágio 8 (janela proibida).
     # :cancel durante a espera vira CancelledError (captura única do topo);
     # :timeout vira TimeoutError. O checkpoint inicial do turno já foi gravado,
-    # então um kill -9 em :paused é retomável (task 4).
+    # então um kill -9 em :paused é retomável.
     def drain_and_maybe_suspend(task, actor)
       actor.drain!
       return unless actor.pause_requested?
@@ -633,7 +628,7 @@ module Harness
                              ))
     end
 
-    # Estágio 8: ordem FIXA checkpoint -> session -> task (doc 02 L4). Se cair
+    # Estágio 8: ordem FIXA checkpoint -> session -> task. Se cair
     # entre escritas, o pior caso é checkpoint novo com task :running -> Recovery
     # reexecuta o turno já salvo (seguro pelo registro de side-effects).
     def persist_turn(task, profile, state, content)
@@ -649,7 +644,7 @@ module Harness
                                completed_side_effects: [], created_at: Time.now.utc.iso8601
                              ))
 
-      # sessão só quando o turno é de sessão persistida (D2); one-shot/history
+      # sessão só quando o turno é de sessão persistida; one-shot/history
       # não persistem NA SESSÃO (mas sempre checkpointam).
       @session_store.append_messages(task.session_id, new_messages) if task.session_id
 
@@ -657,7 +652,7 @@ module Harness
       # transition sem error: não fecha, então o finish é necessário aqui.
       @task_store.finish_execution(task.id, outcome: :completed)
       @task_store.transition(task.id, to: :completed)
-      # prune é cleanup best-effort (L6): uma falha aqui NÃO pode re-falhar um
+      # prune é cleanup best-effort: uma falha aqui NÃO pode re-falhar um
       # turno já commitado (a task já é :completed e durável). Swallow.
       begin
         @checkpoint_store.prune(task.id, keep: 1)
@@ -668,18 +663,15 @@ module Harness
       emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
     end
 
-    # --- Estágios 5-7: cola RubyLLM migrada INTACTA do runner.rb da Fase 0
-    # (doc 03 §4.2, restrição "RubyLLM First"). Loop/streaming/retry nunca são
-    # reimplementados aqui — só o entorno vira estágios.
-
-    # Estágio 6 (fábrica): ÚNICO ponto que toca a gem (D9). require lazy,
-    # confinado — não coberto por unit (linha de fábrica); a task 12 o exercita
-    # com a gem/stub presente.
+    # Estágio 6 (fábrica): ÚNICO ponto que toca a gem. require lazy,
+    # confinado — não coberto por unit (linha de fábrica). Também carrega os
+    # builtins de sistema (load_skill/tool_search/remember) que o ChatBuilder
+    # monta no estágio 5 — lazy, para o núcleo instalar sem ruby_llm.
     def create_chat(profile)
       require "ruby_llm"
       require_relative "tools/load_skill"
-      require_relative "tools/tool_search" # P2B: builtin de Tool Search (lazy, como load_skill)
-      require_relative "tools/remember"    # P2C: builtin de escrita de memória (lazy)
+      require_relative "tools/tool_search"
+      require_relative "tools/remember"
       RubyLLM.chat(
         model: profile.model,
         provider: profile.provider,
@@ -687,113 +679,9 @@ module Harness
       )
     end
 
-    # Estágio 5: monta o chat com o contexto (estágio 2) e as tools da Resolution
-    # (estágio 3). `state` é o TurnState (classe na task 12; specs usam Struct).
-    def configure_chat(chat, state)
-      system = state.context.system.to_s
-      chat.with_instructions(system) unless system.empty?
-
-      tools = Array(state.allowed_tools).dup
-
-      # Tool Search (P2B-02, L1/L2/L6): a partição SÓ roda com @tool_catalog
-      # presente (paridade Fase 1 quando nil — o `&&` curto-circuita ANTES de
-      # ler `.name`, então specs que passam Object.new como tool sem tool_catalog
-      # seguem intocadas). `deferred_allowed` = SEMPRE allowed_tools ∩
-      # tools_deferred (L1: decide QUANDO cabear, nunca SE). O catálogo
-      # <available_tools> vem do Context::Providers::ToolSearch (estágio 2, task
-      # 8) — configure_chat NÃO monta prompt (RFC-0005 §1); só decide chat.tools.
-      deferred_allowed = if @tool_catalog
-                           Array(state.profile.tools_deferred).map(&:to_s) &
-                             tools.map { |t| t.name.to_s }
-                         else
-                           []
-                         end
-
-      unless deferred_allowed.empty?
-        tools.reject! { |t| deferred_allowed.include?(t.name.to_s) }
-        # tool de SISTEMA (fora da allowlist), como load_skill — nunca envelopada
-        # (promove via chat.with_tools dentro do próprio #execute, task 9).
-        tools << Tools::ToolSearch.new(@tool_catalog, deferred_allowed, chat,
-                                       tool_registry: @tool_registry,
-                                       checkpoint_store: @checkpoint_store,
-                                       event_stream: @event_stream, state: state)
-      end
-
-      # load_skill é default de SISTEMA (fora da allowlist), senão o progressive
-      # disclosure quebra — comportamento preservado da Fase 0. allowed_skills
-      # vem da RESOLUTION (policy), não do provider de contexto.
-      skill_names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
-      tools << Tools::LoadSkill.new(@skill_catalog, skill_names) unless skill_names.empty?
-
-      # remember (P2C-02, L2): tool de SISTEMA de escrita da memória — cabeada só
-      # com @memory_store presente E profile.memory (gate duplo = paridade Fase 1
-      # por omissão de qualquer um). Nunca envelopada (como load_skill/tool_search).
-      if @memory_store && state.profile.memory
-        tools << Tools::Remember.new(@memory_store, state.tenant,
-                                     event_stream: @event_stream, state: state)
-      end
-
-      chat.with_tools(*tools) unless tools.empty?
-
-      chat
-    end
-
-    # Estágio 5: histórico vem do contexto/checkpoint. O shape {role:, content:}
-    # é o mesmo que a Fase 0 consome; tolera chaves string (JSON dos stores).
-    def seed_history(chat, messages)
-      Array(messages).each do |m|
-        chat.add_message(role: (m[:role] || m["role"]).to_sym,
-                         content: m[:content] || m["content"])
-      end
-    end
-
-    # Estágio 7: callbacks aditivos do RubyLLM viram eventos com meta (D5).
-    # load_skill vira :skill_activated — inalterado da Fase 0. Acrescenta o
-    # contador max_tool_calls (doc 03 §6/L6): o loop é do RubyLLM; aqui só
-    # CONTAMOS e abortamos.
-    def wire_callbacks(chat, state)
-      tool_calls = 0
-      max_tool_calls = state.profile.limits[:max_tool_calls] || 50 # D6
-      last_tool_name = nil
-
-      chat.before_tool_call do |tool_call|
-        # correlação call<->decorator (side-effects/skip, task 13) — 1ª linha.
-        state.current_tool_call = tool_call
-        # guard-rail max_tool_calls (doc 03 §6): fica INLINE (não como hook
-        # registrado) de propósito — registrar por turno na instância de Hooks
-        # COMPARTILHADA acumularia contadores entre turnos (o Hooks não tem
-        # unregister). O contador é o guard de sistema na fronteira before_tool;
-        # os hooks :tool externos (plugins) rodam via run_before abaixo.
-        tool_calls += 1
-        if tool_calls > max_tool_calls
-          raise Harness::TimeoutError.new("limite de tool calls excedido (#{max_tool_calls})",
-                                          stage: :tool_limit)
-        end
-
-        # par :tool (task 19): os callbacks do RubyLLM são ADITIVOS — o subject
-        # alterado alimenta hooks seguintes e os eventos, mas NÃO reescreve a
-        # call que o modelo executa (isso exigiria dirigir o loop — RubyLLM
-        # First). Exceção de hook aqui aborta o turno (mecanismo do guard-rail).
-        tool_call = @hooks.run_before(:tool, tool_call)
-
-        last_tool_name = tool_call.name.to_s
-        if last_tool_name == "load_skill"
-          args = tool_call.arguments || {}
-          emit(:skill_activated, { name: args["name"] || args[:name] }, task: state.task)
-        else
-          emit(:tool_call, { name: tool_call.name, arguments: tool_call.arguments }, task: state.task)
-        end
-      end
-
-      chat.after_tool_result do |result|
-        result = @hooks.run_after(:tool, result)
-        emit(:tool_result, { name: last_tool_name, result: result.to_s }, task: state.task)
-      end
-    end
-
-    # Emissor único: Event com meta D5 e seq monotônico por task. @seqs não é
+    # Emissor único: Event com meta e seq monotônico por task. @seqs não é
     # limpo ao fim da task — o resume (nova Execution) continua a numeração
-    # (replay confiável, D5).
+    # (replay confiável).
     def emit(type, data, task:)
       @event_stream.emit(Harness::Event.new(
                            type: type, data: data,

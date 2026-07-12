@@ -3,7 +3,7 @@
 module Harness
   module Server
     module A2A
-      # Mapa de erros do adapter A2A (P3A-01, D4): códigos JSON-RPC 2.0 padrão +
+      # Mapa de erros do adapter A2A: códigos JSON-RPC 2.0 padrão +
       # extensões A2A. O `App` NUNCA vaza exceção — sempre um error object.
       module Errors
         PARSE_ERROR         = -32_700

@@ -270,7 +270,7 @@ RSpec.describe Harness::Recovery do
       handler = Harness::Commands::ResumeTask.new(profiles: profiles, task_store: task_store,
                                                   checkpoint_store: checkpoint_store,
                                                   executor: spawn_executor)
-      bus = Harness::CommandBus.new(event_stream: Harness::EventStream.new)
+      bus = Harness::CommandBus.new
       bus.register(:resume_task, handler)
       bus
     end

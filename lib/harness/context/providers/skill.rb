@@ -3,29 +3,17 @@
 module Harness
   module Context
     module Providers
-      # Adapta o SkillCatalog (RFC-0005 §5): visão CANDIDATA das skills (nível 1
-      # do progressive disclosure). Adaptador FINO — não reimplementa
-      # effective/format_for_prompt (o catálogo é intocado, doc 04 §8).
-      #
+      # Nível 1 (progressive disclosure) das skills CANDIDATAS do perfil.
       # A LoadSkill do Executor NÃO vem daqui: ela é construída com
-      # resolution.allowed_skills (decisão de policy, doc 05 §8), não com a
-      # visão candidata do provider. Ordem constitucional Context->Policy: o
+      # resolution.allowed_skills (decisão de policy). Ordem Context->Policy: o
       # provider produz candidato; a policy corta depois.
-      class Skill < ContextProvider
-        def initialize(catalog:)
-          @catalog = catalog
-        end
+      class Skill < CatalogProvider
+        # priority 80: acima das tools deferred (70), abaixo da identidade pinned.
+        def priority = 80
 
-        def call(request)
-          skills = @catalog.effective(request.profile.skills)
-          block = @catalog.format_for_prompt(skills)
-          return [] if block.empty?
+        private
 
-          # pinned: false — L7 fixa a ordem de sacrifício: histórico antigo ->
-          # histórico recente -> skills -> (identidade pinned, nunca).
-          [ContextFragment.build(content: block, placement: :system,
-                                 priority: 80, source: id)]
-        end
+        def entries(request) = @catalog.effective(request.profile.skills)
       end
     end
   end

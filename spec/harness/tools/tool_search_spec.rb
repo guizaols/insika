@@ -101,7 +101,8 @@ RSpec.describe Harness::Tools::ToolSearch do
     chat = FakeChat.new
     reg2 = Harness::ToolRegistry.new
     reg2.register("send_email", plugin: "p") { deferred_tool("send_email", "Envia e-mail") }
-    cat2 = Harness::ToolCatalog.new(tool_registry: reg2) # catálogo captura a entry
+    cat2 = Harness::ToolCatalog.new(tool_registry: reg2)
+    cat2.all # força o snapshot lazy: o catálogo captura a entry AGORA
     reg2.deregister_plugin("p") # registry DESSINCRONIZA do catálogo -> resolve levanta NotFoundError
     search = described_class.new(cat2, ["send_email"], chat, tool_registry: reg2,
                                  event_stream: event_stream, checkpoint_store: checkpoint_store,

@@ -4,10 +4,10 @@ require "async"
 require "async/queue"
 
 module Harness
-  # Pub/sub in-process (RFC-0002 §7, doc 03 §2). O stream é concorrente ao
-  # turno: um observador lento NUNCA atrasa a execução (L4) — cada assinante
+  # Pub/sub in-process. O stream é concorrente ao
+  # turno: um observador lento NUNCA atrasa a execução — cada assinante
   # tem fila própria e `emit` só enfileira. Sem mutex: um reactor, fibers
-  # cooperativos (doc 00 §5.5) — um Array simples basta.
+  # cooperativos — um Array simples basta.
   class EventStream
     # Uma assinatura = uma fila. O consumidor bloqueia no `each` (fiber dele),
     # nunca o emissor.
@@ -15,9 +15,9 @@ module Harness
       CLOSED = Object.new # sentinela interna de fim-de-stream
       private_constant :CLOSED
 
-      # Cap de eventos enfileirados por assinante (doc 07 §5). Um consumidor
+      # Cap de eventos enfileirados por assinante. Um consumidor
       # lento acumula na PRÓPRIA fila; ao exceder, a subscription fecha com um
-      # evento :error local — o turno nunca espera transporte (L4).
+      # evento :error local — o turno nunca espera transporte.
       MAX_QUEUED = 1000
 
       def initialize(task_id: nil, session_id: nil, on_close: nil)
@@ -27,7 +27,7 @@ module Harness
         @queue = Async::Queue.new
       end
 
-      # Liga a subscription a um task_id APÓS a criação (doc 07 §4, task 24): o
+      # Liga a subscription a um task_id APÓS a criação: o
       # transporte assina antes do dispatch — quando o task_id ainda não existe
       # — e o vincula assim que o handler retorna. Isso mantém o cap por-task
       # honesto (só eventos DESTA task entram na fila) e faz o :error de overflow
@@ -37,7 +37,7 @@ module Harness
         self
       end
 
-      # Filtro por meta (D5): nil = casa qualquer valor. Eventos sem task_id no
+      # Filtro por meta: nil = casa qualquer valor. Eventos sem task_id no
       # meta (ex.: :session_created) só chegam a subscribers sem filtro de task.
       def matches?(event)
         meta = event.meta || {}
@@ -86,8 +86,8 @@ module Harness
       @subscriptions = []
     end
 
-    # NUNCA levanta: a exceção de um observador é isolada (doc 03 §2) — um
-    # observador quebrado não derruba o turno. Síncrono e barato (L4/§5).
+    # NUNCA levanta: a exceção de um observador é isolada — um
+    # observador quebrado não derruba o turno. Síncrono e barato.
     #
     # Itera sobre um SNAPSHOT (`dup`): o cap de uma subscription pode fechá-la
     # DURANTE o push (overflow -> close -> on_close remove do array); mutar o

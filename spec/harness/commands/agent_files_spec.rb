@@ -35,6 +35,14 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
       expect { handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "v2", "create_only" => true })) }
         .to raise_error(Harness::ValidationError, /já existe/)
     end
+
+    it "registra o arquivo em prompt_files do agente (idempotente)" do
+      handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "x" }))
+      expect(source.fetch("bia").prompt_files).to eq(["IDENTITY.md"])
+      # regravar não duplica
+      handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "y" }))
+      expect(source.fetch("bia").prompt_files).to eq(["IDENTITY.md"])
+    end
   end
 
   describe Harness::Commands::DeleteAgentFile do
@@ -47,6 +55,13 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
       expect(events.map(&:type)).to include(:agent_file_deleted)
       expect { handler.call(cmd(:delete_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md" })) }
         .to raise_error(Harness::NotFoundError)
+    end
+
+    it "tira o arquivo de prompt_files do agente" do
+      source.put(Harness::AgentProfile.build(id: "bia", model: "m", prompt_files: %w[IDENTITY.md SOUL.md]))
+      files.write("bia", "SOUL.md", "x")
+      handler.call(cmd(:delete_agent_file, { "agent_id" => "bia", "file" => "SOUL.md" }))
+      expect(source.fetch("bia").prompt_files).to eq(["IDENTITY.md"])
     end
   end
 

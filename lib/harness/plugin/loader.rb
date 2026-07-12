@@ -5,12 +5,11 @@ require "time"
 
 module Harness
   module Plugin
-    # Carregador de plugins (doc 06 §2-§4; evolui o PluginLoader da Fase 0 sem
-    # reescrever — RFC-0003 §7). Roda EXCLUSIVAMENTE no boot, single-fiber, antes
-    # do servidor aceitar conexões (doc 06 §5) — zero concorrência.
+    # Carregador de plugins. Roda EXCLUSIVAMENTE no boot, single-fiber, antes
+    # do servidor aceitar conexões — zero concorrência.
     #
     # Manifesto: descoberta sem executar código; require do entry só depois de
-    # validado. Falha de um plugin não derruba o boot (rollback + warn, doc 06 §6).
+    # validado. Falha de um plugin não derruba o boot (rollback + warn).
     class Loader
       Discovered = Data.define(:id, :name, :root, :tool_names, :workflow_names,
                                :capability_names, :skill_dirs, :prompt_dirs, :config)
@@ -20,8 +19,8 @@ module Harness
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
       # middleware:/context_providers: (coleções que respondem a <<).
-      # announced_roots:/disabled: materializam a habilitação por classe de root
-      # (doc 06 §3/L2); defaults vazios mantêm a assinatura de §2 válida.
+      # announced_roots:/disabled: materializam a habilitação por classe de root;
+      # defaults vazios mantêm a assinatura válida.
       def initialize(roots:, registries:, enabled:, event_stream:,
                      announced_roots: [], disabled: [])
         @roots = Array(roots)
@@ -62,10 +61,10 @@ module Harness
         { skill_dirs: skill_dirs, prompt_dirs: prompt_dirs, plugins: plugins }
       end
 
-      # Habilitação por classe de root (doc 06 §3, L2): gem anunciada é
+      # Habilitação por classe de root: gem anunciada é
       # default-enabled, desabilitável por disabled:; workspace e bundled exigem
-      # enabled: explícito (regra Fase 0). disabled: é veto absoluto (deny vence,
-      # como as allowlists D6) — um id em disabled não carrega nem se em enabled.
+      # enabled: explícito. disabled: é veto absoluto (deny vence,
+      # como as allowlists) — um id em disabled não carrega nem se em enabled.
       def enabled?(id, plugin_dir)
         return false if @disabled.include?(id)
 
@@ -105,7 +104,7 @@ module Harness
         nil
       end
 
-      # -> config Hash (válida) | :skip (fail-closed por plugin, doc 06 §3).
+      # -> config Hash (válida) | :skip (fail-closed por plugin).
       def validate_config(manifest, id)
         schema = manifest["config_schema"]
         config = manifest["config"] || {}
@@ -131,7 +130,7 @@ module Harness
       end
 
       # require + const_get + register(api) + commit do staging. Falha ->
-      # warn+backtrace, rollback das entradas parciais (L3), plugin descartado,
+      # warn+backtrace, rollback das entradas parciais, plugin descartado,
       # boot continua. Sem entry: só skills/prompts (nenhum registro).
       def load_entry(manifest, discovered)
         entry = manifest["entry"]
@@ -167,8 +166,8 @@ module Harness
                            ))
       end
 
-      # Fachada passada ao plugin (doc 06 §2). Contrato exigido só p/ tools e
-      # workflows (endereçáveis por nome, L5); middleware/hooks/providers são
+      # Fachada passada ao plugin. Contrato exigido só p/ tools e
+      # workflows (endereçáveis por nome); middleware/hooks/providers são
       # STAGED e efetivados por commit! só quando register(api) volta sem exceção
       # (materializa a garantia de rollback — nada parcial sobra).
       class RegistrationAPI
@@ -213,8 +212,8 @@ module Harness
         end
 
         # Espelha register_tool ("não declarada -> warn + ignora"), + exclusividade
-        # tool:/workflow: e o warn L5 p/ kind :workflow (sem consumidor nesta fatia).
-        # Staged; efetivado no commit! (L3 — nada parcial se register(api) levantar).
+        # tool:/workflow: e o warn p/ kind :workflow (sem consumidor nesta fatia).
+        # Staged; efetivado no commit! (nada parcial se register(api) levantar).
         def register_capability(name, tool: nil, workflow: nil, priority: nil, available: nil)
           name = name.to_s
           unless @capability_names.include?(name)
@@ -252,7 +251,7 @@ module Harness
         # Valida o par NA HORA do stage (não só no commit): assim um par inválido
         # levanta DENTRO de register(api) -> o staging é descartado e o rollback
         # cobre tudo. Se a validação ficasse só no commit!, middleware/providers
-        # já teriam sido efetivados quando o hook ruim levantasse (L3 furado).
+        # já teriam sido efetivados quando o hook ruim levantasse.
         def register_hook(pair, before: nil, after: nil)
           unless Harness::Hooks::PAIRS.include?(pair)
             raise ArgumentError, "par de hook desconhecido: #{pair.inspect}"
@@ -277,7 +276,7 @@ module Harness
         end
       end
 
-      # Validador subset de JSON Schema (L4 — sem gem; trocável na Fase 2).
+      # Validador subset de JSON Schema (sem gem; trocável).
       # validate(schema, value) -> [String] (vazio = válido). Schema inválido E
       # config que não valida caem na mesma lista (fail-closed por plugin).
       module ConfigSchema

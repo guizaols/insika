@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D6): remove um provider de LLM do
+    # Command de controle: remove um provider de LLM do
     # LLMProviderStore. Idempotente (`existed: false` se não havia). NÃO
     # des-configura o RubyLLM em runtime — a config global de um provider já
     # aplicada persiste até o restart (degrada pra "restart recomendado", como o

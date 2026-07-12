@@ -3,17 +3,17 @@
 module Harness
   module Context
     module Providers
-      # Absorve SystemPrompt + SOUL.md (Fase 0, doc 04 §2/§8). Identidade é
+      # Absorve SystemPrompt + SOUL.md. Identidade é
       # PINNED, priority 100 — nunca cortada. required?: agente sem identidade é
-      # um agente ERRADO, não degradado (doc 04 §6). prompt_refs (D6): fragmentos
-      # priority 90 pinned, do PromptCatalog (task 20; catalog default nil).
+      # um agente ERRADO, não degradado. prompt_refs: fragmentos
+      # priority 90 pinned, do PromptCatalog (catalog default nil).
       #
-      # Etapa C (Fase 4): identidade POR-AGENTE. `profile.prompt_files` (nomes de
+      # Identidade POR-AGENTE. `profile.prompt_files` (nomes de
       # arquivo) vence sobre os `files:` do wiring — resolve a limitação de um
       # agente novo herdar o prompt da Bia. O conteúdo vem do `agent_files`
-      # (AgentFileStore, D3 revisado: vive no Store), com fallback a File.read
+      # (AgentFileStore, vive no Store), com fallback a File.read
       # para caminhos em disco (compat/seed). Sem prompt_files -> usa os `files:`
-      # do wiring (default de deployment; paridade byte-a-byte da Fase 0).
+      # do wiring (default de deployment; paridade byte-a-byte).
       class Prompt < ContextProvider
         def initialize(base: "", files: [], catalog: nil, agent_files: nil, system_files: nil)
           @base = base
@@ -39,13 +39,13 @@ module Harness
         private
 
         # Migra INTACTA a concatenação do SystemPrompt#build (sem skills_block).
-        # Um fragmento ÚNICO preserva a ordem interna base->files (a task 14
-        # ordena só ENTRE fragmentos) e garante a paridade byte-a-byte.
+        # Um fragmento ÚNICO preserva a ordem interna base->files (a ordenação
+        # atua só ENTRE fragmentos) e garante a paridade byte-a-byte.
         #
         # profile.prompt_files (nomes) vence sobre @files (wiring): o agente com
         # identidade própria não herda a do deployment. Cada fonte resolve via
         # AgentFileStore (por agente) OU File.read (caminho em disco) — nesta
-        # ordem. Sem prompt_files, cai nos @files do wiring (paridade Fase 0).
+        # ordem. Sem prompt_files, cai nos @files do wiring.
         def build_identity(profile)
           parts = [@base]
           parts.concat(system_parts) # arquivos de sistema globais, para TODO agente
@@ -58,7 +58,7 @@ module Harness
           parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
         end
 
-        # Arquivos de sistema GLOBAIS (Etapa G): valem para todos os agentes,
+        # Arquivos de sistema GLOBAIS: valem para todos os agentes,
         # injetados ANTES da identidade individual. Store vazio/ausente -> [] ->
         # prompt byte-a-byte idêntico ao de antes (a injeção só existe se o
         # operador autorou algo). Ordem lexicográfica (SystemFileStore#list).
@@ -68,7 +68,7 @@ module Harness
           @system_files.list.map { |name| @system_files.read(name).to_s }
         end
 
-        # Store por-agente primeiro (D3 revisado), disco depois (compat/seed).
+        # Store por-agente primeiro, disco depois (compat/seed).
         def read_source(agent_id, src)
           stored = agent_id && @agent_files&.read(agent_id, src)
           return stored if stored

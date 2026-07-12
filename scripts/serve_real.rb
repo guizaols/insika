@@ -8,7 +8,7 @@
 # Single-process (Async::HTTP::Server, não `falcon serve`): kill -9 mata tudo e
 # libera a porta (o pai do falcon não mata os workers). supervised = true DEPOIS
 # do wiring: os turnos nascem filhos de um supervisor de vida-longa e sobrevivem
-# ao disconnect da request (L4) — é o que faz a sessão multi-turn funcionar.
+# ao disconnect da request — é o que faz a sessão multi-turn funcionar.
 #
 # Uso: DEEPSEEK_API_KEY=... ruby scripts/serve_real.rb   (BIND opcional)
 
@@ -20,7 +20,7 @@ require "async/http/endpoint"
 require "protocol/rack"
 require "rack/urlmap"
 require File.join(Dir.pwd, "server", "app")
-require_relative "../studio/app" # Fase 4 Etapa E: UI de gestão (Roda), sob /studio
+require_relative "../studio/app" # UI de gestão (Roda), sob /studio
 
 W = Deploy::Wiring
 
@@ -61,23 +61,23 @@ APP = Harness::Server::App.new(
   config: { admin_token: ADMIN_TOKEN, allowed_origins: [] }
 )
 
-# Harness Studio (Fase 4 Etapa E): app Roda montado sob /studio, com login por
-# cookie (D7) — o navegador manda o cookie de sessão, então NÃO precisa do shim
+# Harness Studio: app Roda montado sob /studio, com login por
+# cookie — o navegador manda o cookie de sessão, então NÃO precisa do shim
 # de Bearer que o /admin usa. O secret de sessão deriva do ADMIN_TOKEN. Login em
 # /studio/login com o ADMIN_TOKEN abaixo.
-# Etapa H: dica de persistência para o health chip (durável em SQLite quando
+# dica de persistência para o health chip (durável em SQLite quando
 # HARNESS_DB está setado; efêmero em memória caso contrário).
 PERSISTENCE = (ENV["HARNESS_DB"].to_s.empty? ? "efêmero (memória)" : "durável (sqlite)")
 
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
   event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN, persistence: PERSISTENCE },
-  # Etapa F: stores de LEITURA para as páginas de autoria (agents-detail/skills/
+  # stores de LEITURA para as páginas de autoria (agents-detail/skills/
   # tools/histórico). Escrita continua só pelos Commands do BUS.
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
   skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG,
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
-  # Etapa G: settings/LLM/MCP + arquivos de sistema globais.
+  # settings/LLM/MCP + arquivos de sistema globais.
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE
 )
@@ -101,6 +101,6 @@ puts "  #{BIND}/admin        → console"
 puts "  Ctrl-C para parar."
 
 Async do
-  W::EXECUTOR.supervised = true # modo serving (L4): turnos sobrevivem ao disconnect
+  W::EXECUTOR.supervised = true # modo serving: turnos sobrevivem ao disconnect
   Async::HTTP::Server.new(middleware, endpoint).run
 end

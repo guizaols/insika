@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Instâncias MCP autoradas em runtime (Fase 4 — Studio, Etapa G / D6). Um
+  # Instâncias MCP autoradas em runtime. Um
   # record por instância no ConfigStore (scope "mcp"), keyed pelo slug do nome
   # (`tavily`, `github`, ...). Guarda transport/command/url, o flag `enabled` e
   # um Hash de credenciais `env` (tokens/keys que a instância injeta no servidor).
@@ -13,10 +13,12 @@ module Harness
   # nova substitui; "" limpa (ver Harness::SecretMasking, o mesmo padrão das
   # api_keys de LLM).
   #
-  # Escopo desta etapa: CRUD durável de config (a UI de instâncias). A execução
+  # Escopo atual: CRUD durável de config (a UI de instâncias). A execução
   # de um cliente MCP contra estas instâncias é trabalho de runtime posterior
-  # (open questions da spec) — o store é a fonte editável desde já.
+  # — o store é a fonte editável desde já.
   class McpStore
+    include Coercion
+
     SCOPE = "mcp"
 
     def initialize(config_store:)
@@ -109,7 +111,5 @@ module Harness
     def symbolize(attrs)
       (attrs || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
     end
-
-    def presence(str) = str.nil? || str.to_s.empty? ? nil : str.to_s
   end
 end

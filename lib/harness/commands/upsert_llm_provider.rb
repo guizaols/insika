@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa D / D6): cria/edita um provider de LLM
+    # Command de controle: cria/edita um provider de LLM
     # (api/base_url/auth_header/api_key/models) no LLMProviderStore e RECONFIGURA
     # o RubyLLM em runtime (LLMConfigurator) — troca de chave/base sem restart.
     # A `api_key` é sentinel-aware (__OCULTO__ preserva; "" limpa; string nova
