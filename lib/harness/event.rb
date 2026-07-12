@@ -2,7 +2,9 @@
 
 module Harness
   # Tudo que o runtime emite é um Event (catálogo canônico fechado em
-  # 00-overview D5 — novos tipos exigem atualizar aquela tabela).
+  # 00-overview D5 — novos tipos exigem atualizar aquela tabela; estendido pela
+  # fatia 2-B com :capability_resolved/:tool_search, doc D7 de
+  # phase2b/00-overview.md).
   #
   # meta: { task_id:, session_id:, seq:, at: } (seq monotônico por task).
   # :done e :error são mantidos pelo contrato com o consumidor da Fase 0;
