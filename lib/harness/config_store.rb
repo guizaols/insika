@@ -18,7 +18,7 @@ module Harness
     # agent_files/skills entram na Etapa C (D3 revisado): o CONTEÚDO de prompts
     # por-agente e de skills compartilhadas vive no Store (fonte da verdade única,
     # um SQLite de backup), não em disco — disco vira só seed/import.
-    SCOPES = %w[agents settings llm_providers mcp agent_files skills].freeze
+    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files].freeze
 
     class UnknownScope < Harness::Error; end
 

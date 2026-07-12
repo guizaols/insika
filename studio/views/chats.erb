@@ -1,0 +1,25 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>chats</span></nav>
+    <h1>Chats<span class="sub"><%= @sessions.size %> conversa(s) recentes</span></h1>
+  </div>
+  <a class="btn primary" href="/studio/playground">nova conversa →</a>
+</header>
+
+<% if @sessions.empty? %>
+  <div class="empty">Nenhuma conversa ainda. Comece pelo <a href="/studio/playground">playground</a>.</div>
+<% else %>
+  <div class="card">
+    <ul class="history">
+      <% @sessions.each do |s| %>
+        <li>
+          <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
+            <span class="mono"><%= s.id[0, 12] %></span>
+          </a>
+          <span class="muted"><%= Array(s.messages).size %> msg · <%= s.updated_at %></span>
+          <% if (p = session_preview(s)) %><span class="preview muted"><%= p[0, 90] %></span><% end %>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

@@ -74,13 +74,18 @@ module Studio
       def configure(command_bus:, profile_source:, event_stream:, config:,
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, memory_store: nil, session_store: nil,
-                    session_secret: nil)
+                    settings_store: nil, llm_provider_store: nil, mcp_store: nil,
+                    system_file_store: nil, session_secret: nil)
         @harness = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
           agent_file_store: agent_file_store, skill_store: skill_store,
           skill_catalog: skill_catalog, tool_catalog: tool_catalog,
-          memory_store: memory_store, session_store: session_store
+          memory_store: memory_store, session_store: session_store,
+          # Etapa G: config-de-runtime (settings/LLM/MCP) + arquivos de sistema
+          # globais + índice de conversas. Todos opcionais (empty-state se nil).
+          settings_store: settings_store, llm_provider_store: llm_provider_store,
+          mcp_store: mcp_store, system_file_store: system_file_store
         }.freeze
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "harness.studio", secret: secret,
@@ -320,6 +325,100 @@ module Studio
         end
       end
 
+      # --- Settings gerais + providers de LLM (task 18) ----------------------
+      r.on "settings" do
+        r.is do
+          r.get { render_settings }
+          # Settings gerais (streaming/timeouts/compaction) → :update_settings.
+          r.post do
+            check_csrf!
+            with_flash("Settings salvos.") do
+              dispatch(:update_settings, { patch: settings_patch(r) })
+            end
+            r.redirect("/studio/settings")
+          end
+        end
+
+        # Providers de LLM (sub-recurso): CRUD com api_key mascarada (sentinel).
+        r.on "providers" do
+          r.post "delete" do
+            check_csrf!
+            with_flash("Provider removido.") do
+              dispatch(:delete_llm_provider, { api: presence(r.params["api"]) })
+            end
+            r.redirect("/studio/settings#llm")
+          end
+          r.post do
+            check_csrf!
+            with_flash("Provider salvo.") do
+              dispatch(:upsert_llm_provider, provider_patch(r))
+            end
+            r.redirect("/studio/settings#llm")
+          end
+        end
+      end
+
+      # --- MCP: instâncias com credenciais mascaradas (task 18) --------------
+      r.on "mcp" do
+        r.is do
+          r.get { render_mcp }
+          r.post do
+            check_csrf!
+            with_flash("Instância MCP salva.") do
+              dispatch(:upsert_mcp, mcp_patch(r))
+            end
+            r.redirect("/studio/mcp")
+          end
+        end
+        r.post "delete" do
+          check_csrf!
+          with_flash("Instância MCP removida.") do
+            dispatch(:delete_mcp, { name: presence(r.params["name"]) })
+          end
+          r.redirect("/studio/mcp")
+        end
+      end
+
+      # --- Arquivos de sistema globais (task 19) -----------------------------
+      # Valem para TODOS os agentes (o Prompt provider injeta antes da
+      # identidade individual). Editor code-editor + versões, como os prompts.
+      r.on "system-files" do
+        r.is do
+          r.get { render_system_files }
+          r.post do
+            check_csrf!
+            with_flash("Arquivo de sistema salvo.") do
+              dispatch(:write_system_file, {
+                         file: presence(r.params["file"]), content: r.params["content"].to_s
+                       })
+            end
+            r.redirect("/studio/system-files")
+          end
+        end
+        r.post "delete" do
+          check_csrf!
+          with_flash("Arquivo removido.") do
+            dispatch(:delete_system_file, { file: presence(r.params["file"]) })
+          end
+          r.redirect("/studio/system-files")
+        end
+        r.post "restore" do
+          check_csrf!
+          with_flash("Versão restaurada.") do
+            dispatch(:restore_system_file, {
+                       file: presence(r.params["file"]), version: r.params["version"]
+                     })
+          end
+          r.redirect("/studio/system-files")
+        end
+      end
+
+      # --- Chats: índice de conversas (task 19) ------------------------------
+      # Read-only: lista sessões e linka pro viewer existente (/sessions/:id).
+      r.on "chats" do
+        r.is { r.get { render_chats } }
+      end
+
       # --- Histórico: viewer read-only de uma sessão (task 17) ---------------
       r.on "sessions" do
         r.on String do |sid|
@@ -374,6 +473,10 @@ module Studio
         "agentes" => "/studio/agents",
         "skills" => "/studio/skills",
         "tools" => "/studio/tools",
+        "mcp" => "/studio/mcp",
+        "sistema" => "/studio/system-files",
+        "chats" => "/studio/chats",
+        "settings" => "/studio/settings",
         "playground" => "/studio/playground"
       }
     end
@@ -533,6 +636,108 @@ module Studio
       last && last["content"].to_s
     end
 
+    # --- Settings + LLM providers (task 18) ----------------------------------
+
+    def render_settings
+      store = harness[:settings_store]
+      @settings = store ? store.get : Harness::SettingsStore::DEFAULTS
+      @providers = harness[:llm_provider_store] ? harness[:llm_provider_store].all : []
+      view("settings")
+    end
+
+    # Patch de settings a partir do form. streaming/compaction são bool
+    # (checkbox); os timeouts são inteiros; compaction.keep_last inteiro. Só o que
+    # veio no form entra no patch (o resto e os defaults são preservados no store).
+    def settings_patch(r)
+      patch = {
+        "streaming" => r.params["streaming"] == "1",
+        "compaction" => {
+          "enabled" => r.params["compaction_enabled"] == "1"
+        }
+      }
+      { "request_timeout" => "request_timeout", "max_retries" => "max_retries",
+        "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |f|
+        v = presence(r.params[f])
+        patch[f] = Integer(v) if v
+      end
+      kl = presence(r.params["keep_last"])
+      patch["compaction"]["keep_last"] = Integer(kl) if kl
+      patch
+    end
+
+    # Provider de LLM a partir do form. api_key é sentinel-aware: o form
+    # pré-preenche com o sentinel quando já existe uma chave, então reenviar
+    # sem tocar preserva; string nova substitui; "" limpa. models = CSV.
+    def provider_patch(r)
+      {
+        api: presence(r.params["api"]),
+        base_url: r.params["base_url"].to_s,
+        auth_header: r.params["auth_header"].to_s,
+        api_key: r.params["api_key"].to_s,
+        models: split_list(r.params["models"])
+      }
+    end
+
+    # --- MCP (task 18) -------------------------------------------------------
+
+    def render_mcp
+      @instances = harness[:mcp_store] ? harness[:mcp_store].all : []
+      view("mcp")
+    end
+
+    # Instância MCP a partir do form. `env` vem como linhas "CHAVE=valor" (CSP
+    # proíbe JS inline pra add/remove linha; textarea é o caminho simples e
+    # honesto). Os valores mascarados voltam como sentinel — mantê-los preserva
+    # o segredo; trocar substitui; apagar a linha limpa.
+    def mcp_patch(r)
+      {
+        name: presence(r.params["name"]),
+        transport: presence(r.params["transport"]) || "stdio",
+        command: r.params["command"].to_s,
+        url: r.params["url"].to_s,
+        description: r.params["description"].to_s,
+        enabled: r.params["enabled"] == "1",
+        env: parse_kv_lines(r.params["env"])
+      }
+    end
+
+    # --- System-files (task 19) ----------------------------------------------
+
+    def render_system_files
+      store = harness[:system_file_store]
+      names = store ? store.list : []
+      @system_files = names.map do |name|
+        { name: name, content: store.read(name).to_s, versions: store.versions(name) }
+      end
+      view("system_files")
+    end
+
+    # --- Chats (task 19) -----------------------------------------------------
+
+    def render_chats
+      @sessions = recent_sessions(limit: 100)
+      view("chats")
+    end
+
+    # "CHAVE=valor" por linha -> Hash. Ignora linhas em branco e comentários (#).
+    def parse_kv_lines(text)
+      text.to_s.each_line.filter_map do |line|
+        line = line.strip
+        next if line.empty? || line.start_with?("#")
+
+        k, v = line.split("=", 2)
+        k = k.to_s.strip
+        next if k.empty?
+
+        [k, v.to_s.strip]
+      end.to_h
+    end
+
+    # CSV/whitespace -> [String] sem vazios.
+    def split_list(str)
+      str.to_s.split(/[,\n]/).map(&:strip).reject(&:empty?)
+    end
+
     # --- Playground ----------------------------------------------------------
 
     # Despacha o send_message pelo MESMO bus da API (nada de escrita direta em
@@ -576,6 +781,16 @@ module Studio
     def presence(str)
       s = str.to_s.strip
       s.empty? ? nil : s
+    end
+
+    # Sentinel de segredo mascarado (para pré-preencher campos de credencial nos
+    # forms: reenviar sem tocar preserva o segredo real no store).
+    def secret_sentinel = Harness::SecretMasking::SENTINEL
+
+    # Env de uma instância MCP (já MASCARADO) -> texto "CHAVE=valor" por linha,
+    # para o textarea. Ordena por chave (estável entre renders).
+    def env_lines(env)
+      (env || {}).sort.map { |k, v| "#{k}=#{v}" }.join("\n")
     end
   end
 end
