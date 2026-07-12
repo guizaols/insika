@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
-# RODAR DE VERDADE (sem mock): manda mensagens reais p/ a Bia (DeepSeek),
-# streama a resposta, mostra tools/skills/retornos, e renderiza o /admin contra
-# os MESMOS stores (visualização). One-shot por turno (o SessionActor exige o
-# reator de serving do Server::Boot — ver findings); o transcript é persistido
-# numa sessão p/ a tela do /admin refletir a conversa REAL.
+# RODAR DE VERDADE (sem mock): conversa REAL e MULTI-TURN com a Bia (DeepSeek),
+# serializada pelo SessionActor (P2-03). Cada turno vai na fila FIFO da sessão;
+# o turno 2 enxerga o transcript do turno 1 (memória de sessão via o Session
+# provider — o seam :vars reconciliado). Streama a resposta, mostra
+# tools/skills/retornos, e renderiza o /admin contra os MESMOS stores.
+#
+# Operação (o que destravou o multi-turn): arma executor.supervised = true
+# (SessionActor + supervisor de vida-longa), e no fim FAZ O TEARDOWN
+# (stop_session_actors + supervisor.stop) — senão o bloco Sync nunca retorna
+# (os fibers de vida-longa ficam pendurados em dequeue).
 #
 # Uso: DEEPSEEK_API_KEY=... ruby scripts/run_real.rb
 
@@ -18,57 +23,61 @@ W = Deploy::Wiring
 SESSION = "demo-bia"
 W::SESSION_STORE.create(id: SESSION, vars: { "canal" => "web", "cliente" => "Ana" })
 
-TURNS = ARGV.empty? ? ["Boa noite! Vocês estão abertos agora?",
-                       "Quanto fica 2 pizzas margherita + 1 suco natural? Quero fechar o pedido."] : ARGV
+TURNS = ARGV.empty? ? ["Boa noite! Vocês estão abertos agora? Meu nome é Ana.",
+                       "Perfeito. Quanto fica 2 pizzas margherita + 1 suco natural? Quero fechar o pedido."] : ARGV
+TERMINAL = %w[completed failed cancelled].freeze
 
-def run_turn(msg)
-  events = []
-  content = +""
-  Sync do |parent|
-    sub = W::EVENT_STREAM.subscribe
-    reader = parent.async do
-      sub.each do |ev|
-        events << ev
-        case ev.type
-        when :content        then (content << ev.data[:delta].to_s; print(ev.data[:delta]))
-        when :tool_call      then puts("\n  \e[36m→ #{ev.data[:name]}(#{ev.data[:arguments].inspect})\e[0m")
-        when :tool_result    then puts("  \e[36m← #{ev.data[:name]}: #{ev.data[:result].to_s[0, 220]}\e[0m")
-        when :skill_activated then puts("\n  \e[35m↑ load_skill(#{ev.data[:name]})\e[0m")
-        end
+def stream_events(parent)
+  sub = W::EVENT_STREAM.subscribe
+  reader = parent.async do
+    sub.each do |ev|
+      case ev.type
+      when :content         then print(ev.data[:delta])
+      when :tool_call       then puts("\n  \e[36m→ #{ev.data[:name]}(#{ev.data[:arguments].inspect})\e[0m")
+      when :tool_result     then puts("  \e[36m← #{ev.data[:name]}: #{ev.data[:result].to_s[0, 220]}\e[0m")
+      when :skill_activated  then puts("\n  \e[35m↑ load_skill(#{ev.data[:name]})\e[0m")
       end
     end
-    # one-shot: send_message SEM session_id (o transcript vai p/ a sessão depois)
+  end
+  [sub, reader]
+end
+
+@last_task = nil
+Sync do |parent|
+  W::EXECUTOR.supervised = true # arma o modo serving: SessionActor serializa a sessão
+  sub, reader = stream_events(parent)
+
+  TURNS.each_with_index do |msg, i|
+    puts "\n\e[1m═══ TURNO #{i + 1} · Bia (DeepSeek #{Deploy::MODEL}) · sessão #{SESSION} ═══\e[0m"
+    puts "\e[33mAna>\e[0m #{msg}\n\e[32mbia>\e[0m "
+
+    # turno DE SESSÃO (session_id): entra na fila FIFO do SessionActor; o turno 2
+    # já enxerga o turno 1 no transcript (memória real, sem mock).
     res = W::BUS.dispatch(Harness::Command.build(:send_message,
-                                                 { agent: "bia", message: msg }, transport: :cli))
+                                                 { agent: "bia", message: msg, session_id: SESSION },
+                                                 transport: :cli))
     tid = res[:task_id]
-    600.times do
+    900.times do
       t = W::TASK_STORE.find(tid)
-      break if t && %w[completed failed cancelled].include?(t.status.to_s)
+      break if t && TERMINAL.include?(t.status.to_s)
 
       parent.sleep(0.1)
     end
-    sub.close
-    reader.wait
     @last_task = W::TASK_STORE.find(tid)
+    puts "\n  \e[2m[status: #{@last_task&.status} · turnos na sessão: #{W::SESSION_STORE.find(SESSION).messages.size}]\e[0m"
   end
-  # persiste o turno REAL na sessão (p/ a tela /admin/sessions/:id refletir)
-  W::SESSION_STORE.append_messages(SESSION, [
-                                     { "role" => "user", "content" => msg, "at" => Time.now.utc.iso8601 },
-                                     { "role" => "assistant", "content" => content, "at" => Time.now.utc.iso8601 }
-                                   ])
-  events
+
+  # TEARDOWN (destrava o Sync): encerra os loops de vida-longa da sessão + o
+  # supervisor. Sem isto o bloco fica pendurado esperando os fibers ociosos.
+  sub.close
+  reader.wait
+  W::EXECUTOR.stop_session_actors
+  W::EXECUTOR.instance_variable_get(:@supervisor)&.stop
 end
 
-all_events = []
-TURNS.each_with_index do |msg, i|
-  puts "\n\e[1m═══ TURNO #{i + 1} · Bia (DeepSeek #{Deploy::MODEL}) ═══\e[0m"
-  puts "\e[33mcliente>\e[0m #{msg}\n\e[32mbia>\e[0m "
-  all_events += run_turn(msg)
-  puts "\n  \e[2m[status: #{@last_task.status} · eventos: #{@last_task ? 'ok' : '-'}]\e[0m"
-end
-
+msgs = W::SESSION_STORE.find(SESSION).messages
 puts "\n\e[1m═══ RESUMO ═══\e[0m"
-puts "eventos totais: #{all_events.map(&:type).tally.map { |k, v| "#{k}:#{v}" }.join('  ')}"
+puts "transcript persistido na sessão (#{msgs.size} msgs): #{msgs.map { |m| m['role'] }.join(' → ')}"
 
 # --- visualização: renderiza o /admin contra os MESMOS stores ---
 OUT = ENV.fetch("OUT", "/tmp/admin-real")
