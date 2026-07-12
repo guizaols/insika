@@ -16,6 +16,13 @@ module Harness
       description "Carrega as instruções completas (SKILL.md) de uma skill pelo nome"
       param :name, desc: "Nome exato da skill, conforme listado em <available_skills>"
 
+      # RubyLLM::Tool#name deriva de self.class.name — p/ classe aninhada produz
+      # "harness--tools--load_skill", não "load_skill" (o que wire_callbacks/
+      # :skill_activated e o SkillCatalog#format_for_prompt assumem). Override
+      # explícito (fix do bug latente da Fase 0 — P2B-02 L7). Coexiste com
+      # `param :name` (verificado: a param continua presente).
+      def name = "load_skill"
+
       def initialize(catalog, allowed_names)
         @catalog = catalog
         @allowed = Array(allowed_names).map(&:to_s)

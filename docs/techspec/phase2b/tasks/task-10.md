@@ -1,7 +1,7 @@
 # Task 10 (P2B): Executor — partição eager/deferred + Tool Search de sistema
 
 > **Techspec:** [P2B-02-tool-search.md](../P2B-02-tool-search.md) (§Integração, L1/L2/L5/L6) · [00-overview.md](../00-overview.md) (D5) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

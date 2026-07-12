@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "harness/tools/load_skill" # o Executor o carrega lazy; explícito no teste
+require "harness/tools/tool_search"
 
 RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
   # Spy síncrono de event_stream — evita a coreografia de fibers para os
@@ -74,6 +75,77 @@ RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
       executor.send(:configure_chat, chat, state(allowed_tools: [Object.new], allowed_skills: []))
 
       expect(chat.tools.none? { |t| t.is_a?(Harness::Tools::LoadSkill) }).to be(true)
+    end
+  end
+
+  describe "#configure_chat — Tool Search (partição eager/deferred, P2B task 10)" do
+    def named_tool(name)
+      Class.new { define_method(:name) { name }; def description = "d" }.new
+    end
+
+    let(:tool_registry) do
+      reg = Harness::ToolRegistry.new
+      reg.register("send_email") { named_tool("send_email") }
+      reg
+    end
+    let(:tool_catalog) { Harness::ToolCatalog.new(tool_registry: tool_registry) }
+
+    # Executor COM tool_catalog + tool_registry reais (as outras deps inertes).
+    def exec_with_catalog
+      Harness::Executor.new(
+        context_builder: inert, policy_engine: inert, middleware: inert,
+        hooks: Harness::Hooks.new, tool_registry: tool_registry, skill_catalog: skill_catalog,
+        profiles: {}, session_store: inert, task_store: inert, checkpoint_store: inert,
+        event_stream: event_stream, tool_catalog: tool_catalog
+      )
+    end
+
+    def ts_state(allowed_tools:, tools_deferred:)
+      profile = Harness::AgentProfile.build(id: "a", model: "gpt", tools_deferred: tools_deferred)
+      State.new(context: Ctx.new("SOUL"), allowed_tools: allowed_tools, allowed_skills: [],
+                profile: profile, task: TaskStub.new("t", "s"))
+    end
+
+    it "deferred sai do wiring eager e a builtin ToolSearch entra" do
+      st = ts_state(allowed_tools: [named_tool("send_email"), named_tool("other")],
+                    tools_deferred: ["send_email"])
+      exec_with_catalog.send(:configure_chat, chat, st)
+
+      names = chat.tools.map { |t| t.respond_to?(:name) ? t.name : nil }
+      expect(names).to include("other")
+      expect(names).not_to include("send_email") # deferido, não cabeado eager
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(true)
+    end
+
+    it "ToolSearch nunca é envelopada (instância direta, como load_skill)" do
+      st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: ["send_email"])
+      exec_with_catalog.send(:configure_chat, chat, st)
+      ts = chat.tools.find { |t| t.is_a?(Harness::Tools::ToolSearch) }
+      expect(ts).not_to be_a(Harness::ToolEnvelope)
+    end
+
+    it "deferred_allowed = allowed ∩ tools_deferred (não o tools_deferred isolado)" do
+      # tools_deferred inclui 'ghost' que a Policy não passou (não está em allowed)
+      st = ts_state(allowed_tools: [named_tool("send_email")],
+                    tools_deferred: %w[send_email ghost])
+      exec_with_catalog.send(:configure_chat, chat, st)
+      ts = chat.tools.find { |t| t.is_a?(Harness::Tools::ToolSearch) }
+      expect(ts.instance_variable_get(:@deferred_allowed)).to eq(["send_email"])
+    end
+
+    it "paridade: sem tool_catalog, tudo eager e sem ToolSearch" do
+      st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: ["send_email"])
+      # `executor` (subject padrão) NÃO tem tool_catalog
+      executor.send(:configure_chat, chat, st)
+      expect(chat.tools.map(&:name)).to include("send_email")
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(false)
+    end
+
+    it "profile.tools_deferred nil (com tool_catalog): tudo eager, sem ToolSearch" do
+      st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: nil)
+      exec_with_catalog.send(:configure_chat, chat, st)
+      expect(chat.tools.map(&:name)).to include("send_email")
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(false)
     end
   end
 

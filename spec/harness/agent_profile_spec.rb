@@ -80,4 +80,15 @@ RSpec.describe Harness::AgentProfile do
       expect { described_class.build(id: "a", model: "m") }.not_to raise_error
     end
   end
+
+  describe "tools_deferred (P2B, Tool Search)" do
+    it "default nil = nenhuma deferred (tudo eager — paridade Fase 1)" do
+      expect(described_class.build(id: "a", model: "m").tools_deferred).to be_nil
+    end
+
+    it "aceita a allowlist de tools searchable-not-wired" do
+      profile = described_class.build(id: "a", model: "m", tools_deferred: %w[send_email create_invoice])
+      expect(profile.tools_deferred).to eq(%w[send_email create_invoice])
+    end
+  end
 end

@@ -1,7 +1,7 @@
 # Task 08 (P2B): `Context::Providers::ToolSearch` (catálogo de tools deferred)
 
 > **Techspec:** [P2B-02-tool-search.md](../P2B-02-tool-search.md) (L4, L6) · [tasks.md](./tasks.md)
-> **Status:** ⬜ TODO · **Complexity:** Med · **Etapa:** B
+> **Status:** ✅ DONE · **Complexity:** Med · **Etapa:** B
 
 ## Objetivo
 

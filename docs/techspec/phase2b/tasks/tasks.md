@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + [P2B-01](../P2B-01-capability-registry.md) · [P2B-02](../P2B-02-tool-search.md)
 > **Gerado:** 2026-07-10
-> **Progress:** 5/12 tasks complete (PR 1 / Etapa A ✅)
+> **Progress:** 10/12 tasks complete (PR 1 / Etapa A ✅ · PR 2 / Etapa B ✅)
 > **Base:** Fase 2-A completa (main @ merge PR #13)
 
 ---
@@ -16,11 +16,11 @@
 | 3 | `AgentProfile.capabilities` (allowlist opt-in) | [task-03.md](./task-03.md) | P2B-01 | ✅ DONE | Low | 0004 §6, L3 |
 | 4 | Ativar `contracts.capabilities` no `PluginLoader` + `register_capability` | [task-04.md](./task-04.md) | P2B-01 | ✅ DONE | Med | 0004 §3, L6 |
 | 5 | Executor: capability assembly (resolve por `profile.capabilities` → join pós-Policy → `rescue :capability` → wrap `ResolvedTool` + Envelope por `impl_name`) | [task-05.md](./task-05.md) | P2B-01 | ✅ DONE | High | 0004 §7, D1/D3/D4 |
-| 6 | `ToolCatalog` (name+description + `search` puro + `format_for_prompt`) | [task-06.md](./task-06.md) | P2B-02 | ⬜ TODO | Med | 0005 §5, L3 |
-| 7 | `AgentProfile.tools_deferred` (allowlist searchable-not-wired) | [task-07.md](./task-07.md) | P2B-02 | ⬜ TODO | Low | 0005 §5, L1/L2 |
-| 8 | `Context::Providers::ToolSearch` (fragmento `<available_tools>`) | [task-08.md](./task-08.md) | P2B-02 | ⬜ TODO | Med | 0005 §2/§5, L4 |
-| 9 | `Tools::ToolSearch` builtin: matcher + promoção `chat.with_tools` mid-loop + `:tool_search` | [task-09.md](./task-09.md) | P2B-02 | ⬜ TODO | High | 0005 §5, D6/L5 |
-| 10 | Executor `configure_chat`: partição eager/deferred + `ToolSearch` de sistema (catálogo vem do provider, task 8) | [task-10.md](./task-10.md) | P2B-02 | ⬜ TODO | Med | 0005 §5, L6 |
+| 6 | `ToolCatalog` (name+description + `search` puro + `format_for_prompt`) | [task-06.md](./task-06.md) | P2B-02 | ✅ DONE | Med | 0005 §5, L3 |
+| 7 | `AgentProfile.tools_deferred` (allowlist searchable-not-wired) | [task-07.md](./task-07.md) | P2B-02 | ✅ DONE | Low | 0005 §5, L1/L2 |
+| 8 | `Context::Providers::ToolSearch` (fragmento `<available_tools>`) | [task-08.md](./task-08.md) | P2B-02 | ✅ DONE | Med | 0005 §2/§5, L4 |
+| 9 | `Tools::ToolSearch` builtin: matcher + promoção `chat.with_tools` mid-loop + `:tool_search` | [task-09.md](./task-09.md) | P2B-02 | ✅ DONE | High | 0005 §5, D6/L5 |
+| 10 | Executor `configure_chat`: partição eager/deferred + `ToolSearch` de sistema (catálogo vem do provider, task 8) | [task-10.md](./task-10.md) | P2B-02 | ✅ DONE | Med | 0005 §5, L6 |
 | 11 | Wiring (`CAPABILITY_REGISTRY`+`TOOL_CATALOG`+provider) + catálogo de eventos D5 (`:capability_resolved`/`:tool_search`) | [task-11.md](./task-11.md) | P2B-01/02 | ⬜ TODO | Low | 00 D7 |
 | 12 | Smoke E2E fatia B: resolução por priority/ambíguo/indisponível + promoção deferred no turno | [task-12.md](./task-12.md) | P2B-01..02 | ⬜ TODO | Med | 00 §"Critério" |
 
@@ -77,8 +77,9 @@ paralelos que tocam o mesmo arquivo):
   - **PR 1 — Etapa A** (tasks 1–5) ✅ **DONE**: Capability Registry + resolução
     determinística + ativação de `contracts.capabilities` + capability assembly no
     Executor. Suíte verde (731 exemplos).
-  - **PR 2 — Etapa B** (tasks 6–10): Tool Catalog + Tool Search (provider + builtin)
-    + partição eager/deferred no Executor.
+  - **PR 2 — Etapa B** (tasks 6–10) ✅ **DONE**: Tool Catalog + Tool Search (provider
+    + builtin, promoção mid-loop) + partição eager/deferred no Executor + fix do nome
+    do `LoadSkill`. Suíte verde (767 exemplos).
   - **PR 3 — Etapa C** (tasks 11–12): wiring + catálogo de eventos + smoke E2E.
 
 ### Cobertura da tech spec
