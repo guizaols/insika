@@ -96,7 +96,19 @@ module Harness
 
     # Passo 3: estimativa de tokens só quando o provider não informou (L3).
     def estimate_tokens(fragments)
-      fragments.map { |f| f.tokens ? f : f.with(tokens: @estimator.estimate(f.content)) }
+      fragments.map { |f| f.tokens ? f : f.with(tokens: @estimator.estimate(estimable_text(f.content))) }
+    end
+
+    # Fragmentos de history carregam um Hash {role:, content:} como conteúdo;
+    # estimar em cima do Hash contaria o texto do `#to_s` (":role=>", aspas,
+    # símbolos), inflando cada mensagem e enviesando a evicção. Conta os valores,
+    # não a representação Ruby.
+    def estimable_text(content)
+      case content
+      when String then content
+      when Hash then content.values.map(&:to_s).join(" ")
+      else content.to_s
+      end
     end
 
     # Passos 4-5: orçamento GLOBAL (L1). Corta não-pinned do menor priority p/ o

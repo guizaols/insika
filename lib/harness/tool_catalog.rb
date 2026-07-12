@@ -7,18 +7,20 @@ module Harness
   # RubyLLM::Tool — duck typing sobre `.description` (puro, testável sem a gem).
   #
   # A `description` canônica não vive no Entry (Registry::Entry não tem esse
-  # campo): vem da INSTÂNCIA da tool (`factory.call.description`) — o mesmo
-  # `factory.call` que o Executor já paga em instantiate_tools (estágio 3).
+  # campo): vem da INSTÂNCIA da tool (`factory.call.description`). Por isso o
+  # catálogo é LAZY: só instancia as tools na primeira consulta (`all`), não no
+  # boot. Um deployment sem `tools_deferred` nunca toca o catálogo e não paga
+  # instanciação nenhuma; um factory quebrado propaga no primeiro uso (onde o
+  # Executor também o pegaria no estágio 3), não na construção.
   class ToolCatalog
     Entry = Data.define(:name, :description)
 
     def initialize(tool_registry:)
       @tool_registry = tool_registry
-      @entries = build_entries # cache eager — mesma disciplina do SkillCatalog
     end
 
     def all
-      @entries
+      @entries ||= build_entries
     end
 
     # Recorte deferred permitido (tipicamente allowed_tools ∩ tools_deferred).
