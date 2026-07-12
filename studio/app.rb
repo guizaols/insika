@@ -87,6 +87,13 @@ module Studio
           settings_store: settings_store, llm_provider_store: llm_provider_store,
           mcp_store: mcp_store, system_file_store: system_file_store
         }.freeze
+        # Etapa H: flag de "restart recomendado" — em memória, POR PROCESSO. Uma
+        # mudança de config que o runtime só relê no boot (ex.: instâncias MCP são
+        # ligadas na inicialização) acende a flag; reiniciar o processo a apaga
+        # naturalmente (processo novo = `configure` roda de novo = flag zerada).
+        # Não vai pra sessão de propósito: a sessão sobrevive ao restart (o secret
+        # deriva do token) e a flag ficaria presa acesa.
+        @restart_needed = false
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "harness.studio", secret: secret,
                           max_seconds: SESSION_MAX_AGE, same_site: :lax
@@ -105,6 +112,11 @@ module Studio
       def derive_secret(admin_token)
         Digest::SHA512.hexdigest("harness-studio-session-v1:#{admin_token}")
       end
+
+      # --- Restart recomendado (Etapa H) — estado por processo -----------------
+      def restart_needed? = @restart_needed == true
+      def mark_restart_needed! = (@restart_needed = true)
+      def clear_restart_needed! = (@restart_needed = false)
     end
 
     route do |r|
@@ -144,6 +156,14 @@ module Studio
         r.redirect("/studio/login")
       end
 
+      # Dispensa o banner de "restart recomendado" sem reiniciar (o operador
+      # reconhece e segue). Um restart de verdade zera a flag por conta própria.
+      r.post "restart-ack" do
+        check_csrf!
+        self.class.clear_restart_needed!
+        r.redirect(safe_back(r.params["back"]))
+      end
+
       # `/studio` e `/studio/` → lista de agentes.
       r.root { r.redirect("/studio/agents") }
 
@@ -154,6 +174,21 @@ module Studio
           r.get do
             @agents = harness[:profile_source].all.sort_by(&:id)
             view("agents")
+          end
+
+          # POST /studio/agents — cria um agente (task de paridade: "cada um cria
+          # sua BIA"). Dispara :create_agent; redireciona pro detalhe do novo.
+          r.post do
+            check_csrf!
+            id = presence(r.params["id"])
+            result = with_flash("Agente '#{id}' criado.") do
+              dispatch(:create_agent, {
+                         id: id, model: presence(r.params["model"]),
+                         provider: presence(r.params["provider"]),
+                         memory: r.params["memory"] == "1"
+                       })
+            end
+            r.redirect(result ? agent_path(id) : "/studio/agents")
           end
         end
 
@@ -366,6 +401,9 @@ module Studio
             check_csrf!
             with_flash("Instância MCP salva.") do
               dispatch(:upsert_mcp, mcp_patch(r))
+              # Os servidores MCP são ligados no boot do runtime; a instância nova
+              # só entra em vigor após reiniciar. Acende o banner de "restart".
+              self.class.mark_restart_needed!
             end
             r.redirect("/studio/mcp")
           end
@@ -374,6 +412,7 @@ module Studio
           check_csrf!
           with_flash("Instância MCP removida.") do
             dispatch(:delete_mcp, { name: presence(r.params["name"]) })
+            self.class.mark_restart_needed!
           end
           r.redirect("/studio/mcp")
         end
@@ -482,6 +521,42 @@ module Studio
     end
 
     def authenticated? = session["auth"] == true
+
+    # --- Polish (Etapa H): tema, health chip, banner de restart --------------
+
+    def restart_needed? = self.class.restart_needed?
+
+    # Preferência de tema lida do cookie (aplicada server-side em <html> → sem
+    # flash). Allowlist estrita: valor inesperado cai em "auto".
+    THEMES = %w[auto light dark].freeze
+    def theme_pref
+      value = request.cookies["harness.theme"].to_s
+      THEMES.include?(value) ? value : "auto"
+    end
+
+    # Resumo de saúde do runtime para o chip da app-bar. Só contagens do que o
+    # Studio já lê — nada de ping novo. Persistência (durável/efêmero) vem do
+    # config, se o boot a informou (serve_real passa; specs não precisam).
+    def health_summary
+      parts = ["#{harness[:profile_source].all.size} agente(s)"]
+      if (ps = harness[:llm_provider_store])
+        parts << "#{ps.all.size} provider(s) LLM"
+      end
+      parts << "#{harness[:mcp_store].all.size} MCP" if harness[:mcp_store]
+      persistence = harness[:config][:persistence]
+      parts << persistence.to_s if persistence && !persistence.to_s.empty?
+      parts.join(" · ")
+    end
+
+    # Só redireciona para um caminho LOCAL (evita open-redirect via `back`):
+    # começa com "/", mas não "//" (protocol-relative) nem contém esquema.
+    def safe_back(path)
+      p = presence(path)
+      return "/studio/agents" unless p&.start_with?("/")
+      return "/studio/agents" if p.start_with?("//") || p.include?("://") || p.include?("\\")
+
+      p
+    end
 
     # Fail-closed POR CONSTRUÇÃO (paridade AdminAuth): sem token configurado, o
     # compare nunca passa → studio inacessível. Comparação em tempo constante.

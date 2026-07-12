@@ -56,7 +56,28 @@
   .appbar .links a { color:var(--muted); font-size:.9rem; font-weight:500; padding:.35rem .6rem; border-radius:8px; }
   .appbar .links a:hover { color:var(--text); background:var(--surface-2); }
   .appbar .links a[aria-current="page"] { color:var(--accent); background:var(--accent-weak); }
-  .appbar .logout { margin-left:auto; }
+  .appbar .logout { margin:0; }
+  .appbar-right { margin-left:auto; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+
+  /* Health chip (Etapa H) — presença do runtime + contagens no title */
+  .pill.health { cursor:default; }
+
+  /* Theme switch (Etapa H) — segmented control auto/claro/escuro */
+  .theme-switch { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface); }
+  .theme-opt { font-size:.72rem; font-weight:600; color:var(--muted); background:transparent; border:0; border-radius:0; box-shadow:none; padding:.3rem .5rem; }
+  .theme-opt:hover { color:var(--text); background:var(--surface-2); }
+  .theme-opt.on { color:var(--accent); background:var(--accent-weak); }
+  .theme-opt + .theme-opt { border-left:1px solid var(--border); }
+
+  /* Banner de restart recomendado (Etapa H) */
+  .banner {
+    max-width:1040px; margin:.75rem auto 0; padding:.6rem .9rem; border-radius:10px;
+    font-size:.9rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+    color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,transparent);
+    border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);
+  }
+  .banner form { margin:0; }
+  .banner strong { color:var(--text); }
 
   .page { max-width:1040px; margin:0 auto; padding:1.5rem 1.25rem 4rem; }
   .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }

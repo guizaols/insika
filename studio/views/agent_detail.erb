@@ -64,7 +64,7 @@
           <button type="submit" class="ghost danger">remover</button>
         </form>
       </div>
-      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts">
+      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts" data-controller="dirty-guard">
         <%== csrf_tag %>
         <input type="hidden" name="file" value="<%= pf[:name] %>">
         <div data-controller="code-editor" data-code-editor-language-value="markdown">
@@ -95,7 +95,7 @@
 
   <details class="card newfile">
     <summary>+ novo arquivo de prompt</summary>
-    <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts">
+    <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts" data-controller="dirty-guard">
       <%== csrf_tag %>
       <label>nome do arquivo
         <input type="text" name="file" placeholder="IDENTITY.md" required>
