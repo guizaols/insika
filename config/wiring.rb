@@ -59,6 +59,11 @@ module Harness
     CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
     TOOL_CATALOG        = Harness::ToolCatalog.new(tool_registry: REGISTRY)
 
+    # --- Memória cross-session (P2C, RFC-0005 §6) sobre o BACKEND durável ------
+    # SQLite quando HARNESS_DB setado (memória sobrevive a restart); Memory
+    # efêmero em dev. Store de domínio (≠ Stores::Memory backend, D7).
+    MEMORY_STORE = Harness::MemoryStore.new(store: BACKEND)
+
     # Catálogos: roots de skills/prompts do workspace (vazios se ausentes; a
     # task 26 acrescenta os dirs dos plugins pela precedência do doc 06 §4).
     CATALOG        = Harness::SkillCatalog.new([File.join(ROOT, "skills")])
@@ -75,6 +80,9 @@ module Harness
       # Tool Search nível-1 (P2B-02, task 8): emite <available_tools> de
       # profile.tools_deferred. Inerte p/ agentes sem tools_deferred (retorna []).
       Harness::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
+      # Memória cross-session (P2C, task 4): read path. Inerte p/ agentes sem
+      # `memory` (enabled_for? corta por perfil; store vazio -> []).
+      Harness::Context::Providers::Memory.new(store: MEMORY_STORE),
       Harness::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
 
@@ -98,7 +106,8 @@ module Harness
       session_store: SESSION_STORE, task_store: TASK_STORE,
       checkpoint_store: CHECKPOINT_STORE, event_stream: EVENT_STREAM,
       workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE,
-      capability_registry: CAPABILITY_REGISTRY, tool_catalog: TOOL_CATALOG
+      capability_registry: CAPABILITY_REGISTRY, tool_catalog: TOOL_CATALOG,
+      memory_store: MEMORY_STORE
     )
 
     # --- Command Bus + handlers (doc 03 §2-§3) -------------------------------

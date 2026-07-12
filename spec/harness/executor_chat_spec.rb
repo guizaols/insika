@@ -3,6 +3,7 @@
 require "spec_helper"
 require "harness/tools/load_skill" # o Executor o carrega lazy; explícito no teste
 require "harness/tools/tool_search"
+require "harness/tools/remember"
 
 RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
   # Spy síncrono de event_stream — evita a coreografia de fibers para os
@@ -146,6 +147,50 @@ RSpec.describe "Harness::Executor estágios 5-7 (cola RubyLLM)" do
       exec_with_catalog.send(:configure_chat, chat, st)
       expect(chat.tools.map(&:name)).to include("send_email")
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(false)
+    end
+  end
+
+  describe "#configure_chat — remember de sistema (P2C task 6)" do
+    let(:mem) { Harness::MemoryStore.new(store: Harness::Stores::Memory.new) }
+
+    def exec_with_memory
+      Harness::Executor.new(
+        context_builder: inert, policy_engine: inert, middleware: inert,
+        hooks: Harness::Hooks.new, tool_registry: inert, skill_catalog: skill_catalog,
+        profiles: {}, session_store: inert, task_store: inert, checkpoint_store: inert,
+        event_stream: event_stream, memory_store: mem
+      )
+    end
+
+    def mem_state(memory:)
+      profile = Harness::AgentProfile.build(id: "a", model: "gpt", memory: memory)
+      st = Harness::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st.tenant = "acme"
+      st
+    end
+
+    it "cabeia remember quando @memory_store + profile.memory" do
+      exec_with_memory.send(:configure_chat, chat, mem_state(memory: true))
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(true)
+    end
+
+    it "remember nunca é envelopada (instância direta)" do
+      exec_with_memory.send(:configure_chat, chat, mem_state(memory: true))
+      rt = chat.tools.find { |t| t.is_a?(Harness::Tools::Remember) }
+      expect(rt).not_to be_a(Harness::ToolEnvelope)
+    end
+
+    it "profile.memory nil: sem remember (paridade)" do
+      exec_with_memory.send(:configure_chat, chat, mem_state(memory: nil))
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(false)
+    end
+
+    it "sem @memory_store: sem remember mesmo com memory:true (paridade)" do
+      executor.send(:configure_chat, chat, mem_state(memory: true)) # subject sem memory_store
+      expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(false)
     end
   end
 
