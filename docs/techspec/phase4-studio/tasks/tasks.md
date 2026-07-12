@@ -2,8 +2,8 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 11/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) ✅ · **PRÓXIMO:** Etapa E (tasks 12-14 — app Roda + auth + assets)
-> **Base:** main @ merge PR #29 (`50374cf`) · Etapas A (#26) + B (#27) + C (#29) mergeadas · D (PR aberto)
+> **Progress:** 14/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) + D (memória/settings/LLM) + E (app Roda + auth + assets + primeiras páginas) ✅ · **PRÓXIMO:** Etapa F (tasks 15-17 — páginas de autoria)
+> **Base:** main @ merge PR #30 (`d138c53`) · Etapas A (#26) + B (#27) + C (#29) + D (#30) mergeadas · E (PR aberto)
 > **Retomada:** ver [HANDOFF.md](../HANDOFF.md)
 
 ---
@@ -23,9 +23,9 @@
 | 9 | Commands de memória (`:memory_put_fact`/`:memory_forget_fact`/`:memory_add_note`) + leituras | [task-09.md](./task-09.md) | D | ✅ DONE | Low | D5 |
 | 10 | ConfigStore settings/llm_providers + `:update_settings` + masking sentinel `__OCULTO__` | [task-10.md](./task-10.md) | D | ✅ DONE | Med | D6 |
 | 11 | `LLMConfigurator` — reconfigure runtime por provider + `:upsert/delete_llm_provider` | [task-11.md](./task-11.md) | D | ✅ DONE | Med | D6 |
-| 12 | App `studio/` (Roda) + boot/mount sob `/studio` + auth por cookie (login) + CSRF | [task-12.md](./task-12.md) | E | ⬜ TODO | High | D1, D7 |
-| 13 | Pipeline esbuild (Tailwind+Stimulus+CodeMirror) → `dist/` versionado + CSP `'self'` | [task-13.md](./task-13.md) | E | ⬜ TODO | Med | D8 |
-| 14 | Shell/layout + Stimulus base + páginas login + agents(list) + playground (SSE) | [task-14.md](./task-14.md) | E | ⬜ TODO | Med | D9 |
+| 12 | App `studio/` (Roda) + boot/mount sob `/studio` + auth por cookie (login) + CSRF | — | E | ✅ DONE | High | D1, D7 |
+| 13 | Pipeline esbuild (Tailwind+Stimulus+CodeMirror) → `dist/` versionado + CSP `'self'` | — | E | ✅ DONE | Med | D8 |
+| 14 | Shell/layout + Stimulus base + páginas login + agents(list) + playground (SSE) | — | E | ✅ DONE | Med | D9 |
 | 15 | Página agents(detail): config/model + island `code-editor` (prompts) | [task-15.md](./task-15.md) | F | ⬜ TODO | High | D3, D9 |
 | 16 | Páginas skills + tools (matriz + toggles via Turbo Frame) | [task-16.md](./task-16.md) | F | ⬜ TODO | Med | D4, D9 |
 | 17 | agents(detail): skills/memória/histórico | [task-17.md](./task-17.md) | F | ⬜ TODO | Med | D3, D5 |
