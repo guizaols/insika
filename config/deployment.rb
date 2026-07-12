@@ -62,6 +62,15 @@ module Deploy
     AGENT_FILE_STORE  = Harness::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Harness::SkillStore.new(config_store: CONFIG_STORE)
 
+    # Settings gerais + providers de LLM autoráveis em runtime (Fase 4 Etapa D,
+    # D6): durável no mesmo backend. O LLMConfigurator reaplica os providers no
+    # RubyLLM sem restart (chave/base por-provider). Semente: o provider deepseek
+    # do boot já vive na config global (RubyLLM.configure acima) — o store é a
+    # fonte editável daqui pra frente.
+    SETTINGS_STORE    = Harness::SettingsStore.new(config_store: CONFIG_STORE)
+    LLM_PROVIDER_STORE = Harness::LLMProviderStore.new(config_store: CONFIG_STORE)
+    LLM_CONFIGURATOR  = Harness::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
+
     # Catálogos com overlay do Store (Etapa C, D3 revisado): disco = seed,
     # Store = autorado (vence). reload torna edições hot (sem restart).
     CATALOG        = Harness::SkillCatalog.new([File.join(Deploy::ROOT, "deploy", "skills")], store: SKILL_STORE)
@@ -134,6 +143,15 @@ module Deploy
     BUS.register(:restore_agent_file, Harness::Commands::RestoreAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:write_skill, Harness::Commands::WriteSkill.new(skill_store: SKILL_STORE, skill_catalog: CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:set_skill_agents, Harness::Commands::SetSkillAgents.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
+
+    # Memória + settings + LLM (Fase 4 Etapa D) — a memória vira editável por HTTP
+    # (não só via tool `remember`); settings e providers ganham CRUD durável.
+    BUS.register(:memory_put_fact, Harness::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:memory_forget_fact, Harness::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:memory_add_note, Harness::Commands::MemoryAddNote.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:update_settings, Harness::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:upsert_llm_provider, Harness::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
+    BUS.register(:delete_llm_provider, Harness::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, event_stream: EVENT_STREAM))
 
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end
