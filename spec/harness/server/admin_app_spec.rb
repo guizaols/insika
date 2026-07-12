@@ -34,7 +34,7 @@ RSpec.describe Harness::Server::Admin::App do
   def task(id, status: :completed, executions: [], session_id: nil)
     Harness::TaskStore::Task.new(
       id: id, status: status, command: { "type" => "send_message" }, session_id: session_id,
-      executions: executions, mailbox_state: {}, claimed_by: nil, claim_expires_at: nil,
+      executions: executions, mailbox_state: {},
       created_at: "c", updated_at: "u"
     )
   end

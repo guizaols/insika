@@ -386,7 +386,7 @@ module Harness
         # fia o gate de aprovação no state (o ToolEnvelope lê no estágio 6).
         state.actor = actor
         state.approval_coordinator = self
-        state.requires_approval = resolution.respond_to?(:requires_approval) ? resolution.requires_approval : []
+        state.requires_approval = resolution.requires_approval
         state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
         state.allowed_skills = resolution.allowed_skills
         drain_and_maybe_suspend(task, actor)
@@ -512,7 +512,7 @@ module Harness
         profile: profile,
         command: rebuild_command(task),
         context: state.context,
-        candidate_tools: @tool_registry.respond_to?(:entries) ? @tool_registry.entries : [],
+        candidate_tools: @tool_registry.entries,
         candidate_skills: @skill_catalog.effective(profile.skills)
       )
     end
