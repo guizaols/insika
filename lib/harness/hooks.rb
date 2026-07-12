@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 module Harness
-  # Hooks ALTERAM a entrada/saída de UM estágio que envolvem (princípio
-  # constitucional 9, doc 05 §1): Middleware modifica, Hooks alteram, Events
-  # observam. Não criam fluxo próprio nem pulam estágios. Síncronos (doc 05 §5)
-  # e sem rescue (doc 05 §6) — o mapeamento erro->estado é do Executor.
+  # Hooks ALTERAM a entrada/saída de UM estágio que envolvem: Middleware
+  # modifica, Hooks alteram, Events observam. Não criam fluxo próprio nem pulam
+  # estágios. Síncronos e sem rescue — o mapeamento erro->estado é do Executor.
   class Hooks
-    PAIRS = %i[task prompt agent tool].freeze # RFC-0002 §6
+    PAIRS = %i[task prompt agent tool].freeze
 
     def initialize
       @before = Hash.new { |h, k| h[k] = [] }
@@ -30,8 +29,8 @@ module Harness
       run_after(pair, yield(run_before(pair, subject)))
     end
 
-    # Metades públicas do around (task 19). Necessárias para o par :tool, cujo
-    # "corpo" do estágio é o loop interno do RubyLLM (doc 03 §6) — não há bloco
+    # Metades públicas do around. Necessárias para o par :tool, cujo
+    # "corpo" do estágio é o loop interno do RubyLLM — não há bloco
     # a envolver; as metades são chamadas dos callbacks before_tool_call/
     # after_tool_result separadamente.
     def run_before(pair, subject)

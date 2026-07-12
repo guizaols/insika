@@ -10,7 +10,7 @@ require_relative "agent_card"
 module Harness
   module Server
     module A2A
-      # Handler A2A de borda (P3A-02, D1/D2/D4/D6): sub-app injetado (espelha
+      # Handler A2A de borda: sub-app injetado (espelha
       # Admin::App). A2A é TRANSPORTE — traduz JSON-RPC↔Command no MESMO bus,
       # projeta Task→A2A, e NUNCA vaza exceção (sempre error object).
       class App
@@ -29,7 +29,7 @@ module Harness
           return Protocol.error(parsed[:id], parsed[:code], parsed[:message]) if kind == :error
 
           dispatch_method(parsed[:id], parsed[:method], parsed[:params])
-        rescue StandardError => e # rede de segurança: parse ok mas algo escapou (D4)
+        rescue StandardError => e # rede de segurança: parse ok mas algo escapou
           code, message = Errors.from_exception(e)
           Protocol.error(nil, code, message)
         end
@@ -50,13 +50,13 @@ module Harness
           when "tasks/cancel" then tasks_cancel(id, params)
           else Protocol.error(id, Errors::METHOD_NOT_FOUND, "método '#{method}' não suportado")
           end
-        rescue StandardError => e # mapeia erro do núcleo -> código A2A (D4)
+        rescue StandardError => e # mapeia erro do núcleo -> código A2A
           code, message = Errors.from_exception(e)
           Protocol.error(id, code, message)
         end
 
-        # message/send devolve a Task (D2); contextId ausente -> cria sessão (o
-        # servidor atribui o contextId; garante transcript p/ tasks/get, L4).
+        # message/send devolve a Task; contextId ausente -> cria sessão (o
+        # servidor atribui o contextId; garante transcript p/ tasks/get).
         def message_send(id, params)
           message = params["message"] || {}
           session_id = message["contextId"] || params["contextId"]
@@ -85,7 +85,7 @@ module Harness
           Protocol.result(id, TaskProjection.call(@task_store.find(task_id), at: now))
         end
 
-        # Conteúdo final = última mensagem `assistant` do transcript da sessão (L4).
+        # Conteúdo final = última mensagem `assistant` do transcript da sessão.
         def terminal_content(task)
           return nil unless task.session_id
 
@@ -96,7 +96,7 @@ module Harness
           msg && (msg["content"] || msg[:content])
         end
 
-        # Mensagem de erro do último Execution :failed (L4).
+        # Mensagem de erro do último Execution :failed.
         def terminal_error(task)
           exec = task.executions.last
           return nil unless exec && exec.outcome.to_s == "failed"

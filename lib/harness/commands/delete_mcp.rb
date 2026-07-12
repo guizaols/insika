@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa G / D6): remove uma instância MCP do
+    # Command de controle: remove uma instância MCP do
     # McpStore. Idempotente (`existed: false` se não havia). -> { existed: bool }.
     class DeleteMcp
       def initialize(mcp_store:, event_stream:)

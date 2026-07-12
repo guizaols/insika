@@ -4,12 +4,12 @@ require "ruby_llm"
 
 module Harness
   module Tools
-    # Nível 2 do progressive disclosure de TOOLS (P2B-02, análogo do LoadSkill):
+    # Nível 2 do progressive disclosure de TOOLS (análogo do LoadSkill):
     # busca no catálogo de deferred e PROMOVE as relevantes para o chat vivo via
-    # chat.with_tools (D6 — verificado propagar no round seguinte do mesmo `ask`
+    # chat.with_tools (verificado propagar no round seguinte do mesmo `ask`
     # no ruby_llm 1.16). `require "ruby_llm"` fica NESTE arquivo (herda de
     # RubyLLM::Tool) — não entra em lib/harness.rb; o Executor o carrega lazy no
-    # configure_chat (D9, como o LoadSkill).
+    # configure_chat (como o LoadSkill).
     class ToolSearch < RubyLLM::Tool
       description "Busca e habilita ferramentas adicionais por descrição da necessidade"
       param :query, desc: "O que você precisa fazer (ex.: 'enviar email', 'gerar fatura')"
@@ -50,7 +50,7 @@ module Harness
 
       # Instancia (via tool_registry), embrulha no MESMO ToolEnvelope das eager
       # (timeout do profile + skip_side_effects do state) e promove via
-      # chat.with_tools (D6). NotFoundError (catálogo desalinhado) descarta só
+      # chat.with_tools. NotFoundError (catálogo desalinhado) descarta só
       # aquele match — a busca não quebra.
       def promote(entries)
         timeout = @state.profile.limits[:tool_timeout] || 60

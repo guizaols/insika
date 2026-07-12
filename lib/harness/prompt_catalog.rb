@@ -3,10 +3,10 @@
 require "yaml"
 
 module Harness
-  # Catalog de prompts (RFC-0001 princípio 6, doc 06 §2): conteúdo NÃO-executável
+  # Catalog de prompts: conteúdo NÃO-executável
   # (é Catalog, não Registry). Espelha o SkillCatalog: cada prompt é um diretório
   # com um PROMPT.md (frontmatter YAML name/description + corpo markdown).
-  # Fonte do provider Prompt quando o perfil usa prompt_refs (doc 04 §2).
+  # Fonte do provider Prompt quando o perfil usa prompt_refs.
   class PromptCatalog
     Prompt = Data.define(:name, :description, :path, :body)
 
@@ -23,7 +23,7 @@ module Harness
     # papel do catálogo levantar).
     def find(name) = @prompts[name.to_s]
 
-    # Rescan + troca atômica do índice (Etapa C): paridade com o SkillCatalog
+    # Rescan + troca atômica do índice: paridade com o SkillCatalog
     # para reload sem restart quando o seed em disco muda.
     def reload
       @prompts = load_all

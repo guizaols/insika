@@ -4,11 +4,11 @@ require "json"
 
 module Harness
   module Stores
-    # Backend em memória para dev/teste (doc 01 §2-§3).
-    # Serializa JSON mesmo em memória (L2): paridade exata de semântica de
+    # Backend em memória para dev/teste.
+    # Serializa JSON mesmo em memória: paridade exata de semântica de
     # tipos com o SQLite — a suíte de contrato é honesta.
     # Sem lock: fibers cooperativos não preemptam no meio de uma operação
-    # de Hash (doc 01 §5).
+    # de Hash.
     class Memory
       include Store
 
@@ -40,8 +40,8 @@ module Harness
       end
 
       # Snapshot no início da transação mais externa; exceção em qualquer
-      # nível -> restaura o snapshot e re-propaga (rollback REAL, doc 01 §2).
-      # Aninhada reusa a externa (sem SAVEPOINT na Fase 1).
+      # nível -> restaura o snapshot e re-propaga (rollback REAL).
+      # Aninhada reusa a externa (sem SAVEPOINT).
       def transaction
         if @tx_depth.positive?
           @tx_depth += 1
@@ -65,8 +65,8 @@ module Harness
         end
       end
 
-      # Tipos do modelo JSON + Symbol (coerido a String na escrita, C8).
-      # Qualquer outro tipo é "lixo" e deve ser rejeitado (C22).
+      # Tipos do modelo JSON + Symbol (coerido a String na escrita).
+      # Qualquer outro tipo é "lixo" e deve ser rejeitado.
       JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
                   String, Symbol].freeze
       private_constant :JSONABLE
@@ -77,13 +77,13 @@ module Harness
         Hash.new { |h, scope| h[scope] = {} }
       end
 
-      # Enforce o modelo de tipos do contrato na borda (doc 01 §2, §6):
-      # Symbol/símbolo-chave viram String (C8); tipo fora do modelo JSON ->
-      # StoreError na ESCRITA (fail-fast; nunca grava lixo — C22).
+      # Enforce o modelo de tipos do contrato na borda:
+      # Symbol/símbolo-chave viram String; tipo fora do modelo JSON ->
+      # StoreError na ESCRITA (fail-fast; nunca grava lixo).
       #
       # Não usa `JSON.generate(strict: true)`: sob json 2.7.1 (versão travada)
-      # `strict` rejeita Symbol, o que violaria C8. A validação explícita é
-      # independente da versão do json e dá a MESMA semântica ao SQLite (task 4).
+      # `strict` rejeita Symbol, o que violaria a coerção de Symbol. A validação explícita é
+      # independente da versão do json e dá a MESMA semântica ao SQLite.
       # A exceção do bloco de transação (do chamador) propaga sem encapsular;
       # só erro do backend vira StoreError.
       def serialize(value)

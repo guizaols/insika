@@ -4,19 +4,19 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de DOMÍNIO da memória-do-agente (P2C, RFC-0005 §6). Duas camadas
+  # Store de DOMÍNIO da memória-do-agente. Duas camadas
   # escopadas por tenant sobre um `Harness::Store` qualquer: `profile` (fatos
   # chave-valor estáveis) e `notes` (anotações livres append-only). Espelha o
   # `PendingActionStore` (normaliza symbol→string na escrita, scan O(n) na
   # leitura, records com timestamp).
   #
-  # NÃO confundir com `Harness::Stores::Memory` (backend KV em memória, Fase 1):
-  # este é o store de domínio; aquele é um dos backends onde este grava (D7).
+  # NÃO confundir com `Harness::Stores::Memory` (backend KV em memória):
+  # este é o store de domínio; aquele é um dos backends onde este grava.
   class MemoryStore
-    SCOPE_PREFIX = "memory"       # scope = "memory:<tenant>" (D2)
+    SCOPE_PREFIX = "memory"       # scope = "memory:<tenant>"
     FACT_PREFIX  = "fact:"
     NOTE_PREFIX  = "note:"
-    DEFAULT_TENANT = "_default"   # sem tenant no Command (D2)
+    DEFAULT_TENANT = "_default"   # sem tenant no Command
 
     Fact = Data.define(:key, :value, :updated_at)
     Note = Data.define(:id, :text, :created_at)
@@ -25,7 +25,7 @@ module Harness
       @store = store
     end
 
-    # Upsert (last-write-wins, contrato Store D7). -> Fact
+    # Upsert (last-write-wins, contrato Store). -> Fact
     def put_fact(tenant:, key:, value:)
       record = { "key" => key.to_s, "value" => stringify(value), "updated_at" => timestamp }
       @store.set(scope_for(tenant), FACT_PREFIX + key.to_s, record)

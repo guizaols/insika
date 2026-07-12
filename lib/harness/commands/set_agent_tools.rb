@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa B / D4): ajusta a allow/denylist de tools
+    # Command de controle: ajusta a allow/denylist de tools
     # de um agente. `allow` nil = todas (regra do AgentProfile); `deny` sempre
     # vence. Vale no próximo dispatch (hot). -> AgentProfile.
     class SetAgentTools

@@ -5,9 +5,9 @@ require "rack/utils"
 
 module Harness
   module Server
-    # Auth mínima de operador (RFC-0007 §5). Fail-closed POR CONSTRUÇÃO: sem
+    # Auth mínima de operador. Fail-closed POR CONSTRUÇÃO: sem
     # token configurado, o /admin não existe para o mundo (503) — nunca aberto
-    # por omissão (doc 07 §2 e §6). Módulo puro, testável sem Rack env.
+    # por omissão. Módulo puro, testável sem Rack env.
     module AdminAuth
       module_function
 

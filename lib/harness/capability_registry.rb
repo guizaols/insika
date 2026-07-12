@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Harness
-  # Guarda temporário — a Task 2 (P2B) define as classes definitivas em
-  # errors.rb (carregado ANTES deste arquivo em lib/harness.rb). Se já
-  # existirem, este bloco é pulado (nenhuma colisão, nada a remover depois).
+  # Guarda temporário — as classes definitivas vivem em errors.rb (carregado
+  # ANTES deste arquivo em lib/harness.rb). Se já existirem, este bloco é pulado
+  # (nenhuma colisão, nada a remover depois).
   unless defined?(Harness::CapabilityUnavailable)
     class CapabilityError < Error; end
 
@@ -23,7 +23,7 @@ module Harness
     end
   end
 
-  # Resolução intenção→implementação (RFC-0004). INDIREÇÃO pura (L1): NÃO herda
+  # Resolução intenção→implementação. INDIREÇÃO pura: NÃO herda
   # de `Registry` (que guarda executáveis) — guarda `Provider`s (metadados de
   # resolução) e devolve o `impl_name` que OUTRO registry instancia. Imutável
   # pós-boot por construção (só o boot/loader registra), como o `Registry`.
@@ -62,7 +62,7 @@ module Harness
 
     def capabilities = @providers.keys
 
-    # Rollback do Loader (L6), simétrico ao `Registry#deregister_plugin`. Remove
+    # Rollback do Loader, simétrico ao `Registry#deregister_plugin`. Remove
     # só os Providers do plugin; capabilities sem provider restante somem de
     # `capabilities` (limpa a chave para o Hash.new-com-bloco não recriá-la vazia).
     def deregister_plugin(plugin_id)
@@ -72,7 +72,7 @@ module Harness
     end
 
     # -> Provider escolhido | raise CapabilityUnavailable | raise CapabilityAmbiguous.
-    # PURO e determinístico (L2): mesmo input → mesma escolha ou mesmo erro. Sem
+    # PURO e determinístico: mesmo input → mesma escolha ou mesmo erro. Sem
     # IO além do `available.call` do próprio Provider. Emite `:capability_resolved`
     # quando `event_stream:` presente (auditoria).
     def resolve(capability, profile:, context: {}, event_stream: nil)
@@ -99,11 +99,11 @@ module Harness
     private
 
     # Resolução aplica SÓ `tools_deny` sobre `impl_name` (deny SEMPRE vence) — NÃO
-    # aplica `tools_allow` (L3/D3 do overview): o grant para usar a capability é
-    # listá-la em `profile.capabilities`, conferido pelo Executor (Task 5) ANTES
+    # aplica `tools_allow`: o grant para usar a capability é
+    # listá-la em `profile.capabilities`, conferido pelo Executor ANTES
     # de chamar `resolve`. Reusar `tools_allow` filtraria para fora um provider de
     # um agente que lista só a capability (não o impl cru). Pinning por-agente de
-    # provider (`capability_providers`) é evolução (RFC-0004 §8).
+    # provider (`capability_providers`) é evolução.
     def apply_deny(candidates, profile)
       deny = Array(profile.tools_deny).map(&:to_s)
       candidates.reject { |p| deny.include?(p.impl_name) }
@@ -112,8 +112,8 @@ module Harness
     # `priority` desc primária, `nil` como o MAIS BAIXO possível (abaixo de
     # qualquer Integer, inclusive negativo — não normalizar para 0, que colidiria
     # com `priority: 0` explícito). Desempate por precedência de plugin (ordem de
-    # registro, proxy de announce, RFC-0003 §5): plugins diferentes sempre
-    # desempatam; mesmo plugin (nil incluso) empatado = CapabilityAmbiguous (L4).
+    # registro, proxy de announce): plugins diferentes sempre
+    # desempatam; mesmo plugin (nil incluso) empatado = CapabilityAmbiguous.
     def pick_top(candidates, capability)
       indexed = providers(capability).each_with_index.to_h { |p, i| [p, i] }
 

@@ -8,18 +8,17 @@ module Harness
   # nível 1 = name+description no system prompt; nível 2 = corpo carregado
   # sob demanda pela tool load_skill.
   #
-  # Migrado da Fase 0 (reference-implementation) sem mudança de lógica — só o
-  # módulo AgentRuntime -> Harness (doc 00 §4). Consumido pelo Executor
-  # (skill_catalog:) e pelo estágio 3 (effective/format_for_prompt).
+  # Consumido pelo Executor (skill_catalog:) e pelo estágio 3
+  # (effective/format_for_prompt).
   class SkillCatalog
     Skill = Data.define(:name, :description, :path, :body)
 
     # roots ordenados por PRECEDÊNCIA (maior primeiro): workspace, managed,
     # bundled. Mesmo nome em mais de um root: o primeiro vence.
     #
-    # store (Etapa C, opcional): um SkillStore com as skills AUTORADAS no Studio.
-    # Sobrepõem as de disco (seed) — Store vence, é a fonte da verdade (D3
-    # revisado). Nil = comportamento Fase 0 (só disco), zero regressão.
+    # store (opcional): um SkillStore com as skills AUTORADAS no Studio.
+    # Sobrepõem as de disco (seed) — Store vence, é a fonte da verdade.
+    # Nil = comportamento só-disco, zero regressão.
     def initialize(roots, store: nil)
       @roots = Array(roots)
       @store = store
@@ -34,9 +33,9 @@ module Harness
       @skills[name.to_s]
     end
 
-    # Recarrega do disco + Store e TROCA o índice atomicamente (Etapa C): uma
+    # Recarrega do disco + Store e TROCA o índice atomicamente: uma
     # skill autorada/editada passa a valer sem restart. Um turno em andamento
-    # capturou @skills no dispatch, então não vê a troca no meio (D3).
+    # capturou @skills no dispatch, então não vê a troca no meio.
     def reload
       @skills = load_all
       self

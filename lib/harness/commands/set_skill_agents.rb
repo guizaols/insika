@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa C): habilita/desabilita uma skill em N
+    # Command de controle: habilita/desabilita uma skill em N
     # agentes de uma vez, mexendo na allowlist `profile.skills` de cada um.
     # Vale no próximo dispatch (hot via ProfileSource). -> { name, enabled_for }.
     #
@@ -15,7 +15,7 @@ module Harness
     #    "todas" exigiria enumerar o catálogo e materializar uma allowlist
     #    explícita (destrutivo/surpreendente). Estes agentes ficam intactos e
     #    entram em `skipped_all`. Para restringir, use :set_agent_tools/allowlist
-    #    explícita primeiro. (Ver edge case §8.2 do overview: nil vs []).
+    #    explícita primeiro.
     class SetSkillAgents
       def initialize(profile_source:, event_stream:)
         @profile_source = profile_source

@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa G): restaura uma versão antiga de um
+    # Command de controle: restaura uma versão antiga de um
     # arquivo de sistema global como o conteúdo atual (nova escrita — histórico
     # linear). -> { file, updated_at }.
     class RestoreSystemFile

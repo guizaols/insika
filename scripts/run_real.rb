@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # RODAR DE VERDADE (sem mock): conversa REAL e MULTI-TURN com a Bia (DeepSeek),
-# serializada pelo SessionActor (P2-03). Cada turno vai na fila FIFO da sessão;
+# serializada pelo SessionActor. Cada turno vai na fila FIFO da sessão;
 # o turno 2 enxerga o transcript do turno 1 (memória de sessão via o Session
 # provider — o seam :vars reconciliado). Streama a resposta, mostra
 # tools/skills/retornos, e renderiza o /admin contra os MESMOS stores.

@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de CONTROLE (doc 03 L1, P2-01): posta `:pause` na mailbox in-process
+    # Command de controle: posta `:pause` na mailbox in-process
     # da Task e responde síncrono. Payload `{ task_id: String }` -> retorna Task.
     #
-    # Cooperativo (doc 03 L2): quem transiciona `running -> paused` e emite
+    # Cooperativo: quem transiciona `running -> paused` e emite
     # `:task_paused` é o fiber da task ao drenar na próxima fronteira — NUNCA este
     # handler. Pause de task sem fiber vivo (terminal/órfã) é no-op idempotente.
     class PauseTask

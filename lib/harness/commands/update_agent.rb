@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa B): edita um agente existente. Merge do
+    # Command de controle: edita um agente existente. Merge do
     # patch sobre o profile atual (só os campos enviados mudam) + rebuild + put.
     # Vale no PRÓXIMO dispatch (o ProfileSource lê fresco). -> AgentProfile.
     class UpdateAgent

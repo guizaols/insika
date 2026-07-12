@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Settings GERAIS do deploy (Fase 4 — Studio, D6): timeouts, streaming e
+  # Settings GERAIS do deploy: timeouts, streaming e
   # compaction. Um único record no ConfigStore (scope "settings", key "general").
   # Leitura sempre devolve os DEFAULTS sobrepostos pelo que foi autorado — então
   # um deploy novo (store vazio) já responde com config coerente, e o Studio só

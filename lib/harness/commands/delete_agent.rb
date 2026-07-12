@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa B): remove um agente. -> AgentProfile
+    # Command de controle: remove um agente. -> AgentProfile
     # removido (para o transporte confirmar o que sumiu). Turnos JÁ em andamento
     # que capturaram o profile seguem até terminar (o ProfileSource só afeta
     # novos dispatches).

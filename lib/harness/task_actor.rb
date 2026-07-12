@@ -4,15 +4,14 @@ require "async"
 require "async/queue"
 
 module Harness
-  # Modelo de Actor (RFC-0002 §9): um fiber Async por Task + mailbox. Fase 1
-  # tinha só `cancel`/`user_message`; a Fase 2 completa o enum (`approval`,
-  # `pause`, `resume`, `timeout`, `heartbeat`) e adiciona o primitivo de
-  # SUSPENSÃO cooperativa (`await`). Cancelamento/suspensão só nas fronteiras de
-  # estágio (doc 03 L2) — nunca no meio de uma operação.
+  # Modelo de Actor: um fiber Async por Task + mailbox. O enum de mensagens é
+  # `cancel`/`user_message`/`approval`/`pause`/`resume`/`timeout`/`heartbeat`, com
+  # `await` como o primitivo de SUSPENSÃO cooperativa. Cancelamento/suspensão só
+  # nas fronteiras de estágio — nunca no meio de uma operação.
   class TaskActor
-    # `user_message` segue reservado (sem produtor). `pause`/`resume` (operador,
-    # P2-01), `approval` (human-in-the-loop, P2-02), `timeout`/`heartbeat`
-    # (watchdog/liveness, observação — P2-01 L4).
+    # `user_message` segue reservado (sem produtor). `pause`/`resume` (operador),
+    # `approval` (human-in-the-loop), `timeout`/`heartbeat`
+    # (watchdog/liveness, observação).
     MESSAGES = %i[cancel user_message approval pause resume timeout heartbeat].freeze
 
     attr_reader :task_id, :pending_user_messages, :heartbeats
@@ -26,7 +25,7 @@ module Harness
       @heartbeats = 0
     end
 
-    # Não-bloqueante (doc 03 §5). Mensagem fora do enum é bug do chamador.
+    # Não-bloqueante. Mensagem fora do enum é bug do chamador.
     def post(message, data = nil)
       raise ArgumentError, "mensagem desconhecida: #{message}" unless MESSAGES.include?(message)
 
@@ -34,12 +33,12 @@ module Harness
       nil
     end
 
-    # Roda o bloco num fiber Async FILHO do parent (doc 03 §5). Retorna o Task.
+    # Roda o bloco num fiber Async FILHO do parent. Retorna o Task.
     def run(&turn_block)
       @async_task = @parent.async { turn_block.call(self) }
     end
 
-    # Drena a mailbox SEM bloquear (fronteiras, L2). `:cancel` levanta (o topo do
+    # Drena a mailbox SEM bloquear (fronteiras). `:cancel` levanta (o topo do
     # fiber mapeia :cancelled). `:pause` arma a suspensão (o Executor checa
     # `pause_requested?`). Resoluções (`:resume`/`:approval`/`:timeout`) que
     # cheguem aqui SEM suspensão pendente são DESCARTADAS (idempotente, no-op).

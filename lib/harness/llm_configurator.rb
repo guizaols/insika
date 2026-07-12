@@ -2,11 +2,11 @@
 
 module Harness
   # Aplica os providers de LLM autorados (LLMProviderStore) no RubyLLM em RUNTIME
-  # (Fase 4 — Studio, D6). Meta: trocar chave/base de um provider SEM restart —
+  # Meta: trocar chave/base de um provider SEM restart —
   # o RubyLLM expõe `config.<api>_api_key=` / `config.<api>_api_base=`, então
   # reconfigurar é setar esses acessores por provider.
   #
-  # Restrição D9 do core: este arquivo NÃO requer ruby_llm em load-time — o
+  # Restrição do core: este arquivo NÃO requer ruby_llm em load-time — o
   # `require` é lazy, dentro de `apply` (e injetável via `configure:` pra teste,
   # que roda sem a gem/chave). Um provider que o RubyLLM não reconhece (sem
   # acessor correspondente) NÃO explode: entra em `skipped` (degrada pra "restart

@@ -4,7 +4,7 @@ require "time"
 
 module Harness
   module Commands
-    # Command de CONTROLE (Fase 4 Etapa C): remove um arquivo de prompt do
+    # Command de controle: remove um arquivo de prompt do
     # workspace de um agente. Inexistente -> NotFoundError. -> { agent_id, file }.
     class DeleteAgentFile
       def initialize(profile_source:, agent_file_store:, event_stream:)

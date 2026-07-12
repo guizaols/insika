@@ -3,7 +3,7 @@
 require "time"
 
 module Harness
-  # Store de DOMÍNIO de CONFIGURAÇÃO (Fase 4 — Studio, D2/D5). Diferente dos
+  # Store de DOMÍNIO de CONFIGURAÇÃO. Diferente dos
   # stores de EXECUÇÃO (session/task/checkpoint/pending/memory), este guarda a
   # configuração que o Studio autora em runtime: agentes (profiles), settings
   # gerais, providers de LLM e instâncias MCP. KV escopado sobre um
@@ -15,7 +15,7 @@ module Harness
   # Store; o domínio re-simboliza na borda — ver StoredProfileSource).
   class ConfigStore
     SCOPE_PREFIX = "config"
-    # agent_files/skills entram na Etapa C (D3 revisado): o CONTEÚDO de prompts
+    # agent_files/skills: o CONTEÚDO de prompts
     # por-agente e de skills compartilhadas vive no Store (fonte da verdade única,
     # um SQLite de backup), não em disco — disco vira só seed/import.
     SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files].freeze

@@ -5,7 +5,7 @@ require_relative "errors"
 module Harness
   module Server
     module A2A
-      # Envelope JSON-RPC 2.0 (P3A-01, D4/L1-L2). PURO — recebe o Hash já
+      # Envelope JSON-RPC 2.0. PURO — recebe o Hash já
       # desserializado (o parsing do JSON cru é do Server::App). NUNCA levanta.
       module Protocol
         VERSION = "2.0"

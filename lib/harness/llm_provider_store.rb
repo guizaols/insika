@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Harness
-  # Providers de LLM autorados em runtime (Fase 4 — Studio, D6). Um record por
+  # Providers de LLM autorados em runtime. Um record por
   # provider no ConfigStore (scope "llm_providers"), keyed pelo slug da API
   # (`deepseek`, `openai`, ...). Guarda base_url/auth_header/models e a `api_key`.
   #

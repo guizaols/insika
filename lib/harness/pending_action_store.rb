@@ -4,14 +4,14 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de domínio das AÇÕES PENDENTES de aprovação (P2-02, D2: "estado como
+  # Store de domínio das AÇÕES PENDENTES de aprovação ("estado como
   # record, não flag"). Uma tool marcada `approval` (Policy) cria um
   # PendingAction e o turno vai a :waiting; o operador resolve via ApproveAction.
   # Durável (sobre um Harness::Store injetado): sobrevive a kill -9 — o operador
   # aprova depois do reboot, e o Recovery reidrata a task em :waiting.
   #
   # Normaliza symbol→string na ESCRITA (o backend só garante round-trip de tipos
-  # JSON, doc 01 §2), como os demais stores de domínio da Fase 1.
+  # JSON), como os demais stores de domínio.
   class PendingActionStore
     SCOPE = "pending_actions"
     KEY_PREFIX = "pending:"
@@ -49,7 +49,7 @@ module Harness
     end
 
     # -> [PendingAction] :pending da task (recovery/UI). Scan O(n) — single-node,
-    # Fase 1/2 (doc 01 §5), igual TaskStore#running_or_interrupted.
+    # igual TaskStore#running_or_interrupted.
     def open_for(task_id)
       id = task_id.to_s
       @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
@@ -61,7 +61,7 @@ module Harness
       end
     end
 
-    # -> PendingAction resolvida. Só resolve :pending (edge 1): dupla resolução
+    # -> PendingAction resolvida. Só resolve :pending: dupla resolução
     # ou decision inválida -> ValidationError; ausente -> NotFoundError.
     def resolve(id, decision:, operator: nil)
       target = decision.to_sym
