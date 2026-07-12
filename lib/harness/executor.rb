@@ -17,7 +17,7 @@ module Harness
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
-                   capability_registry: nil)
+                   capability_registry: nil, tool_catalog: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -32,6 +32,10 @@ module Harness
       @workflow_registry = workflow_registry # estágio 6 do trigger_workflow (task 23)
       @pending_action_store = pending_action_store # gate de aprovação (P2-02)
       @capability_registry = capability_registry # resolução de capability (P2B, nil = desligado)
+      # Tool Search (P2B-02): ToolCatalog opcional. nil = nenhuma tool deferred é
+      # particionada, mesmo que um profile declare `tools_deferred` — paridade
+      # Fase 1/2-A (todo wiring existente cabeia 100% eager, L2).
+      @tool_catalog = tool_catalog
       @running = {}            # task_id => TaskActor (fibers vivos neste processo)
       @seqs = Hash.new(0)      # contador monotônico por task (D5)
       @supervised = false      # modo serving? (L4) — ver #turn_parent
@@ -371,6 +375,9 @@ module Harness
         # no resume, tool calls já concluídas no turno interrompido são "puladas"
         # (doc 02 L5): união chave avulsa ∪ checkpoint do turno.
         skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
+        # P2B: propaga o `skip` às tools PROMOVIDAS pelo tool_search (mesma
+        # resume-safety das eager); a builtin lê Array(state.skip_side_effects).
+        state.skip_side_effects = skip
         # o Executor instancia SÓ as permitidas (doc 05 §4): o Engine real
         # devolve Entries -> factory.call; um fake que já devolve instâncias
         # passa direto (shim de compat até o wiring da task 26).
@@ -652,6 +659,7 @@ module Harness
     def create_chat(profile)
       require "ruby_llm"
       require_relative "tools/load_skill"
+      require_relative "tools/tool_search" # P2B: builtin de Tool Search (lazy, como load_skill)
       RubyLLM.chat(
         model: profile.model,
         provider: profile.provider,
@@ -665,10 +673,35 @@ module Harness
       system = state.context.system.to_s
       chat.with_instructions(system) unless system.empty?
 
+      tools = Array(state.allowed_tools).dup
+
+      # Tool Search (P2B-02, L1/L2/L6): a partição SÓ roda com @tool_catalog
+      # presente (paridade Fase 1 quando nil — o `&&` curto-circuita ANTES de
+      # ler `.name`, então specs que passam Object.new como tool sem tool_catalog
+      # seguem intocadas). `deferred_allowed` = SEMPRE allowed_tools ∩
+      # tools_deferred (L1: decide QUANDO cabear, nunca SE). O catálogo
+      # <available_tools> vem do Context::Providers::ToolSearch (estágio 2, task
+      # 8) — configure_chat NÃO monta prompt (RFC-0005 §1); só decide chat.tools.
+      deferred_allowed = if @tool_catalog
+                           Array(state.profile.tools_deferred).map(&:to_s) &
+                             tools.map { |t| t.name.to_s }
+                         else
+                           []
+                         end
+
+      unless deferred_allowed.empty?
+        tools.reject! { |t| deferred_allowed.include?(t.name.to_s) }
+        # tool de SISTEMA (fora da allowlist), como load_skill — nunca envelopada
+        # (promove via chat.with_tools dentro do próprio #execute, task 9).
+        tools << Tools::ToolSearch.new(@tool_catalog, deferred_allowed, chat,
+                                       tool_registry: @tool_registry,
+                                       checkpoint_store: @checkpoint_store,
+                                       event_stream: @event_stream, state: state)
+      end
+
       # load_skill é default de SISTEMA (fora da allowlist), senão o progressive
       # disclosure quebra — comportamento preservado da Fase 0. allowed_skills
       # vem da RESOLUTION (policy), não do provider de contexto.
-      tools = Array(state.allowed_tools).dup
       skill_names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
       tools << Tools::LoadSkill.new(@skill_catalog, skill_names) unless skill_names.empty?
       chat.with_tools(*tools) unless tools.empty?

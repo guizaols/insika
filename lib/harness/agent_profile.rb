@@ -21,8 +21,11 @@ module Harness
     :prompt_refs,                     # NOVO — nomes do Prompt Catalog (doc 04 §2)
     :limits,                          # NOVO — timeouts/orçamentos (D4/D8)
     :approvals_required,              # P2 — tools que exigem aprovação (ApprovalRequired)
-    :capabilities                     # P2B — intenções que o agente pode acionar
+    :capabilities,                    # P2B — intenções que o agente pode acionar
     #                                   (RFC-0004 §6). nil = NENHUMA (opt-in, ver acima).
+    :tools_deferred                   # P2B — tools searchable-not-wired (Tool Search).
+    #                                   nil = nenhuma deferred (tudo eager — paridade Fase 1);
+    #                                   [names] ⊆ allowed_tools, expostas via tool_search.
   )
 
   # Classe reaberta (não bloco do Data.define): constante atribuída dentro
@@ -38,7 +41,7 @@ module Harness
                    tools_allow: nil, tools_deny: [], skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
-                   capabilities: nil)
+                   capabilities: nil, tools_deferred: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -46,7 +49,7 @@ module Harness
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
-        capabilities: capabilities
+        capabilities: capabilities, tools_deferred: tools_deferred
       )
     end
 
