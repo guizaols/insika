@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md) + [P3A-01](../P3A-01-a2a-protocol-and-projection.md) · [P3A-02](../P3A-02-agent-card-and-wiring.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 5/8 tasks complete (PR 1 / Etapa A ✅)
+> **Progress:** 8/8 tasks complete — fatia A COMPLETA (Etapas A · B) ✅
 > **Base:** Fase 2 completa (main @ merge PR #18)
 
 ---
@@ -16,9 +16,9 @@
 | 3 | `A2A::TaskProjection` (mapa de estado + Task→A2A Task, contextId=session, content→status.message) | [task-03.md](./task-03.md) | P3A-01 | ✅ DONE | Med | D2/D3, L4-L6 |
 | 4 | `A2A::AgentCard` (build: name/url/capabilities streaming:false/skills/modes) | [task-04.md](./task-04.md) | P3A-02 | ✅ DONE | Low | D5, L1-L2 |
 | 5 | `Server::A2A::App` (`#rpc`: message/send→send_message, tasks/get, tasks/cancel; `#agent_card`) — compõe 1-4 | [task-05.md](./task-05.md) | P3A-02 | ✅ DONE | High | D1/D2/D4, L3-L5 |
-| 6 | `Server::App` rotas: `POST /a2a` + `GET /.well-known/agent-card.json` + `handle_a2a` + `@a2a` (default nil → 404) | [task-06.md](./task-06.md) | P3A-02 | ⬜ TODO | Med | L6 |
-| 7 | Wiring: `A2A_APP` opt-in (`HARNESS_A2A_AGENT`) + inject no `Server::App` + require dos `server/a2a/*` | [task-07.md](./task-07.md) | P3A-02 | ⬜ TODO | Low | L7 |
-| 8 | Smoke E2E fatia A: message/send→Task; tasks/get projeta terminal; tasks/cancel; agent-card; mapa de erros | [task-08.md](./task-08.md) | P3A-01/02 | ⬜ TODO | Med | 00 §"Critério" |
+| 6 | `Server::App` rotas: `POST /a2a` + `GET /.well-known/agent-card.json` + `handle_a2a` + `@a2a` (default nil → 404) | [task-06.md](./task-06.md) | P3A-02 | ✅ DONE | Med | L6 |
+| 7 | Wiring: `A2A_APP` opt-in (`HARNESS_A2A_AGENT`) + inject no `Server::App` + require dos `server/a2a/*` | [task-07.md](./task-07.md) | P3A-02 | ✅ DONE | Low | L7 |
+| 8 | Smoke E2E fatia A: message/send→Task; tasks/get projeta terminal; tasks/cancel; agent-card; mapa de erros | [task-08.md](./task-08.md) | P3A-01/02 | ✅ DONE | Med | 00 §"Critério" |
 
 ### Status Legend
 - ⬜ TODO · 🟡 IN PROGRESS · ✅ DONE · ⛔ BLOCKED

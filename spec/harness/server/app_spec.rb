@@ -14,11 +14,11 @@ RSpec.describe Harness::Server::App do
 
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
-                config: {})
+                config: {}, a2a: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
-      catalogs: {}, registries: {},
+      catalogs: {}, registries: {}, a2a: a2a,
       config: { sync_timeout: 0.05 }.merge(config)
     )
   end
@@ -64,6 +64,44 @@ RSpec.describe Harness::Server::App do
 
       expect(status).to eq(202)
       expect(json_body(resp)).to eq("task_id" => "t-1")
+    end
+  end
+
+  describe "A2A edge (P3A)" do
+    let(:a2a) do
+      Class.new do
+        attr_reader :received
+        def rpc(body) = (@received = body; { "jsonrpc" => "2.0", "id" => body["id"], "result" => { "ok" => true } })
+        def agent_card = { "name" => "assistant", "url" => "u/a2a" }
+      end.new
+    end
+
+    it "POST /a2a delega ao @a2a.rpc e responde 200 com o envelope" do
+      app = build_app(a2a: a2a)
+      status, _h, resp = call(app, "POST", "/a2a", body: '{"jsonrpc":"2.0","id":"1","method":"tasks/get"}')
+      expect(status).to eq(200)
+      expect(json_body(resp)).to include("result" => { "ok" => true })
+      expect(a2a.received["method"]).to eq("tasks/get")
+    end
+
+    it "JSON malformado -> 200 com envelope -32700 (não erro HTTP)" do
+      app = build_app(a2a: a2a)
+      status, _h, resp = call(app, "POST", "/a2a", body: "{ not json")
+      expect(status).to eq(200)
+      expect(json_body(resp).dig("error", "code")).to eq(-32_700)
+    end
+
+    it "GET /.well-known/agent-card.json -> 200 com o card" do
+      app = build_app(a2a: a2a)
+      status, _h, resp = call(app, "GET", "/.well-known/agent-card.json")
+      expect(status).to eq(200)
+      expect(json_body(resp)).to include("name" => "assistant")
+    end
+
+    it "sem @a2a (default): rotas A2A -> 404 (paridade)" do
+      app = build_app # a2a: nil
+      expect(call(app, "POST", "/a2a", body: "{}").first).to eq(404)
+      expect(call(app, "GET", "/.well-known/agent-card.json").first).to eq(404)
     end
 
     it "body vazio vira payload {}" do
