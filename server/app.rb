@@ -6,6 +6,7 @@ require "async"
 require_relative "sse_body"
 require_relative "admin_auth"
 require_relative "admin/app"
+require_relative "a2a/app" # P3A: adapter A2A de borda (puxa protocol/errors/message/projection/card)
 
 module Harness
   module Server
@@ -35,7 +36,7 @@ module Harness
       # regra constitucional se mantém: server/ só LÊ stores.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      catalogs:, registries:, config:, checkpoint_store: nil,
-                     pending_action_store: nil)
+                     pending_action_store: nil, a2a: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -44,6 +45,7 @@ module Harness
         @registries = registries
         @config = config
         @pending_action_store = pending_action_store # leitura p/ GET /v1/tasks/:id
+        @a2a = a2a # A2A edge (P3A). nil = servidor não expõe A2A (paridade).
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # doc 07 §6: controle síncrono
         # Control UI de escrita (P2-04): recebe o bus (despacha os mesmos Commands
@@ -96,8 +98,12 @@ module Harness
           handle_events(req)
         in ["POST", ["agent", "messages"]]
           handle_legacy(req)
+        in ["POST", ["a2a"]] if @a2a
+          handle_a2a(req)
+        in ["GET", [".well-known", "agent-card.json"]] if @a2a
+          json_response(200, @a2a.agent_card)
         else
-          not_found # método/rota errados
+          not_found # método/rota errados (ou A2A não exposto -> @a2a nil)
         end
       end
 
@@ -219,6 +225,22 @@ module Harness
           history: body[:history] || []
         }
         message_flow(payload, stream: true)
+      end
+
+      # POST /a2a (P3A) — JSON-RPC 2.0: HTTP 200 SEMPRE (o erro viaja no envelope,
+      # não no status). JSON malformado -> -32700 (envelope A2A, não o error HTTP
+      # genérico do #call). O A2A::App nunca vaza exceção (D4). Parse com chaves
+      # STRING (o wire A2A é JSON genérico — NÃO reusa `parse_body`, que
+      # symboliza para os payloads de Command).
+      def handle_a2a(req)
+        raw = req.body&.read
+        body =
+          begin
+            raw.nil? || raw.empty? ? {} : JSON.parse(raw)
+          rescue StandardError
+            return json_response(200, A2A::Protocol.error(nil, A2A::Errors::PARSE_ERROR, "parse error"))
+          end
+        json_response(200, @a2a.rpc(body))
       end
 
       # --- Fluxo de turno (SSE ou agregado) ---------------------------------
