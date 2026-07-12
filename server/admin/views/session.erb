@@ -1,23 +1,39 @@
 <%= style %>
-<h1>Session <%= h(@id) %></h1>
-<%= nav %>
+<%= header("Session", h(@id)) %>
 <p><a href="/admin/sessions">&larr; todas as sessões</a></p>
 
 <h2>vars</h2>
-<pre><%= h(@session.vars) %></pre>
+<div class="card">
+  <% if @session.vars.nil? || @session.vars.empty? -%>
+    <span class="muted">Sem vars.</span>
+  <% else -%>
+    <div class="grid">
+      <% @session.vars.each do |k, v| -%>
+        <div><div class="k muted" style="font-size:.72rem;text-transform:uppercase"><%= h(k) %></div>
+             <div class="mono"><%= h(v) %></div></div>
+      <% end -%>
+    </div>
+  <% end -%>
+</div>
 
-<h2>transcript (<%= h(@session.messages.size) %> mensagens)</h2>
+<h2>transcript · <%= h(@session.messages.size) %> mensagens</h2>
 <% if @session.messages.empty? -%>
-  <p class="muted">Sem mensagens.</p>
+  <div class="empty">Sem mensagens nesta sessão.</div>
 <% else -%>
-  <table>
-    <tr><th>role</th><th>content</th><th>at</th></tr>
+  <div class="thread">
     <% @session.messages.each do |m| -%>
-      <tr>
-        <td><%= h(m["role"] || m[:role]) %></td>
-        <td><pre><%= h(m["content"] || m[:content]) %></pre></td>
-        <td><%= h(m["at"] || m[:at]) %></td>
-      </tr>
+      <% role = (m["role"] || m[:role]).to_s -%>
+      <% klass = %w[user assistant tool].include?(role) ? role : "assistant" -%>
+      <% initial = role.empty? ? "?" : role[0].upcase -%>
+      <div class="msg <%= klass %>">
+        <div class="who"><%= h(initial) %></div>
+        <div class="bubble">
+          <div class="content"><%= h(m["content"] || m[:content]) %></div>
+          <% at = m["at"] || m[:at] -%>
+          <% if at -%><div class="meta"><%= h(role) %> · <%= h(at) %></div><% end -%>
+        </div>
+      </div>
     <% end -%>
-  </table>
+  </div>
 <% end -%>
+</div>
