@@ -2,8 +2,8 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 5/20 tasks — Etapas A (fundação) + B (CRUD de agente) ✅ · **PRÓXIMO:** Etapa C (tasks 6-8)
-> **Base:** main @ merge PR #27 (`8035d3a`) · Etapas A (#26) + B (#27) mergeadas
+> **Progress:** 8/20 tasks — Etapas A (fundação) + B (CRUD de agente) + C (prompts/skills por-agente) ✅ · **PRÓXIMO:** Etapa D (tasks 9-11)
+> **Base:** main @ merge PR #27 (`8035d3a`) · Etapas A (#26) + B (#27) mergeadas · C (PR aberto)
 > **Retomada:** ver [HANDOFF.md](../HANDOFF.md)
 
 ---
@@ -17,9 +17,9 @@
 | 3 | Refactor Executor + Commands de turno p/ resolver profile via `ProfileSource` no dispatch (Hash→wrap automático; zero regressão) | [task-03.md](./task-03.md) | A | ✅ DONE | High | D2 |
 | 4 | `:create_agent` / `:update_agent` / `:delete_agent` — Commands CQRS + validação + auditoria | [task-04.md](./task-04.md) | B | ✅ DONE | Med | D-API |
 | 5 | `:set_agent_tools` — allow/deny por agente (hot via ProfileSource) | [task-05.md](./task-05.md) | B | ✅ DONE | Low | D4 |
-| 6 | Escrita + `reload` em `SkillCatalog`/`PromptCatalog` (troca atômica do índice) | [task-06.md](./task-06.md) | C | ⬜ TODO | Med | D3 |
-| 7 | Workspace dir por agente + `:write_agent_file`/`:delete_agent_file` + snapshots de histórico | [task-07.md](./task-07.md) | C | ⬜ TODO | Med | D3 |
-| 8 | `:restore_agent_file` + `:write_skill` + `:set_skill_agents` | [task-08.md](./task-08.md) | C | ⬜ TODO | Med | D3 |
+| 6 | Escrita + `reload` em `SkillCatalog`/`PromptCatalog` (troca atômica do índice) | [task-06.md](./task-06.md) | C | ✅ DONE | Med | D3 |
+| 7 | Workspace por agente (`AgentFileStore`, store-backed) + `:write_agent_file`/`:delete_agent_file` + snapshots de histórico | [task-07.md](./task-07.md) | C | ✅ DONE | Med | D3 |
+| 8 | `:restore_agent_file` + `:write_skill` + `:set_skill_agents` + Prompt provider por-agente | [task-08.md](./task-08.md) | C | ✅ DONE | Med | D3 |
 | 9 | Commands de memória (`:memory_put_fact`/`:memory_forget_fact`/`:memory_add_note`) + leituras | [task-09.md](./task-09.md) | D | ⬜ TODO | Low | D5 |
 | 10 | ConfigStore settings/llm_providers + `:update_settings` + masking sentinel `__OCULTO__` | [task-10.md](./task-10.md) | D | ⬜ TODO | Med | D6 |
 | 11 | `LLMConfigurator` — reconfigure runtime por provider + `:upsert/delete_llm_provider` | [task-11.md](./task-11.md) | D | ⬜ TODO | Med | D6 |

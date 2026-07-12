@@ -1,6 +1,6 @@
 # HANDOFF — Fase 4 (Harness Studio) · onde paramos
 
-> **Atualizado:** 2026-07-12 · **main @** merge PR #27 (`8035d3a`)
+> **Atualizado:** 2026-07-12 (Etapa C) · **main @** merge PR #27 (`8035d3a`)
 > Documento de retomada: uma sessão nova continua daqui **sem** o histórico do chat.
 > Leia junto com [`00-overview.md`](./00-overview.md) (spec) e [`tasks/tasks.md`](./tasks/tasks.md) (plano).
 
@@ -39,8 +39,9 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 | #25 | `serve_real.rb` (servidor HTTP single-process) + multi-turn | merged |
 | **#26 (Etapa A)** | **`ConfigStore` + `ProfileSource` (Static/Stored) + refactor Executor/Commands p/ profiles dinâmicos** | merged |
 | **#27 (Etapa B)** | **CRUD de agente em runtime (`:create/update/delete_agent`, `:set_agent_tools`) + deployment com profiles dinâmicos + SQLite-aware** | merged |
+| **Etapa C** | **Prompts/skills por-agente: `AgentFileStore`+`SkillStore` (store-backed, D3 revisado), overlay+`reload` de catálogo, Prompt provider lê `profile.prompt_files`, 5 Commands (`:write/delete/restore_agent_file`, `:write_skill`, `:set_skill_agents`)** | PR aberto |
 
-**Progresso do plano: 5/20 tasks (Etapas A + B).** Ver `tasks/tasks.md`.
+**Progresso do plano: 8/20 tasks (Etapas A + B + C).** Ver `tasks/tasks.md`.
 
 ### Arquivos-chave criados/alterados (na main)
 - `lib/harness/config_store.rb` — KV durável de configuração (scopes agents/settings/
@@ -56,6 +57,21 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
   `ProfileSource.coerce` (Hash → StaticProfileSource). **Corpos `@profiles[agent]`
   inalterados; wiring/deployment/specs não mudaram.**
 
+**Etapa C (prompts/skills por-agente):**
+- `lib/harness/agent_file_store.rb` — workspace por agente store-backed (scope
+  `agent_files`): `read/list/write/delete/versions/restore`, history com teto.
+- `lib/harness/skill_store.rb` — skills autoradas store-backed (scope `skills`), mesmo
+  contrato de versionamento.
+- `lib/harness/context/providers/prompt.rb` — **o fix central**: `agent_files:` +
+  `build_identity(profile)` lê `profile.prompt_files` (Store→disco fallback); vence os
+  `files:` do wiring. Sem prompt_files = default do deployment (paridade Fase 0).
+- `lib/harness/skill_catalog.rb` — overlay do `SkillStore` (Store vence disco) + `reload`
+  (troca atômica); `lib/harness/prompt_catalog.rb` — `reload` de paridade.
+- `lib/harness/commands/{write,delete,restore}_agent_file.rb`, `write_skill.rb`,
+  `set_skill_agents.rb` — 5 Commands (hot via reload/ProfileSource).
+- `lib/harness/config_store.rb` — scopes `agent_files`/`skills`; `config/deployment.rb` —
+  `AGENT_FILE_STORE`/`SKILL_STORE`, catálogo com overlay, provider com `agent_files:`, +5 no BUS.
+
 ### Prova de "rodar de verdade"
 - Turno real multi-turn (DeepSeek): Bia chama `current_time`/`menu`/`calc`/`load_skill`,
   lembra do nome entre turnos. (`scripts/run_real.rb`, `scripts/serve_real.rb`.)
@@ -67,26 +83,32 @@ linguagem**. Meta de produto: *substituir o OpenClaw pra qualquer um* — `clone
 `bundle exec rspec` → **908 examples, 0 failures** (sem chave de API; `require "ruby_llm"`
 continua lazy — restrição D9 do core preservada). O "boom" no log é fixture intencional.
 
-## 5. PRÓXIMO PASSO — Etapa C (tasks 6-8)
+## 5. PRÓXIMO PASSO — Etapa D (tasks 9-11)
 
-**Catálogos graváveis + workspace + prompts/skills por-agente.** Fecha a limitação
-conhecida (ver §6). Escopo:
-- Task 6: escrita + `reload` em `SkillCatalog`/`PromptCatalog` (troca atômica do índice).
-- Task 7: workspace por agente + `:write_agent_file`/`:delete_agent_file` + snapshots.
-- Task 8: `:restore_agent_file` + `:write_skill` + `:set_skill_agents`.
-- **D3 revisado:** o conteúdo deve viver no **Store** (não só disco). Decidir na Etapa C
-  se o catálogo passa a ser store-backed OU se materializa em disco + reload.
+**Memória + Settings + LLM.** Escopo:
+- Task 9: Commands de memória (`:memory_put_fact`/`:memory_forget_fact`/`:memory_add_note`) + leituras.
+- Task 10: ConfigStore settings/llm_providers + `:update_settings` + masking sentinel `__OCULTO__`.
+- Task 11: `LLMConfigurator` — reconfigure runtime por provider + `:upsert/delete_llm_provider`.
 
-Depois: D (memória/settings/LLM) → E (app Roda + auth + assets) → F (páginas de autoria)
-→ G (mcp/settings/system-files/chats) → H (polish). Ver `tasks/tasks.md`.
+Depois: E (app Roda + auth + assets) → F (páginas de autoria) → G (mcp/settings/
+system-files/chats) → H (polish). Ver `tasks/tasks.md`.
 
-## 6. Limitação conhecida a resolver (crítica p/ o produto)
+### Decisão D3 travada na Etapa C: **conteúdo store-backed**
+Prompts por-agente e skills autoradas vivem no **ConfigStore** (scopes novos
+`agent_files` e `skills`), não em disco — coerente com o alvo single-tenant/SQLite-com-
+volume (um arquivo de backup) e com "core na borda" (FS efêmero na edge). Disco continua
+como **seed/import** (precedência: Store vence). Nomes de arquivo em `profile.prompt_files`
+referenciam o conteúdo no `AgentFileStore`; caminho absoluto ainda cai em `File.read`
+(compat/seed).
 
-**Prompts não são por-agente ainda.** O `Context::Providers::Prompt` lê os `files:` do
-WIRING (`config/deployment.rb` → `IDENTITY_FILES` da Bia), **não** `profile.prompt_files`.
-Por isso um agente novo (ex.: "chef") **herda o prompt da Bia**. Para "cada um cria sua
-BIA com identidade própria" funcionar, o Prompt provider precisa ler do profile/Store —
-é o coração da **Etapa C** (+ tocar `context/providers/prompt.rb`).
+## 6. Limitação conhecida — ✅ RESOLVIDA na Etapa C
+
+**Prompts agora são por-agente.** O `Context::Providers::Prompt` recebe um `agent_files:`
+(AgentFileStore) e lê `profile.prompt_files` — que **vence** sobre os `files:` do wiring.
+Um agente com `prompt_files` próprios usa sua identidade autorada (store-backed, hot);
+um agente **sem** `prompt_files` cai no default do deployment (`IDENTITY_FILES`), paridade
+byte-a-byte da Fase 0 (zero regressão — 940 examples, 0 failures). "Cada um cria sua BIA
+com identidade própria" está provado (`spec/harness/integration/per_agent_prompt_spec.rb`).
 
 ## 7. Como rodar / provar (dev local)
 
