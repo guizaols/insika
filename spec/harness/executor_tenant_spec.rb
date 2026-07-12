@@ -47,4 +47,31 @@ RSpec.describe "Harness::Executor — threading de tenant (P2C)" do
       expect(req.respond_to?(:tenant)).to be(true) # o seam da Fase 1 reconciliado
     end
   end
+
+  # Seam :vars reconciliado (bug achado rodando de verdade): o Request/Session
+  # provider chamam request.vars; sem ele, quebravam em runtime (undefined
+  # method 'vars') e o histórico da sessão nunca era injetado.
+  describe "#build_context_request — :vars" do
+    let(:session) { Struct.new(:id, :vars).new("s1", { "cliente" => "Ana" }) }
+
+    it "carrega vars com os vars da sessão + o history explícito do Command" do
+      store = Struct.new(:session) do
+        def find(_id) = session
+      end.new(session)
+      exec = Harness::Executor.new(
+        context_builder: inert, policy_engine: inert, middleware: inert, hooks: Harness::Hooks.new,
+        tool_registry: inert, skill_catalog: inert, profiles: {}, session_store: store,
+        task_store: inert, checkpoint_store: inert, event_stream: inert
+      )
+      profile = Harness::AgentProfile.build(id: "a", model: "m")
+      state = Harness::TurnState.new(task: nil, profile: profile, turn: 1, message: "oi")
+      task = Struct.new(:id, :session_id, :command).new(
+        "t", "s1", { "type" => "send_message", "payload" => { "history" => [{ "role" => "user" }] }, "meta" => {} }
+      )
+      req = exec.send(:build_context_request, task, profile, state, nil)
+      expect(req.respond_to?(:vars)).to be(true)
+      expect(req.vars["cliente"]).to eq("Ana")          # vars da sessão (Request provider)
+      expect(req.vars["history"]).to eq([{ "role" => "user" }]) # convenção do Session provider
+    end
+  end
 end

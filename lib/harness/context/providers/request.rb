@@ -10,7 +10,9 @@ module Harness
         def call(request)
           lines = []
           lines << "tenant: #{request.tenant}" if request.tenant
-          request.vars.to_h.each { |k, v| lines << "#{k}: #{v}" }
+          # "history" é transcript (consumido pelo Session provider), não metadado
+          # do turno — não vaza para o request_context do system.
+          request.vars.to_h.each { |k, v| lines << "#{k}: #{v}" unless k.to_s == "history" }
           return [] if lines.empty?
 
           [ContextFragment.build(
