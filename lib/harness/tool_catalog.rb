@@ -23,6 +23,14 @@ module Harness
       @entries ||= build_entries
     end
 
+    # Recarrega o índice (após autoria de data-tool no overlay). Espelha
+    # SkillCatalog#reload — o nível-1/tool_search passa a ver a nova tool sem
+    # restart. Um turno em andamento já capturou `all`.
+    def reload
+      @entries = build_entries
+      self
+    end
+
     # Recorte deferred permitido (tipicamente allowed_tools ∩ tools_deferred).
     # Nomes fora do catálogo são silenciosamente ignorados (falha segura: menos
     # exposição, nunca mais).
