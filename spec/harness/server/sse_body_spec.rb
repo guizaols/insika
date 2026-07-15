@@ -44,6 +44,25 @@ RSpec.describe Harness::Server::SSEBody do
     expect(chunks.first).to eq("data: #{JSON.generate(event.to_h)}\n\n")
   end
 
+  it "honra o serialize: injetado e pula eventos que ele mapeia p/ nil" do
+    stream = Harness::EventStream.new
+    sub = stream.subscribe
+    chunks = []
+    # serializer custom: só :content vira frame; o resto é pulado (nil).
+    serialize = ->(e) { e.type == :content ? "X:#{e.data[:delta]}\n\n" : nil }
+
+    Sync do
+      collector = Async { described_class.new(subscription: sub, serialize: serialize).each { |c| chunks << c } }
+      stream.emit(ev(:content, { delta: "a" }))
+      stream.emit(ev(:task_started))            # -> nil, pulado
+      stream.emit(ev(:content, { delta: "b" }))
+      sub.close
+      collector.wait
+    end
+
+    expect(chunks).to eq(["X:a\n\n", "X:b\n\n"])
+  end
+
   it "preserva a ordem dos eventos" do
     stream = Harness::EventStream.new
     sub = stream.subscribe

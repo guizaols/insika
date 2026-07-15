@@ -343,6 +343,65 @@ RSpec.describe Harness::Server::App do
     end
   end
 
+  describe "POST /v1/responses (adapter OpenAI Responses — Fase 6)" do
+    def responses_body(agent: "openclaw:bia", user: "chat-1", input: "oi")
+      JSON.generate(model: agent, user: user, stream: true, input: input)
+    end
+
+    it "sem gateway_token configurado -> 503 fail-closed" do
+      app = build_app # config sem gateway_token
+      status, = call(app, "POST", "/v1/responses", body: responses_body)
+      expect(status).to eq(503)
+    end
+
+    it "token errado -> 401" do
+      app = build_app(config: { gateway_token: "sekret" })
+      env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body)
+      env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
+      status, = app.call(env)
+      expect(status).to eq(401)
+    end
+
+    it "token ok + sessão nova: cria sessão (id=user) e despacha send_message; devolve SSEBody" do
+      bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }
+      app = build_app(bus: bus, session_store: ServerStoreDouble.new(nil), config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body(user: "chat-9", input: "olá"))
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      status, headers, body = app.call(env)
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("text/event-stream")
+      expect(body).to be_a(Harness::Server::SSEBody)
+
+      create = bus.dispatched.find { |c| c.type == :create_session }
+      expect(create.payload).to include(id: "chat-9")
+      send = bus.dispatched.find { |c| c.type == :send_message }
+      expect(send.payload).to include(agent: "bia", session_id: "chat-9", message: "olá")
+    end
+
+    it "sessão existente: NÃO cria sessão, só send_message" do
+      record = { "id" => "chat-9" } # ServerStoreDouble#find devolve truthy
+      bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }
+      app = build_app(bus: bus, session_store: ServerStoreDouble.new(record), config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body(user: "chat-9"))
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      app.call(env)
+
+      expect(bus.dispatched.map(&:type)).to eq([:send_message])
+    end
+
+    it "request inválido (sem user) -> 422" do
+      app = build_app(config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/responses", method: "POST",
+                                      input: JSON.generate(model: "openclaw:bia", input: "x"))
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+      status, = app.call(env)
+      expect(status).to eq(422)
+    end
+  end
+
   describe "rota desconhecida" do
     it "GET /nada -> 404 not found (text/plain)" do
       status, headers, resp = call(build_app, "GET", "/nada")

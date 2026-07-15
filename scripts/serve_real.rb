@@ -75,7 +75,10 @@ APP = Harness::Server::App.new(
   # tools = overlay (código + por-dados), então /admin lista as data-tools também.
   registries: { tools: W::TOOL_REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
   a2a: A2A_APP, # nil sem opt-in -> rotas A2A respondem 404
-  config: { admin_token: ADMIN_TOKEN, allowed_origins: [] }
+  # gateway_token: Bearer do /v1/responses (drop-in do gateway OpenClaw). O
+  # consumidor manda OPENCLAW_GATEWAY_TOKEN; no demo local cai no ADMIN_TOKEN.
+  config: { admin_token: ADMIN_TOKEN, allowed_origins: [],
+            gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN) }
 )
 
 # Harness Studio: app Roda montado sob /studio, com login por

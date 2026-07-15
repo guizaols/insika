@@ -14,12 +14,19 @@ module Harness
     class SSEBody
       PING = ": ping\n\n" # comentário SSE — não polui o consumidor
 
+      # serialize: mapeia um Event -> String (frame SSE) OU nil (evento
+      # descartado, sem frame). Default = o wire canônico `data: <Event#to_h>`.
+      # O adapter /v1/responses injeta um serializer que produz eventos OpenAI
+      # Responses (e pula os que não têm correspondência).
+      DEFAULT_SERIALIZE = ->(event) { "data: #{JSON.generate(event.to_h)}\n\n" }
+
       # subscription: qualquer objeto com #each (yield de Events) e #close.
       # heartbeat: segundos de silêncio antes de emitir um ping (15s
       # atravessa idle timeouts de ALB/nginx de 60s com folga).
-      def initialize(subscription:, heartbeat: 15)
+      def initialize(subscription:, heartbeat: 15, serialize: nil)
         @subscription = subscription
         @heartbeat = heartbeat
+        @serialize = serialize || DEFAULT_SERIALIZE
       end
 
       # Sob Falcon isto stream-a de verdade. Precisa de um reactor corrente
@@ -49,8 +56,8 @@ module Harness
             yield PING
           elsif event.equal?(closed)
             break
-          else
-            yield "data: #{JSON.generate(event.to_h)}\n\n"
+          elsif (frame = @serialize.call(event))
+            yield frame
           end
         end
       rescue StandardError
