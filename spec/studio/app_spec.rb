@@ -72,7 +72,7 @@ RSpec.describe Studio::App do
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
-                memory: {}, sessions: {}, settings: nil, llm_providers: [],
+                data_tools: [], memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
@@ -88,6 +88,9 @@ RSpec.describe Studio::App do
     mcp_instances.each { |m| mcp_store.upsert(m) }
     system_file_store = Harness::SystemFileStore.new(config_store: cfg)
     system_files.each { |name, content| system_file_store.write(name, content) }
+    # ToolStore REAL (Fase 5): a página de autoria lê dele; escrita via bus.
+    tool_store = Harness::ToolStore.new(config_store: cfg)
+    data_tools.each { |d| tool_store.write(d) }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: nil, config: { admin_token: admin_token },
@@ -95,6 +98,7 @@ RSpec.describe Studio::App do
       skill_store: SkillStoreDouble.new(stored_skills),
       skill_catalog: SkillCatalogDouble.new(skills),
       tool_catalog: ToolCatalogDouble.new(tools),
+      tool_store: tool_store,
       memory_store: MemoryStoreDouble.new(memory),
       session_store: SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
@@ -498,6 +502,95 @@ RSpec.describe Studio::App do
     cmd = bus.last(:set_agent_tools)
     expect(cmd.payload[:allow]).to eq(["menu"])
     expect(cmd.payload).to have_key(:deny)
+  end
+
+  # --- Tools por dados (autoria) — Fase 5 Etapa C --------------------------
+
+  def data_tool(name: "cep", **over)
+    { name: name, description: "Consulta #{name}",
+      parameters: [{ name: "cep", type: "string", required: true }],
+      request: { method: "GET", url: "https://viacep.com.br/ws/{{cep}}/json" },
+      response: { extract: "json_path", path: "localidade" } }.merge(over)
+  end
+
+  it "matriz lista as data-tools, marca com badge e linka o editor" do
+    app, = build_app(data_tools: [data_tool(name: "cep")],
+                     tools: [SkillEntry.new(name: "cep", description: "Consulta cep"),
+                             SkillEntry.new(name: "menu", description: "cardápio")])
+    body = login(app).get("/tools").body
+    expect(body).to include('href="/studio/tools/def/cep"')      # link do editor
+    expect(body).to include('href="/studio/tools/def/new"')      # nova tool
+    expect(body).to include("dados")                              # badge na matriz
+  end
+
+  it "GET /tools/def/new renderiza o form vazio" do
+    app, = build_app
+    body = login(app).get("/tools/def/new").body
+    expect(body).to include('action="/studio/tools/def"')
+    expect(body).to include("Nova tool por dados")
+  end
+
+  it "POST /tools/def cria: despacha :write_data_tool com o payload aninhado + create_only" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/new").body)
+    client.post("/tools/def", params: {
+                  "name" => "cep", "description" => "Consulta CEP", "method" => "GET",
+                  "url" => "https://viacep.com.br/ws/{{cep}}/json",
+                  "parameters" => "cep | string | required | O CEP",
+                  "extract" => "json_path", "path" => "localidade", "_csrf" => csrf
+                })
+    p = bus.last(:write_data_tool).payload
+    expect(p[:name]).to eq("cep")
+    expect(p[:request][:url]).to eq("https://viacep.com.br/ws/{{cep}}/json")
+    expect(p[:parameters]).to eq([{ "name" => "cep", "type" => "string", "required" => true, "description" => "O CEP" }])
+    expect(p[:response]).to eq(extract: "json_path", path: "localidade")
+    expect(p[:create_only]).to be(true)
+  end
+
+  it "GET /tools/def/:name carrega o editor com o segredo MASCARADO (0 vazamento)" do
+    secret = data_tool(name: "api", request: {
+                         method: "POST", url: "https://api.test/x",
+                         headers: { "Authorization" => "Bearer TOPSECRET" }
+                       }, secret_headers: ["Authorization"])
+    app, = build_app(data_tools: [secret])
+    body = login(app).get("/tools/def/api").body
+    expect(body).to include(Harness::SecretMasking::SENTINEL)
+    expect(body).not_to include("TOPSECRET")
+  end
+
+  it "POST /tools/def/:name atualiza (upsert, sem create_only)" do
+    app, bus = build_app(data_tools: [data_tool(name: "cep")])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/cep").body)
+    client.post("/tools/def/cep", params: {
+                  "name" => "cep", "description" => "nova desc", "method" => "GET",
+                  "url" => "https://viacep.com.br/ws/{{cep}}/json", "_csrf" => csrf
+                })
+    p = bus.last(:write_data_tool).payload
+    expect(p[:description]).to eq("nova desc")
+    expect(p).not_to have_key(:create_only)
+  end
+
+  it "POST /tools/def/:name/delete despacha :delete_data_tool" do
+    app, bus = build_app(data_tools: [data_tool(name: "cep")])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/cep").body)
+    client.post("/tools/def/cep/delete", params: { "_csrf" => csrf })
+    expect(bus.last(:delete_data_tool).payload).to include(name: "cep")
+  end
+
+  it "POST /tools/def/:name/restore despacha :restore_data_tool com index" do
+    app, bus = build_app(data_tools: [data_tool(name: "cep")])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/cep").body)
+    client.post("/tools/def/cep/restore", params: { "index" => "0", "_csrf" => csrf })
+    expect(bus.last(:restore_data_tool).payload).to include(name: "cep", index: "0")
+  end
+
+  it "GET /tools/def/:name inexistente → 404" do
+    app, = build_app
+    expect(login(app).get("/tools/def/fantasma").status).to eq(404)
   end
 
   # --- Histórico (viewer read-only) — task 17 ------------------------------
