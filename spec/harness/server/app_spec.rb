@@ -14,11 +14,11 @@ RSpec.describe Harness::Server::App do
 
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
-                config: {}, a2a: nil)
+                config: {}, a2a: nil, provisioner: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
-      catalogs: {}, registries: {}, a2a: a2a,
+      catalogs: {}, registries: {}, a2a: a2a, provisioner: provisioner,
       config: { sync_timeout: 0.05 }.merge(config)
     )
   end
@@ -396,6 +396,79 @@ RSpec.describe Harness::Server::App do
       app = build_app(config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST",
                                       input: JSON.generate(model: "openclaw:bia", input: "x"))
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+      status, = app.call(env)
+      expect(status).to eq(422)
+    end
+  end
+
+  describe "provisionamento POST/DELETE /v1/agents (Fase 6/D4/F7)" do
+    # provisioner duplo: grava o pack importado / o id deletado.
+    class ProvisionerDouble
+      attr_reader :imported, :deleted
+
+      def import(pack) = (@imported = pack; { agent_id: pack.config[:id], created: true })
+      def delete(id) = (@deleted = id; { agent_id: id, deleted: true })
+    end
+
+    def pack_body(id: "loja-7")
+      JSON.generate(config: { id: id, model: "m" },
+                    files: { "IDENTITY.md" => "quem sou" },
+                    skills: {}, tools: [])
+    end
+
+    it "não exposto quando provisioner nil -> 404" do
+      status, = call(build_app, "POST", "/v1/agents", body: pack_body)
+      expect(status).to eq(404)
+    end
+
+    it "sem gateway_token configurado -> 503 fail-closed" do
+      app = build_app(provisioner: ProvisionerDouble.new) # config sem gateway_token
+      status, = call(app, "POST", "/v1/agents", body: pack_body)
+      expect(status).to eq(503)
+    end
+
+    it "token errado -> 401" do
+      app = build_app(provisioner: ProvisionerDouble.new, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/agents", method: "POST", input: pack_body)
+      env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
+      status, = app.call(env)
+      expect(status).to eq(401)
+    end
+
+    it "token ok: monta o Pack (chaves de arquivo preservadas) e importa -> 200" do
+      prov = ProvisionerDouble.new
+      app = build_app(provisioner: prov, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/agents", method: "POST", input: pack_body(id: "loja-9"))
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      status, _h, resp = app.call(env)
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to eq("agent_id" => "loja-9", "created" => true)
+      expect(prov.imported).to be_a(Harness::Pack)
+      expect(prov.imported.config).to eq(id: "loja-9", model: "m")
+      expect(prov.imported.files).to eq("IDENTITY.md" => "quem sou") # chave NÃO virou símbolo
+    end
+
+    it "DELETE /v1/agents/:id -> delete via provisioner (200)" do
+      prov = ProvisionerDouble.new
+      app = build_app(provisioner: prov, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/agents/loja-7", method: "DELETE")
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      status, _h, resp = app.call(env)
+
+      expect(status).to eq(200)
+      expect(prov.deleted).to eq("loja-7")
+      expect(json_body(resp)).to eq("agent_id" => "loja-7", "deleted" => true)
+    end
+
+    it "erro de validação do import -> 422 (via rescue de #call)" do
+      prov = ProvisionerDouble.new
+      def prov.import(_p) = raise(Harness::ValidationError, "pack sem config.id")
+      app = build_app(provisioner: prov, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/agents", method: "POST", input: pack_body)
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
       status, = app.call(env)
       expect(status).to eq(422)
