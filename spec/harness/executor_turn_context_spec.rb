@@ -34,12 +34,13 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
       s
     end
 
-    it "chat_id=sessão, agent_id=profile, store_id=metadata, tenant=chat_id (drop-in)" do
-      ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: nil))
+    it "chat_id=sessão, agent_id=profile, store_id=metadata, tenant=state.tenant (=chat)" do
+      # state.tenant já foi setado pelo run_pipeline via memory_tenant (=chat aqui).
+      ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "chat-42"))
       expect(ctx).to eq(chat_id: "chat-42", agent_id: "bia", tenant: "chat-42", store_id: "loja-7")
     end
 
-    it "tenant explícito do Command (memória) prevalece sobre chat_id" do
+    it "tenant reflete state.tenant (override multi-merchant explícito)" do
       ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "acme"))
       expect(ctx[:tenant]).to eq("acme")
       expect(ctx[:chat_id]).to eq("chat-42")
@@ -47,8 +48,28 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
 
     it "sem store_id no profile -> store_id nil (header sairá vazio)" do
       bare = Harness::AgentProfile.build(id: "a", model: "m")
-      ctx = executor.send(:build_turn_context, task_with(session_id: "c1"), bare, state_with(tenant: nil))
+      ctx = executor.send(:build_turn_context, task_with(session_id: "c1"), bare, state_with(tenant: "c1"))
       expect(ctx[:store_id]).to be_nil
+    end
+  end
+
+  # D3: o escopo da memória do motor é POR-CHAT — command tenant vence, senão a
+  # sessão. É o que o write path (state.tenant) e o read path (Memory provider)
+  # usam simetricamente.
+  describe "#memory_tenant" do
+    it "sem tenant no Command -> a sessão (=chat)" do
+      expect(executor.send(:memory_tenant, task_with(session_id: "chat-42"))).to eq("chat-42")
+    end
+
+    it "tenant explícito do Command prevalece sobre a sessão" do
+      task = Struct.new(:id, :session_id, :command).new(
+        "t", "chat-42", { "type" => "send_message", "payload" => {}, "meta" => { "tenant" => "acme" } }
+      )
+      expect(executor.send(:memory_tenant, task)).to eq("acme")
+    end
+
+    it "one-shot (sem sessão) e sem tenant -> nil (MemoryStore aplica _default)" do
+      expect(executor.send(:memory_tenant, task_with(session_id: nil))).to be_nil
     end
   end
 
