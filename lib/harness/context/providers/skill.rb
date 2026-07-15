@@ -9,7 +9,7 @@ module Harness
       # provider produz candidato; a policy corta depois.
       class Skill < CatalogProvider
         # priority 80: acima das tools deferred (70), abaixo da identidade pinned.
-        def priority = 80
+        def priority = Context::Priority::SKILL
 
         private
 
