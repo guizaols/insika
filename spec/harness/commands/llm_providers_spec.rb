@@ -66,6 +66,14 @@ RSpec.describe "LLM providers (Fase 4 Etapa D)" do
       expect(result[:applied]).to be_empty
       expect(result[:skipped].first[:reason]).to match(/sem api_key/)
     end
+
+    it "unapply zera key/base do provider no config (delete sem restart, §9.5)" do
+      store.upsert("api" => "deepseek", "api_key" => "sk-secret", "base_url" => "https://x")
+      configurator.apply
+      expect(configurator.unapply("deepseek")).to eq({ unapplied: true })
+      expect(fake_config.calls["deepseek_api_key"]).to be_nil
+      expect(fake_config.calls["deepseek_api_base"]).to be_nil
+    end
   end
 
   describe Harness::Commands::UpsertLLMProvider do
@@ -83,7 +91,7 @@ RSpec.describe "LLM providers (Fase 4 Etapa D)" do
   end
 
   describe Harness::Commands::DeleteLLMProvider do
-    subject(:handler) { described_class.new(provider_store: store, event_stream: stream) }
+    subject(:handler) { described_class.new(provider_store: store, configurator: configurator, event_stream: stream) }
 
     def cmd(payload) = Harness::Command.build(:delete_llm_provider, payload)
 
@@ -92,6 +100,18 @@ RSpec.describe "LLM providers (Fase 4 Etapa D)" do
       expect(handler.call(cmd("api" => "deepseek"))).to eq({ existed: true })
       expect(handler.call(cmd("api" => "deepseek"))).to eq({ existed: false })
       expect(events.map(&:type)).to eq([:llm_provider_deleted, :llm_provider_deleted])
+    end
+
+    it "desfaz a config no runtime quando existia (§9.5)" do
+      store.upsert("api" => "deepseek", "api_key" => "sk-1")
+      configurator.apply
+      handler.call(cmd("api" => "deepseek"))
+      expect(fake_config.calls["deepseek_api_key"]).to be_nil # unapply zerou
+    end
+
+    it "não desfaz nada se não existia (idempotente, sem tocar config)" do
+      handler.call(cmd("api" => "fantasma"))
+      expect(fake_config.calls).not_to have_key("fantasma_api_key")
     end
 
     it "api obrigatório" do

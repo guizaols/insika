@@ -46,6 +46,20 @@ module Harness
       { applied: applied, skipped: skipped }
     end
 
+    # DESFAZ a config de um provider no RubyLLM em runtime (delete sem restart,
+    # §9.5): zera `<api>_api_key`/`<api>_api_base`. Provider que o RubyLLM não
+    # reconhece (sem acessor) -> unapplied: false (nada aplicado, nada a desfazer).
+    # -> { unapplied: bool }.
+    def unapply(api)
+      api = api.to_s
+      unapplied = false
+      with_config do |config|
+        unapplied = set_accessor(config, "#{api}_api_key", nil)
+        set_accessor(config, "#{api}_api_base", nil)
+      end
+      { unapplied: unapplied }
+    end
+
     private
 
     def with_config(&blk)

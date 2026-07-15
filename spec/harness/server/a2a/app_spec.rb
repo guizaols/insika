@@ -127,4 +127,24 @@ RSpec.describe Harness::Server::A2A::App do
       expect(card[:capabilities][:streaming]).to be(false)
     end
   end
+
+  # §9.6: o A2A::App já faz ProfileSource.coerce — passar um StoredProfileSource
+  # (a fonte dinâmica do deployment) faz o AgentCard/inbound enxergarem agentes
+  # criados no Studio, sem PROFILES estático.
+  describe "profiles via StoredProfileSource (§9.6)" do
+    it "resolve o agent_card de um agente criado no store (Studio)" do
+      cs = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
+      src = Harness::StoredProfileSource.new(config_store: cs)
+      src.put(Harness::AgentProfile.build(id: "bia", model: "m", base_prompt: "SOUL da Bia"))
+
+      stored_app = described_class.new(
+        command_bus: command_bus, task_store: task_store, session_store: session_store,
+        profiles: src, skill_catalog: skill_catalog,
+        config: { a2a_agent: "bia", base_url: "https://h.example" }
+      )
+      card = stored_app.agent_card
+      expect(card[:name]).to eq("bia")
+      expect(card[:description]).to include("SOUL da Bia")
+    end
+  end
 end

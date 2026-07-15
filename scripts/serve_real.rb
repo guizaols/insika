@@ -20,6 +20,7 @@ require "async/http/endpoint"
 require "protocol/rack"
 require "rack/urlmap"
 require File.join(Dir.pwd, "server", "app")
+require File.join(Dir.pwd, "server", "a2a", "app") # federação inbound (opt-in)
 require_relative "../studio/app" # UI de gestão (Roda), sob /studio
 
 W = Deploy::Wiring
@@ -52,12 +53,28 @@ W::BUS.register(:approve_action, Harness::Commands::ApproveAction.new(
 # (e agente "bia") para a Bia LEMBRAR dos turnos anteriores.
 W::SESSION_STORE.create(id: "web", vars: { "canal" => "navegador" }) unless W::SESSION_STORE.find("web")
 
+# A2A inbound (§9.6): OPT-IN por HARNESS_A2A_AGENT, gateado pelo PROFILE_SOURCE —
+# lê o MESMO ProfileSource dinâmico do deployment, então o AgentCard/inbound
+# enxergam agentes criados no Studio (não mais um PROFILES estático). Sem a env /
+# agente inexistente -> nil -> Server::App não expõe as rotas A2A.
+A2A_APP =
+  if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
+    Harness::Server::A2A::App.new(
+      command_bus: W::BUS, task_store: W::TASK_STORE, session_store: W::SESSION_STORE,
+      profiles: W::PROFILE_SOURCE, skill_catalog: W::CATALOG,
+      config: { a2a_agent: a2a_agent,
+                base_url: ENV["HARNESS_PUBLIC_URL"] || ENV.fetch("BIND", "http://localhost:9292") }
+    )
+  end
+
 APP = Harness::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   checkpoint_store: W::CHECKPOINT_STORE, pending_action_store: W::PENDING_ACTION_STORE,
   catalogs: { skills: W::CATALOG, prompts: W::PROMPT_CATALOG },
-  registries: { tools: W::REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
+  # tools = overlay (código + por-dados), então /admin lista as data-tools também.
+  registries: { tools: W::TOOL_REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
+  a2a: A2A_APP, # nil sem opt-in -> rotas A2A respondem 404
   config: { admin_token: ADMIN_TOKEN, allowed_origins: [] }
 )
 
