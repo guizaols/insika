@@ -1,6 +1,22 @@
 <header class="page-head">
-  <h1>Tools<span class="sub"><%= @tools.size %> registrada(s) · allow/denylist por agente</span></h1>
+  <div>
+    <h1>Tools<span class="sub"><%= @tools.size %> registrada(s) · allow/denylist por agente</span></h1>
+  </div>
+  <a class="btn primary" href="/studio/tools/def/new">+ nova tool (por dados)</a>
 </header>
+
+<section class="card">
+  <h2 class="sub">tools por dados <span class="muted">(chamada HTTP sem código — editáveis aqui)</span></h2>
+  <% if @data_tool_names.empty? %>
+    <div class="empty">Nenhuma tool por dados. Crie uma para dar a um agente acesso a uma API externa sem escrever Ruby.</div>
+  <% else %>
+    <div class="check-grid">
+      <% @data_tool_names.sort.each do |name| %>
+        <a class="btn ghost mono" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>"><%= name %></a>
+      <% end %>
+    </div>
+  <% end %>
+</section>
 
 <% if @agents.empty? %>
   <div class="empty">Nenhum agente configurado.</div>
@@ -24,7 +40,7 @@
             <% @tools.each do |t| %>
               <label class="check" title="<%= t.description %>">
                 <input type="checkbox" name="tools[]" value="<%= t.name %>"<%== " checked" if tool_allowed_for?(a, t.name) %>>
-                <span class="mono"><%= t.name %></span>
+                <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill">dados</span><% end %>
               </label>
             <% end %>
           </div>
