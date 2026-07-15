@@ -26,9 +26,13 @@ module Harness
     :tools_deferred,                  # tools searchable-not-wired (Tool Search).
     #                                   nil = nenhuma deferred (tudo eager — paridade);
     #                                   [names] ⊆ allowed_tools, expostas via tool_search.
-    :memory                           # memória cross-session.
+    :memory,                          # memória cross-session.
     #                                   nil/false = OFF (paridade: provider []; tool `remember`
     #                                   não cabeada); true = ON. Mesmo opt-in de capabilities.
+    :metadata                         # metadados livres do agente, estáveis por agente
+    #                                   (do pack `agent.config.json`). Home do `store_id`
+    #                                   que vira contexto de turno (ctx.store_id, Fase 6/D2).
+    #                                   NÃO é policy — nunca decide segurança. {} = ausente.
   )
 
   # Classe reaberta (não bloco do Data.define): constante atribuída dentro
@@ -44,7 +48,7 @@ module Harness
                    tools_allow: nil, tools_deny: [], skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
-                   capabilities: nil, tools_deferred: nil, memory: nil)
+                   capabilities: nil, tools_deferred: nil, memory: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -52,13 +56,23 @@ module Harness
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
-        capabilities: capabilities, tools_deferred: tools_deferred, memory: memory
+        capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
+        metadata: metadata || {}
       )
     end
 
     # opt-in de tool optional = estar na allow do agente.
     def tool_opted_in?(name)
       Array(tools_allow).include?(name)
+    end
+
+    # store_id do contexto de turno (ctx.store_id): mora no `metadata` (estável
+    # por loja, vem do pack). Tolera chave string|symbol (o JSON round-trip do
+    # StoredProfileSource stringifica). nil = ausente (a data-tool emite header
+    # vazio). NÃO é consumer-específico: `store_id` é campo do contrato de contexto
+    # de turno (§5), genérico por projeto.
+    def store_id
+      (metadata || {})["store_id"] || (metadata || {})[:store_id]
     end
   end
 end

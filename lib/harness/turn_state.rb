@@ -27,6 +27,12 @@ module Harness
     # (`remember` tool). Setado no run_pipeline; nil = DEFAULT_TENANT no MemoryStore.
     attr_accessor :tenant
 
+    # Interno (Fase 6/D2/G4): contexto de turno depositado nas data-tools p/
+    # resolver {{ctx.*}} (chat_id/agent_id/tenant/store_id) e emitir
+    # X-Chat-Id/X-Store-Id/X-Agent-Id. Hash de símbolos, setado no run_pipeline.
+    # Vem do TURNO, nunca dos args do modelo (R2). Distinto de `tenant` (memória).
+    attr_accessor :turn_context
+
     # Interno (Tool Search): ids de side-effects já concluídos no turno
     # interrompido, propagados às tools PROMOVIDAS pelo tool_search (mesmo `skip`
     # que o wrap_tools das eager recebe). Setado no run_pipeline;

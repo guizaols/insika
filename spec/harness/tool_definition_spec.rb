@@ -89,6 +89,38 @@ RSpec.describe Harness::ToolDefinition do
       )
       expect { described_class.build(**attrs) }.not_to raise_error
     end
+
+    # Fase 6/D2: namespace {{ctx.*}} = contexto de TURNO (não é param do modelo).
+    describe "contexto de turno {{ctx.*}}" do
+      it "aceita ctx.chat_id/store_id/agent_id/tenant sem declará-los como param" do
+        attrs = valid_attrs(
+          parameters: [{ name: "cep" }],
+          request: { method: "POST", url: "https://a.test/{{cep}}",
+                     headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Store-Id" => "{{ctx.store_id}}",
+                                "X-Agent-Id" => "{{ ctx.agent_id }}" },
+                     body: '{"t":"{{ctx.tenant}}"}' },
+          response: { extract: "body_raw" }
+        )
+        expect { described_class.build(**attrs) }.not_to raise_error
+      end
+
+      it "rejeita campo de contexto desconhecido" do
+        attrs = valid_attrs(
+          parameters: [{ name: "cep" }],
+          request: { method: "GET", url: "https://a.test/{{cep}}", headers: { "X" => "{{ctx.senha}}" } }
+        )
+        expect { described_class.build(**attrs) }
+          .to raise_error(Harness::ValidationError, /contexto de turno desconhecido: ctx\.senha/)
+      end
+
+      it "não confunde ctx.* com parâmetro faltante" do
+        attrs = valid_attrs(
+          parameters: [], # nenhum param declarado
+          request: { method: "GET", url: "https://a.test", headers: { "X-Chat-Id" => "{{ctx.chat_id}}" } }
+        )
+        expect { described_class.build(**attrs) }.not_to raise_error
+      end
+    end
   end
 
   it "required_params lista só os obrigatórios" do
