@@ -67,7 +67,7 @@ module Studio
       # dependem de um store degradam para um empty-state se ele não foi injetado.
       def configure(command_bus:, profile_source:, event_stream:, config:,
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
-                    tool_catalog: nil, memory_store: nil, session_store: nil,
+                    tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, session_secret: nil)
         @harness = {
@@ -75,6 +75,9 @@ module Studio
           event_stream: event_stream, config: config,
           agent_file_store: agent_file_store, skill_store: skill_store,
           skill_catalog: skill_catalog, tool_catalog: tool_catalog,
+          # tool_store: definições das tools POR DADOS (Fase 5). O catálogo já
+          # mostra as data-tools na matriz; o store alimenta a página de autoria.
+          tool_store: tool_store,
           memory_store: memory_store, session_store: session_store,
           # config-de-runtime (settings/LLM/MCP) + arquivos de sistema
           # globais + índice de conversas. Todos opcionais (empty-state se nil).
@@ -332,8 +335,59 @@ module Studio
         end
       end
 
-      # --- Tools: matriz tool × agente -----------------------------
+      # --- Tools: matriz tool × agente + autoria de tools POR DADOS ------------
       r.on "tools" do
+        # Autoria de tool por dados (Fase 5). Sob /tools/def/* — ANTES do matcher
+        # genérico `r.post String` (que é a matriz allow/deny por :id de agente).
+        r.on "def" do
+          # /studio/tools/def/new — editor vazio.
+          r.get "new" do
+            render_tool_edit(name: "", tool: nil)
+          end
+
+          # POST /studio/tools/def — cria (create_only: recusa sobrescrever).
+          r.is do
+            r.post do
+              check_csrf!
+              name = presence(r.params["name"])
+              result = with_flash("Tool '#{name}' criada.") do
+                dispatch(:write_data_tool, tool_patch(r).merge(create_only: true))
+              end
+              r.redirect(result ? tool_def_path(name) : "/studio/tools")
+            end
+          end
+
+          r.on String do |name|
+            name = utf8(name)
+            # GET /studio/tools/def/:name — editor carregado (segredo mascarado).
+            r.is do
+              r.get do
+                tool = harness[:tool_store]&.get(name)
+                next_404 unless tool
+                render_tool_edit(name: name, tool: tool)
+              end
+              # POST /studio/tools/def/:name — atualiza (upsert).
+              r.post do
+                check_csrf!
+                with_flash("Tool '#{name}' salva.") { dispatch(:write_data_tool, tool_patch(r)) }
+                r.redirect(tool_def_path(name))
+              end
+            end
+            r.post "delete" do
+              check_csrf!
+              with_flash("Tool '#{name}' removida.") { dispatch(:delete_data_tool, { name: name }) }
+              r.redirect("/studio/tools")
+            end
+            r.post "restore" do
+              check_csrf!
+              with_flash("Versão restaurada.") do
+                dispatch(:restore_data_tool, { name: name, index: r.params["index"] })
+              end
+              r.redirect(tool_def_path(name))
+            end
+          end
+        end
+
         r.is { r.get { render_tools_matrix } }
 
         # POST /studio/tools/:id — grava a allowlist de tools de um agente.
@@ -677,6 +731,9 @@ module Studio
 
     def render_tools_matrix
       @tools = (harness[:tool_catalog]&.all || []).sort_by(&:name)
+      # Nomes das tools POR DADOS (editáveis pela UI). O resto do catálogo são
+      # tools de código (só allow/deny). Usado p/ marcar e linkar o editor.
+      @data_tool_names = harness[:tool_store] ? harness[:tool_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
       view("tools")
     end
@@ -685,6 +742,83 @@ module Studio
     def tool_allowed_for?(profile, tool_name)
       profile.tools_allow.nil? || Array(profile.tools_allow).map(&:to_s).include?(tool_name.to_s)
     end
+
+    # --- Autoria de tool por dados (Fase 5) ----------------------------------
+
+    def render_tool_edit(name:, tool:)
+      @tool_name = name
+      @form = tool_form(tool)
+      @versions = tool && harness[:tool_store] ? harness[:tool_store].versions(name) : []
+      view("tool_edit")
+    end
+
+    # Definição (mascarada) -> Hash de campos-texto prontos pro form. tool=nil
+    # (nova) -> defaults. Espelha env_lines/param_lines pra headers/query/params.
+    def tool_form(tool)
+      t = tool || {}
+      req = t["request"] || {}
+      resp = t["response"] || {}
+      {
+        name: t["name"].to_s, description: t["description"].to_s,
+        method: req["method"] || "GET", url: req["url"].to_s,
+        parameters: param_lines(t["parameters"]),
+        query: env_lines(req["query"]), headers: env_lines(req["headers"]),
+        secret_headers: Array(t["secret_headers"]).join(", "),
+        body: req["body"].to_s,
+        extract: resp["extract"] || "body_raw", path: resp["path"].to_s,
+        timeout: t["timeout"]
+      }
+    end
+
+    # Payload de :write_data_tool a partir do form. request/response aninhados;
+    # headers/query como "chave=valor" por linha (mesmo idioma do env do MCP —
+    # segredo mascarado volta como sentinel e é reconciliado no store).
+    def tool_patch(r)
+      {
+        name: presence(r.params["name"]),
+        description: r.params["description"].to_s,
+        parameters: parse_param_lines(r.params["parameters"]),
+        request: {
+          method: presence(r.params["method"]) || "GET",
+          url: r.params["url"].to_s,
+          headers: parse_kv_lines(r.params["headers"]),
+          query: parse_kv_lines(r.params["query"]),
+          body: presence(r.params["body"])
+        },
+        response: {
+          extract: presence(r.params["extract"]) || "body_raw",
+          path: presence(r.params["path"])
+        },
+        secret_headers: split_list(r.params["secret_headers"]),
+        timeout: presence(r.params["timeout"])
+      }
+    end
+
+    # Parâmetros: uma linha por param, pipe-delimitada (CSP proíbe JS de
+    # linhas dinâmicas; textarea é o caminho honesto, como o env do MCP):
+    #   nome | tipo | required|optional | descrição
+    def parse_param_lines(text)
+      text.to_s.each_line.filter_map do |line|
+        line = line.strip
+        next if line.empty? || line.start_with?("#")
+
+        name, type, req, desc = line.split("|", 4).map(&:strip)
+        next if name.to_s.empty?
+
+        { "name" => name, "type" => (presence(type) || "string"),
+          "required" => req.to_s.downcase != "optional", "description" => desc.to_s }
+      end
+    end
+
+    # Inverso: params (do store) -> texto pro textarea.
+    def param_lines(params)
+      Array(params).map do |p|
+        req = p["required"] == false ? "optional" : "required"
+        "#{p['name']} | #{p['type']} | #{req} | #{p['description']}"
+      end.join("\n")
+    end
+
+    def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"
 
     # --- Histórico -----------------------------------------------------------
 
