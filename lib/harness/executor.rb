@@ -335,6 +335,7 @@ module Harness
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
       state.tenant = command_tenant(task) # escopo da memória (write path lê daqui)
+      state.turn_context = build_turn_context(task, profile, state) # ctx.* das data-tools (D2/G4)
       turn_timeout = profile.limits[:turn_timeout] || 300
       # Turno que PODE exigir aprovação humana ganha budget = approval_timeout
       # (~1h): o with_timeout do turno não pode matar uma espera de operador
@@ -504,6 +505,24 @@ module Harness
       meta["tenant"] || meta[:tenant]
     end
 
+    # Contexto de turno (Fase 6/D2/G4): os ids que as data-tools resolvem via
+    # {{ctx.*}} p/ emitir X-Chat-Id/X-Store-Id/X-Agent-Id ao /api/internal/*. Vêm
+    # do TURNO, nunca dos args do modelo (R2). chat_id = a sessão (o adapter
+    # /v1/responses cria a sessão com id = user = chat.id); tenant = tenant do
+    # Command (memória) OU chat_id (default drop-in); agent_id = profile;
+    # store_id = metadata do profile (estável por loja, do pack). Campos ausentes
+    # -> nil (a data-tool emite header vazio; no piloto o profile carrega store_id).
+    # Genérico: nada aqui cita achei-b2b (NF1).
+    def build_turn_context(task, profile, state)
+      chat_id = task.session_id
+      {
+        chat_id: chat_id,
+        agent_id: profile.id,
+        tenant: state.tenant || chat_id,
+        store_id: (profile.store_id if profile.respond_to?(:store_id))
+      }
+    end
+
     # Request real: command (p/ a WorkflowAllowlist), context
     # (Context antes de Policy), candidate_tools (Entries do registry, SEM
     # filtrar) e candidate_skills (do CATÁLOGO).
@@ -529,8 +548,24 @@ module Harness
     end
 
     # Engine real -> Entries (respondem a factory); fakes -> instâncias prontas.
-    def instantiate_tools(allowed)
-      Array(allowed).map { |t| t.respond_to?(:factory) ? t.factory.call : t }
+    # `turn_context` (D2) é depositado nas instâncias que o expõem (data-tools);
+    # as demais ignoram (paridade).
+    def instantiate_tools(allowed, turn_context = nil)
+      Array(allowed).map do |t|
+        tool = t.respond_to?(:factory) ? t.factory.call : t
+        inject_turn_context(tool, turn_context)
+        tool
+      end
+    end
+
+    # Costura D2/G3: deposita o contexto do turno na instância recém-criada
+    # (mesma ideia do `remember`, que recebe tenant/state) ANTES do ToolEnvelope.
+    # Duck-typed: só quem expõe `turn_context=` (DataDefinedTool) recebe. nil
+    # (state sem turn_context, ex.: stub de teste) -> no-op.
+    def inject_turn_context(tool, turn_context)
+      return if turn_context.nil?
+
+      tool.turn_context = turn_context if tool.respond_to?(:turn_context=)
     end
 
     # Sub-passo de resolução ENTRE Context e Policy —
@@ -565,23 +600,26 @@ module Harness
     # instância DIRETA é descartada — o modelo vê só o apelido da capability.
     def assemble_tool_instances(allowed, state)
       names = state.respond_to?(:capability_names) ? (state.capability_names || {}) : {}
-      return instantiate_tools(allowed) if names.empty?
+      ctx = state.respond_to?(:turn_context) ? state.turn_context : nil
+      return instantiate_tools(allowed, ctx) if names.empty?
 
       # Dedup pelo NOME DA ENTRY (chave do registry = impl_name) ANTES de
       # instanciar — o `.name` da INSTÂNCIA (RubyLLM) não é o nome de registro.
       direct = Array(allowed).reject { |e| e.respond_to?(:name) && names.key?(e.name.to_s) }
-      instantiate_tools(direct) + capability_tool_instances(names)
+      instantiate_tools(direct, ctx) + capability_tool_instances(names, ctx)
     end
 
     # impl_name -> Capability::ResolvedTool(capability_name:), AINDA sem
     # ToolEnvelope (o wrap_tools do call site embrulha o conjunto inteiro — mesma
     # ordem impl -> ResolvedTool -> ToolEnvelope). entry já validada em
     # resolve_capabilities.
-    def capability_tool_instances(names)
+    def capability_tool_instances(names, turn_context = nil)
       names.map do |impl_name, capability_name|
         entry = @tool_registry.entries.find { |e| e.name == impl_name }
-        Capability::ResolvedTool.new(entry.factory.call, capability_name: capability_name,
-                                                         impl_name: impl_name)
+        tool = entry.factory.call
+        inject_turn_context(tool, turn_context)
+        Capability::ResolvedTool.new(tool, capability_name: capability_name,
+                                           impl_name: impl_name)
       end
     end
 

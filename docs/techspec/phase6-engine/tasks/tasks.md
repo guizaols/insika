@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-15
-> **Progress:** 2/10 tasks — Etapa A (ingresso `/v1/responses` + bridge SSE) ✅ (branch `feature/harness-p6-engine-etapa-a`).
+> **Progress:** 4/10 tasks — Etapa A (ingresso `/v1/responses` + bridge SSE) ✅; Etapa B (contexto de turno nas data-tools) ✅ (branch `feature/harness-p6-engine-etapa-b`).
 > **Base:** main pós-Fase-5. Primeiro consumidor: achei-b2b.
 > **Meta do near-term:** piloto "shadow de 1 loja" (A → B → slice de D → E).
 
@@ -14,8 +14,8 @@
 |---|------|-------|--------|------------|---------|
 | 1 | Endpoint `POST /v1/responses` (Bearer, `X-Openclaw-Agent`) — parse `{model:"openclaw:<agent>", user, stream, input}`; resolve agente (model/header) + sessão por `user`=chat.id (cria/continua); despacha `:send_message` com `input` verbatim como mensagem do turno | A | ✅ DONE | High | D1, F1, F2, F4 |
 | 2 | Bridge EventStream do turno → **SSE OpenAI Responses**: `response.output_text.delta`, `output_item.added/done` (function_call), `response.completed` (usage+output), `response.failed`, `[DONE]`. Fidelidade ao parser do `OpenclawDispatcher` | A | ✅ DONE | High | D1, F1, NF5, R1 |
-| 3 | Landing do contexto de turno: `chat_id`(=user)/`tenant`/`agent_id`/`store_id`(de profile) disponíveis no turno (TurnState/ContextRequest) | B | ⬜ TODO | Med | D2, G4 |
-| 4 | `DataDefinedTool` resolve `{{ctx.chat_id/store_id/agent_id/tenant}}` (namespace `ctx.`, separado dos `{{param}}` do modelo) em url/query/headers/body — costura p/ a tool de registry receber o contexto do turno. **Prova: tool emite `X-Chat-Id`/`X-Store-Id`/`X-Agent-Id`** | B | ⬜ TODO | High | D2, F3, R2 |
+| 3 | Landing do contexto de turno: `chat_id`(=user)/`tenant`/`agent_id`/`store_id`(de profile) disponíveis no turno (TurnState/ContextRequest) | B | ✅ DONE | Med | D2, G4 |
+| 4 | `DataDefinedTool` resolve `{{ctx.chat_id/store_id/agent_id/tenant}}` (namespace `ctx.`, separado dos `{{param}}` do modelo) em url/query/headers/body — costura p/ a tool de registry receber o contexto do turno. **Prova: tool emite `X-Chat-Id`/`X-Store-Id`/`X-Agent-Id`** | B | ✅ DONE | High | D2, F3, R2 |
 | 5 | Memória dono-por-agente: default drop-in (`memoria`/`dados_conhecidos` embutidos no `input`, `profile.memory=false`) + caminho MemoryStore (`profile.memory=true`, tenant=chat, `remember` escreve). Documentar semântica; `dados_conhecidos` sempre do consumidor | C | ⬜ TODO | Med | D3, F5 |
 | 6 | Fronteira de confiança: identidade + skills de guardrail `pinned`/priority acima das injeções de turno; segurança (allow/deny/egress) só no motor/profile | C | ⬜ TODO | Med | D5, NF3, R4 |
 | 7 | Importador de pack: `docs/prompt-base/06` (`agent.config.json` + `*.md` + `skills/*` + defs de tools) → Commands (`create_agent`/`write_agent_file`/`write_skill`/`set_skill_agents`/`write_data_tool`). Genérico por projeto | D | ⬜ TODO | High | D4, F6, NF1, NF2 |

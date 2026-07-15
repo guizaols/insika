@@ -65,6 +65,12 @@ RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
       src.put(Harness::AgentProfile.build(id: "bia", model: "novo-modelo"))
       expect(src.fetch("bia").model).to eq("novo-modelo")
     end
+
+    it "round-trip de metadata (store_id do contexto de turno, Fase 6)" do
+      src.put(Harness::AgentProfile.build(id: "loja", model: "m", metadata: { store_id: "loja-7" }))
+      got = src.fetch("loja")
+      expect(got.store_id).to eq("loja-7") # sobrevive ao JSON round-trip (chave vira string)
+    end
   end
 
   describe ".coerce" do
