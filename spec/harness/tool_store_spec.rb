@@ -1,0 +1,94 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+
+# Fase 5 Etapa A: store versionado + mascarado das tools por dados.
+RSpec.describe Harness::ToolStore do
+  subject(:store) { described_class.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
+
+  def def_attrs(name: "cep", **over)
+    {
+      name: name,
+      description: "Consulta CEP",
+      parameters: [{ name: "cep", type: "string", required: true }],
+      request: { method: "GET", url: "https://viacep.com.br/ws/{{cep}}/json" },
+      response: { extract: "json_path", path: "localidade" }
+    }.merge(over)
+  end
+
+  def with_secret(name: "api", token: "SECRET-123")
+    {
+      name: name, description: "chama API",
+      parameters: [],
+      request: { method: "POST", url: "https://api.test/x",
+                 headers: { "Authorization" => "Bearer #{token}", "X-Trace" => "on" } },
+      secret_headers: ["Authorization"]
+    }
+  end
+
+  it "write/get round-trip; names/all listam; all_raw p/ overlay" do
+    store.write(def_attrs(name: "cep"))
+    store.write(def_attrs(name: "clima", request: { url: "https://c.test/{{cep}}" }))
+
+    expect(store.get("cep")["name"]).to eq("cep")
+    expect(store.names).to eq(%w[cep clima])            # lexicográfico
+    expect(store.all.map { |d| d["name"] }).to contain_exactly("cep", "clima")
+    expect(store.all_raw.size).to eq(2)
+  end
+
+  it "valida a definição na escrita (delega ToolDefinition)" do
+    expect { store.write(def_attrs(name: "Bad Name")) }
+      .to raise_error(Harness::ValidationError, /name/)
+  end
+
+  it "mascara headers secretos em get/all; get_raw devolve o real" do
+    store.write(with_secret(token: "SECRET-123"))
+
+    masked = store.get("api")
+    expect(masked["request"]["headers"]["Authorization"]).to eq(Harness::SecretMasking::SENTINEL)
+    expect(masked["request"]["headers"]["X-Trace"]).to eq("on")   # não-secreto passa
+    expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer SECRET-123")
+  end
+
+  it "0 vazamentos: o segredo real nunca aparece na leitura de exibição" do
+    store.write(with_secret(token: "SUPERSECRET"))
+    dump = [store.get("api"), store.all, store.versions("api")].inspect
+    expect(dump).not_to include("SUPERSECRET")
+  end
+
+  it "sentinel de volta preserva o segredo; string nova substitui" do
+    store.write(with_secret(token: "ORIG"))
+    # UI reenvia mascarado (sentinel) -> preserva ORIG
+    store.write(with_secret.merge(request: {
+                                    method: "POST", url: "https://api.test/x",
+                                    headers: { "Authorization" => Harness::SecretMasking::SENTINEL, "X-Trace" => "off" }
+                                  }))
+    expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer ORIG")
+    expect(store.get_raw("api")["request"]["headers"]["X-Trace"]).to eq("off")
+
+    # nova string substitui
+    store.write(with_secret(token: "NOVO"))
+    expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer NOVO")
+  end
+
+  it "sobrescrever versiona; create_only recusa" do
+    store.write(def_attrs(name: "cep", description: "v1"))
+    store.write(def_attrs(name: "cep", description: "v2"))
+    expect(store.versions("cep").map { |h| h["definition"]["description"] }).to eq(["v1"])
+    expect { store.write(def_attrs(name: "cep"), create_only: true) }
+      .to raise_error(Harness::ValidationError, /já existe/)
+  end
+
+  it "restore volta uma versão antiga (e preserva o segredo real)" do
+    store.write(with_secret(token: "V1"))
+    store.write(with_secret(token: "V2"))
+    store.restore("api", 0)
+    expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer V1")
+  end
+
+  it "delete -> bool" do
+    store.write(def_attrs(name: "cep"))
+    expect(store.delete("cep")).to be(true)
+    expect(store.delete("cep")).to be(false)
+  end
+end
