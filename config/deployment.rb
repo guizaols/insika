@@ -54,13 +54,21 @@ module Deploy
     Deploy::Tools::ALL.each { |name, klass| REGISTRY.register(name, plugin: "pizzaria") { klass.new } }
 
     CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
-    TOOL_CATALOG        = Harness::ToolCatalog.new(tool_registry: REGISTRY)
 
     # Config durável: profiles + workspace de prompts + skills
     # autoradas vivem AQUI (SQLite quando HARNESS_DB; senão Memory efêmero).
     CONFIG_STORE      = Harness::ConfigStore.new(store: BACKEND)
     AGENT_FILE_STORE  = Harness::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Harness::SkillStore.new(config_store: CONFIG_STORE)
+
+    # Tools POR DADOS (Fase 5): definições no ToolStore; o overlay compõe as tools
+    # de CÓDIGO (REGISTRY) com as por-dados. É o `tool_registry` do Executor e do
+    # ToolCatalog (drop-in) — data-tools novas valem sem restart via reload.
+    TOOL_STORE    = Harness::ToolStore.new(config_store: CONFIG_STORE)
+    TOOL_REGISTRY = Harness::OverlayToolRegistry.new(
+      base: REGISTRY, tool_store: TOOL_STORE, http: Harness::HttpClient.new, event_stream: EVENT_STREAM
+    )
+    TOOL_CATALOG  = Harness::ToolCatalog.new(tool_registry: TOOL_REGISTRY)
 
     # Settings gerais + providers de LLM autoráveis em runtime: durável no mesmo
     # backend. O LLMConfigurator reaplica os providers no
@@ -123,7 +131,7 @@ module Deploy
 
     EXECUTOR = Harness::Executor.new(
       context_builder: CONTEXT_BUILDER, policy_engine: POLICY_ENGINE, middleware: MIDDLEWARE, hooks: HOOKS,
-      tool_registry: REGISTRY, skill_catalog: CATALOG, profiles: PROFILE_SOURCE,
+      tool_registry: TOOL_REGISTRY, skill_catalog: CATALOG, profiles: PROFILE_SOURCE,
       session_store: SESSION_STORE, task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE,
       event_stream: EVENT_STREAM, workflow_registry: WORKFLOW_REGISTRY,
       pending_action_store: PENDING_ACTION_STORE, capability_registry: CAPABILITY_REGISTRY,
@@ -166,6 +174,12 @@ module Deploy
     BUS.register(:write_system_file, Harness::Commands::WriteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_system_file, Harness::Commands::DeleteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:restore_system_file, Harness::Commands::RestoreSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
+
+    # Tools por dados (Fase 5): autoria sem código. registry = overlay (reload hot);
+    # tool_catalog recarrega o nível-1/tool_search. Segredos mascarados no store.
+    BUS.register(:write_data_tool, Harness::Commands::WriteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
+    BUS.register(:delete_data_tool, Harness::Commands::DeleteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
+    BUS.register(:restore_data_tool, Harness::Commands::RestoreDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
 
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end
