@@ -20,18 +20,29 @@ module Harness
         # required? == false (default): falha (store indisponível) vira
         # :provider_warning + degradação graciosa — nunca aborta o turno.
         def call(request)
-          tenant = request.respond_to?(:tenant) ? request.tenant : nil
+          tenant = memory_tenant(request)
           facts = @store.facts(tenant: tenant)
           notes = @store.notes(tenant: tenant, limit: @notes_limit)
           return [] if facts.empty? && notes.empty?
 
-          # priority 75: entre skills (80) e tools deferred (70) na ordem de
-          # sacrifício. pinned false (cortável sob orçamento apertado).
+          # priority MEMORY (75): entre skills (80) e tools deferred (70) na ordem
+          # de sacrifício. pinned false (cortável sob orçamento apertado).
           [ContextFragment.build(content: format_block(facts, notes),
-                                 placement: :system, priority: 75, source: id)]
+                                 placement: :system, priority: Context::Priority::MEMORY, source: id)]
         end
 
         private
+
+        # Escopo da memória do motor (D3): tenant EXPLÍCITO do Command vence
+        # (override multi-merchant); senão a SESSÃO (=chat) — memória dono-motor é
+        # por-chat. Sem sessão (one-shot) e sem tenant -> nil (MemoryStore aplica
+        # _default). Simétrico ao write path (`state.tenant` no Executor).
+        def memory_tenant(request)
+          explicit = request.respond_to?(:tenant) ? request.tenant : nil
+          return explicit if explicit
+
+          request.respond_to?(:session) ? request.session&.id : nil
+        end
 
         # <memory> passivo (sem instrução — o COMO gravar vive na tool `remember`).
         def format_block(facts, notes)

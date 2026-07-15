@@ -52,4 +52,39 @@ RSpec.describe Harness::Context::Providers::Memory do
     expect(frags.first.content).to include("<note>n2</note>")
     expect(frags.first.content).not_to include("<note>n1</note>")
   end
+
+  it "usa a constante Priority::MEMORY" do
+    mem.put_fact(tenant: "acme", key: "k", value: "v")
+    f = described_class.new(store: mem).call(request(memory: true)).first
+    expect(f.priority).to eq(Harness::Context::Priority::MEMORY)
+  end
+
+  # D3: sem tenant explícito no Command, a memória do motor é POR-CHAT — escopo =
+  # id da sessão. Simétrico ao write path (state.tenant no Executor).
+  describe "escopo por-chat (D3)" do
+    def request_session(session_id:, tenant: nil)
+      profile = Harness::AgentProfile.build(id: "a", model: "m", memory: true)
+      session = Struct.new(:id, :messages).new(session_id, [])
+      Harness::ContextRequest.new(session: session, message: "oi", profile: profile,
+                                  tenant: tenant, vars: {}, checkpoint: nil)
+    end
+
+    it "sem tenant explícito -> escopa pela sessão (=chat)" do
+      mem.put_fact(tenant: "chat-42", key: "plano", value: "premium")
+      frags = described_class.new(store: mem).call(request_session(session_id: "chat-42"))
+      expect(frags.first.content).to include(%(<fact key="plano">premium</fact>))
+    end
+
+    it "chat A não vê a memória do chat B" do
+      mem.put_fact(tenant: "chat-A", key: "k", value: "v")
+      frags = described_class.new(store: mem).call(request_session(session_id: "chat-B"))
+      expect(frags).to eq([])
+    end
+
+    it "tenant explícito do Command vence a sessão (override multi-merchant)" do
+      mem.put_fact(tenant: "acme", key: "k", value: "v")
+      frags = described_class.new(store: mem).call(request_session(session_id: "chat-42", tenant: "acme"))
+      expect(frags.first.content).to include(%(<fact key="k">v</fact>))
+    end
+  end
 end
