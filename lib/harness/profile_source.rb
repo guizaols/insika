@@ -96,7 +96,8 @@ module Harness
         approvals_required: h[:approvals_required],
         capabilities: h[:capabilities],
         tools_deferred: h[:tools_deferred],
-        memory: h[:memory]
+        memory: h[:memory],
+        metadata: h[:metadata] || {}
       )
     end
 
