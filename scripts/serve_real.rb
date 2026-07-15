@@ -75,7 +75,7 @@ Studio::App.configure(
   # stores de LEITURA para as páginas de autoria (agents-detail/skills/
   # tools/histórico). Escrita continua só pelos Commands do BUS.
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
-  skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG,
+  skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG, tool_store: W::TOOL_STORE,
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
   # settings/LLM/MCP + arquivos de sistema globais.
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
