@@ -17,7 +17,7 @@ module Harness
 
           [ContextFragment.build(
             content: "<request_context>\n#{lines.join("\n")}\n</request_context>",
-            placement: :system, priority: 40, source: id
+            placement: :system, priority: Context::Priority::REQUEST, source: id
           )]
         end
       end

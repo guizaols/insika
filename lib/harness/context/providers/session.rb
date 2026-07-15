@@ -21,7 +21,8 @@ module Harness
             ContextFragment.build(
               content: { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] },
               placement: :history,
-              priority: [60 + idx, 79].min, # teto 79; idx 0 = mais antiga
+              # teto HISTORY_MAX; idx 0 = mais antiga (cai primeiro no corte)
+              priority: [Context::Priority::HISTORY_BASE + idx, Context::Priority::HISTORY_MAX].min,
               source: id
             )
           end

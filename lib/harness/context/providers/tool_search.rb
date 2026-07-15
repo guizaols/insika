@@ -9,7 +9,7 @@ module Harness
       # o corte real acontece na PROMOÇÃO (tool_search, `deferred ∩ allowed`).
       class ToolSearch < CatalogProvider
         # priority 70: abaixo das skills (80) na ordem de sacrifício.
-        def priority = 70
+        def priority = Context::Priority::TOOL_SEARCH
 
         private
 

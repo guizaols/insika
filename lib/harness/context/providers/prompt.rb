@@ -30,7 +30,7 @@ module Harness
           identity = build_identity(request.profile)
           unless identity.empty?
             fragments << ContextFragment.build(content: identity, placement: :system,
-                                               priority: 100, source: id, pinned: true)
+                                               priority: Context::Priority::IDENTITY, source: id, pinned: true)
           end
           fragments.concat(ref_fragments(request.profile))
           fragments
@@ -89,7 +89,7 @@ module Harness
             end
 
             ContextFragment.build(content: entry.body, placement: :system,
-                                  priority: 90, source: id, pinned: true)
+                                  priority: Context::Priority::PROMPT_REF, source: id, pinned: true)
           end
         end
       end

@@ -334,7 +334,7 @@ module Harness
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
-      state.tenant = command_tenant(task) # escopo da memória (write path lê daqui)
+      state.tenant = memory_tenant(task) # escopo da memória do WRITE path (`remember`); =chat (D3)
       state.turn_context = build_turn_context(task, profile, state) # ctx.* das data-tools (D2/G4)
       turn_timeout = profile.limits[:turn_timeout] || 300
       # Turno que PODE exigir aprovação humana ganha budget = approval_timeout
@@ -505,6 +505,15 @@ module Harness
       meta["tenant"] || meta[:tenant]
     end
 
+    # Escopo da memória do motor (D3): tenant EXPLÍCITO do Command vence (override
+    # multi-merchant); senão a SESSÃO (=chat) — memória dono-motor é por-chat.
+    # Simétrico ao READ path (Memory provider). One-shot sem tenant -> nil
+    # (_default). NÃO é o tenant do <request_context> (esse segue command_tenant,
+    # paridade de prompt) — só o escopo de leitura/escrita da memória.
+    def memory_tenant(task)
+      command_tenant(task) || task.session_id
+    end
+
     # Contexto de turno (Fase 6/D2/G4): os ids que as data-tools resolvem via
     # {{ctx.*}} p/ emitir X-Chat-Id/X-Store-Id/X-Agent-Id ao /api/internal/*. Vêm
     # do TURNO, nunca dos args do modelo (R2). chat_id = a sessão (o adapter
@@ -514,11 +523,10 @@ module Harness
     # -> nil (a data-tool emite header vazio; no piloto o profile carrega store_id).
     # Genérico: nada aqui cita consumer-app (NF1).
     def build_turn_context(task, profile, state)
-      chat_id = task.session_id
       {
-        chat_id: chat_id,
+        chat_id: task.session_id,
         agent_id: profile.id,
-        tenant: state.tenant || chat_id,
+        tenant: state.tenant, # já = command_tenant || session_id (memory_tenant)
         store_id: (profile.store_id if profile.respond_to?(:store_id))
       }
     end
