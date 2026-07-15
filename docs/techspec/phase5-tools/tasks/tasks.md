@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-12
-> **Progress:** 3/9 tasks — Etapa A (core: definição + store + tool HTTP) ✅ (branch `feature/harness-p5-tools-etapa-a`).
+> **Progress:** 5/9 tasks — Etapa A (core) ✅ + Etapa B (registro dinâmico + commands) ✅.
 > **Base:** main @ `7cb5ab3` (pós-Fase-4 + pós-DHH-review).
 
 ---
@@ -14,8 +14,8 @@
 | 1 | `ToolDefinition` (Data.define) + validação (nome único/formato, tipos de param, method/url https, placeholders ⊆ params) | A | ✅ DONE | Med | D1, §5 |
 | 2 | `ToolStore` — scope `"tools"` novo no `ConfigStore::SCOPES`; versionado (molde `SkillStore`); headers secretos mascarados via `SecretMasking` (get/get_raw) | A | ✅ DONE | Med | D4, F4, F7 |
 | 3 | `Harness::Tools::DataDefinedTool < RubyLLM::Tool` — override `name`/`description`/`parameters`/`params_schema`/`execute`; templating `{{param}}` c/ escaping; `HttpClient` injetável; **guarda de egress (SSRF)**; extração `body_raw`/`status`/`json_path`; erros → `{error:}` | A | ✅ DONE | High | D1, D3, NF2, R1 |
-| 4 | `OverlayToolRegistry` — compõe base (código) + dinâmico (store→factories de DataDefinedTool); `reload` atômico; **base vence colisão**; plugado em `ToolCatalog` + `executor` (policy stage). **Spec de paridade: store vazio ⇒ idêntico** | B | ⬜ TODO | High | D2, NF1, R3, R4 |
-| 5 | Commands `:write_data_tool` / `:delete_data_tool` / `:restore_data_tool` (+ `overlay.reload`) + validação + auditoria mascarada; registrar no `BUS` (deployment) e wiring | B | ⬜ TODO | Med | §6 |
+| 4 | `OverlayToolRegistry` — compõe base (código) + dinâmico (store→factories de DataDefinedTool); `reload` atômico; **base vence colisão**; plugado em `ToolCatalog` + `executor` (policy stage). **Spec de paridade: store vazio ⇒ idêntico** | B | ✅ DONE | High | D2, NF1, R3, R4 |
+| 5 | Commands `:write_data_tool` / `:delete_data_tool` / `:restore_data_tool` (+ `overlay.reload` + `tool_catalog.reload`) + validação + auditoria mascarada; registrar no `BUS` (só `deployment.rb` — `wiring.rb` base não tem ConfigStore) | B | ✅ DONE | Med | §6 |
 | 6 | Studio: página de autoria `/tools/def/*` — builder de parâmetros + config HTTP (method/url/headers/query/body) + editor island p/ body + segredo mascarado + versões/restore; nav + configure(store) | C | ⬜ TODO | High | G5, §6, NF4 |
 | 7 | Studio: matriz `/tools` passa a listar data-tools junto das de código; exposição por agente via `:set_agent_tools` (inalterado); **prova ponta-a-ponta HTTP+LLM** (criar data-tool → allow p/ agente → modelo chama → responde) | C | ⬜ TODO | Med | F6, NF1 |
 | 8 | §9.6 — wire A2A/AgentCard via `PROFILE_SOURCE`: `config/deployment.rb` monta `A2A::App` + expõe em `Server::App` gateado por `PROFILE_SOURCE.fetch`; `config/wiring.rb` troca `PROFILES` estático | D | ⬜ TODO | Med | D6, F8 |
