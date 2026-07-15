@@ -5,7 +5,9 @@ require "time"
 module Harness
   module Commands
     # Command de controle: cria uma sessão e responde síncrono —
-    # não cria Task. Payload `{ vars: {} }` -> retorna Session.
+    # não cria Task. Payload `{ vars: {} }` -> retorna Session. `id` opcional:
+    # quando presente, a sessão nasce com esse id (correlação por chave externa —
+    # ex.: chat.id no adapter /v1/responses; contextId no A2A). Ausente -> uuid.
     class CreateSession
       # event_stream: qualquer objeto com #emit(event) (testes usam spy).
       def initialize(session_store:, event_stream:)
@@ -19,7 +21,8 @@ module Harness
         vars = command.payload[:vars] || command.payload["vars"] || {}
         raise Harness::ValidationError, "vars deve ser um Hash" unless vars.is_a?(Hash)
 
-        session = @session_store.create(vars: vars)
+        id = command.payload[:id] || command.payload["id"]
+        session = id ? @session_store.create(id: id, vars: vars) : @session_store.create(vars: vars)
         # :session_created é do catálogo fechado (origem: handler CreateSession).
         # meta sem task_id/seq (controle não tem Task); Event#to_h faz meta.compact.
         @event_stream.emit(Harness::Event.new(

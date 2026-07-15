@@ -7,6 +7,7 @@ require_relative "sse_body"
 require_relative "admin_auth"
 require_relative "admin/app"
 require_relative "a2a/app" # adapter A2A de borda (puxa protocol/errors/message/projection/card)
+require_relative "responses" # adapter OpenAI Responses (/v1/responses) — drop-in do gateway OpenClaw
 
 module Harness
   module Server
@@ -89,6 +90,8 @@ module Harness
           handle_create_session(req)
         in ["POST", ["v1", "messages"]]
           handle_send_message(req)
+        in ["POST", ["v1", "responses"]]
+          handle_responses(req)
         in ["GET", ["v1", "sessions", id]]
           handle_read_session(id)
         in ["GET", ["v1", "tasks", id]]
@@ -180,6 +183,36 @@ module Harness
         message_flow(parse_body(req), stream: stream)
       end
 
+      # POST /v1/responses — adapter OpenAI Responses (drop-in do gateway
+      # OpenClaw). Bearer via `config[:gateway_token]` (fail-closed, mesma
+      # disciplina do /admin). Traduz o request -> :send_message e o Event Stream
+      # do turno -> SSE OpenAI Responses. Sempre streama (o consumidor pede SSE).
+      def handle_responses(req)
+        case Harness::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
+        when :disabled then return admin_error(503, "responses disabled")
+        when :unauthorized then return admin_error(401, "unauthorized", "www-authenticate" => "Bearer")
+        end
+
+        parsed = Responses.parse_request(parse_body(req), req) # ValidationError -> 422
+        ensure_session(parsed[:user])
+        message_flow({ agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] },
+                     stream: true, serialize: Responses.method(:frame_for))
+      end
+
+      # Sessão correlacionada por `user`=chat.id: cria se nova (id explícito),
+      # continua se existe (multi-turn). Via Command (server/ não escreve em store).
+      # Corrida benigna (dois turnos quase simultâneos criando) -> ArgumentError do
+      # store, tratado como "já existe".
+      def ensure_session(user)
+        return if @session_store.find(user)
+
+        @command_bus.dispatch(
+          Harness::Command.build(:create_session, { id: user, vars: { channel: "responses" } }, transport: :http)
+        )
+      rescue ArgumentError
+        nil
+      end
+
       # GET /v1/sessions/:id — leitura direta (não é Command).
       def handle_read_session(id)
         session = @session_store.find(id)
@@ -250,7 +283,7 @@ module Harness
       # transporte (TaskFilter). Erro SÍNCRONO do handler (Validation/NotFound)
       # acontece aqui, ANTES do SSE abrir -> fecha a subscription e propaga p/ o
       # rescue de #call (vira status HTTP).
-      def message_flow(payload, stream:)
+      def message_flow(payload, stream:, serialize: nil)
         command = Harness::Command.build(:send_message, payload, transport: :http)
         subscription = @event_stream.subscribe
         result =
@@ -268,7 +301,7 @@ module Harness
         # se perde.
         subscription.bind(task_id: task_id)
         filtered = TaskFilter.new(subscription, task_id)
-        stream ? sse_response(filtered) : aggregate_response(filtered, task_id)
+        stream ? sse_response(filtered, serialize: serialize) : aggregate_response(filtered, task_id)
       end
 
       # stream=false: agrega iterando a subscription filtrada no
@@ -299,8 +332,8 @@ module Harness
         end
       end
 
-      def sse_response(subscription)
-        [200, SSE_HEADERS.dup, SSEBody.new(subscription: subscription, heartbeat: @heartbeat)]
+      def sse_response(subscription, serialize: nil)
+        [200, SSE_HEADERS.dup, SSEBody.new(subscription: subscription, heartbeat: @heartbeat, serialize: serialize)]
       end
 
       # --- Dispatch e serialização -----------------------------------------
