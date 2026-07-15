@@ -101,4 +101,28 @@ RSpec.describe Harness::AgentProfile do
       expect(described_class.build(id: "a", model: "m", memory: true).memory).to be(true)
     end
   end
+
+  describe "metadata + store_id (Fase 6, contexto de turno)" do
+    it "default = {} (agente sem metadata)" do
+      profile = described_class.build(id: "a", model: "m")
+      expect(profile.metadata).to eq({})
+      expect(profile.store_id).to be_nil
+    end
+
+    it "store_id lê do metadata (chave symbol)" do
+      profile = described_class.build(id: "a", model: "m", metadata: { store_id: "loja-7" })
+      expect(profile.store_id).to eq("loja-7")
+    end
+
+    it "store_id tolera chave string (JSON round-trip do store)" do
+      profile = described_class.build(id: "a", model: "m", metadata: { "store_id" => "loja-9" })
+      expect(profile.store_id).to eq("loja-9")
+    end
+
+    it "metadata: nil vira {} (não quebra store_id)" do
+      profile = described_class.build(id: "a", model: "m", metadata: nil)
+      expect(profile.metadata).to eq({})
+      expect(profile.store_id).to be_nil
+    end
+  end
 end

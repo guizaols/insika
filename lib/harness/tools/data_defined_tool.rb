@@ -17,13 +17,26 @@ module Harness
     # execute NUNCA levanta — erro (param faltando, egress bloqueado, HTTP, parse)
     # vira `{ error: }` ao modelo, como as demais tools.
     class DataDefinedTool < RubyLLM::Tool
-      def initialize(definition:, http:, egress: Harness::EgressGuard, egress_options: {}, event_stream: nil)
+      def initialize(definition:, http:, egress: Harness::EgressGuard, egress_options: {},
+                     event_stream: nil, turn_context: {})
         @definition = definition
         @http = http
         @egress = egress
         @egress_options = egress_options
         @event_stream = event_stream
+        @turn_context = symbolize_ctx(turn_context)
         super()
+      end
+
+      # Contexto de turno (Fase 6/D2/G3): a tool de registry NÃO recebe TurnState,
+      # então o Executor DEPOSITA aqui, por-turno, os ids do turno
+      # (chat/agent/tenant/store). Resolvem {{ctx.*}} — SEPARADO dos {{param}} do
+      # modelo — p/ emitir X-Chat-Id/X-Store-Id/X-Agent-Id. Vêm do TURNO, nunca do
+      # modelo (R2). Reader p/ teste; writer é o ponto de injeção do Executor.
+      attr_reader :turn_context
+
+      def turn_context=(ctx)
+        @turn_context = symbolize_ctx(ctx)
       end
 
       # name/description/parameters por INSTÂNCIA (senão o modelo veria o nome
@@ -76,8 +89,24 @@ module Harness
 
       def interpolate(template, kwargs, mode)
         template.to_s.gsub(Harness::ToolDefinition::PLACEHOLDER_RE) do
-          encode(kwargs[Regexp.last_match(1).to_sym], mode)
+          encode(resolve(Regexp.last_match(1), kwargs), mode)
         end
+      end
+
+      # ctx.* -> contexto do TURNO (depositado pelo Executor); demais -> args do
+      # MODELO (kwargs). A separação é a fronteira de confiança de D2/R2: o modelo
+      # não escolhe qual chat/loja a tool acessa.
+      def resolve(name, kwargs)
+        prefix = Harness::ToolDefinition::CTX_PREFIX
+        if name.start_with?(prefix)
+          @turn_context[name.delete_prefix(prefix).to_sym]
+        else
+          kwargs[name.to_sym]
+        end
+      end
+
+      def symbolize_ctx(ctx)
+        (ctx || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
       end
 
       def encode(value, mode)

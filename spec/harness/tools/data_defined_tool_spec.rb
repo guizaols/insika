@@ -103,6 +103,72 @@ RSpec.describe Harness::Tools::DataDefinedTool do
     expect(req[:body]).to eq('{"q":"a\"b"}')            # aspas escapadas p/ JSON válido
   end
 
+  # Fase 6/D2/G3: os ids do TURNO (não do modelo) viram X-Chat-Id/X-Store-Id/
+  # X-Agent-Id — a PROVA da Etapa B (sem eles toda tool /api/internal/* dá 403).
+  describe "contexto de turno {{ctx.*}}" do
+    let(:internal_def) do
+      { name: "cart", description: "carrinho da loja",
+        parameters: [{ name: "sku", type: "string", required: true }],
+        request: { method: "POST", url: "https://api.internal/agent_tools/cart",
+                   headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Store-Id" => "{{ctx.store_id}}",
+                              "X-Agent-Id" => "{{ctx.agent_id}}", "Authorization" => "Bearer S3CR3T" },
+                   body: '{"sku":"{{sku}}","tenant":"{{ctx.tenant}}"}' },
+        response: { extract: "status" }, secret_headers: ["Authorization"] }
+    end
+
+    def headers_of(t) = t.instance_variable_get(:@http).last[:headers]
+
+    it "emite X-Chat-Id/X-Store-Id/X-Agent-Id a partir do contexto de turno" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "chat-42", store_id: "loja-7", agent_id: "bia", tenant: "chat-42" }
+      t.execute(sku: "ABC")
+      h = headers_of(t)
+      expect(h["X-Chat-Id"]).to eq("chat-42")
+      expect(h["X-Store-Id"]).to eq("loja-7")
+      expect(h["X-Agent-Id"]).to eq("bia")
+      expect(h["Authorization"]).to eq("Bearer S3CR3T") # segredo estático, não é ctx
+      body = t.instance_variable_get(:@http).last[:body]
+      expect(body).to eq('{"sku":"ABC","tenant":"chat-42"}')
+    end
+
+    it "aceita chaves string no contexto de turno (JSON round-trip)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { "chat_id" => "c1", "store_id" => "s1", "agent_id" => "a1", "tenant" => "c1" }
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Chat-Id"]).to eq("c1")
+    end
+
+    it "ctx ausente -> header vazio (não injeta arg do modelo com o mesmo nome)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      # sem turn_context setado (default {})
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Store-Id"]).to eq("")
+    end
+
+    it "o modelo NÃO controla ctx: um arg 'chat_id' do modelo é ignorado no ctx.*" do
+      spoof_def = {
+        name: "cart2", description: "d",
+        parameters: [{ name: "chat_id", type: "string", required: true }],
+        request: { method: "GET", url: "https://api.internal/x",
+                   headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Model" => "{{chat_id}}" } },
+        response: { extract: "status" }
+      }
+      t = tool(spoof_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "real-chat" }
+      t.execute(chat_id: "spoofed")
+      h = headers_of(t)
+      expect(h["X-Chat-Id"]).to eq("real-chat") # do turno
+      expect(h["X-Model"]).to eq("spoofed")     # do modelo, canal separado
+    end
+
+    it "CRLF em valor de ctx é removido no header (anti-injeção)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "a\r\nX-Evil: 1", store_id: "", agent_id: "", tenant: "" }
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Chat-Id"]).to eq("aX-Evil: 1")
+    end
+  end
+
   it "emite :data_tool_call com status, sem vazar corpo/segredo" do
     t = tool(cep_def, result: { status: 200, body: '{"localidade":"X"}' })
     t.execute(cep: "1")

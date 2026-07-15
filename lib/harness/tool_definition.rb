@@ -32,7 +32,15 @@ module Harness
     IDEMPOTENT = %w[GET HEAD].freeze              # side_effect default = false
     EXTRACTS = %w[body_raw status json_path].freeze
     NAME_RE = /\A[a-z][a-z0-9_]*\z/               # identificador p/ o modelo
-    PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/
+    # `.` no placeholder habilita o namespace de contexto de turno `{{ctx.*}}`
+    # (Fase 6/D2), separado dos `{{param}}` do modelo. Params seguem NAME_RE (sem
+    # ponto) -> um placeholder com ponto só pode ser um ctx ref.
+    PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/
+    # Namespace de contexto de turno: valores vindos do TURNO (não do modelo),
+    # resolvidos pelo DataDefinedTool. Allowlist fechada (um typo vira erro de
+    # validação, não header silenciosamente vazio).
+    CTX_PREFIX = "ctx."
+    CTX_FIELDS = %w[chat_id store_id agent_id tenant].freeze
 
     # Constrói + valida. Levanta Harness::ValidationError. Aceita keyword args
     # (symbol keys já normalizados); use from_h para um Hash cru do store/UI.
@@ -129,10 +137,21 @@ module Harness
     end
     private_class_method :normalize_response
 
-    # Todo {{x}} nos templates deve referenciar um parâmetro declarado.
+    # Todo {{x}} nos templates deve referenciar um parâmetro declarado OU um
+    # campo de contexto de turno conhecido ({{ctx.chat_id}} etc.). Os ctx refs
+    # NÃO são parâmetros do modelo — são resolvidos por-turno pelo motor.
     def self.check_placeholders!(strings, param_names)
       used = strings.flat_map { |s| s.to_s.scan(PLACEHOLDER_RE).flatten }.uniq
-      unknown = used - param_names
+      ctx_refs, params = used.partition { |u| u.start_with?(CTX_PREFIX) }
+
+      unknown_ctx = ctx_refs.reject { |u| CTX_FIELDS.include?(u.delete_prefix(CTX_PREFIX)) }
+      unless unknown_ctx.empty?
+        raise Harness::ValidationError,
+              "contexto de turno desconhecido: #{unknown_ctx.join(', ')} " \
+              "(disponível: #{CTX_FIELDS.map { |f| CTX_PREFIX + f }.join(', ')})"
+      end
+
+      unknown = params - param_names
       raise Harness::ValidationError, "placeholder(s) sem parâmetro: #{unknown.join(', ')}" unless unknown.empty?
     end
     private_class_method :check_placeholders!
