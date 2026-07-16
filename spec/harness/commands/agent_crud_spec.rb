@@ -73,6 +73,19 @@ RSpec.describe "Commands de autoria de agente (Fase 4 Etapa B)" do
       expect { handler.call(cmd(:set_agent_tools, { "id" => "bia", "allow" => "x" })) }
         .to raise_error(Harness::ValidationError)
     end
+
+    # Fase 7/D4/F5 (Etapa C): allow_groups só sobrescreve se a chave vier.
+    it "seta allow_groups quando presente; preserva quando ausente" do
+      p = handler.call(cmd(:set_agent_tools, { "id" => "bia", "allow_groups" => %w[b2b] }))
+      expect(p.tools_allow_groups).to eq(%w[b2b])
+      p2 = handler.call(cmd(:set_agent_tools, { "id" => "bia", "allow" => %w[x] })) # sem allow_groups
+      expect(p2.tools_allow_groups).to eq(%w[b2b]) # preservado
+    end
+
+    it "allow_groups não-lista -> ValidationError" do
+      expect { handler.call(cmd(:set_agent_tools, { "id" => "bia", "allow_groups" => "x" })) }
+        .to raise_error(Harness::ValidationError, /allow_groups/)
+    end
   end
 
   describe Harness::Commands::DeleteAgent do

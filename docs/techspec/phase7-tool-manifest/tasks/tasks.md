@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-16
-> **Progress:** 5/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2); **Etapa B (manifesto + ingestão dinâmica) ✅** (tasks 3–5).
+> **Progress:** 6/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2); **Etapa B (manifesto + ingestão dinâmica) ✅** (tasks 3–5); **Etapa C (grupos + allowlist por grupo) ✅** (task 6).
 > **Base:** main pós-Fase-6 (data-tools da Fase 5 + provisionamento por pack + `{{ctx.*}}` + SSE + egress opt-in).
 > **Meta:** o harness vira um **tool host agnóstico** que ingere tools em **JSON Schema** (formato
 > padrão) + binding declarativo, **dinamicamente** (hot, sem rebuild/deploy), com enablement por
@@ -19,7 +19,7 @@
 | 3 | **Manifesto + adapters de entrada.** Schema do manifesto (`defaults` + `tools[]`); adapters normalizam qualquer envelope padrão → forma interna: `parameters` (cru), `{type:"function",function:{…}}` (OpenAI/Anthropic), `{name,description,inputSchema}` (MCP). `endpoint` resolve remaps nome↔slug **por dado** (nunca inferido do name — R6). | B | ✅ DONE | High | D2, D3, F2, F3, R6 |
 | 4 | **Templates `{{secret.*}}` + `{{env.*}}`.** `url`/`headers`/`body`/`query` resolvem `{{param}}` + `{{ctx.*}}` + `{{secret.*}}` (injetado na **ingestão** do `SettingsStore`/env, gravado como `secret_header` mascarado) + `{{env.*}}` (config do deployment). **Recusar `secret_header` com valor literal que não seja `{{secret.*}}`** (R3). | B | ✅ DONE | Med | D6, F4, NF4, R3 |
 | 5 | **Command `:import_tools` + endpoint.** Upsert em lote das data-tools com **reload hot** (sem restart); relatório por-tool (`{created, updated, errors}` — molde pack importer da Fase 6); upsert idempotente / falha parcial isolada (R4). Endpoint `POST /v1/tools/manifest`. Egress da `base_url` dinâmica via `host_allowlist` (R5). | B | ✅ DONE | High | D3, F2, R4, R5 |
-| 6 | **Grupos/tags + allowlist por grupo.** `group`/`tags` no `ToolDefinition` (**dado**, não convenção-de-nome); `tools_allow_groups` no `AgentProfile`; expansão na montagem do toolset (union com `tools_allow`; `tools_deny` vence; allowlists vazias = todas). | C | ⬜ TODO | Med | D4, F5 |
+| 6 | **Grupos/tags + allowlist por grupo.** `group`/`tags` no `ToolDefinition` (**dado**, não convenção-de-nome); `tools_allow_groups` no `AgentProfile`; expansão na montagem do toolset (union com `tools_allow`; `tools_deny` vence; allowlists vazias = todas). | C | ✅ DONE | Med | D4, F5 |
 | 7 | **Conversor de migração (one-off, FORA do core).** `scripts/` lê `acheib2b-tools-dev/tools/*.ts` (TypeBox `Type.Object` já **é** JSON Schema) + slug do `callAgentTool` → envolve em binding → emite `manifesto.json` das 44 (params/endpoints corretos). Descartável, específico do cliente. | D | ⬜ TODO | Med | D7, G6 |
 | 8 | **(follow-up) MCP live + corte de schema por flag.** Ingestão de um MCP server do consumidor (descoberta automática, sem manifesto); corte de schema por allowlist derivada de flag no provisionamento. | E | ⬜ ADIADO | — | D5, D8 |
 

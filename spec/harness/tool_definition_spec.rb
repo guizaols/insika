@@ -38,6 +38,30 @@ RSpec.describe Harness::ToolDefinition do
     expect(again).to eq(d)
   end
 
+  # Fase 7/D4/F5 (Etapa C): group/tags como DADO.
+  describe "group/tags" do
+    it "default: group nil, tags []" do
+      d = described_class.build(**valid_attrs)
+      expect(d.group).to be_nil
+      expect(d.tags).to eq([])
+    end
+
+    it "normaliza group (trim; vazio -> nil) e tags (strings não-vazias, únicas)" do
+      d = described_class.build(**valid_attrs(group: "  b2b ", tags: ["x", "x", " ", "y"]))
+      expect(d.group).to eq("b2b")
+      expect(d.tags).to eq(%w[x y])
+      expect(described_class.build(**valid_attrs(group: "   ")).group).to be_nil
+    end
+
+    it "round-trip to_h/from_h preserva group/tags" do
+      d = described_class.build(**valid_attrs(group: "b2b", tags: ["catalog"]))
+      again = described_class.from_h(d.to_h)
+      expect(again).to eq(d)
+      expect(d.to_h["group"]).to eq("b2b")
+      expect(d.to_h["tags"]).to eq(["catalog"])
+    end
+  end
+
   describe "validação" do
     it "rejeita name fora do formato" do
       expect { described_class.build(**valid_attrs(name: "Bad Name")) }

@@ -14,6 +14,10 @@ module Harness
     :id, :model, :provider,
     :base_prompt, :prompt_files,
     :tools_allow, :tools_deny,
+    :tools_allow_groups,              # allowlist por GRUPO (Fase 7/D4/F5, Etapa C):
+    #                                   união com tools_allow; deny vence; ambas
+    #                                   nil = todas (paridade). Expande p/ as tools
+    #                                   do grupo na policy ToolAllowlist.
     :skills,
     :context_providers,               # allowlist de providers
     :workflows_allow,                 # aplicado pela WorkflowAllowlist
@@ -45,14 +49,14 @@ module Harness
     }.freeze
 
     def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],
-                   tools_allow: nil, tools_deny: [], skills: nil,
+                   tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, tools_deferred: nil, memory: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
-        tools_deny: Array(tools_deny), skills: skills,
+        tools_deny: Array(tools_deny), tools_allow_groups: tools_allow_groups, skills: skills,
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
