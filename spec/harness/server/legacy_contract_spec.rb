@@ -24,11 +24,12 @@ RSpec.describe "POST /agent/messages (contrato legado Fase 0)" do
     app.call(Rack::MockRequest.env_for("/agent/messages", method: "POST", input: body))
   end
 
-  # Drena um corpo SSEBody dentro de um reactor e devolve os chunks emitidos.
+  # Drena um corpo SSEBody (streaming body do Rack 3) dentro de um reactor e
+  # devolve os frames escritos no stream.
   def drain_sse(body)
-    chunks = []
-    Sync { body.each { |c| chunks << c } }
-    chunks
+    fs = SSEStreamDouble.new
+    Sync { body.call(fs) }
+    fs.chunks
   end
 
   # Extrai os tipos de evento das linhas `data: {...}` (ignora heartbeats).
