@@ -39,6 +39,32 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
+  describe "usage de tokens no evento terminal (Fase 6, observabilidade)" do
+    TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
+
+    it "captura input/output/total/model da resposta -> :done e :task_completed" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      chat = FakeChat.new
+      allow(chat).to receive(:ask).and_return(TokenResponse.new("oi", 12, 8, "deepseek-chat"))
+
+      run_turn(executor, make_task, fake_chat: chat)
+
+      %i[done task_completed].each do |type|
+        ev = event_stream.events.find { |e| e.type == type }
+        expect(ev.data[:usage]).to eq(input_tokens: 12, output_tokens: 8, total_tokens: 20, model: "deepseek-chat")
+      end
+    end
+
+    it "resposta sem contagem de tokens -> usage nil (não inventa zeros)" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      run_turn(executor, make_task) # FakeChat::Response = Struct.new(:content), sem tokens
+
+      expect(event_stream.events.find { |e| e.type == :task_completed }.data[:usage]).to be_nil
+    end
+  end
+
   describe "caminho feliz com sessão" do
     it "emite os estágios em ordem e persiste (estágio 8 na ordem L4)" do
       session_store.create(id: "s1")

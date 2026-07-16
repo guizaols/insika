@@ -15,4 +15,14 @@ RSpec.describe "load-time guard (D9)" do
 
     expect(status.exitstatus).to eq(0), "require \"harness\" carregou RubyLLM (D9 violado): #{err}"
   end
+
+  # Mesma disciplina para o OTEL (Fase 6): a Telemetry só puxa a gem lazy em
+  # setup (opt-in). Carregar o núcleo NÃO pode arrastar OpenTelemetry.
+  it "require \"harness\" não carrega OpenTelemetry" do
+    root = File.expand_path("../..", __dir__)
+    script = 'require "harness"; exit(defined?(OpenTelemetry) ? 1 : 0)'
+    _out, err, status = Open3.capture3("ruby", "-I#{File.join(root, "lib")}", "-e", script)
+
+    expect(status.exitstatus).to eq(0), "require \"harness\" carregou OpenTelemetry (opt-in violado): #{err}"
+  end
 end

@@ -21,6 +21,14 @@ gem "roda", "~> 3.85"      # apenas em harness-studio
 gem "tilt", "~> 2.8"       # render de templates (studio)
 gem "erubi", "~> 1.13"     # ERB com escape automático (XSS-safe) para o studio
 
+# Observabilidade OPT-IN (Fase 6, Telemetry): OTEL só é REQUERIDO lazy em
+# Harness::Telemetry.setup quando habilitado (HARNESS_OTEL / OTEL_EXPORTER_OTLP_*).
+# Desligado -> gems no bundle mas nunca carregadas (paridade, zero overhead). O
+# Recorder é testado com um tracer FAKE injetado; a gem só entra no boundary de
+# setup (não coberto por unit, como o create_chat do Executor).
+gem "opentelemetry-sdk", "~> 1.10"          # apenas em harness-server
+gem "opentelemetry-exporter-otlp", "~> 0.31" # exporter OTLP (SigNoz/Tempo/etc.)
+
 group :development, :test do
   gem "rspec"
 end

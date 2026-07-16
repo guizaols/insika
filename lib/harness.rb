@@ -99,6 +99,7 @@ require_relative "harness/chat_builder"
 require_relative "harness/executor"
 require_relative "harness/pack"
 require_relative "harness/pack_importer"
+require_relative "harness/telemetry"
 # NÃO requerer "harness/tools/load_skill" aqui: ele faz `require "ruby_llm"` no
 # topo (herda de RubyLLM::Tool) e puxaria a gem em load-time. O Executor o
 # carrega lazy dentro de create_chat (D9).
