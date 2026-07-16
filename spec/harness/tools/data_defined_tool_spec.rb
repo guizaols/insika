@@ -41,6 +41,53 @@ RSpec.describe Harness::Tools::DataDefinedTool do
     expect(t.params_schema["required"]).to include("cep")
   end
 
+  # Fase 7, Etapa A — PROVA: um parâmetro ANINHADO (search_products) é exposto ao
+  # modelo via params_schema (o que os providers serializam) E interpolado no body.
+  describe "param aninhado (JSON Schema)" do
+    let(:search_def) do
+      {
+        name: "search_products", description: "busca no catálogo",
+        parameters: {
+          "type" => "object",
+          "properties" => {
+            "query_filter_pairs" => {
+              "type" => "array", "minItems" => 1,
+              "items" => {
+                "type" => "object",
+                "properties" => {
+                  "query" => { "type" => "string" },
+                  "filters" => { "type" => "object", "additionalProperties" => true }
+                },
+                "required" => ["query"]
+              }
+            }
+          },
+          "required" => ["query_filter_pairs"]
+        },
+        request: { method: "POST", url: "https://api.test/search",
+                   body: '{"pairs":{{query_filter_pairs}}}' },
+        response: { extract: "body_raw" }
+      }
+    end
+
+    it "expõe o schema aninhado ao modelo via params_schema" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      schema = t.params_schema
+      items = schema.dig("properties", "query_filter_pairs", "items")
+      expect(items["type"]).to eq("object")
+      expect(items["properties"]).to have_key("query")
+      expect(items.dig("properties", "filters", "type")).to eq("object")
+    end
+
+    it "interpola o valor aninhado (array de objetos) no body como JSON" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      pairs = [{ "query" => "arroz", "filters" => { "brand" => "tio" } }]
+      t.execute(query_filter_pairs: pairs)
+      body = t.instance_variable_get(:@http).last[:body]
+      expect(JSON.parse(body)).to eq("pairs" => pairs)
+    end
+  end
+
   def last_url(t) = t.instance_variable_get(:@http).last[:url]
 
   it "GET + json_path: interpola a URL, extrai o caminho" do
