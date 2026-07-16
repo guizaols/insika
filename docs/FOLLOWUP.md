@@ -159,6 +159,36 @@ já existe (a API HTTP). Melhorar o `studio/` puxando o visual do agent-studio.*
   a regra constitucional já veta isso no `server/`); (3) planejar a extração como
   parte do §4.
 
+### 3.1 Visibilidade de tool calls no chat (debug) 🔴
+**Recomendação: o viewer de conversa (`/studio/chats` → `/studio/sessions/:id`)
+precisa mostrar, por turno, QUAIS tools foram chamadas + os PARÂMETROS enviados +
+a RESPOSTA recebida.** Sem isso não dá pra debugar por que a Bia respondeu X.
+
+- **Dor real (veio do piloto):** ao debugar a loja no Railway, só dava pra ver as
+  mensagens user/assistant — não dava pra ver que `search_products` foi chamado,
+  com quais `query_filter_pairs`, e o que o `/api/internal/*` devolveu. Hoje isso
+  exige `railway ssh` + inspeção manual do SQLite. Inaceitável pra operar.
+- **O que já existe (reusar):** o motor **emite** eventos de tool no Event Stream
+  (`data_tool_call` com `tool` + `status`; tool-cards ao vivo em `/admin/events`)
+  e há **spans OTEL** (Fase 6: `harness.tool`/`harness.data_tool` com atributos).
+  **Mas:** (a) o `data_tool_call` carrega SÓ nome+status (por segurança — 0
+  vazamento de header/secret), **sem args nem corpo da resposta**; (b) esses
+  eventos são efêmeros (stream), não ficam anexados à sessão pra ver DEPOIS.
+- **O gap:** persistir um **trace de tool-call por turno** (nome, args do modelo,
+  request resolvido SEM secrets, status HTTP, corpo da resposta — truncado/
+  mascarado) e renderizá-lo no viewer da sessão, alinhado ao turno. O Executor/
+  ToolEnvelope já têm args + resultado na mão; falta um evento/registro mais rico
+  (ou anexar ao Task/checkpoint) que o Studio leia.
+- **Tensão de segurança (resolver no design):** args e resposta podem trazer PII/
+  dados sensíveis; os `secret_headers` já são mascarados, mas o CORPO não. Regras:
+  mascarar credenciais, truncar payloads grandes, e gatear atrás do admin (é tela
+  de operador). Considerar um flag por-agente/deploy p/ ligar o trace verboso.
+- **Ação:** (1) capturar o trace de tool-call (args + request mascarado + status +
+  resposta truncada) por turno — evento rico e/ou persistido no Task; (2) render
+  no `/studio/sessions/:id` (accordion por tool call, alinhado ao turno); (3)
+  masking/truncation + gate de admin; (4) opcional: exportar como span OTEL
+  attribute p/ quem usa SigNoz.
+
 ---
 
 ## 4. Plugins — como trabalhar, nativos, terceiros, hub
@@ -265,13 +295,16 @@ novos sobre o mesmo motor, não uma mudança de core.** 🟡
 | 6 | Migração PT→EN (código/testes/comentários) | Docs/OSS | 🔴 (p/ OSS) | — |
 | 7 | Docs de arquitetura + diagramas + README + site | Docs/OSS | 🔴 (p/ OSS) | 6 |
 | 8 | Extração em gems (`harness-core/-server/-studio/-otel`) | Ecossistema | 🟡 | 7 |
-| 9 | Refresh de UI/UX do `studio/` (inspirado no agent-studio) | UI/UX | 🟡 | — |
-| 10 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 7 |
-| 11 | Protótipo `harness-code` (toolset FS/shell + CLI) | Ideias | 🟢 | 8 |
+| 9 | **Trace de tool calls no viewer do chat (args+resposta, masking) — debug (§3.1)** | UI/UX | 🔴 | — |
+| 10 | Refresh de UI/UX do `studio/` (inspirado no agent-studio) | UI/UX | 🟡 | — |
+| 11 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 7 |
+| 12 | Protótipo `harness-code` (toolset FS/shell + CLI) | Ideias | 🟢 | 8 |
 
 **Dois trilhos paralelos naturais:**
-- **Trilho Produto/Escala** (1→2→3→4→5): leva o piloto a produção e a múltiplas lojas.
-- **Trilho OSS/Ecossistema** (6→7→8→9→10→11): prepara o projeto para a comunidade.
+- **Trilho Produto/Escala** (1→2→3→4→5, + **9** como quick-win de operação): leva o
+  piloto a produção e a múltiplas lojas. O #9 (trace de tool calls) é o mais urgente
+  do dia-a-dia — sem ele não dá pra debugar turno em produção.
+- **Trilho OSS/Ecossistema** (6→7→8→10→11→12): prepara o projeto para a comunidade.
 
 Decisões que **destravam** os trilhos e dependem de você/produto: **onde hospedar**
 (Railway→k8s) e **quando "abrir"** o projeto (dispara o trilho OSS, começando pela
