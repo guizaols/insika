@@ -124,7 +124,12 @@ puts "  #{BIND}/admin/events → tool-cards ao vivo (filtre por session_id: web)
 puts "  #{BIND}/admin        → console"
 puts "  Ctrl-C para parar."
 
+puts "  OTEL          → #{W::TELEMETRY ? "ligado (spans no OTLP)" : "desligado (HARNESS_OTEL p/ ligar)"}"
+
 Async do
   W::EXECUTOR.supervised = true # modo serving: turnos sobrevivem ao disconnect
+  # Telemetry OTEL (opt-in): liga o Recorder ao Event Stream DENTRO do reactor.
+  # No-op quando TELEMETRY nil (desligado).
+  Harness::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY)
   Async::HTTP::Server.new(middleware, endpoint).run
 end
