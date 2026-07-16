@@ -65,8 +65,20 @@ module Deploy
     # de CÓDIGO (REGISTRY) com as por-dados. É o `tool_registry` do Executor e do
     # ToolCatalog (drop-in) — data-tools novas valem sem restart via reload.
     TOOL_STORE    = Harness::ToolStore.new(config_store: CONFIG_STORE)
+    # Egress das data-tools (SSRF guard). Default = estrito (só https público).
+    # Para o motor CHAMAR DE VOLTA a API interna do consumidor (consumer-app
+    # /api/internal/*), que é http/loopback no local, ligue via env — de
+    # preferência PARANDO num host conhecido (NF4):
+    #   HARNESS_EGRESS_ALLOW_HTTP=1  HARNESS_EGRESS_ALLOW_PRIVATE=1
+    #   HARNESS_EGRESS_HOSTS=localhost,127.0.0.1
+    EGRESS_OPTIONS = {
+      allow_http: ENV["HARNESS_EGRESS_ALLOW_HTTP"].to_s == "1",
+      allow_private: ENV["HARNESS_EGRESS_ALLOW_PRIVATE"].to_s == "1",
+      host_allowlist: ENV["HARNESS_EGRESS_HOSTS"].to_s.split(",").map(&:strip).reject(&:empty?).then { |l| l.empty? ? nil : l }
+    }.compact
     TOOL_REGISTRY = Harness::OverlayToolRegistry.new(
-      base: REGISTRY, tool_store: TOOL_STORE, http: Harness::HttpClient.new, event_stream: EVENT_STREAM
+      base: REGISTRY, tool_store: TOOL_STORE, http: Harness::HttpClient.new,
+      event_stream: EVENT_STREAM, egress_options: EGRESS_OPTIONS
     )
     TOOL_CATALOG  = Harness::ToolCatalog.new(tool_registry: TOOL_REGISTRY)
 
