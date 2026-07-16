@@ -36,7 +36,7 @@ module Harness
       # /admin/tasks/:id). A regra constitucional se mantém: server/ só LÊ stores.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      catalogs:, registries:, config:, checkpoint_store: nil,
-                     pending_action_store: nil, a2a: nil)
+                     pending_action_store: nil, a2a: nil, provisioner: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -46,6 +46,7 @@ module Harness
         @config = config
         @pending_action_store = pending_action_store # leitura p/ GET /v1/tasks/:id
         @a2a = a2a # A2A edge. nil = servidor não expõe A2A (paridade).
+        @provisioner = provisioner # PackImporter. nil = provisionamento não exposto.
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # controle síncrono
         # Control UI de escrita: recebe o bus (despacha os mesmos Commands
@@ -92,6 +93,10 @@ module Harness
           handle_send_message(req)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
+        in ["POST", ["v1", "agents"]] if @provisioner
+          handle_provision(req)
+        in ["DELETE", ["v1", "agents", id]] if @provisioner
+          handle_deprovision(req, id)
         in ["GET", ["v1", "sessions", id]]
           handle_read_session(id)
         in ["GET", ["v1", "tasks", id]]
@@ -188,15 +193,45 @@ module Harness
       # disciplina do /admin). Traduz o request -> :send_message e o Event Stream
       # do turno -> SSE OpenAI Responses. Sempre streama (o consumidor pede SSE).
       def handle_responses(req)
-        case Harness::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
-        when :disabled then return admin_error(503, "responses disabled")
-        when :unauthorized then return admin_error(401, "unauthorized", "www-authenticate" => "Bearer")
-        end
+        gate = gateway_gate(req)
+        return gate if gate
 
         parsed = Responses.parse_request(parse_body(req), req) # ValidationError -> 422
         ensure_session(parsed[:user])
         message_flow({ agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] },
                      stream: true, serialize: Responses.method(:frame_for))
+      end
+
+      # POST /v1/agents — provisiona (upsert) um agente a partir de um PACK
+      # padronizado (Fase 6/D4/F7). Mesmo Bearer do /v1/responses (gateway_token,
+      # fail-closed). O consumidor (GatewayClient/ProvisionStore) manda o pack em
+      # JSON; o PackImporter emite os Commands de autoria. -> 200 { resumo }.
+      # Corpo cru (chaves string): os nomes de arquivo/skill do pack são chaves de
+      # dado, não símbolos.
+      def handle_provision(req)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        pack = Harness::Pack.from_h(parse_raw_body(req))
+        json_response(200, @provisioner.import(pack)) # Validation/NotFound -> 422/404 no #call
+      end
+
+      # DELETE /v1/agents/:id — remove o agente (delete_agent). NotFoundError
+      # (ausente) -> 404 pelo rescue de #call.
+      def handle_deprovision(req, id)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        json_response(200, @provisioner.delete(id))
+      end
+
+      # Bearer do gateway (fail-closed, mesma disciplina do /admin). -> resposta de
+      # erro (503/401) OU nil quando ok (o handler segue).
+      def gateway_gate(req)
+        case Harness::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
+        when :disabled then admin_error(503, "gateway disabled")
+        when :unauthorized then admin_error(401, "unauthorized", "www-authenticate" => "Bearer")
+        end
       end
 
       # Sessão correlacionada por `user`=chat.id: cria se nova (id explícito),
@@ -373,6 +408,16 @@ module Harness
         return {} if raw.nil? || raw.empty?
 
         JSON.parse(raw, symbolize_names: true)
+      end
+
+      # Como parse_body, mas mantém chaves STRING: para payloads com chaves de
+      # DADO arbitrárias (nomes de arquivo/skill de um pack), que não devem virar
+      # símbolos. JSON malformado -> JSON::ParserError (o #call mapeia p/ 400).
+      def parse_raw_body(req)
+        raw = req.body&.read
+        return {} if raw.nil? || raw.empty?
+
+        JSON.parse(raw)
       end
 
       # Task#to_h é raso (Data#to_h não desce): `executions` fica como Array de
