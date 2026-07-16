@@ -51,6 +51,18 @@ carregada** (require lazy, como o ruby_llm) e nada é instrumentado — zero
 overhead. Travado por `load_guard_spec` ("require harness não carrega
 OpenTelemetry").
 
+**Local (coletor avulso):** para ver traces na máquina, suba um coletor OTLP
+avulso — o mais rápido é o Jaeger all-in-one (OTLP em `4318`, UI em `16686`):
+
+```bash
+docker run --rm -d --name jaeger -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one:latest
+HARNESS_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+  DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
+```
+
+Traces em `http://localhost:16686` (serviço `harness`). Não versionamos
+`docker-compose` — o coletor é avulso (ver [`docs/RUNNING-LOCAL.md`](../../RUNNING-LOCAL.md)).
+
 ## 4. Desenho (testabilidade)
 
 - **`Telemetry::Recorder`** — PURO: traduz Event → spans falando com um `tracer`
