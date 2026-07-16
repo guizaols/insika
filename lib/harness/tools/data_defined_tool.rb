@@ -44,8 +44,16 @@ module Harness
       def name = @definition.name
       def description = @definition.description
 
+      # JSON Schema COMPLETO (aninhado) direto no params_schema do RubyLLM — é o que
+      # os providers serializam (OpenAI/Anthropic/Gemini/Bedrock preferem
+      # params_schema; parameters é só fallback). Provider-agnóstico (Fase 7/F6) e
+      # a única forma que expressa aninhamento (object/array/enum). Fase 7, Etapa A.
+      def params_schema = @definition.parameters
+
+      # Visão PLANA de topo p/ discovery (tool_search chama #parameters no tool
+      # resolvido). O schema aninhado real vai pelo #params_schema acima.
       def parameters
-        @parameters ||= @definition.parameters.each_with_object({}) do |p, acc|
+        @parameters ||= @definition.top_level_params.each_with_object({}) do |p, acc|
           sym = p[:name].to_sym
           acc[sym] = RubyLLM::Parameter.new(sym, type: p[:type], desc: p[:description], required: p[:required])
         end
