@@ -95,6 +95,8 @@ module Harness
           handle_responses(req)
         in ["POST", ["v1", "tools", "manifest"]]
           handle_import_tools(req)
+        in ["POST", ["v1", "mcp", name, "import"]]
+          handle_import_mcp_tools(req, name)
         in ["POST", ["v1", "agents"]] if @provisioner
           handle_provision(req)
         in ["DELETE", ["v1", "agents", id]] if @provisioner
@@ -231,6 +233,21 @@ module Harness
         return gate if gate
 
         command = Harness::Command.build(:import_tools, parse_raw_body(req), transport: :http)
+        json_response(200, dispatch_with_timeout(command))
+      end
+
+      # POST /v1/mcp/:name/import — ingestão MCP LIVE (Fase 7, Etapa E). Mesmo
+      # Bearer do provisionamento (gateway_token, fail-closed): é superfície de
+      # autoria. Descobre as tools da instância MCP `:name` (via cliente injetável
+      # no composition root) e as ingere como data-tools (reusa :import_tools:
+      # upsert + reload hot). Despacha :import_mcp_tools -> 200 { relatório por-tool
+      # + instance }. Instância ausente -> 404; desabilitada/sem-url -> 422; falha
+      # por-tool isolada em `errors[]` (R4). O nome vem da ROTA (dado), não do body.
+      def handle_import_mcp_tools(req, name)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        command = Harness::Command.build(:import_mcp_tools, { name: name }, transport: :http)
         json_response(200, dispatch_with_timeout(command))
       end
 

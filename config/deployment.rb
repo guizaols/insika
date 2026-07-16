@@ -198,7 +198,20 @@ module Deploy
     # `{{secret.*}}`/`{{env.*}}` do manifesto resolvem do ENV do DEPLOYMENT (o
     # segredo nunca vem no manifesto — D6/R3); a chave do placeholder é o nome da
     # env var (ex.: {{secret.BIA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
-    BUS.register(:import_tools, Harness::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV))
+    IMPORT_TOOLS = Harness::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
+    BUS.register(:import_tools, IMPORT_TOOLS)
+
+    # Ingestão MCP LIVE (Fase 7, Etapa E / D8): descobre as tools de uma instância
+    # MCP em runtime (sem manifesto) e REUSA o :import_tools (upsert + reload hot).
+    # O cliente MCP é INJETÁVEL (client_factory): default = cliente HTTP JSON-RPC
+    # mínimo atrás do egress guard (mesmas EGRESS_OPTIONS das data-tools). As tools
+    # ganham group `mcp:<instância>` p/ o gating por grupo da Etapa C. O transporte
+    # MCP REAL (stdio, sessão/initialize, unwrap de tools/call) é trabalho posterior.
+    MCP_TOOL_INGESTOR = Harness::McpToolIngestor.new(
+      mcp_store: MCP_STORE, import_tools: IMPORT_TOOLS,
+      client_factory: ->(record) { Harness::McpHttpClient.new(url: record["url"], egress_options: EGRESS_OPTIONS) }
+    )
+    BUS.register(:import_mcp_tools, Harness::Commands::ImportMcpTools.new(ingestor: MCP_TOOL_INGESTOR, event_stream: EVENT_STREAM))
 
     # Provisionamento por pack (Fase 6/D4): importa um agente a partir de um pack
     # padronizado emitindo os Commands acima. Consome o bus + LÊ o ProfileSource
