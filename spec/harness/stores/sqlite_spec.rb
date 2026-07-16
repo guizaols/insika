@@ -50,6 +50,32 @@ RSpec.describe Harness::Stores::SQLite do
       expect(mode).to eq("wal")
     end
 
+    # Regressão: boot multi-PROCESSO (N workers do Falcon) abrindo o MESMO
+    # arquivo ao mesmo tempo. O `PRAGMA journal_mode = WAL` + DDL contendem no
+    # lock de escrita; sem `busy_timeout` setado ANTES, o 2º processo tomava
+    # "database is locked" na largada. Todos os processos devem abrir sem erro.
+    it "boot concorrente multi-processo não levanta 'database is locked'" do
+      skip "fork indisponível nesta plataforma" unless Process.respond_to?(:fork)
+
+      start = File.join(tmpdir, "go")
+      shared = File.join(tmpdir, "concurrent-boot.db")
+      pids = 8.times.map do
+        fork do
+          sleep 0.002 until File.exist?(start) # abre quase-simultâneo (maximiza a corrida)
+          db = described_class.new(path: shared)
+          db.get("s", "k")
+          db.close
+          exit!(0)
+        rescue Harness::StoreError
+          exit!(1)
+        end
+      end
+      File.write(start, "go")
+      codes = pids.map { |pid| Process.wait2(pid).last.exitstatus }
+
+      expect(codes).to all(eq(0))
+    end
+
     it "N fibers escrevendo + leitor concorrente sem SQLITE_BUSY" do
       require "async"
 
