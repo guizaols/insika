@@ -46,8 +46,9 @@ RUN chown -R harness:harness /app
 
 USER harness
 
-# Volume durável do SQLite (monte no Railway/k8s; sobrevive a restart).
-VOLUME ["/data"]
+# O volume durável do SQLite em /data é montado pelo orquestrador (Railway
+# Volume / k8s PVC), não pela instrução VOLUME do Docker — o Railway rejeita
+# `VOLUME` no Dockerfile. HARNESS_DB aponta pra /data (ver ENV acima).
 EXPOSE 9292
 
 # Falcon serve lê o config.ru (Boot -> Wiring -> recovery ANTES de aceitar
