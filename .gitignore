@@ -8,3 +8,6 @@ vendor/bundle/
 # serve` roda sem Node; só quem edita o front precisa do npm install + build).
 node_modules/
 studio/node_modules/
+*.db-shm
+*.db-wal
+*.db-journal
