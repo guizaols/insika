@@ -15,7 +15,8 @@ module Harness
   #     "request"    => { "method","url","headers"=>{},"query"=>{},"body" },
   #     "response"   => { "extract","path" },
   #     "secret_headers" => [ "Authorization", ... ],
-  #     "side_effect" => bool, "timeout" => int|nil }
+  #     "side_effect" => bool, "timeout" => int|nil,
+  #     "group" => string|nil, "tags" => [ "b2b", ... ] }  # Fase 7/D4/F5 (Etapa C)
   #
   # `parameters` é **JSON Schema** (a interlíngua de OpenAI/Anthropic/MCP; Fase 7/D1):
   # objeto aninhável, alimentado direto no `params_schema` do RubyLLM (provider-
@@ -31,7 +32,7 @@ module Harness
   # (mascara/reconcilia); a definição em si é agnóstica a masking.
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
-    :secret_headers, :side_effect, :timeout
+    :secret_headers, :side_effect, :timeout, :group, :tags
   )
 
   class ToolDefinition
@@ -65,7 +66,7 @@ module Harness
     # (symbol keys já normalizados); use from_h para um Hash cru do store/UI.
     # `parameters` aceita JSON Schema (Hash) OU o array plano legado.
     def self.build(name:, description:, request:, parameters: nil, response: nil,
-                   secret_headers: nil, side_effect: nil, timeout: nil)
+                   secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil)
       name = name.to_s
       raise Harness::ValidationError, "name deve casar #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
@@ -82,7 +83,8 @@ module Harness
       new(
         name: name, description: desc, parameters: schema, request: req, response: resp,
         secret_headers: Array(secret_headers).map(&:to_s), side_effect: effect,
-        timeout: timeout.nil? ? nil : Integer(timeout)
+        timeout: timeout.nil? ? nil : Integer(timeout),
+        group: normalize_group(group), tags: normalize_tags(tags)
       )
     end
 
@@ -92,9 +94,24 @@ module Harness
       build(
         name: h[:name], description: h[:description], parameters: h[:parameters],
         request: h[:request] || {}, response: h[:response],
-        secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout]
+        secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout],
+        group: h[:group], tags: h[:tags]
       )
     end
+
+    # Grupo (Fase 7/D4/F5): rótulo de enablement por DADO (não convenção-de-nome),
+    # alvo do `tools_allow_groups` do AgentProfile. Trimmed; vazio/nil -> nil.
+    def self.normalize_group(group)
+      g = group.to_s.strip
+      g.empty? ? nil : g
+    end
+    private_class_method :normalize_group
+
+    # Tags livres (metadados/descoberta). Lista de strings não-vazias, únicas.
+    def self.normalize_tags(tags)
+      Array(tags).map { |t| t.to_s.strip }.reject(&:empty?).uniq
+    end
+    private_class_method :normalize_tags
 
     # ---- validação/normalização de parâmetros (privadas de classe) ------------
 
@@ -324,7 +341,8 @@ module Harness
         "request" => request.transform_keys(&:to_s),
         "response" => response.transform_keys(&:to_s),
         "secret_headers" => secret_headers,
-        "side_effect" => side_effect, "timeout" => timeout
+        "side_effect" => side_effect, "timeout" => timeout,
+        "group" => group, "tags" => tags
       }
     end
 

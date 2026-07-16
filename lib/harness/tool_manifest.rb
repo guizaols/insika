@@ -72,7 +72,9 @@ module Harness
         "request" => binding[:request],
         "response" => binding[:response],
         "secret_headers" => binding[:secret_headers],
-        "side_effect" => t["side_effect"]
+        "side_effect" => t["side_effect"],
+        "group" => t["group"] || defaults["group"],       # Fase 7/D4/F5 (Etapa C):
+        "tags" => (Array(defaults["tags"]) | Array(t["tags"])) # default herdado; tags em união
       }.compact
     end
 

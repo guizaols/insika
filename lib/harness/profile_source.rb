@@ -87,6 +87,7 @@ module Harness
         base_prompt: h[:base_prompt].to_s,
         prompt_files: h[:prompt_files] || [],
         tools_allow: h[:tools_allow], tools_deny: h[:tools_deny] || [],
+        tools_allow_groups: h[:tools_allow_groups],
         skills: h[:skills],
         context_providers: h[:context_providers],
         workflows_allow: h[:workflows_allow],

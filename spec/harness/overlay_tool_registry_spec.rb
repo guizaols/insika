@@ -61,6 +61,15 @@ RSpec.describe Harness::OverlayToolRegistry do
       expect(overlay.code_tool?("menu")).to be(true)
       expect(overlay.code_tool?("cep")).to be(false)
     end
+
+    # Fase 7/D4/F5 (Etapa C): a policy ToolAllowlist expande grupo pelo metadata.
+    it "expõe group/tags da data-tool no metadata da Entry" do
+      store.write(def_attrs(name: "b2b_tool", group: "b2b", tags: ["catalog"]))
+      overlay.reload
+      entry = overlay.entries.find { |e| e.name == "b2b_tool" }
+      expect(entry.metadata[:group]).to eq("b2b")
+      expect(entry.metadata[:tags]).to eq(["catalog"])
+    end
   end
 
   describe "colisão: base (código) SEMPRE vence (R3)" do

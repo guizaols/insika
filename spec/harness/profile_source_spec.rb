@@ -71,6 +71,11 @@ RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
       got = src.fetch("loja")
       expect(got.store_id).to eq("loja-7") # sobrevive ao JSON round-trip (chave vira string)
     end
+
+    it "round-trip de tools_allow_groups (Fase 7/D4/F5, Etapa C)" do
+      src.put(Harness::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b natura]))
+      expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b natura])
+    end
   end
 
   describe ".coerce" do
