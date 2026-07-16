@@ -475,6 +475,56 @@ RSpec.describe Harness::Server::App do
     end
   end
 
+  describe "ingestão de manifesto POST /v1/tools/manifest (Fase 7, Etapa B)" do
+    def manifest_body
+      JSON.generate(version: 1,
+                    defaults: { "base_url" => "https://api.test", "path_template" => "/{endpoint}" },
+                    tools: [{ "name" => "search_products", "endpoint" => "search_products",
+                              "parameters" => { "type" => "object",
+                                                "properties" => { "q" => { "type" => "string" } },
+                                                "required" => ["q"] } }])
+    end
+
+    it "sem gateway_token configurado -> 503 fail-closed" do
+      status, = call(build_app, "POST", "/v1/tools/manifest", body: manifest_body)
+      expect(status).to eq(503)
+    end
+
+    it "token errado -> 401" do
+      app = build_app(config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
+      env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
+      status, = app.call(env)
+      expect(status).to eq(401)
+    end
+
+    it "token ok: despacha :import_tools com o manifesto CRU (chaves string) -> 200 relatório" do
+      bus = ServerBusDouble.new { |_c| { version: 1, created: ["search_products"], updated: [], errors: [] } }
+      app = build_app(bus: bus, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      status, _h, resp = app.call(env)
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to eq("version" => 1, "created" => ["search_products"], "updated" => [], "errors" => [])
+      cmd = bus.dispatched.last
+      expect(cmd.type).to eq(:import_tools)
+      # property names do JSON Schema preservadas como STRING (não simbolizadas)
+      expect(cmd.payload["tools"].first["parameters"]["properties"]).to have_key("q")
+      expect(cmd.meta[:transport]).to eq(:http)
+    end
+
+    it "erro estrutural do manifesto -> 422 (via rescue de #call)" do
+      bus = ServerBusDouble.new { |_c| raise(Harness::ValidationError, "manifesto: 'tools' deve ser lista") }
+      app = build_app(bus: bus, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+      status, = app.call(env)
+      expect(status).to eq(422)
+    end
+  end
+
   describe "rota desconhecida" do
     it "GET /nada -> 404 not found (text/plain)" do
       status, headers, resp = call(build_app, "GET", "/nada")
