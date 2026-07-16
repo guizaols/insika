@@ -31,6 +31,14 @@ RSpec.describe "Commands de autoria de skills (Fase 4 Etapa C)" do
       expect { handler.call(cmd(:write_skill, { "name" => "p", "content" => "sem frontmatter" })) }
         .to raise_error(Harness::ValidationError, /frontmatter/)
     end
+
+    # Regressão (pack real acme): description com `: ` na prosa quebrava o
+    # YAML estrito -> Psych::SyntaxError (500). Agora o parser tolerante aceita.
+    it "aceita frontmatter com `: ` na prosa do description (não levanta Psych)" do
+      content = "---\nname: gift\ndescription: Discovery. Chocolate/presente: NÃO há size gate. Ative no briefing.\n---\ncorpo\n"
+      expect { handler.call(cmd(:write_skill, { "name" => "gift", "content" => content })) }.not_to raise_error
+      expect(catalog.find("gift").description).to include("presente: NÃO há size gate")
+    end
   end
 
   describe Harness::Commands::SetSkillAgents do
