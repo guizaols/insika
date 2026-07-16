@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-16
-> **Progress:** 2/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2).
+> **Progress:** 5/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2); **Etapa B (manifesto + ingestão dinâmica) ✅** (tasks 3–5).
 > **Base:** main pós-Fase-6 (data-tools da Fase 5 + provisionamento por pack + `{{ctx.*}}` + SSE + egress opt-in).
 > **Meta:** o harness vira um **tool host agnóstico** que ingere tools em **JSON Schema** (formato
 > padrão) + binding declarativo, **dinamicamente** (hot, sem rebuild/deploy), com enablement por
@@ -16,9 +16,9 @@
 |---|------|-------|--------|------------|---------|
 | 1 | **`ToolDefinition` v2 — params em JSON Schema.** `parameters` aceita/armazena JSON Schema (objeto, com aninhamento `object`/`array`/`enum`/`required`). **Lift automático** do array plano legado (`[{name,type,required}]` → `{type:object, properties, required}`) — zero regressão. Validação de `{{placeholders}}` e `required` sobre o schema; validação de **subset seguro** por provider na ingestão (R1). | A | ✅ DONE | High | D1, F1, R1, R2 |
 | 2 | **`DataDefinedTool` alimenta `params_schema` do RubyLLM.** JSON Schema → `params_schema` nativo (ruby_llm 1.16) → funciona em qualquer provider. **Prova: param aninhado (`search_products`) exposto ao modelo E interpolado no body.** Testes de paridade (tool `cep`/viacep da Fase 5 idêntica). | A | ✅ DONE | High | D1, F6, NF5, R2 |
-| 3 | **Manifesto + adapters de entrada.** Schema do manifesto (`defaults` + `tools[]`); adapters normalizam qualquer envelope padrão → forma interna: `parameters` (cru), `{type:"function",function:{…}}` (OpenAI/Anthropic), `{name,description,inputSchema}` (MCP). `endpoint` resolve remaps nome↔slug **por dado** (nunca inferido do name — R6). | B | ⬜ TODO | High | D2, D3, F2, F3, R6 |
-| 4 | **Templates `{{secret.*}}` + `{{env.*}}`.** `url`/`headers`/`body`/`query` resolvem `{{param}}` + `{{ctx.*}}` + `{{secret.*}}` (injetado na **ingestão** do `SettingsStore`/env, gravado como `secret_header` mascarado) + `{{env.*}}` (config do deployment). **Recusar `secret_header` com valor literal que não seja `{{secret.*}}`** (R3). | B | ⬜ TODO | Med | D6, F4, NF4, R3 |
-| 5 | **Command `:import_tools` + endpoint.** Upsert em lote das data-tools com **reload hot** (sem restart); relatório por-tool (`{created, updated, errors}` — molde pack importer da Fase 6); upsert idempotente / falha parcial isolada (R4). Endpoint `POST /v1/tools/manifest`. Egress da `base_url` dinâmica via `host_allowlist` (R5). | B | ⬜ TODO | High | D3, F2, R4, R5 |
+| 3 | **Manifesto + adapters de entrada.** Schema do manifesto (`defaults` + `tools[]`); adapters normalizam qualquer envelope padrão → forma interna: `parameters` (cru), `{type:"function",function:{…}}` (OpenAI/Anthropic), `{name,description,inputSchema}` (MCP). `endpoint` resolve remaps nome↔slug **por dado** (nunca inferido do name — R6). | B | ✅ DONE | High | D2, D3, F2, F3, R6 |
+| 4 | **Templates `{{secret.*}}` + `{{env.*}}`.** `url`/`headers`/`body`/`query` resolvem `{{param}}` + `{{ctx.*}}` + `{{secret.*}}` (injetado na **ingestão** do `SettingsStore`/env, gravado como `secret_header` mascarado) + `{{env.*}}` (config do deployment). **Recusar `secret_header` com valor literal que não seja `{{secret.*}}`** (R3). | B | ✅ DONE | Med | D6, F4, NF4, R3 |
+| 5 | **Command `:import_tools` + endpoint.** Upsert em lote das data-tools com **reload hot** (sem restart); relatório por-tool (`{created, updated, errors}` — molde pack importer da Fase 6); upsert idempotente / falha parcial isolada (R4). Endpoint `POST /v1/tools/manifest`. Egress da `base_url` dinâmica via `host_allowlist` (R5). | B | ✅ DONE | High | D3, F2, R4, R5 |
 | 6 | **Grupos/tags + allowlist por grupo.** `group`/`tags` no `ToolDefinition` (**dado**, não convenção-de-nome); `tools_allow_groups` no `AgentProfile`; expansão na montagem do toolset (union com `tools_allow`; `tools_deny` vence; allowlists vazias = todas). | C | ⬜ TODO | Med | D4, F5 |
 | 7 | **Conversor de migração (one-off, FORA do core).** `scripts/` lê `acheib2b-tools-dev/tools/*.ts` (TypeBox `Type.Object` já **é** JSON Schema) + slug do `callAgentTool` → envolve em binding → emite `manifesto.json` das 44 (params/endpoints corretos). Descartável, específico do cliente. | D | ⬜ TODO | Med | D7, G6 |
 | 8 | **(follow-up) MCP live + corte de schema por flag.** Ingestão de um MCP server do consumidor (descoberta automática, sem manifesto); corte de schema por allowlist derivada de flag no provisionamento. | E | ⬜ ADIADO | — | D5, D8 |
@@ -63,8 +63,11 @@ Caminho crítico: **A → B**. C é paralelo. D depende de A+B. E é adiado.
 1. **Ingestão:** Command novo `:import_tools` + `POST /v1/tools/manifest` **vs.** estender `import_pack`
    (pack referencia manifesto compartilhado + allowlist). Piloto: manifesto **global compartilhado**,
    packs de loja só referenciam via allowlist/grupo.
-2. **`{{secret.*}}` de onde:** `SettingsStore`/env do deployment (recomendado), resolvedor injetável no
-   composition root.
+2. **`{{secret.*}}` de onde:** ✅ **RESOLVIDO (Etapa B):** resolvedor **injetável** no composition root
+   (`ImportTools.new(secrets:, env:)`). Piloto usa **`ENV` do deployment** (não `SettingsStore`): mantém o
+   segredo FORA de qualquer store durável — só resolvido na ingestão e gravado mascarado como `secret_header`
+   no `ToolStore`. A chave do placeholder é o nome da env var (ex.: `{{secret.BIA_INTERNAL_API_TOKEN}}`).
+   Trocar por um resolvedor `SettingsStore`/vault é só injetar outro objeto que responda a `[]`.
 3. **Corte de schema por flag:** estático (allowlist no provisionamento — piloto) vs. dinâmico (hook no
    assembly — follow-up E).
 

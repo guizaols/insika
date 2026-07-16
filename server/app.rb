@@ -93,6 +93,8 @@ module Harness
           handle_send_message(req)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
+        in ["POST", ["v1", "tools", "manifest"]]
+          handle_import_tools(req)
         in ["POST", ["v1", "agents"]] if @provisioner
           handle_provision(req)
         in ["DELETE", ["v1", "agents", id]] if @provisioner
@@ -214,6 +216,22 @@ module Harness
 
         pack = Harness::Pack.from_h(parse_raw_body(req))
         json_response(200, @provisioner.import(pack)) # Validation/NotFound -> 422/404 no #call
+      end
+
+      # POST /v1/tools/manifest — ingestão em LOTE de data-tools por manifesto
+      # (Fase 7, Etapa B). Mesmo Bearer do provisionamento (gateway_token, fail-
+      # closed): é superfície de autoria/provisionamento e resolve secrets do
+      # deployment. Corpo CRU (chaves string): as property names do JSON Schema e
+      # os headers são DADO, não símbolos. Despacha :import_tools -> 200 { relatório
+      # por-tool }. Erro estrutural do manifesto -> 422 pelo rescue de #call; falha
+      # por-tool fica isolada em `errors[]` (R4). base_url dinâmica: o egress guard
+      # + host_allowlist barram destino fora da allowlist na hora da CHAMADA (R5).
+      def handle_import_tools(req)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        command = Harness::Command.build(:import_tools, parse_raw_body(req), transport: :http)
+        json_response(200, dispatch_with_timeout(command))
       end
 
       # DELETE /v1/agents/:id — remove o agente (delete_agent). NotFoundError
