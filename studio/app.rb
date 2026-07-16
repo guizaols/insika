@@ -810,12 +810,29 @@ module Studio
       end
     end
 
-    # Inverso: params (do store) -> texto pro textarea.
+    # Inverso: params (do store) -> texto pro textarea. Aceita o array plano legado
+    # E o JSON Schema (Fase 7): renderiza a visão de TOPO (aninhamento não cabe no
+    # textarea plano — tools aninhadas são autoradas por manifesto, Etapa B).
     def param_lines(params)
-      Array(params).map do |p|
+      flat_params(params).map do |p|
         req = p["required"] == false ? "optional" : "required"
         "#{p['name']} | #{p['type']} | #{req} | #{p['description']}"
       end.join("\n")
+    end
+
+    # JSON Schema (Hash) OU array plano -> [{name,type,required,description}] de topo.
+    def flat_params(params)
+      if params.is_a?(Hash)
+        props = params["properties"] || {}
+        required = Array(params["required"]).map(&:to_s)
+        props.map do |name, schema|
+          schema ||= {}
+          { "name" => name.to_s, "type" => (schema["type"] || "string").to_s,
+            "required" => required.include?(name.to_s), "description" => schema["description"].to_s }
+        end
+      else
+        Array(params)
+      end
     end
 
     def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"
