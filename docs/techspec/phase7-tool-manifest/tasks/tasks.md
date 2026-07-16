@@ -2,7 +2,7 @@
 
 > **Tech Spec:** [00-overview.md](../00-overview.md)
 > **Gerado:** 2026-07-16
-> **Progress:** 6/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2); **Etapa B (manifesto + ingestão dinâmica) ✅** (tasks 3–5); **Etapa C (grupos + allowlist por grupo) ✅** (task 6).
+> **Progress:** 8/8 tasks — **Etapa A (JSON Schema) ✅** (tasks 1–2); **Etapa B (manifesto + ingestão dinâmica) ✅** (tasks 3–5); **Etapa C (grupos + allowlist por grupo) ✅** (task 6); **Etapa D (conversor one-off) ✅** (task 7, PR #53); **Etapa E (MCP live + corte por flag) ✅** (task 8, PR #54 — com deferrals documentados).
 > **Base:** main pós-Fase-6 (data-tools da Fase 5 + provisionamento por pack + `{{ctx.*}}` + SSE + egress opt-in).
 > **Meta:** o harness vira um **tool host agnóstico** que ingere tools em **JSON Schema** (formato
 > padrão) + binding declarativo, **dinamicamente** (hot, sem rebuild/deploy), com enablement por
@@ -20,8 +20,8 @@
 | 4 | **Templates `{{secret.*}}` + `{{env.*}}`.** `url`/`headers`/`body`/`query` resolvem `{{param}}` + `{{ctx.*}}` + `{{secret.*}}` (injetado na **ingestão** do `SettingsStore`/env, gravado como `secret_header` mascarado) + `{{env.*}}` (config do deployment). **Recusar `secret_header` com valor literal que não seja `{{secret.*}}`** (R3). | B | ✅ DONE | Med | D6, F4, NF4, R3 |
 | 5 | **Command `:import_tools` + endpoint.** Upsert em lote das data-tools com **reload hot** (sem restart); relatório por-tool (`{created, updated, errors}` — molde pack importer da Fase 6); upsert idempotente / falha parcial isolada (R4). Endpoint `POST /v1/tools/manifest`. Egress da `base_url` dinâmica via `host_allowlist` (R5). | B | ✅ DONE | High | D3, F2, R4, R5 |
 | 6 | **Grupos/tags + allowlist por grupo.** `group`/`tags` no `ToolDefinition` (**dado**, não convenção-de-nome); `tools_allow_groups` no `AgentProfile`; expansão na montagem do toolset (union com `tools_allow`; `tools_deny` vence; allowlists vazias = todas). | C | ✅ DONE | Med | D4, F5 |
-| 7 | **Conversor de migração (one-off, FORA do core).** `scripts/` lê `acheib2b-tools-dev/tools/*.ts` (TypeBox `Type.Object` já **é** JSON Schema) + slug do `callAgentTool` → envolve em binding → emite `manifesto.json` das 44 (params/endpoints corretos). Descartável, específico do cliente. | D | ⬜ TODO | Med | D7, G6 |
-| 8 | **(follow-up) MCP live + corte de schema por flag.** Ingestão de um MCP server do consumidor (descoberta automática, sem manifesto); corte de schema por allowlist derivada de flag no provisionamento. | E | ⬜ ADIADO | — | D5, D8 |
+| 7 | **Conversor de migração (one-off, FORA do core).** `scripts/` lê `acheib2b-tools-dev/tools/*.ts` (TypeBox `Type.Object` já **é** JSON Schema) + slug do `callAgentTool` → envolve em binding → emite `manifesto.json` das 44 (params/endpoints corretos). Descartável, específico do cliente. | D | ✅ DONE | Med | D7, G6 |
+| 8 | **(follow-up) MCP live + corte de schema por flag.** Ingestão de um MCP server do consumidor (descoberta automática, sem manifesto); corte de schema por allowlist derivada de flag no provisionamento. | E | ✅ DONE | — | D5, D8 |
 
 ### Status Legend
 ⬜ TODO · 🟡 IN PROGRESS · ✅ DONE · ⛔ BLOCKED · ⬜ ADIADO
@@ -42,7 +42,8 @@ Caminho crítico: **A → B**. C é paralelo. D depende de A+B. E é adiado.
 
 ## Summary
 
-- **Total:** 8 tasks / 5 etapas (7 no escopo desta fase; 8 adiada).
+- **Total:** 8 tasks / 5 etapas — **TODAS concluídas** (a Etapa E, antes adiada, entrou como
+  incremento bounded com deferrals documentados; ver "O que ficou DEFERIDO na Etapa E").
 - **Complexidade:** o par **A (JSON Schema, mudança mais invasiva na Fase 5 — §4 D1) + B (adapters de
   envelope + ingestão hot)** é o núcleo de risco.
 - **PR grouping (sugerido):** PR1=Etapa A (1–2); PR2=Etapa B (3–5); PR3=Etapa C (6); PR4=Etapa D (7).
@@ -68,12 +69,22 @@ Caminho crítico: **A → B**. C é paralelo. D depende de A+B. E é adiado.
    segredo FORA de qualquer store durável — só resolvido na ingestão e gravado mascarado como `secret_header`
    no `ToolStore`. A chave do placeholder é o nome da env var (ex.: `{{secret.BIA_INTERNAL_API_TOKEN}}`).
    Trocar por um resolvedor `SettingsStore`/vault é só injetar outro objeto que responda a `[]`.
-3. **Corte de schema por flag:** estático (allowlist no provisionamento — piloto) vs. dinâmico (hook no
-   assembly — follow-up E).
+3. **Corte de schema por flag:** ✅ **RESOLVIDO (Etapa E):** piloto **estático** — `enabled_groups`/
+   `flags` do pack config viram `tools_allow_groups` no `PackImporter` (corta as tools de grupos
+   desabilitados antes do turno). Genérico (NF1): a chave da flag É o nome do grupo; o mapeamento é
+   dado do pack. Corte **dinâmico** (hook no assembly) segue como possível evolução.
 
-## O que NÃO entra (adiado, explícito)
+## O que ficou DEFERIDO na Etapa E (documentado no código e no PR #54)
 
-- **MCP como fonte primária** (consumidor expõe MCP server) — follow-up E (task 8).
-- **Corte dinâmico de schema por flag** — follow-up E; piloto usa allowlist estática no provisionamento.
-- O **conversor (task 7)** é migração one-off, **fora do produto** (`lib/harness` nunca cita
-  achei/openclaw — NF1).
+- **Transporte MCP real (D8):** o `McpHttpClient` faz só um POST JSON-RPC stateless; sem ciclo de
+  sessão MCP (initialize/negociação/session-id/notifications), sem **stdio** (instância sem `url` →
+  erro claro), sem unwrap da resposta `tools/call`. O **seam injetável** (`McpToolIngestor` recebe o
+  cliente) deixa a troca pronta.
+- **Injeção de credencial** (`env` da instância MCP) como header de auth no binding HTTP das tools
+  ingeridas.
+- **Corte dinâmico** de schema por flag (hook no assembly) — piloto usa allowlist estática.
+
+## O que NÃO entra (fora do produto)
+
+- O **conversor (task 7 / Etapa D)** é migração one-off, **fora do produto** (`lib/harness` nunca cita
+  achei/openclaw — NF1); vive em `scripts/openclaw_to_manifest.rb`.
