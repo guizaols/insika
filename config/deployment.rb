@@ -193,6 +193,13 @@ module Deploy
     BUS.register(:delete_data_tool, Harness::Commands::DeleteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:restore_data_tool, Harness::Commands::RestoreDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
 
+    # Ingestão em LOTE por manifesto (Fase 7, Etapa B): upsert das data-tools em
+    # formato padrão (JSON Schema) + binding declarativo, hot (sem restart). Os
+    # `{{secret.*}}`/`{{env.*}}` do manifesto resolvem do ENV do DEPLOYMENT (o
+    # segredo nunca vem no manifesto — D6/R3); a chave do placeholder é o nome da
+    # env var (ex.: {{secret.BIA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
+    BUS.register(:import_tools, Harness::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV))
+
     # Provisionamento por pack (Fase 6/D4): importa um agente a partir de um pack
     # padronizado emitindo os Commands acima. Consome o bus + LÊ o ProfileSource
     # (upsert). É o que a API de provisionamento (o GatewayClient) aciona.
