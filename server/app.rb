@@ -85,6 +85,8 @@ module Harness
         return handle_admin(req) if segments.first == "admin"
 
         case [req.request_method, segments]
+        in ["GET", ["up"]]
+          health # readiness/liveness (Railway/k8s) — sem auth, sem toque em store
         in ["POST", ["v1", "commands", type]]
           handle_command(req, type)
         in ["POST", ["v1", "sessions"]]
@@ -474,6 +476,11 @@ module Harness
       def not_found
         [404, { "content-type" => "text/plain" }, ["not found"]]
       end
+
+      # Liveness/readiness. 200 fixo: se o processo aceita a conexão e o recovery
+      # já rodou (o Boot só devolve o app depois — doc 07 §4), está pronto. NÃO
+      # toca em store (health não pode falhar por IO nem exigir auth).
+      def health = json_response(200, { status: "ok" })
 
       # Decorator fino de Subscription: descarta
       # eventos de OUTRAS tasks e FECHA a subscription após repassar o evento

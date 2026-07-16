@@ -565,6 +565,15 @@ RSpec.describe Harness::Server::App do
     end
   end
 
+  describe "health check GET /up" do
+    it "200 {status:ok} sem auth e sem tocar em store" do
+      status, headers, resp = call(build_app, "GET", "/up")
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("application/json")
+      expect(json_body(resp)).to eq("status" => "ok")
+    end
+  end
+
   describe "rota desconhecida" do
     it "GET /nada -> 404 not found (text/plain)" do
       status, headers, resp = call(build_app, "GET", "/nada")
