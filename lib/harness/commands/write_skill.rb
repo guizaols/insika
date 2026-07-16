@@ -40,7 +40,9 @@ module Harness
         match = content.match(/\A---\s*\n(.*?)\n---\s*\n/m)
         raise Harness::ValidationError, "SKILL.md sem frontmatter YAML (--- ... ---)" unless match
 
-        meta = YAML.safe_load(match[1]) || {}
+        # Parser tolerante (Frontmatter): prosa com `: ` no description é válida —
+        # não deve virar Psych::SyntaxError (500). Só falha se faltar `name`.
+        meta = Harness::Frontmatter.parse(match[1])
         raise Harness::ValidationError, "frontmatter sem `name`" if AgentPayload.presence(meta["name"]).nil?
       end
     end

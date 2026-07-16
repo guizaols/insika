@@ -71,14 +71,37 @@ DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 > em profundidade) — sem ele, `ALLOW_PRIVATE` abre qualquer destino privado.
 
 **3. Provisionar o agente da loja no harness.** O harness precisa do agente +
-tools apontando de volta pro consumer-app. Provisione via `POST /v1/agents` (pack) ou
-pelo `/studio`. Cada data-tool do pack:
-- `request.url` = `http://localhost:3000/api/internal/agent_tools/<tool>`
+tools apontando de volta pro consumer-app. Um **pack** é a pasta:
+
+```
+<pack>/
+  agent.config.json     # { id, model, provider, memory, metadata }
+  *.md                  # IDENTITY/SOUL/AGENTS/TOOLS/... (viram prompt_files)
+  skills/<nome>/SKILL.md
+  tools/<tool>.json     # 1 data-tool por arquivo
+```
+
+Cada `tools/<tool>.json`:
+- `request.url` = `http://localhost:3000/api/internal/agent_tools/<rota>`
+  (⚠ o **nome** da tool = o que o modelo chama; a **rota** pode diferir — ex.
+  `send_finalize_button`→`finalize_button`, `search_faq`→`search_faqs`,
+  `call_support`→`support_requests`. Confira em `config/routes.rb` do consumer-app)
 - `request.headers`: `X-Chat-Id: {{ctx.chat_id}}`, `X-Store-Id: {{ctx.store_id}}`,
-  `X-Agent-Id: {{ctx.agent_id}}` (contexto de TURNO — Etapa B)
-- `Authorization: Bearer <BIA_INTERNAL_API_TOKEN>` como **`secret_header`** (o
-  token interno do consumer-app, estático)
-- `config.metadata.store_id` = o id da loja (vira `{{ctx.store_id}}`)
+  `X-Agent-Id: {{ctx.agent_id}}` (contexto de TURNO — Etapa B) +
+  `Authorization: Bearer __BIA_INTERNAL_API_TOKEN__` como **`secret_header`**
+- o `id` do agente deve bater com o `openclaw_agent_id` da Store no consumer-app
+  (ele resolve a loja por `X-Agent-Id`; então `metadata.store_id` pode ficar vazio)
+
+Provisione com o CLI (roda como cliente contra o server no ar — o token interno
+entra por env, fora do disco):
+
+```bash
+HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+BIA_INTERNAL_API_TOKEN=<token interno> \
+bundle exec ruby scripts/import_pack.rb /caminho/do/pack
+```
+
+(ou `POST /v1/agents` na mão, ou criar tudo pelo `/studio`.)
 
 Como ambos rodam em `localhost`, não precisa de ngrok/tunnel para o loop
 harness↔consumer-app. (O ingresso do WhatsApp no consumer-app, esse sim, depende do

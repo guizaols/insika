@@ -96,7 +96,9 @@ module Harness
       match = raw.match(/\A---\s*\n(.*?)\n---\s*\n(.*)\z/m)
       return nil unless match
 
-      meta = YAML.safe_load(match[1]) || {}
+      # Frontmatter tolerante: packs reais têm `: ` na prosa do description, que
+      # o YAML estrito rejeitava (o pack não carregava).
+      meta = Harness::Frontmatter.parse(match[1])
       name = meta["name"]
       return nil unless name
 
