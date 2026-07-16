@@ -40,15 +40,43 @@ module Harness
         @write_semaphore = Async::Semaphore.new(1)
         @tx_owner = nil
 
-        @db.execute("PRAGMA journal_mode = WAL")
-        @db.execute("PRAGMA synchronous = NORMAL")
-        @db.busy_timeout = 5_000                   # rede de segurança
-        @db.execute_batch(DDL)
+        # Boot multi-processo (N workers do Falcon abrindo o MESMO arquivo ao
+        # mesmo tempo): o `PRAGMA journal_mode = WAL` num arquivo novo precisa de
+        # lock EXCLUSIVO e pode retornar SQLITE_BUSY na hora — o `busy_timeout`
+        # sozinho NÃO cobre a troca de journal mode. Logo: timeout PRIMEIRO (cobre
+        # o DDL e o hot path) + retry com backoff em volta da inicialização
+        # (cobre a corrida da troca de WAL). Idempotente: reabrir já-em-WAL é no-op.
+        @db.busy_timeout = 5_000
+        with_busy_retry do
+          @db.execute("PRAGMA journal_mode = WAL")
+          @db.execute("PRAGMA synchronous = NORMAL")
+          @db.execute_batch(DDL)
+        end
         # A PRIMARY KEY (scope, key) do WITHOUT ROWID já é o índice do prefixo —
         # não há índice extra a criar.
       rescue ::SQLite3::Exception => e
         raise Harness::StoreError, "falha ao abrir #{path}: #{e.message}"
       end
+
+      # Retry curto p/ SQLITE_BUSY na INICIALIZAÇÃO (corrida da troca de WAL no
+      # boot multi-processo). ~10 tentativas × 60ms ≈ 0.6s no pior caso — o
+      # bastante p/ o processo vencedor terminar a troca de journal mode. Só
+      # aqui; o hot path usa `busy_timeout` + o semáforo in-process.
+      def with_busy_retry(attempts: 10, backoff: 0.06)
+        tries = 0
+        begin
+          yield
+        rescue ::SQLite3::Exception => e
+          raise unless e.message =~ /lock|busy/i
+
+          tries += 1
+          raise if tries >= attempts
+
+          sleep(backoff)
+          retry
+        end
+      end
+      private :with_busy_retry
 
       def close
         @db&.close
