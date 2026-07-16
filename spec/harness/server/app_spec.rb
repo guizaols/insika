@@ -525,6 +525,46 @@ RSpec.describe Harness::Server::App do
     end
   end
 
+  describe "ingestão MCP live POST /v1/mcp/:name/import (Fase 7, Etapa E)" do
+    it "sem gateway_token configurado -> 503 fail-closed" do
+      status, = call(build_app, "POST", "/v1/mcp/tavily/import")
+      expect(status).to eq(503)
+    end
+
+    it "token errado -> 401" do
+      app = build_app(config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/mcp/tavily/import", method: "POST")
+      env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
+      status, = app.call(env)
+      expect(status).to eq(401)
+    end
+
+    it "token ok: despacha :import_mcp_tools com o name da ROTA -> 200 relatório" do
+      bus = ServerBusDouble.new { |_c| { instance: "tavily", version: 1, created: ["search"], updated: [], errors: [] } }
+      app = build_app(bus: bus, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/mcp/tavily/import", method: "POST")
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+
+      status, _h, resp = app.call(env)
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to include("instance" => "tavily", "created" => ["search"])
+      cmd = bus.dispatched.last
+      expect(cmd.type).to eq(:import_mcp_tools)
+      expect(cmd.payload).to eq(name: "tavily")
+      expect(cmd.meta[:transport]).to eq(:http)
+    end
+
+    it "instância inexistente (NotFoundError do handler) -> 404" do
+      bus = ServerBusDouble.new { |_c| raise(Harness::NotFoundError, "instância MCP 'x' não encontrada") }
+      app = build_app(bus: bus, config: { gateway_token: "tok" })
+      env = Rack::MockRequest.env_for("/v1/mcp/x/import", method: "POST")
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+      status, = app.call(env)
+      expect(status).to eq(404)
+    end
+  end
+
   describe "rota desconhecida" do
     it "GET /nada -> 404 not found (text/plain)" do
       status, headers, resp = call(build_app, "GET", "/nada")

@@ -101,6 +101,44 @@ RSpec.describe Harness::PackImporter do
     end
   end
 
+  describe "corte de schema por flag (Fase 7, Etapa E / D5 — allowlist por grupo)" do
+    def attrs_for(config)
+      p = pack(config: config)
+      described_class.new(bus: bus, profiles: profiles).import(p)
+      bus.of(:create_agent).first.payload
+    end
+
+    it "enabled_groups: [...] vira tools_allow_groups (grupos ON declarados como DADO)" do
+      attrs = attrs_for(id: "loja-7", model: "m", enabled_groups: %w[default b2b])
+      expect(attrs[:tools_allow_groups]).to contain_exactly("default", "b2b")
+    end
+
+    it "flags: { grupo => bool } habilita só os truthy (os false CORTAM o grupo)" do
+      attrs = attrs_for(id: "loja-7", model: "m", flags: { "b2b" => true, "natura" => false, "mcp:tavily" => true })
+      expect(attrs[:tools_allow_groups]).to contain_exactly("b2b", "mcp:tavily")
+    end
+
+    it "aceita 'true' string (flag vinda do wire JSON)" do
+      attrs = attrs_for(id: "loja-7", model: "m", flags: { "b2b" => "true", "x" => "false" })
+      expect(attrs[:tools_allow_groups]).to contain_exactly("b2b")
+    end
+
+    it "une enabled_groups com as flags truthy" do
+      attrs = attrs_for(id: "loja-7", model: "m", enabled_groups: %w[default], flags: { "b2b" => true })
+      expect(attrs[:tools_allow_groups]).to contain_exactly("default", "b2b")
+    end
+
+    it "sem enabled_groups nem flags -> tools_allow_groups ausente (sem corte; comportamento antigo)" do
+      attrs = attrs_for(id: "loja-7", model: "m")
+      expect(attrs).not_to have_key(:tools_allow_groups)
+    end
+
+    it "enabled_groups: [] (ou flags todas false) -> nenhum grupo (corte total dos grupos)" do
+      attrs = attrs_for(id: "loja-7", model: "m", enabled_groups: [])
+      expect(attrs[:tools_allow_groups]).to eq([])
+    end
+  end
+
   describe "validação" do
     it "pack sem config.id -> ValidationError (não despacha nada)" do
       p = Harness::Pack.from_h(config: { model: "m" })
