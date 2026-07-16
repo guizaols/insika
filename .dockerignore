@@ -1,0 +1,24 @@
+# Build context enxuto: fora tudo que não vai pra imagem.
+.git
+.github
+.claude
+.ruby-lsp
+node_modules
+**/node_modules
+studio/assets/src
+spec
+docs
+tmp
+log
+*.log
+
+# Bancos/sidecars locais (o volume monta HARNESS_DB em runtime)
+*.db
+*.db-shm
+*.db-wal
+harness.db*
+
+.DS_Store
+.env
+.env.*
+scratchpad
