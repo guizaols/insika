@@ -93,10 +93,10 @@ RSpec.describe Harness::Server::Responses do
     sub = stream.subscribe
     chunks = []
 
+    fs = SSEStreamDouble.new
     Sync do
       collector = Async do
-        Harness::Server::SSEBody.new(subscription: sub, serialize: described_class.method(:frame_for))
-                                .each { |c| chunks << c }
+        Harness::Server::SSEBody.new(subscription: sub, serialize: described_class.method(:frame_for)).call(fs)
       end
       stream.emit(ev(:content, { delta: "Oi" }))
       stream.emit(ev(:tool_call, { name: "search_products" }))
@@ -107,6 +107,7 @@ RSpec.describe Harness::Server::Responses do
       collector.wait
     end
 
+    chunks = fs.chunks
     joined = chunks.join
     expect(joined).to include('"delta":"Oi"')
     expect(joined).to include('"name":"search_products"')
