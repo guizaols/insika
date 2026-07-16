@@ -88,6 +88,30 @@ class SpyEventStream
   def types = @events.map(&:type)
 end
 
+# Stream double do body STREAMING do Rack 3 (Protocol::HTTP::Body::Stream):
+# coleta os frames escritos e marca o close. `raise_on_write` simula o socket
+# fechado (cliente desconectou). Usado para dirigir SSEBody#call(stream) nos specs
+# sem subir um servidor HTTP.
+class SSEStreamDouble
+  attr_reader :chunks
+
+  def initialize(raise_on_write: false)
+    @chunks = []
+    @raise_on_write = raise_on_write
+    @closed = false
+  end
+
+  def write(chunk)
+    raise "socket fechado" if @raise_on_write
+
+    @chunks << chunk
+  end
+
+  def flush = nil
+  def close = (@closed = true)
+  def closed? = @closed
+end
+
 # Registry fake com o predicado side_effect?(name) (seam do doc 06).
 class FakeToolRegistry
   def initialize(side_effect_names: [])
