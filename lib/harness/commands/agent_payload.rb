@@ -10,8 +10,8 @@ module Harness
     module AgentPayload
       # Campos aceitos por AgentProfile.build (ordem irrelevante).
       FIELDS = %i[id model provider base_prompt prompt_files tools_allow tools_deny
-                  skills context_providers workflows_allow policies prompt_refs
-                  limits approvals_required capabilities tools_deferred memory
+                  tools_allow_groups skills context_providers workflows_allow policies
+                  prompt_refs limits approvals_required capabilities tools_deferred memory
                   metadata].freeze
 
       module_function
