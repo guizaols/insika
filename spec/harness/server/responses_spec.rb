@@ -65,6 +65,15 @@ RSpec.describe Harness::Server::Responses do
       expect(f).to end_with("data: [DONE]\n\n")
     end
 
+    it ":done com usage -> response.completed carrega usage (tokens) + model (Fase 6)" do
+      f = described_class.frame_for(ev(:done, { usage: { input_tokens: 12, output_tokens: 8,
+                                                         total_tokens: 20, model: "deepseek-chat" } }))
+      expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
+      expect(f).to include('"model":"deepseek-chat"')
+      # model é irmão do usage no shape OpenAI, não fica DENTRO do usage
+      expect(f).not_to match(/"usage":\{[^}]*"model"/)
+    end
+
     it ":task_failed -> response.failed + [DONE]" do
       f = described_class.frame_for(ev(:task_failed, { message: "boom" }))
       expect(f).to include('"type":"response.failed"')

@@ -203,7 +203,7 @@ module Harness
       # :running (running->running é inválido) -> sem transição.
       status = @task_store.find(task.id).status
       @task_store.transition(task.id, to: :running) if %i[queued paused waiting].include?(status)
-      emit(:task_started, { task_id: task.id, command: command_type(task) }, task: task)
+      emit(:task_started, { task_id: task.id, command: command_type(task), agent: profile&.id }, task: task)
 
       actor.drain!
       run_pipeline(task, profile, actor, resume_from)
@@ -422,9 +422,10 @@ module Harness
           actor.drain!
           persist_turn(task, profile, st, content)
 
-          # estágio 9: Response
-          emit(:done, { content: content }, task: task) # compat legada
-          emit(:task_completed, { task_id: task.id, content: content }, task: task)
+          # estágio 9: Response. usage (tokens) capturado no estágio 6 viaja no
+          # evento terminal -> usage do /v1/responses + Telemetry (OTEL).
+          emit(:done, { content: content, usage: st.usage }, task: task) # compat legada
+          emit(:task_completed, { task_id: task.id, content: content, usage: st.usage }, task: task)
         end
 
         # halt (com motivo) ou curto-circuito sem terminar (violação de
@@ -463,8 +464,27 @@ module Harness
             emit(:content, { delta: chunk.content }, task: task) if chunk.content
           end
         end
+        state.usage = usage_of(response)
         response.content
       end
+    end
+
+    # Uso de tokens da resposta do provider (RubyLLM::Message expõe
+    # input_tokens/output_tokens/cached_tokens/model_id). Duck-typed: provider/
+    # fake sem contagem -> nil (nada a reportar). Shape compatível com o usage do
+    # OpenAI Responses (input/output/total) + model, consumidos pelo /v1/responses
+    # e pela Telemetry.
+    def usage_of(response)
+      return nil unless response.respond_to?(:input_tokens)
+
+      input = response.input_tokens.to_i
+      output = response.output_tokens.to_i
+      usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
+      if response.respond_to?(:cached_tokens) && response.cached_tokens
+        usage[:cached_tokens] = response.cached_tokens.to_i
+      end
+      usage[:model] = response.model_id.to_s if response.respond_to?(:model_id) && response.model_id
+      usage
     end
 
     def workflow_name(task)

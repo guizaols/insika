@@ -186,6 +186,11 @@ module Deploy
     # (upsert). É o que a API de provisionamento (o GatewayClient) aciona.
     PACK_IMPORTER = Harness::PackImporter.new(bus: BUS, profiles: PROFILE_SOURCE)
 
+    # Observabilidade OPT-IN (Fase 6): OTEL só liga com HARNESS_OTEL / envs OTEL.
+    # nil = desligado (paridade, gem nem carregada). Ligado no reactor via
+    # Telemetry.attach (arm de serving) — consome o EVENT_STREAM em spans.
+    TELEMETRY = Harness::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "harness"))
+
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end
 end
