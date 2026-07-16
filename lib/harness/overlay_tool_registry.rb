@@ -81,7 +81,8 @@ module Harness
       definition = Harness::ToolDefinition.from_h(raw)
       Harness::Registry::Entry.new(
         name: definition.name, plugin: "data-tools",
-        metadata: { optional: false, side_effect: definition.side_effect },
+        metadata: { optional: false, side_effect: definition.side_effect,
+                    group: definition.group, tags: definition.tags },
         factory: -> { build_tool(definition) }
       )
     rescue Harness::ValidationError => e

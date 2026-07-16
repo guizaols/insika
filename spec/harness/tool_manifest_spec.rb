@@ -132,6 +132,26 @@ RSpec.describe Harness::ToolManifest do
     end
   end
 
+  describe "group/tags (Etapa C: D4/F5)" do
+    it "propaga group/tags da tool" do
+      m = manifest(tools: [{ "name" => "t", "url" => "https://api.test/x", "group" => "b2b", "tags" => ["catalog"] }])
+      d = defn(m).first
+      expect(d["group"]).to eq("b2b")
+      expect(d["tags"]).to eq(["catalog"])
+    end
+
+    it "herda group do defaults; tags em UNIÃO (defaults ∪ tool)" do
+      m = manifest(defaults: { "group" => "b2b", "tags" => ["internal"] },
+                   tools: [{ "name" => "a", "url" => "https://api.test/a" },
+                           { "name" => "b", "url" => "https://api.test/b", "group" => "demo", "tags" => ["loja"] }])
+      a, b = defn(m)
+      expect(a["group"]).to eq("b2b")            # herdou o default
+      expect(a["tags"]).to eq(["internal"])
+      expect(b["group"]).to eq("demo")         # tool vence o default
+      expect(b["tags"]).to contain_exactly("internal", "loja") # união
+    end
+  end
+
   describe "segurança de secret (R3 + guard de vazamento)" do
     it "recusa secret_header com valor LITERAL (sem {{secret.*}}) — R3" do
       d = consumer_defaults.merge("headers" => consumer_defaults["headers"].merge("Authorization" => "Bearer HARDCODED"))

@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe "Harness::Policy builtins" do
   # Entry como o ToolRegistry::Entry (metadata-based, doc 06 §2).
   Entry = Struct.new(:name, :metadata)
-  def entry(name, optional: false) = Entry.new(name, { optional: optional })
+  def entry(name, optional: false, group: nil) = Entry.new(name, { optional: optional, group: group })
   Cmd = Struct.new(:type, :payload)
 
   def profile(**over)
@@ -57,6 +57,45 @@ RSpec.describe "Harness::Policy builtins" do
     it "é pura (2 chamadas -> mesmo resultado)" do
       req = request(profile: profile(tools_allow: ["a"]), tools: [entry("a")])
       expect(policy.decide(req)).to eq(policy.decide(req))
+    end
+
+    # Fase 7/D4/F5 (Etapa C): tools_allow_groups expande p/ as tools do grupo.
+    describe "allowlist por grupo (tools_allow_groups)" do
+      let(:tools) do
+        [entry("search", group: "b2b"), entry("finalize", group: "b2b"),
+         entry("menu", group: "default"), entry("calc", group: nil)]
+      end
+
+      it "expande o grupo p/ os nomes das tools daquele grupo" do
+        d = policy.decide(request(profile: profile(tools_allow_groups: ["b2b"]), tools: tools))
+        expect(d.allow_tools).to contain_exactly("search", "finalize")
+      end
+
+      it "UNE tools_allow (nomes) com tools_allow_groups (grupos)" do
+        d = policy.decide(request(profile: profile(tools_allow: ["calc"], tools_allow_groups: ["b2b"]), tools: tools))
+        expect(d.allow_tools).to contain_exactly("calc", "search", "finalize")
+      end
+
+      it "ambas nil = todas (allow_tools nil — paridade)" do
+        d = policy.decide(request(profile: profile(tools_allow: nil, tools_allow_groups: nil), tools: tools))
+        expect(d.allow_tools).to be_nil
+      end
+
+      it "tools_deny vence a expansão de grupo" do
+        d = policy.decide(request(profile: profile(tools_allow_groups: ["b2b"], tools_deny: ["finalize"]), tools: tools))
+        expect(d.allow_tools).to include("search", "finalize") # allow expande…
+        expect(d.deny_tools).to include("finalize")            # …mas deny vence no Engine
+      end
+
+      it "grupo inexistente -> conjunto vazio (whitelist sem match)" do
+        d = policy.decide(request(profile: profile(tools_allow_groups: ["fantasma"]), tools: tools))
+        expect(d.allow_tools).to eq([])
+      end
+
+      it "tools_allow=[] + groups=['b2b'] -> só as do grupo (union com ∅)" do
+        d = policy.decide(request(profile: profile(tools_allow: [], tools_allow_groups: ["b2b"]), tools: tools))
+        expect(d.allow_tools).to contain_exactly("search", "finalize")
+      end
     end
   end
 

@@ -47,6 +47,8 @@ module Harness
       # Absorve o ToolRegistry#resolve como policy: optional sem
       # opt-in -> deny; tools_deny -> deny ("deny sempre vence"); tools_allow
       # com a semântica (nil = todas; [] = ∅; [names] = conjunto final).
+      # Fase 7/D4/F5 (Etapa C): `tools_allow_groups` UNE às tools dos grupos
+      # (o grupo é DADO no metadata da Entry). Ambas allowlists nil = todas.
       class ToolAllowlist < Base
         def decide(request)
           profile = request.profile
@@ -57,8 +59,25 @@ module Harness
                  .map { |e| e.name.to_s }
           deny += Array(profile.tools_deny).map(&:to_s)
 
-          allow = profile.tools_allow.nil? ? nil : Array(profile.tools_allow).map(&:to_s)
+          allow = allowed_names(profile, request.candidate_tools)
           Decision.allow(allow_tools: allow, deny_tools: deny.uniq)
+        end
+
+        private
+
+        # nil = SEM restrição (todas) SÓ quando tools_allow E tools_allow_groups
+        # ausentes (paridade). Do contrário é a UNIÃO: nomes explícitos +
+        # tools cujo `group` (metadata) está em tools_allow_groups. Uma allow []
+        # (e groups nil) segue = ∅.
+        def allowed_names(profile, candidates)
+          names = profile.tools_allow.nil? ? nil : Array(profile.tools_allow).map(&:to_s)
+          groups = profile.tools_allow_groups.nil? ? nil : Array(profile.tools_allow_groups).map(&:to_s)
+          return nil if names.nil? && groups.nil?
+
+          from_groups = Array(groups).empty? ? [] : candidates
+                        .select { |e| groups.include?(e.metadata[:group].to_s) }
+                        .map { |e| e.name.to_s }
+          Array(names) | from_groups
         end
       end
 
