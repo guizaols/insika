@@ -39,4 +39,27 @@ RSpec.describe Harness::EgressGuard do
     expect(described_class.violation("https://8.8.8.8/x", host_allowlist: ["8.8.8.8"])).to be_nil
     expect(described_class.violation("https://1.1.1.1/x", host_allowlist: ["8.8.8.8"])).to match(/allowlist/)
   end
+
+  describe "allow_private (API interna de confiança, NF4)" do
+    it "por padrão bloqueia loopback/privado" do
+      expect(described_class.violation("http://127.0.0.1:3000/api/internal/x", allow_http: true))
+        .to match(/privada/)
+    end
+
+    it "allow_private libera o destino privado" do
+      expect(described_class.violation("http://127.0.0.1:3000/api/internal/x",
+                                       allow_http: true, allow_private: true)).to be_nil
+    end
+
+    it "allow_private + host_allowlist: libera só o host de confiança (defesa em profundidade)" do
+      opts = { allow_http: true, allow_private: true, host_allowlist: ["localhost"] }
+      expect(described_class.violation("http://localhost:3000/api/internal/x", **opts)).to be_nil
+      # um host privado fora da allowlist ainda é barrado (pela allowlist, antes do IP)
+      expect(described_class.violation("http://127.0.0.1:3000/x", **opts)).to match(/allowlist/)
+    end
+
+    it "não afeta o esquema: http continua exigindo allow_http" do
+      expect(described_class.violation("http://127.0.0.1/x", allow_private: true)).to match(/http não permitido/)
+    end
+  end
 end

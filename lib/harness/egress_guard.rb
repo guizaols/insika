@@ -13,7 +13,11 @@ module Harness
   #   - host obrigatório;
   #   - allowlist de hosts opcional (quando presente, só ela passa);
   #   - resolve o host e BLOQUEIA se QUALQUER endereço cair em rede privada/
-  #     loopback/link-local/metadata (defesa contra DNS rebinding).
+  #     loopback/link-local/metadata (defesa contra DNS rebinding);
+  #   - `allow_private:` (opt-in) LIBERA o destino privado — para alcançar uma
+  #     API INTERNA de confiança (NF4: o /api/internal/* do consumidor entra por
+  #     allowlist). Perigoso sem `host_allowlist`: PARE-o a um host conhecido.
+  #     Default false = guarda estrita.
   #
   # `violation(url, ...)` devolve nil (ok) ou uma String com o motivo — o
   # DataDefinedTool transforma o motivo em `{ error: }` ao modelo (nunca levanta).
@@ -27,7 +31,7 @@ module Harness
     module_function
 
     # -> nil (permitido) | String (motivo do bloqueio).
-    def violation(url, allow_http: false, host_allowlist: nil)
+    def violation(url, allow_http: false, host_allowlist: nil, allow_private: false)
       uri = begin
         URI.parse(url.to_s)
       rescue URI::InvalidURIError
@@ -43,7 +47,9 @@ module Harness
 
       addrs = resolve(host)
       return "host não resolveu" if addrs.empty?
-      return "destino em rede privada bloqueado" if addrs.any? { |ip| blocked?(ip) }
+      # allow_private pula o bloqueio de rede privada (API interna de confiança,
+      # NF4). Sem ele, um destino privado/loopback/metadata é sempre bloqueado.
+      return "destino em rede privada bloqueado" if !allow_private && addrs.any? { |ip| blocked?(ip) }
 
       nil
     end
