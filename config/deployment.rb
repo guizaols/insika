@@ -181,6 +181,11 @@ module Deploy
     BUS.register(:delete_data_tool, Harness::Commands::DeleteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:restore_data_tool, Harness::Commands::RestoreDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
 
+    # Provisionamento por pack (Fase 6/D4): importa um agente a partir de um pack
+    # padronizado emitindo os Commands acima. Consome o bus + LÊ o ProfileSource
+    # (upsert). É o que a API de provisionamento (o GatewayClient) aciona.
+    PACK_IMPORTER = Harness::PackImporter.new(bus: BUS, profiles: PROFILE_SOURCE)
+
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end
 end

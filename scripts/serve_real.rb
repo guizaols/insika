@@ -75,8 +75,12 @@ APP = Harness::Server::App.new(
   # tools = overlay (código + por-dados), então /admin lista as data-tools também.
   registries: { tools: W::TOOL_REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
   a2a: A2A_APP, # nil sem opt-in -> rotas A2A respondem 404
-  # gateway_token: Bearer do /v1/responses (drop-in do gateway OpenClaw). O
-  # consumidor manda OPENCLAW_GATEWAY_TOKEN; no demo local cai no ADMIN_TOKEN.
+  # provisioner: importador de pack (Fase 6/D4) sob o MESMO Bearer do
+  # /v1/responses — o GatewayClient provisiona lojas em runtime via POST/DELETE
+  # /v1/agents. Sempre exposto no serve real (o gateway precisa dele).
+  provisioner: W::PACK_IMPORTER,
+  # gateway_token: Bearer do /v1/responses + /v1/agents (drop-in do gateway
+  # OpenClaw). O consumidor manda OPENCLAW_GATEWAY_TOKEN; no demo cai no ADMIN_TOKEN.
   config: { admin_token: ADMIN_TOKEN, allowed_origins: [],
             gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN) }
 )
