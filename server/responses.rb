@@ -72,8 +72,14 @@ module Harness
       end
 
       def completed(event)
-        usage = event.data[:usage]
-        response = usage ? { usage: usage } : {}
+        response = {}
+        if (usage = event.data[:usage])
+          # `model` viaja junto do usage no evento; no shape OpenAI ele é irmão do
+          # usage (tokens puros no usage).
+          model = usage[:model] || usage["model"]
+          response[:usage] = usage.reject { |k, _| k.to_s == "model" }
+          response[:model] = model if model
+        end
         sse("response.completed", { type: "response.completed", response: response })
       end
 

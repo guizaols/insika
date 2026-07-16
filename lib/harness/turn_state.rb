@@ -33,6 +33,13 @@ module Harness
     # Vem do TURNO, nunca dos args do modelo (R2). Distinto de `tenant` (memória).
     attr_accessor :turn_context
 
+    # Interno (Fase 6, observabilidade): uso de tokens do turno (input/output/
+    # total/cached + model), capturado da resposta do provider no estágio 6. Vai
+    # ao evento terminal (:done/:task_completed) — alimenta o usage do
+    # /v1/responses e a Telemetry (OTEL). nil = turno sem resposta de modelo
+    # (workflow) ou provider sem contagem.
+    attr_accessor :usage
+
     # Interno (Tool Search): ids de side-effects já concluídos no turno
     # interrompido, propagados às tools PROMOVIDAS pelo tool_search (mesmo `skip`
     # que o wrap_tools das eager recebe). Setado no run_pipeline;
