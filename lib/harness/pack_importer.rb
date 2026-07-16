@@ -62,6 +62,11 @@ module Harness
     #     outras lojas).
     #   - tools_allow = (config.tools_allow) ∪ (nomes das tools do pack) — garante
     #     que o agente pode chamar as próprias data-tools (NF2).
+    #   - tools_allow_groups = grupos habilitados por FLAG no pack (ver
+    #     #enabled_groups) — o CORTE de schema por flag (Fase 7, Etapa E / D5): só
+    #     as tools dos grupos habilitados (união com tools_allow) vão pro modelo;
+    #     as dos grupos desabilitados são cortadas ANTES do turno (resolve o
+    #     desperdício de tool-call do OpenClaw, onde a flag só existe no Rails).
     def agent_attrs(pack, id)
       attrs = pack.config.dup
       attrs[:id] = id
@@ -71,8 +76,38 @@ module Harness
       pack_tools = pack.tools.map { |t| tool_name(t) }
       allow = Array(pack.config[:tools_allow]).map(&:to_s) | pack_tools
       attrs[:tools_allow] = allow unless allow.empty? && !pack.config.key?(:tools_allow)
+
+      groups = enabled_groups(pack.config)
+      attrs[:tools_allow_groups] = groups unless groups.nil?
       attrs
     end
+
+    # CORTE POR FLAG (Fase 7, Etapa E / D5, piloto ESTÁTICO): deriva a allowlist por
+    # grupo do agente a partir de FLAGS declaradas no pack config — DADO, nunca
+    # convenção do core (NF1). O motor não conhece "groceries_v2"/"b2b": o pack
+    # declara quais GRUPOS estão habilitados; o mapeamento flag->grupo é
+    # responsabilidade do provisionamento/pack, não do harness. Duas formas (união):
+    #   - `enabled_groups: ["default", "b2b"]`  — lista explícita de grupos ON.
+    #   - `flags: { "b2b" => true, "demo" => false }` — a chave da flag É o nome
+    #     do grupo; só as truthy entram (as false CORTAM o grupo).
+    # Nenhuma das duas declarada -> nil (sem corte por grupo; comportamento antigo).
+    # `[]` explícito (enabled_groups vazio, ou flags todas false) -> nenhum grupo.
+    def enabled_groups(config)
+      return nil unless config.key?(:enabled_groups) || config.key?(:flags)
+
+      from_list = Array(config[:enabled_groups]).map(&:to_s)
+      from_flags = flag_groups(config[:flags])
+      (from_list | from_flags)
+    end
+
+    # { grupo => bool } -> [grupos com valor truthy]. Aceita chaves string|symbol.
+    def flag_groups(flags)
+      return [] unless flags.is_a?(Hash)
+
+      flags.filter_map { |group, on| group.to_s if truthy?(on) }
+    end
+
+    def truthy?(val) = val == true || val.to_s == "true"
 
     def tool_name(defn) = (defn[:name] || defn["name"]).to_s
 
