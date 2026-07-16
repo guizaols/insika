@@ -36,19 +36,18 @@ ENV BUNDLE_DEPLOYMENT=1 \
     PORT=9292 \
     HARNESS_DB=/data/harness.db
 
-RUN groupadd --system harness && useradd --system --gid harness --home /app harness && \
-    mkdir -p /data && chown harness:harness /data
-
+# Roda como root: o volume durável (Railway Volume / k8s PVC) é montado em /data
+# em RUNTIME, sobrepondo o dir da imagem — com usuário não-root o mount vem
+# root-owned e o SQLite não conseguiria escrever o harness.db. Pro piloto
+# (container single-tenant) root é aceitável; hardening não-root (fsGroup/
+# init-chown) fica p/ o k8s. Ver docs/DEPLOY.md.
+RUN mkdir -p /data
 WORKDIR /app
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY . .
-RUN chown -R harness:harness /app
 
-USER harness
-
-# O volume durável do SQLite em /data é montado pelo orquestrador (Railway
-# Volume / k8s PVC), não pela instrução VOLUME do Docker — o Railway rejeita
-# `VOLUME` no Dockerfile. HARNESS_DB aponta pra /data (ver ENV acima).
+# O volume /data é montado pelo orquestrador, NÃO pela instrução VOLUME do Docker
+# (o Railway a rejeita). HARNESS_DB aponta pra /data (ver ENV acima).
 EXPOSE 9292
 
 # Falcon serve lê o config.ru (Boot -> Wiring -> recovery ANTES de aceitar

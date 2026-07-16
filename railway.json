@@ -5,7 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "bundle exec falcon serve --bind http://0.0.0.0:${PORT} --count ${WEB_CONCURRENCY:-2}",
     "healthcheckPath": "/up",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
