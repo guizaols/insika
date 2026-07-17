@@ -1,31 +1,32 @@
 # frozen_string_literal: true
 
 module Harness
-  # Roteia Commands para handlers registrados pelo composition root.
-  # O bus NÃO distingue Commands de controle (resposta síncrona) de Commands de
-  # turno (`{task_id:}` imediato) — isso é do handler; o bus só roteia.
+  # Routes Commands to handlers registered by the composition root.
+  # The bus does NOT distinguish control Commands (synchronous response) from
+  # turn Commands (immediate `{task_id:}`) — that is the handler's job; the bus
+  # only routes.
   #
-  # Sem lock/mutex: um reactor, fibers cooperativos; `dispatch`
-  # não faz IO próprio.
+  # No lock/mutex: one reactor, cooperative fibers; `dispatch`
+  # does no IO of its own.
   class CommandBus
-    # Handlers recebem suas dependências no próprio construtor e emitem por
-    # conta própria — o bus só roteia.
+    # Handlers receive their dependencies in their own constructor and emit on
+    # their own — the bus only routes.
     def initialize
       @handlers = {}
     end
 
-    # handler: qualquer objeto que responda a #call(command). Re-registrar o
-    # mesmo tipo sobrescreve (último vence — o composition root é o único
-    # chamador).
+    # handler: any object responding to #call(command). Re-registering the
+    # same type overwrites (last wins — the composition root is the only
+    # caller).
     def register(type, handler)
       @handlers[type.to_sym] = handler
     end
 
-    # -> resultado do handler. Tipo não registrado -> ValidationError síncrono,
-    # nenhuma Task criada (nunca KeyError/NoMethodError).
+    # -> the handler's result. Unregistered type -> synchronous ValidationError,
+    # no Task created (never KeyError/NoMethodError).
     def dispatch(command)
       handler = @handlers[command.type]
-      raise Harness::ValidationError, "command desconhecido: #{command.type}" if handler.nil?
+      raise Harness::ValidationError, "unknown command: #{command.type}" if handler.nil?
 
       handler.call(command)
     end

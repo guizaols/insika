@@ -3,22 +3,22 @@
 require "yaml"
 
 module Harness
-  # Convenção OpenClaw / AgentSkills: cada skill é um diretório com um
-  # SKILL.md (YAML frontmatter + corpo markdown). Progressive disclosure:
-  # nível 1 = name+description no system prompt; nível 2 = corpo carregado
-  # sob demanda pela tool load_skill.
+  # OpenClaw / AgentSkills convention: each skill is a directory with a
+  # SKILL.md (YAML frontmatter + markdown body). Progressive disclosure:
+  # level 1 = name+description in the system prompt; level 2 = body loaded
+  # on demand by the load_skill tool.
   #
-  # Consumido pelo Executor (skill_catalog:) e pelo estágio 3
+  # Consumed by the Executor (skill_catalog:) and by stage 3
   # (effective/format_for_prompt).
   class SkillCatalog
     Skill = Data.define(:name, :description, :path, :body)
 
-    # roots ordenados por PRECEDÊNCIA (maior primeiro): workspace, managed,
-    # bundled. Mesmo nome em mais de um root: o primeiro vence.
+    # roots ordered by PRECEDENCE (highest first): workspace, managed,
+    # bundled. Same name in more than one root: the first wins.
     #
-    # store (opcional): um SkillStore com as skills AUTORADAS no Studio.
-    # Sobrepõem as de disco (seed) — Store vence, é a fonte da verdade.
-    # Nil = comportamento só-disco, zero regressão.
+    # store (optional): a SkillStore with the skills AUTHORED in the Studio.
+    # They overlay the on-disk ones (seed) — the Store wins, it is the source of truth.
+    # Nil = disk-only behavior, zero regression.
     def initialize(roots, store: nil)
       @roots = Array(roots)
       @store = store
@@ -33,21 +33,21 @@ module Harness
       @skills[name.to_s]
     end
 
-    # Recarrega do disco + Store e TROCA o índice atomicamente: uma
-    # skill autorada/editada passa a valer sem restart. Um turno em andamento
-    # capturou @skills no dispatch, então não vê a troca no meio.
+    # Reloads from disk + Store and SWAPS the index atomically: an
+    # authored/edited skill takes effect without a restart. A turn in progress
+    # captured @skills at dispatch, so it does not see the swap mid-flight.
     def reload
       @skills = load_all
       self
     end
 
-    # Allowlist por agente: nil -> todas | [] -> nenhuma | [names] -> subconjunto.
+    # Per-agent allowlist: nil -> all | [] -> none | [names] -> subset.
     def effective(skills_policy)
       Allowlist.filter(all, skills_policy) { |s| s.name }
     end
 
-    # Nível 1: lista compacta injetada no system prompt. Só metadados.
-    # Recebe o conjunto já filtrado pelo agente.
+    # Level 1: compact list injected into the system prompt. Metadata only.
+    # Receives the set already filtered by the agent.
     def format_for_prompt(skills = all)
       return "" if skills.empty?
 
@@ -74,21 +74,21 @@ module Harness
           skill = parse_content(File.read(file, encoding: "UTF-8"), path: file)
           next unless skill
 
-          found[skill.name] ||= skill # precedência: primeiro root vence
+          found[skill.name] ||= skill # precedence: first root wins
         end
       end
       overlay_store(found)
       found
     end
 
-    # Skills do Store sobrepõem as de disco (autorado > seed). path sentinela
-    # "store:<name>" — não é arquivo real (o load_skill usa `body`, não o path).
+    # Store skills overlay the on-disk ones (authored > seed). Sentinel path
+    # "store:<name>" — not a real file (load_skill uses `body`, not the path).
     def overlay_store(found)
       return unless @store
 
       @store.all.each do |name, content|
         skill = parse_content(content.to_s, path: "store:#{name}")
-        found[skill.name] = skill if skill # Store vence
+        found[skill.name] = skill if skill # Store wins
       end
     end
 
@@ -96,8 +96,8 @@ module Harness
       match = raw.match(/\A---\s*\n(.*?)\n---\s*\n(.*)\z/m)
       return nil unless match
 
-      # Frontmatter tolerante: packs reais têm `: ` na prosa do description, que
-      # o YAML estrito rejeitava (o pack não carregava).
+      # Tolerant frontmatter: real packs have `: ` in the description prose, which
+      # strict YAML rejected (the pack would not load).
       meta = Harness::Frontmatter.parse(match[1])
       name = meta["name"]
       return nil unless name

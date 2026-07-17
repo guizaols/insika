@@ -107,9 +107,9 @@ require_relative "harness/executor"
 require_relative "harness/pack"
 require_relative "harness/pack_importer"
 require_relative "harness/telemetry"
-# NÃO requerer "harness/tools/load_skill" aqui: ele faz `require "ruby_llm"` no
-# topo (herda de RubyLLM::Tool) e puxaria a gem em load-time. O Executor o
-# carrega lazy dentro de create_chat (D9).
+# Do NOT require "harness/tools/load_skill" here: it does `require "ruby_llm"` at
+# the top (inherits from RubyLLM::Tool) and would pull the gem in at load-time. The
+# Executor loads it lazily inside create_chat (D9).
 
 module Harness
 end

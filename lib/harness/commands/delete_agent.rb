@@ -4,10 +4,10 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: remove um agente. -> AgentProfile
-    # removido (para o transporte confirmar o que sumiu). Turnos JÁ em andamento
-    # que capturaram o profile seguem até terminar (o ProfileSource só afeta
-    # novos dispatches).
+    # Control command: removes an agent. -> the removed AgentProfile
+    # (so the transport can confirm what disappeared). Turns ALREADY in progress
+    # that captured the profile keep going until they finish (the ProfileSource only affects
+    # new dispatches).
     class DeleteAgent
       def initialize(profile_source:, event_stream:)
         @profile_source = profile_source
@@ -16,7 +16,7 @@ module Harness
 
       def call(command)
         id = AgentPayload.presence(AgentPayload.symbolize(command.payload)[:id])
-        raise Harness::ValidationError, "id é obrigatório" if id.nil?
+        raise Harness::ValidationError, "id is required" if id.nil?
 
         removed = @profile_source.fetch(id) ||
                   (raise Harness::NotFoundError, "agente '#{id}' não encontrado")

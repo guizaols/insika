@@ -4,18 +4,18 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de domínio das sessões. Persiste transcript + vars
-  # sobre um Harness::Store injetado, com schema fixo
-  # `session:<id>` no scope "sessions".
+  # Domain store for sessions. Persists transcript + vars
+  # over an injected Harness::Store, with a fixed schema
+  # `session:<id>` in the "sessions" scope.
   #
-  # O transcript persistido é a FONTE DA VERDADE para reconstrução; eventos ao
-  # vivo são só estado de entrega. O shape das
-  # mensagens (`{"role"=>, "content"=>}`, role ∈ user|assistant|system|tool) é
-  # o mesmo que `Runner#seed_history` já consome — o Executor não converte nada.
+  # The persisted transcript is the SOURCE OF TRUTH for reconstruction; live
+  # events are just delivery state. The message shape
+  # (`{"role"=>, "content"=>}`, role ∈ user|assistant|system|tool) is the
+  # same one `Runner#seed_history` already consumes — the Executor converts nothing.
   #
-  # Normaliza symbol→string na ESCRITA (o backend só garante round-trip de
-  # tipos JSON); a LEITURA devolve os dados como vêm do backend
-  # (chaves string), nunca simetriza de volta para symbols.
+  # Normalizes symbol→string on WRITE (the backend only guarantees round-trip of
+  # JSON types); READ returns the data as it comes from the backend
+  # (string keys), never symmetrizing back to symbols.
   class SessionStore
     include Coercion
 
@@ -25,15 +25,15 @@ module Harness
     Session = Data.define(:id, :messages, :vars, :memory_refs,
                           :created_at, :updated_at)
 
-    # store: qualquer Harness::Store (Memory, SQLite, ...) — injetado pelo
-    # composition root (config/wiring.rb). O SessionStore não conhece
-    # backend concreto.
+    # store: any Harness::Store (Memory, SQLite, ...) — injected by the
+    # composition root (config/wiring.rb). SessionStore does not know the
+    # concrete backend.
     def initialize(store:)
       @store = store
     end
 
-    # -> Session; ArgumentError se id já existe (sessão duplicada é violação de
-    # domínio — não sobrescreve silenciosamente).
+    # -> Session; ArgumentError if id already exists (a duplicate session is a
+    # domain violation — it never overwrites silently).
     def create(id: SecureRandom.uuid, vars: {})
       key = key_for(id)
       raise ArgumentError, "sessão já existe: #{id}" unless @store.get(SCOPE, key).nil?
@@ -57,9 +57,9 @@ module Harness
       record && to_session(record)
     end
 
-    # -> Session (transcript += messages). Read-modify-write no fiber da própria
-    # task, sem lock (um nó, um dono por task). Cada mensagem
-    # ganha "at" (ISO8601 UTC) se não vier. NotFoundError se a sessão não existe.
+    # -> Session (transcript += messages). Read-modify-write on the task's own
+    # fiber, without a lock (one node, one owner per task). Each message
+    # gets an "at" (ISO8601 UTC) if not provided. NotFoundError if the session does not exist.
     def append_messages(id, messages)
       record = fetch!(id)
       incoming = (messages.is_a?(Hash) ? [messages] : Array(messages))
@@ -70,8 +70,8 @@ module Harness
       to_session(record)
     end
 
-    # -> Session (merge RASO: chave aninhada existente é substituída inteira,
-    # não fundida). NotFoundError se ausente.
+    # -> Session (SHALLOW merge: an existing nested key is replaced wholesale,
+    # not merged). NotFoundError if absent.
     def update_vars(id, vars)
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
@@ -80,13 +80,13 @@ module Harness
       to_session(record)
     end
 
-    # -> bool (delega ao backend: false para id inexistente)
+    # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
       @store.delete(SCOPE, key_for(id))
     end
 
-    # -> enumera ids sem o prefixo "session:". Sem bloco,
-    # retorna Enumerator.
+    # -> enumerates ids without the "session:" prefix. Without a block,
+    # returns an Enumerator.
     def each_id
       return enum_for(:each_id) unless block_given?
 
@@ -101,11 +101,11 @@ module Harness
       "#{KEY_PREFIX}#{id}"
     end
 
-    # Carrega o record cru; NotFoundError se ausente (sessão inexistente ->
-    # HTTP 404). Erros do backend (StoreError) propagam sem re-embrulhar.
+    # Loads the raw record; NotFoundError if absent (nonexistent session ->
+    # HTTP 404). Backend errors (StoreError) propagate without re-wrapping.
     def fetch!(id)
       record = @store.get(SCOPE, key_for(id))
-      raise Harness::NotFoundError, "sessão inexistente: #{id}" if record.nil?
+      raise Harness::NotFoundError, "session not found: #{id}" if record.nil?
 
       record
     end
@@ -121,7 +121,7 @@ module Harness
       )
     end
 
-    # Carimba "at" (ISO8601 UTC) na mensagem quando ausente; preserva o que vier.
+    # Stamps "at" (ISO8601 UTC) on the message when absent; preserves whatever is provided.
     def stamp(message)
       message["at"] ||= timestamp
       message

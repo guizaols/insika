@@ -1,25 +1,26 @@
 # frozen_string_literal: true
 
 module Harness
-  # Elo da cadeia (estágio 4). Middleware MODIFICA o TurnState,
-  # curto-circuita e tem efeito operacional (rate limit, tracing, custo) — NÃO
-  # decide permissão de tool/skill (isso é Policy). Curto-circuito =
-  # NÃO chamar `nxt` e setar `state.halt_reason`. Setar halt_reason E chamar
-  # nxt é violação de contrato (o Executor prioriza o halt_reason na volta).
+  # A link in the chain (stage 4). A Middleware MODIFIES the TurnState,
+  # short-circuits, and has operational effect (rate limit, tracing, cost) — it
+  # does NOT decide tool/skill permission (that is Policy). Short-circuit =
+  # NOT calling `nxt` and setting `state.halt_reason`. Setting halt_reason AND
+  # calling nxt is a contract violation (the Executor prioritizes halt_reason on
+  # the way back).
   #
-  # Concorrência: roda no fiber da task; IO (ex.: tracing exporter)
-  # deve ser async fora do caminho (`Async { ... }` fire-and-forget) ou aceitar
-  # a latência no turno. Sem timeout próprio (coberto pelo timeout do turno).
+  # Concurrency: it runs on the task's fiber; IO (e.g. a tracing exporter)
+  # must be async off the path (`Async { ... }` fire-and-forget) or accept
+  # the latency in the turn. No timeout of its own (covered by the turn timeout).
   class Middleware
     def call(state, &nxt)
-      nxt.call(state) # elo default: pass-through
+      nxt.call(state) # default link: pass-through
     end
   end
 
-  # Composição rack-like: ordem de registro = ordem de execução (o primeiro é o
-  # elo mais externo). NÃO faz rescue (exceção propaga como falha do turno)
-  # nem tem mecanismo especial de halt — o curto-circuito é estrutural (o elo
-  # não chama nxt).
+  # Rack-like composition: registration order = execution order (the first is
+  # the outermost link). It does NOT rescue (an exception propagates as a turn
+  # failure) nor does it have a special halt mechanism — the short-circuit is
+  # structural (the link does not call nxt).
   class MiddlewareStack
     def initialize(middlewares = [])
       @middlewares = middlewares

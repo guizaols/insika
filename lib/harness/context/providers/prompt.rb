@@ -3,17 +3,17 @@
 module Harness
   module Context
     module Providers
-      # Absorve SystemPrompt + SOUL.md. Identidade é
-      # PINNED, priority 100 — nunca cortada. required?: agente sem identidade é
-      # um agente ERRADO, não degradado. prompt_refs: fragmentos
-      # priority 90 pinned, do PromptCatalog (catalog default nil).
+      # Absorbs SystemPrompt + SOUL.md. Identity is
+      # PINNED, priority 100 — never cut. required?: an agent without identity is
+      # a WRONG agent, not a degraded one. prompt_refs: priority 90 pinned
+      # fragments, from the PromptCatalog (catalog defaults to nil).
       #
-      # Identidade POR-AGENTE. `profile.prompt_files` (nomes de
-      # arquivo) vence sobre os `files:` do wiring — resolve a limitação de um
-      # agente novo herdar o prompt da Bia. O conteúdo vem do `agent_files`
-      # (AgentFileStore, vive no Store), com fallback a File.read
-      # para caminhos em disco (compat/seed). Sem prompt_files -> usa os `files:`
-      # do wiring (default de deployment; paridade byte-a-byte).
+      # PER-AGENT identity. `profile.prompt_files` (file names)
+      # wins over the wiring's `files:` — this fixes the limitation of a new
+      # agent inheriting Bia's prompt. The content comes from `agent_files`
+      # (AgentFileStore, lives in the Store), with a File.read fallback
+      # for on-disk paths (compat/seed). Without prompt_files -> uses the wiring's
+      # `files:` (deployment default; byte-for-byte parity).
       class Prompt < ContextProvider
         def initialize(base: "", files: [], catalog: nil, agent_files: nil, system_files: nil)
           @base = base
@@ -38,17 +38,17 @@ module Harness
 
         private
 
-        # Migra INTACTA a concatenação do SystemPrompt#build (sem skills_block).
-        # Um fragmento ÚNICO preserva a ordem interna base->files (a ordenação
-        # atua só ENTRE fragmentos) e garante a paridade byte-a-byte.
+        # Migrates the SystemPrompt#build concatenation INTACT (without skills_block).
+        # A SINGLE fragment preserves the internal base->files order (sorting
+        # acts only BETWEEN fragments) and guarantees byte-for-byte parity.
         #
-        # profile.prompt_files (nomes) vence sobre @files (wiring): o agente com
-        # identidade própria não herda a do deployment. Cada fonte resolve via
-        # AgentFileStore (por agente) OU File.read (caminho em disco) — nesta
-        # ordem. Sem prompt_files, cai nos @files do wiring.
+        # profile.prompt_files (names) wins over @files (wiring): an agent with
+        # its own identity does not inherit the deployment's. Each source resolves
+        # via AgentFileStore (per agent) OR File.read (on-disk path) — in that
+        # order. Without prompt_files, falls back to the wiring's @files.
         def build_identity(profile)
           parts = [@base]
-          parts.concat(system_parts) # arquivos de sistema globais, para TODO agente
+          parts.concat(system_parts) # global system files, for EVERY agent
           sources = Array(profile&.prompt_files)
           if sources.empty?
             @files.each { |f| parts << File.read(f, encoding: "UTF-8") if File.exist?(f) }
@@ -58,17 +58,17 @@ module Harness
           parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
         end
 
-        # Arquivos de sistema GLOBAIS: valem para todos os agentes,
-        # injetados ANTES da identidade individual. Store vazio/ausente -> [] ->
-        # prompt byte-a-byte idêntico ao de antes (a injeção só existe se o
-        # operador autorou algo). Ordem lexicográfica (SystemFileStore#list).
+        # GLOBAL system files: apply to every agent,
+        # injected BEFORE the individual identity. Empty/absent store -> [] ->
+        # a prompt byte-for-byte identical to before (the injection only exists if
+        # the operator authored something). Lexicographic order (SystemFileStore#list).
         def system_parts
           return [] unless @system_files
 
           @system_files.list.map { |name| @system_files.read(name).to_s }
         end
 
-        # Store por-agente primeiro, disco depois (compat/seed).
+        # Per-agent store first, disk second (compat/seed).
         def read_source(agent_id, src)
           stored = agent_id && @agent_files&.read(agent_id, src)
           return stored if stored

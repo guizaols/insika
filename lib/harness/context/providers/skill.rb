@@ -3,12 +3,12 @@
 module Harness
   module Context
     module Providers
-      # Nível 1 (progressive disclosure) das skills CANDIDATAS do perfil.
-      # A LoadSkill do Executor NÃO vem daqui: ela é construída com
-      # resolution.allowed_skills (decisão de policy). Ordem Context->Policy: o
-      # provider produz candidato; a policy corta depois.
+      # Level 1 (progressive disclosure) of the profile's CANDIDATE skills.
+      # The Executor's LoadSkill does NOT come from here: it is built with
+      # resolution.allowed_skills (a policy decision). Context->Policy order: the
+      # provider produces the candidate; the policy cuts afterwards.
       class Skill < CatalogProvider
-        # priority 80: acima das tools deferred (70), abaixo da identidade pinned.
+        # priority 80: above deferred tools (70), below pinned identity.
         def priority = Context::Priority::SKILL
 
         private

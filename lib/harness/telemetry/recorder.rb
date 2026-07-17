@@ -4,24 +4,24 @@ require "time"
 
 module Harness
   module Telemetry
-    # Traduz o Event Stream do harness em SPANS OTEL — a espinha de observabilidade
-    # já existente vira traces sem tocar o núcleo (Events observam; Telemetry só
-    # consome). Um span por TURNO (harness.turn) com spans-filho por tool
-    # (harness.tool / harness.data_tool), correlacionados por task_id. Latência sai
-    # da duração do span; tokens/custo e agente/modelo saem dos ATRIBUTOS — o
-    # backend (SigNoz/Tempo/…) agrega em métricas. Sem depender do SDK de métricas.
+    # Translates the harness Event Stream into OTEL SPANS — the already-existing
+    # observability spine becomes traces without touching the core (Events observe; Telemetry only
+    # consumes). One span per TURN (harness.turn) with child spans per tool
+    # (harness.tool / harness.data_tool), correlated by task_id. Latency comes
+    # from the span duration; tokens/cost and agent/model come from the ATTRIBUTES — the
+    # backend (SigNoz/Tempo/…) aggregates them into metrics. Without depending on the metrics SDK.
     #
-    # PURO/testável: fala com um `tracer` DUCK-TYPED (start_span/set_attribute/
-    # record_error/finish) — o adapter OTEL real é injetado em Telemetry.setup, um
-    # fake nos testes. NÃO referencia OpenTelemetry:: (carrega sem a gem).
+    # PURE/testable: talks to a DUCK-TYPED `tracer` (start_span/set_attribute/
+    # record_error/finish) — the real OTEL adapter is injected in Telemetry.setup, a
+    # fake in tests. Does NOT reference OpenTelemetry:: (loads without the gem).
     #
-    # Robusto: `record` NUNCA levanta (telemetria não derruba turno). Timestamps
-    # vêm do `meta.at` de cada evento (spans reconstruídos com tempo real).
+    # Robust: `record` NEVER raises (telemetry doesn't bring down a turn). Timestamps
+    # come from each event's `meta.at` (spans reconstructed with real time).
     class Recorder
-      Turn = Struct.new(:span, :tools) # tools = fila FIFO dos spans de tool abertos
+      Turn = Struct.new(:span, :tools) # tools = FIFO queue of open tool spans
 
-      # Teto de turnos abertos: um kill -9 sem evento terminal deixaria o turno
-      # pendurado; ao exceder, o mais antigo é fechado (defensivo, memória limitada).
+      # Ceiling of open turns: a kill -9 without a terminal event would leave the turn
+      # hanging; when exceeded, the oldest is closed (defensive, bounded memory).
       MAX_OPEN = 1_000
 
       def initialize(tracer:)
@@ -37,13 +37,13 @@ module Harness
         when :tool_call      then start_tool(meta, data)
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
-        when :task_completed then finish_turn(meta, data, :ok)   # :done é o gêmeo legado — ignorado
+        when :task_completed then finish_turn(meta, data, :ok)   # :done is the legacy twin — ignored
         when :task_failed    then finish_turn(meta, data, :error)
         when :task_cancelled then finish_turn(meta, data, :cancelled)
         end
         nil
       rescue StandardError
-        nil # telemetria NUNCA derruba o consumidor/turno
+        nil # telemetry NEVER brings down the consumer/turn
       end
 
       private
@@ -66,15 +66,15 @@ module Harness
         turn.tools << span
       end
 
-      # FIFO: o modelo chama uma tool e recebe o resultado antes da próxima, então
-      # o resultado casa com o primeiro span de tool aberto do turno.
+      # FIFO: the model calls a tool and receives the result before the next one, so
+      # the result matches the first open tool span of the turn.
       def finish_tool(meta)
         turn = @turns[meta[:task_id]] or return
         span = turn.tools.shift or return
         span.finish(end_time: ts(meta[:at]))
       end
 
-      # data-tool emite um único evento (nome + status HTTP) -> span pontual.
+      # data-tool emits a single event (name + HTTP status) -> point span.
       def point_tool(meta, data)
         turn = @turns[meta[:task_id]] or return
         at = ts(meta[:at])
@@ -90,7 +90,7 @@ module Harness
         set_usage(turn.span, data[:usage])
         turn.span.set_attribute("harness.status", status.to_s)
         turn.span.record_error(data[:message].to_s) if status == :error
-        turn.tools.each { |s| s.finish(end_time: at) } # spans de tool órfãos (falha no meio)
+        turn.tools.each { |s| s.finish(end_time: at) } # orphaned tool spans (failure mid-way)
         turn.span.finish(end_time: at)
       end
 
@@ -113,10 +113,10 @@ module Harness
         turn.span.finish(end_time: nil)
       end
 
-      # OTEL não aceita atributo com valor nil — descarta as chaves ausentes.
+      # OTEL doesn't accept an attribute with a nil value — drops the absent keys.
       def attrs(hash) = hash.reject { |_, v| v.nil? }
 
-      # ISO8601 (meta.at) -> Time; nil-safe (o span usa "agora" quando nil).
+      # ISO8601 (meta.at) -> Time; nil-safe (the span uses "now" when nil).
       def ts(at)
         return nil if at.nil? || at.to_s.empty?
 

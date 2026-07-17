@@ -1,27 +1,27 @@
 # frozen_string_literal: true
 
 module Harness
-  # Masking de segredos no round-trip UI↔Store. Padrão do
-  # OpenClaw: um segredo NUNCA volta em plaintext pra tela — vira o sentinel
-  # `__OCULTO__`. Ao gravar, o sentinel de volta significa "mantém o que já
-  # estava"; uma string nova substitui; `""` limpa. Compartilhado por
-  # llm_providers (api keys) e, futuramente, instâncias MCP (credenciais).
+  # Secret masking on the UI<->Store round-trip. OpenClaw
+  # convention: a secret NEVER comes back to the screen in plaintext — it becomes
+  # the sentinel `__OCULTO__`. On save, the sentinel coming back means "keep what
+  # was already there"; a new string replaces it; `""` clears it. Shared by
+  # llm_providers (api keys) and, in the future, MCP instances (credentials).
   module SecretMasking
     SENTINEL = "__OCULTO__"
 
     module_function
 
-    # Valor a EXIBIR: presente -> sentinel (nunca o plaintext); ausente -> nil.
+    # Value to DISPLAY: present -> sentinel (never the plaintext); absent -> nil.
     def mask(value)
       present?(value) ? SENTINEL : nil
     end
 
-    # Valor a PERSISTIR dado o que o form mandou (`incoming`) e o que já existia
-    # (`existing`):
-    #   - não enviado (nil) ......... preserva `existing`
-    #   - sentinel `__OCULTO__` ..... preserva `existing`
-    #   - "" (vazio) ................ limpa (nil)
-    #   - string nova ............... substitui
+    # Value to PERSIST given what the form sent (`incoming`) and what already
+    # existed (`existing`):
+    #   - not sent (nil) ............ preserves `existing`
+    #   - sentinel `__OCULTO__` ..... preserves `existing`
+    #   - "" (empty) ................ clears (nil)
+    #   - new string ................ replaces
     def reconcile(incoming, existing)
       return existing if incoming.nil? || incoming == SENTINEL
 

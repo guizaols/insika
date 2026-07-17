@@ -1,55 +1,55 @@
 # frozen_string_literal: true
 
 module Harness
-  # MUTÁVEL de propósito (única exceção aos Data):
-  # o Middleware MODIFICA a execução — os elos escrevem nestes campos.
+  # MUTABLE on purpose (the only exception to the Data types):
+  # the Middleware MODIFIES the execution — the links write into these fields.
   class TurnState
-    attr_reader :task, :profile, :turn # identidade do turno (1-based)
-    attr_accessor :message,            # entrada (Middleware pode reescrever)
-                  :context,            # ContextPackage do Builder
-                  :allowed_tools,      # Resolution do Policy Engine
+    attr_reader :task, :profile, :turn # turn identity (1-based)
+    attr_accessor :message,            # input (Middleware may rewrite)
+                  :context,            # ContextPackage from the Builder
+                  :allowed_tools,      # Resolution from the Policy Engine
                   :allowed_skills,
-                  :chat,               # instância RubyLLM::Chat do turno
-                  :halt_reason         # setado por Middleware ao curto-circuitar
+                  :chat,               # the turn's RubyLLM::Chat instance
+                  :halt_reason         # set by Middleware when short-circuiting
 
-    # Interno (não faz parte do contrato): correlação tool_call
-    # corrente <-> decorators de tool (side-effects/skip).
+    # Internal (not part of the contract): correlation of the current
+    # tool_call <-> tool decorators (side-effects/skip).
     attr_accessor :current_tool_call
 
-    # Interno: impl_name(String) -> nome ESTÁVEL da capability que o
-    # resolveu, calculado por resolve_capabilities ANTES do policy_request e
-    # consultado DEPOIS de @policy_engine.decide, na junção pós-Policy, para
-    # decidir quais impls entram como Capability::ResolvedTool. {} = sem
-    # capability_registry ou profile.capabilities vazio (paridade).
+    # Internal: impl_name(String) -> STABLE name of the capability that
+    # resolved it, computed by resolve_capabilities BEFORE the policy_request and
+    # consulted AFTER @policy_engine.decide, at the post-Policy junction, to
+    # decide which impls enter as Capability::ResolvedTool. {} = no
+    # capability_registry or empty profile.capabilities (parity).
     attr_accessor :capability_names
 
-    # Interno (memória): tenant do turno (do Command), escopo do write path
-    # (`remember` tool). Setado no run_pipeline; nil = DEFAULT_TENANT no MemoryStore.
+    # Internal (memory): the turn's tenant (from the Command), scope of the write path
+    # (`remember` tool). Set in run_pipeline; nil = DEFAULT_TENANT in the MemoryStore.
     attr_accessor :tenant
 
-    # Interno (Fase 6/D2/G4): contexto de turno depositado nas data-tools p/
-    # resolver {{ctx.*}} (chat_id/agent_id/tenant/store_id) e emitir
-    # X-Chat-Id/X-Store-Id/X-Agent-Id. Hash de símbolos, setado no run_pipeline.
-    # Vem do TURNO, nunca dos args do modelo (R2). Distinto de `tenant` (memória).
+    # Internal (Phase 6/D2/G4): turn context deposited into the data-tools to
+    # resolve {{ctx.*}} (chat_id/agent_id/tenant/store_id) and emit
+    # X-Chat-Id/X-Store-Id/X-Agent-Id. A Hash of symbols, set in run_pipeline.
+    # Comes from the TURN, never from the model's args (R2). Distinct from `tenant` (memory).
     attr_accessor :turn_context
 
-    # Interno (Fase 6, observabilidade): uso de tokens do turno (input/output/
-    # total/cached + model), capturado da resposta do provider no estágio 6. Vai
-    # ao evento terminal (:done/:task_completed) — alimenta o usage do
-    # /v1/responses e a Telemetry (OTEL). nil = turno sem resposta de modelo
-    # (workflow) ou provider sem contagem.
+    # Internal (Phase 6, observability): the turn's token usage (input/output/
+    # total/cached + model), captured from the provider's response at stage 6. Goes
+    # to the terminal event (:done/:task_completed) — feeds the usage of
+    # /v1/responses and the Telemetry (OTEL). nil = turn with no model response
+    # (workflow) or provider without counts.
     attr_accessor :usage
 
-    # Interno (Tool Search): ids de side-effects já concluídos no turno
-    # interrompido, propagados às tools PROMOVIDAS pelo tool_search (mesmo `skip`
-    # que o wrap_tools das eager recebe). Setado no run_pipeline;
-    # nil = turno novo (Array(nil) => []).
+    # Internal (Tool Search): ids of side-effects already completed in the
+    # interrupted turn, propagated to the tools PROMOTED by tool_search (the same `skip`
+    # that the eager tools' wrap_tools receives). Set in run_pipeline;
+    # nil = new turn (Array(nil) => []).
     attr_accessor :skip_side_effects
 
-    # Gate de aprovação. `requires_approval` = nomes de tools que exigem
-    # aprovação (Resolution); `approval_coordinator` = objeto (o Executor) que
-    # cria o PendingAction/suspende/aguarda; `actor` = mailbox do turno (usada
-    # pelo coordenador para await(:approval)).
+    # Approval gate. `requires_approval` = names of tools that require
+    # approval (Resolution); `approval_coordinator` = object (the Executor) that
+    # creates the PendingAction/suspends/waits; `actor` = the turn's mailbox (used
+    # by the coordinator for await(:approval)).
     attr_accessor :requires_approval, :approval_coordinator, :actor
 
     def initialize(task:, profile:, turn:, message:)

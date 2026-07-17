@@ -1,19 +1,19 @@
 # frozen_string_literal: true
 
 module Harness
-  # Classe base de provider de contexto. Subclasses
-  # concretas vivem em Harness::Context::Providers. A base é
-  # deliberadamente mínima: `required?` mora no provider, não no wiring.
+  # Base class for a context provider. Concrete
+  # subclasses live in Harness::Context::Providers. The base is
+  # deliberately minimal: `required?` lives on the provider, not the wiring.
   class ContextProvider
-    def id = self.class.name       # override para nome estável
-    def required? = false          # true -> falha aborta o turno
+    def id = self.class.name       # override for a stable name
+    def required? = false          # true -> failure aborts the turn
     def enabled_for?(_profile) = true
-    def call(_request) = []        # -> [ContextFragment]; pode fazer IO
+    def call(_request) = []        # -> [ContextFragment]; may do IO
   end
 
-  # Input do contrato de provider.
+  # Input for the provider contract.
   #   session:    SessionStore::Session | nil
-  #   checkpoint: Checkpoint | nil (presente no ResumeTask — histórico vem dele)
+  #   checkpoint: Checkpoint | nil (present on ResumeTask — history comes from it)
   ContextRequest = Data.define(:session, :message, :profile, :tenant, :vars,
                                :checkpoint)
 end

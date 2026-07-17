@@ -4,18 +4,18 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: habilita/desabilita uma skill em N
-    # agentes de uma vez, mexendo na allowlist `profile.skills` de cada um.
-    # Vale no próximo dispatch (hot via ProfileSource). -> { name, enabled_for }.
+    # Control command: enables/disables a skill on N
+    # agents at once, adjusting each one's `profile.skills` allowlist.
+    # Takes effect on the next dispatch (hot via ProfileSource). -> { name, enabled_for }.
     #
-    # Semântica da allowlist (AgentProfile): nil = TODAS, [] = nenhuma,
-    # [names] = subconjunto. Consequência importante e deliberada:
-    #  - habilitar num agente com skills=nil: no-op (já tem todas).
-    #  - DESABILITAR num agente com skills=nil: NÃO é feito aqui — remover uma de
-    #    "todas" exigiria enumerar o catálogo e materializar uma allowlist
-    #    explícita (destrutivo/surpreendente). Estes agentes ficam intactos e
-    #    entram em `skipped_all`. Para restringir, use :set_agent_tools/allowlist
-    #    explícita primeiro.
+    # Allowlist semantics (AgentProfile): nil = ALL, [] = none,
+    # [names] = subset. Important and deliberate consequence:
+    #  - enabling on an agent with skills=nil: no-op (already has all).
+    #  - DISABLING on an agent with skills=nil: NOT done here — removing one from
+    #    "all" would require enumerating the catalog and materializing an explicit
+    #    allowlist (destructive/surprising). These agents are left intact and
+    #    go into `skipped_all`. To restrict, use an explicit :set_agent_tools/allowlist
+    #    first.
     class SetSkillAgents
       def initialize(profile_source:, event_stream:)
         @profile_source = profile_source
@@ -25,7 +25,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
-        raise Harness::ValidationError, "name é obrigatório" if name.nil?
+        raise Harness::ValidationError, "name is required" if name.nil?
         raise Harness::ValidationError, "agent_ids deve ser lista" unless p[:agent_ids].nil? || p[:agent_ids].is_a?(Array)
 
         wanted = Array(p[:agent_ids]).map(&:to_s)
@@ -40,7 +40,7 @@ module Harness
             skipped_all << profile.id
             next
           end
-          next if new_skills == profile.skills # sem mudança
+          next if new_skills == profile.skills # no change
 
           @profile_source.put(Harness::AgentProfile.build(**profile.to_h.merge(skills: new_skills)))
           enabled_for << profile.id if want
@@ -56,7 +56,7 @@ module Harness
 
       private
 
-      # -> nova allowlist | :skip (agente com nil que pediu desabilitar).
+      # -> new allowlist | :skip (agent with nil that requested disable).
       def next_skills(current, name, want)
         if want
           current.nil? ? nil : (Array(current).map(&:to_s) | [name])

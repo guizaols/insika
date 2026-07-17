@@ -4,8 +4,8 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: remove uma instância MCP do
-    # McpStore. Idempotente (`existed: false` se não havia). -> { existed: bool }.
+    # Control command: removes an MCP instance from the
+    # McpStore. Idempotent (`existed: false` if there was none). -> { existed: bool }.
     class DeleteMcp
       def initialize(mcp_store:, event_stream:)
         @mcp_store = mcp_store
@@ -15,7 +15,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
-        raise Harness::ValidationError, "name é obrigatório" if name.nil?
+        raise Harness::ValidationError, "name is required" if name.nil?
 
         existed = @mcp_store.delete(name)
         @event_stream.emit(Harness::Event.new(

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 module Harness
-  # Settings GERAIS do deploy: timeouts, streaming e
-  # compaction. Um único record no ConfigStore (scope "settings", key "general").
-  # Leitura sempre devolve os DEFAULTS sobrepostos pelo que foi autorado — então
-  # um deploy novo (store vazio) já responde com config coerente, e o Studio só
-  # persiste o delta. Merge raso no topo, profundo em `compaction` (sub-hash).
+  # GENERAL deploy settings: timeouts, streaming and
+  # compaction. A single record in the ConfigStore (scope "settings", key "general").
+  # A read always returns the DEFAULTS overlaid by whatever was authored — so
+  # a brand-new deploy (empty store) already responds with coherent config, and the Studio
+  # only persists the delta. Shallow merge at the top, deep in `compaction` (sub-hash).
   #
-  # Não confundir com o `CONFIG` de transporte (bind/port/token, ENV+freeze no
-  # boot): isto é config de RUNTIME editável, durável no mesmo backend.
+  # Not to be confused with the transport `CONFIG` (bind/port/token, ENV+freeze at
+  # boot): this is editable RUNTIME config, durable in the same backend.
   class SettingsStore
     SCOPE = "settings"
     KEY   = "general"
@@ -26,13 +26,13 @@ module Harness
       @cs = config_store
     end
 
-    # -> Hash (defaults sobrepostos pelo autorado). Chaves string (contrato Store).
+    # -> Hash (defaults overlaid by the authored values). String keys (Store contract).
     def get
       deep_merge(DEFAULTS, stored)
     end
 
-    # Merge do patch sobre o atual e persiste. -> Hash (settings resultante).
-    # Chaves desconhecidas são preservadas (o Studio decide o schema da tela).
+    # Merges the patch over the current one and persists. -> Hash (resulting settings).
+    # Unknown keys are preserved (the Studio decides the screen's schema).
     def update(patch)
       merged = deep_merge(get, stringify(patch || {}))
       @cs.put(SCOPE, KEY, merged)

@@ -5,9 +5,9 @@ require "yaml"
 
 module Harness
   module Commands
-    # Command de controle: grava uma skill compartilhada
-    # (SKILL.md completo) no SkillStore e RECARREGA o catálogo — passa a valer
-    # sem restart (hot). Valida o frontmatter (name obrigatório) antes de gravar.
+    # Control command: writes a shared skill
+    # (complete SKILL.md) into the SkillStore and RELOADS the catalog — takes effect
+    # without a restart (hot). Validates the frontmatter (name required) before writing.
     # -> { name, updated_at }.
     class WriteSkill
       def initialize(skill_store:, skill_catalog:, event_stream:)
@@ -20,7 +20,7 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
         content = p[:content].to_s
-        raise Harness::ValidationError, "name é obrigatório" if name.nil?
+        raise Harness::ValidationError, "name is required" if name.nil?
         validate_frontmatter!(content)
 
         rec = @skill_store.write(name, content, create_only: !!p[:create_only])
@@ -34,16 +34,16 @@ module Harness
 
       private
 
-      # Espelha o parse do SkillCatalog: sem frontmatter YAML com `name`, a skill
-      # seria ignorada silenciosamente no reload — falha cedo, no Command.
+      # Mirrors the SkillCatalog parse: without YAML frontmatter with `name`, the skill
+      # would be silently ignored on reload — fail early, in the Command.
       def validate_frontmatter!(content)
         match = content.match(/\A---\s*\n(.*?)\n---\s*\n/m)
-        raise Harness::ValidationError, "SKILL.md sem frontmatter YAML (--- ... ---)" unless match
+        raise Harness::ValidationError, "SKILL.md missing YAML frontmatter (--- ... ---)" unless match
 
-        # Parser tolerante (Frontmatter): prosa com `: ` no description é válida —
-        # não deve virar Psych::SyntaxError (500). Só falha se faltar `name`.
+        # Tolerant parser (Frontmatter): prose with `: ` in the description is valid —
+        # it must not become a Psych::SyntaxError (500). Only fails if `name` is missing.
         meta = Harness::Frontmatter.parse(match[1])
-        raise Harness::ValidationError, "frontmatter sem `name`" if AgentPayload.presence(meta["name"]).nil?
+        raise Harness::ValidationError, "frontmatter missing `name`" if AgentPayload.presence(meta["name"]).nil?
       end
     end
   end

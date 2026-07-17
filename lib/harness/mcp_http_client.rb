@@ -3,20 +3,20 @@
 require "json"
 
 module Harness
-  # Cliente MCP MÍNIMO sobre HTTP JSON-RPC (Fase 7, Etapa E). Descobre as tools de
-  # uma instância MCP com transport HTTP fazendo um POST JSON-RPC 2.0 `tools/list`
-  # no endpoint da instância, atrás do EgressGuard (SSRF — a url vem de config
-  # editável, NF4). É o cliente DEFAULT injetado no McpToolIngestor; os testes
-  # passam um Fake (duck-typed) no lugar.
+  # MINIMAL MCP client over HTTP JSON-RPC (Phase 7, Stage E). Discovers the tools
+  # of an MCP instance with HTTP transport by making a JSON-RPC 2.0 `tools/list`
+  # POST to the instance endpoint, behind the EgressGuard (SSRF — the url comes
+  # from editable config, NF4). It is the DEFAULT client injected into the
+  # McpToolIngestor; tests pass a Fake (duck-typed) in its place.
   #
-  # Contrato (duck-type do cliente MCP): `#list_tools -> [{name, description,
-  # inputSchema}]` — o mesmo envelope MCP que o adapter do ToolManifest normaliza.
+  # Contract (MCP client duck-type): `#list_tools -> [{name, description,
+  # inputSchema}]` — the same MCP envelope that the ToolManifest adapter normalizes.
   #
-  # ESCOPO (bounded, D8): só o handshake mínimo de UM POST stateless `tools/list`.
-  # NÃO implementa o ciclo de sessão MCP completo (initialize/negociação de
-  # protocolo/session-id/notifications) nem transport stdio — isso é o "transporte
-  # MCP real", trabalho posterior (out-of-scope, ver a spec §4 D8). Serve para
-  # servidores MCP HTTP simples (JSON-RPC direto) e para provar o seam de ingestão.
+  # SCOPE (bounded, D8): only the minimal handshake of ONE stateless `tools/list`
+  # POST. Does NOT implement the full MCP session lifecycle (initialize/protocol
+  # negotiation/session-id/notifications) nor the stdio transport — that is the
+  # "real MCP transport", later work (out-of-scope, see spec §4 D8). It serves
+  # simple HTTP MCP servers (direct JSON-RPC) and proves the ingestion seam.
   class McpHttpClient
     JSONRPC_VERSION = "2.0"
 
@@ -30,11 +30,11 @@ module Harness
       @timeout = timeout
     end
 
-    # -> [ { "name", "description", "inputSchema" } ]. Levanta Harness::Error em
-    # egress bloqueado, HTTP != 2xx, JSON inválido ou erro JSON-RPC.
+    # -> [ { "name", "description", "inputSchema" } ]. Raises Harness::Error on
+    # blocked egress, HTTP != 2xx, invalid JSON or a JSON-RPC error.
     def list_tools
       reason = @egress.violation(@url, **@egress_options)
-      raise Harness::Error, "destino MCP bloqueado: #{reason}" if reason
+      raise Harness::Error, "MCP target blocked: #{reason}" if reason
 
       result = @http.request(method: "POST", url: @url, headers: @headers,
                              body: request_body("tools/list", {}), timeout: @timeout)
@@ -47,7 +47,7 @@ module Harness
       JSON.generate(jsonrpc: JSONRPC_VERSION, id: 1, method: method, params: params)
     end
 
-    # Valida o envelope JSON-RPC e devolve `result` (Hash). HTTP/parse/erro -> Error.
+    # Validates the JSON-RPC envelope and returns `result` (Hash). HTTP/parse/error -> Error.
     def rpc_result(result)
       status = result[:status].to_i
       raise Harness::Error, "MCP HTTP #{status}: #{result[:body].to_s[0, 200]}" if status >= 400
@@ -58,7 +58,7 @@ module Harness
         raise Harness::Error, "resposta MCP não é JSON: #{e.message}"
       end
       if (err = parsed["error"])
-        raise Harness::Error, "erro JSON-RPC do MCP: #{err["message"] || err.inspect}"
+        raise Harness::Error, "MCP JSON-RPC error: #{err["message"] || err.inspect}"
       end
 
       parsed["result"] || {}

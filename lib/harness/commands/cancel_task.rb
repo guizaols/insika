@@ -2,15 +2,15 @@
 
 module Harness
   module Commands
-    # Command de controle: posta `:cancel` na mailbox in-process da
-    # Task e responde síncrono. Payload `{ task_id: String }` -> retorna Task.
+    # Control command: posts `:cancel` to the Task's in-process mailbox
+    # and responds synchronously. Payload `{ task_id: String }` -> returns Task.
     #
-    # O cancelamento é COOPERATIVO: quem transiciona o status é o
-    # fiber da task ao drenar a mailbox — NUNCA este handler. Cancel de task sem
-    # fiber vivo (terminal ou órfã) é no-op idempotente.
+    # Cancellation is COOPERATIVE: the one that transitions the status is the
+    # task's fiber when it drains the mailbox — NEVER this handler. Cancelling a task with no
+    # live fiber (terminal or orphaned) is an idempotent no-op.
     class CancelTask
-      # executor: objeto com #cancel(task_id) — a implementação real é
-      # `@running[task_id]&.post(:cancel)`; aqui é contrato (duck type).
+      # executor: object with #cancel(task_id) — the real implementation is
+      # `@running[task_id]&.post(:cancel)`; here it's a contract (duck type).
       def initialize(task_store:, executor:)
         @task_store = task_store
         @executor = executor
@@ -18,14 +18,14 @@ module Harness
 
       def call(command)
         task_id = command.payload[:task_id] || command.payload["task_id"]
-        raise Harness::ValidationError, "task_id é obrigatório" if task_id.to_s.empty?
+        raise Harness::ValidationError, "task_id is required" if task_id.to_s.empty?
 
         task = @task_store.find(task_id)
         raise Harness::NotFoundError, "task '#{task_id}' não encontrada" unless task
 
-        @executor.cancel(task_id) # no-op se não há fiber vivo neste processo
-        # Não transiciona status nem mexe no mailbox_state persistido: só se usa
-        # a mailbox in-process (Async::Queue). Devolve o estado corrente pós-post.
+        @executor.cancel(task_id) # no-op if there is no live fiber in this process
+        # Does not transition status nor touch the persisted mailbox_state: it only uses
+        # the in-process mailbox (Async::Queue). Returns the current state after the post.
         @task_store.find(task_id)
       end
     end

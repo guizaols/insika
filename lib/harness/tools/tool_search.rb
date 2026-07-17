@@ -4,20 +4,20 @@ require "ruby_llm"
 
 module Harness
   module Tools
-    # Nível 2 do progressive disclosure de TOOLS (análogo do LoadSkill):
-    # busca no catálogo de deferred e PROMOVE as relevantes para o chat vivo via
-    # chat.with_tools (verificado propagar no round seguinte do mesmo `ask`
-    # no ruby_llm 1.16). `require "ruby_llm"` fica NESTE arquivo (herda de
-    # RubyLLM::Tool) — não entra em lib/harness.rb; o Executor o carrega lazy no
-    # configure_chat (como o LoadSkill).
+    # Level 2 of TOOLS progressive disclosure (analog of LoadSkill):
+    # searches the deferred catalog and PROMOTES the relevant ones into the live chat via
+    # chat.with_tools (verified to propagate on the next round of the same `ask`
+    # in ruby_llm 1.16). `require "ruby_llm"` stays in THIS file (it inherits from
+    # RubyLLM::Tool) — it does not enter lib/harness.rb; the Executor loads it lazily in
+    # configure_chat (like LoadSkill).
     class ToolSearch < RubyLLM::Tool
       description "Busca e habilita ferramentas adicionais por descrição da necessidade"
       param :query, desc: "O que você precisa fazer (ex.: 'enviar email', 'gerar fatura')"
 
-      # RubyLLM::Tool#name deriva de self.class.name — p/ classe aninhada
-      # (Harness::Tools::ToolSearch) produz "harness--tools--tool_search", não
-      # "tool_search". Override explícito: o nome que o modelo chama tem que casar
-      # com o catálogo/docs/testes.
+      # RubyLLM::Tool#name derives from self.class.name — for a nested class
+      # (Harness::Tools::ToolSearch) it produces "harness--tools--tool_search", not
+      # "tool_search". Explicit override: the name the model calls must match
+      # the catalog/docs/tests.
       def name = "tool_search"
 
       def initialize(catalog, deferred_allowed, chat, tool_registry:, event_stream:,
@@ -29,7 +29,7 @@ module Harness
         @event_stream = event_stream
         @checkpoint_store = checkpoint_store
         @state = state
-        @promoted = [] # nomes já promovidos NESTE chat — idempotência
+        @promoted = [] # names already promoted IN THIS chat — idempotency
         super()
       end
 
@@ -48,10 +48,10 @@ module Harness
 
       private
 
-      # Instancia (via tool_registry), embrulha no MESMO ToolEnvelope das eager
-      # (timeout do profile + skip_side_effects do state) e promove via
-      # chat.with_tools. NotFoundError (catálogo desalinhado) descarta só
-      # aquele match — a busca não quebra.
+      # Instantiates (via tool_registry), wraps in the SAME ToolEnvelope as the eager
+      # ones (profile timeout + state's skip_side_effects) and promotes via
+      # chat.with_tools. A NotFoundError (misaligned catalog) drops only
+      # that match — the search does not break.
       def promote(entries)
         timeout = @state.profile.limits[:tool_timeout] || 60
         wrapped = entries.filter_map do |entry|
@@ -66,9 +66,9 @@ module Harness
         @chat.with_tools(*wrapped) unless wrapped.empty?
       end
 
-      # Espelha :skill_activated, mas emitido pela própria tool (tem event_stream/
-      # state no construtor). Sem `seq` monotônico (privado ao Executor) — gap
-      # documentado, não bloqueia.
+      # Mirrors :skill_activated, but emitted by the tool itself (it has event_stream/
+      # state in the constructor). Without a monotonic `seq` (private to the Executor) — a
+      # documented gap, not a blocker.
       def emit_tool_search(query, matched_names)
         @event_stream.emit(Harness::Event.new(
                              type: :tool_search,

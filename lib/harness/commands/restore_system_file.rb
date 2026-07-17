@@ -4,9 +4,9 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: restaura uma versão antiga de um
-    # arquivo de sistema global como o conteúdo atual (nova escrita — histórico
-    # linear). -> { file, updated_at }.
+    # Control command: restores an old version of a
+    # global system file as the current content (a new write — linear
+    # history). -> { file, updated_at }.
     class RestoreSystemFile
       def initialize(system_file_store:, event_stream:)
         @system_files = system_file_store
@@ -16,8 +16,8 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         file = AgentPayload.presence(p[:file])
-        raise Harness::ValidationError, "file é obrigatório" if file.nil?
-        raise Harness::ValidationError, "version é obrigatório" if p[:version].nil?
+        raise Harness::ValidationError, "file is required" if file.nil?
+        raise Harness::ValidationError, "version is required" if p[:version].nil?
 
         entry = @system_files.restore(file, p[:version])
         @event_stream.emit(Harness::Event.new(

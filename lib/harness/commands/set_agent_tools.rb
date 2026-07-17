@@ -4,10 +4,10 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: ajusta a allow/denylist de tools
-    # de um agente. `allow` nil = todas (regra do AgentProfile); `deny` sempre
-    # vence. `allow_groups` (Fase 7/D4/F5, Etapa C): allowlist por grupo, só
-    # sobrescrita se a chave vier no payload (senão preserva). Vale no próximo
+    # Control command: adjusts an agent's tools allow/denylist.
+    # `allow` nil = all (AgentProfile rule); `deny` always
+    # wins. `allow_groups` (Phase 7/D4/F5, Step C): per-group allowlist, only
+    # overwritten if the key comes in the payload (otherwise preserved). Takes effect on the next
     # dispatch (hot). -> AgentProfile.
     class SetAgentTools
       def initialize(profile_source:, event_stream:)
@@ -18,9 +18,9 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         id = AgentPayload.presence(p[:id])
-        raise Harness::ValidationError, "id é obrigatório" if id.nil?
-        raise Harness::ValidationError, "allow deve ser lista ou nulo" unless p[:allow].nil? || p[:allow].is_a?(Array)
-        raise Harness::ValidationError, "allow_groups deve ser lista ou nulo" unless p[:allow_groups].nil? || p[:allow_groups].is_a?(Array)
+        raise Harness::ValidationError, "id is required" if id.nil?
+        raise Harness::ValidationError, "allow must be a list or nil" unless p[:allow].nil? || p[:allow].is_a?(Array)
+        raise Harness::ValidationError, "allow_groups must be a list or nil" unless p[:allow_groups].nil? || p[:allow_groups].is_a?(Array)
 
         existing = @profile_source.fetch(id) ||
                    (raise Harness::NotFoundError, "agente '#{id}' não encontrado")

@@ -3,15 +3,15 @@
 module Harness
   module Context
     module Providers
-      # Fragmento :system com metadados do turno (tenant, vars relevantes).
-      # Nada se não houver metadados. priority 40. Não é required?
-      # (metadados podem degradar).
+      # :system fragment with turn metadata (tenant, relevant vars).
+      # Nothing if there is no metadata. priority 40. Not required?
+      # (metadata may degrade).
       class Request < ContextProvider
         def call(request)
           lines = []
           lines << "tenant: #{request.tenant}" if request.tenant
-          # "history" é transcript (consumido pelo Session provider), não metadado
-          # do turno — não vaza para o request_context do system.
+          # "history" is transcript (consumed by the Session provider), not turn
+          # metadata — it does not leak into the system's request_context.
           request.vars.to_h.each { |k, v| lines << "#{k}: #{v}" unless k.to_s == "history" }
           return [] if lines.empty?
 

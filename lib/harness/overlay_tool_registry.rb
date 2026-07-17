@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 
 module Harness
-  # Registry de tools DINÂMICA: compõe a registry de CÓDIGO (base, montada no boot,
-  # imutável) com as tools POR DADOS do ToolStore. Drop-in do ToolRegistry — o
-  # Executor/ToolCatalog/ToolEnvelope só usam entries/resolve/side_effect?. Fase 5,
-  # Etapa B / D2.
+  # DYNAMIC tool registry: composes the CODE registry (base, built at boot,
+  # immutable) with the DATA-DEFINED tools from the ToolStore. Drop-in for ToolRegistry —
+  # the Executor/ToolCatalog/ToolEnvelope only use entries/resolve/side_effect?. Phase 5,
+  # Step B / D2.
   #
-  # Regras:
-  #   - COLISÃO: a base (código) SEMPRE vence — uma data-tool não pode sequestrar
-  #     o nome de uma tool de código (segurança, R3). O Command de autoria também
-  #     recusa criar com nome colidente (code_tool?), mas a defesa fica aqui.
-  #   - HOT: `reload` re-lê o store e troca o índice dinâmico atomicamente — uma
-  #     data-tool nova/editada vale no próximo turno sem restart (F5), espelhando
-  #     o SkillCatalog.reload. Um turno em andamento já capturou o índice.
-  #   - PARIDADE (NF1): ToolStore vazio ⇒ entries/resolve/side_effect? idênticos à
-  #     base pura. A base (config/wiring.rb) sequer usa o overlay — zero regressão.
+  # Rules:
+  #   - COLLISION: the base (code) ALWAYS wins — a data-tool cannot hijack
+  #     the name of a code tool (security, R3). The authoring Command also
+  #     refuses to create with a colliding name (code_tool?), but the defense stays here.
+  #   - HOT: `reload` re-reads the store and swaps the dynamic index atomically — a
+  #     new/edited data-tool takes effect on the next turn without a restart (F5), mirroring
+  #     SkillCatalog.reload. An in-flight turn has already captured the index.
+  #   - PARITY (NF1): empty ToolStore ⇒ entries/resolve/side_effect? identical to the
+  #     pure base. The base (config/wiring.rb) does not even use the overlay — zero regression.
   #
-  # As data-tools entram como Registry::Entry NORMAIS (optional: false) — obedecem
-  # ao mesmo allow/deny por agente das tools de código; a exposição é do operador
-  # (matriz /tools), não automática por ser "por dados".
+  # The data-tools enter as NORMAL Registry::Entry (optional: false) — they obey
+  # the same per-agent allow/deny as code tools; exposure is the operator's
+  # (the /tools matrix), not automatic just because they are "data-defined".
   class OverlayToolRegistry
     def initialize(base:, tool_store:, http:, egress: Harness::EgressGuard, egress_options: {}, event_stream: nil)
       @base = base
@@ -29,7 +29,7 @@ module Harness
       @event_stream = event_stream
     end
 
-    # Base + dinâmicas, exceto dinâmicas que colidem com a base (base vence).
+    # Base + dynamic, except dynamic ones that collide with the base (base wins).
     def entries
       @base.entries + dynamic.reject { |e| code_tool?(e.name) }
     end
@@ -38,7 +38,7 @@ module Harness
       (@base.names + dynamic.map(&:name)).uniq
     end
 
-    # -> instância (base vence) | raise NotFoundError.
+    # -> instance (base wins) | raise NotFoundError.
     def resolve(name)
       key = name.to_s
       return @base.resolve(key) if code_tool?(key)
@@ -49,7 +49,7 @@ module Harness
       entry.factory.call
     end
 
-    # -> bool; consumido pelo ToolEnvelope (checkpoint/skip-on-resume). Base vence.
+    # -> bool; consumed by ToolEnvelope (checkpoint/skip-on-resume). Base wins.
     def side_effect?(name)
       key = name.to_s
       return @base.side_effect?(key) if code_tool?(key)
@@ -58,13 +58,13 @@ module Harness
       entry ? !!entry.metadata[:side_effect] : false
     end
 
-    # Troca atômica do índice dinâmico (após escrita/remoção de data-tool).
+    # Atomic swap of the dynamic index (after writing/removing a data-tool).
     def reload
       @dynamic = build_dynamic
       self
     end
 
-    # É uma tool de CÓDIGO (base)? Usado pela validação do Command de autoria.
+    # Is it a CODE tool (base)? Used by the authoring Command's validation.
     def code_tool?(name) = @base.names.include?(name.to_s)
 
     private
@@ -86,12 +86,12 @@ module Harness
         factory: -> { build_tool(definition) }
       )
     rescue Harness::ValidationError => e
-      warn "[overlay-tools] definição inválida ignorada: #{e.message}"
+      warn "[overlay-tools] invalid definition ignored: #{e.message}"
       nil
     end
 
-    # require lazy: DataDefinedTool herda RubyLLM::Tool (puxa a gem) -> fora do
-    # load-time do harness.rb, carregado na 1ª instância (turn time).
+    # Lazy require: DataDefinedTool inherits from RubyLLM::Tool (pulls in the gem) -> kept
+    # out of harness.rb load-time, loaded on the 1st instance (turn time).
     def build_tool(definition)
       require_relative "tools/data_defined_tool"
       Harness::Tools::DataDefinedTool.new(

@@ -4,8 +4,8 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: remove um arquivo de prompt do
-    # workspace de um agente. Inexistente -> NotFoundError. -> { agent_id, file }.
+    # Control command: removes a prompt file from an agent's
+    # workspace. Nonexistent -> NotFoundError. -> { agent_id, file }.
     class DeleteAgentFile
       def initialize(profile_source:, agent_file_store:, event_stream:)
         @profile_source = profile_source
@@ -17,8 +17,8 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         agent_id = AgentPayload.presence(p[:agent_id])
         file = AgentPayload.presence(p[:file])
-        raise Harness::ValidationError, "agent_id é obrigatório" if agent_id.nil?
-        raise Harness::ValidationError, "file é obrigatório" if file.nil?
+        raise Harness::ValidationError, "agent_id is required" if agent_id.nil?
+        raise Harness::ValidationError, "file is required" if file.nil?
 
         unless @agent_files.delete(agent_id, file)
           raise Harness::NotFoundError, "arquivo '#{file}' não encontrado para o agente '#{agent_id}'"
@@ -34,8 +34,8 @@ module Harness
 
       private
 
-      # Remover o arquivo também o tira de prompt_files (a operação inversa do
-      # WriteAgentFile) — trabalho do Command, não de quem despacha.
+      # Removing the file also drops it from prompt_files (the inverse operation of
+      # WriteAgentFile) — the Command's job, not the dispatcher's.
       def unregister_prompt_file(agent_id, file)
         profile = @profile_source.fetch(agent_id)
         return unless profile

@@ -3,11 +3,11 @@
 module Harness
   module Context
     module Providers
-      # Lê o Session Store. ÚNICO provider de histórico: as três fontes de
-      # transcript convergem aqui — o Executor não escolhe fonte. Produz
-      # fragmentos :history (1 por mensagem), priority escalonada por recência
-      # com TETO 79: o corte de orçamento descarta as mais antigas primeiro
-      # e o histórico NUNCA supera skills (80) nem identidade (100).
+      # Reads the Session Store. The ONLY history provider: the three transcript
+      # sources converge here — the Executor does not pick a source. Produces
+      # :history fragments (1 per message), with priority scaled by recency
+      # with a CEILING of 79: the budget cut discards the oldest ones first
+      # and history NEVER outranks skills (80) or identity (100).
       class Session < ContextProvider
         def initialize(session_store:)
           @session_store = session_store
@@ -21,7 +21,7 @@ module Harness
             ContextFragment.build(
               content: { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] },
               placement: :history,
-              # teto HISTORY_MAX; idx 0 = mais antiga (cai primeiro no corte)
+              # HISTORY_MAX ceiling; idx 0 = oldest (drops first in the cut)
               priority: [Context::Priority::HISTORY_BASE + idx, Context::Priority::HISTORY_MAX].min,
               source: id
             )
@@ -30,8 +30,8 @@ module Harness
 
         private
 
-        # Precedência: checkpoint -> history explícito -> store.
-        # A primeira fonte presente vence; sem merge.
+        # Precedence: checkpoint -> explicit history -> store.
+        # The first present source wins; no merge.
         def transcript_for(request)
           return request.checkpoint.messages if request.checkpoint
 
@@ -42,20 +42,20 @@ module Harness
           nil
         end
 
-        # Fonte 2 (history explícito): o handler repassa em request.vars[:history].
-        # Isolado num método único p/ trocar a convenção com 1 linha.
+        # Source 2 (explicit history): the handler passes it in request.vars[:history].
+        # Isolated in a single method to change the convention with 1 line.
         def explicit_history(request)
           vars = request.vars.to_h
           vars[:history] || vars["history"]
         end
 
-        # Requiredness CONDICIONAL: com sessão pedida, falha de
-        # leitura vira ContextError (aborta o turno); a base required? não
-        # recebe o request, então o comportamento mora aqui.
+        # CONDITIONAL requiredness: when a session is requested, a read
+        # failure becomes a ContextError (aborts the turn); the base required?
+        # does not receive the request, so the behavior lives here.
         def session_messages(session)
           @session_store.find(session.id)&.messages || []
-        rescue StandardError => e # leitura falha (exceção/StoreError)
-          raise ContextError.new("Session provider falhou com sessão pedida: #{e.message}",
+        rescue StandardError => e # read failure (exception/StoreError)
+          raise ContextError.new("Session provider failed with a requested session: #{e.message}",
                                  provider: id)
         end
       end

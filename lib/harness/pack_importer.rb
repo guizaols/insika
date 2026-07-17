@@ -1,21 +1,22 @@
 # frozen_string_literal: true
 
 module Harness
-  # Importador de pack (Fase 6/D4/F6, task 7): lê um Pack e emite os Commands de
-  # autoria JÁ existentes — create_agent/update_agent + write_agent_file +
-  # write_skill + write_data_tool — tornando um agente provisionável em runtime a
-  # partir de um pack padronizado. É a peça que o `GatewayClient`/`ProvisionStore`
-  # do achei-b2b aciona (via a API de provisionamento, task 8).
+  # Pack importer (Phase 6/D4/F6, task 7): reads a Pack and emits the ALREADY
+  # existing authoring Commands — create_agent/update_agent + write_agent_file +
+  # write_skill + write_data_tool — making an agent provisionable at runtime from
+  # a standardized pack. It's the piece that achei-b2b's `GatewayClient`/
+  # `ProvisionStore` triggers (via the provisioning API, task 8).
   #
-  # GENÉRICO (NF1): nada aqui cita achei-b2b — o pack é o contrato. Os nomes de
-  # tool vêm do PACK, então prompts<->tools ficam consistentes por construção
-  # (NF2). Não escreve em store direto: só despacha Commands no bus (mesma
-  # disciplina do transporte) + LÊ o ProfileSource p/ decidir create vs update.
+  # GENERIC (NF1): nothing here mentions achei-b2b — the pack is the contract. Tool
+  # names come from the PACK, so prompts<->tools stay consistent by construction
+  # (NF2). It doesn't write to the store directly: it only dispatches Commands on
+  # the bus (the same transport discipline) + READS the ProfileSource to decide
+  # create vs update.
   #
-  # IDEMPOTENTE (upsert): re-importar o mesmo pack reconcilia — arquivos/skills/
-  # tools reescritos; as allowlists (prompt_files/skills/tools_allow) são
-  # AUTORITATIVAS a partir do pack, então o que saiu do pack sai do agente
-  # (isolamento e sem drift). Um turno em andamento mantém o profile que capturou.
+  # IDEMPOTENT (upsert): re-importing the same pack reconciles — files/skills/
+  # tools rewritten; the allowlists (prompt_files/skills/tools_allow) are
+  # AUTHORITATIVE from the pack, so whatever left the pack leaves the agent
+  # (isolation and no drift). An in-flight turn keeps the profile it captured.
   class PackImporter
     def initialize(bus:, profiles:)
       @bus = bus
@@ -23,15 +24,15 @@ module Harness
     end
 
     # -> { agent_id:, created:, files: [names], skills: [names], tools: [names] }.
-    # Erros de validação/lookup dos Commands (id/model ausente, etc.) propagam
-    # (o transporte os mapeia a 422/404).
+    # Validation/lookup errors from the Commands (missing id/model, etc.) propagate
+    # (the transport maps them to 422/404).
     def import(pack)
       id = presence(pack.config[:id]) ||
-           (raise Harness::ValidationError, "pack sem config.id")
+           (raise Harness::ValidationError, "pack missing config.id")
 
       created = @profiles[id].nil?
-      # create_agent recusa id já existente; update_agent exige que exista — a
-      # escolha por presença torna o import um upsert.
+      # create_agent rejects an already-existing id; update_agent requires it to
+      # exist — the choice by presence makes the import an upsert.
       dispatch(created ? :create_agent : :update_agent, agent_attrs(pack, id))
 
       pack.files.each { |name, body| dispatch(:write_agent_file, { agent_id: id, file: name, content: body }) }
@@ -42,9 +43,9 @@ module Harness
         files: pack.files.keys, skills: pack.skills.keys, tools: pack.tools.map { |t| tool_name(t) } }
     end
 
-    # Remove o agente (delete_agent). NÃO apaga skills/tools/arquivos: podem ser
-    # compartilhados e o SkillStore/ToolStore são globais — remoção seletiva é
-    # trabalho de operador. NotFoundError (agente ausente) propaga -> 404.
+    # Removes the agent (delete_agent). Does NOT delete skills/tools/files: they
+    # may be shared and the SkillStore/ToolStore are global — selective removal is
+    # operator work. NotFoundError (missing agent) propagates -> 404.
     def delete(id)
       dispatch(:delete_agent, { id: id })
       { agent_id: id, deleted: true }
@@ -52,21 +53,21 @@ module Harness
 
     private
 
-    # attrs do AgentProfile.build: o manifesto do pack + as allowlists derivadas
-    # e AUTORITATIVAS do pack. Assim o agente só enxerga as skills/tools do
-    # PRÓPRIO pack (isolamento por loja) e re-provisionar remove o que saiu.
-    #   - prompt_files = os .md do pack (write_agent_file também registra; união
-    #     no-op). Setar aqui torna a lista autoritativa (remove os que saíram).
-    #   - skills = os dirs de skills/ do pack (allowlist explícita; [] se nenhum
-    #     no pack e config não declarou — nunca nil=todas, que vazaria skills de
-    #     outras lojas).
-    #   - tools_allow = (config.tools_allow) ∪ (nomes das tools do pack) — garante
-    #     que o agente pode chamar as próprias data-tools (NF2).
-    #   - tools_allow_groups = grupos habilitados por FLAG no pack (ver
-    #     #enabled_groups) — o CORTE de schema por flag (Fase 7, Etapa E / D5): só
-    #     as tools dos grupos habilitados (união com tools_allow) vão pro modelo;
-    #     as dos grupos desabilitados são cortadas ANTES do turno (resolve o
-    #     desperdício de tool-call do OpenClaw, onde a flag só existe no Rails).
+    # AgentProfile.build attrs: the pack manifest + the allowlists derived and
+    # AUTHORITATIVE from the pack. This way the agent only sees the skills/tools of
+    # its OWN pack (per-store isolation) and re-provisioning removes what left.
+    #   - prompt_files = the pack's .md files (write_agent_file also registers;
+    #     union is a no-op). Setting here makes the list authoritative (removes the ones that left).
+    #   - skills = the pack's skills/ dirs (explicit allowlist; [] if none in the
+    #     pack and config didn't declare any — never nil=all, which would leak
+    #     skills from other stores).
+    #   - tools_allow = (config.tools_allow) ∪ (the pack's tool names) — guarantees
+    #     the agent can call its own data-tools (NF2).
+    #   - tools_allow_groups = groups enabled by FLAG in the pack (see
+    #     #enabled_groups) — the per-flag schema CUT (Phase 7, Stage E / D5): only
+    #     the tools of the enabled groups (union with tools_allow) go to the model;
+    #     those of disabled groups are cut BEFORE the turn (resolves the OpenClaw
+    #     tool-call waste, where the flag only exists in Rails).
     def agent_attrs(pack, id)
       attrs = pack.config.dup
       attrs[:id] = id
@@ -82,16 +83,16 @@ module Harness
       attrs
     end
 
-    # CORTE POR FLAG (Fase 7, Etapa E / D5, piloto ESTÁTICO): deriva a allowlist por
-    # grupo do agente a partir de FLAGS declaradas no pack config — DADO, nunca
-    # convenção do core (NF1). O motor não conhece "groceries_v2"/"b2b": o pack
-    # declara quais GRUPOS estão habilitados; o mapeamento flag->grupo é
-    # responsabilidade do provisionamento/pack, não do harness. Duas formas (união):
-    #   - `enabled_groups: ["default", "b2b"]`  — lista explícita de grupos ON.
-    #   - `flags: { "b2b" => true, "natura" => false }` — a chave da flag É o nome
-    #     do grupo; só as truthy entram (as false CORTAM o grupo).
-    # Nenhuma das duas declarada -> nil (sem corte por grupo; comportamento antigo).
-    # `[]` explícito (enabled_groups vazio, ou flags todas false) -> nenhum grupo.
+    # PER-FLAG CUT (Phase 7, Stage E / D5, STATIC pilot): derives the agent's
+    # per-group allowlist from FLAGS declared in the pack config — DATA, never a
+    # core convention (NF1). The engine doesn't know "groceries_v2"/"b2b": the pack
+    # declares which GROUPS are enabled; the flag->group mapping is the
+    # responsibility of provisioning/the pack, not the harness. Two forms (union):
+    #   - `enabled_groups: ["default", "b2b"]`  — explicit list of ON groups.
+    #   - `flags: { "b2b" => true, "natura" => false }` — the flag key IS the group
+    #     name; only the truthy ones enter (the false ones CUT the group).
+    # Neither declared -> nil (no per-group cut; old behavior).
+    # Explicit `[]` (empty enabled_groups, or all flags false) -> no group.
     def enabled_groups(config)
       return nil unless config.key?(:enabled_groups) || config.key?(:flags)
 
@@ -100,7 +101,7 @@ module Harness
       (from_list | from_flags)
     end
 
-    # { grupo => bool } -> [grupos com valor truthy]. Aceita chaves string|symbol.
+    # { group => bool } -> [groups with a truthy value]. Accepts string|symbol keys.
     def flag_groups(flags)
       return [] unless flags.is_a?(Hash)
 

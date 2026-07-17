@@ -2,19 +2,19 @@
 
 module Harness
   module Policy
-    # Input do estágio 3. candidate_tools = [ToolRegistry::Entry]
-    # (SEM filtrar); candidate_skills = [SkillCatalog::Skill] de
-    # catalog.effective(profile.skills). context = ContextPackage (Context antes
-    # de Policy).
+    # Stage 3 input. candidate_tools = [ToolRegistry::Entry]
+    # (UNfiltered); candidate_skills = [SkillCatalog::Skill] from
+    # catalog.effective(profile.skills). context = ContextPackage (Context before
+    # Policy).
     PolicyRequest = Data.define(:profile, :command, :context,
                                 :candidate_tools, :candidate_skills)
 
-    # Saída de UMA policy. allow_* == nil => "sem restrição desta
-    # policy" (não entra na interseção); [] => conjunto vazio; deny_* é sempre
-    # lista (união). verdict :deny nega o TURNO inteiro. Tudo Data imutável — a
-    # pureza da policy é estrutural.
-    # `requires_approval`: nomes de tools que exigem aprovação humana —
-    # NÃO nega nem permite; o gate real é no ToolEnvelope (estágio 6). Default [].
+    # Output of ONE policy. allow_* == nil => "no restriction from this
+    # policy" (does not enter the intersection); [] => empty set; deny_* is always
+    # a list (union). verdict :deny denies the WHOLE TURN. All immutable Data — the
+    # policy's purity is structural.
+    # `requires_approval`: names of tools that require human approval —
+    # does NOT deny or allow; the real gate is in the ToolEnvelope (stage 6). Default [].
     Decision = Data.define(:allow_tools, :deny_tools, :allow_skills, :deny_skills,
                            :requires_approval, :verdict, :reason) do
       def self.allow(allow_tools: nil, deny_tools: [], allow_skills: nil, deny_skills: [],
@@ -32,8 +32,8 @@ module Harness
       end
     end
 
-    # Classe base de policy. PURA — sem IO, sem mutação; o
-    # determinismo é exigido pelo handoff.
+    # Policy base class. PURE — no IO, no mutation; determinism
+    # is required by the handoff.
     class Base
       def id = self.class.name
 
@@ -42,18 +42,18 @@ module Harness
       end
     end
 
-    # Policies builtin.
+    # Builtin policies.
     module Builtin
-      # Absorve o ToolRegistry#resolve como policy: optional sem
-      # opt-in -> deny; tools_deny -> deny ("deny sempre vence"); tools_allow
-      # com a semântica (nil = todas; [] = ∅; [names] = conjunto final).
-      # Fase 7/D4/F5 (Etapa C): `tools_allow_groups` UNE às tools dos grupos
-      # (o grupo é DADO no metadata da Entry). Ambas allowlists nil = todas.
+      # Absorbs ToolRegistry#resolve as a policy: optional without
+      # opt-in -> deny; tools_deny -> deny ("deny always wins"); tools_allow
+      # with the semantics (nil = all; [] = ∅; [names] = final set).
+      # Phase 7/D4/F5 (Step C): `tools_allow_groups` UNIONS in the groups' tools
+      # (the group is GIVEN in the Entry metadata). Both allowlists nil = all.
       class ToolAllowlist < Base
         def decide(request)
           profile = request.profile
-          # optional vive no metadata da Entry; candidate_tools são
-          # ToolRegistry::Entry (Registry::Entry com metadata).
+          # optional lives in the Entry metadata; candidate_tools are
+          # ToolRegistry::Entry (Registry::Entry with metadata).
           deny = request.candidate_tools
                  .select { |e| e.metadata[:optional] && !profile.tool_opted_in?(e.name) }
                  .map { |e| e.name.to_s }
@@ -65,10 +65,10 @@ module Harness
 
         private
 
-        # nil = SEM restrição (todas) SÓ quando tools_allow E tools_allow_groups
-        # ausentes (paridade). Do contrário é a UNIÃO: nomes explícitos +
-        # tools cujo `group` (metadata) está em tools_allow_groups. Uma allow []
-        # (e groups nil) segue = ∅.
+        # nil = NO restriction (all) ONLY when tools_allow AND tools_allow_groups
+        # are absent (parity). Otherwise it's the UNION: explicit names +
+        # tools whose `group` (metadata) is in tools_allow_groups. An allow []
+        # (with groups nil) still = ∅.
         def allowed_names(profile, candidates)
           names = profile.tools_allow.nil? ? nil : Array(profile.tools_allow).map(&:to_s)
           groups = profile.tools_allow_groups.nil? ? nil : Array(profile.tools_allow_groups).map(&:to_s)
@@ -81,8 +81,8 @@ module Harness
         end
       end
 
-      # Semântica nil/[]/[names] de profile.skills. effective
-      # permanece no catálogo (consulta); a DECISÃO de usá-lo é aqui.
+      # nil/[]/[names] semantics of profile.skills. effective
+      # stays in the catalog (query); the DECISION to use it is here.
       class SkillAllowlist < Base
         def decide(request)
           allow = request.profile.skills.nil? ? nil : Array(request.profile.skills).map(&:to_s)
@@ -90,8 +90,8 @@ module Harness
         end
       end
 
-      # Enforcement do campo workflows_allow. Neutra fora de
-      # :trigger_workflow; deny do turno quando o workflow não está na allowlist.
+      # Enforcement of the workflows_allow field. Neutral outside
+      # :trigger_workflow; denies the turn when the workflow is not in the allowlist.
       class WorkflowAllowlist < Base
         def decide(request)
           command = request.command
@@ -101,14 +101,14 @@ module Harness
           allow = request.profile.workflows_allow
           return Decision.allow if allow.nil? || Array(allow).map(&:to_s).include?(name)
 
-          Decision.deny(reason: "workflow '#{name}' fora da allowlist do agente '#{request.profile.id}'")
+          Decision.deny(reason: "workflow '#{name}' not in the allowlist of agent '#{request.profile.id}'")
         end
       end
 
-      # Marca tools que exigem aprovação humana. Não nega/permite —
-      # anexa `requires_approval` à Resolution; o gate é no ToolEnvelope (estágio
-      # 6), onde a call ocorre. Semântica allowlist: nil = nenhuma; [names] =
-      # essas exigem aprovação. Pura/síncrona.
+      # Marks tools that require human approval. Does not deny/allow —
+      # attaches `requires_approval` to the Resolution; the gate is in the ToolEnvelope
+      # (stage 6), where the call happens. Allowlist semantics: nil = none; [names] =
+      # those require approval. Pure/synchronous.
       class ApprovalRequired < Base
         def decide(request)
           names = request.profile.approvals_required

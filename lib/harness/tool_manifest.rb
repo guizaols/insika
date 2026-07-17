@@ -1,67 +1,67 @@
 # frozen_string_literal: true
 
 module Harness
-  # Manifesto de tools (Fase 7, Etapa B): a forma em LOTE, em DADOS e em formato
-  # PADRÃO de mercado (JSON Schema) das data-tools. Um `defaults` (binding comum:
-  # base_url/path_template/method/headers/secret_headers/response) + uma lista de
-  # `tools`. Cada tool é normalizada — herdando os defaults, aplicando o adapter
-  # de envelope (OpenAI/MCP/cru) e resolvendo `endpoint`→url + `{{secret.*}}`/
-  # `{{env.*}}` — numa Hash de ToolDefinition consumível pelo ToolStore.
+  # Tool manifest (Phase 7, Step B): the BATCH, DATA-driven, industry-STANDARD
+  # (JSON Schema) form of the data-tools. A `defaults` (common binding:
+  # base_url/path_template/method/headers/secret_headers/response) + a list of
+  # `tools`. Each tool is normalized — inheriting the defaults, applying the envelope
+  # adapter (OpenAI/MCP/raw) and resolving `endpoint`→url + `{{secret.*}}`/
+  # `{{env.*}}` — into a ToolDefinition Hash consumable by the ToolStore.
   #
-  # GENÉRICO (NF1): nada aqui cita achei/openclaw — o manifesto É o contrato. Só
-  # NORMALIZA/RESOLVE; a validação final (method/url/tipos, placeholders de modelo
-  # `{{param}}`/turno `{{ctx.*}}`, subset seguro de JSON Schema) é da
-  # ToolDefinition (fonte única). O upsert em lote + reload hot é do Command
-  # :import_tools (que injeta os resolvedores de secret/env).
+  # GENERIC (NF1): nothing here mentions achei/openclaw — the manifest IS the contract. It
+  # only NORMALIZES/RESOLVES; the final validation (method/url/types, model placeholders
+  # `{{param}}`/turn `{{ctx.*}}`, safe subset of JSON Schema) belongs to
+  # ToolDefinition (single source). The batch upsert + hot reload belongs to the
+  # :import_tools Command (which injects the secret/env resolvers).
   #
-  # Duas classes de placeholder por MOMENTO de resolução:
-  #   - `{{param}}`/`{{ctx.*}}` : resolvidos NO TURNO (pelo DataDefinedTool) —
-  #     ficam INTACTOS aqui; a ToolDefinition os valida.
-  #   - `{{secret.*}}`/`{{env.*}}` : resolvidos NA INGESTÃO (aqui) — do deployment,
-  #     nunca do manifesto (D6/R3). `{{env.*}}` é config não-secreta (qualquer
-  #     template); `{{secret.*}}` é credencial e SÓ é permitido num header
-  #     declarado em `secret_headers`, com valor === `{{secret.X}}` (nada literal,
-  #     nada fora de header — senão o segredo vazaria sem masking).
+  # Two placeholder classes by resolution MOMENT:
+  #   - `{{param}}`/`{{ctx.*}}` : resolved AT THE TURN (by DataDefinedTool) —
+  #     they stay INTACT here; ToolDefinition validates them.
+  #   - `{{secret.*}}`/`{{env.*}}` : resolved AT INGESTION (here) — from the deployment,
+  #     never from the manifest (D6/R3). `{{env.*}}` is non-secret config (any
+  #     template); `{{secret.*}}` is a credential and is ONLY allowed in a header
+  #     declared in `secret_headers`, with value === `{{secret.X}}` (nothing literal,
+  #     nothing outside a header — otherwise the secret would leak without masking).
   #
-  # Envelope da interface (o que o modelo vê), por adapter (D3):
-  #   - `parameters` (JSON Schema cru), OU
-  #   - `{ "function": { name, description, parameters } }` (OpenAI/Anthropic), OU
+  # Interface envelope (what the model sees), by adapter (D3):
+  #   - `parameters` (raw JSON Schema), OR
+  #   - `{ "function": { name, description, parameters } }` (OpenAI/Anthropic), OR
   #   - `{ "inputSchema": {...} }` (MCP).
   ToolManifest = Data.define(:version, :defaults, :tools)
 
-  # Reabre a classe (constantes num bloco de Data.define caem no escopo LÉXICO
-  # errado — mesmo padrão da ToolDefinition irmã).
+  # Reopens the class (constants inside a Data.define block land in the wrong LEXICAL
+  # scope — same pattern as the sibling ToolDefinition).
   class ToolManifest
     ENV_PREFIX = "env."
     SECRET_PREFIX = "secret."
     private_constant :ENV_PREFIX, :SECRET_PREFIX
 
-    # Hash cru (string|symbol keys) -> ToolManifest. Valida só a ESTRUTURA de topo
-    # (version/defaults/tools); o conteúdo de cada tool é validado na normalização
-    # (per-tool, isolável pelo Command — R4). Levanta ValidationError.
+    # Raw Hash (string|symbol keys) -> ToolManifest. Validates only the top-level
+    # STRUCTURE (version/defaults/tools); each tool's content is validated during
+    # normalization (per-tool, isolable by the Command — R4). Raises ValidationError.
     def self.from_h(hash)
       h = stringify(hash || {})
       version = h.fetch("version", 1)
       defaults = h.fetch("defaults", {}) || {}
       tools = h.fetch("tools", []) || []
-      raise Harness::ValidationError, "manifesto: 'defaults' deve ser objeto" unless defaults.is_a?(Hash)
-      raise Harness::ValidationError, "manifesto: 'tools' deve ser lista" unless tools.is_a?(Array)
+      raise Harness::ValidationError, "manifest: 'defaults' must be an object" unless defaults.is_a?(Hash)
+      raise Harness::ValidationError, "manifest: 'tools' must be a list" unless tools.is_a?(Array)
 
       new(version: version, defaults: defaults, tools: tools)
     end
 
-    # -> [ { ToolDefinition hash } ] com defaults herdados, envelopes normalizados,
-    # endpoint→url resolvido e secret/env resolvidos. Levanta na PRIMEIRA tool
-    # malformada — use #definition_for por-tool p/ isolar falha parcial (R4).
+    # -> [ { ToolDefinition hash } ] with inherited defaults, normalized envelopes,
+    # resolved endpoint→url and resolved secret/env. Raises on the FIRST malformed
+    # tool — use #definition_for per-tool to isolate partial failure (R4).
     def tool_definitions(secrets:, env:)
       tools.map { |t| definition_for(t, secrets: secrets, env: env) }
     end
 
-    # Normaliza UMA tool crua -> Hash de ToolDefinition. Levanta ValidationError
-    # (envelope inválido, endpoint/url ausente, secret/env não configurado, R3).
+    # Normalizes ONE raw tool -> ToolDefinition Hash. Raises ValidationError
+    # (invalid envelope, missing endpoint/url, secret/env not configured, R3).
     def definition_for(raw_tool, secrets:, env:)
       t = self.class.stringify(raw_tool || {})
-      raise Harness::ValidationError, "tool deve ser objeto" unless t.is_a?(Hash)
+      raise Harness::ValidationError, "tool must be an object" unless t.is_a?(Hash)
 
       interface = extract_interface(t)
       binding = build_binding(t, secrets, env)
@@ -73,16 +73,16 @@ module Harness
         "response" => binding[:response],
         "secret_headers" => binding[:secret_headers],
         "side_effect" => t["side_effect"],
-        "group" => t["group"] || defaults["group"],       # Fase 7/D4/F5 (Etapa C):
-        "tags" => (Array(defaults["tags"]) | Array(t["tags"])) # default herdado; tags em união
+        "group" => t["group"] || defaults["group"],       # Phase 7/D4/F5 (Step C):
+        "tags" => (Array(defaults["tags"]) | Array(t["tags"])) # inherited default; tags unioned
       }.compact
     end
 
     private
 
-    # Adapter de envelope (D3): extrai a INTERFACE (name/description/parameters) de
-    # qualquer forma padrão. name/description caem no topo da tool quando o
-    # envelope não os traz.
+    # Envelope adapter (D3): extracts the INTERFACE (name/description/parameters) from
+    # any standard form. name/description fall back to the tool's top level when the
+    # envelope does not carry them.
     def extract_interface(t)
       fn = t["function"]
       if fn.is_a?(Hash)                                   # OpenAI/Anthropic function tool
@@ -90,13 +90,13 @@ module Harness
           parameters: fn["parameters"] }
       elsif t.key?("inputSchema")                         # MCP tool
         { name: t["name"], description: t["description"], parameters: t["inputSchema"] }
-      else                                               # cru: parameters é JSON Schema
+      else                                               # raw: parameters is JSON Schema
         { name: t["name"], description: t["description"], parameters: t["parameters"] }
       end
     end
 
-    # Monta o binding (request/response/secret_headers) herdando defaults, com a
-    # tool vencendo. Resolve endpoint→url, secret (só em secret headers) e env.
+    # Builds the binding (request/response/secret_headers) inheriting defaults, with the
+    # tool winning. Resolves endpoint→url, secret (only in secret headers) and env.
     def build_binding(t, secrets, env)
       method = (t["method"] || defaults["method"] || "GET").to_s.upcase
       headers = merge_maps(defaults["headers"], t["headers"])
@@ -116,27 +116,27 @@ module Harness
         response: response, secret_headers: secret_headers }
     end
 
-    # url explícita da tool OU base_url + path_template({endpoint}). O `endpoint` é
-    # DADO (nunca inferido do name — R6): resolve os remaps nome↔slug. `{endpoint}`
-    # é substituição de manifesto (chave única), distinta do `{{param}}` de turno.
+    # explicit tool url OR base_url + path_template({endpoint}). The `endpoint` is
+    # DATA (never inferred from the name — R6): it resolves name↔slug remaps. `{endpoint}`
+    # is a manifest substitution (single key), distinct from the turn's `{{param}}`.
     def resolve_url(t, env)
       if self.class.presence(t["url"])
         return resolve_env(t["url"], env)
       end
 
       base = self.class.presence(defaults["base_url"]) ||
-             (raise Harness::ValidationError, "tool '#{t['name']}' sem url e manifesto sem defaults.base_url")
+             (raise Harness::ValidationError, "tool '#{t['name']}' has no url and manifest has no defaults.base_url")
       path = self.class.presence(defaults["path_template"]) ||
-             (raise Harness::ValidationError, "tool '#{t['name']}' sem url e manifesto sem defaults.path_template")
+             (raise Harness::ValidationError, "tool '#{t['name']}' has no url and manifest has no defaults.path_template")
       endpoint = self.class.presence(t["endpoint"]) ||
-                 (raise Harness::ValidationError, "tool '#{t['name']}' sem 'endpoint' (nunca inferido do name — R6)")
+                 (raise Harness::ValidationError, "tool '#{t['name']}' has no 'endpoint' (never inferred from the name — R6)")
 
       resolve_env(base.to_s + path.to_s.gsub("{endpoint}", endpoint.to_s), env)
     end
 
-    # Resolve headers: um SECRET header (nome em secret_headers) DEVE conter uma
-    # referência {{secret.*}} (nunca literal — R3; prefixo tipo "Bearer " é ok) e
-    # resolve secret+env; os demais resolvem só {{env.*}}.
+    # Resolves headers: a SECRET header (name in secret_headers) MUST contain a
+    # {{secret.*}} reference (never literal — R3; a prefix like "Bearer " is ok) and
+    # resolves secret+env; the rest resolve only {{env.*}}.
     def resolve_headers(headers, secret_headers, secrets, env)
       headers.each_with_object({}) do |(name, value), acc|
         acc[name] =
@@ -157,16 +157,16 @@ module Harness
       substitute(value, secrets: secrets, env: env)
     end
 
-    # Substitui {{env.X}} pelo valor do deployment; deixa os demais placeholders
-    # ({{param}}/{{ctx.*}}/{{secret.*}}) INTACTOS. Uso em campos NÃO-secretos — o
-    # {{secret.*}} remanescente é barrado por #guard_no_stray_secrets! (vazaria).
+    # Substitutes {{env.X}} with the deployment value; leaves the other placeholders
+    # ({{param}}/{{ctx.*}}/{{secret.*}}) INTACT. Used on NON-secret fields — a
+    # remaining {{secret.*}} is blocked by #guard_no_stray_secrets! (it would leak).
     def resolve_env(template, env)
       substitute(template, secrets: nil, env: env)
     end
 
-    # Interpolador de ingestão: resolve {{env.X}} sempre; resolve {{secret.X}} só
-    # quando `secrets` foi passado (campos secretos). Placeholders de TURNO
-    # ({{param}}/{{ctx.*}}) ficam INTACTOS. Secret/env ausente -> ValidationError.
+    # Ingestion interpolator: always resolves {{env.X}}; resolves {{secret.X}} only
+    # when `secrets` was passed (secret fields). TURN placeholders
+    # ({{param}}/{{ctx.*}}) stay INTACT. Missing secret/env -> ValidationError.
     def substitute(template, secrets:, env:)
       template.to_s.gsub(Harness::ToolDefinition::PLACEHOLDER_RE) do
         ref = Regexp.last_match(1)
@@ -175,20 +175,20 @@ module Harness
         elsif ref.start_with?(ENV_PREFIX)
           fetch!(env, ref.delete_prefix(ENV_PREFIX), "env")
         else
-          Regexp.last_match(0) # preserva {{param}}/{{ctx.*}} (e {{secret.*}} fora de header secreto)
+          Regexp.last_match(0) # preserves {{param}}/{{ctx.*}} (and {{secret.*}} outside a secret header)
         end
       end
     end
 
     def fetch!(resolver, key, kind)
       val = resolver[key]
-      raise Harness::ValidationError, "#{kind} '#{key}' não configurado no deployment" if blank?(val)
+      raise Harness::ValidationError, "#{kind} '#{key}' not configured in the deployment" if blank?(val)
 
       val.to_s
     end
 
-    # Segredo fora de secret-header vazaria (não é mascarado): recusa {{secret.*}}
-    # em url/query/body/header não-secreto após a resolução de env.
+    # A secret outside a secret-header would leak (it is not masked): reject {{secret.*}}
+    # in url/query/body/non-secret header after env resolution.
     def guard_no_stray_secrets!(url:, headers:, secret_headers:, query:, body:)
       non_secret = headers.reject { |name, _| secret_headers.include?(name) }.values
       strings = [url, *non_secret, *query.values, body].compact
@@ -206,8 +206,8 @@ module Harness
 
     def blank?(v) = v.nil? || v.to_s.empty?
 
-    # Chaves string em profundidade (o wire pode chegar simbolizado; o JSON Schema
-    # aninhado deve ficar string-keyed — igual à canonização da ToolDefinition).
+    # Deep string keys (the wire may arrive symbolized; the nested JSON Schema
+    # must stay string-keyed — same as ToolDefinition's canonicalization).
     def self.stringify(obj)
       case obj
       when Hash then obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = stringify(v) }

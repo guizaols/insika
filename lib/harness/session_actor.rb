@@ -4,15 +4,17 @@ require "async"
 require "async/queue"
 
 module Harness
-  # Sessions como Actors: um fiber por sessão com fila FIFO
-  # de turnos, executados UM POR VEZ. Restaura o invariante "um dono por vez" do
-  # transcript que dois `send_message` concorrentes no mesmo `session_id`
-  # quebrariam (read-modify-write no Session Store). Turnos de sessões distintas
-  # seguem concorrentes; one-shot/history (sem session_id) não passam por aqui.
+  # Sessions as Actors: one fiber per session with a FIFO queue
+  # of turns, executed ONE AT A TIME. Restores the "one owner at a time"
+  # invariant of the transcript that two concurrent `send_message` calls on the
+  # same `session_id` would break (read-modify-write on the Session Store). Turns
+  # from distinct sessions stay concurrent; one-shot/history (no session_id) do
+  # not go through here.
   #
-  # Vive no escopo SUPERVISIONADO: o loop é filho do supervisor, não da
-  # request — sobrevive à conexão. O turno em si (spawnado pelo Executor) também
-  # nasce no supervisor; o SessionActor apenas o AGUARDA para serializar.
+  # Lives in the SUPERVISED scope: the loop is a child of the supervisor, not of
+  # the request — it outlives the connection. The turn itself (spawned by the
+  # Executor) is also born on the supervisor; the SessionActor only AWAITS it to
+  # serialize.
   class SessionActor
     def initialize(session_id:, executor:, parent: Async::Task.current)
       @session_id = session_id
@@ -22,8 +24,8 @@ module Harness
       @loop = parent.async { |t| t.annotate("session:#{session_id}"); run_loop }
     end
 
-    # Enfileira um turno (FIFO). Não-bloqueante: o handler responde {task_id:}
-    # imediato mesmo que o turno fique :queued atrás de outro. -> task.id.
+    # Enqueues a turn (FIFO). Non-blocking: the handler responds with an
+    # immediate {task_id:} even if the turn stays :queued behind another. -> task.id.
     def enqueue(task, profile:, resume_from: nil)
       @queue.enqueue([task, profile, resume_from])
       task.id
@@ -32,26 +34,26 @@ module Harness
     def running? = @running
     def depth = @queue.size
 
-    # O loop ainda está vivo? (o Executor revalida antes de reusar do cache —
-    # um loop morto black-holearia turnos enfileirados).
+    # Is the loop still alive? (the Executor revalidates before reusing from the
+    # cache — a dead loop would black-hole queued turns).
     def alive? = !!@loop&.running?
 
-    # Encerra o loop (shutdown do servidor / testes — o loop bloqueia p/ sempre
-    # em dequeue quando ocioso).
+    # Shuts down the loop (server shutdown / tests — the loop blocks forever on
+    # dequeue when idle).
     def stop = @loop&.stop
 
     private
 
     def run_loop
       loop do
-        task, profile, resume_from = @queue.dequeue # bloqueia quando vazio
+        task, profile, resume_from = @queue.dequeue # blocks when empty
         @running = true
         begin
           @executor.run_serial(task, profile: profile, resume_from: resume_from)
         rescue StandardError
-          # run_serial já mapeia erros do turno; este rescue é defesa: um erro
-          # inesperado NUNCA derruba o loop da sessão (Async::Stop < Exception
-          # não é capturado -> #stop encerra o loop normalmente).
+          # run_serial already maps turn errors; this rescue is defense: an
+          # unexpected error must NEVER bring down the session loop (Async::Stop <
+          # Exception is not captured -> #stop ends the loop normally).
           nil
         ensure
           @running = false

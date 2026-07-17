@@ -4,13 +4,13 @@ require "net/http"
 require "uri"
 
 module Harness
-  # Cliente HTTP default das tools por dados. Net::HTTP (stdlib, zero-dep — §10 da
-  # spec) com timeouts de socket próprios (mitiga bloqueio do reactor mesmo se o
-  # timer do envelope não disparar) e CAP de tamanho de resposta por streaming
-  # (NF2, evita OOM). É INJETÁVEL: os testes passam um dublê (nenhum bate rede);
-  # a Etapa C pode trocar por async-http sem tocar no DataDefinedTool.
+  # Default HTTP client for data-tools. Net::HTTP (stdlib, zero-dep — spec §10)
+  # with its own socket timeouts (mitigates reactor blocking even if the
+  # envelope timer doesn't fire) and a response-size CAP via streaming (NF2,
+  # avoids OOM). It is INJECTABLE: tests pass a double (none hit the network);
+  # Stage C can swap in async-http without touching DataDefinedTool.
   #
-  # Contrato: request(method:, url:, headers:, body:, timeout:) -> { status:, body: }.
+  # Contract: request(method:, url:, headers:, body:, timeout:) -> { status:, body: }.
   class HttpClient
     DEFAULT_TIMEOUT = 30
     MAX_BYTES = 1_000_000 # 1 MB
@@ -35,7 +35,7 @@ module Harness
           collected = +""
           resp.read_body do |chunk|
             collected << chunk
-            raise ResponseTooLarge, "resposta excede #{@max_bytes} bytes" if collected.bytesize > @max_bytes
+            raise ResponseTooLarge, "response exceeds #{@max_bytes} bytes" if collected.bytesize > @max_bytes
           end
           result = { status: resp.code.to_i, body: collected }
         end

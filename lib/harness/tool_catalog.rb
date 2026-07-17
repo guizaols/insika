@@ -1,17 +1,18 @@
 # frozen_string_literal: true
 
 module Harness
-  # Visão "nível 1" (progressive disclosure) das tools: só
-  # name+description, o análogo do SkillCatalog para tools. NÃO lê
-  # disco (as tools já estão no ToolRegistry, registradas no boot) e NÃO herda de
-  # RubyLLM::Tool — duck typing sobre `.description` (puro, testável sem a gem).
+  # "Level 1" (progressive disclosure) view of the tools: just
+  # name+description, the analog of SkillCatalog for tools. It does NOT read
+  # disk (the tools are already in the ToolRegistry, registered at boot) and does NOT
+  # inherit from RubyLLM::Tool — duck typing over `.description` (pure, testable without
+  # the gem).
   #
-  # A `description` canônica não vive no Entry (Registry::Entry não tem esse
-  # campo): vem da INSTÂNCIA da tool (`factory.call.description`). Por isso o
-  # catálogo é LAZY: só instancia as tools na primeira consulta (`all`), não no
-  # boot. Um deployment sem `tools_deferred` nunca toca o catálogo e não paga
-  # instanciação nenhuma; um factory quebrado propaga no primeiro uso (onde o
-  # Executor também o pegaria no estágio 3), não na construção.
+  # The canonical `description` does not live in the Entry (Registry::Entry has no such
+  # field): it comes from the tool INSTANCE (`factory.call.description`). That is why the
+  # catalog is LAZY: it only instantiates the tools on the first query (`all`), not at
+  # boot. A deployment without `tools_deferred` never touches the catalog and pays for
+  # no instantiation at all; a broken factory surfaces on first use (where the
+  # Executor would also catch it at stage 3), not at construction.
   class ToolCatalog
     Entry = Data.define(:name, :description)
 
@@ -23,25 +24,25 @@ module Harness
       @entries ||= build_entries
     end
 
-    # Recarrega o índice (após autoria de data-tool no overlay). Espelha
-    # SkillCatalog#reload — o nível-1/tool_search passa a ver a nova tool sem
-    # restart. Um turno em andamento já capturou `all`.
+    # Reloads the index (after authoring a data-tool in the overlay). Mirrors
+    # SkillCatalog#reload — level-1/tool_search starts seeing the new tool without a
+    # restart. An in-flight turn has already captured `all`.
     def reload
       @entries = build_entries
       self
     end
 
-    # Recorte deferred permitido (tipicamente allowed_tools ∩ tools_deferred).
-    # Nomes fora do catálogo são silenciosamente ignorados (falha segura: menos
-    # exposição, nunca mais).
+    # Allowed deferred slice (typically allowed_tools ∩ tools_deferred).
+    # Names outside the catalog are silently ignored (safe failure: less
+    # exposure, never more).
     def subset(names)
       wanted = Array(names).map(&:to_s)
       all.select { |e| wanted.include?(e.name) }
     end
 
-    # Matcher PURO: case-insensitive, substring/keyword, SEM
-    # embeddings. name pesa 2, description pesa 1; desempate por índice original
-    # (sort_by do Ruby não é estável). `within:` restringe o universo via subset.
+    # PURE matcher: case-insensitive, substring/keyword, NO
+    # embeddings. name weighs 2, description weighs 1; ties broken by original index
+    # (Ruby's sort_by is not stable). `within:` restricts the universe via subset.
     def search(query, within: nil)
       terms = query.to_s.downcase.split(/\s+/).reject(&:empty?)
       return [] if terms.empty?
@@ -54,8 +55,8 @@ module Harness
       scored.sort_by { |_entry, score, idx| [-score, idx] }.map(&:first)
     end
 
-    # Nível 1 injetado no prompt — mirror do SkillCatalog#format_for_prompt,
-    # trocando a tag e a instrução final (load_skill -> tool_search).
+    # Level 1 injected into the prompt — mirror of SkillCatalog#format_for_prompt,
+    # swapping the tag and the final instruction (load_skill -> tool_search).
     def format_for_prompt(entries = all)
       return "" if entries.empty?
 

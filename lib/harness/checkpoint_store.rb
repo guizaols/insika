@@ -3,19 +3,19 @@
 require "time"
 
 module Harness
-  # Store de domínio dos checkpoints. Snapshot por turno gravado
-  # em transação ALL-OR-NOTHING (invariante: um checkpoint é válido inteiro
-  # ou não existe), registro de side-effects não-idempotentes em chave avulsa
-  # durante o turno, e `prune` para conter crescimento.
+  # Domain store for checkpoints. A per-turn snapshot written
+  # in an ALL-OR-NOTHING transaction (invariant: a checkpoint is either fully
+  # valid or does not exist), a record of non-idempotent side effects in a spill
+  # key during the turn, and `prune` to bound growth.
   #
-  # Duas famílias de chave no scope "checkpoints":
-  #   "checkpoint:<task_id>:turn:<n>"  -> JSON do Checkpoint
-  #   "sideeffects:<task_id>:turn:<n>" -> ["tool_call_id", ...] (chave avulsa)
+  # Two key families in the "checkpoints" scope:
+  #   "checkpoint:<task_id>:turn:<n>"  -> Checkpoint JSON
+  #   "sideeffects:<task_id>:turn:<n>" -> ["tool_call_id", ...] (spill key)
   #
-  # A chave avulsa existe porque o checkpoint do turno ainda não existe quando
-  # as tool calls rodam (ele só é salvo no estágio 8): ela é escrita ANTES de o
-  # resultado da tool voltar ao modelo, e o `save` seguinte a
-  # consolida em `completed_side_effects` e a apaga na MESMA transação.
+  # The spill key exists because the turn's checkpoint does not exist yet when
+  # the tool calls run (it is only saved at stage 8): it is written BEFORE the
+  # tool result goes back to the model, and the following `save` consolidates it
+  # into `completed_side_effects` and deletes it in the SAME transaction.
   class CheckpointStore
     include Coercion
 
@@ -25,21 +25,21 @@ module Harness
       @store = store
     end
 
-    # -> Checkpoint (com a lista de side-effects consolidada). SEMPRE em
-    # transação. Ordem: valida monotonicidade -> consolida a chave avulsa
-    # do turno anterior -> grava o checkpoint -> apaga a chave avulsa absorvida.
-    # Qualquer exceção no meio -> rollback total (nem checkpoint parcial, nem
-    # chave avulsa perdida).
+    # -> Checkpoint (with the consolidated side-effect list). ALWAYS in a
+    # transaction. Order: validate monotonicity -> consolidate the previous
+    # turn's spill key -> write the checkpoint -> delete the absorbed spill key.
+    # Any exception in the middle -> full rollback (neither a partial checkpoint
+    # nor a lost spill key).
     def save(checkpoint)
       @store.transaction do
         current = latest(checkpoint.task_id)
         if current && current.turn >= checkpoint.turn
           raise ArgumentError,
-                "checkpoint com turn não-monotônico: #{checkpoint.turn} <= #{current.turn}"
+                "checkpoint with non-monotonic turn: #{checkpoint.turn} <= #{current.turn}"
         end
 
-        # O estágio 8 do turno n salva o checkpoint do turno n+1:
-        # a chave avulsa a absorver é a do turno que acabou de executar (n).
+        # Stage 8 of turn n saves turn n+1's checkpoint:
+        # the spill key to absorb is that of the turn that just executed (n).
         spill_key = sideeffects_key(checkpoint.task_id, checkpoint.turn - 1)
         spilled = @store.get(SCOPE, spill_key) || []
         consolidated = Array(checkpoint.completed_side_effects).map(&:to_s) | spilled
@@ -54,8 +54,8 @@ module Harness
       end
     end
 
-    # -> Checkpoint | nil (maior turn). Ordenação NUMÉRICA: `list` ordena
-    # lexicograficamente e "turn:9" > "turn:10" — parsear o n como Integer.
+    # -> Checkpoint | nil (highest turn). NUMERIC ordering: `list` sorts
+    # lexicographically and "turn:9" > "turn:10" — parse n as an Integer.
     def latest(task_id)
       turns = checkpoint_turns(task_id)
       return nil if turns.empty?
@@ -69,8 +69,8 @@ module Harness
       record && to_checkpoint(record)
     end
 
-    # -> nil; idempotente (registrar duas vezes = uma entrada). Em transação
-    # (escrita antes de a tool voltar ao modelo).
+    # -> nil; idempotent (recording twice = one entry). In a transaction
+    # (written before the tool goes back to the model).
     def record_side_effect(task_id, turn:, tool_call_id:)
       @store.transaction do
         key = sideeffects_key(task_id, turn)
@@ -81,19 +81,19 @@ module Harness
       nil
     end
 
-    # -> [tool_call_id] = chave avulsa ∪ checkpoint do mesmo turno.
-    # Cobre os dois lugares onde um id pode estar durante o ciclo; como
-    # tool_call_id é globalmente único, a união nunca causa skip indevido.
+    # -> [tool_call_id] = spill key ∪ checkpoint of the same turn.
+    # Covers both places where an id may live during the cycle; since
+    # tool_call_id is globally unique, the union never causes an improper skip.
     def side_effects(task_id, turn:)
       spilled = @store.get(SCOPE, sideeffects_key(task_id, turn)) || []
       from_checkpoint = find(task_id, turn: turn)&.completed_side_effects || []
       spilled | from_checkpoint
     end
 
-    # -> void. Mantém os `keep` checkpoints de maior turn (numérico); apaga o
-    # resto. Também limpa chaves avulsas de turnos estritamente menores que o
-    # menor turn mantido (lixo inatingível após a consolidação). Em transação
-    # para não deixar poda parcial. No-op se houver <= keep checkpoints.
+    # -> void. Keeps the `keep` checkpoints with the highest turn (numeric); deletes the
+    # rest. Also clears spill keys of turns strictly smaller than the smallest
+    # kept turn (unreachable garbage after consolidation). In a transaction
+    # so it never leaves a partial prune. No-op if there are <= keep checkpoints.
     def prune(task_id, keep: 1)
       @store.transaction do
         turns = checkpoint_turns(task_id).sort
@@ -127,13 +127,13 @@ module Harness
       @store.list(SCOPE, "sideeffects:#{task_id}:turn:").map { |k| turn_of(k) }
     end
 
-    # O n é o último segmento da chave "...:turn:<n>"; parsear como Integer.
+    # n is the last segment of the key "...:turn:<n>"; parse it as an Integer.
     def turn_of(key)
       key.split(":").last.to_i
     end
 
-    # Materializa na borda: `turn` como Integer; demais campos como vêm do
-    # backend (chaves string em `messages`).
+    # Materializes at the edge: `turn` as an Integer; the other fields as they come from the
+    # backend (string keys in `messages`).
     def to_checkpoint(record)
       Checkpoint.new(
         task_id: record["task_id"],
