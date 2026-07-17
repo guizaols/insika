@@ -60,7 +60,7 @@ APP = Harness::Server::App.new(
   config: { admin_token: ADMIN_TOKEN, allowed_origins: ALLOWED_ORIGINS, gateway_token: GATEWAY_TOKEN }
 )
 
-PERSISTENCE = ENV["HARNESS_DB"].to_s.empty? ? "efêmero (memória)" : "durável (sqlite)"
+PERSISTENCE = ENV["HARNESS_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
   event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN, persistence: PERSISTENCE },

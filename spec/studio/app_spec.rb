@@ -315,7 +315,7 @@ RSpec.describe Studio::App do
     app, = build_app
     res = login(app).get("/agents/bia")
     expect(res.status).to eq(200)
-    %w[config prompts skills memoria historico].each { |a| expect(res.body).to include("id=\"#{a}\"") }
+    %w[config prompts skills memory history].each { |a| expect(res.body).to include("id=\"#{a}\"") }
     expect(res.body).to include('name="model"')
     expect(res.body).to include('data-controller="code-editor"')
   end
@@ -524,14 +524,14 @@ RSpec.describe Studio::App do
     body = login(app).get("/tools").body
     expect(body).to include('href="/studio/tools/def/cep"')      # link do editor
     expect(body).to include('href="/studio/tools/def/new"')      # nova tool
-    expect(body).to include("dados")                              # badge na matriz
+    expect(body).to include(">data<")                             # badge na matriz
   end
 
   it "GET /tools/def/new renderiza o form vazio" do
     app, = build_app
     body = login(app).get("/tools/def/new").body
     expect(body).to include('action="/studio/tools/def"')
-    expect(body).to include("Nova tool por dados")
+    expect(body).to include("New data tool")
   end
 
   it "POST /tools/def cria: despacha :write_data_tool com o payload aninhado + create_only" do
@@ -606,7 +606,7 @@ RSpec.describe Studio::App do
     app, = build_app(sessions: { "sess-xyz" => sess })
     body = login(app).get("/sessions/sess-xyz").body
     expect(body).to include("olá!")
-    expect(body).to include("continuar no playground")
+    expect(body).to include("Continue in playground")
   end
 
   it "404 em sessão inexistente" do
@@ -769,7 +769,7 @@ RSpec.describe Studio::App do
   it "chats vazio mostra empty-state" do
     app, = build_app
     body = login(app).get("/chats").body
-    expect(body).to include("Nenhuma conversa")
+    expect(body).to include("No conversations")
   end
 
   # --- Polish & paridade (Etapa H / task 20) -------------------------------
@@ -779,7 +779,7 @@ RSpec.describe Studio::App do
     body = login(app).get("/agents").body
     expect(body).to include('data-theme="auto"')
     expect(body).to include('data-controller="theme"')
-    expect(body).to include('class="pill ok health"')
+    expect(body).to include("runtime online")
   end
 
   it "aplica o tema do cookie server-side (sem flash de tema errado no load)" do
@@ -826,13 +826,13 @@ RSpec.describe Studio::App do
   it "agents vazio abre o form de criação (empty-state de autoria)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body
-    expect(body).to include("Crie a sua primeira BIA")
-    expect(body).to include("criar agente")
+    expect(body).to include("Create your first BIA")
+    expect(body).to include("Create agent")
   end
 
   it "mcp vazio mostra empty-state" do
     app, = build_app
-    expect(login(app).get("/mcp").body).to include("Nenhuma instância MCP")
+    expect(login(app).get("/mcp").body).to include("No MCP instances")
   end
 
   # --- Banner de restart recomendado ---------------------------------------
@@ -840,17 +840,17 @@ RSpec.describe Studio::App do
   it "acende o banner de restart ao mexer em MCP e some ao dispensar" do
     app, = build_app
     client = login(app)
-    expect(client.get("/agents").body).not_to include("Restart recomendado")
+    expect(client.get("/agents").body).not_to include("Restart recommended")
 
     csrf = csrf_from(client.get("/mcp").body)
     client.post("/mcp", params: { "name" => "tavily", "_csrf" => csrf })
-    expect(client.get("/agents").body).to include("Restart recomendado")
+    expect(client.get("/agents").body).to include("Restart recommended")
 
     csrf = csrf_from(client.get("/agents").body)
     res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "/studio/mcp" })
     expect(res.status).to eq(302)
     expect(res.headers["location"]).to eq("/studio/mcp")
-    expect(client.get("/agents").body).not_to include("Restart recomendado")
+    expect(client.get("/agents").body).not_to include("Restart recommended")
   end
 
   it "remover MCP também acende o banner de restart" do
@@ -858,7 +858,7 @@ RSpec.describe Studio::App do
     client = login(app)
     csrf = csrf_from(client.get("/mcp").body)
     client.post("/mcp/delete", params: { "name" => "tavily", "_csrf" => csrf })
-    expect(client.get("/agents").body).to include("Restart recomendado")
+    expect(client.get("/agents").body).to include("Restart recommended")
   end
 
   it "restart-ack não faz open-redirect (back externo é ignorado)" do

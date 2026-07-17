@@ -140,7 +140,7 @@ module Studio
             session["auth"] = true
             r.redirect("/studio/agents")
           else
-            @error = "Token inválido ou studio desabilitado (defina HARNESS_ADMIN_TOKEN)."
+            @error = "Invalid token, or the studio is disabled (set HARNESS_ADMIN_TOKEN)."
             response.status = 401
             view("login")
           end
@@ -269,21 +269,21 @@ module Studio
                            tenant: id, key: presence(r.params["key"]), value: r.params["value"].to_s
                          })
               end
-              r.redirect(agent_path(id, "memoria"))
+              r.redirect(agent_path(id, "memory"))
             end
             r.post "forget" do
               check_csrf!
               with_flash("Fato esquecido.") do
                 dispatch(:memory_forget_fact, { tenant: id, key: presence(r.params["key"]) })
               end
-              r.redirect(agent_path(id, "memoria"))
+              r.redirect(agent_path(id, "memory"))
             end
             r.post "note" do
               check_csrf!
               with_flash("Nota adicionada.") do
                 dispatch(:memory_add_note, { tenant: id, text: r.params["text"].to_s })
               end
-              r.redirect(agent_path(id, "memoria"))
+              r.redirect(agent_path(id, "memory"))
             end
           end
         end
@@ -559,18 +559,45 @@ module Studio
 
     def harness = self.class.harness
 
-    # Navegação da app-bar.
-    def nav_links
-      {
-        "agentes" => "/studio/agents",
-        "skills" => "/studio/skills",
-        "tools" => "/studio/tools",
-        "mcp" => "/studio/mcp",
-        "sistema" => "/studio/system-files",
-        "chats" => "/studio/chats",
-        "settings" => "/studio/settings",
-        "playground" => "/studio/playground"
-      }
+    # Navegação da sidebar, agrupada por intenção do operador (build / runtime /
+    # operate). Cada item: [label, href, icon-key]. A view marca o item ativo
+    # comparando o path e renderiza o ícone via `nav_icon`.
+    def nav_sections
+      [
+        ["build", [
+          ["Agents", "/studio/agents", :agents],
+          ["Skills", "/studio/skills", :skills],
+          ["Tools", "/studio/tools", :tools],
+          ["System files", "/studio/system-files", :system]
+        ]],
+        ["runtime", [
+          ["MCP", "/studio/mcp", :mcp],
+          ["Settings", "/studio/settings", :settings]
+        ]],
+        ["operate", [
+          ["Chats", "/studio/chats", :chats],
+          ["Playground", "/studio/playground", :playground]
+        ]]
+      ]
+    end
+
+    # Ícone SVG inline (stroke, currentColor) por chave de nav. Inline SVG é
+    # permitido pela CSP (é elemento no HTML, não um recurso externo). 20×20,
+    # herda a cor do link. Fonte: conjunto de ícones de linha estilo Lucide.
+    NAV_ICONS = {
+      agents: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+      skills: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
+      tools: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+      system: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/>',
+      mcp: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+      settings: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+      chats: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+      playground: '<polygon points="6 3 20 12 6 21 6 3"/>'
+    }.freeze
+
+    def nav_icon(key)
+      %(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ) +
+        %(stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">#{NAV_ICONS[key]}</svg>)
     end
 
     def authenticated? = session["auth"] == true
@@ -587,18 +614,16 @@ module Studio
       THEMES.include?(value) ? value : "auto"
     end
 
-    # Resumo de saúde do runtime para o chip da app-bar. Só contagens do que o
-    # Studio já lê — nada de ping novo. Persistência (durável/efêmero) vem do
-    # config, se o boot a informou (serve_real passa; specs não precisam).
-    def health_summary
-      parts = ["#{harness[:profile_source].all.size} agente(s)"]
-      if (ps = harness[:llm_provider_store])
-        parts << "#{ps.all.size} provider(s) LLM"
-      end
-      parts << "#{harness[:mcp_store].all.size} MCP" if harness[:mcp_store]
+    # Structured counts for the sidebar health card: [label, value]. Only what
+    # the Studio already reads — no new ping. Persistence (durable/ephemeral)
+    # comes from config, if boot supplied it (serve_real does; specs don't need).
+    def health_parts
+      parts = [["agents", harness[:profile_source].all.size]]
+      parts << ["LLM providers", harness[:llm_provider_store].all.size] if harness[:llm_provider_store]
+      parts << ["MCP servers", harness[:mcp_store].all.size] if harness[:mcp_store]
       persistence = harness[:config][:persistence]
-      parts << persistence.to_s if persistence && !persistence.to_s.empty?
-      parts.join(" · ")
+      parts << ["persistence", persistence.to_s] if persistence && !persistence.to_s.empty?
+      parts
     end
 
     # Só redireciona para um caminho LOCAL (evita open-redirect via `back`):
@@ -723,9 +748,9 @@ module Studio
       "---\nname: #{skill.name}\ndescription: #{skill.description}\n---\n\n#{skill.body}\n"
     end
 
-    def new_skill_template(name = "minha-skill")
-      "---\nname: #{name}\ndescription: uma frase sobre quando usar esta skill\n---\n\n" \
-        "# #{name}\n\nInstruções completas carregadas sob demanda pela tool `load_skill`.\n"
+    def new_skill_template(name = "my-skill")
+      "---\nname: #{name}\ndescription: one sentence about when to use this skill\n---\n\n" \
+        "# #{name}\n\nFull instructions, loaded on demand by the `load_skill` tool.\n"
     end
 
     # Uma skill está ativa para um agente se ele tem `skills` = nil (todas) ou a

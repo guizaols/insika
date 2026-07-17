@@ -25,10 +25,10 @@ export default class extends Controller {
     if (this.sessionValue) params.set("session_id", this.sessionValue)
     const url = "/v1/events" + (params.toString() ? "?" + params.toString() : "")
 
-    this.setStatus("conectando…", "warn")
+    this.setStatus("connecting…", "warn")
     this.es = new EventSource(url)
-    this.es.onopen = () => this.setStatus("conectado", "ok")
-    this.es.onerror = () => this.setStatus("desconectado", "err")
+    this.es.onopen = () => this.setStatus("connected", "ok")
+    this.es.onerror = () => this.setStatus("disconnected", "err")
     this.es.onmessage = (e) => {
       try { this.render(JSON.parse(e.data)) } catch (_) { this.push(this.chipText(e.data)) }
     }
@@ -119,7 +119,7 @@ export default class extends Controller {
       case "task_cancelled":
         this.current = null
         this.push(this.chip(ev))
-        this.setStatus("turno finalizado", "info")
+        this.setStatus("turn finished", "info")
         break
       default:
         this.current = null

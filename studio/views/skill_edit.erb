@@ -1,7 +1,7 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= @skill_name.empty? ? "nova" : @skill_name %></span></nav>
-    <h1><%= @skill_name.empty? ? "Nova skill" : @skill_name %><span class="sub">SKILL.md completo — frontmatter YAML (<code>name</code>, <code>description</code>) + corpo</span></h1>
+    <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= @skill_name.empty? ? "new" : @skill_name %></span></nav>
+    <h1><%= @skill_name.empty? ? "New skill" : @skill_name %><span class="sub">a full SKILL.md — YAML frontmatter (<code>name</code>, <code>description</code>) + body</span></h1>
   </div>
 </header>
 
@@ -11,15 +11,15 @@
     <input type="hidden" name="name" value="<%= @skill_name %>">
   <% end %>
   <% if @skill_name.empty? %>
-    <label>nome (canônico, igual ao <code>name:</code> do frontmatter)
-      <input type="text" name="name" placeholder="minha-skill" required>
+    <label>name (canonical, same as the <code>name:</code> in the frontmatter)
+      <input type="text" name="name" placeholder="my-skill" required>
     </label>
   <% end %>
   <div data-controller="code-editor" data-code-editor-language-value="markdown">
     <textarea name="content" data-code-editor-target="source" rows="20"><%= @skill_content %></textarea>
   </div>
   <div class="actions">
-    <button type="submit" class="primary">salvar skill</button>
-    <a class="btn ghost" href="/studio/skills">← voltar</a>
+    <button type="submit" class="primary">Save skill</button>
+    <a class="btn ghost" href="/studio/skills">← back</a>
   </div>
 </form>
