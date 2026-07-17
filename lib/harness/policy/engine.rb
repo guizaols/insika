@@ -4,11 +4,11 @@ require "time"
 
 module Harness
   module Policy
-    # Estágio 3 da pipeline. Agrega as policies do perfil na
-    # ordem declarada: interseção de allows não-nil, união de denies
-    # (comutativa, empate impossível por construção). Fail-closed: crash ou
-    # nome não registrado vira deny. Roda INLINE no fiber (puras, sem IO — sem
-    # Async, sem timeout próprio).
+    # Pipeline stage 3. Aggregates the profile's policies in the
+    # declared order: intersection of non-nil allows, union of denies
+    # (commutative, ties impossible by construction). Fail-closed: a crash or
+    # an unregistered name becomes a deny. Runs INLINE on the fiber (pure, no IO — no
+    # Async, no timeout of its own).
     class Engine
       Resolution = Data.define(:allowed_tools, :allowed_skills, :requires_approval, :audit)
 
@@ -49,8 +49,8 @@ module Harness
 
       private
 
-      # Fail-closed: qualquer exceção (bug da policy OU nome não registrado)
-      # vira deny — NUNCA fail-open.
+      # Fail-closed: any exception (policy bug OR unregistered name)
+      # becomes a deny — NEVER fail-open.
       def evaluate(name, request)
         policy = @registry.fetch(name)
         raise "policy não registrada: #{name}" if policy.nil?
@@ -60,8 +60,8 @@ module Harness
         Decision.deny(reason: "policy crash: #{e.class}")
       end
 
-      # Primeiro deny reporta (evento + PolicyDenied) e interrompe: as policies
-      # seguintes nem rodam, mas o audit registra até aqui.
+      # The first deny reports (event + PolicyDenied) and halts: the following
+      # policies don't even run, but the audit records up to here.
       def deny_turn!(policy_name, reason, _audit)
         @event_stream.emit(Harness::Event.new(
                              type: :policy_denied,
@@ -71,7 +71,7 @@ module Harness
         raise Harness::PolicyDenied.new(policy: policy_name.to_s, reason: reason)
       end
 
-      # nomes_permitidos = nomes(candidatas) ∩ (∩ allows não-nil) − (∪ denies).
+      # allowed_names = names(candidates) ∩ (∩ non-nil allows) − (∪ denies).
       def filter(candidates, allow_sets, deny_names)
         allowed = candidates.map { |c| yield(c) }
         allow_sets.each { |set| allowed &= set }

@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de turno: dispara um workflow. Reusa a pipeline
-    # canônica — só o estágio 6 varia (Executor). Valida tudo
-    # síncrono e responde `{task_id:}` imediato. A allowlist de workflow NÃO é
-    # checada aqui: é enforcement do estágio 3 via WorkflowAllowlist
+    # Turn command: fires a workflow. Reuses the canonical
+    # pipeline — only stage 6 varies (Executor). Validates everything
+    # synchronously and responds `{task_id:}` immediately. The workflow allowlist is NOT
+    # checked here: it is stage-3 enforcement via WorkflowAllowlist
     # -> PolicyDenied -> task :failed.
     class TriggerWorkflow
       ALLOWED_KEYS = %i[workflow agent input session_id].freeze
@@ -20,27 +20,27 @@ module Harness
 
       def call(command)
         p = normalize(command.payload)
-        reject_unknown_keys!(command.payload) # validação estrita
+        reject_unknown_keys!(command.payload) # strict validation
 
         workflow = p[:workflow].to_s
-        raise Harness::ValidationError, "workflow é obrigatório" if workflow.empty?
+        raise Harness::ValidationError, "workflow is required" if workflow.empty?
 
         agent = p[:agent].to_s
-        raise Harness::ValidationError, "agent é obrigatório" if agent.empty?
+        raise Harness::ValidationError, "agent is required" if agent.empty?
 
         profile = @profiles[agent] ||
-                  (raise Harness::NotFoundError, "agente '#{agent}' não configurado")
+                  (raise Harness::NotFoundError, "agent '#{agent}' not configured")
 
         input = p[:input] || {}
-        raise Harness::ValidationError, "input deve ser um Hash" unless input.is_a?(Hash)
+        raise Harness::ValidationError, "input must be a Hash" unless input.is_a?(Hash)
 
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
             (raise Harness::NotFoundError, "sessão '#{p[:session_id]}' não encontrada")
         end
 
-        # existência validável sem executar — names, NUNCA resolve (não instanciar
-        # fora do fiber).
+        # existence is validatable without executing — names, NEVER resolve (don't instantiate
+        # outside the fiber).
         unless @workflow_registry.names.include?(workflow)
           raise Harness::NotFoundError, "workflow '#{workflow}' não registrado"
         end

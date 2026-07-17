@@ -3,16 +3,16 @@
 require "yaml"
 
 module Harness
-  # Parser TOLERANTE de frontmatter (o bloco YAML `--- ... ---` de um SKILL.md).
-  # A convenção é YAML, mas packs reais trazem PROSA no `description` — com `: `
-  # (dois-pontos + espaço), aspas, parênteses — que o YAML ESTRITO rejeita
-  # ("mapping values are not allowed in this context"). O gateway OpenClaw tolera;
-  # o harness precisa tolerar também (NF2: o mesmo pack tem que valer).
+  # TOLERANT frontmatter parser (the YAML `--- ... ---` block of a SKILL.md).
+  # The convention is YAML, but real packs carry PROSE in `description` — with `: `
+  # (colon + space), quotes, parentheses — which STRICT YAML rejects
+  # ("mapping values are not allowed in this context"). The OpenClaw gateway
+  # tolerates it; the harness has to tolerate it too (NF2: the same pack must hold).
   #
-  # Estratégia: tenta YAML (respeita quoted / multi-line / listas); se o YAML
-  # falhar OU não render um Hash, cai num parse LINHA-A-LINHA que separa no
-  # PRIMEIRO `:` e trata o resto como string crua — recupera name/description
-  # mesmo com `: ` no meio do valor. -> Hash de chaves String. NUNCA levanta.
+  # Strategy: try YAML (respects quoted / multi-line / lists); if the YAML
+  # fails OR doesn't yield a Hash, fall back to a LINE-BY-LINE parse that splits on
+  # the FIRST `:` and treats the rest as a raw string — recovers name/description
+  # even with `: ` in the middle of the value. -> Hash with String keys. NEVER raises.
   module Frontmatter
     module_function
 
@@ -25,8 +25,8 @@ module Harness
       loaded.is_a?(Hash) ? stringify(loaded) : lenient(text)
     end
 
-    # Split no primeiro `:` de cada linha; valor = resto (string). Linha sem `:`
-    # é ignorada. Preserva `: ` internos ao valor (o caso que quebra o YAML).
+    # Split on the first `:` of each line; value = the rest (string). A line
+    # without `:` is ignored. Preserves `: ` internal to the value (the case that breaks YAML).
     def lenient(text)
       text.to_s.each_line.each_with_object({}) do |line, acc|
         next unless line.include?(":")

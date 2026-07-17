@@ -6,16 +6,16 @@ require "erb"
 
 module Harness
   module Tools
-    # Tool POR DADOS: uma classe, N instâncias parametrizadas por uma
-    # ToolDefinition (o mesmo padrão do A2ARemote). Faz uma chamada HTTP descrita
-    # em config — sem código Ruby por tool. Como herda RubyLLM::Tool (puxa a gem),
-    # NÃO é requerida em lib/harness.rb; o overlay a carrega lazy no registro
-    # (Etapa B). Fase 5, Etapa A.
+    # DATA-DEFINED tool: one class, N instances parameterized by a
+    # ToolDefinition (the same pattern as A2ARemote). It makes an HTTP call described
+    # in config — no Ruby code per tool. Since it inherits RubyLLM::Tool (pulls in the gem),
+    # it is NOT required in lib/harness.rb; the overlay loads it lazily at registration
+    # (Step B). Phase 5, Step A.
     #
-    # Contrato preservado por duck-typing: sobrescreve name/description/parameters/
-    # execute; params_schema do RubyLLM deriva de #parameters automaticamente.
-    # execute NUNCA levanta — erro (param faltando, egress bloqueado, HTTP, parse)
-    # vira `{ error: }` ao modelo, como as demais tools.
+    # Contract preserved by duck-typing: it overrides name/description/parameters/
+    # execute; RubyLLM's params_schema derives from #parameters automatically.
+    # execute NEVER raises — an error (missing param, blocked egress, HTTP, parse)
+    # becomes `{ error: }` to the model, like the other tools.
     class DataDefinedTool < RubyLLM::Tool
       def initialize(definition:, http:, egress: Harness::EgressGuard, egress_options: {},
                      event_stream: nil, turn_context: {})
@@ -28,30 +28,30 @@ module Harness
         super()
       end
 
-      # Contexto de turno (Fase 6/D2/G3): a tool de registry NÃO recebe TurnState,
-      # então o Executor DEPOSITA aqui, por-turno, os ids do turno
-      # (chat/agent/tenant/store). Resolvem {{ctx.*}} — SEPARADO dos {{param}} do
-      # modelo — p/ emitir X-Chat-Id/X-Store-Id/X-Agent-Id. Vêm do TURNO, nunca do
-      # modelo (R2). Reader p/ teste; writer é o ponto de injeção do Executor.
+      # Turn context (Phase 6/D2/G3): the registry tool does NOT receive TurnState,
+      # so the Executor DEPOSITS the turn ids here, per-turn
+      # (chat/agent/tenant/store). They resolve {{ctx.*}} — SEPARATE from the model's
+      # {{param}} — to emit X-Chat-Id/X-Store-Id/X-Agent-Id. They come from the TURN, never from
+      # the model (R2). Reader for testing; the writer is the Executor's injection point.
       attr_reader :turn_context
 
       def turn_context=(ctx)
         @turn_context = symbolize_ctx(ctx)
       end
 
-      # name/description/parameters por INSTÂNCIA (senão o modelo veria o nome
-      # derivado da classe p/ todas as data-tools).
+      # name/description/parameters per INSTANCE (otherwise the model would see the name
+      # derived from the class for every data-tool).
       def name = @definition.name
       def description = @definition.description
 
-      # JSON Schema COMPLETO (aninhado) direto no params_schema do RubyLLM — é o que
-      # os providers serializam (OpenAI/Anthropic/Gemini/Bedrock preferem
-      # params_schema; parameters é só fallback). Provider-agnóstico (Fase 7/F6) e
-      # a única forma que expressa aninhamento (object/array/enum). Fase 7, Etapa A.
+      # FULL (nested) JSON Schema straight into RubyLLM's params_schema — it is what
+      # the providers serialize (OpenAI/Anthropic/Gemini/Bedrock prefer
+      # params_schema; parameters is just a fallback). Provider-agnostic (Phase 7/F6) and
+      # the only form that expresses nesting (object/array/enum). Phase 7, Step A.
       def params_schema = @definition.parameters
 
-      # Visão PLANA de topo p/ discovery (tool_search chama #parameters no tool
-      # resolvido). O schema aninhado real vai pelo #params_schema acima.
+      # FLAT top-level view for discovery (tool_search calls #parameters on the resolved
+      # tool). The real nested schema goes through #params_schema above.
       def parameters
         @parameters ||= @definition.top_level_params.each_with_object({}) do |p, acc|
           sym = p[:name].to_sym
@@ -71,14 +71,14 @@ module Harness
         emit(result[:status])
         extract(result)
       rescue StandardError => e
-        { error: "falha na chamada HTTP: #{e.message}" }
+        { error: "HTTP call failed: #{e.message}" }
       end
 
       private
 
-      # Interpola os templates da definição com os args do modelo, com escaping por
-      # contexto: url/query -> percent-encode; header -> tira CR/LF (anti-injeção);
-      # body -> escaping JSON.
+      # Interpolates the definition's templates with the model's args, escaping by
+      # context: url/query -> percent-encode; header -> strips CR/LF (anti-injection);
+      # body -> JSON escaping.
       def build_request(kwargs)
         r = @definition.request
         url = interpolate(r[:url], kwargs, :url)
@@ -101,9 +101,9 @@ module Harness
         end
       end
 
-      # ctx.* -> contexto do TURNO (depositado pelo Executor); demais -> args do
-      # MODELO (kwargs). A separação é a fronteira de confiança de D2/R2: o modelo
-      # não escolhe qual chat/loja a tool acessa.
+      # ctx.* -> TURN context (deposited by the Executor); the rest -> MODEL args
+      # (kwargs). The split is the D2/R2 trust boundary: the model does
+      # not choose which chat/store the tool accesses.
       def resolve(name, kwargs)
         prefix = Harness::ToolDefinition::CTX_PREFIX
         if name.start_with?(prefix)
@@ -160,8 +160,8 @@ module Harness
 
       def present?(v) = !(v.nil? || v.to_s.empty?)
 
-      # Sem correlação de task (tool de registry não recebe TurnState) -> meta {}.
-      # Emite só nome + status: NUNCA corpo/headers (0 vazamento de segredo, R2).
+      # No task correlation (registry tool does not receive TurnState) -> meta {}.
+      # Emits only name + status: NEVER body/headers (0 secret leakage, R2).
       def emit(status)
         @event_stream&.emit(Harness::Event.new(
                               type: :data_tool_call, data: { tool: @definition.name, status: status }, meta: {}

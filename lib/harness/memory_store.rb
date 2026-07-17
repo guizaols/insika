@@ -4,19 +4,19 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de DOMÍNIO da memória-do-agente. Duas camadas
-  # escopadas por tenant sobre um `Harness::Store` qualquer: `profile` (fatos
-  # chave-valor estáveis) e `notes` (anotações livres append-only). Espelha o
-  # `PendingActionStore` (normaliza symbol→string na escrita, scan O(n) na
-  # leitura, records com timestamp).
+  # AGENT-MEMORY DOMAIN store. Two layers
+  # scoped per tenant over any `Harness::Store`: `profile` (stable key-value
+  # facts) and `notes` (append-only free-form notes). Mirrors the
+  # `PendingActionStore` (normalizes symbol→string on write, O(n) scan on
+  # read, records with a timestamp).
   #
-  # NÃO confundir com `Harness::Stores::Memory` (backend KV em memória):
-  # este é o store de domínio; aquele é um dos backends onde este grava.
+  # NOT to be confused with `Harness::Stores::Memory` (in-memory KV backend):
+  # this is the domain store; that one is one of the backends this writes to.
   class MemoryStore
     SCOPE_PREFIX = "memory"       # scope = "memory:<tenant>"
     FACT_PREFIX  = "fact:"
     NOTE_PREFIX  = "note:"
-    DEFAULT_TENANT = "_default"   # sem tenant no Command
+    DEFAULT_TENANT = "_default"   # no tenant in the Command
 
     Fact = Data.define(:key, :value, :updated_at)
     Note = Data.define(:id, :text, :created_at)
@@ -25,7 +25,7 @@ module Harness
       @store = store
     end
 
-    # Upsert (last-write-wins, contrato Store). -> Fact
+    # Upsert (last-write-wins, Store contract). -> Fact
     def put_fact(tenant:, key:, value:)
       record = { "key" => key.to_s, "value" => stringify(value), "updated_at" => timestamp }
       @store.set(scope_for(tenant), FACT_PREFIX + key.to_s, record)
@@ -38,7 +38,7 @@ module Harness
       record && to_fact(record)
     end
 
-    # -> [Fact] ordenados por key (list é lexicográfico).
+    # -> [Fact] sorted by key (list is lexicographic).
     def facts(tenant:)
       scope = scope_for(tenant)
       @store.list(scope, FACT_PREFIX).filter_map do |k|
@@ -47,13 +47,13 @@ module Harness
       end
     end
 
-    # -> bool (existia?)
+    # -> bool (did it exist?)
     def forget_fact(tenant:, key:)
       @store.delete(scope_for(tenant), FACT_PREFIX + key.to_s)
     end
 
-    # Append. `at` (ISO8601) vai no COMEÇO da key p/ `list` devolver as notes em
-    # ordem cronológica; `id`/`at` injetáveis p/ teste determinístico. -> Note
+    # Append. `at` (ISO8601) goes at the START of the key so `list` returns the notes in
+    # chronological order; `id`/`at` injectable for deterministic tests. -> Note
     def add_note(tenant:, text:, id: SecureRandom.uuid, at: nil)
       at ||= timestamp
       record = { "id" => id.to_s, "text" => text.to_s, "created_at" => at }
@@ -61,10 +61,10 @@ module Harness
       to_note(record)
     end
 
-    # -> [Note] MAIS RECENTES primeiro, capadas por `limit`.
+    # -> [Note] MOST RECENT first, capped by `limit`.
     def notes(tenant:, limit: nil)
       scope = scope_for(tenant)
-      keys = @store.list(scope, NOTE_PREFIX).reverse # list é cronológico -> reverse = recentes 1º
+      keys = @store.list(scope, NOTE_PREFIX).reverse # list is chronological -> reverse = most recent first
       keys = keys.first(limit) if limit
       keys.filter_map do |k|
         record = @store.get(scope, k)

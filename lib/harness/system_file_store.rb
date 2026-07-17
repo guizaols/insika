@@ -3,23 +3,23 @@
 require "time"
 
 module Harness
-  # Arquivos de sistema GLOBAIS. São prompts/regras
-  # que valem para TODOS os agentes do deploy — a "casa" acima da identidade
-  # individual de cada BIA. Diferente do AgentFileStore (por agente), aqui não há
-  # tenant: um record por arquivo no ConfigStore (scope "system_files").
+  # GLOBAL system files. These are prompts/rules
+  # that apply to ALL agents in the deploy — the "house" above each BIA's
+  # individual identity. Unlike the AgentFileStore (per agent), here there is no
+  # tenant: one record per file in the ConfigStore (scope "system_files").
   #
-  # O Context::Providers::Prompt lê estes arquivos e os injeta ANTES da
-  # identidade por-agente, para todo turno. Sem arquivos de sistema (store
-  # vazio), o prompt é byte-a-byte o de antes (paridade preservada) — a injeção
-  # global só existe quando o operador autora algo aqui.
+  # Context::Providers::Prompt reads these files and injects them BEFORE the
+  # per-agent identity, for every turn. With no system files (empty store),
+  # the prompt is byte-for-byte the one from before (parity preserved) — the global
+  # injection only exists when the operator authors something here.
   #
-  # Record por arquivo:
+  # Record per file:
   #   { "content" => str, "updated_at" => iso8601,
   #     "history" => [ { "content" => str, "at" => iso8601 }, ... ] }
   #
-  # Escrita versiona (mesmo contrato do AgentFileStore): o conteúdo anterior
-  # entra em `history` (mais recente primeiro), com teto HISTORY_MAX; restauração
-  # é uma nova escrita (histórico linear, sem "voltar no tempo" destrutivo).
+  # A write versions (same contract as AgentFileStore): the previous content
+  # goes into `history` (most recent first), capped at HISTORY_MAX; restoring
+  # is a new write (linear history, no destructive "time travel").
   class SystemFileStore
     SCOPE = "system_files"
     HISTORY_MAX = 20
@@ -28,21 +28,21 @@ module Harness
       @cs = config_store
     end
 
-    # -> String | nil (conteúdo atual).
+    # -> String | nil (current content).
     def read(filename)
       entry(filename.to_s)&.fetch("content", nil)
     end
 
-    # -> [String] nomes dos arquivos, ordem lexicográfica.
+    # -> [String] file names, lexicographic order.
     def list
       @cs.keys(SCOPE).sort
     end
 
-    # Grava (upsert). create_only: recusa sobrescrever. Versiona o anterior em
-    # history. -> Hash (a entry gravada).
+    # Writes (upsert). create_only: refuses to overwrite. Versions the previous one into
+    # history. -> Hash (the stored entry).
     def write(filename, content, create_only: false)
       name = filename.to_s
-      raise Harness::ValidationError, "file é obrigatório" if name.empty?
+      raise Harness::ValidationError, "file is required" if name.empty?
 
       current = entry(name)
       if create_only && current
@@ -54,18 +54,18 @@ module Harness
       built
     end
 
-    # -> bool (existia?).
+    # -> bool (did it exist?).
     def delete(filename)
       @cs.delete(SCOPE, filename.to_s)
     end
 
-    # -> [ { "content" =>, "at" => } ] versões antigas, mais recente primeiro.
+    # -> [ { "content" =>, "at" => } ] older versions, most recent first.
     def versions(filename)
       entry(filename.to_s)&.fetch("history", []) || []
     end
 
-    # Restaura a versão `index` de history como o conteúdo atual (nova escrita).
-    # -> Hash (entry) | levanta se index inválido / arquivo inexistente.
+    # Restores version `index` from history as the current content (a new write).
+    # -> Hash (entry) | raises if index invalid / file nonexistent.
     def restore(filename, index)
       name = filename.to_s
       current = entry(name)

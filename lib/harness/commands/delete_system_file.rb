@@ -4,8 +4,8 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: remove um arquivo de sistema global
-    # do SystemFileStore. Idempotente (`existed: false`). -> { existed: bool }.
+    # Control command: removes a global system file
+    # from the SystemFileStore. Idempotent (`existed: false`). -> { existed: bool }.
     class DeleteSystemFile
       def initialize(system_file_store:, event_stream:)
         @system_files = system_file_store
@@ -15,7 +15,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         file = AgentPayload.presence(p[:file])
-        raise Harness::ValidationError, "file é obrigatório" if file.nil?
+        raise Harness::ValidationError, "file is required" if file.nil?
 
         existed = @system_files.delete(file)
         @event_stream.emit(Harness::Event.new(

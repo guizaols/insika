@@ -1,49 +1,49 @@
 # frozen_string_literal: true
 
 module Harness
-  # Contrato mínimo de persistência.
-  # KV escopado por namespace, transacional quando o backend suporta.
-  # Toda implementação passa a MESMA suíte de contrato
-  # (spec/harness/store_contract.rb). Valores devem ser serializáveis em JSON.
+  # Minimal persistence contract.
+  # Namespace-scoped KV, transactional when the backend supports it.
+  # Every implementation passes the SAME contract suite
+  # (spec/harness/store_contract.rb). Values must be JSON-serializable.
   #
-  # scope: String — separa domínios/tenants (ex.: "sessions", "tasks:tenant_x")
-  # key:   String hierárquica (ex.: "task:123", "checkpoint:123:turn:4")
+  # scope: String — separates domains/tenants (e.g. "sessions", "tasks:tenant_x")
+  # key:   Hierarchical String (e.g. "task:123", "checkpoint:123:turn:4")
   #
-  # Regras do contrato (verificadas pela suíte):
-  # - get de chave inexistente -> nil (nunca exceção)
-  # - set sobrescreve silenciosamente (last-write-wins)
-  # - round-trip preserva tipos JSON; Symbols viram Strings (domínio
-  #   normaliza na borda)
-  # - list(scope) só retorna chaves do scope, ordenadas lexicograficamente;
-  #   prefix filtra por start_with?
-  # - transaction aninhada reusa a transação externa (sem SAVEPOINT)
-  # - falha de serialização na escrita -> Harness::StoreError (fail-fast)
+  # Contract rules (verified by the suite):
+  # - get on a nonexistent key -> nil (never an exception)
+  # - set overwrites silently (last-write-wins)
+  # - round-trip preserves JSON types; Symbols become Strings (the domain
+  #   normalizes at the boundary)
+  # - list(scope) returns only keys of the scope, ordered lexicographically;
+  #   prefix filters by start_with?
+  # - a nested transaction reuses the outer transaction (no SAVEPOINT)
+  # - a serialization failure on write -> Harness::StoreError (fail-fast)
   #
-  # Backends fazem `include Store` e sobrescrevem os cinco métodos; qualquer
-  # método esquecido levanta NotImplementedError (fail-fast, melhor que um
-  # NoMethodError distante).
+  # Backends `include Store` and override the five methods; any forgotten
+  # method raises NotImplementedError (fail-fast, better than a distant
+  # NoMethodError).
   module Store
-    # -> Object | nil (desserializado)
+    # -> Object | nil (deserialized)
     def get(scope, key)
       raise NotImplementedError, "#{self.class}#get"
     end
 
-    # -> value (o MESMO objeto passado, não o round-trip)
+    # -> value (the SAME object passed in, not the round-trip)
     def set(scope, key, value)
       raise NotImplementedError, "#{self.class}#set"
     end
 
-    # -> true | false (existia?)
+    # -> true | false (did it exist?)
     def delete(scope, key)
       raise NotImplementedError, "#{self.class}#delete"
     end
 
-    # -> [String] chaves ordenadas lexicograficamente
+    # -> [String] keys ordered lexicographically
     def list(scope, prefix = nil)
       raise NotImplementedError, "#{self.class}#list"
     end
 
-    # -> resultado do bloco; atômico se o backend suportar
+    # -> the block's result; atomic if the backend supports it
     def transaction(&blk)
       raise NotImplementedError, "#{self.class}#transaction"
     end

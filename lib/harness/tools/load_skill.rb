@@ -4,22 +4,22 @@ require "ruby_llm"
 
 module Harness
   module Tools
-    # Nível 2 do progressive disclosure: carrega o corpo completo do SKILL.md
-    # sob demanda. Respeita a allowlist do agente (o modelo não carrega uma
-    # skill que a política não expôs).
+    # Level 2 of progressive disclosure: loads the full SKILL.md body
+    # on demand. Respects the agent's allowlist (the model does not load a
+    # skill that the policy did not expose).
     #
-    # `require "ruby_llm"` fica NESTE arquivo (herda de
-    # RubyLLM::Tool), por isso ele NÃO entra em lib/harness.rb: o Executor o
-    # carrega lazy dentro de create_chat.
+    # `require "ruby_llm"` stays in THIS file (it inherits from
+    # RubyLLM::Tool), which is why it does NOT enter lib/harness.rb: the Executor
+    # loads it lazily inside create_chat.
     class LoadSkill < RubyLLM::Tool
       description "Carrega as instruções completas (SKILL.md) de uma skill pelo nome"
       param :name, desc: "Nome exato da skill, conforme listado em <available_skills>"
 
-      # RubyLLM::Tool#name deriva de self.class.name — p/ classe aninhada produz
-      # "harness--tools--load_skill", não "load_skill" (o que wire_callbacks/
-      # :skill_activated e o SkillCatalog#format_for_prompt assumem). Override
-      # explícito. Coexiste com
-      # `param :name` (verificado: a param continua presente).
+      # RubyLLM::Tool#name derives from self.class.name — for a nested class it produces
+      # "harness--tools--load_skill", not "load_skill" (which wire_callbacks/
+      # :skill_activated and SkillCatalog#format_for_prompt assume). Explicit
+      # override. Coexists with
+      # `param :name` (verified: the param is still present).
       def name = "load_skill"
 
       def initialize(catalog, allowed_names)

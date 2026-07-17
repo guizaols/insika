@@ -4,12 +4,12 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: ingestão MCP LIVE (Fase 7, Etapa E). Recebe o NOME de
-    # uma instância MCP, delega ao McpToolIngestor (descobre via cliente injetável
-    # -> constrói o manifesto -> reusa o :import_tools: upsert em lote + reload hot)
-    # e devolve o relatório por-tool no molde do :import_tools, acrescido de
-    # `instance:`. Idempotente (re-ingerir reconcilia). Falha por-tool fica isolada
-    # em `errors[]` (R4); instância ausente/desabilitada/sem-url levanta.
+    # Control command: LIVE MCP ingestion (Phase 7, Step E). Receives the NAME of
+    # an MCP instance, delegates to McpToolIngestor (discovers via an injectable client
+    # -> builds the manifest -> reuses :import_tools: batch upsert + hot reload)
+    # and returns the per-tool report in the shape of :import_tools, plus
+    # `instance:`. Idempotent (re-ingesting reconciles). A per-tool failure is isolated
+    # in `errors[]` (R4); an absent/disabled/url-less instance raises.
     #   -> { instance, version, created: [names], updated: [names], errors: [{tool,error}] }
     class ImportMcpTools
       def initialize(ingestor:, event_stream:)
@@ -20,7 +20,7 @@ module Harness
       def call(command)
         p = symbolize(command.payload)
         name = Harness::Coercion.presence(p[:name]) ||
-               (raise Harness::ValidationError, "import_mcp_tools: 'name' (instância MCP) é obrigatório")
+               (raise Harness::ValidationError, "import_mcp_tools: 'name' (MCP instance) is required")
 
         report = @ingestor.ingest(name)
         emit(report)
@@ -29,7 +29,7 @@ module Harness
 
       private
 
-      # Emite só CONTAGENS + nome da instância (nunca headers/env/secrets): 0 vazamento.
+      # Emits only COUNTS + the instance name (never headers/env/secrets): 0 leakage.
       def emit(report)
         @event_stream.emit(Harness::Event.new(
                              type: :mcp_tools_imported,

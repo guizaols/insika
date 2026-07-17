@@ -5,11 +5,11 @@ require "time"
 
 module Harness
   module Plugin
-    # Carregador de plugins. Roda EXCLUSIVAMENTE no boot, single-fiber, antes
-    # do servidor aceitar conexões — zero concorrência.
+    # Plugin loader. Runs EXCLUSIVELY at boot, single-fiber, before
+    # the server accepts connections — zero concurrency.
     #
-    # Manifesto: descoberta sem executar código; require do entry só depois de
-    # validado. Falha de um plugin não derruba o boot (rollback + warn).
+    # Manifest: discovery without executing code; the entry require only happens
+    # after validation. A plugin failure doesn't bring down boot (rollback + warn).
     class Loader
       Discovered = Data.define(:id, :name, :root, :tool_names, :workflow_names,
                                :capability_names, :skill_dirs, :prompt_dirs, :config)
@@ -18,9 +18,9 @@ module Harness
       SUPPORTED_CONTRACTS = %w[tools workflows capabilities].freeze
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
-      # middleware:/context_providers: (coleções que respondem a <<).
-      # announced_roots:/disabled: materializam a habilitação por classe de root;
-      # defaults vazios mantêm a assinatura válida.
+      # middleware:/context_providers: (collections that respond to <<).
+      # announced_roots:/disabled: materialize per-root-class enablement;
+      # empty defaults keep the signature valid.
       def initialize(roots:, registries:, enabled:, event_stream:,
                      announced_roots: [], disabled: [])
         @roots = Array(roots)
@@ -61,10 +61,10 @@ module Harness
         { skill_dirs: skill_dirs, prompt_dirs: prompt_dirs, plugins: plugins }
       end
 
-      # Habilitação por classe de root: gem anunciada é
-      # default-enabled, desabilitável por disabled:; workspace e bundled exigem
-      # enabled: explícito. disabled: é veto absoluto (deny vence,
-      # como as allowlists) — um id em disabled não carrega nem se em enabled.
+      # Per-root-class enablement: an announced gem is
+      # default-enabled, disableable via disabled:; workspace and bundled require
+      # explicit enabled:. disabled: is an absolute veto (deny wins,
+      # like the allowlists) — an id in disabled won't load even if it's in enabled.
       def enabled?(id, plugin_dir)
         return false if @disabled.include?(id)
 
@@ -78,8 +78,8 @@ module Harness
         @announced_roots.any? { |root| dir == root || dir.start_with?("#{root}#{File::SEPARATOR}") }
       end
 
-      # Um manifesto por diretório: harness.plugin.yml precede plugin.yml (mesmo
-      # dir). Ordem preservada (precedência de root — primeiro vence via `seen`).
+      # One manifest per directory: harness.plugin.yml takes precedence over
+      # plugin.yml (same dir). Order preserved (root precedence — first wins via `seen`).
       def manifest_files
         selected = {}
         @roots.each do |root|
@@ -100,11 +100,11 @@ module Harness
         end
         manifest
       rescue StandardError => e
-        warn "[plugin] manifesto ilegível #{file}: #{e.class}: #{e.message}"
+        warn "[plugin] unreadable manifest #{file}: #{e.class}: #{e.message}"
         nil
       end
 
-      # -> config Hash (válida) | :skip (fail-closed por plugin).
+      # -> config Hash (valid) | :skip (fail-closed per plugin).
       def validate_config(manifest, id)
         schema = manifest["config_schema"]
         config = manifest["config"] || {}
@@ -129,9 +129,9 @@ module Harness
         )
       end
 
-      # require + const_get + register(api) + commit do staging. Falha ->
-      # warn+backtrace, rollback das entradas parciais, plugin descartado,
-      # boot continua. Sem entry: só skills/prompts (nenhum registro).
+      # require + const_get + register(api) + commit of the staging. On failure ->
+      # warn+backtrace, rollback of the partial entries, plugin discarded,
+      # boot continues. Without an entry: only skills/prompts (no registration).
       def load_entry(manifest, discovered)
         entry = manifest["entry"]
         return true if entry.nil?
@@ -166,10 +166,10 @@ module Harness
                            ))
       end
 
-      # Fachada passada ao plugin. Contrato exigido só p/ tools e
-      # workflows (endereçáveis por nome); middleware/hooks/providers são
-      # STAGED e efetivados por commit! só quando register(api) volta sem exceção
-      # (materializa a garantia de rollback — nada parcial sobra).
+      # Facade passed to the plugin. A contract is required only for tools and
+      # workflows (addressable by name); middleware/hooks/providers are
+      # STAGED and made effective by commit! only when register(api) returns
+      # without an exception (materializes the rollback guarantee — nothing partial remains).
       class RegistrationAPI
         def initialize(registries:, plugin_id:, tool_names:, workflow_names:,
                        tool_metadata:, config:, capability_names: [])
@@ -211,9 +211,9 @@ module Harness
           @registries[:policies].register(name, klass, plugin: @plugin_id)
         end
 
-        # Espelha register_tool ("não declarada -> warn + ignora"), + exclusividade
-        # tool:/workflow: e o warn p/ kind :workflow (sem consumidor nesta fatia).
-        # Staged; efetivado no commit! (nada parcial se register(api) levantar).
+        # Mirrors register_tool ("not declared -> warn + ignore"), + tool:/workflow:
+        # exclusivity and the warn for kind :workflow (no consumer in this slice).
+        # Staged; made effective at commit! (nothing partial if register(api) raises).
         def register_capability(name, tool: nil, workflow: nil, priority: nil, available: nil)
           name = name.to_s
           unless @capability_names.include?(name)
@@ -248,13 +248,13 @@ module Harness
         def register_middleware(instance) = @staged_middleware << instance
         def register_context_provider(instance) = @staged_providers << instance
 
-        # Valida o par NA HORA do stage (não só no commit): assim um par inválido
-        # levanta DENTRO de register(api) -> o staging é descartado e o rollback
-        # cobre tudo. Se a validação ficasse só no commit!, middleware/providers
-        # já teriam sido efetivados quando o hook ruim levantasse.
+        # Validates the pair AT stage time (not only at commit): this way an invalid
+        # pair raises INSIDE register(api) -> the staging is discarded and the rollback
+        # covers everything. If validation happened only at commit!, middleware/providers
+        # would already have been made effective when the bad hook raised.
         def register_hook(pair, before: nil, after: nil)
           unless Harness::Hooks::PAIRS.include?(pair)
-            raise ArgumentError, "par de hook desconhecido: #{pair.inspect}"
+            raise ArgumentError, "unknown hook pair: #{pair.inspect}"
           end
 
           @staged_hooks << [pair, before, after]
@@ -262,8 +262,8 @@ module Harness
 
         def config = @config
 
-        # Atômico por construção: os pares de hook já foram validados no stage,
-        # então nenhuma linha aqui levanta (arrays <<, hooks.register de par válido).
+        # Atomic by construction: the hook pairs were already validated at stage
+        # time, so no line here raises (array <<, hooks.register of a valid pair).
         def commit!
           @staged_middleware.each { |m| @registries[:middleware] << m }
           @staged_providers.each { |p| @registries[:context_providers] << p }
@@ -276,9 +276,9 @@ module Harness
         end
       end
 
-      # Validador subset de JSON Schema (sem gem; trocável).
-      # validate(schema, value) -> [String] (vazio = válido). Schema inválido E
-      # config que não valida caem na mesma lista (fail-closed por plugin).
+      # Subset JSON Schema validator (no gem; swappable).
+      # validate(schema, value) -> [String] (empty = valid). An invalid schema AND
+      # a config that fails validation land in the same list (fail-closed per plugin).
       module ConfigSchema
         KEYWORDS = %w[type properties required additionalProperties enum].freeze
         TYPES = {
@@ -288,7 +288,7 @@ module Harness
         }.freeze
 
         def self.validate(schema, value, path = "config")
-          return ["#{path}: schema deve ser um Hash"] unless schema.is_a?(Hash)
+          return ["#{path}: schema must be a Hash"] unless schema.is_a?(Hash)
 
           errors = []
           unknown = schema.keys - KEYWORDS
@@ -303,17 +303,17 @@ module Harness
           return [] unless schema.key?("type")
 
           klasses = TYPES[schema["type"]]
-          return ["#{path}: type desconhecido: #{schema['type'].inspect}"] if klasses.nil?
+          return ["#{path}: unknown type: #{schema['type'].inspect}"] if klasses.nil?
           return [] if klasses.any? { |k| value.is_a?(k) }
 
-          ["#{path}: esperado #{schema['type']}, veio #{value.class}"]
+          ["#{path}: expected #{schema['type']}, got #{value.class}"]
         end
 
         def self.check_enum(schema, value, path)
           return [] unless schema.key?("enum")
           return [] if Array(schema["enum"]).include?(value)
 
-          ["#{path}: valor #{value.inspect} fora do enum"]
+          ["#{path}: value #{value.inspect} not in enum"]
         end
 
         def self.check_object(schema, value, path)
@@ -321,8 +321,8 @@ module Harness
                            schema.key?("additionalProperties")
 
           props = schema["properties"] || {}
-          return ["#{path}: properties deve ser Hash"] unless props.is_a?(Hash)
-          return [] unless value.is_a?(Hash) # keywords de objeto só valem p/ Hash
+          return ["#{path}: properties must be a Hash"] unless props.is_a?(Hash)
+          return [] unless value.is_a?(Hash) # object keywords only apply to a Hash
 
           errors = []
           props.each { |k, sub| errors.concat(validate(sub, value[k], "#{path}.#{k}")) if value.key?(k) }

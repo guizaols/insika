@@ -4,9 +4,9 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: acrescenta uma nota livre
-    # (append-only) na memória do agente (MemoryStore, camada `notes`). Escopado
-    # por `tenant`. Síncrono; não cria Task. -> Note.
+    # Control command: appends a free-form note
+    # (append-only) to the agent's memory (MemoryStore, `notes` layer). Scoped
+    # by `tenant`. Synchronous; does not create a Task. -> Note.
     class MemoryAddNote
       def initialize(memory_store:, event_stream:)
         @memory_store = memory_store
@@ -16,7 +16,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         text = AgentPayload.presence(p[:text])
-        raise Harness::ValidationError, "text é obrigatório" if text.nil?
+        raise Harness::ValidationError, "text is required" if text.nil?
 
         tenant = AgentPayload.presence(p[:tenant]) || command.meta[:tenant]
         note = @memory_store.add_note(tenant: tenant, text: text)

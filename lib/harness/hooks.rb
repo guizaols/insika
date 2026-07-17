@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Harness
-  # Hooks ALTERAM a entrada/saída de UM estágio que envolvem: Middleware
-  # modifica, Hooks alteram, Events observam. Não criam fluxo próprio nem pulam
-  # estágios. Síncronos e sem rescue — o mapeamento erro->estado é do Executor.
+  # Hooks ALTER the input/output of the ONE stage they wrap: Middleware
+  # modifies, Hooks alter, Events observe. They don't create their own flow nor skip
+  # stages. Synchronous and without rescue — the error->state mapping belongs to the Executor.
   class Hooks
     PAIRS = %i[task prompt agent tool].freeze
 
@@ -12,35 +12,35 @@ module Harness
       @after = Hash.new { |h, k| h[k] = [] }
     end
 
-    # callables; múltiplos por par. A ordem de registro é significativa.
+    # callables; multiple per pair. Registration order is significant.
     def register(pair, before: nil, after: nil)
-      raise ArgumentError, "par de hook desconhecido: #{pair.inspect}" unless PAIRS.include?(pair)
+      raise ArgumentError, "unknown hook pair: #{pair.inspect}" unless PAIRS.include?(pair)
 
       @before[pair] << before if before
       @after[pair] << after if after
       nil
     end
 
-    # befores na ordem de registro (podem ALTERAR o subject retornando o novo),
-    # yield(subject), afters na ordem INVERSA (podem alterar o resultado). Sem
-    # registros -> degenera em yield(subject) (no-op). Hook que não altera
-    # devolve o que recebeu; devolver nil É alterar para nil (sem caso especial).
+    # befores in registration order (may ALTER the subject by returning the new one),
+    # yield(subject), afters in REVERSE order (may alter the result). With no
+    # registrations -> degenerates into yield(subject) (no-op). A hook that doesn't alter
+    # returns what it received; returning nil IS altering to nil (no special case).
     def around(pair, subject)
       run_after(pair, yield(run_before(pair, subject)))
     end
 
-    # Metades públicas do around. Necessárias para o par :tool, cujo
-    # "corpo" do estágio é o loop interno do RubyLLM — não há bloco
-    # a envolver; as metades são chamadas dos callbacks before_tool_call/
-    # after_tool_result separadamente.
+    # Public halves of around. Needed for the :tool pair, whose
+    # stage "body" is RubyLLM's inner loop — there is no block
+    # to wrap; the halves are called from the before_tool_call/
+    # after_tool_result callbacks separately.
     def run_before(pair, subject)
-      raise ArgumentError, "par de hook desconhecido: #{pair.inspect}" unless PAIRS.include?(pair)
+      raise ArgumentError, "unknown hook pair: #{pair.inspect}" unless PAIRS.include?(pair)
 
       @before[pair].reduce(subject) { |subj, hook| hook.call(subj) }
     end
 
     def run_after(pair, result)
-      raise ArgumentError, "par de hook desconhecido: #{pair.inspect}" unless PAIRS.include?(pair)
+      raise ArgumentError, "unknown hook pair: #{pair.inspect}" unless PAIRS.include?(pair)
 
       @after[pair].reverse.reduce(result) { |res, hook| hook.call(res) }
     end

@@ -1,32 +1,32 @@
 # frozen_string_literal: true
 
 module Harness
-  # Resolução intenção→implementação. INDIREÇÃO pura: NÃO herda
-  # de `Registry` (que guarda executáveis) — guarda `Provider`s (metadados de
-  # resolução) e devolve o `impl_name` que OUTRO registry instancia. Imutável
-  # pós-boot por construção (só o boot/loader registra), como o `Registry`.
+  # Intent→implementation resolution. Pure INDIRECTION: does NOT inherit
+  # from `Registry` (which holds executables) — it holds `Provider`s (resolution
+  # metadata) and returns the `impl_name` that ANOTHER registry instantiates.
+  # Immutable post-boot by construction (only boot/loader registers), like `Registry`.
   class CapabilityRegistry
     Provider = Data.define(:capability, :impl_name, :kind, :plugin, :priority, :available)
     #   kind:      :tool | :workflow
-    #   priority:  Integer | nil (nil = mais baixo; herda precedência de plugin)
-    #   available: callable -> bool (default -> { true }; nunca nil num Provider registrado)
+    #   priority:  Integer | nil (nil = lowest; inherits plugin precedence)
+    #   available: callable -> bool (default -> { true }; never nil in a registered Provider)
 
     def initialize
       # capability(Symbol) -> [Provider], na ordem de registro (proxy de announce)
       @providers = Hash.new { |h, k| h[k] = [] }
     end
 
-    # Ao contrário do `Registry#register`, NÃO há "primeiro vence": registrar a
-    # mesma capability mais de uma vez é o caso normal (providers concorrendo) —
-    # a dedup/desempate acontece no `resolve`, não aqui.
+    # Unlike `Registry#register`, there is NO "first wins": registering the
+    # same capability more than once is the normal case (providers competing) —
+    # dedup/tie-breaking happens in `resolve`, not here.
     def register(capability, impl_name:, kind:, plugin: nil, priority: nil, available: nil)
       unless %i[tool workflow].include?(kind)
-        raise ArgumentError, "kind inválido: #{kind.inspect} (use :tool ou :workflow)"
+        raise ArgumentError, "invalid kind: #{kind.inspect} (use :tool or :workflow)"
       end
 
       if kind == :workflow
-        warn "[capability_registry] '#{capability}' registrada com kind: :workflow — " \
-             "exposição ao agente adiada (L5)"
+        warn "[capability_registry] '#{capability}' registered with kind: :workflow — " \
+             "exposure to the agent deferred (L5)"
       end
 
       @providers[capability.to_sym] << Provider.new(
@@ -40,19 +40,19 @@ module Harness
 
     def capabilities = @providers.keys
 
-    # Rollback do Loader, simétrico ao `Registry#deregister_plugin`. Remove
-    # só os Providers do plugin; capabilities sem provider restante somem de
-    # `capabilities` (limpa a chave para o Hash.new-com-bloco não recriá-la vazia).
+    # Loader rollback, symmetric to `Registry#deregister_plugin`. Removes
+    # only the plugin's Providers; capabilities with no remaining provider drop
+    # from `capabilities` (clears the key so the Hash.new-with-block won't recreate it empty).
     def deregister_plugin(plugin_id)
       @providers.each_value { |list| list.delete_if { |p| p.plugin == plugin_id.to_s } }
       @providers.delete_if { |_cap, list| list.empty? }
       nil
     end
 
-    # -> Provider escolhido | raise CapabilityUnavailable | raise CapabilityAmbiguous.
-    # PURO e determinístico: mesmo input → mesma escolha ou mesmo erro. Sem
-    # IO além do `available.call` do próprio Provider. Emite `:capability_resolved`
-    # quando `event_stream:` presente (auditoria).
+    # -> chosen Provider | raise CapabilityUnavailable | raise CapabilityAmbiguous.
+    # PURE and deterministic: same input → same choice or same error. No
+    # IO beyond the Provider's own `available.call`. Emits `:capability_resolved`
+    # when `event_stream:` is present (audit).
     def resolve(capability, profile:, context: {}, event_stream: nil)
       candidates = providers(capability)
       candidates = candidates.select { |p| p.available.call }
@@ -76,22 +76,22 @@ module Harness
 
     private
 
-    # Resolução aplica SÓ `tools_deny` sobre `impl_name` (deny SEMPRE vence) — NÃO
-    # aplica `tools_allow`: o grant para usar a capability é
-    # listá-la em `profile.capabilities`, conferido pelo Executor ANTES
-    # de chamar `resolve`. Reusar `tools_allow` filtraria para fora um provider de
-    # um agente que lista só a capability (não o impl cru). Pinning por-agente de
-    # provider (`capability_providers`) é evolução.
+    # Resolution applies ONLY `tools_deny` over `impl_name` (deny ALWAYS wins) — it does
+    # NOT apply `tools_allow`: the grant to use the capability is
+    # listing it in `profile.capabilities`, checked by the Executor BEFORE
+    # calling `resolve`. Reusing `tools_allow` would filter out a provider for
+    # an agent that lists only the capability (not the raw impl). Per-agent provider
+    # pinning (`capability_providers`) is future work.
     def apply_deny(candidates, profile)
       deny = Array(profile.tools_deny).map(&:to_s)
       candidates.reject { |p| deny.include?(p.impl_name) }
     end
 
-    # `priority` desc primária, `nil` como o MAIS BAIXO possível (abaixo de
-    # qualquer Integer, inclusive negativo — não normalizar para 0, que colidiria
-    # com `priority: 0` explícito). Desempate por precedência de plugin (ordem de
-    # registro, proxy de announce): plugins diferentes sempre
-    # desempatam; mesmo plugin (nil incluso) empatado = CapabilityAmbiguous.
+    # `priority` desc primary, `nil` as the LOWEST possible (below
+    # any Integer, including negative — do not normalize to 0, which would collide
+    # with an explicit `priority: 0`). Tie-break by plugin precedence (registration
+    # order, announce proxy): different plugins always
+    # break the tie; same plugin (nil included) tied = CapabilityAmbiguous.
     def pick_top(candidates, capability)
       indexed = providers(capability).each_with_index.to_h { |p, i| [p, i] }
 

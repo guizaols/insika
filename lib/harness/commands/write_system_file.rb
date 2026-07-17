@@ -4,10 +4,10 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: grava um arquivo de sistema GLOBAL no
-    # SystemFileStore. Diferente do write_agent_file (por agente), estes arquivos
-    # valem para TODOS os agentes — o Prompt provider os injeta antes da
-    # identidade individual. Vale no próximo turno (hot). -> { file, updated_at }.
+    # Control command: writes a GLOBAL system file into the
+    # SystemFileStore. Unlike write_agent_file (per agent), these files
+    # apply to ALL agents — the Prompt provider injects them before the
+    # individual identity. Takes effect on the next turn (hot). -> { file, updated_at }.
     class WriteSystemFile
       def initialize(system_file_store:, event_stream:)
         @system_files = system_file_store
@@ -17,7 +17,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         file = AgentPayload.presence(p[:file])
-        raise Harness::ValidationError, "file é obrigatório" if file.nil?
+        raise Harness::ValidationError, "file is required" if file.nil?
 
         entry = @system_files.write(file, p[:content].to_s, create_only: !!p[:create_only])
         @event_stream.emit(Harness::Event.new(

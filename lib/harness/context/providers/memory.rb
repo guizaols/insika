@@ -3,40 +3,40 @@
 module Harness
   module Context
     module Providers
-      # Read path da memória cross-session. Adaptador fino sobre
-      # o MemoryStore — mesmo padrão do Skill/ToolSearch provider: um fragmento
-      # `:system` com os fatos + as notes recentes do tenant. Determinístico (sem
-      # embeddings/ranking).
+      # Read path for cross-session memory. Thin adapter over
+      # the MemoryStore — same pattern as the Skill/ToolSearch provider: one
+      # `:system` fragment with the tenant's facts + recent notes. Deterministic
+      # (no embeddings/ranking).
       class Memory < ContextProvider
         def initialize(store:, notes_limit: 10)
           @store = store
           @notes_limit = notes_limit
         end
 
-        # Opt-in por agente. O Builder ainda aplica a allowlist
-        # `context_providers` por cima (dois gates, como os demais providers).
+        # Per-agent opt-in. The Builder still applies the `context_providers`
+        # allowlist on top (two gates, like the other providers).
         def enabled_for?(profile) = !!profile.memory
 
-        # required? == false (default): falha (store indisponível) vira
-        # :provider_warning + degradação graciosa — nunca aborta o turno.
+        # required? == false (default): a failure (store unavailable) becomes a
+        # :provider_warning + graceful degradation — never aborts the turn.
         def call(request)
           tenant = memory_tenant(request)
           facts = @store.facts(tenant: tenant)
           notes = @store.notes(tenant: tenant, limit: @notes_limit)
           return [] if facts.empty? && notes.empty?
 
-          # priority MEMORY (75): entre skills (80) e tools deferred (70) na ordem
-          # de sacrifício. pinned false (cortável sob orçamento apertado).
+          # priority MEMORY (75): between skills (80) and deferred tools (70) in
+          # the sacrifice order. pinned false (cuttable under a tight budget).
           [ContextFragment.build(content: format_block(facts, notes),
                                  placement: :system, priority: Context::Priority::MEMORY, source: id)]
         end
 
         private
 
-        # Escopo da memória do motor (D3): tenant EXPLÍCITO do Command vence
-        # (override multi-merchant); senão a SESSÃO (=chat) — memória dono-motor é
-        # por-chat. Sem sessão (one-shot) e sem tenant -> nil (MemoryStore aplica
-        # _default). Simétrico ao write path (`state.tenant` no Executor).
+        # Engine memory scope (D3): an EXPLICIT tenant from the Command wins
+        # (multi-merchant override); otherwise the SESSION (=chat) — engine-owner
+        # memory is per-chat. No session (one-shot) and no tenant -> nil (MemoryStore
+        # applies _default). Symmetric to the write path (`state.tenant` in the Executor).
         def memory_tenant(request)
           explicit = request.respond_to?(:tenant) ? request.tenant : nil
           return explicit if explicit
@@ -44,7 +44,7 @@ module Harness
           request.respond_to?(:session) ? request.session&.id : nil
         end
 
-        # <memory> passivo (sem instrução — o COMO gravar vive na tool `remember`).
+        # Passive <memory> (no instruction — the HOW of writing lives in the `remember` tool).
         def format_block(facts, notes)
           lines = facts.map { |f| %(  <fact key="#{f.key}">#{f.value}</fact>) }
           lines += notes.map { |n| "  <note>#{n.text}</note>" }

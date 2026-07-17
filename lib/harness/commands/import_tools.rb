@@ -4,18 +4,18 @@ require "time"
 
 module Harness
   module Commands
-    # Ingestão em LOTE de data-tools a partir de um manifesto (Fase 7, Etapa B).
-    # Normaliza cada tool (defaults + adapter de envelope + endpoint→url + secret/
-    # env) via ToolManifest, faz UPSERT no ToolStore e RECARREGA o overlay + o
-    # catálogo UMA vez ao fim — passa a valer sem restart (NF3). Idempotente
-    # (re-importar reconcilia). Injeta os resolvedores de `{{secret.*}}`/`{{env.*}}`
-    # do deployment (D6/open-q2): o segredo NUNCA vem no manifesto.
+    # BATCH ingestion of data-tools from a manifest (Phase 7, Step B).
+    # Normalizes each tool (defaults + envelope adapter + endpoint→url + secret/
+    # env) via ToolManifest, UPSERTs it into the ToolStore, and RELOADS the overlay +
+    # catalog ONCE at the end — takes effect without a restart (NF3). Idempotent
+    # (re-importing reconciles). Injects the deployment's `{{secret.*}}`/`{{env.*}}`
+    # resolvers (D6/open-q2): the secret NEVER comes in the manifest.
     #
-    # FALHA PARCIAL ISOLADA (R4): uma tool malformada (envelope inválido, endpoint
-    # ausente, secret não configurado, colisão com tool de código, url inválida)
-    # NÃO derruba o lote — vira uma entrada em `errors[]`. Só erro ESTRUTURAL do
-    # manifesto (defaults/tools do tipo errado) levanta (o transporte -> 422).
-    # Relatório por-tool no molde do pack importer da Fase 6.
+    # ISOLATED PARTIAL FAILURE (R4): a malformed tool (invalid envelope, missing
+    # endpoint, unconfigured secret, collision with a code tool, invalid url)
+    # does NOT bring down the batch — it becomes an entry in `errors[]`. Only a STRUCTURAL error in the
+    # manifest (defaults/tools of the wrong type) raises (transport -> 422).
+    # Per-tool report in the shape of the Phase 6 pack importer.
     #   -> { version, created: [names], updated: [names], errors: [{tool,error}] }
     class ImportTools
       def initialize(tool_store:, registry:, tool_catalog:, event_stream:, secrets: ENV, env: ENV)
@@ -28,7 +28,7 @@ module Harness
       end
 
       def call(command)
-        manifest = Harness::ToolManifest.from_h(command.payload) # estrutural -> 422
+        manifest = Harness::ToolManifest.from_h(command.payload) # structural -> 422
         report = { version: manifest.version, created: [], updated: [], errors: [] }
 
         manifest.tools.each_with_index do |raw, i|
@@ -59,15 +59,15 @@ module Harness
         @tool_catalog.reload
       end
 
-      # Nome da tool p/ o relatório de erro; cai no índice quando o envelope nem
-      # nome trouxe (não deixa a entrada de erro anônima).
+      # Tool name for the error report; falls back to the index when the envelope
+      # didn't even carry a name (keeps the error entry from being anonymous).
       def tool_label(raw, index)
         h = raw.is_a?(Hash) ? raw : {}
         name = h["name"] || h[:name] || h.dig("function", "name") || h.dig(:function, :name)
         Harness::Coercion.presence(name) || "#<tool ##{index}>"
       end
 
-      # Emite só CONTAGENS + nomes (nunca headers/secrets): 0 vazamento.
+      # Emits only COUNTS + names (never headers/secrets): 0 leakage.
       def emit(report)
         @event_stream.emit(Harness::Event.new(
                              type: :tools_imported,

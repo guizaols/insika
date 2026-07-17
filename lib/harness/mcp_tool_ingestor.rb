@@ -3,59 +3,59 @@
 require "json"
 
 module Harness
-  # Ingestão MCP LIVE (Fase 7, Etapa E / spec §4 D8): descobre as tools de uma
-  # instância MCP em RUNTIME (sem manifesto escrito à mão) e as ingere como
-  # data-tools. Dada uma instância do McpStore + um cliente MCP INJETÁVEL
-  # (duck-typed: `#list_tools -> [{name, description, inputSchema}]`), constrói um
-  # ToolManifest e REUSA o caminho de ingestão da Etapa B (o Command :import_tools:
-  # upsert em lote no ToolStore + reload hot + relatório por-tool + isolamento de
-  # falha parcial R4). O adapter MCP do ToolManifest (`inputSchema`) é reaproveitado
-  # — nada de parsing de schema aqui.
+  # LIVE MCP ingestion (Phase 7, Stage E / spec §4 D8): discovers the tools of an
+  # MCP instance at RUNTIME (no hand-written manifest) and ingests them as
+  # data-tools. Given an McpStore instance + an INJECTABLE MCP client
+  # (duck-typed: `#list_tools -> [{name, description, inputSchema}]`), it builds a
+  # ToolManifest and REUSES the Stage B ingestion path (the :import_tools Command:
+  # batch upsert into the ToolStore + hot reload + per-tool report + partial-
+  # failure isolation R4). The ToolManifest MCP adapter (`inputSchema`) is reused
+  # — no schema parsing here.
   #
-  # GENÉRICO (NF1): nada aqui cita consumer/openclaw. A instância MCP é DADO no store.
+  # GENERIC (NF1): nothing here mentions consumer/openclaw. The MCP instance is DATA in the store.
   #
-  # ESTRATÉGIA DE BINDING (escolha desta etapa, bounded):
-  #   Cada tool descoberta vira uma data-tool HTTP que faz um POST JSON-RPC 2.0
-  #   `tools/call` no endpoint (url) da instância. O nome da tool é resolvido na
-  #   INGESTÃO (literal no body); os argumentos do modelo entram como `{{param}}`
-  #   por propriedade de TOPO do inputSchema (com aspas por tipo — string entre
-  #   aspas, demais crus, via o encode :body do DataDefinedTool). Assim a tool roda
-  #   no MESMO caminho HTTP das demais data-tools (egress guard, secret headers,
-  #   reload hot) — sem código novo de execução.
+  # BINDING STRATEGY (this stage's choice, bounded):
+  #   Each discovered tool becomes an HTTP data-tool that makes a JSON-RPC 2.0
+  #   `tools/call` POST to the instance endpoint (url). The tool name is resolved
+  #   at INGESTION (literal in the body); the model's arguments come in as `{{param}}`
+  #   per TOP-level property of the inputSchema (with quoting by type — strings
+  #   quoted, others raw, via the DataDefinedTool :body encode). This way the tool
+  #   runs through the SAME HTTP path as the other data-tools (egress guard, secret
+  #   headers, hot reload) — no new execution code.
   #
-  #   Cada tool recebe `group: "mcp:<instância>"` para o gating por grupo da Etapa C
-  #   (tools_allow_groups) funcionar de graça.
+  #   Each tool gets `group: "mcp:<instance>"` so the Stage C per-group gating
+  #   (tools_allow_groups) works for free.
   #
-  # DEFERIDO / OUT-OF-SCOPE (documentado — spec §4 D8):
-  #   - Transporte MCP real: só instâncias com `url` (transport http) são ingeríveis;
-  #     stdio não tem endpoint HTTP -> levanta erro claro (trabalho posterior).
-  #   - Ciclo de sessão MCP (initialize/negociação/session-id/notifications) e o
-  #     UNWRAP da resposta `tools/call` (`{content:[{type,text}]}`) — o binding faz
-  #     um POST stateless e devolve o body cru (extract body_raw).
-  #   - Injeção de credencial (o `env` da instância) como header de auth no binding
-  #     HTTP: o `env` é consumido por um cliente MCP real (deferido), não mapeado
-  #     para header aqui.
-  #   - Tools com nome/propriedade-de-topo fora do NAME_RE do ToolDefinition
-  #     (maiúsculas/hífens) são ISOLADAS em `errors[]` pelo import (R4).
+  # DEFERRED / OUT-OF-SCOPE (documented — spec §4 D8):
+  #   - Real MCP transport: only instances with a `url` (http transport) are ingestible;
+  #     stdio has no HTTP endpoint -> raises a clear error (later work).
+  #   - MCP session lifecycle (initialize/negotiation/session-id/notifications) and the
+  #     UNWRAP of the `tools/call` response (`{content:[{type,text}]}`) — the binding
+  #     makes a stateless POST and returns the raw body (extract body_raw).
+  #   - Credential injection (the instance `env`) as an auth header in the HTTP
+  #     binding: the `env` is consumed by a real MCP client (deferred), not mapped
+  #     to a header here.
+  #   - Tools whose name/top-level property is outside the ToolDefinition NAME_RE
+  #     (uppercase/hyphens) are ISOLATED into `errors[]` by the import (R4).
   class McpToolIngestor
     def initialize(mcp_store:, import_tools:, client_factory: nil)
       @mcp_store = mcp_store
       @import_tools = import_tools
-      # Fábrica de cliente por instância (default: cliente HTTP JSON-RPC mínimo).
-      # Injetável para testes (Fake) e para trocar por um transporte real depois.
+      # Per-instance client factory (default: minimal JSON-RPC HTTP client).
+      # Injectable for tests (Fake) and to swap for a real transport later.
       @client_factory = client_factory || method(:default_client)
     end
 
-    # Descobre + ingere as tools da instância `name`. `client` injetável (Fake nos
-    # testes); ausente -> a fábrica constrói do record. -> relatório do import_tools
-    # + `instance:`  ({ instance:, version:, created:, updated:, errors: }).
+    # Discovers + ingests the tools of instance `name`. `client` is injectable
+    # (Fake in tests); absent -> the factory builds one from the record. -> the
+    # import_tools report + `instance:` ({ instance:, version:, created:, updated:, errors: }).
     def ingest(name, client: nil)
       manifest = manifest_for(name, client: client)
       report = @import_tools.call(Harness::Command.build(:import_tools, manifest, transport: :internal))
       report.merge(instance: name.to_s)
     end
 
-    # Descobre as tools e monta o Hash de manifesto (sem ingerir) — isolável p/ teste.
+    # Discovers the tools and builds the manifest Hash (without ingesting) — isolable for testing.
     def manifest_for(name, client: nil)
       record = @mcp_store.get_raw(name.to_s)
       raise Harness::NotFoundError, "instância MCP '#{name}' não encontrada" if record.nil?
@@ -87,33 +87,33 @@ module Harness
       }
     end
 
-    # Entrada MCP crua -> entrada de manifesto (envelope MCP `inputSchema` + binding
-    # JSON-RPC). O ToolManifest normaliza o `inputSchema` (adapter MCP) e herda os
-    # defaults; o `group` cai por herança do defaults.
+    # Raw MCP entry -> manifest entry (MCP `inputSchema` envelope + JSON-RPC
+    # binding). ToolManifest normalizes the `inputSchema` (MCP adapter) and
+    # inherits the defaults; `group` falls through from the defaults.
     def tool_entry(name, url, raw)
       tool_name = raw["name"]
       input_schema = raw["inputSchema"] || {}
       {
         "name" => tool_name,
-        "description" => presence(raw["description"]) || "Tool '#{tool_name}' do servidor MCP '#{name}'.",
+        "description" => presence(raw["description"]) || "Tool '#{tool_name}' from MCP server '#{name}'.",
         "inputSchema" => input_schema,
         "url" => url,
-        "side_effect" => true, # uma tools/call é efeito (checkpoint/skip-on-resume)
+        "side_effect" => true, # a tools/call is a side effect (checkpoint/skip-on-resume)
         "body" => jsonrpc_call_body(tool_name, input_schema)
       }
     end
 
-    # Body JSON-RPC 2.0 `tools/call`. `name` literal (resolvido na ingestão);
-    # `arguments` por propriedade de TOPO do inputSchema, com `{{param}}` que o
-    # DataDefinedTool interpola no TURNO.
+    # JSON-RPC 2.0 `tools/call` body. `name` literal (resolved at ingestion);
+    # `arguments` per TOP-level property of the inputSchema, with `{{param}}` that
+    # the DataDefinedTool interpolates at TURN time.
     def jsonrpc_call_body(tool_name, input_schema)
       %({"jsonrpc":"2.0","id":1,"method":"tools/call",) +
         %("params":{"name":#{JSON.generate(tool_name)},"arguments":#{arguments_fragment(input_schema)}}})
     end
 
-    # -> "{...}" JSON com um placeholder por propriedade de topo. String entre
-    # aspas (o encode :body do DataDefinedTool devolve o conteúdo escapado SEM
-    # aspas); demais tipos crus (o encode devolve value.to_json).
+    # -> "{...}" JSON with one placeholder per top-level property. Strings are
+    # quoted (the DataDefinedTool :body encode returns the escaped content WITHOUT
+    # quotes); other types raw (the encode returns value.to_json).
     def arguments_fragment(input_schema)
       props = (input_schema["properties"] || input_schema[:properties] || {})
       return "{}" if props.nil? || props.empty?

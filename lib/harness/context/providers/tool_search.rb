@@ -3,12 +3,12 @@
 module Harness
   module Context
     module Providers
-      # Nível 1 (progressive disclosure) das TOOLS deferred do perfil. O recorte
-      # é `profile.tools_deferred`, conhecido no estágio 2 — pode ser levemente
-      # sobre-inclusivo (mostrar um deferred que a Policy depois nega); aceitável,
-      # o corte real acontece na PROMOÇÃO (tool_search, `deferred ∩ allowed`).
+      # Level 1 (progressive disclosure) of the profile's deferred TOOLS. The
+      # slice is `profile.tools_deferred`, known at stage 2 — it may be slightly
+      # over-inclusive (showing a deferred tool the Policy later denies); acceptable,
+      # the real cut happens at PROMOTION (tool_search, `deferred ∩ allowed`).
       class ToolSearch < CatalogProvider
-        # priority 70: abaixo das skills (80) na ordem de sacrifício.
+        # priority 70: below skills (80) in the sacrifice order.
         def priority = Context::Priority::TOOL_SEARCH
 
         private

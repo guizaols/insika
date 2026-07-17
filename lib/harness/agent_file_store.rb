@@ -3,20 +3,21 @@
 require "time"
 
 module Harness
-  # Workspace por agente. Guarda o
-  # CONTEÚDO dos arquivos de prompt de cada agente (IDENTITY.md/SOUL.md/TOOLS.md
-  # e afins) no Store durável — não em disco. É o que faz "cada um cria sua BIA
-  # com identidade própria": o Prompt provider lê daqui, por agente, em vez dos
-  # `files:` fixos do wiring (que agora são só o default do deployment).
+  # Per-agent workspace. Holds the
+  # CONTENT of each agent's prompt files (IDENTITY.md/SOUL.md/TOOLS.md
+  # and the like) in the durable Store — not on disk. It is what makes "each one
+  # builds its own BIA with its own identity": the Prompt provider reads from
+  # here, per agent, instead of the fixed `files:` in the wiring (which are now
+  # only the deployment default).
   #
-  # Um record por agente no ConfigStore (scope "agent_files"):
-  #   { "files" => { "<nome>" => { "content" => str,
+  # One record per agent in the ConfigStore (scope "agent_files"):
+  #   { "files" => { "<name>" => { "content" => str,
   #                                "updated_at" => iso8601,
   #                                "history" => [ { "content" => str, "at" => iso8601 }, ... ] } } }
   #
-  # Escrita versiona: o conteúdo anterior entra em `history` (mais recente
-  # primeiro), com teto HISTORY_MAX — restauração vira uma nova escrita
-  # (preserva o histórico linear, sem "voltar no tempo" destrutivo).
+  # A write versions: the previous content goes into `history` (most recent
+  # first), capped at HISTORY_MAX — restoring becomes a new write
+  # (preserves the linear history, no destructive "time travel").
   class AgentFileStore
     SCOPE = "agent_files"
     HISTORY_MAX = 20
@@ -25,18 +26,18 @@ module Harness
       @cs = config_store
     end
 
-    # -> String | nil (conteúdo atual; nil = arquivo/agente inexistente).
+    # -> String | nil (current content; nil = nonexistent file/agent).
     def read(agent_id, filename)
       entry(agent_id, filename.to_s)&.fetch("content", nil)
     end
 
-    # -> [String] nomes dos arquivos do agente, ordem lexicográfica.
+    # -> [String] the agent's file names, lexicographic order.
     def list(agent_id)
       files(agent_id).keys.sort
     end
 
-    # Grava (upsert). create_only: recusa sobrescrever. Versiona o conteúdo
-    # anterior em history. -> Hash (a entry gravada).
+    # Writes (upsert). create_only: refuses to overwrite. Versions the previous
+    # content into history. -> Hash (the stored entry).
     def write(agent_id, filename, content, create_only: false)
       name = filename.to_s
       record = @cs.get(SCOPE, agent_id.to_s) || { "files" => {} }
@@ -51,8 +52,8 @@ module Harness
       record["files"][name]
     end
 
-    # -> bool (existia?). Remove o arquivo; se o agente ficar sem arquivos,
-    # mantém o record vazio (barato; o delete de agente cuida da limpeza).
+    # -> bool (did it exist?). Removes the file; if the agent ends up with no files,
+    # keeps the empty record (cheap; deleting the agent handles the cleanup).
     def delete(agent_id, filename)
       name = filename.to_s
       record = @cs.get(SCOPE, agent_id.to_s)
@@ -63,14 +64,14 @@ module Harness
       true
     end
 
-    # -> [ { "content" =>, "at" => } ] versões antigas, mais recente primeiro.
+    # -> [ { "content" =>, "at" => } ] older versions, most recent first.
     def versions(agent_id, filename)
       entry(agent_id, filename.to_s)&.fetch("history", []) || []
     end
 
-    # Restaura a versão `index` de history como o conteúdo atual (nova escrita:
-    # o atual vai para o topo do history). -> Hash (entry) | levanta se index
-    # inválido / arquivo inexistente.
+    # Restores version `index` from history as the current content (a new write:
+    # the current one goes to the top of history). -> Hash (entry) | raises if index
+    # invalid / file nonexistent.
     def restore(agent_id, filename, index)
       name = filename.to_s
       hist = versions(agent_id, name)

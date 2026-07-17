@@ -4,15 +4,15 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de domínio das tasks. Persiste Tasks sobre um
-  # Harness::Store injetado, com a MÁQUINA DE ESTADOS validada aqui: o store é o
-  # único ponto de escrita de status, então os
-  # invariantes moram onde a escrita mora. Transição inválida é bug e levanta
-  # ArgumentError alto e cedo — é assim que corridas lógicas são
-  # detectadas sem lock.
+  # Domain store for tasks. Persists Tasks over an
+  # injected Harness::Store, with the STATE MACHINE validated here: the store is
+  # the only place status is written, so the
+  # invariants live where the writes live. An invalid transition is a bug and raises
+  # ArgumentError loud and early — this is how logical races are
+  # detected without a lock.
   #
-  # Cada Execution é UMA tentativa; retry/resume abre nova entrada, nunca
-  # sobrescreve.
+  # Each Execution is ONE attempt; retry/resume opens a new entry, never
+  # overwrites.
   class TaskStore
     include Coercion
 
@@ -21,15 +21,15 @@ module Harness
 
     STATUSES = %i[queued running waiting paused completed failed cancelled].freeze
 
-    # Transições válidas — tudo fora disso é bug -> ArgumentError.
+    # Valid transitions — anything outside this is a bug -> ArgumentError.
     TRANSITIONS = {
-      # queued -> failed: um turno enfileirado no SessionActor pode falhar
-      # ao INICIAR (erro de spawn antes do fiber) sem nunca rodar.
+      # queued -> failed: a turn queued in the SessionActor may fail
+      # at STARTUP (spawn error before the fiber) without ever running.
       queued: %i[running cancelled failed],
       running: %i[waiting paused completed failed cancelled],
       waiting: %i[running cancelled failed],
       paused: %i[running cancelled],
-      completed: [], failed: [], cancelled: [] # terminais
+      completed: [], failed: [], cancelled: [] # terminal
     }.freeze
 
     Task      = Data.define(:id, :status, :command, :session_id, :executions,
@@ -40,9 +40,9 @@ module Harness
       @store = store
     end
 
-    # -> Task (status :queued). command: Hash ({type:, payload:, meta:}) ou
-    # qualquer objeto que responda a to_h (ex.: Harness::Command).
-    # ArgumentError se o id já existir.
+    # -> Task (status :queued). command: Hash ({type:, payload:, meta:}) or
+    # any object that responds to to_h (e.g. Harness::Command).
+    # ArgumentError if the id already exists.
     def create(command:, session_id: nil, id: SecureRandom.uuid)
       key = key_for(id)
       raise ArgumentError, "task já existe: #{id}" unless @store.get(SCOPE, key).nil?
@@ -68,18 +68,18 @@ module Harness
       record && to_task(record)
     end
 
-    # -> Task; valida a máquina de estados. NotFoundError se ausente,
-    # ArgumentError para status fora do enum ou transição inválida.
-    # Se `error:` vier E houver Execution aberta, fecha-a na mesma escrita
-    # (caminho do Recovery).
+    # -> Task; validates the state machine. NotFoundError if absent,
+    # ArgumentError for a status outside the enum or an invalid transition.
+    # If `error:` is provided AND there is an open Execution, it closes it in the same write
+    # (Recovery path).
     def transition(id, to:, error: nil)
       record = fetch!(id)
       target = to.to_sym
-      raise ArgumentError, "status inválido: #{to}" unless STATUSES.include?(target)
+      raise ArgumentError, "invalid status: #{to}" unless STATUSES.include?(target)
 
       from = record["status"].to_sym
       unless TRANSITIONS.fetch(from).include?(target)
-        raise ArgumentError, "transição inválida: #{from} -> #{target}"
+        raise ArgumentError, "invalid transition: #{from} -> #{target}"
       end
 
       close_open_execution(record, outcome: target.to_s, error: error) if error
@@ -89,8 +89,8 @@ module Harness
       to_task(record)
     end
 
-    # -> Task; abre Execution (attempt N+1). ArgumentError se já houver uma
-    # aberta (dupla tentativa é bug — um dono por task). Append-only.
+    # -> Task; opens an Execution (attempt N+1). ArgumentError if one is already
+    # open (a double attempt is a bug — one owner per task). Append-only.
     def begin_execution(id)
       record = fetch!(id)
       raise ArgumentError, "já existe uma Execution aberta na task #{id}" if open_execution(record)
@@ -107,12 +107,12 @@ module Harness
       to_task(record)
     end
 
-    # -> Task; fecha a Execution corrente. ArgumentError se não houver aberta.
-    # NÃO mexe em status (papel do transition).
+    # -> Task; closes the current Execution. ArgumentError if none is open.
+    # Does NOT touch status (that is transition's job).
     def finish_execution(id, outcome:)
       record = fetch!(id)
       open = open_execution(record)
-      raise ArgumentError, "nenhuma Execution aberta na task #{id}" if open.nil?
+      raise ArgumentError, "no open Execution on task #{id}" if open.nil?
 
       open["finished_at"] = timestamp
       open["outcome"] = outcome.to_s
@@ -121,8 +121,8 @@ module Harness
       to_task(record)
     end
 
-    # -> [Task] com um dos status dados. Varredura O(n) do boot;
-    # aceitável (um nó, SQLite local).
+    # -> [Task] with one of the given statuses. O(n) scan at boot;
+    # acceptable (one node, local SQLite).
     def with_status(*statuses)
       wanted = statuses.flatten
       @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
@@ -134,14 +134,14 @@ module Harness
       end
     end
 
-    # Interrompidas (crash no meio do turno): têm checkpoint -> resume.
+    # Interrupted (crashed mid-turn): have a checkpoint -> resume.
     def running_or_interrupted = with_status(:running, :waiting, :paused)
 
-    # Enfileiradas mas nunca iniciadas (turno na fila do SessionActor no
-    # crash) — sem checkpoint; recuperar = RODAR do zero (Recovery/ResumeTask).
+    # Queued but never started (turn in the SessionActor queue at the
+    # crash) — no checkpoint; recovering = RUN from scratch (Recovery/ResumeTask).
     def queued = with_status(:queued)
 
-    # -> enumera ids sem o prefixo "task:"; sem bloco retorna Enumerator.
+    # -> enumerates ids without the "task:" prefix; without a block returns an Enumerator.
     def each_id
       return enum_for(:each_id) unless block_given?
 
@@ -156,17 +156,17 @@ module Harness
       "#{KEY_PREFIX}#{id}"
     end
 
-    # NotFoundError se ausente (task inexistente -> 404). StoreError do
-    # backend propaga sem re-embrulhar.
+    # NotFoundError if absent (nonexistent task -> 404). Backend StoreError
+    # propagates without re-wrapping.
     def fetch!(id)
       record = @store.get(SCOPE, key_for(id))
-      raise Harness::NotFoundError, "task inexistente: #{id}" if record.nil?
+      raise Harness::NotFoundError, "task not found: #{id}" if record.nil?
 
       record
     end
 
-    # A Execution aberta é a última com finished_at nil (um dono por task, então
-    # há no máximo uma). Devolve o Hash cru (mutável in-place para o RMW).
+    # The open Execution is the last one with finished_at nil (one owner per task, so
+    # there is at most one). Returns the raw Hash (mutable in-place for the RMW).
     def open_execution(record)
       last = record["executions"].last
       last if last && last["finished_at"].nil?
@@ -174,17 +174,17 @@ module Harness
 
     def close_open_execution(record, outcome:, error:)
       open = open_execution(record)
-      return if open.nil? # sem tentativa aberta: nada onde gravar
+      return if open.nil? # no open attempt: nowhere to record
 
       open["finished_at"] = timestamp
       open["outcome"] = outcome
       open["error"] = deep_stringify(error)
     end
 
-    # Materializa Task a partir do Hash cru (normalização de tipos na borda):
-    # `status` volta como Symbol (enum de domínio, comparado contra
-    # STATUSES); `command`/`mailbox_state`/`error` ficam Hash de chaves string
-    # (são dados, não enum).
+    # Materializes Task from the raw Hash (type normalization at the edge):
+    # `status` comes back as a Symbol (domain enum, compared against
+    # STATUSES); `command`/`mailbox_state`/`error` stay as Hashes with string keys
+    # (they are data, not enums).
     def to_task(record)
       Task.new(
         id: record["id"],

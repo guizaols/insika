@@ -4,15 +4,15 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: o operador resolve uma ação pendente
-    # (human-in-the-loop). Resolve o PendingAction no store (fonte da verdade,
-    # durável) e ACORDA o turno suspenso em :waiting postando :approval no fiber
-    # vivo. Ordem importa: RESOLVE antes de postar — quando o await acorda, o
-    # store já tem a decisão (request_approval a relê de lá). Crash-safe: sem
-    # fiber vivo o post é no-op; o recovery reexecuta e usa a decisão durável.
+    # Control command: the operator resolves a pending action
+    # (human-in-the-loop). Resolves the PendingAction in the store (durable source
+    # of truth) and WAKES the turn suspended on :waiting by posting :approval to the
+    # live fiber. Order matters: RESOLVE before posting — when the await wakes, the
+    # store already has the decision (request_approval re-reads it from there). Crash-safe:
+    # with no live fiber the post is a no-op; recovery re-executes and uses the durable decision.
     #
     # Payload `{ pending_id:, decision: "approved"|"rejected", operator?: }`.
-    # -> PendingAction resolvida.
+    # -> resolved PendingAction.
     class ApproveAction
       def initialize(pending_action_store:, executor:, event_stream:)
         @pending_action_store = pending_action_store
@@ -24,15 +24,15 @@ module Harness
         p = command.payload
         pending_id = (p[:pending_id] || p["pending_id"]).to_s
         decision = (p[:decision] || p["decision"]).to_s
-        raise Harness::ValidationError, "pending_id é obrigatório" if pending_id.empty?
+        raise Harness::ValidationError, "pending_id is required" if pending_id.empty?
 
-        # operador: da auth do operador (Control UI) via payload; nil ok.
+        # operator: from the operator's auth (Control UI) via payload; nil ok.
         operator = p[:operator] || p["operator"] || command.meta[:operator]
 
-        # resolve() valida a decisão e o estado (:pending); NotFound se ausente.
+        # resolve() validates the decision and the state (:pending); NotFound if absent.
         resolved = @pending_action_store.resolve(pending_id, decision: decision, operator: operator)
 
-        @executor.approve(resolved.task_id) # acorda o fiber vivo (no-op se caiu)
+        @executor.approve(resolved.task_id) # wakes the live fiber (no-op if it crashed)
         @event_stream.emit(Harness::Event.new(
                              type: :approval_resolved,
                              data: { pending_id: pending_id, decision: resolved.status,

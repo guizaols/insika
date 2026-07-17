@@ -5,22 +5,22 @@ require "ipaddr"
 require "resolv"
 
 module Harness
-  # Guarda de EGRESS para tools por dados (SSRF). Uma data-tool faz requisição HTTP
-  # server-side com URL vinda de config editável na UI — sem guarda, é vetor de
-  # SSRF (bater no metadata da cloud, em serviços internos, em localhost). Regras
-  # (NF2 da spec):
-  #   - só https por padrão (http exige opt-in explícito);
-  #   - host obrigatório;
-  #   - allowlist de hosts opcional (quando presente, só ela passa);
-  #   - resolve o host e BLOQUEIA se QUALQUER endereço cair em rede privada/
-  #     loopback/link-local/metadata (defesa contra DNS rebinding);
-  #   - `allow_private:` (opt-in) LIBERA o destino privado — para alcançar uma
-  #     API INTERNA de confiança (NF4: o /api/internal/* do consumidor entra por
-  #     allowlist). Perigoso sem `host_allowlist`: PARE-o a um host conhecido.
-  #     Default false = guarda estrita.
+  # EGRESS guard for data-tools (SSRF). A data-tool makes a server-side HTTP
+  # request with a URL coming from UI-editable config — without a guard, it's an
+  # SSRF vector (hitting cloud metadata, internal services, localhost). Rules
+  # (spec NF2):
+  #   - https only by default (http requires explicit opt-in);
+  #   - host required;
+  #   - optional host allowlist (when present, only it passes);
+  #   - resolves the host and BLOCKS if ANY address falls into a private/
+  #     loopback/link-local/metadata network (defense against DNS rebinding);
+  #   - `allow_private:` (opt-in) ALLOWS the private target — to reach a trusted
+  #     INTERNAL API (NF4: the consumer's /api/internal/* comes in via an
+  #     allowlist). Dangerous without `host_allowlist`: PIN it to a known host.
+  #     Default false = strict guard.
   #
-  # `violation(url, ...)` devolve nil (ok) ou uma String com o motivo — o
-  # DataDefinedTool transforma o motivo em `{ error: }` ao modelo (nunca levanta).
+  # `violation(url, ...)` returns nil (ok) or a String with the reason — the
+  # DataDefinedTool turns the reason into `{ error: }` to the model (never raises).
   module EgressGuard
     BLOCKED = [
       "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
@@ -30,12 +30,12 @@ module Harness
 
     module_function
 
-    # -> nil (permitido) | String (motivo do bloqueio).
+    # -> nil (allowed) | String (block reason).
     def violation(url, allow_http: false, host_allowlist: nil, allow_private: false)
       uri = begin
         URI.parse(url.to_s)
       rescue URI::InvalidURIError
-        return "URL inválida"
+        return "invalid URL"
       end
 
       return "esquema não suportado" unless %w[http https].include?(uri.scheme)
@@ -43,18 +43,18 @@ module Harness
 
       host = uri.host
       return "host ausente" if host.nil? || host.empty?
-      return "host fora da allowlist" if host_allowlist && !host_allowlist.include?(host)
+      return "host not in allowlist" if host_allowlist && !host_allowlist.include?(host)
 
       addrs = resolve(host)
-      return "host não resolveu" if addrs.empty?
-      # allow_private pula o bloqueio de rede privada (API interna de confiança,
-      # NF4). Sem ele, um destino privado/loopback/metadata é sempre bloqueado.
+      return "host did not resolve" if addrs.empty?
+      # allow_private skips the private-network block (trusted internal API,
+      # NF4). Without it, a private/loopback/metadata target is always blocked.
       return "destino em rede privada bloqueado" if !allow_private && addrs.any? { |ip| blocked?(ip) }
 
       nil
     end
 
-    # Host literal (IP) -> ele mesmo; hostname -> resolve via DNS. -> [IPAddr].
+    # Literal host (IP) -> itself; hostname -> resolve via DNS. -> [IPAddr].
     def resolve(host)
       literal = ip_or_nil(host.delete_prefix("[").delete_suffix("]"))
       return [literal] if literal

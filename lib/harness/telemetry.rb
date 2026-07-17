@@ -4,15 +4,15 @@ require "async"
 require_relative "telemetry/recorder"
 
 module Harness
-  # Observabilidade OPT-IN (Fase 6): OTEL montado na borda, núcleo intacto. Rides
-  # o Event Stream — o Recorder consome os eventos e emite spans. Desligado (o
-  # default) -> `setup` devolve nil e nada é carregado nem instrumentado
-  # (paridade, zero overhead). A gem OTEL só é REQUERIDA lazy em `setup`
-  # (habilitado), nunca no load do núcleo — como o ruby_llm no Executor.
+  # OPT-IN observability (Phase 6): OTEL mounted at the edge, core untouched. Rides
+  # the Event Stream — the Recorder consumes the events and emits spans. Off (the
+  # default) -> `setup` returns nil and nothing is loaded or instrumented
+  # (parity, zero overhead). The OTEL gem is only REQUIRED lazily in `setup`
+  # (enabled), never at core load — like ruby_llm in the Executor.
   #
-  # Ligar: `HARNESS_OTEL=1` OU as envs padrão do OTEL
-  # (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`). O destino/protocolo
-  # segue a config padrão do SDK OTEL (env) — SigNoz/Tempo/Jaeger/Collector.
+  # Turn on: `HARNESS_OTEL=1` OR the standard OTEL envs
+  # (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`). The destination/protocol
+  # follows the OTEL SDK's default config (env) — SigNoz/Tempo/Jaeger/Collector.
   module Telemetry
     module_function
 
@@ -22,9 +22,9 @@ module Harness
         present?(env["OTEL_TRACES_EXPORTER"])
     end
 
-    # -> Recorder ligado ao OTEL real | nil (desligado). Idempotente por processo
-    # (configura o SDK uma vez). É o BOUNDARY da gem: não coberto por unit (como o
-    # create_chat do Executor); a lógica do Recorder é testada com tracer fake.
+    # -> Recorder wired to the real OTEL | nil (disabled). Idempotent per process
+    # (configures the SDK once). It's the gem BOUNDARY: not covered by unit tests (like
+    # the Executor's create_chat); the Recorder's logic is tested with a fake tracer.
     def setup(service_name: "harness", env: ENV)
       return nil unless enabled?(env)
 
@@ -37,11 +37,11 @@ module Harness
       Recorder.new(tracer: OTelTracer.new(OpenTelemetry.tracer_provider.tracer("harness")))
     end
 
-    # Liga o Recorder ao Event Stream: assina TODOS os eventos e alimenta o
-    # recorder num fiber de vida-longa (irmão do serving). Chamar DENTRO do reactor
-    # (arm de serving). No-op se recorder nil. -> a Subscription (ou nil).
+    # Wires the Recorder to the Event Stream: subscribes to ALL events and feeds the
+    # recorder in a long-lived fiber (sibling of serving). Call INSIDE the reactor
+    # (serving arm). No-op if recorder is nil. -> the Subscription (or nil).
     def attach(event_stream:, recorder:, parent: nil)
-      return nil if recorder.nil? # nil ANTES de tocar o reactor (path desligado)
+      return nil if recorder.nil? # nil BEFORE touching the reactor (disabled path)
 
       parent ||= Async::Task.current
       sub = event_stream.subscribe
@@ -52,10 +52,10 @@ module Harness
     def truthy(value) = %w[1 true yes on].include?(value.to_s.strip.downcase)
     def present?(value) = !value.to_s.strip.empty?
 
-    # --- Adapters OTEL (boundary da gem; só instanciados após o require de setup).
-    # Escondem OpenTelemetry:: do Recorder — este fica testável sem a gem.
+    # --- OTEL adapters (gem boundary; only instantiated after setup's require).
+    # They hide OpenTelemetry:: from the Recorder — which stays testable without the gem.
 
-    # Traduz o contrato duck-typed do Recorder para o tracer OTEL.
+    # Translates the Recorder's duck-typed contract to the OTEL tracer.
     class OTelTracer
       def initialize(otel) = (@otel = otel)
 

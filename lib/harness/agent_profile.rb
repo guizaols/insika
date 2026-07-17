@@ -1,51 +1,51 @@
 # frozen_string_literal: true
 
 module Harness
-  # Único ponto de política por agente.
-  # Semântica de allowlist ÚNICA para tools, skills, providers e workflows
-  # (nil = todas [+ opt-in p/ tools optional]; [] = nenhuma p/ skills/allow;
-  # [names] = conjunto final; deny sempre vence) — uma regra só, testada uma vez.
+  # Single point of per-agent policy.
+  # ONE allowlist semantics for tools, skills, providers and workflows
+  # (nil = all [+ opt-in for optional tools]; [] = none for skills/allow;
+  # [names] = the final set; deny always wins) — a single rule, tested once.
   #
-  # EXCEÇÃO deliberada: `capabilities` NÃO segue a regra do
-  # `nil = todas`. nil/ausente = NENHUMA capability (opt-in explícito — expor
-  # toda capability registrada por engano acoplaria o agente a plugins que ele
-  # não pediu). NÃO "corrija" para ficar consistente com tools_allow.
+  # Deliberate EXCEPTION: `capabilities` does NOT follow the
+  # `nil = all` rule. nil/absent = NO capability (explicit opt-in — exposing
+  # every registered capability by mistake would couple the agent to plugins it
+  # didn't ask for). Do NOT "fix" it to be consistent with tools_allow.
   AgentProfile = Data.define(
     :id, :model, :provider,
     :base_prompt, :prompt_files,
     :tools_allow, :tools_deny,
-    :tools_allow_groups,              # allowlist por GRUPO (Fase 7/D4/F5, Etapa C):
-    #                                   união com tools_allow; deny vence; ambas
-    #                                   nil = todas (paridade). Expande p/ as tools
-    #                                   do grupo na policy ToolAllowlist.
+    :tools_allow_groups,              # per-GROUP allowlist (Phase 7/D4/F5, Stage C):
+    #                                   union with tools_allow; deny wins; both
+    #                                   nil = all (parity). Expands to the group's
+    #                                   tools in the ToolAllowlist policy.
     :skills,
-    :context_providers,               # allowlist de providers
-    :workflows_allow,                 # aplicado pela WorkflowAllowlist
-    :policies,                        # nomes no Policy Registry
-    :prompt_refs,                     # nomes do Prompt Catalog
-    :limits,                          # timeouts/orçamentos
-    :approvals_required,              # tools que exigem aprovação (ApprovalRequired)
-    :capabilities,                    # intenções que o agente pode acionar.
-    #                                   nil = NENHUMA (opt-in, ver acima).
-    :tools_deferred,                  # tools searchable-not-wired (Tool Search).
-    #                                   nil = nenhuma deferred (tudo eager — paridade);
-    #                                   [names] ⊆ allowed_tools, expostas via tool_search.
-    :memory,                          # memória cross-session.
-    #                                   nil/false = OFF (paridade: provider []; tool `remember`
-    #                                   não cabeada); true = ON. Mesmo opt-in de capabilities.
-    :metadata                         # metadados livres do agente, estáveis por agente
-    #                                   (do pack `agent.config.json`). Home do `store_id`
-    #                                   que vira contexto de turno (ctx.store_id, Fase 6/D2).
-    #                                   NÃO é policy — nunca decide segurança. {} = ausente.
+    :context_providers,               # provider allowlist
+    :workflows_allow,                 # applied by WorkflowAllowlist
+    :policies,                        # names in the Policy Registry
+    :prompt_refs,                     # names in the Prompt Catalog
+    :limits,                          # timeouts/budgets
+    :approvals_required,              # tools that require approval (ApprovalRequired)
+    :capabilities,                    # intents the agent can trigger.
+    #                                   nil = NONE (opt-in, see above).
+    :tools_deferred,                  # searchable-not-wired tools (Tool Search).
+    #                                   nil = no deferred (all eager — parity);
+    #                                   [names] ⊆ allowed_tools, exposed via tool_search.
+    :memory,                          # cross-session memory.
+    #                                   nil/false = OFF (parity: provider []; the `remember`
+    #                                   tool not wired); true = ON. Same opt-in as capabilities.
+    :metadata                         # free-form agent metadata, stable per agent
+    #                                   (from the pack `agent.config.json`). Home of the `store_id`
+    #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
+    #                                   It is NOT a policy — never decides security. {} = absent.
   )
 
-  # Classe reaberta (não bloco do Data.define): constante atribuída dentro
-  # do bloco vazaria para o escopo léxico (Harness::DEFAULT_LIMITS).
+  # Reopened class (not a Data.define block): a constant assigned inside
+  # the block would leak into the lexical scope (Harness::DEFAULT_LIMITS).
   class AgentProfile
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
       context_budget: 8_000, max_turns: 25, max_tool_calls: 50,
-      approval_timeout: 3_600 # teto da espera por aprovação humana (~1h)
+      approval_timeout: 3_600 # cap on the wait for human approval (~1h)
     }.freeze
 
     def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],
@@ -65,16 +65,16 @@ module Harness
       )
     end
 
-    # opt-in de tool optional = estar na allow do agente.
+    # opt-in for an optional tool = being in the agent's allow list.
     def tool_opted_in?(name)
       Array(tools_allow).include?(name)
     end
 
-    # store_id do contexto de turno (ctx.store_id): mora no `metadata` (estável
-    # por loja, vem do pack). Tolera chave string|symbol (o JSON round-trip do
-    # StoredProfileSource stringifica). nil = ausente (a data-tool emite header
-    # vazio). NÃO é consumer-específico: `store_id` é campo do contrato de contexto
-    # de turno (§5), genérico por projeto.
+    # store_id of the turn context (ctx.store_id): lives in `metadata` (stable
+    # per store, comes from the pack). Tolerates a string|symbol key (the
+    # StoredProfileSource JSON round-trip stringifies). nil = absent (the data-tool
+    # emits an empty header). It is NOT consumer-specific: `store_id` is a field of the
+    # turn-context contract (§5), generic per project.
     def store_id
       (metadata || {})["store_id"] || (metadata || {})[:store_id]
     end

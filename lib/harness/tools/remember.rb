@@ -4,11 +4,11 @@ require "ruby_llm"
 
 module Harness
   module Tools
-    # Write path da memória cross-session: o agente grava um
-    # fato (key+value, upsert durável) ou uma note (value sem key) sob demanda.
-    # Determinístico — SEM chamada de modelo.
-    # Builtin de sistema (como load_skill/tool_search): `require "ruby_llm"` fica
-    # NESTE arquivo, carregado lazy pelo Executor em create_chat.
+    # Write path of the cross-session memory: the agent stores a
+    # fact (key+value, durable upsert) or a note (value without key) on demand.
+    # Deterministic — NO model call.
+    # System builtin (like load_skill/tool_search): `require "ruby_llm"` stays
+    # in THIS file, loaded lazily by the Executor in create_chat.
     class Remember < RubyLLM::Tool
       description "Guarda uma informação para lembrar em conversas futuras. Use `key` " \
                   "para um fato durável chave-valor (sobrescreve o anterior); omita " \
@@ -16,7 +16,7 @@ module Harness
       param :value, desc: "O conteúdo a lembrar"
       param :key, desc: "Chave do fato (ex.: 'plano', 'nome'); omita para uma nota", required: false
 
-      # senão RubyLLM deriva "harness--tools--remember" do nome da classe.
+      # otherwise RubyLLM derives "harness--tools--remember" from the class name.
       def name = "remember"
 
       def initialize(store, tenant, event_stream:, state:)

@@ -3,18 +3,18 @@
 require "time"
 
 module Harness
-  # Skills compartilhadas AUTORADAS.
-  # Guarda o SKILL.md completo (frontmatter + corpo) no Store durável. O
-  # SkillCatalog sobrepõe estas skills sobre as de disco (seed), com o Store
-  # vencendo — então editar/criar skill no Studio vale sem restart (via reload).
+  # AUTHORED shared skills.
+  # Holds the complete SKILL.md (frontmatter + body) in the durable Store. The
+  # SkillCatalog overlays these skills on top of the on-disk ones (seed), with the Store
+  # winning — so editing/creating a skill in the Studio takes effect without a restart (via reload).
   #
-  # Um record por skill no ConfigStore (scope "skills"):
-  #   { "content" => "<SKILL.md inteiro>",
+  # One record per skill in the ConfigStore (scope "skills"):
+  #   { "content" => "<entire SKILL.md>",
   #     "updated_at" => iso8601,
   #     "history" => [ { "content" =>, "at" => }, ... ] }
   #
-  # A chave é o nome canônico da skill (o mesmo do frontmatter). Versiona igual
-  # ao AgentFileStore.
+  # The key is the skill's canonical name (the same as in the frontmatter). Versions like
+  # the AgentFileStore.
   class SkillStore
     SCOPE = "skills"
     HISTORY_MAX = 20
@@ -23,20 +23,20 @@ module Harness
       @cs = config_store
     end
 
-    # -> String | nil (SKILL.md completo).
+    # -> String | nil (complete SKILL.md).
     def get(name)
       record(name)&.fetch("content", nil)
     end
 
-    # -> [String] nomes, ordem lexicográfica.
+    # -> [String] names, lexicographic order.
     def names = @cs.keys(SCOPE)
 
-    # -> { name => content } de todas as skills autoradas.
+    # -> { name => content } of all authored skills.
     def all
       @cs.keys(SCOPE).each_with_object({}) { |n, acc| acc[n] = get(n) }
     end
 
-    # Grava (upsert). create_only recusa sobrescrever. -> Hash (record gravado).
+    # Writes (upsert). create_only refuses to overwrite. -> Hash (the stored record).
     def write(name, content, create_only: false)
       key = name.to_s
       current = @cs.get(SCOPE, key)
@@ -47,13 +47,13 @@ module Harness
       rec
     end
 
-    # -> bool (existia?).
+    # -> bool (did it exist?).
     def delete(name) = @cs.delete(SCOPE, name.to_s)
 
-    # -> [ { "content" =>, "at" => } ] mais recente primeiro.
+    # -> [ { "content" =>, "at" => } ] most recent first.
     def versions(name) = record(name)&.fetch("history", []) || []
 
-    # Restaura versão `index` como conteúdo atual (nova escrita). -> Hash.
+    # Restores version `index` as the current content (a new write). -> Hash.
     def restore(name, index)
       hist = versions(name)
       i = Integer(index)

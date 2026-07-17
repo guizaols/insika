@@ -4,11 +4,11 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: cria/edita um provider de LLM
-    # (api/base_url/auth_header/api_key/models) no LLMProviderStore e RECONFIGURA
-    # o RubyLLM em runtime (LLMConfigurator) — troca de chave/base sem restart.
-    # A `api_key` é sentinel-aware (__OCULTO__ preserva; "" limpa; string nova
-    # substitui). Retorna o record MASCARADO (a chave nunca volta em plaintext).
+    # Control command: creates/edits an LLM provider
+    # (api/base_url/auth_header/api_key/models) in the LLMProviderStore and RECONFIGURES
+    # RubyLLM at runtime (LLMConfigurator) — swaps key/base without a restart.
+    # The `api_key` is sentinel-aware (__OCULTO__ preserves; "" clears; a new string
+    # replaces). Returns the MASKED record (the key never comes back in plaintext).
     class UpsertLLMProvider
       def initialize(provider_store:, configurator:, event_stream:)
         @provider_store = provider_store
@@ -18,9 +18,9 @@ module Harness
 
       def call(command)
         p = AgentPayload.symbolize(command.payload)
-        masked = @provider_store.upsert(p) # valida `api`; devolve mascarado
+        masked = @provider_store.upsert(p) # validates `api`; returns masked
 
-        # Reconfigura só ESTE provider (com a chave real do store, já reconciliada).
+        # Reconfigures only THIS provider (with the real key from the store, already reconciled).
         result = @configurator.apply([@provider_store.get_raw(masked["api"])])
         @event_stream.emit(Harness::Event.new(
                              type: :llm_provider_upserted,

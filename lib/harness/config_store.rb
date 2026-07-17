@@ -3,21 +3,21 @@
 require "time"
 
 module Harness
-  # Store de DOMÍNIO de CONFIGURAÇÃO. Diferente dos
-  # stores de EXECUÇÃO (session/task/checkpoint/pending/memory), este guarda a
-  # configuração que o Studio autora em runtime: agentes (profiles), settings
-  # gerais, providers de LLM e instâncias MCP. KV escopado sobre um
-  # `Harness::Store` qualquer — durável quando o backend é SQLite (sobrevive a
-  # restart, como o resto).
+  # CONFIGURATION DOMAIN store. Unlike the
+  # EXECUTION stores (session/task/checkpoint/pending/memory), this holds the
+  # configuration the Studio authors at runtime: agents (profiles), general
+  # settings, LLM providers and MCP instances. Scoped KV over any
+  # `Harness::Store` — durable when the backend is SQLite (survives a restart,
+  # like everything else).
   #
-  # scope lógico -> namespace físico "config:<scope>". Valores são Hashes
-  # JSON-serializáveis (symbol vira string no round-trip, como o contrato do
-  # Store; o domínio re-simboliza na borda — ver StoredProfileSource).
+  # logical scope -> physical namespace "config:<scope>". Values are
+  # JSON-serializable Hashes (symbol becomes string on the round-trip, per the
+  # Store contract; the domain re-symbolizes at the edge — see StoredProfileSource).
   class ConfigStore
     SCOPE_PREFIX = "config"
-    # agent_files/skills: o CONTEÚDO de prompts
-    # por-agente e de skills compartilhadas vive no Store (fonte da verdade única,
-    # um SQLite de backup), não em disco — disco vira só seed/import.
+    # agent_files/skills: the CONTENT of per-agent prompts
+    # and shared skills lives in the Store (single source of truth,
+    # a SQLite backup), not on disk — disk becomes only seed/import.
     SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools].freeze
 
     class UnknownScope < Harness::Error; end
@@ -26,7 +26,7 @@ module Harness
       @store = store
     end
 
-    # Upsert (last-write-wins). -> value (o mesmo Hash passado)
+    # Upsert (last-write-wins). -> value (the same Hash that was passed)
     def put(scope, key, value)
       @store.set(ns(scope), key.to_s, stringify(value))
       value
@@ -37,17 +37,17 @@ module Harness
       @store.get(ns(scope), key.to_s)
     end
 
-    # -> bool (existia?)
+    # -> bool (did it exist?)
     def delete(scope, key)
       @store.delete(ns(scope), key.to_s)
     end
 
-    # -> [String] chaves do scope, ordenadas lexicograficamente
+    # -> [String] keys of the scope, sorted lexicographically
     def keys(scope)
       @store.list(ns(scope))
     end
 
-    # -> [Hash] todos os records do scope (ordem lexicográfica das chaves)
+    # -> [Hash] all records of the scope (lexicographic key order)
     def all(scope)
       s = ns(scope)
       @store.list(s).filter_map { |k| @store.get(s, k) }
@@ -57,14 +57,14 @@ module Harness
 
     def ns(scope)
       key = scope.to_s
-      raise UnknownScope, "scope de config desconhecido: #{scope.inspect}" unless SCOPES.include?(key)
+      raise UnknownScope, "unknown config scope: #{scope.inspect}" unless SCOPES.include?(key)
 
       "#{SCOPE_PREFIX}:#{key}"
     end
 
-    # Normaliza symbol->string ANTES de gravar (espelha MemoryStore#stringify):
-    # o backend serializa JSON, e ler de volta traria strings de qualquer forma;
-    # normalizar na escrita mantém o record consistente entre backends.
+    # Normalizes symbol->string BEFORE writing (mirrors MemoryStore#stringify):
+    # the backend serializes JSON, and reading back would return strings anyway;
+    # normalizing on write keeps the record consistent across backends.
     def stringify(obj)
       case obj
       when Hash then obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = stringify(v) }

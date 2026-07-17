@@ -4,10 +4,10 @@ require "ruby_llm"
 
 module Harness
   module Tools
-    # Delega a um agente A2A remoto. Tool NORMAL do Tool Registry — a
-    # allowlist do agente governa quem pode delegar. require lazy da gem: NÃO
-    # entra em lib/harness.rb; é carregado no bloco de registro (wiring) na 1ª
-    # instância. Uma instância por agente remoto (name/description próprios).
+    # Delegates to a remote A2A agent. A NORMAL Tool Registry tool — the
+    # agent's allowlist governs who may delegate. Lazy require of the gem: it does NOT
+    # enter lib/harness.rb; it is loaded in the registration block (wiring) on the 1st
+    # instance. One instance per remote agent (its own name/description).
     class A2ARemote < RubyLLM::Tool
       param :message, desc: "A mensagem/tarefa para o agente remoto"
 
@@ -20,8 +20,8 @@ module Harness
         super()
       end
 
-      # name/description por INSTÂNCIA (RubyLLM deriva da classe; sobrescrevemos —
-      # senão o modelo veria "harness--tools--a2a_remote" p/ todos os remotos).
+      # name/description per INSTANCE (RubyLLM derives them from the class; we override —
+      # otherwise the model would see "harness--tools--a2a_remote" for every remote).
       def name = @tool_name
       def description = @description
 
@@ -33,9 +33,9 @@ module Harness
 
       private
 
-      # :a2a_call sem correlação de task: tools de registry não recebem o
-      # TurnState -> meta {} (como o :provider_warning do Builder). O :tool_call
-      # do wire_callbacks já correlaciona a chamada em si.
+      # :a2a_call without task correlation: registry tools do not receive the
+      # TurnState -> meta {} (like the Builder's :provider_warning). The :tool_call
+      # from wire_callbacks already correlates the call itself.
       def emit(result)
         @event_stream&.emit(Harness::Event.new(
                               type: :a2a_call,

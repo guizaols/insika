@@ -4,11 +4,11 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: grava um fato estável na memória
-    # do agente (MemoryStore, camada `profile`). Até agora a memória só era escrita
-    # de DENTRO do turno (tool `remember`); este Command é a superfície HTTP que o
-    # Studio usa pra editar fatos direto. Escopado por `tenant` (nil = _default).
-    # Síncrono; não cria Task. -> Fact.
+    # Control command: writes a stable fact to the agent's
+    # memory (MemoryStore, `profile` layer). Until now memory was only written
+    # from WITHIN the turn (the `remember` tool); this Command is the HTTP surface the
+    # Studio uses to edit facts directly. Scoped by `tenant` (nil = _default).
+    # Synchronous; does not create a Task. -> Fact.
     class MemoryPutFact
       def initialize(memory_store:, event_stream:)
         @memory_store = memory_store
@@ -18,8 +18,8 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         key = AgentPayload.presence(p[:key])
-        raise Harness::ValidationError, "key é obrigatório" if key.nil?
-        raise Harness::ValidationError, "value é obrigatório" if p[:value].nil?
+        raise Harness::ValidationError, "key is required" if key.nil?
+        raise Harness::ValidationError, "value is required" if p[:value].nil?
 
         tenant = AgentPayload.presence(p[:tenant]) || command.meta[:tenant]
         fact = @memory_store.put_fact(tenant: tenant, key: key, value: p[:value])

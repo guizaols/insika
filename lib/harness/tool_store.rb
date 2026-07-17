@@ -3,15 +3,15 @@
 require "time"
 
 module Harness
-  # Tools POR DADOS autoradas em runtime. Um record por tool no ConfigStore
-  # (scope "tools"), keyed pelo nome. Guarda a ToolDefinition inteira, versiona
-  # (igual SkillStore/AgentFileStore) e MASCARA os headers-credencial (igual
-  # McpStore mascara o env): os headers cujo nome está em `secret_headers` nunca
-  # saem em plaintext pra UI — viram o sentinel `__OCULTO__`. Só `get_raw`/
-  # `all_raw` (consumidos pelo DataDefinedTool/overlay, nunca a tela) devolvem os
-  # valores reais. Fase 5, Etapa A.
+  # DATA-DEFINED tools authored at runtime. One record per tool in the ConfigStore
+  # (scope "tools"), keyed by name. It stores the whole ToolDefinition, versions it
+  # (like SkillStore/AgentFileStore) and MASKS the credential headers (just as
+  # McpStore masks the env): headers whose name is in `secret_headers` never
+  # leave in plaintext to the UI — they become the sentinel `__OCULTO__`. Only `get_raw`/
+  # `all_raw` (consumed by DataDefinedTool/overlay, never the screen) return the
+  # real values. Phase 5, Step A.
   #
-  # Record no ConfigStore:
+  # Record in the ConfigStore:
   #   { "definition" => { ...ToolDefinition#to_h... },
   #     "updated_at" => iso8601,
   #     "history"    => [ { "definition" =>, "at" => }, ... ] }
@@ -23,33 +23,33 @@ module Harness
       @cs = config_store
     end
 
-    # -> Hash da ToolDefinition MASCARADA (headers secretos c/ sentinel) | nil.
+    # -> MASKED ToolDefinition Hash (secret headers with sentinel) | nil.
     def get(name)
       d = raw_definition(name)
       d && mask_definition(d)
     end
 
-    # -> Hash da ToolDefinition com headers REAIS | nil. Uso interno (tool/overlay).
+    # -> ToolDefinition Hash with REAL headers | nil. Internal use (tool/overlay).
     def get_raw(name) = raw_definition(name)
 
-    # -> [String] nomes, ordem lexicográfica.
+    # -> [String] names, lexicographic order.
     def names = @cs.keys(SCOPE)
 
-    # -> [Hash] definições MASCARADAS (pra UI).
+    # -> [Hash] MASKED definitions (for the UI).
     def all
       names.filter_map { |n| get(n) }
     end
 
-    # -> [Hash] definições com headers REAIS (pro overlay/registry). Nunca à tela.
+    # -> [Hash] definitions with REAL headers (for the overlay/registry). Never to the screen.
     def all_raw
       names.filter_map { |n| raw_definition(n) }
     end
 
-    # Grava (upsert). `attrs` é um Hash de ToolDefinition (a UI pode mandar headers
-    # secretos como sentinel: preserva o gravado). create_only recusa sobrescrever.
-    # Valida via ToolDefinition.from_h. -> Hash da definição MASCARADA.
+    # Writes (upsert). `attrs` is a ToolDefinition Hash (the UI may send secret
+    # headers as sentinel: preserves what was stored). create_only refuses to overwrite.
+    # Validates via ToolDefinition.from_h. -> MASKED definition Hash.
     def write(attrs, create_only: false)
-      definition = Harness::ToolDefinition.from_h(attrs)   # valida (levanta ValidationError)
+      definition = Harness::ToolDefinition.from_h(attrs)   # validates (raises ValidationError)
       name = definition.name
       existing = @cs.get(SCOPE, name)
       raise Harness::ValidationError, "tool '#{name}' já existe" if create_only && existing
@@ -65,28 +65,28 @@ module Harness
       mask_definition(final)
     end
 
-    # -> bool (existia?).
+    # -> bool (did it exist?).
     def delete(name) = @cs.delete(SCOPE, name.to_s)
 
-    # -> [ { "definition" => MASCARADA, "at" => } ] mais recente primeiro.
+    # -> [ { "definition" => MASKED, "at" => } ] most recent first.
     def versions(name)
       (record(name)&.fetch("history", []) || []).map do |h|
         { "definition" => mask_definition(h["definition"]), "at" => h["at"] }
       end
     end
 
-    # Restaura a versão `index` como definição atual (nova escrita, versiona a atual).
-    # -> Hash da definição MASCARADA.
+    # Restores version `index` as the current definition (new write, versions the current).
+    # -> MASKED definition Hash.
     def restore(name, index)
       rec = record(name)
       raise Harness::NotFoundError, "tool '#{name}' não encontrada" unless rec
 
       hist = rec.fetch("history", [])
       i = Integer(index)
-      raise Harness::ValidationError, "versão #{index} inexistente" if i.negative? || i >= hist.length
+      raise Harness::ValidationError, "version #{index} does not exist" if i.negative? || i >= hist.length
 
-      # A versão histórica guarda headers REAIS -> reescreve direto (bypass do
-      # masking de entrada; write só re-valida a estrutura).
+      # The historical version stores REAL headers -> rewrite directly (bypasses the
+      # input masking; write only re-validates the structure).
       write(hist[i]["definition"])
     end
 
@@ -105,7 +105,7 @@ module Harness
       { "definition" => definition, "updated_at" => Time.now.utc.iso8601, "history" => history }
     end
 
-    # Cada header em secret_headers vira sentinel; os demais passam intactos.
+    # Each header in secret_headers becomes a sentinel; the rest pass through intact.
     def mask_definition(definition)
       secret = definition["secret_headers"] || []
       return definition if secret.empty?
@@ -116,8 +116,8 @@ module Harness
       definition.merge("request" => definition["request"].merge("headers" => headers))
     end
 
-    # Reconcilia SÓ os headers secretos contra o gravado: sentinel preserva,
-    # string nova substitui, "" limpa (remove a chave). Non-secret passam intactos.
+    # Reconciles ONLY the secret headers against what was stored: sentinel preserves,
+    # a new string replaces, "" clears (removes the key). Non-secret pass through intact.
     def reconcile_secret_headers(incoming, secret_names, existing)
       old = existing || {}
       secret_names.each_with_object(incoming.dup) do |hname, acc|
