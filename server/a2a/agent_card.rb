@@ -3,8 +3,8 @@
 module Harness
   module Server
     module A2A
-      # AgentCard A2A: descoberta do agente exposto. Um agente
-      # por deployment; capabilities HONESTAS (streaming/push false nesta fatia).
+      # A2A AgentCard: discovery for the exposed agent. One agent
+      # per deployment; HONEST capabilities (streaming/push false in this slice).
       module AgentCard
         def self.build(agent:, base_url:, skills: [], version: "0.1.0")
           {
@@ -12,7 +12,7 @@ module Harness
             description: agent.base_prompt.to_s[0, 280],
             url: "#{base_url}/a2a",
             version: version,
-            protocolVersion: "0.2.5", # wire A2A — confirmar
+            protocolVersion: "0.2.5", # A2A wire — to confirm
             capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
             defaultInputModes: ["text/plain"],
             defaultOutputModes: ["text/plain"],

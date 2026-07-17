@@ -5,10 +5,10 @@ require "json"
 module Harness
   module Server
     module A2A
-      # Adapter HTTP de produção: implementa o duck-type
-      # `post_json(url, body) -> Hash` sobre async-http (roda no reactor do turno).
-      # BOUNDARY — o require da lib fica aqui, nunca em lib/harness.rb/wiring-load.
-      # O Client (a lógica) é testado com fake; este adapter, com teste leve.
+      # Production HTTP adapter: implements the duck-type
+      # `post_json(url, body) -> Hash` over async-http (runs on the turn's reactor).
+      # BOUNDARY — the lib require lives here, never in lib/harness.rb/wiring-load.
+      # The Client (the logic) is tested with a fake; this adapter, with a light test.
       class Http
         HEADERS = [["content-type", "application/json"], ["accept", "application/json"]].freeze
 
@@ -16,7 +16,7 @@ module Harness
           @internet = internet # lazy: Async::HTTP::Internet.new
         end
 
-        # POST JSON -> Hash (JSON-RPC parseado, chaves string).
+        # POST JSON -> Hash (parsed JSON-RPC, string keys).
         def post_json(url, body)
           response = internet.post(url, HEADERS, JSON.generate(body))
           JSON.parse(response.read.to_s)

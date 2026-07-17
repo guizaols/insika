@@ -4,44 +4,44 @@ require "async"
 
 module Harness
   module Server
-    # Transforma os componentes num serviço.
-    # Ordem OBRIGATÓRIA e sem paralelismo: plugins → stores → recovery → (app
-    # para o listen). "Nunca aceita request antes do recovery" é garantido POR
-    # CONSTRUÇÃO: o listen (Falcon) só roda depois que `#call` retorna o app, e
-    # `#call` só retorna após o `Recovery.run` terminar.
+    # Turns the components into a service.
+    # MANDATORY order, no parallelism: plugins → stores → recovery → (app
+    # for the listen). "Never accepts a request before recovery" is guaranteed BY
+    # CONSTRUCTION: the listen (Falcon) only runs after `#call` returns the app, and
+    # `#call` only returns after `Recovery.run` finishes.
     class Boot
-      # wiring: objeto com os passos nomeados (load_plugins/build_stores/
-      # recovery/app) — o config/wiring.rb. logger: IO simples (default $stdout;
-      # nil silencia).
+      # wiring: object with the named steps (load_plugins/build_stores/
+      # recovery/app) — the config/wiring.rb. logger: simple IO (default $stdout;
+      # nil silences).
       def initialize(wiring, logger: $stdout)
         @wiring = wiring
         @logger = logger
       end
 
-      # -> Rack app pronto para o `run`. Falha de store no boot (arquivo
-      # corrompido → StoreError) PROPAGA e aborta o processo (subir
-      # sem durabilidade é pior que não subir); uma task irrecuperável NÃO
-      # derruba o boot (o Recovery já a marca :failed).
+      # -> Rack app ready for the `run`. A store failure at boot (corrupted
+      # file → StoreError) PROPAGATES and aborts the process (coming up
+      # without durability is worse than not coming up); an unrecoverable task does NOT
+      # bring down the boot (Recovery already marks it :failed).
       def call
         @wiring.load_plugins
         @wiring.build_stores
         warn_if_ephemeral
         summary = run_recovery
-        log("boot: recovery concluído — #{summary[:resumed].size} retomada(s), " \
-            "#{summary[:failed].size} falha(s)")
+        log("boot: recovery complete — #{summary[:resumed].size} resumed, " \
+            "#{summary[:failed].size} failed")
         @wiring.app
       end
 
       private
 
-      # Recovery despacha resume_task, que cria fibers de task — precisa de um
-      # reactor corrente. No load do config.ru (Falcon) NÃO há reactor: o Sync { }
-      # cria um e, por concorrência estruturada, só retorna quando os fibers de
-      # retomada TERMINAM (recovery + turnos concluídos antes do listen — boot
-      # mais lento, semanticamente seguro). Sob um reactor já corrente (testes
-      # dentro de Async), roda direto: retorna após o DISPATCH da retomada, com
-      # os turnos ainda em voo — também correto: "recovery antes do listen" =
-      # dispatch antes do listen, não conclusão dos turnos.
+      # Recovery dispatches resume_task, which creates task fibers — needs a
+      # current reactor. At config.ru load (Falcon) there is NO reactor: the Sync { }
+      # creates one and, by structured concurrency, only returns when the resume
+      # fibers FINISH (recovery + turns completed before the listen — slower
+      # boot, semantically safe). Under an already-current reactor (tests
+      # inside Async), it runs directly: returns after the resume DISPATCH, with
+      # the turns still in flight — also correct: "recovery before the listen" =
+      # dispatch before the listen, not turn completion.
       def run_recovery
         recovery = @wiring.recovery
         return recovery.run if Async::Task.current?
@@ -49,15 +49,15 @@ module Harness
         Sync { recovery.run }
       end
 
-      # Durabilidade: sem backend durável, nada é retomado após
-      # restart — avisa alto no boot para não subir "sem rede" por engano. O
-      # wiring de teste (duplo) pode não expor `durable?`; nesse caso, silêncio.
+      # Durability: without a durable backend, nothing is resumed after a
+      # restart — warns loudly at boot so we don't come up "without a net" by mistake. The
+      # test wiring (double) may not expose `durable?`; in that case, silence.
       def warn_if_ephemeral
         return unless @wiring.respond_to?(:durable?)
         return if @wiring.durable?
 
-        log("boot: AVISO — backend EFÊMERO (sem HARNESS_DB): recovery não " \
-            "retomará nada após restart (doc 02 §6).")
+        log("boot: WARNING — EPHEMERAL backend (no HARNESS_DB): recovery will " \
+            "not resume anything after a restart (doc 02 §6).")
       end
 
       def log(message)

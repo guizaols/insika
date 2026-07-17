@@ -3,10 +3,10 @@
 module Harness
   module Server
     module A2A
-      # Tradução de message parts: só TextPart nesta fatia.
-      # Tolera `kind` (A2A ~v0.2+) e `type` (spec mais antigo) na borda.
+      # Message parts translation: TextPart only in this slice.
+      # Tolerates `kind` (A2A ~v0.2+) and `type` (older spec) at the boundary.
       module Message
-        # A2A Message (Hash) -> String (concatena os TextPart). "" se nenhum.
+        # A2A Message (Hash) -> String (concatenates the TextParts). "" if none.
         def self.text_from(a2a_message)
           parts = a2a_message.is_a?(Hash) ? Array(a2a_message["parts"] || a2a_message[:parts]) : []
           parts.filter_map do |part|

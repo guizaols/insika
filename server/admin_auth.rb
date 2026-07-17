@@ -5,21 +5,21 @@ require "rack/utils"
 
 module Harness
   module Server
-    # Auth mínima de operador. Fail-closed POR CONSTRUÇÃO: sem
-    # token configurado, o /admin não existe para o mundo (503) — nunca aberto
-    # por omissão. Módulo puro, testável sem Rack env.
+    # Minimal operator auth. Fail-closed BY CONSTRUCTION: with no
+    # token configured, /admin does not exist to the world (503) — never open
+    # by omission. Pure module, testable without a Rack env.
     module AdminAuth
       module_function
 
-      # config_token: config[:admin_token] (o wiring lê HARNESS_ADMIN_TOKEN).
-      # header: valor cru do Authorization.
+      # config_token: config[:admin_token] (the wiring reads HARNESS_ADMIN_TOKEN).
+      # header: raw Authorization value.
       # -> :disabled | :unauthorized | :ok
       def check(config_token, header)
         return :disabled if config_token.nil? || config_token.empty?
 
         provided = header.to_s[/\ABearer (.+)\z/, 1]
         return :unauthorized if provided.nil?
-        # Comparação em tempo constante: token de operador não vaza por timing.
+        # Constant-time comparison: the operator token doesn't leak via timing.
         return :unauthorized unless Rack::Utils.secure_compare(config_token, provided)
 
         :ok

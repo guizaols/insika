@@ -7,50 +7,50 @@ require "async/queue"
 
 module Harness
   module Server
-    # Corpo de resposta SSE (evolui a `SSEStream`). A `SSEStream`
-    # recebia um bloco produtor (o Runner escrevia nela); a `SSEBody` DRENA uma
-    # `Subscription` do EventStream: cada assinante tem
-    # fila própria; `#each` bloqueia o fiber do CONSUMIDOR até a subscription
-    # fechar. O wire é EXATAMENTE `Event#to_h`.
+    # SSE response body (evolves `SSEStream`). `SSEStream`
+    # received a producer block (the Runner wrote into it); `SSEBody` DRAINS a
+    # `Subscription` from the EventStream: each subscriber has its
+    # own queue; `#each` blocks the CONSUMER's fiber until the subscription
+    # closes. The wire is EXACTLY `Event#to_h`.
     class SSEBody
-      PING = ": ping\n\n" # comentário SSE — não polui o consumidor
+      PING = ": ping\n\n" # SSE comment — doesn't pollute the consumer
 
-      # serialize: mapeia um Event -> String (frame SSE) OU nil (evento
-      # descartado, sem frame). Default = o wire canônico `data: <Event#to_h>`.
-      # O adapter /v1/responses injeta um serializer que produz eventos OpenAI
-      # Responses (e pula os que não têm correspondência).
+      # serialize: maps an Event -> String (SSE frame) OR nil (discarded
+      # event, no frame). Default = the canonical wire `data: <Event#to_h>`.
+      # The /v1/responses adapter injects a serializer that produces OpenAI
+      # Responses events (and skips those with no counterpart).
       DEFAULT_SERIALIZE = ->(event) { "data: #{JSON.generate(event.to_h)}\n\n" }
 
-      # subscription: qualquer objeto com #each (yield de Events) e #close.
-      # heartbeat: segundos de silêncio antes de emitir um ping (15s
-      # atravessa idle timeouts de ALB/nginx de 60s com folga).
+      # subscription: any object with #each (yields Events) and #close.
+      # heartbeat: seconds of silence before emitting a ping (15s
+      # clears 60s ALB/nginx idle timeouts with room to spare).
       def initialize(subscription:, heartbeat: 15, serialize: nil)
         @subscription = subscription
         @heartbeat = heartbeat
         @serialize = serialize || DEFAULT_SERIALIZE
       end
 
-      # STREAMING BODY do Rack 3 (`#call(stream)`), NÃO `#each`. Sob
-      # protocol-rack/protocol-http1 (a pilha do Async::HTTP::Server E do Falcon),
-      # um body que responde a `#each` é roteado para Body::Enumerable, cujo
-      # `read` roda o `#each` num Fiber COMUM de Enumerator (não um Async::Task) —
-      # ali `Async::Task.current` levanta "No async task available", o loop morria
-      # engolido no rescue e o corpo saía VAZIO. Expondo `#call` (e NÃO `#each`),
-      # o body é roteado para Body::Streaming, que agenda o bloco via
-      # Fiber.schedule sob o scheduler do reactor — daí a subscription drena e os
-      # frames vão pro socket de verdade (incremental).
+      # Rack 3 STREAMING BODY (`#call(stream)`), NOT `#each`. Under
+      # protocol-rack/protocol-http1 (the stack of Async::HTTP::Server AND Falcon),
+      # a body that responds to `#each` is routed to Body::Enumerable, whose
+      # `read` runs the `#each` in a PLAIN Enumerator Fiber (not an Async::Task) —
+      # there `Async::Task.current` raises "No async task available", the loop died
+      # swallowed in the rescue and the body came out EMPTY. By exposing `#call` (and NOT `#each`),
+      # the body is routed to Body::Streaming, which schedules the block via
+      # Fiber.schedule under the reactor's scheduler — so the subscription drains and the
+      # frames actually reach the socket (incrementally).
       #
-      # O `stream` (Protocol::HTTP::Body::Stream) responde a #write/#close. Drena a
-      # subscription DIRETO (sem Async::Task.current): quando este fiber bloqueia
-      # esperando o próximo evento, o scheduler roda o writer, que empurra o frame
-      # já escrito pro socket. Heartbeat via Timeout.timeout (hook do scheduler),
-      # que funciona no fiber agendado — mantém a conexão viva no idle (L4).
+      # The `stream` (Protocol::HTTP::Body::Stream) responds to #write/#close. Drains the
+      # subscription DIRECTLY (no Async::Task.current): when this fiber blocks
+      # waiting for the next event, the scheduler runs the writer, which pushes the
+      # already-written frame to the socket. Heartbeat via Timeout.timeout (scheduler hook),
+      # which works in the scheduled fiber — keeps the connection alive while idle (L4).
       def call(stream)
         drain(stream)
       rescue StandardError
-        # Cliente desconectou: `stream.write` levanta quando o socket fecha.
-        # Nenhuma exceção escapa; a task do turno NUNCA é cancelada aqui — a
-        # execução pertence ao runtime, não à conexão (reconecta em /v1/events).
+        # Client disconnected: `stream.write` raises when the socket closes.
+        # No exception escapes; the turn's task is NEVER cancelled here — the
+        # execution belongs to the runtime, not the connection (reconnect at /v1/events).
         nil
       ensure
         @subscription.close
@@ -61,13 +61,13 @@ module Harness
 
       def drain(stream)
         internal = Async::Queue.new
-        closed = Object.new # sentinela de fim-de-subscription
+        closed = Object.new # end-of-subscription sentinel
 
-        # Fiber filho (agendado no scheduler do reactor): drena a subscription
-        # para uma fila interna e, ao fechar, empurra o sentinela. Isola o
-        # bloqueio da subscription do loop de heartbeat. Encerra sozinho quando o
-        # `@subscription.close` (no ensure do #call) faz o `each` terminar — sem
-        # precisar matar o fiber à mão.
+        # Child fiber (scheduled on the reactor's scheduler): drains the subscription
+        # into an internal queue and, on close, pushes the sentinel. Isolates the
+        # subscription's blocking from the heartbeat loop. Ends on its own when
+        # `@subscription.close` (in #call's ensure) makes the `each` finish — no
+        # need to kill the fiber by hand.
         Fiber.schedule do
           @subscription.each { |event| internal.enqueue(event) }
         ensure
@@ -79,7 +79,7 @@ module Harness
             begin
               Timeout.timeout(@heartbeat) { internal.dequeue }
             rescue Timeout::Error
-              :heartbeat # nenhum evento em `heartbeat`s -> ping
+              :heartbeat # no event within `heartbeat`s -> ping
             end
 
           if event.equal?(:heartbeat)
