@@ -5,20 +5,20 @@ require_relative "errors"
 module Harness
   module Server
     module A2A
-      # Envelope JSON-RPC 2.0. PURO — recebe o Hash já
-      # desserializado (o parsing do JSON cru é do Server::App). NUNCA levanta.
+      # JSON-RPC 2.0 envelope. PURE — receives the already
+      # deserialized Hash (raw JSON parsing belongs to Server::App). NEVER raises.
       module Protocol
         VERSION = "2.0"
 
         # -> [:ok, { id:, method:, params: }] | [:error, { id:, code:, message: }]
         def self.parse(body)
-          return err(nil, Errors::INVALID_REQUEST, "request deve ser um objeto JSON-RPC") unless body.is_a?(Hash)
+          return err(nil, Errors::INVALID_REQUEST, "request must be a JSON-RPC object") unless body.is_a?(Hash)
 
-          id = body["id"] # ausente -> nil (sempre respondemos; sem notifications nesta fatia)
-          return err(id, Errors::INVALID_REQUEST, "jsonrpc deve ser '2.0'") unless body["jsonrpc"] == VERSION
+          id = body["id"] # missing -> nil (we always respond; no notifications in this slice)
+          return err(id, Errors::INVALID_REQUEST, "jsonrpc must be '2.0'") unless body["jsonrpc"] == VERSION
 
           method = body["method"]
-          return err(id, Errors::INVALID_REQUEST, "method ausente") unless method.is_a?(String) && !method.empty?
+          return err(id, Errors::INVALID_REQUEST, "method missing") unless method.is_a?(String) && !method.empty?
 
           [:ok, { id: id, method: method, params: body["params"] || {} }]
         end

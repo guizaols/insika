@@ -84,7 +84,7 @@ RSpec.describe Harness::Server::A2A::Client do
     it "poll estoura (poll_max) -> { error: }" do
       responses = [envelope_task("submitted")] + Array.new(5) { envelope_task("working") }
       client = described_class.new(http: FakeHttp.new(responses), sleeper: no_sleep, poll_max: 2)
-      expect(client.call("u", "x")[:error]).to match(/não concluiu/)
+      expect(client.call("u", "x")[:error]).to match(/did not complete/)
     end
   end
 end

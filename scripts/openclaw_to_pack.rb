@@ -1,70 +1,70 @@
 # frozen_string_literal: true
 
-# UTILITÁRIO DE MIGRAÇÃO (one-off, FORA do produto — techspec Fase 7 §4 D7).
-# Converte as tools do plugin OpenClaw `acheib2b-tools-dev` em data-tools do
-# harness (tools/<name>.json), lendo a FONTE DA VERDADE (os `.ts`) — name, slug
-# do endpoint (`callAgentTool("<slug>")`), descrição e params TOP-LEVEL do
-# `Type.Object({...})` (TypeBox). É IDEMPOTENTE/re-runnable: regenera os arquivos
-# a cada execução, então dá pra re-provisionar quando o banco é recriado nos
-# testes (rode este + `import_pack.rb`).
+# MIGRATION UTILITY (one-off, OUTSIDE the product — techspec Phase 7 §4 D7).
+# Converts the tools of the OpenClaw plugin `acheib2b-tools-dev` into harness
+# data-tools (tools/<name>.json), reading the SOURCE OF TRUTH (the `.ts`) — name, endpoint
+# slug (`callAgentTool("<slug>")`), description and TOP-LEVEL params of the
+# `Type.Object({...})` (TypeBox). It is IDEMPOTENT/re-runnable: regenerates the files
+# on each run, so you can re-provision when the database is recreated in the
+# tests (run this + `import_pack.rb`).
 #
-# NÃO faz parte do motor (é específico do produto OpenClaw atual). Usa só stdlib.
+# NOT part of the engine (it's specific to the current OpenClaw product). Uses stdlib only.
 #
-# Uso:
-#   ruby scripts/openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [nome1 nome2 ...]
-#     - <plugin_dir>: .../openclaw/extensions/acheib2b-tools-dev (ou env OPENCLAW_PLUGIN_DIR)
-#     - <out_tools_dir>: onde gravar os tools/*.json (ex.: ~/pack/cacau-show/tools)
-#     - [nomes]: só essas tools. Sem nomes: REFRESH (regenera os *.json já
-#                existentes no out_dir); se o out_dir estiver vazio, gera TODAS as
-#                registradas no index.ts.
-#   Env: ACHEI_INTERNAL_URL (default http://localhost:3000) — base do /api/internal.
+# Usage:
+#   ruby scripts/openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [name1 name2 ...]
+#     - <plugin_dir>: .../openclaw/extensions/acheib2b-tools-dev (or env OPENCLAW_PLUGIN_DIR)
+#     - <out_tools_dir>: where to write the tools/*.json (e.g.: ~/pack/cacau-show/tools)
+#     - [names]: only those tools. Without names: REFRESH (regenerates the *.json already
+#                present in out_dir); if out_dir is empty, generates ALL the ones
+#                registered in index.ts.
+#   Env: ACHEI_INTERNAL_URL (default http://localhost:3000) — base of /api/internal.
 
 require "json"
 require "fileutils"
 
 plugin_dir = ARGV[0] || ENV["OPENCLAW_PLUGIN_DIR"] or
-  abort("uso: openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [nomes...]")
-out_dir = ARGV[1] or abort("uso: openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [nomes...]")
+  abort("usage: openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [names...]")
+out_dir = ARGV[1] or abort("usage: openclaw_to_pack.rb <plugin_dir> <out_tools_dir> [names...]")
 wanted = ARGV[2..] || []
 base_url = ENV.fetch("ACHEI_INTERNAL_URL", "http://localhost:3000")
 TOKEN_PLACEHOLDER = "__BIA_INTERNAL_API_TOKEN__"
 
 tools_src = File.join(plugin_dir, "tools")
 index_ts = File.join(plugin_dir, "index.ts")
-abort("plugin sem tools/ em #{plugin_dir}") unless Dir.exist?(tools_src)
-abort("plugin sem index.ts em #{plugin_dir}") unless File.exist?(index_ts)
+abort("plugin without tools/ in #{plugin_dir}") unless Dir.exist?(tools_src)
+abort("plugin without index.ts in #{plugin_dir}") unless File.exist?(index_ts)
 
-# --- descobre as tools REGISTRADAS (index.ts): factory -> arquivo + só as usadas
-# em api.registerTool(...). Arquivos não-registrados (ex.: Natura dormentes) ficam
-# de fora.
+# --- discovers the REGISTERED tools (index.ts): factory -> file + only the ones used
+# in api.registerTool(...). Non-registered files (e.g.: dormant Natura ones) are left
+# out.
 index = File.read(index_ts)
 factory_file = index.scan(/import\s*\{\s*(create\w+)\s*\}\s*from\s*"\.\/tools\/([\w-]+)\.js"/)
                     .to_h # createXxx => "file-name"
 registered = index.scan(/(create\w+Tool)\(resolveCtx/).flatten.uniq
 registered_files = registered.filter_map { |f| factory_file[f] }.uniq
 
-# --- parse de UM .ts -> descritor {name, slug, description, params[]}
-# Literal de string JS (aspas simples OU duplas; os .ts misturam os dois estilos).
+# --- parse ONE .ts -> descriptor {name, slug, description, params[]}
+# JS string literal (single OR double quotes; the .ts mix both styles).
 JS_STR = /(['"])((?:\\.|(?!\1).)*)\1/
 
 def parse_tool(path)
   src = File.read(path)
   name = src[/name:\s*#{JS_STR}/, 2]
   slug = src[/callAgentTool\(\s*#{JS_STR}/, 2]
-  # description do OBJETO da tool (a do factory, dentro do `return {`); fallback:
-  # a 1ª description do arquivo.
+  # description of the tool OBJECT (the factory's, inside the `return {`); fallback:
+  # the 1st description in the file.
   desc = src[/return\s*\{.*?description:\s*\n?\s*#{JS_STR}/m, 2] ||
          src[/description:\s*\n?\s*#{JS_STR}/m, 2]
   { name: name, slug: slug, description: unescape(desc.to_s), params: parse_params(src) }
 end
 
-# Bloco `const parameters = Type.Object({ <inner> \n});` -> params top-level (2 espaços).
+# Block `const parameters = Type.Object({ <inner> \n});` -> top-level params (2 spaces).
 def parse_params(src)
   inner = src[/const parameters = Type\.Object\(\{\n(.*?)\n\}\);/m, 1]
-  return [] if inner.nil? || inner.strip.empty? # Type.Object({}) -> sem params
+  return [] if inner.nil? || inner.strip.empty? # Type.Object({}) -> no params
 
   lines = inner.lines
-  # índices das chaves TOP-LEVEL (exatamente 2 espaços de indentação)
+  # indices of the TOP-LEVEL keys (exactly 2 spaces of indentation)
   key_idx = lines.each_index.select { |i| lines[i] =~ /\A {2}(\w+):/ }
   key_idx.each_with_index.map do |start, n|
     stop = key_idx[n + 1] || lines.length
@@ -84,7 +84,7 @@ def harness_type(kind)
   when "Boolean" then "boolean"
   when "Array" then "array"
   else
-    warn "  [aviso] tipo TypeBox '#{kind.inspect}' sem mapeamento flat -> string" unless kind == "String"
+    warn "  [warning] TypeBox type '#{kind.inspect}' has no flat mapping -> string" unless kind == "String"
     "string"
   end
 end
@@ -104,7 +104,7 @@ def body_for(params)
   "{#{pairs.join(',')}}"
 end
 
-# reads (search_/get_/list_) não são side-effect (podem reexecutar no resume).
+# reads (search_/get_/list_) are not side-effects (safe to re-run on resume).
 def side_effect_for(name) = name !~ /\A(search|get|list)_/
 
 def tool_json(tool, base_url)
@@ -131,23 +131,23 @@ def tool_json(tool, base_url)
   }
 end
 
-# --- catálogo: parse de todos os arquivos registrados -> name => tool
+# --- catalog: parse every registered file -> name => tool
 catalog = registered_files.each_with_object({}) do |file, acc|
   path = File.join(tools_src, "#{file}.ts")
   next unless File.exist?(path)
 
   t = parse_tool(path)
-  next warn("  [aviso] #{file}.ts sem name/slug — pulado") if t[:name].nil? || t[:slug].nil?
+  next warn("  [warning] #{file}.ts without name/slug — skipped") if t[:name].nil? || t[:slug].nil?
 
   acc[t[:name]] = t
 end
 
-# --- decide o conjunto a gerar
+# --- decide the set to generate
 existing = Dir.glob(File.join(out_dir, "*.json")).map { |f| File.basename(f, ".json") }
 names =
   if !wanted.empty? then wanted
-  elsif !existing.empty? then existing            # REFRESH do que já existe
-  else catalog.keys                               # tudo registrado
+  elsif !existing.empty? then existing            # REFRESH what already exists
+  else catalog.keys                               # everything registered
   end
 
 FileUtils.mkdir_p(out_dir)
@@ -162,8 +162,8 @@ names.each do |name|
 end
 
 puts "plugin: #{plugin_dir}"
-puts "registradas no index.ts: #{catalog.size} tools"
-puts "geradas em #{out_dir}: #{written.size} (#{written.sort.join(', ')})"
-warn "NÃO encontradas no plugin (verifique o nome): #{missing.sort.join(', ')}" unless missing.empty?
+puts "registered in index.ts: #{catalog.size} tools"
+puts "generated in #{out_dir}: #{written.size} (#{written.sort.join(', ')})"
+warn "NOT found in the plugin (check the name): #{missing.sort.join(', ')}" unless missing.empty?
 puts
-puts "próximo: bundle exec ruby scripts/import_pack.rb #{File.dirname(out_dir)}  (com BIA_INTERNAL_API_TOKEN=…)"
+puts "next: bundle exec ruby scripts/import_pack.rb #{File.dirname(out_dir)}  (with BIA_INTERNAL_API_TOKEN=…)"

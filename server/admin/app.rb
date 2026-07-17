@@ -8,24 +8,24 @@ require "time"
 module Harness
   module Server
     module Admin
-      # Esqueleto read-only do Control UI: só
-      # LEITURA de stores/catálogos/registries já injetados no Server::App — não
-      # despacha Command nem escreve em store (regra constitucional).
-      # Render com ERB da stdlib: zero deps, zero asset pipeline.
+      # Read-only skeleton of the Control UI: only
+      # READS stores/catalogs/registries already injected into Server::App — does not
+      # dispatch a Command nor write to a store (constitutional rule).
+      # Renders with the stdlib's ERB: zero deps, zero asset pipeline.
       #
-      # A auth (AdminAuth) e o CORS são aplicados ANTES pelo Server::App; este
-      # app só roteia GETs e renderiza.
+      # Auth (AdminAuth) and CORS are applied BEFORE by Server::App; this
+      # app only routes GETs and renders.
       class App
         VIEWS_DIR = File.expand_path("views", __dir__)
 
-        # Defense-in-depth (o painel renderiza transcripts de usuário/LLM; `h()`
-        # é a 1ª barreira, isto é a 2ª). CSP bloqueia carga/exfil para origens
-        # externas — `connect-src 'self'` restringe o EventSource de events.erb à
-        # mesma origem; `'unsafe-inline'` cobre o <style>/<script> inline (zero
-        # asset pipeline). `nosniff` evita content-type sniffing.
-        # `script-src 'self'`: permite o Turbo/Stimulus vendored em
-        # /admin/assets/*; `'unsafe-inline'` cobre o <style> inline. `connect-src
-        # 'self'` casa com o EventSource same-origin.
+        # Defense-in-depth (the panel renders user/LLM transcripts; `h()`
+        # is the 1st barrier, this is the 2nd). CSP blocks loading/exfil to
+        # external origins — `connect-src 'self'` restricts the events.erb EventSource to the
+        # same origin; `'unsafe-inline'` covers the inline <style>/<script> (zero
+        # asset pipeline). `nosniff` prevents content-type sniffing.
+        # `script-src 'self'`: allows the vendored Turbo/Stimulus at
+        # /admin/assets/*; `'unsafe-inline'` covers the inline <style>. `connect-src
+        # 'self'` matches the same-origin EventSource.
         HTML_HEADERS = {
           "content-type" => "text/html; charset=utf-8",
           "x-content-type-options" => "nosniff",
@@ -46,8 +46,8 @@ module Harness
           @event_stream = event_stream
         end
 
-        # req: Rack::Request (path já validado como /admin*; auth/CORS no Server::App).
-        # GET = leitura; POST = ação de escrita. Outros métodos -> 404.
+        # req: Rack::Request (path already validated as /admin*; auth/CORS in Server::App).
+        # GET = read; POST = write action. Other methods -> 404.
         def call(req)
           segments = req.path_info.split("/").reject(&:empty?)
           return write(req, segments) if req.post?
@@ -70,8 +70,8 @@ module Harness
 
         private
 
-        # --- Escrita: traduz a ação da UI em Command, audita e responde
-        # Turbo Stream (se o cliente aceita) ou 303 redirect (degradação sem JS).
+        # --- Write: translates the UI action into a Command, audits and responds
+        # with a Turbo Stream (if the client accepts) or a 303 redirect (graceful no-JS degradation).
         def write(req, segments)
           case segments
           in ["admin", "tasks", id, "pause"]  then act(req, :pause_task, { task_id: id })
@@ -83,17 +83,17 @@ module Harness
           end
         end
 
-        # Auditoria SEMPRE antes do dispatch: mesmo que o Command falhe, a
-        # tentativa do operador fica registrada no Event Stream. Erro do Command
-        # (Validation/NotFound) vira turbo_stream/HTML de erro (não status HTTP —
-        # o /admin é HTML).
+        # Audit ALWAYS before the dispatch: even if the Command fails, the
+        # operator's attempt is recorded in the Event Stream. A Command error
+        # (Validation/NotFound) becomes an error turbo_stream/HTML (not an HTTP status —
+        # /admin is HTML).
         def act(req, type, payload)
           @event_stream.emit(Harness::Event.new(
                                type: :operator_action,
-                               # target RESUMIDO: nunca `message`/`args` — o audit
-                               # vai ao EventStream compartilhado (que /v1/events
-                               # expõe sem auth), então não vaza conteúdo de
-                               # usuário. Só metadados de accountability.
+                               # SUMMARIZED target: never `message`/`args` — the audit
+                               # goes to the shared EventStream (which /v1/events
+                               # exposes without auth), so it doesn't leak user
+                               # content. Only accountability metadata.
                                data: { action: type.to_s, target: audit_target(payload),
                                        operator: operator_of(req) },
                                meta: { task_id: payload[:task_id], session_id: payload[:session_id],
@@ -107,8 +107,8 @@ module Harness
 
         def operator_of(req) = req.get_header("HTTP_X_OPERATOR") || "operator"
 
-        # Só metadados (task/pending/session/agent/decision) — NUNCA o conteúdo
-        # (message/args), que vazaria a consumidores de /v1/events.
+        # Only metadata (task/pending/session/agent/decision) — NEVER the content
+        # (message/args), which would leak to /v1/events consumers.
         def audit_target(payload)
           payload.slice(:task_id, :pending_id, :session_id, :agent, :decision)
         end
@@ -120,8 +120,8 @@ module Harness
                    %(<div id="flash">#{CGI.escapeHTML(flash)}</div></template></turbo-stream>)
             [ok ? 200 : 422, { "content-type" => "text/vnd.turbo-stream.html; charset=utf-8" }.merge(security_headers), [body]]
           else
-            # sem Turbo: redireciona de volta (degradação graciosa — form normal).
-            # Volta ao referer (a página de origem) quando presente.
+            # no Turbo: redirects back (graceful degradation — plain form).
+            # Returns to the referer (the origin page) when present.
             back = req.get_header("HTTP_REFERER")
             back = "/admin/tasks" if back.nil? || back.empty?
             [303, { "location" => back }.merge(security_headers), []]
@@ -133,7 +133,7 @@ module Harness
 
         def approval_payload(req, pending_id)
           form = Rack::Utils.parse_query(req.body&.read.to_s)
-          # mesmo operador do audit: resolved_by no store bate com o :operator_action.
+          # same operator as the audit: resolved_by in the store matches the :operator_action.
           { pending_id: pending_id, decision: form["decision"] || "approved",
             operator: operator_of(req) }
         end
@@ -143,8 +143,8 @@ module Harness
           { agent: form["agent"], message: form["message"], session_id: form["session_id"] }.compact
         end
 
-        # Assets vendored: Turbo/Stimulus servidos localmente (sem CDN
-        # p/ respeitar a CSP, sem build). content-type js + cache curto.
+        # Vendored assets: Turbo/Stimulus served locally (no CDN
+        # to respect the CSP, no build). content-type js + short cache.
         def asset(name)
           path = File.join(VIEWS_DIR, "..", "assets", File.basename(name))
           return not_found unless File.file?(path)
@@ -181,9 +181,9 @@ module Harness
           render("task", task: task, checkpoint: @checkpoint_store.latest(id), pending: pending)
         end
 
-        # Plugins carregados = agrupamento das Entry#plugin dos registries
-        # (nil = registrado direto no wiring/sistema). Evita um canal
-        # novo wiring->App.
+        # Loaded plugins = grouping of the registries' Entry#plugin
+        # (nil = registered directly in the wiring/system). Avoids a new
+        # wiring->App channel.
         def plugin_groups
           tools = @registries[:tools].entries.group_by(&:plugin)
           workflows = @registries[:workflows].entries.group_by(&:plugin)
@@ -204,10 +204,10 @@ module Harness
           [404, HTML_HEADERS.dup, [html]]
         end
 
-        # Contexto de render das views. `h` (CGI.escapeHTML) escapa TODO valor
-        # dinâmico — transcripts/payloads carregam conteúdo de usuário/LLM que
-        # encontra o browser do operador aqui (edge case XSS). `style`/`nav`
-        # são parciais compartilhadas sem asset externo.
+        # Views render context. `h` (CGI.escapeHTML) escapes EVERY dynamic
+        # value — transcripts/payloads carry user/LLM content that
+        # meets the operator's browser here (XSS edge case). `style`/`nav`
+        # are shared partials with no external asset.
         class ViewContext
           def initialize(locals)
             locals.each { |k, v| instance_variable_set("@#{k}", v) }
@@ -215,9 +215,9 @@ module Harness
 
           def h(value) = CGI.escapeHTML(value.to_s)
 
-          # Design system do console. Tudo inline (CSP: 'unsafe-inline'
-          # cobre <style>/<script>; nenhum asset externo — CSP bloqueia mesmo).
-          # Tema-aware: tokens em :root, redefinidos sob prefers-color-scheme:dark.
+          # Console design system. All inline (CSP: 'unsafe-inline'
+          # covers <style>/<script>; no external asset — CSP blocks it anyway).
+          # Theme-aware: tokens in :root, redefined under prefers-color-scheme:dark.
           def style
             <<~CSS
               <style>
@@ -331,13 +331,13 @@ module Harness
             CSS
           end
 
-          NAV_LINKS = { "índice" => "/admin", "chat" => "/admin/chat",
+          NAV_LINKS = { "index" => "/admin", "chat" => "/admin/chat",
                         "sessions" => "/admin/sessions", "tasks" => "/admin/tasks",
                         "events" => "/admin/events", "skills" => "/admin/skills",
                         "plugins" => "/admin/plugins" }.freeze
 
-          # App-bar (marca + navegação). O link ativo é marcado no cliente por
-          # location.pathname — evita threadar o path do request até a view.
+          # App-bar (brand + navigation). The active link is marked on the client by
+          # location.pathname — avoids threading the request path down to the view.
           def nav
             links = NAV_LINKS.map { |label, href| "<a href=\"#{href}\">#{h(label)}</a>" }.join
             <<~HTML
@@ -351,15 +351,15 @@ module Harness
             HTML
           end
 
-          # Cabeçalho de página: app-bar + título (com subtítulo opcional). Views
-          # chamam <%= header("Título", "sub") %> e abrem <div class="page">.
+          # Page header: app-bar + title (with optional subtitle). Views
+          # call <%= header("Title", "sub") %> and open <div class="page">.
           def header(title, sub = nil)
             subhtml = sub ? "<span class=\"sub\">#{h(sub)}</span>" : ""
             "#{nav}<div class=\"page\"><h1>#{h(title)}#{subhtml}</h1>"
           end
 
-          # Pill de status semântica (completed=ok, running=run, waiting/queued=warn,
-          # failed/cancelled=err). Reusada em tasks/sessions.
+          # Semantic status pill (completed=ok, running=run, waiting/queued=warn,
+          # failed/cancelled=err). Reused in tasks/sessions.
           def status_pill(status)
             s = status.to_s
             cls = case s

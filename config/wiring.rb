@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-# Composition root ÚNICO: o lugar onde as
-# dependências são construídas e injetadas. A `APP` nasce por injeção
-# — as constantes globais (REGISTRY, CATALOG, PROFILES, ...) são mantidas como
-# ATALHO de leitura, mas nada depende delas para testar (a classe aceita
-# injeção).
+# The SINGLE composition root: the place where the
+# dependencies are built and injected. `APP` is born by injection
+# — the global constants (REGISTRY, CATALOG, PROFILES, ...) are kept as a
+# read SHORTCUT, but nothing depends on them for testing (the class accepts
+# injection).
 #
-# Aqui ele monta o grafo mínimo necessário para a `APP` servir: backend Memory,
-# catálogos/registries vazios e `PROFILES` vazio (um deployment concreto — ou o
-# wiring de teste do smoke — preenche perfis e tools). Requerer este arquivo NÃO
-# carrega `ruby_llm`: o Executor só toca a gem lazy no estágio 6.
+# Here it assembles the minimal graph needed for `APP` to serve: Memory backend,
+# empty catalogs/registries and empty `PROFILES` (a concrete deployment — or the
+# smoke test wiring — fills in profiles and tools). Requiring this file does NOT
+# load `ruby_llm`: the Executor only touches the gem lazily at stage 6.
 
 require_relative "../lib/harness"
 require_relative "../server/app"
-# A2A outbound: client/http/remotes NÃO puxam ruby_llm no load (só o bloco
-# de registro do tool remoto puxa). O tool em si (a2a_remote.rb) é lazy.
+# A2A outbound: client/http/remotes do NOT pull ruby_llm at load (only the remote
+# tool's registration block pulls it). The tool itself (a2a_remote.rb) is lazy.
 require_relative "../server/a2a/client"
 require_relative "../server/a2a/http"
 require_relative "../server/a2a/remotes"
@@ -23,11 +23,11 @@ module Harness
   module Wiring
     ROOT = File.expand_path("..", __dir__)
 
-    # --- Persistência. Backend por CONFIG:
-    # HARNESS_DB definido -> Stores::SQLite (durável — sobrevive a kill -9 +
-    # reboot, que é o critério da fase); ausente -> Stores::Memory
-    # (dev/efêmero). Produção DEVE definir HARNESS_DB para o Recovery ter o que
-    # retomar. A paridade Memory/SQLite é garantida pela suíte de contrato.
+    # --- Persistence. Backend by CONFIG:
+    # HARNESS_DB set -> Stores::SQLite (durable — survives kill -9 +
+    # reboot, which is the phase's criterion); missing -> Stores::Memory
+    # (dev/ephemeral). Production MUST set HARNESS_DB for Recovery to have something to
+    # resume. Memory/SQLite parity is guaranteed by the contract suite.
     BACKEND =
       if (db_path = ENV["HARNESS_DB"]) && !db_path.empty?
         Harness::Stores::SQLite.new(path: db_path)
@@ -47,30 +47,30 @@ module Harness
     WORKFLOW_REGISTRY = Harness::WorkflowRegistry.new
     POLICY_REGISTRY   = Harness::PolicyRegistry.new
 
-    # Builtins do estágio 3: registrados NO BOOT pelo composition
-    # root, não pelo registry. Consumidos via `fetch(name)`.
+    # Stage 3 builtins: registered AT BOOT by the composition
+    # root, not by the registry. Consumed via `fetch(name)`.
     POLICY_REGISTRY.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
     POLICY_REGISTRY.register(:skill_allowlist, Harness::Policy::Builtin::SkillAllowlist)
     POLICY_REGISTRY.register(:workflow_allowlist, Harness::Policy::Builtin::WorkflowAllowlist)
     POLICY_REGISTRY.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
 
     # --- Capability Registry + Tool Catalog ----------
-    # CapabilityRegistry é INDIREÇÃO: guarda Providers, resolve p/ o impl_name
-    # que o REGISTRY instancia. Zero execução aqui. ToolCatalog lê metadados do
-    # REGISTRY já construído (mesmo padrão do SkillCatalog sobre os skills/).
+    # CapabilityRegistry is INDIRECTION: it holds Providers, resolves to the impl_name
+    # that the REGISTRY instantiates. Zero execution here. ToolCatalog reads metadata from the
+    # already-built REGISTRY (same pattern as SkillCatalog over skills/).
     CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
     TOOL_CATALOG        = Harness::ToolCatalog.new(tool_registry: REGISTRY)
 
-    # --- Memória cross-session sobre o BACKEND durável ------
-    # SQLite quando HARNESS_DB setado (memória sobrevive a restart); Memory
-    # efêmero em dev. Store de domínio (≠ Stores::Memory backend).
+    # --- Cross-session memory over the durable BACKEND ------
+    # SQLite when HARNESS_DB is set (memory survives restart); ephemeral Memory
+    # in dev. Domain store (≠ Stores::Memory backend).
     MEMORY_STORE = Harness::MemoryStore.new(store: BACKEND)
 
-    # Catálogos: roots de skills/prompts do workspace (vazios se ausentes).
+    # Catalogs: workspace skills/prompts roots (empty if absent).
     CATALOG        = Harness::SkillCatalog.new([File.join(ROOT, "skills")])
     PROMPT_CATALOG = Harness::PromptCatalog.new([File.join(ROOT, "prompts")])
 
-    # --- Estágios transversais -----------------------------------
+    # --- Cross-cutting stages ------------------------------------
     HOOKS      = Harness::Hooks.new
     MIDDLEWARE = Harness::MiddlewareStack.new([])
 
@@ -78,11 +78,11 @@ module Harness
       Harness::Context::Providers::Request.new,
       Harness::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
       Harness::Context::Providers::Skill.new(catalog: CATALOG),
-      # Tool Search nível-1: emite <available_tools> de
-      # profile.tools_deferred. Inerte p/ agentes sem tools_deferred (retorna []).
+      # Level-1 Tool Search: emits <available_tools> from
+      # profile.tools_deferred. Inert for agents without tools_deferred (returns []).
       Harness::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
-      # Memória cross-session: read path. Inerte p/ agentes sem
-      # `memory` (enabled_for? corta por perfil; store vazio -> []).
+      # Cross-session memory: read path. Inert for agents without
+      # `memory` (enabled_for? cuts by profile; empty store -> []).
       Harness::Context::Providers::Memory.new(store: MEMORY_STORE),
       Harness::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
@@ -95,11 +95,11 @@ module Harness
       policy_registry: POLICY_REGISTRY, event_stream: EVENT_STREAM
     )
 
-    # Perfis de agente (data-driven). VAZIO na base — um deployment
-    # concreto (ou o wiring de teste do smoke) registra os perfis.
+    # Agent profiles (data-driven). EMPTY at the base — a concrete
+    # deployment (or the smoke test wiring) registers the profiles.
     PROFILES = {}.freeze
 
-    # --- Execução ----------------------------------------------------
+    # --- Execution ---------------------------------------------------
     EXECUTOR = Harness::Executor.new(
       context_builder: CONTEXT_BUILDER, policy_engine: POLICY_ENGINE,
       middleware: MIDDLEWARE, hooks: HOOKS,
@@ -137,19 +137,19 @@ module Harness
                                                         task_store: TASK_STORE, executor: EXECUTOR,
                                                         workflow_registry: WORKFLOW_REGISTRY))
 
-    # --- Transporte -------------------------------------------------
+    # --- Transport --------------------------------------------------
     CONFIG = {
       bind: ENV.fetch("HARNESS_BIND", "http://0.0.0.0"),
       port: Integer(ENV.fetch("HARNESS_PORT", "9292")),
-      admin_token: ENV["HARNESS_ADMIN_TOKEN"], # fail-closed: sem token -> /admin 503
-      # CORS estrito: strip/reject evita footgun de "a.com, b.com" virar " b.com"
+      admin_token: ENV["HARNESS_ADMIN_TOKEN"], # fail-closed: no token -> /admin 503
+      # Strict CORS: strip/reject avoids the footgun of "a.com, b.com" becoming " b.com"
       allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
     }.freeze
 
-    # --- A2A edge — federação inbound, OPT-IN -------------
-    # Exposto só quando HARNESS_A2A_AGENT aponta um perfil existente (PROFILES é
-    # vazio na base — perfis/plugins reais são deployment
-    # concreto). Sem a env / agente inexistente -> nil -> servidor não expõe A2A.
+    # --- A2A edge — inbound federation, OPT-IN -------------
+    # Exposed only when HARNESS_A2A_AGENT points to an existing profile (PROFILES is
+    # empty at the base — real profiles/plugins are a concrete
+    # deployment). Without the env / a missing agent -> nil -> server does not expose A2A.
     A2A_APP =
       if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && PROFILES[a2a_agent]
         Harness::Server::A2A::App.new(
@@ -160,11 +160,11 @@ module Harness
         )
       end
 
-    # --- A2A outbound — federação de saída, OPT-IN --------
-    # O harness chama agentes A2A remotos como tools. Um tool por remoto de
-    # HARNESS_A2A_REMOTES ("id=url,.."); sem a env -> nada registrado (paridade).
-    # O `require` da gem fica NO BLOCO (carregado na 1ª instância, turn time
-    # -> wiring-load continua gem-free).
+    # --- A2A outbound — outbound federation, OPT-IN --------
+    # The harness calls remote A2A agents as tools. One tool per remote from
+    # HARNESS_A2A_REMOTES ("id=url,.."); without the env -> nothing registered (parity).
+    # The gem's `require` lives IN THE BLOCK (loaded on the 1st instance, turn time
+    # -> wiring-load stays gem-free).
     A2A_CLIENT = Harness::Server::A2A::Client.new(http: Harness::Server::A2A::Http.new)
     Harness::Server::A2A::Remotes.parse(ENV["HARNESS_A2A_REMOTES"].to_s).each do |remote|
       REGISTRY.register("remote_#{remote.id}", plugin: "a2a") do
@@ -181,44 +181,44 @@ module Harness
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
-      checkpoint_store: CHECKPOINT_STORE, # leitura p/ /admin/tasks/:id
-      pending_action_store: PENDING_ACTION_STORE, # aprovações no /admin + read
+      checkpoint_store: CHECKPOINT_STORE, # read for /admin/tasks/:id
+      pending_action_store: PENDING_ACTION_STORE, # approvals in /admin + read
       catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
       registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
-      a2a: A2A_APP, # nil na base (opt-in) -> rotas A2A respondem 404
+      a2a: A2A_APP, # nil at the base (opt-in) -> A2A routes respond 404
       config: CONFIG
     )
 
-    # Recovery do boot: descobre tasks interrompidas e as retoma pelo
-    # MESMO caminho do ResumeTask, ANTES de o servidor aceitar requests.
+    # Boot recovery: discovers interrupted tasks and resumes them through the
+    # SAME path as ResumeTask, BEFORE the server accepts requests.
     RECOVERY = Harness::Recovery.new(
       task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, command_bus: BUS
     )
 
-    # Passos nomeados consumidos pelo Server::Boot. O grafo acima é
-    # construído de forma EAGER no require (constantes-atalho); os
-    # passos expõem a SEQUÊNCIA que o Boot orquestra. `load_plugins`/
-    # `build_stores` são no-op na base (sem plugins externos configurados; um
-    # deployment concreto ou a autodiscovery os estende) — a garantia
-    # "recovery antes do listen" vem de `recovery.run` rodar dentro do Boot,
-    # antes de `run APP`.
-    # NB: quando este no-op virar um Harness::Plugin::Loader.new real, o
-    # registries hash PRECISA incluir `capabilities: CAPABILITY_REGISTRY`
-    # (contracts.capabilities) — a ausência da chave é segura (loader ignora
-    # capabilities), mas sem ela nenhum plugin consegue registrar capability.
+    # Named steps consumed by Server::Boot. The graph above is
+    # built EAGERLY at require (shortcut constants); the
+    # steps expose the SEQUENCE that Boot orchestrates. `load_plugins`/
+    # `build_stores` are no-ops at the base (no external plugins configured; a
+    # concrete deployment or autodiscovery extends them) — the
+    # "recovery before the listen" guarantee comes from `recovery.run` running inside Boot,
+    # before `run APP`.
+    # NB: when this no-op becomes a real Harness::Plugin::Loader.new, the
+    # registries hash MUST include `capabilities: CAPABILITY_REGISTRY`
+    # (contracts.capabilities) — the missing key is safe (the loader ignores
+    # capabilities), but without it no plugin can register a capability.
     def self.load_plugins = nil
     def self.build_stores = nil
     def self.recovery = RECOVERY
     def self.app = APP
 
-    # Durabilidade do backend: SQLite sobrevive a restart, Memory
-    # não. O Boot loga isso para o operador não subir sem durabilidade por
-    # engano (HARNESS_DB não definido).
+    # Backend durability: SQLite survives restart, Memory does
+    # not. Boot logs this so the operator doesn't come up without durability by
+    # mistake (HARNESS_DB not set).
     def self.durable? = BACKEND.is_a?(Harness::Stores::SQLite)
   end
 end
 
-# Atalhos globais: a `APP` e as constantes seguem
-# acessíveis no topo. O `config.ru` -> `Server::Boot` consome `WIRING`.
+# Global shortcuts: `APP` and the constants stay
+# accessible at the top. `config.ru` -> `Server::Boot` consumes `WIRING`.
 APP = Harness::Wiring::APP
 WIRING = Harness::Wiring

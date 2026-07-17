@@ -157,16 +157,67 @@ review. Left in Portuguese:
 - `mcp_tool_ingestor.rb` — default tool description fragment `"... do servidor
   MCP ..."` (partially translated; verify)
 
+## Second pass (FOLLOWUP §5.1) — done
+
+Scope of this pass: comments, docstrings and non-contract log/error/exception
+messages plus operator-facing UI copy in the composition-root and transport
+layers. Full suite stays green (1362 examples, 0 failures).
+
+### `server/**` (Rack/SSE transport + A2A + admin) — done
+- `server/app.rb`, `server/boot.rb`, `server/responses.rb`, `server/sse_body.rb`,
+  `server/admin_auth.rb`, `server/admin/app.rb`.
+- `server/a2a/*.rb` (app, client, errors, http, message, protocol, remotes,
+  task_projection, agent_card).
+- Coupled spec edits (a translated message asserted verbatim, updated together
+  with its source):
+  - `server/a2a/client.rb` `não concluiu` -> `did not complete`; spec
+    `spec/harness/server/a2a/client_spec.rb` regex `/não concluiu/` ->
+    `/did not complete/`.
+  - `server/a2a/remotes.rb` warn `malformado` -> `malformed`; spec
+    `spec/harness/server/a2a/remotes_spec.rb` `output(/malformado/)` ->
+    `/malformed/`.
+- Admin nav label `"índice"` -> `"index"` (lone PT label among otherwise-English
+  nav labels; only asserted-by-href in specs, safe).
+- `admin disabled` / `gateway disabled` were already English and asserted as
+  such — kept.
+
+### Composition-root scripts — done
+- `scripts/import_pack.rb`, `scripts/run_real.rb`, `scripts/serve_real.rb`,
+  `scripts/openclaw_to_pack.rb`, `scripts/openclaw_to_manifest.rb` — comments,
+  usage/abort/warn strings and console banners. No spec asserts these.
+- (`scripts/loadtest.rb`, `loadtest-local.sh`, `bench_store.rb`, `README.md`
+  were already English — untouched.)
+
+### `config/**`, `config.ru`, `Gemfile` — done
+- `config/deployment.rb`, `config/wiring.rb`, `config.ru`, `Gemfile` — comments
+  and the one `[deploy]` boot warn.
+
+### `studio/app.rb` — done
+- Remaining Ruby comments + all operator-facing `with_flash(...)` confirmation
+  strings (agent/skill/tool/provider/MCP/system-file CRUD). No spec asserts
+  these. ERB views/UI copy were migrated in an earlier refresh.
+
+## Deferred in this pass
+
+- `config/wiring.rb:175` — the A2A remote-tool fallback **description**
+  (`"Delega a tarefa ao agente A2A remoto '...'."`) is model-facing (the LLM
+  reads it), matching the 1st-pass deferral of `tools/a2a_remote.rb` and other
+  model-facing prompt/description strings. Left in Portuguese.
+- `scripts/run_real.rb` — the demo conversation content (sample customer
+  messages to the PT-speaking `bia` agent) is input DATA, not comments/logs.
+  Left in Portuguese. `vars` values like `"canal" => "studio"/"navegador"` are
+  data and left as-is.
+
 ## Remaining (not yet started)
 
-- `server/**` — HTTP transport, A2A, admin, studio adapters (PT present;
-  includes `não concluiu` in the A2A client, spec-locked).
-- `studio/**` — management UI (ERB views + Roda app; PT UI strings incl.
-  `Nenhuma instância MCP`).
-- `bin/`, `config.ru`, `serve.rb`, and other composition-root scripts.
 - Test suite (`spec/**`) — test names and descriptions in Portuguese, plus the
-  contract-locked messages above (to be translated together with their asserts).
-- `Gemfile` / `Gemfile.lock` comments.
+  contract-locked messages listed above (to be translated together with their
+  asserts).
+- Model-facing prompt/description strings (see "Deferred: model-facing prompt /
+  description strings" above) — a dedicated review pass.
+- ERB views not covered by the UI refresh (if any) and `studio/**` non-Ruby
+  assets (JS/CSS) — out of scope for the Ruby-comment passes.
+- `Gemfile.lock` (generated; no human prose to translate).
 
 ## Follow-up: identifiers requiring contract coordination
 

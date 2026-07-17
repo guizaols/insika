@@ -4,20 +4,20 @@ require "json"
 
 module Harness
   module Server
-    # Adapter de borda OpenAI Responses (`/v1/responses`) — o contrato que os
-    # consumidores do gateway OpenClaw já falam (ver achei-b2b
-    # `CoreServices::OpenclawDispatcher`). Fase 6, Etapa A.
+    # OpenAI Responses edge adapter (`/v1/responses`) — the contract that the
+    # OpenClaw gateway consumers already speak (see achei-b2b
+    # `CoreServices::OpenclawDispatcher`). Phase 6, Step A.
     #
-    # Módulo PURO (sem estado, sem framework): (a) traduz o request OpenAI
-    # Responses → payload de `:send_message`; (b) mapeia cada Event do turno →
-    # frame SSE OpenAI Responses (ou nil p/ eventos sem correspondência). Segue a
-    # regra constitucional: nenhuma lógica de negócio, nenhum acesso a store aqui.
+    # PURE module (no state, no framework): (a) translates the OpenAI
+    # Responses request → `:send_message` payload; (b) maps each turn Event →
+    # OpenAI Responses SSE frame (or nil for events with no counterpart). Follows the
+    # constitutional rule: no business logic, no store access here.
     #
     # Request: { model: "openclaw:<agent>", user: "<chat.id>", stream: true,
-    #            input: "<string com blocos já compostos>" } + header
-    # X-Openclaw-Agent (fallback do agente). O `input` entra VERBATIM como a
-    # mensagem do turno — os blocos (<memoria>/<dados_conhecidos>/diretivas) já vêm
-    # compostos pelo consumidor (o motor não os interpreta).
+    #            input: "<string with already-composed blocks>" } + header
+    # X-Openclaw-Agent (agent fallback). The `input` enters VERBATIM as the
+    # turn's message — the blocks (<memoria>/<dados_conhecidos>/directives) already come
+    # composed by the consumer (the engine does not interpret them).
     module Responses
       module_function
 
@@ -25,19 +25,19 @@ module Harness
       def parse_request(body, req)
         agent = body[:model].to_s.sub(/\Aopenclaw:/, "")
         agent = req.get_header("HTTP_X_OPENCLAW_AGENT").to_s if agent.empty?
-        raise Harness::ValidationError, "model/agent ausente" if agent.strip.empty?
+        raise Harness::ValidationError, "model/agent missing" if agent.strip.empty?
 
         user = body[:user].to_s
-        raise Harness::ValidationError, "user ausente" if user.strip.empty?
+        raise Harness::ValidationError, "user missing" if user.strip.empty?
 
         message = extract_input(body[:input])
-        raise Harness::ValidationError, "input vazio" if message.strip.empty?
+        raise Harness::ValidationError, "input empty" if message.strip.empty?
 
         { agent: agent.strip, user: user, message: message }
       end
 
-      # V1: `input` é STRING (o dispatcher compõe os blocos + user text). Tolera
-      # array de partes (shape OpenAI multimodal) juntando os textos.
+      # V1: `input` is a STRING (the dispatcher composes the blocks + user text). Tolerates
+      # an array of parts (OpenAI multimodal shape) by joining the texts.
       def extract_input(input)
         case input
         when String then input
@@ -48,9 +48,9 @@ module Harness
         end
       end
 
-      # Event do turno -> frame SSE OpenAI Responses | nil (evento sem
-      # correspondência: :task_started, :tool_result, :skill_activated, ...).
-      # Eventos terminais emitem o frame final + `[DONE]` (fecham o stream).
+      # Turn Event -> OpenAI Responses SSE frame | nil (event with no
+      # counterpart: :task_started, :tool_result, :skill_activated, ...).
+      # Terminal events emit the final frame + `[DONE]` (close the stream).
       def frame_for(event)
         case event.type
         when :content
@@ -74,8 +74,8 @@ module Harness
       def completed(event)
         response = {}
         if (usage = event.data[:usage])
-          # `model` viaja junto do usage no evento; no shape OpenAI ele é irmão do
-          # usage (tokens puros no usage).
+          # `model` travels alongside usage in the event; in the OpenAI shape it is a sibling of
+          # usage (pure tokens in usage).
           model = usage[:model] || usage["model"]
           response[:usage] = usage.reject { |k, _| k.to_s == "model" }
           response[:model] = model if model
@@ -88,7 +88,7 @@ module Harness
             { type: "response.failed", response: { error: { message: message.to_s } } })
       end
 
-      # event: + data: (o dispatcher lê os dois: `event:` e `type` no JSON).
+      # event: + data: (the dispatcher reads both: `event:` and `type` in the JSON).
       def sse(event_name, data)
         "event: #{event_name}\ndata: #{JSON.generate(data)}\n\n"
       end

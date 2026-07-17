@@ -1,54 +1,54 @@
 # frozen_string_literal: true
 
-# UTILITÁRIO DE MIGRAÇÃO (one-off, FORA do produto — techspec Fase 7 §4 D7 / task 7).
-# Lê o plugin OpenClaw `acheib2b-tools-dev` (a FONTE DA VERDADE: os `.ts`) e emite
-# UM `manifesto.json` único no formato da Etapa B (defaults + tools[]), consumível
-# por `Harness::ToolManifest.from_h(...).tool_definitions(secrets:, env:)`.
+# MIGRATION UTILITY (one-off, OUTSIDE the product — techspec Phase 7 §4 D7 / task 7).
+# Reads the OpenClaw plugin `acheib2b-tools-dev` (the SOURCE OF TRUTH: the `.ts`) and emits
+# a SINGLE `manifesto.json` in the Step B format (defaults + tools[]), consumable
+# by `Harness::ToolManifest.from_h(...).tool_definitions(secrets:, env:)`.
 #
-# Difere do `openclaw_to_pack.rb` (formato ANTIGO: N arquivos por-tool, params
-# PLANOS): aqui a saída é um manifesto ÚNICO e os params saem como JSON Schema
-# ANINHADO de verdade — o `Type.Object({...})` do TypeBox já É JSON Schema, então
-# um parser recursivo do TypeBox (String/Number/Integer/Boolean/Array/Object/
-# Optional) reconstrói o schema completo (ex.: `search_products.query_filter_pairs`
-# = array de objetos {query, filters}). Tipos fora desse subset degradam p/ string
-# com aviso (nenhum dos 44 tools atuais usa construção exótica).
+# Differs from `openclaw_to_pack.rb` (OLD format: N per-tool files, FLAT
+# params): here the output is a SINGLE manifest and the params come out as truly
+# NESTED JSON Schema — TypeBox's `Type.Object({...})` already IS JSON Schema, so
+# a recursive TypeBox parser (String/Number/Integer/Boolean/Array/Object/
+# Optional) reconstructs the full schema (e.g.: `search_products.query_filter_pairs`
+# = array of objects {query, filters}). Types outside this subset degrade to string
+# with a warning (none of the current 44 tools uses an exotic construct).
 #
-# GENÉRICO no motor, específico AQUI (NF1): o `lib/harness` nunca cita achei/
-# openclaw — este script é descartável, vive em `scripts/` e usa só stdlib.
-# É IDEMPOTENTE: regenera o manifesto inteiro a cada execução.
+# GENERIC in the engine, specific HERE (NF1): `lib/harness` never mentions achei/
+# openclaw — this script is disposable, lives in `scripts/` and uses stdlib only.
+# It is IDEMPOTENT: regenerates the whole manifest on each run.
 #
-# O `endpoint` de cada tool é o slug do `callAgentTool("<slug>")` — DADO, nunca
-# inferido do name (R6): p.ex. send_finalize_button→finalize_button,
+# Each tool's `endpoint` is the slug of `callAgentTool("<slug>")` — DATA, never
+# inferred from the name (R6): e.g. send_finalize_button→finalize_button,
 # search_faq→search_faqs, call_support→support_requests, search_voucher→
-# search_vouchers. O `group` é derivado por convenção de nome (o OpenClaw não
-# persiste grupos — deriva por sufixo em runtime); aqui vira DADO (Etapa C).
+# search_vouchers. The `group` is derived by name convention (OpenClaw doesn't
+# persist groups — derives by suffix at runtime); here it becomes DATA (Step C).
 #
-# O SEGREDO nunca entra no manifesto: a Authorization referencia
-# `{{secret.BIA_INTERNAL_API_TOKEN}}`, resolvido só na INGESTÃO (D6/R3).
+# The SECRET never enters the manifest: the Authorization references
+# `{{secret.BIA_INTERNAL_API_TOKEN}}`, resolved only at INGESTION (D6/R3).
 #
-# Uso:
+# Usage:
 #   ruby scripts/openclaw_to_manifest.rb [<plugin_dir>] [<out_file>]
 #     - <plugin_dir>: .../openclaw/extensions/acheib2b-tools-dev
-#                     (default: env OPENCLAW_PLUGIN_DIR, senão o caminho conhecido)
-#     - <out_file>  : arquivo de saída (default: manifesto.json no diretório atual)
+#                     (default: env OPENCLAW_PLUGIN_DIR, else the known path)
+#     - <out_file>  : output file (default: manifesto.json in the current directory)
 #
-# NÃO versione a saída real (é derivada do produto do cliente).
+# Do NOT version the real output (it's derived from the client's product).
 
 require "json"
 
-# Conversor plugin OpenClaw -> manifesto. Módulo de funções (sem estado) p/ ser
-# testável (o spec dá `require` e chama #build_manifest sobre um fixture pequeno)
-# E executável (guard de CLI no fim do arquivo).
+# OpenClaw plugin -> manifest converter. Module of functions (stateless) so it's
+# testable (the spec does `require` and calls #build_manifest over a small fixture)
+# AND executable (CLI guard at the end of the file).
 module OpenclawToManifest
   module_function
 
-  # Caminho conhecido da fonte da verdade (só usado no modo CLI, como fallback).
+  # Known path of the source of truth (only used in CLI mode, as a fallback).
   DEFAULT_PLUGIN_DIR =
     "/Users/guizaols/projetos/tedi/openclaw/openclaw/extensions/acheib2b-tools-dev"
 
-  # Binding comum das 44 tools (o achei-b2b expõe tudo em POST /api/internal/
-  # agent_tools/<slug>, com os ids do turno em headers X-*-Id e o token interno na
-  # Authorization). Herdado por TODA tool via `defaults` do manifesto.
+  # Common binding of the 44 tools (achei-b2b exposes everything at POST /api/internal/
+  # agent_tools/<slug>, with the turn's ids in X-*-Id headers and the internal token in the
+  # Authorization). Inherited by EVERY tool via the manifest's `defaults`.
   DEFAULTS = {
     "base_url" => "{{env.ACHEI_INTERNAL_URL}}",
     "path_template" => "/api/internal/agent_tools/{endpoint}",
@@ -64,23 +64,23 @@ module OpenclawToManifest
     "response" => { "extract" => "body_raw" }
   }.freeze
 
-  # Grupos como DADO (Etapa C/D4). O OpenClaw deriva por convenção de nome/sufixo
-  # em runtime; replicamos essa convenção aqui p/ gravar o grupo explicitamente.
-  # Tools de lista/CD compartilhadas pela vertical Groceries V2 (sem sufixo).
+  # Groups as DATA (Step C/D4). OpenClaw derives by name/suffix convention
+  # at runtime; we replicate that convention here to write the group explicitly.
+  # List/DC tools shared by the Groceries V2 vertical (no suffix).
   GROCERIES_SHARED = %w[
     save_shopping_list remove_from_list update_list_quantity switch_distribution_center
   ].freeze
-  # Tools transversais/institucionais (FAQ, cupom, pedidos, suporte): grupo core.
+  # Cross-cutting/institutional tools (FAQ, voucher, orders, support): core group.
   CORE_TOOLS = %w[search_faq search_voucher apply_voucher search_orders call_support].freeze
 
-  # Literal de string JS (aspas simples OU duplas; os .ts misturam os dois estilos).
+  # JS string literal (single OR double quotes; the .ts mix both styles).
   JS_STR = /(['"])((?:\\.|(?!\1).)*)\1/
 
-  # === API pública =========================================================
+  # === public API ==========================================================
 
-  # <plugin_dir> -> Hash do manifesto (version/defaults/tools). Só as tools
-  # REGISTRADAS no index.ts entram (arquivos dormentes ficam de fora), espelhando
-  # o `openclaw_to_pack.rb`.
+  # <plugin_dir> -> manifest Hash (version/defaults/tools). Only the tools
+  # REGISTERED in index.ts enter (dormant files are left out), mirroring
+  # `openclaw_to_pack.rb`.
   def build_manifest(plugin_dir)
     tools_src = File.join(plugin_dir, "tools")
     tools = registered_files(plugin_dir).filter_map do |file|
@@ -88,17 +88,17 @@ module OpenclawToManifest
       next unless File.exist?(path)
 
       tool = parse_tool(path)
-      next warn("  [aviso] #{file}.ts sem name/slug — pulado") if tool[:name].nil? || tool[:slug].nil?
+      next warn("  [warning] #{file}.ts without name/slug — skipped") if tool[:name].nil? || tool[:slug].nil?
 
       tool_entry(tool)
     end
     { "version" => 1, "defaults" => DEFAULTS, "tools" => tools }
   end
 
-  # === descoberta das tools registradas ====================================
+  # === registered tools discovery ==========================================
 
-  # index.ts: factory createXxx -> arquivo, filtrado pelas que aparecem em
-  # api.registerTool(...). Idêntico ao openclaw_to_pack (mesma fonte da verdade).
+  # index.ts: factory createXxx -> file, filtered by those appearing in
+  # api.registerTool(...). Identical to openclaw_to_pack (same source of truth).
   def registered_files(plugin_dir)
     index = File.read(File.join(plugin_dir, "index.ts"))
     factory_file = index.scan(/import\s*\{\s*(create\w+)\s*\}\s*from\s*"\.\/tools\/([\w-]+)\.js"/).to_h
@@ -106,24 +106,24 @@ module OpenclawToManifest
     registered.filter_map { |factory| factory_file[factory] }.uniq
   end
 
-  # === parse de UM .ts =====================================================
+  # === parse ONE .ts =======================================================
 
   # -> { name, slug, description, parameters: <JSON Schema> }
   def parse_tool(path)
     src = File.read(path)
     name = src[/name:\s*#{JS_STR}/, 2]
     slug = src[/callAgentTool\(\s*#{JS_STR}/, 2]
-    # description do OBJETO da tool (dentro do `return {`); fallback: a 1ª do arquivo.
+    # description of the tool OBJECT (inside the `return {`); fallback: the file's 1st.
     desc = src[/return\s*\{.*?description:\s*\n?\s*#{JS_STR}/m, 2] ||
            src[/description:\s*\n?\s*#{JS_STR}/m, 2]
     { name: name, slug: slug, description: unescape(desc.to_s), parameters: parse_parameters(src) }
   end
 
-  # === TypeBox -> JSON Schema (parser recursivo) ===========================
-  # O `const parameters = Type.Object({...});` é a raiz. Type.Object já É JSON
-  # Schema; só precisamos reconstruí-lo como Hash aninhado dentro do subset seguro
-  # da ToolDefinition (object/array/string/number/integer/boolean + description/
-  # min*/max*/additionalProperties). Type.Optional só afeta o `required` do pai.
+  # === TypeBox -> JSON Schema (recursive parser) ===========================
+  # `const parameters = Type.Object({...});` is the root. Type.Object already IS JSON
+  # Schema; we only need to reconstruct it as a nested Hash within the ToolDefinition's
+  # safe subset (object/array/string/number/integer/boolean + description/
+  # min*/max*/additionalProperties). Type.Optional only affects the parent's `required`.
 
   def empty_schema = { "type" => "object", "properties" => {}, "required" => [] }
 
@@ -137,8 +137,8 @@ module OpenclawToManifest
     parse_type(expr)
   end
 
-  # A partir de `from`, isola a expressão `Type.X( ... )` inteira (parênteses
-  # balanceados) — a raiz do schema.
+  # Starting at `from`, isolates the whole `Type.X( ... )` expression (balanced
+  # parentheses) — the root of the schema.
   def extract_type_expr(src, from)
     idx = src.index("Type.", from)
     return nil if idx.nil?
@@ -150,8 +150,8 @@ module OpenclawToManifest
     src[idx..close]
   end
 
-  # Uma expressão `Type.Kind(<args>)` -> Hash JSON Schema. Kind fora do subset
-  # degrada p/ string com aviso (R1).
+  # A `Type.Kind(<args>)` expression -> JSON Schema Hash. Kind outside the subset
+  # degrades to string with a warning (R1).
   def parse_type(expr)
     expr = expr.strip
     m = expr.match(/\AType\.(\w+)/)
@@ -165,7 +165,7 @@ module OpenclawToManifest
     args = rest[1...close].strip
 
     case kind
-    when "Optional" then parse_type(args)           # desembrulha; required é do pai
+    when "Optional" then parse_type(args)           # unwraps; required belongs to the parent
     when "Object"   then parse_object(args)
     when "Array"    then parse_array(args)
     when "String"   then scalar("string", args)
@@ -188,7 +188,7 @@ module OpenclawToManifest
   end
 
   # Type.Object({<props>}[, <opts>]) -> { type: object, properties, required, ... }.
-  # Um campo cujo valor é Type.Optional(...) NÃO entra em `required`.
+  # A field whose value is Type.Optional(...) does NOT enter `required`.
   def parse_object(args)
     props_literal, opts = split_top_level(args)
     schema = { "type" => "object", "properties" => {}, "required" => [] }
@@ -200,16 +200,16 @@ module OpenclawToManifest
     apply_opts!(schema, opts)
   end
 
-  # Type desconhecido (fora do subset): degrada p/ string, avisando (R1). Nenhum
-  # dos 44 tools atuais cai aqui — é só rede de segurança p/ o futuro.
+  # Unknown Type (outside the subset): degrades to string, warning (R1). None
+  # of the current 44 tools lands here — it's just a safety net for the future.
   def degrade(expr, kind = nil)
     label = kind || expr[/\AType\.(\w+)/, 1] || expr[0, 20]
-    warn "  [aviso] TypeBox '#{label}' fora do subset seguro -> degradado p/ string"
+    warn "  [warning] TypeBox '#{label}' outside the safe subset -> degraded to string"
     { "type" => "string" }
   end
 
-  # Extrai description/min*/max*/additionalProperties de um literal `{ ... }` de
-  # opções (ou string vazia / nil). Só chaves do subset; o resto é ignorado.
+  # Extracts description/min*/max*/additionalProperties from an options `{ ... }`
+  # literal (or empty string / nil). Only subset keys; the rest is ignored.
   def apply_opts!(schema, opts)
     opts = opts.to_s
     return schema if opts.empty?
@@ -228,10 +228,10 @@ module OpenclawToManifest
     schema
   end
 
-  # === helpers de parsing (balanceamento/split) ============================
+  # === parsing helpers (balancing/split) ===================================
 
-  # Índice do delimitador de fechamento que casa com o aberto em `open_idx`,
-  # ignorando delimitadores dentro de strings JS.
+  # Index of the closing delimiter matching the one opened at `open_idx`,
+  # ignoring delimiters inside JS strings.
   def match_delim(str, open_idx)
     pairs = { "(" => ")", "{" => "}", "[" => "]" }
     open = str[open_idx]
@@ -258,7 +258,7 @@ module OpenclawToManifest
     nil
   end
 
-  # Quebra `s` nas vírgulas de TOPO (fora de (), {}, [] e strings).
+  # Splits `s` on the TOP-LEVEL commas (outside (), {}, [] and strings).
   def split_top_level(str)
     parts = []
     buf = +""
@@ -296,7 +296,7 @@ module OpenclawToManifest
     parts
   end
 
-  # Itera os pares `chave: valor` de TOPO de um literal `{ ... }` de objeto.
+  # Iterates the TOP-LEVEL `key: value` pairs of an object `{ ... }` literal.
   def each_object_field(literal)
     inner = strip_braces(literal)
     return if inner.strip.empty?
@@ -311,8 +311,8 @@ module OpenclawToManifest
     end
   end
 
-  # Posição do primeiro `:` de TOPO (fora de delimitadores/strings) — separa
-  # chave do valor num campo de objeto.
+  # Position of the first TOP-LEVEL `:` (outside delimiters/strings) — separates
+  # key from value in an object field.
   def top_level_colon(str)
     depth = 0
     in_str = nil
@@ -346,13 +346,13 @@ module OpenclawToManifest
     str.gsub('\\"', '"').gsub("\\'", "'").gsub("\\n", " ").gsub(/\s+/, " ").strip
   end
 
-  # === montagem da tool no manifesto =======================================
+  # === assembling the tool in the manifest =================================
 
   def tool_entry(tool)
     {
       "name" => tool[:name],
       "group" => group_for(tool[:name]),
-      "endpoint" => tool[:slug], # slug do callAgentTool — nunca inferido do name (R6)
+      "endpoint" => tool[:slug], # callAgentTool slug — never inferred from the name (R6)
       "description" => tool[:description],
       "parameters" => tool[:parameters],
       "body" => body_template(tool[:parameters]),
@@ -360,8 +360,8 @@ module OpenclawToManifest
     }
   end
 
-  # Grupo por convenção de nome (prioridade: natura/cacau > sufixo > shared/core >
-  # default). Espelha a derivação em runtime do OpenClaw, agora como DADO.
+  # Group by name convention (priority: natura/cacau > suffix > shared/core >
+  # default). Mirrors OpenClaw's runtime derivation, now as DATA.
   def group_for(name)
     return "natura" if name.start_with?("natura_")
     return "cacau" if name.start_with?("cacau_")
@@ -372,13 +372,13 @@ module OpenclawToManifest
     "default"
   end
 
-  # reads (search_/get_/list_) não são side-effect (reexecutam no resume);
-  # o resto muta (mesma heurística do openclaw_to_pack).
+  # reads (search_/get_/list_) are not side-effects (re-run on resume);
+  # the rest mutates (same heuristic as openclaw_to_pack).
   def side_effect_for(name) = name !~ /\A(search|get|list)_/
 
-  # Template do corpo: reencaminha CADA param de TOPO. Objetos/arrays vão inteiros
-  # (`{{k}}` — o DataDefinedTool serializa o valor em JSON); string vai entre aspas.
-  # É o que reproduz o `callAgentTool("<slug>", params)` do plugin (params completo).
+  # Body template: forwards EVERY top-level param. Objects/arrays go whole
+  # (`{{k}}` — the DataDefinedTool serializes the value to JSON); strings go quoted.
+  # This is what reproduces the plugin's `callAgentTool("<slug>", params)` (full params).
   def body_template(schema)
     props = schema["properties"] || {}
     return "{}" if props.empty?
@@ -392,18 +392,18 @@ module OpenclawToManifest
 end
 
 # === CLI ===================================================================
-# Guard: só roda quando executado direto (o spec dá `require` e chama as funções).
+# Guard: only runs when executed directly (the spec does `require` and calls the functions).
 if $PROGRAM_NAME == __FILE__
   plugin_dir = ARGV[0] || ENV["OPENCLAW_PLUGIN_DIR"] || OpenclawToManifest::DEFAULT_PLUGIN_DIR
   out_file = ARGV[1] || "manifesto.json"
 
-  abort("plugin sem index.ts em #{plugin_dir}") unless File.exist?(File.join(plugin_dir, "index.ts"))
+  abort("plugin without index.ts in #{plugin_dir}") unless File.exist?(File.join(plugin_dir, "index.ts"))
 
   manifest = OpenclawToManifest.build_manifest(plugin_dir)
   File.write(out_file, JSON.pretty_generate(manifest) + "\n")
 
   by_group = manifest["tools"].group_by { |t| t["group"] }.transform_values(&:size).sort.to_h
   puts "plugin:    #{plugin_dir}"
-  puts "manifesto: #{out_file} (#{manifest['tools'].size} tools)"
-  puts "grupos:    #{by_group.map { |g, n| "#{g}=#{n}" }.join(', ')}"
+  puts "manifest:  #{out_file} (#{manifest['tools'].size} tools)"
+  puts "groups:    #{by_group.map { |g, n| "#{g}=#{n}" }.join(', ')}"
 end
