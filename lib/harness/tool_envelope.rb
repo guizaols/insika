@@ -5,18 +5,18 @@ require "delegate"
 require "time"
 
 module Harness
-  # Envolve cada tool permitida: timeout por call
-  # + registro de side-effect não-idempotente ANTES de o resultado voltar ao
-  # modelo. Delega todo o resto (name/description/params) à tool real.
+  # Wraps each allowed tool: per-call timeout
+  # + recording of a non-idempotent side-effect BEFORE the result returns to the
+  # model. Delegates everything else (name/description/params) to the real tool.
   #
-  # O loop de tools é do RubyLLM; este é um decorator sobre as instâncias — o
-  # Executor nunca dirige roundtrips.
+  # The tool loop belongs to RubyLLM; this is a decorator over the instances —
+  # the Executor never drives roundtrips.
   class ToolEnvelope < SimpleDelegator
-    # Classe PRÓPRIA do timeout de tool: distinta de Async::TimeoutError para
-    # que o rescue abaixo NUNCA engula o timeout de TURNO (que usa o default do
-    # with_timeout). Sem isso, um turno estourando enquanto o fiber está dentro
-    # de uma tool seria mascarado como timeout de tool e o turno seguiria além
-    # do deadline (defeito de durabilidade).
+    # The tool timeout's OWN class: distinct from Async::TimeoutError so that
+    # the rescue below NEVER swallows the TURN timeout (which uses the default of
+    # with_timeout). Without this, a turn overflowing while the fiber is inside a
+    # tool would be masked as a tool timeout and the turn would run past the
+    # deadline (a durability defect).
     ToolTimeout = Class.new(StandardError)
     private_constant :ToolTimeout
 
@@ -27,25 +27,26 @@ module Harness
       @checkpoint_store = checkpoint_store
       @tool_registry = tool_registry
       @timeout = timeout
-      @skip_side_effects = Array(skip_side_effects) # ids já concluídos no turno interrompido
-      @trace_recorder = trace_recorder # duck-type: #record(session_id:, entry:). nil = sem trace.
+      @skip_side_effects = Array(skip_side_effects) # ids already completed in the interrupted turn
+      @trace_recorder = trace_recorder # duck-type: #record(session_id:, entry:). nil = no trace.
     end
 
-    # Ponto de entrada que o RubyLLM invoca (Tool#call na versão pinada).
-    # Estouro do timeout volta ao MODELO como erro serializado — não
-    # derruba o turno.
+    # Entry point that RubyLLM invokes (Tool#call in the pinned version).
+    # A timeout overflow returns to the MODEL as a serialized error — it does
+    # not bring down the turn.
     def call(args)
-      # tool call não-idempotente JÁ CONCLUÍDA no turno
-      # interrompido -> responder com marcador, NUNCA reexecutar. O marcador
-      # volta ao modelo, mantendo o protocolo de tool-use íntegro.
+      # A non-idempotent tool call ALREADY COMPLETED in the interrupted
+      # turn -> respond with a marker, NEVER re-execute. The marker returns to
+      # the model, keeping the tool-use protocol intact.
       call_id = correlation_id
       return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
 
-      # Gate de aprovação: tool marcada `approval` suspende o turno em
-      # :waiting até o operador resolver. Delega ao coordenador (o Executor), que
-      # cria/consulta o PendingAction e bloqueia via a mailbox. Rejeição volta ao
-      # MODELO como erro (turno segue), não derruba o turno. CancelledError/
-      # TimeoutError da espera propagam (não são ToolTimeout).
+      # Approval gate: a tool marked `approval` suspends the turn in
+      # :waiting until the operator resolves it. Delegates to the coordinator (the
+      # Executor), which creates/queries the PendingAction and blocks via the
+      # mailbox. Rejection returns to the MODEL as an error (the turn continues),
+      # it does not bring down the turn. CancelledError/TimeoutError from the wait
+      # propagate (they are not ToolTimeout).
       if approval_required?
         decision = @state.approval_coordinator.request_approval(
           task: @state.task, turn: @state.turn, tool: real_name, args: args, actor: @state.actor
@@ -68,9 +69,9 @@ module Harness
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-    # Registra a call para debug no Studio (nome + args do modelo + resultado +
-    # ms), keyed pela SESSÃO. O masking/truncation é do ToolTraceStore; aqui só
-    # coletamos. NUNCA quebra o turno (trace é observabilidade).
+    # Records the call for debugging in the Studio (name + model args + result +
+    # ms), keyed by the SESSION. Masking/truncation is the ToolTraceStore's job;
+    # here we only collect. NEVER breaks the turn (trace is observability).
     def trace(call_id, args, result, started)
       return unless @trace_recorder && @state.task&.session_id
 
@@ -85,26 +86,28 @@ module Harness
       nil
     end
 
-    # impl_name real quando o delegate é um Capability::ResolvedTool:
-    # side_effect?/approval/correlação operam sobre o nome REAL registrado no
-    # tool_registry (o apelido da capability não existe lá). Tool direta = #name.
+    # The real impl_name when the delegate is a Capability::ResolvedTool:
+    # side_effect?/approval/correlation operate on the REAL name registered in
+    # the tool_registry (the capability alias does not exist there). A direct
+    # tool = #name.
     def real_name
       __getobj__.respond_to?(:impl_name) ? __getobj__.impl_name.to_s : __getobj__.name.to_s
     end
 
-    # A tool corrente exige aprovação? (nomes vêm da Resolution via state).
+    # Does the current tool require approval? (names come from the Resolution
+    # via state).
     def approval_required?
       @state.respond_to?(:requires_approval) &&
         Array(@state.requires_approval).include?(real_name)
     end
 
-    # Correlação da call: o id do provider (chat RubyLLM, via before_tool_call)
-    # quando existe; senão o NOME da tool — o caso do workflow, que
-    # chama as instâncias direto e não tem id gerado pelo provider.
-    # LIMITAÇÃO: a correlação por nome é per-TOOL, não per-call. Se um
-    # workflow chama a MESMA tool side-effect mais de uma vez num turno,
-    # a retomada pula TODAS as chamadas daquele nome (over-skip) — checkpoint
-    # por passo é trabalho futuro. Uma chamada por tool é segura.
+    # The call's correlation: the provider id (RubyLLM chat, via
+    # before_tool_call) when it exists; otherwise the tool NAME — the workflow
+    # case, which calls the instances directly and has no provider-generated id.
+    # LIMITATION: name-based correlation is per-TOOL, not per-call. If a
+    # workflow calls the SAME side-effect tool more than once in a turn,
+    # the resume skips ALL calls of that name (over-skip) — per-step
+    # checkpointing is future work. One call per tool is safe.
     def correlation_id
       (@state.current_tool_call&.id || real_name).to_s
     end
@@ -114,7 +117,7 @@ module Harness
         @tool_registry.side_effect?(real_name)
     end
 
-    # Escrito ANTES de o resultado da tool voltar ao modelo.
+    # Written BEFORE the tool result returns to the model.
     def record_side_effect!(call_id)
       return if call_id.to_s.empty?
 

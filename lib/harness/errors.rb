@@ -1,77 +1,77 @@
 # frozen_string_literal: true
 
 module Harness
-  # Taxonomia única de erros.
-  # Regra geral: erro vira evento, task tem estado terminal explícito,
-  # checkpoint nunca é corrompido.
+  # Single error taxonomy.
+  # General rule: an error becomes an event, a task has an explicit terminal
+  # state, a checkpoint is never corrupted.
   class Error < StandardError; end
 
-  class ValidationError < Error; end  # Command malformado -> HTTP 422, nenhuma Task criada
-  class NotFoundError   < Error; end  # session/task/agente inexistente -> HTTP 404
+  class ValidationError < Error; end  # Malformed Command -> HTTP 422, no Task created
+  class NotFoundError   < Error; end  # nonexistent session/task/agent -> HTTP 404
 
-  # Policy Engine negou -> evento :policy_denied, task :failed
+  # Policy Engine denied -> :policy_denied event, task :failed
   class PolicyDenied < Error
     attr_reader :policy, :reason
 
     def initialize(message = nil, policy: nil, reason: nil)
       @policy = policy
       @reason = reason
-      super(message || "policy #{policy} negou: #{reason}")
+      super(message || "policy #{policy} denied: #{reason}")
     end
   end
 
-  # provider required falhou -> task :failed
+  # A required provider failed -> task :failed
   class ContextError < Error
     attr_reader :provider
 
     def initialize(message = nil, provider: nil)
       @provider = provider
-      super(message || "provider #{provider} falhou")
+      super(message || "provider #{provider} failed")
     end
   end
 
-  class ProviderError  < Error; end  # RubyLLM esgotou retries -> task :failed
-  class StoreError     < Error; end  # backend de persistência falhou -> task :failed
-  class CancelledError < Error; end  # cancelamento cooperativo -> task :cancelled
+  class ProviderError  < Error; end  # RubyLLM exhausted retries -> task :failed
+  class StoreError     < Error; end  # persistence backend failed -> task :failed
+  class CancelledError < Error; end  # cooperative cancellation -> task :cancelled
 
-  # Estouro de timeout de estágio. Dentro do namespace Harness a constante
-  # sombreia ::Timeout::Error da stdlib — referencie sem :: aqui dentro
-  # (o contrato proíbe Timeout.timeout de stdlib de qualquer forma).
+  # Stage timeout overflow. Inside the Harness namespace this constant
+  # shadows the stdlib ::Timeout::Error — reference it without :: in here
+  # (the contract forbids stdlib Timeout.timeout anyway).
   class TimeoutError < Error
     attr_reader :stage
 
     def initialize(message = nil, stage: nil)
       @stage = stage
-      super(message || "timeout no estágio #{stage}")
+      super(message || "timeout at stage #{stage}")
     end
   end
 
-  # Resolução de capability falhou -> task :failed no
-  # estágio :capability. Base da subárvore; NÃO ganha evento próprio —
-  # propaga pelos eventos :error/:task_failed já existentes, mesma
-  # disciplina da taxonomia. Nunca levantada direto (só as subclasses).
+  # Capability resolution failed -> task :failed at the
+  # :capability stage. Root of the subtree; it does NOT get its own event —
+  # it propagates through the existing :error/:task_failed events, same
+  # discipline as the taxonomy. Never raised directly (only its subclasses).
   class CapabilityError < Error; end
 
-  # 0 candidatos sobraram após disponibilidade + deny.
+  # 0 candidates left after availability + deny.
   class CapabilityUnavailable < CapabilityError
     attr_reader :capability
 
     def initialize(message = nil, capability: nil)
       @capability = capability
-      super(message || "capability #{capability} sem provider disponível")
+      super(message || "capability #{capability} has no available provider")
     end
   end
 
-  # >=2 candidatos empatados no topo (mesma priority E mesmo plugin) -> erro de
-  # configuração, NUNCA escolha silenciosa. `candidates` carrega o
-  # suficiente para o operador desempatar no manifesto.
+  # >=2 candidates tied at the top (same priority AND same plugin) -> a
+  # configuration error, NEVER a silent choice. `candidates` carries enough
+  # for the operator to break the tie in the manifest.
   class CapabilityAmbiguous < CapabilityError
     attr_reader :capability, :candidates
 
     def initialize(message = nil, capability: nil, candidates: [])
       @capability = capability
       @candidates = candidates
-      super(message || "capability #{capability} ambígua entre #{candidates.inspect}")
+      super(message || "capability #{capability} ambiguous between #{candidates.inspect}")
     end
   end
 end
