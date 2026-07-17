@@ -1,0 +1,193 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Minimal terminal client for the harness-code prototype. A REPL that talks to
+# the engine over its HTTP API (stdlib only — net/http + json), exactly like the
+# production path (consumer-app / WhatsApp -> POST /v1/responses):
+#
+#   * each user line is sent to POST /v1/responses (streaming SSE); assistant
+#     text deltas and tool-call notices are rendered as they arrive;
+#   * a background thread tails GET /v1/events?session_id=... and, when the
+#     engine suspends a turn for approval (write_file/edit_file/bash), prompts
+#     [y/N] and resolves it via POST /v1/commands/approve_action.
+#
+# The tool-loop itself runs INSIDE the engine (RubyLLM drives it); the CLI only
+# streams and handles the human-approval side-channel.
+#
+# Usage:
+#   HARNESS_CODE_URL=http://localhost:9292 \
+#   HARNESS_CODE_TOKEN=local-code \
+#   ruby examples/harness-code/bin/harness-code
+#
+# Env:
+#   HARNESS_CODE_URL     server base URL (default http://localhost:9292)
+#   HARNESS_CODE_TOKEN   bearer for /v1/responses (default "local-code")
+#   HARNESS_CODE_AGENT   agent id (default "harness-code")
+#   HARNESS_CODE_SESSION session/user id (default "cli-<pid>")
+#   HARNESS_CODE_YES     "1" to auto-approve every FS/shell action (non-interactive)
+
+require "net/http"
+require "uri"
+require "json"
+require "securerandom"
+
+BASE    = (ENV["HARNESS_CODE_URL"] || "http://localhost:9292").sub(%r{/$}, "")
+TOKEN   = ENV["HARNESS_CODE_TOKEN"] || "local-code"
+AGENT   = ENV["HARNESS_CODE_AGENT"] || "harness-code"
+SESSION = ENV["HARNESS_CODE_SESSION"] || "cli-#{Process.pid}"
+AUTO    = ENV["HARNESS_CODE_YES"] == "1"
+
+DIM = "\e[2m"; CYAN = "\e[36m"; YELLOW = "\e[33m"; GREEN = "\e[32m"; RED = "\e[31m"; RESET = "\e[0m"
+
+$stdout.sync = true
+OUT = Mutex.new # serializes terminal writes between the REPL and approval threads
+
+def say(text) = OUT.synchronize { print(text) }
+
+# --- SSE frame parsing -------------------------------------------------------
+# Feeds raw chunks; yields [event_name, json_object] per complete "\n\n" frame.
+class SSEParser
+  def initialize = (@buffer = +"")
+
+  def feed(chunk)
+    @buffer << chunk
+    while (i = @buffer.index("\n\n"))
+      frame = @buffer.slice!(0..i + 1)
+      event, data = parse(frame)
+      yield(event, data) if data
+    end
+  end
+
+  private
+
+  def parse(frame)
+    event = nil
+    payload = nil
+    frame.each_line do |line|
+      event = line.sub(/^event:\s*/, "").strip if line.start_with?("event:")
+      payload = line.sub(/^data:\s*/, "").strip if line.start_with?("data:")
+    end
+    return [event, nil] if payload.nil? || payload.empty? || payload == "[DONE]"
+
+    [event, (JSON.parse(payload) rescue nil)]
+  end
+end
+
+def http_for(uri)
+  http = Net::HTTP.new(uri.host, uri.port)
+  http.use_ssl = uri.scheme == "https"
+  http.read_timeout = 600
+  http
+end
+
+# --- Approval watcher: tails /v1/events and resolves pending actions ---------
+def approve(pending_id, decision)
+  uri = URI.join(BASE + "/", "v1/commands/approve_action")
+  req = Net::HTTP::Post.new(uri)
+  req["Authorization"] = "Bearer #{TOKEN}"
+  req["Content-Type"] = "application/json"
+  req.body = JSON.generate(pending_id: pending_id, decision: decision)
+  http_for(uri).request(req)
+rescue StandardError => e
+  say("#{RED}approval failed: #{e.class}#{RESET}\n")
+end
+
+def handle_approval(obj, seen)
+  pending_id = obj["pending_id"].to_s
+  return if pending_id.empty? || seen.include?(pending_id)
+
+  seen << pending_id
+  tool = obj["tool"]
+  args = obj["args"] || {}
+  OUT.synchronize do
+    puts "\n#{YELLOW}⚠ approval required: #{tool}(#{args.to_json})#{RESET}"
+    if AUTO
+      puts "#{DIM}auto-approving (HARNESS_CODE_YES=1)#{RESET}"
+    else
+      print "#{YELLOW}approve? [y/N] #{RESET}"
+    end
+  end
+  decision = AUTO || (gets.to_s.strip.downcase.start_with?("y")) ? "approved" : "rejected"
+  say("#{DIM}→ #{decision}#{RESET}\n")
+  approve(pending_id, decision)
+end
+
+def watch_events(seen)
+  Thread.new do
+    uri = URI.join(BASE + "/", "v1/events?session_id=#{URI.encode_www_form_component(SESSION)}")
+    req = Net::HTTP::Get.new(uri)
+    req["Accept"] = "text/event-stream"
+    parser = SSEParser.new
+    http_for(uri).request(req) do |res|
+      res.read_body do |chunk|
+        parser.feed(chunk) do |_event, obj|
+          next unless obj.is_a?(Hash)
+
+          handle_approval(obj, seen) if obj["type"] == "approval_requested"
+        end
+      end
+    end
+  rescue StandardError
+    retry # reconnect if the stream drops
+  end
+end
+
+# --- One turn over /v1/responses --------------------------------------------
+def send_turn(message)
+  uri = URI.join(BASE + "/", "v1/responses")
+  req = Net::HTTP::Post.new(uri)
+  req["Authorization"] = "Bearer #{TOKEN}"
+  req["Content-Type"] = "application/json"
+  req["Accept"] = "text/event-stream"
+  req.body = JSON.generate(model: "openclaw:#{AGENT}", user: SESSION, stream: true, input: message)
+
+  parser = SSEParser.new
+  http_for(uri).request(req) do |res|
+    unless res.code.to_i.between?(200, 299)
+      say("#{RED}HTTP #{res.code}: #{res.read_body}#{RESET}\n")
+      return
+    end
+    res.read_body do |chunk|
+      parser.feed(chunk) { |event, obj| render(event, obj) }
+    end
+  end
+rescue StandardError => e
+  say("#{RED}request failed: #{e.class}: #{e.message}#{RESET}\n")
+end
+
+def render(event, obj)
+  case event
+  when "response.output_text.delta"
+    say(obj["delta"].to_s)
+  when "response.output_item.added"
+    name = obj.dig("item", "name")
+    say("\n#{CYAN}→ #{name}#{RESET}\n") if name
+  when "response.failed"
+    say("\n#{RED}✗ #{obj.dig('response', 'error', 'message')}#{RESET}\n")
+  when "response.completed"
+    say("\n")
+  end
+end
+
+# --- REPL --------------------------------------------------------------------
+puts "#{GREEN}harness-code#{RESET} #{DIM}· #{BASE} · agent=#{AGENT} · session=#{SESSION}"
+puts "type your request; /exit to quit#{AUTO ? ' · auto-approve ON' : ''}#{RESET}"
+
+seen_pendings = []
+watch_events(seen_pendings)
+sleep 0.2 # let the events stream connect before the first turn
+
+loop do
+  print "\n#{GREEN}you>#{RESET} "
+  line = gets
+  break if line.nil?
+
+  line = line.strip
+  next if line.empty?
+  break if %w[/exit /quit].include?(line)
+
+  say("#{GREEN}code>#{RESET} ")
+  send_turn(line)
+end
+
+puts "\n#{DIM}bye#{RESET}"
