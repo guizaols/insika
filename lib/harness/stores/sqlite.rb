@@ -6,9 +6,9 @@ require "async/semaphore"
 
 module Harness
   module Stores
-    # Backend SQLite — default de produção.
-    # Tabela única kv; domínio vive nos scopes. Um handle por processo,
-    # escritas em transação serializadas por Async::Semaphore.
+    # SQLite backend — the production default.
+    # A single kv table; the domain lives in the scopes. One handle per process,
+    # writes in a transaction serialized by an Async::Semaphore.
     class SQLite
       include Store
 
@@ -22,16 +22,16 @@ module Harness
         ) WITHOUT ROWID;
       SQL
 
-      # Tipos do modelo JSON + Symbol (coerido a String na escrita).
-      # Qualquer outro tipo é "lixo" e deve ser rejeitado. Idêntico ao
-      # Stores::Memory — os dois backends compartilham o MESMO modelo de tipos
-      # (a suíte de contrato é honesta).
+      # JSON model types + Symbol (coerced to String on write).
+      # Any other type is "garbage" and must be rejected. Identical to
+      # Stores::Memory — both backends share the SAME type model
+      # (the contract suite is honest).
       JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
                   String, Symbol].freeze
       private_constant :JSONABLE
 
-      # require lazy: o núcleo instala sem a gem sqlite3
-      # quando só o Memory é usado.
+      # lazy require: the core installs without the sqlite3 gem
+      # when only Memory is used.
       def initialize(path:, serializer: JSON)
         require "sqlite3"
 
@@ -40,28 +40,29 @@ module Harness
         @write_semaphore = Async::Semaphore.new(1)
         @tx_owner = nil
 
-        # Boot multi-processo (N workers do Falcon abrindo o MESMO arquivo ao
-        # mesmo tempo): o `PRAGMA journal_mode = WAL` num arquivo novo precisa de
-        # lock EXCLUSIVO e pode retornar SQLITE_BUSY na hora — o `busy_timeout`
-        # sozinho NÃO cobre a troca de journal mode. Logo: timeout PRIMEIRO (cobre
-        # o DDL e o hot path) + retry com backoff em volta da inicialização
-        # (cobre a corrida da troca de WAL). Idempotente: reabrir já-em-WAL é no-op.
+        # Multi-process boot (N Falcon workers opening the SAME file at the
+        # same time): `PRAGMA journal_mode = WAL` on a new file needs an
+        # EXCLUSIVE lock and may return SQLITE_BUSY right then — `busy_timeout`
+        # alone does NOT cover the journal-mode switch. Hence: timeout FIRST
+        # (covers the DDL and the hot path) + retry with backoff around the
+        # initialization (covers the WAL-switch race). Idempotent: reopening
+        # already-in-WAL is a no-op.
         @db.busy_timeout = 5_000
         with_busy_retry do
           @db.execute("PRAGMA journal_mode = WAL")
           @db.execute("PRAGMA synchronous = NORMAL")
           @db.execute_batch(DDL)
         end
-        # A PRIMARY KEY (scope, key) do WITHOUT ROWID já é o índice do prefixo —
-        # não há índice extra a criar.
+        # The WITHOUT ROWID PRIMARY KEY (scope, key) is already the prefix index —
+        # there is no extra index to create.
       rescue ::SQLite3::Exception => e
-        raise Harness::StoreError, "falha ao abrir #{path}: #{e.message}"
+        raise Harness::StoreError, "failed to open #{path}: #{e.message}"
       end
 
-      # Retry curto p/ SQLITE_BUSY na INICIALIZAÇÃO (corrida da troca de WAL no
-      # boot multi-processo). ~10 tentativas × 60ms ≈ 0.6s no pior caso — o
-      # bastante p/ o processo vencedor terminar a troca de journal mode. Só
-      # aqui; o hot path usa `busy_timeout` + o semáforo in-process.
+      # Short retry for SQLITE_BUSY at INITIALIZATION (the WAL-switch race at
+      # multi-process boot). ~10 attempts × 60ms ≈ 0.6s worst case — enough
+      # for the winning process to finish the journal-mode switch. Only
+      # here; the hot path uses `busy_timeout` + the in-process semaphore.
       def with_busy_retry(attempts: 10, backoff: 0.06)
         tries = 0
         begin
@@ -93,7 +94,7 @@ module Harness
       end
 
       def set(scope, key, value)
-        serialized = serialize(value)               # fail-fast ANTES de gravar
+        serialized = serialize(value)               # fail-fast BEFORE writing
         transaction do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
@@ -120,8 +121,8 @@ module Harness
         raise Harness::StoreError, e.message
       end
 
-      # BEGIN IMMEDIATE ... COMMIT/ROLLBACK, serializado pelo semáforo.
-      # Aninhada reusa a transação externa.
+      # BEGIN IMMEDIATE ... COMMIT/ROLLBACK, serialized by the semaphore.
+      # A nested one reuses the outer transaction.
       def transaction(&blk)
         return yield if @tx_owner == Fiber.current
 
@@ -145,19 +146,19 @@ module Harness
 
       private
 
-      # Enforce o modelo de tipos do contrato na borda:
-      # Symbol/símbolo-chave viram String; tipo fora do modelo JSON ->
-      # StoreError na ESCRITA (fail-fast; nunca grava lixo).
+      # Enforces the contract's type model at the boundary:
+      # Symbol/symbol-key become String; a type outside the JSON model ->
+      # StoreError on WRITE (fail-fast; never writes garbage).
       #
-      # NÃO usa `generate(strict: true)`: sob json 2.7.1 (a versão que vem com
-      # o ruby 3.3.5 travado no Gemfile.lock) `strict` REJEITA Symbol, o que
-      # violaria a coerção de Symbol. A validação explícita
-      # é independente da versão do json e dá a MESMA semântica do Memory.
+      # Does NOT use `generate(strict: true)`: under json 2.7.1 (the version that
+      # ships with ruby 3.3.5 pinned in Gemfile.lock) `strict` REJECTS Symbol,
+      # which would violate the Symbol coercion. The explicit validation
+      # is independent of the json version and gives the SAME semantics as Memory.
       def serialize(value)
         ensure_jsonable!(value)
         @serializer.generate(value)
       rescue JSON::GeneratorError => e
-        raise Harness::StoreError, "valor não serializável: #{e.message}"
+        raise Harness::StoreError, "value not serializable: #{e.message}"
       end
 
       def ensure_jsonable!(value)
@@ -167,7 +168,7 @@ module Harness
         when Hash then value.each { |k, v| ensure_jsonable!(k); ensure_jsonable!(v) }
         else
           raise Harness::StoreError,
-                "valor não serializável: #{value.class} not allowed in JSON"
+                "value not serializable: #{value.class} not allowed in JSON"
         end
       end
     end

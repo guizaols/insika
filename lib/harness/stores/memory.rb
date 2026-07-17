@@ -4,11 +4,11 @@ require "json"
 
 module Harness
   module Stores
-    # Backend em memória para dev/teste.
-    # Serializa JSON mesmo em memória: paridade exata de semântica de
-    # tipos com o SQLite — a suíte de contrato é honesta.
-    # Sem lock: fibers cooperativos não preemptam no meio de uma operação
-    # de Hash.
+    # In-memory backend for dev/test.
+    # Serializes JSON even in memory: exact parity of type semantics
+    # with SQLite — the contract suite is honest.
+    # No lock: cooperative fibers do not preempt in the middle of a Hash
+    # operation.
     class Memory
       include Store
 
@@ -39,9 +39,9 @@ module Harness
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
       end
 
-      # Snapshot no início da transação mais externa; exceção em qualquer
-      # nível -> restaura o snapshot e re-propaga (rollback REAL).
-      # Aninhada reusa a externa (sem SAVEPOINT).
+      # Snapshot at the start of the outermost transaction; an exception at any
+      # level -> restore the snapshot and re-propagate (a REAL rollback).
+      # A nested one reuses the outer (no SAVEPOINT).
       def transaction
         if @tx_depth.positive?
           @tx_depth += 1
@@ -65,8 +65,8 @@ module Harness
         end
       end
 
-      # Tipos do modelo JSON + Symbol (coerido a String na escrita).
-      # Qualquer outro tipo é "lixo" e deve ser rejeitado.
+      # JSON model types + Symbol (coerced to String on write).
+      # Any other type is "garbage" and must be rejected.
       JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
                   String, Symbol].freeze
       private_constant :JSONABLE
@@ -77,20 +77,21 @@ module Harness
         Hash.new { |h, scope| h[scope] = {} }
       end
 
-      # Enforce o modelo de tipos do contrato na borda:
-      # Symbol/símbolo-chave viram String; tipo fora do modelo JSON ->
-      # StoreError na ESCRITA (fail-fast; nunca grava lixo).
+      # Enforces the contract's type model at the boundary:
+      # Symbol/symbol-key become String; a type outside the JSON model ->
+      # StoreError on WRITE (fail-fast; never writes garbage).
       #
-      # Não usa `JSON.generate(strict: true)`: sob json 2.7.1 (versão travada)
-      # `strict` rejeita Symbol, o que violaria a coerção de Symbol. A validação explícita é
-      # independente da versão do json e dá a MESMA semântica ao SQLite.
-      # A exceção do bloco de transação (do chamador) propaga sem encapsular;
-      # só erro do backend vira StoreError.
+      # Does not use `JSON.generate(strict: true)`: under json 2.7.1 (the pinned
+      # version) `strict` rejects Symbol, which would violate the Symbol coercion.
+      # The explicit validation is independent of the json version and gives the
+      # SAME semantics as SQLite.
+      # The transaction block's exception (from the caller) propagates without
+      # wrapping; only a backend error becomes StoreError.
       def serialize(value)
         ensure_jsonable!(value)
         JSON.generate(value)
       rescue JSON::GeneratorError => e
-        raise Harness::StoreError, "valor não serializável: #{e.message}"
+        raise Harness::StoreError, "value not serializable: #{e.message}"
       end
 
       def ensure_jsonable!(value)
@@ -100,19 +101,19 @@ module Harness
         when Hash then value.each { |k, v| ensure_jsonable!(k); ensure_jsonable!(v) }
         else
           raise Harness::StoreError,
-                "valor não serializável: #{value.class} not allowed in JSON"
+                "value not serializable: #{value.class} not allowed in JSON"
         end
       end
 
-      # Dup profundo: os valores já são strings JSON (imutáveis na prática),
-      # então dup por scope basta — não há estrutura aninhada mutável.
+      # Deep dup: the values are already JSON strings (immutable in practice),
+      # so a per-scope dup is enough — there is no nested mutable structure.
       def deep_snapshot
         @data.each_with_object({}) { |(scope, kv), acc| acc[scope] = kv.dup }
       end
 
-      # Recria o Hash com default proc (senão @data[scope] em scope novo após
-      # rollback levantaria erro) e restaura só os scopes do snapshot —
-      # scopes criados dentro da transação somem.
+      # Recreates the Hash with the default proc (otherwise @data[scope] on a
+      # new scope after rollback would raise) and restores only the snapshot's
+      # scopes — scopes created inside the transaction disappear.
       def restore_snapshot
         @data = new_store
         @snapshot.each { |scope, kv| @data[scope] = kv }
