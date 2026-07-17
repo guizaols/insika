@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 
 module Harness
-  # Aplica os providers de LLM autorados (LLMProviderStore) no RubyLLM em RUNTIME
-  # Meta: trocar chave/base de um provider SEM restart —
-  # o RubyLLM expõe `config.<api>_api_key=` / `config.<api>_api_base=`, então
-  # reconfigurar é setar esses acessores por provider.
+  # Applies the authored LLM providers (LLMProviderStore) to RubyLLM at RUNTIME.
+  # Goal: swap a provider's key/base WITHOUT a restart —
+  # RubyLLM exposes `config.<api>_api_key=` / `config.<api>_api_base=`, so
+  # reconfiguring is a matter of setting those accessors per provider.
   #
-  # Restrição do core: este arquivo NÃO requer ruby_llm em load-time — o
-  # `require` é lazy, dentro de `apply` (e injetável via `configure:` pra teste,
-  # que roda sem a gem/chave). Um provider que o RubyLLM não reconhece (sem
-  # acessor correspondente) NÃO explode: entra em `skipped` (degrada pra "restart
-  # recomendado", como o OpenClaw), o resto aplica.
+  # Core constraint: this file does NOT require ruby_llm at load-time — the
+  # `require` is lazy, inside `apply` (and injectable via `configure:` for tests,
+  # which run without the gem/key). A provider that RubyLLM doesn't recognize (no
+  # matching accessor) does NOT blow up: it goes into `skipped` (degrades to "restart
+  # recommended", like OpenClaw), the rest applies.
   class LLMConfigurator
     def initialize(provider_store:, configure: nil)
       @provider_store = provider_store
       @configure = configure # ->(&blk){ blk.call(config_target) }; default = RubyLLM
     end
 
-    # Reconfigura o RubyLLM com `providers` (records raw, com api_key real) ou,
-    # se nil, com TODOS do store. -> { applied: [api], skipped: [{api:, reason:}] }.
+    # Reconfigures RubyLLM with `providers` (raw records, with the real api_key) or,
+    # if nil, with ALL from the store. -> { applied: [api], skipped: [{api:, reason:}] }.
     def apply(providers = nil)
       records = providers || @provider_store.all_raw
       applied = []
@@ -38,7 +38,7 @@ module Harness
             set_accessor(config, "#{api}_api_base", base) if base && !base.to_s.empty?
             applied << api
           else
-            skipped << { api: api, reason: "provider '#{api}' não reconhecido pelo RubyLLM" }
+            skipped << { api: api, reason: "provider '#{api}' not recognized by RubyLLM" }
           end
         end
       end
@@ -46,9 +46,9 @@ module Harness
       { applied: applied, skipped: skipped }
     end
 
-    # DESFAZ a config de um provider no RubyLLM em runtime (delete sem restart,
-    # §9.5): zera `<api>_api_key`/`<api>_api_base`. Provider que o RubyLLM não
-    # reconhece (sem acessor) -> unapplied: false (nada aplicado, nada a desfazer).
+    # UNDOES a provider's config in RubyLLM at runtime (delete without a restart,
+    # §9.5): clears `<api>_api_key`/`<api>_api_base`. A provider that RubyLLM
+    # doesn't recognize (no accessor) -> unapplied: false (nothing applied, nothing to undo).
     # -> { unapplied: bool }.
     def unapply(api)
       api = api.to_s

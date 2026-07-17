@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module Harness
-  # Unidade de contexto produzida por um provider.
-  # Tipo COMPARTILHADO (Harness::, não Harness::Context::).
+  # Unit of context produced by a provider.
+  # SHARED type (Harness::, not Harness::Context::).
   #   placement: :system | :history | :tool_context
-  #   priority:  Integer; maior = mais importante (sobrevive a cortes)
-  #   tokens:    Integer | nil; estimado pelo Builder quando nil
-  #   source:    String — id do provider (auditoria)
-  #   pinned:    true -> incortável no orçamento (ex.: identidade)
+  #   priority:  Integer; higher = more important (survives cuts)
+  #   tokens:    Integer | nil; estimated by the Builder when nil
+  #   source:    String — provider id (audit)
+  #   pinned:    true -> uncuttable in the budget (e.g. identity)
   ContextFragment = Data.define(:content, :placement, :priority, :tokens,
                                 :source, :pinned) do
     def self.build(content:, placement:, source:, priority: 50, tokens: nil,

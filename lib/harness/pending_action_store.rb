@@ -4,14 +4,14 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Store de domínio das AÇÕES PENDENTES de aprovação ("estado como
-  # record, não flag"). Uma tool marcada `approval` (Policy) cria um
-  # PendingAction e o turno vai a :waiting; o operador resolve via ApproveAction.
-  # Durável (sobre um Harness::Store injetado): sobrevive a kill -9 — o operador
-  # aprova depois do reboot, e o Recovery reidrata a task em :waiting.
+  # Domain store for PENDING approval ACTIONS ("state as a
+  # record, not a flag"). A tool marked `approval` (Policy) creates a
+  # PendingAction and the turn goes to :waiting; the operator resolves it via ApproveAction.
+  # Durable (over an injected Harness::Store): survives a kill -9 — the operator
+  # approves after the reboot, and Recovery rehydrates the task in :waiting.
   #
-  # Normaliza symbol→string na ESCRITA (o backend só garante round-trip de tipos
-  # JSON), como os demais stores de domínio.
+  # Normalizes symbol→string on WRITE (the backend only guarantees round-trip of JSON
+  # types), like the other domain stores.
   class PendingActionStore
     include Coercion
 
@@ -27,7 +27,7 @@ module Harness
       @store = store
     end
 
-    # -> PendingAction (:pending). `args` é o Hash de argumentos da tool call.
+    # -> PendingAction (:pending). `args` is the Hash of the tool call's arguments.
     def create(task_id:, turn:, tool:, args: {}, id: SecureRandom.uuid)
       record = {
         "id" => id.to_s,
@@ -50,8 +50,8 @@ module Harness
       record && to_pending(record)
     end
 
-    # -> [PendingAction] :pending da task (recovery/UI). Scan O(n) — single-node,
-    # igual TaskStore#running_or_interrupted.
+    # -> [PendingAction] :pending for the task (recovery/UI). O(n) scan — single-node,
+    # like TaskStore#running_or_interrupted.
     def open_for(task_id)
       id = task_id.to_s
       @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
@@ -63,16 +63,16 @@ module Harness
       end
     end
 
-    # -> PendingAction resolvida. Só resolve :pending: dupla resolução
-    # ou decision inválida -> ValidationError; ausente -> NotFoundError.
+    # -> resolved PendingAction. Only resolves :pending: a double resolution
+    # or an invalid decision -> ValidationError; absent -> NotFoundError.
     def resolve(id, decision:, operator: nil)
       target = decision.to_sym
       unless %i[approved rejected].include?(target)
-        raise Harness::ValidationError, "decision inválida: #{decision} (approved|rejected)"
+        raise Harness::ValidationError, "invalid decision: #{decision} (approved|rejected)"
       end
 
       record = @store.get(SCOPE, key_for(id)) ||
-               (raise Harness::NotFoundError, "pending action inexistente: #{id}")
+               (raise Harness::NotFoundError, "pending action not found: #{id}")
       unless record["status"] == "pending"
         raise Harness::ValidationError, "pending action '#{id}' já resolvida (#{record["status"]})"
       end

@@ -1,35 +1,36 @@
 # frozen_string_literal: true
 
 module Harness
-  # Fonte de AgentProfiles. Antes os profiles eram
-  # um Hash CONGELADO injetado no Executor e nos Commands de turno — estáticos,
-  # definidos em Ruby no wiring. Para o Studio criar/editar agentes em runtime,
-  # a fonte precisa ser MUTÁVEL e recarregável, sem mudar o contrato de consumo.
+  # Source of AgentProfiles. Profiles used to be
+  # a FROZEN Hash injected into the Executor and the turn Commands — static,
+  # defined in Ruby at wiring time. For the Studio to create/edit agents at
+  # runtime, the source needs to be MUTABLE and reloadable, without changing the
+  # consumption contract.
   #
-  # O contrato de consumo é mínimo e duck-typed: `source[id] -> AgentProfile|nil`
-  # (igual a um Hash). Por isso o refactor no Executor/Commands é só normalizar a
-  # entrada (Hash legado -> StaticProfileSource); os corpos que fazem
-  # `@profiles[agent]` seguem idênticos. `all`/`ids` são para o Studio listar.
+  # The consumption contract is minimal and duck-typed: `source[id] -> AgentProfile|nil`
+  # (like a Hash). That's why the refactor in the Executor/Commands is just
+  # normalizing the input (legacy Hash -> StaticProfileSource); the bodies that do
+  # `@profiles[agent]` stay identical. `all`/`ids` are for the Studio to list.
   #
-  # `nil` em `[]`/`fetch` = agente não configurado (os Commands levantam
-  # NotFoundError) — NUNCA levanta (diferente de Hash#fetch).
+  # `nil` from `[]`/`fetch` = agent not configured (the Commands raise
+  # NotFoundError) — NEVER raises (unlike Hash#fetch).
   module ProfileSource
-    # Açúcar de compat com o Hash: `source[id]`.
+    # Hash-compat sugar: `source[id]`.
     def [](id) = fetch(id)
 
-    # Normaliza a entrada dos consumidores: Hash legado vira StaticProfileSource;
-    # um ProfileSource passa direto. Um lugar só para a costura de compat.
+    # Normalizes the consumers' input: a legacy Hash becomes a StaticProfileSource;
+    # a ProfileSource passes straight through. A single place for the compat seam.
     def self.coerce(profiles)
       return profiles if profiles.is_a?(ProfileSource)
 
       StaticProfileSource.new(profiles || {})
     end
 
-    # subclasses implementam: fetch(id) -> AgentProfile|nil, all -> [AgentProfile], ids -> [String]
+    # subclasses implement: fetch(id) -> AgentProfile|nil, all -> [AgentProfile], ids -> [String]
   end
 
-  # Fonte estática (paridade): envolve o Hash {id => AgentProfile} de
-  # sempre. Comportamento IDÊNTICO ao Hash congelado — zero regressão.
+  # Static source (parity): wraps the usual {id => AgentProfile} Hash.
+  # Behavior IDENTICAL to the frozen Hash — zero regression.
   class StaticProfileSource
     include ProfileSource
 
@@ -42,11 +43,11 @@ module Harness
     def ids = @profiles.keys
   end
 
-  # Fonte persistida (Studio): lê/grava profiles no ConfigStore (scope "agents").
-  # Cada `fetch` lê FRESCO do store — uma edição pelo Studio vale no próximo
-  # dispatch, sem restart. Um turno em andamento mantém o profile que capturou
-  # (os Commands resolvem no início do #call), então a semântica do turno é
-  # preservada.
+  # Persisted source (Studio): reads/writes profiles in the ConfigStore (scope "agents").
+  # Each `fetch` reads FRESH from the store — an edit via the Studio takes effect on
+  # the next dispatch, without a restart. An in-flight turn keeps the profile it
+  # captured (the Commands resolve at the start of #call), so the turn semantics are
+  # preserved.
   class StoredProfileSource
     include ProfileSource
     include Coercion
@@ -65,7 +66,7 @@ module Harness
     def all = @cs.all(SCOPE).map { |r| deserialize(r) }
     def ids = @cs.keys(SCOPE)
 
-    # Escrita (usada pelos Commands :create_agent/:update_agent).
+    # Write (used by the :create_agent/:update_agent Commands).
     def put(profile)
       @cs.put(SCOPE, profile.id, profile.to_h)
       profile
@@ -75,10 +76,10 @@ module Harness
 
     private
 
-    # Reconstrói o AgentProfile a partir do record (JSON round-trip torna symbol
-    # em string). Re-simboliza os campos que o runtime consome como symbol:
-    # provider, policies (nomes no PolicyRegistry) e as chaves de limits (o
-    # DEFAULT_LIMITS usa symbol e o merge quebraria com chaves string).
+    # Rebuilds the AgentProfile from the record (the JSON round-trip turns symbols
+    # into strings). Re-symbolizes the fields the runtime consumes as symbols:
+    # provider, policies (names in the PolicyRegistry) and the limits keys (
+    # DEFAULT_LIMITS uses symbols and the merge would break with string keys).
     def deserialize(record)
       h = symbolize_top(record)
       AgentProfile.build(
@@ -104,7 +105,7 @@ module Harness
 
     def symbolize_top(record) = record.each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
 
-    # Chaves de limits -> symbol; valores numéricos preservados pelo JSON.
+    # limits keys -> symbol; numeric values preserved by JSON.
     def symbolize_limits(limits)
       return {} if limits.nil?
 

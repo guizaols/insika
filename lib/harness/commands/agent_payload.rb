@@ -2,13 +2,13 @@
 
 module Harness
   module Commands
-    # Normalização compartilhada do payload de autoria de agente.
-    # O transporte entrega chaves string (JSON); o dispatch interno usa
-    # symbol. Aqui: symboliza o topo, filtra só os campos construíveis do
-    # AgentProfile, e re-simboliza os campos que o runtime consome como symbol
-    # (provider, policies, chaves de limits) — mesma regra do StoredProfileSource.
+    # Shared normalization for the agent-authoring payload.
+    # The transport delivers string keys (JSON); internal dispatch uses
+    # symbols. Here: symbolize the top level, keep only the fields buildable by
+    # AgentProfile, and re-symbolize the fields the runtime consumes as symbols
+    # (provider, policies, limits keys) — same rule as StoredProfileSource.
     module AgentPayload
-      # Campos aceitos por AgentProfile.build (ordem irrelevante).
+      # Fields accepted by AgentProfile.build (order irrelevant).
       FIELDS = %i[id model provider base_prompt prompt_files tools_allow tools_deny
                   tools_allow_groups skills context_providers workflows_allow policies
                   prompt_refs limits approvals_required capabilities tools_deferred memory
@@ -16,7 +16,7 @@ module Harness
 
       module_function
 
-      # payload (string|symbol keys) -> Hash de attrs prontos p/ AgentProfile.build.
+      # payload (string|symbol keys) -> Hash of attrs ready for AgentProfile.build.
       def attrs(payload)
         h = symbolize(payload)
         out = {}
@@ -31,7 +31,7 @@ module Harness
         (payload || {}).each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
       end
 
-      # Nome estável usado pelos handlers; a regra mora em Harness::Coercion.
+      # Stable name used by the handlers; the rule lives in Harness::Coercion.
       def presence(str) = Harness::Coercion.presence(str)
     end
   end

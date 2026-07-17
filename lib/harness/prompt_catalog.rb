@@ -3,15 +3,15 @@
 require "yaml"
 
 module Harness
-  # Catalog de prompts: conteúdo NÃO-executável
-  # (é Catalog, não Registry). Espelha o SkillCatalog: cada prompt é um diretório
-  # com um PROMPT.md (frontmatter YAML name/description + corpo markdown).
-  # Fonte do provider Prompt quando o perfil usa prompt_refs.
+  # Catalog of prompts: NON-executable content
+  # (it is a Catalog, not a Registry). Mirrors the SkillCatalog: each prompt is a directory
+  # with a PROMPT.md (YAML frontmatter name/description + markdown body).
+  # Source for the Prompt provider when the profile uses prompt_refs.
   class PromptCatalog
     Prompt = Data.define(:name, :description, :path, :body)
 
-    # roots ordenados por PRECEDÊNCIA (maior primeiro) — mesmo nome em mais de
-    # um root: o primeiro vence (idêntico ao SkillCatalog).
+    # roots ordered by PRECEDENCE (highest first) — same name in more than
+    # one root: the first wins (identical to SkillCatalog).
     def initialize(roots)
       @roots = Array(roots)
       @prompts = load_all
@@ -19,12 +19,12 @@ module Harness
 
     def all = @prompts.values
 
-    # -> Prompt | nil (o provider Prompt converte nil em ContextError; não é
-    # papel do catálogo levantar).
+    # -> Prompt | nil (the Prompt provider converts nil into a ContextError; it is not
+    # the catalog's job to raise).
     def find(name) = @prompts[name.to_s]
 
-    # Rescan + troca atômica do índice: paridade com o SkillCatalog
-    # para reload sem restart quando o seed em disco muda.
+    # Rescan + atomic index swap: parity with the SkillCatalog
+    # for reload without a restart when the on-disk seed changes.
     def reload
       @prompts = load_all
       self
@@ -39,7 +39,7 @@ module Harness
           prompt = parse(file)
           next unless prompt
 
-          found[prompt.name] ||= prompt # precedência: primeiro root vence
+          found[prompt.name] ||= prompt # precedence: first root wins
         end
       end
       found

@@ -4,12 +4,12 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: cria/edita uma instância MCP
-    # (transport/command/url/enabled + credenciais `env`) no McpStore. As
-    # credenciais são sentinel-aware por chave (__OCULTO__ preserva; "" limpa;
-    # string nova substitui). Retorna o record MASCARADO (env nunca volta em
-    # plaintext). CRUD de config durável — a execução de um cliente MCP contra a
-    # instância é runtime posterior.
+    # Control command: creates/edits an MCP instance
+    # (transport/command/url/enabled + `env` credentials) in the McpStore. The
+    # credentials are sentinel-aware per key (__OCULTO__ preserves; "" clears;
+    # a new string replaces). Returns the MASKED record (env never comes back in
+    # plaintext). Durable config CRUD — running an MCP client against the
+    # instance is later runtime.
     class UpsertMcp
       def initialize(mcp_store:, event_stream:)
         @mcp_store = mcp_store
@@ -18,7 +18,7 @@ module Harness
 
       def call(command)
         p = AgentPayload.symbolize(command.payload)
-        masked = @mcp_store.upsert(p) # valida `name`; devolve mascarado
+        masked = @mcp_store.upsert(p) # validates `name`; returns masked
 
         @event_stream.emit(Harness::Event.new(
                              type: :mcp_upserted,

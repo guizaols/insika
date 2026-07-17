@@ -4,8 +4,8 @@ require "time"
 
 module Harness
   module Commands
-    # Remove uma tool por dados do ToolStore e recarrega overlay + catálogo.
-    # 404 se não existia. -> { name }.
+    # Removes a data tool from the ToolStore and reloads overlay + catalog.
+    # 404 if it did not exist. -> { name }.
     class DeleteDataTool
       def initialize(tool_store:, registry:, tool_catalog:, event_stream:)
         @tool_store = tool_store
@@ -17,7 +17,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
-        raise Harness::ValidationError, "name é obrigatório" if name.nil?
+        raise Harness::ValidationError, "name is required" if name.nil?
         raise Harness::NotFoundError, "tool '#{name}' não encontrada" unless @tool_store.delete(name)
 
         @registry.reload

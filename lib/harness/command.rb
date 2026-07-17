@@ -4,17 +4,18 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Toda interação de mutação vira Command. Tipo compartilhado:
+  # Every mutating interaction becomes a Command. Shared shape:
   #   type:    Symbol (:create_session, :send_message, :trigger_workflow,
   #                    :cancel_task, :resume_task)
-  #   payload: Hash validado pelo handler
+  #   payload: Hash validated by the handler
   #   meta:    { command_id:, tenant:, transport:, issued_at: }
   #
-  # `Command` não valida payload (isso é do handler) e não conhece o bus.
+  # `Command` does not validate payload (that's the handler's job) and does not
+  # know about the bus.
   Command = Data.define(:type, :payload, :meta) do
-    # Factory que preenche os defaults de meta. `type` é
-    # normalizado para Symbol; `payload` nil vira {} (o handler decide se
-    # campos obrigatórios faltam).
+    # Factory that fills in the meta defaults. `type` is
+    # normalized to Symbol; a nil `payload` becomes {} (the handler decides
+    # whether required fields are missing).
     def self.build(type, payload = {}, transport: :internal, tenant: nil)
       new(
         type: type.to_sym,

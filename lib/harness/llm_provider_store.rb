@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module Harness
-  # Providers de LLM autorados em runtime. Um record por
-  # provider no ConfigStore (scope "llm_providers"), keyed pelo slug da API
-  # (`deepseek`, `openai`, ...). Guarda base_url/auth_header/models e a `api_key`.
+  # LLM providers authored at runtime. One record per
+  # provider in the ConfigStore (scope "llm_providers"), keyed by the API slug
+  # (`deepseek`, `openai`, ...). Holds base_url/auth_header/models and the `api_key`.
   #
-  # A `api_key` NUNCA sai daqui em plaintext pra UI: as leituras de exibição
-  # (`get`/`all`) mascaram com o sentinel `__OCULTO__`. Só `all_raw`/`get_raw`
-  # (consumidos pelo LLMConfigurator, nunca pela tela) devolvem a chave real.
-  # Na escrita, o sentinel de volta preserva a chave; string nova substitui; ""
-  # limpa (ver Harness::SecretMasking).
+  # The `api_key` NEVER leaves here in plaintext to the UI: the display reads
+  # (`get`/`all`) mask it with the `__OCULTO__` sentinel. Only `all_raw`/`get_raw`
+  # (consumed by the LLMConfigurator, never by the screen) return the real key.
+  # On write, the sentinel coming back preserves the key; a new string replaces it; ""
+  # clears it (see Harness::SecretMasking).
   class LLMProviderStore
     include Coercion
 
@@ -19,36 +19,36 @@ module Harness
       @cs = config_store
     end
 
-    # -> Hash MASCARADO | nil.
+    # -> MASKED Hash | nil.
     def get(api)
       mask(raw(api))
     end
 
-    # -> Hash com api_key REAL | nil. Uso interno (LLMConfigurator).
+    # -> Hash with REAL api_key | nil. Internal use (LLMConfigurator).
     def get_raw(api)
       raw(api)
     end
 
-    # -> [String] slugs, ordem lexicográfica.
+    # -> [String] slugs, lexicographic order.
     def apis = @cs.keys(SCOPE)
 
-    # -> [Hash] todos MASCARADOS (pra UI).
+    # -> [Hash] all MASKED (for the UI).
     def all
       apis.filter_map { |a| get(a) }
     end
 
-    # -> [Hash] todos com api_key REAL (pro configurator). Nunca vai pra tela.
+    # -> [Hash] all with REAL api_key (for the configurator). Never goes to the screen.
     def all_raw
       apis.filter_map { |a| raw(a) }
     end
 
-    # Upsert com reconciliação de segredo. `attrs` (string|symbol keys):
-    #   api (obrigatório), base_url, auth_header, api_key (sentinel-aware), models[]
-    # -> Hash MASCARADO (record gravado).
+    # Upsert with secret reconciliation. `attrs` (string|symbol keys):
+    #   api (required), base_url, auth_header, api_key (sentinel-aware), models[]
+    # -> MASKED Hash (the stored record).
     def upsert(attrs)
       h = symbolize(attrs)
       api = presence(h[:api])
-      raise Harness::ValidationError, "api é obrigatório" if api.nil?
+      raise Harness::ValidationError, "api is required" if api.nil?
 
       existing = raw(api)
       record = {
@@ -62,14 +62,14 @@ module Harness
       mask(record)
     end
 
-    # -> bool (existia?).
+    # -> bool (did it exist?).
     def delete(api) = @cs.delete(SCOPE, api.to_s)
 
     private
 
     def raw(api) = @cs.get(SCOPE, api.to_s)
 
-    # Troca a api_key real pelo sentinel (ou nil se ausente) — nunca vaza plaintext.
+    # Swaps the real api_key for the sentinel (or nil if absent) — never leaks plaintext.
     def mask(record)
       return nil if record.nil?
 

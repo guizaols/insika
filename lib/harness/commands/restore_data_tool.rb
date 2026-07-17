@@ -4,9 +4,9 @@ require "time"
 
 module Harness
   module Commands
-    # Restaura uma versão antiga de uma tool por dados (nova escrita) e recarrega
-    # overlay + catálogo. O ToolStore levanta NotFound/Validation. -> { name,
-    # definition (mascarada) }.
+    # Restores an old version of a data tool (a new write) and reloads
+    # overlay + catalog. The ToolStore raises NotFound/Validation. -> { name,
+    # definition (masked) }.
     class RestoreDataTool
       def initialize(tool_store:, registry:, tool_catalog:, event_stream:)
         @tool_store = tool_store
@@ -18,7 +18,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
-        raise Harness::ValidationError, "name é obrigatório" if name.nil?
+        raise Harness::ValidationError, "name is required" if name.nil?
 
         masked = @tool_store.restore(name, p[:index])
         @registry.reload

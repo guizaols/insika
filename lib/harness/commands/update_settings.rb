@@ -4,10 +4,10 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: faz merge de um patch nos
-    # settings gerais (timeouts/streaming/compaction) e persiste no SettingsStore.
-    # Só o que veio no patch muda; o resto (e os defaults) é preservado. Vale no
-    # próximo turno que ler settings. -> Hash (settings resultante).
+    # Control command: merges a patch into the
+    # general settings (timeouts/streaming/compaction) and persists it in the SettingsStore.
+    # Only what came in the patch changes; the rest (and the defaults) is preserved. Takes effect on the
+    # next turn that reads settings. -> Hash (resulting settings).
     class UpdateSettings
       def initialize(settings_store:, event_stream:)
         @settings_store = settings_store
@@ -17,7 +17,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         patch = p[:patch]
-        raise Harness::ValidationError, "patch deve ser um objeto" unless patch.nil? || patch.is_a?(Hash)
+        raise Harness::ValidationError, "patch must be an object" unless patch.nil? || patch.is_a?(Hash)
         raise Harness::ValidationError, "patch vazio" if patch.nil? || patch.empty?
 
         settings = @settings_store.update(patch)

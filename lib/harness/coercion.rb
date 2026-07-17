@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 module Harness
-  # Coerções compartilhadas na borda de entrada/persistência. Antes viviam
-  # copiadas em cada store/handler; uma casa só evita que derivem.
+  # Shared coercions at the input/persistence boundary. They used to live
+  # copied in each store/handler; a single home keeps them from drifting.
   module Coercion
     module_function
 
-    # String presente ou nil: "" e nil viram nil; o resto vira String.
+    # Present string or nil: "" and nil become nil; everything else becomes a String.
     def presence(str)
       str.nil? || str.to_s.empty? ? nil : str.to_s
     end
 
-    # Normaliza chaves e Symbols a String recursivamente (o modelo JSON dos
-    # stores não tem Symbol). Hash -> chaves e valores; Array -> elementos.
+    # Normalizes keys and Symbols to String recursively (the stores' JSON model
+    # has no Symbol). Hash -> keys and values; Array -> elements.
     def deep_stringify(obj)
       case obj
       when Hash

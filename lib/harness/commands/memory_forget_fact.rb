@@ -4,9 +4,9 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: esquece (remove) um fato da
-    # memória do agente. Idempotente: esquecer o que não existe não é erro
-    # (`existed: false`). Escopado por `tenant`. -> { existed: bool }.
+    # Control command: forgets (removes) a fact from the
+    # agent's memory. Idempotent: forgetting something that doesn't exist is not an error
+    # (`existed: false`). Scoped by `tenant`. -> { existed: bool }.
     class MemoryForgetFact
       def initialize(memory_store:, event_stream:)
         @memory_store = memory_store
@@ -16,7 +16,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         key = AgentPayload.presence(p[:key])
-        raise Harness::ValidationError, "key é obrigatório" if key.nil?
+        raise Harness::ValidationError, "key is required" if key.nil?
 
         tenant = AgentPayload.presence(p[:tenant]) || command.meta[:tenant]
         existed = @memory_store.forget_fact(tenant: tenant, key: key)

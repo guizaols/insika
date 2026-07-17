@@ -2,10 +2,10 @@
 
 module Harness
   module Commands
-    # Command de turno canônico: valida tudo síncrono, cria a Task, dispara
-    # o fiber e responde `{task_id:}` imediato — o resultado flui pelo Event
-    # Stream. Validações que falham NÃO criam Task
-    # (ValidationError/NotFoundError -> resposta HTTP direta).
+    # Canonical turn command: validates everything synchronously, creates the Task, fires
+    # the fiber and responds `{task_id:}` immediately — the result flows through the Event
+    # Stream. Validations that fail do NOT create a Task
+    # (ValidationError/NotFoundError -> direct HTTP response).
     class SendMessage
       def initialize(profiles:, session_store:, task_store:, executor:)
         @profiles = ProfileSource.coerce(profiles)
@@ -15,20 +15,20 @@ module Harness
       end
 
       def call(command)
-        p = normalize(command.payload) # aceita chaves string e símbolo
+        p = normalize(command.payload) # accepts string and symbol keys
 
         agent = p[:agent].to_s
-        raise Harness::ValidationError, "agent é obrigatório" if agent.empty?
+        raise Harness::ValidationError, "agent is required" if agent.empty?
 
         profile = @profiles[agent] ||
-                  (raise Harness::NotFoundError, "agente '#{agent}' não configurado")
+                  (raise Harness::NotFoundError, "agent '#{agent}' not configured")
 
         message = p[:message]
-        raise Harness::ValidationError, "message é obrigatória e não-vazia" if message.to_s.strip.empty?
+        raise Harness::ValidationError, "message is required and non-empty" if message.to_s.strip.empty?
 
-        # session_id XOR history (ambos -> erro; nenhum -> one-shot).
+        # session_id XOR history (both -> error; neither -> one-shot).
         if p[:session_id] && p[:history]
-          raise Harness::ValidationError, "session_id e history são mutuamente exclusivos (D2)"
+          raise Harness::ValidationError, "session_id and history are mutually exclusive (D2)"
         end
 
         validate_history!(p[:history]) if p[:history]
@@ -37,8 +37,8 @@ module Harness
             (raise Harness::NotFoundError, "sessão '#{p[:session_id]}' não encontrada")
         end
 
-        # command.to_h persiste o Command inteiro na Task;
-        # o ResumeTask relê payload.message de lá.
+        # command.to_h persists the entire Command in the Task;
+        # ResumeTask re-reads payload.message from there.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
         @executor.spawn_in_session(task, profile: profile)
         { task_id: task.id }
@@ -61,7 +61,7 @@ module Harness
             !m.values_at(:role, "role").compact.empty? &&
             !m.values_at(:content, "content").compact.empty?
         end
-        raise Harness::ValidationError, "history deve ser [{role:, content:}]" unless ok
+        raise Harness::ValidationError, "history must be [{role:, content:}]" unless ok
       end
     end
   end

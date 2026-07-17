@@ -1,32 +1,32 @@
 # frozen_string_literal: true
 
 module Harness
-  # Boot hook por gem (estilo Railtie): a gem de plugin
-  # chama Harness::Plugin.announce(root) no load do seu lib/ (antes do boot); o
-  # composition root consome announced_roots ao montar o Loader. Explícito e
-  # barato — NADA de scan de LOAD_PATH/gems instaladas.
+  # Per-gem boot hook (Railtie style): the plugin gem
+  # calls Harness::Plugin.announce(root) when loading its lib/ (before boot); the
+  # composition root consumes announced_roots when building the Loader. Explicit
+  # and cheap — NO scanning of LOAD_PATH/installed gems.
   #
-  # Este arquivo é MÍNIMO e sem dependências: gems de terceiros podem carregá-lo
-  # antes de qualquer outra coisa do Harness. O Loader vive em plugin/loader.rb
-  # (mesmo módulo, reaberto) — este arquivo NÃO o requer.
+  # This file is MINIMAL and dependency-free: third-party gems can load it
+  # before anything else from Harness. The Loader lives in plugin/loader.rb
+  # (same module, reopened) — this file does NOT require it.
   module Plugin
     @announced_roots = []
 
     class << self
-      # Acumula roots ANTES do boot, na ORDEM de require das gems (é ela que
-      # define a precedência entre gems). Deduplica por path expandido.
+      # Accumulates roots BEFORE boot, in the gems' require ORDER (that's what
+      # defines precedence among gems). Dedupes by expanded path.
       def announce(root)
         root = File.expand_path(root.to_s)
         @announced_roots << root unless @announced_roots.include?(root)
         root
       end
 
-      # Cópia congelada — ninguém muta o acumulador por fora.
+      # Frozen copy — nobody mutates the accumulator from outside.
       def announced_roots
         @announced_roots.dup.freeze
       end
 
-      # Suporte de TESTE (o acumulador é estado de processo). Não usar em produção.
+      # TEST support (the accumulator is process state). Do not use in production.
       def reset_announced!
         @announced_roots = []
       end

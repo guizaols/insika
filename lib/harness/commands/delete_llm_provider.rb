@@ -4,12 +4,12 @@ require "time"
 
 module Harness
   module Commands
-    # Command de controle: remove um provider de LLM do
-    # LLMProviderStore. Idempotente (`existed: false` se não havia). DESFAZ a
-    # config no RubyLLM em runtime (§9.5): quando o provider existia, chama
-    # `configurator.unapply(api)` zerando key/base globais — sem restart. Provider
-    # que o RubyLLM não reconhece degrada naturalmente (unapply: false, nada a
-    # desfazer). -> { existed: bool }.
+    # Control command: removes an LLM provider from the
+    # LLMProviderStore. Idempotent (`existed: false` if there was none). UNDOES the
+    # config in RubyLLM at runtime (§9.5): when the provider existed, calls
+    # `configurator.unapply(api)` clearing the global key/base — without a restart. A provider
+    # that RubyLLM does not recognize degrades gracefully (unapply: false, nothing to
+    # undo). -> { existed: bool }.
     class DeleteLLMProvider
       def initialize(provider_store:, configurator:, event_stream:)
         @provider_store = provider_store
@@ -20,7 +20,7 @@ module Harness
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         api = AgentPayload.presence(p[:api])
-        raise Harness::ValidationError, "api é obrigatório" if api.nil?
+        raise Harness::ValidationError, "api is required" if api.nil?
 
         existed = @provider_store.delete(api)
         @configurator.unapply(api) if existed

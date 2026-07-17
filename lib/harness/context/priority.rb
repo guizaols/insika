@@ -2,28 +2,28 @@
 
 module Harness
   module Context
-    # Escada de precedência dos fragmentos de contexto — FONTE ÚNICA da ordem
-    # (Fase 6/D5, fronteira de confiança). Maior = mais autoridade: aparece antes
-    # no system prompt e sobrevive a cortes de orçamento. Os providers referenciam
-    # estas constantes em vez de números soltos, para que a fronteira seja um
-    # contrato auditável num lugar só (o trust_boundary_spec trava a ordem).
+    # Precedence ladder for context fragments — SINGLE SOURCE of the order
+    # (Phase 6/D5, trust boundary). Higher = more authority: appears earlier
+    # in the system prompt and survives budget cuts. Providers reference these
+    # constants instead of loose numbers, so the boundary is an auditable
+    # contract in a single place (trust_boundary_spec locks the order).
     #
-    # Contrato (NF3/D5): identidade e guardrails entram PINNED no topo; as
-    # injeções de TURNO (request_context — tenant/vars do consumidor) ficam no
-    # FUNDO e são sacrificadas PRIMEIRO sob orçamento. A identidade (pinned) NUNCA
-    # é truncada. Um prompt-injection que suba por dados de turno é DADO, não
-    # autoridade — não sobrepõe IDENTITY/SOUL, e decisões de segurança
-    # (allow/deny de tool, egress, approvals) vivem no motor/profile, nunca no
-    # bloco injetado.
+    # Contract (NF3/D5): identity and guardrails go PINNED at the top; TURN
+    # injections (request_context — the consumer's tenant/vars) sit at the
+    # BOTTOM and are sacrificed FIRST under budget. Identity (pinned) is NEVER
+    # truncated. A prompt injection riding in via turn data is DATA, not
+    # authority — it does not override IDENTITY/SOUL, and security decisions
+    # (tool allow/deny, egress, approvals) live in the engine/profile, never in
+    # the injected block.
     module Priority
       IDENTITY     = 100 # IDENTITY/SOUL (Prompt) — pinned
-      PROMPT_REF   = 90  # guardrails/refs do Prompt Catalog (Prompt) — pinned
-      SKILL        = 80  # <available_skills> nível 1 (Skill)
+      PROMPT_REF   = 90  # Prompt Catalog guardrails/refs (Prompt) — pinned
+      SKILL        = 80  # <available_skills> level 1 (Skill)
       MEMORY       = 75  # <memory> read path (Memory)
-      TOOL_SEARCH  = 70  # <available_tools> nível 1 (ToolSearch)
-      HISTORY_MAX  = 79  # teto do histórico por recência (Session)
-      HISTORY_BASE = 60  # base do histórico; +idx até o teto (Session)
-      REQUEST      = 40  # <request_context> — injeção de turno, a mais cortável
+      TOOL_SEARCH  = 70  # <available_tools> level 1 (ToolSearch)
+      HISTORY_MAX  = 79  # history ceiling by recency (Session)
+      HISTORY_BASE = 60  # history base; +idx up to the ceiling (Session)
+      REQUEST      = 40  # <request_context> — turn injection, the most cuttable
     end
   end
 end
