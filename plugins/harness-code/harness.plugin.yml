@@ -1,0 +1,36 @@
+id: harness-code
+name: Harness Code
+description: >-
+  FS/shell toolset for a code-editing agent (read_file, list_dir, grep,
+  write_file, edit_file, bash), sandboxed to a workspace root. Write and shell
+  tools are marked side_effect and are meant to be listed in the agent's
+  approvals_required so the engine gates them behind human approval.
+entry: plugin.rb
+module: HarnessCodePlugin
+contracts:
+  tools:
+    - read_file
+    - list_dir
+    - grep
+    - write_file
+    - edit_file
+    - bash
+tool_metadata:
+  read_file:
+    optional: false
+    side_effect: false
+  list_dir:
+    optional: false
+    side_effect: false
+  grep:
+    optional: false
+    side_effect: false
+  write_file:
+    optional: false
+    side_effect: true
+  edit_file:
+    optional: false
+    side_effect: true
+  bash:
+    optional: false
+    side_effect: true
