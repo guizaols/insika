@@ -24,7 +24,7 @@ RSpec.describe Harness::Server::A2A::Remotes do
     expect do
       remotes = described_class.parse("ok=https://o/a2a,semigual,vazio=")
       expect(remotes.map(&:id)).to eq(["ok"]) # só a válida
-    end.to output(/malformado/).to_stderr
+    end.to output(/malformed/).to_stderr
   end
 
   it "tolera espaços em volta de id/url" do

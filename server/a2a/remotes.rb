@@ -3,17 +3,17 @@
 module Harness
   module Server
     module A2A
-      # Config dos agentes A2A remotos. Parse de "id=url,id2=url2".
+      # Remote A2A agents config. Parses "id=url,id2=url2".
       module Remotes
         Remote = Data.define(:id, :url, :description)
 
-        # -> [Remote]. Entradas malformadas (sem '=', id/url vazios) são ignoradas
-        # com warn. env nil/"" -> [].
+        # -> [Remote]. Malformed entries (no '=', empty id/url) are ignored
+        # with a warn. env nil/"" -> [].
         def self.parse(env_string, descriptions: {})
           env_string.to_s.split(",").filter_map do |entry|
             id, url = entry.split("=", 2).map { |s| s.to_s.strip }
             if id.to_s.empty? || url.to_s.empty?
-              warn "[a2a] remoto malformado ignorado: #{entry.inspect} (use id=url)"
+              warn "[a2a] malformed remote ignored: #{entry.inspect} (use id=url)"
               next
             end
             Remote.new(id: id, url: url, description: descriptions[id])

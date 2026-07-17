@@ -4,30 +4,30 @@ source "https://rubygems.org"
 
 ruby ">= 3.2"
 
-# Pinagem D9 (00-overview): o núcleo (lib/) não requer ruby_llm em load-time
-# (require lazy no Executor/LoadSkill — spec/harness/load_guard_spec cobre),
-# mas a gem passa a estar SEMPRE no bundle. Os comentários "apenas em
-# harness-server" documentam a fronteira da futura separação de gems.
-gem "ruby_llm", ">= 1.15"  # before_tool_call/after_tool_result exigem 1.15+
-gem "async", "~> 2.0"      # núcleo (reactor, semáforo de escrita do SQLite)
-gem "falcon", "~> 0.55"    # servidor async (apenas em harness-server)
-gem "sqlite3", "~> 2.0"    # apenas backend SQLite
-gem "rack", "~> 3.0"       # transporte (apenas em harness-server)
+# D9 pinning (00-overview): the core (lib/) does not require ruby_llm at load-time
+# (lazy require in the Executor/LoadSkill — spec/harness/load_guard_spec covers it),
+# but the gem is now ALWAYS in the bundle. The "harness-server only" comments
+# document the boundary of the future gem split.
+gem "ruby_llm", ">= 1.15"  # before_tool_call/after_tool_result require 1.15+
+gem "async", "~> 2.0"      # core (reactor, SQLite write semaphore)
+gem "falcon", "~> 0.55"    # async server (harness-server only)
+gem "sqlite3", "~> 2.0"    # SQLite backend only
+gem "rack", "~> 3.0"       # transport (harness-server only)
 
-# Studio (Fase 4 — UI de gestão). FRAMEWORK NA BORDA: usado SÓ pelo app `studio/`
-# (roteador em árvore fino sob Falcon, sem ActiveRecord); `lib/harness` e `server/`
-# NÃO dependem de Roda. tilt+erubi rendem os templates ERB com escape automático.
-gem "roda", "~> 3.85"      # apenas em harness-studio
-gem "tilt", "~> 2.8"       # render de templates (studio)
-gem "erubi", "~> 1.13"     # ERB com escape automático (XSS-safe) para o studio
+# Studio (Phase 4 — management UI). FRAMEWORK AT THE EDGE: used ONLY by the `studio/`
+# app (thin tree router under Falcon, no ActiveRecord); `lib/harness` and `server/`
+# do NOT depend on Roda. tilt+erubi render the ERB templates with automatic escaping.
+gem "roda", "~> 3.85"      # harness-studio only
+gem "tilt", "~> 2.8"       # template rendering (studio)
+gem "erubi", "~> 1.13"     # ERB with automatic escaping (XSS-safe) for the studio
 
-# Observabilidade OPT-IN (Fase 6, Telemetry): OTEL só é REQUERIDO lazy em
-# Harness::Telemetry.setup quando habilitado (HARNESS_OTEL / OTEL_EXPORTER_OTLP_*).
-# Desligado -> gems no bundle mas nunca carregadas (paridade, zero overhead). O
-# Recorder é testado com um tracer FAKE injetado; a gem só entra no boundary de
-# setup (não coberto por unit, como o create_chat do Executor).
-gem "opentelemetry-sdk", "~> 1.10"          # apenas em harness-server
-gem "opentelemetry-exporter-otlp", "~> 0.31" # exporter OTLP (SigNoz/Tempo/etc.)
+# OPT-IN observability (Phase 6, Telemetry): OTEL is only REQUIRED lazily in
+# Harness::Telemetry.setup when enabled (HARNESS_OTEL / OTEL_EXPORTER_OTLP_*).
+# Off -> gems in the bundle but never loaded (parity, zero overhead). The
+# Recorder is tested with an injected FAKE tracer; the gem only enters at the setup
+# boundary (not covered by unit, like the Executor's create_chat).
+gem "opentelemetry-sdk", "~> 1.10"          # harness-server only
+gem "opentelemetry-exporter-otlp", "~> 0.31" # OTLP exporter (SigNoz/Tempo/etc.)
 
 group :development, :test do
   gem "rspec"

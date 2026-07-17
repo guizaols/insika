@@ -3,8 +3,8 @@
 module Harness
   module Server
     module A2A
-      # Mapa de erros do adapter A2A: códigos JSON-RPC 2.0 padrão +
-      # extensões A2A. O `App` NUNCA vaza exceção — sempre um error object.
+      # A2A adapter error map: standard JSON-RPC 2.0 codes +
+      # A2A extensions. The `App` NEVER leaks an exception — always an error object.
       module Errors
         PARSE_ERROR         = -32_700
         INVALID_REQUEST     = -32_600
@@ -14,10 +14,10 @@ module Harness
         TASK_NOT_FOUND      = -32_001 # A2A TaskNotFoundError
         TASK_NOT_CANCELABLE = -32_002 # A2A TaskNotCancelableError
 
-        # Exceção do núcleo -> [code, message]. `NotFoundError` de task é tratado
-        # EXPLICITAMENTE no App (tasks/get devolve TASK_NOT_FOUND direto), então
-        # aqui `NotFoundError` cai em INVALID_PARAMS (agente/sessão inexistente da
-        # request). Qualquer outra -> INTERNAL_ERROR (mensagem genérica, sem stack).
+        # Core exception -> [code, message]. A task `NotFoundError` is handled
+        # EXPLICITLY in the App (tasks/get returns TASK_NOT_FOUND directly), so
+        # here `NotFoundError` falls into INVALID_PARAMS (missing agent/session in the
+        # request). Anything else -> INTERNAL_ERROR (generic message, no stack).
         def self.from_exception(error)
           case error
           when Harness::ValidationError, Harness::NotFoundError
