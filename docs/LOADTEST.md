@@ -74,7 +74,7 @@ Runs against a local server **or** a remote one (e.g. Railway) — just point
 | `--message TEXT` | greeting | user message sent every turn |
 | `--timeout SECONDS` | `120` | per-request read timeout |
 | `--ports 9292,9293` | — | round-robin across local processes (see §4) |
-| `--same-user 1` | off | reuse the same `user` per agent — measures the **hot-conversation cache** |
+| `--same-user` | off | boolean toggle — reuse the same `user` per agent to measure the **hot-conversation cache** (legacy `--same-user 1` / `--same-user 0` still work) |
 | `--dry-run` | — | print the plan + one sample request (masked token) and exit; **sends no traffic** |
 | `--help` | — | show usage and exit |
 
@@ -97,7 +97,7 @@ HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
 ### `--same-user` and the cache
 
 By default each turn uses a distinct `user` (`loadtest-<agent>-<idx>`), so every
-turn is a cold conversation. With `--same-user 1` all turns for an agent share one
+turn is a cold conversation. With `--same-user` all turns for an agent share one
 `user`, exercising the warm-conversation path — watch the **mean cache hit** rise
 and TTFB drop. Run both to bracket cold vs hot behaviour.
 

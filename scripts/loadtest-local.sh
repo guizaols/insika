@@ -80,7 +80,10 @@ sweep() {
     bundle exec ruby "$REPO/scripts/loadtest.rb" --agents "$AGENT" --concurrency "$CONC" --iterations 2
 }
 
-locks() { grep -c 'database is locked' "$1" 2>/dev/null || echo 0; }
+# `grep -c` already prints the count (0 when there are no matches); it just exits
+# non-zero on zero matches, so `|| true` keeps the single "0" line instead of
+# appending a second `echo 0`.
+locks() { grep -c 'database is locked' "$1" 2>/dev/null || true; }
 
 echo "############ BASELINE — 1 worker — conc $CONC ############"
 boot 1; sweep

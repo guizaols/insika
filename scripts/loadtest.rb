@@ -24,7 +24,7 @@
 #   --message TEXT      user message sent every turn         (default: greeting)
 #   --timeout SECONDS   per-request read timeout             (default: 120)
 #   --ports 9292,9293   round-robin across local processes   (default: HARNESS_URL)
-#   --same-user 1       reuse the same user per agent (measures hot-conversation cache)
+#   --same-user         reuse the same user per agent (measures hot-conversation cache); default off
 #   --dry-run           print the plan + a sample request and exit (no traffic)
 #   --help              show this help and exit
 #
@@ -41,8 +41,14 @@ USAGE = File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
             .take_while { |l| l.start_with?("#") }.map { |l| l.sub(/^# ?/, "") }.join
 
 # --- flag parsing (supports "--flag value" and boolean "--flag") ---------------
-BOOL_FLAGS = %w[help dry-run].freeze
-KNOWN_FLAGS = (BOOL_FLAGS + %w[agents concurrency iterations message timeout ports same-user]).freeze
+# `same-user` is a boolean toggle (doc default: off) but tolerates a legacy value
+# (`--same-user 1|0`). Crucially, a value flag NEVER swallows a following flag
+# token (one that starts with "--"): otherwise `--same-user --dry-run` would eat
+# the `--dry-run` and fire real traffic. A value flag with no value is left absent
+# so defaults/warnings kick in downstream.
+BOOL_FLAGS = %w[help dry-run same-user].freeze
+VALUE_FLAGS = %w[agents concurrency iterations message timeout ports].freeze
+KNOWN_FLAGS = (BOOL_FLAGS + VALUE_FLAGS).freeze
 
 args = {}
 i = 0
@@ -55,11 +61,20 @@ while i < ARGV.length
   end
   key = tok.sub(/^--/, "")
   warn "loadtest: unknown flag --#{key} (see --help)" unless KNOWN_FLAGS.include?(key)
+  nxt = ARGV[i + 1]
   if BOOL_FLAGS.include?(key)
-    args[key] = "true"
+    if key == "same-user" && !nxt.nil? && !nxt.start_with?("--")
+      args[key] = nxt          # legacy `--same-user 1|0`
+      i += 2
+    else
+      args[key] = "true"       # toggle; do NOT consume a following flag
+      i += 1
+    end
+  elsif nxt.nil? || nxt.start_with?("--")
+    args[key] = nil            # value missing; do NOT consume a following flag
     i += 1
   else
-    args[key] = ARGV[i + 1]
+    args[key] = nxt
     i += 2
   end
 end
@@ -70,6 +85,13 @@ if args.key?("help")
 end
 
 def positive_int(args, key, default)
+  # Flag given but with no value (e.g. `--concurrency` as the last token): warn and
+  # fall back to the default instead of silently defaulting or crashing.
+  if args.key?(key) && args[key].nil?
+    warn "loadtest: --#{key} has no value, using default #{default}"
+    return Integer(default)
+  end
+
   raw = args[key] || default
   n = Integer(raw)
   raise ArgumentError if n <= 0

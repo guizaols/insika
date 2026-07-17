@@ -32,7 +32,12 @@ require "tmpdir"
 require "fileutils"
 
 def positive_int_list(raw)
-  raw.split(",").map { |n| Integer(n.strip) }.tap { |a| raise ArgumentError if a.any? { |x| x <= 0 } }
+  list = raw.split(",").map { |n| Integer(n.strip) }
+  # An empty list (e.g. "" or ",") would silently run zero rounds and exit 0 —
+  # abort with the same clear message instead.
+  raise ArgumentError if list.empty? || list.any? { |x| x <= 0 }
+
+  list
 rescue ArgumentError
   abort "bench_store: PROCS must be a comma-separated list of positive integers (got #{raw.inspect})"
 end
