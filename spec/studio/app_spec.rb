@@ -73,7 +73,7 @@ RSpec.describe Studio::App do
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], memory: {}, sessions: {}, settings: nil, llm_providers: [],
-                mcp_instances: [], system_files: {})
+                mcp_instances: [], system_files: {}, tool_traces: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # Stores de config da Etapa G: REAIS sobre um ConfigStore em memória (o
@@ -91,6 +91,9 @@ RSpec.describe Studio::App do
     # ToolStore REAL (Fase 5): a página de autoria lê dele; escrita via bus.
     tool_store = Harness::ToolStore.new(config_store: cfg)
     data_tools.each { |d| tool_store.write(d) }
+    # ToolTraceStore REAL (debug §3.1): a view de sessão lê dele.
+    trace_store = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
+    tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: nil, config: { admin_token: admin_token },
@@ -103,6 +106,7 @@ RSpec.describe Studio::App do
       session_store: SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
+      tool_trace_store: trace_store,
       session_secret: "x" * 64
     )
     [app, bus]
@@ -608,6 +612,19 @@ RSpec.describe Studio::App do
   it "404 em sessão inexistente" do
     app, = build_app
     expect(login(app).get("/sessions/nope").status).to eq(404)
+  end
+
+  it "viewer de sessão mostra o trace de tool-calls (nome + args + resposta)" do
+    sess = StoredSession.new(id: "sess-t", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    traces = { "sess-t" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
+                              "args" => { "query" => "trufa" }, "result" => { "found" => 3 },
+                              "ms" => 40, "at" => "2026-07-16T00:00:00Z" }] }
+    app, = build_app(sessions: { "sess-t" => sess }, tool_traces: traces)
+    body = login(app).get("/sessions/sess-t").body
+    expect(body).to include("Tool calls")
+    expect(body).to include("search_products")
+    expect(body).to include("trufa")   # args renderizados
+    expect(body).to include("found")   # resposta renderizada
   end
 
   it "o histórico do detalhe lista as conversas recentes" do

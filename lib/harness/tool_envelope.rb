@@ -2,6 +2,7 @@
 
 require "async"
 require "delegate"
+require "time"
 
 module Harness
   # Envolve cada tool permitida: timeout por call
@@ -20,13 +21,14 @@ module Harness
     private_constant :ToolTimeout
 
     def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:,
-                   skip_side_effects: [])
+                   skip_side_effects: [], trace_recorder: nil)
       super(tool)
       @state = state
       @checkpoint_store = checkpoint_store
       @tool_registry = tool_registry
       @timeout = timeout
       @skip_side_effects = Array(skip_side_effects) # ids já concluídos no turno interrompido
+      @trace_recorder = trace_recorder # duck-type: #record(session_id:, entry:). nil = sem trace.
     end
 
     # Ponto de entrada que o RubyLLM invoca (Tool#call na versão pinada).
@@ -51,14 +53,37 @@ module Harness
         return { error: "rejected by operator" } unless decision.to_s == "approved"
       end
 
+      started = monotonic
       result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
       record_side_effect!(call_id) if side_effect?
+      trace(call_id, args, result, started)
       result
     rescue ToolTimeout
-      { error: "TimeoutError: tool excedeu #{@timeout}s" }
+      err = { error: "TimeoutError: tool excedeu #{@timeout}s" }
+      trace(call_id, args, err, started)
+      err
     end
 
     private
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    # Registra a call para debug no Studio (nome + args do modelo + resultado +
+    # ms), keyed pela SESSÃO. O masking/truncation é do ToolTraceStore; aqui só
+    # coletamos. NUNCA quebra o turno (trace é observabilidade).
+    def trace(call_id, args, result, started)
+      return unless @trace_recorder && @state.task&.session_id
+
+      @trace_recorder.record(
+        session_id: @state.task.session_id,
+        entry: { "turn" => @state.turn, "tool" => real_name, "call_id" => call_id.to_s,
+                 "args" => args, "result" => result,
+                 "ms" => started ? ((monotonic - started) * 1000).round : nil,
+                 "at" => Time.now.utc.iso8601 }
+      )
+    rescue StandardError
+      nil
+    end
 
     # impl_name real quando o delegate é um Capability::ResolvedTool:
     # side_effect?/approval/correlação operam sobre o nome REAL registrado no

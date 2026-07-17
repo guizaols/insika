@@ -11,6 +11,17 @@
 
 Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 
+> **Já entregue nesta rodada (pós-piloto Railway):**
+> - **Deploy Railway** (Dockerfile/railway.json/`/up`) + loadtest (`bench_store.rb`/
+>   `loadtest.rb`/`loadtest-local.sh`) + fix de boot SQLite multi-proc. Ver
+>   `docs/DEPLOY.md`.
+> - **Trace de tool calls no Studio** (§3.1) — args + resposta + status por turno,
+>   com masking/truncation. `ToolTraceStore` + `ToolEnvelope`.
+> - **Resiliência de boot:** `DEEPSEEK_API_KEY` ausente vira **warn** (não `raise`)
+>   — o motor sobe, turnos falham com erro claro até a chave existir.
+> - **Separação de tokens** documentada (`ADMIN_TOKEN` vs `OPENCLAW_GATEWAY_TOKEN`
+>   + rotação) em `docs/DEPLOY.md`.
+
 ---
 
 ## 1. Performance & Infra
@@ -159,10 +170,14 @@ já existe (a API HTTP). Melhorar o `studio/` puxando o visual do agent-studio.*
   a regra constitucional já veta isso no `server/`); (3) planejar a extração como
   parte do §4.
 
-### 3.1 Visibilidade de tool calls no chat (debug) 🔴
-**Recomendação: o viewer de conversa (`/studio/chats` → `/studio/sessions/:id`)
-precisa mostrar, por turno, QUAIS tools foram chamadas + os PARÂMETROS enviados +
-a RESPOSTA recebida.** Sem isso não dá pra debugar por que a Bia respondeu X.
+### 3.1 Visibilidade de tool calls no chat (debug) ✅ ENTREGUE
+**Entregue:** o viewer de sessão (`/studio/sessions/:id`) mostra, por turno, QUAIS
+tools rodaram + os ARGS enviados + a RESPOSTA + status/latência. Impl: um
+`Harness::ToolTraceStore` (durável, por sessão, com masking de chaves sensíveis +
+truncation) que o `ToolEnvelope` alimenta por call; o Studio renderiza em
+accordions. Segue abaixo o desenho original (mantido como referência). **Evoluções
+possíveis:** flag por-agente p/ trace verboso, export como atributo de span OTEL,
+paginação/limpeza por sessão (`ToolTraceStore#clear` já existe).
 
 - **Dor real (veio do piloto):** ao debugar a loja no Railway, só dava pra ver as
   mensagens user/assistant — não dava pra ver que `search_products` foi chamado,
@@ -295,7 +310,7 @@ novos sobre o mesmo motor, não uma mudança de core.** 🟡
 | 6 | Migração PT→EN (código/testes/comentários) | Docs/OSS | 🔴 (p/ OSS) | — |
 | 7 | Docs de arquitetura + diagramas + README + site | Docs/OSS | 🔴 (p/ OSS) | 6 |
 | 8 | Extração em gems (`harness-core/-server/-studio/-otel`) | Ecossistema | 🟡 | 7 |
-| 9 | **Trace de tool calls no viewer do chat (args+resposta, masking) — debug (§3.1)** | UI/UX | 🔴 | — |
+| 9 | ✅ **Trace de tool calls no viewer do chat (args+resposta, masking) — debug (§3.1)** — ENTREGUE | UI/UX | ✅ | — |
 | 10 | Refresh de UI/UX do `studio/` (inspirado no agent-studio) | UI/UX | 🟡 | — |
 | 11 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 7 |
 | 12 | Protótipo `harness-code` (toolset FS/shell + CLI) | Ideias | 🟢 | 8 |

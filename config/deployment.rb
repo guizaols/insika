@@ -11,8 +11,12 @@ require "ruby_llm"
 require_relative "../deploy/tools"
 
 module Deploy
+  # Resiliência em nuvem (FOLLOWUP): sem a chave, NÃO derruba o processo — o motor
+  # sobe (/up verde) e os turnos falham com erro claro até a chave existir (via env
+  # OU pelo Studio > LLM providers, que reconfigura o RubyLLM em runtime). Um
+  # `raise` aqui tirava o serviço inteiro do ar por uma env faltando/rotacionando.
   DEEPSEEK_KEY = ENV["DEEPSEEK_API_KEY"].to_s
-  raise "DEEPSEEK_API_KEY ausente (exporte a chave do openclaw/.env.local)" if DEEPSEEK_KEY.empty?
+  warn "[deploy] AVISO: DEEPSEEK_API_KEY ausente — motor sobe, mas turnos falham até configurar (env ou Studio > LLM providers)." if DEEPSEEK_KEY.empty?
 
   # LLM REAL (mesmo modelo da produção OpenClaw).
   RubyLLM.configure do |c|
@@ -65,6 +69,9 @@ module Deploy
     # de CÓDIGO (REGISTRY) com as por-dados. É o `tool_registry` do Executor e do
     # ToolCatalog (drop-in) — data-tools novas valem sem restart via reload.
     TOOL_STORE    = Harness::ToolStore.new(config_store: CONFIG_STORE)
+    # Trace de tool-calls por sessão (debug no Studio; FOLLOWUP §3.1). Durável no
+    # mesmo backend; masking/truncation no próprio store.
+    TOOL_TRACE_STORE = Harness::ToolTraceStore.new(store: BACKEND)
     # Egress das data-tools (SSRF guard). Default = estrito (só https público).
     # Para o motor CHAMAR DE VOLTA a API interna do consumidor (achei-b2b
     # /api/internal/*), que é http/loopback no local, ligue via env — de
@@ -147,7 +154,7 @@ module Deploy
       session_store: SESSION_STORE, task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE,
       event_stream: EVENT_STREAM, workflow_registry: WORKFLOW_REGISTRY,
       pending_action_store: PENDING_ACTION_STORE, capability_registry: CAPABILITY_REGISTRY,
-      tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE
+      tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE, tool_trace_store: TOOL_TRACE_STORE
     )
 
     BUS = Harness::CommandBus.new
