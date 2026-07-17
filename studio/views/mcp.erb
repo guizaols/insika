@@ -1,14 +1,14 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>mcp</span></nav>
-    <h1>MCP<span class="sub"><%= @instances.size %> instância(s) · credenciais mascaradas</span></h1>
+    <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>mcp</span></nav>
+    <h1>MCP<span class="sub"><%= @instances.size %> instance(s) · credentials masked</span></h1>
   </div>
 </header>
 
-<p class="muted matrix-hint">Instâncias de servidores MCP (config durável). As credenciais em <code>env</code> nunca voltam em plaintext — cada valor aparece como <code><%= secret_sentinel %></code>; mantê-lo preserva o segredo, trocá-lo substitui, apagar a linha limpa.</p>
+<p class="muted matrix-hint">MCP server instances (durable config). Credentials in <code>env</code> never come back in plaintext — each value shows as <code><%= secret_sentinel %></code>; keeping it preserves the secret, changing it replaces, clearing the line removes it.</p>
 
 <% if @instances.empty? %>
-  <div class="empty">Nenhuma instância MCP. Adicione uma abaixo (ex.: <code>tavily</code>) para expor um servidor MCP às tools dos agentes.</div>
+  <div class="empty">No MCP instances. Add one below (e.g. <code>tavily</code>) to expose an MCP server to your agents' tools.</div>
 <% end %>
 
 <% @instances.each do |m| %>
@@ -20,7 +20,7 @@
       <form method="post" action="/studio/mcp/delete">
         <%== csrf_tag %>
         <input type="hidden" name="name" value="<%= m["name"] %>">
-        <button type="submit" class="ghost danger">remover</button>
+        <button type="submit" class="ghost danger">Remove</button>
       </form>
     </div>
     <form method="post" action="/studio/mcp">
@@ -36,28 +36,28 @@
         </label>
         <label class="check">
           <input type="checkbox" name="enabled" value="1"<%== " checked" if m["enabled"] %>>
-          habilitada
+          enabled
         </label>
       </div>
       <label>command <span class="muted">(stdio)</span>
         <input type="text" name="command" value="<%= m["command"] %>" placeholder="npx -y @modelcontextprotocol/server-...">
       </label>
       <label>url <span class="muted">(http/sse)</span>
-        <input type="text" name="url" value="<%= m["url"] %>" placeholder="https://mcp.exemplo.com">
+        <input type="text" name="url" value="<%= m["url"] %>" placeholder="https://mcp.example.com">
       </label>
       <label>description
         <input type="text" name="description" value="<%= m["description"] %>">
       </label>
-      <label>env <span class="muted">(uma <code>CHAVE=valor</code> por linha)</span>
+      <label>env <span class="muted">(one <code>KEY=value</code> per line)</span>
         <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
       </label>
-      <div class="actions"><button type="submit" class="primary">salvar instância</button></div>
+      <div class="actions"><button type="submit" class="primary">Save instance</button></div>
     </form>
   </div>
 <% end %>
 
 <details class="card newfile">
-  <summary>+ nova instância MCP</summary>
+  <summary>+ new MCP instance</summary>
   <form method="post" action="/studio/mcp">
     <%== csrf_tag %>
     <div class="grid-2">
@@ -72,20 +72,20 @@
     </div>
     <label class="check">
       <input type="checkbox" name="enabled" value="1" checked>
-      habilitada
+      enabled
     </label>
     <label>command <span class="muted">(stdio)</span>
       <input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-...">
     </label>
     <label>url <span class="muted">(http/sse)</span>
-      <input type="text" name="url" placeholder="https://mcp.exemplo.com">
+      <input type="text" name="url" placeholder="https://mcp.example.com">
     </label>
     <label>description
       <input type="text" name="description">
     </label>
-    <label>env <span class="muted">(uma <code>CHAVE=valor</code> por linha)</span>
+    <label>env <span class="muted">(one <code>KEY=value</code> per line)</span>
       <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
     </label>
-    <div class="actions"><button type="submit" class="primary">criar instância</button></div>
+    <div class="actions"><button type="submit" class="primary">Create instance</button></div>
   </form>
 </details>

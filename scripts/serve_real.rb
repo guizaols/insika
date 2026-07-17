@@ -91,7 +91,7 @@ APP = Harness::Server::App.new(
 # /studio/login com o ADMIN_TOKEN abaixo.
 # dica de persistência para o health chip (durável em SQLite quando
 # HARNESS_DB está setado; efêmero em memória caso contrário).
-PERSISTENCE = (ENV["HARNESS_DB"].to_s.empty? ? "efêmero (memória)" : "durável (sqlite)")
+PERSISTENCE = (ENV["HARNESS_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)")
 
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,

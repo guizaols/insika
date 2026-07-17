@@ -1,14 +1,14 @@
 <header class="page-head">
   <div>
-    <h1>Tools<span class="sub"><%= @tools.size %> registrada(s) · allow/denylist por agente</span></h1>
+    <h1>Tools<span class="sub"><%= @tools.size %> registered · allow/deny per agent</span></h1>
   </div>
-  <a class="btn primary" href="/studio/tools/def/new">+ nova tool (por dados)</a>
+  <a class="btn primary" href="/studio/tools/def/new">+ new data tool</a>
 </header>
 
 <section class="card">
-  <h2 class="sub">tools por dados <span class="muted">(chamada HTTP sem código — editáveis aqui)</span></h2>
+  <h2 class="eyebrow">data tools <span class="muted">(HTTP call, no code — editable here)</span></h2>
   <% if @data_tool_names.empty? %>
-    <div class="empty">Nenhuma tool por dados. Crie uma para dar a um agente acesso a uma API externa sem escrever Ruby.</div>
+    <div class="empty">No data tools. Create one to give an agent access to an external API without writing Ruby.</div>
   <% else %>
     <div class="check-grid">
       <% @data_tool_names.sort.each do |name| %>
@@ -19,9 +19,9 @@
 </section>
 
 <% if @agents.empty? %>
-  <div class="empty">Nenhum agente configurado.</div>
+  <div class="empty">No agents configured.</div>
 <% else %>
-  <p class="muted matrix-hint">Cada agente escolhe suas tools. “todas” = allowlist aberta (nil); senão, só as marcadas. O denylist do agente é preservado.</p>
+  <p class="muted matrix-hint">Each agent picks its tools. "all" = open allowlist (nil); otherwise only the checked ones. The agent's denylist is preserved.</p>
   <div class="tool-list">
     <% @agents.each do |a| %>
       <form class="card tool-card" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
@@ -30,17 +30,17 @@
           <div class="agent-id mono"><%= a.id %></div>
           <label class="check">
             <input type="checkbox" name="all_tools" value="1"<%== " checked" if a.tools_allow.nil? %>>
-            todas as tools
+            all tools
           </label>
         </div>
         <% if @tools.empty? %>
-          <p class="muted">Nenhuma tool registrada no runtime.</p>
+          <p class="muted">No tools registered in the runtime.</p>
         <% else %>
           <div class="check-grid">
             <% @tools.each do |t| %>
               <label class="check" title="<%= t.description %>">
                 <input type="checkbox" name="tools[]" value="<%= t.name %>"<%== " checked" if tool_allowed_for?(a, t.name) %>>
-                <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill">dados</span><% end %>
+                <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %>
               </label>
             <% end %>
           </div>
@@ -48,7 +48,7 @@
         <% unless Array(a.tools_deny).empty? %>
           <p class="muted deny">deny: <span class="mono"><%= Array(a.tools_deny).join(", ") %></span></p>
         <% end %>
-        <div class="actions"><button type="submit" class="primary">salvar tools</button></div>
+        <div class="actions"><button type="submit" class="primary">Save tools</button></div>
       </form>
     <% end %>
   </div>
