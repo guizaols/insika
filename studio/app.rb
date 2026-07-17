@@ -614,16 +614,9 @@ module Studio
       THEMES.include?(value) ? value : "auto"
     end
 
-    # Resumo de saúde do runtime para o chip da app-bar. Só contagens do que o
-    # Studio já lê — nada de ping novo. Persistência (durável/efêmero) vem do
-    # config, se o boot a informou (serve_real passa; specs não precisam).
-    def health_summary
-      health_parts.map { |label, value| "#{value} #{label}" }.join(" · ")
-    end
-
-    # Contagens estruturadas para o cartão de saúde da sidebar: [label, value].
-    # Só o que o Studio já lê — nada de ping novo. Persistência (durável/efêmero)
-    # vem do config, se o boot a informou (serve_real passa; specs não precisam).
+    # Structured counts for the sidebar health card: [label, value]. Only what
+    # the Studio already reads — no new ping. Persistence (durable/ephemeral)
+    # comes from config, if boot supplied it (serve_real does; specs don't need).
     def health_parts
       parts = [["agents", harness[:profile_source].all.size]]
       parts << ["LLM providers", harness[:llm_provider_store].all.size] if harness[:llm_provider_store]
