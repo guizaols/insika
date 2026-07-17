@@ -16,7 +16,8 @@ module Harness
                    tool_registry:, skill_catalog:, profiles:,
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
-                   capability_registry: nil, tool_catalog: nil, memory_store: nil)
+                   capability_registry: nil, tool_catalog: nil, memory_store: nil,
+                   tool_trace_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -32,6 +33,7 @@ module Harness
       @workflow_registry = workflow_registry # estágio 6 do trigger_workflow
       @pending_action_store = pending_action_store # gate de aprovação
       @capability_registry = capability_registry # resolução de capability (nil = desligado)
+      @tool_trace_store = tool_trace_store # trace de tool-calls p/ debug no Studio (nil = desligado)
       # Cola RubyLLM (estágios 5-7): montagem do chat delegada ao ChatBuilder. As
       # deps opcionais tool_catalog (Tool Search) e memory_store (memória
       # cross-session) só a ele importam — nil = paridade (deferred
@@ -659,7 +661,8 @@ module Harness
       tools.map do |tool|
         ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
                                tool_registry: @tool_registry, timeout: timeout,
-                               skip_side_effects: skip_side_effects)
+                               skip_side_effects: skip_side_effects,
+                               trace_recorder: @tool_trace_store)
       end
     end
 

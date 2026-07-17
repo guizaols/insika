@@ -68,7 +68,8 @@ Studio::App.configure(
   skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG, tool_store: W::TOOL_STORE,
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
-  mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE
+  mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
+  tool_trace_store: W::TOOL_TRACE_STORE # trace de tool-calls no viewer de sessão
 )
 
 # Modo serving: turnos nascem filhos de um supervisor de vida-longa (criado lazy
