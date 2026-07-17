@@ -5,22 +5,22 @@ require "digest"
 require "rack/utils"
 
 module Studio
-  # Harness Studio — a UI de gestão server-rendered, substituta do
-  # agent-studio do OpenClaw. FRAMEWORK NA BORDA: é um app Roda
-  # separado, montado sob `/studio`; `lib/harness` e `server/` NÃO ganham
-  # dependência de Roda. Fala com o runtime pela MESMA superfície que a API:
-  # despacha Commands no CommandBus e LÊ profiles/stores — nunca escreve em store
-  # direto (regra constitucional do transporte).
+  # Harness Studio — the server-rendered management UI, replacing
+  # OpenClaw's agent-studio. FRAMEWORK AT THE EDGE: it's a separate
+  # Roda app, mounted under `/studio`; `lib/harness` and `server/` do NOT gain
+  # a Roda dependency. It talks to the runtime through the SAME surface as the API:
+  # dispatches Commands on the CommandBus and READS profiles/stores — never writes to a store
+  # directly (the transport's constitutional rule).
   #
-  # Auth por SESSÃO/cookie: login compara o token em tempo constante contra
-  # `HARNESS_ADMIN_TOKEN`, seta cookie httpOnly SameSite=Lax e protege `/studio/*`
-  # fail-closed (sem token configurado → login nunca valida → studio inacessível).
-  # Substitui o `LocalAdminShim`/Bearer manual. CSRF nos POSTs.
+  # SESSION/cookie auth: login compares the token in constant time against
+  # `HARNESS_ADMIN_TOKEN`, sets an httpOnly SameSite=Lax cookie and protects `/studio/*`
+  # fail-closed (no token configured → login never validates → studio inaccessible).
+  # Replaces the manual `LocalAdminShim`/Bearer. CSRF on the POSTs.
   #
-  # Assets same-origin: bundle esbuild versionado em `assets/dist/*`, servido
-  # por `/studio/assets/dist/*`. CSP estrita `'self'` (sem `unsafe-inline`).
+  # Same-origin assets: versioned esbuild bundle in `assets/dist/*`, served
+  # by `/studio/assets/dist/*`. Strict `'self'` CSP (no `unsafe-inline`).
   class App < Roda
-    # Cookie de sessão vive N dias. 7 dias = paridade com o padrão OpenClaw.
+    # The session cookie lives N days. 7 days = parity with the OpenClaw default.
     SESSION_MAX_AGE = 7 * 24 * 3600
     ASSETS_DIR = File.expand_path("assets/dist", __dir__)
 
@@ -31,15 +31,15 @@ module Studio
       ".woff2" => "font/woff2", ".svg" => "image/svg+xml"
     }.freeze
 
-    # Plugins que NÃO dependem do secret (carregados na definição da classe).
+    # Plugins that do NOT depend on the secret (loaded at class definition).
     plugin :render, views: File.expand_path("views", __dir__), engine: "erb",
                     layout: "layout", escape: true
     plugin :hash_branches
     plugin :h
 
-    # CSP estrita: sem `unsafe-inline`. Tudo vem do bundle same-origin em
-    # /studio/assets/dist. `connect-src 'self'` cobre o EventSource do playground
-    # (SSE de /v1/events, mesma origem). `img-src data:` cobre inline SVG/ícones.
+    # Strict CSP: no `unsafe-inline`. Everything comes from the same-origin bundle in
+    # /studio/assets/dist. `connect-src 'self'` covers the playground's EventSource
+    # (SSE from /v1/events, same origin). `img-src data:` covers inline SVG/icons.
     plugin :content_security_policy do |csp|
       csp.default_src :none
       csp.script_src :self
@@ -53,18 +53,18 @@ module Studio
     end
 
     class << self
-      # Dependências do runtime injetadas no boot (mesma superfície do Server::App).
+      # Runtime dependencies injected at boot (same surface as Server::App).
       attr_reader :harness
 
-      # Wiring do Studio (chamado pelo boot: serve_real / config.ru). Carrega os
-      # plugins que dependem do secret (sessions/csrf/flash) e guarda as deps.
-      # `session_secret` explícito é para os specs; em produção deriva do token de
-      # admin (estável entre restarts, sem exigir mais uma env var).
+      # Studio wiring (called by the boot: serve_real / config.ru). Loads the
+      # plugins that depend on the secret (sessions/csrf/flash) and stores the deps.
+      # An explicit `session_secret` is for the specs; in production it derives from the
+      # admin token (stable across restarts, without requiring one more env var).
       #
-      # Além do trio de sempre (command_bus/profile_source/config), o
-      # Studio passa a LER stores de autoria (agent_file/skill/tool/memory/session)
-      # para renderizar as páginas. Todos opcionais (default nil): páginas que
-      # dependem de um store degradam para um empty-state se ele não foi injetado.
+      # Besides the usual trio (command_bus/profile_source/config), the
+      # Studio now READS authoring stores (agent_file/skill/tool/memory/session)
+      # to render the pages. All optional (default nil): pages that
+      # depend on a store degrade to an empty-state if it was not injected.
       def configure(command_bus:, profile_source:, event_stream:, config:,
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
@@ -75,45 +75,45 @@ module Studio
           event_stream: event_stream, config: config,
           agent_file_store: agent_file_store, skill_store: skill_store,
           skill_catalog: skill_catalog, tool_catalog: tool_catalog,
-          # tool_store: definições das tools POR DADOS (Fase 5). O catálogo já
-          # mostra as data-tools na matriz; o store alimenta a página de autoria.
+          # tool_store: DATA-DEFINED tool definitions (Phase 5). The catalog already
+          # shows the data-tools in the matrix; the store feeds the authoring page.
           tool_store: tool_store,
           memory_store: memory_store, session_store: session_store,
-          # config-de-runtime (settings/LLM/MCP) + arquivos de sistema
-          # globais + índice de conversas. Todos opcionais (empty-state se nil).
+          # runtime config (settings/LLM/MCP) + global system
+          # files + conversations index. All optional (empty-state if nil).
           settings_store: settings_store, llm_provider_store: llm_provider_store,
           mcp_store: mcp_store, system_file_store: system_file_store,
-          # trace de tool-calls por sessão (debug): args + resultado + status por
-          # turno, renderizado no viewer de sessão (FOLLOWUP §3.1).
+          # per-session tool-call trace (debug): args + result + status per
+          # turn, rendered in the session viewer (FOLLOWUP §3.1).
           tool_trace_store: tool_trace_store
         }.freeze
-        # flag de "restart recomendado" — em memória, POR PROCESSO. Uma
-        # mudança de config que o runtime só relê no boot (ex.: instâncias MCP são
-        # ligadas na inicialização) acende a flag; reiniciar o processo a apaga
-        # naturalmente (processo novo = `configure` roda de novo = flag zerada).
-        # Não vai pra sessão de propósito: a sessão sobrevive ao restart (o secret
-        # deriva do token) e a flag ficaria presa acesa.
+        # "restart recommended" flag — in memory, PER PROCESS. A
+        # config change that the runtime only re-reads at boot (e.g.: MCP instances are
+        # wired at startup) lights the flag; restarting the process clears it
+        # naturally (new process = `configure` runs again = flag reset).
+        # Deliberately not put in the session: the session survives the restart (the secret
+        # derives from the token) and the flag would stay stuck on.
         @restart_needed = false
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "harness.studio", secret: secret,
                           max_seconds: SESSION_MAX_AGE, same_site: :lax
-        # Token de CSRF ligado à SESSÃO (não ao par método+path). O binding por
-        # path do route_csrf usa `request.path` = PATH_INFO PÓS-MOUNT ("/login",
-        # não "/studio/login"), o que confundiria form-action × token sob o
-        # URLMap. Session-bound é seguro para o alvo single-tenant.
+        # CSRF token bound to the SESSION (not the method+path pair). route_csrf's
+        # per-path binding uses `request.path` = POST-MOUNT PATH_INFO ("/login",
+        # not "/studio/login"), which would confuse form-action × token under the
+        # URLMap. Session-bound is safe for the single-tenant target.
         plugin :route_csrf, require_request_specific_tokens: false, csrf_failure: :empty_403
         plugin :flash
         self
       end
 
-      # Segredo de sessão determinístico por deploy (>=64 bytes exigidos pelo Roda
-      # sessions). Deriva do token de admin → estável entre restarts (a sessão
-      # sobrevive) sem uma env var nova; troca o token e todas as sessões caem.
+      # Deterministic per-deploy session secret (>=64 bytes required by Roda
+      # sessions). Derives from the admin token → stable across restarts (the session
+      # survives) without a new env var; change the token and all sessions drop.
       def derive_secret(admin_token)
         Digest::SHA512.hexdigest("harness-studio-session-v1:#{admin_token}")
       end
 
-      # --- Restart recomendado — estado por processo -----------------
+      # --- Restart recommended — per-process state -------------------
       def restart_needed? = @restart_needed == true
       def mark_restart_needed! = (@restart_needed = true)
       def clear_restart_needed! = (@restart_needed = false)
@@ -123,15 +123,15 @@ module Studio
       response["x-content-type-options"] = "nosniff"
       response["referrer-policy"] = "same-origin"
 
-      # Assets versionados: públicos (a UI carrega o bundle ANTES do login).
+      # Versioned assets: public (the UI loads the bundle BEFORE login).
       r.on "assets", "dist" do
         r.get String do |name|
           serve_asset(name)
         end
       end
 
-      # Login: único caminho sem sessão. GET mostra o form; POST valida o
-      # token em tempo constante e, se ok, marca a sessão e redireciona.
+      # Login: the only path without a session. GET shows the form; POST validates the
+      # token in constant time and, if ok, marks the session and redirects.
       r.is "login" do
         r.get { view("login") }
         r.post do
@@ -147,7 +147,7 @@ module Studio
         end
       end
 
-      # --- FAIL-CLOSED: daqui pra baixo exige sessão autenticada -------------
+      # --- FAIL-CLOSED: from here down requires an authenticated session ----
       r.redirect("/studio/login") unless authenticated?
 
       r.post "logout" do
@@ -156,32 +156,32 @@ module Studio
         r.redirect("/studio/login")
       end
 
-      # Dispensa o banner de "restart recomendado" sem reiniciar (o operador
-      # reconhece e segue). Um restart de verdade zera a flag por conta própria.
+      # Dismisses the "restart recommended" banner without restarting (the operator
+      # acknowledges and moves on). A real restart clears the flag on its own.
       r.post "restart-ack" do
         check_csrf!
         self.class.clear_restart_needed!
         r.redirect(safe_back(r.params["back"]))
       end
 
-      # `/studio` e `/studio/` → lista de agentes.
+      # `/studio` and `/studio/` → agents list.
       r.root { r.redirect("/studio/agents") }
 
-      # --- Agentes: lista + detalhe/autoria --------------------
+      # --- Agents: list + detail/authoring ---------------------
       r.on "agents" do
-        # /studio/agents — grid dos agentes (lê o ProfileSource).
+        # /studio/agents — agents grid (reads the ProfileSource).
         r.is do
           r.get do
             @agents = harness[:profile_source].all.sort_by(&:id)
             view("agents")
           end
 
-          # POST /studio/agents — cria um agente ("cada um cria
-          # sua BIA"). Dispara :create_agent; redireciona pro detalhe do novo.
+          # POST /studio/agents — creates an agent ("everyone creates
+          # their own BIA"). Fires :create_agent; redirects to the new one's detail.
           r.post do
             check_csrf!
             id = presence(r.params["id"])
-            result = with_flash("Agente '#{id}' criado.") do
+            result = with_flash("Agent '#{id}' created.") do
               dispatch(:create_agent, {
                          id: id, model: presence(r.params["model"]),
                          provider: presence(r.params["provider"]),
@@ -192,34 +192,34 @@ module Studio
           end
         end
 
-        # /studio/agents/:id — a página de autoria de um agente.
+        # /studio/agents/:id — an agent's authoring page.
         r.on String do |id|
           id = utf8(id)
           @agent = harness[:profile_source].fetch(id)
           next_404 unless @agent
 
-          # GET /studio/agents/:id — config + prompts + skills + memória + histórico.
+          # GET /studio/agents/:id — config + prompts + skills + memory + history.
           r.is do
             r.get { render_agent_detail }
           end
 
-          # Config/model → :update_agent (merge de patch).
+          # Config/model → :update_agent (patch merge).
           r.post "config" do
             check_csrf!
-            with_flash("Configuração salva.") do
+            with_flash("Configuration saved.") do
               dispatch(:update_agent, config_patch(r))
             end
             r.redirect(agent_path(id))
           end
 
-          # Prompts store-backed. Escrever também garante que o arquivo
-          # entre em `prompt_files` — senão o Prompt provider não o carregaria.
-          # prompt_files é sincronizado pelos próprios Commands (write/delete
-          # registram/removem o arquivo) — o Studio só despacha a operação.
+          # Store-backed prompts. Writing also ensures the file
+          # enters `prompt_files` — otherwise the Prompt provider wouldn't load it.
+          # prompt_files is synced by the Commands themselves (write/delete
+          # register/remove the file) — the Studio just dispatches the operation.
           r.on "prompts" do
             r.post "delete" do
               check_csrf!
-              with_flash("Prompt removido.") do
+              with_flash("Prompt removed.") do
                 dispatch(:delete_agent_file, { agent_id: id, file: presence(r.params["file"]) })
               end
               r.redirect(agent_path(id))
@@ -227,7 +227,7 @@ module Studio
 
             r.post "restore" do
               check_csrf!
-              with_flash("Versão restaurada.") do
+              with_flash("Version restored.") do
                 dispatch(:restore_agent_file, {
                            agent_id: id, file: presence(r.params["file"]),
                            version: r.params["version"]
@@ -238,7 +238,7 @@ module Studio
 
             r.post do
               check_csrf!
-              with_flash("Prompt salvo.") do
+              with_flash("Prompt saved.") do
                 dispatch(:write_agent_file, {
                            agent_id: id, file: presence(r.params["file"]), content: r.params["content"].to_s
                          })
@@ -247,24 +247,24 @@ module Studio
             end
           end
 
-          # Skills do agente → :update_agent com a allowlist `skills`.
-          # "todas" = nil; senão o subconjunto marcado (possivelmente []).
+          # Agent skills → :update_agent with the `skills` allowlist.
+          # "all" = nil; otherwise the checked subset (possibly []).
           r.post "skills" do
             check_csrf!
             skills = r.params["all_skills"] == "1" ? nil : Array(r.params["skills"]).map(&:to_s)
-            with_flash("Skills atualizadas.") do
+            with_flash("Skills updated.") do
               dispatch(:update_agent, { id: id, skills: skills })
             end
             r.redirect(agent_path(id))
           end
 
-          # Memória do agente. Escopada por tenant = id do agente — o
-          # MESMO tenant que o playground usa ao conversar, então o que se edita
-          # aqui é o que a BIA lê no turno. Cada agente, sua memória.
+          # Agent memory. Scoped by tenant = agent id — the
+          # SAME tenant the playground uses when chatting, so what is edited
+          # here is what the BIA reads on the turn. Each agent, its own memory.
           r.on "memory" do
             r.post "fact" do
               check_csrf!
-              with_flash("Fato salvo.") do
+              with_flash("Fact saved.") do
                 dispatch(:memory_put_fact, {
                            tenant: id, key: presence(r.params["key"]), value: r.params["value"].to_s
                          })
@@ -273,14 +273,14 @@ module Studio
             end
             r.post "forget" do
               check_csrf!
-              with_flash("Fato esquecido.") do
+              with_flash("Fact forgotten.") do
                 dispatch(:memory_forget_fact, { tenant: id, key: presence(r.params["key"]) })
               end
               r.redirect(agent_path(id, "memory"))
             end
             r.post "note" do
               check_csrf!
-              with_flash("Nota adicionada.") do
+              with_flash("Note added.") do
                 dispatch(:memory_add_note, { tenant: id, text: r.params["text"].to_s })
               end
               r.redirect(agent_path(id, "memory"))
@@ -289,23 +289,23 @@ module Studio
         end
       end
 
-      # --- Skills: catálogo + matriz de agentes + editor -----------
+      # --- Skills: catalog + agents matrix + editor ----------------
       r.on "skills" do
         r.is do
           r.get { render_skills_index }
-          # POST /studio/skills → grava a skill (SKILL.md completo) e recarrega
-          # o catálogo (hot). Cobre "nova skill" e "salvar edição".
+          # POST /studio/skills → writes the skill (full SKILL.md) and reloads
+          # the catalog (hot). Covers "new skill" and "save edit".
           r.post do
             check_csrf!
             name = presence(r.params["name"])
-            with_flash("Skill salva.") do
+            with_flash("Skill saved.") do
               dispatch(:write_skill, { name: name, content: r.params["content"].to_s })
             end
             r.redirect(name ? "/studio/skills/#{Rack::Utils.escape(name)}" : "/studio/skills")
           end
         end
 
-        # Editor de skill nova (antes do matcher genérico String).
+        # New skill editor (before the generic String matcher).
         r.get "new" do
           @skill_name = ""
           @skill_content = new_skill_template
@@ -322,38 +322,38 @@ module Studio
               view("skill_edit")
             end
           end
-          # Habilita/desabilita a skill em N agentes de uma vez.
+          # Enables/disables the skill on N agents at once.
           r.post "agents" do
             check_csrf!
             agent_ids = Array(r.params["agent_ids"]).map(&:to_s)
-            result = with_flash("Agentes da skill atualizados.") do
+            result = with_flash("Skill's agents updated.") do
               dispatch(:set_skill_agents, { name: name, agent_ids: agent_ids })
             end
             skipped = Array(result && result[:skipped_all])
             if skipped.any?
-              flash["notice"] = "#{flash['notice']} — #{skipped.size} agente(s) com 'todas' as skills ficaram intactos."
+              flash["notice"] = "#{flash['notice']} — #{skipped.size} agent(s) with 'all' skills were left intact."
             end
             r.redirect("/studio/skills")
           end
         end
       end
 
-      # --- Tools: matriz tool × agente + autoria de tools POR DADOS ------------
+      # --- Tools: tool × agent matrix + DATA-DEFINED tool authoring -----------
       r.on "tools" do
-        # Autoria de tool por dados (Fase 5). Sob /tools/def/* — ANTES do matcher
-        # genérico `r.post String` (que é a matriz allow/deny por :id de agente).
+        # Data-defined tool authoring (Phase 5). Under /tools/def/* — BEFORE the
+        # generic `r.post String` matcher (which is the allow/deny matrix per agent :id).
         r.on "def" do
-          # /studio/tools/def/new — editor vazio.
+          # /studio/tools/def/new — empty editor.
           r.get "new" do
             render_tool_edit(name: "", tool: nil)
           end
 
-          # POST /studio/tools/def — cria (create_only: recusa sobrescrever).
+          # POST /studio/tools/def — creates (create_only: refuses to overwrite).
           r.is do
             r.post do
               check_csrf!
               name = presence(r.params["name"])
-              result = with_flash("Tool '#{name}' criada.") do
+              result = with_flash("Tool '#{name}' created.") do
                 dispatch(:write_data_tool, tool_patch(r).merge(create_only: true))
               end
               r.redirect(result ? tool_def_path(name) : "/studio/tools")
@@ -362,28 +362,28 @@ module Studio
 
           r.on String do |name|
             name = utf8(name)
-            # GET /studio/tools/def/:name — editor carregado (segredo mascarado).
+            # GET /studio/tools/def/:name — loaded editor (secret masked).
             r.is do
               r.get do
                 tool = harness[:tool_store]&.get(name)
                 next_404 unless tool
                 render_tool_edit(name: name, tool: tool)
               end
-              # POST /studio/tools/def/:name — atualiza (upsert).
+              # POST /studio/tools/def/:name — updates (upsert).
               r.post do
                 check_csrf!
-                with_flash("Tool '#{name}' salva.") { dispatch(:write_data_tool, tool_patch(r)) }
+                with_flash("Tool '#{name}' saved.") { dispatch(:write_data_tool, tool_patch(r)) }
                 r.redirect(tool_def_path(name))
               end
             end
             r.post "delete" do
               check_csrf!
-              with_flash("Tool '#{name}' removida.") { dispatch(:delete_data_tool, { name: name }) }
+              with_flash("Tool '#{name}' removed.") { dispatch(:delete_data_tool, { name: name }) }
               r.redirect("/studio/tools")
             end
             r.post "restore" do
               check_csrf!
-              with_flash("Versão restaurada.") do
+              with_flash("Version restored.") do
                 dispatch(:restore_data_tool, { name: name, index: r.params["index"] })
               end
               r.redirect(tool_def_path(name))
@@ -393,47 +393,47 @@ module Studio
 
         r.is { r.get { render_tools_matrix } }
 
-        # POST /studio/tools/:id — grava a allowlist de tools de um agente.
-        # "todas" = nil; senão o subconjunto marcado. `deny` é preservado.
+        # POST /studio/tools/:id — writes an agent's tools allowlist.
+        # "all" = nil; otherwise the checked subset. `deny` is preserved.
         r.post String do |id|
           check_csrf!
           id = utf8(id)
           profile = harness[:profile_source].fetch(id)
           next_404 unless profile
           allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
-          with_flash("Tools do agente '#{id}' atualizadas.") do
+          with_flash("Agent '#{id}' tools updated.") do
             dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
           end
           r.redirect("/studio/tools")
         end
       end
 
-      # --- Settings gerais + providers de LLM ----------------------
+      # --- General settings + LLM providers ------------------------
       r.on "settings" do
         r.is do
           r.get { render_settings }
-          # Settings gerais (streaming/timeouts/compaction) → :update_settings.
+          # General settings (streaming/timeouts/compaction) → :update_settings.
           r.post do
             check_csrf!
-            with_flash("Settings salvos.") do
+            with_flash("Settings saved.") do
               dispatch(:update_settings, { patch: settings_patch(r) })
             end
             r.redirect("/studio/settings")
           end
         end
 
-        # Providers de LLM (sub-recurso): CRUD com api_key mascarada (sentinel).
+        # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
         r.on "providers" do
           r.post "delete" do
             check_csrf!
-            with_flash("Provider removido.") do
+            with_flash("Provider removed.") do
               dispatch(:delete_llm_provider, { api: presence(r.params["api"]) })
             end
             r.redirect("/studio/settings#llm")
           end
           r.post do
             check_csrf!
-            with_flash("Provider salvo.") do
+            with_flash("Provider saved.") do
               dispatch(:upsert_llm_provider, provider_patch(r))
             end
             r.redirect("/studio/settings#llm")
@@ -441,16 +441,16 @@ module Studio
         end
       end
 
-      # --- MCP: instâncias com credenciais mascaradas --------------
+      # --- MCP: instances with masked credentials ------------------
       r.on "mcp" do
         r.is do
           r.get { render_mcp }
           r.post do
             check_csrf!
-            with_flash("Instância MCP salva.") do
+            with_flash("MCP instance saved.") do
               dispatch(:upsert_mcp, mcp_patch(r))
-              # Os servidores MCP são ligados no boot do runtime; a instância nova
-              # só entra em vigor após reiniciar. Acende o banner de "restart".
+              # MCP servers are wired at runtime boot; the new instance
+              # only takes effect after a restart. Lights the "restart" banner.
               self.class.mark_restart_needed!
             end
             r.redirect("/studio/mcp")
@@ -458,7 +458,7 @@ module Studio
         end
         r.post "delete" do
           check_csrf!
-          with_flash("Instância MCP removida.") do
+          with_flash("MCP instance removed.") do
             dispatch(:delete_mcp, { name: presence(r.params["name"]) })
             self.class.mark_restart_needed!
           end
@@ -466,15 +466,15 @@ module Studio
         end
       end
 
-      # --- Arquivos de sistema globais -----------------------------
-      # Valem para TODOS os agentes (o Prompt provider injeta antes da
-      # identidade individual). Editor code-editor + versões, como os prompts.
+      # --- Global system files -------------------------------------
+      # Apply to ALL agents (the Prompt provider injects them before the
+      # individual identity). Code-editor + versions, like the prompts.
       r.on "system-files" do
         r.is do
           r.get { render_system_files }
           r.post do
             check_csrf!
-            with_flash("Arquivo de sistema salvo.") do
+            with_flash("System file saved.") do
               dispatch(:write_system_file, {
                          file: presence(r.params["file"]), content: r.params["content"].to_s
                        })
@@ -484,14 +484,14 @@ module Studio
         end
         r.post "delete" do
           check_csrf!
-          with_flash("Arquivo removido.") do
+          with_flash("File removed.") do
             dispatch(:delete_system_file, { file: presence(r.params["file"]) })
           end
           r.redirect("/studio/system-files")
         end
         r.post "restore" do
           check_csrf!
-          with_flash("Versão restaurada.") do
+          with_flash("Version restored.") do
             dispatch(:restore_system_file, {
                        file: presence(r.params["file"]), version: r.params["version"]
                      })
@@ -500,13 +500,13 @@ module Studio
         end
       end
 
-      # --- Chats: índice de conversas ------------------------------
-      # Read-only: lista sessões e linka pro viewer existente (/sessions/:id).
+      # --- Chats: conversations index ------------------------------
+      # Read-only: lists sessions and links to the existing viewer (/sessions/:id).
       r.on "chats" do
         r.is { r.get { render_chats } }
       end
 
-      # --- Histórico: viewer read-only de uma sessão ---------------
+      # --- History: read-only viewer of a session ------------------
       r.on "sessions" do
         r.on String do |sid|
           sid = utf8(sid)
@@ -514,7 +514,7 @@ module Studio
             @session = harness[:session_store]&.find(sid)
             next_404 unless @session
 
-            # Trace de tool-calls da sessão (debug): agrupado por turno na view.
+            # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (harness[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
             view("session")
@@ -522,8 +522,8 @@ module Studio
         end
       end
 
-      # Playground: envia `send_message` (o MESMO Command da API) e streama a
-      # resposta ao vivo pelo island `live-transcript` (SSE de /v1/events).
+      # Playground: sends `send_message` (the SAME Command as the API) and streams the
+      # response live through the `live-transcript` island (SSE from /v1/events).
       r.on "playground" do
         r.get do
           @agent = presence(r.params["agent"]) || default_agent
@@ -536,9 +536,9 @@ module Studio
           agent = presence(r.params["agent"]) || default_agent
           typed_session = presence(r.params["session_id"])
           message = r.params["message"].to_s
-          # Sessão em branco = nova conversa: cria via Command (create_session
-          # gera o id — o Studio não escreve no store direto). Um id digitado
-          # continua uma conversa existente (send_message exige que exista).
+          # Blank session = new conversation: created via Command (create_session
+          # generates the id — the Studio doesn't write to the store directly). A typed id
+          # continues an existing conversation (send_message requires it to exist).
           session_id = typed_session || create_session
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
           r.redirect(playground_path(agent, session_id))
@@ -548,7 +548,7 @@ module Studio
         end
       end
 
-      # Rota autenticada desconhecida → 404 amigável (não o corpo vazio do Roda).
+      # Unknown authenticated route → friendly 404 (not Roda's empty body).
       response.status = 404
       view("not_found")
     end
@@ -559,9 +559,9 @@ module Studio
 
     def harness = self.class.harness
 
-    # Navegação da sidebar, agrupada por intenção do operador (build / runtime /
-    # operate). Cada item: [label, href, icon-key]. A view marca o item ativo
-    # comparando o path e renderiza o ícone via `nav_icon`.
+    # Sidebar navigation, grouped by operator intent (build / runtime /
+    # operate). Each item: [label, href, icon-key]. The view marks the active item
+    # by comparing the path and renders the icon via `nav_icon`.
     def nav_sections
       [
         ["build", [
@@ -581,9 +581,9 @@ module Studio
       ]
     end
 
-    # Ícone SVG inline (stroke, currentColor) por chave de nav. Inline SVG é
-    # permitido pela CSP (é elemento no HTML, não um recurso externo). 20×20,
-    # herda a cor do link. Fonte: conjunto de ícones de linha estilo Lucide.
+    # Inline SVG icon (stroke, currentColor) per nav key. Inline SVG is
+    # allowed by the CSP (it's an HTML element, not an external resource). 20×20,
+    # inherits the link color. Source: a Lucide-style line icon set.
     NAV_ICONS = {
       agents: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
       skills: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
@@ -602,12 +602,12 @@ module Studio
 
     def authenticated? = session["auth"] == true
 
-    # --- Polish: tema, health chip, banner de restart --------------
+    # --- Polish: theme, health chip, restart banner ----------------
 
     def restart_needed? = self.class.restart_needed?
 
-    # Preferência de tema lida do cookie (aplicada server-side em <html> → sem
-    # flash). Allowlist estrita: valor inesperado cai em "auto".
+    # Theme preference read from the cookie (applied server-side on <html> → no
+    # flash). Strict allowlist: an unexpected value falls back to "auto".
     THEMES = %w[auto light dark].freeze
     def theme_pref
       value = request.cookies["harness.theme"].to_s
@@ -626,8 +626,8 @@ module Studio
       parts
     end
 
-    # Só redireciona para um caminho LOCAL (evita open-redirect via `back`):
-    # começa com "/", mas não "//" (protocol-relative) nem contém esquema.
+    # Only redirects to a LOCAL path (avoids open-redirect via `back`):
+    # starts with "/", but not "//" (protocol-relative) nor contains a scheme.
     def safe_back(path)
       p = presence(path)
       return "/studio/agents" unless p&.start_with?("/")
@@ -636,8 +636,8 @@ module Studio
       p
     end
 
-    # Fail-closed POR CONSTRUÇÃO (paridade AdminAuth): sem token configurado, o
-    # compare nunca passa → studio inacessível. Comparação em tempo constante.
+    # Fail-closed BY CONSTRUCTION (AdminAuth parity): with no token configured, the
+    # compare never passes → studio inaccessible. Constant-time comparison.
     def authenticate(provided)
       configured = harness[:config][:admin_token].to_s
       provided = provided.to_s
@@ -651,34 +651,34 @@ module Studio
       ids.include?("bia") ? "bia" : (ids.first || "bia")
     end
 
-    # 404 amigável a partir de qualquer ponto do roteamento (agente/sessão
-    # inexistente). `throw :halt` com a resposta já montada (padrão Roda).
+    # Friendly 404 from any point in the routing (missing agent/session).
+    # `throw :halt` with the response already assembled (Roda pattern).
     def next_404
       response.status = 404
       response.write(view("not_found"))
       request.halt
     end
 
-    # Roda captura segmentos de path com encoding ASCII-8BIT (binário). Os keys
-    # do Store foram gravados em UTF-8; um `get` com string binária NÃO casa no
-    # backend SQLite (bind como BLOB) e ainda gravaria uma chave-duplicata se
-    # entrasse num payload de escrita. Normaliza no ÚNICO ponto onde o binário
-    # nasce — a borda Roda — para que o core (agnóstico de framework) só veja
-    # strings UTF-8. Os bytes vêm da URL já decodificada (UTF-8), então
-    # force_encoding é correto, não uma reinterpretação.
+    # Roda captures path segments with ASCII-8BIT (binary) encoding. The Store
+    # keys were written in UTF-8; a `get` with a binary string does NOT match in the
+    # SQLite backend (binds as BLOB) and would even write a duplicate key if it
+    # entered a write payload. Normalizes at the ONLY point where the binary
+    # is born — the Roda edge — so the core (framework-agnostic) only sees
+    # UTF-8 strings. The bytes come from the already-decoded URL (UTF-8), so
+    # force_encoding is correct, not a reinterpretation.
     def utf8(str) = str.to_s.dup.force_encoding(Encoding::UTF_8)
 
-    # Despacha um Command pelo bus (mesma superfície da API) e retorna o
-    # resultado. `tenant` só é usado pela memória.
+    # Dispatches a Command through the bus (same surface as the API) and returns the
+    # result. `tenant` is only used by memory.
     def dispatch(type, payload, tenant: nil)
       harness[:command_bus].dispatch(
         Harness::Command.build(type, payload, transport: :studio, tenant: tenant)
       )
     end
 
-    # Envolve um dispatch de escrita com flash de sucesso/erro e devolve o
-    # resultado (ou nil em erro). Erros de domínio (Validation/NotFound) viram
-    # flash vermelho — nunca 500 na cara do usuário.
+    # Wraps a write dispatch with a success/error flash and returns the
+    # result (or nil on error). Domain errors (Validation/NotFound) become a
+    # red flash — never a 500 in the user's face.
     def with_flash(success)
       result = yield
       flash["notice"] = success
@@ -688,7 +688,7 @@ module Studio
       nil
     end
 
-    # --- Leitura de detalhe de agente ----------------------------------------
+    # --- Agent detail read ---------------------------------------------------
 
     def render_agent_detail
       id = @agent.id
@@ -709,8 +709,8 @@ module Studio
       view("agent_detail")
     end
 
-    # Patch de config a partir do form (tipos nativos: memory bool, limits int).
-    # Preserva os limits existentes, sobrescrevendo só os campos do form.
+    # Config patch from the form (native types: memory bool, limits int).
+    # Preserves the existing limits, overwriting only the form's fields.
     def config_patch(r)
       limits = @agent.limits.dup
       { "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |field|
@@ -735,9 +735,9 @@ module Studio
       view("skills")
     end
 
-    # Conteúdo bruto para o editor: preferir o store (SKILL.md real), senão
-    # reconstruir a partir do que o catálogo parseou (edição de uma skill de
-    # disco cria um override no store — Store vence).
+    # Raw content for the editor: prefer the store (real SKILL.md), otherwise
+    # reconstruct from what the catalog parsed (editing a disk skill
+    # creates an override in the store — Store wins).
     def skill_source(name)
       raw = harness[:skill_store]&.get(name)
       return raw if raw
@@ -753,8 +753,8 @@ module Studio
         "# #{name}\n\nFull instructions, loaded on demand by the `load_skill` tool.\n"
     end
 
-    # Uma skill está ativa para um agente se ele tem `skills` = nil (todas) ou a
-    # lista inclui o nome. Usado para pré-marcar os checkboxes da matriz.
+    # A skill is active for an agent if it has `skills` = nil (all) or the
+    # list includes the name. Used to pre-check the matrix checkboxes.
     def skill_enabled_for?(profile, skill_name)
       profile.skills.nil? || Array(profile.skills).map(&:to_s).include?(skill_name.to_s)
     end
@@ -763,19 +763,19 @@ module Studio
 
     def render_tools_matrix
       @tools = (harness[:tool_catalog]&.all || []).sort_by(&:name)
-      # Nomes das tools POR DADOS (editáveis pela UI). O resto do catálogo são
-      # tools de código (só allow/deny). Usado p/ marcar e linkar o editor.
+      # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
+      # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = harness[:tool_store] ? harness[:tool_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
       view("tools")
     end
 
-    # nil = todas; senão a lista. Pré-marca os checkboxes por agente.
+    # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
     def tool_allowed_for?(profile, tool_name)
       profile.tools_allow.nil? || Array(profile.tools_allow).map(&:to_s).include?(tool_name.to_s)
     end
 
-    # --- Autoria de tool por dados (Fase 5) ----------------------------------
+    # --- Data-defined tool authoring (Phase 5) -------------------------------
 
     def render_tool_edit(name:, tool:)
       @tool_name = name
@@ -784,8 +784,8 @@ module Studio
       view("tool_edit")
     end
 
-    # Definição (mascarada) -> Hash de campos-texto prontos pro form. tool=nil
-    # (nova) -> defaults. Espelha env_lines/param_lines pra headers/query/params.
+    # Definition (masked) -> Hash of text fields ready for the form. tool=nil
+    # (new) -> defaults. Mirrors env_lines/param_lines for headers/query/params.
     def tool_form(tool)
       t = tool || {}
       req = t["request"] || {}
@@ -802,9 +802,9 @@ module Studio
       }
     end
 
-    # Payload de :write_data_tool a partir do form. request/response aninhados;
-    # headers/query como "chave=valor" por linha (mesmo idioma do env do MCP —
-    # segredo mascarado volta como sentinel e é reconciliado no store).
+    # :write_data_tool payload from the form. nested request/response;
+    # headers/query as "key=value" per line (same idiom as the MCP env —
+    # a masked secret comes back as a sentinel and is reconciled in the store).
     def tool_patch(r)
       {
         name: presence(r.params["name"]),
@@ -826,9 +826,9 @@ module Studio
       }
     end
 
-    # Parâmetros: uma linha por param, pipe-delimitada (CSP proíbe JS de
-    # linhas dinâmicas; textarea é o caminho honesto, como o env do MCP):
-    #   nome | tipo | required|optional | descrição
+    # Parameters: one line per param, pipe-delimited (CSP forbids JS for
+    # dynamic lines; a textarea is the honest path, like the MCP env):
+    #   name | type | required|optional | description
     def parse_param_lines(text)
       text.to_s.each_line.filter_map do |line|
         line = line.strip
@@ -842,9 +842,9 @@ module Studio
       end
     end
 
-    # Inverso: params (do store) -> texto pro textarea. Aceita o array plano legado
-    # E o JSON Schema (Fase 7): renderiza a visão de TOPO (aninhamento não cabe no
-    # textarea plano — tools aninhadas são autoradas por manifesto, Etapa B).
+    # Inverse: params (from the store) -> text for the textarea. Accepts the legacy flat array
+    # AND the JSON Schema (Phase 7): renders the TOP-LEVEL view (nesting doesn't fit in the
+    # flat textarea — nested tools are authored via manifest, Step B).
     def param_lines(params)
       flat_params(params).map do |p|
         req = p["required"] == false ? "optional" : "required"
@@ -852,7 +852,7 @@ module Studio
       end.join("\n")
     end
 
-    # JSON Schema (Hash) OU array plano -> [{name,type,required,description}] de topo.
+    # JSON Schema (Hash) OR flat array -> top-level [{name,type,required,description}].
     def flat_params(params)
       if params.is_a?(Hash)
         props = params["properties"] || {}
@@ -869,10 +869,10 @@ module Studio
 
     def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"
 
-    # --- Histórico -----------------------------------------------------------
+    # --- History -------------------------------------------------------------
 
-    # Conversas recentes (todos os agentes — a Session não carimba o agente que
-    # a produziu). Mais recentes primeiro, capadas.
+    # Recent conversations (all agents — the Session doesn't stamp the agent that
+    # produced it). Most recent first, capped.
     def recent_sessions(limit: 8)
       store = harness[:session_store]
       return [] unless store
@@ -895,9 +895,9 @@ module Studio
       view("settings")
     end
 
-    # Patch de settings a partir do form. streaming/compaction são bool
-    # (checkbox); os timeouts são inteiros; compaction.keep_last inteiro. Só o que
-    # veio no form entra no patch (o resto e os defaults são preservados no store).
+    # Settings patch from the form. streaming/compaction are bool
+    # (checkbox); the timeouts are integers; compaction.keep_last integer. Only what
+    # came in the form enters the patch (the rest and the defaults are preserved in the store).
     def settings_patch(r)
       patch = {
         "streaming" => r.params["streaming"] == "1",
@@ -915,9 +915,9 @@ module Studio
       patch
     end
 
-    # Provider de LLM a partir do form. api_key é sentinel-aware: o form
-    # pré-preenche com o sentinel quando já existe uma chave, então reenviar
-    # sem tocar preserva; string nova substitui; "" limpa. models = CSV.
+    # LLM provider from the form. api_key is sentinel-aware: the form
+    # pre-fills with the sentinel when a key already exists, so resubmitting
+    # without touching preserves it; a new string replaces it; "" clears it. models = CSV.
     def provider_patch(r)
       {
         api: presence(r.params["api"]),
@@ -935,10 +935,10 @@ module Studio
       view("mcp")
     end
 
-    # Instância MCP a partir do form. `env` vem como linhas "CHAVE=valor" (CSP
-    # proíbe JS inline pra add/remove linha; textarea é o caminho simples e
-    # honesto). Os valores mascarados voltam como sentinel — mantê-los preserva
-    # o segredo; trocar substitui; apagar a linha limpa.
+    # MCP instance from the form. `env` comes as "KEY=value" lines (CSP
+    # forbids inline JS for add/remove line; a textarea is the simple, honest
+    # path). Masked values come back as a sentinel — keeping them preserves
+    # the secret; changing replaces; deleting the line clears it.
     def mcp_patch(r)
       {
         name: presence(r.params["name"]),
@@ -969,7 +969,7 @@ module Studio
       view("chats")
     end
 
-    # "CHAVE=valor" por linha -> Hash. Ignora linhas em branco e comentários (#).
+    # "KEY=value" per line -> Hash. Ignores blank lines and comments (#).
     def parse_kv_lines(text)
       text.to_s.each_line.filter_map do |line|
         line = line.strip
@@ -990,14 +990,14 @@ module Studio
 
     # --- Playground ----------------------------------------------------------
 
-    # Despacha o send_message pelo MESMO bus da API (nada de escrita direta em
-    # store). tenant = agente → a memória do turno é a do agente (paridade com a
-    # página de memória). A UI observa o turno via SSE.
+    # Dispatches the send_message through the SAME bus as the API (no direct writes to a
+    # store). tenant = agent → the turn's memory is the agent's (parity with the
+    # memory page). The UI observes the turn via SSE.
     def dispatch_send_message(agent:, session_id:, message:)
       dispatch(:send_message, { agent: agent, session_id: session_id, message: message }, tenant: agent)
     end
 
-    # Cria uma sessão nova pelo bus (create_session gera o id) e devolve o id.
+    # Creates a new session via the bus (create_session generates the id) and returns the id.
     def create_session
       dispatch(:create_session, { vars: { "canal" => "studio" } }).id
     end
@@ -1013,8 +1013,8 @@ module Studio
       anchor ? "#{base}##{anchor}" : base
     end
 
-    # Serve um asset versionado do dist. `File.basename` mata path traversal; só
-    # arquivos existentes no dir de dist são servidos.
+    # Serves a versioned asset from dist. `File.basename` kills path traversal; only
+    # files that exist in the dist dir are served.
     def serve_asset(name)
       base = File.basename(name)
       path = File.join(ASSETS_DIR, base)
@@ -1033,12 +1033,12 @@ module Studio
       s.empty? ? nil : s
     end
 
-    # Sentinel de segredo mascarado (para pré-preencher campos de credencial nos
-    # forms: reenviar sem tocar preserva o segredo real no store).
+    # Masked-secret sentinel (to pre-fill credential fields in the
+    # forms: resubmitting without touching preserves the real secret in the store).
     def secret_sentinel = Harness::SecretMasking::SENTINEL
 
-    # Env de uma instância MCP (já MASCARADO) -> texto "CHAVE=valor" por linha,
-    # para o textarea. Ordena por chave (estável entre renders).
+    # An MCP instance's env (already MASKED) -> "KEY=value" text per line,
+    # for the textarea. Sorts by key (stable across renders).
     def env_lines(env)
       (env || {}).sort.map { |k, v| "#{k}=#{v}" }.join("\n")
     end
