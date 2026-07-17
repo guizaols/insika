@@ -69,7 +69,7 @@ module Studio
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
-                    system_file_store: nil, session_secret: nil)
+                    system_file_store: nil, tool_trace_store: nil, session_secret: nil)
         @harness = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -82,7 +82,10 @@ module Studio
           # config-de-runtime (settings/LLM/MCP) + arquivos de sistema
           # globais + índice de conversas. Todos opcionais (empty-state se nil).
           settings_store: settings_store, llm_provider_store: llm_provider_store,
-          mcp_store: mcp_store, system_file_store: system_file_store
+          mcp_store: mcp_store, system_file_store: system_file_store,
+          # trace de tool-calls por sessão (debug): args + resultado + status por
+          # turno, renderizado no viewer de sessão (FOLLOWUP §3.1).
+          tool_trace_store: tool_trace_store
         }.freeze
         # flag de "restart recomendado" — em memória, POR PROCESSO. Uma
         # mudança de config que o runtime só relê no boot (ex.: instâncias MCP são
@@ -510,6 +513,10 @@ module Studio
           r.get do
             @session = harness[:session_store]&.find(sid)
             next_404 unless @session
+
+            # Trace de tool-calls da sessão (debug): agrupado por turno na view.
+            @tool_traces = (harness[:tool_trace_store]&.for_session(sid) || [])
+                           .group_by { |t| t["turn"] }
             view("session")
           end
         end
