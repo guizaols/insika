@@ -22,7 +22,7 @@ module HarnessCode
 
       description "Runs a shell command with the working directory set to the workspace root. " \
                   "Returns {exit_status, output}. Requires human approval."
-      param :command, desc: "The shell command to run (executed via /bin/bash -lc)"
+      param :command, desc: "The shell command to run (executed via /bin/bash -c)"
 
       def name = "bash"
 
@@ -31,7 +31,10 @@ module HarnessCode
           cmd = command.to_s
           raise "empty command" if cmd.strip.empty?
 
-          output, status = Open3.capture2e("/bin/bash", "-lc", cmd, chdir: workspace.root)
+          # `-c` (non-login): a login shell would source ~/.bash_profile on every
+          # call, adding latency and letting the host's dotfiles mutate PATH/env
+          # under the command — surprising and undesirable for a sandboxed tool.
+          output, status = Open3.capture2e("/bin/bash", "-c", cmd, chdir: workspace.root)
           { exit_status: status.exitstatus, output: output[0, MAX_OUTPUT] }
         end
       end

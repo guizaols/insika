@@ -57,6 +57,33 @@ RSpec.describe HarnessCode::Workspace do
       expect(workspace.resolve("new/file.txt", for_write: true))
         .to eq(File.join(@root, "new/file.txt"))
     end
+
+    # Sandbox-escape regression: before the fix, resolve(for_write: true) only
+    # vetted the STRING and the PARENT dir's realpath, never the final component.
+    # A symlink under the root pointing outside would pass every check and a
+    # subsequent File.write would FOLLOW it, clobbering a file outside the root.
+    it "on for_write, rejects a final component that is a symlink pointing outside the root" do
+      outside = Dir.mktmpdir
+      external = File.join(outside, "victim.txt")
+      File.write(external, "original")
+      File.symlink(external, File.join(@root, "link.txt"))
+
+      expect { workspace.resolve("link.txt", for_write: true) }
+        .to raise_error(described_class::Escape, /symlink/)
+    ensure
+      FileUtils.remove_entry(outside) if outside
+    end
+
+    it "on for_write, rejects a broken symlink whose (outside) target does not yet exist" do
+      outside = Dir.mktmpdir
+      # Dangling target: File.exist? is false, so only an lstat-based check catches it.
+      File.symlink(File.join(outside, "does-not-exist.txt"), File.join(@root, "dangling.txt"))
+
+      expect { workspace.resolve("dangling.txt", for_write: true) }
+        .to raise_error(described_class::Escape, /symlink/)
+    ensure
+      FileUtils.remove_entry(outside) if outside
+    end
   end
 
   describe "#relative" do

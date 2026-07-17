@@ -22,9 +22,11 @@ module HarnessCode
 
           content = File.read(abs, MAX_BYTES + 1, encoding: "UTF-8")
           truncated = content.bytesize > MAX_BYTES
-          { path: workspace.relative(abs),
-            content: truncated ? content.byteslice(0, MAX_BYTES) : content,
-            truncated: truncated }
+          # `byteslice` can cut through a multibyte UTF-8 char at the cap; `scrub`
+          # replaces the resulting invalid trailing bytes so we never emit an
+          # invalidly-encoded string to the model.
+          body = truncated ? content.byteslice(0, MAX_BYTES).scrub : content
+          { path: workspace.relative(abs), content: body, truncated: truncated }
         end
       end
     end

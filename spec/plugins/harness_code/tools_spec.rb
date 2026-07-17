@@ -78,6 +78,31 @@ RSpec.describe "HarnessCode tools" do
     it "rejects escaping the workspace" do
       expect(tool.execute(pattern: "x", path: "/etc")[:error]).to match(/sandbox/)
     end
+
+    it "searches dotfiles but prunes .git" do
+      write(".env", "SECRET=needle\n")
+      write(".git/config", "needle\n")
+      paths = tool.execute(pattern: "needle")[:matches].map { |m| m[:path] }
+      expect(paths).to include(".env")
+      expect(paths).not_to include(".git/config")
+    end
+
+    # ReDoS guard: a catastrophic pattern against a crafted line backtracks
+    # exponentially and, without a timeout, would hang the reactor forever (grep
+    # is read-only, so it runs with NO approval gate). It must fail fast with a
+    # structured error, bounded by Grep::PATTERN_TIMEOUT. The backreference here
+    # (`\1`) defeats the engine's memoization optimization, so the blow-up is
+    # real on Ruby 3.2+, not something the optimizer quietly linearizes.
+    it "returns a fast error for a catastrophic pattern instead of hanging" do
+      write("evil.txt", "#{"a" * 60}b")
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = tool.execute(pattern: '^(a+)+\1$')
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      expect(result[:error]).to match(/timed out/)
+      # Well under a hang: the guard trips near PATTERN_TIMEOUT (2s), not runaway.
+      expect(elapsed).to be < (HarnessCode::Tools::Grep::PATTERN_TIMEOUT + 3)
+    end
   end
 
   describe HarnessCode::Tools::WriteFile do
@@ -93,6 +118,21 @@ RSpec.describe "HarnessCode tools" do
       target = File.join(File.dirname(@root), "escape.txt")
       expect(tool.execute(path: "../escape.txt", content: "x")[:error]).to match(/sandbox/)
       expect(File.exist?(target)).to be(false)
+    end
+
+    # Sandbox-escape regression: a symlink inside the workspace whose target is
+    # OUTSIDE must not be followed — writing through it would clobber an external
+    # file while every string/parent check still passes.
+    it "refuses to write THROUGH a symlink that points outside the workspace" do
+      outside = Dir.mktmpdir
+      external = File.join(outside, "victim.txt")
+      File.write(external, "original")
+      File.symlink(external, File.join(@root, "link.txt"))
+
+      expect(tool.execute(path: "link.txt", content: "pwned")[:error]).to match(/sandbox/)
+      expect(File.read(external)).to eq("original")
+    ensure
+      FileUtils.remove_entry(outside) if outside
     end
   end
 
@@ -121,6 +161,17 @@ RSpec.describe "HarnessCode tools" do
     it "rejects escaping the workspace" do
       expect(tool.execute(path: "../f", old_string: "a", new_string: "b")[:error])
         .to match(/sandbox/)
+    end
+
+    # Regression: String#sub(pattern, replacement) interprets backreferences
+    # (\0, \1, \\, \k<name>) in the replacement even with a literal string
+    # pattern. The block form must be used so new_string lands verbatim.
+    it "writes new_string verbatim even when it contains backslash sequences" do
+      write("f.rb", "REPLACE_ME\n")
+      new_string = 'a\0b\1c\\\\d\k<x>'
+      expect(tool.execute(path: "f.rb", old_string: "REPLACE_ME", new_string: new_string))
+        .to eq(path: "f.rb", status: "edited")
+      expect(File.read(File.join(@root, "f.rb"))).to eq("#{new_string}\n")
     end
   end
 

@@ -15,6 +15,7 @@
 #
 # No core files are modified. Requiring this file gives HarnessCodeApp::Wiring.
 
+require "yaml"
 require_relative "../../lib/harness"
 require "ruby_llm"
 require_relative "../../server/app"
@@ -111,6 +112,17 @@ module HarnessCodeApp
       enabled: ["harness-code"], event_stream: EVENT_STREAM
     ).load_all
 
+    # Defense-in-depth (example-local, no core change): derive the approval set
+    # straight from the plugin manifest so EVERY tool flagged `side_effect: true`
+    # is approval-gated automatically. Hard-coding the list by hand risks drift —
+    # add a side-effecting tool and forget to list it, and it would run ungated.
+    # Reading it from the manifest (the single source of truth) makes that class
+    # of mistake impossible. See README §"Security boundary".
+    SIDE_EFFECT_TOOLS = YAML.load_file(File.join(PLUGIN_DIR, "harness.plugin.yml"))
+                            .fetch("tool_metadata", {})
+                            .select { |_name, meta| meta["side_effect"] }
+                            .keys.freeze
+
     TOOL_CATALOG   = Harness::ToolCatalog.new(tool_registry: REGISTRY)
     CATALOG        = Harness::SkillCatalog.new([])
     PROMPT_CATALOG = Harness::PromptCatalog.new([])
@@ -137,7 +149,7 @@ module HarnessCodeApp
       base_prompt: HarnessCodeApp::SYSTEM_PROMPT,
       tools_allow: %w[read_file list_dir grep write_file edit_file bash],
       policies: %i[tool_allowlist approval_required],
-      approvals_required: %w[write_file edit_file bash],
+      approvals_required: SIDE_EFFECT_TOOLS,
       limits: {
         tool_timeout: Integer(ENV.fetch("HARNESS_CODE_TOOL_TIMEOUT", "120")),
         turn_timeout: Integer(ENV.fetch("HARNESS_CODE_TURN_TIMEOUT", "600")),

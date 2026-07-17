@@ -29,7 +29,11 @@ module HarnessCode
             raise "old_string is not unique (#{occurrences} matches) — add more surrounding context"
           end
 
-          File.write(abs, content.sub(old_string.to_s, new_string.to_s))
+          # Block form so `new_string` is inserted VERBATIM. The 2-arg form of
+          # String#sub interprets backreferences (`\0`, `\1`, `\\`, `\k<name>`)
+          # in the replacement even when the pattern is a literal string, which
+          # would silently corrupt replacements containing a backslash.
+          File.write(abs, content.sub(old_string.to_s) { new_string.to_s })
           { path: workspace.relative(abs), status: "edited" }
         end
       end

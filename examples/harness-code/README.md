@@ -18,8 +18,11 @@ Two independent controls protect the highest-risk tools:
 1. **Sandbox (always on, enforced by the tools).** Every path a tool touches is
    resolved through `HarnessCode::Workspace`, which confines all operations to a
    single **workspace root** (`HARNESS_CODE_ROOT`, default: cwd). `..` traversal,
-   absolute paths outside the root, and symlinks pointing outside are rejected
-   *before any IO*. `bash` runs with its working directory pinned to the root
+   absolute paths outside the root, and symlinks are rejected *before any IO* —
+   the final path component may never be a symlink (a write target that is a
+   symlink, including a *broken* one pointing outside the root, is refused rather
+   than followed), and any existing target's realpath must stay inside the root.
+   `bash` runs with its working directory pinned to the root
    (advisory — a shell can still reach absolute paths, which is why it is also
    approval-gated).
 2. **Approval (reuses the engine).** `write_file`, `edit_file`, and `bash` are
@@ -30,6 +33,17 @@ Two independent controls protect the highest-risk tools:
    crash-safe path used everywhere else. No parallel approval path was created.
 
 Read-only tools (`read_file`, `list_dir`, `grep`) are not approval-gated.
+
+> **Hard requirement — `side_effect: true` ⇒ `approvals_required`.** The engine
+> does *not* auto-gate side-effecting tools; the manifest's `side_effect` flag
+> only informs the checkpoint/resume machinery. The human gate is applied purely
+> by the profile listing the tool in `approvals_required`. Therefore **every**
+> tool marked `side_effect: true` in `harness.plugin.yml` **MUST** appear in the
+> profile's `approvals_required` — this is a non-negotiable security
+> prerequisite, not a convenience. Omitting one lets a mutating/shell tool run
+> ungated. To make this drift impossible, `boot.rb` derives `approvals_required`
+> directly from the manifest (union of all `side_effect: true` tools) instead of
+> hard-coding the list.
 
 ## Run it
 

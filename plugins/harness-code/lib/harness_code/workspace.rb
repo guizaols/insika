@@ -13,8 +13,10 @@ module HarnessCode
   #   1. `File.expand_path` normalizes `..` traversal; the expanded path must be
   #      the root itself or a descendant of it (string containment on a
   #      separator boundary, so `/ws-evil` does not pass for root `/ws`).
-  #   2. symlink guard: for an existing target (or, on writes, its parent dir)
-  #      the REAL path (`File.realpath`, which follows symlinks) must also be
+  #   2. symlink guard: the final path component may never be a symlink (an
+  #      lstat check that also catches a BROKEN symlink whose target does not yet
+  #      exist), and for an existing target (or, on writes, its parent dir) the
+  #      REAL path (`File.realpath`, which follows symlinks) must also be
   #      contained — a symlink inside the workspace pointing outside is rejected.
   #
   # The boundary is a value object: immutable root, no IO of its own beyond the
@@ -44,6 +46,15 @@ module HarnessCode
 
       abs = File.expand_path(path.to_s, @root)
       contain!(abs)
+
+      # The final component is never allowed to be a symlink. On writes this is
+      # the crux of the boundary: `contain!` only checks the STRING, and the
+      # parent-dir realpath probe below only vets the parent — so without this a
+      # symlink under the root pointing outside would let `File.write` follow it
+      # and clobber a file outside the workspace. `File.symlink?` is an lstat, so
+      # it also catches a BROKEN symlink (dangling target) that `File.exist?`
+      # would report as absent.
+      raise Escape, "path is a symlink" if File.symlink?(abs)
 
       probe = for_write ? File.dirname(abs) : abs
       contain!(File.realpath(probe)) if File.exist?(probe)
