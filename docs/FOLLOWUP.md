@@ -21,6 +21,22 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 >   — o motor sobe, turnos falham com erro claro até a chave existir.
 > - **Separação de tokens** documentada (`ADMIN_TOKEN` vs `OPENCLAW_GATEWAY_TOKEN`
 >   + rotação) em `docs/DEPLOY.md`.
+>
+> **Entregue na rodada seguinte (4 PRs #60–#63, mergeados 2026-07-17):**
+> - **§1.4 Doc de loadtest** (`docs/LOADTEST.md`): guia por script + comparação
+>   apples-to-apples harness vs gateway (nativo trocando `HARNESS_URL`, ou o
+>   `loadtest-gateway.mjs` do OpenClaw sem modificar via `OPENCLAW_GATEWAY_URL`)
+>   + hardening dos 3 scripts (`--dry-run` seguro, validação de flags). **Falta a
+>   dimensão de comparação por versão de Ruby e o relatório — ver §1.1/§1.4.**
+> - **§6 Protótipo `harness-code`**: toolset FS/shell (`plugins/harness-code/`:
+>   `read_file`/`list_dir`/`grep` + `write_file`/`edit_file`/`bash` gated) + CLI
+>   (`examples/harness-code/`) reusando approvals+sandbox do motor. Review de
+>   segurança fechou 1 escape de sandbox via symlink + ReDoS no grep.
+> - **§3/#10 Refresh de UI/UX do Studio**: sidebar cockpit + session telemetry
+>   timeline (§3.1); corrigiu bug de CSP que deixava o trace sem estilo em prod.
+> - **§5.1 Migração PT→EN — 1º passe**: `lib/harness/**` (~114 arquivos) +
+>   `docs/TRANSLATION-TRACKER.md`. **Migração EM ANDAMENTO** (2º passe: `server/`,
+>   `bin/`, `scripts/` composition-root, `config/`, `studio/`; ver tracker).
 
 ---
 
@@ -36,8 +52,19 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
   latência do provider LLM, não por CPU Ruby) é o **YJIT** ligado por padrão e
   mais maduro. Ligar YJIT (`RUBY_YJIT_ENABLE=1` / `--yjit`) é o item de maior
   retorno por menor esforço.
-- **Ação:** bump da versão + YJIT no runtime + rodar a suíte e um loadtest antes/
-  depois (ver §1.4) para medir o delta real.
+- **Benchmark por versão de Ruby (decisão do produto):** o loadtest deve medir o
+  **delta entre o Ruby atual (3.3.5) e a nova versão** (3.4+/4.0), com e sem YJIT
+  — não só "antes/depois do bump". Como o gargalo é I/O, a parte CPU-bound (parse,
+  serialização, montagem de contexto/prompt, event loop) é onde o YJIT/nova versão
+  aparecem; o `bench_store.rb` (CPU/SQLite puro, sem provider) isola esse sinal, e
+  o `loadtest.rb` mede o turno ponta-a-ponta. Rodar a matriz **local E Railway**
+  (o ambiente de deploy real pode ter perfil de CPU/IO diferente).
+- **Ação:** (1) bump da versão + YJIT no runtime; (2) matriz de benchmark
+  `{Ruby atual, Ruby novo} × {YJIT off, YJIT on} × {local, Railway}` via §1.4;
+  (3) **relatório** comparativo (tabelas de TTFB/total/tokens/throughput + o
+  `bench_store` CPU-bound) versionado no repo e uma **apresentação na doc**
+  (`docs/BENCHMARKS.md`) incluindo a **comparação vs OpenClaw** (mesmo contrato
+  SSE — ver §1.4). Medir antes de assumir o ganho.
 
 ### 1.2 Podemos usar Ractors além de Fibers?
 **Recomendação: não agora — é a ferramenta errada para este gargalo.** 🟢
@@ -86,8 +113,11 @@ backend OPCIONAL.** 🔴
     `OPENCLAW_STATE_DIR` por proc). Escala horizontal por tenant **sem banco
     compartilhado**. Trabalho novo: um "sharded store" que roteia por tenant → uma
     instância de Store (pequeno, alinhado à arquitetura).
-  - **Litestream:** replicação contínua para S3 (backup/DR/restore) — HA barata
-    sem trocar de banco. Vale adotar cedo, independe da topologia.
+  - **Litestream (opcional/configurável):** replicação contínua para S3 (backup/
+    DR/restore) — HA barata sem trocar de banco. **Decisão do produto:** entregar
+    como **opt-in configurável** (liga por env/flag, apontando bucket/credenciais),
+    não ligado por padrão — quem quiser durabilidade externa habilita; quem roda
+    single-box efêmero não paga o custo. Independe da topologia.
   - **LiteFS (fly.io):** FS distribuído com 1 primary writer + réplicas de
     leitura, se quiser multi-node com um DB lógico.
 - **Postgres continua no radar como OPÇÃO, não requisito:** a abstração de Store
@@ -101,7 +131,8 @@ backend OPCIONAL.** 🔴
      no backend.
   2. **Medir antes de assumir:** loadtest N-procs numa máquina (§1.4) para provar
      o teto real de escrita — evita otimização prematura de topologia.
-  3. **Litestream** para backup/DR desde cedo (barato, ortogonal à topologia).
+  3. **Litestream opt-in** para backup/DR (configurável por env/flag, desligado
+     por padrão; barato, ortogonal à topologia).
   4. **Só se** precisar horizontal multi-node: decidir topologia — (a) sharding
      por tenant + sticky (recomendado), (b) LiteFS, ou (c) adapter Postgres — e
      implementar a escolhida.
@@ -119,10 +150,17 @@ mesmo) + entregar um equivalente Ruby nativo no repo.** 🔴
   espelhando as métricas, e um `scripts/loadtest-local.sh` que sobe N processos do
   Falcon (baseline single vs multi) como o `loadtest-local.sh` do OpenClaw faz.
 - **Ação:**
-  1. Doc curto "como comparar" reusando o `loadtest-gateway.mjs` contra o harness.
-  2. `scripts/loadtest.rb` (async/net-http, TTFB+total+tokens+P50/P95).
-  3. `scripts/loadtest-local.sh` (baseline 1 proc vs N procs do Falcon; checar
-     "database is locked" como o script do OpenClaw faz — prova o §1.3).
+  1. ✅ Doc "como comparar" reusando o `loadtest-gateway.mjs` contra o harness —
+     ENTREGUE (`docs/LOADTEST.md`, PR #60).
+  2. ✅ `scripts/loadtest.rb` (net-http, TTFB+total+tokens+P50/P95) — ENTREGUE.
+  3. ✅ `scripts/loadtest-local.sh` (baseline 1 proc vs N procs do Falcon; checa
+     "database is locked" — prova o §1.3) — ENTREGUE.
+  4. **PENDENTE — comparação por versão de Ruby + relatório (ver §1.1):** rodar a
+     matriz `{Ruby 3.3.5, Ruby novo} × {YJIT off/on} × {local, Railway}` com os
+     scripts existentes, mais a rodada **vs OpenClaw** (mesmo contrato, apontando
+     `OPENCLAW_GATEWAY_URL` para cada motor). Consolidar num **relatório
+     versionado + apresentação** em `docs/BENCHMARKS.md` (tabelas comparativas +
+     leitura do experimento §1.3). Este é o entregável que fecha o §1.1 e o §1.4.
 
 ---
 
@@ -161,10 +199,13 @@ já existe (a API HTTP). Melhorar o `studio/` puxando o visual do agent-studio.*
   RubyLLM é **gems pequenas e focadas**. Recomendação:
   - **Agora:** monorepo, para velocidade. O core e o studio já estão desacoplados
     pela API.
-  - **Na hora do OSS (§4/§5):** extrair em gems — `harness-core` (motor),
-    `harness-server` (Rack/SSE), `harness-studio` (engine montável / mountable
-    Rack app), `harness-otel`, e plugins como gems `harness-plugin-*`. Quem quer
-    só o motor pega o core; quem quer a UI monta o studio.
+  - **Por último no roadmap (decisão do produto):** extrair em gems — `harness-core`
+    (motor), `harness-server` (Rack/SSE), `harness-studio` (engine montável /
+    mountable Rack app), `harness-otel`, e plugins como gems `harness-plugin-*`.
+    Quem quer só o motor pega o core; quem quer a UI monta o studio. **É o item de
+    MENOR prioridade** — só depois de docs/site (§5) e do resto estabilizado; o
+    monorepo segue como default até lá (a fronteira de API já permite extrair sem
+    reescrever, então adiar não custa opção).
 - **Ação:** (1) refresh de UI/UX do `studio/` inspirado no agent-studio; (2)
   garantir que o studio consome só a API pública (nada de acesso a store direto —
   a regra constitucional já veta isso no `server/`); (3) planejar a extração como
@@ -243,12 +284,19 @@ web depois.** 🟡
 **Recomendação: tratar como uma fase própria — é o que destrava o engajamento da
 comunidade. Pré-requisito nº 1: migrar o projeto para inglês.** 🔴
 
-- **5.1 Inglês em todo o código/testes/comentários.** Hoje comentários, mensagens
-  e (parcialmente) identificadores estão em **português**. Para OSS internacional
-  isso é bloqueador. É um trabalho **grande, porém mecânico** — fazer em passes
-  por módulo, com a suíte verde como rede. **Este próprio documento deve ser
-  traduzido** quando a migração acontecer. Ordem sugerida: comentários/mensagens →
-  nomes de teste → identificadores públicos (com cuidado p/ não quebrar contrato).
+- **5.1 Inglês em todo o código/testes/comentários.** 🔄 **EM ANDAMENTO.** Para
+  OSS internacional isso é bloqueador. Trabalho **grande, porém mecânico** — em
+  passes por módulo, com a suíte verde como rede. Progresso:
+  - ✅ **1º passe (PR #63):** `lib/harness/**` (~114 arquivos) — comentários,
+    docstrings e mensagens de erro/log; identificadores públicos preservados.
+  - 🔄 **2º passe (em curso):** `server/`, `bin/`, `scripts/` composition-root,
+    `config/`, comentários remanescentes do `studio/`, `Gemfile`.
+  - ⬜ **Pendente:** nomes de teste em `spec/**`; mensagens travadas por contrato
+    de spec (traduzir junto com a assert); strings model-facing (`desc:`/prompts);
+    identificadores públicos (com cuidado p/ não quebrar contrato); **este próprio
+    documento** (traduzir por último). O estado detalhado vive em
+    `docs/TRANSLATION-TRACKER.md`. Ordem: comentários/mensagens → nomes de teste →
+    identificadores públicos.
 - **5.2 Documentação de arquitetura com diagramas.** Já há techspecs por fase e
   RFCs (`docs/harness_handoff/rfcs/`). Consolidar num conjunto navegável:
   - Visão geral do motor (pipeline canônica: Command Bus → Context Builder →
@@ -293,8 +341,11 @@ novos sobre o mesmo motor, não uma mudança de core.** 🟡
   motor roda tanto seu bot de WhatsApp quanto seu agente de código").
 - **Cuidado:** tools de FS/shell são as de maior superfície de risco — reusar o
   modelo de **approvals** (já existe) e sandbox/allowlist com rigor.
-- **Ação:** protótipo `harness-code` (toolset FS/shell com approvals + CLI mínima)
-  como aplicação de exemplo, depois do core estar OSS-ready.
+- **Ação:** ✅ **protótipo `harness-code` ENTREGUE (PR #61)** — toolset FS/shell
+  (`plugins/harness-code/`) com approvals + sandbox (`Workspace`) reusando o motor,
+  e CLI mínima (`examples/harness-code/`) sobre `/v1/responses`. Próximos passos
+  (pós-OSS): frame `approval_requested` de 1ª classe no adapter, hard-kill de
+  timeout no `bash`, diff preview no prompt de approval.
 
 ---
 
@@ -422,35 +473,43 @@ conforme demanda.
 
 | # | Item | Tema | Prioridade | Depende de |
 |---|------|------|------------|------------|
-| 1 | Dockerfile + Railway (1 box, SQLite WAL já on) p/ shadow do piloto | Infra | 🔴 | — |
-| 2 | Loadtest: reusar `loadtest-gateway.mjs` no harness + `scripts/loadtest.rb` | Perf | 🔴 | 1 |
-| 3 | Medir teto de escrita SQLite N-procs + Litestream (backup/DR) | Infra | 🔴 | 2 |
-| 4 | Bump Ruby + YJIT (medir com o loadtest) | Perf | 🟡 | 2 |
-| 5 | Escala horizontal (SE preciso): sharding por tenant + sticky, ou LiteFS, ou adapter Postgres | Infra | 🟡 | 3 |
-| 6 | Migração PT→EN (código/testes/comentários) | Docs/OSS | 🔴 (p/ OSS) | — |
-| 7 | Docs de arquitetura + diagramas + README + site | Docs/OSS | 🔴 (p/ OSS) | 6 |
-| 8 | Extração em gems (`harness-core/-server/-studio/-otel`) | Ecossistema | 🟡 | 7 |
-| 9 | ✅ **Trace de tool calls no viewer do chat (args+resposta, masking) — debug (§3.1)** — ENTREGUE | UI/UX | ✅ | — |
-| 10 | Refresh de UI/UX do `studio/` (inspirado no agent-studio) | UI/UX | 🟡 | — |
-| 11 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 7 |
-| 12 | Protótipo `harness-code` (toolset FS/shell + CLI + sandbox) | Ideias | 🟢 | 8 |
-| 13 | **Evals / harness de qualidade** (golden + LLM-judge; §9) | Produto | 🔴 | — |
-| 14 | **Guardrails** (moderação/PII/anti-injection; §9) | Produto | 🔴 | — |
-| 15 | **Aprendizado por conversa** — knowledge graph/wiki por agente (§7) | Produto | 🟡 | 13 |
-| 16 | **Channels de 1ª classe** (web-widget/Slack/…; §8/§9) | Produto | 🟡 | — |
-| 17 | Analytics/dashboard + handoff humano (§9) | Produto | 🟡 | 9 |
+| 1 | Dockerfile + Railway (1 box, SQLite WAL já on) p/ shadow do piloto | Infra | ✅ ENTREGUE | — |
+| 2 | Loadtest + doc de comparação (`loadtest.rb`/`-local.sh` + `LOADTEST.md`) | Perf | ✅ ENTREGUE | 1 |
+| 3 | Trace de tool calls no viewer do chat (§3.1) | UI/UX | ✅ ENTREGUE | — |
+| 4 | Refresh de UI/UX do `studio/` (§3/#10) | UI/UX | ✅ ENTREGUE | — |
+| 5 | Protótipo `harness-code` (toolset FS/shell + CLI + sandbox) | Ideias | ✅ ENTREGUE | — |
+| 6 | Bump Ruby + YJIT **+ matriz de benchmark `{Ruby atual/novo}×{YJIT}×{local/Railway}` + relatório vs OpenClaw** (`docs/BENCHMARKS.md`) | Perf | 🔴 | 2 |
+| 7 | Medir teto de escrita SQLite N-procs + **Litestream opt-in/configurável** (backup/DR) | Infra | 🔴 | 2 |
+| 8 | Migração PT→EN — 1º passe ✅; **2º passe 🔄 em curso** | Docs/OSS | 🔴 (p/ OSS) | — |
+| 9 | Docs de arquitetura + diagramas + README + site | Docs/OSS | 🔴 (p/ OSS) | 8 |
+| 10 | **Evals / harness de qualidade** (golden + LLM-judge; §9) | Produto | 🔴 | — |
+| 11 | **Guardrails** (moderação/PII/anti-injection; §9) | Produto | 🔴 | — |
+| 12 | Escala horizontal (SE preciso): sharding por tenant + sticky, ou LiteFS, ou adapter Postgres | Infra | 🟡 | 7 |
+| 13 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 9 |
+| 14 | **Aprendizado por conversa** — knowledge graph/wiki por agente (§7) | Produto | 🟡 | 10 |
+| 15 | **Channels de 1ª classe** (web-widget/Slack/…; §8/§9) | Produto | 🟡 | — |
+| 16 | Analytics/dashboard + handoff humano (§9) | Produto | 🟡 | 3 |
+| 17 | **Extração em gems** (`harness-core/-server/-studio/-otel`) — **POR ÚLTIMO** | Ecossistema | 🟢 (último) | 9, 13 |
 
 **Três trilhos paralelos naturais:**
-- **Produto/Escala** (1→2→3→4→5, + **9** entregue): piloto → produção → múltiplas lojas.
-- **OSS/Ecossistema** (6→7→8→10→11→12): prepara o projeto para a comunidade (paridade
-  de DX com o Flue — §8).
-- **Produto pronto** (13→14→15→16→17): evals + guardrails primeiro (destravam iterar
+- **Produto/Escala** (1–5 entregues → **6 bench Ruby/YJIT+relatório vs OpenClaw** →
+  **7 SQLite/Litestream opt-in** → 12 escala): piloto → produção → múltiplas lojas.
+- **OSS/Ecossistema** (8 migração → 9 docs → 13 plugins → **17 gems, por último**):
+  prepara o projeto para a comunidade (paridade de DX com o Flue — §8). A extração em
+  gems é o **último** item do trilho — o monorepo é o default até docs/site prontos.
+- **Produto pronto** (10→11→14→15→16): evals + guardrails primeiro (destravam iterar
   com segurança), depois learning/channels/analytics. É o que separa "motor" de
   "produto" e onde dá pra **liderar** (learning §7 + tools-como-dado, que o Flue não tem).
 
 Decisões que **destravam** os trilhos e dependem de você/produto: **onde hospedar**
 (Railway→k8s) e **quando "abrir"** o projeto (dispara o trilho OSS, começando pela
-migração para inglês).
+migração para inglês — em curso).
+
+> **CI/workflow: adiado por ora (decisão do produto).** O repo não tem
+> `.github/workflows`; os PRs são validados por **code-review + suíte rodada
+> localmente** antes do merge. Montar um workflow (bundle + rspec nos PRs) fica
+> para quando o fluxo de contribuição justificar (provável junto do trilho OSS,
+> §5.5).
 
 ---
 
