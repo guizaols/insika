@@ -298,6 +298,126 @@ novos sobre o mesmo motor, não uma mudança de core.** 🟡
 
 ---
 
+## 7. Aprendizado por conversas — knowledge graph / "wiki" por agente
+
+**Recomendação: construir uma CAMADA DE APRENDIZADO que destila conversas + tool
+calls num grafo de conhecimento por agente, retrievable no turno e curável por
+humano no Studio.** 🟡 (alto valor de produto; diferencial — nem o Flue tem isso)
+
+- **Por que dá pra fazer bem aqui:** o motor já tem as 4 peças que faltam à maioria:
+  (a) **memória cross-session por agente** (MemoryStore), (b) **trace de tool calls**
+  (ToolTraceStore — args + resposta, acabamos de entregar), (c) **Context Providers**
+  (o ponto de injeção no turno — Memory/Skill/ToolSearch já injetam), (d) **skills**
+  (conhecimento curado). Falta o LOOP que fecha: conversa → conhecimento → injeção.
+- **Desenho (GraphRAG por agente):**
+  1. **Captura (já temos a matéria-prima):** transcrições de sessão + ToolTraceStore
+     (o que foi perguntado, qual tool rodou, o que voltou, o que funcionou/falhou).
+  2. **Destilação (job em background / fim de sessão):** um passe LLM extrai
+     **fatos + entidades + relações** (produtos, dúvidas frequentes, políticas,
+     objeções, CEP↔CD, "cliente pediu X e resolveu com Y") → nós e arestas.
+  3. **Store de grafo por agente:** nós (entidade/fato) + arestas (relação) +
+     embeddings, em SQLite (tabelas `kg_nodes`/`kg_edges` + índice vetorial via
+     `sqlite-vec`, ou cosine simples). Durável no mesmo backend, escopado por agente
+     (isolamento por loja, como tudo aqui).
+  4. **Retrieval no turno:** um `Context::Providers::Knowledge` novo — dado a
+     mensagem, faz match semântico + **expande pelas arestas** (GraphRAG) e injeta
+     os fatos relevantes no contexto (mesma mecânica do Memory provider, na escada
+     de confiança do §3/Fase 6).
+  5. **Feedback:** respostas + resultados de tool re-alimentam o grafo → melhora
+     com o uso. Guardrails: dedup, **confiança/decay** (fato velho pesa menos),
+     e **curadoria humana** (o "wiki").
+- **O ângulo "wiki":** uma tela no Studio que mostra o grafo/fatos por agente,
+  **editável pelo operador** — funde auto-aprendido + curado (aprovar/rejeitar/
+  editar fatos). Casa com a skill `graphify` (grafo de conhecimento) que já usamos.
+- **Riscos:** custo do passe de destilação (rodar em lote/assíncrono, não no turno);
+  qualidade da extração (LLM-judge + curadoria); PII no grafo (masking + retenção).
+- **Ação:** (1) `KnowledgeGraphStore` (nós/arestas/embeddings por agente); (2) job
+  de destilação (sessão/trace → fatos, assíncrono); (3) `Knowledge` context provider
+  (GraphRAG no turno); (4) tela wiki no Studio (curadoria). Começa **simples**:
+  destilar fatos → memória (já injetada) antes do grafo completo.
+
+---
+
+## 8. Benchmark: Flue (`pi.dev`/pi-agent-core) — conseguimos chegar nesse nível?
+
+**Resposta curta: já estamos no MESMO nível arquitetural — à frente em algumas
+coisas — e atrás em DX/alcance de deploy e em 2–3 primitivos.** 🟡
+
+O [Flue](https://github.com/withastro/flue) (time do Astro) é um **"agent harness
+framework"** em TypeScript sobre o **pi-agent-core** (`new Agent({...})` — o
+"pi.dev" é o loop de agente por baixo). É **exatamente a nossa categoria**. Os
+primitivos dele: Agents (stateful autônomos), Workflows, **Sandboxes** (containers
+virtual/local/remoto), **Durable Execution**, **Subagents**, Tools tipadas, Skills
+(`SKILL.md`, progressive disclosure — idêntico ao nosso), MCP Servers,
+Observability (OTEL/Braintrust/Sentry), **Channels** (Slack/Teams/Discord/GitHub).
+Deploya em Node/Cloudflare/GitHub Actions/GitLab/Render/Daytona.
+
+| Primitivo | Harness | Flue |
+|-----------|---------|------|
+| Agentes stateful + tool-loop | ✅ | ✅ |
+| Skills `SKILL.md` + progressive disclosure | ✅ (igual) | ✅ |
+| Tools tipadas (JSON Schema) | ✅ (+ tools-como-DADO, hot-reload) | ✅ (código TS) |
+| MCP | ✅ (ingestão, Fase 7) | ✅ |
+| Durable execution / resume | ✅ (checkpoint/recovery — **forte aqui**) | ✅ |
+| Observability OTEL | ✅ | ✅ (+ Braintrust/Sentry) |
+| Workflows | ✅ (registry) | ✅ |
+| **Sandboxes** (exec de código em container) | ❌ (é o §6 `harness-code`) | ✅ |
+| **Channels** (Slack/Teams/Discord/GitHub) | parcial (WhatsApp via achei, A2A, `/v1/responses`) | ✅ (1ª classe) |
+| **Subagents** (delegação) | parcial (workflows/A2A) | ✅ (1ª classe) |
+| **Deploy multi-runtime/edge** | ❌ (Ruby/Falcon; Railway) | ✅ (edge/CI) |
+| **Aprendizado por conversa** (§7) | ❌ (proposto — **ninguém tem**) | ❌ |
+| Tools-como-dado + ingestão por manifesto (hot) | ✅ (**diferencial**) | ❌ (tool = código) |
+| Provider-agnóstico multi-LLM em runtime | ✅ | ✅ (via pi-agent-core) |
+
+**Onde estamos À FRENTE:** tools-como-dado com hot-reload/manifesto (adicionar tool
+sem deploy), durable execution/resume batido em produção, e um **piloto real
+rodando** (WhatsApp→loja). **Onde o Flue lidera:** sandboxes, channels de 1ª classe,
+deploy em edge/CI, e sobretudo **DX + comunidade** (TypeScript, CLI polida, docs).
+
+**Conseguimos chegar lá?** Sim — o núcleo já está no nível. O caminho é: (a) DX/OSS
+(§5 — docs, gems, inglês), (b) **channels como camada de 1ª classe** (§9), (c)
+**sandboxes** (§6 `harness-code`), (d) **subagents** como primitivo limpo. A aposta
+onde PODEMOS liderar: **tools-como-dado + aprendizado por conversa (§7)** — duas
+coisas que o Flue não tem.
+
+---
+
+## 9. O que falta pra ser produto de verdade (gaps de produto)
+
+Além do que já está mapeado (escala §1, OSS §5, learning §7), os gaps que separam
+"motor que funciona" de "produto pronto": 🟡
+
+- **Evals / harness de qualidade** 🔴 — testes de COMPORTAMENTO do agente (não só
+  unit): conversas-golden + LLM-judge, regressão quando muda prompt/tool/modelo.
+  Hoje temos loadtest (perf) mas não eval (qualidade). É o que o Flue cobre com
+  Braintrust. **Sem isso, mexer no prompt é no escuro.**
+- **Guardrails / segurança de conteúdo** 🔴 — moderação, PII, defesa a
+  jailbreak/prompt-injection, validação de saída. Crítico p/ marca em produção.
+- **Channels de 1ª classe** 🟡 — hoje WhatsApp entra via achei-b2b. Uma camada de
+  adapters (web-widget, Slack, Instagram, etc.) abre novos casos sem reescrever o
+  motor. (Paridade com o Flue.)
+- **Analytics / dashboard operacional** 🟡 — métricas por conversa (resolução,
+  CSAT, custo/turno, taxa de sucesso de tool, abandono). O trace (§3.1) é a
+  matéria-prima; falta agregação + tela.
+- **Handoff humano** 🟡 — a skill `escalation-to-human` existe; falta o produto:
+  inbox do operador, assumir/devolver conversa, notificação.
+- **Custo/orçamento por agente/tenant** 🟡 — teto de gasto, alerta, corte gracioso
+  (o usage por turno já é capturado — Fase 6).
+- **Rate-limit / anti-abuso** na borda 🟡 — por chat/tenant.
+- **A/B de prompt/modelo por agente** 🟢 — comparar variações com tráfego real.
+- **Onboarding self-serve de loja** 🟢 — provisionar um agente pela UI (o
+  PackImporter + Studio já dão a base).
+- **Versionamento/rollback de config** 🟢 — prompts/tools já têm histórico; falta
+  o "publicar versão / reverter" no produto.
+- **Secrets/vault** 🟡 — hoje ENV; um resolvedor de secrets (o seam já existe na
+  ingestão de tools) evoluindo p/ vault.
+
+**Ordem sugerida p/ "produto pronto":** evals (🔴, destrava iterar com segurança) →
+guardrails (🔴) → analytics/handoff (operação) → channels (crescimento) → o resto
+conforme demanda.
+
+---
+
 ## Priorização recomendada (sequenciamento)
 
 | # | Item | Tema | Prioridade | Depende de |
@@ -313,13 +433,20 @@ novos sobre o mesmo motor, não uma mudança de core.** 🟡
 | 9 | ✅ **Trace de tool calls no viewer do chat (args+resposta, masking) — debug (§3.1)** — ENTREGUE | UI/UX | ✅ | — |
 | 10 | Refresh de UI/UX do `studio/` (inspirado no agent-studio) | UI/UX | 🟡 | — |
 | 11 | Doc dos 2 tiers de plugin + 2–3 plugins nativos + convenção de hub | Plugins | 🟡 | 7 |
-| 12 | Protótipo `harness-code` (toolset FS/shell + CLI) | Ideias | 🟢 | 8 |
+| 12 | Protótipo `harness-code` (toolset FS/shell + CLI + sandbox) | Ideias | 🟢 | 8 |
+| 13 | **Evals / harness de qualidade** (golden + LLM-judge; §9) | Produto | 🔴 | — |
+| 14 | **Guardrails** (moderação/PII/anti-injection; §9) | Produto | 🔴 | — |
+| 15 | **Aprendizado por conversa** — knowledge graph/wiki por agente (§7) | Produto | 🟡 | 13 |
+| 16 | **Channels de 1ª classe** (web-widget/Slack/…; §8/§9) | Produto | 🟡 | — |
+| 17 | Analytics/dashboard + handoff humano (§9) | Produto | 🟡 | 9 |
 
-**Dois trilhos paralelos naturais:**
-- **Trilho Produto/Escala** (1→2→3→4→5, + **9** como quick-win de operação): leva o
-  piloto a produção e a múltiplas lojas. O #9 (trace de tool calls) é o mais urgente
-  do dia-a-dia — sem ele não dá pra debugar turno em produção.
-- **Trilho OSS/Ecossistema** (6→7→8→10→11→12): prepara o projeto para a comunidade.
+**Três trilhos paralelos naturais:**
+- **Produto/Escala** (1→2→3→4→5, + **9** entregue): piloto → produção → múltiplas lojas.
+- **OSS/Ecossistema** (6→7→8→10→11→12): prepara o projeto para a comunidade (paridade
+  de DX com o Flue — §8).
+- **Produto pronto** (13→14→15→16→17): evals + guardrails primeiro (destravam iterar
+  com segurança), depois learning/channels/analytics. É o que separa "motor" de
+  "produto" e onde dá pra **liderar** (learning §7 + tools-como-dado, que o Flue não tem).
 
 Decisões que **destravam** os trilhos e dependem de você/produto: **onde hospedar**
 (Railway→k8s) e **quando "abrir"** o projeto (dispara o trilho OSS, começando pela
