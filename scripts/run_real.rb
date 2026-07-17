@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
-# RODAR DE VERDADE (sem mock): conversa REAL e MULTI-TURN com a Bia (DeepSeek),
-# serializada pelo SessionActor. Cada turno vai na fila FIFO da sessão;
-# o turno 2 enxerga o transcript do turno 1 (memória de sessão via o Session
-# provider — o seam :vars reconciliado). Streama a resposta, mostra
-# tools/skills/retornos, e renderiza o /admin contra os MESMOS stores.
+# RUN FOR REAL (no mock): a REAL, MULTI-TURN conversation with Bia (DeepSeek),
+# serialized by the SessionActor. Each turn goes on the session's FIFO queue;
+# turn 2 sees turn 1's transcript (session memory via the Session
+# provider — the reconciled :vars seam). Streams the response, shows
+# tools/skills/results, and renders /admin against the SAME stores.
 #
-# Operação (o que destravou o multi-turn): arma executor.supervised = true
-# (SessionActor + supervisor de vida-longa), e no fim FAZ O TEARDOWN
-# (stop_session_actors + supervisor.stop) — senão o bloco Sync nunca retorna
-# (os fibers de vida-longa ficam pendurados em dequeue).
+# Operation (what unblocked multi-turn): arms executor.supervised = true
+# (SessionActor + long-lived supervisor), and at the end DOES THE TEARDOWN
+# (stop_session_actors + supervisor.stop) — otherwise the Sync block never returns
+# (the long-lived fibers stay hung on dequeue).
 #
-# Uso: DEEPSEEK_API_KEY=... ruby scripts/run_real.rb
+# Usage: DEEPSEEK_API_KEY=... ruby scripts/run_real.rb
 
 $stdout.sync = true
 require_relative "../config/deployment"
@@ -44,15 +44,15 @@ end
 
 @last_task = nil
 Sync do |parent|
-  W::EXECUTOR.supervised = true # arma o modo serving: SessionActor serializa a sessão
+  W::EXECUTOR.supervised = true # arms serving mode: SessionActor serializes the session
   sub, reader = stream_events(parent)
 
   TURNS.each_with_index do |msg, i|
-    puts "\n\e[1m═══ TURNO #{i + 1} · Bia (DeepSeek #{Deploy::MODEL}) · sessão #{SESSION} ═══\e[0m"
+    puts "\n\e[1m═══ TURN #{i + 1} · Bia (DeepSeek #{Deploy::MODEL}) · session #{SESSION} ═══\e[0m"
     puts "\e[33mAna>\e[0m #{msg}\n\e[32mbia>\e[0m "
 
-    # turno DE SESSÃO (session_id): entra na fila FIFO do SessionActor; o turno 2
-    # já enxerga o turno 1 no transcript (memória real, sem mock).
+    # SESSION turn (session_id): enters the SessionActor's FIFO queue; turn 2
+    # already sees turn 1 in the transcript (real memory, no mock).
     res = W::BUS.dispatch(Harness::Command.build(:send_message,
                                                  { agent: "bia", message: msg, session_id: SESSION },
                                                  transport: :cli))
@@ -64,11 +64,11 @@ Sync do |parent|
       parent.sleep(0.1)
     end
     @last_task = W::TASK_STORE.find(tid)
-    puts "\n  \e[2m[status: #{@last_task&.status} · turnos na sessão: #{W::SESSION_STORE.find(SESSION).messages.size}]\e[0m"
+    puts "\n  \e[2m[status: #{@last_task&.status} · session turns: #{W::SESSION_STORE.find(SESSION).messages.size}]\e[0m"
   end
 
-  # TEARDOWN (destrava o Sync): encerra os loops de vida-longa da sessão + o
-  # supervisor. Sem isto o bloco fica pendurado esperando os fibers ociosos.
+  # TEARDOWN (unblocks the Sync): shuts down the session's long-lived loops + the
+  # supervisor. Without this the block hangs waiting on the idle fibers.
   sub.close
   reader.wait
   W::EXECUTOR.stop_session_actors
@@ -76,10 +76,10 @@ Sync do |parent|
 end
 
 msgs = W::SESSION_STORE.find(SESSION).messages
-puts "\n\e[1m═══ RESUMO ═══\e[0m"
-puts "transcript persistido na sessão (#{msgs.size} msgs): #{msgs.map { |m| m['role'] }.join(' → ')}"
+puts "\n\e[1m═══ SUMMARY ═══\e[0m"
+puts "transcript persisted in the session (#{msgs.size} msgs): #{msgs.map { |m| m['role'] }.join(' → ')}"
 
-# --- visualização: renderiza o /admin contra os MESMOS stores ---
+# --- visualization: renders /admin against the SAME stores ---
 OUT = ENV.fetch("OUT", "/tmp/admin-real")
 require "fileutils"
 FileUtils.mkdir_p(OUT)
@@ -101,4 +101,4 @@ routes.each do |name, path|
   _s, _h, body = admin.call(Rack::Request.new(Rack::MockRequest.env_for(path)))
   File.write(File.join(OUT, "#{name}.html"), body.join)
 end
-puts "admin (REAL) renderizado em #{OUT}"
+puts "admin (REAL) rendered in #{OUT}"
