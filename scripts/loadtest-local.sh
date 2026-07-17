@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
-# Load-test LOCAL do multi-processo do harness (Falcon --count N) sobre UM MESMO
-# SQLite (WAL). Roda o sweep de carga contra: (a) 1 worker = baseline single-proc;
-# (b) N workers = multi-proc no mesmo box. Como o provider é o mesmo, se o multi
-# recuperar throughput o teto era CPU/event-loop, não o provider — e a contagem de
-# "database is locked" prova (ou não) se o SQLite vira gargalo sob concorrência.
+# LOCAL multi-process load-test of the harness (Falcon --count N) over ONE SHARED
+# SQLite file (WAL). Runs the load sweep against: (a) 1 worker = single-process
+# baseline; (b) N workers = multi-process on the same box. Since the provider is
+# the same in both runs, if the multi-process run recovers throughput the ceiling
+# was CPU/event-loop, not the provider — and the "database is locked" count proves
+# (or disproves) whether SQLite becomes the bottleneck under concurrency.
 #
-# Espelha o scripts/loadtest-local.sh do OpenClaw. Usa a Bia (agente semeado por
-# padrão) — precisa de DEEPSEEK_API_KEY.
+# Mirrors OpenClaw's scripts/loadtest-local.sh. Uses Bia (the default seeded
+# agent) — requires DEEPSEEK_API_KEY.
 #
-# Uso:
+# Usage:
 #   DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh [WORKERS] [CONCURRENCY]
-#   ex.: ./scripts/loadtest-local.sh 4 24
+#   e.g.: ./scripts/loadtest-local.sh 4 24
+#
+# Environment:
+#   DEEPSEEK_API_KEY         required — real turns hit the provider
+#   OPENCLAW_GATEWAY_TOKEN   Bearer for the sweep (falls back to ADMIN_TOKEN, then local-demo)
+#   PORT                     bind port for the local Falcon (default: 9299)
+#   AGENT                    agent id to load (default: bia)
 set -u
+
+case "${1:-}" in
+  -h|--help)
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 WORKERS="${1:-4}"
@@ -19,12 +33,20 @@ CONC="${2:-16}"
 PORT="${PORT:-9299}"
 AGENT="${AGENT:-bia}"
 TOKEN="${OPENCLAW_GATEWAY_TOKEN:-${ADMIN_TOKEN:-local-demo}}"
+
+case "$WORKERS$CONC" in
+  *[!0-9]*)
+    echo "ERROR: WORKERS and CONCURRENCY must be positive integers (got WORKERS=$WORKERS CONCURRENCY=$CONC)." >&2
+    exit 2
+    ;;
+esac
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/harness-loadtest.XXXXXX")"
 DB="$WORK/harness.db"
 
 [ -f "$REPO/.env.local" ] && { set -a; . "$REPO/.env.local"; set +a; }
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-  echo "ERRO: defina DEEPSEEK_API_KEY (turnos reais precisam do provider)."; exit 1
+  echo "ERROR: set DEEPSEEK_API_KEY (real turns need the provider)." >&2; exit 1
 fi
 
 PID=""
@@ -40,12 +62,12 @@ wait_up() {
     curl -fsS "http://localhost:$PORT/up" >/dev/null 2>&1 && { echo "  ready (${i}s)"; return 0; }
     sleep 1; i=$((i+1))
   done
-  echo "  NÃO ficou ready — ver $LOG"; tail -8 "$LOG"; return 1
+  echo "  did NOT become ready — see $LOG"; tail -8 "$LOG"; return 1
 }
 
 boot() {
   count="$1"; LOG="$WORK/falcon-$count.log"
-  echo "=== subindo Falcon --count $count (porta $PORT, db $DB) ==="
+  echo "=== booting Falcon --count $count (port $PORT, db $DB) ==="
   ( cd "$REPO" && HARNESS_DB="$DB" OPENCLAW_GATEWAY_TOKEN="$TOKEN" ADMIN_TOKEN="$TOKEN" \
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" RUBY_YJIT_ENABLE=1 \
       bundle exec falcon serve --bind "http://0.0.0.0:$PORT" --count "$count" \
@@ -58,7 +80,10 @@ sweep() {
     bundle exec ruby "$REPO/scripts/loadtest.rb" --agents "$AGENT" --concurrency "$CONC" --iterations 2
 }
 
-locks() { grep -c 'database is locked' "$1" 2>/dev/null || echo 0; }
+# `grep -c` already prints the count (0 when there are no matches); it just exits
+# non-zero on zero matches, so `|| true` keeps the single "0" line instead of
+# appending a second `echo 0`.
+locks() { grep -c 'database is locked' "$1" 2>/dev/null || true; }
 
 echo "############ BASELINE — 1 worker — conc $CONC ############"
 boot 1; sweep
@@ -71,6 +96,6 @@ boot "$WORKERS"; sweep
 MULTI_LOG="$LOG"
 
 echo ""
-echo "=== 'database is locked' (esperado 0 — WAL + busy_timeout) ==="
+echo "=== 'database is locked' (expected 0 — WAL + busy_timeout) ==="
 echo "  baseline (1):        $(locks "$BASE_LOG")"
 echo "  multi ($WORKERS):    $(locks "$MULTI_LOG")"
