@@ -80,6 +80,49 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
     expect(coord.requested).to be_empty
   end
 
+  describe "trace de tool-calls (FOLLOWUP §3.1)" do
+    def traced_state(session_id:)
+      profile = Harness::AgentProfile.build(id: "a", model: "m")
+      task = Struct.new(:id, :session_id).new("t", session_id)
+      st = Harness::TurnState.new(task: task, profile: profile, turn: 2, message: "oi")
+      st.requires_approval = []
+      st
+    end
+
+    it "grava nome + args + resultado por call quando há trace_recorder" do
+      recorder = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
+      env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: "sess-1"),
+                                      checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
+                                      timeout: 60, trace_recorder: recorder)
+
+      result = Sync { env.call({ "amount" => 10 }) }
+
+      expect(result).to eq("charged")
+      tr = recorder.for_session("sess-1")
+      expect(tr.size).to eq(1)
+      expect(tr.first).to include("tool" => "charge", "turn" => 2, "ok" => true)
+      expect(tr.first["args"]).to include("amount")
+      expect(tr.first["result"]).to include("charged")
+      expect(tr.first["ms"]).to be_a(Integer)
+    end
+
+    it "session_id nil -> não grava (sem sessão, nada a anexar)" do
+      recorder = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
+      env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: nil),
+                                      checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
+                                      timeout: 60, trace_recorder: recorder)
+      Sync { env.call({}) }
+      expect(recorder.for_session("")).to eq([])
+    end
+
+    it "sem trace_recorder (nil) -> executa normal, não quebra" do
+      env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: "s"),
+                                      checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
+                                      timeout: 60)
+      expect(Sync { env.call({}) }).to eq("charged")
+    end
+  end
+
   describe "Executor#request_approval (coordenador real)" do
     let(:task_store) { Harness::TaskStore.new(store: backend) }
     let(:pending_store) { Harness::PendingActionStore.new(store: backend) }

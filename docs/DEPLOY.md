@@ -25,13 +25,29 @@ curl localhost:9292/up      # {"status":"ok"}
 | `HARNESS_DB` | `/data/harness.db` (na imagem) | caminho SQLite durável (monte volume!) |
 | `PORT` | `9292` | porta do bind http |
 | `WEB_CONCURRENCY` | `2` | nº de processos (workers) do Falcon |
-| `OPENCLAW_GATEWAY_TOKEN` | cai no `ADMIN_TOKEN` | Bearer de `/v1/responses` e `/v1/agents` |
+| `OPENCLAW_GATEWAY_TOKEN` | cai no `ADMIN_TOKEN` | Bearer de `/v1/responses` e `/v1/agents` (gateway) |
 | `ADMIN_TOKEN` | `local-demo` | token do `/studio` e `/admin` (**troque em prod**) |
-| `DEEPSEEK_API_KEY` | — | chave do provider (obrigatória p/ turnos) |
+| `DEEPSEEK_API_KEY` | — | chave do provider. **Sem ela o motor SOBE** (`/up` verde), mas turnos falham até configurar (env ou Studio > LLM providers) — resiliência de nuvem |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | modelo |
 | `ACHEI_INTERNAL_URL` | — | base p/ as data-tools chamarem `/api/internal/*` (ver abaixo) |
 | `HARNESS_EGRESS_HOSTS` | — | allowlist de host de saída (SSRF guard) |
 | `HARNESS_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | só p/ callback http/loopback (NÃO em cloud) |
+
+### Tokens & rotação (separe os dois!)
+
+São **dois** segredos com propósitos distintos — em produção use valores
+**DIFERENTES** (o `OPENCLAW_GATEWAY_TOKEN` cair no `ADMIN_TOKEN` é só conveniência
+de dev):
+
+- **`ADMIN_TOKEN`** — login do `/studio` + Bearer do `/admin`. Superfície de
+  OPERADOR (só você). Rotacionar é **seguro e independente**: muda no Railway,
+  redeploy, e você faz login com o novo. NÃO afeta o achei-b2b.
+- **`OPENCLAW_GATEWAY_TOKEN`** — Bearer do `/v1/responses` e `/v1/agents`. É o
+  contrato com o **achei-b2b**. Rotacionar exige **trocar os dois lados juntos**
+  (senão o WhatsApp quebra): atualize a var no Railway **e** o
+  `OPENCLAW_GATEWAY_TOKEN` do achei-b2b no mesmo passo.
+
+Gerar um token forte: `ruby -rsecurerandom -e 'puts SecureRandom.hex(24)'`.
 
 ### Callback pro achei-b2b (tools) — via ngrok
 
