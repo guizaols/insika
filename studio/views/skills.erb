@@ -1,12 +1,12 @@
 <header class="page-head">
-  <h1>Skills<span class="sub"><%= @skills.size %> no catálogo · disco (seed) + autoradas (Store vence)</span></h1>
-  <a class="btn primary" href="/studio/skills/new">+ nova skill</a>
+  <h1>Skills<span class="sub"><%= @skills.size %> in catalog · disk (seed) + authored (store wins)</span></h1>
+  <a class="btn primary" href="/studio/skills/new">+ new skill</a>
 </header>
 
 <% if @skills.empty? %>
-  <div class="empty">Nenhuma skill no catálogo ainda. Crie a primeira em <a href="/studio/skills/new">nova skill</a>.</div>
+  <div class="empty">No skills in the catalog yet. Create the first one under <a href="/studio/skills/new">new skill</a>.</div>
 <% else %>
-  <p class="muted matrix-hint">Marque em quais agentes cada skill fica disponível (<code>load_skill</code>). Um agente com allowlist “todas” não é alterado ao desmarcar.</p>
+  <p class="muted matrix-hint">Choose which agents each skill is available to (<code>load_skill</code>). An agent with an "all" allowlist is left untouched when you uncheck it.</p>
   <div class="skill-list">
     <% @skills.each do |s| %>
       <form class="card skill-card" method="post" action="/studio/skills/<%= Rack::Utils.escape(s.name) %>/agents">
@@ -14,14 +14,14 @@
         <div class="skill-card-head">
           <div>
             <div class="skill-name mono"><%= s.name %>
-              <% if @stored.include?(s.name) %><span class="pill info">autorada</span><% end %>
+              <% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %>
             </div>
             <div class="muted skill-desc"><%= s.description %></div>
           </div>
-          <a class="btn ghost" href="/studio/skills/<%= Rack::Utils.escape(s.name) %>">editar</a>
+          <a class="btn ghost" href="/studio/skills/<%= Rack::Utils.escape(s.name) %>">Edit</a>
         </div>
         <% if @agents.empty? %>
-          <p class="muted">Nenhum agente configurado.</p>
+          <p class="muted">No agents configured.</p>
         <% else %>
           <div class="check-grid">
             <% @agents.each do |a| %>
@@ -31,7 +31,7 @@
               </label>
             <% end %>
           </div>
-          <div class="actions"><button type="submit" class="primary">aplicar aos agentes</button></div>
+          <div class="actions"><button type="submit" class="primary">Apply to agents</button></div>
         <% end %>
       </form>
     <% end %>

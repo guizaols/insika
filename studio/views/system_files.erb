@@ -1,14 +1,14 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>sistema</span></nav>
-    <h1>Arquivos de sistema<span class="sub"><%= @system_files.size %> arquivo(s) · valem para todos os agentes</span></h1>
+    <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>system files</span></nav>
+    <h1>System files<span class="sub"><%= @system_files.size %> file(s) · apply to every agent</span></h1>
   </div>
 </header>
 
-<p class="muted matrix-hint">Prompts/regras GLOBAIS: o runtime injeta estes arquivos <strong>antes</strong> da identidade individual de cada BIA, em todo turno. Store-backed e versionado (como os prompts por-agente). Vazio = nenhuma injeção global (o prompt fica idêntico ao de antes).</p>
+<p class="muted matrix-hint">GLOBAL prompts/rules: the runtime injects these files <strong>before</strong> each BIA's own identity, every turn. Store-backed and versioned (like per-agent prompts). Empty = no global injection (the prompt stays exactly as before).</p>
 
 <% if @system_files.empty? %>
-  <div class="empty">Nenhum arquivo de sistema. Crie um abaixo (ex.: <code>HOUSE_RULES.md</code>) para uma regra que valha para todos os agentes.</div>
+  <div class="empty">No system files. Create one below (e.g. <code>HOUSE_RULES.md</code>) for a rule that applies to every agent.</div>
 <% end %>
 
 <% @system_files.each do |sf| %>
@@ -18,7 +18,7 @@
       <form method="post" action="/studio/system-files/delete">
         <%== csrf_tag %>
         <input type="hidden" name="file" value="<%= sf[:name] %>">
-        <button type="submit" class="ghost danger">remover</button>
+        <button type="submit" class="ghost danger">Remove</button>
       </form>
     </div>
     <form method="post" action="/studio/system-files" data-controller="dirty-guard">
@@ -27,11 +27,11 @@
       <div data-controller="code-editor" data-code-editor-language-value="markdown">
         <textarea name="content" data-code-editor-target="source" rows="10"><%= sf[:content] %></textarea>
       </div>
-      <div class="actions"><button type="submit" class="primary">salvar arquivo</button></div>
+      <div class="actions"><button type="submit" class="primary">Save file</button></div>
     </form>
     <% unless sf[:versions].empty? %>
       <details class="versions">
-        <summary><%= sf[:versions].size %> versão(ões) anterior(es)</summary>
+        <summary><%= sf[:versions].size %> previous version(s)</summary>
         <ul>
           <% sf[:versions].each_with_index do |v, i| %>
             <li>
@@ -40,7 +40,7 @@
                 <%== csrf_tag %>
                 <input type="hidden" name="file" value="<%= sf[:name] %>">
                 <input type="hidden" name="version" value="<%= i %>">
-                <button type="submit" class="ghost">restaurar</button>
+                <button type="submit" class="ghost">Restore</button>
               </form>
             </li>
           <% end %>
@@ -51,15 +51,15 @@
 <% end %>
 
 <details class="card newfile">
-  <summary>+ novo arquivo de sistema</summary>
+  <summary>+ new system file</summary>
   <form method="post" action="/studio/system-files" data-controller="dirty-guard">
     <%== csrf_tag %>
-    <label>nome do arquivo
+    <label>file name
       <input type="text" name="file" placeholder="HOUSE_RULES.md" required>
     </label>
     <div data-controller="code-editor" data-code-editor-language-value="markdown">
-      <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# Regras da casa&#10;Todos os agentes devem..."></textarea>
+      <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# House rules&#10;Every agent must..."></textarea>
     </div>
-    <div class="actions"><button type="submit" class="primary">criar arquivo</button></div>
+    <div class="actions"><button type="submit" class="primary">Create file</button></div>
   </form>
 </details>

@@ -1,25 +1,25 @@
 <% new = @tool_name.empty? %>
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/tools">tools</a> / <span><%= new ? "nova (por dados)" : @tool_name %></span></nav>
-    <h1><%= new ? "Nova tool por dados" : @tool_name %><span class="sub">uma chamada HTTP descrita por dados — sem código</span></h1>
+    <nav class="crumbs"><a href="/studio/tools">tools</a> / <span><%= new ? "new (data tool)" : @tool_name %></span></nav>
+    <h1><%= new ? "New data tool" : @tool_name %><span class="sub">an HTTP call described by data — no code</span></h1>
   </div>
 </header>
 
-<p class="muted matrix-hint">A tool faz uma requisição HTTP quando o modelo a chama. Use <code>{{param}}</code> nos campos (url, query, headers, body) para inserir os argumentos — só https, destinos privados são bloqueados. Headers de credencial em <strong>secret_headers</strong> nunca voltam em plaintext: aparecem como <code><%= secret_sentinel %></code> (mantê-lo preserva o segredo).</p>
+<p class="muted matrix-hint">The tool makes an HTTP request when the model calls it. Use <code>{{param}}</code> in any field (url, query, headers, body) to insert arguments — https only, private destinations are blocked. Credential headers listed in <strong>secret_headers</strong> never return in plaintext: they appear as <code><%= secret_sentinel %></code> (keeping it preserves the secret).</p>
 
 <form class="card" method="post" action="<%= new ? "/studio/tools/def" : "/studio/tools/def/#{Rack::Utils.escape(@tool_name)}" %>" data-controller="dirty-guard">
   <%== csrf_tag %>
 
   <div class="grid-2">
-    <label>name <span class="muted">(identificador p/ o modelo, <code>[a-z0-9_]</code>)</span>
+    <label>name <span class="muted">(identifier for the model, <code>[a-z0-9_]</code>)</span>
       <% if new %>
-        <input type="text" name="name" value="<%= @form[:name] %>" placeholder="consulta_cep" required>
+        <input type="text" name="name" value="<%= @form[:name] %>" placeholder="lookup_zip" required>
       <% else %>
         <input type="text" name="name" value="<%= @tool_name %>" readonly>
       <% end %>
     </label>
-    <label>método
+    <label>method
       <select name="method">
         <% %w[GET HEAD POST PUT PATCH DELETE].each do |m| %>
           <option value="<%= m %>"<%== " selected" if @form[:method] == m %>><%= m %></option>
@@ -28,57 +28,57 @@
     </label>
   </div>
 
-  <label>description <span class="muted">(o modelo lê isto p/ decidir quando usar)</span>
-    <input type="text" name="description" value="<%= @form[:description] %>" placeholder="Consulta um CEP e devolve a cidade" required>
+  <label>description <span class="muted">(the model reads this to decide when to use it)</span>
+    <input type="text" name="description" value="<%= @form[:description] %>" placeholder="Look up a ZIP code and return the city" required>
   </label>
 
   <label>url <span class="muted">(https; use <code>{{param}}</code>)</span>
     <input type="text" name="url" value="<%= @form[:url] %>" placeholder="https://viacep.com.br/ws/{{cep}}/json" required>
   </label>
 
-  <label>parâmetros <span class="muted">(um por linha: <code>nome | tipo | required|optional | descrição</code>)</span>
-    <textarea name="parameters" rows="4" placeholder="cep | string | required | O CEP a consultar"><%= @form[:parameters] %></textarea>
+  <label>parameters <span class="muted">(one per line: <code>name | type | required|optional | description</code>)</span>
+    <textarea name="parameters" rows="4" placeholder="cep | string | required | The ZIP code to look up"><%= @form[:parameters] %></textarea>
   </label>
 
   <div class="grid-2">
-    <label>query <span class="muted">(uma <code>chave=valor</code> por linha)</span>
+    <label>query <span class="muted">(one <code>key=value</code> per line)</span>
       <textarea name="query" rows="3" placeholder="term={{q}}"><%= @form[:query] %></textarea>
     </label>
-    <label>headers <span class="muted">(uma <code>Chave=valor</code> por linha)</span>
+    <label>headers <span class="muted">(one <code>Key=value</code> per line)</span>
       <textarea name="headers" rows="3" placeholder="Authorization=Bearer {{token}}"><%= @form[:headers] %></textarea>
     </label>
   </div>
 
-  <label>secret_headers <span class="muted">(nomes de header a mascarar, separados por vírgula)</span>
+  <label>secret_headers <span class="muted">(header names to mask, comma-separated)</span>
     <input type="text" name="secret_headers" value="<%= @form[:secret_headers] %>" placeholder="Authorization">
   </label>
 
-  <label>body <span class="muted">(template; <code>{{param}}</code> string é escapado p/ JSON)</span>
+  <label>body <span class="muted">(template; a <code>{{param}}</code> string is JSON-escaped)</span>
     <div data-controller="code-editor" data-code-editor-language-value="json">
       <textarea name="body" data-code-editor-target="source" rows="6"><%= @form[:body] %></textarea>
     </div>
   </label>
 
   <div class="grid-2">
-    <label>resposta
+    <label>response
       <select name="extract">
-        <% [["body_raw", "corpo cru"], ["json_path", "campo do JSON"], ["status", "só o status"]].each do |v, lbl| %>
+        <% [["body_raw", "raw body"], ["json_path", "JSON field"], ["status", "status only"]].each do |v, lbl| %>
           <option value="<%= v %>"<%== " selected" if @form[:extract] == v %>><%= lbl %></option>
         <% end %>
       </select>
     </label>
-    <label>json_path <span class="muted">(ex.: <code>localidade</code> ou <code>a.b.c</code>)</span>
+    <label>json_path <span class="muted">(e.g. <code>localidade</code> or <code>a.b.c</code>)</span>
       <input type="text" name="path" value="<%= @form[:path] %>" placeholder="localidade">
     </label>
   </div>
 
-  <label>timeout <span class="muted">(segundos, opcional)</span>
+  <label>timeout <span class="muted">(seconds, optional)</span>
     <input type="number" name="timeout" value="<%= @form[:timeout] %>" min="1" placeholder="30">
   </label>
 
   <div class="actions">
-    <button type="submit" class="primary"><%= new ? "criar tool" : "salvar tool" %></button>
-    <a class="btn ghost" href="/studio/tools">← voltar</a>
+    <button type="submit" class="primary"><%= new ? "Create tool" : "Save tool" %></button>
+    <a class="btn ghost" href="/studio/tools">← back</a>
   </div>
 </form>
 
@@ -86,20 +86,20 @@
   <form class="card" method="post" action="/studio/tools/def/<%= Rack::Utils.escape(@tool_name) %>/delete">
     <%== csrf_tag %>
     <div class="promptfile-head">
-      <span class="muted">remover esta tool (os agentes deixam de vê-la no próximo turno)</span>
-      <button type="submit" class="ghost danger">remover tool</button>
+      <span class="muted">Remove this tool (agents stop seeing it next turn)</span>
+      <button type="submit" class="ghost danger">Remove tool</button>
     </div>
   </form>
 
   <% if @versions.any? %>
     <div class="card">
-      <h2 class="sub">versões</h2>
+      <h2 class="eyebrow">versions</h2>
       <% @versions.each_with_index do |v, i| %>
         <form class="promptfile-head" method="post" action="/studio/tools/def/<%= Rack::Utils.escape(@tool_name) %>/restore">
           <%== csrf_tag %>
           <input type="hidden" name="index" value="<%= i %>">
           <span class="mono muted"><%= v["at"] %></span>
-          <button type="submit" class="ghost">restaurar</button>
+          <button type="submit" class="ghost">Restore</button>
         </form>
       <% end %>
     </div>

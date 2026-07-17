@@ -1,5 +1,5 @@
 <header class="page-head">
-  <h1>Playground<span class="sub">converse com um agente — dispara o mesmo <code>send_message</code> da API</span></h1>
+  <h1>Playground<span class="sub">chat with an agent — fires the same <code>send_message</code> as the API</span></h1>
 </header>
 
 <div class="playground"
@@ -8,7 +8,7 @@
   <form class="card compose" method="post" action="/studio/playground">
     <%== csrf_tag %>
     <div class="row">
-      <label>agente
+      <label>agent
         <select name="agent">
           <% @agents.each do |id| %>
             <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
@@ -16,22 +16,22 @@
         </select>
       </label>
       <label>session_id
-        <input type="text" name="session_id" value="<%= @session_id %>" placeholder="em branco = nova conversa">
+        <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation">
       </label>
     </div>
-    <label>mensagem
-      <textarea name="message" rows="3" placeholder="Pergunte algo ao agente…" required></textarea>
+    <label>message
+      <textarea name="message" rows="3" placeholder="Ask the agent something…" required></textarea>
     </label>
     <div class="compose-actions">
-      <span class="pill info" data-live-transcript-target="status">desconectado</span>
-      <button type="submit" class="primary">enviar</button>
+      <span class="pill info" data-live-transcript-target="status">disconnected</span>
+      <button type="submit" class="primary">Send</button>
     </div>
   </form>
 
   <div class="card transcript">
     <div class="thread" data-live-transcript-target="stream"></div>
     <div class="empty" data-live-transcript-target="empty">
-      <% if @session_id %>Aguardando eventos do turno…<% else %>Envie uma mensagem para começar.<% end %>
+      <% if @session_id %>Waiting for turn events…<% else %>Send a message to begin.<% end %>
     </div>
   </div>
 </div>

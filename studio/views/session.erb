@@ -1,40 +1,33 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/agents">agentes</a> / <span>sessão</span></nav>
-    <h1>Sessão <span class="mono"><%= @session.id[0, 16] %></span>
-      <span class="sub"><%= Array(@session.messages).size %> mensagem(ns) · atualizada <%= @session.updated_at %></span>
+    <nav class="crumbs"><a href="/studio/chats">chats</a> / <span>session</span></nav>
+    <h1>Session <span class="mono"><%= @session.id[0, 16] %></span>
+      <span class="sub"><%= Array(@session.messages).size %> message(s) · updated <%= @session.updated_at %></span>
     </h1>
   </div>
-  <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">continuar no playground →</a>
+  <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
 </header>
 
-<style>
-  .tooltrace .trace-turn { margin: .5rem 0; }
-  .trace-item { border: 1px solid var(--border, #2a2a2a); border-radius: 6px; padding: .4rem .6rem; margin: .35rem 0; }
-  .trace-item[open] { background: rgba(127,127,127,.06); }
-  .trace-item summary { cursor: pointer; display: flex; gap: .5rem; align-items: center; }
-  .trace-item .badge { font-size: .7rem; padding: .05rem .4rem; border-radius: 4px; }
-  .trace-item.ok .badge { background: #14532d; color: #dcfce7; }
-  .trace-item.err .badge { background: #7f1d1d; color: #fee2e2; }
-  .tooltrace .kv { margin-top: .4rem; }
-  .tooltrace pre { white-space: pre-wrap; word-break: break-word; max-height: 18rem; overflow: auto; margin: .2rem 0 0; }
-</style>
 <% traces = @tool_traces || {} %>
 <% unless traces.empty? %>
   <div class="card tooltrace">
-    <h2 class="sub">Tool calls <span class="muted">(debug — args + resposta, mascarados)</span></h2>
+    <div class="trace-head">
+      <h2>Tool calls</h2>
+      <span class="muted">debug — args + response, masked</span>
+    </div>
     <% traces.keys.sort.each do |turn| %>
       <div class="trace-turn">
-        <div class="muted role-tag">turno <%= turn %></div>
+        <div class="turn-label">turn <%= turn %></div>
         <% traces[turn].each do |t| %>
           <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
             <summary>
-              <span class="badge"><%= t["ok"] ? "ok" : "erro" %></span>
-              <strong class="mono"><%= t["tool"] %></strong>
-              <span class="muted"><%= t["ms"] %>ms · <%= t["at"] %></span>
+              <span class="badge"><%= t["ok"] ? "ok" : "error" %></span>
+              <strong><%= t["tool"] %></strong>
+              <span class="lat"><%= t["ms"] %>ms</span>
+              <span class="at"><%= t["at"] %></span>
             </summary>
-            <div class="kv"><span class="muted">args</span><pre><%= t["args"] %></pre></div>
-            <div class="kv"><span class="muted">resposta</span><pre><%= t["result"] %></pre></div>
+            <div class="kv"><span>args</span><pre><%= t["args"] %></pre></div>
+            <div class="kv"><span>response</span><pre><%= t["result"] %></pre></div>
           </details>
         <% end %>
       </div>
@@ -44,7 +37,7 @@
 
 <div class="card transcript">
   <% if Array(@session.messages).empty? %>
-    <div class="empty">Sessão sem mensagens.</div>
+    <div class="empty">This session has no messages.</div>
   <% else %>
     <div class="thread">
       <% Array(@session.messages).each do |m| %>
@@ -59,7 +52,7 @@
           <div class="msg <%= role %>">
             <div class="who"><%= role[0, 1].upcase %></div>
             <div class="bubble">
-              <div class="muted role-tag"><%= role %></div>
+              <div class="role-tag"><%= role %></div>
               <div class="content"><%= content %></div>
             </div>
           </div>

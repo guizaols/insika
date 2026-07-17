@@ -1,10 +1,10 @@
 <header class="page-head">
-  <h1>Agentes<span class="sub"><%= @agents.size %> configurado(s) · cada um a sua BIA</span></h1>
-  <a class="btn primary" href="/studio/playground">testar no playground →</a>
+  <h1>Agents<span class="sub"><%= @agents.size %> configured · one BIA each</span></h1>
+  <a class="btn primary" href="/studio/playground">Open playground →</a>
 </header>
 
 <% if @agents.empty? %>
-  <div class="empty">Nenhum agente ainda. Crie a sua primeira BIA abaixo (id + modelo) e dê identidade a ela na página de detalhe.</div>
+  <div class="empty">No agents yet. Create your first BIA below (id + model), then give it an identity on its detail page.</div>
 <% else %>
   <div class="agent-grid">
     <% @agents.each do |a| %>
@@ -15,16 +15,16 @@
             <div class="agent-id"><%= a.id %></div>
             <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
           </div>
-          <% if a.memory %><span class="pill info">memória</span><% end %>
+          <% if a.memory %><span class="pill info">memory</span><% end %>
         </a>
         <dl class="agent-meta">
-          <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "todas" : a.tools_allow.size %></dd></div>
-          <div><dt>skills</dt><dd><%= a.skills.nil? ? "todas" : Array(a.skills).size %></dd></div>
+          <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "all" : a.tools_allow.size %></dd></div>
+          <div><dt>skills</dt><dd><%= a.skills.nil? ? "all" : Array(a.skills).size %></dd></div>
           <div><dt>prompts</dt><dd><%= Array(a.prompt_files).size %></dd></div>
         </dl>
         <div class="agent-actions">
-          <a class="btn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">editar</a>
-          <a class="btn ghost" href="/studio/playground?agent=<%= Rack::Utils.escape(a.id) %>">testar</a>
+          <a class="btn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">Edit</a>
+          <a class="btn ghost" href="/studio/playground?agent=<%= Rack::Utils.escape(a.id) %>">Test</a>
         </div>
       </article>
     <% end %>
@@ -32,24 +32,24 @@
 <% end %>
 
 <details class="card newfile"<%== " open" if @agents.empty? %>>
-  <summary>+ novo agente</summary>
+  <summary>+ new agent</summary>
   <form method="post" action="/studio/agents">
     <%== csrf_tag %>
     <div class="grid-2">
-      <label>id <span class="muted">(slug único, ex.: bia)</span>
+      <label>id <span class="muted">(unique slug, e.g. bia)</span>
         <input type="text" name="id" placeholder="bia" required>
       </label>
-      <label>modelo
+      <label>model
         <input type="text" name="model" placeholder="deepseek-chat" required>
       </label>
     </div>
-    <label>provider <span class="muted">(opcional)</span>
+    <label>provider <span class="muted">(optional)</span>
       <input type="text" name="provider" placeholder="deepseek">
     </label>
     <label class="check">
       <input type="checkbox" name="memory" value="1" checked>
-      memória cross-session (a BIA lembra entre conversas)
+      cross-session memory (the BIA remembers across conversations)
     </label>
-    <div class="actions"><button type="submit" class="primary">criar agente</button></div>
+    <div class="actions"><button type="submit" class="primary">Create agent</button></div>
   </form>
 </details>
