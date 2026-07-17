@@ -1,21 +1,29 @@
 # frozen_string_literal: true
 
-# Micro-bench do TETO DE ESCRITA do Stores::SQLite sob N PROCESSOS.
-# Isola a pergunta "SQLite aguenta multi-proc?" do ruído do provider LLM: mede
-# a contenção de escrita crua contra o MESMO arquivo (WAL + busy_timeout +
-# BEGIN IMMEDIATE + semáforo in-process — a config real de produção do harness).
+# Micro-bench of the WRITE CEILING of Stores::SQLite under N PROCESSES.
+# Isolates the question "does SQLite hold up multi-process?" from LLM-provider
+# noise: it measures raw write contention against the SAME file (WAL +
+# busy_timeout + BEGIN IMMEDIATE + in-process semaphore — the harness's real
+# production config).
 #
-# Cada processo abre seu próprio handle no MESMO db e faz M transações de escrita
-# (INSERT OR REPLACE, chaves disjuntas → mede serialização de escrita do WAL, que
-# permite só 1 escritor por vez no arquivo). Reporta, por nº de processos:
-# throughput agregado (writes/s), latência p50/p95/max e erros "database is
-# locked" (esperado ~0 graças ao busy_timeout; a contenção vira latência, não erro).
+# Each process opens its own handle on the SAME db and runs M write transactions
+# (INSERT OR REPLACE, disjoint keys → measures WAL write serialization, which
+# allows only 1 writer at a time on the file). Reports, per process count:
+# aggregate throughput (writes/s), p50/p95/max latency and "database is locked"
+# errors (expected ~0 thanks to busy_timeout; contention shows up as latency, not
+# errors).
 #
-# Uso:
-#   bundle exec ruby scripts/bench_store.rb [PROCS_CSV] [WRITES_POR_PROC]
-#   ex.: bundle exec ruby scripts/bench_store.rb 1,2,4,8 2000
+# Usage:
+#   bundle exec ruby scripts/bench_store.rb [PROCS_CSV] [WRITES_PER_PROC]
+#   e.g.: bundle exec ruby scripts/bench_store.rb 1,2,4,8 2000
 #
-# Não toca no seu HARNESS_DB — usa um arquivo temporário isolado por rodada.
+# Does NOT touch your HARNESS_DB — uses a temp file isolated per round.
+
+if %w[-h --help].include?(ARGV[0])
+  puts File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
+           .take_while { |l| l.start_with?("#") }.map { |l| l.sub(/^# ?/, "") }.join
+  exit 0
+end
 
 require_relative "../lib/harness"
 require "async"
@@ -23,12 +31,25 @@ require "json"
 require "tmpdir"
 require "fileutils"
 
-PROCS = (ARGV[0] || "1,2,4,8").split(",").map { |n| Integer(n.strip) }
-WRITES = Integer(ARGV[1] || "2000")            # escritas por processo
-# Payload ~ um record típico (session/checkpoint): algumas centenas de bytes.
+def positive_int_list(raw)
+  raw.split(",").map { |n| Integer(n.strip) }.tap { |a| raise ArgumentError if a.any? { |x| x <= 0 } }
+rescue ArgumentError
+  abort "bench_store: PROCS must be a comma-separated list of positive integers (got #{raw.inspect})"
+end
+
+PROCS = positive_int_list(ARGV[0] || "1,2,4,8")
+WRITES = begin
+  n = Integer(ARGV[1] || "2000")            # writes per process
+  raise ArgumentError if n <= 0
+
+  n
+rescue ArgumentError
+  abort "bench_store: WRITES_PER_PROC must be a positive integer (got #{(ARGV[1]).inspect})"
+end
+# Payload ~ a typical record (session/checkpoint): a few hundred bytes.
 PAYLOAD = {
-  "messages" => Array.new(6) { { "role" => "user", "content" => "mensagem de exemplo com algum texto" } },
-  "vars" => { "channel" => "bench", "store_id" => "loja-x" },
+  "messages" => Array.new(6) { { "role" => "user", "content" => "sample message with some text" } },
+  "vars" => { "channel" => "bench", "store_id" => "store-x" },
   "updated_at" => "2026-07-16T00:00:00Z"
 }.freeze
 
@@ -43,11 +64,11 @@ def percentile(sorted, pct)
   (lo + (hi - lo) * (rank - rank.floor)).round(3)
 end
 
-# Roda `procs` processos escrevendo WRITES cada no db compartilhado. -> métricas.
+# Runs `procs` processes each writing WRITES rows to the shared db. -> metrics.
 def run_round(procs, db_path)
   result_dir = Dir.mktmpdir("bench-res")
-  # Pré-inicializa o arquivo (DDL + WAL) no PAI: evita a corrida de N filhos
-  # rodando CREATE TABLE / PRAGMA WAL concorrentes num db recém-criado.
+  # Pre-initialize the file (DDL + WAL) in the PARENT: avoids the race of N
+  # children running CREATE TABLE / PRAGMA WAL concurrently on a fresh db.
   Harness::Stores::SQLite.new(path: db_path).close
 
   started = mono
@@ -93,7 +114,7 @@ ensure
   FileUtils.remove_entry(result_dir) if result_dir && Dir.exist?(result_dir)
 end
 
-puts "bench SQLite (WAL) — #{WRITES} escritas/proc, payload ~#{PAYLOAD.to_json.bytesize}B"
+puts "bench SQLite (WAL) — #{WRITES} writes/proc, payload ~#{PAYLOAD.to_json.bytesize}B"
 puts format("%-6s %10s %12s %10s %10s %10s %8s", "procs", "wall(s)", "writes/s", "p50(ms)", "p95(ms)", "max(ms)", "locked")
 puts "-" * 74
 

@@ -1,45 +1,99 @@
 # frozen_string_literal: true
 
-# Load-test do harness — bate DIRETO em POST /v1/responses (o caminho de produção:
-# achei-b2b/WhatsApp -> motor). Equivalente Ruby do loadtest-gateway.mjs do
-# OpenClaw; como o contrato SSE é o MESMO, dá pra comparar apples-to-apples
-# harness vs gateway.
+# Load-test for the harness — hits POST /v1/responses DIRECTLY (the production
+# path: achei-b2b/WhatsApp -> engine). Ruby equivalent of OpenClaw's
+# loadtest-gateway.mjs; since the SSE contract is the SAME, it enables an
+# apples-to-apples comparison of harness vs gateway.
 #
-# Mede, por turno: TTFB (tempo até o 1º byte SSE), total, e o `usage` (tokens +
-# cache hit) do último frame com usage. Dispara N turnos concorrentes espalhados
-# nos agentes informados. Saída: P50/P95 de TTFB e total, tokens médios, taxa de
-# cache hit e taxa de erro. Só stdlib.
+# Per turn it measures: TTFB (time to first SSE byte), total time, and the
+# `usage` (tokens + cache hit) from the last frame that carries usage. Fires N
+# concurrent turns spread across the given agents. Output: P50/P95 of TTFB and
+# total, mean tokens, cache-hit rate and error rate. Standard library only.
 #
-# Uso:
+# Usage:
 #   HARNESS_URL=http://localhost:9292 \
 #   OPENCLAW_GATEWAY_TOKEN=xxx \
 #   bundle exec ruby scripts/loadtest.rb \
 #     --agents bia,agent-store-cacau-show --concurrency 16 --iterations 3 \
-#     --message "oi, tudo bem?"
+#     --message "hi, how are you?"
 #
-#   --ports 9292,9293  distribui round-robin entre vários processos locais.
-#   --same-user 1      reusa o mesmo user por agente (mede cache de conversa quente).
+# Flags:
+#   --agents a,b,c     comma-separated agent ids            (default: bia)
+#   --concurrency N     concurrent turns per wave            (default: 8)
+#   --iterations N      number of waves per agent            (default: 1)
+#   --message TEXT      user message sent every turn         (default: greeting)
+#   --timeout SECONDS   per-request read timeout             (default: 120)
+#   --ports 9292,9293   round-robin across local processes   (default: HARNESS_URL)
+#   --same-user 1       reuse the same user per agent (measures hot-conversation cache)
+#   --dry-run           print the plan + a sample request and exit (no traffic)
+#   --help              show this help and exit
+#
+# Environment:
+#   HARNESS_URL                base URL of the engine        (default: http://localhost:9292)
+#   OPENCLAW_GATEWAY_TOKEN     Bearer for /v1/responses; falls back to ADMIN_TOKEN, then "local-demo"
 
 require "net/http"
 require "uri"
 require "json"
 
+# The leading comment block (minus the frozen_string_literal magic line) is the help text.
+USAGE = File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
+            .take_while { |l| l.start_with?("#") }.map { |l| l.sub(/^# ?/, "") }.join
+
+# --- flag parsing (supports "--flag value" and boolean "--flag") ---------------
+BOOL_FLAGS = %w[help dry-run].freeze
+KNOWN_FLAGS = (BOOL_FLAGS + %w[agents concurrency iterations message timeout ports same-user]).freeze
+
 args = {}
-ARGV.each_slice(2) { |k, v| args[k.sub(/^--/, "")] = v if k&.start_with?("--") }
+i = 0
+while i < ARGV.length
+  tok = ARGV[i]
+  unless tok.start_with?("--")
+    warn "loadtest: ignoring stray argument #{tok.inspect} (flags look like --name value)"
+    i += 1
+    next
+  end
+  key = tok.sub(/^--/, "")
+  warn "loadtest: unknown flag --#{key} (see --help)" unless KNOWN_FLAGS.include?(key)
+  if BOOL_FLAGS.include?(key)
+    args[key] = "true"
+    i += 1
+  else
+    args[key] = ARGV[i + 1]
+    i += 2
+  end
+end
+
+if args.key?("help")
+  puts USAGE
+  exit 0
+end
+
+def positive_int(args, key, default)
+  raw = args[key] || default
+  n = Integer(raw)
+  raise ArgumentError if n <= 0
+
+  n
+rescue ArgumentError, TypeError
+  abort "loadtest: --#{key} must be a positive integer (got #{raw.inspect})"
+end
 
 TOKEN = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 base = (ENV["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
 BASE_URLS = (args["ports"] ? args["ports"].split(",").map { |p| "http://localhost:#{p.strip}" } : [base])
 AGENTS = (args["agents"] || "bia").split(",").map(&:strip).reject(&:empty?)
-CONC = Integer(args["concurrency"] || "8")
-ITERS = Integer(args["iterations"] || "1")
-MESSAGE = args["message"] || "oi, tudo bem?"
-TIMEOUT = Integer(args["timeout"] || "120")
-SAME_USER = args["same-user"] && args["same-user"] != "false"
+CONC = positive_int(args, "concurrency", "8")
+ITERS = positive_int(args, "iterations", "1")
+MESSAGE = args["message"] || "hi, how are you?"
+TIMEOUT = positive_int(args, "timeout", "120")
+SAME_USER = args.key?("same-user") && !%w[false 0 no].include?(args["same-user"].to_s.downcase)
+
+abort "loadtest: --agents resolved to an empty list" if AGENTS.empty?
 
 def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-# Um turno: POST streaming; mede TTFB/total; extrai o último JSON com `usage`.
+# One turn: streaming POST; measures TTFB/total; extracts the last JSON with `usage`.
 def run_turn(base_url, agent, idx)
   user = SAME_USER ? "loadtest-#{agent}" : "loadtest-#{agent}-#{idx}"
   uri = URI.join(base_url + "/", "v1/responses")
@@ -67,7 +121,7 @@ def run_turn(base_url, agent, idx)
       res.read_body do |chunk|
         ttfb ||= mono - t0
         buffer << chunk
-        # Frames SSE: "data: {json}\n\n". Guarda o último usage visto.
+        # SSE frames: "data: {json}\n\n". Keep the last usage seen.
         while (i = buffer.index("\n\n"))
           frame = buffer.slice!(0..i + 1)
           frame.each_line do |line|
@@ -102,7 +156,22 @@ def pct(sorted, p)
 end
 
 total_turns = AGENTS.length * CONC * ITERS
-puts "loadtest -> #{BASE_URLS.join(', ')} | agentes=#{AGENTS.join(',')} conc=#{CONC} iters=#{ITERS} turnos=#{total_turns}"
+puts "loadtest -> #{BASE_URLS.join(', ')} | agents=#{AGENTS.join(',')} conc=#{CONC} iters=#{ITERS} turns=#{total_turns}"
+
+if args.key?("dry-run")
+  sample = URI.join(BASE_URLS.first + "/", "v1/responses")
+  body = JSON.generate(model: "openclaw:#{AGENTS.first}", user: "loadtest-#{AGENTS.first}-0",
+                       stream: true, input: MESSAGE)
+  masked = TOKEN.length > 8 ? "#{TOKEN[0, 4]}…#{TOKEN[-2, 2]}" : "***"
+  puts "-" * 60
+  puts "dry-run — no requests sent. Sample turn:"
+  puts "  POST #{sample}"
+  puts "  Authorization: Bearer #{masked}"
+  puts "  Accept: text/event-stream"
+  puts "  body: #{body}"
+  puts "  same_user=#{SAME_USER} timeout=#{TIMEOUT}s ports=#{BASE_URLS.length}"
+  exit 0
+end
 
 jobs = []
 ITERS.times { |it| AGENTS.each { |a| CONC.times { |c| jobs << [a, it * CONC + c] } } }
@@ -113,7 +182,7 @@ started = mono
 jobs.each_slice(CONC).each_with_index do |batch, wave|
   threads = batch.map.with_index do |(agent, idx), i|
     Thread.new do
-      base_url = BASE_URLS[(wave + i) % BASE_URLS.length]   # round-robin de portas
+      base_url = BASE_URLS[(wave + i) % BASE_URLS.length]   # round-robin across ports
       r = run_turn(base_url, agent, idx)
       mutex.synchronize { results << r }
     end
@@ -130,9 +199,9 @@ toks = ok.map { |r| r.dig(:usage, "total_tokens") || r.dig(:usage, "output_token
 cache_hits = ok.map { |r| r.dig(:usage, "prompt_cache_hit_tokens") || r.dig(:usage, "cached_tokens") }.compact
 
 puts "-" * 60
-puts "turnos ok:      #{ok.length}/#{results.length}  (erros: #{errs})"
-puts "throughput:     #{(ok.length / wall).round(1)} turnos/s  (wall #{wall.round(1)}s)"
+puts "turns ok:       #{ok.length}/#{results.length}  (errors: #{errs})"
+puts "throughput:     #{(ok.length / wall).round(1)} turns/s  (wall #{wall.round(1)}s)"
 puts "TTFB  p50/p95:  #{pct(ttfbs, 50)} / #{pct(ttfbs, 95)} ms"
 puts "total p50/p95:  #{pct(totals, 50)} / #{pct(totals, 95)} ms"
-puts "tokens médios:  #{toks.empty? ? '-' : (toks.sum.to_f / toks.length).round(0)}"
-puts "cache hit médio:#{cache_hits.empty? ? '-' : (cache_hits.sum.to_f / cache_hits.length).round(0)} tokens"
+puts "mean tokens:    #{toks.empty? ? '-' : (toks.sum.to_f / toks.length).round(0)}"
+puts "mean cache hit: #{cache_hits.empty? ? '-' : (cache_hits.sum.to_f / cache_hits.length).round(0)} tokens"
