@@ -24,12 +24,13 @@ TL;DR:
   prefix-cached** (~40 vs ~27k input tokens billed/turn) where OpenClaw's isn't.
   OpenClaw wins **TTFB** (~270ms vs ~790ms) because the harness rebuilds the ~27k
   context per turn before the first token — the clear next optimization. See §5.
-- **Both LOCAL e2e legs are now run** (§4, 2026-07-18): OpenClaw-local (4-proc, 3 store
-  packs @27k) reproduces §5's shape and shows TTFB collapsing to ~57ms (staging's ~270ms
-  was the network hop); harness-local (1-proc, shipped `bia` @~45 tok, 4.0.6+YJIT) streams
-  100 turns at 5.02 turns/s with 0 errors. They are **not apples-to-apples** (context /
-  proc-count / tenant differ) — the matched engine deltas stay in §2 and §5. The harness
-  local-4-proc-@27k and Railway legs remain pending (need packs / a redeploy the owner drives).
+- **The matched LOCAL pair is now run** (§4a, 2026-07-18): harness (Falcon 4-proc, 4.0.6+YJIT)
+  vs OpenClaw (4 gateways), same 3 store tenants @ ~27–30k, greeting, N=100/agent → 300 turns
+  each. **Harness completes turns ~2.3× faster** (total p50 2397ms vs 5500ms), **generates
+  ~1.4× faster** (43.4 vs 30.8 tok/s), **0/300 errors**, and its identity is DeepSeek
+  prefix-cached (~30 vs ~27.5k input billed/turn) — reproducing §5's Railway result on one
+  local box. OpenClaw still wins first-byte (~57ms vs ~1150ms), largely an SSE-flush artifact.
+  Only **harness Railway** remains pending (needs a 4.0.6 redeploy).
 
 ---
 
@@ -117,72 +118,108 @@ up as p95/max latency, not errors — p50 stays ~0.02–0.03 ms throughout).
 
 ---
 
-## 4. End-to-end (SSE) — the LOCAL legs  ✅ both engines measured (Railway still pending)
+## 4. End-to-end (SSE) — the LOCAL legs  ✅ matched local pair measured (Railway still pending)
 
 The e2e signal is **provider-bound** (DeepSeek latency dominates), so it proves
 *functional parity* and tail-latency behaviour more than raw engine speed. Same
 tool (`loadtest-gateway.mjs`) drives both engines against the same `/v1/responses`
-SSE contract. Both **local** legs are now run (2026-07-18, M4 Pro, DeepSeek
-`deepseek-chat`/v4-flash), each `--iterations 100 --concurrency 8`:
+SSE contract. All local legs run 2026-07-18 (M4 Pro, DeepSeek `deepseek-chat`/v4-flash),
+each `--iterations 100 --concurrency 8`. **§4a is the matched head-to-head** (both
+engines, 4-proc, same 3 tenants @ ~27–30k); §4b is a light-context aside.
 
-| target | engine | Ruby | YJIT | procs | tenant(s) | ctx/turn | TTFB p50 | TTFB p95 | total p50 | gen tok/s p50 | turns/s | err% | status |
-| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
-| **harness local** | harness | 4.0.6 | on | 1 | `bia` (shipped) | ~45 tok | 540ms | 676ms | **1540ms** | **51.9** | 5.02 | **0%** (0/100) | ✅ |
-| **OpenClaw local** | openclaw | node22 | — | 4 | cacau/natura/vaio | ~27.5k | **57ms** | 279ms | 5500ms | 30.8 | 1.14 | 0.7% (2/300) | ✅ |
-| harness local | harness | 4.0.6 | on | 4 | — | ~27.5k | — | — | — | — | — | — | ⏳ pending |
-| harness Railway | harness | 4.0.6 | on | 1 | — | ~27.5k | — | — | — | — | — | — | ⏳ pending |
+### 4a. The matched local pair — harness vs OpenClaw, both 4-proc @ ~27–30k  ✅
 
-> ⚠️ **These two local rows are NOT apples-to-apples — read them as two separate
-> facts, not a head-to-head.** They differ on the three axes that dominate this
-> bench: **context size** (harness `bia` ~45 tok vs OpenClaw store packs ~27.5k),
-> **process count** (1 vs 4), and **tenant** (shipped demo agent vs 3 real store
-> identities). The clean matched engine comparison remains **§2 (CPU)** and **§5
-> (matched 4-proc, 27k both sides)** — this section is the *functional-parity + local
-> tail-latency* signal, now with real numbers on both sides.
+The apples-to-apples run this section was waiting for: **same 3 store tenants**
+(cacau-show / natura / vaio), **same ~27–30k pinned identity**, **same 4-proc
+concurrency**, **same greeting turn** (pure generation — no tool calls, so neither
+side touches achei-b2b), N=100/agent, conc 8 → 300 turns each. Harness served by
+**Falcon `--count 4`** on **Ruby 4.0.6 +YJIT**; OpenClaw by 4 local gateways.
 
-**What each local leg actually shows:**
-- **harness local (1 proc, `bia`, ~45-token context).** The shipped demo agent streams
-  end-to-end under concurrency 8 with **0 errors over 100 turns** on **Ruby 4.0.6 +YJIT**
-  (verified `RubyVM::YJIT.enabled? == true` in the serving process), **5.02 turns/s**
-  single-process. TTFB p50 **540ms** here is with *near-zero* context assembly — so it's
-  essentially the DeepSeek first-token floor + minimal harness overhead. Compared to §5's
-  ~790ms harness TTFB at 27k context, the ~250ms gap is the per-turn context rebuild §5
-  calls out — **directly corroborated**: strip the 27k identity and harness TTFB drops to
-  ~540ms.
-- **OpenClaw local (4 procs, 3 store packs, ~27.5k context).** Faithfully reproduces §5's
-  OpenClaw shape locally: **total p50 ~5.5s, gen ~31 tok/s** — right in the staging band
-  (~4.7–5.0s / 29–39 tok/s). The headline: **TTFB collapses from ~270ms (staging) to
-  ~57ms local**, confirming staging's TTFB was mostly the client→Railway network hop, not
-  gateway work. **0 `database is locked`** on all 3 SKIP_CRON workers; 298/300 ok (2
-  client-side `aborted` on tail turns; a couple of ~68–71s max outliers under contention,
-  p95 healthy at ~8.4s). Cache-hit 0/298 (fresh user/turn — no static prefix to cache).
+| engine (4-proc, ~27–30k, 300 turns) | TTFB p50 | TTFB p95 | total p50 | total p95 | gen tok/s p50 | turns/s | err |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **harness** (Falcon 4, 4.0.6+YJIT) | 1150ms | 1254ms | **2397ms** | **2907ms** | **43.4** | **3.27** | **0/300** |
+| **OpenClaw** (4 gateways) | **57ms** | **279ms** | 5500ms | 8393ms | 30.8 | 1.14 | 2/300 |
 
-**Reproduction (both legs, exactly as run):**
+Harness per-tenant (all 0 errors): cacau-show total p50 2152ms / gen 39.7; natura
+2501ms / 44.1; vaio 2536ms / 45.2. **0 `database is locked`** across all 4 Falcon
+workers sharing one SQLite (`HARNESS_DB`); OpenClaw 0 locks across its 4 workers.
+
+**Reading it — this locally confirms §5's Railway result:**
+- **Harness completes turns ~2.3× faster** (total p50 2397ms vs 5500ms) and **generates
+  ~1.4× faster** (43.4 vs 30.8 tok/s), at matched 4-proc — squarely inside §5's "~2.5×
+  faster / 1.2–1.6× gen" band, now reproduced on one local box. Harness throughput is
+  **~2.9× higher** (3.27 vs 1.14 turns/s).
+- **Prompt-cache asymmetry reproduced (the real harness win).** The harness identity is a
+  static pinned prefix, so DeepSeek prefix-caches it: from turn 2 the load tool reads
+  `input_tokens` ≈ **18–44** per turn (the ~30k sits in `cached_tokens`). OpenClaw injects
+  volatile per-turn content, so it bills the full ~27.5k every turn (cache-hit 0/300). Real
+  context is ~27–30k on both — verified via first-touch turns (natura 32.1k, vaio 29.1k,
+  cacau 30.4k before its prefix cached).
+- **OpenClaw still wins first-byte (TTFB), by even more locally (~57ms vs ~1150ms).** This is
+  largely an **SSE-protocol artifact**, not model speed: OpenClaw flushes an early SSE frame
+  on connect, while the harness holds the first byte until DeepSeek's first *content* token —
+  i.e. after it has assembled + prefilled the ~30k context. **Total** time is the fair
+  end-to-end metric, and there the harness wins 2.3×. Caching the assembled identity per
+  agent (skip the per-turn rebuild before first token) remains the obvious harness TTFB win,
+  exactly as §5 concluded.
+
+### 4b. Secondary — harness single-proc, light context (`bia`)
+
+A separate data point (not part of the matched pair): the shipped demo agent `bia`
+at a ~45-token context, single-proc, 4.0.6+YJIT, N=100 conc 8.
+
+| target | procs | ctx/turn | TTFB p50 | TTFB p95 | total p50 | gen tok/s p50 | turns/s | err% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| harness local (`bia`) | 1 | ~45 tok | 540ms | 676ms | 1540ms | 51.9 | 5.02 | 0% (0/100) |
+| harness Railway | 1 | ~27.5k | — | — | — | — | — | ⏳ pending |
+
+Useful only to isolate the context-assembly cost: at ~zero context the harness TTFB
+is **540ms** (DeepSeek first-token floor + minimal overhead) vs **1150ms** for the
+4-proc @30k run above — the ~600ms delta is the per-turn ~30k context rebuild +
+prefill + 4-proc contention, the same cost §5 flags as the TTFB driver.
+
+**Reproduction (all three legs, exactly as run):**
 
 ```sh
-# harness LOCAL — Ruby 4.0.6 + YJIT, single-proc, shipped agent `bia`
-#   pick a free port (the dev box may already have serve_real on 9292/9393)
+# --- harness LOCAL, MATCHED (4-proc Falcon @ ~30k, 3 store packs) ---
+# 1) build packs from the OpenClaw workspace identity (*.md) + achei-b2b tool defs:
+ACHEI_INTERNAL_URL=http://localhost:3000 mise exec ruby@4.0.6 -- ruby \
+  scripts/openclaw_to_pack.rb ../openclaw/openclaw/extensions/acheib2b-tools-dev /tmp/pack/tools
+#   then per store: agent.config.json (id, model deepseek-chat, provider deepseek,
+#   prompt_files=[AGENTS,IDENTITY,SOUL,BUSINESS,SKILLS,TOOLS,CALENDAR].md,
+#   limits.context_budget=60000, metadata.store_id) + copy ../openclaw/openclaw/workspace/<id>/*.md
+# 2) provision into a shared HARNESS_DB (single-proc), then serve 4-proc against it:
+HARNESS_DB=/tmp/bench.db OPENCLAW_GATEWAY_TOKEN=local-demo ADMIN_TOKEN=local-demo \
+  RUBY_YJIT_ENABLE=1 mise exec ruby@4.0.6 -- ruby --yjit scripts/serve_real.rb &  # provision via scripts/import_pack.rb x3, then kill
+HARNESS_DB=/tmp/bench.db OPENCLAW_GATEWAY_TOKEN=local-demo ADMIN_TOKEN=local-demo WEB_CONCURRENCY=4 \
+  RUBY_YJIT_ENABLE=1 mise exec ruby@4.0.6 -- bundle exec falcon serve --bind http://localhost:9292 --count 4 &
+OPENCLAW_GATEWAY_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+  node ../openclaw/scripts/loadtest-gateway.mjs \
+    --agents agent-store-cacau-show,agent-store-natura,agent-store-vaio --iterations 100 --concurrency 8
+
+# --- harness LOCAL, light context (bia, single-proc) ---
 BIND=http://localhost:9494 OPENCLAW_GATEWAY_TOKEN=local-demo ADMIN_TOKEN=local-demo \
   RUBY_YJIT_ENABLE=1 mise exec ruby@4.0.6 -- ruby --yjit scripts/serve_real.rb
 OPENCLAW_GATEWAY_URL=http://localhost:9494 OPENCLAW_GATEWAY_TOKEN=local-demo \
   node ../openclaw/scripts/loadtest-gateway.mjs --agents bia --iterations 100 --concurrency 8
 
-# OpenClaw LOCAL — 4 gateways (:18790..:18793) over an isolated state copy, 3 tenants
-#   (spins up 1 cron-primary + 3 OPENCLAW_SKIP_CRON=1 workers, health-gated)
+# --- OpenClaw LOCAL (4 gateways :18790..:18793, isolated state copy, 3 tenants) ---
 cd ../openclaw && node scripts/loadtest-gateway.mjs \
   --ports 18790,18791,18792,18793 \
   --agents agent-store-cacau-show,agent-store-natura,agent-store-vaio \
   --iterations 100 --concurrency 8    # see openclaw/scripts/loadtest-local.sh for the boot harness
 ```
 
-> **Still pending (both need an env the owner drives):**
-> - **harness local, 4-proc @ 27k** — needs the 3 store packs provisioned into a local
->   harness (§6). They aren't in the repo — the OpenClaw store agents keep their identity
->   *inside* `openclaw-agent.sqlite` (no extractable prompt files), so §5's harness tenants
->   were built/provisioned straight to Railway, not committed. Rebuilding them locally is a
->   pack-migration task, not a bench step.
-> - **harness Railway, 1-proc** — needs a Railway redeploy on 4.0.6. The prior automation
->   pass here was cut off by the org **monthly spend limit**.
+> **Still pending:** **harness Railway, 1-proc @27k** — needs a Railway redeploy on 4.0.6.
+> The prior automation pass here was cut off by the org **monthly spend limit**.
+>
+> **Pack-provisioning note (corrects an earlier assumption):** the 3 store identities ARE
+> reconstructable locally — they live as prompt files in
+> `../openclaw/openclaw/workspace/agent-store-<id>/*.md` (AGENTS/IDENTITY/SOUL/BUSINESS/
+> SKILLS/TOOLS/CALENDAR), **not** locked inside `openclaw-agent.sqlite` (that DB is only the
+> RAG/memory index + auth). Building a harness pack = those `.md` as `prompt_files` + the 44
+> achei-b2b tool defs (via `openclaw_to_pack.rb`) + a `context_budget` above the pinned size
+> (used 60000; the 8000 default triggers the "insoluble budget" error §5 documents).
 
 ---
 
@@ -263,10 +300,14 @@ OPENCLAW_GATEWAY_URL=https://staging-ag-oc.up.railway.app OPENCLAW_GATEWAY_TOKEN
 > **0 `database is locked`** on all workers, total p50 ~5.5s, gen ~31 tok/s, TTFB p50
 > ~57ms (the local TTFB confirms staging's ~270ms was the network hop).
 >
-> **Still pending:** the matched harness `WEB_CONCURRENCY=4` @27k **local** run (needs the
-> 3 store packs provisioned into a local harness — they live only on Railway, see §4/§6);
-> a cacau-show harness pack with the full prompt (needs an OK to overwrite the live pilot
-> tenant, or a separate bench id).
+> **Matched harness 4-proc @ ~30k — ✅ done LOCALLY** (2026-07-18, see §4a): Falcon
+> `--count 4` on Ruby 4.0.6+YJIT, 3 store packs rebuilt from `workspace/*.md`, N=100/agent →
+> 300 turns, 0 errors, total p50 2397ms (vs OpenClaw-local 5500ms), gen 43.4 tok/s, identity
+> prefix-cached. Confirms this table's Railway deltas on one local box.
+>
+> **Still pending:** the harness Railway leg on 4.0.6 (needs a redeploy); a cacau-show
+> harness pack with the full prompt on the live pilot tenant (needs an OK to overwrite it,
+> or a separate bench id).
 
 ---
 
