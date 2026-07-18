@@ -18,8 +18,11 @@ ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_PATH=/usr/local/bundle \
     BUNDLE_JOBS=4
 
+# libssl-dev + pkg-config: the `openssl` gem (4.0.2, compiled after the 4.0.6
+# Gemfile.lock re-resolve) needs the OpenSSL headers + pkg-config to build its C
+# extension — without them `bundle install` fails on ruby:4.0.6-slim (linux).
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git && \
+    apt-get install --no-install-recommends -y build-essential git libssl-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
