@@ -7,8 +7,11 @@
 # aponte HARNESS_DB pra dentro dele (ex.: /data/harness.db) — senão o Recovery
 # não tem o que retomar após restart.
 
-# ---- builder: compila as gems nativas (sqlite3) ---------------------------
-FROM ruby:3.3.5-slim AS builder
+# ---- builder: compiles the native gems (sqlite3) --------------------------
+# Ruby 4.0.x is the recommended/tested runtime (see .ruby-version and
+# docs/BENCHMARKS.md — Ruby × YJIT matrix, FOLLOWUP §1.1). Keep this tag in sync
+# with .ruby-version and with RUBY VERSION in Gemfile.lock.
+FROM ruby:4.0.6-slim AS builder
 
 ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_WITHOUT=development:test \
@@ -25,10 +28,12 @@ RUN bundle install && \
     rm -rf "${BUNDLE_PATH}"/cache/*.gem && \
     (find "${BUNDLE_PATH}"/gems \( -name "*.c" -o -name "*.o" \) -delete || true)
 
-# ---- runtime: slim, só o necessário pra rodar -----------------------------
-FROM ruby:3.3.5-slim AS runtime
+# ---- runtime: slim, only what is needed to run ----------------------------
+FROM ruby:4.0.6-slim AS runtime
 
-# Falcon liga YJIT quando disponível; garante o runtime enxuto.
+# RUBY_YJIT_ENABLE=1 turns YJIT on at Ruby process startup (falcon inherits it) —
+# equivalent to `ruby --yjit`; confirm with RubyVM::YJIT.enabled?. Measured in
+# docs/BENCHMARKS.md: the CPU work per turn (serialization/SSE/context).
 ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_WITHOUT=development:test \
     BUNDLE_PATH=/usr/local/bundle \
