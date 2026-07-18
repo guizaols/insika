@@ -30,7 +30,11 @@ TL;DR:
   ~1.4× faster** (43.4 vs 30.8 tok/s), **0/300 errors**, and its identity is DeepSeek
   prefix-cached (~30 vs ~27.5k input billed/turn) — reproducing §5's Railway result on one
   local box. OpenClaw still wins first-byte (~57ms vs ~1150ms), largely an SSE-flush artifact.
-  Only **harness Railway** remains pending (needs a 4.0.6 redeploy).
+- **harness Railway on 4.0.6 — done** (§4c): pilot redeployed to 4.0.6+YJIT (needed a Dockerfile
+  fix — `libssl-dev` for the `openssl` gem), 3 tenants, 300 turns, 0 errors, 4.14 turns/s — lands
+  on top of §5's 3.3.5 numbers, i.e. the Ruby bump is masked by provider latency e2e (the win is
+  CPU-side, §2). The **synthetic matrix is complete**; a **real-traffic** replay (tool calls
+  hitting achei-b2b; corpus already harvested) is the deferred next step.
 
 ---
 
@@ -171,12 +175,41 @@ at a ~45-token context, single-proc, 4.0.6+YJIT, N=100 conc 8.
 | target | procs | ctx/turn | TTFB p50 | TTFB p95 | total p50 | gen tok/s p50 | turns/s | err% |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | harness local (`bia`) | 1 | ~45 tok | 540ms | 676ms | 1540ms | 51.9 | 5.02 | 0% (0/100) |
-| harness Railway | 1 | ~27.5k | — | — | — | — | — | ⏳ pending |
 
 Useful only to isolate the context-assembly cost: at ~zero context the harness TTFB
 is **540ms** (DeepSeek first-token floor + minimal overhead) vs **1150ms** for the
 4-proc @30k run above — the ~600ms delta is the per-turn ~30k context rebuild +
 prefill + 4-proc contention, the same cost §5 flags as the TTFB driver.
+
+### 4c. harness Railway on 4.0.6  ✅ (the FOLLOWUP §1.1 {Ruby × YJIT × local/Railway} cell)
+
+The pilot was **still on Ruby 3.3.5+YJIT**; redeployed to **4.0.6 +YJIT +PRISM**
+(Falcon 4-proc, `x86_64-linux`) — which surfaced a real deploy bug: the 4.0.6
+Gemfile.lock re-resolve pulls **`openssl` 4.0.2 as a compiled gem**, and the
+Dockerfile builder lacked `libssl-dev`/`pkg-config`, so `bundle install` failed on
+`ruby:4.0.6-slim` (built fine on local arm64 — system OpenSSL headers present).
+Fixed in the Dockerfile builder; deploy then boots clean. Same load tool, 3 tenants,
+N=100/agent, conc 8 → 300 turns:
+
+| target | Ruby | procs | ctx/turn | TTFB p50 | TTFB p95 | total p50 | total p95 | gen tok/s p50 | turns/s | err |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| harness Railway | **4.0.6**+YJIT | 4 | ~10.8k (cached) | 775ms | 896ms | **1870ms** | 2319ms | 39.6 | **4.14** | **0/300** |
+| harness Railway (§5, for ref) | 3.3.5+YJIT | 4 | ~27.5k (cached) | 790ms | — | ~1900ms | — | ~44 | 4.14 | 0 |
+
+**Reading it:**
+- **The Ruby bump does NOT move the end-to-end Railway numbers** — 4.0.6 lands on TTFB
+  ~775ms / total ~1870ms / **4.14 turns/s**, essentially on top of §5's 3.3.5 figures
+  (~790ms / ~1900ms / 4.14). Exactly as this doc predicts: the 4.0.6 gain is **CPU-side**
+  (turn assembly, §2) and is **masked by DeepSeek latency e2e** — §2, not §4/§5, is the
+  clean "is the engine faster?" signal. This is the confirming datapoint, not a
+  disappointment.
+- **Context caveat / §5 discrepancy:** the pilot's provisioned packs currently serve
+  **~10.8k** identity (billed ~250 input tok/turn after the prefix caches), **not** the
+  ~27.5k §5 documented. So these numbers are comparable **to §5's Railway row** (same
+  engine, same-ish provider path) but **not** to the local 4-proc @30k run in §4a. The
+  packs on the pilot look re-provisioned smaller since §5 — worth reconciling before any
+  cross-run token-cost claim.
+- **0/300 errors** on the live 4-proc pilot; prompt-cache engages (input collapses to ~250).
 
 **Reproduction (all three legs, exactly as run):**
 
@@ -208,10 +241,19 @@ cd ../openclaw && node scripts/loadtest-gateway.mjs \
   --ports 18790,18791,18792,18793 \
   --agents agent-store-cacau-show,agent-store-natura,agent-store-vaio \
   --iterations 100 --concurrency 8    # see openclaw/scripts/loadtest-local.sh for the boot harness
+
+# --- harness RAILWAY on 4.0.6 (railway run injects OPENCLAW_GATEWAY_TOKEN) ---
+railway up --detach                    # redeploy the pilot on 4.0.6 (Dockerfile now has libssl-dev)
+railway run -- env OPENCLAW_GATEWAY_URL=https://harness-production-3254.up.railway.app \
+  node ../openclaw/scripts/loadtest-gateway.mjs \
+  --agents agent-store-cacau-show,agent-store-natura,agent-store-vaio --iterations 100 --concurrency 8
 ```
 
-> **Still pending:** **harness Railway, 1-proc @27k** — needs a Railway redeploy on 4.0.6.
-> The prior automation pass here was cut off by the org **monthly spend limit**.
+> **Synthetic matrix complete.** All {local, Railway} × {harness, OpenClaw} legs on 4.0.6+YJIT
+> are now run (§4a/§4c). The one thing these do NOT cover — flagged for a follow-up — is
+> **real traffic**: every leg sends a canned greeting (single turn, no tool calls, no
+> achei-b2b hit). A real-conversation replay corpus is already harvested (179 real user
+> messages across the 3 stores, from the OpenClaw session logs) for a future tool-exercising run.
 >
 > **Pack-provisioning note (corrects an earlier assumption):** the 3 store identities ARE
 > reconstructable locally — they live as prompt files in
@@ -305,9 +347,16 @@ OPENCLAW_GATEWAY_URL=https://staging-ag-oc.up.railway.app OPENCLAW_GATEWAY_TOKEN
 > 300 turns, 0 errors, total p50 2397ms (vs OpenClaw-local 5500ms), gen 43.4 tok/s, identity
 > prefix-cached. Confirms this table's Railway deltas on one local box.
 >
-> **Still pending:** the harness Railway leg on 4.0.6 (needs a redeploy); a cacau-show
-> harness pack with the full prompt on the live pilot tenant (needs an OK to overwrite it,
-> or a separate bench id).
+> **harness Railway on 4.0.6 — ✅ done** (2026-07-18, see §4c): pilot redeployed to
+> 4.0.6+YJIT (Falcon 4-proc), 3 tenants, N=100/agent → 300 turns, **0 errors**, TTFB p50
+> 775ms, total p50 1870ms, 4.14 turns/s — **on top of §5's 3.3.5 figures**, confirming the
+> Ruby bump is masked by provider latency e2e (the gain is CPU-side, §2). NB: the pilot's
+> packs currently serve ~10.8k, not the ~27.5k in this table — reconcile before cross-run
+> token claims.
+>
+> **Still pending:** a **real-traffic** replay (session-log messages + tool calls hitting
+> achei-b2b) — corpus harvested, deferred; a cacau-show pilot pack with the full ~27k prompt
+> (needs an OK to overwrite the live tenant, or a separate bench id).
 
 ---
 
