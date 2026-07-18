@@ -9,7 +9,7 @@ require_relative "../../../server/sse_body"
 # OpenClaw. Testa o parse do request e o mapa Event->frame SSE (fidelidade ao
 # parser do OpenclawDispatcher, R1).
 RSpec.describe Harness::Server::Responses do
-  # req mínimo respondendo a get_header (nome único p/ não vazar constante).
+  # minimal req responding to get_header (unique name so it doesn't leak a constant).
   RespReqDouble = Struct.new(:headers) do
     def get_header(k) = headers[k]
   end
@@ -24,7 +24,7 @@ RSpec.describe Harness::Server::Responses do
       expect(out).to eq(agent: "agent-store-x", user: "chat-1", message: "oi")
     end
 
-    it "cai no header X-Openclaw-Agent quando model não tem agente" do
+    it "falls back to the X-Openclaw-Agent header when the model has no agent" do
       out = described_class.parse_request({ user: "c", input: "x" }, req("HTTP_X_OPENCLAW_AGENT" => "agent-y"))
       expect(out[:agent]).to eq("agent-y")
     end
@@ -34,7 +34,7 @@ RSpec.describe Harness::Server::Responses do
       expect(described_class.parse_request(body, req)[:message]).to eq("linha1\nlinha2")
     end
 
-    it "valida agente/user/input ausentes" do
+    it "validates missing agent/user/input" do
       expect { described_class.parse_request({ user: "c", input: "x" }, req) }
         .to raise_error(Harness::ValidationError, /agent/)
       expect { described_class.parse_request({ model: "openclaw:a", input: "x" }, req) }
@@ -70,7 +70,7 @@ RSpec.describe Harness::Server::Responses do
                                                          total_tokens: 20, model: "deepseek-chat" } }))
       expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
       expect(f).to include('"model":"deepseek-chat"')
-      # model é irmão do usage no shape OpenAI, não fica DENTRO do usage
+      # model is a sibling of usage in the OpenAI shape, not INSIDE usage
       expect(f).not_to match(/"usage":\{[^}]*"model"/)
     end
 
@@ -88,7 +88,7 @@ RSpec.describe Harness::Server::Responses do
     end
   end
 
-  it "drena um turno inteiro como frames OpenAI Responses (integração SSE)" do
+  it "drains a whole turn as OpenAI Responses frames (SSE integration)" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     chunks = []
@@ -101,7 +101,7 @@ RSpec.describe Harness::Server::Responses do
       stream.emit(ev(:content, { delta: "Oi" }))
       stream.emit(ev(:tool_call, { name: "search_products" }))
       stream.emit(ev(:content, { delta: " tudo bem?" }))
-      stream.emit(ev(:task_started)) # sem correspondência: não vira frame
+      stream.emit(ev(:task_started)) # no match: does not become a frame
       stream.emit(ev(:done, {}))
       sub.close
       collector.wait

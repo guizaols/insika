@@ -1,37 +1,37 @@
 # frozen_string_literal: true
 
-# Shim de RubyLLM carregado no processo do smoke via RUBYOPT=-I (o `require
-# "ruby_llm"` lazy do Executor/LoadSkill resolve para cá em vez da gem real). É
-# ANDAIME DE TESTE, não produção: espelha só a superfície que o Executor usa
+# RubyLLM shim loaded into the smoke process via RUBYOPT=-I (the Executor/LoadSkill's
+# lazy `require "ruby_llm"` resolves here instead of the real gem). It is TEST
+# SCAFFOLDING, not production: it mirrors only the surface the Executor uses
 # (create_chat/with_instructions/with_tools/add_message/before_tool_call/
-# after_tool_result/ask com bloco de chunks) — nada do runtime de LLM é
-# reimplementado. Comportamento roteirizado por ENV.
+# after_tool_result/ask with a chunks block) — none of the LLM runtime is
+# reimplemented. Behavior scripted by ENV.
 require "async"
 
 module RubyLLM
-  # config/wiring de produção chamaria isto; o smoke não, mas mantemos por
-  # robustez (não faz nada útil aqui).
+  # production config/wiring would call this; the smoke doesn't, but we keep it for
+  # robustness (does nothing useful here).
   def self.configure
     yield(Object.new) if block_given?
   end
 
-  # -> chat fake. Assinatura idêntica à usada em Executor#create_chat.
+  # -> fake chat. Signature identical to the one used in Executor#create_chat.
   def self.chat(model:, provider: nil, assume_model_exists: false)
     FakeChat.new
   end
 
-  # Base das tools (LoadSkill herda). Só as class-methods usadas na DEFINIÇÃO da
-  # classe (description/param) — no smoke o perfil não tem skills, então
-  # LoadSkill nem é instanciada.
+  # Base of the tools (LoadSkill inherits). Only the class methods used in the class
+  # DEFINITION (description/param) — in the smoke the profile has no skills, so
+  # LoadSkill isn't even instantiated.
   class Tool
     def self.description(_text = nil); end
     def self.param(_name, **_opts); end
   end
 
-  # Chat roteirizado. Dois modos:
-  #   trava   (default): emite 1 chunk, grava o marker SMOKE_TURN_STARTED e
-  #                      BLOQUEIA (janela determinística p/ o kill -9).
-  #   complete (SMOKE_MODE=complete): emite 1 chunk e retorna a resposta final.
+  # Scripted chat. Two modes:
+  #   trava   (default): emits 1 chunk, writes the SMOKE_TURN_STARTED marker and
+  #                      BLOCKS (deterministic window for the kill -9).
+  #   complete (SMOKE_MODE=complete): emits 1 chunk and returns the final response.
   class FakeChat
     Response = Struct.new(:content)
 
@@ -46,19 +46,19 @@ module RubyLLM
     def ask(message, &on_chunk)
       on_chunk&.call(Response.new("processando... "))
 
-      # Modo APROVAÇÃO (P2-02): chama a tool `charge` — o ToolEnvelope aciona o
-      # gate e SUSPENDE o turno em :waiting até o operador aprovar (a call
-      # bloqueia aqui dentro; ao aprovar, executa e retorna). Cobre o smoke da
-      # fatia A (suspende -> kill -9 -> reboot -> aprova -> conclui).
+      # APPROVAL mode (P2-02): calls the `charge` tool — the ToolEnvelope trips the
+      # gate and SUSPENDS the turn in :waiting until the operator approves (the call
+      # blocks in here; on approval it executes and returns). Covers slice A's smoke
+      # (suspend -> kill -9 -> reboot -> approve -> complete).
       if ENV["SMOKE_APPROVAL"] && (tool = @tools.find { |t| t.name.to_s == "charge" })
         return Response.new("resultado: #{tool.call("amount" => 10)}")
       end
 
       return Response.new("resposta final para: #{message}") if ENV["SMOKE_MODE"] == "complete"
 
-      # modo "trava": sinaliza o início do turno e bloqueia para sempre.
+      # "trava" mode: signals the start of the turn and blocks forever.
       File.write(ENV.fetch("SMOKE_TURN_STARTED"), "started")
-      loop { Async::Task.current.sleep(0.1) } # nunca retorna; o kill -9 mata o processo
+      loop { Async::Task.current.sleep(0.1) } # never returns; the kill -9 kills the process
     end
   end
 end

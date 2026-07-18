@@ -3,10 +3,10 @@
 require "spec_helper"
 
 RSpec.describe Harness::MiddlewareStack do
-  # TurnState mínimo (duplo): só os campos que os elos tocam.
+  # Minimal TurnState (double): only the fields the links touch.
   def state = Struct.new(:message, :halt_reason).new
 
-  # Elo que loga entrada/saída num array compartilhado.
+  # Link that logs entry/exit into a shared array.
   def logging_mw(log, tag)
     Class.new(Harness::Middleware) do
       define_method(:call) do |st, &nxt|
@@ -18,7 +18,7 @@ RSpec.describe Harness::MiddlewareStack do
     end.new
   end
 
-  it "executa na ordem de registro (externo->interno) e volta em ordem inversa" do
+  it "runs in registration order (outer->inner) and returns in reverse order" do
     log = []
     stack = described_class.new([logging_mw(log, "A"), logging_mw(log, "B")])
 
@@ -27,7 +27,7 @@ RSpec.describe Harness::MiddlewareStack do
     expect(log).to eq(%w[A:in B:in terminal B:out A:out])
   end
 
-  it "Middleware base é pass-through (terminal roda, state inalterado)" do
+  it "base Middleware is pass-through (terminal runs, state unchanged)" do
     stack = described_class.new([Harness::Middleware.new])
     ran = false
     st = state
@@ -35,7 +35,7 @@ RSpec.describe Harness::MiddlewareStack do
     expect(ran).to be(true)
   end
 
-  it "curto-circuito: elo não chama nxt -> terminal e elos seguintes não rodam" do
+  it "short-circuit: link does not call nxt -> terminal and subsequent links do not run" do
     log = []
     halting = Class.new(Harness::Middleware) do
       define_method(:call) { |st, &_nxt| st.halt_reason = "rate limit" }
@@ -47,11 +47,11 @@ RSpec.describe Harness::MiddlewareStack do
     stack.call(st) { |_s| terminal_ran = true }
 
     expect(terminal_ran).to be(false)
-    expect(log).to be_empty # B (após o halting) nunca rodou
+    expect(log).to be_empty # B (after the halting) never ran
     expect(st.halt_reason).to eq("rate limit")
   end
 
-  it "modificação do state é visível ao próximo elo e ao terminal" do
+  it "state modification is visible to the next link and the terminal" do
     writer = Class.new(Harness::Middleware) do
       define_method(:call) { |st, &nxt| st.message = "x"; nxt.call(st) }
     end.new
@@ -62,21 +62,21 @@ RSpec.describe Harness::MiddlewareStack do
     expect(seen).to eq("x")
   end
 
-  it "stack vazia -> terminal executa com o mesmo state" do
+  it "empty stack -> terminal runs with the same state" do
     st = state
     seen = nil
     described_class.new([]).call(st) { |s| seen = s }
     expect(seen).to be(st)
   end
 
-  it "exceção em elo propaga (stack não faz rescue)" do
+  it "exception in a link propagates (stack does not rescue)" do
     boom = Class.new(Harness::Middleware) do
       def call(_st, &_nxt) = raise "middleware caiu"
     end.new
     expect { described_class.new([boom]).call(state) { |_s| :ok } }.to raise_error("middleware caiu")
   end
 
-  it "devolve o valor do terminal" do
+  it "returns the terminal's value" do
     expect(described_class.new([Harness::Middleware.new]).call(state) { |_s| :resultado }).to eq(:resultado)
   end
 end

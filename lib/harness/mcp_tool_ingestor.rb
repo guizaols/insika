@@ -58,14 +58,14 @@ module Harness
     # Discovers the tools and builds the manifest Hash (without ingesting) — isolable for testing.
     def manifest_for(name, client: nil)
       record = @mcp_store.get_raw(name.to_s)
-      raise Harness::NotFoundError, "instância MCP '#{name}' não encontrada" if record.nil?
-      raise Harness::ValidationError, "instância MCP '#{name}' está desabilitada" unless record["enabled"]
+      raise Harness::NotFoundError, "MCP instance '#{name}' not found" if record.nil?
+      raise Harness::ValidationError, "MCP instance '#{name}' is disabled" unless record["enabled"]
 
       url = presence(record["url"])
       if url.nil?
         raise Harness::ValidationError,
-              "instância MCP '#{name}' sem url: a ingestão live requer transport HTTP " \
-              "(stdio é trabalho posterior — D8)"
+              "MCP instance '#{name}' has no url: live ingestion requires HTTP transport " \
+              "(stdio is later work — D8)"
       end
 
       tools = Array((client || @client_factory.call(record)).list_tools)

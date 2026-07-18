@@ -60,7 +60,7 @@ module Harness
       trace(call_id, args, result, started)
       result
     rescue ToolTimeout
-      err = { error: "TimeoutError: tool excedeu #{@timeout}s" }
+      err = { error: "TimeoutError: tool exceeded #{@timeout}s" }
       trace(call_id, args, err, started)
       err
     end

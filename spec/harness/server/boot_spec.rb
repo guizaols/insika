@@ -3,10 +3,10 @@
 require "spec_helper"
 require_relative "../../../server/boot"
 
-# doc 07 §7: ordem plugins→stores→recovery→(app). App só é retornado DEPOIS do
-# recovery. Store corrompido no boot -> aborta (não retorna app).
+# doc 07 §7: order plugins→stores→recovery→(app). App is only returned AFTER
+# recovery. Corrupted store at boot -> aborts (does not return app).
 RSpec.describe Harness::Server::Boot do
-  # Wiring duplo: registra a ordem das chamadas num array compartilhado.
+  # Double wiring: records the call order in a shared array.
   class WiringDouble
     attr_reader :calls
 
@@ -34,7 +34,7 @@ RSpec.describe Harness::Server::Boot do
     end
   end
 
-  it "executa plugins -> stores -> recovery e só então devolve o app" do
+  it "runs plugins -> stores -> recovery and only then returns the app" do
     calls = []
     wiring = WiringDouble.new(calls, recovery: RecoveryDouble.new(calls, { resumed: [], failed: [] }, nil))
 
@@ -44,16 +44,16 @@ RSpec.describe Harness::Server::Boot do
     expect(app).to eq(:the_app)
   end
 
-  it "recovery levanta StoreError -> Boot aborta e NÃO retorna o app" do
+  it "recovery raises StoreError -> Boot aborts and does NOT return the app" do
     calls = []
     boom = RecoveryDouble.new(calls, nil, Harness::StoreError.new("db corrompido"))
     wiring = WiringDouble.new(calls, recovery: boom)
 
     expect { described_class.new(wiring, logger: nil).call }.to raise_error(Harness::StoreError)
-    expect(calls).not_to include(:app) # abortou antes de liberar o app p/ o listen
+    expect(calls).not_to include(:app) # aborted before releasing the app to the listen
   end
 
-  it "task irrecuperável (failed) não derruba o boot" do
+  it "unrecoverable task (failed) does not bring down the boot" do
     calls = []
     wiring = WiringDouble.new(calls, recovery: RecoveryDouble.new(calls, { resumed: [], failed: ["t-1"] }, nil))
 
@@ -63,12 +63,12 @@ RSpec.describe Harness::Server::Boot do
     expect(calls).to eq(%i[plugins stores recovery app])
   end
 
-  it "envolve o recovery em Sync quando não há reactor corrente" do
+  it "wraps recovery in Sync when there is no current reactor" do
     calls = []
     recovery = RecoveryDouble.new(calls, { resumed: [], failed: [] }, nil)
     wiring = WiringDouble.new(calls, recovery: recovery)
 
-    # Fora de qualquer Async: não deve levantar (o Boot cria o reactor).
+    # Outside any Async: should not raise (Boot creates the reactor).
     expect { described_class.new(wiring, logger: nil).call }.not_to raise_error
     expect(calls).to include(:recovery)
   end

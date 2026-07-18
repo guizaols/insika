@@ -23,7 +23,7 @@ module Harness
         raise Harness::ValidationError, "allow_groups must be a list or nil" unless p[:allow_groups].nil? || p[:allow_groups].is_a?(Array)
 
         existing = @profile_source.fetch(id) ||
-                   (raise Harness::NotFoundError, "agente '#{id}' não encontrado")
+                   (raise Harness::NotFoundError, "agent '#{id}' not found")
 
         merged = existing.to_h.merge(tools_allow: p[:allow], tools_deny: Array(p[:deny]))
         merged[:tools_allow_groups] = p[:allow_groups] if p.key?(:allow_groups)

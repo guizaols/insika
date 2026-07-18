@@ -44,7 +44,7 @@ module Harness
       return @base.resolve(key) if code_tool?(key)
 
       entry = dynamic.find { |e| e.name == key }
-      raise Harness::NotFoundError, "'#{name}' não registrada em #{self.class}" unless entry
+      raise Harness::NotFoundError, "'#{name}' not registered in #{self.class}" unless entry
 
       entry.factory.call
     end

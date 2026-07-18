@@ -14,7 +14,7 @@ RSpec.describe Harness::Commands::ResumeTask do
   let(:profile) { Harness::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
 
-  # Executor duplo com running?/spawn/resume_live graváveis.
+  # Executor double with recordable running?/spawn/resume_live.
   let(:executor) do
     Class.new do
       attr_reader :spawned, :resumed_live
@@ -27,7 +27,7 @@ RSpec.describe Harness::Commands::ResumeTask do
     end.new
   end
 
-  # Cria uma task no estado alvo (caminho válido) + checkpoint opcional.
+  # Creates a task in the target state (valid path) + optional checkpoint.
   def seed(id, status:, checkpoint: true, agent_id: "sales")
     task_store.create(command: { "type" => "send_message", "payload" => {} }, id: id)
     task_store.begin_execution(id)
@@ -52,7 +52,7 @@ RSpec.describe Harness::Commands::ResumeTask do
     handler.call(Harness::Command.build(:resume_task, { task_id: id }))
   end
 
-  it "paused SEM fiber vivo (crash): re-despacha com resume_from = checkpoint" do
+  it "paused WITHOUT a live fiber (crash): re-dispatches with resume_from = checkpoint" do
     seed("t", status: :paused)
     executor.running = false
     expect(resume("t")).to eq({ task_id: "t" })
@@ -61,7 +61,7 @@ RSpec.describe Harness::Commands::ResumeTask do
     expect(executor.resumed_live).to be_empty
   end
 
-  it "paused COM fiber vivo (P2): resume IN-PROCESS (posta :resume, NÃO re-despacha)" do
+  it "paused WITH a live fiber (P2): resumes IN-PROCESS (posts :resume, does NOT re-dispatch)" do
     seed("t", status: :paused)
     executor.running = true
     expect(resume("t")).to eq({ task_id: "t" })
@@ -69,63 +69,63 @@ RSpec.describe Harness::Commands::ResumeTask do
     expect(executor.spawned).to be_empty
   end
 
-  it "waiting com checkpoint: retomável" do
+  it "waiting with a checkpoint: resumable" do
     seed("t", status: :waiting)
     resume("t")
     expect(executor.spawned.size).to eq(1)
   end
 
-  it "running órfã (running? false): retomável" do
+  it "orphaned running (running? false): resumable" do
     seed("t", status: :running)
     executor.running = false
     resume("t")
     expect(executor.spawned.size).to eq(1)
   end
 
-  it "running viva (running? true): ValidationError, não spawna" do
+  it "live running (running? true): ValidationError, does not spawn" do
     seed("t", status: :running)
     executor.running = true
-    expect { resume("t") }.to raise_error(Harness::ValidationError, /em execução/)
+    expect { resume("t") }.to raise_error(Harness::ValidationError, /is running/)
     expect(executor.spawned).to be_empty
   end
 
-  it "queued (nunca iniciado): re-roda do zero via spawn_in_session (resume_from nil)" do
-    # turno que estava na fila do SessionActor no crash — sem checkpoint; recupera
-    # rodando do Command original (P2-03). Perfil vem do agente do Command.
+  it "queued (never started): re-runs from scratch via spawn_in_session (resume_from nil)" do
+    # a turn that was in the SessionActor queue at crash time — no checkpoint; recovers
+    # by running from the original Command (P2-03). The profile comes from the Command's agent.
     task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "sales" } }, id: "q")
 
     expect(resume("q")).to eq({ task_id: "q" })
     expect(executor.spawned.size).to eq(1)
-    expect(executor.spawned.first[:resume_from]).to be_nil # do zero, não do checkpoint
+    expect(executor.spawned.first[:resume_from]).to be_nil # from scratch, not from the checkpoint
   end
 
-  it "queued com agente inexistente: NotFoundError" do
+  it "queued with a nonexistent agent: NotFoundError" do
     task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "ghost" } }, id: "q")
     expect { resume("q") }.to raise_error(Harness::NotFoundError, /ghost/)
   end
 
-  it "terminais não são retomáveis" do
+  it "terminal states are not resumable" do
     %i[completed failed cancelled].each_with_index do |st, i|
       id = seed("t#{i}", status: st)
       expect { resume(id) }.to raise_error(Harness::ValidationError)
     end
   end
 
-  it "sem checkpoint: ValidationError irrecuperável" do
+  it "without a checkpoint: ValidationError unrecoverable" do
     seed("t", status: :paused, checkpoint: false)
-    expect { resume("t") }.to raise_error(Harness::ValidationError, /irrecuperável/)
+    expect { resume("t") }.to raise_error(Harness::ValidationError, /unrecoverable/)
   end
 
-  it "task inexistente: NotFoundError" do
+  it "nonexistent task: NotFoundError" do
     expect { resume("ghost") }.to raise_error(Harness::NotFoundError)
   end
 
-  it "agente do checkpoint sumiu da config: NotFoundError" do
+  it "the checkpoint's agent vanished from the config: NotFoundError" do
     seed("t", status: :paused, agent_id: "ghost")
     expect { resume("t") }.to raise_error(Harness::NotFoundError, /ghost/)
   end
 
-  it "usa o checkpoint de maior turn (latest)" do
+  it "uses the checkpoint with the highest turn (latest)" do
     seed("t", status: :paused, checkpoint: false)
     checkpoint_store.save(Harness::Checkpoint.new(task_id: "t", turn: 2, session_id: nil,
                                                   agent_id: "sales", messages: [],
@@ -137,7 +137,7 @@ RSpec.describe Harness::Commands::ResumeTask do
     expect(executor.spawned.first[:resume_from].turn).to eq(4)
   end
 
-  it "task_id ausente: ValidationError" do
+  it "missing task_id: ValidationError" do
     expect { handler.call(Harness::Command.build(:resume_task, {})) }
       .to raise_error(Harness::ValidationError)
   end

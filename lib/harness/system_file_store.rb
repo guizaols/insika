@@ -46,7 +46,7 @@ module Harness
 
       current = entry(name)
       if create_only && current
-        raise Harness::ValidationError, "arquivo de sistema '#{name}' já existe"
+        raise Harness::ValidationError, "system file '#{name}' already exists"
       end
 
       built = build_entry(content.to_s, current)
@@ -69,11 +69,11 @@ module Harness
     def restore(filename, index)
       name = filename.to_s
       current = entry(name)
-      raise Harness::NotFoundError, "arquivo de sistema '#{name}' não encontrado" unless current
+      raise Harness::NotFoundError, "system file '#{name}' not found" unless current
 
       hist = current.fetch("history", [])
       i = Integer(index)
-      raise Harness::ValidationError, "versão #{index} inexistente" if i.negative? || i >= hist.length
+      raise Harness::ValidationError, "version #{index} does not exist" if i.negative? || i >= hist.length
 
       write(name, hist[i]["content"])
     end

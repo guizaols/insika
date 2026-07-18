@@ -68,7 +68,7 @@ module Harness
     def self.build(name:, description:, request:, parameters: nil, response: nil,
                    secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil)
       name = name.to_s
-      raise Harness::ValidationError, "name deve casar #{NAME_RE.inspect}" unless NAME_RE.match?(name)
+      raise Harness::ValidationError, "name must match #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
       desc = description.to_s
       raise Harness::ValidationError, "description is required" if desc.empty?
@@ -146,12 +146,12 @@ module Harness
       Array(list).each do |p|
         p = deep_symbolize(p)
         pname = p[:name].to_s
-        raise Harness::ValidationError, "param name deve casar #{NAME_RE.inspect}" unless NAME_RE.match?(pname)
-        raise Harness::ValidationError, "param '#{pname}' duplicado" if seen[pname]
+        raise Harness::ValidationError, "param name must match #{NAME_RE.inspect}" unless NAME_RE.match?(pname)
+        raise Harness::ValidationError, "param '#{pname}' duplicated" if seen[pname]
 
         seen[pname] = true
         type = (p[:type] || "string").to_s
-        raise Harness::ValidationError, "param '#{pname}': type inválido #{type.inspect}" unless PARAM_TYPES.include?(type)
+        raise Harness::ValidationError, "param '#{pname}': invalid type #{type.inspect}" unless PARAM_TYPES.include?(type)
 
         prop = { "type" => type }
         prop["description"] = p[:description].to_s unless p[:description].to_s.empty?
@@ -170,7 +170,7 @@ module Harness
       s = schema.dup
       s["type"] ||= "object" if s.key?("properties") || !s.key?("type")
       unless s["type"].to_s == "object"
-        raise Harness::ValidationError, "parameters (topo) deve ser type object, não #{s['type'].inspect}"
+        raise Harness::ValidationError, "parameters (top) must be type object, not #{s['type'].inspect}"
       end
 
       s["properties"] ||= {}
@@ -187,12 +187,12 @@ module Harness
       forbidden = node.keys.map(&:to_s) & FORBIDDEN_KEYWORDS
       unless forbidden.empty?
         raise Harness::ValidationError,
-              "#{path}: construção não suportada (#{forbidden.join(', ')}); subset seguro: #{SCHEMA_TYPES.join('/')}/enum"
+              "#{path}: unsupported construct (#{forbidden.join(', ')}); safe subset: #{SCHEMA_TYPES.join('/')}/enum"
       end
 
       type = node["type"].to_s
       raise Harness::ValidationError, "#{path}: 'type' is required" if type.empty?
-      raise Harness::ValidationError, "#{path}: type inválido #{node['type'].inspect}" unless SCHEMA_TYPES.include?(type)
+      raise Harness::ValidationError, "#{path}: invalid type #{node['type'].inspect}" unless SCHEMA_TYPES.include?(type)
 
       case type
       when "object" then validate_object!(node, path)
@@ -213,13 +213,13 @@ module Harness
       raise Harness::ValidationError, "#{path}: 'required' must be a list" unless required.is_a?(Array)
 
       unknown = required.map(&:to_s) - props.keys.map(&:to_s)
-      raise Harness::ValidationError, "#{path}: required cita propriedade inexistente: #{unknown.join(', ')}" unless unknown.empty?
+      raise Harness::ValidationError, "#{path}: required cites nonexistent property: #{unknown.join(', ')}" unless unknown.empty?
     end
     private_class_method :validate_object!
 
     def self.validate_array!(node, path)
       items = node["items"]
-      raise Harness::ValidationError, "#{path}: array exige 'items'" if items.nil?
+      raise Harness::ValidationError, "#{path}: array requires 'items'" if items.nil?
 
       validate_schema!(items, path: "#{path}[]")
     end
@@ -237,7 +237,7 @@ module Harness
     # they require NAME_RE (no dot, lowercase). Nested properties may be free-form.
     def self.validate_top_level_names!(schema)
       (schema["properties"] || {}).each_key do |pname|
-        raise Harness::ValidationError, "param de topo '#{pname}' deve casar #{NAME_RE.inspect}" unless NAME_RE.match?(pname.to_s)
+        raise Harness::ValidationError, "top-level param '#{pname}' must match #{NAME_RE.inspect}" unless NAME_RE.match?(pname.to_s)
       end
     end
     private_class_method :validate_top_level_names!
@@ -253,7 +253,7 @@ module Harness
       raise Harness::ValidationError, "invalid method #{method.inspect}" unless HTTP_METHODS.include?(method)
 
       url = r[:url].to_s
-      raise Harness::ValidationError, "url é obrigatória" if url.empty?
+      raise Harness::ValidationError, "url is required" if url.empty?
 
       # The URL is a TEMPLATE: {{x}} is not a valid URI character. Validate against a
       # probe with the placeholders swapped for a safe token.
@@ -281,7 +281,7 @@ module Harness
       raise Harness::ValidationError, "invalid extract #{extract.inspect}" unless EXTRACTS.include?(extract)
 
       path = r[:path].nil? ? nil : r[:path].to_s
-      raise Harness::ValidationError, "extract 'json_path' exige path" if extract == "json_path" && (path.nil? || path.empty?)
+      raise Harness::ValidationError, "extract 'json_path' requires path" if extract == "json_path" && (path.nil? || path.empty?)
 
       { extract: extract, path: path }
     end
@@ -297,8 +297,8 @@ module Harness
       unknown_ctx = ctx_refs.reject { |u| CTX_FIELDS.include?(u.delete_prefix(CTX_PREFIX)) }
       unless unknown_ctx.empty?
         raise Harness::ValidationError,
-              "contexto de turno desconhecido: #{unknown_ctx.join(', ')} " \
-              "(disponível: #{CTX_FIELDS.map { |f| CTX_PREFIX + f }.join(', ')})"
+              "unknown turn context: #{unknown_ctx.join(', ')} " \
+              "(available: #{CTX_FIELDS.map { |f| CTX_PREFIX + f }.join(', ')})"
       end
 
       unknown = params - param_names

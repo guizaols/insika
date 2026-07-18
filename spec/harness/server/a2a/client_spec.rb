@@ -57,7 +57,7 @@ RSpec.describe Harness::Server::A2A::Client do
       expect(http.requests.map { |_u, r| r["method"] }).to eq(%w[message/send tasks/get])
     end
 
-    it "remoto failed -> { error: } (texto do erro, senão o estado)" do
+    it "remote failed -> { error: } (error text, otherwise the state)" do
       http = FakeHttp.new([envelope_task("failed", text: "deu ruim"), envelope_task("failed", text: "deu ruim")])
       client = described_class.new(http: http, sleeper: no_sleep)
       expect(client.call("u", "x")).to eq({ error: "deu ruim", state: "failed", id: "rt1" })

@@ -3,9 +3,9 @@
 require "spec_helper"
 require "async"
 
-# Integração do estágio 6 variante (workflow) — workflow fake PORO, colaboradores
+# Stage 6 variant integration (workflow) — fake PORO workflow, collaborators
 # fake da suíte da task 12. Sem ruby_llm.
-RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
+RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
@@ -13,7 +13,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
   let(:event_stream) { SpyEventStream.new }
   let(:workflow_registry) { Harness::WorkflowRegistry.new }
   let(:tool_registry) { Harness::ToolRegistry.new }
-  # perfil com WorkflowAllowlist nas policies + workflow permitido
+  # profile with WorkflowAllowlist in the policies + allowed workflow
   let(:profile) do
     Harness::AgentProfile.build(id: "sales", model: "gpt",
                                 policies: %w[tool_allowlist workflow_allowlist],
@@ -29,7 +29,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
 
   # O Engine emite :policy_denied no SEU stream; o Executor é a fonte
   # correlacionada (com seq) no stream da pipeline (doc 03 L3). Streams
-  # separados evitam evento duplicado — decisão de wiring (task 26).
+  # separated avoid a duplicate event — wiring decision (task 26).
   let(:engine_stream) { SpyEventStream.new }
 
   def build_executor(allowed_tools: [])
@@ -90,14 +90,14 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
   it "tools filtradas pela Resolution: a tool negada nunca chega ao workflow" do
     got_tools = nil
     workflow_registry.register("flow", ->(_i, context:, tools:) { got_tools = tools; "ok" })
-    tool_registry.register("permitida", poro_tool("permitida"))
+    tool_registry.register("allowed", poro_tool("allowed"))
     tool_registry.register("negada", poro_tool("negada"), optional: true) # optional sem opt-in -> deny
     executor = build_executor
 
     run(executor, make_task)
 
     names = got_tools.map { |t| t.__getobj__.name }
-    expect(names).to include("permitida")
+    expect(names).to include("allowed")
     expect(names).not_to include("negada")
   end
 
@@ -129,7 +129,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
     expect(event_stream.events.find { |e| e.type == :policy_denied }.meta[:seq]).to be_a(Integer)
   end
 
-  it "input omitido: workflow recebe {} (não nil)" do
+  it "omitted input: workflow receives {} (not nil)" do
     got = :unset
     workflow_registry.register("flow", ->(input, **) { got = input; "ok" })
     executor = build_executor
@@ -153,7 +153,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
     expect(event_stream.types).to include(:done, :task_completed)
   end
 
-  it "exceção no workflow -> task :failed, :task_failed + :error" do
+  it "exception in the workflow -> task :failed, :task_failed + :error" do
     workflow_registry.register("flow", ->(*, **) { raise "workflow explodiu" })
     executor = build_executor
 
@@ -163,7 +163,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
     expect(event_stream.types).to include(:task_failed, :error)
   end
 
-  it "side-effect + resume: tool side_effect não reexecuta na retomada (skip por nome)" do
+  it "side-effect + resume: side_effect tool does not re-run on resume (skip by name)" do
     calls = 0
     tool_registry.register("charge", poro_tool("charge") { calls += 1 }, side_effect: true)
     # workflow chama a tool (envelopada) — na 1ª exec registra o side-effect
@@ -180,7 +180,7 @@ RSpec.describe "Executor: trigger_workflow (estágio 6 variante)" do
                                                   completed_side_effects: [], created_at: nil))
     checkpoint_store.record_side_effect("t", turn: 1, tool_call_id: "charge")
 
-    # Ato 2: resume reexecuta o workflow do início; a tool "charge" está no skip set.
+    # Act 2: resume re-runs the workflow from the start; the "charge" tool is in the skip set.
     Sync do
       executor.spawn(task_store.find("t"), profile: profile, resume_from: checkpoint_store.latest("t"))
       executor.instance_variable_get(:@running)["t"]&.wait

@@ -9,7 +9,7 @@ module Harness
     # enter lib/harness.rb; it is loaded in the registration block (wiring) on the 1st
     # instance. One instance per remote agent (its own name/description).
     class A2ARemote < RubyLLM::Tool
-      param :message, desc: "A mensagem/tarefa para o agente remoto"
+      param :message, desc: "The message/task for the remote agent"
 
       def initialize(client:, url:, tool_name:, description:, event_stream: nil)
         @client = client

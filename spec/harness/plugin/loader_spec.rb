@@ -9,7 +9,7 @@ RSpec.describe Harness::Plugin::Loader do
     Dir.mktmpdir { |d| @root = d; example.run }
   end
 
-  # Registries reais (task 20) + hooks real + coleções + spy de eventos.
+  # Real registries (task 20) + real hooks + collections + event spy.
   let(:tools) { Harness::ToolRegistry.new }
   let(:workflows) { Harness::WorkflowRegistry.new }
   let(:policies) { Harness::PolicyRegistry.new }
@@ -24,7 +24,7 @@ RSpec.describe Harness::Plugin::Loader do
       hooks: hooks, middleware: middleware, context_providers: context_providers }
   end
 
-  # Escreve um plugin (manifesto + entry Ruby PORO — sem ruby_llm).
+  # Writes a plugin (manifest + Ruby PORO entry — no ruby_llm).
   def write_plugin(id, manifest_yaml, entry_ruby, manifest_name: "harness.plugin.yml")
     dir = File.join(@root, id)
     FileUtils.mkdir_p(dir)
@@ -38,7 +38,7 @@ RSpec.describe Harness::Plugin::Loader do
                         enabled: enabled, event_stream: event_stream).load_all
   end
 
-  # Módulo de plugin PORO nomeável (evita colisão de constante entre exemplos).
+  # Nameable PORO plugin module (avoids constant collision between examples).
   def poro_entry(mod_name, body)
     <<~RUBY
       module #{mod_name}
@@ -47,7 +47,7 @@ RSpec.describe Harness::Plugin::Loader do
     RUBY
   end
 
-  it "carrega manifesto novo e registra a tool com metadata do manifesto" do
+  it "loads a new manifest and registers the tool with manifest metadata" do
     write_plugin("alpha", <<~YAML, poro_entry("AlphaPlugin", <<~BODY))
       id: alpha
       module: AlphaPlugin
@@ -67,7 +67,7 @@ RSpec.describe Harness::Plugin::Loader do
     expect(result[:plugins].map(&:id)).to eq(["alpha"])
   end
 
-  it "aceita plugin.yml antigo com warn de deprecação" do
+  it "accepts old plugin.yml with a deprecation warning" do
     write_plugin("beta", <<~YAML, poro_entry("BetaPlugin", "def self.register(api) = nil"), manifest_name: "plugin.yml")
       id: beta
       module: BetaPlugin
@@ -75,10 +75,10 @@ RSpec.describe Harness::Plugin::Loader do
       contracts: { tools: [] }
     YAML
 
-    expect { load(enabled: %w[beta]) }.to output(/plugin.yml está deprecado/).to_stderr
+    expect { load(enabled: %w[beta]) }.to output(/plugin.yml is deprecated/).to_stderr
   end
 
-  it "harness.plugin.yml precede plugin.yml no mesmo dir (sem warn)" do
+  it "harness.plugin.yml takes precedence over plugin.yml in the same dir (no warn)" do
     dir = File.join(@root, "gamma")
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "harness.plugin.yml"), "id: gamma\ncontracts: { tools: [] }\n")
@@ -89,7 +89,7 @@ RSpec.describe Harness::Plugin::Loader do
     expect(result[:plugins].map(&:id)).to eq(["gamma"])
   end
 
-  it "registra workflow declarado em contracts.workflows" do
+  it "registers a workflow declared in contracts.workflows" do
     write_plugin("wf", <<~YAML, poro_entry("WfPlugin", <<~BODY))
       id: wf
       module: WfPlugin
@@ -103,7 +103,7 @@ RSpec.describe Harness::Plugin::Loader do
     expect(workflows.names).to eq(["flow"])
   end
 
-  it "ignora workflow fora de contracts.workflows com warn" do
+  it "ignores a workflow outside contracts.workflows with a warn" do
     write_plugin("wf2", <<~YAML, poro_entry("Wf2Plugin", <<~BODY))
       id: wf2
       module: Wf2Plugin
@@ -113,11 +113,11 @@ RSpec.describe Harness::Plugin::Loader do
       def self.register(api) = api.register_workflow("naodeclarado", ->(i, **) { i })
     BODY
 
-    expect { load(enabled: %w[wf2]) }.to output(/não declarado em contracts.workflows/).to_stderr
+    expect { load(enabled: %w[wf2]) }.to output(/not declared in contracts.workflows/).to_stderr
     expect(workflows.names).to eq([])
   end
 
-  it "middleware/hook/provider/policy sem contrato: efetivados após load" do
+  it "middleware/hook/provider/policy without a contract: committed after load" do
     write_plugin("full", <<~YAML, poro_entry("FullPlugin", <<~BODY))
       id: full
       module: FullPlugin
@@ -142,11 +142,11 @@ RSpec.describe Harness::Plugin::Loader do
     expect(middleware).to eq([FullPlugin::MW])
     expect(context_providers).to eq([FullPlugin::PROV])
     expect(policies.names).to eq(["pol"])
-    # hook efetivado: run_before(:tool) roda o callback
+    # hook committed: run_before(:tool) runs the callback
     expect(hooks.run_before(:tool, "x")).to eq("x")
   end
 
-  it "config_schema válido: plugin carrega e api.config é a config congelada" do
+  it "valid config_schema: plugin loads and api.config is the frozen config" do
     write_plugin("cfg", <<~YAML, poro_entry("CfgPlugin", <<~BODY))
       id: cfg
       module: CfgPlugin
@@ -167,8 +167,8 @@ RSpec.describe Harness::Plugin::Loader do
     expect(CfgPlugin::SEEN.first).to be_frozen
   end
 
-  it "config inválida: plugin NÃO carrega, warn, boot segue (outro plugin carrega)" do
-    write_plugin("bad", <<~YAML, poro_entry("BadPlugin", "def self.register(api) = raise('não deveria carregar')"))
+  it "invalid config: plugin does NOT load, warn, boot continues (another plugin loads)" do
+    write_plugin("bad", <<~YAML, poro_entry("BadPlugin", "def self.register(api) = raise('should not load')"))
       id: bad
       module: BadPlugin
       entry: plugin.rb
@@ -184,12 +184,12 @@ RSpec.describe Harness::Plugin::Loader do
     YAML
 
     result = nil
-    expect { result = load(enabled: %w[bad ok]) }.to output(/config inválida/).to_stderr
+    expect { result = load(enabled: %w[bad ok]) }.to output(/invalid config/).to_stderr
     expect(result[:plugins].map(&:id)).to eq(["ok"])
     expect(tools.names).to eq(["t"])
   end
 
-  it "rollback: entry registra 1 tool e depois levanta -> tool removida, plugin descartado, próximo carrega" do
+  it "rollback: entry registers 1 tool then raises -> tool removed, plugin discarded, next one loads" do
     write_plugin("boom", <<~YAML, poro_entry("BoomPlugin", <<~BODY))
       id: boom
       module: BoomPlugin
@@ -199,7 +199,7 @@ RSpec.describe Harness::Plugin::Loader do
     YAML
       def self.register(api)
         api.register_tool("t1", Class.new)
-        raise "falha no meio do register"
+        raise "failure in the middle of register"
       end
     BODY
     write_plugin("after", <<~YAML, poro_entry("AfterPlugin", "def self.register(api) = api.register_tool('t2', Class.new)"))
@@ -210,13 +210,13 @@ RSpec.describe Harness::Plugin::Loader do
     YAML
 
     result = nil
-    expect { result = load(enabled: %w[boom after]) }.to output(/falha ao carregar/).to_stderr
-    expect(tools.names).to eq(["t2"]) # t1 revertida
+    expect { result = load(enabled: %w[boom after]) }.to output(/failed to load/).to_stderr
+    expect(tools.names).to eq(["t2"]) # t1 reverted
     expect(result[:plugins].map(&:id)).to eq(["after"])
     expect(result[:skill_dirs]).not_to include(a_string_including("boom"))
   end
 
-  it "staging descartado: middleware fica de fora se o register levanta (L3 — nada parcial sobra)" do
+  it "staging discarded: middleware is left out if register raises (L3 — no partial leftovers)" do
     write_plugin("partial", <<~YAML, poro_entry("PartialPlugin", <<~BODY))
       id: partial
       module: PartialPlugin
@@ -226,17 +226,17 @@ RSpec.describe Harness::Plugin::Loader do
       MW = Object.new
       def self.register(api)
         api.register_middleware(MW)
-        api.register_hook(:tools, before: ->(x) { x }) # par inválido (:tools) -> levanta no stage
+        api.register_hook(:tools, before: ->(x) { x }) # invalid pair (:tools) -> raises at stage
       end
     BODY
 
     result = nil
-    expect { result = load(enabled: %w[partial]) }.to output(/falha ao carregar/).to_stderr
-    expect(middleware).to eq([]) # middleware staged NÃO foi efetivado
+    expect { result = load(enabled: %w[partial]) }.to output(/failed to load/).to_stderr
+    expect(middleware).to eq([]) # staged middleware was NOT committed
     expect(result[:plugins]).to eq([])
   end
 
-  it "precedência de roots: mesmo id em dois roots, o primeiro vence" do
+  it "root precedence: same id in two roots, the first wins" do
     root_a = File.join(@root, "ra")
     root_b = File.join(@root, "rb")
     [root_a, root_b].each { |r| FileUtils.mkdir_p(File.join(r, "dup")) }
@@ -252,10 +252,10 @@ RSpec.describe Harness::Plugin::Loader do
     result = loader.load_all
 
     expect(result[:plugins].map(&:id)).to eq(["dup"])
-    expect(tools.names).to eq(["ta"]) # root_a venceu
+    expect(tools.names).to eq(["ta"]) # root_a won
   end
 
-  it "ignora tool fora de contracts.tools com warn (regra Fase 0)" do
+  it "ignores a tool outside contracts.tools with a warn (Phase 0 rule)" do
     write_plugin("toolless", <<~YAML, poro_entry("ToollessPlugin", <<~BODY))
       id: toolless
       module: ToollessPlugin
@@ -265,12 +265,12 @@ RSpec.describe Harness::Plugin::Loader do
       def self.register(api) = api.register_tool("naodeclarada", Class.new)
     BODY
 
-    expect { load(enabled: %w[toolless]) }.to output(/não declarada em contracts.tools/).to_stderr
+    expect { load(enabled: %w[toolless]) }.to output(/not declared in contracts.tools/).to_stderr
     expect(tools.names).to eq([])
   end
 
   describe "contracts.capabilities (P2B task 4)" do
-    it "declarada em contracts mas sem register_capability: carrega SEM warn de reservado" do
+    it "declared in contracts but without register_capability: loads WITHOUT a reserved warn" do
       write_plugin("cap", <<~YAML, poro_entry("CapPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
         id: cap
         module: CapPlugin
@@ -284,13 +284,13 @@ RSpec.describe Harness::Plugin::Loader do
       expect(capabilities.capabilities).to eq([])
     end
 
-    it "expõe capability_names em Discovered" do
+    it "exposes capability_names in Discovered" do
       write_plugin("cap", "id: cap\ncontracts: { capabilities: [a, b] }\n", nil)
       result = load(enabled: %w[cap])
       expect(result[:plugins].first.capability_names).to eq(%w[a b])
     end
 
-    it "register_capability com tool: registra um Provider :tool no CapabilityRegistry" do
+    it "register_capability with tool: registers a :tool Provider in the CapabilityRegistry" do
       write_plugin("cap", <<~YAML, poro_entry("CapToolPlugin", <<~BODY))
         id: cap
         module: CapToolPlugin
@@ -310,7 +310,7 @@ RSpec.describe Harness::Plugin::Loader do
                                                  plugin: "cap", priority: 100)
     end
 
-    it "register_capability com workflow: registra :workflow + warn 'sem consumidor'" do
+    it "register_capability with workflow: registers :workflow + warn 'without a consumer'" do
       write_plugin("cap", <<~YAML, poro_entry("CapWfPlugin", <<~BODY))
         id: cap
         module: CapWfPlugin
@@ -323,11 +323,11 @@ RSpec.describe Harness::Plugin::Loader do
         end
       BODY
 
-      expect { load(enabled: %w[cap]) }.to output(/sem consumidor/).to_stderr
+      expect { load(enabled: %w[cap]) }.to output(/without a consumer/).to_stderr
       expect(capabilities.providers(:research).first.kind).to eq(:workflow)
     end
 
-    it "capability NÃO declarada em contracts: warn + nada registrado" do
+    it "capability NOT declared in contracts: warn + nothing registered" do
       write_plugin("cap", <<~YAML, poro_entry("CapUndeclPlugin", <<~BODY))
         id: cap
         module: CapUndeclPlugin
@@ -340,11 +340,11 @@ RSpec.describe Harness::Plugin::Loader do
         end
       BODY
 
-      expect { load(enabled: %w[cap]) }.to output(/não declarada em contracts.capabilities/).to_stderr
+      expect { load(enabled: %w[cap]) }.to output(/not declared in contracts.capabilities/).to_stderr
       expect(capabilities.capabilities).to eq([])
     end
 
-    it "tool: e workflow: juntos: warn + nada registrado" do
+    it "tool: and workflow: together: warn + nothing registered" do
       write_plugin("cap", <<~YAML, poro_entry("CapBothPlugin", <<~BODY))
         id: cap
         module: CapBothPlugin
@@ -354,11 +354,11 @@ RSpec.describe Harness::Plugin::Loader do
         def self.register(api) = api.register_capability(:x, tool: "t", workflow: "w")
       BODY
 
-      expect { load(enabled: %w[cap]) }.to output(/apenas tool: OU workflow:/).to_stderr
+      expect { load(enabled: %w[cap]) }.to output(/only tool: OR workflow:/).to_stderr
       expect(capabilities.capabilities).to eq([])
     end
 
-    it "sem tool: nem workflow: warn + nada registrado" do
+    it "without tool: or workflow: warn + nothing registered" do
       write_plugin("cap", <<~YAML, poro_entry("CapNeitherPlugin", <<~BODY))
         id: cap
         module: CapNeitherPlugin
@@ -372,7 +372,7 @@ RSpec.describe Harness::Plugin::Loader do
       expect(capabilities.capabilities).to eq([])
     end
 
-    it "rollback: entry registra capability e levanta -> nada residual no CapabilityRegistry" do
+    it "rollback: entry registers a capability and raises -> nothing residual in the CapabilityRegistry" do
       write_plugin("cap", <<~YAML, poro_entry("CapBoomPlugin", <<~BODY))
         id: cap
         module: CapBoomPlugin
@@ -392,12 +392,12 @@ RSpec.describe Harness::Plugin::Loader do
     end
   end
 
-  it "gating por enabled: id fora de enabled não carrega" do
+  it "gating by enabled: id outside enabled does not load" do
     write_plugin("off", "id: off\ncontracts: { tools: [] }\n", nil)
     expect(load(enabled: [])[:plugins]).to eq([])
   end
 
-  it "retorno de load_all traz skill_dirs, prompt_dirs e plugins" do
+  it "load_all return brings skill_dirs, prompt_dirs and plugins" do
     write_plugin("dirs", <<~YAML, poro_entry("DirsPlugin", "def self.register(api) = nil"))
       id: dirs
       module: DirsPlugin
@@ -412,7 +412,7 @@ RSpec.describe Harness::Plugin::Loader do
     expect(result[:prompt_dirs]).to eq([File.join(@root, "dirs", "prompts")])
   end
 
-  it "emite :plugin_loaded por plugin carregado" do
+  it "emits :plugin_loaded per loaded plugin" do
     write_plugin("ev", <<~YAML, poro_entry("EvPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
       id: ev
       module: EvPlugin
@@ -425,8 +425,8 @@ RSpec.describe Harness::Plugin::Loader do
     expect(ev.data).to include(id: "ev", tools: ["t"])
   end
 
-  describe "habilitação por classe de root (task 22)" do
-    # Helper: escreve um plugin com tool numa árvore de root arbitrária.
+  describe "enablement by root class (task 22)" do
+    # Helper: writes a plugin with a tool in an arbitrary root tree.
     def write_in(root, id, mod, tool)
       dir = File.join(root, id)
       FileUtils.mkdir_p(dir)
@@ -442,73 +442,73 @@ RSpec.describe Harness::Plugin::Loader do
                           disabled: disabled, announced_roots: announced, event_stream: event_stream)
     end
 
-    it "gem anunciada é default-enabled (id fora de enabled:)" do
+    it "announced gem is default-enabled (id outside enabled:)" do
       gem_root = File.join(@root, "gem")
       write_in(gem_root, "g", "GmodA", "gt")
       result = loader(roots: [gem_root], announced: [gem_root]).load_all
       expect(result[:plugins].map(&:id)).to eq(["g"])
     end
 
-    it "disabled: veta uma gem anunciada" do
+    it "disabled: vetoes an announced gem" do
       gem_root = File.join(@root, "gem")
       write_in(gem_root, "g", "GmodB", "gt")
       result = loader(roots: [gem_root], announced: [gem_root], disabled: %w[g]).load_all
       expect(result[:plugins]).to eq([])
     end
 
-    it "bundled/não-anunciado continua exigindo enabled: (regra Fase 0)" do
+    it "bundled/non-announced still requires enabled: (Phase 0 rule)" do
       b_root = File.join(@root, "bundled")
       write_in(b_root, "b", "BmodC", "bt")
-      # sem announce e sem enabled -> não carrega
+      # without announce and without enabled -> not loaded
       expect(loader(roots: [b_root]).load_all[:plugins]).to eq([])
-      # com enabled -> carrega
+      # with enabled -> loaded
       expect(loader(roots: [b_root], enabled: %w[b]).load_all[:plugins].map(&:id)).to eq(["b"])
     end
 
-    it "veto absoluto: id em enabled: E disabled: não carrega" do
+    it "absolute veto: id in enabled: AND disabled: does not load" do
       b_root = File.join(@root, "bundled")
       write_in(b_root, "b", "BmodD", "bt")
       expect(loader(roots: [b_root], enabled: %w[b], disabled: %w[b]).load_all[:plugins]).to eq([])
     end
 
-    it "workspace > gem: mesmo id, o root do workspace (primeiro) vence" do
+    it "workspace > gem: same id, the workspace root (first) wins" do
       ws = File.join(@root, "ws")
       gem_root = File.join(@root, "gm")
       write_in(ws, "dup", "WsMod", "wtool")
       write_in(gem_root, "dup", "GmMod", "gtool")
-      # workspace primeiro na lista; gem anunciada
+      # workspace first in the list; gem announced
       result = loader(roots: [ws, gem_root], enabled: %w[dup], announced: [gem_root]).load_all
       expect(result[:plugins].map(&:id)).to eq(["dup"])
-      expect(tools.names).to eq(["wtool"]) # versão do workspace
+      expect(tools.names).to eq(["wtool"]) # workspace version
     end
 
-    it "gem > bundled: mesmo id, a gem (root anterior na lista) vence" do
+    it "gem > bundled: same id, the gem (earlier root in the list) wins" do
       gem_root = File.join(@root, "gm")
       bundled = File.join(@root, "bd")
       write_in(gem_root, "dup", "GmB", "gtool")
       write_in(bundled, "dup", "BdB", "btool")
-      # gem primeiro na lista + anunciada; bundled habilitado por enabled:
+      # gem first in the list + announced; bundled enabled via enabled:
       result = loader(roots: [gem_root, bundled], enabled: %w[dup], announced: [gem_root]).load_all
       expect(result[:plugins].map(&:id)).to eq(["dup"])
-      expect(tools.names).to eq(["gtool"]) # versão da gem
+      expect(tools.names).to eq(["gtool"]) # gem version
     end
 
-    it "ordem de announce: mesmo id em duas gems, a primeira na lista vence" do
+    it "announce order: same id in two gems, the first in the list wins" do
       g1 = File.join(@root, "g1")
       g2 = File.join(@root, "g2")
       write_in(g1, "dup", "G1mod", "t1")
       write_in(g2, "dup", "G2mod", "t2")
       result = loader(roots: [g1, g2], announced: [g1, g2]).load_all
       expect(result[:plugins].map(&:id)).to eq(["dup"])
-      expect(tools.names).to eq(["t1"]) # g1 (anunciada primeiro / root anterior)
+      expect(tools.names).to eq(["t1"]) # g1 (announced first / earlier root)
     end
 
-    it "root anunciado inexistente: load_all sem erro" do
+    it "non-existent announced root: load_all without error" do
       expect { loader(roots: [File.join(@root, "nao-existe")], announced: [File.join(@root, "nao-existe")]).load_all }
         .not_to raise_error
     end
 
-    it "retrocompat: sem announced_roots:/disabled: comporta como a task 21" do
+    it "backcompat: without announced_roots:/disabled: behaves like task 21" do
       b_root = File.join(@root, "bundled")
       write_in(b_root, "b", "BmodE", "bt")
       result = described_class.new(roots: [b_root], registries: registries,
@@ -522,9 +522,9 @@ RSpec.describe Harness::Plugin::Loader do
       expect(described_class.validate({ "type" => "integer" }, "x")).not_to be_empty
     end
 
-    it "required ausente" do
+    it "required missing" do
       errs = described_class.validate({ "type" => "object", "required" => ["a"] }, {})
-      expect(errs.first).to include("obrigatória ausente: a")
+      expect(errs.first).to include("missing required key: a")
     end
 
     it "additionalProperties false" do
@@ -532,18 +532,18 @@ RSpec.describe Harness::Plugin::Loader do
         { "type" => "object", "additionalProperties" => false, "properties" => { "a" => {} } },
         { "a" => 1, "b" => 2 }
       )
-      expect(errs.first).to include("não permitidas: b")
+      expect(errs.first).to include("keys not allowed: b")
     end
 
     it "enum fora" do
       expect(described_class.validate({ "enum" => %w[x y] }, "z")).not_to be_empty
     end
 
-    it "keyword não suportada -> schema inválido" do
+    it "keyword unsupported -> invalid schema" do
       expect(described_class.validate({ "minimum" => 1 }, 5)).not_to be_empty
     end
 
-    it "válido -> vazio" do
+    it "valid -> empty" do
       schema = { "type" => "object", "properties" => { "a" => { "type" => "integer" } }, "required" => ["a"] }
       expect(described_class.validate(schema, { "a" => 1 })).to eq([])
     end

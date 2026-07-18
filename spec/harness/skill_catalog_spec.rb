@@ -12,34 +12,34 @@ RSpec.describe Harness::SkillCatalog do
     end
   end
 
-  def write_skill(root, dir, name:, description: "desc", body: "corpo completo")
+  def write_skill(root, dir, name:, description: "desc", body: "complete body")
     path = File.join(root, dir)
     FileUtils.mkdir_p(path)
     frontmatter = name.nil? ? "description: #{description}" : "name: #{name}\ndescription: #{description}"
     File.write(File.join(path, "SKILL.md"), "---\n#{frontmatter}\n---\n#{body}\n")
   end
 
-  describe "#effective (allowlist da Fase 0)" do
+  describe "#effective (Phase 0 allowlist)" do
     before do
       write_skill(@root, "cardapio", name: "cardapio")
       write_skill(@root, "pedido", name: "pedido")
     end
 
-    it "nil -> todas" do
+    it "nil -> all" do
       expect(described_class.new(@root).effective(nil).map(&:name)).to contain_exactly("cardapio", "pedido")
     end
 
-    it "[] -> nenhuma" do
+    it "[] -> none" do
       expect(described_class.new(@root).effective([])).to eq([])
     end
 
-    it "[names] -> subconjunto final" do
+    it "[names] -> final subset" do
       expect(described_class.new(@root).effective(["cardapio"]).map(&:name)).to eq(["cardapio"])
     end
   end
 
-  describe "precedência de roots" do
-    it "primeiro root vence para mesmo nome de skill" do
+  describe "root precedence" do
+    it "first root wins for the same skill name" do
       root_a = File.join(@root, "a")
       root_b = File.join(@root, "b")
       write_skill(root_a, "cardapio", name: "cardapio", body: "de A")
@@ -52,7 +52,7 @@ RSpec.describe Harness::SkillCatalog do
   end
 
   describe "#format_for_prompt" do
-    it "conjunto não-vazio gera bloco <available_skills>" do
+    it "non-empty set generates <available_skills> block" do
       write_skill(@root, "cardapio", name: "cardapio", description: "o cardápio")
       catalog = described_class.new(@root)
 
@@ -61,16 +61,16 @@ RSpec.describe Harness::SkillCatalog do
       expect(out).to include("<available_skills>", 'name="cardapio"', "o cardápio", "load_skill")
     end
 
-    it "conjunto vazio -> string vazia" do
+    it "empty set -> empty string" do
       expect(described_class.new(@root).format_for_prompt([])).to eq("")
     end
   end
 
-  describe "overlay do Store + reload (Etapa C)" do
+  describe "Store overlay + reload (Step C)" do
     let(:store) { Harness::SkillStore.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
     def skill_md(name, body) = "---\nname: #{name}\ndescription: d\n---\n#{body}\n"
 
-    it "skills autoradas no Store aparecem junto com as de disco" do
+    it "skills authored in the Store appear alongside those from disk" do
       write_skill(@root, "cardapio", name: "cardapio", body: "disco")
       store.write("pedido", skill_md("pedido", "do store"))
 
@@ -80,7 +80,7 @@ RSpec.describe Harness::SkillCatalog do
       expect(catalog.find("pedido").body).to eq("do store")
     end
 
-    it "Store VENCE o disco para o mesmo nome (autorado > seed)" do
+    it "Store WINS over disk for the same name (authored > seed)" do
       write_skill(@root, "pedido", name: "pedido", body: "seed do disco")
       store.write("pedido", skill_md("pedido", "editado no studio"))
 
@@ -89,7 +89,7 @@ RSpec.describe Harness::SkillCatalog do
       expect(catalog.find("pedido").body).to eq("editado no studio")
     end
 
-    it "reload pega uma skill gravada no Store depois do boot (hot, sem restart)" do
+    it "reload picks up a skill written to the Store after boot (hot, no restart)" do
       catalog = described_class.new(@root, store: store)
       expect(catalog.find("pedido")).to be_nil
 
@@ -100,8 +100,8 @@ RSpec.describe Harness::SkillCatalog do
     end
   end
 
-  describe "SKILL.md malformado" do
-    it "ignora arquivo sem frontmatter" do
+  describe "malformed SKILL.md" do
+    it "ignores file without frontmatter" do
       path = File.join(@root, "bad")
       FileUtils.mkdir_p(path)
       File.write(File.join(path, "SKILL.md"), "sem frontmatter aqui")
@@ -109,7 +109,7 @@ RSpec.describe Harness::SkillCatalog do
       expect(described_class.new(@root).all).to eq([])
     end
 
-    it "ignora frontmatter sem name" do
+    it "ignores frontmatter without name" do
       write_skill(@root, "noname", name: nil)
 
       expect(described_class.new(@root).all).to eq([])

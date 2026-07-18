@@ -3,11 +3,11 @@
 require "spec_helper"
 require "json"
 
-# Fase 7, Etapa E: cliente MCP MÍNIMO sobre HTTP JSON-RPC. Descobre tools via POST
-# `tools/list` atrás do egress guard. Escopo bounded: um POST stateless (sem o
-# ciclo de sessão MCP real — D8/out-of-scope).
+# Phase 7, Step E: MINIMAL MCP client over HTTP JSON-RPC. Discovers tools via POST
+# `tools/list` behind the egress guard. Bounded scope: a single stateless POST (no
+# real MCP session lifecycle — D8/out-of-scope).
 RSpec.describe Harness::McpHttpClient do
-  # http fake: grava a request, devolve o resultado configurado.
+  # fake http: records the request, returns the configured result.
   class FakeRpcHttp
     attr_reader :last
 
@@ -16,14 +16,14 @@ RSpec.describe Harness::McpHttpClient do
   end
 
   AllowEgress = Class.new { def violation(*, **) = nil }.new
-  BlockEgress = Class.new { def violation(*, **) = "destino em rede privada bloqueado" }.new
+  BlockEgress = Class.new { def violation(*, **) = "private-network destination blocked" }.new
 
   def client(result:, egress: AllowEgress, **over)
     http = FakeRpcHttp.new(result)
     [Harness::McpHttpClient.new(url: "https://mcp.test/rpc", http: http, egress: egress, **over), http]
   end
 
-  it "faz POST JSON-RPC tools/list e devolve a lista de tools" do
+  it "does a JSON-RPC tools/list POST and returns the tool list" do
     body = JSON.generate(jsonrpc: "2.0", id: 1,
                          result: { tools: [{ "name" => "search", "description" => "d",
                                              "inputSchema" => { "type" => "object" } }] })
@@ -37,14 +37,14 @@ RSpec.describe Harness::McpHttpClient do
     expect(sent["method"]).to eq("tools/list")
   end
 
-  it "sem tools no result -> [] (não levanta)" do
+  it "no tools in the result -> [] (does not raise)" do
     cli, = client(result: { status: 200, body: JSON.generate(result: {}) })
     expect(cli.list_tools).to eq([])
   end
 
-  it "egress bloqueado -> Harness::Error (SSRF, NF4)" do
+  it "egress blocked -> Harness::Error (SSRF, NF4)" do
     cli, = client(result: { status: 200, body: "{}" }, egress: BlockEgress)
-    expect { cli.list_tools }.to raise_error(Harness::Error, /bloqueado/)
+    expect { cli.list_tools }.to raise_error(Harness::Error, /blocked/)
   end
 
   it "HTTP >= 400 -> Harness::Error" do
@@ -52,14 +52,14 @@ RSpec.describe Harness::McpHttpClient do
     expect { cli.list_tools }.to raise_error(Harness::Error, /MCP HTTP 500/)
   end
 
-  it "erro JSON-RPC no envelope -> Harness::Error" do
+  it "JSON-RPC error in the envelope -> Harness::Error" do
     body = JSON.generate(jsonrpc: "2.0", id: 1, error: { code: -32_601, message: "Method not found" })
     cli, = client(result: { status: 200, body: body })
     expect { cli.list_tools }.to raise_error(Harness::Error, /Method not found/)
   end
 
-  it "resposta não-JSON -> Harness::Error" do
+  it "non-JSON response -> Harness::Error" do
     cli, = client(result: { status: 200, body: "<html>nope" })
-    expect { cli.list_tools }.to raise_error(Harness::Error, /não é JSON/)
+    expect { cli.list_tools }.to raise_error(Harness::Error, /not JSON/)
   end
 end

@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Harness::ToolCatalog do
-  # Dublê que só responde a :description — sem herdar RubyLLM::Tool (duck typing).
+  # Double that only responds to :description — without inheriting RubyLLM::Tool (duck typing).
   FakeTool = Struct.new(:description)
 
   let(:registry) { Harness::ToolRegistry.new }
@@ -11,25 +11,25 @@ RSpec.describe Harness::ToolCatalog do
   def catalog = described_class.new(tool_registry: registry)
 
   describe "#all" do
-    it "uma Entry(name, description) por entry do registry, na ordem do registry" do
-      registry.register("send_email") { FakeTool.new("Envia um e-mail ao destinatário") }
-      registry.register("fetch_page") { FakeTool.new("Baixa uma página web") }
+    it "one Entry(name, description) per registry entry, in registry order" do
+      registry.register("send_email") { FakeTool.new("Sends an e-mail to the recipient") }
+      registry.register("fetch_page") { FakeTool.new("Downloads a web page") }
       entries = catalog.all
       expect(entries.map(&:name)).to eq(%w[send_email fetch_page])
-      expect(entries.first.description).to eq("Envia um e-mail ao destinatário")
+      expect(entries.first.description).to eq("Sends an e-mail to the recipient")
     end
 
-    it "lê a description via instância do factory (duck typing)" do
+    it "reads the description via a factory instance (duck typing)" do
       registry.register("t") { FakeTool.new("desc") }
       expect(catalog.all.first.description).to eq("desc")
     end
 
-    it "description nil -> '' (nunca nil)" do
+    it "description nil -> '' (never nil)" do
       registry.register("t") { FakeTool.new(nil) }
       expect(catalog.all.first.description).to eq("")
     end
 
-    it "catálogo vazio -> []" do
+    it "empty catalog -> []" do
       expect(catalog.all).to eq([])
     end
   end
@@ -40,11 +40,11 @@ RSpec.describe Harness::ToolCatalog do
       registry.register("b") { FakeTool.new("bb") }
     end
 
-    it "devolve só as entries pedidas" do
+    it "returns only the requested entries" do
       expect(catalog.subset(["a"]).map(&:name)).to eq(["a"])
     end
 
-    it "ignora nomes desconhecidos sem erro" do
+    it "ignores unknown names without error" do
       expect(catalog.subset(%w[a inexistente]).map(&:name)).to eq(["a"])
     end
 
@@ -56,40 +56,40 @@ RSpec.describe Harness::ToolCatalog do
 
   describe "#search" do
     before do
-      registry.register("send_email") { FakeTool.new("Envia mensagem ao destinatário") }
-      registry.register("create_invoice") { FakeTool.new("Gera uma fatura em PDF") }
+      registry.register("send_email") { FakeTool.new("Sends a message to the recipient") }
+      registry.register("create_invoice") { FakeTool.new("Generates a PDF invoice") }
     end
 
-    it "casa por name" do
+    it "matches by name" do
       expect(catalog.search("email").map(&:name)).to eq(["send_email"])
     end
 
-    it "casa só por description" do
-      expect(catalog.search("destinatário").map(&:name)).to eq(["send_email"])
+    it "matches by description only" do
+      expect(catalog.search("recipient").map(&:name)).to eq(["send_email"])
     end
 
-    it "query vazia / nil / só espaços -> []" do
+    it "empty / nil / whitespace-only query -> []" do
       expect(catalog.search("")).to eq([])
       expect(catalog.search(nil)).to eq([])
       expect(catalog.search("   ")).to eq([])
     end
 
-    it "within: restringe o universo (tool fora do recorte não aparece)" do
-      expect(catalog.search("fatura", within: ["send_email"])).to eq([])
+    it "within: restricts the universe (a tool outside the slice does not appear)" do
+      expect(catalog.search("invoice", within: ["send_email"])).to eq([])
     end
 
-    it "ranking: match no name (peso 2) vem antes de match só na description (peso 1)" do
-      registry.register("report") { FakeTool.new("faz um email resumido") } # 'email' na desc
-      # 'email' bate no name de send_email (2) e na desc de report (1)
+    it "ranking: a name match (weight 2) comes before a description-only match (weight 1)" do
+      registry.register("report") { FakeTool.new("faz um email resumido") } # 'email' in the desc
+      # 'email' hits the name of send_email (2) and the desc of report (1)
       expect(catalog.search("email").map(&:name)).to eq(%w[send_email report])
     end
 
-    it "empate de score preserva a ordem original do universo" do
+    it "a score tie preserves the original order of the universe" do
       reg = Harness::ToolRegistry.new
       reg.register("z_tool") { FakeTool.new("faz xyz") }
       reg.register("a_tool") { FakeTool.new("faz xyz") }
       cat = described_class.new(tool_registry: reg)
-      # ambas batem só na desc ('xyz'), score igual -> ordem de registro (z antes de a)
+      # both hit only the desc ('xyz'), equal score -> registration order (z before a)
       expect(cat.search("xyz").map(&:name)).to eq(%w[z_tool a_tool])
     end
   end
@@ -97,7 +97,7 @@ RSpec.describe Harness::ToolCatalog do
   describe "#format_for_prompt" do
     before { registry.register("send_email") { FakeTool.new("Envia e-mail") } }
 
-    it "inclui <available_tools>, name, description e a instrução tool_search" do
+    it "includes <available_tools>, name, description and the tool_search instruction" do
       out = catalog.format_for_prompt(catalog.all)
       expect(out).to include("<available_tools>")
       expect(out).to include(%(name="send_email"))
@@ -110,18 +110,18 @@ RSpec.describe Harness::ToolCatalog do
     end
   end
 
-  it "lazy: não instancia nenhuma tool na construção (só na 1ª consulta)" do
+  it "lazy: does not instantiate any tool on construction (only on the 1st query)" do
     instantiations = 0
     registry.register("t") { instantiations += 1; FakeTool.new("desc") }
     cat = described_class.new(tool_registry: registry)
-    expect(instantiations).to eq(0)  # boot não toca a tool
+    expect(instantiations).to eq(0)  # boot does not touch the tool
     cat.all
-    expect(instantiations).to eq(1)  # instanciada no 1º uso
+    expect(instantiations).to eq(1)  # instantiated on the 1st use
     cat.all
-    expect(instantiations).to eq(1)  # memoizado — não reinstancia
+    expect(instantiations).to eq(1)  # memoized — does not reinstantiate
   end
 
-  it "factory que levanta propaga no 1º uso (onde o Executor também pegaria)" do
+  it "a factory that raises propagates on the 1st use (where the Executor would also catch it)" do
     registry.register("boom") { raise "registro quebrado" }
     cat = described_class.new(tool_registry: registry)
     expect { cat.all }.to raise_error(/registro quebrado/)

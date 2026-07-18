@@ -36,7 +36,7 @@ RSpec.describe Harness::ToolStore do
     expect(store.all_raw.size).to eq(2)
   end
 
-  it "valida a definição na escrita (delega ToolDefinition)" do
+  it "validates the definition on write (delegates to ToolDefinition)" do
     expect { store.write(def_attrs(name: "Bad Name")) }
       .to raise_error(Harness::ValidationError, /name/)
   end
@@ -46,11 +46,11 @@ RSpec.describe Harness::ToolStore do
 
     masked = store.get("api")
     expect(masked["request"]["headers"]["Authorization"]).to eq(Harness::SecretMasking::SENTINEL)
-    expect(masked["request"]["headers"]["X-Trace"]).to eq("on")   # não-secreto passa
+    expect(masked["request"]["headers"]["X-Trace"]).to eq("on")   # non-secret passes through
     expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer SECRET-123")
   end
 
-  it "0 vazamentos: o segredo real nunca aparece na leitura de exibição" do
+  it "0 leaks: the real secret never appears in the display read" do
     store.write(with_secret(token: "SUPERSECRET"))
     dump = [store.get("api"), store.all, store.versions("api")].inspect
     expect(dump).not_to include("SUPERSECRET")
@@ -76,10 +76,10 @@ RSpec.describe Harness::ToolStore do
     store.write(def_attrs(name: "cep", description: "v2"))
     expect(store.versions("cep").map { |h| h["definition"]["description"] }).to eq(["v1"])
     expect { store.write(def_attrs(name: "cep"), create_only: true) }
-      .to raise_error(Harness::ValidationError, /já existe/)
+      .to raise_error(Harness::ValidationError, /already exists/)
   end
 
-  it "restore volta uma versão antiga (e preserva o segredo real)" do
+  it "restore reverts to an old version (and preserves the real secret)" do
     store.write(with_secret(token: "V1"))
     store.write(with_secret(token: "V2"))
     store.restore("api", 0)

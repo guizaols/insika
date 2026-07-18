@@ -3,11 +3,11 @@
 require "spec_helper"
 require_relative "../../../server/app"
 
-# Control UI de ESCRITA (P2-04, tasks 11-13) via Server::App: cada ação POSTa um
-# Command no bus, emite :operator_action (auditoria) e responde Turbo Stream (se
-# o cliente aceita) ou 303 redirect (degradação sem JS). Auth de operador (Bearer)
-# já cobre POST (herdado da Fase 1).
-RSpec.describe "Harness::Server::Admin::App — escrita" do
+# WRITE Control UI (P2-04, tasks 11-13) via Server::App: each action POSTs a
+# Command on the bus, emits :operator_action (audit) and responds with a Turbo Stream (if
+# the client accepts) or a 303 redirect (graceful degradation without JS). Operator auth (Bearer)
+# already covers POST (inherited from Phase 1).
+RSpec.describe "Harness::Server::Admin::App — write" do
   PendingDouble = Struct.new(:records) do
     def open_for(task_id) = (records || []).select { |r| r.task_id == task_id }
   end
@@ -32,7 +32,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
     app.call(env)
   end
 
-  describe "ações de task" do
+  describe "task actions" do
     it "POST /admin/tasks/:id/pause -> Command pause_task + :operator_action + redirect" do
       bus = ServerBusDouble.new
       events = ServerEventStreamDouble.new
@@ -43,12 +43,12 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       cmd = bus.dispatched.last
       expect(cmd.type).to eq(:pause_task)
       expect(cmd.payload).to eq(task_id: "t-1")
-      expect(status).to eq(303)                      # sem Turbo: redirect
+      expect(status).to eq(303)                      # without Turbo: redirect
       expect(headers["location"]).to eq("/admin/tasks")
       expect(events.emitted.map(&:type)).to include(:operator_action)
     end
 
-    it "resume/cancel roteiam para os Commands certos" do
+    it "resume/cancel route to the correct Commands" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus)
       post(app, "/admin/tasks/t-1/resume")
@@ -56,7 +56,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       expect(bus.dispatched.map(&:type)).to eq(%i[resume_task cancel_task])
     end
 
-    it "com Accept turbo-stream -> 200 text/vnd.turbo-stream.html" do
+    it "with Accept turbo-stream -> 200 text/vnd.turbo-stream.html" do
       app = build_app
       status, headers, resp = post(app, "/admin/tasks/t-1/pause", turbo: true)
       expect(status).to eq(200)
@@ -64,7 +64,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       expect(resp.join).to include("turbo-stream")
     end
 
-    it "emite :operator_action ANTES do dispatch (auditoria, D6)" do
+    it "emits :operator_action BEFORE the dispatch (audit, D6)" do
       events = ServerEventStreamDouble.new
       app = build_app(event_stream: events)
       post(app, "/admin/tasks/t-1/cancel")
@@ -75,8 +75,8 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
     end
   end
 
-  describe "aprovação" do
-    it "POST /admin/approvals/:pid -> approve_action com decision do form" do
+  describe "approval" do
+    it "POST /admin/approvals/:pid -> approve_action with decision from the form" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus)
       post(app, "/admin/approvals/p-1", form: "decision=approved")
@@ -88,7 +88,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
   end
 
   describe "chat" do
-    it "POST /admin/chat -> send_message com o form" do
+    it "POST /admin/chat -> send_message with the form" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus)
       post(app, "/admin/chat", form: "agent=sales&message=oi&session_id=s1")
@@ -97,7 +97,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       expect(cmd.payload).to eq(agent: "sales", message: "oi", session_id: "s1")
     end
 
-    it "audit NÃO vaza o conteúdo da mensagem (só metadados) — /v1/events é sem auth" do
+    it "audit does NOT leak the message content (only metadata) — /v1/events has no auth" do
       events = ServerEventStreamDouble.new
       app = build_app(event_stream: events)
       post(app, "/admin/chat", form: "agent=sales&message=segredo&session_id=s1")
@@ -105,25 +105,25 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       op = events.emitted.find { |e| e.type == :operator_action }
       expect(op.data[:target]).to eq(agent: "sales", session_id: "s1")
       expect(op.data[:target]).not_to have_key(:message)
-      expect(op.meta[:session_id]).to eq("s1") # carimbado p/ correlação
+      expect(op.meta[:session_id]).to eq("s1") # stamped for correlation
     end
   end
 
-  describe "erro do Command" do
-    it "NotFoundError vira resposta de escrita (não status HTTP); auditoria emitida" do
+  describe "Command error" do
+    it "NotFoundError becomes a write response (not an HTTP status); audit emitted" do
       bus = ServerBusDouble.new { raise Harness::NotFoundError, "sumiu" }
       events = ServerEventStreamDouble.new
       app = build_app(bus: bus, event_stream: events)
 
       status, = post(app, "/admin/tasks/ghost/pause", turbo: true)
 
-      expect(status).to eq(422) # turbo-stream de erro
-      expect(events.emitted.map(&:type)).to include(:operator_action) # tentativa auditada
+      expect(status).to eq(422) # error turbo-stream
+      expect(events.emitted.map(&:type)).to include(:operator_action) # attempt audited
     end
   end
 
-  describe "auth (herdada)" do
-    it "POST sem token -> 503 (fail-closed), não despacha" do
+  describe "auth (inherited)" do
+    it "POST without token -> 503 (fail-closed), does not dispatch" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus, admin_token: nil)
       status, = post(app, "/admin/tasks/t-1/pause", auth: nil)
@@ -131,7 +131,7 @@ RSpec.describe "Harness::Server::Admin::App — escrita" do
       expect(bus.dispatched).to be_empty
     end
 
-    it "POST com token errado -> 401" do
+    it "POST with wrong token -> 401" do
       status, = post(build_app, "/admin/tasks/t-1/pause", auth: "Bearer nope")
       expect(status).to eq(401)
     end

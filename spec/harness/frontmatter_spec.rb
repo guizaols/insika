@@ -2,33 +2,34 @@
 
 require "spec_helper"
 
-# Parser tolerante de frontmatter: YAML quando dá, senão line-based. O caso que
-# motivou (packs reais): prosa com `: ` no description, que o YAML estrito rejeita.
+# Tolerant frontmatter parser: YAML when possible, otherwise line-based. The
+# motivating case (real packs): prose with `: ` in the description, which strict
+# YAML rejects.
 RSpec.describe Harness::Frontmatter do
-  it "parseia YAML simples (name/description)" do
+  it "parses simple YAML (name/description)" do
     meta = described_class.parse("name: cardapio\ndescription: mostra o cardápio")
     expect(meta).to eq("name" => "cardapio", "description" => "mostra o cardápio")
   end
 
-  it "tolera `: ` na prosa do description (YAML estrito quebraria)" do
+  it "tolerates `: ` in the description prose (strict YAML would break)" do
     fm = "name: gift-consultant-heuristics\n" \
-         "description: Heurísticas de discovery. Cacau Show vende chocolate/presente: NÃO há size gate. Ative no discovery."
+         "description: Discovery heuristics. Cacau Show sells chocolate/gift: there is NO size gate. Enable it in discovery."
     meta = described_class.parse(fm)
     expect(meta["name"]).to eq("gift-consultant-heuristics")
-    expect(meta["description"]).to include("presente: NÃO há size gate") # `: ` interno preservado
+    expect(meta["description"]).to include("gift: there is NO size gate") # inner `: ` preserved
   end
 
-  it "respeita YAML com aspas (quoted continua funcionando)" do
+  it "respects quoted YAML (quoted keeps working)" do
     meta = described_class.parse(%(name: x\ndescription: "a: b, c"))
     expect(meta["description"]).to eq("a: b, c")
   end
 
-  it "ignora linhas sem `:` no fallback e não levanta" do
+  it "ignores lines without `:` in the fallback and does not raise" do
     meta = described_class.parse("name: só-nome: com dois pontos\nlinha solta sem separador")
-    expect(meta["name"]).to eq("só-nome: com dois pontos") # split no PRIMEIRO `:`
+    expect(meta["name"]).to eq("só-nome: com dois pontos") # split on the FIRST `:`
   end
 
-  it "frontmatter vazio -> {}" do
+  it "empty frontmatter -> {}" do
     expect(described_class.parse("")).to eq({})
   end
 end

@@ -4,9 +4,9 @@ require "spec_helper"
 require "async"
 require_relative "../../../server/app"
 
-# Contrato de rotas do doc 07 §2-§6 com Rack::MockRequest + bus/stores DUPLOS
-# (doc 07 §7, duplos em spec/support/server_doubles.rb). Nenhum componente real
-# do Executor/RubyLLM é tocado.
+# Route contract from doc 07 §2-§6 with Rack::MockRequest + DOUBLE bus/stores
+# (doc 07 §7, doubles in spec/support/server_doubles.rb). No real Executor/RubyLLM
+# component is touched.
 RSpec.describe Harness::Server::App do
   def event(type, data = {}, task_id: "t-1")
     Harness::Event.new(type: type, data: data, meta: { task_id: task_id })
@@ -31,8 +31,8 @@ RSpec.describe Harness::Server::App do
 
   def json_body(resp) = JSON.parse(resp.join)
 
-  describe "POST /v1/commands/:type (genérica)" do
-    it "traduz body em Command(type, payload, transport: :http)" do
+  describe "POST /v1/commands/:type (generic)" do
+    it "translates body into Command(type, payload, transport: :http)" do
       bus = ServerBusDouble.new { |_c| { task_id: "t-9" } }
       app = build_app(bus: bus)
 
@@ -44,7 +44,7 @@ RSpec.describe Harness::Server::App do
       expect(cmd.meta[:transport]).to eq(:http)
     end
 
-    it "resultado de controle (Data) -> 200 com to_h" do
+    it "control result (Data) -> 200 with to_h" do
       session = Harness::SessionStore::Session.new(
         id: "s-1", messages: [], vars: {}, memory_refs: [],
         created_at: "t", updated_at: "t"
@@ -57,7 +57,7 @@ RSpec.describe Harness::Server::App do
       expect(json_body(resp)).to include("id" => "s-1")
     end
 
-    it "resultado de turno ({task_id:}) -> 202" do
+    it "turn result ({task_id:}) -> 202" do
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } })
 
       status, _h, resp = call(app, "POST", "/v1/commands/send_message", body: "{}")
@@ -76,7 +76,7 @@ RSpec.describe Harness::Server::App do
       end.new
     end
 
-    it "POST /a2a delega ao @a2a.rpc e responde 200 com o envelope" do
+    it "POST /a2a delegates to @a2a.rpc and responds 200 with the envelope" do
       app = build_app(a2a: a2a)
       status, _h, resp = call(app, "POST", "/a2a", body: '{"jsonrpc":"2.0","id":"1","method":"tasks/get"}')
       expect(status).to eq(200)
@@ -84,27 +84,27 @@ RSpec.describe Harness::Server::App do
       expect(a2a.received["method"]).to eq("tasks/get")
     end
 
-    it "JSON malformado -> 200 com envelope -32700 (não erro HTTP)" do
+    it "malformed JSON -> 200 with -32700 envelope (not an HTTP error)" do
       app = build_app(a2a: a2a)
       status, _h, resp = call(app, "POST", "/a2a", body: "{ not json")
       expect(status).to eq(200)
       expect(json_body(resp).dig("error", "code")).to eq(-32_700)
     end
 
-    it "GET /.well-known/agent-card.json -> 200 com o card" do
+    it "GET /.well-known/agent-card.json -> 200 with the card" do
       app = build_app(a2a: a2a)
       status, _h, resp = call(app, "GET", "/.well-known/agent-card.json")
       expect(status).to eq(200)
       expect(json_body(resp)).to include("name" => "assistant")
     end
 
-    it "sem @a2a (default): rotas A2A -> 404 (paridade)" do
+    it "without @a2a (default): A2A routes -> 404 (parity)" do
       app = build_app # a2a: nil
       expect(call(app, "POST", "/a2a", body: "{}").first).to eq(404)
       expect(call(app, "GET", "/.well-known/agent-card.json").first).to eq(404)
     end
 
-    it "body vazio vira payload {}" do
+    it "empty body becomes payload {}" do
       bus = ServerBusDouble.new { { task_id: "t" } }
       app = build_app(bus: bus)
 
@@ -114,8 +114,8 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "POST /v1/sessions (açúcar)" do
-    it "despacha :create_session e responde 201 {session}" do
+  describe "POST /v1/sessions (sugar)" do
+    it "dispatches :create_session and responds 201 {session}" do
       session = Harness::SessionStore::Session.new(
         id: "s-1", messages: [], vars: { "a" => 1 }, memory_refs: [],
         created_at: "t", updated_at: "t"
@@ -132,8 +132,8 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "POST /v1/messages (açúcar)" do
-    it "despacha :send_message com o payload traduzido (stream=false)" do
+  describe "POST /v1/messages (sugar)" do
+    it "dispatches :send_message with the translated payload (stream=false)" do
       bus = ServerBusDouble.new { { task_id: "t-1" } }
       stream = ServerEventStreamDouble.new([event(:done, { content: "" })])
       app = build_app(bus: bus, event_stream: stream)
@@ -147,8 +147,8 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "leituras (nunca são Command — D3)" do
-    it "GET /v1/sessions/:id chama o store e NÃO despacha" do
+  describe "reads (never Commands — D3)" do
+    it "GET /v1/sessions/:id calls the store and does NOT dispatch" do
       session = Harness::SessionStore::Session.new(
         id: "s-1", messages: [], vars: {}, memory_refs: [],
         created_at: "t", updated_at: "t"
@@ -163,7 +163,7 @@ RSpec.describe Harness::Server::App do
       expect(bus.dispatched).to be_empty
     end
 
-    it "GET /v1/tasks/:id chama o store e NÃO despacha" do
+    it "GET /v1/tasks/:id calls the store and does NOT dispatch" do
       task = Harness::TaskStore::Task.new(
         id: "t-1", status: :completed, command: {}, session_id: nil,
         executions: [], mailbox_state: {},
@@ -179,7 +179,7 @@ RSpec.describe Harness::Server::App do
       expect(bus.dispatched).to be_empty
     end
 
-    it "GET /v1/tasks/:id serializa executions como objetos JSON legíveis" do
+    it "GET /v1/tasks/:id serializes executions as readable JSON objects" do
       execution = Harness::TaskStore::Execution.new(
         attempt: 1, started_at: "a", finished_at: "b", outcome: "failed",
         error: { "class" => "Harness::ProviderError", "message" => "x" }
@@ -193,12 +193,12 @@ RSpec.describe Harness::Server::App do
       _status, _h, resp = call(app, "GET", "/v1/tasks/t-1")
 
       exec = json_body(resp)["task"]["executions"].first
-      expect(exec).to be_a(Hash) # não uma string opaca "#<data ...>"
+      expect(exec).to be_a(Hash) # not an opaque string "#<data ...>"
       expect(exec["outcome"]).to eq("failed")
       expect(exec["error"]).to eq("class" => "Harness::ProviderError", "message" => "x")
     end
 
-    it "leitura de sessão inexistente -> 404 com corpo de erro padrão" do
+    it "read of a non-existent session -> 404 with the standard error body" do
       app = build_app(session_store: ServerStoreDouble.new(nil))
 
       status, _h, resp = call(app, "GET", "/v1/sessions/nope")
@@ -208,8 +208,8 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "mapeamento erro->status" do
-    it "JSON malformado -> 400, zero dispatch" do
+  describe "error->status mapping" do
+    it "malformed JSON -> 400, zero dispatch" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus)
 
@@ -239,7 +239,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(404)
     end
 
-    it "StandardError genérico -> 500" do
+    it "generic StandardError -> 500" do
       app = build_app(bus: ServerBusDouble.new { raise "boom" })
 
       status, = call(app, "POST", "/v1/commands/x", body: "{}")
@@ -247,7 +247,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(500)
     end
 
-    it "timeout do dispatch síncrono -> 504" do
+    it "synchronous dispatch timeout -> 504" do
       bus = ServerBusDouble.new { Async::Task.current.sleep(0.3) }
       app = build_app(bus: bus)
 
@@ -257,14 +257,14 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(504)
     end
 
-    it "nenhum caminho do App produz status 403" do
+    it "no App path produces a 403 status" do
       source = File.read(File.expand_path("../../../server/app.rb", __dir__))
       expect(source).not_to match(/\b403\b/)
     end
   end
 
-  describe "stream=false agrega no terminal" do
-    it "acumula deltas de :content e responde no :done" do
+  describe "stream=false aggregates at the terminal" do
+    it "accumulates :content deltas and responds at :done" do
       events = [event(:content, { delta: "a" }), event(:content, { delta: "b" }),
                 event(:done, { content: "ab" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
@@ -279,7 +279,7 @@ RSpec.describe Harness::Server::App do
       expect(body["events"].size).to eq(3)
     end
 
-    it "responde com error: no :task_failed" do
+    it "responds with error: on :task_failed" do
       events = [event(:task_failed, { error: "Harness::ProviderError", message: "x" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
                       event_stream: ServerEventStreamDouble.new(events))
@@ -291,7 +291,7 @@ RSpec.describe Harness::Server::App do
       expect(body["error"]).to eq("class" => "Harness::ProviderError", "message" => "x")
     end
 
-    it "reporta :task_cancelled como error (nunca sucesso)" do
+    it "reports :task_cancelled as error (never success)" do
       events = [event(:content, { delta: "parcial" }), event(:task_cancelled, { task_id: "t-1" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
                       event_stream: ServerEventStreamDouble.new(events))
@@ -303,7 +303,7 @@ RSpec.describe Harness::Server::App do
       expect(body["error"]["class"]).to eq("Harness::CancelledError")
     end
 
-    it "reporta :error de overflow como error (não 200 de sucesso truncado)" do
+    it "reports :error overflow as error (not a truncated 200 success)" do
       events = [event(:content, { delta: "a" }), event(:error, { message: "subscription overflow" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
                       event_stream: ServerEventStreamDouble.new(events))
@@ -317,7 +317,7 @@ RSpec.describe Harness::Server::App do
   end
 
   describe "SSE (stream=true default)" do
-    it "responde 200 com headers SSE e corpo SSEBody" do
+    it "responds 200 with SSE headers and an SSEBody body" do
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } })
 
       status, headers, body = call(app, "POST", "/v1/messages", body: "{}")
@@ -329,7 +329,7 @@ RSpec.describe Harness::Server::App do
       expect(body).to be_a(Harness::Server::SSEBody)
     end
 
-    it "GET /v1/events assina com os filtros da query e NÃO despacha" do
+    it "GET /v1/events subscribes with the query filters and does NOT dispatch" do
       bus = ServerBusDouble.new
       stream = ServerEventStreamDouble.new
       app = build_app(bus: bus, event_stream: stream)
@@ -343,18 +343,18 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "POST /v1/responses (adapter OpenAI Responses — Fase 6)" do
+  describe "POST /v1/responses (OpenAI Responses adapter — Phase 6)" do
     def responses_body(agent: "openclaw:bia", user: "chat-1", input: "oi")
       JSON.generate(model: agent, user: user, stream: true, input: input)
     end
 
-    it "sem gateway_token configurado -> 503 fail-closed" do
-      app = build_app # config sem gateway_token
+    it "no gateway_token configured -> 503 fail-closed" do
+      app = build_app # config without gateway_token
       status, = call(app, "POST", "/v1/responses", body: responses_body)
       expect(status).to eq(503)
     end
 
-    it "token errado -> 401" do
+    it "wrong token -> 401" do
       app = build_app(config: { gateway_token: "sekret" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body)
       env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
@@ -362,7 +362,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(401)
     end
 
-    it "token ok + sessão nova: cria sessão (id=user) e despacha send_message; devolve SSEBody" do
+    it "token ok + new session: creates session (id=user) and dispatches send_message; returns SSEBody" do
       bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }
       app = build_app(bus: bus, session_store: ServerStoreDouble.new(nil), config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body(user: "chat-9", input: "olá"))
@@ -380,8 +380,8 @@ RSpec.describe Harness::Server::App do
       expect(send.payload).to include(agent: "bia", session_id: "chat-9", message: "olá")
     end
 
-    it "sessão existente: NÃO cria sessão, só send_message" do
-      record = { "id" => "chat-9" } # ServerStoreDouble#find devolve truthy
+    it "existing session: does NOT create a session, only send_message" do
+      record = { "id" => "chat-9" } # ServerStoreDouble#find returns truthy
       bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }
       app = build_app(bus: bus, session_store: ServerStoreDouble.new(record), config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: responses_body(user: "chat-9"))
@@ -392,7 +392,7 @@ RSpec.describe Harness::Server::App do
       expect(bus.dispatched.map(&:type)).to eq([:send_message])
     end
 
-    it "request inválido (sem user) -> 422" do
+    it "invalid request (no user) -> 422" do
       app = build_app(config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST",
                                       input: JSON.generate(model: "openclaw:bia", input: "x"))
@@ -402,8 +402,8 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "provisionamento POST/DELETE /v1/agents (Fase 6/D4/F7)" do
-    # provisioner duplo: grava o pack importado / o id deletado.
+  describe "provisioning POST/DELETE /v1/agents (Phase 6/D4/F7)" do
+    # double provisioner: records the imported pack / the deleted id.
     class ProvisionerDouble
       attr_reader :imported, :deleted
 
@@ -417,18 +417,18 @@ RSpec.describe Harness::Server::App do
                     skills: {}, tools: [])
     end
 
-    it "não exposto quando provisioner nil -> 404" do
+    it "not exposed when provisioner nil -> 404" do
       status, = call(build_app, "POST", "/v1/agents", body: pack_body)
       expect(status).to eq(404)
     end
 
-    it "sem gateway_token configurado -> 503 fail-closed" do
-      app = build_app(provisioner: ProvisionerDouble.new) # config sem gateway_token
+    it "no gateway_token configured -> 503 fail-closed" do
+      app = build_app(provisioner: ProvisionerDouble.new) # config without gateway_token
       status, = call(app, "POST", "/v1/agents", body: pack_body)
       expect(status).to eq(503)
     end
 
-    it "token errado -> 401" do
+    it "wrong token -> 401" do
       app = build_app(provisioner: ProvisionerDouble.new, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/agents", method: "POST", input: pack_body)
       env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
@@ -436,7 +436,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(401)
     end
 
-    it "token ok: monta o Pack (chaves de arquivo preservadas) e importa -> 200" do
+    it "token ok: builds the Pack (file keys preserved) and imports -> 200" do
       prov = ProvisionerDouble.new
       app = build_app(provisioner: prov, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/agents", method: "POST", input: pack_body(id: "loja-9"))
@@ -448,7 +448,7 @@ RSpec.describe Harness::Server::App do
       expect(json_body(resp)).to eq("agent_id" => "loja-9", "created" => true)
       expect(prov.imported).to be_a(Harness::Pack)
       expect(prov.imported.config).to eq(id: "loja-9", model: "m")
-      expect(prov.imported.files).to eq("IDENTITY.md" => "quem sou") # chave NÃO virou símbolo
+      expect(prov.imported.files).to eq("IDENTITY.md" => "quem sou") # key did NOT become a symbol
     end
 
     it "DELETE /v1/agents/:id -> delete via provisioner (200)" do
@@ -464,7 +464,7 @@ RSpec.describe Harness::Server::App do
       expect(json_body(resp)).to eq("agent_id" => "loja-7", "deleted" => true)
     end
 
-    it "erro de validação do import -> 422 (via rescue de #call)" do
+    it "import validation error -> 422 (via #call rescue)" do
       prov = ProvisionerDouble.new
       def prov.import(_p) = raise(Harness::ValidationError, "pack sem config.id")
       app = build_app(provisioner: prov, config: { gateway_token: "tok" })
@@ -475,7 +475,7 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "ingestão de manifesto POST /v1/tools/manifest (Fase 7, Etapa B)" do
+  describe "manifest ingestion POST /v1/tools/manifest (Phase 7, Stage B)" do
     def manifest_body
       JSON.generate(version: 1,
                     defaults: { "base_url" => "https://api.test", "path_template" => "/{endpoint}" },
@@ -485,12 +485,12 @@ RSpec.describe Harness::Server::App do
                                                 "required" => ["q"] } }])
     end
 
-    it "sem gateway_token configurado -> 503 fail-closed" do
+    it "no gateway_token configured -> 503 fail-closed" do
       status, = call(build_app, "POST", "/v1/tools/manifest", body: manifest_body)
       expect(status).to eq(503)
     end
 
-    it "token errado -> 401" do
+    it "wrong token -> 401" do
       app = build_app(config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
       env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
@@ -498,7 +498,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(401)
     end
 
-    it "token ok: despacha :import_tools com o manifesto CRU (chaves string) -> 200 relatório" do
+    it "token ok: dispatches :import_tools with the RAW manifest (string keys) -> 200 report" do
       bus = ServerBusDouble.new { |_c| { version: 1, created: ["search_products"], updated: [], errors: [] } }
       app = build_app(bus: bus, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
@@ -510,13 +510,13 @@ RSpec.describe Harness::Server::App do
       expect(json_body(resp)).to eq("version" => 1, "created" => ["search_products"], "updated" => [], "errors" => [])
       cmd = bus.dispatched.last
       expect(cmd.type).to eq(:import_tools)
-      # property names do JSON Schema preservadas como STRING (não simbolizadas)
+      # JSON Schema property names preserved as STRING (not symbolized)
       expect(cmd.payload["tools"].first["parameters"]["properties"]).to have_key("q")
       expect(cmd.meta[:transport]).to eq(:http)
     end
 
-    it "erro estrutural do manifesto -> 422 (via rescue de #call)" do
-      bus = ServerBusDouble.new { |_c| raise(Harness::ValidationError, "manifesto: 'tools' deve ser lista") }
+    it "manifest structural error -> 422 (via #call rescue)" do
+      bus = ServerBusDouble.new { |_c| raise(Harness::ValidationError, "manifest: 'tools' must be a list") }
       app = build_app(bus: bus, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/tools/manifest", method: "POST", input: manifest_body)
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
@@ -525,13 +525,13 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "ingestão MCP live POST /v1/mcp/:name/import (Fase 7, Etapa E)" do
-    it "sem gateway_token configurado -> 503 fail-closed" do
+  describe "live MCP ingestion POST /v1/mcp/:name/import (Phase 7, Stage E)" do
+    it "no gateway_token configured -> 503 fail-closed" do
       status, = call(build_app, "POST", "/v1/mcp/tavily/import")
       expect(status).to eq(503)
     end
 
-    it "token errado -> 401" do
+    it "wrong token -> 401" do
       app = build_app(config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/mcp/tavily/import", method: "POST")
       env["HTTP_AUTHORIZATION"] = "Bearer WRONG"
@@ -539,7 +539,7 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(401)
     end
 
-    it "token ok: despacha :import_mcp_tools com o name da ROTA -> 200 relatório" do
+    it "token ok: dispatches :import_mcp_tools with the ROUTE name -> 200 report" do
       bus = ServerBusDouble.new { |_c| { instance: "tavily", version: 1, created: ["search"], updated: [], errors: [] } }
       app = build_app(bus: bus, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/mcp/tavily/import", method: "POST")
@@ -555,8 +555,8 @@ RSpec.describe Harness::Server::App do
       expect(cmd.meta[:transport]).to eq(:http)
     end
 
-    it "instância inexistente (NotFoundError do handler) -> 404" do
-      bus = ServerBusDouble.new { |_c| raise(Harness::NotFoundError, "instância MCP 'x' não encontrada") }
+    it "non-existent instance (NotFoundError from the handler) -> 404" do
+      bus = ServerBusDouble.new { |_c| raise(Harness::NotFoundError, "instância MCP 'x' not found") }
       app = build_app(bus: bus, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/mcp/x/import", method: "POST")
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
@@ -566,7 +566,7 @@ RSpec.describe Harness::Server::App do
   end
 
   describe "health check GET /up" do
-    it "200 {status:ok} sem auth e sem tocar em store" do
+    it "200 {status:ok} without auth and without touching the store" do
       status, headers, resp = call(build_app, "GET", "/up")
       expect(status).to eq(200)
       expect(headers["content-type"]).to eq("application/json")
@@ -574,7 +574,7 @@ RSpec.describe Harness::Server::App do
     end
   end
 
-  describe "rota desconhecida" do
+  describe "unknown route" do
     it "GET /nada -> 404 not found (text/plain)" do
       status, headers, resp = call(build_app, "GET", "/nada")
 
@@ -583,12 +583,12 @@ RSpec.describe Harness::Server::App do
       expect(resp.join).to eq("not found")
     end
 
-    it "/admin sem token configurado -> 503 fail-closed (não 404)" do
+    it "/admin without token configured -> 503 fail-closed (not 404)" do
       status, = call(build_app, "GET", "/admin")
       expect(status).to eq(503)
     end
 
-    it "método errado numa rota conhecida -> 404" do
+    it "wrong method on a known route -> 404" do
       status, = call(build_app, "PUT", "/v1/commands/x")
       expect(status).to eq(404)
     end

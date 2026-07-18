@@ -13,7 +13,7 @@ RSpec.describe Harness::Executor do
     )
   end
 
-  let(:inert) { Object.new } # colaboradores das etapas D/E: inertes no esqueleto
+  let(:inert) { Object.new } # stage D/E collaborators: inert in the skeleton
   let(:backend) { Harness::Stores::Memory.new }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
@@ -27,11 +27,11 @@ RSpec.describe Harness::Executor do
     )
   end
 
-  # Referência ao actor vivo (introspecção branca — aceitável no esqueleto).
+  # Reference to the live actor (white-box introspection — acceptable in the skeleton).
   def live_actor(id) = executor.instance_variable_get(:@running)[id]
 
-  describe "lifecycle feliz (run_pipeline stub)" do
-    it "abre Execution attempt 1, passa por :running e emite :task_started seq 1" do
+  describe "happy lifecycle (run_pipeline stub)" do
+    it "opens Execution attempt 1, goes through :running and emits :task_started seq 1" do
       allow(executor).to receive(:run_pipeline)
       task = create_task
       collected = []
@@ -55,8 +55,8 @@ RSpec.describe Harness::Executor do
     end
   end
 
-  describe "running? durante e após" do
-    it "true enquanto o fiber está suspenso, false após terminar" do
+  describe "running? during and after" do
+    it "true while the fiber is suspended, false after it finishes" do
       gate = Async::Condition.new
       allow(executor).to receive(:run_pipeline) { gate.wait }
       task = create_task
@@ -72,8 +72,8 @@ RSpec.describe Harness::Executor do
     end
   end
 
-  describe "cancelamento cooperativo" do
-    it "drain no pipeline após :cancel -> :cancelled + :task_cancelled" do
+  describe "cooperative cancellation" do
+    it "drain in the pipeline after :cancel -> :cancelled + :task_cancelled" do
       gate = Async::Condition.new
       allow(executor).to receive(:run_pipeline) do |_task, _profile, actor, _rf|
         gate.wait
@@ -87,7 +87,7 @@ RSpec.describe Harness::Executor do
         consumer = parent.async { sub.each { |e| collected << e } }
         executor.spawn(task, profile: nil)
         actor = live_actor("t")
-        executor.cancel("t") # posta :cancel enquanto o pipeline espera
+        executor.cancel("t") # posts :cancel while the pipeline waits
         gate.signal
         actor.wait
         sub.close
@@ -102,14 +102,14 @@ RSpec.describe Harness::Executor do
     end
   end
 
-  describe "cancel sem fiber vivo" do
-    it "retorna false e nada emite" do
+  describe "cancel with no live fiber" do
+    it "returns false and emits nothing" do
       expect(executor.cancel("ghost")).to be(false)
     end
   end
 
-  describe "erro genérico no pipeline" do
-    it "task :failed com error class/message, :task_failed emitido, fiber não vaza" do
+  describe "generic error in the pipeline" do
+    it "task :failed with error class/message, :task_failed emitted, fiber does not leak" do
       allow(executor).to receive(:run_pipeline).and_raise(RuntimeError.new("boom"))
       task = create_task
       collected = []
@@ -127,12 +127,12 @@ RSpec.describe Harness::Executor do
       expect(stored.executions.last.error).to include("class" => "RuntimeError", "message" => "boom")
       failed = collected.find { |e| e.type == :task_failed }
       expect(failed.data).to include(error: "RuntimeError", message: "boom")
-      expect(executor.running?("t")).to be(false) # desregistro no ensure
+      expect(executor.running?("t")).to be(false) # deregistered in ensure
     end
   end
 
-  describe "spawn duplicado" do
-    it "levanta ValidationError se a task já está em execução" do
+  describe "duplicate spawn" do
+    it "raises ValidationError if the task is already running" do
       gate = Async::Condition.new
       allow(executor).to receive(:run_pipeline) { gate.wait }
       task = create_task
@@ -147,8 +147,8 @@ RSpec.describe Harness::Executor do
     end
   end
 
-  describe "seq monotônico por task" do
-    it "cada emit incrementa meta.seq (task_started + 3 do pipeline = 1..4)" do
+  describe "monotonic seq per task" do
+    it "each emit increments meta.seq (task_started + 3 from the pipeline = 1..4)" do
       allow(executor).to receive(:run_pipeline) do |task, _p, _a, _r|
         3.times { executor.send(:emit, :content, {}, task: task) }
       end
@@ -165,12 +165,12 @@ RSpec.describe Harness::Executor do
       end
 
       expect(seqs).to eq([1, 2, 3, 4])
-      expect(seqs).to eq(seqs.sort) # estritamente crescente
+      expect(seqs).to eq(seqs.sort) # strictly increasing
     end
   end
 
-  describe "CancelTask e2e de controle (handler da task 9 + executor real)" do
-    it "posta cancel e a task termina :cancelled" do
+  describe "CancelTask control e2e (task 9 handler + real executor)" do
+    it "posts cancel and the task ends :cancelled" do
       gate = Async::Condition.new
       allow(executor).to receive(:run_pipeline) do |_task, _p, actor, _r|
         gate.wait
@@ -183,7 +183,7 @@ RSpec.describe Harness::Executor do
         executor.spawn(task, profile: nil)
         actor = live_actor("t")
         result = handler.call(Harness::Command.build(:cancel_task, { task_id: "t" }))
-        expect(result).to be_a(Harness::TaskStore::Task) # síncrono, estado corrente
+        expect(result).to be_a(Harness::TaskStore::Task) # synchronous, current state
         gate.signal
         actor.wait
       end

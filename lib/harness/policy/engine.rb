@@ -53,7 +53,7 @@ module Harness
       # becomes a deny — NEVER fail-open.
       def evaluate(name, request)
         policy = @registry.fetch(name)
-        raise "policy não registrada: #{name}" if policy.nil?
+        raise "policy not registered: #{name}" if policy.nil?
 
         policy.decide(request)
       rescue StandardError => e

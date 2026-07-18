@@ -10,11 +10,11 @@ module Harness
     # System builtin (like load_skill/tool_search): `require "ruby_llm"` stays
     # in THIS file, loaded lazily by the Executor in create_chat.
     class Remember < RubyLLM::Tool
-      description "Guarda uma informação para lembrar em conversas futuras. Use `key` " \
-                  "para um fato durável chave-valor (sobrescreve o anterior); omita " \
-                  "`key` para uma anotação livre."
-      param :value, desc: "O conteúdo a lembrar"
-      param :key, desc: "Chave do fato (ex.: 'plano', 'nome'); omita para uma nota", required: false
+      description "Stores information to remember in future conversations. Use `key` " \
+                  "for a durable key-value fact (overwrites the previous one); omit " \
+                  "`key` for a free-form note."
+      param :value, desc: "The content to remember"
+      param :key, desc: "Fact key (e.g.: 'plan', 'name'); omit for a note", required: false
 
       # otherwise RubyLLM derives "harness--tools--remember" from the class name.
       def name = "remember"

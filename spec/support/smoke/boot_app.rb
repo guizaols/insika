@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-# Builder compartilhado do smoke E2E (task 26 §7): wiring PRÓPRIO com backend
-# Stores::SQLite (ENV SMOKE_DB — durabilidade real é o que o kill -9 testa) + um
-# perfil "smoke" apontando para o modelo fake (o shim de ruby_llm entra via
-# RUBYOPT=-I). Sem plugins externos. Expõe SMOKE_APP já passado pelo Boot (que
-# roda o Recovery ANTES de qualquer request). Consumido por config.ru (rackup)
-# e por serve.rb (servidor single-process do teste).
+# Shared builder for the E2E smoke (task 26 §7): OWN wiring with a Stores::SQLite
+# backend (ENV SMOKE_DB — real durability is what the kill -9 tests) + a "smoke"
+# profile pointing at the fake model (the ruby_llm shim comes in via RUBYOPT=-I).
+# No external plugins. Exposes SMOKE_APP already run through Boot (which runs
+# Recovery BEFORE any request). Consumed by config.ru (rackup) and by serve.rb (the
+# test's single-process server).
 root = File.expand_path("../../..", __dir__)
 require File.join(root, "lib", "harness")
 require File.join(root, "server", "app")
@@ -24,8 +24,8 @@ policy_registry   = Harness::PolicyRegistry.new
 policy_registry.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
 policy_registry.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
 
-# Tool que exige aprovação (P2-02) — usada pelo smoke da fatia A. Factory por
-# bloco devolve INSTÂNCIA (o Executor faz factory.call -> instância).
+# Tool that requires approval (P2-02) — used by slice A's smoke. The block factory
+# returns an INSTANCE (the Executor does factory.call -> instance).
 class SmokeChargeTool
   def name = "charge"
   def call(_args) = "charged"
@@ -45,7 +45,7 @@ providers = [
 context_builder = Harness::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: hooks)
 policy_engine   = Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream)
 
-# "smoke": puro chat. "approver": exige aprovação da tool `charge` (P2-02).
+# "smoke": pure chat. "approver": requires approval of the `charge` tool (P2-02).
 profiles = {
   "smoke" => Harness::AgentProfile.build(id: "smoke", model: "fake", policies: [], skills: []),
   "approver" => Harness::AgentProfile.build(
@@ -62,7 +62,7 @@ executor = Harness::Executor.new(
   event_stream: event_stream, workflow_registry: workflow_registry,
   pending_action_store: pending_action_store
 )
-# Exposto p/ o serve.rb injetar o supervisor de turnos (L4) no reactor de serving.
+# Exposed so serve.rb can inject the turn supervisor (L4) into the serving reactor.
 SMOKE_EXECUTOR = executor
 
 bus = Harness::CommandBus.new
@@ -93,9 +93,9 @@ app = Harness::Server::App.new(
 
 recovery = Harness::Recovery.new(task_store: task_store, checkpoint_store: checkpoint_store, command_bus: bus)
 
-# Instrumentação do teste: grava um marker ao FIM do Recovery.run. Como o Boot
-# roda o recovery antes de liberar o app (e o serve.rb só serve depois), a
-# primeira resposta HTTP prova que o recovery já terminou (doc 07 §7).
+# Test instrumentation: writes a marker at the END of Recovery.run. Since the Boot
+# runs recovery before releasing the app (and serve.rb only serves afterwards), the
+# first HTTP response proves recovery already finished (doc 07 §7).
 if (recovery_marker = ENV["SMOKE_RECOVERY_DONE"])
   real_recovery = recovery
   recovery = Object.new
@@ -106,12 +106,12 @@ if (recovery_marker = ENV["SMOKE_RECOVERY_DONE"])
   end
 end
 
-# Wiring mínimo com os passos nomeados que o Boot orquestra.
+# Minimal wiring with the named steps the Boot orchestrates.
 wiring = Object.new
 wiring.define_singleton_method(:load_plugins) { nil }
 wiring.define_singleton_method(:build_stores) { nil }
 wiring.define_singleton_method(:recovery) { recovery }
 wiring.define_singleton_method(:app) { app }
 
-# O Boot roda plugins → stores → recovery ANTES de liberar o app (doc 07 §4).
+# The Boot runs plugins → stores → recovery BEFORE releasing the app (doc 07 §4).
 SMOKE_APP = Harness::Server::Boot.new(wiring, logger: $stderr).call

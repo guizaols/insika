@@ -19,7 +19,7 @@ module Harness
         raise Harness::ValidationError, "task_id is required" if task_id.to_s.empty?
 
         task = @task_store.find(task_id)
-        raise Harness::NotFoundError, "task '#{task_id}' não encontrada" unless task
+        raise Harness::NotFoundError, "task '#{task_id}' not found" unless task
 
         @executor.pause(task_id) # no-op if there is no live fiber in this process
         @task_store.find(task_id) # current state after the post

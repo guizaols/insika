@@ -19,7 +19,7 @@ module Harness
         raise Harness::ValidationError, "id is required" if id.nil?
 
         removed = @profile_source.fetch(id) ||
-                  (raise Harness::NotFoundError, "agente '#{id}' não encontrado")
+                  (raise Harness::NotFoundError, "agent '#{id}' not found")
 
         @profile_source.delete(id)
         @event_stream.emit(Harness::Event.new(

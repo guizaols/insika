@@ -14,12 +14,12 @@ RSpec.describe Harness::Server::A2A::Message do
       expect(described_class.text_from({ "parts" => [{ "type" => "text", "text" => "x" }] })).to eq("x")
     end
 
-    it "ignora parts não-text (só TextPart nesta fatia)" do
+    it "ignores non-text parts (only TextPart in this slice)" do
       msg = { "parts" => [{ "kind" => "file", "file" => {} }, { "kind" => "text", "text" => "t" }] }
       expect(described_class.text_from(msg)).to eq("t")
     end
 
-    it "sem parts / não-Hash -> ''" do
+    it "no parts / non-Hash -> ''" do
       expect(described_class.text_from({})).to eq("")
       expect(described_class.text_from(nil)).to eq("")
     end

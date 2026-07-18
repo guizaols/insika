@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-# Stubs honestos das etapas D/E (interfaces dos docs 04/05), comportamento
-# mínimo e determinístico. Vivem em spec/support de propósito: os componentes
-# reais chegam nas tasks 14-18; o wiring de produção fecha na task 26.
+# Honest stubs for stages D/E (interfaces from docs 04/05), minimal and
+# deterministic behavior. They live in spec/support on purpose: the real components
+# arrive in tasks 14-18; the production wiring closes in task 26.
 
-# Espelho pobre do Context Builder. #call(request) -> ContextPackage com system
-# (do profile.base_prompt) e history na precedência: checkpoint.messages ->
-# history explícito (vars["history"], a convenção que o Session provider usa) ->
-# mensagens da sessão -> [].
+# Poor mirror of the Context Builder. #call(request) -> ContextPackage with system
+# (from profile.base_prompt) and history in precedence: checkpoint.messages ->
+# explicit history (vars["history"], the convention the Session provider uses) ->
+# session messages -> [].
 ContextPackage = Struct.new(:system, :history, :tool_context)
 
 class FakeContextBuilder
@@ -21,13 +21,13 @@ class FakeContextBuilder
   end
 end
 
-# Levanta ContextError (teste de captura única do estágio 2).
+# Raises ContextError (single-capture test of stage 2).
 class RaisingContextBuilder
   def call(_request) = raise Harness::ContextError.new("builder falhou", provider: :fake)
 end
 
-# Resolution-like. allowed_tools = instâncias injetadas; allowed_skills = nomes.
-# requires_approval espelha o contrato real (a Resolution sempre o tem).
+# Resolution-like. allowed_tools = injected instances; allowed_skills = names.
+# requires_approval mirrors the real contract (the Resolution always has it).
 Resolution = Struct.new(:allowed_tools, :allowed_skills, :requires_approval)
 
 class NullPolicyEngine
@@ -40,21 +40,21 @@ class NullPolicyEngine
   end
 end
 
-# Nega tudo no estágio 3 (RubyLLM nunca é tocado).
+# Denies everything at stage 3 (RubyLLM is never touched).
 class DenyAllPolicyEngine
   def decide(_request)
     raise Harness::PolicyDenied.new(policy: "deny_all", reason: "tudo negado no teste")
   end
 end
 
-# Executa o bloco terminal (passthrough).
+# Executes the terminal block (passthrough).
 class PassthroughMiddleware
   def call(state)
     yield state
   end
 end
 
-# Curto-circuita: seta halt_reason e NÃO chama o bloco (doc 05 §3).
+# Short-circuits: sets halt_reason and does NOT call the block (doc 05 §3).
 class HaltingMiddleware
   def call(state)
     state.halt_reason = "rate limit"
@@ -62,8 +62,8 @@ class HaltingMiddleware
   end
 end
 
-# around(pair, subject) { |s| yield s }, gravando a ordem dos pares. As
-# metades run_before/run_after (par :tool) são passthrough sem gravar.
+# around(pair, subject) { |s| yield s }, recording the order of the pairs. The
+# run_before/run_after halves (:tool pair) are passthrough without recording.
 class NullHooks
   attr_reader :pairs
 
@@ -78,8 +78,8 @@ class NullHooks
   def run_after(_pair, result) = result
 end
 
-# Event stream síncrono para asserções de ordem sem coreografia de fibers:
-# emit só acumula (o fiber do turno completa durante spawn+wait).
+# Synchronous event stream for order assertions without fiber choreography:
+# emit just accumulates (the turn's fiber completes during spawn+wait).
 class SpyEventStream
   attr_reader :events
 
@@ -88,10 +88,10 @@ class SpyEventStream
   def types = @events.map(&:type)
 end
 
-# Stream double do body STREAMING do Rack 3 (Protocol::HTTP::Body::Stream):
-# coleta os frames escritos e marca o close. `raise_on_write` simula o socket
-# fechado (cliente desconectou). Usado para dirigir SSEBody#call(stream) nos specs
-# sem subir um servidor HTTP.
+# Stream double of Rack 3's STREAMING body (Protocol::HTTP::Body::Stream):
+# collects the written frames and marks the close. `raise_on_write` simulates the
+# closed socket (client disconnected). Used to drive SSEBody#call(stream) in the
+# specs without booting an HTTP server.
 class SSEStreamDouble
   attr_reader :chunks
 
@@ -112,7 +112,7 @@ class SSEStreamDouble
   def closed? = @closed
 end
 
-# Registry fake com o predicado side_effect?(name) (seam do doc 06).
+# Fake registry with the side_effect?(name) predicate (seam from doc 06).
 class FakeToolRegistry
   def initialize(side_effect_names: [])
     @side_effect_names = Array(side_effect_names).map(&:to_s)
@@ -122,5 +122,5 @@ class FakeToolRegistry
     @side_effect_names.include?(name.to_s)
   end
 
-  def entries = [] # o Executor lê tool_registry.entries no policy_request
+  def entries = [] # the Executor reads tool_registry.entries in the policy_request
 end

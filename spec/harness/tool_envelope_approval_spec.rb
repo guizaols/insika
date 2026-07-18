@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# Gate de aprovação (P2 task 7): o ToolEnvelope suspende via o coordenador
-# quando a tool está em requires_approval; o Executor#request_approval é o
-# coordenador real (cria PendingAction, :waiting, await, decisão do store).
-RSpec.describe "ToolEnvelope — gate de aprovação" do
+# Approval gate (P2 task 7): the ToolEnvelope suspends via the coordinator
+# when the tool is in requires_approval; Executor#request_approval is the
+# real coordinator (creates PendingAction, :waiting, await, store decision).
+RSpec.describe "ToolEnvelope — approval gate" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
 
@@ -19,7 +19,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
     def call(args) = (@calls << args) && "charged"
   end
 
-  # Coordenador fake: devolve a decisão configurada, gravando a chamada.
+  # Fake coordinator: returns the configured decision, recording the call.
   class FakeCoordinator
     attr_reader :requested
 
@@ -71,7 +71,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
 
   it "tool NÃO marcada -> executa sem consultar o coordenador" do
     tool = ChargeTool.new
-    coord = FakeCoordinator.new("rejected") # não deve ser chamado
+    coord = FakeCoordinator.new("rejected") # must not be called
     env = envelope(tool, state_with(requires_approval: ["outra"], coordinator: coord))
 
     result = Sync { env.call({}) }
@@ -89,7 +89,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       st
     end
 
-    it "grava nome + args + resultado por call quando há trace_recorder" do
+    it "records name + args + result per call when a trace_recorder is present" do
       recorder = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
       env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: "sess-1"),
                                       checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
@@ -106,7 +106,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       expect(tr.first["ms"]).to be_a(Integer)
     end
 
-    it "session_id nil -> não grava (sem sessão, nada a anexar)" do
+    it "session_id nil -> does not record (no session, nothing to attach)" do
       recorder = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
       env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: nil),
                                       checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
@@ -115,7 +115,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       expect(recorder.for_session("")).to eq([])
     end
 
-    it "sem trace_recorder (nil) -> executa normal, não quebra" do
+    it "no trace_recorder (nil) -> runs normally, does not break" do
       env = Harness::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: "s"),
                                       checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
                                       timeout: 60)
@@ -146,7 +146,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       task_store.find("t")
     end
 
-    it "suspende em :waiting, emite :approval_requested, retoma no :approval com a decisão do store" do
+    it "suspends at :waiting, emits :approval_requested, resumes at :approval with the store decision" do
       task = running_task
       decision = nil
 
@@ -169,7 +169,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       expect(task_store.find("t").status).to eq(:running)
     end
 
-    it "fail-closed: sem PendingActionStore configurado -> Error (não pendura, não auto-aprova)" do
+    it "fail-closed: no PendingActionStore configured -> Error (does not hang, does not auto-approve)" do
       no_store = Harness::Executor.new(
         context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
         middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
@@ -208,7 +208,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       expect(decision).to eq("approved")
     end
 
-    it "reexecução: PendingAction já resolvida é reusada SEM re-suspender" do
+    it "re-run: an already resolved PendingAction is reused WITHOUT re-suspending" do
       running_task
       pending_store.create(id: "t:1:charge", task_id: "t", turn: 1, tool: "charge", args: {})
       pending_store.resolve("t:1:charge", decision: :rejected, operator: "op")
@@ -219,7 +219,7 @@ RSpec.describe "ToolEnvelope — gate de aprovação" do
       end
 
       expect(decision).to eq("rejected")
-      expect(task_store.find("t").status).to eq(:running) # não foi a :waiting
+      expect(task_store.find("t").status).to eq(:running) # did not go to :waiting
     end
   end
 end

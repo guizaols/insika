@@ -124,7 +124,7 @@ module Harness
 
       if used > cap
         raise ContextError.new(
-          "orçamento insolúvel: fragmentos pinned (#{used} tokens) excedem o cap (#{cap})",
+          "unsolvable budget: pinned fragments (#{used} tokens) exceed the cap (#{cap})",
           provider: "ContextBuilder"
         )
       end

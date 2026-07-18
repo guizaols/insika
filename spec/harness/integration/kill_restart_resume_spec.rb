@@ -6,16 +6,16 @@ require "tmpdir"
 require "fileutils"
 require "sqlite3"
 
-# Critério de conclusão da Etapa C (doc 00 §6) em nível de integração: um turno
-# interrompido por "crash" sobrevive num arquivo SQLite, e um "reboot" (objetos
-# novos, MESMO arquivo) retoma do checkpoint via Recovery -> ResumeTask,
-# completando sem reexecutar a tool não-idempotente já concluída.
+# Stage C completion criterion (doc 00 §6) at integration level: a turn
+# interrupted by a "crash" survives in a SQLite file, and a "reboot" (new
+# objects, SAME file) resumes from the checkpoint via Recovery -> ResumeTask,
+# completing without re-executing the non-idempotent tool that already ran.
 #
-# kill -9 não roda rescue: o estado pós-crash é montado DIRETO nos stores
-# (task :running, Execution aberta, checkpoint do turno, side-effect na chave
-# avulsa, sem fiber vivo) — simular via exceção passaria pela captura única e
-# marcaria :failed, que não é o cenário. O E2E com processo real é a task 26.
-RSpec.describe "Integração: kill -> restart -> resume" do
+# kill -9 does not run rescue: the post-crash state is assembled DIRECTLY in the
+# stores (task :running, open Execution, turn checkpoint, side-effect on the
+# standalone key, no live fiber) — simulating via an exception would go through the
+# single capture and mark :failed, which is not the scenario. The real-process E2E is task 26.
+RSpec.describe "Integration: kill -> restart -> resume" do
   around do |example|
     Dir.mktmpdir do |dir|
       @dir = dir
@@ -25,13 +25,13 @@ RSpec.describe "Integração: kill -> restart -> resume" do
 
   let(:db_path) { File.join(@dir, "harness.db") }
   let(:profile) { Harness::AgentProfile.build(id: "sales", model: "gpt", base_prompt: "SOUL") }
-  # tool side-effect compartilhada: prova que NÃO é reexecutada no resume.
+  # shared side-effect tool: proves it is NOT re-executed on resume.
   let(:tool) do
     Class.new do
       attr_reader :calls
 
       def initialize = (@calls = 0)
-      def name = "enviar_pedido"
+      def name = "send_order"
       def call(_args) = (@calls += 1) && "enviado"
     end.new
   end
@@ -45,7 +45,7 @@ RSpec.describe "Integração: kill -> restart -> resume" do
       context_builder: FakeContextBuilder.new,
       policy_engine: NullPolicyEngine.new(allowed_tools: [tool]),
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
-      tool_registry: FakeToolRegistry.new(side_effect_names: ["enviar_pedido"]),
+      tool_registry: FakeToolRegistry.new(side_effect_names: ["send_order"]),
       skill_catalog: Harness::SkillCatalog.new([]), profiles: { "sales" => profile },
       session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: event_stream
@@ -54,24 +54,24 @@ RSpec.describe "Integração: kill -> restart -> resume" do
       event_stream: event_stream, executor: executor }
   end
 
-  it "retoma o turno interrompido, completa e NÃO reexecuta a tool já concluída" do
-    # ── Ato 1: o crash (estado montado direto no arquivo) ───────────────────
+  it "resumes the interrupted turn, completes and does NOT re-execute the already finished tool" do
+    # ── Act 1: the crash (state assembled directly in the file) ─────────────
     store_a = Harness::Stores::SQLite.new(path: db_path)
     a = wiring(store_a)
     a[:session_store].create(id: "s1")
     command = Harness::Command.build(:send_message,
                                      { agent: "sales", message: "faz o pedido", session_id: "s1" })
     a[:task_store].create(command: command.to_h, session_id: "s1", id: "t")
-    a[:task_store].begin_execution("t")          # attempt 1 fica ABERTA (fiber morto)
+    a[:task_store].begin_execution("t")          # attempt 1 stays OPEN (dead fiber)
     a[:task_store].transition("t", to: :running)
     a[:checkpoint_store].save(Harness::Checkpoint.new(
                                 task_id: "t", turn: 1, session_id: "s1", agent_id: "sales",
                                 messages: [], completed_side_effects: [], created_at: nil
                               ))
-    a[:checkpoint_store].record_side_effect("t", turn: 1, tool_call_id: "call_pedido")
+    a[:checkpoint_store].record_side_effect("t", turn: 1, tool_call_id: "call_order")
     store_a.close # "kill"
 
-    # ── Ato 2: o reboot (objetos novos, MESMO arquivo) ──────────────────────
+    # ── Act 2: the reboot (new objects, SAME file) ──────────────────────────
     store_b = Harness::Stores::SQLite.new(path: db_path)
     b = wiring(store_b)
     handler = Harness::Commands::ResumeTask.new(
@@ -81,11 +81,11 @@ RSpec.describe "Integração: kill -> restart -> resume" do
     bus = Harness::CommandBus.new
     bus.register(:resume_task, handler)
 
-    # modelo re-pede a MESMA tool call (mesmo id) e depois responde final.
+    # model re-requests the SAME tool call (same id) and then responds final.
     fake = FakeChat.new
     fake.final_content = "pedido confirmado"
     fake.script = proc do
-      fire_tool_call(name: "enviar_pedido", arguments: {}, id: "call_pedido")
+      fire_tool_call(name: "send_order", arguments: {}, id: "call_order")
       result = @tools.first.call({})
       fire_tool_result(result)
     end
@@ -99,8 +99,8 @@ RSpec.describe "Integração: kill -> restart -> resume" do
       summary = Harness::Recovery.new(task_store: b[:task_store],
                                       checkpoint_store: b[:checkpoint_store],
                                       command_bus: bus).run
-      # a task tem session_id -> a retomada é SERIALIZADA no SessionActor (P2-03),
-      # spawnada assíncrona; poll até terminal e para o loop da sessão.
+      # the task has a session_id -> the resume is SERIALIZED in the SessionActor (P2-03),
+      # spawned async; poll until terminal and stop the session loop.
       100.times do
         t = b[:task_store].find("t")
         break if t && %w[completed failed cancelled].include?(t.status.to_s)
@@ -113,25 +113,25 @@ RSpec.describe "Integração: kill -> restart -> resume" do
     end
     store_b.close
 
-    # ── Verificação (arquivo reaberto: durabilidade real) ───────────────────
+    # ── Verification (file reopened: real durability) ───────────────────────
     store_c = Harness::Stores::SQLite.new(path: db_path)
     c = wiring(store_c)
 
     expect(summary[:resumed]).to include("t")
     task = c[:task_store].find("t")
     expect(task.status).to eq(:completed)
-    # nova Execution: attempt 1 (interrompido) preservado + attempt 2 (completo)
+    # new Execution: attempt 1 (interrupted) preserved + attempt 2 (complete)
     expect(task.executions.size).to eq(2)
     expect(task.executions.first.outcome).to eq("interrupted")
     expect(task.executions.last.outcome).to eq("completed")
-    # a tool NÃO foi reexecutada; o :tool_result carregou o marcador
+    # the tool was NOT re-executed; the :tool_result carried the marker
     expect(tool.calls).to eq(0)
     result_event = events.find { |e| e.type == :tool_result }
     expect(result_event.data[:result]).to include("already_executed")
     expect(events.map(&:type)).to include(:done, :task_completed)
-    # checkpoint avançou (turno 1 -> 2) e o prune manteve o último
+    # checkpoint advanced (turn 1 -> 2) and prune kept the last one
     expect(c[:checkpoint_store].latest("t").turn).to eq(2)
-    # sessão íntegra: as mensagens do turno aparecem UMA vez (crash foi antes do 8)
+    # intact session: the turn messages appear ONCE (crash was before step 8)
     expect(c[:session_store].find("s1").messages.map { |m| m["content"] })
       .to eq(["faz o pedido", "pedido confirmado"])
 

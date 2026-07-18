@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# Fase 5 Etapa B: overlay que compõe tools de código + tools por dados.
+# Phase 5 Step B: overlay that composes code tools + data-driven tools.
 RSpec.describe Harness::OverlayToolRegistry do
-  # tool de código fake (o overlay só precisa de name/description via factory).
+  # fake code tool (the overlay only needs name/description via factory).
   FakeCodeTool = Struct.new(:name, :description)
 
   let(:base) do
@@ -15,7 +15,7 @@ RSpec.describe Harness::OverlayToolRegistry do
   end
 
   let(:store) { Harness::ToolStore.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
-  let(:http) { Object.new } # nunca chamado nos testes de resolução
+  let(:http) { Object.new } # never called in the resolution tests
 
   subject(:overlay) { described_class.new(base: base, tool_store: store, http: http) }
 
@@ -25,8 +25,8 @@ RSpec.describe Harness::OverlayToolRegistry do
       request: { method: method, url: "https://a.test/{{x}}" } }.merge(over)
   end
 
-  describe "paridade (NF1): store vazio ⇒ idêntico à base" do
-    it "entries/names/resolve/side_effect batem com a base pura" do
+  describe "parity (NF1): empty store ⇒ identical to the base" do
+    it "entries/names/resolve/side_effect match the pure base" do
       expect(overlay.names).to eq(base.names)
       expect(overlay.entries.map(&:name)).to eq(base.entries.map(&:name))
       expect(overlay.resolve("menu")).to be_a(FakeCodeTool)
@@ -35,35 +35,35 @@ RSpec.describe Harness::OverlayToolRegistry do
     end
   end
 
-  describe "com data-tools no store" do
+  describe "with data-tools in the store" do
     before do
       store.write(def_attrs(name: "cep"))                 # GET -> side_effect false
       store.write(def_attrs(name: "cria", method: "POST")) # POST -> side_effect true
       overlay.reload
     end
 
-    it "entries/names unem base + dinâmicas" do
+    it "entries/names merge base + dynamic" do
       expect(overlay.names).to contain_exactly("menu", "calc", "cep", "cria")
     end
 
-    it "resolve de data-tool -> DataDefinedTool; código continua código" do
+    it "resolve of data-tool -> DataDefinedTool; code stays code" do
       expect(overlay.resolve("cep")).to be_a(Harness::Tools::DataDefinedTool)
       expect(overlay.resolve("menu")).to be_a(FakeCodeTool)
       expect { overlay.resolve("inexistente") }.to raise_error(Harness::NotFoundError)
     end
 
-    it "side_effect? deriva do método da data-tool" do
+    it "side_effect? derives from the data-tool's method" do
       expect(overlay.side_effect?("cep")).to be(false)
       expect(overlay.side_effect?("cria")).to be(true)
     end
 
-    it "code_tool? distingue base de dinâmica" do
+    it "code_tool? distinguishes base from dynamic" do
       expect(overlay.code_tool?("menu")).to be(true)
       expect(overlay.code_tool?("cep")).to be(false)
     end
 
-    # Fase 7/D4/F5 (Etapa C): a policy ToolAllowlist expande grupo pelo metadata.
-    it "expõe group/tags da data-tool no metadata da Entry" do
+    # Phase 7/D4/F5 (Step C): the ToolAllowlist policy expands the group via the metadata.
+    it "exposes group/tags of the data-tool in the Entry's metadata" do
       store.write(def_attrs(name: "b2b_tool", group: "b2b", tags: ["catalog"]))
       overlay.reload
       entry = overlay.entries.find { |e| e.name == "b2b_tool" }
@@ -72,31 +72,31 @@ RSpec.describe Harness::OverlayToolRegistry do
     end
   end
 
-  describe "colisão: base (código) SEMPRE vence (R3)" do
+  describe "collision: base (code) ALWAYS wins (R3)" do
     before do
-      store.write(def_attrs(name: "menu")) # colide com a tool de código
+      store.write(def_attrs(name: "menu")) # collides with the code tool
       overlay.reload
     end
 
-    it "não duplica o nome; resolve devolve a de código, não a data-tool" do
+    it "does not duplicate the name; resolve returns the code one, not the data-tool" do
       expect(overlay.names.count("menu")).to eq(1)
       expect(overlay.entries.map(&:name).count("menu")).to eq(1)
       expect(overlay.resolve("menu")).to be_a(FakeCodeTool)
-      expect(overlay.side_effect?("menu")).to be(true) # metadado da base
+      expect(overlay.side_effect?("menu")).to be(true) # base metadata
     end
   end
 
-  describe "reload é hot (F5)" do
-    it "uma data-tool nova só aparece após reload (índice memoizado)" do
-      overlay.names # força o snapshot inicial (memoiza o índice dinâmico)
+  describe "reload is hot (F5)" do
+    it "a new data-tool only appears after reload (memoized index)" do
+      overlay.names # forces the initial snapshot (memoizes the dynamic index)
       store.write(def_attrs(name: "novo"))
-      expect(overlay.names).not_to include("novo") # ainda no índice antigo
+      expect(overlay.names).not_to include("novo") # still in the old index
       overlay.reload
       expect(overlay.names).to include("novo")
     end
   end
 
-  it "definição corrompida no store é ignorada (não derruba o registry)" do
+  it "corrupted definition in the store is ignored (does not bring down the registry)" do
     cs = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
     cs.put("tools", "ruim", { "definition" => { "name" => "Bad Name", "description" => "x" } })
     ov = described_class.new(base: base, tool_store: Harness::ToolStore.new(config_store: cs), http: http)

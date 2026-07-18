@@ -57,7 +57,7 @@ module Harness
         log(:info, "resume dispatched: #{task.id}")
       else
         fail_task(task.id, class_name: "Harness::Error",
-                           message: "irrecuperável: sem checkpoint")
+                           message: "unrecoverable: no checkpoint")
         failed << task.id
         log(:warn, "unrecoverable (no checkpoint): #{task.id}")
       end

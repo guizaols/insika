@@ -2,20 +2,20 @@
 
 require "spec_helper"
 require "json"
-require "harness/tools/data_defined_tool" # o overlay carrega lazy; explícito no teste
+require "harness/tools/data_defined_tool" # the overlay loads lazily; explicit in the test
 
-# Fase 7, Etapa E: ingestão MCP LIVE. O ingestor descobre as tools de uma
-# instância MCP via cliente INJETÁVEL (Fake), constrói um ToolManifest reusando o
-# adapter MCP (inputSchema) e ingere pelo caminho da Etapa B (:import_tools: upsert
-# + reload hot). Prova: group mcp:<instância>, binding JSON-RPC tools/call, corte
-# de nome inválido (R4), e que o binding RODA no caminho HTTP das data-tools.
+# Phase 7, Step E: LIVE MCP ingestion. The ingestor discovers the tools of an MCP
+# instance via an INJECTABLE client (Fake), builds a ToolManifest reusing the MCP
+# adapter (inputSchema) and ingests through the Step B path (:import_tools: upsert
+# + hot reload). Proof: group mcp:<instance>, JSON-RPC tools/call binding, invalid
+# name cutoff (R4), and that the binding RUNS on the data-tools HTTP path.
 RSpec.describe Harness::McpToolIngestor do
-  # Cliente MCP fake (duck-type): #list_tools -> [{name, description, inputSchema}].
+  # Fake MCP client (duck-type): #list_tools -> [{name, description, inputSchema}].
   FakeMcpClient = Struct.new(:tools) do
     def list_tools = tools
   end
 
-  # egress permissivo (não queremos DNS real no teste do binding).
+  # permissive egress (we don't want real DNS in the binding test).
   IngestorPermissiveEgress = Class.new { def violation(*, **) = nil }.new
 
   let(:mcp_store) { Harness::McpStore.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
@@ -42,7 +42,7 @@ RSpec.describe Harness::McpToolIngestor do
     ]
   end
 
-  # ingestor com fábrica que devolve o Fake (o Command não injeta client -> usa a fábrica).
+  # ingestor with a factory that returns the Fake (the Command doesn't inject a client -> uses the factory).
   def ingestor(tools: mcp_tools)
     described_class.new(mcp_store: mcp_store, import_tools: import_tools,
                         client_factory: ->(_record) { FakeMcpClient.new(tools) })
@@ -53,49 +53,49 @@ RSpec.describe Harness::McpToolIngestor do
                        enabled: true, env: { "API_KEY" => "k" } }.merge(over))
   end
 
-  describe "#ingest (descoberta -> ingestão)" do
+  describe "#ingest (discovery -> ingestion)" do
     before { seed_instance }
 
-    it "descobre e ingere as tools MCP como data-tools (reload hot no overlay/catálogo)" do
+    it "discovers and ingests the MCP tools as data-tools (hot reload in overlay/catalog)" do
       report = ingestor.ingest("tavily")
 
       expect(report[:instance]).to eq("tavily")
       expect(report[:created]).to contain_exactly("search", "extract")
       expect(report[:errors]).to be_empty
-      expect(overlay.names).to include("search", "extract") # overlay recarregado (hot)
+      expect(overlay.names).to include("search", "extract") # overlay reloaded (hot)
       expect(catalog.all.map(&:name)).to include("search")
     end
 
-    it "marca cada tool com group mcp:<instância> (gating por grupo da Etapa C)" do
+    it "marks each tool with group mcp:<instance> (group gating from Step C)" do
       ingestor.ingest("tavily")
       expect(tool_store.get_raw("search")["group"]).to eq("mcp:tavily")
       expect(tool_store.get_raw("extract")["group"]).to eq("mcp:tavily")
     end
 
-    it "binding = POST JSON-RPC tools/call no endpoint da instância" do
+    it "binding = JSON-RPC tools/call POST to the instance endpoint" do
       ingestor.ingest("tavily")
       req = tool_store.get_raw("search")["request"]
       expect(req["method"]).to eq("POST")
       expect(req["url"]).to eq("https://mcp.test/rpc")
 
-      body = JSON.parse(req["body"].gsub(/\{\{\w+\}\}/, "null")) # neutraliza os placeholders p/ parsear
+      body = JSON.parse(req["body"].gsub(/\{\{\w+\}\}/, "null")) # neutralize the placeholders to parse
       expect(body).to include("jsonrpc" => "2.0", "method" => "tools/call")
-      expect(body["params"]["name"]).to eq("search") # nome real do MCP, literal
+      expect(body["params"]["name"]).to eq("search") # real MCP name, literal
     end
 
-    it "preserva o inputSchema (adapter MCP) como parameters JSON Schema" do
+    it "preserves the inputSchema (MCP adapter) as parameters JSON Schema" do
       ingestor.ingest("tavily")
       params = tool_store.get_raw("search")["parameters"]
       expect(params["properties"]).to have_key("query")
       expect(params["required"]).to eq(["query"])
     end
 
-    it "tools/call é side_effect (checkpoint/skip-on-resume)" do
+    it "tools/call is side_effect (checkpoint/skip-on-resume)" do
       ingestor.ingest("tavily")
       expect(tool_store.get_raw("search")["side_effect"]).to be(true)
     end
 
-    it "idempotente: re-ingerir reconcilia (updated, não created)" do
+    it "idempotent: re-ingesting reconciles (updated, not created)" do
       ingestor.ingest("tavily")
       report = ingestor.ingest("tavily")
       expect(report[:created]).to be_empty
@@ -103,10 +103,10 @@ RSpec.describe Harness::McpToolIngestor do
     end
   end
 
-  describe "binding roda no caminho HTTP das data-tools (prova end-to-end)" do
+  describe "binding runs on the data-tools HTTP path (end-to-end proof)" do
     before { seed_instance }
 
-    it "interpola os argumentos do modelo no envelope JSON-RPC tools/call" do
+    it "interpolates the model arguments into the JSON-RPC tools/call envelope" do
       ingestor.ingest("tavily")
       defn = Harness::ToolDefinition.from_h(tool_store.get_raw("search"))
       captured = Class.new do
@@ -124,10 +124,10 @@ RSpec.describe Harness::McpToolIngestor do
     end
   end
 
-  describe "corte de nome/schema inválido (R4)" do
+  describe "invalid name/schema cutoff (R4)" do
     before { seed_instance }
 
-    it "tool com nome fora do NAME_RE é ISOLADA em errors[], não derruba as demais" do
+    it "tool with a name outside NAME_RE is ISOLATED in errors[], does not take down the rest" do
       tools = mcp_tools + [{ "name" => "Web-Search", "description" => "x",
                              "inputSchema" => { "type" => "object", "properties" => {} } }]
       report = ingestor(tools: tools).ingest("tavily")
@@ -136,8 +136,8 @@ RSpec.describe Harness::McpToolIngestor do
     end
   end
 
-  describe "#manifest_for (sem ingerir)" do
-    it "aceita cliente injetado diretamente (seam p/ transporte real futuro)" do
+  describe "#manifest_for (without ingesting)" do
+    it "accepts a directly injected client (seam for a future real transport)" do
       seed_instance
       manifest = described_class.new(mcp_store: mcp_store, import_tools: import_tools)
                                 .manifest_for("tavily", client: FakeMcpClient.new(mcp_tools))
@@ -146,19 +146,19 @@ RSpec.describe Harness::McpToolIngestor do
     end
   end
 
-  describe "validação da instância" do
-    it "instância inexistente -> NotFoundError" do
-      expect { ingestor.ingest("nope") }.to raise_error(Harness::NotFoundError, /não encontrada/)
+  describe "instance validation" do
+    it "nonexistent instance -> NotFoundError" do
+      expect { ingestor.ingest("nope") }.to raise_error(Harness::NotFoundError, /not found/)
     end
 
-    it "instância desabilitada -> ValidationError" do
+    it "disabled instance -> ValidationError" do
       seed_instance(enabled: false)
-      expect { ingestor.ingest("tavily") }.to raise_error(Harness::ValidationError, /desabilitada/)
+      expect { ingestor.ingest("tavily") }.to raise_error(Harness::ValidationError, /disabled/)
     end
 
-    it "instância sem url (stdio) -> ValidationError (transport real é posterior — D8)" do
+    it "instance with no url (stdio) -> ValidationError (real transport comes later — D8)" do
       seed_instance(url: nil, transport: "stdio", command: "npx foo")
-      expect { ingestor.ingest("tavily") }.to raise_error(Harness::ValidationError, /sem url.*stdio/m)
+      expect { ingestor.ingest("tavily") }.to raise_error(Harness::ValidationError, /no url.*stdio/m)
     end
   end
 end

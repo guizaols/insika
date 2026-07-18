@@ -74,7 +74,7 @@ module Harness
       record = @store.get(SCOPE, key_for(id)) ||
                (raise Harness::NotFoundError, "pending action not found: #{id}")
       unless record["status"] == "pending"
-        raise Harness::ValidationError, "pending action '#{id}' já resolvida (#{record["status"]})"
+        raise Harness::ValidationError, "pending action '#{id}' already resolved (#{record["status"]})"
       end
 
       record["status"] = target.to_s
