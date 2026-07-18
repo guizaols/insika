@@ -37,13 +37,41 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 > - **§5.1 Migração PT→EN — 1º passe**: `lib/harness/**` (~114 arquivos) +
 >   `docs/TRANSLATION-TRACKER.md`. **Migração EM ANDAMENTO** (2º passe: `server/`,
 >   `bin/`, `scripts/` composition-root, `config/`, `studio/`; ver tracker).
+>
+> **Entregue na rodada de benchmark (PRs #64–#69, mergeados 2026-07-18):**
+> - **§1.1/§1.4 — matriz de benchmark + relatório FECHADOS** (`docs/BENCHMARKS.md`).
+>   Ruby **4.0.6 default + YJIT** (PR #67); CPU bench (`bench_cpu.rb`, §2) + SQLite bench
+>   (`bench_store.rb`, §3) + e2e vs OpenClaw (§5) + **pernas LOCAIS** (harness Falcon 4-proc
+>   @~30k vs OpenClaw 4-gw, matched — §4a) + **harness Railway 4.0.6** (§4c). **Achado
+>   central:** 4.0.6+YJIT ganha ~+19% no CPU-bound por-turno (§2) e ~+50–60% no path SQLite
+>   (§3), mas o ganho é **mascarado pela latência do provider e2e** (Railway 4.0.6 ≈ 3.3.5
+>   nos números de turno) → **§2 é o sinal limpo do motor**, não o e2e. Harness fecha turno
+>   ~2,3–2,5× mais rápido que o OpenClaw a 4-proc (matched), com prompt-cache do DeepSeek.
+> - **Fix de deploy (PR #69):** `libssl-dev`+`pkg-config` no Dockerfile builder — a gem
+>   `openssl` 4.0.2 (compilada após o re-resolve do lock no 4.0.6) não buildava no
+>   `ruby:4.0.6-slim` (linux); **a imagem 4.0.6 nunca tinha subido no Railway** — o piloto
+>   rodava a 3.3.5 antiga. Corrigido; piloto agora em `4.0.6 +YJIT +PRISM` (Falcon 4-proc).
+> - **§5.1 Tradução PT→EN — 2º/3º passes** (PRs #65/#66): `server/`/`config/`/composition-root
+>   + specs + strings model-facing. Falta só **este documento** (traduzir por último).
+> - **⏳ GAP que ficou — teste de carga com TRÁFEGO REAL** (não-sintético): TODAS as pernas
+>   acima usam o mesmo greeting enlatado (1 turno, usuário novo, **0 tool call**, não bate no
+>   achei-b2b). O corpus real já está extraído (**179 msgs reais de user** dos session logs do
+>   OpenClaw: cacau 97 / natura 51 / vaio 31). Próximo passo abaixo (§1.4 ação 5 + §9 evals).
 
 ---
 
 ## 1. Performance & Infra
 
 ### 1.1 Atualizar para Ruby 4 — vale a pena por performance?
-**Recomendação: sim, subir a versão do Ruby — mas o ganho vem do YJIT, não de Ractors.** 🟡
+**Recomendação: sim, subir a versão do Ruby — mas o ganho vem do YJIT, não de Ractors.** ✅ **ENTREGUE**
+
+> **Fechado (PRs #67/#69, `docs/BENCHMARKS.md`):** shipado **Ruby 4.0.6 default + YJIT**
+> (`.ruby-version`/`mise.toml`/Dockerfile/Gemfile.lock re-resolvido; suíte verde em 3.3.5 e
+> 4.0.6). Matriz medida `{3.3.5, 4.0.6} × {YJIT off/on} × {local, Railway}` + vs OpenClaw.
+> **Resposta:** vale — 4.0.6+YJIT é o cell mais rápido (~+19% CPU-bound por-turno §2, ~+50–60%
+> no path SQLite §3), **de graça** (YJIT já on no container). Mas confirma a tese "motor
+> I/O-bound": o ganho é CPU-side e **some no e2e** (Railway 4.0.6 ≈ 3.3.5), então **§2 é o
+> sinal de motor**, não §4/§5. Texto abaixo mantido como o racional original.
 
 - O `Gemfile` já declara `ruby ">= 3.2"` e roda em 3.3.5. Subir para 3.4+/4.0 é
   **baixo risco** (poucas breaking changes; o Prism vira parser default, frozen
@@ -155,12 +183,20 @@ mesmo) + entregar um equivalente Ruby nativo no repo.** 🔴
   2. ✅ `scripts/loadtest.rb` (net-http, TTFB+total+tokens+P50/P95) — ENTREGUE.
   3. ✅ `scripts/loadtest-local.sh` (baseline 1 proc vs N procs do Falcon; checa
      "database is locked" — prova o §1.3) — ENTREGUE.
-  4. **PENDENTE — comparação por versão de Ruby + relatório (ver §1.1):** rodar a
-     matriz `{Ruby 3.3.5, Ruby novo} × {YJIT off/on} × {local, Railway}` com os
-     scripts existentes, mais a rodada **vs OpenClaw** (mesmo contrato, apontando
-     `OPENCLAW_GATEWAY_URL` para cada motor). Consolidar num **relatório
-     versionado + apresentação** em `docs/BENCHMARKS.md` (tabelas comparativas +
-     leitura do experimento §1.3). Este é o entregável que fecha o §1.1 e o §1.4.
+  4. ✅ **Comparação por versão de Ruby + relatório (§1.1) — ENTREGUE** (PRs #67/#69):
+     matriz `{3.3.5, 4.0.6} × {YJIT off/on} × {local, Railway}` + `bench_cpu.rb`/
+     `bench_store.rb` + rodada **vs OpenClaw** (mesmo contrato via `OPENCLAW_GATEWAY_URL`),
+     consolidada em `docs/BENCHMARKS.md` (§2 CPU, §3 SQLite, §4a/§4c pernas local/Railway,
+     §5 vs OpenClaw). Fecha §1.1 e §1.4.
+  5. 🔴 **PENDENTE — loadtest de TRÁFEGO REAL (não-sintético):** todos os números acima
+     usam um greeting fixo (1 turno, 0 tool call → não exercita achei-b2b nem o tool-loop).
+     Falta um **replay de conversas reais**: uma ferramenta que sorteia mensagens variadas do
+     corpus já extraído (**179 msgs reais** dos session logs em `openclaw/agents/*/sessions/
+     *.jsonl`) e dispara com **`BIA_INTERNAL_API_TOKEN`** (de `achei-b2b/.env`) para os tool
+     calls **baterem no achei-b2b local de verdade**. Mede o path completo sob carga (latência
+     de tool + turnos multi-round). Identidades das lojas reconstruíveis de
+     `openclaw/workspace/agent-store-<id>/*.md`. Casa com **evals §9** (as mesmas conversas
+     golden servem de regressão de qualidade, não só de perf).
 
 ---
 
@@ -441,7 +477,9 @@ Além do que já está mapeado (escala §1, OSS §5, learning §7), os gaps que 
 - **Evals / harness de qualidade** 🔴 — testes de COMPORTAMENTO do agente (não só
   unit): conversas-golden + LLM-judge, regressão quando muda prompt/tool/modelo.
   Hoje temos loadtest (perf) mas não eval (qualidade). É o que o Flue cobre com
-  Braintrust. **Sem isso, mexer no prompt é no escuro.**
+  Braintrust. **Sem isso, mexer no prompt é no escuro.** **Atalho já disponível:** o
+  corpus de **179 conversas reais** extraído para o loadtest real (§1.4 ação 5 / #6b) é a
+  matéria-prima direta das conversas-golden — o mesmo replay serve de perf E de eval.
 - **Guardrails / segurança de conteúdo** 🔴 — moderação, PII, defesa a
   jailbreak/prompt-injection, validação de saída. Crítico p/ marca em produção.
 - **Channels de 1ª classe** 🟡 — hoje WhatsApp entra via achei-b2b. Uma camada de
@@ -478,8 +516,9 @@ conforme demanda.
 | 3 | Trace de tool calls no viewer do chat (§3.1) | UI/UX | ✅ ENTREGUE | — |
 | 4 | Refresh de UI/UX do `studio/` (§3/#10) | UI/UX | ✅ ENTREGUE | — |
 | 5 | Protótipo `harness-code` (toolset FS/shell + CLI + sandbox) | Ideias | ✅ ENTREGUE | — |
-| 6 | Bump Ruby + YJIT **+ matriz de benchmark `{Ruby atual/novo}×{YJIT}×{local/Railway}` + relatório vs OpenClaw** (`docs/BENCHMARKS.md`) | Perf | 🔴 | 2 |
-| 7 | Medir teto de escrita SQLite N-procs + **Litestream opt-in/configurável** (backup/DR) | Infra | 🔴 | 2 |
+| 6 | Bump Ruby + YJIT **+ matriz de benchmark `{Ruby atual/novo}×{YJIT}×{local/Railway}` + relatório vs OpenClaw** (`docs/BENCHMARKS.md`) | Perf | ✅ ENTREGUE | 2 |
+| 6b | **Loadtest de TRÁFEGO REAL** (replay do corpus de 179 msgs + tool calls no achei-b2b; §1.4 ação 5) — o que fecha o "não-sintético" | Perf/Produto | 🔴 | 6, 10 |
+| 7 | Medir teto de escrita SQLite N-procs (✅ via `bench_store.rb`) + **Litestream opt-in/configurável** (backup/DR) | Infra | 🔴 | 2 |
 | 8 | Migração PT→EN — 1º passe ✅; **2º passe 🔄 em curso** | Docs/OSS | 🔴 (p/ OSS) | — |
 | 9 | Docs de arquitetura + diagramas + README + site | Docs/OSS | 🔴 (p/ OSS) | 8 |
 | 10 | **Evals / harness de qualidade** (golden + LLM-judge; §9) | Produto | 🔴 | — |
@@ -492,8 +531,9 @@ conforme demanda.
 | 17 | **Extração em gems** (`harness-core/-server/-studio/-otel`) — **POR ÚLTIMO** | Ecossistema | 🟢 (último) | 9, 13 |
 
 **Três trilhos paralelos naturais:**
-- **Produto/Escala** (1–5 entregues → **6 bench Ruby/YJIT+relatório vs OpenClaw** →
-  **7 SQLite/Litestream opt-in** → 12 escala): piloto → produção → múltiplas lojas.
+- **Produto/Escala** (1–6 entregues → **6b loadtest de tráfego REAL** (fecha o
+  "não-sintético", casa com evals #10) → **7 Litestream opt-in** → 12 escala): piloto →
+  produção → múltiplas lojas.
 - **OSS/Ecossistema** (8 migração → 9 docs → 13 plugins → **17 gems, por último**):
   prepara o projeto para a comunidade (paridade de DX com o Flue — §8). A extração em
   gems é o **último** item do trilho — o monorepo é o default até docs/site prontos.
