@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe Harness::CommandBus do
   subject(:bus) { described_class.new }
 
-  it "roteia dispatch para o handler registrado e retorna seu resultado" do
+  it "routes dispatch to the registered handler and returns its result" do
     bus.register(:echo, ->(command) { [:handled, command.type] })
 
     result = bus.dispatch(Harness::Command.build(:echo, {}))
@@ -13,7 +13,7 @@ RSpec.describe Harness::CommandBus do
     expect(result).to eq([:handled, :echo])
   end
 
-  it "chama o handler com o próprio Command" do
+  it "calls the handler with the Command itself" do
     received = nil
     bus.register(:capture, ->(command) { received = command })
     command = Harness::Command.build(:capture, { a: 1 })
@@ -23,12 +23,12 @@ RSpec.describe Harness::CommandBus do
     expect(received).to be(command)
   end
 
-  it "levanta ValidationError com o tipo na mensagem para tipo desconhecido" do
+  it "raises ValidationError with the type in the message for an unknown type" do
     expect { bus.dispatch(Harness::Command.build(:nope, {})) }
       .to raise_error(Harness::ValidationError, /nope/)
   end
 
-  it "re-registro do mesmo tipo: último handler vence" do
+  it "re-registering the same type: last handler wins" do
     bus.register(:x, ->(_) { :primeiro })
     bus.register(:x, ->(_) { :segundo })
 

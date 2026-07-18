@@ -2,11 +2,11 @@
 
 require "tmpdir"
 require "fileutils"
-require "sqlite3" # o spec pode requerer a gem; só o NÚCLEO tem a regra de lazy require
+require "sqlite3" # the spec may require the gem; only the CORE has the lazy require rule
 require_relative "../store_contract"
 
 RSpec.describe Harness::Stores::SQLite do
-  context "com banco :memory:" do
+  context "with :memory: database" do
     subject(:store) { described_class.new(path: ":memory:") }
 
     after { store.close }
@@ -14,7 +14,7 @@ RSpec.describe Harness::Stores::SQLite do
     it_behaves_like "a harness store"
   end
 
-  context "com arquivo em tmpdir" do
+  context "with a file in tmpdir" do
     subject(:store) { described_class.new(path: db_path) }
 
     let(:tmpdir) { Dir.mktmpdir }
@@ -27,9 +27,9 @@ RSpec.describe Harness::Stores::SQLite do
 
     it_behaves_like "a harness store"
 
-    # Os únicos testes específicos de backend permitidos (doc 01 §7).
+    # The only backend-specific tests allowed (doc 01 §7).
 
-    it "é durável: dados sobrevivem a close + reopen no mesmo arquivo" do
+    it "is durable: data survives close + reopen on the same file" do
       store.set("s", "k", { "a" => 1 })
       store.transaction { store.set("s", "t", "commitado") }
       store.close
@@ -40,8 +40,8 @@ RSpec.describe Harness::Stores::SQLite do
       reopened.close
     end
 
-    it "ativa o modo WAL no arquivo (PRAGMA journal_mode == 'wal')" do
-      store.set("s", "k", 1) # garante que o arquivo existe
+    it "enables WAL mode on the file (PRAGMA journal_mode == 'wal')" do
+      store.set("s", "k", 1) # ensures the file exists
 
       inspect_db = SQLite3::Database.new(db_path)
       mode = inspect_db.get_first_value("PRAGMA journal_mode")
@@ -50,18 +50,18 @@ RSpec.describe Harness::Stores::SQLite do
       expect(mode).to eq("wal")
     end
 
-    # Regressão: boot multi-PROCESSO (N workers do Falcon) abrindo o MESMO
-    # arquivo ao mesmo tempo. O `PRAGMA journal_mode = WAL` + DDL contendem no
-    # lock de escrita; sem `busy_timeout` setado ANTES, o 2º processo tomava
-    # "database is locked" na largada. Todos os processos devem abrir sem erro.
-    it "boot concorrente multi-processo não levanta 'database is locked'" do
-      skip "fork indisponível nesta plataforma" unless Process.respond_to?(:fork)
+    # Regression: multi-PROCESS boot (N Falcon workers) opening the SAME
+    # file at the same time. The `PRAGMA journal_mode = WAL` + DDL contend on the
+    # write lock; without `busy_timeout` set BEFORE, the 2nd process would hit
+    # "database is locked" at the start. All processes must open without error.
+    it "concurrent multi-process boot does not raise 'database is locked'" do
+      skip "fork unavailable on this platform" unless Process.respond_to?(:fork)
 
       start = File.join(tmpdir, "go")
       shared = File.join(tmpdir, "concurrent-boot.db")
       pids = 8.times.map do
         fork do
-          sleep 0.002 until File.exist?(start) # abre quase-simultâneo (maximiza a corrida)
+          sleep 0.002 until File.exist?(start) # opens near-simultaneously (maximizes the race)
           db = described_class.new(path: shared)
           db.get("s", "k")
           db.close
@@ -76,7 +76,7 @@ RSpec.describe Harness::Stores::SQLite do
       expect(codes).to all(eq(0))
     end
 
-    it "N fibers escrevendo + leitor concorrente sem SQLITE_BUSY" do
+    it "N fibers writing + concurrent reader without SQLITE_BUSY" do
       require "async"
 
       Async do |task|
@@ -95,7 +95,7 @@ RSpec.describe Harness::Stores::SQLite do
       expect(store.list("scope-0").length).to eq(20)
     end
 
-    it "serializa duas transações concorrentes no mesmo scope (sem BEGIN IMMEDIATE falho)" do
+    it "serializes two concurrent transactions on the same scope (no failed BEGIN IMMEDIATE)" do
       require "async"
 
       Async do |task|
@@ -109,12 +109,12 @@ RSpec.describe Harness::Stores::SQLite do
     end
   end
 
-  describe "require lazy da gem sqlite3 (doc 01 §8)" do
-    it "require \"harness\" não carrega a gem sqlite3 antes do primeiro new" do
-      # Subprocess limpo: dentro da suíte a gem já foi requerida por outros
-      # specs (ordem random), então testamos em um ruby isolado. bundler/setup
-      # ativa o load path das gems (async é dependência do núcleo) mas NÃO faz
-      # require de sqlite3 — só o initialize do backend o faz.
+  describe "lazy require of the sqlite3 gem (doc 01 §8)" do
+    it "require \"harness\" does not load the sqlite3 gem before the first new" do
+      # Clean subprocess: within the suite the gem was already required by other
+      # specs (random order), so we test in an isolated ruby. bundler/setup
+      # activates the gems load path (async is a core dependency) but does NOT
+      # require sqlite3 — only the backend's initialize does that.
       script = 'require "bundler/setup"; require "harness"; ' \
                "exit(defined?(SQLite3) ? 1 : 0)"
       ok = system(RbConfig.ruby, "-Ilib", "-e", script,

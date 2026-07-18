@@ -38,18 +38,18 @@ module Harness
         return "invalid URL"
       end
 
-      return "esquema não suportado" unless %w[http https].include?(uri.scheme)
-      return "http não permitido (use https)" if uri.scheme == "http" && !allow_http
+      return "unsupported scheme" unless %w[http https].include?(uri.scheme)
+      return "http not allowed (use https)" if uri.scheme == "http" && !allow_http
 
       host = uri.host
-      return "host ausente" if host.nil? || host.empty?
+      return "missing host" if host.nil? || host.empty?
       return "host not in allowlist" if host_allowlist && !host_allowlist.include?(host)
 
       addrs = resolve(host)
       return "host did not resolve" if addrs.empty?
       # allow_private skips the private-network block (trusted internal API,
       # NF4). Without it, a private/loopback/metadata target is always blocked.
-      return "destino em rede privada bloqueado" if !allow_private && addrs.any? { |ip| blocked?(ip) }
+      return "private-network destination blocked" if !allow_private && addrs.any? { |ip| blocked?(ip) }
 
       nil
     end

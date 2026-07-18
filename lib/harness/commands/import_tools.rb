@@ -45,7 +45,7 @@ module Harness
       def import_one(manifest, raw, index, report)
         defn = manifest.definition_for(raw, secrets: @secrets, env: @env)
         name = defn["name"].to_s
-        raise Harness::ValidationError, "'#{name}' já é uma tool de código" if @registry.code_tool?(name)
+        raise Harness::ValidationError, "'#{name}' is already a code tool" if @registry.code_tool?(name)
 
         existed = !@tool_store.get(name).nil?
         @tool_store.write(defn)

@@ -7,17 +7,17 @@ RSpec.describe Harness::Server::A2A::Protocol do
   E = Harness::Server::A2A::Errors
 
   describe ".parse" do
-    it "válido -> [:ok, {id, method, params}]" do
+    it "valid -> [:ok, {id, method, params}]" do
       body = { "jsonrpc" => "2.0", "id" => "1", "method" => "message/send", "params" => { "x" => 1 } }
       expect(described_class.parse(body)).to eq([:ok, { id: "1", method: "message/send", params: { "x" => 1 } }])
     end
 
-    it "params ausente -> {}" do
+    it "params missing -> {}" do
       _, r = described_class.parse({ "jsonrpc" => "2.0", "id" => "1", "method" => "tasks/get" })
       expect(r[:params]).to eq({})
     end
 
-    it "não-Hash -> INVALID_REQUEST" do
+    it "non-Hash -> INVALID_REQUEST" do
       k, r = described_class.parse("nope")
       expect([k, r[:code]]).to eq([:error, E::INVALID_REQUEST])
     end
@@ -27,12 +27,12 @@ RSpec.describe Harness::Server::A2A::Protocol do
       expect([k, r[:code], r[:id]]).to eq([:error, E::INVALID_REQUEST, "9"])
     end
 
-    it "method ausente/vazio -> INVALID_REQUEST" do
+    it "method missing/empty -> INVALID_REQUEST" do
       expect(described_class.parse({ "jsonrpc" => "2.0", "id" => "1" }).first).to eq(:error)
       expect(described_class.parse({ "jsonrpc" => "2.0", "id" => "1", "method" => "" }).first).to eq(:error)
     end
 
-    it "batch (Array) não suportado -> INVALID_REQUEST" do
+    it "batch (Array) not supported -> INVALID_REQUEST" do
       expect(described_class.parse([{ "jsonrpc" => "2.0" }]).first).to eq(:error)
     end
   end

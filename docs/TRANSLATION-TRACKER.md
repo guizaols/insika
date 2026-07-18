@@ -208,13 +208,59 @@ layers. Full suite stays green (1362 examples, 0 failures).
   Left in Portuguese. `vars` values like `"canal" => "studio"/"navegador"` are
   data and left as-is.
 
+## Third pass (FOLLOWUP §5.1) — done
+
+Scope of this pass: the two remaining buckets — **`spec/**` developer-facing prose**
+(comments + `describe`/`context`/`it` descriptions) and the **model-facing
+prompt/description strings** deferred by passes 1–2. Full suite stays green on both
+Rubies (1362 examples, 0 failures on 3.3.5 and 4.0.6).
+
+### `spec/**` — done
+- All `describe`/`context`/`it` labels and inline comments across the suite
+  translated to English. `lib/**` is now **0 Portuguese** (verified by grep).
+- Coupled edits (a translated value asserted verbatim — source + assert changed
+  together, caught by running the suite):
+  - `tool_catalog_spec.rb`: `FakeTool` descriptions + the `search(...)` term that
+    matched them (`"destinatário"`/`"fatura"` → English words present in the new
+    descriptions); the `entries.first.description` exact-match assert.
+  - `tools/tool_search_spec.rb` + `context/providers/tool_search_spec.rb`: tool
+    descriptions + the `execute(query: ...)` terms that must still match them.
+  - `frontmatter_spec.rb` + `commands/skill_authoring_spec.rb`: the `: `-in-prose
+    regression fixtures — translated the description input **and** the
+    `include(...)` substring assert together (kept a literal `: ` in the prose so
+    the test still exercises the tolerant parser).
+  - `e2e/smoke_phase2b_spec.rb`: the `query` value that is echoed and asserted.
+  - Internal test-tool names renamed consistently within a file
+    (`enviar_pedido` → `send_order`, `enviar` → `send`).
+
+### Model-facing prompt/description strings — done
+The strings deferred in passes 1–2 (the LLM reads them) are now English:
+`tools/a2a_remote.rb` (`param :message` desc), `tools/load_skill.rb`,
+`tools/remember.rb`, `tools/tool_search.rb` (descriptions + param descs + the
+"no tool found" result), `tool_catalog.rb` / `skill_catalog.rb`
+`format_for_prompt` heredocs, and `config/wiring.rb:175` (A2A fallback
+description). The earlier contract-locked error messages were also translated
+together with their asserts (suite green confirms the pairs are consistent).
+
+## Deliberately left in Portuguese (domain fixture DATA)
+
+Consistent with the 1st/2nd-pass deferral of `run_real.rb` demo content and `vars`
+values, these are **test input data, not developer-facing prose**, so they stay in
+Portuguese (translating a pervasive cross-file fixture identifier adds risk —
+including lexicographic-order asserts — for zero reader value):
+- The domain skill-name fixtures **`"pedido"`** (order) and **`"cardapio"`** (menu)
+  used across ~9 specs, and the body/description/conversation content around them
+  (`"faz pedido"`, `"faz o pedido"`, `"pedido confirmado"`, `"seed do disco"`,
+  `"editado no studio"`, …).
+- `spec/fixtures/openclaw_tools/*.ts` — sample OpenClaw merchant tools (fixture
+  data mirroring real packs).
+- `scripts/run_real.rb` demo conversation + `vars` (as before).
+
+Easy to revisit if we later want fully-English fixtures; flagged here so the
+decision is explicit and overridable.
+
 ## Remaining (not yet started)
 
-- Test suite (`spec/**`) — test names and descriptions in Portuguese, plus the
-  contract-locked messages listed above (to be translated together with their
-  asserts).
-- Model-facing prompt/description strings (see "Deferred: model-facing prompt /
-  description strings" above) — a dedicated review pass.
 - ERB views not covered by the UI refresh (if any) and `studio/**` non-Ruby
   assets (JS/CSS) — out of scope for the Ruby-comment passes.
 - `Gemfile.lock` (generated; no human prose to translate).

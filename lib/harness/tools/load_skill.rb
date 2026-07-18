@@ -12,8 +12,8 @@ module Harness
     # RubyLLM::Tool), which is why it does NOT enter lib/harness.rb: the Executor
     # loads it lazily inside create_chat.
     class LoadSkill < RubyLLM::Tool
-      description "Carrega as instruções completas (SKILL.md) de uma skill pelo nome"
-      param :name, desc: "Nome exato da skill, conforme listado em <available_skills>"
+      description "Loads the complete instructions (SKILL.md) of a skill by name"
+      param :name, desc: "Exact skill name, as listed in <available_skills>"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class it produces
       # "harness--tools--load_skill", not "load_skill" (which wire_callbacks/
@@ -29,10 +29,10 @@ module Harness
       end
 
       def execute(name:)
-        return { error: "skill '#{name}' não disponível para este agente" } unless @allowed.include?(name.to_s)
+        return { error: "skill '#{name}' not available for this agent" } unless @allowed.include?(name.to_s)
 
         skill = @catalog.find(name)
-        return { error: "skill '#{name}' não encontrada" } unless skill
+        return { error: "skill '#{name}' not found" } unless skill
 
         skill.body
       end

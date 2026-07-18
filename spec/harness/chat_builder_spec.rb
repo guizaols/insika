@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "harness/tools/load_skill" # o Executor os carrega lazy em create_chat; explícito no teste
+require "harness/tools/load_skill" # the Executor loads them lazily in create_chat; explicit here in the test
 require "harness/tools/tool_search"
 require "harness/tools/remember"
 
@@ -16,7 +16,7 @@ RSpec.describe Harness::ChatBuilder do
   let(:skill_catalog) { instance_double("Harness::SkillCatalog") }
   let(:event_stream) { Object.new }
 
-  # ChatBuilder mínimo (deps inertes salvo as que o teste exercita).
+  # Minimal ChatBuilder (inert deps except the ones the test exercises).
   def builder(tool_registry: inert, tool_catalog: nil, memory_store: nil, hooks: Harness::Hooks.new)
     described_class.new(tool_registry: tool_registry, skill_catalog: skill_catalog,
                         checkpoint_store: inert, event_stream: event_stream, hooks: hooks,
@@ -33,36 +33,36 @@ RSpec.describe Harness::ChatBuilder do
   end
 
   describe "#configure_chat" do
-    it "passa as instructions do Builder" do
+    it "passes the Builder's instructions" do
       builder.configure_chat(chat, state(system: "SOUL"))
       expect(chat.instructions).to eq("SOUL")
     end
 
-    it "não chama with_instructions quando o system está vazio" do
+    it "doesn't call with_instructions when the system is empty" do
       builder.configure_chat(chat, state(system: ""))
       expect(chat.instructions).to be_nil
     end
 
-    it "usa as tools da Resolution (instâncias prontas)" do
+    it "uses the Resolution's tools (ready instances)" do
       t1 = Object.new
       t2 = Object.new
       builder.configure_chat(chat, state(allowed_tools: [t1, t2]))
       expect(chat.tools).to contain_exactly(t1, t2)
     end
 
-    it "adiciona LoadSkill de sistema quando há allowed_skills" do
+    it "adds the system LoadSkill when there are allowed_skills" do
       builder.configure_chat(chat, state(allowed_tools: [Object.new], allowed_skills: ["cardapio"]))
       expect(chat.tools.size).to eq(2)
       expect(chat.tools.last).to be_a(Harness::Tools::LoadSkill)
     end
 
-    it "não adiciona LoadSkill sem skills" do
+    it "doesn't add LoadSkill without skills" do
       builder.configure_chat(chat, state(allowed_tools: [Object.new], allowed_skills: []))
       expect(chat.tools.none? { |t| t.is_a?(Harness::Tools::LoadSkill) }).to be(true)
     end
   end
 
-  describe "#configure_chat — Tool Search (partição eager/deferred)" do
+  describe "#configure_chat — Tool Search (eager/deferred partition)" do
     def named_tool(name)
       Class.new { define_method(:name) { name }; def description = "d" }.new
     end
@@ -84,25 +84,25 @@ RSpec.describe Harness::ChatBuilder do
                 profile: profile, task: TaskStub.new("t", "s"))
     end
 
-    it "deferred sai do wiring eager e a builtin ToolSearch entra" do
+    it "deferred leaves the eager wiring and the builtin ToolSearch enters" do
       st = ts_state(allowed_tools: [named_tool("send_email"), named_tool("other")],
                     tools_deferred: ["send_email"])
       builder_with_catalog.configure_chat(chat, st)
 
       names = chat.tools.map { |t| t.respond_to?(:name) ? t.name : nil }
       expect(names).to include("other")
-      expect(names).not_to include("send_email") # deferido, não cabeado eager
+      expect(names).not_to include("send_email") # deferred, not eager-wired
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(true)
     end
 
-    it "ToolSearch nunca é envelopada (instância direta, como load_skill)" do
+    it "ToolSearch is never wrapped (direct instance, like load_skill)" do
       st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: ["send_email"])
       builder_with_catalog.configure_chat(chat, st)
       ts = chat.tools.find { |t| t.is_a?(Harness::Tools::ToolSearch) }
       expect(ts).not_to be_a(Harness::ToolEnvelope)
     end
 
-    it "deferred_allowed = allowed ∩ tools_deferred (não o tools_deferred isolado)" do
+    it "deferred_allowed = allowed ∩ tools_deferred (not the isolated tools_deferred)" do
       st = ts_state(allowed_tools: [named_tool("send_email")],
                     tools_deferred: %w[send_email ghost])
       builder_with_catalog.configure_chat(chat, st)
@@ -110,14 +110,14 @@ RSpec.describe Harness::ChatBuilder do
       expect(ts.instance_variable_get(:@deferred_allowed)).to eq(["send_email"])
     end
 
-    it "paridade: sem tool_catalog, tudo eager e sem ToolSearch" do
+    it "parity: without tool_catalog, all eager and no ToolSearch" do
       st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: ["send_email"])
-      builder.configure_chat(chat, st) # builder sem tool_catalog
+      builder.configure_chat(chat, st) # builder without tool_catalog
       expect(chat.tools.map(&:name)).to include("send_email")
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::ToolSearch) }).to be(false)
     end
 
-    it "profile.tools_deferred nil (com tool_catalog): tudo eager, sem ToolSearch" do
+    it "profile.tools_deferred nil (with tool_catalog): all eager, no ToolSearch" do
       st = ts_state(allowed_tools: [named_tool("send_email")], tools_deferred: nil)
       builder_with_catalog.configure_chat(chat, st)
       expect(chat.tools.map(&:name)).to include("send_email")
@@ -125,7 +125,7 @@ RSpec.describe Harness::ChatBuilder do
     end
   end
 
-  describe "#configure_chat — remember de sistema" do
+  describe "#configure_chat — system remember" do
     let(:mem) { Harness::MemoryStore.new(store: Harness::Stores::Memory.new) }
 
     def builder_with_memory
@@ -142,30 +142,30 @@ RSpec.describe Harness::ChatBuilder do
       st
     end
 
-    it "cabeia remember quando @memory_store + profile.memory" do
+    it "wires remember when @memory_store + profile.memory" do
       builder_with_memory.configure_chat(chat, mem_state(memory: true))
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(true)
     end
 
-    it "remember nunca é envelopada (instância direta)" do
+    it "remember is never wrapped (direct instance)" do
       builder_with_memory.configure_chat(chat, mem_state(memory: true))
       rt = chat.tools.find { |t| t.is_a?(Harness::Tools::Remember) }
       expect(rt).not_to be_a(Harness::ToolEnvelope)
     end
 
-    it "profile.memory nil: sem remember (paridade)" do
+    it "profile.memory nil: no remember (parity)" do
       builder_with_memory.configure_chat(chat, mem_state(memory: nil))
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(false)
     end
 
-    it "sem @memory_store: sem remember mesmo com memory:true (paridade)" do
-      builder.configure_chat(chat, mem_state(memory: true)) # builder sem memory_store
+    it "without @memory_store: no remember even with memory:true (parity)" do
+      builder.configure_chat(chat, mem_state(memory: true)) # builder without memory_store
       expect(chat.tools.any? { |t| t.is_a?(Harness::Tools::Remember) }).to be(false)
     end
   end
 
   describe "#seed_history" do
-    it "adiciona mensagens com role Symbol, na ordem, tolerando chaves string" do
+    it "adds messages with role Symbol, in order, tolerating string keys" do
       builder.seed_history(chat, [
                              { role: :user, content: "oi" },
                              { "role" => "assistant", "content" => "olá" }
@@ -179,13 +179,13 @@ RSpec.describe Harness::ChatBuilder do
   end
 
   describe "#wire_callbacks" do
-    # O ChatBuilder emite via o callable injetado; a numeração seq+meta é do
-    # Executor#emit (coberto nos specs de pipeline). Aqui gravamos (type, data).
+    # The ChatBuilder emits via the injected callable; the seq+meta numbering is from
+    # Executor#emit (covered in the pipeline specs). Here we record (type, data).
     def recording_emit(sink)
       ->(type, data) { sink << { type: type, data: data } }
     end
 
-    it "emite :tool_call e :tool_result na ordem, com name e arguments" do
+    it "emits :tool_call and :tool_result in order, with name and arguments" do
       sink = []
       builder.wire_callbacks(chat, state, recording_emit(sink))
       chat.fire_tool_call(name: "lookup", arguments: { "q" => "x" })
@@ -196,7 +196,7 @@ RSpec.describe Harness::ChatBuilder do
       expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado" })
     end
 
-    it "emite :skill_activated (não :tool_call) para load_skill" do
+    it "emits :skill_activated (not :tool_call) for load_skill" do
       sink = []
       builder.wire_callbacks(chat, state, recording_emit(sink))
       chat.fire_tool_call(name: "load_skill", arguments: { "name" => "cardapio" })
@@ -205,7 +205,7 @@ RSpec.describe Harness::ChatBuilder do
       expect(sink.first[:data]).to eq({ name: "cardapio" })
     end
 
-    it "aborta com TimeoutError(stage: :tool_limit) ao exceder max_tool_calls" do
+    it "aborts with TimeoutError(stage: :tool_limit) when exceeding max_tool_calls" do
       builder.wire_callbacks(chat, state(limits: { max_tool_calls: 2 }), recording_emit([]))
 
       chat.fire_tool_call(name: "a")
@@ -214,7 +214,7 @@ RSpec.describe Harness::ChatBuilder do
         .to raise_error(Harness::TimeoutError) { |e| expect(e.stage).to eq(:tool_limit) }
     end
 
-    it "usa o default de 50 quando limits não traz max_tool_calls" do
+    it "uses the default of 50 when limits doesn't carry max_tool_calls" do
       builder.wire_callbacks(chat, state(limits: {}), recording_emit([]))
 
       50.times { |i| chat.fire_tool_call(name: "t#{i}") }

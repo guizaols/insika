@@ -22,7 +22,7 @@ module Harness
         raise Harness::ValidationError, "agent_id is required" if agent_id.nil?
         raise Harness::ValidationError, "file is required" if file.nil?
         profile = @profile_source.fetch(agent_id) ||
-                  (raise Harness::NotFoundError, "agente '#{agent_id}' não encontrado")
+                  (raise Harness::NotFoundError, "agent '#{agent_id}' not found")
 
         entry = @agent_files.write(agent_id, file, p[:content].to_s, create_only: !!p[:create_only])
         # Writing a prompt registers it in prompt_files — otherwise the Prompt provider

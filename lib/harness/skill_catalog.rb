@@ -60,8 +60,8 @@ module Harness
         #{entries}
         </available_skills>
 
-        Antes de agir numa tarefa que casa com uma skill acima, chame a tool
-        `load_skill` com o nome dela para carregar as instruções completas.
+        Before acting on a task that matches a skill above, call the
+        `load_skill` tool with its name to load the complete instructions.
       PROMPT
     end
 

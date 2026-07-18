@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Harness::Recovery do
-  # Stores REAIS (tasks 06/07) sobre Memory + command_bus DUPLO (doc 02 §7).
+  # REAL stores (tasks 06/07) over Memory + DOUBLE command_bus (doc 02 §7).
   let(:backend) { Harness::Stores::Memory.new }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
   let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
@@ -14,7 +14,7 @@ RSpec.describe Harness::Recovery do
                         command_bus: bus)
   end
 
-  # Duplo mínimo — a integração real do bus é a task 13.
+  # Minimal double — the real bus integration is task 13.
   class RecordingBus
     attr_reader :dispatched
 
@@ -30,7 +30,7 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  # Bus que levanta só na primeira chamada (contamina 1 task, não as outras).
+  # Bus that raises only on the first call (contaminates 1 task, not the others).
   class FlakyBus
     attr_reader :dispatched
 
@@ -41,20 +41,20 @@ RSpec.describe Harness::Recovery do
 
     def dispatch(command)
       @calls += 1
-      raise "falha no 1º dispatch" if @calls == 1
+      raise "failure on the 1st dispatch" if @calls == 1
 
       @dispatched << command
     end
   end
 
-  # task_store cujo backend levanta StoreError na varredura (store corrompido).
+  # task_store whose backend raises StoreError during the sweep (corrupted store).
   class ExplodingTaskStore
     def running_or_interrupted = raise Harness::StoreError, "backend corrompido"
   end
 
   let(:command) { { type: "send_message", payload: {}, meta: {} } }
 
-  # Cria uma task já no estado alvo (por caminho válido) com Execution aberta.
+  # Creates a task already in the target state (via a valid path) with an open Execution.
   def seed_task(id, status:)
     task_store.create(command: command, id: id)
     task_store.begin_execution(id)
@@ -72,8 +72,8 @@ RSpec.describe Harness::Recovery do
     )
   end
 
-  describe "running com checkpoint -> resume" do
-    it "despacha resume_task, id em resumed, status permanece running" do
+  describe "running with checkpoint -> resume" do
+    it "dispatches resume_task, id in resumed, status stays running" do
       seed_task("t", status: :running)
       seed_checkpoint("t")
 
@@ -87,8 +87,8 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "waiting/paused com checkpoint -> resume" do
-    it "despacha ambas e ambas em resumed" do
+  describe "waiting/paused with checkpoint -> resume" do
+    it "dispatches both and both in resumed" do
       seed_task("w", status: :waiting)
       seed_checkpoint("w")
       seed_task("p", status: :paused)
@@ -102,8 +102,8 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "running sem checkpoint -> failed" do
-    it "não despacha, marca :failed e fecha a Execution com o erro" do
+  describe "running without checkpoint -> failed" do
+    it "does not dispatch, marks :failed and closes the Execution with the error" do
       seed_task("t", status: :running)
 
       result = recovery.run
@@ -113,13 +113,13 @@ RSpec.describe Harness::Recovery do
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
       expect(task.executions.last.error).to eq(
-        { "class" => "Harness::Error", "message" => "irrecuperável: sem checkpoint" }
+        { "class" => "Harness::Error", "message" => "unrecoverable: no checkpoint" }
       )
     end
   end
 
-  describe "store vazio -> no-op" do
-    it "retorna vazio sem chamar o bus" do
+  describe "empty store -> no-op" do
+    it "returns empty without calling the bus" do
       result = recovery.run
 
       expect(result).to eq({ resumed: [], failed: [] })
@@ -127,11 +127,11 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "cenário misto" do
-    it "só running-c/-cp resume; sem-cp falha; terminais intocadas" do
+  describe "mixed scenario" do
+    it "only running-c/-cp resume; without-cp fails; terminals untouched" do
       seed_task("r", status: :running)
       seed_checkpoint("r")
-      seed_task("w", status: :waiting) # sem checkpoint
+      seed_task("w", status: :waiting) # no checkpoint
       done = seed_task("d", status: :running)
       task_store.finish_execution(done, outcome: "completed")
       task_store.transition(done, to: :completed)
@@ -147,13 +147,13 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "falha ao retomar UMA task não derruba o boot" do
+  describe "failure resuming ONE task does not bring down the boot" do
     subject(:recovery) do
       described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
                           command_bus: RecordingBus.new(raise_on: RuntimeError.new("bus caiu")))
     end
 
-    it "não levanta; task vai a :failed com stage recovery; id em failed" do
+    it "does not raise; task goes to :failed with stage recovery; id in failed" do
       seed_task("t", status: :running)
       seed_checkpoint("t")
 
@@ -168,7 +168,7 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "falha de uma não contamina as outras" do
+  describe "one failure does not contaminate the others" do
     subject(:recovery) do
       described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
                           command_bus: flaky)
@@ -176,8 +176,8 @@ RSpec.describe Harness::Recovery do
 
     let(:flaky) { FlakyBus.new }
 
-    it "a 2ª é despachada; sumário separa resumed e failed" do
-      # varredura é lexicográfica: "a" processada antes de "b"
+    it "the 2nd is dispatched; summary separates resumed and failed" do
+      # sweep is lexicographic: "a" processed before "b"
       seed_task("a", status: :running)
       seed_checkpoint("a")
       seed_task("b", status: :running)
@@ -191,30 +191,30 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "paused sem checkpoint (transição inválida absorvida)" do
-    it "não levanta; id em failed; status permanece paused" do
-      seed_task("p", status: :paused) # sem checkpoint
+  describe "paused without checkpoint (invalid transition absorbed)" do
+    it "does not raise; id in failed; status stays paused" do
+      seed_task("p", status: :paused) # no checkpoint
 
       result = nil
       expect { result = recovery.run }.not_to raise_error
       expect(result[:failed]).to eq(["p"])
-      expect(task_store.find("p").status).to eq(:paused) # paused -> failed é inválido
+      expect(task_store.find("p").status).to eq(:paused) # paused -> failed is invalid
     end
   end
 
-  describe "store corrompido aborta o boot" do
+  describe "corrupted store aborts the boot" do
     subject(:recovery) do
       described_class.new(task_store: ExplodingTaskStore.new,
                           checkpoint_store: checkpoint_store, command_bus: bus)
     end
 
-    it "propaga StoreError" do
+    it "propagates StoreError" do
       expect { recovery.run }.to raise_error(Harness::StoreError)
     end
   end
 
-  describe "shape do Command despachado" do
-    it "é Harness::Command :resume_task com payload e meta corretos" do
+  describe "shape of the dispatched Command" do
+    it "is Harness::Command :resume_task with correct payload and meta" do
       seed_task("t", status: :running)
       seed_checkpoint("t")
 
@@ -230,7 +230,7 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "logger com bug não afeta o fluxo (observabilidade não é controle)" do
+  describe "logger with a bug does not affect the flow (observability is not control)" do
     subject(:recovery) do
       described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
                           command_bus: bus, logger: exploding_logger)
@@ -243,7 +243,7 @@ RSpec.describe Harness::Recovery do
       end.new
     end
 
-    it "não levanta e não põe o id em resumed E failed ao mesmo tempo" do
+    it "does not raise and does not put the id in resumed AND failed at the same time" do
       seed_task("t", status: :running)
       seed_checkpoint("t")
 
@@ -254,7 +254,7 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "integração com CommandBus real + handler ResumeTask (task 13)" do
+  describe "integration with real CommandBus + ResumeTask handler (task 13)" do
     let(:profile) { Harness::AgentProfile.build(id: "a", model: "m") }
     let(:spawn_executor) do
       Class.new do
@@ -280,8 +280,8 @@ RSpec.describe Harness::Recovery do
                           command_bus: real_bus({ "a" => profile }))
     end
 
-    it "roteia o dispatch do Recovery até o handler real (spawn da órfã)" do
-      seed_task("t", status: :running) # running? do handler é false -> órfã elegível
+    it "routes the Recovery dispatch to the real handler (spawn of the orphan)" do
+      seed_task("t", status: :running) # handler's running? is false -> eligible orphan
       seed_checkpoint("t")
 
       result = recovery.run
@@ -290,18 +290,18 @@ RSpec.describe Harness::Recovery do
       expect(spawn_executor.spawned).to eq(["t"])
     end
 
-    it "re-enfileira task :queued (turno na fila no crash, P2-03) — não perde no kill -9" do
-      # :queued = criada mas nunca iniciada (sem checkpoint). Antes da correção,
-      # running_or_interrupted a ignorava e ela era perdida.
+    it "re-enqueues :queued task (turn queued at crash, P2-03) — not lost on kill -9" do
+      # :queued = created but never started (no checkpoint). Before the fix,
+      # running_or_interrupted ignored it and it was lost.
       task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "a" } }, id: "q")
 
       result = recovery.run
 
       expect(result[:resumed]).to include("q")
-      expect(spawn_executor.spawned).to include("q") # re-rodada do zero
+      expect(spawn_executor.spawned).to include("q") # re-run from scratch
     end
 
-    it "falha isolada: agente removido não derruba o boot (doc 02 §6)" do
+    it "isolated failure: removed agent does not bring down the boot (doc 02 §6)" do
       seed_task("ok", status: :running)
       seed_checkpoint("ok") # agent_id "a" -> ok
       seed_task("bad", status: :running)
@@ -319,11 +319,11 @@ RSpec.describe Harness::Recovery do
     end
   end
 
-  describe "sumário" do
-    it "é exatamente { resumed:, failed: }" do
+  describe "summary" do
+    it "is exactly { resumed:, failed: }" do
       seed_task("r", status: :running)
       seed_checkpoint("r")
-      seed_task("f", status: :running) # sem checkpoint
+      seed_task("f", status: :running) # no checkpoint
 
       expect(recovery.run).to eq({ resumed: ["r"], failed: ["f"] })
     end

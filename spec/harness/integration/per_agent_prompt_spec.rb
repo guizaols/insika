@@ -3,11 +3,11 @@
 require "spec_helper"
 require "tmpdir"
 
-# Fase 4 Etapa C (critério): resolve a limitação conhecida — um agente novo NÃO
-# herda mais o prompt da Bia. Cada BIA tem identidade própria, autorada em
-# runtime (create_agent + write_agent_file), lida pelo Prompt provider a partir
-# do profile.prompt_files → AgentFileStore. Tudo pelo mesmo Store, sem restart.
-RSpec.describe "Integração: identidade de prompt por-agente (Fase 4 Etapa C)" do
+# Phase 4 Stage C (criterion): resolves the known limitation — a new agent NO
+# longer inherits Bia's prompt. Each BIA has its own identity, authored at
+# runtime (create_agent + write_agent_file), read by the Prompt provider from
+# profile.prompt_files → AgentFileStore. All through the same Store, no restart.
+RSpec.describe "Integration: per-agent prompt identity (Phase 4 Stage C)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:config_store) { Harness::ConfigStore.new(store: backend) }
   let(:source) { Harness::StoredProfileSource.new(config_store: config_store) }
@@ -15,7 +15,7 @@ RSpec.describe "Integração: identidade de prompt por-agente (Fase 4 Etapa C)" 
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(sink) = (@sink = sink); def emit(ev) = @sink << ev }.new(events) }
 
-  # O DEFAULT de deployment (files do wiring): um agente SEM prompt_files o herda.
+  # The deployment DEFAULT (wiring files): an agent WITHOUT prompt_files inherits it.
   let(:default_identity) do
     dir = Dir.mktmpdir
     File.write(File.join(dir, "SOUL.md"), "Sou a Bia, atendente padrão.")
@@ -42,21 +42,21 @@ RSpec.describe "Integração: identidade de prompt por-agente (Fase 4 Etapa C)" 
     provider.call(request).first&.content
   end
 
-  it "agente com identidade própria NÃO herda o default; agente sem prompt_files herda" do
-    # Bia: sem prompt_files -> herda o default do deployment (paridade Fase 0).
+  it "an agent with its own identity does NOT inherit the default; an agent without prompt_files inherits" do
+    # Bia: without prompt_files -> inherits the deployment default (Phase 0 parity).
     create_agent({ "id" => "bia", "model" => "m" })
 
-    # Chef: criado com prompt_files próprios + conteúdo autorado em runtime.
+    # Chef: created with its own prompt_files + content authored at runtime.
     create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md] })
     write_file({ "agent_id" => "chef", "file" => "IDENTITY.md",
                  "content" => "Sou o Chef, especialista em massas artesanais." })
 
     expect(identity_for("bia")).to eq("Sou a Bia, atendente padrão.")
     expect(identity_for("chef")).to eq("Sou o Chef, especialista em massas artesanais.")
-    expect(identity_for("chef")).not_to include("Bia") # a limitação está resolvida
+    expect(identity_for("chef")).not_to include("Bia") # the limitation is resolved
   end
 
-  it "editar o arquivo do agente vale no próximo dispatch (hot, sem restart)" do
+  it "editing the agent's file takes effect on the next dispatch (hot, no restart)" do
     create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md] })
     write_file({ "agent_id" => "chef", "file" => "IDENTITY.md", "content" => "v1" })
     expect(identity_for("chef")).to eq("v1")

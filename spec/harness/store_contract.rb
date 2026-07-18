@@ -1,122 +1,122 @@
 # frozen_string_literal: true
 
-# Suíte de contrato do Harness::Store (doc 01 §7).
-# Todo backend passa EXATAMENTE esta suíte (L2: a suíte é honesta —
-# um teste que passa em Memory passa em SQLite).
-# O grupo que inclui deve definir `store` (backend vazio e pronto), ex.:
+# Contract suite for Harness::Store (doc 01 §7).
+# Every backend passes EXACTLY this suite (L2: the suite is honest —
+# a test that passes on Memory passes on SQLite).
+# The including group must define `store` (empty, ready backend), e.g.:
 #
 #   RSpec.describe Harness::Stores::Memory do
 #     subject(:store) { described_class.new }
 #     it_behaves_like "a harness store"
 #   end
 #
-# Não inclua aqui casos específicos de backend (durabilidade de arquivo,
-# WAL, concorrência) — esses são da task 4.
+# Do not include backend-specific cases here (file durability,
+# WAL, concurrency) — those belong to task 4.
 RSpec.shared_examples "a harness store" do
   describe "#get / #set (round-trip)" do
-    it "C1 preserva Hash com chaves string" do # C1
+    it "C1 preserves Hash with string keys" do # C1
       store.set("s", "k", { "a" => 1, "b" => [1, 2] })
       expect(store.get("s", "k")).to eq({ "a" => 1, "b" => [1, 2] })
     end
 
-    it "C2 preserva Array" do # C2
+    it "C2 preserves Array" do # C2
       store.set("s", "k", [1, "x", true, nil])
       expect(store.get("s", "k")).to eq([1, "x", true, nil])
     end
 
-    it "C3 preserva String" do # C3
+    it "C3 preserves String" do # C3
       store.set("s", "k", "texto")
       expect(store.get("s", "k")).to eq("texto")
     end
 
-    it "C4 preserva Integer" do # C4
+    it "C4 preserves Integer" do # C4
       store.set("s", "k", 42)
       value = store.get("s", "k")
       expect(value).to eq(42)
       expect(value).to be_a(Integer)
     end
 
-    it "C5 preserva Float" do # C5
+    it "C5 preserves Float" do # C5
       store.set("s", "k", 3.14)
       value = store.get("s", "k")
       expect(value).to eq(3.14)
       expect(value).to be_a(Float)
     end
 
-    it "C6 preserva booleanos" do # C6
+    it "C6 preserves booleans" do # C6
       store.set("s", "t", true)
       store.set("s", "f", false)
       expect(store.get("s", "t")).to be(true)
       expect(store.get("s", "f")).to be(false)
     end
 
-    it "C7 preserva nil gravado sem exceção" do # C7
+    it "C7 preserves nil written without exception" do # C7
       store.set("s", "k", nil)
       expect(store.get("s", "k")).to be_nil
     end
 
-    it "C8 converte Symbols (chaves e valores) em Strings" do # C8
+    it "C8 converts Symbols (keys and values) to Strings" do # C8
       store.set("s", "k", { chave: :valor })
       expect(store.get("s", "k")).to eq({ "chave" => "valor" })
     end
 
-    it "C9 retorna nil em chave ausente, nunca exceção" do # C9
+    it "C9 returns nil for an absent key, never an exception" do # C9
       expect(store.get("s", "nao-existe")).to be_nil
     end
 
-    it "C10 sobrescreve silenciosamente (last-write-wins)" do # C10
+    it "C10 overwrites silently (last-write-wins)" do # C10
       store.set("s", "k", "primeiro")
       store.set("s", "k", "segundo")
       expect(store.get("s", "k")).to eq("segundo")
     end
 
-    it "C11 set retorna o mesmo objeto passado (não o round-trip)" do # C11
+    it "C11 set returns the same object passed in (not the round-trip)" do # C11
       obj = { "a" => 1 }
       expect(store.set("s", "k", obj)).to equal(obj)
     end
   end
 
   describe "#delete" do
-    it "C12 remove existente e retorna true" do # C12
+    it "C12 removes existing and returns true" do # C12
       store.set("s", "k", 1)
       expect(store.delete("s", "k")).to be(true)
       expect(store.get("s", "k")).to be_nil
     end
 
-    it "C13 retorna false para chave inexistente" do # C13
+    it "C13 returns false for a nonexistent key" do # C13
       expect(store.delete("s", "k")).to be(false)
     end
   end
 
   describe "#list" do
-    it "C14 retorna chaves do scope ordenadas lexicograficamente" do # C14
+    it "C14 returns scope keys sorted lexicographically" do # C14
       store.set("s", "b", 1)
       store.set("s", "a", 1)
       store.set("s", "c", 1)
       expect(store.list("s")).to eq(%w[a b c])
     end
 
-    it "C15 filtra por prefixo com start_with? (não include?)" do # C15
+    it "C15 filters by prefix with start_with? (not include?)" do # C15
       store.set("s", "task:1", 1)
       store.set("s", "task:2", 1)
       store.set("s", "checkpoint:1", 1)
-      store.set("s", "my-task:1", 1) # armadilha: contém "task:" mas não começa
+      store.set("s", "my-task:1", 1) # trap: contains "task:" but does not start with it
       expect(store.list("s", "task:")).to eq(%w[task:1 task:2])
     end
 
-    it "C16 retorna [] para scope vazio" do # C16
+    it "C16 returns [] for an empty scope" do # C16
       expect(store.list("s")).to eq([])
     end
 
-    it "ordena lexicograficamente, não numericamente" do # edge case 2
+    it "sorts lexicographically, not numerically" do # edge case 2
       store.set("s", "task:10", 1)
       store.set("s", "task:2", 1)
       expect(store.list("s", "task:")).to eq(%w[task:10 task:2])
     end
   end
 
-  describe "isolamento de scopes" do
-    it "C17 mantém scopes independentes em get/list/delete" do # C17
+  describe "scope isolation" do
+    it "C17 keeps scopes independent in get/list/delete" do # C17
       store.set("s1", "k", 1)
       store.set("s2", "k", 2)
 
@@ -130,16 +130,16 @@ RSpec.shared_examples "a harness store" do
   end
 
   describe "#transaction" do
-    it "C18 retorna o valor do bloco" do # C18
+    it "C18 returns the block's value" do # C18
       expect(store.transaction { 42 }).to eq(42)
     end
 
-    it "C19 commita as escritas do bloco" do # C19
+    it "C19 commits the block's writes" do # C19
       store.transaction { store.set("s", "k", "commitado") }
       expect(store.get("s", "k")).to eq("commitado")
     end
 
-    it "C20 faz rollback real de set E delete quando o bloco levanta" do # C20
+    it "C20 does a real rollback of set AND delete when the block raises" do # C20
       store.set("s", "manter", "antigo")
       store.set("s", "apagar", "existe")
 
@@ -151,12 +151,12 @@ RSpec.shared_examples "a harness store" do
         end
       end.to raise_error("boom")
 
-      # todos os efeitos do bloco desfeitos
+      # all the block's effects undone
       expect(store.get("s", "manter")).to eq("antigo")
       expect(store.get("s", "apagar")).to eq("existe")
     end
 
-    it "C21 reusa a transação externa em aninhamento" do # C21
+    it "C21 reuses the outer transaction when nested" do # C21
       store.set("s", "k", "antigo")
 
       expect do
@@ -166,13 +166,13 @@ RSpec.shared_examples "a harness store" do
         end
       end.to raise_error("boom")
 
-      # rollback da externa desfaz o set da interna (sem erro de aninhamento)
+      # outer rollback undoes the inner set (no nesting error)
       expect(store.get("s", "k")).to eq("antigo")
     end
   end
 
-  describe "erros de serialização" do
-    it "C22 levanta StoreError e não grava valor não serializável" do # C22
+  describe "serialization errors" do
+    it "C22 raises StoreError and does not write a non-serializable value" do # C22
       expect do
         store.set("s", "k", Object.new)
       end.to raise_error(Harness::StoreError)

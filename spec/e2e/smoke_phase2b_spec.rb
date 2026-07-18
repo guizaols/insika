@@ -2,23 +2,23 @@
 
 require "spec_helper"
 require "async"
-# O Executor os carrega lazy em create_chat; aqui create_chat é stubado, então
-# requeremos explícito (mesma disciplina do executor_chat_spec).
+# The Executor loads them lazily in create_chat; here create_chat is stubbed, so
+# we require them explicitly (same discipline as executor_chat_spec).
 require "harness/tools/load_skill"
 require "harness/tools/tool_search"
 
-# Smoke E2E da fatia B (P2B): CommandBus + SendMessage + Executor + RubyLLM
-# mockado (FakeChat via stub de create_chat). Componentes REAIS: CapabilityRegistry,
-# ToolRegistry, Policy::Engine+ToolAllowlist, ToolCatalog, AgentProfile — só o
-# `chat` é duplo. Sem dimensão de crash/reboot (a fatia B não a tem), então
-# in-process, sem subprocess (diferente do smoke_resume da fatia A).
-RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smoke do
-  # Tool crua o bastante p/ Registry/ToolEnvelope/ResolvedTool (só respond_to?).
+# E2E smoke for slice B (P2B): CommandBus + SendMessage + Executor + mocked
+# RubyLLM (FakeChat via create_chat stub). REAL components: CapabilityRegistry,
+# ToolRegistry, Policy::Engine+ToolAllowlist, ToolCatalog, AgentProfile — only the
+# `chat` is a double. No crash/reboot dimension (slice B doesn't have one), so
+# in-process, no subprocess (unlike slice A's smoke_resume).
+RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smoke do
+  # A tool raw enough for Registry/ToolEnvelope/ResolvedTool (respond_to? only).
   class FakeCapTool
     def initialize(name) = (@name = name)
     def name = @name
     def description = "fake #{@name}"
-    def parameters = {} # tool RubyLLM real sempre responde a isso (usado por tool_search#describe)
+    def parameters = {} # a real RubyLLM tool always responds to this (used by tool_search#describe)
     def call(_args = {}) = "executed:#{@name}"
   end
 
@@ -55,7 +55,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
       ),
       "deferred_nil" => Harness::AgentProfile.build(
         id: "deferred_nil", model: "fake", policies: [:tool_allowlist],
-        tools_allow: %w[eager_tool send_email] # tools_deferred: nil (default) — paridade
+        tools_allow: %w[eager_tool send_email] # tools_deferred: nil (default) — parity
       )
     }
   end
@@ -84,20 +84,20 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
       tool_registry.register(n) { FakeCapTool.new(n) }
     end
 
-    # :browse — a=10/p1, b=50/p2, c=100/p3 mas INDISPONÍVEL. Com o filtro, "b" vence.
+    # :browse — a=10/p1, b=50/p2, c=100/p3 but UNAVAILABLE. With the filter, "b" wins.
     capability_registry.register(:browse, impl_name: "browser_a", kind: :tool, plugin: "p1", priority: 10)
     capability_registry.register(:browse, impl_name: "browser_b", kind: :tool, plugin: "p2", priority: 50)
     capability_registry.register(:browse, impl_name: "browser_c", kind: :tool, plugin: "p3", priority: 100,
                                           available: -> { false })
 
-    # :ambiguous_cap — 2 providers do MESMO plugin, mesma priority (L4 -> Ambiguous).
+    # :ambiguous_cap — 2 providers from the SAME plugin, same priority (L4 -> Ambiguous).
     capability_registry.register(:ambiguous_cap, impl_name: "impl_x", kind: :tool, plugin: "pA", priority: 50)
     capability_registry.register(:ambiguous_cap, impl_name: "impl_y", kind: :tool, plugin: "pA", priority: 50)
   end
 
   TERMINAL = %w[completed failed cancelled].freeze
 
-  # One-shot (sem session_id) não passa pelo SessionActor — vai direto ao spawn.
+  # One-shot (no session_id) doesn't go through the SessionActor — straight to spawn.
   def run_turn(agent:, chat: FakeChat.new)
     allow(executor).to receive(:create_chat).and_return(chat)
     result = nil
@@ -113,28 +113,28 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
     [task_store.find(result[:task_id]), chat]
   end
 
-  it "resolve p/ maior priority disponível; descarta indisponível; emite :capability_resolved (nome estável)" do
+  it "resolves to the highest available priority; discards unavailable; emits :capability_resolved (stable name)" do
     task, chat = run_turn(agent: "cap_top")
     expect(task.status).to eq(:completed)
 
     resolved = event_stream.events.find { |e| e.type == :capability_resolved }
     expect(resolved.data[:capability]).to eq(:browse)
-    expect(resolved.data[:chosen]).to eq("browser_b") # "b" (50) vence "a" (10)
+    expect(resolved.data[:chosen]).to eq("browser_b") # "b" (50) beats "a" (10)
     expect(resolved.data[:candidates].map { |c| c[:impl_name] }).to contain_exactly("browser_a", "browser_b")
 
     tool = chat.tools.find { |t| t.respond_to?(:name) && t.name.to_s == "browse" }
-    expect(tool).not_to be_nil                 # nome ESTÁVEL exposto ao modelo (D4)
-    expect(tool.impl_name).to eq("browser_b")  # impl real por trás (Envelope delega)
+    expect(tool).not_to be_nil                 # STABLE name exposed to the model (D4)
+    expect(tool.impl_name).to eq("browser_b")  # real impl behind it (Envelope delegates)
   end
 
-  it "tools_deny filtra por impl_name DENTRO da resolução (não só depois)" do
+  it "tools_deny filters by impl_name WITHIN resolution (not just afterwards)" do
     task, = run_turn(agent: "cap_deny_top") # tools_deny: ["browser_b"]
     expect(task.status).to eq(:completed)
     resolved = event_stream.events.select { |e| e.type == :capability_resolved }.last
-    expect(resolved.data[:chosen]).to eq("browser_a") # "b" negado -> próximo elegível
+    expect(resolved.data[:chosen]).to eq("browser_a") # "b" denied -> next eligible
   end
 
-  it "empate mesmo-plugin -> CapabilityAmbiguous; turno falha em :capability; sem :capability_resolved" do
+  it "same-plugin tie -> CapabilityAmbiguous; turn fails at :capability; no :capability_resolved" do
     task, = run_turn(agent: "cap_ambiguous")
     expect(task.status).to eq(:failed)
     expect(task.executions.last.error["class"]).to eq("Harness::CapabilityAmbiguous")
@@ -143,14 +143,14 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
     expect(event_stream.events.select { |e| e.type == :capability_resolved }).to be_empty
   end
 
-  it "deferred fora do prompt inicial; tool_search promove; chamável no mesmo turno; emite :tool_search" do
+  it "deferred out of the initial prompt; tool_search promotes; callable in the same turn; emits :tool_search" do
     initial_names = nil
     promoted_result = nil
     chat = FakeChat.new
     chat.script = proc do
       initial_names = tools.map { |t| t.name.to_s }
       ts = tools.find { |t| t.name.to_s == "tool_search" }
-      ts.execute(query: "enviar email")
+      ts.execute(query: "send email")
       promoted = tools.find { |t| t.name.to_s == "send_email" }
       promoted_result = promoted&.call({})
     end
@@ -159,15 +159,15 @@ RSpec.describe "smoke E2E: capability resolution + tool search (fatia B)", :smok
     expect(task.status).to eq(:completed)
 
     expect(initial_names).to include("eager_tool", "tool_search")
-    expect(initial_names).not_to include("send_email") # deferred: fora do prompt inicial
-    expect(promoted_result).to eq("executed:send_email") # promovida + chamável NO MESMO turno (D6)
+    expect(initial_names).not_to include("send_email") # deferred: out of the initial prompt
+    expect(promoted_result).to eq("executed:send_email") # promoted + callable IN THE SAME turn (D6)
 
     ev = event_stream.events.find { |e| e.type == :tool_search }
-    expect(ev.data[:query]).to eq("enviar email")
+    expect(ev.data[:query]).to eq("send email")
     expect(ev.data[:matched]).to include("send_email")
   end
 
-  it "tools_deferred nil -> paridade Fase 1 (tudo eager, sem tool_search de sistema)" do
+  it "tools_deferred nil -> Phase 1 parity (all eager, no system tool_search)" do
     seen_names = nil
     chat = FakeChat.new
     chat.script = proc { seen_names = tools.map { |t| t.name.to_s } }

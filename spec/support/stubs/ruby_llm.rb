@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Stub requerível de RubyLLM para a suíte rodar SEM a gem (doc 03 §7). Só a
-# superfície de classe que Harness::Tools::LoadSkill usa em load-time — nenhum
-# comportamento de runtime é reimplementado (RubyLLM First não é violado: isto
-# é andaime de teste). Fica em spec/support/stubs, que o spec_helper só põe no
-# $LOAD_PATH quando a gem real está ausente.
+# Requireable RubyLLM stub so the suite runs WITHOUT the gem (doc 03 §7). Only the
+# class surface that Harness::Tools::LoadSkill uses at load-time — no runtime
+# behavior is reimplemented (RubyLLM First is not violated: this is test
+# scaffolding). Lives in spec/support/stubs, which the spec_helper only puts on the
+# $LOAD_PATH when the real gem is absent.
 module RubyLLM
   class Tool
     def self.description(_text = nil); end

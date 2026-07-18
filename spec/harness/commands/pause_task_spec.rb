@@ -9,7 +9,7 @@ RSpec.describe Harness::Commands::PauseTask do
   let(:task_store) { Harness::TaskStore.new(store: backend) }
   let(:executor) { RecordingPauseExecutor.new }
 
-  # Duplo do executor (contrato: #pause(task_id) -> tinha fiber?).
+  # Executor double (contract: #pause(task_id) -> was there a fiber?).
   class RecordingPauseExecutor
     attr_reader :paused
 
@@ -31,7 +31,7 @@ RSpec.describe Harness::Commands::PauseTask do
     task_store.transition(id, to: status) unless status == :running
   end
 
-  it "posta :pause no executor e retorna a Task" do
+  it "posts :pause to the executor and returns the Task" do
     create_task("t")
 
     task = handler.call(Harness::Command.build(:pause_task, { task_id: "t" }))
@@ -41,7 +41,7 @@ RSpec.describe Harness::Commands::PauseTask do
     expect(task.id).to eq("t")
   end
 
-  it "é no-op sem fiber vivo (executor devolve false) — sem erro" do
+  it "is a no-op without a live fiber (executor returns false) — no error" do
     dead = RecordingPauseExecutor.new(live: false)
     h = described_class.new(task_store: task_store, executor: dead)
     create_task("t")
@@ -50,20 +50,20 @@ RSpec.describe Harness::Commands::PauseTask do
     expect(dead.paused).to eq(["t"])
   end
 
-  it "levanta NotFoundError e NÃO chama o executor para task inexistente" do
+  it "raises NotFoundError and does NOT call the executor for a nonexistent task" do
     expect { handler.call(Harness::Command.build(:pause_task, { task_id: "ghost" })) }
       .to raise_error(Harness::NotFoundError)
     expect(executor.paused).to be_empty
   end
 
-  it "levanta ValidationError para task_id ausente/vazio" do
+  it "raises ValidationError for a missing/empty task_id" do
     expect { handler.call(Harness::Command.build(:pause_task, {})) }
       .to raise_error(Harness::ValidationError)
     expect { handler.call(Harness::Command.build(:pause_task, { task_id: "" })) }
       .to raise_error(Harness::ValidationError)
   end
 
-  it "aceita task_id com chave string (JSON do transporte)" do
+  it "accepts task_id with a string key (transport JSON)" do
     create_task("t")
 
     task = handler.call(Harness::Command.build(:pause_task, { "task_id" => "t" }))

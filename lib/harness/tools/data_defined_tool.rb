@@ -61,11 +61,11 @@ module Harness
 
       def execute(**kwargs)
         missing = @definition.required_params.reject { |n| present?(kwargs[n.to_sym]) }
-        return { error: "parâmetro(s) obrigatório(s) ausente(s): #{missing.join(', ')}" } unless missing.empty?
+        return { error: "missing required parameter(s): #{missing.join(', ')}" } unless missing.empty?
 
         req = build_request(kwargs)
         reason = @egress.violation(req[:url], **@egress_options)
-        return { error: "destino bloqueado: #{reason}" } if reason
+        return { error: "destination blocked: #{reason}" } if reason
 
         result = @http.request(**req)
         emit(result[:status])
@@ -139,14 +139,14 @@ module Harness
         parsed = begin
           JSON.parse(result[:body])
         rescue JSON::ParserError
-          return { error: "resposta não é JSON" }
+          return { error: "response is not JSON" }
         end
         dig_path(parsed, @definition.response[:path])
       end
 
       def dig_path(obj, path)
         path.split(".").reduce(obj) do |cur, seg|
-          return { error: "caminho '#{path}' não encontrado na resposta" } unless cur.is_a?(Hash) && cur.key?(seg)
+          return { error: "path '#{path}' not found in the response" } unless cur.is_a?(Hash) && cur.key?(seg)
 
           cur[seg]
         end

@@ -7,8 +7,8 @@ RSpec.describe Harness::Context::Providers::ToolSearch do
 
   let(:registry) do
     reg = Harness::ToolRegistry.new
-    reg.register("send_email") { FakeTool.new("Envia um e-mail") }
-    reg.register("create_invoice") { FakeTool.new("Gera fatura") }
+    reg.register("send_email") { FakeTool.new("Sends an e-mail") }
+    reg.register("create_invoice") { FakeTool.new("Generates invoice") }
     reg
   end
   let(:catalog) { Harness::ToolCatalog.new(tool_registry: registry) }
@@ -19,7 +19,7 @@ RSpec.describe Harness::Context::Providers::ToolSearch do
                                 tenant: nil, vars: {}, checkpoint: nil)
   end
 
-  it "produz 1 fragmento :system priority 70 não-pinned == format_for_prompt(subset)" do
+  it "produces 1 :system priority 70 non-pinned fragment == format_for_prompt(subset)" do
     frags = described_class.new(catalog: catalog).call(request(tools_deferred: %w[send_email create_invoice]))
 
     expect(frags.size).to eq(1)
@@ -29,17 +29,17 @@ RSpec.describe Harness::Context::Providers::ToolSearch do
     expect(f.content).to include("send_email", "create_invoice")
   end
 
-  it "só as tools deferred aparecem (recorte via subset)" do
+  it "only the deferred tools appear (sliced via subset)" do
     frag = described_class.new(catalog: catalog).call(request(tools_deferred: ["send_email"])).first
     expect(frag.content).to include("send_email")
     expect(frag.content).not_to include("create_invoice")
   end
 
-  it "tools_deferred nil -> nenhum fragmento (paridade Fase 1)" do
+  it "tools_deferred nil -> no fragment (Phase 1 parity)" do
     expect(described_class.new(catalog: catalog).call(request(tools_deferred: nil))).to eq([])
   end
 
-  it "tools_deferred [] -> nenhum fragmento" do
+  it "tools_deferred [] -> no fragment" do
     expect(described_class.new(catalog: catalog).call(request(tools_deferred: []))).to eq([])
   end
 end

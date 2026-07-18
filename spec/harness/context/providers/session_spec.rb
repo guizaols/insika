@@ -18,7 +18,7 @@ RSpec.describe Harness::Context::Providers::Session do
                             messages: messages, completed_side_effects: [], created_at: nil)
   end
 
-  it "fonte checkpoint: fragmentos vêm do checkpoint; store não é consultado" do
+  it "checkpoint source: fragments come from the checkpoint; store is not queried" do
     expect(session_store).not_to receive(:find)
     cp = checkpoint([{ "role" => "user", "content" => "do checkpoint" }])
 
@@ -27,29 +27,29 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frags.map { |f| f.content[:content] }).to eq(["do checkpoint"])
   end
 
-  it "fonte history explícito (vars[:history]): sem checkpoint, store não consultado" do
+  it "explicit history source (vars[:history]): without checkpoint, store not queried" do
     expect(session_store).not_to receive(:find)
     frags = provider.call(request(vars: { history: [{ role: :user, content: "explícito" }] }))
 
     expect(frags.map { |f| f.content[:content] }).to eq(["explícito"])
   end
 
-  it "fonte session_id: lê do SessionStore" do
+  it "session_id source: reads from the SessionStore" do
     session_store.create(id: "s1")
-    session_store.append_messages("s1", { role: :user, content: "da sessão" })
+    session_store.append_messages("s1", { role: :user, content: "from session" })
 
     frags = provider.call(request(session: session_store.find("s1")))
 
-    expect(frags.map { |f| f.content[:content] }).to eq(["da sessão"])
+    expect(frags.map { |f| f.content[:content] }).to eq(["from session"])
   end
 
-  it "nenhuma fonte -> []" do
+  it "no source -> []" do
     expect(provider.call(request)).to eq([])
   end
 
-  it "precedência: checkpoint vence sobre sessão" do
+  it "precedence: checkpoint wins over session" do
     session_store.create(id: "s1")
-    session_store.append_messages("s1", { role: :user, content: "da sessão" })
+    session_store.append_messages("s1", { role: :user, content: "from session" })
     cp = checkpoint([{ "role" => "user", "content" => "do checkpoint" }])
 
     frags = provider.call(request(session: session_store.find("s1"), checkpoint: cp))
@@ -57,7 +57,7 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frags.map { |f| f.content[:content] }).to eq(["do checkpoint"])
   end
 
-  it "escalonamento: 3 mensagens -> priorities 60, 61, 62 (ordem cronológica)" do
+  it "ramp-up: 3 messages -> priorities 60, 61, 62 (chronological order)" do
     msgs = 3.times.map { |i| { role: "user", content: "m#{i}" } }
     frags = provider.call(request(vars: { history: msgs }))
 
@@ -65,7 +65,7 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frags.map { |f| f.content[:content] }).to eq(%w[m0 m1 m2])
   end
 
-  it "teto 79: 25 mensagens -> nenhuma > 79; skills (80) e identidade (100) nunca superadas" do
+  it "ceiling 79: 25 messages -> none > 79; skills (80) and identity (100) never surpassed" do
     msgs = 25.times.map { |i| { role: "user", content: "m#{i}" } }
     frags = provider.call(request(vars: { history: msgs }))
 
@@ -73,7 +73,7 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frags.last(5).map(&:priority)).to all(eq(79))
   end
 
-  it "shape do content: chaves string do store viram {role:, content:}" do
+  it "content shape: the store's string keys become {role:, content:}" do
     session_store.create(id: "s1")
     session_store.append_messages("s1", { "role" => "assistant", "content" => "oi" })
 
@@ -82,7 +82,7 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frag.content).to eq({ role: "assistant", content: "oi" })
   end
 
-  it "falha de leitura com sessão pedida -> ContextError" do
+  it "read failure with a requested session -> ContextError" do
     exploding = Class.new do
       def find(_id) = raise Harness::StoreError, "backend caiu"
     end.new

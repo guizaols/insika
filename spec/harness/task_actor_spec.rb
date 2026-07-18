@@ -3,14 +3,14 @@
 require "spec_helper"
 
 RSpec.describe Harness::TaskActor do
-  it "rejeita mensagem fora do enum" do
+  it "rejects a message outside the enum" do
     Sync do
       actor = described_class.new(task_id: "t")
       expect { actor.post(:bogus) }.to raise_error(ArgumentError)
     end
   end
 
-  it "aceita as mensagens da Fase 2 (approval/pause/resume/timeout/heartbeat)" do
+  it "accepts the Phase 2 messages (approval/pause/resume/timeout/heartbeat)" do
     Sync do
       actor = described_class.new(task_id: "t")
       %i[approval pause resume timeout heartbeat].each do |m|
@@ -19,7 +19,7 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "drain! levanta CancelledError após post(:cancel)" do
+  it "drain! raises CancelledError after post(:cancel)" do
     Sync do
       actor = described_class.new(task_id: "t")
       actor.post(:cancel)
@@ -27,7 +27,7 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "acumula :user_message (reservado) sem levantar" do
+  it "accumulates :user_message (reserved) without raising" do
     Sync do
       actor = described_class.new(task_id: "t")
       actor.post(:user_message, "oi")
@@ -36,14 +36,14 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "drain! vazio retorna sem bloquear" do
+  it "empty drain! returns without blocking" do
     Sync do
       actor = described_class.new(task_id: "t")
       expect(actor.drain!).to be_nil
     end
   end
 
-  it "drain! acumula user_message E levanta o cancel (ordem preservada)" do
+  it "drain! accumulates user_message AND raises the cancel (order preserved)" do
     Sync do
       actor = described_class.new(task_id: "t")
       actor.post(:user_message, "antes")
@@ -53,7 +53,7 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "run executa o bloco num fiber e retorna um Async::Task" do
+  it "run executes the block in a fiber and returns an Async::Task" do
     Sync do
       actor = described_class.new(task_id: "t")
       ran = false
@@ -64,9 +64,9 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  # --- Fase 2: mailbox completa + suspensão ---------------------------------
+  # --- Phase 2: full mailbox + suspension ---------------------------------
 
-  it "drain! seta pause_requested? no :pause e conta :heartbeat" do
+  it "drain! sets pause_requested? on :pause and counts :heartbeat" do
     Sync do
       actor = described_class.new(task_id: "t")
       actor.post(:pause)
@@ -78,7 +78,7 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "await retorna [:resume, nil] quando :resume é postado" do
+  it "await returns [:resume, nil] when :resume is posted" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
       result = nil
@@ -87,11 +87,11 @@ RSpec.describe Harness::TaskActor do
       actor.post(:resume)
       waiter.wait
       expect(result).to eq([:resume, nil])
-      expect(actor.pause_requested?).to be(false) # limpo ao entrar em await
+      expect(actor.pause_requested?).to be(false) # cleared upon entering await
     end
   end
 
-  it "await retorna [:approval, decision] preservando o payload" do
+  it "await returns [:approval, decision] preserving the payload" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
       result = nil
@@ -103,34 +103,34 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "descarta resolução órfã no drain! (NÃO auto-resolve um await futuro)" do
+  it "discards an orphan resolution in drain! (does NOT auto-resolve a future await)" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
-      actor.post(:resume) # órfã: chega sem suspensão pendente
-      actor.drain!        # descarta (não bufferiza)
+      actor.post(:resume) # orphan: arrives with no pending suspension
+      actor.drain!        # discards (does not buffer)
       resolved = false
       waiter = top.async { actor.await(reason: :paused); resolved = true }
       top.sleep(0.02)
-      expect(resolved).to be(false) # a órfã descartada não resolveu este await
-      actor.post(:resume)           # só um :resume REAL resolve
+      expect(resolved).to be(false) # the discarded orphan did not resolve this await
+      actor.post(:resume)           # only a REAL :resume resolves
       waiter.wait
       expect(resolved).to be(true)
     end
   end
 
-  it "await ignora :pause recebido durante a espera (não re-arma pausa)" do
+  it "await ignores :pause received during the wait (does not re-arm pause)" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
       waiter = top.async { actor.await(reason: :paused) }
       top.sleep(0.01)
-      actor.post(:pause)  # pausa redundante durante a espera
+      actor.post(:pause)  # redundant pause during the wait
       actor.post(:resume)
       waiter.wait
-      expect(actor.pause_requested?).to be(false) # não re-armou -> sem re-pausa
+      expect(actor.pause_requested?).to be(false) # did not re-arm -> no re-pause
     end
   end
 
-  it "await levanta CancelledError quando :cancel chega durante a espera" do
+  it "await raises CancelledError when :cancel arrives during the wait" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
       raised = nil
@@ -146,7 +146,7 @@ RSpec.describe Harness::TaskActor do
     end
   end
 
-  it "await levanta TimeoutError no :timeout (com stage)" do
+  it "await raises TimeoutError on :timeout (with stage)" do
     Sync do |top|
       actor = described_class.new(task_id: "t")
       raised = nil

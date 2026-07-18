@@ -44,7 +44,7 @@ module Harness
       record["files"] ||= {}
       current = record["files"][name]
       if create_only && current
-        raise Harness::ValidationError, "arquivo '#{name}' já existe para o agente '#{agent_id}'"
+        raise Harness::ValidationError, "file '#{name}' already exists for agent '#{agent_id}'"
       end
 
       record["files"][name] = build_entry(content.to_s, current)
@@ -77,9 +77,9 @@ module Harness
       hist = versions(agent_id, name)
       i = Integer(index)
       unless entry(agent_id, name)
-        raise Harness::NotFoundError, "arquivo '#{name}' não encontrado para o agente '#{agent_id}'"
+        raise Harness::NotFoundError, "file '#{name}' not found for agent '#{agent_id}'"
       end
-      raise Harness::ValidationError, "versão #{index} inexistente" if i.negative? || i >= hist.length
+      raise Harness::ValidationError, "version #{index} does not exist" if i.negative? || i >= hist.length
 
       write(agent_id, name, hist[i]["content"])
     end

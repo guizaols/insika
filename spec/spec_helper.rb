@@ -2,9 +2,9 @@
 
 require_relative "../lib/harness"
 
-# RubyLLM real, se instalada; senão o stub requerível (doc 03 §7). Feito cedo p/
-# que o `require "ruby_llm"` de tools/load_skill.rb (lazy em produção) resolva
-# nos testes. O stub NUNCA sombreia a gem real: só entra no load path na falta.
+# Real RubyLLM if installed; otherwise the requireable stub (doc 03 §7). Done early
+# so tools/load_skill.rb's `require "ruby_llm"` (lazy in production) resolves in the
+# tests. The stub NEVER shadows the real gem: it only joins the load path when absent.
 begin
   require "ruby_llm"
 rescue LoadError
@@ -12,7 +12,7 @@ rescue LoadError
   require "ruby_llm"
 end
 
-# Andaimes de teste (ex.: fake chat). Não-recursivo: exclui support/stubs.
+# Test scaffolding (e.g. fake chat). Non-recursive: excludes support/stubs.
 Dir[File.join(__dir__, "support", "*.rb")].sort.each { |file| require file }
 
 RSpec.configure do |config|

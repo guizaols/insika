@@ -19,7 +19,7 @@ module Harness
         raise Harness::ValidationError, "id is required" if id.nil?
 
         existing = @profile_source.fetch(id) ||
-                   (raise Harness::NotFoundError, "agente '#{id}' não encontrado")
+                   (raise Harness::NotFoundError, "agent '#{id}' not found")
 
         # to_h of the current profile brings the correct symbols; patch overwrites only
         # what was sent. id never changes (rename = create+delete, out of scope).

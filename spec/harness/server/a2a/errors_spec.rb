@@ -14,7 +14,7 @@ RSpec.describe Harness::Server::A2A::Errors do
     expect(code).to eq(described_class::INVALID_PARAMS)
   end
 
-  it "exceção qualquer -> INTERNAL_ERROR sem vazar a mensagem" do
+  it "any exception -> INTERNAL_ERROR without leaking the message" do
     code, msg = described_class.from_exception(RuntimeError.new("segredo interno"))
     expect(code).to eq(described_class::INTERNAL_ERROR)
     expect(msg).to eq("internal error")

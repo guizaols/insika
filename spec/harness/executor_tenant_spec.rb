@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# Threading de tenant (P2C task 3, D6): o Executor::ContextRequest (Struct que os
-# providers REALMENTE recebem) passa a carregar o tenant, extraído do Command.
-RSpec.describe "Harness::Executor — threading de tenant (P2C)" do
+# Tenant threading (P2C task 3, D6): the Executor::ContextRequest (the Struct the
+# providers ACTUALLY receive) now carries the tenant, extracted from the Command.
+RSpec.describe "Harness::Executor — tenant threading (P2C)" do
   let(:inert) { Object.new }
   let(:session_store) { Class.new { def find(_id) = nil }.new }
 
@@ -24,37 +24,37 @@ RSpec.describe "Harness::Executor — threading de tenant (P2C)" do
   end
 
   describe "#command_tenant" do
-    it "extrai o tenant do meta do Command (chave string)" do
+    it "extracts the tenant from the Command's meta (string key)" do
       expect(executor.send(:command_tenant, task_with(meta: { "tenant" => "acme" }))).to eq("acme")
     end
 
-    it "extrai o tenant do meta (chave symbol)" do
+    it "extracts the tenant from meta (symbol key)" do
       expect(executor.send(:command_tenant, task_with(meta: { tenant: "acme" }))).to eq("acme")
     end
 
-    it "sem tenant -> nil (MemoryStore aplica _default)" do
+    it "no tenant -> nil (MemoryStore applies _default)" do
       expect(executor.send(:command_tenant, task_with(meta: {}))).to be_nil
     end
   end
 
   describe "#build_context_request" do
-    it "o ContextRequest (Struct) carrega o tenant" do
+    it "the ContextRequest (Struct) carries the tenant" do
       profile = Harness::AgentProfile.build(id: "a", model: "m")
       state = Harness::TurnState.new(task: nil, profile: profile, turn: 1, message: "oi")
       task = task_with(meta: { "tenant" => "acme" })
       req = executor.send(:build_context_request, task, profile, state, nil)
       expect(req.tenant).to eq("acme")
-      expect(req.respond_to?(:tenant)).to be(true) # o seam da Fase 1 reconciliado
+      expect(req.respond_to?(:tenant)).to be(true) # the Phase 1 seam reconciled
     end
   end
 
-  # Seam :vars reconciliado (bug achado rodando de verdade): o Request/Session
-  # provider chamam request.vars; sem ele, quebravam em runtime (undefined
-  # method 'vars') e o histórico da sessão nunca era injetado.
+  # :vars seam reconciled (bug found by actually running): the Request/Session
+  # provider call request.vars; without it, they broke at runtime (undefined
+  # method 'vars') and the session history was never injected.
   describe "#build_context_request — :vars" do
     let(:session) { Struct.new(:id, :vars).new("s1", { "cliente" => "Ana" }) }
 
-    it "carrega vars com os vars da sessão + o history explícito do Command" do
+    it "loads vars with the session's vars + the Command's explicit history" do
       store = Struct.new(:session) do
         def find(_id) = session
       end.new(session)
@@ -70,8 +70,8 @@ RSpec.describe "Harness::Executor — threading de tenant (P2C)" do
       )
       req = exec.send(:build_context_request, task, profile, state, nil)
       expect(req.respond_to?(:vars)).to be(true)
-      expect(req.vars["cliente"]).to eq("Ana")          # vars da sessão (Request provider)
-      expect(req.vars["history"]).to eq([{ "role" => "user" }]) # convenção do Session provider
+      expect(req.vars["cliente"]).to eq("Ana")          # session vars (Request provider)
+      expect(req.vars["history"]).to eq([{ "role" => "user" }]) # Session provider convention
     end
   end
 end

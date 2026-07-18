@@ -11,8 +11,8 @@ module Harness
     # RubyLLM::Tool) — it does not enter lib/harness.rb; the Executor loads it lazily in
     # configure_chat (like LoadSkill).
     class ToolSearch < RubyLLM::Tool
-      description "Busca e habilita ferramentas adicionais por descrição da necessidade"
-      param :query, desc: "O que você precisa fazer (ex.: 'enviar email', 'gerar fatura')"
+      description "Searches and enables additional tools by describing the need"
+      param :query, desc: "What you need to do (e.g.: 'send email', 'generate invoice')"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class
       # (Harness::Tools::ToolSearch) it produces "harness--tools--tool_search", not
@@ -37,7 +37,7 @@ module Harness
         matches = @catalog.search(query, within: @deferred_allowed)
         emit_tool_search(query, matches.map(&:name))
         if matches.empty?
-          return { matched: [], message: "nenhuma ferramenta encontrada para '#{query}'" }
+          return { matched: [], message: "no tool found for '#{query}'" }
         end
 
         new_matches = matches.reject { |m| @promoted.include?(m.name) }

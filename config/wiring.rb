@@ -172,7 +172,7 @@ module Harness
         require_relative "../lib/harness/tools/a2a_remote"
         Harness::Tools::A2ARemote.new(
           client: A2A_CLIENT, url: remote.url, tool_name: "remote_#{remote.id}",
-          description: remote.description || "Delega a tarefa ao agente A2A remoto '#{remote.id}'.",
+          description: remote.description || "Delegates the task to the remote A2A agent '#{remote.id}'.",
           event_stream: EVENT_STREAM
         )
       end

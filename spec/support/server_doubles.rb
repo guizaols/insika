@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Duplos compartilhados pelos specs do harness-server (task 24). Vivem em
-# spec/support para não depender de vazamento de constantes entre arquivos (a
-# suíte roda em ordem aleatória).
+# Doubles shared by the harness-server specs (task 24). They live in spec/support so
+# as not to depend on constant leakage between files (the suite runs in random
+# order).
 
-# Bus duplo: grava os Commands despachados e responde pelo bloco injetado.
+# Bus double: records the dispatched Commands and responds via the injected block.
 class ServerBusDouble
   attr_reader :dispatched
 
@@ -19,8 +19,8 @@ class ServerBusDouble
   end
 end
 
-# Subscription falsa: entrega eventos roteirizados de forma síncrona e grava
-# se foi fechada.
+# Fake subscription: delivers scripted events synchronously and records whether it
+# was closed.
 class ServerFakeSubscription
   attr_reader :closed
 
@@ -33,15 +33,15 @@ class ServerFakeSubscription
     @events.each { |e| yield e }
   end
 
-  # Paridade com a Subscription real (task 24): o transporte vincula o task_id
-  # após o dispatch. No duplo é no-op (os eventos já vêm roteirizados).
+  # Parity with the real Subscription (task 24): the transport binds the task_id
+  # after the dispatch. In the double it's a no-op (the events already come scripted).
   def bind(task_id:) = self
 
   def close = (@closed = true)
 end
 
-# EventStream duplo: grava os filtros pedidos, devolve a subscription falsa e
-# grava os eventos emitidos (auditoria do /admin de escrita).
+# EventStream double: records the requested filters, returns the fake subscription
+# and records the emitted events (audit of the write /admin).
 class ServerEventStreamDouble
   attr_reader :subscribes, :emitted
 
@@ -59,7 +59,7 @@ class ServerEventStreamDouble
   def emit(event) = (@emitted << event)
 end
 
-# Store duplo: grava os ids consultados e devolve um record fixo.
+# Store double: records the queried ids and returns a fixed record.
 class ServerStoreDouble
   attr_reader :queried
 

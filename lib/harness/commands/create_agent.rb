@@ -18,7 +18,7 @@ module Harness
         id = AgentPayload.presence(attrs[:id])
         raise Harness::ValidationError, "id is required" if id.nil?
         raise Harness::ValidationError, "model is required" if AgentPayload.presence(attrs[:model]).nil?
-        raise Harness::ValidationError, "agente '#{id}' já existe" if @profile_source.fetch(id)
+        raise Harness::ValidationError, "agent '#{id}' already exists" if @profile_source.fetch(id)
 
         @profile_source.put(Harness::AgentProfile.build(**attrs))
         emit(:agent_created, id)

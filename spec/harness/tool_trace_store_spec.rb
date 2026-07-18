@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Trace de tool-calls por sessão (debug no Studio; FOLLOWUP §3.1).
+# Per-session tool-call trace (debug in Studio; FOLLOWUP §3.1).
 RSpec.describe Harness::ToolTraceStore do
   subject(:store) { described_class.new(store: Harness::Stores::Memory.new) }
 
@@ -12,7 +12,7 @@ RSpec.describe Harness::ToolTraceStore do
       "ms" => 42, "at" => "2026-07-16T00:00:00Z" }.merge(over)
   end
 
-  it "grava e lê por sessão em ordem cronológica" do
+  it "records and reads per session in chronological order" do
     store.record(session_id: "s1", entry: entry(call_id: "a"))
     store.record(session_id: "s1", entry: entry(call_id: "b"))
     got = store.for_session("s1")
@@ -20,11 +20,11 @@ RSpec.describe Harness::ToolTraceStore do
     expect(got.first).to include("tool" => "search_products", "turn" => 1, "ms" => 42, "ok" => true)
   end
 
-  it "sessão sem trace -> []" do
+  it "session without a trace -> []" do
     expect(store.for_session("nada")).to eq([])
   end
 
-  it "session_id vazio -> no-op" do
+  it "empty session_id -> no-op" do
     store.record(session_id: "", entry: entry)
     expect(store.for_session("")).to eq([])
   end
@@ -42,7 +42,7 @@ RSpec.describe Harness::ToolTraceStore do
     expect(args).to include(Harness::SecretMasking::SENTINEL)
     expect(args).not_to include("SEGREDO")
     expect(args).not_to include("xyz")
-    expect(args).to include("ok") # valor não-sensível preservado
+    expect(args).to include("ok") # non-sensitive value preserved
   end
 
   it "trunca campos grandes (args/result)" do
@@ -51,14 +51,14 @@ RSpec.describe Harness::ToolTraceStore do
     expect(store.for_session("s").first["result"].length).to be <= (2000 + 20)
   end
 
-  it "capa a lista por sessão (não cresce sem fim)" do
+  it "caps the per-session list (does not grow unbounded)" do
     (described_class::MAX_PER_SESSION + 30).times { |i| store.record(session_id: "s", entry: entry(call_id: "c#{i}")) }
     expect(store.for_session("s").size).to eq(described_class::MAX_PER_SESSION)
     # mantém as MAIS RECENTES
     expect(store.for_session("s").last["call_id"]).to eq("c#{described_class::MAX_PER_SESSION + 29}")
   end
 
-  it "clear remove o trace da sessão" do
+  it "clear removes the session's trace" do
     store.record(session_id: "s", entry: entry)
     expect(store.clear("s")).to be(true)
     expect(store.for_session("s")).to eq([])

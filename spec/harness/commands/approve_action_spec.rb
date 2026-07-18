@@ -35,45 +35,45 @@ RSpec.describe Harness::Commands::ApproveAction do
                                         { pending_id: pending_id, decision: decision, operator: operator }))
   end
 
-  it "resolve o PendingAction (approved) ANTES de acordar o fiber e emite :approval_resolved" do
+  it "resolves the PendingAction (approved) BEFORE waking the fiber and emits :approval_resolved" do
     pa = pending
     resolved = approve(pa.id, decision: "approved")
 
     expect(resolved.status).to eq(:approved)
     expect(resolved.resolved_by).to eq("alice")
-    # store resolvido no momento em que o executor é acordado
+    # store resolved by the time the executor is woken
     expect(pending_store.find(pa.id).status).to eq(:approved)
     expect(executor.approved).to eq(["t"])
     expect(events.types).to include(:approval_resolved)
   end
 
-  it "resolve rejected e acorda o fiber (turno seguirá com erro ao modelo)" do
+  it "resolves rejected and wakes the fiber (the turn proceeds with an error to the model)" do
     pa = pending
     resolved = approve(pa.id, decision: "rejected")
     expect(resolved.status).to eq(:rejected)
     expect(executor.approved).to eq(["t"])
   end
 
-  it "no-op no executor sem fiber vivo (processo caiu): store fica resolvido" do
+  it "no-op on the executor without a live fiber (process crashed): store stays resolved" do
     dead = RecordingApproveExecutor.new(live: false)
     h = described_class.new(pending_action_store: pending_store, executor: dead, event_stream: events)
     pa = pending
     h.call(Harness::Command.build(:approve_action, { pending_id: pa.id, decision: "approved" }))
-    expect(pending_store.find(pa.id).status).to eq(:approved) # durável p/ o recovery reexecutar
+    expect(pending_store.find(pa.id).status).to eq(:approved) # durable so recovery can re-execute
   end
 
-  it "pending_id ausente -> ValidationError" do
+  it "missing pending_id -> ValidationError" do
     expect { handler.call(Harness::Command.build(:approve_action, { decision: "approved" })) }
       .to raise_error(Harness::ValidationError)
   end
 
-  it "pending inexistente -> NotFoundError; decision inválida -> ValidationError" do
+  it "nonexistent pending -> NotFoundError; invalid decision -> ValidationError" do
     expect { approve("ghost") }.to raise_error(Harness::NotFoundError)
     pa = pending
     expect { approve(pa.id, decision: "maybe") }.to raise_error(Harness::ValidationError)
   end
 
-  it "dupla aprovação -> ValidationError (só :pending resolve)" do
+  it "double approval -> ValidationError (only :pending resolves)" do
     pa = pending
     approve(pa.id, decision: "approved")
     expect { approve(pa.id, decision: "rejected") }.to raise_error(Harness::ValidationError)

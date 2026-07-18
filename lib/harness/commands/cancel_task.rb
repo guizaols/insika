@@ -21,7 +21,7 @@ module Harness
         raise Harness::ValidationError, "task_id is required" if task_id.to_s.empty?
 
         task = @task_store.find(task_id)
-        raise Harness::NotFoundError, "task '#{task_id}' não encontrada" unless task
+        raise Harness::NotFoundError, "task '#{task_id}' not found" unless task
 
         @executor.cancel(task_id) # no-op if there is no live fiber in this process
         # Does not transition status nor touch the persisted mailbox_state: it only uses

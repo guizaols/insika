@@ -2,11 +2,11 @@
 
 require "spec_helper"
 
-# Fase 6, Etapa B (tasks 3-4): o Executor aterrissa o CONTEXTO DE TURNO
-# (chat_id/agent_id/tenant/store_id) no TurnState e o DEPOSITA nas instâncias de
-# data-tool (via `turn_context=`), ANTES do ToolEnvelope — a costura que permite
-# {{ctx.*}} emitir X-Chat-Id/X-Store-Id/X-Agent-Id ao /api/internal/*.
-RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
+# Phase 6, Step B (tasks 3-4): the Executor lands the TURN CONTEXT
+# (chat_id/agent_id/tenant/store_id) into the TurnState and DEPOSITS it into the
+# data-tool instances (via `turn_context=`), BEFORE the ToolEnvelope — the seam that lets
+# {{ctx.*}} emit X-Chat-Id/X-Store-Id/X-Agent-Id to /api/internal/*.
+RSpec.describe "Harness::Executor — turn context (P6 Step B)" do
   let(:inert) { Object.new }
   let(:session_store) { Class.new { def find(_id) = nil }.new }
 
@@ -34,47 +34,47 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
       s
     end
 
-    it "chat_id=sessão, agent_id=profile, store_id=metadata, tenant=state.tenant (=chat)" do
-      # state.tenant já foi setado pelo run_pipeline via memory_tenant (=chat aqui).
+    it "chat_id=session, agent_id=profile, store_id=metadata, tenant=state.tenant (=chat)" do
+      # state.tenant was already set by run_pipeline via memory_tenant (=chat here).
       ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "chat-42"))
       expect(ctx).to eq(chat_id: "chat-42", agent_id: "bia", tenant: "chat-42", store_id: "loja-7")
     end
 
-    it "tenant reflete state.tenant (override multi-merchant explícito)" do
+    it "tenant reflects state.tenant (explicit multi-merchant override)" do
       ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "acme"))
       expect(ctx[:tenant]).to eq("acme")
       expect(ctx[:chat_id]).to eq("chat-42")
     end
 
-    it "sem store_id no profile -> store_id nil (header sairá vazio)" do
+    it "no store_id in the profile -> store_id nil (header will be empty)" do
       bare = Harness::AgentProfile.build(id: "a", model: "m")
       ctx = executor.send(:build_turn_context, task_with(session_id: "c1"), bare, state_with(tenant: "c1"))
       expect(ctx[:store_id]).to be_nil
     end
   end
 
-  # D3: o escopo da memória do motor é POR-CHAT — command tenant vence, senão a
-  # sessão. É o que o write path (state.tenant) e o read path (Memory provider)
-  # usam simetricamente.
+  # D3: the engine's memory scope is PER-CHAT — command tenant wins, otherwise the
+  # session. It's what the write path (state.tenant) and the read path (Memory provider)
+  # use symmetrically.
   describe "#memory_tenant" do
-    it "sem tenant no Command -> a sessão (=chat)" do
+    it "no tenant in the Command -> the session (=chat)" do
       expect(executor.send(:memory_tenant, task_with(session_id: "chat-42"))).to eq("chat-42")
     end
 
-    it "tenant explícito do Command prevalece sobre a sessão" do
+    it "the Command's explicit tenant prevails over the session" do
       task = Struct.new(:id, :session_id, :command).new(
         "t", "chat-42", { "type" => "send_message", "payload" => {}, "meta" => { "tenant" => "acme" } }
       )
       expect(executor.send(:memory_tenant, task)).to eq("acme")
     end
 
-    it "one-shot (sem sessão) e sem tenant -> nil (MemoryStore aplica _default)" do
+    it "one-shot (no session) and no tenant -> nil (MemoryStore applies _default)" do
       expect(executor.send(:memory_tenant, task_with(session_id: nil))).to be_nil
     end
   end
 
-  describe "#assemble_tool_instances — injeção do contexto de turno" do
-    # tool fake que expõe turn_context= (como o DataDefinedTool).
+  describe "#assemble_tool_instances — turn context injection" do
+    # fake tool that exposes turn_context= (like DataDefinedTool).
     def ctx_tool(name)
       Class.new do
         attr_accessor :turn_context
@@ -82,12 +82,12 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
       end.new
     end
 
-    # Entry duck-typed (só factory/name — como Registry::Entry).
+    # Duck-typed Entry (factory/name only — like Registry::Entry).
     def entry(tool)
       Struct.new(:name, :factory).new(tool.name, -> { tool })
     end
 
-    it "deposita o turn_context na instância de data-tool antes do envelope" do
+    it "deposits the turn_context into the data-tool instance before the envelope" do
       tool = ctx_tool("cart")
       state = Harness::TurnState.new(task: nil, profile: nil, turn: 1, message: "x")
       state.turn_context = { chat_id: "c1", store_id: "s1", agent_id: "a1", tenant: "c1" }
@@ -98,7 +98,7 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
       expect(tool.turn_context).to eq({ chat_id: "c1", store_id: "s1", agent_id: "a1", tenant: "c1" })
     end
 
-    it "tool sem turn_context= é ignorada (paridade — não levanta)" do
+    it "tool without turn_context= is ignored (parity — does not raise)" do
       plain = Struct.new(:name).new("plain")
       state = Harness::TurnState.new(task: nil, profile: nil, turn: 1, message: "x")
       state.turn_context = { chat_id: "c1" }
@@ -106,9 +106,9 @@ RSpec.describe "Harness::Executor — contexto de turno (P6 Etapa B)" do
       expect(out).to eq([plain])
     end
 
-    it "state sem turn_context (stub) -> no-op, sem injeção" do
+    it "state without turn_context (stub) -> no-op, no injection" do
       tool = ctx_tool("cart")
-      stub_state = Struct.new(:capability_names).new({}) # não responde a turn_context
+      stub_state = Struct.new(:capability_names).new({}) # does not respond to turn_context
       out = executor.send(:assemble_tool_instances, [entry(tool)], stub_state)
       expect(out).to eq([tool])
       expect(tool.turn_context).to be_nil

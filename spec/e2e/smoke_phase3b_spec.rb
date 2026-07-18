@@ -6,20 +6,20 @@ require_relative "../../server/a2a/app"
 require_relative "../../server/a2a/client"
 require "harness/tools/a2a_remote"
 
-# Smoke E2E da Fase 3 fatia B (P3B): FEDERAÇÃO LOOPBACK outbound→inbound
-# in-process. O "remoto" é o nosso próprio A2A::App inbound (fatia A). Um http de
-# loopback roteia post_json -> worker_inbound.rpc. Prova a federação ponta a
-# ponta nos DOIS sentidos, sem rede nem chave de API.
-RSpec.describe "smoke E2E: federação A2A loopback (fatia B)", :smoke do
-  # Http de loopback: em vez de rede, chama o A2A::App inbound do worker. O
-  # round-trip por JSON é FIEL ao wire — converte o envelope symbol-keyed do
-  # inbound em chaves string, como um POST HTTP real faria.
+# E2E smoke for Phase 3 slice B (P3B): LOOPBACK FEDERATION outbound→inbound
+# in-process. The "remote" is our own inbound A2A::App (slice A). A loopback http
+# routes post_json -> worker_inbound.rpc. Proves federation end to end in BOTH
+# directions, without network or API key.
+RSpec.describe "smoke E2E: A2A loopback federation (slice B)", :smoke do
+  # Loopback Http: instead of network, calls the worker's inbound A2A::App. The
+  # JSON round-trip is FAITHFUL to the wire — it converts the inbound's symbol-keyed
+  # envelope into string keys, as a real HTTP POST would.
   LoopbackHttp = Struct.new(:inbound) do
     def post_json(_url, body) = JSON.parse(JSON.generate(inbound.rpc(body)))
   end
 
-  # Monta um worker completo (inbound A2A::App + bus + Executor + FakeChat).
-  # -> [inbound_app, executor, chat]. `policy` permite forçar falha (DenyAll).
+  # Assembles a complete worker (inbound A2A::App + bus + Executor + FakeChat).
+  # -> [inbound_app, executor, chat]. `policy` lets you force a failure (DenyAll).
   def build_worker(final: "42", policy: NullPolicyEngine.new)
     backend = Harness::Stores::Memory.new
     session_store = Harness::SessionStore.new(store: backend)
@@ -52,7 +52,7 @@ RSpec.describe "smoke E2E: federação A2A loopback (fatia B)", :smoke do
   let(:events) { [] }
   let(:event_stream) { Class.new { def initialize(s) = (@s = s); def emit(e) = @s << e }.new(events) }
 
-  # O tool remoto do orchestrator, apontando (via loopback) ao worker inbound.
+  # The orchestrator's remote tool, pointing (via loopback) at the inbound worker.
   def remote_tool(inbound)
     client = Harness::Server::A2A::Client.new(http: LoopbackHttp.new(inbound), sleeper: ->(_s) {})
     Harness::Tools::A2ARemote.new(client: client, url: "loopback",
@@ -60,21 +60,21 @@ RSpec.describe "smoke E2E: federação A2A loopback (fatia B)", :smoke do
                                   event_stream: event_stream)
   end
 
-  it "orchestrator delega ao worker via A2A e recebe a resposta (federação ponta a ponta)" do
+  it "orchestrator delegates to the worker via A2A and receives the answer (end-to-end federation)" do
     inbound, = build_worker(final: "42")
     tool = remote_tool(inbound)
 
     result = nil
     Sync { result = tool.execute(message: "quanto é 6x7?") }
 
-    expect(result).to eq("42") # o worker respondeu, via A2A loopback
+    expect(result).to eq("42") # the worker replied, via A2A loopback
     ev = events.find { |e| e.type == :a2a_call }
     expect(ev.data).to include(agent: "remote_worker", state: "completed")
     expect(ev.data[:remote_task_id]).to be_a(String)
   end
 
-  it "worker que falha -> a tool devolve { error: } (o turno do orchestrator segue)" do
-    inbound, = build_worker(policy: DenyAllPolicyEngine.new) # turno do worker -> :failed
+  it "failing worker -> the tool returns { error: } (the orchestrator's turn continues)" do
+    inbound, = build_worker(policy: DenyAllPolicyEngine.new) # worker's turn -> :failed
     tool = remote_tool(inbound)
 
     result = nil

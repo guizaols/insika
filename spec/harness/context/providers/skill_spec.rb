@@ -9,7 +9,7 @@ RSpec.describe Harness::Context::Providers::Skill do
     Dir.mktmpdir { |d| @dir = d; example.run }
   end
 
-  def write_skill(name, description: "desc", body: "corpo")
+  def write_skill(name, description: "desc", body: "body")
     path = File.join(@dir, name)
     FileUtils.mkdir_p(path)
     File.write(File.join(path, "SKILL.md"), "---\nname: #{name}\ndescription: #{description}\n---\n#{body}\n")
@@ -23,7 +23,7 @@ RSpec.describe Harness::Context::Providers::Skill do
                                 tenant: nil, vars: {}, checkpoint: nil)
   end
 
-  it "produz 1 fragmento :system priority 80 não-pinned == format_for_prompt(effective)" do
+  it "produces 1 :system priority 80 non-pinned fragment == format_for_prompt(effective)" do
     write_skill("cardapio")
     write_skill("pedido")
 
@@ -36,12 +36,12 @@ RSpec.describe Harness::Context::Providers::Skill do
     expect(f.content).to include("cardapio", "pedido")
   end
 
-  it "respeita profile.skills == [] -> nenhum fragmento" do
+  it "respects profile.skills == [] -> no fragment" do
     write_skill("cardapio")
     expect(described_class.new(catalog: catalog).call(request(skills: []))).to eq([])
   end
 
-  it "subconjunto: só a skill do perfil aparece" do
+  it "subset: only the profile's skill appears" do
     write_skill("cardapio")
     write_skill("pedido")
 
