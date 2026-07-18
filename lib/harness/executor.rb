@@ -634,7 +634,7 @@ module Harness
         entry = @tool_registry.entries.find { |e| e.name == provider.impl_name.to_s }
         if entry.nil?
           raise CapabilityError, "capability '#{cap_name}' resolveu para impl " \
-                                 "'#{provider.impl_name}', não registrado em tool_registry"
+                                 "'#{provider.impl_name}', not registered in tool_registry"
         end
 
         names[entry.name] ||= cap_name.to_s # the 1st capability to claim an impl wins

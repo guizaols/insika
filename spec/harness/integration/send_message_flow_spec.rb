@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# Wiring REAL: CommandBus + handler SendMessage + Executor + stores de domínio
-# sobre Memory + EventStream real. Chat roteirizado (FakeChat) via stub de
-# create_chat — roda SEM a gem (doc 03 §7).
-RSpec.describe "Integração: fluxo SendMessage Command->Response" do
+# REAL wiring: CommandBus + SendMessage handler + Executor + domain stores
+# over Memory + real EventStream. Scripted chat (FakeChat) via a create_chat
+# stub — runs WITHOUT the gem (doc 03 §7).
+RSpec.describe "Integration: SendMessage Command->Response flow" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
@@ -31,7 +31,7 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
                                        executor: executor)
   end
 
-  # FakeChat roteirizado: 2 chunks + 1 tool call + resposta final.
+  # Scripted FakeChat: 2 chunks + 1 tool call + final response.
   let(:scripted_chat) do
     chat = FakeChat.new
     chat.final_content = "resposta final"
@@ -51,10 +51,10 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
 
   TERMINAL = %w[completed failed cancelled].freeze
 
-  # Turno com session_id é SERIALIZADO pelo SessionActor (P2-03): o turno é
-  # spawnado ASSÍNCRONO pelo loop da sessão, então não dá para esperar em
-  # @running logo após o dispatch. Faz poll até o estado terminal e para os
-  # SessionActors (o loop bloqueia p/ sempre) para o Sync sair.
+  # A turn with a session_id is SERIALIZED by the SessionActor (P2-03): the turn is
+  # spawned ASYNCHRONOUSLY by the session loop, so you cannot wait on
+  # @running right after the dispatch. Polls until the terminal state and stops the
+  # SessionActors (the loop blocks forever) so the Sync can exit.
   def dispatch_and_wait(payload)
     result = nil
     collected = []
@@ -79,7 +79,7 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
     end
   end
 
-  it "emite a sequência canônica de eventos (doc 03 §7)" do
+  it "emits the canonical sequence of events (doc 03 §7)" do
     session_store.create(id: "s1")
     _result, events = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
@@ -88,18 +88,18 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
     )
   end
 
-  it "seq monotônico e meta.task_id/session_id corretos em todos" do
+  it "monotonic seq and correct meta.task_id/session_id in all" do
     session_store.create(id: "s1")
     result, events = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
     seqs = events.map { |e| e.meta[:seq] }
     expect(seqs).to eq(seqs.sort)
-    expect(seqs.uniq.size).to eq(seqs.size) # estritamente crescente
+    expect(seqs.uniq.size).to eq(seqs.size) # strictly increasing
     expect(events.map { |e| e.meta[:task_id] }.uniq).to eq([result[:task_id]])
     expect(events.map { |e| e.meta[:session_id] }.uniq).to eq(["s1"])
   end
 
-  it "estado final: task :completed, Execution fechada, checkpoint turn 2, transcript na sessão" do
+  it "final state: task :completed, Execution closed, checkpoint turn 2, transcript in the session" do
     session_store.create(id: "s1")
     result, = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
@@ -110,24 +110,24 @@ RSpec.describe "Integração: fluxo SendMessage Command->Response" do
     expect(session_store.find("s1").messages.map { |m| m["content"] }).to eq(["oi", "resposta final"])
   end
 
-  it "responde {task_id:} imediato (antes do :done)" do
+  it "responds {task_id:} immediately (before :done)" do
     session_store.create(id: "s1")
-    # a resposta é síncrona mesmo com o turno enfileirado no SessionActor (P2-03).
+    # the response is synchronous even with the turn queued in the SessionActor (P2-03).
     Sync do
       result = bus.dispatch(Harness::Command.build(:send_message,
                                                    { agent: "sales", message: "oi", session_id: "s1" }))
       expect(result).to match({ task_id: kind_of(String) })
     ensure
-      executor.stop_session_actors # encerra o loop da sessão p/ o Sync sair
+      executor.stop_session_actors # closes the session loop so the Sync can exit
     end
   end
 
-  it "paridade history-only: mesmo fluxo, sessão intocada" do
+  it "history-only parity: same flow, session untouched" do
     _result, events = dispatch_and_wait(
       agent: "sales", message: "oi", history: [{ role: "user", content: "anterior" }]
     )
 
     expect(events.map(&:type)).to include(:task_started, :done, :task_completed)
-    expect(session_store.each_id.to_a).to be_empty # nenhuma sessão criada/tocada
+    expect(session_store.each_id.to_a).to be_empty # no session created/touched
   end
 end

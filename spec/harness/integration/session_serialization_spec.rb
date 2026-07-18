@@ -3,11 +3,11 @@
 require "spec_helper"
 require "async"
 
-# P2-03 (critério da Etapa C): dois send_message concorrentes na MESMA sessão
-# são SERIALIZADOS pelo SessionActor — o transcript fica consistente (FIFO, sem
-# o clobber de read-modify-write que ocorreria com dois fibers no mesmo
-# session_id). Sessões distintas seguem concorrentes.
-RSpec.describe "Integração: serialização de turnos por sessão (P2-03)" do
+# P2-03 (Stage C criterion): two concurrent send_message on the SAME session
+# are SERIALIZED by the SessionActor — the transcript stays consistent (FIFO, without
+# the read-modify-write clobber that would occur with two fibers on the same
+# session_id). Distinct sessions remain concurrent.
+RSpec.describe "Integration: per-session turn serialization (P2-03)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
@@ -33,7 +33,7 @@ RSpec.describe "Integração: serialização de turnos por sessão (P2-03)" do
 
   before do
     bus.register(:send_message, handler)
-    # cada turno responde "ok:<mensagem>" (distingue os turnos no transcript)
+    # each turn responds "ok:<message>" (distinguishes turns in the transcript)
     allow(executor).to receive(:create_chat) do
       chat = FakeChat.new
       chat.script = proc { |*| chat.instance_variable_set(:@final_content, "ok:#{@asked}") }
@@ -55,25 +55,25 @@ RSpec.describe "Integração: serialização de turnos por sessão (P2-03)" do
     bus.dispatch(Harness::Command.build(:send_message, { agent: "sales", message: message, session_id: session_id }))
   end
 
-  it "dois turnos concorrentes na MESMA sessão: transcript FIFO, sem clobber" do
+  it "two concurrent turns on the SAME session: FIFO transcript, no clobber" do
     session_store.create(id: "s1")
 
     Sync do |parent|
-      executor.supervised = true # SessionActor só serializa em modo serving
+      executor.supervised = true # SessionActor only serializes in serving mode
       r1 = dispatch("a", session_id: "s1")
       r2 = dispatch("b", session_id: "s1")
-      expect(r1[:task_id]).not_to eq(r2[:task_id]) # dois turnos distintos, 202 imediato p/ ambos
+      expect(r1[:task_id]).not_to eq(r2[:task_id]) # two distinct turns, immediate 202 for both
       wait_terminal(parent, r1[:task_id], r2[:task_id])
       executor.stop_session_actors
       executor.instance_variable_get(:@supervisor)&.stop
     end
 
     contents = session_store.find("s1").messages.map { |m| m["content"] }
-    # 4 mensagens, na ORDEM de chegada — nada perdido/entrelaçado
+    # 4 messages, in ARRIVAL order — nothing lost/interleaved
     expect(contents).to eq(["a", "ok:a", "b", "ok:b"])
   end
 
-  it "sessões DISTINTAS não bloqueiam uma à outra (concorrência preservada)" do
+  it "DISTINCT sessions do not block each other (concurrency preserved)" do
     session_store.create(id: "s1")
     session_store.create(id: "s2")
 

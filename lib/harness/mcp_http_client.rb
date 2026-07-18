@@ -55,7 +55,7 @@ module Harness
       parsed = begin
         JSON.parse(result[:body].to_s)
       rescue JSON::ParserError => e
-        raise Harness::Error, "resposta MCP não é JSON: #{e.message}"
+        raise Harness::Error, "MCP response is not JSON: #{e.message}"
       end
       if (err = parsed["error"])
         raise Harness::Error, "MCP JSON-RPC error: #{err["message"] || err.inspect}"

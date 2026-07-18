@@ -4,7 +4,7 @@ require "spec_helper"
 
 RSpec.describe Harness::Command do
   describe ".build" do
-    it "preenche meta com defaults (command_id, issued_at, transport, tenant)" do
+    it "fills meta with defaults (command_id, issued_at, transport, tenant)" do
       command = described_class.build(:cancel_task, { task_id: "x" })
 
       expect(command.type).to eq(:cancel_task)
@@ -15,22 +15,22 @@ RSpec.describe Harness::Command do
       expect(command.meta[:tenant]).to be_nil
     end
 
-    it "aceita overrides de transport e tenant" do
+    it "accepts overrides for transport and tenant" do
       command = described_class.build(:create_session, {}, transport: :http, tenant: "acme")
 
       expect(command.meta[:transport]).to eq(:http)
       expect(command.meta[:tenant]).to eq("acme")
     end
 
-    it "normaliza type String para Symbol" do
+    it "normalizes type String to Symbol" do
       expect(described_class.build("cancel_task", {}).type).to eq(:cancel_task)
     end
 
-    it "normaliza payload nil para {}" do
+    it "normalizes nil payload to {}" do
       expect(described_class.build(:x, nil).payload).to eq({})
     end
 
-    it "produz um value object imutável (Data)" do
+    it "produces an immutable value object (Data)" do
       command = described_class.build(:x, {})
 
       expect { command.instance_variable_set(:@payload, {}) }.to raise_error(FrozenError)

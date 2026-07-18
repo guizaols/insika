@@ -32,7 +32,7 @@ RSpec.describe Harness::ToolRegistry do
       expect(entry.plugin).to eq("p")
     end
 
-    it "side_effect? de tool desconhecida -> false" do
+    it "side_effect? de tool unknown -> false" do
       expect(registry.side_effect?("nope")).to be(false)
     end
   end

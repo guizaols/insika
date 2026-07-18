@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
-# Duplo do chat do RubyLLM com a superfície EXATA usada pelo Executor
-# (estágios 5-7). Grava o que recebeu e permite dirigir os callbacks
-# registrados, simulando o loop de tool-use sequencial do RubyLLM — sem
-# reimplementar nada dele. Reusado pela integração da task 12.
+# Double of the RubyLLM chat with the EXACT surface the Executor uses (stages 5-7).
+# Records what it received and lets you drive the registered callbacks, simulating
+# RubyLLM's sequential tool-use loop — without reimplementing any of it. Reused by
+# task 12's integration.
 class FakeChat
   ToolCall = Struct.new(:name, :arguments, :id)
   Response = Struct.new(:content)
 
   attr_reader :instructions, :tools, :messages, :asked
-  # script: proc rodado no contexto do chat durante #ask (pode chamar
-  # emit_chunk/fire_tool_call/fire_tool_result). final_content: conteúdo da
-  # resposta final.
+  # script: proc run in the chat's context during #ask (may call
+  # emit_chunk/fire_tool_call/fire_tool_result). final_content: content of the final
+  # response.
   attr_accessor :script, :final_content
 
   def initialize
@@ -49,8 +49,8 @@ class FakeChat
     self
   end
 
-  # Dirige os callbacks registrados (simula o loop do RubyLLM). Propaga qualquer
-  # exceção levantada dentro do callback (ex.: o guard-rail de max_tool_calls).
+  # Drives the registered callbacks (simulates RubyLLM's loop). Propagates any
+  # exception raised inside the callback (e.g. the max_tool_calls guard-rail).
   def fire_tool_call(name:, arguments: {}, id: "call_1")
     @before_tool_call&.call(ToolCall.new(name, arguments, id))
   end
@@ -63,14 +63,14 @@ class FakeChat
     @asked = message
     @on_chunk = on_chunk
     if @script
-      instance_exec(&@script) # script usa emit_chunk/fire_tool_call/fire_tool_result
+      instance_exec(&@script) # script uses emit_chunk/fire_tool_call/fire_tool_result
     else
       emit_chunk("chunk")
     end
     Response.new(@final_content)
   end
 
-  # Emite um chunk de streaming (como o RubyLLM faz no bloco do ask).
+  # Emits a streaming chunk (as RubyLLM does in the ask block).
   def emit_chunk(text)
     @on_chunk&.call(Response.new(text))
   end

@@ -52,7 +52,7 @@ module Harness
       definition = Harness::ToolDefinition.from_h(attrs)   # validates (raises ValidationError)
       name = definition.name
       existing = @cs.get(SCOPE, name)
-      raise Harness::ValidationError, "tool '#{name}' já existe" if create_only && existing
+      raise Harness::ValidationError, "tool '#{name}' already exists" if create_only && existing
 
       final = definition.to_h
       final["request"]["headers"] = reconcile_secret_headers(
@@ -79,7 +79,7 @@ module Harness
     # -> MASKED definition Hash.
     def restore(name, index)
       rec = record(name)
-      raise Harness::NotFoundError, "tool '#{name}' não encontrada" unless rec
+      raise Harness::NotFoundError, "tool '#{name}' not found" unless rec
 
       hist = rec.fetch("history", [])
       i = Integer(index)

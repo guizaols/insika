@@ -4,11 +4,11 @@ require "spec_helper"
 require "async"
 require_relative "../../server/a2a/app"
 
-# Smoke E2E da Fase 3 fatia A (P3A): dirige o Server::A2A::App#rpc/#agent_card
-# REAL sobre um CommandBus + handlers (create_session/send_message/cancel_task) +
-# Executor REAIS, só o chat mockado (FakeChat via create_chat stub). Prova a
-# federação A2A inbound ponta a ponta, sem chave de API.
-RSpec.describe "smoke E2E: adapter A2A inbound (fatia A)", :smoke do
+# E2E smoke for Phase 3 slice A (P3A): drives the REAL Server::A2A::App#rpc/#agent_card
+# over a CommandBus + handlers (create_session/send_message/cancel_task) + REAL
+# Executor, only the chat mocked (FakeChat via create_chat stub). Proves inbound
+# A2A federation end to end, without an API key.
+RSpec.describe "smoke E2E: A2A inbound adapter (slice A)", :smoke do
   let(:backend)          { Harness::Stores::Memory.new }
   let(:session_store)    { Harness::SessionStore.new(store: backend) }
   let(:task_store)       { Harness::TaskStore.new(store: backend) }
@@ -49,7 +49,7 @@ RSpec.describe "smoke E2E: adapter A2A inbound (fatia A)", :smoke do
 
   TERMINAL = %w[completed failed cancelled].freeze
 
-  # message/send + poll até a Task terminar (o turno roda em fiber assíncrono).
+  # message/send + poll until the Task finishes (the turn runs in an async fiber).
   def send_and_finish(text: "oi", final: "olá!")
     chat = FakeChat.new
     chat.final_content = final
@@ -68,7 +68,7 @@ RSpec.describe "smoke E2E: adapter A2A inbound (fatia A)", :smoke do
     result[:result]
   end
 
-  it "message/send cria a Task via send_message (mesmo bus) e devolve uma A2A Task" do
+  it "message/send creates the Task via send_message (same bus) and returns an A2A Task" do
     chat = FakeChat.new
     allow(executor).to receive(:create_chat).and_return(chat)
     Sync do
@@ -76,40 +76,40 @@ RSpec.describe "smoke E2E: adapter A2A inbound (fatia A)", :smoke do
       task = res[:result]
       expect(task[:kind]).to eq("task")
       expect(task[:id]).to be_a(String)
-      expect(task[:contextId]).to be_a(String) # sessão criada (server-assigned)
-      # o turno pode rodar eager sob Sync (FakeChat síncrono) -> qualquer estado
-      # A2A válido serve; o ponto é a Task projetada corretamente.
+      expect(task[:contextId]).to be_a(String) # session created (server-assigned)
+      # the turn may run eagerly under Sync (synchronous FakeChat) -> any valid A2A
+      # state works; the point is the Task being projected correctly.
       expect(%w[submitted working completed]).to include(task[:status][:state])
     end
   end
 
-  it "tasks/get projeta 'completed' com status.message (conteúdo do transcript)" do
+  it "tasks/get projects 'completed' with status.message (transcript content)" do
     task = send_and_finish(final: "olá, tudo bem?")
     res = rpc("tasks/get", { "id" => task[:id] })
     expect(res[:result][:status][:state]).to eq("completed")
     expect(res[:result][:status][:message][:parts].first[:text]).to eq("olá, tudo bem?")
   end
 
-  it "agent-card do agente configurado (streaming:false)" do
+  it "agent-card for the configured agent (streaming:false)" do
     card = a2a.agent_card
     expect(card[:name]).to eq("assistant")
     expect(card[:url]).to eq("https://h.example/a2a")
     expect(card[:capabilities][:streaming]).to be(false)
   end
 
-  it "tasks/get de id inexistente -> -32001" do
+  it "tasks/get for a nonexistent id -> -32001" do
     expect(rpc("tasks/get", { "id" => "nope" })[:error][:code]).to eq(Harness::Server::A2A::Errors::TASK_NOT_FOUND)
   end
 
-  it "método desconhecido -> -32601 (nunca vaza)" do
+  it "unknown method -> -32601 (never leaks)" do
     expect(rpc("foo/bar")[:error][:code]).to eq(Harness::Server::A2A::Errors::METHOD_NOT_FOUND)
   end
 
-  it "tasks/cancel de uma task terminal despacha sem erro e projeta a Task" do
+  it "tasks/cancel of a terminal task dispatches without error and projects the Task" do
     task = send_and_finish
     Sync do
       res = rpc("tasks/cancel", { "id" => task[:id] })
-      expect(res).to have_key(:result) # cancel_task no-op numa terminal; envelope válido, sem exceção
+      expect(res).to have_key(:result) # cancel_task no-op on a terminal; valid envelope, no exception
       expect(res[:result][:id]).to eq(task[:id])
     end
   end

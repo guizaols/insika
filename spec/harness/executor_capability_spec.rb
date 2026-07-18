@@ -2,12 +2,12 @@
 
 require "spec_helper"
 
-# Sub-passo de capability assembly no Executor (P2B task 5). Testa os métodos
-# privados de montagem (puros — sem ruby_llm) + o ToolEnvelope consultando
-# impl_name. A integração full-pipeline é coberta pelo smoke E2E (task 12).
+# Capability assembly sub-step in the Executor (P2B task 5). Tests the private
+# assembly methods (pure — no ruby_llm) + the ToolEnvelope consulting
+# impl_name. Full-pipeline integration is covered by the E2E smoke test (task 12).
 RSpec.describe "Harness::Executor — capability assembly (P2B)" do
-  # Tool "crua" instanciável com name estável. Registrada por BLOCO
-  # (`register(name) { fake_tool(name) }`), como a convenção do smoke.
+  # Instantiable "raw" tool with a stable name. Registered by BLOCK
+  # (`register(name) { fake_tool(name) }`), as the smoke convention.
   def fake_tool(impl_name)
     Class.new do
       define_method(:name) { impl_name }
@@ -36,7 +36,7 @@ RSpec.describe "Harness::Executor — capability assembly (P2B)" do
   StateStub = Struct.new(:capability_names)
 
   describe "#resolve_capabilities" do
-    it "sem capability_registry -> {} (paridade Fase 1)" do
+    it "without capability_registry -> {} (Phase 1 parity)" do
       exec = build_executor(cap_registry: nil)
       expect(exec.send(:resolve_capabilities, profile(capabilities: [:browse]), nil)).to eq({})
     end
@@ -54,22 +54,22 @@ RSpec.describe "Harness::Executor — capability assembly (P2B)" do
       expect(result).to eq({ "chromium_browse" => "browse" })
     end
 
-    it "impl resolvido mas não registrado em tool_registry -> CapabilityError" do
+    it "impl resolved but not registered in tool_registry -> CapabilityError" do
       capability_registry.register(:browse, impl_name: "ghost", kind: :tool)
       exec = build_executor
       expect do
         exec.send(:resolve_capabilities, profile(capabilities: [:browse]), nil)
-      end.to raise_error(Harness::CapabilityError, /não registrado/)
+      end.to raise_error(Harness::CapabilityError, /not registered/)
     end
 
-    it "provider kind :workflow é ignorado (exposição adiada, L5)" do
-      allow($stderr).to receive(:write) # silencia o warn de registro
+    it "provider kind :workflow is ignored (exposure deferred, L5)" do
+      allow($stderr).to receive(:write) # silences the registration warn
       capability_registry.register(:research, impl_name: "research_wf", kind: :workflow)
       exec = build_executor
       expect(exec.send(:resolve_capabilities, profile(capabilities: [:research]), nil)).to eq({})
     end
 
-    it "propaga CapabilityUnavailable quando tools_deny esgota candidatos" do
+    it "propagates CapabilityUnavailable when tools_deny exhausts candidates" do
       tool_registry.register("only") { fake_tool("only") }
       capability_registry.register(:browse, impl_name: "only", kind: :tool)
       exec = build_executor
@@ -85,39 +85,39 @@ RSpec.describe "Harness::Executor — capability assembly (P2B)" do
       tool_registry.register("plain") { fake_tool("plain") }
     end
 
-    it "sem capability_names -> só instancia as diretas (paridade)" do
+    it "without capability_names -> only instantiates the direct ones (parity)" do
       exec = build_executor
       state = StateStub.new({})
       tools = exec.send(:assemble_tool_instances, tool_registry.entries, state)
       expect(tools.map(&:name)).to contain_exactly("chromium_browse", "plain")
     end
 
-    it "junta tools diretas + capability (ResolvedTool com nome estável)" do
+    it "combines direct tools + capability (ResolvedTool with a stable name)" do
       exec = build_executor
       state = StateStub.new({ "chromium_browse" => "browse" })
-      # allowed direto = só "plain" (a Policy não passou a capability)
+      # direct allowed = only "plain" (the Policy did not pass the capability)
       plain_entry = tool_registry.entries.find { |e| e.name == "plain" }
       tools = exec.send(:assemble_tool_instances, [plain_entry], state)
       names = tools.map(&:name)
-      expect(names).to contain_exactly("plain", "browse") # "browse" = apelido estável
+      expect(names).to contain_exactly("plain", "browse") # "browse" = stable alias
       resolved = tools.find { |t| t.name == "browse" }
       expect(resolved).to be_a(Harness::Capability::ResolvedTool)
       expect(resolved.impl_name).to eq("chromium_browse")
     end
 
-    it "dedup: impl também permitido direto NÃO aparece com os dois nomes" do
+    it "dedup: an impl also allowed directly does NOT appear under both names" do
       exec = build_executor
       state = StateStub.new({ "chromium_browse" => "browse" })
-      # allowed direto inclui o MESMO impl da capability
+      # direct allowed includes the SAME impl as the capability
       tools = exec.send(:assemble_tool_instances, tool_registry.entries, state)
       names = tools.map(&:name)
-      expect(names).to contain_exactly("plain", "browse") # chromium_browse cru sumiu
+      expect(names).to contain_exactly("plain", "browse") # raw chromium_browse is gone
       expect(names).not_to include("chromium_browse")
     end
   end
 
-  describe "ToolEnvelope consulta impl_name para ResolvedTool" do
-    it "side_effect? usa impl_name (não o apelido da capability)" do
+  describe "ToolEnvelope consults impl_name for ResolvedTool" do
+    it "side_effect? uses impl_name (not the capability alias)" do
       impl = Class.new { def name = "chromium_browse" }.new
       resolved = Harness::Capability::ResolvedTool.new(impl, capability_name: "browse",
                                                              impl_name: "chromium_browse")
@@ -125,7 +125,7 @@ RSpec.describe "Harness::Executor — capability assembly (P2B)" do
       state = Struct.new(:current_tool_call).new(nil)
       envelope = Harness::ToolEnvelope.new(resolved, state: state, checkpoint_store: inert,
                                                      tool_registry: tool_registry, timeout: 1)
-      # side_effect? deve consultar "chromium_browse" (registrado), não "browse".
+      # side_effect? should consult "chromium_browse" (registered), not "browse".
       expect(envelope.send(:side_effect?)).to be(true)
       expect(envelope.send(:real_name)).to eq("chromium_browse")
     end

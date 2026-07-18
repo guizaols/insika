@@ -3,14 +3,14 @@
 require "spec_helper"
 
 RSpec.describe Harness::SessionStore do
-  # Roda contra Memory; a paridade com SQLite é garantida pela suíte de
-  # contrato da task 2 (doc 02 §7). Um smoke com SQLite ":memory:" fecha o loop.
+  # Runs against Memory; parity with SQLite is guaranteed by the task 2
+  # contract suite (doc 02 §7). A smoke test with SQLite ":memory:" closes the loop.
   subject(:sessions) { described_class.new(store: backend) }
 
   let(:backend) { Harness::Stores::Memory.new }
 
   describe "#create" do
-    it "retorna Session com defaults (uuid, arrays/hash vazios, timestamps ISO8601)" do
+    it "returns Session with defaults (uuid, empty arrays/hash, ISO8601 timestamps)" do
       session = sessions.create
 
       expect(session).to be_a(described_class::Session)
@@ -22,14 +22,14 @@ RSpec.describe Harness::SessionStore do
       expect { Time.iso8601(session.created_at) }.not_to raise_error
     end
 
-    it "aceita id e vars explícitos, normalizando symbols" do
+    it "accepts explicit id and vars, normalizing symbols" do
       session = sessions.create(id: "s-1", vars: { plan: :pro, nested: { a: 1 } })
 
       expect(session.id).to eq("s-1")
       expect(session.vars).to eq({ "plan" => "pro", "nested" => { "a" => 1 } })
     end
 
-    it "levanta ArgumentError em id duplicado (não sobrescreve)" do
+    it "raises ArgumentError on duplicate id (does not overwrite)" do
       sessions.create(id: "x")
 
       expect { sessions.create(id: "x") }.to raise_error(ArgumentError)
@@ -37,11 +37,11 @@ RSpec.describe Harness::SessionStore do
   end
 
   describe "#find" do
-    it "retorna nil para id inexistente" do
+    it "returns nil for nonexistent id" do
       expect(sessions.find("nope")).to be_nil
     end
 
-    it "faz round-trip create->find com chaves string" do
+    it "round-trips create->find with string keys" do
       created = sessions.create(id: "s-2", vars: { a: 1 })
       found = sessions.find("s-2")
 
@@ -54,7 +54,7 @@ RSpec.describe Harness::SessionStore do
   describe "#append_messages" do
     before { sessions.create(id: "s") }
 
-    it "concatena preservando ordem e avança updated_at" do
+    it "concatenates preserving order and advances updated_at" do
       before_at = sessions.find("s").updated_at
       sessions.append_messages("s", { "role" => "user", "content" => "oi" })
       session = sessions.append_messages("s", { "role" => "assistant", "content" => "olá" })
@@ -64,13 +64,13 @@ RSpec.describe Harness::SessionStore do
       expect(session.updated_at >= before_at).to be(true)
     end
 
-    it "normaliza mensagem com chaves symbol para chaves string" do
+    it "normalizes message with symbol keys to string keys" do
       session = sessions.append_messages("s", { role: :user, content: "oi" })
 
       expect(session.messages.first).to include("role" => "user", "content" => "oi")
     end
 
-    it "carimba 'at' ISO8601 quando ausente e preserva quando presente" do
+    it "stamps 'at' ISO8601 when absent and preserves when present" do
       sessions.append_messages("s", { role: :user, content: "sem at" })
       sessions.append_messages("s", { role: :user, content: "com at", at: "2020-01-01T00:00:00Z" })
       messages = sessions.find("s").messages
@@ -79,7 +79,7 @@ RSpec.describe Harness::SessionStore do
       expect(messages[1]["at"]).to eq("2020-01-01T00:00:00Z")
     end
 
-    it "aceita um Array de mensagens de uma vez" do
+    it "accepts an Array of messages at once" do
       session = sessions.append_messages("s", [
                                             { role: :user, content: "a" },
                                             { role: :assistant, content: "b" }
@@ -88,7 +88,7 @@ RSpec.describe Harness::SessionStore do
       expect(session.messages.size).to eq(2)
     end
 
-    it "levanta NotFoundError em sessão inexistente" do
+    it "raises NotFoundError on nonexistent session" do
       expect { sessions.append_messages("nope", { role: :user }) }
         .to raise_error(Harness::NotFoundError)
     end
@@ -97,50 +97,50 @@ RSpec.describe Harness::SessionStore do
   describe "#update_vars" do
     before { sessions.create(id: "s", vars: { "a" => 1 }) }
 
-    it "faz merge raso e avança updated_at" do
+    it "does a shallow merge and advances updated_at" do
       session = sessions.update_vars("s", { b: 2 })
 
       expect(session.vars).to eq({ "a" => 1, "b" => 2 })
     end
 
-    it "substitui inteiramente o valor de chave existente (merge raso)" do
+    it "entirely replaces the value of an existing key (shallow merge)" do
       sessions.update_vars("s", { "nested" => { "x" => 1 } })
       session = sessions.update_vars("s", { nested: { y: 2 } })
 
       expect(session.vars["nested"]).to eq({ "y" => 2 })
     end
 
-    it "levanta NotFoundError em sessão inexistente" do
+    it "raises NotFoundError on nonexistent session" do
       expect { sessions.update_vars("nope", { a: 1 }) }
         .to raise_error(Harness::NotFoundError)
     end
   end
 
   describe "#delete" do
-    it "retorna true e remove sessão existente" do
+    it "returns true and removes an existing session" do
       sessions.create(id: "s")
 
       expect(sessions.delete("s")).to be(true)
       expect(sessions.find("s")).to be_nil
     end
 
-    it "retorna false para id inexistente (sem exceção)" do
+    it "returns false for nonexistent id (no exception)" do
       expect(sessions.delete("nope")).to be(false)
     end
   end
 
   describe "#each_id" do
-    it "enumera ids sem o prefixo 'session:'" do
+    it "enumerates ids without the 'session:' prefix" do
       %w[a b c].each { |id| sessions.create(id: id) }
 
       expect(sessions.each_id.to_a).to contain_exactly("a", "b", "c")
     end
 
-    it "retorna um Enumerator sem bloco" do
+    it "returns an Enumerator without a block" do
       expect(sessions.each_id).to be_a(Enumerator)
     end
 
-    it "não enxerga chaves de outro scope do backend (isolamento)" do
+    it "does not see keys from another backend scope (isolation)" do
       sessions.create(id: "a")
       backend.set("other-scope", "session:intruso", { "id" => "intruso" })
 
@@ -148,10 +148,10 @@ RSpec.describe Harness::SessionStore do
     end
   end
 
-  describe "propagação de erro do backend (doc 02 §6)" do
-    it "deixa StoreError propagar sem re-embrulhar" do
-      # valor não-JSONable força o StoreError na escrita do backend (C22);
-      # o SessionStore não deve capturar/re-embrulhar (doc 02 §6).
+  describe "backend error propagation (doc 02 §6)" do
+    it "lets StoreError propagate without re-wrapping" do
+      # non-JSONable value forces the StoreError on the backend write (C22);
+      # the SessionStore must not capture/re-wrap (doc 02 §6).
       sessions.create(id: "s")
 
       expect { sessions.update_vars("s", { obj: Object.new }) }
@@ -159,8 +159,8 @@ RSpec.describe Harness::SessionStore do
     end
   end
 
-  describe "smoke contra Stores::SQLite ':memory:'" do
-    it "fluxo create->append->find idêntico ao Memory" do
+  describe "smoke against Stores::SQLite ':memory:'" do
+    it "create->append->find flow identical to Memory" do
       require "sqlite3"
       sqlite = Harness::Stores::SQLite.new(path: ":memory:")
       store = described_class.new(store: sqlite)

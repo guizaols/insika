@@ -3,8 +3,8 @@
 require "spec_helper"
 require "async"
 
-# Integração dos pares de hook restantes (:task, :agent, :tool) no Executor
-# (task 19). Colaboradores fake; chat roteirizado via FakeChat.
+# Integration of the remaining hook pairs (:task, :agent, :tool) in the Executor
+# (task 19). Fake collaborators; chat scripted via FakeChat.
 RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
@@ -37,7 +37,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     end
   end
 
-  it "ordem dos wrappers: before na ida (task->agent), after na volta (agent->task)" do
+  it "wrapper order: before on the way in (task->agent), after on the way back (agent->task)" do
     order = []
     hooks.register(:task, before: ->(s) { order << "task:before"; s }, after: ->(r) { order << "task:after"; r })
     hooks.register(:agent, before: ->(s) { order << "agent:before"; s }, after: ->(r) { order << "agent:after"; r })
@@ -47,7 +47,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(order).to eq(["task:before", "agent:before", "agent:after", "task:after"])
   end
 
-  it "before_task reescreve state.message; o chat recebe a mensagem alterada" do
+  it "before_task rewrites state.message; the chat receives the altered message" do
     hooks.register(:task, before: lambda { |st|
       st.message = "REESCRITO"
       st
@@ -58,8 +58,8 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(chat.asked).to eq("REESCRITO")
   end
 
-  it "before_agent reescreve a mensagem enviada ao chat.ask" do
-    # :agent recebe o TurnState como subject (task 12); before_agent muta message
+  it "before_agent rewrites the message sent to chat.ask" do
+    # :agent receives the TurnState as subject (task 12); before_agent mutates message
     hooks.register(:agent, before: lambda { |st|
       st.message = "DO_AGENT"
       st
@@ -70,7 +70,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(chat.asked).to eq("DO_AGENT")
   end
 
-  it "L6: after_agent que levanta NÃO reexecuta o chat.ask; task :failed" do
+  it "L6: after_agent that raises does NOT re-run chat.ask; task :failed" do
     asks = 0
     chat = FakeChat.new
     chat.script = proc { asks += 1; emit_chunk("x") }
@@ -78,12 +78,12 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
 
     run(build_executor, chat: chat)
 
-    expect(asks).to eq(1) # ask rodou uma vez, não reexecutou
+    expect(asks).to eq(1) # ask ran once, did not re-run
     expect(task_store.find("t").status).to eq(:failed)
     expect(event_stream.types).to include(:task_failed, :error)
   end
 
-  it "before_task que levanta: task :failed, chat nunca construído" do
+  it "before_task that raises: task :failed, chat never built" do
     hooks.register(:task, before: ->(_s) { raise "before_task caiu" })
     executor = build_executor
     expect(executor).not_to receive(:create_chat)
@@ -96,7 +96,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(task_store.find("t").status).to eq(:failed)
   end
 
-  it "par :tool: before/after_tool rodam nos callbacks; eventos preservados" do
+  it "the :tool pair: before/after_tool run in the callbacks; events preserved" do
     seen = []
     hooks.register(:tool, before: ->(tc) { seen << [:before, tc.name]; tc })
     hooks.register(:tool, after: ->(r) { seen << [:after, r.to_s]; r })
@@ -113,7 +113,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(event_stream.types).to include(:tool_call, :tool_result)
   end
 
-  it "after_agent substitui a response; :done carrega o content substituído" do
+  it "after_agent replaces the response; :done carries the substituted content" do
     hooks.register(:agent, after: ->(_r) { FakeChat::Response.new("SUBSTITUÍDO") })
 
     run(build_executor)
@@ -122,7 +122,7 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(done.data[:content]).to eq("SUBSTITUÍDO")
   end
 
-  it "contador de tool calls zera por turno (duas tasks de 2 calls, limite 3)" do
+  it "tool call counter resets per turn (two tasks of 2 calls, limit 3)" do
     profile3 = Harness::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_calls: 3 })
     executor = build_executor
 
@@ -136,12 +136,12 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
         executor.spawn(task_store.find(id), profile: profile3)
         executor.instance_variable_get(:@running)[id]&.wait
       end
-      # 2 calls < limite 3; se o contador acumulasse entre turnos, t2 estouraria
+      # 2 calls < limit 3; if the counter accumulated between turns, t2 would overflow
       expect(task_store.find(id).status).to eq(:completed)
     end
   end
 
-  it "tool_limit: 51ª tool call com max_tool_calls 50 -> TimeoutError(stage :tool_limit) -> :failed" do
+  it "tool_limit: 51st tool call with max_tool_calls 50 -> TimeoutError(stage :tool_limit) -> :failed" do
     fast_profile = Harness::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_calls: 2 })
     chat = FakeChat.new
     chat.script = proc { 3.times { |i| fire_tool_call(name: "t#{i}") } }

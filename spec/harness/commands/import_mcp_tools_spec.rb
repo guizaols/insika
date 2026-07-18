@@ -2,11 +2,11 @@
 
 require "spec_helper"
 
-# Fase 7, Etapa E: Command :import_mcp_tools — recebe o nome da instância MCP,
-# delega ao ingestor (descobre -> ingere) e emite :mcp_tools_imported só com
-# contagens. Relatório por-tool no molde do :import_tools + `instance:`.
+# Phase 7, Stage E: Command :import_mcp_tools — takes the MCP instance name,
+# delegates to the ingestor (discover -> ingest) and emits :mcp_tools_imported with
+# counts only. Per-tool report in the same shape as :import_tools + `instance:`.
 RSpec.describe Harness::Commands::ImportMcpTools do
-  # ingestor duplo: grava o nome ingerido, devolve um relatório fixo.
+  # ingestor double: records the ingested name, returns a fixed report.
   class IngestorSpy
     attr_reader :ingested
 
@@ -21,25 +21,25 @@ RSpec.describe Harness::Commands::ImportMcpTools do
 
   def run(payload) = command.call(Harness::Command.build(:import_mcp_tools, payload, transport: :test))
 
-  it "delega ao ingestor e devolve o relatório + instance" do
+  it "delegates to the ingestor and returns the report + instance" do
     out = run(name: "tavily")
     expect(ingestor.ingested).to eq(["tavily"])
     expect(out).to include(instance: "tavily", created: %w[search extract])
   end
 
-  it "aceita chave string (payload cru do transporte)" do
+  it "accepts a string key (raw transport payload)" do
     out = run("name" => "tavily")
     expect(out[:instance]).to eq("tavily")
   end
 
-  it "emite :mcp_tools_imported só com CONTAGENS + instância" do
+  it "emits :mcp_tools_imported with COUNTS + instance only" do
     run(name: "tavily")
     ev = events.events.last
     expect(ev.type).to eq(:mcp_tools_imported)
     expect(ev.data).to eq(instance: "tavily", created: 2, updated: 0, errors: 0)
   end
 
-  it "name ausente -> ValidationError (não chama o ingestor)" do
+  it "missing name -> ValidationError (does not call the ingestor)" do
     expect { run({}) }.to raise_error(Harness::ValidationError, /name/)
     expect(ingestor.ingested).to be_empty
   end

@@ -40,7 +40,7 @@ module Harness
     def write(name, content, create_only: false)
       key = name.to_s
       current = @cs.get(SCOPE, key)
-      raise Harness::ValidationError, "skill '#{key}' já existe" if create_only && current
+      raise Harness::ValidationError, "skill '#{key}' already exists" if create_only && current
 
       rec = build_record(content.to_s, current)
       @cs.put(SCOPE, key, rec)
@@ -57,8 +57,8 @@ module Harness
     def restore(name, index)
       hist = versions(name)
       i = Integer(index)
-      raise Harness::NotFoundError, "skill '#{name}' não encontrada" unless record(name)
-      raise Harness::ValidationError, "versão #{index} inexistente" if i.negative? || i >= hist.length
+      raise Harness::NotFoundError, "skill '#{name}' not found" unless record(name)
+      raise Harness::ValidationError, "version #{index} does not exist" if i.negative? || i >= hist.length
 
       write(name, hist[i]["content"])
     end

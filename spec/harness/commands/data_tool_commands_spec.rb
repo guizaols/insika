@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Fase 5 Etapa B: Commands de autoria de tool por dados (write/delete/restore).
+# Phase 5 Stage B: data-defined tool authoring commands (write/delete/restore).
 RSpec.describe "data-tool commands" do
   CodeToolStub = Struct.new(:name, :description)
 
@@ -32,26 +32,26 @@ RSpec.describe "data-tool commands" do
   end
 
   describe Harness::Commands::WriteDataTool do
-    it "grava, recarrega overlay+catálogo (hot) e emite :data_tool_written" do
+    it "writes, reloads overlay+catalog (hot) and emits :data_tool_written" do
       res = dispatch(described_class, cep_payload)
       expect(res[:name]).to eq("cep")
-      expect(overlay.names).to include("cep")          # overlay recarregado
-      expect(catalog.all.map(&:name)).to include("cep") # catálogo recarregado
+      expect(overlay.names).to include("cep")          # overlay reloaded
+      expect(catalog.all.map(&:name)).to include("cep") # catalog reloaded
       expect(events.last.type).to eq(:data_tool_written)
       expect(events.last.data).to eq(name: "cep")
     end
 
-    it "recusa nome que colide com tool de código (R3)" do
+    it "refuses a name that collides with a code tool (R3)" do
       expect { dispatch(described_class, cep_payload(name: "menu")) }
-        .to raise_error(Harness::ValidationError, /tool de código/)
+        .to raise_error(Harness::ValidationError, /code tool/)
     end
 
-    it "propaga a validação da definição (delegada ao store/ToolDefinition)" do
+    it "propagates the definition validation (delegated to the store/ToolDefinition)" do
       expect { dispatch(described_class, cep_payload(request: { method: "GET", url: "" })) }
-        .to raise_error(Harness::ValidationError, /url é obrigatória/)
+        .to raise_error(Harness::ValidationError, /url is required/)
     end
 
-    it "não vaza segredo no retorno nem no evento" do
+    it "does not leak the secret in the return value or the event" do
       secret = { name: "api", description: "api", parameters: [],
                  request: { method: "POST", url: "https://api.test/x",
                             headers: { "Authorization" => "Bearer TOPSECRET" } },
@@ -64,7 +64,7 @@ RSpec.describe "data-tool commands" do
   end
 
   describe Harness::Commands::DeleteDataTool do
-    it "remove, recarrega e emite :data_tool_deleted" do
+    it "removes, reloads and emits :data_tool_deleted" do
       dispatch(Harness::Commands::WriteDataTool, cep_payload)
       res = dispatch(described_class, { name: "cep" })
       expect(res).to eq(name: "cep")
@@ -73,14 +73,14 @@ RSpec.describe "data-tool commands" do
       expect(events.last.type).to eq(:data_tool_deleted)
     end
 
-    it "404 se não existia" do
+    it "404 if it did not exist" do
       expect { dispatch(described_class, { name: "fantasma" }) }
         .to raise_error(Harness::NotFoundError)
     end
   end
 
   describe Harness::Commands::RestoreDataTool do
-    it "restaura versão antiga, recarrega e emite :data_tool_restored" do
+    it "restores an old version, reloads and emits :data_tool_restored" do
       dispatch(Harness::Commands::WriteDataTool, cep_payload(description: "v1"))
       dispatch(Harness::Commands::WriteDataTool, cep_payload(description: "v2"))
       res = dispatch(described_class, { name: "cep", index: 0 })

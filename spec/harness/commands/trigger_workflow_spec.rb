@@ -32,7 +32,7 @@ RSpec.describe Harness::Commands::TriggerWorkflow do
 
   def call(pl) = handler.call(Harness::Command.build(:trigger_workflow, pl))
 
-  it "caminho válido: cria Task :queued com command persistido, spawna, retorna {task_id:}" do
+  it "valid path: creates a :queued Task with a persisted command, spawns, returns {task_id:}" do
     result = call(payload(session_id: nil))
     expect(result).to match({ task_id: kind_of(String) })
     task = task_store.find(result[:task_id])
@@ -41,36 +41,36 @@ RSpec.describe Harness::Commands::TriggerWorkflow do
     expect(executor.spawned.size).to eq(1)
   end
 
-  it "workflow ausente/vazio -> ValidationError, nenhuma Task" do
+  it "missing/empty workflow -> ValidationError, no Task" do
     [payload(workflow: ""), payload(workflow: nil)].each do |pl|
       expect { call(pl) }.to raise_error(Harness::ValidationError)
     end
     expect(task_store.each_id.to_a).to be_empty
   end
 
-  it "agent inexistente -> NotFoundError" do
+  it "nonexistent agent -> NotFoundError" do
     expect { call(payload(agent: "nope")) }.to raise_error(Harness::NotFoundError)
   end
 
-  it "input não-Hash -> ValidationError" do
+  it "non-Hash input -> ValidationError" do
     expect { call(payload(input: "x")) }.to raise_error(Harness::ValidationError)
   end
 
-  it "session inexistente -> NotFoundError síncrono" do
+  it "nonexistent session -> synchronous NotFoundError" do
     expect { call(payload(session_id: "ghost")) }.to raise_error(Harness::NotFoundError)
     expect(task_store.each_id.to_a).to be_empty
   end
 
-  it "workflow fora do Registry -> NotFoundError, nenhuma Task" do
+  it "workflow not in the Registry -> NotFoundError, no Task" do
     expect { call(payload(workflow: "inexistente")) }.to raise_error(Harness::NotFoundError)
     expect(task_store.each_id.to_a).to be_empty
   end
 
-  it "chave desconhecida no payload -> ValidationError (validação estrita)" do
-    expect { call(payload.merge(foo: 1)) }.to raise_error(Harness::ValidationError, /desconhecida/)
+  it "unknown key in the payload -> ValidationError (strict validation)" do
+    expect { call(payload.merge(foo: 1)) }.to raise_error(Harness::ValidationError, /unknown/)
   end
 
-  it "input default {} quando ausente" do
+  it "input defaults to {} when absent" do
     result = call({ workflow: "flow", agent: "sales" })
     expect(task_store.find(result[:task_id]).status).to eq(:queued)
   end

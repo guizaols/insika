@@ -34,7 +34,7 @@ module Harness
         validate_history!(p[:history]) if p[:history]
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
-            (raise Harness::NotFoundError, "sessão '#{p[:session_id]}' não encontrada")
+            (raise Harness::NotFoundError, "session '#{p[:session_id]}' not found")
         end
 
         # command.to_h persists the entire Command in the Task;

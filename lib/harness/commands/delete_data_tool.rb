@@ -18,7 +18,7 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
         raise Harness::ValidationError, "name is required" if name.nil?
-        raise Harness::NotFoundError, "tool '#{name}' não encontrada" unless @tool_store.delete(name)
+        raise Harness::NotFoundError, "tool '#{name}' not found" unless @tool_store.delete(name)
 
         @registry.reload
         @tool_catalog.reload

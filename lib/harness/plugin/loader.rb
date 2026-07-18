@@ -96,7 +96,7 @@ module Harness
         return nil unless manifest.is_a?(Hash)
 
         if File.basename(file) == "plugin.yml"
-          warn "[plugin #{manifest['id']}] plugin.yml está deprecado — renomeie para harness.plugin.yml"
+          warn "[plugin #{manifest['id']}] plugin.yml is deprecated — rename to harness.plugin.yml"
         end
         manifest
       rescue StandardError => e
@@ -113,7 +113,7 @@ module Harness
         errors = ConfigSchema.validate(schema, config)
         return config if errors.empty?
 
-        warn "[plugin #{id}] config inválida:\n#{errors.map { |e| "  - #{e}" }.join("\n")}"
+        warn "[plugin #{id}] invalid config:\n#{errors.map { |e| "  - #{e}" }.join("\n")}"
         :skip
       end
 
@@ -147,7 +147,7 @@ module Harness
         api.commit!
         true
       rescue StandardError => e
-        warn "[plugin #{discovered.id}] falha ao carregar: #{e.class}: #{e.message}\n" \
+        warn "[plugin #{discovered.id}] failed to load: #{e.class}: #{e.message}\n" \
              "#{Array(e.backtrace).first(5).join("\n")}"
         rollback(discovered.id)
         false
@@ -189,7 +189,7 @@ module Harness
         def register_tool(name, klass = nil, &block)
           name = name.to_s
           unless @tool_names.include?(name)
-            warn "[plugin #{@plugin_id}] tool '#{name}' não declarada em contracts.tools — ignorada"
+            warn "[plugin #{@plugin_id}] tool '#{name}' not declared in contracts.tools — ignored"
             return
           end
           meta = @tool_metadata[name] || {}
@@ -201,7 +201,7 @@ module Harness
         def register_workflow(name, callable = nil, &block)
           name = name.to_s
           unless @workflow_names.include?(name)
-            warn "[plugin #{@plugin_id}] workflow '#{name}' não declarado em contracts.workflows — ignorado"
+            warn "[plugin #{@plugin_id}] workflow '#{name}' not declared in contracts.workflows — ignored"
             return
           end
           @registries[:workflows].register(name, callable, plugin: @plugin_id, &block)
@@ -217,12 +217,12 @@ module Harness
         def register_capability(name, tool: nil, workflow: nil, priority: nil, available: nil)
           name = name.to_s
           unless @capability_names.include?(name)
-            warn "[plugin #{@plugin_id}] capability '#{name}' não declarada em contracts.capabilities — ignorada"
+            warn "[plugin #{@plugin_id}] capability '#{name}' not declared in contracts.capabilities — ignored"
             return
           end
 
           if tool && workflow
-            warn "[plugin #{@plugin_id}] capability '#{name}': informe apenas tool: OU workflow:, não os dois — ignorada"
+            warn "[plugin #{@plugin_id}] capability '#{name}': provide only tool: OR workflow:, not both — ignored"
             return
           end
 
@@ -237,8 +237,8 @@ module Harness
           end
 
           if kind == :workflow
-            warn "[plugin #{@plugin_id}] capability '#{name}' (kind: workflow) registrada sem consumidor " \
-                 "nesta fatia — exposição ao agente é follow-up (P2B-01 L5)"
+            warn "[plugin #{@plugin_id}] capability '#{name}' (kind: workflow) registered without a consumer " \
+                 "in this slice — agent exposure is follow-up (P2B-01 L5)"
           end
 
           @staged_capabilities << { capability: name, impl_name: impl_name, kind: kind,
@@ -292,7 +292,7 @@ module Harness
 
           errors = []
           unknown = schema.keys - KEYWORDS
-          errors << "#{path}: keyword(s) não suportada(s): #{unknown.join(', ')}" unless unknown.empty?
+          errors << "#{path}: unsupported keyword(s): #{unknown.join(', ')}" unless unknown.empty?
           errors.concat(check_type(schema, value, path))
           errors.concat(check_enum(schema, value, path))
           errors.concat(check_object(schema, value, path))
@@ -327,10 +327,10 @@ module Harness
           errors = []
           props.each { |k, sub| errors.concat(validate(sub, value[k], "#{path}.#{k}")) if value.key?(k) }
           Array(schema["required"]).each do |req|
-            errors << "#{path}: chave obrigatória ausente: #{req}" unless value.key?(req)
+            errors << "#{path}: missing required key: #{req}" unless value.key?(req)
           end
           if schema["additionalProperties"] == false && !(extra = value.keys - props.keys).empty?
-            errors << "#{path}: chaves não permitidas: #{extra.join(', ')}"
+            errors << "#{path}: keys not allowed: #{extra.join(', ')}"
           end
           errors
         end

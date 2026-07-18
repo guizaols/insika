@@ -2,16 +2,17 @@
 
 require "spec_helper"
 require "async"
-# create_chat é stubado no smoke -> requeremos os builtins explícito.
+# create_chat is stubbed in the smoke -> we require the builtins explicitly.
 require "harness/tools/load_skill"
 require "harness/tools/tool_search"
 require "harness/tools/remember"
 
-# Smoke E2E da fatia C (P2C): CommandBus + SendMessage + Executor + MemoryStore +
-# ContextBuilder REAIS, só o chat mockado. Usa ContextBuilder real (com o Memory
-# provider) — o FakeContextBuilder NÃO roda providers, então daria falso-verde no
-# critério de leitura cross-session. Tenant vem do Command (prova o threading D6).
-RSpec.describe "smoke E2E: memória cross-session (fatia C)", :smoke do
+# E2E smoke for slice C (P2C): CommandBus + SendMessage + Executor + MemoryStore +
+# ContextBuilder REAL, only the chat mocked. Uses the real ContextBuilder (with the
+# Memory provider) — FakeContextBuilder does NOT run providers, so it would give a
+# false green on the cross-session read criterion. Tenant comes from the Command
+# (proves the D6 threading).
+RSpec.describe "smoke E2E: cross-session memory (slice C)", :smoke do
   let(:backend)          { Harness::Stores::Memory.new }
   let(:session_store)    { Harness::SessionStore.new(store: backend) }
   let(:task_store)       { Harness::TaskStore.new(store: backend) }
@@ -19,7 +20,7 @@ RSpec.describe "smoke E2E: memória cross-session (fatia C)", :smoke do
   let(:event_stream)     { SpyEventStream.new }
   let(:memory)           { Harness::MemoryStore.new(store: backend) }
 
-  # ContextBuilder REAL com o Memory provider (+ Prompt p/ a identidade base).
+  # REAL ContextBuilder with the Memory provider (+ Prompt for the base identity).
   let(:context_builder) do
     providers = [
       Harness::Context::Providers::Prompt.new(base: "", files: [], catalog: nil),
@@ -70,7 +71,7 @@ RSpec.describe "smoke E2E: memória cross-session (fatia C)", :smoke do
     [task_store.find(result[:task_id]), chat]
   end
 
-  it "sessão 1: agente grava um fato via remember; :memory_written; persiste no tenant" do
+  it "session 1: agent writes a fact via remember; :memory_written; persists under the tenant" do
     chat = FakeChat.new
     chat.script = proc do
       tools.find { |t| t.name.to_s == "remember" }.execute(value: "premium", key: "plano")
@@ -84,21 +85,21 @@ RSpec.describe "smoke E2E: memória cross-session (fatia C)", :smoke do
     expect(memory.get_fact(tenant: "acme", key: "plano").value).to eq("premium")
   end
 
-  it "sessão 2 (mesmo tenant): o Memory provider recupera o fato no <memory> do system" do
-    memory.put_fact(tenant: "acme", key: "plano", value: "premium") # gravado numa sessão anterior
+  it "session 2 (same tenant): the Memory provider recovers the fact in the system's <memory>" do
+    memory.put_fact(tenant: "acme", key: "plano", value: "premium") # written in a previous session
 
     _task, chat = run_turn(agent: "mem_on")
     expect(chat.instructions).to include("<memory>", %(<fact key="plano">premium</fact>))
   end
 
-  it "note (remember sem key) aparece no contexto da sessão seguinte" do
+  it "note (remember without key) appears in the next session's context" do
     memory.add_note(tenant: "acme", text: "cliente prefere email", at: "2026-01-01T00:00:00Z")
 
     _task, chat = run_turn(agent: "mem_on")
     expect(chat.instructions).to include("<note>cliente prefere email</note>")
   end
 
-  it "paridade: agente memory:nil não recebe <memory> nem a tool remember" do
+  it "parity: a memory:nil agent gets neither <memory> nor the remember tool" do
     memory.put_fact(tenant: "acme", key: "plano", value: "premium")
     seen = nil
     chat = FakeChat.new

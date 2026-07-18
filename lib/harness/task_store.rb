@@ -45,7 +45,7 @@ module Harness
     # ArgumentError if the id already exists.
     def create(command:, session_id: nil, id: SecureRandom.uuid)
       key = key_for(id)
-      raise ArgumentError, "task já existe: #{id}" unless @store.get(SCOPE, key).nil?
+      raise ArgumentError, "task already exists: #{id}" unless @store.get(SCOPE, key).nil?
 
       now = timestamp
       record = {
@@ -93,7 +93,7 @@ module Harness
     # open (a double attempt is a bug — one owner per task). Append-only.
     def begin_execution(id)
       record = fetch!(id)
-      raise ArgumentError, "já existe uma Execution aberta na task #{id}" if open_execution(record)
+      raise ArgumentError, "an open Execution already exists on task #{id}" if open_execution(record)
 
       record["executions"] += [{
         "attempt" => record["executions"].size + 1,

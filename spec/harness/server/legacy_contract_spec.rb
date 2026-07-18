@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require_relative "../../../server/app"
 
-# Regressão do contrato da Fase 0 (doc 07 §7): POST /agent/messages segue
+# Phase 0 contract regression (doc 07 §7): POST /agent/messages still
 # byte-compatível — mesma sequência de tipos de evento (:content* -> :done),
 # headers idênticos e traduzindo para o Command :send_message.
 RSpec.describe "POST /agent/messages (contrato legado Fase 0)" do
@@ -24,7 +24,7 @@ RSpec.describe "POST /agent/messages (contrato legado Fase 0)" do
     app.call(Rack::MockRequest.env_for("/agent/messages", method: "POST", input: body))
   end
 
-  # Drena um corpo SSEBody (streaming body do Rack 3) dentro de um reactor e
+  # Drains an SSEBody body (Rack 3 streaming body) inside a reactor and
   # devolve os frames escritos no stream.
   def drain_sse(body)
     fs = SSEStreamDouble.new
@@ -52,7 +52,7 @@ RSpec.describe "POST /agent/messages (contrato legado Fase 0)" do
     expect(event_types(drain_sse(body))).to eq(%w[content content done])
   end
 
-  it "aplica o default de agente 'sales' quando ausente" do
+  it "applies the 'sales' agent default when missing" do
     bus = ServerBusDouble.new { { task_id: "t-1" } }
     app = build_app(bus: bus, event_stream: ServerEventStreamDouble.new([event(:done)]))
 

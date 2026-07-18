@@ -18,7 +18,7 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         patch = p[:patch]
         raise Harness::ValidationError, "patch must be an object" unless patch.nil? || patch.is_a?(Hash)
-        raise Harness::ValidationError, "patch vazio" if patch.nil? || patch.empty?
+        raise Harness::ValidationError, "empty patch" if patch.nil? || patch.empty?
 
         settings = @settings_store.update(patch)
         @event_stream.emit(Harness::Event.new(

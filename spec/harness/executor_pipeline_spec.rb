@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require "async/condition"
 
-RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
+RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
@@ -30,7 +30,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     task_store.create(command: command.to_h, session_id: session_id, id: "t")
   end
 
-  # Roda o turno até o fim (o fiber completa síncrono com FakeChat não-suspenso).
+  # Runs the turn to completion (the fiber completes synchronously with a non-suspended FakeChat).
   def run_turn(executor, task, fake_chat: FakeChat.new)
     allow(executor).to receive(:create_chat).and_return(fake_chat)
     Sync do
@@ -39,10 +39,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "usage de tokens no evento terminal (Fase 6, observabilidade)" do
+  describe "token usage in the terminal event (Phase 6, observability)" do
     TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
 
-    it "captura input/output/total/model da resposta -> :done e :task_completed" do
+    it "captures input/output/total/model from the response -> :done and :task_completed" do
       session_store.create(id: "s1")
       executor = build_executor
       chat = FakeChat.new
@@ -56,17 +56,17 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       end
     end
 
-    it "resposta sem contagem de tokens -> usage nil (não inventa zeros)" do
+    it "response without token counts -> usage nil (does not invent zeros)" do
       session_store.create(id: "s1")
       executor = build_executor
-      run_turn(executor, make_task) # FakeChat::Response = Struct.new(:content), sem tokens
+      run_turn(executor, make_task) # FakeChat::Response = Struct.new(:content), no tokens
 
       expect(event_stream.events.find { |e| e.type == :task_completed }.data[:usage]).to be_nil
     end
   end
 
-  describe "caminho feliz com sessão" do
-    it "emite os estágios em ordem e persiste (estágio 8 na ordem L4)" do
+  describe "happy path with session" do
+    it "emits the stages in order and persists (stage 8 in L4 order)" do
       session_store.create(id: "s1")
       executor = build_executor
       order = []
@@ -79,30 +79,30 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
 
       run_turn(executor, make_task)
 
-      # 1º :checkpoint = inicial do turno (doc 02 §3, resumabilidade de crash);
-      # depois a ordem do estágio 8: checkpoint -> session -> finish -> transition
+      # 1st :checkpoint = turn's initial one (doc 02 §3, crash resumability);
+      # then stage 8's order: checkpoint -> session -> finish -> transition
       expect(order).to eq([[:transition, :running], :checkpoint, :checkpoint, :session, :finish,
                            [:transition, :completed]])
-      # eventos do turno
+      # turn events
       expect(event_stream.types).to eq(
         %i[task_started content checkpoint_created done task_completed]
       )
-      # estado final
+      # final state
       task = task_store.find("t")
       expect(task.status).to eq(:completed)
       expect(task.executions.last.outcome).to eq("completed")
-      # checkpoint do turno 2 com transcript + agent_id
+      # turn 2 checkpoint with transcript + agent_id
       cp = checkpoint_store.latest("t")
       expect(cp.turn).to eq(2)
       expect(cp.agent_id).to eq("sales")
       expect(cp.messages.map { |m| m["role"] }).to eq(%w[user assistant])
-      # sessão recebeu as 2 mensagens novas
+      # session received the 2 new messages
       expect(session_store.find("s1").messages.map { |m| m["content"] }).to eq(["oi", "final"])
     end
   end
 
-  describe "run_serial (serialização de sessão, P2-03)" do
-    it "erro de spawn marca a task :failed (não orfana :queued sem estado terminal)" do
+  describe "run_serial (session serialization, P2-03)" do
+    it "spawn error marks the task :failed (does not orphan :queued without a terminal state)" do
       executor = build_executor
       task = make_task # status :queued
       allow(executor).to receive(:spawn).and_raise(Harness::Error, "spawn falhou")
@@ -114,8 +114,8 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "one-shot (sem sessão)" do
-    it "não toca a sessão mas grava checkpoint" do
+  describe "one-shot (no session)" do
+    it "does not touch the session but writes a checkpoint" do
       executor = build_executor
       expect(session_store).not_to receive(:append_messages)
 
@@ -127,21 +127,21 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
   end
 
   describe "hooks around" do
-    it "o Executor envolve :task (externo) e :agent (estágio 6); :prompt fica no Builder" do
+    it "the Executor wraps :task (outer) and :agent (stage 6); :prompt stays in the Builder" do
       session_store.create(id: "s1")
       hooks = NullHooks.new
       executor = build_executor(hooks: hooks)
 
       run_turn(executor, make_task)
 
-      # :task é o mais externo, :agent no estágio 6. :prompt é do ContextBuilder
-      # (não do Executor — evita double-wrap). FakeContextBuilder não usa hooks.
+      # :task is the outermost, :agent at stage 6. :prompt belongs to the ContextBuilder
+      # (not the Executor — avoids double-wrap). FakeContextBuilder does not use hooks.
       expect(hooks.pairs).to eq(%i[task agent])
     end
   end
 
-  describe "PolicyDenied no estágio 3" do
-    it "emite :policy_denied + :task_failed + :error e nunca constrói o chat" do
+  describe "PolicyDenied at stage 3" do
+    it "emits :policy_denied + :task_failed + :error and never builds the chat" do
       session_store.create(id: "s1")
       executor = build_executor(policy_engine: DenyAllPolicyEngine.new)
       expect(executor).not_to receive(:create_chat)
@@ -159,7 +159,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
   end
 
   describe "middleware halt" do
-    it "falha o turno com halt_reason e nunca constrói o chat" do
+    it "fails the turn with halt_reason and never builds the chat" do
       session_store.create(id: "s1")
       executor = build_executor(middleware: HaltingMiddleware.new)
       expect(executor).not_to receive(:create_chat)
@@ -175,8 +175,8 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "MiddlewareStack real (task 18)" do
-    it "elo que curto-circuita com halt_reason -> task :failed, chat nunca construído" do
+  describe "real MiddlewareStack (task 18)" do
+    it "link that short-circuits with halt_reason -> task :failed, chat never built" do
       session_store.create(id: "s1")
       halting = Class.new(Harness::Middleware) do
         def call(state, &_nxt) = (state.halt_reason = "rate limit")
@@ -195,10 +195,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       expect(task.executions.last.error["message"]).to include("rate limit")
     end
 
-    it "elo que curto-circuita SEM halt_reason (edge case 4) -> falha genérica" do
+    it "link that short-circuits WITHOUT halt_reason (edge case 4) -> generic failure" do
       session_store.create(id: "s1")
       silent = Class.new(Harness::Middleware) do
-        def call(_state, &_nxt) = nil # não chama nxt, não seta halt_reason
+        def call(_state, &_nxt) = nil # does not call nxt, does not set halt_reason
       end.new
       executor = build_executor(middleware: Harness::MiddlewareStack.new([silent]))
 
@@ -214,7 +214,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       expect(task.executions.last.error["message"]).to include("sem halt_reason")
     end
 
-    it "stack vazia real: turno completa normalmente" do
+    it "real empty stack: turn completes normally" do
       session_store.create(id: "s1")
       executor = build_executor(middleware: Harness::MiddlewareStack.new([]))
 
@@ -224,8 +224,8 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "captura única" do
-    it "ContextError -> task :failed com stage :context, fiber não vaza" do
+  describe "single capture" do
+    it "ContextError -> task :failed with stage :context, fiber does not leak" do
       session_store.create(id: "s1")
       executor = build_executor(context_builder: RaisingContextBuilder.new)
 
@@ -242,7 +242,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       expect(event_stream.types).to include(:task_failed, :error)
     end
 
-    it "StoreError no estágio 8 -> :failed stage :persistence + :error" do
+    it "StoreError at stage 8 -> :failed stage :persistence + :error" do
       session_store.create(id: "s1")
       executor = build_executor
       allow(checkpoint_store).to receive(:save).and_raise(Harness::StoreError, "disco cheio")
@@ -257,12 +257,12 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
   end
 
   describe "turn timeout (D4, via with_timeout)" do
-    it "estoura -> :failed com stage :turn" do
+    it "expires -> :failed with stage :turn" do
       session_store.create(id: "s1")
       fast = Harness::AgentProfile.build(id: "sales", model: "gpt", limits: { turn_timeout: 0.05 })
       executor = build_executor
       slow_chat = FakeChat.new
-      slow_chat.script = proc { Async::Task.current.sleep(1) } # cede o fiber além do timeout
+      slow_chat.script = proc { Async::Task.current.sleep(1) } # yields the fiber beyond the timeout
       allow(executor).to receive(:create_chat).and_return(slow_chat)
 
       Sync do
@@ -276,8 +276,8 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "tool timeout e side-effect (ToolEnvelope)" do
-    # profile do state com timeouts curtos (Data é frozen: construir, não stubar)
+  describe "tool timeout and side-effect (ToolEnvelope)" do
+    # state profile with short timeouts (Data is frozen: build it, don't stub)
     let(:fast_profile) do
       Harness::AgentProfile.build(id: "s", model: "m", limits: { tool_timeout: 0.05 })
     end
@@ -286,7 +286,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
                              profile: fast_profile, turn: 1, message: "oi")
     end
 
-    it "tool que estoura devolve {error:} ao modelo (turno segue)" do
+    it "tool that times out returns {error:} to the model (turn continues)" do
       slow_tool = Class.new do
         def name = "lookup"
         def call(_args)
@@ -299,10 +299,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
 
       result = Sync { wrapped.first.call({}) }
 
-      expect(result).to eq({ error: "TimeoutError: tool excedeu 0.05s" })
+      expect(result).to eq({ error: "TimeoutError: tool exceeded 0.05s" })
     end
 
-    it "registra side-effect com o tool_call_id corrente ANTES do resultado voltar" do
+    it "records the side-effect with the current tool_call_id BEFORE the result returns" do
       fast_tool = Class.new do
         def name = "charge"
         def call(_args) = "ok"
@@ -317,13 +317,13 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "turn timeout enquanto DENTRO de uma tool (Finding 1: não pode ser engolido)" do
-    it "o timeout de turno vence e falha com stage :turn (não vira {error} de tool)" do
+  describe "turn timeout while INSIDE a tool (Finding 1: must not be swallowed)" do
+    it "the turn timeout wins and fails with stage :turn (does not become a tool {error})" do
       session_store.create(id: "s1")
       fast = Harness::AgentProfile.build(id: "sales", model: "gpt",
                                          limits: { turn_timeout: 0.05, tool_timeout: 60 })
-      # tool lenta (dentro do tool_timeout de 60s) invocada durante o estágio 6;
-      # o turn_timeout (0.05s) estoura ENQUANTO o fiber está dentro da tool.
+      # slow tool (within the 60s tool_timeout) invoked during stage 6;
+      # the turn_timeout (0.05s) expires WHILE the fiber is inside the tool.
       slow_tool = Class.new do
         def name = "lookup"
         def call(_args)
@@ -332,7 +332,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
         end
       end.new
       chat = FakeChat.new
-      chat.script = proc { @tools.first.call({}) } # invoca a tool envelopada (estágio 6)
+      chat.script = proc { @tools.first.call({}) } # invokes the enveloped tool (stage 6)
       executor = build_executor(policy_engine: NullPolicyEngine.new(allowed_tools: [slow_tool]))
       allow(executor).to receive(:create_chat).and_return(chat)
 
@@ -347,8 +347,8 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
     end
   end
 
-  describe "falha de cleanup APÓS transition(:completed) (Finding 2: não vaza do fiber)" do
-    it "prune falhando não re-falha o turno; task fica :completed e nada vaza" do
+  describe "cleanup failure AFTER transition(:completed) (Finding 2: does not leak from the fiber)" do
+    it "a failing prune does not re-fail the turn; task stays :completed and nothing leaks" do
       session_store.create(id: "s1")
       executor = build_executor
       allow(checkpoint_store).to receive(:prune).and_raise(Harness::StoreError, "prune caiu")
@@ -356,13 +356,13 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       expect { run_turn(executor, make_task) }.not_to raise_error
 
       task = task_store.find("t")
-      expect(task.status).to eq(:completed) # durabilidade preservada
+      expect(task.status).to eq(:completed) # durability preserved
       expect(event_stream.types).to include(:done, :task_completed)
     end
   end
 
   describe "resume path" do
-    # Monta estado pós-crash (task running, execution aberta) + checkpoint.
+    # Builds post-crash state (task running, open execution) + checkpoint.
     def seed_crashed(turn:, messages: [], side_effect_id: nil)
       task = make_task
       task_store.begin_execution("t")
@@ -374,7 +374,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       [task, cp]
     end
 
-    it "reexecuta o turno do checkpoint, abre nova Execution e salva o próximo turno" do
+    it "re-executes the turn from the checkpoint, opens a new Execution and saves the next turn" do
       session_store.create(id: "s1")
       executor = build_executor
       task, cp = seed_crashed(turn: 3, messages: [{ "role" => "user", "content" => "anterior" }])
@@ -388,19 +388,19 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
 
       stored = task_store.find("t")
       expect(stored.status).to eq(:completed)
-      expect(stored.executions.size).to eq(2) # attempt 1 (interrupted) preservado + attempt 2
+      expect(stored.executions.size).to eq(2) # attempt 1 (interrupted) preserved + attempt 2
       expect(stored.executions.first.outcome).to eq("interrupted")
-      expect(checkpoint_store.latest("t").turn).to eq(4) # turno 3 + 1
-      # histórico do checkpoint (precedência doc 04) foi semeado no chat
+      expect(checkpoint_store.latest("t").turn).to eq(4) # turn 3 + 1
+      # checkpoint history (precedence doc 04) was seeded into the chat
       expect(fake.messages.map { |m| m[:content] }).to eq(["anterior"])
     end
 
-    it "pula a tool call já concluída (id no skip set) e executa uma id nova" do
+    it "skips the already-completed tool call (id in the skip set) and executes a new id" do
       spy = Class.new do
         attr_reader :calls
 
         def initialize = (@calls = 0)
-        def name = "enviar"
+        def name = "send"
         def call(_args) = (@calls += 1) && "ok"
       end.new
       session_store.create(id: "s1")
@@ -408,10 +408,10 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       task, cp = seed_crashed(turn: 1, side_effect_id: "call_done")
       fake = FakeChat.new
       fake.script = proc do
-        fire_tool_call(name: "enviar", id: "call_done")
+        fire_tool_call(name: "send", id: "call_done")
         r1 = @tools.first.call({})
         fire_tool_result(r1)
-        fire_tool_call(name: "enviar", id: "call_new")
+        fire_tool_call(name: "send", id: "call_new")
         r2 = @tools.first.call({})
         fire_tool_result(r2)
       end
@@ -422,56 +422,56 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
         executor.instance_variable_get(:@running)["t"]&.wait
       end
 
-      # só a call nova (call_new) executou; call_done foi pulada (marcador)
+      # only the new call (call_new) executed; call_done was skipped (marker)
       expect(spy.calls).to eq(1)
       results = event_stream.events.select { |e| e.type == :tool_result }.map { |e| e.data[:result] }
       expect(results.first).to include("already_executed")
     end
   end
 
-  describe "cancel na fronteira" do
-    it "-> :cancelled; checkpoint anterior intacto; nenhum evento após :task_cancelled" do
+  describe "cancel on the boundary" do
+    it "-> :cancelled; previous checkpoint intact; no event after :task_cancelled" do
       session_store.create(id: "s1")
       executor = build_executor
       gate = Async::Condition.new
       chat = FakeChat.new
-      chat.script = proc { gate.wait } # cede o fiber no estágio 6
+      chat.script = proc { gate.wait } # yields the fiber at stage 6
       allow(executor).to receive(:create_chat).and_return(chat)
 
       Sync do
         executor.spawn(make_task, profile: profile)
         actor = executor.instance_variable_get(:@running)["t"]
-        executor.cancel("t") # posta :cancel enquanto o ask espera
-        gate.signal # ask retorna; próximo drain (estágio 8) vê o cancel
+        executor.cancel("t") # posts :cancel while the ask waits
+        gate.signal # ask returns; next drain (stage 8) sees the cancel
         actor.wait
       end
 
       task = task_store.find("t")
       expect(task.status).to eq(:cancelled)
-      # o checkpoint INICIAL do turno (turn 1) foi gravado no começo do turno;
-      # o cancel ocorreu antes do estágio 8, então NÃO há checkpoint de conclusão
-      # (turn 2) — o turno não avançou (uma task :cancelled é terminal, o Recovery
-      # não a retoma).
+      # the turn's INITIAL checkpoint (turn 1) was written at the start of the turn;
+      # the cancel happened before stage 8, so there is NO completion checkpoint
+      # (turn 2) — the turn did not advance (a :cancelled task is terminal, Recovery
+      # does not resume it).
       expect(checkpoint_store.latest("t").turn).to eq(1)
-      # :task_cancelled é o penúltimo; só :error (compat) vem depois
+      # :task_cancelled is next-to-last; only :error (compat) comes after
       expect(event_stream.types.last(2)).to eq(%i[task_cancelled error])
     end
   end
 
-  # L4 (RFC-0001 princípio: a execução pertence ao RUNTIME, não à conexão). Sob
-  # HTTP o spawn roda no fiber da request; o supervisor injetado desacopla o
-  # turno dela para sobreviver a disconnect.
-  describe "posse do fiber do turno (supervisor)" do
+  # L4 (RFC-0001 principle: execution belongs to the RUNTIME, not the connection). Under
+  # HTTP the spawn runs in the request's fiber; the injected supervisor decouples the
+  # turn from it to survive a disconnect.
+  describe "ownership of the turn's fiber (supervisor)" do
     def blocking_executor(gate)
       executor = build_executor
       chat = FakeChat.new
-      chat.script = proc { gate.wait } # trava no estágio 6 até liberar
+      chat.script = proc { gate.wait } # blocks at stage 6 until released
       allow(executor).to receive(:create_chat).and_return(chat)
       executor
     end
 
-    # Poll cooperativo (sem janela fixa — robusto no CI): cede o fiber até a
-    # condição virar true ou estourar ~2s.
+    # Cooperative poll (no fixed window — robust in CI): yields the fiber until the
+    # condition becomes true or ~2s elapses.
     def poll_until(top)
       200.times do
         return true if yield
@@ -481,32 +481,32 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
       yield
     end
 
-    it "supervised: o turno sobrevive ao stop do fiber da request e conclui" do
+    it "supervised: the turn survives the stop of the request's fiber and completes" do
       session_store.create(id: "s1")
       gate = Async::Condition.new
       executor = blocking_executor(gate)
-      executor.supervised = true # arm de serving (o supervisor é criado lazy)
+      executor.supervised = true # serving arm (the supervisor is created lazily)
 
       Sync do |top|
         request = top.async do |req|
           executor.spawn(make_task, profile: profile)
-          req.sleep(3600) # a request "segura a conexão" (ex.: SSE)
+          req.sleep(3600) # the request "holds the connection" (e.g., SSE)
         end
         expect(poll_until(top) { executor.running?("t") }).to be(true)
         actor = executor.instance_variable_get(:@running)["t"]
 
-        request.stop # disconnect do cliente: mata a subárvore da request
-        top.sleep(0.05) # dá ticks p/ o cancelamento propagar, SE fosse filho
-        expect(executor.running?("t")).to be(true) # turno NÃO foi cancelado (L4)
+        request.stop # client disconnect: kills the request's subtree
+        top.sleep(0.05) # gives ticks for the cancellation to propagate, IF it were a child
+        expect(executor.running?("t")).to be(true) # turn was NOT cancelled (L4)
 
-        gate.signal      # libera o estágio 6
-        actor.wait       # conclusão determinística (sem janela fixa)
+        gate.signal      # releases stage 6
+        actor.wait       # deterministic completion (no fixed window)
         expect(task_store.find("t").status).to eq(:completed)
-        executor.instance_variable_get(:@supervisor)&.stop # deixa o Sync sair
+        executor.instance_variable_get(:@supervisor)&.stop # lets the Sync exit
       end
     end
 
-    it "não-supervised (default): o turno é filho da request e MORRE com ela" do
+    it "non-supervised (default): the turn is a child of the request and DIES with it" do
       session_store.create(id: "s1")
       gate = Async::Condition.new
       executor = blocking_executor(gate)
@@ -518,7 +518,7 @@ RSpec.describe "Harness::Executor pipeline (estágios 2-9)" do
         end
         expect(poll_until(top) { executor.running?("t") }).to be(true)
 
-        request.stop # sem supervisor, o turno é filho da request -> cancelado
+        request.stop # without a supervisor, the turn is a child of the request -> cancelled
         expect(poll_until(top) { !executor.running?("t") }).to be(true)
       end
     end

@@ -3,10 +3,10 @@
 require "spec_helper"
 require_relative "../../../server/app"
 
-# /admin read-only através do Server::App (auth + CORS + delegação exercitados
-# juntos). Stores/catálogos/registries duplos; token correto no header.
+# /admin read-only through Server::App (auth + CORS + delegation exercised
+# together). Double stores/catalogs/registries; correct token in the header.
 RSpec.describe Harness::Server::Admin::App do
-  # --- Duplos de leitura -------------------------------------------------
+  # --- Read doubles -------------------------------------------------
   AdminStore = Struct.new(:records) do
     def each_id(&blk) = records.keys.each(&blk)
     def find(id) = records[id]
@@ -62,7 +62,7 @@ RSpec.describe Harness::Server::Admin::App do
   def body_of(resp) = resp.join
 
   describe "auth -> HTTP (doc 07 §6)" do
-    it "sem token configurado -> 503 admin disabled" do
+    it "no token configured -> 503 admin disabled" do
       status, _h, resp = call(build_app(admin_token: nil), "GET", "/admin")
       expect(status).to eq(503)
       expect(JSON.parse(body_of(resp))["error"]).to eq(
@@ -70,20 +70,20 @@ RSpec.describe Harness::Server::Admin::App do
       )
     end
 
-    it "token errado -> 401 + www-authenticate" do
+    it "wrong token -> 401 + www-authenticate" do
       status, headers, = call(build_app, "GET", "/admin", auth: "Bearer nope")
       expect(status).to eq(401)
       expect(headers["www-authenticate"]).to eq("Bearer")
     end
 
-    it "token certo -> 200" do
+    it "correct token -> 200" do
       status, = call(build_app, "GET", "/admin")
       expect(status).to eq(200)
     end
   end
 
   describe "render read-only" do
-    it "índice lista as 5 seções" do
+    it "index lists the 5 sections" do
       _s, headers, resp = call(build_app, "GET", "/admin")
       html = body_of(resp)
       expect(headers["content-type"]).to eq("text/html; charset=utf-8")
@@ -92,19 +92,19 @@ RSpec.describe Harness::Server::Admin::App do
       end
     end
 
-    it "envia headers de segurança (CSP + nosniff) nas páginas" do
+    it "sends security headers (CSP + nosniff) on the pages" do
       _s, headers, = call(build_app, "GET", "/admin")
       expect(headers["x-content-type-options"]).to eq("nosniff")
       expect(headers["content-security-policy"]).to include("default-src 'none'", "connect-src 'self'")
     end
 
-    it "lista sessões com ids" do
+    it "lists sessions with ids" do
       app = build_app(sessions: { "s-1" => session("s-1"), "s-2" => session("s-2") })
       _s, _h, resp = call(app, "GET", "/admin/sessions")
       expect(body_of(resp)).to include("s-1", "s-2")
     end
 
-    it "transcript renderizado e escapado (XSS)" do
+    it "transcript rendered and escaped (XSS)" do
       msg = { "role" => "user", "content" => "<script>alert(1)</script>", "at" => "t" }
       app = build_app(sessions: { "s-1" => session("s-1", messages: [msg]) })
 
@@ -115,12 +115,12 @@ RSpec.describe Harness::Server::Admin::App do
       expect(html).not_to include("<script>alert(1)</script>")
     end
 
-    it "sessão inexistente -> 404" do
+    it "non-existent session -> 404" do
       status, = call(build_app, "GET", "/admin/sessions/nope")
       expect(status).to eq(404)
     end
 
-    it "detalhe de task mostra executions e checkpoint" do
+    it "task detail shows executions and checkpoint" do
       execution = Harness::TaskStore::Execution.new(
         attempt: 1, started_at: "a", finished_at: "b", outcome: "completed", error: nil
       )
@@ -133,34 +133,34 @@ RSpec.describe Harness::Server::Admin::App do
 
       _s, _h, resp = call(app, "GET", "/admin/tasks/t-1")
       html = body_of(resp)
-      expect(html).to include("completed") # outcome da execution
-      expect(html).to include("3")         # turn do checkpoint
+      expect(html).to include("completed") # execution outcome
+      expect(html).to include("3")         # checkpoint turn
       expect(html).to include("c1")        # side effect
     end
 
-    it "task sem checkpoint -> 'sem checkpoint'" do
+    it "task without checkpoint -> 'sem checkpoint'" do
       app = build_app(tasks: { "t-1" => task("t-1") }, checkpoints: {})
       _s, _h, resp = call(app, "GET", "/admin/tasks/t-1")
       expect(body_of(resp)).to include("sem checkpoint")
     end
 
-    it "events aponta EventSource para /v1/events" do
+    it "events points EventSource to /v1/events" do
       _s, _h, resp = call(build_app, "GET", "/admin/events")
       html = body_of(resp)
       expect(html).to include("EventSource")
       expect(html).to include("/v1/events")
     end
 
-    it "skills mostra nível 1 e corpo" do
+    it "skills shows level 1 and body" do
       skill = Harness::SkillCatalog::Skill.new(
-        name: "product_search", description: "busca produtos", path: "/x", body: "# corpo"
+        name: "product_search", description: "product search", path: "/x", body: "# body"
       )
       _s, _h, resp = call(build_app(skills: [skill]), "GET", "/admin/skills")
       html = body_of(resp)
-      expect(html).to include("product_search", "busca produtos", "# corpo")
+      expect(html).to include("product_search", "product search", "# body")
     end
 
-    it "plugins agrupa por Entry#plugin" do
+    it "plugins groups by Entry#plugin" do
       tool = Harness::Registry::Entry.new(name: "get_weather", plugin: "weather",
                                           metadata: { optional: true }, factory: -> {})
       sys = Harness::Registry::Entry.new(name: "lookup_product", plugin: nil,
@@ -174,7 +174,7 @@ RSpec.describe Harness::Server::Admin::App do
   end
 
   describe "read-only enforcement" do
-    it "POST /admin/... -> 404 e NÃO despacha no bus" do
+    it "POST /admin/... -> 404 and does NOT dispatch on the bus" do
       bus = ServerBusDouble.new
       app = build_app(bus: bus)
 
@@ -185,21 +185,21 @@ RSpec.describe Harness::Server::Admin::App do
     end
   end
 
-  describe "CORS estrito" do
-    it "Origin na allowlist -> access-control-allow-origin + vary" do
+  describe "strict CORS" do
+    it "Origin in the allowlist -> access-control-allow-origin + vary" do
       app = build_app(allowed_origins: ["https://ops.example"])
       _s, headers, = call(app, "GET", "/admin", origin: "https://ops.example")
       expect(headers["access-control-allow-origin"]).to eq("https://ops.example")
       expect(headers["vary"]).to eq("origin")
     end
 
-    it "Origin fora da allowlist -> sem headers CORS" do
+    it "Origin outside the allowlist -> no CORS headers" do
       app = build_app(allowed_origins: ["https://ops.example"])
       _s, headers, = call(app, "GET", "/admin", origin: "https://evil.example")
       expect(headers).not_to have_key("access-control-allow-origin")
     end
 
-    it "preflight OPTIONS com Origin permitida -> 204 + allow-methods/headers" do
+    it "preflight OPTIONS with allowed Origin -> 204 + allow-methods/headers" do
       app = build_app(allowed_origins: ["https://ops.example"])
       status, headers, = call(app, "OPTIONS", "/admin/tasks", auth: nil, origin: "https://ops.example")
       expect(status).to eq(204)
@@ -207,7 +207,7 @@ RSpec.describe Harness::Server::Admin::App do
       expect(headers["access-control-allow-headers"]).to eq("authorization, content-type")
     end
 
-    it "preflight OPTIONS com Origin não permitida -> 204 sem headers CORS" do
+    it "preflight OPTIONS with disallowed Origin -> 204 without CORS headers" do
       app = build_app(allowed_origins: ["https://ops.example"])
       status, headers, = call(app, "OPTIONS", "/admin/tasks", auth: nil, origin: "https://evil.example")
       expect(status).to eq(204)

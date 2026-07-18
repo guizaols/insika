@@ -21,7 +21,7 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
         raise Harness::ValidationError, "name is required" if name.nil?
-        raise Harness::ValidationError, "'#{name}' já é uma tool de código" if @registry.code_tool?(name)
+        raise Harness::ValidationError, "'#{name}' is already a code tool" if @registry.code_tool?(name)
 
         masked = @tool_store.write(p, create_only: !!p[:create_only])
         @registry.reload

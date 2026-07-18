@@ -15,15 +15,15 @@ RSpec.describe Harness::Server::A2A::Remotes do
     expect(r.first.description).to eq("faz contas")
   end
 
-  it "env nil / vazio -> []" do
+  it "env nil / empty -> []" do
     expect(described_class.parse(nil)).to eq([])
     expect(described_class.parse("")).to eq([])
   end
 
   it "ignora entradas malformadas com warn" do
     expect do
-      remotes = described_class.parse("ok=https://o/a2a,semigual,vazio=")
-      expect(remotes.map(&:id)).to eq(["ok"]) # só a válida
+      remotes = described_class.parse("ok=https://o/a2a,noequals,empty=")
+      expect(remotes.map(&:id)).to eq(["ok"]) # only the valid one
     end.to output(/malformed/).to_stderr
   end
 

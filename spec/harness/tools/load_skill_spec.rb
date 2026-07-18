@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "harness/tools/load_skill" # carregado lazy em produção; explícito no teste
+require "harness/tools/load_skill" # loaded lazily in production; explicit in the test
 
 RSpec.describe Harness::Tools::LoadSkill do
-  # Catálogo duplo com a superfície usada (find -> Skill|nil).
+  # Catalog double with the surface used (find -> Skill|nil).
   Skill = Struct.new(:name, :body)
 
   let(:catalog) do
@@ -13,21 +13,21 @@ RSpec.describe Harness::Tools::LoadSkill do
     end
   end
 
-  it "retorna o corpo da skill quando permitida e presente" do
+  it "returns the skill body when allowed and present" do
     tool = described_class.new(catalog, ["cardapio"])
 
     expect(tool.execute(name: "cardapio")).to eq("CORPO")
   end
 
-  it "recusa skill fora da allowlist (sem levantar)" do
+  it "refuses a skill outside the allowlist (without raising)" do
     tool = described_class.new(catalog, ["pedido"])
 
-    expect(tool.execute(name: "cardapio")).to eq({ error: "skill 'cardapio' não disponível para este agente" })
+    expect(tool.execute(name: "cardapio")).to eq({ error: "skill 'cardapio' not available for this agent" })
   end
 
-  it "reporta skill permitida mas inexistente no catálogo" do
+  it "reports a skill that is allowed but nonexistent in the catalog" do
     tool = described_class.new(catalog, ["fantasma"])
 
-    expect(tool.execute(name: "fantasma")).to eq({ error: "skill 'fantasma' não encontrada" })
+    expect(tool.execute(name: "fantasma")).to eq({ error: "skill 'fantasma' not found" })
   end
 end

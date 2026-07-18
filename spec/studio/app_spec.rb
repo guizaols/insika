@@ -4,11 +4,11 @@ require "spec_helper"
 require "rack/mock"
 require_relative "../../studio/app"
 
-# Studio (Fase 4, Etapa E) — app Roda montado sob /studio. Exercita auth por
-# cookie (D7, fail-closed), CSRF nos POSTs, CSP estrita (D8), serving de assets
-# versionados e as páginas login/agents/playground. Doubles no lugar do runtime:
-# o Studio só LÊ o ProfileSource e despacha Commands no bus (nunca escreve em
-# store direto) — a mesma superfície do Server::App.
+# Studio (Phase 4, Stage E) — Roda app mounted under /studio. Exercises cookie auth
+# (D7, fail-closed), CSRF on POSTs, strict CSP (D8), serving of versioned assets and
+# the login/agents/playground pages. Doubles in place of the runtime: the Studio only
+# READS the ProfileSource and dispatches Commands on the bus (never writes to a store
+# directly) — the same surface as Server::App.
 RSpec.describe Studio::App do
   SessionDouble = Struct.new(:id)
   StoredSession = Struct.new(:id, :messages, :vars, :updated_at, keyword_init: true)
@@ -29,14 +29,14 @@ RSpec.describe Studio::App do
     def types = dispatched.map(&:type)
   end
 
-  # ProfileSource duck-type: `all` (lista) + `ids` + `fetch`.
+  # ProfileSource duck-type: `all` (list) + `ids` + `fetch`.
   ProfileSourceDouble = Struct.new(:profiles) do
     def all = profiles
     def ids = profiles.map(&:id)
     def fetch(id) = profiles.find { |p| p.id == id }
   end
 
-  # Stores de leitura da Etapa F (só o que as páginas consomem).
+  # Stage F read stores (only what the pages consume).
   SkillEntry = Struct.new(:name, :description, keyword_init: true)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
@@ -76,9 +76,9 @@ RSpec.describe Studio::App do
                 mcp_instances: [], system_files: {}, tool_traces: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
-    # Stores de config da Etapa G: REAIS sobre um ConfigStore em memória (o
-    # Studio lê deles ao renderizar; escreve via os Commands do bus). Semeados
-    # pelos params para exercitar o read-path de settings/LLM/MCP/system-files.
+    # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
+    # from them when rendering; writes via the bus Commands). Seeded from the params
+    # to exercise the settings/LLM/MCP/system-files read-path.
     cfg = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
     settings_store = Harness::SettingsStore.new(config_store: cfg)
     settings_store.update(settings) if settings
@@ -88,10 +88,10 @@ RSpec.describe Studio::App do
     mcp_instances.each { |m| mcp_store.upsert(m) }
     system_file_store = Harness::SystemFileStore.new(config_store: cfg)
     system_files.each { |name, content| system_file_store.write(name, content) }
-    # ToolStore REAL (Fase 5): a página de autoria lê dele; escrita via bus.
+    # REAL ToolStore (Phase 5): the authoring page reads from it; writes via the bus.
     tool_store = Harness::ToolStore.new(config_store: cfg)
     data_tools.each { |d| tool_store.write(d) }
-    # ToolTraceStore REAL (debug §3.1): a view de sessão lê dele.
+    # REAL ToolTraceStore (debug §3.1): the session view reads from it.
     trace_store = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
     app.configure(
@@ -112,7 +112,7 @@ RSpec.describe Studio::App do
     [app, bus]
   end
 
-  # Cliente que carrega cookies entre requests (sessão + CSRF vivem no cookie).
+  # Client that carries cookies between requests (session + CSRF live in the cookie).
   class Client
     attr_reader :cookie
 
@@ -135,8 +135,8 @@ RSpec.describe Studio::App do
 
   def csrf_from(html) = html[/name="_csrf" value="([^"]+)"/, 1]
 
-  # Faz o login completo (GET p/ cookie+token, POST com o token) e devolve o
-  # client autenticado.
+  # Does the full login (GET for cookie+token, POST with the token) and returns the
+  # authenticated client.
   def login(app, token: "s3cret")
     client = Client.new(app)
     form = client.get("/login")
@@ -147,7 +147,7 @@ RSpec.describe Studio::App do
 
   # --- Auth / fail-closed --------------------------------------------------
 
-  it "mostra o login sem sessão (GET /login = 200 com form e CSRF)" do
+  it "shows the login without a session (GET /login = 200 with form and CSRF)" do
     app, = build_app
     res = Client.new(app).get("/login")
     expect(res.status).to eq(200)
@@ -155,14 +155,14 @@ RSpec.describe Studio::App do
     expect(res.body).to include('name="_csrf"')
   end
 
-  it "redireciona rotas protegidas para /studio/login sem sessão (fail-closed)" do
+  it "redirects protected routes to /studio/login without a session (fail-closed)" do
     app, = build_app
     res = Client.new(app).get("/agents")
     expect(res.status).to eq(302)
     expect(res.headers["location"]).to eq("/studio/login")
   end
 
-  it "autentica com o token correto e passa a servir as páginas" do
+  it "authenticates with the correct token and starts serving the pages" do
     app, = build_app
     client = login(app, token: "s3cret")
     res = client.get("/agents")
@@ -171,17 +171,17 @@ RSpec.describe Studio::App do
     expect(res.body).to include("chef")
   end
 
-  it "recusa token incorreto (401, sem sessão)" do
+  it "rejects an incorrect token (401, no session)" do
     app, = build_app
     client = Client.new(app)
     csrf = csrf_from(client.get("/login").body)
     res = client.post("/login", params: { "token" => "errado", "_csrf" => csrf })
     expect(res.status).to eq(401)
-    # sessão não foi marcada: rota protegida ainda redireciona
+    # session was not marked: a protected route still redirects
     expect(client.get("/agents").status).to eq(302)
   end
 
-  it "é fail-closed quando não há token configurado (login nunca valida)" do
+  it "is fail-closed when no token is configured (login never validates)" do
     app, = build_app(admin_token: "")
     client = Client.new(app)
     csrf = csrf_from(client.get("/login").body)
@@ -189,19 +189,19 @@ RSpec.describe Studio::App do
     expect(res.status).to eq(401)
   end
 
-  it "faz logout limpando a sessão" do
+  it "logs out by clearing the session" do
     app, = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
     expect(client.post("/logout", params: { "_csrf" => csrf }).status).to eq(302)
-    expect(client.get("/agents").status).to eq(302) # sessão limpa → volta ao login
+    expect(client.get("/agents").status).to eq(302) # session cleared → back to login
   end
 
   # --- CSRF ----------------------------------------------------------------
 
-  it "bloqueia POST sem token CSRF (403)" do
+  it "blocks a POST without a CSRF token (403)" do
     app, = build_app
-    # sessão obtida por GET, mas POST sem _csrf
+    # session obtained via GET, but POST without _csrf
     client = Client.new(app)
     client.get("/login")
     res = client.post("/login", params: { "token" => "s3cret" })
@@ -210,7 +210,7 @@ RSpec.describe Studio::App do
 
   # --- CSP / headers -------------------------------------------------------
 
-  it "envia CSP estrita 'self' (sem unsafe-inline) e nosniff" do
+  it "sends strict CSP 'self' (no unsafe-inline) and nosniff" do
     app, = build_app
     res = Client.new(app).get("/login")
     csp = res.headers["content-security-policy"]
@@ -222,14 +222,14 @@ RSpec.describe Studio::App do
 
   # --- Assets --------------------------------------------------------------
 
-  it "serve o bundle versionado com content-type correto" do
+  it "serves the versioned bundle with the correct content-type" do
     app, = build_app
     res = Client.new(app).get("/assets/dist/application.css")
     expect(res.status).to eq(200)
     expect(res.headers["content-type"]).to include("text/css")
   end
 
-  it "não escapa do dir de dist (path traversal → 404)" do
+  it "doesn't escape the dist dir (path traversal → 404)" do
     app, = build_app
     res = Client.new(app).get("/assets/dist/..%2f..%2fapp.rb")
     expect(res.status).to eq(404)
@@ -237,7 +237,7 @@ RSpec.describe Studio::App do
 
   # --- Playground ----------------------------------------------------------
 
-  it "despacha send_message pelo bus e redireciona (nada de escrita direta)" do
+  it "dispatches send_message via the bus and redirects (no direct writes)" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
@@ -254,7 +254,7 @@ RSpec.describe Studio::App do
     expect(cmd.meta[:transport]).to eq(:studio)
   end
 
-  it "cria uma sessão nova quando session_id vem em branco" do
+  it "creates a new session when session_id comes in blank" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
@@ -267,7 +267,7 @@ RSpec.describe Studio::App do
     expect(types).to eq(%i[create_session send_message])
   end
 
-  it "playground GET lista os agentes no seletor" do
+  it "playground GET lists the agents in the selector" do
     app, = build_app
     client = login(app)
     res = client.get("/playground?agent=chef")
@@ -276,16 +276,16 @@ RSpec.describe Studio::App do
     expect(res.body).to include('data-controller="live-transcript"')
   end
 
-  it "escapa conteúdo dinâmico exatamente uma vez (sem duplo-escape, XSS-safe)" do
+  it "escapes dynamic content exactly once (no double-escape, XSS-safe)" do
     app, = build_app(agents: [profile("bia", model: "modelo&<x>")])
     client = login(app)
     body = client.get("/agents").body
-    expect(body).to include("modelo&amp;&lt;x&gt;")   # escapado 1×
-    expect(body).not_to include("&amp;amp;")           # NÃO duplo-escapado
-    expect(body).not_to include("modelo&<x>")          # NÃO cru
+    expect(body).to include("modelo&amp;&lt;x&gt;")   # escaped 1×
+    expect(body).not_to include("&amp;amp;")           # NOT double-escaped
+    expect(body).not_to include("modelo&<x>")          # NOT raw
   end
 
-  it "responde 404 amigável em rota autenticada desconhecida" do
+  it "responds with a friendly 404 on an unknown authenticated route" do
     app, = build_app
     client = login(app)
     res = client.get("/inexistente")
@@ -293,7 +293,7 @@ RSpec.describe Studio::App do
     expect(res.body).to include("404")
   end
 
-  it "playground manda tenant = agente no send_message (memória por-agente)" do
+  it "playground sends tenant = agent in send_message (per-agent memory)" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
@@ -302,7 +302,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:send_message).meta[:tenant]).to eq("chef")
   end
 
-  it "a app-bar tem os links de skills e tools (Etapa F)" do
+  it "the app-bar has the skills and tools links (Stage F)" do
     app, = build_app
     body = login(app).get("/agents").body
     expect(body).to include('href="/studio/skills"')
@@ -311,7 +311,7 @@ RSpec.describe Studio::App do
 
   # --- Agents (detail) — task 15/17 ----------------------------------------
 
-  it "renderiza o detalhe do agente com config, prompts, skills, memória e histórico" do
+  it "renders the agent detail with config, prompts, skills, memory and history" do
     app, = build_app
     res = login(app).get("/agents/bia")
     expect(res.status).to eq(200)
@@ -320,17 +320,17 @@ RSpec.describe Studio::App do
     expect(res.body).to include('data-controller="code-editor"')
   end
 
-  it "404 no detalhe de agente inexistente" do
+  it "404 on the detail of a nonexistent agent" do
     app, = build_app
     expect(login(app).get("/agents/nao-existe").status).to eq(404)
   end
 
-  # Regressão (encontrada rodando de verdade): o matcher String do Roda entrega
-  # o segmento de path em ASCII-8BIT; um `get` no store SQLite com chave binária
-  # não casa a chave gravada em UTF-8 (bind como BLOB) e o detalhe 404-ava. A
-  # borda normaliza para UTF-8 (`utf8`). Doubles não reproduzem (String#== é
-  # encoding-agnóstico p/ ASCII) — este teste usa SQLite real + PATH_INFO binário.
-  it "resolve id de path binário contra o store SQLite (regressão de encoding)" do
+  # Regression (found running for real): Roda's String matcher delivers the path
+  # segment in ASCII-8BIT; a `get` on the SQLite store with a binary key doesn't
+  # match the key written in UTF-8 (bound as BLOB) and the detail 404'd. The edge
+  # normalizes to UTF-8 (`utf8`). Doubles don't reproduce it (String#== is
+  # encoding-agnostic for ASCII) — this test uses real SQLite + a binary PATH_INFO.
+  it "resolves a binary path id against the SQLite store (encoding regression)" do
     require "tmpdir"
     Dir.mktmpdir do |dir|
       store = Harness::Stores::SQLite.new(path: File.join(dir, "cfg.db"))
@@ -351,7 +351,7 @@ RSpec.describe Studio::App do
     end
   end
 
-  it "config despacha update_agent com memory bool e limits int" do
+  it "config dispatches update_agent with memory bool and limits int" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -366,7 +366,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:limits][:turn_timeout]).to eq(90)
   end
 
-  it "config sem checkbox de memória grava memory=false" do
+  it "config without the memory checkbox writes memory=false" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -374,18 +374,18 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:memory]).to be(false)
   end
 
-  it "gravar prompt despacha write_agent_file (o Command sincroniza prompt_files)" do
-    app, bus = build_app # bia tem prompt_files: []
+  it "saving a prompt dispatches write_agent_file (the Command syncs prompt_files)" do
+    app, bus = build_app # bia has prompt_files: []
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
     client.post("/agents/bia/prompts", params: {
                   "file" => "IDENTITY.md", "content" => "# Eu", "_csrf" => csrf
                 })
     expect(bus.last(:write_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md")
-    expect(bus.types).not_to include(:update_agent) # sync de prompt_files é do Command
+    expect(bus.types).not_to include(:update_agent) # prompt_files sync belongs to the Command
   end
 
-  it "remover prompt despacha delete_agent_file (o Command tira de prompt_files)" do
+  it "removing a prompt dispatches delete_agent_file (the Command removes it from prompt_files)" do
     app, bus = build_app(agents: [profile("bia", prompt_files: %w[IDENTITY.md SOUL.md])])
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -394,7 +394,7 @@ RSpec.describe Studio::App do
     expect(bus.types).not_to include(:update_agent)
   end
 
-  it "restaurar prompt despacha restore_agent_file com version" do
+  it "restoring a prompt dispatches restore_agent_file with version" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -404,7 +404,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:restore_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md", version: "2")
   end
 
-  it "skills 'todas' despacha update_agent com skills nil" do
+  it "skills 'all' dispatches update_agent with skills nil" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -412,7 +412,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload).to include(skills: nil)
   end
 
-  it "skills subconjunto despacha update_agent com a lista marcada" do
+  it "skills subset dispatches update_agent with the checked list" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -420,7 +420,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload).to include(skills: ["pedido"])
   end
 
-  it "memória: fato/esquecer/nota despacham escopados por tenant = id do agente" do
+  it "memory: fact/forget/note dispatch scoped by tenant = agent id" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -432,7 +432,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:memory_add_note).payload).to include(tenant: "bia", text: "gosta de doce")
   end
 
-  it "detalhe mostra os fatos da memória do agente (tenant = id)" do
+  it "detail shows the agent's memory facts (tenant = id)" do
     fact = Harness::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
     app, = build_app(memory: { "bia" => { facts: [fact], notes: [] } })
     body = login(app).get("/agents/bia").body
@@ -442,27 +442,27 @@ RSpec.describe Studio::App do
 
   # --- Skills (index + editor) — task 16 -----------------------------------
 
-  it "lista as skills e a matriz de agentes" do
+  it "lists the skills and the agents matrix" do
     app, = build_app
     body = login(app).get("/skills").body
-    expect(body).to include("pedido")               # skill do catálogo
-    expect(body).to include('name="agent_ids[]"')   # matriz
+    expect(body).to include("pedido")               # skill from the catalog
+    expect(body).to include('name="agent_ids[]"')   # matrix
   end
 
-  it "editor de skill nova traz o template com frontmatter" do
+  it "new skill editor brings the template with frontmatter" do
     app, = build_app
     body = login(app).get("/skills/new").body
     expect(body).to include('data-controller="code-editor"')
     expect(body).to include("name:")
   end
 
-  it "editor de skill existente traz o conteúdo do store" do
-    app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\n---\ncorpo autorado" })
+  it "existing skill editor brings the content from the store" do
+    app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\n---\nauthored body" })
     body = login(app).get("/skills/pedido").body
-    expect(body).to include("corpo autorado")
+    expect(body).to include("authored body")
   end
 
-  it "salvar skill despacha write_skill" do
+  it "saving a skill dispatches write_skill" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/skills/new").body)
@@ -471,7 +471,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:write_skill).payload).to include(name: "reembolso")
   end
 
-  it "aplicar skill aos agentes despacha set_skill_agents com agent_ids" do
+  it "applying a skill to the agents dispatches set_skill_agents with agent_ids" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/skills").body)
@@ -483,14 +483,14 @@ RSpec.describe Studio::App do
 
   # --- Tools (matriz) — task 16 --------------------------------------------
 
-  it "lista a matriz de tools por agente" do
+  it "lists the tools-by-agent matrix" do
     app, = build_app
     body = login(app).get("/tools").body
-    expect(body).to include("menu")               # tool do catálogo
+    expect(body).to include("menu")               # tool from the catalog
     expect(body).to include('name="all_tools"')
   end
 
-  it "tools 'todas' despacha set_agent_tools com allow nil" do
+  it "tools 'all' dispatches set_agent_tools with allow nil" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/tools").body)
@@ -498,7 +498,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:set_agent_tools).payload).to include(id: "bia", allow: nil)
   end
 
-  it "tools subconjunto despacha set_agent_tools com a lista e preserva o deny" do
+  it "tools subset dispatches set_agent_tools with the list and preserves the deny" do
     app, bus = build_app(agents: [profile("bia", tools_allow: %w[menu calc])])
     client = login(app)
     csrf = csrf_from(client.get("/tools").body)
@@ -508,7 +508,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload).to have_key(:deny)
   end
 
-  # --- Tools por dados (autoria) — Fase 5 Etapa C --------------------------
+  # --- Data-driven tools (authoring) — Phase 5 Stage C ---------------------
 
   def data_tool(name: "cep", **over)
     { name: name, description: "Consulta #{name}",
@@ -517,24 +517,24 @@ RSpec.describe Studio::App do
       response: { extract: "json_path", path: "localidade" } }.merge(over)
   end
 
-  it "matriz lista as data-tools, marca com badge e linka o editor" do
+  it "matrix lists the data-tools, marks them with a badge and links the editor" do
     app, = build_app(data_tools: [data_tool(name: "cep")],
                      tools: [SkillEntry.new(name: "cep", description: "Consulta cep"),
                              SkillEntry.new(name: "menu", description: "cardápio")])
     body = login(app).get("/tools").body
-    expect(body).to include('href="/studio/tools/def/cep"')      # link do editor
-    expect(body).to include('href="/studio/tools/def/new"')      # nova tool
-    expect(body).to include(">data<")                             # badge na matriz
+    expect(body).to include('href="/studio/tools/def/cep"')      # editor link
+    expect(body).to include('href="/studio/tools/def/new"')      # new tool
+    expect(body).to include(">data<")                             # badge in the matrix
   end
 
-  it "GET /tools/def/new renderiza o form vazio" do
+  it "GET /tools/def/new renders the empty form" do
     app, = build_app
     body = login(app).get("/tools/def/new").body
     expect(body).to include('action="/studio/tools/def"')
     expect(body).to include("New data tool")
   end
 
-  it "POST /tools/def cria: despacha :write_data_tool com o payload aninhado + create_only" do
+  it "POST /tools/def creates: dispatches :write_data_tool with the nested payload + create_only" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/tools/def/new").body)
@@ -552,7 +552,7 @@ RSpec.describe Studio::App do
     expect(p[:create_only]).to be(true)
   end
 
-  it "GET /tools/def/:name carrega o editor com o segredo MASCARADO (0 vazamento)" do
+  it "GET /tools/def/:name loads the editor with the secret MASKED (0 leakage)" do
     secret = data_tool(name: "api", request: {
                          method: "POST", url: "https://api.test/x",
                          headers: { "Authorization" => "Bearer TOPSECRET" }
@@ -563,7 +563,7 @@ RSpec.describe Studio::App do
     expect(body).not_to include("TOPSECRET")
   end
 
-  it "POST /tools/def/:name atualiza (upsert, sem create_only)" do
+  it "POST /tools/def/:name updates (upsert, no create_only)" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)
     csrf = csrf_from(client.get("/tools/def/cep").body)
@@ -576,7 +576,7 @@ RSpec.describe Studio::App do
     expect(p).not_to have_key(:create_only)
   end
 
-  it "POST /tools/def/:name/delete despacha :delete_data_tool" do
+  it "POST /tools/def/:name/delete dispatches :delete_data_tool" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)
     csrf = csrf_from(client.get("/tools/def/cep").body)
@@ -584,7 +584,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:delete_data_tool).payload).to include(name: "cep")
   end
 
-  it "POST /tools/def/:name/restore despacha :restore_data_tool com index" do
+  it "POST /tools/def/:name/restore dispatches :restore_data_tool with index" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)
     csrf = csrf_from(client.get("/tools/def/cep").body)
@@ -592,14 +592,14 @@ RSpec.describe Studio::App do
     expect(bus.last(:restore_data_tool).payload).to include(name: "cep", index: "0")
   end
 
-  it "GET /tools/def/:name inexistente → 404" do
+  it "GET /tools/def/:name nonexistent → 404" do
     app, = build_app
     expect(login(app).get("/tools/def/fantasma").status).to eq(404)
   end
 
-  # --- Histórico (viewer read-only) — task 17 ------------------------------
+  # --- History (read-only viewer) — task 17 --------------------------------
 
-  it "viewer de sessão renderiza o transcript read-only" do
+  it "session viewer renders the read-only transcript" do
     sess = StoredSession.new(id: "sess-xyz", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "oi" },
                                         { "role" => "assistant", "content" => "olá!" }])
@@ -609,12 +609,12 @@ RSpec.describe Studio::App do
     expect(body).to include("Continue in playground")
   end
 
-  it "404 em sessão inexistente" do
+  it "404 on a nonexistent session" do
     app, = build_app
     expect(login(app).get("/sessions/nope").status).to eq(404)
   end
 
-  it "viewer de sessão mostra o trace de tool-calls (nome + args + resposta)" do
+  it "session viewer shows the tool-calls trace (name + args + response)" do
     sess = StoredSession.new(id: "sess-t", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     traces = { "sess-t" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
                               "args" => { "query" => "trufa" }, "result" => { "found" => 3 },
@@ -623,11 +623,11 @@ RSpec.describe Studio::App do
     body = login(app).get("/sessions/sess-t").body
     expect(body).to include("Tool calls")
     expect(body).to include("search_products")
-    expect(body).to include("trufa")   # args renderizados
-    expect(body).to include("found")   # resposta renderizada
+    expect(body).to include("trufa")   # rendered args
+    expect(body).to include("found")   # rendered response
   end
 
-  it "o histórico do detalhe lista as conversas recentes" do
+  it "the detail's history lists the recent conversations" do
     sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-abc123456789" => sess })
     body = login(app).get("/agents/bia").body
@@ -636,7 +636,7 @@ RSpec.describe Studio::App do
 
   # --- Settings (task 18) --------------------------------------------------
 
-  it "a app-bar tem os links da Etapa G (mcp/sistema/chats/settings)" do
+  it "the app-bar has the Stage G links (mcp/system/chats/settings)" do
     app, = build_app
     body = login(app).get("/agents").body
     %w[/studio/mcp /studio/system-files /studio/chats /studio/settings].each do |href|
@@ -644,7 +644,7 @@ RSpec.describe Studio::App do
     end
   end
 
-  it "settings renderiza os defaults e despacha update_settings com tipos nativos" do
+  it "settings renders the defaults and dispatches update_settings with native types" do
     app, bus = build_app
     client = login(app)
     res = client.get("/settings")
@@ -661,7 +661,7 @@ RSpec.describe Studio::App do
     expect(patch["compaction"]).to eq({ "enabled" => true, "keep_last" => 40 })
   end
 
-  it "settings sem checkbox de streaming manda streaming=false" do
+  it "settings without the streaming checkbox sends streaming=false" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/settings").body)
@@ -669,7 +669,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_settings).payload[:patch]["streaming"]).to be(false)
   end
 
-  it "settings lista providers com a chave MASCARADA (nunca plaintext)" do
+  it "settings lists providers with the key MASKED (never plaintext)" do
     app, = build_app(llm_providers: [{ "api" => "deepseek", "api_key" => "sk-secret", "models" => %w[deepseek-chat] }])
     body = login(app).get("/settings").body
     expect(body).to include("deepseek")
@@ -677,7 +677,7 @@ RSpec.describe Studio::App do
     expect(body).not_to include("sk-secret")
   end
 
-  it "salvar provider despacha upsert_llm_provider com models parseados" do
+  it "saving a provider dispatches upsert_llm_provider with parsed models" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/settings").body)
@@ -690,7 +690,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:models]).to eq(%w[gpt-4o gpt-4o-mini])
   end
 
-  it "remover provider despacha delete_llm_provider" do
+  it "removing a provider dispatches delete_llm_provider" do
     app, bus = build_app(llm_providers: [{ "api" => "openai", "api_key" => "sk-1" }])
     client = login(app)
     csrf = csrf_from(client.get("/settings").body)
@@ -700,7 +700,7 @@ RSpec.describe Studio::App do
 
   # --- MCP (task 18) -------------------------------------------------------
 
-  it "mcp lista instâncias com env MASCARADO e despacha upsert_mcp (env por linhas)" do
+  it "mcp lists instances with env MASKED and dispatches upsert_mcp (env by lines)" do
     app, bus = build_app(mcp_instances: [{ "name" => "tavily", "env" => { "TAVILY_KEY" => "tvly-real" } }])
     client = login(app)
     res = client.get("/mcp")
@@ -720,7 +720,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:env]).to eq({ "GITHUB_TOKEN" => "ghp-1", "EMPTY" => "" })
   end
 
-  it "remover instância MCP despacha delete_mcp" do
+  it "removing an MCP instance dispatches delete_mcp" do
     app, bus = build_app(mcp_instances: [{ "name" => "tavily" }])
     client = login(app)
     csrf = csrf_from(client.get("/mcp").body)
@@ -730,7 +730,7 @@ RSpec.describe Studio::App do
 
   # --- System-files (task 19) ----------------------------------------------
 
-  it "system-files lista arquivos globais e usa o island code-editor" do
+  it "system-files lists the global files and uses the code-editor island" do
     app, = build_app(system_files: { "HOUSE.md" => "regras da casa" })
     body = login(app).get("/system-files").body
     expect(body).to include("HOUSE.md")
@@ -738,7 +738,7 @@ RSpec.describe Studio::App do
     expect(body).to include('data-controller="code-editor"')
   end
 
-  it "salvar arquivo de sistema despacha write_system_file" do
+  it "saving a system file dispatches write_system_file" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/system-files").body)
@@ -746,7 +746,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:write_system_file).payload).to include(file: "RULES.md", content: "# Regras")
   end
 
-  it "remover/restaurar arquivo de sistema despacham seus Commands" do
+  it "removing/restoring a system file dispatch their Commands" do
     app, bus = build_app(system_files: { "H.md" => "x" })
     client = login(app)
     csrf = csrf_from(client.get("/system-files").body)
@@ -758,7 +758,7 @@ RSpec.describe Studio::App do
 
   # --- Chats (task 19) -----------------------------------------------------
 
-  it "chats lista as conversas e linka pro viewer" do
+  it "chats lists the conversations and links to the viewer" do
     sess = StoredSession.new(id: "sess-chat-000001", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-chat-000001" => sess })
@@ -766,15 +766,15 @@ RSpec.describe Studio::App do
     expect(body).to include("/studio/sessions/sess-chat-000001")
   end
 
-  it "chats vazio mostra empty-state" do
+  it "empty chats shows the empty-state" do
     app, = build_app
     body = login(app).get("/chats").body
     expect(body).to include("No conversations")
   end
 
-  # --- Polish & paridade (Etapa H / task 20) -------------------------------
+  # --- Polish & parity (Stage H / task 20) ---------------------------------
 
-  it "a app-bar tem health chip e theme switch; o html carrega o tema (auto default)" do
+  it "the app-bar has a health chip and theme switch; the html loads the theme (auto default)" do
     app, = build_app
     body = login(app).get("/agents").body
     expect(body).to include('data-theme="auto"')
@@ -782,7 +782,7 @@ RSpec.describe Studio::App do
     expect(body).to include("runtime online")
   end
 
-  it "aplica o tema do cookie server-side (sem flash de tema errado no load)" do
+  it "applies the cookie theme server-side (no wrong-theme flash on load)" do
     app, = build_app
     client = login(app)
     env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=dark")
@@ -791,7 +791,7 @@ RSpec.describe Studio::App do
     expect(html).to include('data-theme="dark"')
   end
 
-  it "cookie de tema inesperado cai em auto (allowlist estrita)" do
+  it "an unexpected theme cookie falls back to auto (strict allowlist)" do
     app, = build_app
     client = login(app)
     env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=hackerman")
@@ -799,7 +799,7 @@ RSpec.describe Studio::App do
     expect(body.each.to_a.join).to include('data-theme="auto"')
   end
 
-  it "os editores carregam o island dirty-guard (aviso de saída sem salvar)" do
+  it "the editors load the dirty-guard island (warning about leaving without saving)" do
     app, = build_app(system_files: { "H.md" => "x" })
     client = login(app)
     expect(client.get("/agents/bia").body).to include('data-controller="dirty-guard"')
@@ -807,7 +807,7 @@ RSpec.describe Studio::App do
     expect(client.get("/skills/new").body).to include('data-controller="dirty-guard"')
   end
 
-  # --- Criação de agente (paridade: "cada um cria sua BIA") -----------------
+  # --- Agent creation (parity: "each one creates its own BIA") -----------------
 
   it "cria agente via POST /agents (dispatch create_agent) e redireciona pro detalhe" do
     app, bus = build_app
@@ -823,14 +823,14 @@ RSpec.describe Studio::App do
     expect(cmd.payload).to include(id: "nova", model: "deepseek-chat", provider: "deepseek", memory: true)
   end
 
-  it "agents vazio abre o form de criação (empty-state de autoria)" do
+  it "empty agents opens the creation form (authoring empty-state)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body
     expect(body).to include("Create your first BIA")
     expect(body).to include("Create agent")
   end
 
-  it "mcp vazio mostra empty-state" do
+  it "empty mcp shows empty-state" do
     app, = build_app
     expect(login(app).get("/mcp").body).to include("No MCP instances")
   end
@@ -853,7 +853,7 @@ RSpec.describe Studio::App do
     expect(client.get("/agents").body).not_to include("Restart recommended")
   end
 
-  it "remover MCP também acende o banner de restart" do
+  it "removing an MCP also lights the restart banner" do
     app, = build_app(mcp_instances: [{ "name" => "tavily" }])
     client = login(app)
     csrf = csrf_from(client.get("/mcp").body)
@@ -861,7 +861,7 @@ RSpec.describe Studio::App do
     expect(client.get("/agents").body).to include("Restart recommended")
   end
 
-  it "restart-ack não faz open-redirect (back externo é ignorado)" do
+  it "restart-ack does not open-redirect (external back is ignored)" do
     app, = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents").body)

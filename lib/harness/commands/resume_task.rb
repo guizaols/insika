@@ -19,7 +19,7 @@ module Harness
         raise Harness::ValidationError, "task_id is required" if task_id.empty?
 
         task = @task_store.find(task_id) ||
-               (raise Harness::NotFoundError, "task '#{task_id}' não encontrada")
+               (raise Harness::NotFoundError, "task '#{task_id}' not found")
 
         # IN-PROCESS RESUME: a :paused task whose fiber is STILL alive (blocked
         # on await) — do NOT re-dispatch (spawn would duplicate the fiber). Just post :resume;
@@ -43,7 +43,7 @@ module Harness
         # would already have marked it :failed during the sweep).
         checkpoint = @checkpoint_store.latest(task_id) ||
                      (raise Harness::ValidationError,
-                            "task '#{task_id}' não tem checkpoint — irrecuperável")
+                            "task '#{task_id}' has no checkpoint — unrecoverable")
 
         check_eligibility!(task)
 
@@ -74,7 +74,7 @@ module Harness
         when :paused, :waiting
           nil
         when :running
-          raise Harness::ValidationError, "task '#{task.id}' em execução" if @executor.running?(task.id)
+          raise Harness::ValidationError, "task '#{task.id}' is running" if @executor.running?(task.id)
         else # terminal states (:completed, :failed, :cancelled)
           raise Harness::ValidationError,
                 "task '#{task.id}' with status '#{task.status}' is not resumable"

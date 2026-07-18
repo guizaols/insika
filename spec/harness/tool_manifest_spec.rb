@@ -3,7 +3,7 @@
 require "spec_helper"
 
 # Fase 7, Etapa B (task 3+4): manifesto -> Hashes de ToolDefinition. Adapters de
-# envelope (cru/OpenAI/MCP), herança de defaults, endpoint->url (R6) e resolução
+# envelope (raw/OpenAI/MCP), defaults inheritance, endpoint->url (R6) and resolution
 # de {{secret.*}}/{{env.*}} na ingestão com o guard de vazamento (R3).
 RSpec.describe Harness::ToolManifest do
   let(:env) { { "CONSUMER_URL" => "http://localhost:3000" } }
@@ -91,12 +91,12 @@ RSpec.describe Harness::ToolManifest do
       expect(d["request"]["url"]).to eq("https://api.test/ping")
     end
 
-    it "exige endpoint quando não há url (nunca infere do name — R6)" do
+    it "requires endpoint when there is no url (never infers from name — R6)" do
       m = manifest(defaults: consumer_defaults, tools: [{ "name" => "sem_endpoint" }])
       expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /endpoint/)
     end
 
-    it "side_effect deriva do method quando omitido (POST=true, GET=false)" do
+    it "side_effect derives from method when omitted (POST=true, GET=false)" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "a", "endpoint" => "a", "description" => "d" },
                            { "name" => "b", "url" => "https://api.test/b", "method" => "GET", "description" => "d" }])
@@ -106,7 +106,7 @@ RSpec.describe Harness::ToolManifest do
     end
   end
 
-  describe "resolução de {{env.*}} / {{secret.*}} (task 4)" do
+  describe "resolution of {{env.*}} / {{secret.*}} (task 4)" do
     it "resolve env na url e secret no header (com prefixo 'Bearer ')" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "t", "endpoint" => "t" }])
@@ -125,7 +125,7 @@ RSpec.describe Harness::ToolManifest do
       expect(d["request"]["body"]).to eq("{\"q\":\"{{q}}\"}")
     end
 
-    it "erro claro quando env/secret não configurado no deployment" do
+    it "clear error when env/secret is not configured in the deployment" do
       m = manifest(defaults: consumer_defaults, tools: [{ "name" => "t", "endpoint" => "t" }])
       expect { defn(m, secrets: {}, env: env) }.to raise_error(Harness::ValidationError, /secret 'TOKEN'/)
       expect { defn(m, secrets: secrets, env: {}) }.to raise_error(Harness::ValidationError, /env 'CONSUMER_URL'/)
@@ -156,14 +156,14 @@ RSpec.describe Harness::ToolManifest do
     it "recusa secret_header com valor LITERAL (sem {{secret.*}}) — R3" do
       d = consumer_defaults.merge("headers" => consumer_defaults["headers"].merge("Authorization" => "Bearer HARDCODED"))
       m = manifest(defaults: d, tools: [{ "name" => "t", "endpoint" => "t" }])
-      expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /nunca literal.*R3/)
+      expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /never a literal.*R3/)
     end
 
-    it "recusa {{secret.*}} FORA de um secret_header (vazaria sem masking)" do
+    it "recusa {{secret.*}} FORA de um secret_header (leak sem masking)" do
       m = manifest(defaults: { "base_url" => "https://api.test", "path_template" => "/{endpoint}", "method" => "GET" },
                    tools: [{ "name" => "t", "endpoint" => "t",
                              "headers" => { "X-Leak" => "{{secret.TOKEN}}" } }])
-      expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /secret_headers.*vazaria/)
+      expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /secret_headers.*leak/)
     end
   end
 end

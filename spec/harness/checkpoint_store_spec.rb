@@ -3,12 +3,12 @@
 require "spec_helper"
 
 RSpec.describe Harness::CheckpointStore do
-  # Contra Memory (rollback real, task 03) + smoke SQLite ":memory:" (doc 02 §7).
+  # Against Memory (real rollback, task 03) + SQLite ":memory:" smoke (doc 02 §7).
   subject(:checkpoints) { described_class.new(store: backend) }
 
   let(:backend) { Harness::Stores::Memory.new }
 
-  # Constrói um Checkpoint completo do turno n.
+  # Builds a complete Checkpoint for turn n.
   def checkpoint(task_id: "t", turn: 1, side_effects: [], messages: nil)
     Harness::Checkpoint.new(
       task_id: task_id,
@@ -22,7 +22,7 @@ RSpec.describe Harness::CheckpointStore do
   end
 
   describe "#save / #find round-trip" do
-    it "devolve os campos iguais, turn Integer e chaves string em messages" do
+    it "returns identical fields, Integer turn and string keys in messages" do
       saved = checkpoints.save(checkpoint(turn: 1, messages: [{ role: :user, content: "oi" }]))
       found = checkpoints.find("t", turn: 1)
 
@@ -34,80 +34,80 @@ RSpec.describe Harness::CheckpointStore do
       expect { Time.iso8601(found.created_at) }.not_to raise_error
     end
 
-    it "carimba created_at quando ausente no Checkpoint recebido" do
+    it "stamps created_at when absent in the received Checkpoint" do
       saved = checkpoints.save(checkpoint(turn: 1))
 
       expect { Time.iso8601(saved.created_at) }.not_to raise_error
     end
   end
 
-  describe "monotonicidade do turn" do
+  describe "turn monotonicity" do
     before { checkpoints.save(checkpoint(turn: 2)) }
 
-    it "rejeita save de turn repetido" do
+    it "rejects save of a repeated turn" do
       expect { checkpoints.save(checkpoint(turn: 2)) }.to raise_error(ArgumentError)
     end
 
-    it "rejeita save de turn menor" do
+    it "rejects save of a lower turn" do
       expect { checkpoints.save(checkpoint(turn: 1)) }.to raise_error(ArgumentError)
     end
 
-    it "não escreve nada ao rejeitar (transação)" do
+    it "writes nothing when rejecting (transaction)" do
       expect { checkpoints.save(checkpoint(turn: 1)) }.to raise_error(ArgumentError)
       expect(checkpoints.latest("t").turn).to eq(2)
     end
   end
 
   describe "#latest" do
-    it "retorna o maior turn (sequencial)" do
+    it "returns the highest turn (sequential)" do
       [1, 2, 3].each { |n| checkpoints.save(checkpoint(turn: n)) }
 
       expect(checkpoints.latest("t").turn).to eq(3)
     end
 
-    it "retorna o maior turn com turnos esparsos (3, 7, 12)" do
+    it "returns the highest turn with sparse turns (3, 7, 12)" do
       [3, 7, 12].each { |n| checkpoints.save(checkpoint(turn: n)) }
 
       expect(checkpoints.latest("t").turn).to eq(12)
     end
 
-    it "ordena numericamente com turn >= 10 (10 > 9, não lexicográfico)" do
+    it "orders numerically with turn >= 10 (10 > 9, not lexicographic)" do
       checkpoints.save(checkpoint(turn: 9))
       checkpoints.save(checkpoint(turn: 10))
 
       expect(checkpoints.latest("t").turn).to eq(10)
     end
 
-    it "retorna nil para task sem checkpoint" do
+    it "returns nil for a task without a checkpoint" do
       expect(checkpoints.latest("nope")).to be_nil
       expect(checkpoints.find("nope", turn: 1)).to be_nil
     end
   end
 
   describe "side-effects" do
-    it "record_side_effect é idempotente" do
+    it "record_side_effect is idempotent" do
       checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_a")
       checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_a")
 
       expect(checkpoints.side_effects("t", turn: 1)).to eq(["call_a"])
     end
 
-    it "side_effects vazio quando nada registrado" do
+    it "side_effects empty when nothing recorded" do
       expect(checkpoints.side_effects("t", turn: 1)).to eq([])
     end
 
-    it "side_effects = chave avulsa ∪ completed_side_effects do checkpoint" do
+    it "side_effects = standalone key ∪ checkpoint's completed_side_effects" do
       checkpoints.record_side_effect("t", turn: 5, tool_call_id: "call_spill")
-      # grava o checkpoint do turno 5 com um id já consolidado nele (turno 5 sem
-      # avulsa própria absorvida — a de turno 4 é a absorvida no save do 5)
+      # writes the turn 5 checkpoint with an id already consolidated into it (turn 5
+      # without its own standalone absorbed — the turn 4 one is absorbed on the turn 5 save)
       checkpoints.save(checkpoint(turn: 5, side_effects: ["call_cp"]))
 
       expect(checkpoints.side_effects("t", turn: 5)).to contain_exactly("call_spill", "call_cp")
     end
   end
 
-  describe "consolidação no save (chave avulsa do turno n absorvida no save do n+1)" do
-    it "inclui os ids da avulsa e apaga a chave avulsa do backend" do
+  describe "consolidation on save (turn n's standalone key absorbed on the turn n+1 save)" do
+    it "includes the standalone's ids and deletes the standalone key from the backend" do
       checkpoints.record_side_effect("t", turn: 3, tool_call_id: "call_x")
       saved = checkpoints.save(checkpoint(turn: 4))
 
@@ -115,14 +115,14 @@ RSpec.describe Harness::CheckpointStore do
       expect(backend.get("checkpoints", "sideeffects:t:turn:3")).to be_nil
     end
 
-    it "faz a união com os ids que já vieram no Checkpoint" do
+    it "unions with the ids that already came in the Checkpoint" do
       checkpoints.record_side_effect("t", turn: 3, tool_call_id: "call_spill")
       saved = checkpoints.save(checkpoint(turn: 4, side_effects: ["call_cp"]))
 
       expect(saved.completed_side_effects).to contain_exactly("call_spill", "call_cp")
     end
 
-    it "consolida com [] quando o turno não teve side-effects" do
+    it "consolidates with [] when the turn had no side-effects" do
       saved = checkpoints.save(checkpoint(turn: 1, side_effects: ["call_only_cp"]))
 
       expect(saved.completed_side_effects).to eq(["call_only_cp"])
@@ -130,10 +130,10 @@ RSpec.describe Harness::CheckpointStore do
   end
 
   describe "crash-consistency (D4, doc 02 §7)" do
-    # Backend que delega ao Memory mas cujo `delete` levanta — a exceção ocorre
-    # DENTRO da transação de save, DEPOIS de o novo checkpoint já ter sido
-    # escrito (set). O rollback real (task 03) deve desfazer o set e preservar a
-    # chave avulsa.
+    # Backend that delegates to Memory but whose `delete` raises — the exception occurs
+    # INSIDE the save transaction, AFTER the new checkpoint has already been
+    # written (set). The real rollback (task 03) must undo the set and preserve the
+    # standalone key.
     let(:faulty) do
       Class.new do
         attr_reader :sets
@@ -152,32 +152,32 @@ RSpec.describe Harness::CheckpointStore do
 
         def list(*a) = @inner.list(*a)
         def transaction(&blk) = @inner.transaction(&blk)
-        def delete(*) = raise Harness::StoreError, "falha simulada no delete"
+        def delete(*) = raise Harness::StoreError, "simulated failure in delete"
       end.new(backend)
     end
 
-    it "exceção no meio do save deixa o checkpoint anterior intacto e a avulsa preservada" do
+    it "an exception mid-save leaves the previous checkpoint intact and the standalone preserved" do
       store = described_class.new(store: faulty)
-      # turno 3 já commitado (via backend limpo, sem passar pelo delete faulty)
+      # turn 3 already committed (via clean backend, without going through the faulty delete)
       described_class.new(store: backend).save(checkpoint(turn: 3))
       backend.set("checkpoints", "sideeffects:t:turn:3", ["call_pending"])
 
       expect { store.save(checkpoint(turn: 4)) }.to raise_error(Harness::StoreError)
 
-      # precondição load-bearing: o set do turno 4 FOI aplicado antes do delete
-      # levantar — só assim o "latest volta a 3" prova rollback real (senão
-      # seria falso-verde por a escrita nunca ter acontecido).
+      # load-bearing precondition: the turn 4 set WAS applied before the delete
+      # raised — only then does "latest goes back to 3" prove a real rollback (otherwise
+      # it would be a false-green because the write never happened).
       expect(faulty.sets).to eq(1)
-      # latest volta ao turno 3 (o set do turno 4 foi revertido)
+      # latest goes back to turn 3 (the turn 4 set was reverted)
       expect(checkpoints.latest("t").turn).to eq(3)
       expect(checkpoints.find("t", turn: 4)).to be_nil
-      # a chave avulsa não foi absorvida/apagada
+      # the standalone key was not absorbed/deleted
       expect(backend.get("checkpoints", "sideeffects:t:turn:3")).to eq(["call_pending"])
     end
   end
 
   describe "#prune" do
-    it "keep: 1 preserva só o maior turn" do
+    it "keep: 1 preserves only the highest turn" do
       (1..4).each { |n| checkpoints.save(checkpoint(turn: n)) }
       checkpoints.prune("t", keep: 1)
 
@@ -185,7 +185,7 @@ RSpec.describe Harness::CheckpointStore do
       expect([1, 2, 3].map { |n| checkpoints.find("t", turn: n) }).to all(be_nil)
     end
 
-    it "keep: 2 preserva os dois maiores turns" do
+    it "keep: 2 preserves the two highest turns" do
       (1..4).each { |n| checkpoints.save(checkpoint(turn: n)) }
       checkpoints.prune("t", keep: 2)
 
@@ -194,24 +194,24 @@ RSpec.describe Harness::CheckpointStore do
       expect(checkpoints.find("t", turn: 2)).to be_nil
     end
 
-    it "é no-op com menos checkpoints que keep" do
+    it "is a no-op with fewer checkpoints than keep" do
       checkpoints.save(checkpoint(turn: 1))
       checkpoints.prune("t", keep: 1)
 
       expect(checkpoints.find("t", turn: 1)).not_to be_nil
     end
 
-    it "limpa chaves avulsas de turnos anteriores ao menor mantido" do
+    it "cleans standalone keys of turns before the lowest kept" do
       (1..3).each { |n| checkpoints.save(checkpoint(turn: n)) }
       backend.set("checkpoints", "sideeffects:t:turn:1", ["lixo"])
-      checkpoints.prune("t", keep: 1) # mantém só turno 3
+      checkpoints.prune("t", keep: 1) # keeps only turn 3
 
       expect(backend.get("checkpoints", "sideeffects:t:turn:1")).to be_nil
     end
   end
 
-  describe "isolamento entre tasks" do
-    it "checkpoints e avulsas de task_a não afetam task_b" do
+  describe "isolation between tasks" do
+    it "checkpoints and standalones of task_a don't affect task_b" do
       checkpoints.save(checkpoint(task_id: "a", turn: 5))
       checkpoints.record_side_effect("a", turn: 5, tool_call_id: "call_a")
       checkpoints.save(checkpoint(task_id: "b", turn: 1))
@@ -220,12 +220,12 @@ RSpec.describe Harness::CheckpointStore do
       expect(checkpoints.side_effects("b", turn: 5)).to eq([])
 
       checkpoints.prune("a", keep: 1)
-      expect(checkpoints.latest("b").turn).to eq(1) # prune de "a" não tocou "b"
+      expect(checkpoints.latest("b").turn).to eq(1) # prune of "a" didn't touch "b"
     end
   end
 
-  describe "smoke contra Stores::SQLite ':memory:'" do
-    it "save->latest->record->save->prune idêntico ao Memory" do
+  describe "smoke against Stores::SQLite ':memory:'" do
+    it "save->latest->record->save->prune identical to Memory" do
       require "sqlite3"
       sqlite = Harness::Stores::SQLite.new(path: ":memory:")
       store = described_class.new(store: sqlite)

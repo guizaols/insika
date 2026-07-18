@@ -3,35 +3,35 @@
 require "spec_helper"
 require_relative "../../../server/admin_auth"
 
-# doc 07 §7: sem token -> 503 (disabled), errado/ausente -> 401, certo -> 200.
+# doc 07 §7: no token -> 503 (disabled), wrong/absent -> 401, correct -> 200.
 RSpec.describe Harness::Server::AdminAuth do
   describe ".check (fail-closed)" do
-    it "sem token configurado -> :disabled" do
+    it "no token configured -> :disabled" do
       expect(described_class.check(nil, "Bearer x")).to eq(:disabled)
     end
 
-    it "token vazio configurado -> :disabled (string vazia nunca é token)" do
+    it "empty token configured -> :disabled (an empty string is never a token)" do
       expect(described_class.check("", "Bearer x")).to eq(:disabled)
     end
 
-    it "token errado -> :unauthorized" do
+    it "wrong token -> :unauthorized" do
       expect(described_class.check("s3cret", "Bearer nope")).to eq(:unauthorized)
     end
 
-    it "sem header -> :unauthorized" do
+    it "no header -> :unauthorized" do
       expect(described_class.check("s3cret", nil)).to eq(:unauthorized)
     end
 
-    it "formato sem 'Bearer ' -> :unauthorized" do
+    it "format without 'Bearer ' -> :unauthorized" do
       expect(described_class.check("s3cret", "s3cret")).to eq(:unauthorized)
       expect(described_class.check("s3cret", "Basic s3cret")).to eq(:unauthorized)
     end
 
-    it "token certo -> :ok" do
+    it "correct token -> :ok" do
       expect(described_class.check("s3cret", "Bearer s3cret")).to eq(:ok)
     end
 
-    it "usa comparação em tempo constante (secure_compare)" do
+    it "uses constant-time comparison (secure_compare)" do
       expect(Rack::Utils).to receive(:secure_compare).with("s3cret", "s3cret").and_call_original
       described_class.check("s3cret", "Bearer s3cret")
     end

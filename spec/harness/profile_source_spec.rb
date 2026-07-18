@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
+RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
   let(:profile) do
     Harness::AgentProfile.build(
       id: "bia", model: "deepseek-chat", provider: :deepseek,
@@ -15,7 +15,7 @@ RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
   describe Harness::StaticProfileSource do
     subject(:src) { described_class.new({ "bia" => profile }) }
 
-    it "[] e fetch devolvem o profile; nil se ausente (não levanta)" do
+    it "[] and fetch return the profile; nil if absent (does not raise)" do
       expect(src["bia"]).to eq(profile)
       expect(src.fetch("bia")).to eq(profile)
       expect(src["sumiu"]).to be_nil
@@ -31,48 +31,48 @@ RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
     let(:config_store) { Harness::ConfigStore.new(store: Harness::Stores::Memory.new) }
     subject(:src) { described_class.new(config_store: config_store) }
 
-    it "put -> fetch faz round-trip PRESERVANDO os symbols (provider/policies/limits)" do
+    it "put -> fetch round-trips PRESERVING the symbols (provider/policies/limits)" do
       src.put(profile)
       got = src.fetch("bia")
 
-      # o ponto crítico do D2: JSON round-trip vira string; re-simbolizamos.
-      expect(got.provider).to eq(:deepseek)                       # symbol, não "deepseek"
+      # the critical point of D2: JSON round-trip becomes string; we re-symbolize.
+      expect(got.provider).to eq(:deepseek)                       # symbol, not "deepseek"
       expect(got.policies).to eq(%i[tool_allowlist skill_allowlist]) # symbols
-      expect(got.limits[:tool_timeout]).to eq(30)                 # chave symbol + Integer
+      expect(got.limits[:tool_timeout]).to eq(30)                 # symbol key + Integer
       expect(got.limits[:turn_timeout]).to eq(120)
       expect(got.tools_allow).to eq(%w[menu calc])
       expect(got.skills).to eq(%w[pedido])
       expect(got.memory).to be(true)
-      # limits ganha os defaults no build (merge)
+      # limits gets the defaults on build (merge)
       expect(got.limits[:max_turns]).to eq(Harness::AgentProfile::DEFAULT_LIMITS[:max_turns])
     end
 
-    it "fetch de ausente -> nil; all/ids refletem o store" do
+    it "fetch of absent -> nil; all/ids reflect the store" do
       expect(src.fetch("nope")).to be_nil
       src.put(profile)
       expect(src.ids).to eq(["bia"])
       expect(src.all.map(&:id)).to eq(["bia"])
     end
 
-    it "delete remove o profile" do
+    it "delete removes the profile" do
       src.put(profile)
       expect(src.delete("bia")).to be(true)
       expect(src.fetch("bia")).to be_nil
     end
 
-    it "cada fetch lê FRESCO (edição vale sem reconstruir a source)" do
+    it "each fetch reads FRESH (edits apply without rebuilding the source)" do
       src.put(profile)
       src.put(Harness::AgentProfile.build(id: "bia", model: "novo-modelo"))
       expect(src.fetch("bia").model).to eq("novo-modelo")
     end
 
-    it "round-trip de metadata (store_id do contexto de turno, Fase 6)" do
+    it "round-trip of metadata (store_id from the turn context, Phase 6)" do
       src.put(Harness::AgentProfile.build(id: "loja", model: "m", metadata: { store_id: "loja-7" }))
       got = src.fetch("loja")
-      expect(got.store_id).to eq("loja-7") # sobrevive ao JSON round-trip (chave vira string)
+      expect(got.store_id).to eq("loja-7") # survives the JSON round-trip (key becomes string)
     end
 
-    it "round-trip de tools_allow_groups (Fase 7/D4/F5, Etapa C)" do
+    it "round-trip of tools_allow_groups (Phase 7/D4/F5, Step C)" do
       src.put(Harness::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b demo]))
       expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b demo])
     end
@@ -88,7 +88,7 @@ RSpec.describe "Harness ProfileSource (Fase 4 D2)" do
       expect(Harness::ProfileSource.coerce(stored)).to be(stored)
     end
 
-    it "nil -> StaticProfileSource vazio (paridade com Hash vazio)" do
+    it "nil -> empty StaticProfileSource (parity with empty Hash)" do
       expect(Harness::ProfileSource.coerce(nil)["x"]).to be_nil
     end
   end

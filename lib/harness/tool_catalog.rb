@@ -67,8 +67,8 @@ module Harness
         #{lines}
         </available_tools>
 
-        Antes de usar uma tool acima, chame `tool_search` com o que você precisa
-        fazer para habilitá-la nesta conversa.
+        Before using a tool above, call `tool_search` with what you need
+        to do to enable it in this conversation.
       PROMPT
     end
 

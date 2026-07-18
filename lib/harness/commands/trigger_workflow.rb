@@ -36,13 +36,13 @@ module Harness
 
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
-            (raise Harness::NotFoundError, "sessão '#{p[:session_id]}' não encontrada")
+            (raise Harness::NotFoundError, "session '#{p[:session_id]}' not found")
         end
 
         # existence is validatable without executing — names, NEVER resolve (don't instantiate
         # outside the fiber).
         unless @workflow_registry.names.include?(workflow)
-          raise Harness::NotFoundError, "workflow '#{workflow}' não registrado"
+          raise Harness::NotFoundError, "workflow '#{workflow}' not registered"
         end
 
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
@@ -63,7 +63,7 @@ module Harness
 
       def reject_unknown_keys!(payload)
         extra = payload.keys.map(&:to_sym) - ALLOWED_KEYS
-        raise Harness::ValidationError, "chaves desconhecidas no payload: #{extra.join(', ')}" unless extra.empty?
+        raise Harness::ValidationError, "unknown keys in payload: #{extra.join(', ')}" unless extra.empty?
       end
     end
   end

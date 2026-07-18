@@ -6,7 +6,7 @@ require_relative "../../../server/sse_body"
 
 RSpec.describe Harness::Server::SSEBody do
   # Subscription-espião: entrega eventos e grava close/cancel. `cancel` NUNCA
-  # deve ser chamado (L4: a SSEBody jamais cancela a task).
+  # must be called (L4: the SSEBody never cancels the task).
   class SpySub
     attr_reader :closed, :cancelled
 
@@ -30,7 +30,7 @@ RSpec.describe Harness::Server::SSEBody do
 
   # SSEBody é um STREAMING body do Rack 3: dirige-se por `#call(stream)`, onde
   # `stream` responde a #write/#close (o SSEStreamDouble coleta os frames). Isso
-  # espelha o Protocol::HTTP::Body::Stream que o protocol-rack passa em produção.
+  # mirrors the Protocol::HTTP::Body::Stream that protocol-rack passes in production.
   it "formata o wire como Event#to_h em JSON (D5)" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
@@ -82,7 +82,7 @@ RSpec.describe Harness::Server::SSEBody do
     expect(fs.chunks).to eq(events.map { |e| "data: #{JSON.generate(e.to_h)}\n\n" })
   end
 
-  it "emite heartbeat após silêncio maior que o intervalo" do
+  it "emits a heartbeat after silence longer than the interval" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     fs = SSEStreamDouble.new
@@ -97,7 +97,7 @@ RSpec.describe Harness::Server::SSEBody do
     expect(fs.chunks).to include(": ping\n\n")
   end
 
-  it "encerra o #call quando a subscription é fechada pelo chamador" do
+  it "ends #call when the subscription is closed by the caller" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     finished = false
@@ -114,7 +114,7 @@ RSpec.describe Harness::Server::SSEBody do
     expect(finished).to be(true)
   end
 
-  it "cliente desconecta: fecha a subscription, não propaga exceção, não cancela a task" do
+  it "client disconnects: closes the subscription, does not propagate an exception, does not cancel the task" do
     sub = SpySub.new([ev(:content, { delta: "x" })])
     fs = SSEStreamDouble.new(raise_on_write: true) # stream.write levanta = socket fechado
 
@@ -125,7 +125,7 @@ RSpec.describe Harness::Server::SSEBody do
     end
 
     expect(sub.closed).to be(true)
-    expect(sub.cancelled).to be(false) # L4: execução pertence ao runtime
+    expect(sub.cancelled).to be(false) # L4: execution belongs to the runtime
     expect(fs.closed?).to be(true)     # o body sempre fecha o stream
   end
 

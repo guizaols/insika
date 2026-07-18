@@ -17,11 +17,11 @@ RSpec.describe Harness::Server::A2A::TaskProjection do
     end
   end
 
-  it "estado desconhecido -> 'unknown'" do
+  it "unknown state -> 'unknown'" do
     expect(described_class.call(task(:weird), at: "T")[:status][:state]).to eq("unknown")
   end
 
-  it "id/contextId/kind/timestamp e listas vazias" do
+  it "id/contextId/kind/timestamp and empty lists" do
     a2a = described_class.call(task(:running), at: "2026-01-01T00:00:00Z")
     expect(a2a).to include(id: "t1", contextId: "s1", kind: "task", artifacts: [], history: [])
     expect(a2a[:status][:timestamp]).to eq("2026-01-01T00:00:00Z")
@@ -37,7 +37,7 @@ RSpec.describe Harness::Server::A2A::TaskProjection do
     expect(a2a[:status][:message][:parts].first[:text]).to eq("boom")
   end
 
-  it "não-terminal não tem status.message" do
+  it "non-terminal has no status.message" do
     expect(described_class.call(task(:running), at: "T", content: "x")[:status]).not_to have_key(:message)
   end
 end

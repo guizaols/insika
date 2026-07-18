@@ -7,15 +7,15 @@ require "socket"
 require "fileutils"
 require "tmpdir"
 
-# Smoke E2E (task 26 §7, critério de conclusão da fase — doc 00 §6): sobe Falcon
-# + RubyLLM mockado (shim), POST send_message com session_id, mata o processo no
-# MEIO do turno (kill -9), sobe de novo e verifica a task RETOMADA do checkpoint.
-# Roda SEM API key. Tag :smoke.
-RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke do
+# E2E smoke (task 26 §7, phase completion criterion — doc 00 §6): boots Falcon
+# + mocked RubyLLM (shim), POST send_message with session_id, kills the process in
+# the MIDDLE of the turn (kill -9), boots again and checks the task RESUMED from the
+# checkpoint. Runs WITHOUT an API key. Tag :smoke.
+RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
   def repo_root = File.expand_path("../..", __dir__)
   def smoke_dir = File.join(repo_root, "spec", "support", "smoke")
 
-  # --- infra de processo/HTTP (stdlib) ----------------------------------
+  # --- process/HTTP infra (stdlib) ----------------------------------
   def free_port
     server = TCPServer.new("127.0.0.1", 0)
     port = server.addr[1]
@@ -58,58 +58,58 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
     req["content-type"] = "application/json" if body
     Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 5) { |h| h.request(req) }
   rescue StandardError
-    nil # servidor ainda subindo / entre reboots
+    nil # server still booting / between reboots
   end
 
   def wait_alive(port)
-    wait_until(timeout: 25, msg: "servidor responder") do
+    wait_until(timeout: 25, msg: "server to respond") do
       resp = http(port, :get, "/v1/tasks/none")
       resp && resp.code == "404"
     end
   end
 
-  it "sobrevive ao kill -9 e retoma do checkpoint (task :completed, 2 executions, transcript íntegro)" do
+  it "survives kill -9 and resumes from the checkpoint (task :completed, 2 executions, intact transcript)" do
     Dir.mktmpdir("harness-smoke") do |dir|
       db = File.join(dir, "smoke.sqlite3")
       marker = File.join(dir, "turn_started")
       port = free_port
-      pid1 = spawn_server(port: port, db: db, marker: marker, mode: nil) # modo trava
+      pid1 = spawn_server(port: port, db: db, marker: marker, mode: nil) # blocking mode
       pid2 = nil
 
       begin
         wait_alive(port)
 
-        # cria sessão
+        # create session
         resp = http(port, :post, "/v1/sessions", body: "{}")
         expect(resp.code).to eq("201")
         session_id = JSON.parse(resp.body)["session"]["id"]
 
-        # despacha o turno via rota genérica (202 imediato — task_id sobrevive ao kill)
+        # dispatch the turn via the generic route (immediate 202 — task_id survives the kill)
         resp = http(port, :post, "/v1/commands/send_message",
                     body: JSON.generate(agent: "smoke", message: "oi", session_id: session_id))
         expect(resp.code).to eq("202")
         task_id = JSON.parse(resp.body)["task_id"]
         expect(task_id).not_to be_nil
 
-        # o turno está no meio do estágio 6 (trava): marker gravado pelo shim.
-        # NB (L4): o POST acima já fechou a conexão (Net::HTTP encerra no fim do
-        # bloco). O marker aparecer DEPOIS disso prova que o turno sobreviveu ao
-        # disconnect — i.e., o supervisor foi criado acima da request no
-        # boundary do reactor real (async-http). Se fosse filho da conexão,
-        # morreria aqui e o marker nunca chegaria.
+        # the turn is in the middle of stage 6 (blocked): marker written by the shim.
+        # NB (L4): the POST above already closed the connection (Net::HTTP finishes at
+        # the end of the block). The marker appearing AFTER that proves the turn
+        # survived the disconnect — i.e., the supervisor was created above the request
+        # at the real reactor boundary (async-http). If it were a child of the
+        # connection, it would die here and the marker would never arrive.
         wait_until(timeout: 15, msg: "turno iniciar (marker)") { File.exist?(marker) }
 
-        # kill -9: morte não-cooperativa; a task fica :running órfã no SQLite
+        # kill -9: non-cooperative death; the task is left :running orphaned in SQLite
         Process.kill(9, pid1)
         Process.wait(pid1)
         pid1 = nil
 
-        # reboot em modo "completa": o Boot roda o Recovery ANTES do listen ->
-        # acha a órfã com checkpoint -> resume_task -> conclui.
+        # reboot in "complete" mode: the Boot runs Recovery BEFORE the listen ->
+        # finds the orphan with a checkpoint -> resume_task -> completes.
         pid2 = spawn_server(port: port, db: db, marker: marker, mode: "complete")
         wait_alive(port)
 
-        # a task foi retomada e concluída
+        # the task was resumed and completed
         task = wait_until(timeout: 20, msg: "task concluir pós-reboot") do
           resp = http(port, :get, "/v1/tasks/#{task_id}")
           next unless resp && resp.code == "200"
@@ -118,10 +118,10 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
           t if t["status"] == "completed"
         end
 
-        # attempt 1 (interrompida) + attempt 2 (concluída) — doc 02 §3
+        # attempt 1 (interrupted) + attempt 2 (completed) — doc 02 §3
         expect(task["executions"].length).to eq(2)
 
-        # transcript persistido: mensagem do usuário + resposta do assistant
+        # persisted transcript: user message + assistant reply
         resp = http(port, :get, "/v1/sessions/#{session_id}")
         roles = JSON.parse(resp.body)["session"]["messages"].map { |m| m["role"] }
         expect(roles).to include("user", "assistant")
@@ -136,7 +136,7 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
     end
   end
 
-  it "recovery roda ANTES do listen (a 1ª resposta HTTP implica recovery concluído)" do
+  it "recovery runs BEFORE the listen (the 1st HTTP response implies recovery is done)" do
     Dir.mktmpdir("harness-smoke") do |dir|
       db = File.join(dir, "smoke.sqlite3")
       recovery_marker = File.join(dir, "recovery_done")
@@ -144,9 +144,9 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
       pid = spawn_server(port: port, db: db, marker: File.join(dir, "m"),
                          mode: "complete", recovery_marker: recovery_marker)
       begin
-        wait_alive(port) # primeira resposta HTTP bem-sucedida
-        # o listen é o último passo do Boot: se o servidor respondeu, o recovery
-        # (marker) já terminou — por construção, nunca serve antes do recovery.
+        wait_alive(port) # first successful HTTP response
+        # the listen is the last step of Boot: if the server responded, recovery
+        # (marker) already finished — by construction, it never serves before recovery.
         expect(File.exist?(recovery_marker)).to be(true)
       ensure
         begin
@@ -159,13 +159,13 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
     end
   end
 
-  # Critério da fatia A (P2, 00-overview): tool `approval` suspende o turno em
-  # :waiting; o operador vê a pendência e aprova via HTTP -> a tool executa e o
-  # turno conclui. (O caminho CRASH-SAFE — reexecução pós-kill usando a
-  # PendingAction durável — é coberto por spec/harness/tool_envelope_approval_spec
-  # em nível de integração. Ver Notes da task 14 sobre a limitação de recovery de
-  # turno :waiting no boot.)
-  it "aprovação: tool suspende em :waiting; operador aprova via HTTP -> turno conclui", :smoke do
+  # Slice A criterion (P2, 00-overview): the `approval` tool suspends the turn in
+  # :waiting; the operator sees the pending action and approves via HTTP -> the tool
+  # executes and the turn completes. (The CRASH-SAFE path — post-kill re-execution
+  # using the durable PendingAction — is covered by
+  # spec/harness/tool_envelope_approval_spec at the integration level. See task 14's
+  # Notes about the :waiting-turn recovery limitation at boot.)
+  it "approval: tool suspends in :waiting; operator approves via HTTP -> turn completes", :smoke do
     Dir.mktmpdir("harness-smoke-appr") do |dir|
       db = File.join(dir, "s.sqlite3")
       port = free_port
@@ -177,7 +177,7 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
                     body: JSON.generate(agent: "approver", message: "cobra", session_id: sid))
         task_id = JSON.parse(resp.body)["task_id"]
 
-        # a tool acionou o gate -> task :waiting com PendingAction (visível no read)
+        # the tool tripped the gate -> task :waiting with a PendingAction (visible in the read)
         pending = wait_until(timeout: 15, msg: "task suspender em :waiting") do
           t = JSON.parse(http(port, :get, "/v1/tasks/#{task_id}").body)
           pa = t["pending_actions"]&.first
@@ -185,12 +185,12 @@ RSpec.describe "smoke E2E: kill -9 no meio do turno + reboot + retomada", :smoke
         end
         expect(pending["tool"]).to eq("charge")
 
-        # operador aprova via HTTP -> a tool executa e o turno conclui
+        # operator approves via HTTP -> the tool executes and the turn completes
         approve = http(port, :post, "/v1/commands/approve_action",
                        body: JSON.generate(pending_id: pending["id"], decision: "approved"))
         expect(approve.code).to eq("200")
 
-        task = wait_until(timeout: 20, msg: "concluir pós-aprovação") do
+        task = wait_until(timeout: 20, msg: "complete post-approval") do
           t = JSON.parse(http(port, :get, "/v1/tasks/#{task_id}").body)["task"]
           t if t["status"] == "completed"
         end

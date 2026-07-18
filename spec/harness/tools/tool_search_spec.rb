@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "harness/tools/tool_search" # o Executor o carrega lazy; explícito no teste
+require "harness/tools/tool_search" # the Executor loads it lazily; explicit in the test
 
 RSpec.describe Harness::Tools::ToolSearch do
-  # Tool deferred de verdade: name/description/parameters/execute (o suficiente
-  # p/ o catálogo, o describe e o wrap no ToolEnvelope). Sem herdar RubyLLM::Tool.
+  # A genuine deferred tool: name/description/parameters/execute (enough for the
+  # catalog, the describe and the wrap in ToolEnvelope). Without inheriting RubyLLM::Tool.
   Param = Struct.new(:type, :description, :required)
   def deferred_tool(name, desc)
     Class.new do
@@ -23,8 +23,8 @@ RSpec.describe Harness::Tools::ToolSearch do
 
   let(:registry) do
     reg = Harness::ToolRegistry.new
-    reg.register("send_email") { @email_tool ||= deferred_tool("send_email", "Envia um e-mail") }
-    reg.register("create_invoice") { deferred_tool("create_invoice", "Gera fatura") }
+    reg.register("send_email") { @email_tool ||= deferred_tool("send_email", "Sends an e-mail") }
+    reg.register("create_invoice") { deferred_tool("create_invoice", "Generates invoice") }
     reg
   end
   let(:catalog) { Harness::ToolCatalog.new(tool_registry: registry) }
@@ -32,41 +32,41 @@ RSpec.describe Harness::Tools::ToolSearch do
   let(:task) { Struct.new(:id, :session_id).new("t1", "s1") }
   let(:state) do
     profile = Harness::AgentProfile.build(id: "a", model: "m")
-    Harness::TurnState.new(task: task, profile: profile, turn: 1, message: "oi")
+    Harness::TurnState.new(task: task, profile: profile, turn: 1, message: "hi")
   end
 
-  # deferred_allowed = só send_email (create_invoice é deferred mas NÃO permitida)
+  # deferred_allowed = only send_email (create_invoice is deferred but NOT allowed)
   def build_search(chat, deferred_allowed: ["send_email"])
     described_class.new(catalog, deferred_allowed, chat,
                         tool_registry: registry, event_stream: event_stream,
                         checkpoint_store: checkpoint_store, state: state)
   end
 
-  it "def name = 'tool_search' (não o default derivado da classe)" do
+  it "def name = 'tool_search' (not the default derived from the class)" do
     expect(build_search(FakeChat.new).name).to eq("tool_search")
   end
 
-  it "match dentro do deferred_allowed: promove (ToolEnvelope) via chat.with_tools + descreve" do
+  it "match within deferred_allowed: promotes (ToolEnvelope) via chat.with_tools + describes" do
     chat = FakeChat.new
-    result = build_search(chat).execute(query: "enviar email")
+    result = build_search(chat).execute(query: "send email")
 
     promoted = chat.tools
     expect(promoted.size).to eq(1)
     expect(promoted.first).to be_a(Harness::ToolEnvelope)
-    expect(promoted.first.name).to eq("send_email") # Envelope delega name
+    expect(promoted.first.name).to eq("send_email") # Envelope delegates name
     expect(result[:matched].map { |m| m[:name] }).to eq(["send_email"])
     expect(result[:matched].first[:parameters]).to have_key(:to)
   end
 
-  it "match fora do deferred_allowed NÃO aparece nem promove (L1)" do
+  it "match outside deferred_allowed does NOT appear or get promoted (L1)" do
     chat = FakeChat.new
-    # 'fatura' casa create_invoice, que NÃO está em deferred_allowed
-    result = build_search(chat).execute(query: "fatura")
+    # 'invoice' matches create_invoice, which is NOT in deferred_allowed
+    result = build_search(chat).execute(query: "invoice")
     expect(result[:matched]).to eq([])
     expect(chat.tools).to eq([])
   end
 
-  it "query sem match: nada promovido, :tool_search ainda emitido com matched []" do
+  it "query with no match: nothing promoted, :tool_search still emitted with matched []" do
     chat = FakeChat.new
     result = build_search(chat).execute(query: "xpto inexistente")
     expect(chat.tools).to eq([])
@@ -75,58 +75,58 @@ RSpec.describe Harness::Tools::ToolSearch do
     expect(events.last.data).to eq({ query: "xpto inexistente", matched: [] })
   end
 
-  it "emite :tool_search com meta task_id/session_id" do
+  it "emits :tool_search with meta task_id/session_id" do
     build_search(FakeChat.new).execute(query: "email")
     ev = events.find { |e| e.type == :tool_search }
     expect(ev.data).to eq({ query: "email", matched: ["send_email"] })
     expect(ev.meta).to eq({ task_id: "t1", session_id: "s1" })
   end
 
-  it "idempotência: re-busca não re-promove nem re-resolve (mas ainda lista)" do
+  it "idempotency: re-searching does not re-promote or re-resolve (but still lists)" do
     chat = FakeChat.new
     search = build_search(chat)
     search.execute(query: "email")
     expect(chat.tools.size).to eq(1)
     result2 = search.execute(query: "email")
-    expect(chat.tools.size).to eq(1) # não duplicou
-    expect(result2[:matched].map { |m| m[:name] }).to eq(["send_email"]) # ainda encontrada
+    expect(chat.tools.size).to eq(1) # did not duplicate
+    expect(result2[:matched].map { |m| m[:name] }).to eq(["send_email"]) # still found
   end
 
-  it "state.skip_side_effects nil -> ToolEnvelope recebe [] sem levantar" do
+  it "state.skip_side_effects nil -> ToolEnvelope receives [] without raising" do
     chat = FakeChat.new
     expect { build_search(chat).execute(query: "email") }.not_to raise_error
   end
 
-    it "entry no catálogo ausente no registry: descarta da promoção sem quebrar" do
+    it "catalog entry missing from the registry: dropped from promotion without breaking" do
     chat = FakeChat.new
     reg2 = Harness::ToolRegistry.new
     reg2.register("send_email", plugin: "p") { deferred_tool("send_email", "Envia e-mail") }
     cat2 = Harness::ToolCatalog.new(tool_registry: reg2)
-    cat2.all # força o snapshot lazy: o catálogo captura a entry AGORA
-    reg2.deregister_plugin("p") # registry DESSINCRONIZA do catálogo -> resolve levanta NotFoundError
+    cat2.all # forces the lazy snapshot: the catalog captures the entry NOW
+    reg2.deregister_plugin("p") # registry goes OUT OF SYNC with the catalog -> resolve raises NotFoundError
     search = described_class.new(cat2, ["send_email"], chat, tool_registry: reg2,
                                  event_stream: event_stream, checkpoint_store: checkpoint_store,
                                  state: state)
     result = nil
     expect { result = search.execute(query: "email") }.not_to raise_error
-    expect(chat.tools).to eq([]) # nada promovido (o único match foi descartado)
-    expect(result[:matched].first[:parameters]).to eq({}) # describe caiu no rescue
+    expect(chat.tools).to eq([]) # nothing promoted (the only match was dropped)
+    expect(result[:matched].first[:parameters]).to eq({}) # describe fell into the rescue
   end
 
-  describe "propagação mid-loop (D6) com FakeChat" do
-    it "chat.with_tools dentro do execute é visível em chat.tools imediatamente" do
+  describe "mid-loop propagation (D6) with FakeChat" do
+    it "chat.with_tools inside execute is visible in chat.tools immediately" do
       chat = FakeChat.new
       search = build_search(chat)
-      chat.with_tools(search) # só a builtin cabeada; send_email é deferred
+      chat.with_tools(search) # only the builtin wired; send_email is deferred
 
       chat.script = lambda do
-        # simula o RubyLLM chamando o tool_search e, no MESMO ask, uma tool
-        # promovida por ele. A promoção acontece dentro do execute abaixo.
-        search.execute(query: "enviar email")
-        raise "send_email não promovida a tempo" unless tools.any? { |t| t.name == "send_email" }
+        # simulates RubyLLM calling tool_search and, in the SAME ask, a tool
+        # promoted by it. The promotion happens inside the execute below.
+        search.execute(query: "send email")
+        raise "send_email not promoted in time" unless tools.any? { |t| t.name == "send_email" }
       end
 
-      chat.ask("envie um email")
+      chat.ask("send an email")
       expect(chat.tools.map(&:name)).to include("send_email")
     end
   end

@@ -5,11 +5,11 @@ require "spec_helper"
 RSpec.describe Harness::Policy::Engine do
   let(:event_stream) { SpyEventStream.new } # spec/support/fakes.rb
 
-  # Tools/skills candidatos como objetos com #name.
+  # Candidate tools/skills as objects with #name.
   Tool = Struct.new(:name)
   SkillC = Struct.new(:name)
 
-  # Policy stub que devolve uma Decision fixa (e grava se foi chamada).
+  # Policy stub that returns a fixed Decision (and records whether it was called).
   def policy(decision, spy: nil)
     Class.new(Harness::Policy::Base) do
       define_method(:decide) do |_req|
@@ -36,25 +36,25 @@ RSpec.describe Harness::Policy::Engine do
 
   D = Harness::Policy::Decision
 
-  it "allows disjuntos -> interseção vazia (não erro)" do
+  it "disjoint allows -> empty intersection (not an error)" do
     reg = { "A" => policy(D.allow(allow_tools: ["x"])), "B" => policy(D.allow(allow_tools: ["y"])) }
     res = engine(reg).decide(request(%w[A B], tools: [Tool.new("x"), Tool.new("y")]))
     expect(res.allowed_tools).to eq([])
   end
 
-  it "allow nil não entra na interseção" do
+  it "allow nil does not enter the intersection" do
     reg = { "A" => policy(D.allow(allow_tools: nil)), "B" => policy(D.allow(allow_tools: %w[a b])) }
     res = engine(reg).decide(request(%w[A B], tools: [Tool.new("a"), Tool.new("b")]))
     expect(res.allowed_tools.map(&:name)).to contain_exactly("a", "b")
   end
 
-  it "deny vence allow" do
+  it "deny beats allow" do
     reg = { "A" => policy(D.allow(allow_tools: %w[a b])), "B" => policy(D.allow(allow_tools: %w[a b], deny_tools: ["a"])) }
     res = engine(reg).decide(request(%w[A B], tools: [Tool.new("a"), Tool.new("b")]))
     expect(res.allowed_tools.map(&:name)).to eq(["b"])
   end
 
-  it "primeiro deny interrompe: policy seguinte não roda; audit até o deny" do
+  it "first deny short-circuits: next policy does not run; audit up to the deny" do
     called3 = false
     reg = {
       "1" => policy(D.allow),
@@ -65,21 +65,21 @@ RSpec.describe Harness::Policy::Engine do
     expect(called3).to be(false)
   end
 
-  it "emite :policy_denied antes do raise" do
+  it "emits :policy_denied before the raise" do
     reg = { "2" => policy(D.deny(reason: "negado")) }
     expect { engine(reg).decide(request(["2"])) }.to raise_error(Harness::PolicyDenied)
     ev = event_stream.events.find { |e| e.type == :policy_denied }
     expect(ev.data).to include(policy: "2", reason: "negado")
   end
 
-  it "audit completo com 3 allows na ordem" do
+  it "full audit with 3 allows in order" do
     reg = { "A" => policy(D.allow), "B" => policy(D.allow), "C" => policy(D.allow) }
     res = engine(reg).decide(request(%w[A B C]))
     expect(res.audit.map { |a| a[:policy] }).to eq(%w[A B C])
     expect(res.audit.map { |a| a[:verdict] }).to all(eq(:allow))
   end
 
-  it "fail-closed: policy que levanta -> PolicyDenied 'policy crash: RuntimeError'" do
+  it "fail-closed: a policy that raises -> PolicyDenied 'policy crash: RuntimeError'" do
     crashing = Class.new(Harness::Policy::Base) do
       def decide(_req) = raise "boom"
     end.new
@@ -87,27 +87,27 @@ RSpec.describe Harness::Policy::Engine do
       .to raise_error(Harness::PolicyDenied) { |e| expect(e.reason).to include("policy crash: RuntimeError") }
   end
 
-  it "fail-closed: nome não registrado -> deny" do
-    expect { engine({}).decide(request(["ausente"])) }.to raise_error(Harness::PolicyDenied)
+  it "fail-closed: name not registered -> deny" do
+    expect { engine({}).decide(request(["missing"])) }.to raise_error(Harness::PolicyDenied)
   end
 
-  it "policies vazio -> todas as candidatas, audit vazio" do
+  it "empty policies -> all candidates, empty audit" do
     res = engine({}).decide(request([], tools: [Tool.new("a"), Tool.new("b")]))
     expect(res.allowed_tools.map(&:name)).to contain_exactly("a", "b")
     expect(res.audit).to eq([])
   end
 
-  it "ordem de avaliação segue profile.policies (não o registry)" do
+  it "evaluation order follows profile.policies (not the registry)" do
     order = []
     reg = {
       "A" => policy(D.allow, spy: -> { order << "A" }),
       "B" => policy(D.allow, spy: -> { order << "B" })
     }
-    engine(reg).decide(request(%w[B A])) # perfil pede B antes de A
+    engine(reg).decide(request(%w[B A])) # profile asks for B before A
     expect(order).to eq(%w[B A])
   end
 
-  it "agrega skills (interseção/união) análogo a tools" do
+  it "aggregates skills (intersection/union) analogous to tools" do
     reg = { "A" => policy(D.allow(allow_skills: %w[s1 s2])), "B" => policy(D.allow(allow_skills: %w[s2])) }
     res = engine(reg).decide(request(%w[A B], skills: [SkillC.new("s1"), SkillC.new("s2")]))
     expect(res.allowed_skills.map(&:name)).to eq(["s2"])

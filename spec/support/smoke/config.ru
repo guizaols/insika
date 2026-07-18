@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-# Contrato rackup do smoke (doc 07 §8): o Boot já rodou no boot_app e SMOKE_APP
-# está pronto (recovery ANTES do listen). O teste usa serve.rb (single-process,
-# controlável); este config.ru documenta o caminho `falcon serve`/rackup.
+# Smoke rackup contract (doc 07 §8): Boot has already run in boot_app and SMOKE_APP
+# is ready (recovery BEFORE listen). The test uses serve.rb (single-process,
+# controllable); this config.ru documents the `falcon serve`/rackup path.
 require_relative "boot_app"
 
 run SMOKE_APP

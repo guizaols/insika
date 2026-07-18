@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Fase 4 Etapa C: Commands de arquivos de prompt por-agente (workspace).
-RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
+# Phase 4 Stage C: per-agent prompt file commands (workspace).
+RSpec.describe "Agent workspace commands (Phase 4 Stage C)" do
   let(:config_store) { Harness::ConfigStore.new(store: Harness::Stores::Memory.new) }
   let(:source) { Harness::StoredProfileSource.new(config_store: config_store) }
   let(:files) { Harness::AgentFileStore.new(config_store: config_store) }
@@ -16,30 +16,30 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
   describe Harness::Commands::WriteAgentFile do
     subject(:handler) { described_class.new(profile_source: source, agent_file_store: files, event_stream: stream) }
 
-    it "grava o arquivo do agente; emite :agent_file_written" do
+    it "writes the agent file; emits :agent_file_written" do
       res = handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "Sou a Bia." }))
       expect(res[:file]).to eq("IDENTITY.md")
       expect(files.read("bia", "IDENTITY.md")).to eq("Sou a Bia.")
       expect(events.map(&:type)).to eq([:agent_file_written])
     end
 
-    it "agent_id/file obrigatórios; agente inexistente -> NotFoundError" do
+    it "agent_id/file required; nonexistent agent -> NotFoundError" do
       expect { handler.call(cmd(:write_agent_file, { "file" => "x" })) }.to raise_error(Harness::ValidationError, /agent_id/)
       expect { handler.call(cmd(:write_agent_file, { "agent_id" => "bia" })) }.to raise_error(Harness::ValidationError, /file/)
       expect { handler.call(cmd(:write_agent_file, { "agent_id" => "nope", "file" => "x", "content" => "y" })) }
         .to raise_error(Harness::NotFoundError)
     end
 
-    it "create_only recusa sobrescrever" do
+    it "create_only refuses to overwrite" do
       handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "v1" }))
       expect { handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "v2", "create_only" => true })) }
-        .to raise_error(Harness::ValidationError, /já existe/)
+        .to raise_error(Harness::ValidationError, /already exists/)
     end
 
-    it "registra o arquivo em prompt_files do agente (idempotente)" do
+    it "registers the file in the agent's prompt_files (idempotent)" do
       handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "x" }))
       expect(source.fetch("bia").prompt_files).to eq(["IDENTITY.md"])
-      # regravar não duplica
+      # rewriting does not duplicate
       handler.call(cmd(:write_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "content" => "y" }))
       expect(source.fetch("bia").prompt_files).to eq(["IDENTITY.md"])
     end
@@ -48,7 +48,7 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
   describe Harness::Commands::DeleteAgentFile do
     subject(:handler) { described_class.new(profile_source: source, agent_file_store: files, event_stream: stream) }
 
-    it "remove o arquivo; inexistente -> NotFoundError" do
+    it "removes the file; nonexistent -> NotFoundError" do
       files.write("bia", "IDENTITY.md", "x")
       handler.call(cmd(:delete_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md" }))
       expect(files.read("bia", "IDENTITY.md")).to be_nil
@@ -57,7 +57,7 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
         .to raise_error(Harness::NotFoundError)
     end
 
-    it "tira o arquivo de prompt_files do agente" do
+    it "removes the file from the agent's prompt_files" do
       source.put(Harness::AgentProfile.build(id: "bia", model: "m", prompt_files: %w[IDENTITY.md SOUL.md]))
       files.write("bia", "SOUL.md", "x")
       handler.call(cmd(:delete_agent_file, { "agent_id" => "bia", "file" => "SOUL.md" }))
@@ -68,7 +68,7 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
   describe Harness::Commands::RestoreAgentFile do
     subject(:handler) { described_class.new(profile_source: source, agent_file_store: files, event_stream: stream) }
 
-    it "restaura uma versão antiga como conteúdo atual; emite :agent_file_restored" do
+    it "restores an old version as the current content; emits :agent_file_restored" do
       files.write("bia", "IDENTITY.md", "v1")
       files.write("bia", "IDENTITY.md", "v2")
       handler.call(cmd(:restore_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md", "version" => 0 }))
@@ -76,7 +76,7 @@ RSpec.describe "Commands de workspace de agente (Fase 4 Etapa C)" do
       expect(events.map(&:type)).to include(:agent_file_restored)
     end
 
-    it "version obrigatório; índice inválido -> ValidationError" do
+    it "version required; invalid index -> ValidationError" do
       files.write("bia", "IDENTITY.md", "v1")
       expect { handler.call(cmd(:restore_agent_file, { "agent_id" => "bia", "file" => "IDENTITY.md" })) }
         .to raise_error(Harness::ValidationError, /version/)

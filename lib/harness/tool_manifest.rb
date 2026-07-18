@@ -151,7 +151,7 @@ module Harness
     def resolve_secret_header(name, value, secrets, env)
       unless value.to_s.match?(/\{\{\s*#{SECRET_PREFIX}/)
         raise Harness::ValidationError,
-              "secret_header '#{name}' deve referenciar {{secret.<nome>}} (nunca literal — R3)"
+              "secret_header '#{name}' must reference {{secret.<name>}} (never a literal — R3)"
       end
 
       substitute(value, secrets: secrets, env: env)
@@ -197,7 +197,7 @@ module Harness
       return if stray.empty?
 
       raise Harness::ValidationError,
-            "{{secret.*}} só é permitido em secret_headers (vazaria sem masking): #{stray.join(', ')}"
+            "{{secret.*}} is only allowed in secret_headers (would leak without masking): #{stray.join(', ')}"
     end
 
     def merge_maps(base, override)

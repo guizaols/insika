@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Fase 5 Etapa A: definição de tool por dados (value object + validação).
+# Phase 5 Step A: data-driven tool definition (value object + validation).
 RSpec.describe Harness::ToolDefinition do
   def valid_attrs(**over)
     {
@@ -14,31 +14,31 @@ RSpec.describe Harness::ToolDefinition do
     }.merge(over)
   end
 
-  it "build normaliza defaults (headers/query, response body_raw, side_effect por método)" do
+  it "build normalizes defaults (headers/query, response body_raw, side_effect by method)" do
     d = described_class.build(name: "x", description: "d", request: { url: "https://a.test" })
     expect(d.request[:method]).to eq("GET")
     expect(d.request[:headers]).to eq({})
     expect(d.request[:query]).to eq({})
     expect(d.response).to eq({ extract: "body_raw", path: nil })
-    expect(d.side_effect).to be(false)          # GET é idempotente
-    # parameters vazio -> JSON Schema objeto vazio (Fase 7/D1)
+    expect(d.side_effect).to be(false)          # GET is idempotent
+    # empty parameters -> empty JSON Schema object (Phase 7/D1)
     expect(d.parameters).to eq({ "type" => "object", "properties" => {}, "required" => [] })
   end
 
-  it "side_effect default = true p/ método não-idempotente; override respeitado" do
+  it "side_effect default = true for a non-idempotent method; override respected" do
     expect(described_class.build(name: "x", description: "d",
                                  request: { method: "post", url: "https://a.test" }).side_effect).to be(true)
     expect(described_class.build(name: "x", description: "d", side_effect: false,
                                  request: { method: "POST", url: "https://a.test" }).side_effect).to be(false)
   end
 
-  it "from_h faz round-trip com to_h (string keys do store)" do
+  it "from_h round-trips with to_h (string keys from the store)" do
     d = described_class.build(**valid_attrs)
     again = described_class.from_h(d.to_h)
     expect(again).to eq(d)
   end
 
-  # Fase 7/D4/F5 (Etapa C): group/tags como DADO.
+  # Phase 7/D4/F5 (Step C): group/tags as DATA.
   describe "group/tags" do
     it "default: group nil, tags []" do
       d = described_class.build(**valid_attrs)
@@ -46,14 +46,14 @@ RSpec.describe Harness::ToolDefinition do
       expect(d.tags).to eq([])
     end
 
-    it "normaliza group (trim; vazio -> nil) e tags (strings não-vazias, únicas)" do
+    it "normalizes group (trim; empty -> nil) and tags (non-empty, unique strings)" do
       d = described_class.build(**valid_attrs(group: "  b2b ", tags: ["x", "x", " ", "y"]))
       expect(d.group).to eq("b2b")
       expect(d.tags).to eq(%w[x y])
       expect(described_class.build(**valid_attrs(group: "   ")).group).to be_nil
     end
 
-    it "round-trip to_h/from_h preserva group/tags" do
+    it "round-trip to_h/from_h preserves group/tags" do
       d = described_class.build(**valid_attrs(group: "b2b", tags: ["catalog"]))
       again = described_class.from_h(d.to_h)
       expect(again).to eq(d)
@@ -62,40 +62,40 @@ RSpec.describe Harness::ToolDefinition do
     end
   end
 
-  describe "validação" do
-    it "rejeita name fora do formato" do
+  describe "validation" do
+    it "rejects a name outside the format" do
       expect { described_class.build(**valid_attrs(name: "Bad Name")) }
-        .to raise_error(Harness::ValidationError, /name deve casar/)
+        .to raise_error(Harness::ValidationError, /name must match/)
     end
 
-    it "rejeita description vazia" do
+    it "rejects an empty description" do
       expect { described_class.build(**valid_attrs(description: "")) }
         .to raise_error(Harness::ValidationError, /description/)
     end
 
-    it "rejeita method e url inválidos" do
+    it "rejects invalid method and url" do
       expect { described_class.build(**valid_attrs(request: { method: "FOO", url: "https://a.test" })) }
         .to raise_error(Harness::ValidationError, /method/)
       expect { described_class.build(**valid_attrs(request: { method: "GET", url: "ftp://a.test" })) }
         .to raise_error(Harness::ValidationError, /http/)
       expect { described_class.build(**valid_attrs(request: { method: "GET", url: "" })) }
-        .to raise_error(Harness::ValidationError, /url é obrigatória/)
+        .to raise_error(Harness::ValidationError, /url is required/)
     end
 
-    it "rejeita param com type inválido e nomes duplicados" do
+    it "rejects a param with invalid type and duplicated names" do
       expect { described_class.build(**valid_attrs(parameters: [{ name: "a", type: "date" }])) }
-        .to raise_error(Harness::ValidationError, /type inválido/)
+        .to raise_error(Harness::ValidationError, /invalid type/)
       dup = [{ name: "a" }, { name: "a" }]
       expect { described_class.build(**valid_attrs(parameters: dup, request: { url: "https://a.test" })) }
-        .to raise_error(Harness::ValidationError, /duplicado/)
+        .to raise_error(Harness::ValidationError, /duplicated/)
     end
 
-    it "rejeita json_path sem path" do
+    it "rejects json_path without path" do
       expect { described_class.build(**valid_attrs(response: { extract: "json_path" })) }
-        .to raise_error(Harness::ValidationError, /exige path/)
+        .to raise_error(Harness::ValidationError, /requires path/)
     end
 
-    it "rejeita placeholder que não referencia parâmetro declarado" do
+    it "rejects a placeholder that does not reference a declared parameter" do
       attrs = valid_attrs(
         parameters: [{ name: "cep" }],
         request: { method: "POST", url: "https://a.test/{{cep}}", body: '{"x":"{{missing}}"}' }
@@ -104,7 +104,7 @@ RSpec.describe Harness::ToolDefinition do
         .to raise_error(Harness::ValidationError, /placeholder.*missing/)
     end
 
-    it "aceita placeholder em url/query/headers/body quando declarado" do
+    it "accepts a placeholder in url/query/headers/body when declared" do
       attrs = valid_attrs(
         parameters: [{ name: "q" }, { name: "tok" }],
         request: { method: "POST", url: "https://a.test/{{q}}",
@@ -115,9 +115,9 @@ RSpec.describe Harness::ToolDefinition do
       expect { described_class.build(**attrs) }.not_to raise_error
     end
 
-    # Fase 6/D2: namespace {{ctx.*}} = contexto de TURNO (não é param do modelo).
-    describe "contexto de turno {{ctx.*}}" do
-      it "aceita ctx.chat_id/store_id/agent_id/tenant sem declará-los como param" do
+    # Phase 6/D2: namespace {{ctx.*}} = TURN context (not a model param).
+    describe "turn context {{ctx.*}}" do
+      it "accepts ctx.chat_id/store_id/agent_id/tenant without declaring them as params" do
         attrs = valid_attrs(
           parameters: [{ name: "cep" }],
           request: { method: "POST", url: "https://a.test/{{cep}}",
@@ -129,18 +129,18 @@ RSpec.describe Harness::ToolDefinition do
         expect { described_class.build(**attrs) }.not_to raise_error
       end
 
-      it "rejeita campo de contexto desconhecido" do
+      it "rejects an unknown context field" do
         attrs = valid_attrs(
           parameters: [{ name: "cep" }],
           request: { method: "GET", url: "https://a.test/{{cep}}", headers: { "X" => "{{ctx.senha}}" } }
         )
         expect { described_class.build(**attrs) }
-          .to raise_error(Harness::ValidationError, /contexto de turno desconhecido: ctx\.senha/)
+          .to raise_error(Harness::ValidationError, /unknown turn context: ctx\.senha/)
       end
 
-      it "não confunde ctx.* com parâmetro faltante" do
+      it "does not confuse ctx.* with a missing parameter" do
         attrs = valid_attrs(
-          parameters: [], # nenhum param declarado
+          parameters: [], # no param declared
           request: { method: "GET", url: "https://a.test", headers: { "X-Chat-Id" => "{{ctx.chat_id}}" } }
         )
         expect { described_class.build(**attrs) }.not_to raise_error
@@ -148,7 +148,7 @@ RSpec.describe Harness::ToolDefinition do
     end
   end
 
-  it "required_params lista só os obrigatórios" do
+  it "required_params lists only the required ones" do
     d = described_class.build(**valid_attrs(parameters: [
                                               { name: "a", required: true },
                                               { name: "b", required: false }
@@ -156,9 +156,9 @@ RSpec.describe Harness::ToolDefinition do
     expect(d.required_params).to eq(["a"])
   end
 
-  # Fase 7/D1: parâmetros são JSON Schema; o array plano é açúcar que "sobe".
-  describe "JSON Schema (Fase 7)" do
-    it "sobe o array plano legado para JSON Schema (lift), sem regressão" do
+  # Phase 7/D1: parameters are JSON Schema; the flat array is sugar that "lifts".
+  describe "JSON Schema (Phase 7)" do
+    it "lifts the legacy flat array to JSON Schema (lift), without regression" do
       d = described_class.build(**valid_attrs)
       expect(d.parameters).to eq(
         "type" => "object",
@@ -167,13 +167,13 @@ RSpec.describe Harness::ToolDefinition do
       )
     end
 
-    it "array plano type=array ganha items string (paridade com o RubyLLM)" do
+    it "flat array type=array gets string items (parity with RubyLLM)" do
       d = described_class.build(**valid_attrs(parameters: [{ name: "tags", type: "array" }],
                                               request: { url: "https://a.test/{{tags}}" }))
       expect(d.parameters.dig("properties", "tags")).to eq("type" => "array", "items" => { "type" => "string" })
     end
 
-    it "aceita JSON Schema aninhado (object/array) e o preserva string-keyed" do
+    it "accepts nested JSON Schema (object/array) and preserves it string-keyed" do
       schema = {
         "type" => "object",
         "properties" => {
@@ -201,7 +201,7 @@ RSpec.describe Harness::ToolDefinition do
                                           description: "", required: true }])
     end
 
-    it "aceita JSON Schema com symbol keys e normaliza p/ string" do
+    it "accepts JSON Schema with symbol keys and normalizes to string" do
       d = described_class.build(name: "x", description: "d",
                                 parameters: { type: "object", properties: { n: { type: "number" } }, required: [:n] },
                                 request: { url: "https://a.test/{{n}}" })
@@ -209,7 +209,7 @@ RSpec.describe Harness::ToolDefinition do
                                  "required" => ["n"])
     end
 
-    it "round-trip from_h/to_h preserva o schema aninhado" do
+    it "round-trip from_h/to_h preserves the nested schema" do
       d = described_class.build(name: "search_products", description: "busca",
                                 parameters: { "type" => "object",
                                               "properties" => { "q" => { "type" => "string" } },
@@ -218,49 +218,49 @@ RSpec.describe Harness::ToolDefinition do
       expect(described_class.from_h(d.to_h)).to eq(d)
     end
 
-    describe "subset seguro (R1)" do
+    describe "safe subset (R1)" do
       def with_schema(schema)
         { name: "x", description: "d", parameters: schema, request: { url: "https://a.test" } }
       end
 
-      it "rejeita composição (oneOf/anyOf/allOf/$ref)" do
+      it "rejects composition (oneOf/anyOf/allOf/$ref)" do
         %w[oneOf anyOf allOf $ref].each do |kw|
           schema = { "type" => "object", "properties" => { "p" => { "type" => "string", kw => [] } } }
           expect { described_class.build(**with_schema(schema)) }
-            .to raise_error(Harness::ValidationError, /não suportada/), "esperava rejeitar #{kw}"
+            .to raise_error(Harness::ValidationError, /unsupported/), "expected to reject #{kw}"
         end
       end
 
-      it "rejeita type fora do subset seguro" do
+      it "rejects a type outside the safe subset" do
         schema = { "type" => "object", "properties" => { "p" => { "type" => "null" } } }
         expect { described_class.build(**with_schema(schema)) }
-          .to raise_error(Harness::ValidationError, /type inválido/)
+          .to raise_error(Harness::ValidationError, /invalid type/)
       end
 
-      it "rejeita array sem items" do
+      it "rejects an array without items" do
         schema = { "type" => "object", "properties" => { "p" => { "type" => "array" } } }
         expect { described_class.build(**with_schema(schema)) }
-          .to raise_error(Harness::ValidationError, /array exige 'items'/)
+          .to raise_error(Harness::ValidationError, /array requires 'items'/)
       end
 
-      it "rejeita required citando propriedade inexistente" do
+      it "rejects required citing a nonexistent property" do
         schema = { "type" => "object", "properties" => { "a" => { "type" => "string" } }, "required" => ["b"] }
         expect { described_class.build(**with_schema(schema)) }
-          .to raise_error(Harness::ValidationError, /propriedade inexistente: b/)
+          .to raise_error(Harness::ValidationError, /nonexistent property: b/)
       end
 
-      it "rejeita topo que não é object" do
+      it "rejects a top level that is not an object" do
         expect { described_class.build(**with_schema({ "type" => "array", "items" => { "type" => "string" } })) }
-          .to raise_error(Harness::ValidationError, /topo.*deve ser type object/)
+          .to raise_error(Harness::ValidationError, /top.*must be type object/)
       end
 
-      it "rejeita nome de propriedade de topo fora do NAME_RE" do
+      it "rejects a top-level property name outside NAME_RE" do
         schema = { "type" => "object", "properties" => { "Bad Name" => { "type" => "string" } } }
         expect { described_class.build(**with_schema(schema)) }
-          .to raise_error(Harness::ValidationError, /param de topo.*deve casar/)
+          .to raise_error(Harness::ValidationError, /top-level param.*must match/)
       end
 
-      it "aceita enum e min/max (subset seguro)" do
+      it "accepts enum and min/max (safe subset)" do
         schema = {
           "type" => "object",
           "properties" => {

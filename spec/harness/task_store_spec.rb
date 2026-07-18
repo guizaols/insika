@@ -3,25 +3,25 @@
 require "spec_helper"
 
 RSpec.describe Harness::TaskStore do
-  # Contra Memory; paridade com SQLite garantida pela suíte de contrato da
-  # task 2 (doc 02 §7) + um smoke SQLite ":memory:".
+  # Against Memory; parity with SQLite guaranteed by the task 2 contract
+  # suite (doc 02 §7) + a SQLite ":memory:" smoke test.
   subject(:tasks) { described_class.new(store: backend) }
 
   let(:backend) { Harness::Stores::Memory.new }
   let(:command) { { type: "send_message", payload: {}, meta: {} } }
 
-  describe "matriz completa de transições (doc 02 §7)" do
-    # Conjunto válido transcrito da tabela do doc 02 §2 (12 pares ✓).
+  describe "full transition matrix (doc 02 §7)" do
+    # Valid set transcribed from the table in doc 02 §2 (12 pairs ✓).
     valid = {
-      queued: %i[running cancelled failed], # +failed: P2-03 (falha ao iniciar na fila)
+      queued: %i[running cancelled failed], # +failed: P2-03 (failure starting while queued)
       running: %i[waiting paused completed failed cancelled],
       waiting: %i[running cancelled failed],
       paused: %i[running cancelled]
     }
     valid.default = []
 
-    # Prepara uma task no estado de origem gravando o registro direto no
-    # backend (aceitável em teste de store) — evita depender de caminhos válidos.
+    # Prepares a task in the source state by writing the record directly to the
+    # backend (acceptable in a store test) — avoids depending on valid paths.
     def seed_in_state(state)
       id = "t-#{state}"
       now = "2020-01-01T00:00:00Z"
@@ -37,12 +37,12 @@ RSpec.describe Harness::TaskStore do
     described_class::STATUSES.each do |from|
       described_class::STATUSES.each do |to|
         if valid[from].include?(to)
-          it "#{from} -> #{to} transita" do
+          it "#{from} -> #{to} transitions" do
             id = seed_in_state(from)
             expect(tasks.transition(id, to: to).status).to eq(to)
           end
         else
-          it "#{from} -> #{to} levanta ArgumentError" do
+          it "#{from} -> #{to} raises ArgumentError" do
             id = seed_in_state(from)
             expect { tasks.transition(id, to: to) }.to raise_error(ArgumentError)
           end
@@ -50,7 +50,7 @@ RSpec.describe Harness::TaskStore do
       end
     end
 
-    it "cobre os 49 pares (13 válidos, 36 inválidos)" do
+    it "covers the 49 pairs (13 valid, 36 invalid)" do
       valid_count = described_class::STATUSES.sum { |s| valid[s].size }
       expect(valid_count).to eq(13) # +1: queued->failed (P2-03)
       expect(described_class::STATUSES.size**2).to eq(49)
@@ -58,7 +58,7 @@ RSpec.describe Harness::TaskStore do
   end
 
   describe "#create" do
-    it "retorna Task com defaults" do
+    it "returns Task with defaults" do
       task = tasks.create(command: command)
 
       expect(task.status).to eq(:queued)
@@ -67,19 +67,19 @@ RSpec.describe Harness::TaskStore do
       expect { Time.iso8601(task.created_at) }.not_to raise_error
     end
 
-    it "levanta ArgumentError em id duplicado" do
+    it "raises ArgumentError on duplicate id" do
       tasks.create(command: command, id: "x")
 
       expect { tasks.create(command: command, id: "x") }.to raise_error(ArgumentError)
     end
 
-    it "normaliza command Hash com symbols para chaves string" do
+    it "normalizes command Hash with symbols to string keys" do
       task = tasks.create(command: { type: :send_message, payload: { a: 1 } })
 
       expect(task.command).to eq({ "type" => "send_message", "payload" => { "a" => 1 } })
     end
 
-    it "aceita objeto que responde a to_h (ex.: Harness::Command futura)" do
+    it "accepts an object that responds to to_h (e.g. future Harness::Command)" do
       command_like = Data.define(:type, :payload, :meta).new(
         type: "send_message", payload: {}, meta: {}
       )
@@ -93,7 +93,7 @@ RSpec.describe Harness::TaskStore do
   describe "#begin_execution / #finish_execution" do
     let(:id) { tasks.create(command: command, id: "t").id }
 
-    it "numera attempts e preserva o histórico (append-only)" do
+    it "numbers attempts and preserves history (append-only)" do
       tasks.begin_execution(id)
       tasks.finish_execution(id, outcome: "failed")
       task = tasks.begin_execution(id)
@@ -103,13 +103,13 @@ RSpec.describe Harness::TaskStore do
       expect(task.executions.first.finished_at).not_to be_nil
     end
 
-    it "begin com Execution aberta levanta ArgumentError" do
+    it "begin with an open Execution raises ArgumentError" do
       tasks.begin_execution(id)
 
       expect { tasks.begin_execution(id) }.to raise_error(ArgumentError)
     end
 
-    it "finish fecha a corrente sem tocar em status" do
+    it "finish closes the current one without touching status" do
       tasks.begin_execution(id)
       task = tasks.finish_execution(id, outcome: "completed")
 
@@ -118,16 +118,16 @@ RSpec.describe Harness::TaskStore do
       expect(task.status).to eq(:queued)
     end
 
-    it "finish sem Execution aberta levanta ArgumentError" do
+    it "finish without an open Execution raises ArgumentError" do
       expect { tasks.finish_execution(id, outcome: "x") }.to raise_error(ArgumentError)
     end
   end
 
-  describe "#transition com error:" do
+  describe "#transition with error:" do
     let(:id) { tasks.create(command: command, id: "t").id }
     let(:err) { { class: "RuntimeError", message: "boom", stage: :provider } }
 
-    it "fecha a Execution aberta gravando o erro (chaves string)" do
+    it "closes the open Execution recording the error (string keys)" do
       tasks.begin_execution(id)
       tasks.transition(id, to: :running)
       task = tasks.transition(id, to: :failed, error: err)
@@ -140,31 +140,31 @@ RSpec.describe Harness::TaskStore do
       )
     end
 
-    it "sem Execution aberta transiciona e ignora o error: (não levanta)" do
+    it "without an open Execution transitions and ignores error: (does not raise)" do
       task = tasks.transition(id, to: :cancelled, error: err)
 
       expect(task.status).to eq(:cancelled)
       expect(task.executions).to eq([])
     end
 
-    it "retry: novo begin após transition(:failed, error:) abre attempt 2 e preserva a 1 (edge case 7)" do
+    it "retry: a new begin after transition(:failed, error:) opens attempt 2 and preserves the 1st (edge case 7)" do
       tasks.begin_execution(id)
       tasks.transition(id, to: :running)
-      tasks.transition(id, to: :failed, error: err) # fecha a Execution 1 com o erro
-      task = tasks.begin_execution(id) # retry reabre nova tentativa (não valida status)
+      tasks.transition(id, to: :failed, error: err) # closes Execution 1 with the error
+      task = tasks.begin_execution(id) # retry reopens a new attempt (does not validate status)
 
       expect(task.executions.map(&:attempt)).to eq([1, 2])
       first = task.executions.first
       expect(first.finished_at).not_to be_nil
       expect(first.outcome).to eq("failed")
       expect(first.error).to include("message" => "boom")
-      expect(task.executions.last.finished_at).to be_nil # a 2ª está aberta
+      expect(task.executions.last.finished_at).to be_nil # the 2nd is open
     end
   end
 
   describe "#running_or_interrupted" do
-    it "retorna só as tasks em running/waiting/paused" do
-      # cobre os 7 estados, chegando a cada um por caminho válido
+    it "returns only tasks in running/waiting/paused" do
+      # covers the 7 states, reaching each via a valid path
       tasks.create(command: command, id: "q") # queued
       tasks.transition(tasks.create(command: command, id: "r").id, to: :running)
       w = tasks.create(command: command, id: "w").id
@@ -181,23 +181,23 @@ RSpec.describe Harness::TaskStore do
       expect(tasks.running_or_interrupted.map(&:id)).to contain_exactly("r", "w", "p")
     end
 
-    it "retorna [] quando não há tasks" do
+    it "returns [] when there are no tasks" do
       expect(tasks.running_or_interrupted).to eq([])
     end
   end
 
-  describe "borda de tipos e consultas" do
-    it "expõe status como Symbol após find" do
+  describe "type boundary and queries" do
+    it "exposes status as Symbol after find" do
       tasks.create(command: command, id: "t")
 
       expect(tasks.find("t").status).to eq(:queued)
     end
 
-    it "find inexistente -> nil" do
+    it "find nonexistent -> nil" do
       expect(tasks.find("nope")).to be_nil
     end
 
-    it "each_id: ids sem prefixo e Enumerator sem bloco" do
+    it "each_id: ids without prefix and Enumerator without a block" do
       %w[a b c].each { |id| tasks.create(command: command, id: id) }
 
       expect(tasks.each_id.to_a).to contain_exactly("a", "b", "c")
@@ -205,7 +205,7 @@ RSpec.describe Harness::TaskStore do
     end
   end
 
-  describe "NotFoundError em id inexistente" do
+  describe "NotFoundError on nonexistent id" do
     it "transition" do
       expect { tasks.transition("nope", to: :running) }.to raise_error(Harness::NotFoundError)
     end
@@ -219,17 +219,17 @@ RSpec.describe Harness::TaskStore do
     end
   end
 
-  describe "propagação de erro do backend (doc 02 §6)" do
-    it "deixa StoreError propagar sem re-embrulhar" do
-      # command não-JSONable força StoreError na escrita (C22); o TaskStore não
-      # captura/re-embrulha (doc 02 §6).
+  describe "backend error propagation (doc 02 §6)" do
+    it "lets StoreError propagate without re-wrapping" do
+      # non-JSONable command forces StoreError on write (C22); the TaskStore does not
+      # capture/re-wrap (doc 02 §6).
       expect { tasks.create(command: { obj: Object.new }) }
         .to raise_error(Harness::StoreError)
     end
   end
 
-  describe "smoke contra Stores::SQLite ':memory:'" do
-    it "fluxo create->transition->begin->finish idêntico ao Memory" do
+  describe "smoke against Stores::SQLite ':memory:'" do
+    it "create->transition->begin->finish flow identical to Memory" do
       require "sqlite3"
       sqlite = Harness::Stores::SQLite.new(path: ":memory:")
       store = described_class.new(store: sqlite)

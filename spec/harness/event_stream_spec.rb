@@ -9,7 +9,7 @@ RSpec.describe Harness::EventStream do
     Harness::Event.new(type: type, data: data, meta: meta)
   end
 
-  # Coleta os eventos de uma subscription num fiber consumidor até o close.
+  # Collects a subscription's events in a consumer fiber until close.
   def collect(parent, sub)
     got = []
     consumer = parent.async { sub.each { |e| got << e } }
@@ -19,7 +19,7 @@ RSpec.describe Harness::EventStream do
     got
   end
 
-  it "faz fan-out para 2 subscriptions sem filtro" do
+  it "fans out to 2 subscriptions without a filter" do
     Sync do |task|
       a = stream.subscribe
       b = stream.subscribe
@@ -37,7 +37,7 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "filtra por task_id" do
+  it "filters by task_id" do
     Sync do |task|
       sub = stream.subscribe(task_id: "a")
       got = collect(task, sub) do
@@ -48,7 +48,7 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "filtra por session_id" do
+  it "filters by session_id" do
     Sync do |task|
       sub = stream.subscribe(session_id: "s1")
       got = collect(task, sub) do
@@ -59,7 +59,7 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "não entrega evento sem task no meta a subscriber com filtro de task; sem filtro recebe" do
+  it "does not deliver an event without task in meta to a subscriber with a task filter; without a filter it receives" do
     Sync do |task|
       filtered = stream.subscribe(task_id: "a")
       unfiltered = stream.subscribe
@@ -67,7 +67,7 @@ RSpec.describe Harness::EventStream do
       got_u = []
       cf = task.async { filtered.each { |e| got_f << e } }
       cu = task.async { unfiltered.each { |e| got_u << e } }
-      stream.emit(evt(type: :session_created, meta: { session_id: "s" })) # sem task_id
+      stream.emit(evt(type: :session_created, meta: { session_id: "s" })) # no task_id
       filtered.close
       unfiltered.close
       cf.wait
@@ -77,7 +77,7 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "itera exatamente até o close" do
+  it "iterates exactly until close" do
     Sync do |task|
       sub = stream.subscribe
       got = collect(task, sub) { 3.times { |i| stream.emit(evt(data: { n: i })) } }
@@ -85,7 +85,7 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "isola observador quebrado: emit não levanta e os demais recebem" do
+  it "isolates a broken observer: emit does not raise and the others receive" do
     Sync do |task|
       good = stream.subscribe
       bad = stream.subscribe
@@ -99,10 +99,10 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "bufferiza para consumidor lento: emit não bloqueia (L4)" do
+  it "buffers for a slow consumer: emit does not block (L4)" do
     Sync do |task|
       sub = stream.subscribe
-      100.times { stream.emit(evt) } # nenhum consumidor ativo ainda
+      100.times { stream.emit(evt) } # no active consumer yet
       got = []
       c = task.async { sub.each { |e| got << e } }
       sub.close
@@ -111,37 +111,37 @@ RSpec.describe Harness::EventStream do
     end
   end
 
-  it "não entrega retroativo: subscribe depois do emit não recebe o passado" do
+  it "does not deliver retroactively: subscribing after emit does not receive the past" do
     Sync do |task|
-      stream.emit(evt) # antes de qualquer subscribe
+      stream.emit(evt) # before any subscribe
       sub = stream.subscribe
       got = collect(task, sub) { nil }
       expect(got).to be_empty
     end
   end
 
-  it "emit sem subscribers é no-op" do
+  it "emit with no subscribers is a no-op" do
     expect(stream.emit(evt)).to be_nil
   end
 
-  it "assinante não é pulado quando outro estoura (fecha) durante o mesmo emit" do
-    # A (sem filtro) satura até o cap; B (filtrado por task_id) ignora o tráfego
-    # de A. No emit crítico, A estoura -> close -> é removida do array DURANTE o
-    # each; B casa esse mesmo evento e NÃO pode ser pulado (regressão: Array#each
-    # + delete pulava o vizinho deslocado).
+  it "a subscriber is not skipped when another overflows (closes) during the same emit" do
+    # A (no filter) saturates up to the cap; B (filtered by task_id) ignores A's
+    # traffic. On the critical emit, A overflows -> close -> is removed from the array DURING
+    # the each; B matches that same event and MUST NOT be skipped (regression: Array#each
+    # + delete used to skip the shifted neighbor).
     Sync do |task|
-      a = stream.subscribe                       # sem filtro: recebe tudo
-      b = stream.subscribe(task_id: "b")          # só eventos da task "b"
-      1000.times { stream.emit(evt(meta: {})) }   # enche A ao cap; B ignora
+      a = stream.subscribe                       # no filter: receives everything
+      b = stream.subscribe(task_id: "b")          # only events from task "b"
+      1000.times { stream.emit(evt(meta: {})) }   # fills A up to the cap; B ignores
 
       got_b = []
       cb = task.async { b.each { |e| got_b << e } }
-      stream.emit(evt(meta: { task_id: "b" }))    # A estoura/sai; B deve receber
+      stream.emit(evt(meta: { task_id: "b" }))    # A overflows/leaves; B should receive
       b.close
       cb.wait
 
-      expect(got_b.size).to eq(1) # sem o snapshot em emit, seria 0 (B pulado)
-      expect(a).not_to be_nil     # A foi fechada, mas o emit não levantou
+      expect(got_b.size).to eq(1) # without the snapshot in emit, it would be 0 (B skipped)
+      expect(a).not_to be_nil     # A was closed, but the emit did not raise
     end
   end
 end

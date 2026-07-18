@@ -24,7 +24,7 @@ module Harness
 
       if @entries.key?(name)
         existing = @entries[name]
-        warn "[registry] '#{name}' já registrada por #{existing.plugin.inspect}; " \
+        warn "[registry] '#{name}' already registered by #{existing.plugin.inspect}; " \
              "descartando registro de #{plugin.inspect} (primeiro vence)"
         return self
       end
@@ -36,7 +36,7 @@ module Harness
     # -> instance (factory.call) | raise NotFoundError.
     def resolve(name)
       entry = @entries[name.to_s]
-      raise Harness::NotFoundError, "'#{name}' não registrada em #{self.class}" if entry.nil?
+      raise Harness::NotFoundError, "'#{name}' not registered in #{self.class}" if entry.nil?
 
       entry.factory.call
     end

@@ -4,10 +4,10 @@ require "spec_helper"
 require "async"
 require "async/condition"
 
-# Suspensão :paused no Executor (P2 task 2). Pausar exige captar :pause numa
-# fronteira ANTES do estágio 6 — um context builder com gate suspende o turno no
-# estágio 2, permitindo postar :pause antes da fronteira que o consome.
-RSpec.describe "Harness::Executor — suspensão :paused" do
+# :paused suspension in the Executor (P2 task 2). Pausing requires catching :pause at a
+# boundary BEFORE stage 6 — a gated context builder suspends the turn at
+# stage 2, allowing :pause to be posted before the boundary that consumes it.
+RSpec.describe "Harness::Executor — :paused suspension" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
   let(:task_store) { Harness::TaskStore.new(store: backend) }
@@ -15,7 +15,7 @@ RSpec.describe "Harness::Executor — suspensão :paused" do
   let(:event_stream) { SpyEventStream.new }
   let(:profile) { Harness::AgentProfile.build(id: "sales", model: "gpt", base_prompt: "SOUL") }
 
-  # Context builder que bloqueia no estágio 2 até `gate.signal`, depois delega.
+  # Context builder that blocks at stage 2 until `gate.signal`, then delegates.
   class GatingContextBuilder
     def initialize(gate)
       @gate = gate
@@ -46,16 +46,16 @@ RSpec.describe "Harness::Executor — suspensão :paused" do
 
   def actor_of(executor) = executor.instance_variable_get(:@running)["t"]
 
-  it "suspende em :paused na fronteira e retoma no :resume até concluir" do
+  it "suspends at :paused on the boundary and resumes on :resume until complete" do
     gate = Async::Condition.new
     executor = build_executor(context_builder: GatingContextBuilder.new(gate))
     allow(executor).to receive(:create_chat).and_return(FakeChat.new)
 
     Sync do |top|
-      executor.spawn(make_task, profile: profile) # roda até o gate do estágio 2 (suspende)
+      executor.spawn(make_task, profile: profile) # runs until the stage 2 gate (suspends)
       actor = actor_of(executor)
-      actor.post(:pause)                            # :pause na mailbox antes da fronteira
-      gate.signal                                   # estágio 2 retorna -> fronteira vê :pause
+      actor.post(:pause)                            # :pause in the mailbox before the boundary
+      gate.signal                                   # stage 2 returns -> boundary sees :pause
       top.sleep(0.02)
       expect(task_store.find("t").status).to eq(:paused)
       expect(event_stream.types).to include(:task_paused)
@@ -64,14 +64,14 @@ RSpec.describe "Harness::Executor — suspensão :paused" do
       actor.wait
       expect(task_store.find("t").status).to eq(:completed)
       expect(event_stream.types).to include(:task_resumed)
-      # ordem: paused vem antes de resumed, resumed antes de done
+      # order: paused comes before resumed, resumed before done
       types = event_stream.types
       expect(types.index(:task_paused)).to be < types.index(:task_resumed)
       expect(types.index(:task_resumed)).to be < types.index(:done)
     end
   end
 
-  it ":cancel durante :paused -> :cancelled (transição válida)" do
+  it ":cancel during :paused -> :cancelled (valid transition)" do
     gate = Async::Condition.new
     executor = build_executor(context_builder: GatingContextBuilder.new(gate))
     allow(executor).to receive(:create_chat).and_return(FakeChat.new)
@@ -84,21 +84,21 @@ RSpec.describe "Harness::Executor — suspensão :paused" do
       top.sleep(0.02)
       expect(task_store.find("t").status).to eq(:paused)
 
-      actor.post(:cancel) # cancela enquanto pausado
+      actor.post(:cancel) # cancel while paused
       actor.wait
       expect(task_store.find("t").status).to eq(:cancelled)
       expect(event_stream.types).to include(:task_cancelled)
     end
   end
 
-  it "sem :pause o fluxo é idêntico à Fase 1 (nenhum :task_paused)" do
+  it "without :pause the flow is identical to Phase 1 (no :task_paused)" do
     gate = Async::Condition.new
     executor = build_executor(context_builder: GatingContextBuilder.new(gate))
     allow(executor).to receive(:create_chat).and_return(FakeChat.new)
 
     Sync do
       executor.spawn(make_task, profile: profile)
-      gate.signal # nenhuma pausa postada
+      gate.signal # no pause posted
       actor_of(executor).wait
       expect(task_store.find("t").status).to eq(:completed)
       expect(event_stream.types).not_to include(:task_paused)

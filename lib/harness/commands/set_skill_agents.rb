@@ -26,7 +26,7 @@ module Harness
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
         raise Harness::ValidationError, "name is required" if name.nil?
-        raise Harness::ValidationError, "agent_ids deve ser lista" unless p[:agent_ids].nil? || p[:agent_ids].is_a?(Array)
+        raise Harness::ValidationError, "agent_ids must be a list" unless p[:agent_ids].nil? || p[:agent_ids].is_a?(Array)
 
         wanted = Array(p[:agent_ids]).map(&:to_s)
         enabled_for = []

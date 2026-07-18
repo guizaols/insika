@@ -84,7 +84,7 @@ module Harness
           refs.map do |name|
             entry = @catalog&.find(name.to_s)
             unless entry
-              raise ContextError.new("prompt_ref '#{name}' não encontrado no Prompt Catalog",
+              raise ContextError.new("prompt_ref '#{name}' not found in the Prompt Catalog",
                                      provider: id)
             end
 

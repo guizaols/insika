@@ -21,7 +21,7 @@ module Harness
         raise Harness::ValidationError, "file is required" if file.nil?
 
         unless @agent_files.delete(agent_id, file)
-          raise Harness::NotFoundError, "arquivo '#{file}' não encontrado para o agente '#{agent_id}'"
+          raise Harness::NotFoundError, "file '#{file}' not found for agent '#{agent_id}'"
         end
 
         unregister_prompt_file(agent_id, file)

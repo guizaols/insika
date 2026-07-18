@@ -27,7 +27,7 @@ RSpec.describe Harness::Server::A2A::Http do
     expect(result).to eq({ "jsonrpc" => "2.0", "id" => 1, "result" => { "ok" => true } })
   end
 
-  it "close é best-effort (não levanta)" do
+  it "close is best-effort (does not raise)" do
     expect { described_class.new(internet: FakeInternet.new("{}")).close }.not_to raise_error
   end
 end

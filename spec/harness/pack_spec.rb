@@ -5,11 +5,11 @@ require "tmpdir"
 require "fileutils"
 require "json"
 
-# Fase 6/D4/F6 — o value object Pack: forma portátil de um agente (manifesto +
-# arquivos + skills + tools). from_h (wire JSON) e from_dir (disco, docs/prompt-base/06).
+# Phase 6/D4/F6 — the Pack value object: portable form of an agent (manifest +
+# files + skills + tools). from_h (wire JSON) and from_dir (disk, docs/prompt-base/06).
 RSpec.describe Harness::Pack do
   describe ".from_h" do
-    it "normaliza config (symbol), files/skills (string keys) e tools (array)" do
+    it "normalizes config (symbol), files/skills (string keys) and tools (array)" do
       pack = described_class.from_h(
         "config" => { "id" => "loja", "model" => "m" },
         "files" => { "IDENTITY.md" => "quem sou" },
@@ -22,13 +22,13 @@ RSpec.describe Harness::Pack do
       expect(pack.tools).to eq([{ "name" => "cart" }])
     end
 
-    it "tolera chaves symbol no topo (parse simbolizado)" do
+    it "tolerates symbol keys at the top (symbolized parse)" do
       pack = described_class.from_h(config: { id: "x", model: "m" }, files: { "A.md" => "a" })
       expect(pack.config).to eq(id: "x", model: "m")
       expect(pack.files).to eq("A.md" => "a")
     end
 
-    it "campos ausentes -> vazios (nil-safe)" do
+    it "absent fields -> empty (nil-safe)" do
       pack = described_class.from_h(nil)
       expect([pack.config, pack.files, pack.skills, pack.tools]).to eq([{}, {}, {}, []])
     end
@@ -43,12 +43,12 @@ RSpec.describe Harness::Pack do
       File.write(path, content)
     end
 
-    it "lê agent.config.json + *.md da raiz + skills/*/SKILL.md + tools/*.json" do
+    it "reads agent.config.json + *.md from the root + skills/*/SKILL.md + tools/*.json" do
       write("agent.config.json", JSON.generate(id: "loja-7", model: "deepseek-chat", metadata: { store_id: "7" }))
       write("IDENTITY.md", "quem sou")
       write("SOUL.md", "voz")
-      write("skills/escalation/SKILL.md", "---\nname: escalation\n---\ncorpo")
-      write("skills/promo/SKILL.md", "---\nname: promo\n---\ncorpo")
+      write("skills/escalation/SKILL.md", "---\nname: escalation\n---\nbody")
+      write("skills/promo/SKILL.md", "---\nname: promo\n---\nbody")
       write("tools/cart.json", JSON.generate(name: "cart", description: "d", request: { url: "https://a.test" }))
 
       pack = described_class.from_dir(@dir)
@@ -61,20 +61,20 @@ RSpec.describe Harness::Pack do
       expect(pack.tools).to eq([{ "name" => "cart", "description" => "d", "request" => { "url" => "https://a.test" } }])
     end
 
-    it "não desce em skills/ ao coletar os .md da raiz" do
+    it "does not descend into skills/ when collecting the root .md files" do
       write("agent.config.json", JSON.generate(id: "a", model: "m"))
       write("AGENTS.md", "fluxo")
       write("skills/x/SKILL.md", "---\nname: x\n---\n")
       pack = described_class.from_dir(@dir)
-      expect(pack.files.keys).to eq(["AGENTS.md"]) # SKILL.md não entra em files
+      expect(pack.files.keys).to eq(["AGENTS.md"]) # SKILL.md does not go into files
     end
 
-    it "sem agent.config.json -> ValidationError" do
+    it "without agent.config.json -> ValidationError" do
       write("IDENTITY.md", "x")
       expect { described_class.from_dir(@dir) }.to raise_error(Harness::ValidationError, /agent\.config\.json/)
     end
 
-    it "pack só com o manifesto (sem md/skills/tools) -> coleções vazias" do
+    it "pack with only the manifest (no md/skills/tools) -> empty collections" do
       write("agent.config.json", JSON.generate(id: "a", model: "m"))
       pack = described_class.from_dir(@dir)
       expect([pack.files, pack.skills, pack.tools]).to eq([{}, {}, []])

@@ -11,7 +11,7 @@ RSpec.describe Harness::Server::A2A::App do
   let(:profiles) { { "assistant" => Harness::AgentProfile.build(id: "assistant", model: "m", base_prompt: "SOUL") } }
 
   # Bus FAKE (unit): reproduz o mínimo dos handlers de forma determinística. A
-  # integração com os handlers/Executor REAIS é o smoke E2E (task 8).
+  # integration with the REAL handlers/Executor is the E2E smoke (task 8).
   let(:command_bus) do
     Class.new do
       attr_reader :dispatched
@@ -44,7 +44,7 @@ RSpec.describe Harness::Server::A2A::App do
   end
 
   describe "message/send" do
-    it "cria sessão (contextId ausente), despacha send_message e devolve uma A2A Task" do
+    it "creates a session (contextId missing), dispatches send_message and returns an A2A Task" do
       res = rpc("message/send", { "message" => { "parts" => [{ "kind" => "text", "text" => "oi" }] } })
       types = command_bus.dispatched.map(&:type)
       expect(types).to eq(%i[create_session send_message])
@@ -59,7 +59,7 @@ RSpec.describe Harness::Server::A2A::App do
       expect(task[:contextId]).to eq(sent.payload[:session_id])
     end
 
-    it "usa o contextId da mensagem quando presente (sem criar sessão)" do
+    it "uses the message's contextId when present (without creating a session)" do
       session = session_store.create(vars: {})
       rpc("message/send", { "message" => { "contextId" => session.id, "parts" => [{ "kind" => "text", "text" => "oi" }] } })
       expect(command_bus.dispatched.map(&:type)).to eq(%i[send_message])
@@ -103,15 +103,15 @@ RSpec.describe Harness::Server::A2A::App do
   end
 
   describe "erros" do
-    it "método desconhecido -> -32601" do
+    it "unknown method -> -32601" do
       expect(rpc("foo/bar")[:error][:code]).to eq(Harness::Server::A2A::Errors::METHOD_NOT_FOUND)
     end
 
-    it "request inválida (sem jsonrpc) -> -32600" do
+    it "invalid request (no jsonrpc) -> -32600" do
       expect(app.rpc({ "id" => "1", "method" => "tasks/get" })[:error][:code]).to eq(-32_600)
     end
 
-    it "nunca vaza exceção -> -32603" do
+    it "never leaks an exception -> -32603" do
       allow(command_bus).to receive(:dispatch).and_raise(RuntimeError.new("boom interno"))
       res = rpc("message/send", { "message" => { "parts" => [{ "kind" => "text", "text" => "x" }] } })
       expect(res[:error][:code]).to eq(Harness::Server::A2A::Errors::INTERNAL_ERROR)
@@ -128,9 +128,9 @@ RSpec.describe Harness::Server::A2A::App do
     end
   end
 
-  # §9.6: o A2A::App já faz ProfileSource.coerce — passar um StoredProfileSource
+  # §9.6: A2A::App already does ProfileSource.coerce — passing a StoredProfileSource
   # (a fonte dinâmica do deployment) faz o AgentCard/inbound enxergarem agentes
-  # criados no Studio, sem PROFILES estático.
+  # created in Studio, without a static PROFILES.
   describe "profiles via StoredProfileSource (§9.6)" do
     it "resolve o agent_card de um agente criado no store (Studio)" do
       cs = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)

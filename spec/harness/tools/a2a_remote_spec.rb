@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "harness/tools/a2a_remote" # o wiring o carrega lazy; explícito no teste
+require "harness/tools/a2a_remote" # the wiring loads it lazily; explicit in the test
 
 RSpec.describe Harness::Tools::A2ARemote do
-  # client fake: devolve o resultado configurado, grava a chamada.
+  # fake client: returns the configured result, records the call.
   class FakeClient
     attr_reader :calls
 
@@ -21,13 +21,13 @@ RSpec.describe Harness::Tools::A2ARemote do
                         event_stream: event_stream)
   end
 
-  it "name/description por instância" do
+  it "name/description per instance" do
     t = tool({ text: "x" })
     expect(t.name).to eq("remote_worker")
     expect(t.description).to eq("Delega ao worker")
   end
 
-  it "delega ao client e devolve o texto; emite :a2a_call" do
+  it "delegates to the client and returns the text; emits :a2a_call" do
     t = tool({ text: "42", state: "completed", id: "rt1" })
     expect(t.execute(message: "quanto?")).to eq("42")
     ev = events.last
@@ -35,7 +35,7 @@ RSpec.describe Harness::Tools::A2ARemote do
     expect(ev.data).to eq({ agent: "remote_worker", remote_task_id: "rt1", state: "completed" })
   end
 
-  it "erro remoto -> { error: } ao modelo (não levanta)" do
+  it "remote error -> { error: } to the model (does not raise)" do
     t = tool({ error: "deu ruim", state: "failed", id: nil })
     expect(t.execute(message: "x")).to eq({ error: "deu ruim" })
     expect(events.last.data[:state]).to eq("failed")

@@ -5,9 +5,9 @@ require "async"
 require "tmpdir"
 require "fileutils"
 
-# Integração providers reais (task 15) + Builder (task 14): prova a paridade de
-# montagem com a Fase 0 (doc 04 §3) e a ordem de sacrifício sob orçamento (L7).
-RSpec.describe "ContextBuilder + providers reais" do
+# Real providers integration (task 15) + Builder (task 14): proves assembly
+# parity with Phase 0 (doc 04 §3) and the sacrifice order under budget (L7).
+RSpec.describe "ContextBuilder + real providers" do
   let(:event_stream) { SpyEventStream.new }
 
   around do |example|
@@ -29,10 +29,10 @@ RSpec.describe "ContextBuilder + providers reais" do
   def write_skill(name)
     path = File.join(@dir, name)
     FileUtils.mkdir_p(path)
-    File.write(File.join(path, "SKILL.md"), "---\nname: #{name}\ndescription: d\n---\ncorpo\n")
+    File.write(File.join(path, "SKILL.md"), "---\nname: #{name}\ndescription: d\n---\nbody\n")
   end
 
-  it "monta system como Prompt(100) -> Skill(80), unidos por \\n\\n (paridade Fase 0)" do
+  it "assembles system as Prompt(100) -> Skill(80), joined by \\n\\n (Phase 0 parity)" do
     soul = File.join(@dir, "SOUL.md")
     File.write(soul, "Você é o assistente.")
     write_skill("cardapio")
@@ -50,14 +50,14 @@ RSpec.describe "ContextBuilder + providers reais" do
     expect(pkg.system).to eq(expected)
   end
 
-  it "sob orçamento apertado: histórico antigo evictado primeiro; skills e identidade intactos (L7)" do
+  it "under tight budget: old history evicted first; skills and identity intact (L7)" do
     write_skill("cardapio")
     catalog = Harness::SkillCatalog.new(@dir)
     profile = Harness::AgentProfile.build(id: "a", model: "m", base_prompt: "IDENTIDADE", skills: nil)
     session_store = Harness::SessionStore.new(store: Harness::Stores::Memory.new)
     session_store.create(id: "s1")
-    # 6 mensagens de histórico de tamanho controlado (~44 chars -> 11 tokens cada).
-    # O Hash {role:, content:} adiciona uns tokens; usamos margem no orçamento.
+    # 6 history messages of controlled size (~44 chars -> 11 tokens each).
+    # The Hash {role:, content:} adds a few tokens; we keep some margin in the budget.
     6.times { |i| session_store.append_messages("s1", { role: "user", content: "num#{i}-#{'.' * 40}" }) }
     providers = [
       Harness::Context::Providers::Prompt.new(base: "IDENTIDADE"),
@@ -65,17 +65,17 @@ RSpec.describe "ContextBuilder + providers reais" do
       Harness::Context::Providers::Session.new(session_store: session_store)
     ]
 
-    # orçamento que mantém identidade (pinned) + skills (80) + ALGUMAS histories
-    # (as mais recentes), cortando as mais antigas. Escolhido para sobrar >0 e <6.
+    # budget that keeps identity (pinned) + skills (80) + SOME histories
+    # (the most recent), cutting the oldest. Chosen so that >0 and <6 survive.
     pkg = build(providers, profile, session: session_store.find("s1"), budget: 90)
 
     survived = pkg.history.map { |m| m[:content] }
-    # identidade (pinned) e skills (80 > history) sobrevivem sempre
+    # identity (pinned) and skills (80 > history) always survive
     expect(pkg.system).to include("IDENTIDADE", "cardapio")
-    # cortou parte, mas não tudo: prova a ordem de sacrifício
+    # cut part, but not all: proves the sacrifice order
     expect(pkg.budget[:evicted]).not_to be_empty
     expect(survived.size).to be_between(1, 5)
-    # o que sobrou são as MAIS RECENTES; a mais antiga (num0) caiu primeiro
+    # what survived are the MOST RECENT; the oldest (num0) was dropped first
     expect(survived).to include(a_string_including("num5"))
     expect(survived).not_to include(a_string_including("num0"))
   end

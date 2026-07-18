@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Fase 7, Etapa B (task 5): Command :import_tools — upsert em LOTE de data-tools
-# por manifesto, reload hot, relatório por-tool e falha parcial isolada (R4).
+# Phase 7, Stage B (task 5): Command :import_tools — BATCH upsert of data-tools
+# by manifest, hot reload, per-tool report and isolated partial failure (R4).
 RSpec.describe Harness::Commands::ImportTools do
   CodeToolStub2 = Struct.new(:name, :description)
 
@@ -40,18 +40,18 @@ RSpec.describe Harness::Commands::ImportTools do
 
   def tool(name, **over) = { "name" => name, "endpoint" => name, "description" => "d" }.merge(over)
 
-  it "upsert em lote, reload hot (overlay+catálogo) e relatório por-tool" do
+  it "batch upsert, hot reload (overlay+catalog) and per-tool report" do
     report = run(consumer_manifest([tool("search_products"), tool("search_faq", "endpoint" => "search_faqs")]))
 
     expect(report[:version]).to eq(1)
     expect(report[:created]).to contain_exactly("search_products", "search_faq")
     expect(report[:updated]).to be_empty
     expect(report[:errors]).to be_empty
-    expect(overlay.names).to include("search_products", "search_faq") # overlay recarregado (hot)
-    expect(catalog.all.map(&:name)).to include("search_products")     # catálogo recarregado
+    expect(overlay.names).to include("search_products", "search_faq") # overlay reloaded (hot)
+    expect(catalog.all.map(&:name)).to include("search_products")     # catalog reloaded
   end
 
-  it "emite :tools_imported só com CONTAGENS (0 vazamento de secret)" do
+  it "emits :tools_imported with COUNTS only (0 secret leakage)" do
     run(consumer_manifest([tool("t")]))
     ev = events.last
     expect(ev.type).to eq(:tools_imported)
@@ -59,7 +59,7 @@ RSpec.describe Harness::Commands::ImportTools do
     expect(ev.to_h.inspect).not_to include("s3cr3t")
   end
 
-  it "idempotente: re-importar reconcilia (updated, não created); secret preservado" do
+  it "idempotent: re-importing reconciles (updated, not created); secret preserved" do
     run(consumer_manifest([tool("t")]))
     report = run(consumer_manifest([tool("t", "description" => "v2")]))
 
@@ -69,17 +69,17 @@ RSpec.describe Harness::Commands::ImportTools do
     expect(store.get_raw("t")["request"]["headers"]["Authorization"]).to eq("Bearer s3cr3t")
   end
 
-  it "não vaza secret: o store mascara o header credencial" do
+  it "does not leak the secret: the store masks the credential header" do
     run(consumer_manifest([tool("t")]))
-    masked = store.get("t") # visão de UI
+    masked = store.get("t") # UI view
     expect(masked["request"]["headers"]["Authorization"]).to eq(Harness::SecretMasking::SENTINEL)
   end
 
-  describe "falha parcial isolada (R4)" do
-    it "uma tool malformada não derruba as demais — vira entry em errors[]" do
+  describe "isolated partial failure (R4)" do
+    it "a malformed tool does not bring down the others — becomes an entry in errors[]" do
       report = run(consumer_manifest([
                                     tool("boa"),
-                                    tool("ruim", "endpoint" => nil, "url" => nil), # sem endpoint nem url
+                                    tool("ruim", "endpoint" => nil, "url" => nil), # no endpoint or url
                                     tool("outra")
                                   ]))
 
@@ -90,14 +90,14 @@ RSpec.describe Harness::Commands::ImportTools do
       expect(overlay.names).to include("boa", "outra")
     end
 
-    it "colisão com tool de código vira erro isolado (R3), não derruba o lote" do
+    it "collision with a code tool becomes an isolated error (R3), does not bring down the batch" do
       report = run(consumer_manifest([tool("menu"), tool("ok")]))
       expect(report[:errors].map { |e| e[:tool] }).to eq(["menu"])
-      expect(report[:errors].first[:error]).to match(/tool de código/)
+      expect(report[:errors].first[:error]).to match(/code tool/)
       expect(report[:created]).to eq(["ok"])
     end
 
-    it "secret não configurado no deployment vira erro isolado por-tool" do
+    it "a secret not configured in the deployment becomes an isolated per-tool error" do
       cmd = described_class.new(tool_store: store, registry: overlay, tool_catalog: catalog,
                                 event_stream: event_stream, secrets: {}, env: env)
       report = cmd.call(Harness::Command.build(:import_tools, consumer_manifest([tool("t")]), transport: :test))
@@ -105,14 +105,14 @@ RSpec.describe Harness::Commands::ImportTools do
       expect(report[:errors].first[:error]).to match(/secret 'TOKEN'/)
     end
 
-    it "lote 100% com erro NÃO recarrega o overlay (nada a valer)" do
+    it "a 100%-error batch does NOT reload the overlay (nothing valid)" do
       expect(overlay).not_to receive(:reload)
-      report = run(consumer_manifest([tool("menu")])) # só a colisão
+      report = run(consumer_manifest([tool("menu")])) # only the collision
       expect(report[:errors].size).to eq(1)
     end
   end
 
-  it "erro ESTRUTURAL do manifesto propaga (não é per-tool)" do
+  it "a STRUCTURAL manifest error propagates (not per-tool)" do
     expect { run("defaults" => [], "tools" => []) }.to raise_error(Harness::ValidationError, /defaults/)
   end
 end

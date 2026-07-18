@@ -36,7 +36,7 @@ module Harness
     # domain violation — it never overwrites silently).
     def create(id: SecureRandom.uuid, vars: {})
       key = key_for(id)
-      raise ArgumentError, "sessão já existe: #{id}" unless @store.get(SCOPE, key).nil?
+      raise ArgumentError, "session already exists: #{id}" unless @store.get(SCOPE, key).nil?
 
       now = timestamp
       record = {
