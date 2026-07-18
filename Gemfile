@@ -2,7 +2,12 @@
 
 source "https://rubygems.org"
 
-ruby ">= 3.2"
+# Recommended/tested runtime is pinned in `.ruby-version` (3.4.x) and shipped by
+# the Dockerfile; YJIT is enabled in production via RUBY_YJIT_ENABLE=1. The floor
+# stays permissive so the (future) gem can be consumed on older interpreters —
+# 3.2 is EOL, so 3.3 is the minimum. See docs/BENCHMARKS.md for the Ruby-version ×
+# YJIT matrix (3.3.5 vs 4.0.6) behind the 4.0.6 default choice (FOLLOWUP §1.1).
+ruby ">= 3.3"
 
 # D9 pinning (00-overview): the core (lib/) does not require ruby_llm at load-time
 # (lazy require in the Executor/LoadSkill — spec/harness/load_guard_spec covers it),
