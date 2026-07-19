@@ -422,6 +422,16 @@ module Studio
           end
         end
 
+        # Platform model defaults (sub-resource, v2 §10): its own form/route so a
+        # general-settings save never clobbers the model layer.
+        r.post "models" do
+          check_csrf!
+          with_flash("Model defaults saved.") do
+            dispatch(:update_settings, { patch: model_defaults_patch(r) })
+          end
+          r.redirect("/studio/settings#models")
+        end
+
         # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
         r.on "providers" do
           r.post "delete" do
@@ -539,7 +549,12 @@ module Studio
           # Blank session = new conversation: created via Command (create_session
           # generates the id — the Studio doesn't write to the store directly). A typed id
           # continues an existing conversation (send_message requires it to exist).
-          session_id = typed_session || create_session
+          # The per-chat model pin (v2, §10) is set at creation and rides the whole
+          # conversation, so it only applies to a NEW session — an existing one keeps
+          # whatever it was pinned to.
+          session_id = typed_session ||
+                       create_session(model: presence(r.params["model"]),
+                                      provider: presence(r.params["provider"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
           r.redirect(playground_path(agent, session_id))
         rescue Harness::ValidationError, Harness::NotFoundError => e
@@ -702,6 +717,10 @@ module Studio
       end
       @all_skills = harness[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
+      # v2 (§10) config surfaces: generation params (symbol keys on the profile) +
+      # model fence. Read tolerant of a string|symbol key (pack JSON round-trip).
+      @params = @agent.respond_to?(:params) ? (@agent.params || {}) : {}
+      @model_policy_allow = model_policy_allow(@agent)
       mem = harness[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
@@ -709,8 +728,30 @@ module Studio
       view("agent_detail")
     end
 
+    # A generation param off the profile, tolerant of a string|symbol key. Used to
+    # pre-fill the config form (empty string when absent).
+    def agent_param(params, key)
+      return "" unless params.is_a?(Hash)
+
+      v = params[key.to_sym]
+      v = params[key.to_s] if v.nil?
+      v.nil? ? "" : v
+    end
+
+    # The agent's model fence as newline-joined refs (for the textarea). nil / no
+    # allow list -> "" (no fence). Tolerant of a string|symbol "allow" key.
+    def model_policy_allow(agent)
+      policy = agent.respond_to?(:model_policy) ? agent.model_policy : nil
+      return "" unless policy.is_a?(Hash)
+
+      Array(policy["allow"] || policy[:allow]).join("\n")
+    end
+
     # Config patch from the form (native types: memory bool, limits int).
     # Preserves the existing limits, overwriting only the form's fields.
+    # `model` is OPTIONAL as of v2 (§10): blank clears it, so the agent inherits
+    # the platform `default_model` via the ModelResolver — the config form is the
+    # place that surfaces that layering. params/model_policy: see the helpers below.
     def config_patch(r)
       limits = @agent.limits.dup
       { "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |field|
@@ -719,11 +760,50 @@ module Studio
       end
       {
         id: @agent.id,
-        model: presence(r.params["model"]) || @agent.model,
+        model: presence(r.params["model"]),
         provider: r.params["provider"].to_s,
         memory: r.params["memory"] == "1",
-        limits: limits
+        limits: limits,
+        params: params_patch(r),
+        model_policy: model_policy_patch(r)
       }
+    end
+
+    # Per-agent generation params (v2, §10). The config form OWNS these fields, so
+    # the patch reflects the whole form state: a blank field drops the key (and an
+    # all-blank form clears params to {}). temperature/max_tokens MUST be Numeric —
+    # ModelSelection#apply_params guards on `numeric?` and silently skips a String —
+    # so coerce here; a malformed number is dropped rather than 500-ing the save.
+    # thinking is a reasoning-effort string (low/medium/high), applied verbatim.
+    def params_patch(r)
+      out = {}
+      t = coerce(r.params["temperature"]) { |v| Float(v) }
+      out["temperature"] = t unless t.nil?
+      m = coerce(r.params["max_tokens"]) { |v| Integer(v) }
+      out["max_tokens"] = m unless m.nil?
+      thinking = presence(r.params["thinking"])
+      out["thinking"] = thinking if thinking
+      out
+    end
+
+    # Per-agent model fence (v2, §10): { "allow" => [refs] } where a ref is
+    # "provider/model", "provider/*" or "model". Blank textarea -> nil (NO fence,
+    # all models — parity). Enforced on the RESOLVED model by the ModelResolver,
+    # so a per-chat pin can never escape it.
+    def model_policy_patch(r)
+      refs = split_list(r.params["model_policy_allow"])
+      refs.empty? ? nil : { "allow" => refs }
+    end
+
+    # Parses a numeric-ish form field, returning nil for blank or unparseable input
+    # (never raises — a bad value must not turn a config save into a 500).
+    def coerce(raw)
+      v = presence(raw)
+      return nil unless v
+
+      yield(v)
+    rescue ArgumentError, TypeError
+      nil
     end
 
     # --- Skills index --------------------------------------------------------
@@ -773,6 +853,22 @@ module Studio
     # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
     def tool_allowed_for?(profile, tool_name)
       profile.tools_allow.nil? || Array(profile.tools_allow).map(&:to_s).include?(tool_name.to_s)
+    end
+
+    # A tool the agent explicitly denies. Deny ALWAYS wins over allow, so the matrix
+    # renders these "locked" (disabled) — you can't grant a denied tool from here.
+    def tool_denied_for?(profile, tool_name)
+      Array(profile.tools_deny).map(&:to_s).include?(tool_name.to_s)
+    end
+
+    # `checked/total on` for an agent's tool group (open allowlist -> total). Feeds
+    # the initial server-rendered counter; the toggle-counter island keeps it live.
+    def tools_on_count(profile, tools)
+      total = tools.size
+      return total if profile.tools_allow.nil?
+
+      allow = Array(profile.tools_allow).map(&:to_s)
+      tools.count { |t| allow.include?(t.name.to_s) && !tool_denied_for?(profile, t.name) }
     end
 
     # --- Data-defined tool authoring (Phase 5) -------------------------------
@@ -915,6 +1011,21 @@ module Studio
       patch
     end
 
+    # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a
+    # sub-resource, like providers) so the general-settings save never touches it and
+    # vice-versa. The scalar refs are always present (blank -> nil, which the
+    # deep-merge writes and the ModelResolver reads as "no platform default");
+    # fallback_models is a full-list replace (deep_merge substitutes arrays, so a
+    # resubmit never accumulates).
+    def model_defaults_patch(r)
+      {
+        "default_model" => presence(r.params["default_model"]),
+        "default_provider" => presence(r.params["default_provider"]),
+        "utility_model" => presence(r.params["utility_model"]),
+        "fallback_models" => split_list(r.params["fallback_models"])
+      }
+    end
+
     # LLM provider from the form. api_key is sentinel-aware: the form
     # pre-fills with the sentinel when a key already exists, so resubmitting
     # without touching preserves it; a new string replaces it; "" clears it. models = CSV.
@@ -997,9 +1108,16 @@ module Studio
       dispatch(:send_message, { agent: agent, session_id: session_id, message: message }, tenant: agent)
     end
 
-    # Creates a new session via the bus (create_session generates the id) and returns the id.
-    def create_session
-      dispatch(:create_session, { vars: { "canal" => "studio" } }).id
+    # Creates a new session via the bus (create_session generates the id) and returns
+    # the id. `model`/`provider` (optional) become the per-chat pin: CreateSession
+    # stashes them in the reserved `vars["__llm__"]` slot the ModelResolver reads as
+    # the highest-precedence layer (Chat > Agent > platform default). Only non-blank
+    # values are sent, so an empty override leaves the session unpinned.
+    def create_session(model: nil, provider: nil)
+      payload = { vars: { "canal" => "studio" } }
+      payload[:model] = model if model
+      payload[:provider] = provider if provider
+      dispatch(:create_session, payload).id
     end
 
     def playground_path(agent, session_id)

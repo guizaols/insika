@@ -7,9 +7,16 @@
   <div class="empty">No skills in the catalog yet. Create the first one under <a href="/studio/skills/new">new skill</a>.</div>
 <% else %>
   <p class="muted matrix-hint">Choose which agents each skill is available to (<code>load_skill</code>). An agent with an "all" allowlist is left untouched when you uncheck it.</p>
+  <div data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter skills by name or description…" aria-label="Filter skills"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
   <div class="skill-list">
     <% @skills.each do |s| %>
-      <form class="card skill-card" method="post" action="/studio/skills/<%= Rack::Utils.escape(s.name) %>/agents">
+      <form class="card skill-card" method="post" action="/studio/skills/<%= Rack::Utils.escape(s.name) %>/agents"
+            data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
         <%== csrf_tag %>
         <div class="skill-card-head">
           <div>
@@ -35,5 +42,7 @@
         <% end %>
       </form>
     <% end %>
+  </div>
+    <div class="empty" data-list-filter-target="empty" hidden>No skills match your filter.</div>
   </div>
 <% end %>

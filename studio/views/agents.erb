@@ -6,9 +6,15 @@
 <% if @agents.empty? %>
   <div class="empty">No agents yet. Create your first BIA below (id + model), then give it an identity on its detail page.</div>
 <% else %>
+  <div data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter agents by id, model or provider…" aria-label="Filter agents"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
   <div class="agent-grid">
     <% @agents.each do |a| %>
-      <article class="card agent">
+      <article class="card agent" data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>">
         <a class="agent-head" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">
           <span class="avatar"><%= a.id[0, 2].upcase %></span>
           <div>
@@ -28,6 +34,8 @@
         </div>
       </article>
     <% end %>
+  </div>
+    <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
   </div>
 <% end %>
 

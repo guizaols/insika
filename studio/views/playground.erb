@@ -19,6 +19,17 @@
         <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation">
       </label>
     </div>
+    <details class="pin">
+      <summary>model override <span class="muted">— pins a NEW conversation (Chat › Agent › platform)</span></summary>
+      <div class="row">
+        <label>model
+          <input type="text" name="model" placeholder="leave empty = agent/platform default">
+        </label>
+        <label>provider
+          <input type="text" name="provider" placeholder="optional">
+        </label>
+      </div>
+    </details>
     <label>message
       <textarea name="message" rows="3" placeholder="Ask the agent something…" required></textarea>
     </label>

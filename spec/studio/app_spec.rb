@@ -302,6 +302,30 @@ RSpec.describe Studio::App do
     expect(bus.last(:send_message).meta[:tenant]).to eq("chef")
   end
 
+  it "playground pins the model on a NEW conversation via create_session (v2 §10)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/playground").body)
+    client.post("/playground", params: {
+                  "agent" => "chef", "session_id" => "", "message" => "oi",
+                  "model" => "deepseek-reasoner", "provider" => "deepseek", "_csrf" => csrf
+                })
+    cmd = bus.last(:create_session)
+    expect(cmd.payload[:model]).to eq("deepseek-reasoner")
+    expect(cmd.payload[:provider]).to eq("deepseek")
+  end
+
+  it "playground does NOT create a session (nor pin) when continuing an existing one" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/playground").body)
+    client.post("/playground", params: {
+                  "agent" => "chef", "session_id" => "s1", "message" => "oi",
+                  "model" => "deepseek-reasoner", "_csrf" => csrf
+                })
+    expect(bus.types).not_to include(:create_session)
+  end
+
   it "the app-bar has the skills and tools links (Stage F)" do
     app, = build_app
     body = login(app).get("/agents").body
@@ -372,6 +396,58 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/agents/bia").body)
     client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
     expect(bus.last(:update_agent).payload[:memory]).to be(false)
+  end
+
+  # --- config v2 (§10) surfacing -------------------------------------------
+
+  it "config with a blank model clears it (inherit the platform default)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:model]).to be_nil
+  end
+
+  it "config builds generation params with NUMERIC types (executor guards on numeric?)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "temperature" => "0.7", "max_tokens" => "4096",
+                  "thinking" => "high", "_csrf" => csrf
+                })
+    params = bus.last(:update_agent).payload[:params]
+    expect(params["temperature"]).to eq(0.7)
+    expect(params["temperature"]).to be_a(Float)
+    expect(params["max_tokens"]).to eq(4096)
+    expect(params["max_tokens"]).to be_a(Integer)
+    expect(params["thinking"]).to eq("high")
+  end
+
+  it "config drops a malformed number instead of 500-ing the save" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    res = client.post("/agents/bia/config", params: {
+                        "model" => "x", "temperature" => "hot", "_csrf" => csrf
+                      })
+    expect(res.status).to eq(302)
+    expect(bus.last(:update_agent).payload[:params]).not_to have_key("temperature")
+  end
+
+  it "config builds model_policy from the allow textarea; blank = nil (no fence)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "model_policy_allow" => "deepseek/*\nopenai/gpt-4o-mini",
+                  "_csrf" => csrf
+                })
+    expect(bus.last(:update_agent).payload[:model_policy]).to eq("allow" => %w[deepseek/* openai/gpt-4o-mini])
+
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "model_policy_allow" => "", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:model_policy]).to be_nil
   end
 
   it "saving a prompt dispatches write_agent_file (the Command syncs prompt_files)" do
@@ -488,6 +564,23 @@ RSpec.describe Studio::App do
     body = login(app).get("/tools").body
     expect(body).to include("menu")               # tool from the catalog
     expect(body).to include('name="all_tools"')
+  end
+
+  it "renders the §3.2 matrix affordances: filter box, live counter, switch toggle" do
+    app, = build_app
+    body = login(app).get("/tools").body
+    expect(body).to include('data-controller="list-filter"')
+    expect(body).to include('data-toggle-counter-target="count"')
+    expect(body).to include('class="switch"')
+  end
+
+  it "renders a denied tool as LOCKED (disabled, deny wins) — can't be granted here" do
+    denied = Harness::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
+    app, = build_app(agents: [denied])
+    body = login(app).get("/tools").body
+    expect(body).to include("locked")
+    # the denied tool's checkbox is disabled so it never enters the submitted allowlist
+    expect(body).to match(/name="tools\[\]" value="menu"[^>]*disabled/)
   end
 
   it "tools 'all' dispatches set_agent_tools with allow nil" do
@@ -667,6 +760,34 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/settings").body)
     client.post("/settings", params: { "turn_timeout" => "90", "_csrf" => csrf })
     expect(bus.last(:update_settings).payload[:patch]["streaming"]).to be(false)
+  end
+
+  it "the model-defaults form dispatches update_settings with the v2 platform layer" do
+    app, bus = build_app
+    client = login(app)
+    body = client.get("/settings").body
+    expect(body).to include('name="default_model"')
+    expect(body).to include('name="fallback_models"')
+    csrf = csrf_from(body)
+    client.post("/settings/models", params: {
+                  "default_model" => "deepseek-chat", "default_provider" => "deepseek",
+                  "fallback_models" => "deepseek/deepseek-chat, openai/gpt-4o-mini",
+                  "utility_model" => "deepseek-chat", "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch["default_model"]).to eq("deepseek-chat")
+    expect(patch["default_provider"]).to eq("deepseek")
+    expect(patch["fallback_models"]).to eq(%w[deepseek/deepseek-chat openai/gpt-4o-mini])
+    expect(patch["utility_model"]).to eq("deepseek-chat")
+  end
+
+  it "the model-defaults form does NOT touch the general-settings keys (scoped save)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings/models", params: { "default_model" => "x", "_csrf" => csrf })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch.keys).to contain_exactly("default_model", "default_provider", "fallback_models", "utility_model")
   end
 
   it "settings lists providers with the key MASKED (never plaintext)" do
