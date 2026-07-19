@@ -335,6 +335,15 @@ front Node).
   conversa nova). Deferido honesto: preview é um renderer mínimo (não CommonMark
   completo) e o layout 3-painéis com drill-down do agent-studio não foi portado
   (ficou no incremento de busca/toggles sobre o layout atual).
+- **Fix de CSP descoberto testando no browser (Playwright MCP):** o
+  `style-src 'self'` estrito bloqueava o `<style>` que o style-mod do CodeMirror
+  injeta (base theme + o novo syntax-highlight) E a progress bar do Turbo → editor
+  sem highlight + erros no console. Corrigido com **nonce por request** (Roda
+  `add_style_src([:nonce, …])` + `<meta name="csp-nonce">` que o Turbo lê e o
+  `EditorView.cspNonce` consome), **mantendo o CSP estrito** (sem `unsafe-inline`).
+  Também limpou uma falha pré-existente (o editor nunca teve o base theme sob esse
+  CSP). Verificado em tela: highlight renderiza, 0 erros de console. (`element.style.*`
+  via CSSOM nunca foi bloqueado — só `<style>` injetado.)
 
 ---
 
