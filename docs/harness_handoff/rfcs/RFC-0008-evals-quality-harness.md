@@ -5,7 +5,7 @@ status: Draft
 type: Componente
 created: 2026-07-19
 supersedes: []
-depends_on: ["0001", "0002", "0005"]
+depends_on: ["0001", "0002", "0005", "0007"]
 ---
 
 # RFC-0008 — Evals & Quality Harness
@@ -104,7 +104,16 @@ Um `scripts/eval.rb` (ou `evals/runner.rb`) que:
 4. entrega tudo pro avaliador (§3.3).
 
 O **#6b** é o mesmo passo 1–2 medindo latência; **#10** adiciona 3–4. Entregar o
-runner uma vez, com dois modos (`--mode perf|eval|both`).
+runner uma vez, com dois modos (`--mode perf|eval|both`). No modo `perf`, as
+métricas são as mesmas do `scripts/loadtest.rb` (TTFB, total, tokens, P50/P95,
+taxa de erro), agora sobre tráfego real — o que fecha o gap do #6b: latência de
+tool call + turnos multi-round sob carga, coisa que o greeting sintético não
+exercita.
+
+**Pré-requisito de ambiente:** os agentes-alvo (`bia-cacau` etc.) precisam existir
+no harness sob teste. Provisionar via **PackImporter** a partir dos packs reais em
+`openclaw/workspace/agent-store-<id>/*.md` (mesma identidade das lojas do piloto)
+— o runner documenta/automatiza esse passo para a rodada ser reproduzível do zero.
 
 ### 3.3 Avaliador (2 camadas)
 
