@@ -18,12 +18,12 @@
 
 <!-- ── Config / model ────────────────────────────────────────────────────── -->
 <section class="section" id="config">
-  <div class="section-head"><h2>Configuration</h2><p class="muted">model, provider, memory and limits — saved via <code>update_agent</code>.</p></div>
+  <div class="section-head"><h2>Configuration</h2><p class="muted">model, provider, memory, limits, generation params and the model fence — saved via <code>update_agent</code>.</p></div>
   <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/config">
     <%== csrf_tag %>
     <div class="grid-2">
-      <label>model
-        <input type="text" name="model" value="<%= @agent.model %>" placeholder="deepseek-chat">
+      <label>model <span class="muted">(blank = platform <code>default_model</code>)</span>
+        <input type="text" name="model" value="<%= @agent.model %>" placeholder="inherit platform default">
       </label>
       <label>provider
         <input type="text" name="provider" value="<%= @agent.provider %>" placeholder="deepseek">
@@ -39,6 +39,31 @@
       <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
       cross-session memory (the BIA remembers across conversations)
     </label>
+
+    <fieldset class="subgroup">
+      <legend>generation params <span class="muted">— blank = provider default</span></legend>
+      <div class="grid-3">
+        <label>temperature
+          <input type="text" name="temperature" value="<%= agent_param(@params, :temperature) %>" inputmode="decimal" placeholder="0.7">
+        </label>
+        <label>max_tokens
+          <input type="text" name="max_tokens" value="<%= agent_param(@params, :max_tokens) %>" inputmode="numeric" placeholder="4096">
+        </label>
+        <label>thinking <span class="muted">(effort)</span>
+          <% thinking = agent_param(@params, :thinking).to_s %>
+          <select name="thinking">
+            <% ["", "low", "medium", "high"].each do |effort| %>
+              <option value="<%= effort %>"<%== " selected" if effort == thinking %>><%= effort.empty? ? "off" : effort %></option>
+            <% end %>
+          </select>
+        </label>
+      </div>
+    </fieldset>
+
+    <label>model fence <span class="muted">(<code>model_policy.allow</code> — one ref per line: <code>provider/model</code>, <code>provider/*</code> or <code>model</code>; blank = no fence)</span>
+      <textarea name="model_policy_allow" rows="3" placeholder="deepseek/*&#10;openai/gpt-4o-mini"><%= @model_policy_allow %></textarea>
+    </label>
+
     <div class="actions"><button type="submit" class="primary">Save config</button></div>
   </form>
 </section>
@@ -67,7 +92,7 @@
       <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts" data-controller="dirty-guard">
         <%== csrf_tag %>
         <input type="hidden" name="file" value="<%= pf[:name] %>">
-        <div data-controller="code-editor" data-code-editor-language-value="markdown">
+        <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
           <textarea name="content" data-code-editor-target="source" rows="10"><%= pf[:content] %></textarea>
         </div>
         <div class="actions"><button type="submit" class="primary">Save prompt</button></div>
@@ -100,7 +125,7 @@
       <label>file name
         <input type="text" name="file" placeholder="IDENTITY.md" required>
       </label>
-      <div data-controller="code-editor" data-code-editor-language-value="markdown">
+      <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
         <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# Identity&#10;You are..."></textarea>
       </div>
       <div class="actions"><button type="submit" class="primary">Create prompt</button></div>

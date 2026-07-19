@@ -9,17 +9,26 @@
 <% if @sessions.empty? %>
   <div class="empty">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div>
 <% else %>
-  <div class="card">
-    <ul class="history">
-      <% @sessions.each do |s| %>
-        <li>
-          <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
-            <span class="mono"><%= s.id[0, 12] %></span>
-          </a>
-          <span class="muted"><%= Array(s.messages).size %> msg · <%= s.updated_at %></span>
-          <% if (p = session_preview(s)) %><span class="preview muted"><%= p[0, 90] %></span><% end %>
-        </li>
-      <% end %>
-    </ul>
+  <div data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter conversations by id or preview…" aria-label="Filter conversations"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
+    <div class="card">
+      <ul class="history">
+        <% @sessions.each do |s| %>
+          <% preview = session_preview(s) %>
+          <li data-list-filter-target="item" data-filter-text="<%= s.id %> <%= preview %>">
+            <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
+              <span class="mono"><%= s.id[0, 12] %></span>
+            </a>
+            <span class="muted"><%= Array(s.messages).size %> msg · <%= s.updated_at %></span>
+            <% if preview %><span class="preview muted"><%= preview[0, 90] %></span><% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+    <div class="empty" data-list-filter-target="empty" hidden>No conversations match your filter.</div>
   </div>
 <% end %>
