@@ -27,6 +27,11 @@ export default class extends Controller {
     const textarea = this.sourceTarget
     textarea.style.display = "none"
 
+    // CodeMirror (style-mod) injects a <style> for its base theme + syntax highlight.
+    // Under the strict `style-src 'self'` CSP that <style> is blocked unless it carries
+    // the per-request nonce the server put on both the header and this meta tag.
+    const nonce = document.querySelector('meta[name="csp-nonce"]')?.content || ""
+
     const isMarkdown = this.languageValue !== "json"
     const lang = isMarkdown ? markdown() : json()
 
@@ -41,6 +46,7 @@ export default class extends Controller {
       state: EditorState.create({
         doc: textarea.value,
         extensions: [
+          EditorView.cspNonce.of(nonce),
           lineNumbers(),
           history(),
           saveKeymap,

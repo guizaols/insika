@@ -2,6 +2,7 @@
 
 require "roda"
 require "digest"
+require "securerandom"
 require "rack/utils"
 
 module Studio
@@ -122,6 +123,15 @@ module Studio
     route do |r|
       response["x-content-type-options"] = "nosniff"
       response["referrer-policy"] = "same-origin"
+
+      # Per-request CSP nonce. `style-src 'self'` alone blocks inline <style>, and
+      # both CodeMirror (style-mod injects a <style> for its base theme + syntax
+      # highlight) and Turbo (the progress-bar <style>) rely on one. Whitelisting a
+      # per-response nonce lets exactly those styles load WITHOUT opening the policy to
+      # 'unsafe-inline'. The editor passes the same nonce to CodeMirror via
+      # EditorView.cspNonce, and Turbo reads it from <meta name="csp-nonce"> — both
+      # sourced from the `csp_nonce` helper, so header and markup always agree.
+      response.content_security_policy&.add_style_src([:nonce, csp_nonce])
 
       # Versioned assets: public (the UI loads the bundle BEFORE login).
       r.on "assets", "dist" do
@@ -616,6 +626,10 @@ module Studio
     end
 
     def authenticated? = session["auth"] == true
+
+    # Per-request CSP nonce (see the route block). Memoized on the request instance
+    # so the header and the <meta name="csp-nonce"> in the layout carry the same value.
+    def csp_nonce = (@csp_nonce ||= SecureRandom.base64(16))
 
     # --- Polish: theme, health chip, restart banner ----------------
 

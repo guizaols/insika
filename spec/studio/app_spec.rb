@@ -220,6 +220,25 @@ RSpec.describe Studio::App do
     expect(res.headers["x-content-type-options"]).to eq("nosniff")
   end
 
+  it "whitelists a per-request nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
+    app, = build_app
+    res = Client.new(app).get("/login")
+    csp = res.headers["content-security-policy"]
+    expect(csp).to match(/style-src 'self' 'nonce-[^']+'/)
+    nonce = csp[/'nonce-([^']+)'/, 1]
+    # same nonce reaches the page — the editor reads it (EditorView.cspNonce), Turbo too
+    expect(res.body).to include(%(<meta name="csp-nonce" content="#{nonce}">))
+  end
+
+  it "uses a fresh CSP nonce per response" do
+    app, = build_app
+    client = Client.new(app)
+    n1 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    n2 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    expect(n1).not_to be_nil
+    expect(n1).not_to eq(n2)
+  end
+
   # --- Assets --------------------------------------------------------------
 
   it "serves the versioned bundle with the correct content-type" do
