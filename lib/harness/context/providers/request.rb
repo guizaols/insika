@@ -11,8 +11,14 @@ module Harness
           lines = []
           lines << "tenant: #{request.tenant}" if request.tenant
           # "history" is transcript (consumed by the Session provider), not turn
-          # metadata — it does not leak into the system's request_context.
-          request.vars.to_h.each { |k, v| lines << "#{k}: #{v}" unless k.to_s == "history" }
+          # metadata — it does not leak into the system's request_context. Keys
+          # prefixed with "__" are INTERNAL slots (e.g. the per-chat model pin
+          # "__llm__", §10) — reserved, never rendered to the model.
+          request.vars.to_h.each do |k, v|
+            next if k.to_s == "history" || k.to_s.start_with?("__")
+
+            lines << "#{k}: #{v}"
+          end
           return [] if lines.empty?
 
           [ContextFragment.build(

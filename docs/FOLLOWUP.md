@@ -57,6 +57,17 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 >   acima usam o mesmo greeting enlatado (1 turno, usuário novo, **0 tool call**, não bate no
 >   achei-b2b). O corpus real já está extraído (**179 msgs reais de user** dos session logs do
 >   OpenClaw: cacau 97 / natura 51 / vaio 31). Próximo passo abaixo (§1.4 ação 5 + §9 evals).
+>
+> **Entregue nesta rodada (config de LLM v2, item 18 / §10):**
+> - **`ModelResolver`** — resolução Chat > Agent > default de plataforma no início do turno,
+>   `model_policy` sobre o modelo resolvido, cadeia de fallback + fonte de seleção
+>   (`:chat`/`:agent`/`:platform_default`) + semântica `pinned` (pin de usuário falha ALTO).
+>   Novos slots em Settings (`default_model`/`default_provider`/`fallback_models`/
+>   `utility_model`); `model` opcional no profile; `params`/`model_policy` por agente;
+>   override por chat (`:create_session {model, provider}` → slot reservado `vars["__llm__"]`,
+>   fora do prompt). Gotcha de mutação global documentado no `LLMConfigurator`. **Deferido:**
+>   rotação mid-turn pela cadeia de fallback (mexe no laço de streaming) + consumo do
+>   `utility_model`.
 
 ---
 
@@ -281,6 +292,35 @@ paginação/limpeza por sessão (`ToolTraceStore#clear` já existe).
   masking/truncation + gate de admin; (4) opcional: exportar como span OTEL
   attribute p/ quem usa SigNoz.
 
+### 3.2 Feedback de UI/UX — rodada 2 (2026-07-19)
+**Contexto:** feedback do produto sobre o Studio pós-refresh (#62), com o
+**agent-studio como referência visual** (screenshots 1.png/2.png de 19/07).
+Portar o **padrão de UX**, não a stack (a regra do §3 continua: Hotwire, sem
+front Node).
+
+- **O que melhorou:** o menu/navegação ("melhorou muito").
+- **Dores apontadas:** conteúdo ainda feio visualmente; **sem busca/filtros**
+  (agents/tools/skills/sessões); **sem editor de markdown bom** para os prompts;
+  **toggles feios**; falta refinamento geral.
+- **O que o agent-studio faz bem (checklist de port):**
+  - Layout **3 painéis com drill-down**: lista de agents (busca no topo + badge
+    `owner`/`specialist`) → seções do agent (General/Prompts/Skills/File History
+    + grupo SISTEMA: Modelo LLM/ToolCalls/Memória) → detalhe da seção.
+  - **ToolCalls por grupo** com contador `N/N on`, toggle por grupo E por tool,
+    estado `travada` (tool gated, não-editável) e aviso de política no topo
+    ("Sem gate — recebe todas (mostradas ligadas). Desligue o que não quiser e
+    salve."). Mapeia direto no nosso allowlist por grupo.
+  - **Editor de prompt** com highlight de markdown (CodeMirror-like), arquivo-alvo
+    visível (`AGENTS.md`), salvar com Cmd+S, e o prompt fatiado em **seções
+    nomeadas** (Prompt principal/Identidade/Personalidade/Habilidades/Negócio/
+    Ferramentas/Memória/Chat/Calendário/Usuário/Heartbeat) — casa com o formato
+    de pack (AGENTS.md + companheiros) que o PackImporter já consome.
+- **Ação:** (1) busca + filtros nas listas do Studio; (2) editor de prompt
+  CodeMirror em modo markdown (highlight + preview; o CodeMirror já está no
+  Studio para tools); (3) redesign dos toggles com estados on/off/travada +
+  contadores `N/N on` por grupo; (4) passe de polish visual (tipografia,
+  espaçamento, hierarquia) sobre o layout 3 painéis.
+
 ---
 
 ## 4. Plugins — como trabalhar, nativos, terceiros, hub
@@ -352,6 +392,17 @@ comunidade. Pré-requisito nº 1: migrar o projeto para inglês.** 🔴
   o processo de RFC já existente (RFC-0000), licença, e as "decisões pendentes"
   do BACKLOG (nome/namespace do projeto, stateless vs stateful default) — resolver
   antes do release público.
+- **5.6 Onboarding LLM-first (`/start.md`).** O truque do Flue ("Read
+  https://flueframework.com/start.md then help create my first agent"): servir do
+  **próprio harness** um `start.md` endereçado ao coding agent do usuário —
+  estruturado como skill (gather context → decisões com REGRAS, não prosa →
+  build com paths/snippets exatos → checklist de auto-verificação → constraints
+  contra os failure modes conhecidos: "nunca inventar API key", "não criar
+  workflow só pra testar agente") — + um `/models.json` machine-readable + docs
+  espelhadas em `.md` cru. É `rails new` reimplementado como prompt, com o
+  generator sendo o agente que o usuário já tem. Custo baixíssimo (a surface
+  HTTP já existe) e a maior alavancagem de DX da pesquisa do §8.1. Depende de
+  §5.3/§5.4 existirem minimamente.
 - **Ação:** (1) passe de tradução PT→EN por módulo; (2) árvore de docs +
   diagramas Mermaid; (3) README quickstart; (4) escolher e montar o site; (5)
   arquivos de comunidade + resolver as decisões pendentes.
@@ -467,6 +518,83 @@ deploy em edge/CI, e sobretudo **DX + comunidade** (TypeScript, CLI polida, docs
 onde PODEMOS liderar: **tools-como-dado + aprendizado por conversa (§7)** — duas
 coisas que o Flue não tem.
 
+### 8.1 Deep-dive no core dos 4 projetos de referência (2026-07-19)
+
+Analisamos o CÓDIGO (não só docs) de openclaw/openclaw, NousResearch/hermes-agent,
+earendil-works/pi e withastro/flue. Fato estrutural: **Flue não é motor do zero —
+ele embrulha o `pi-agent-core`** (pi = motor: loop puro ~800 linhas → `Agent`
+stateful → `AgentHarness` durável; Flue = produto: workflows, channels, sandboxes,
+config). É exatamente a nossa divisão core/produto. O que importa pro harness:
+
+- **pi/Flue — roubar:**
+  - **Durabilidade por fronteira de turno:** append de toda mensagem no
+    `message_end` + mutações mid-run (modelo/tools) bufferizadas e flushed no
+    `turn_end` (`save_point`); resume = fold do log + continue com o invariante
+    "última msg = user/toolResult". Nosso checkpoint/resume já cobre isso, mas o
+    **log de entries que inclui `model_change`/`active_tools_change`/`compaction`
+    como ENTRIES** (não side-tables) é mais limpo — contexto vira um fold puro.
+  - **Filas steering vs follow-up** com drain mode: steering interrompe ENTRE
+    turnos; follow-up só dispara quando o agente terminou. A resposta certa pra
+    "usuário digitou enquanto o agente rodava" (relevante p/ WhatsApp!).
+  - **Regras de subagent (verbatim):** campos de CAPACIDADE (instructions/tools/
+    skills/subagents) **nunca herdam** (omitido = nenhum); campos de AMBIENTE
+    (model/thinking) herdam como default; filho sem durabilidade própria (vive no
+    envelope do pai); depth cap + detecção de ciclo em definition-time; resultado
+    do filho = tool result + id da sessão filha linkada.
+  - **Defensivos:** `stop_reason: length` → falhar TODOS os tool calls do turno
+    (args truncados podem validar e estar incompletos); nomes de tool reservados
+    com erro alto; tool interrompida sem resultado durável NUNCA re-executa em
+    recovery (marca "interrupted, unknown outcome").
+  - **Workflows com escopo HONESTO:** o Flue explicitamente NÃO faz
+    checkpoint/replay de código — workflow = função at-most-once com **run record
+    durável + event stream + I/O validado por schema**; retry é do app
+    (idempotency key). Nosso `WorkflowRegistry` deve copiar esse escopo (runId +
+    eventos + validação via dry-schema), não virar Temporal.
+- **OpenClaw — a filosofia que o mercado copiou + roubar:**
+  - **"Agents como o OpenClaw trouxe ao mundo"** = agente como **entidade
+    persistente definida por arquivos markdown num workspace** (AGENTS.md/SOUL.md/
+    USER.md/IDENTITY.md/MEMORY.md + `memory/YYYY-MM-DD.md`/HEARTBEAT.md/BOOTSTRAP.md)
+    + **main session** (a conversa rolante que é "a vida do agente") + **heartbeat**
+    proativo. **Estamos alinhados:** o `generate-merchant-pack` produz exatamente
+    esse formato e o PackImporter consome.
+  - **Semântica de fonte de seleção de modelo** (o detalhe mais maduro — ver §10):
+    pin do usuário falha ALTO; fallback automático se auto-recupera (reproba o
+    primary, anuncia 1×); rotação de credencial DENTRO do provider antes de pular
+    de modelo.
+  - **Config estrito + `doctor --fix`:** recusa boot com chave desconhecida,
+    last-known-good, toda migração de schema explícita ("no silent config compat")
+    — a melhor disciplina de produtização do repo.
+  - **Bindings** `(channel, account, peer) → agentId` most-specific-wins como
+    primitivo de roteamento multi-tenant: dado puro, testável, UI-friendly — o
+    shape certo p/ roteamento de merchants no achei-b2b.
+  - **Heartbeat como spec pequena e completa** (token `HEARTBEAT_OK` + activeHours
+    + isolatedSession + lightContext) — roubar verbatim quando chegar a vez.
+  - **Pular:** control-plane WS + nodes/devices/apps nativos e o plugin SDK
+    gigante (~60 extensions, ~20 hook points) — custo de 600 contribuidores, não
+    alvo; nosso SSE `/v1/responses` já cobre o control-plane.
+- **hermes-agent — escala brutal, arquitetura por acreção (216k stars):**
+  - **Anti-exemplo que valida o nosso desenho:** `AIAgent` com ~95 kwargs e ~20
+    callbacks de construtor, arquivos de 300–700KB — o loop precede um modelo de
+    eventos; nosso Event Stream tipado é a resposta melhor.
+  - **Roubar:** (a) registro declarativo de tools com **discovery sem import** +
+    `check_fn` de disponibilidade + **budget de tamanho de resultado por tool** +
+    toolsets compostos; (b) **durabilidade de delegação:** dispatch persistido,
+    completion entregue **como turno NOVO quando idle** (nunca spliced no meio de
+    um turno — preserva role alternation e prompt cache), claim/release +
+    recovery de delegações abandonadas; (c) **verification-on-stop policy-only**
+    (ledger passivo de evidência + 1 continuation bounded quando o modelo tenta
+    parar após editar código sem evidência de teste) — a auto-correção mais
+    barata por linha; (d) transport ABC estreito (só convert/normalize; retries/
+    streaming/creds fora) — nosso boundary RubyLLM já é assim, manter.
+
+**Resposta à pergunta "estamos alinhados / quão longe da produtização?":** no
+MOTOR estamos no nível (loop, durabilidade — a nossa é mais forte que a dos
+workflows do Flue —, skills, MCP, tools-como-dado à frente); na FILOSOFIA estamos
+alinhados (pack = workspace de arquivos, como o OpenClaw). O delta de produtização
+está em: DX/onboarding (§5.6 start.md, doctor), semântica de config de modelo
+(§10), subagents/heartbeat como primitivos limpos (§8.1), e os gaps já mapeados
+do §9 (evals, guardrails, channels, analytics).
+
 ---
 
 ## 9. O que falta pra ser produto de verdade (gaps de produto)
@@ -507,6 +635,88 @@ conforme demanda.
 
 ---
 
+## 10. Configuração de LLM — providers, modelo default, overrides (feedback 2026-07-19)
+
+**Recomendação: fechar o "config de LLM v2" — default de plataforma + override por
+Agent (já existe) e por Chat (novo) + fallbacks com semântica de fonte — em cima do
+que o RubyLLM já oferece nativamente.** ✅ **ENTREGUE** (resolução v2; ver nota abaixo)
+
+> **Fechado (item 18):** `Harness::ModelResolver` resolve o modelo no início do turno
+> na precedência **Chat > Agent > default de plataforma**, aplica `model_policy` sobre o
+> modelo RESOLVIDO (um pin de chat nunca escapa da cerca do agente), resolve a cadeia de
+> fallback + a **fonte de seleção** (`:chat`/`:agent`/`:platform_default`) e o flag
+> `pinned` (pin de usuário "falha ALTO" — sem fallback silencioso). Novos slots:
+> `default_model`/`default_provider`/`fallback_models`/`utility_model` em Settings; `model`
+> agora OPCIONAL no profile; `params` (temperature/max_tokens/thinking) e `model_policy`
+> por agente; override por chat via `POST :create_session {model, provider}` (guardado num
+> slot reservado `vars["__llm__"]`, nunca renderizado no prompt). A fonte resolvida viaja no
+> `usage` do turno (telemetria/billing) e o gotcha de mutação global está documentado no
+> `LLMConfigurator`. **Deferido (follow-up honesto):** a ROTAÇÃO em tempo de execução pela
+> cadeia de fallback (retry cross-modelo mid-turn) — hoje a cadeia é resolvida e exposta,
+> mas a troca mid-stream (que mexe no laço de streaming) fica para uma fatia própria. O
+> `utility_model` está no slot mas ainda não é consumido (destilação §7/compaction).
+
+- **O que JÁ existe (mais do que parecia):**
+  - **N providers em runtime:** `LLMProviderStore` (CRUD com masking de `api_key`
+    via sentinela) + `LLMConfigurator` (aplica/desfaz `<api>_api_key`/`_api_base`
+    no RubyLLM **a quente, sem restart**) + tela em Settings (api/base_url/
+    auth_header/api_key/models). O RubyLLM cobre ~13 providers nativos + qualquer
+    endpoint OpenAI-compatible via `openai_api_base`.
+  - **Modelo por Agent:** `AgentProfile#model/provider` →
+    `RubyLLM.chat(model:, provider:, assume_model_exists:)` no `Executor#create_chat`.
+  - Settings globais já cobrem: streaming, request_timeout, max_retries,
+    turn/tool timeout, compaction (keep_last).
+- **Gaps (o pedido do produto):**
+  1. **Modelo default de plataforma:** hoje `model:` é OBRIGATÓRIO no profile e o
+     "default" real é `ENV["DEEPSEEK_MODEL"]` no composition root
+     (`config/deployment.rb`). Ação: `default_model` em Settings (mapeia p/
+     `RubyLLM.config.default_model`), `model` opcional no profile, resolução
+     **Chat > Agent > default de plataforma**.
+  2. **Override por Chat/sessão:** não existe. RubyLLM suporta nativo (`model:`
+     por chat criado; `with_model` troca mid-conversation preservando histórico).
+     Ação: `model`/`provider` opcionais na sessão, aplicados no `create_chat`;
+     decidir se expõe no `POST /v1/responses` ou só no Studio/Admin.
+  3. **Params de geração por Agent:** temperature/max_tokens/thinking não são
+     expostos no profile.
+  4. **Fallbacks + semântica de fonte (OpenClaw, §8.1):** `primary → fallbacks[]`
+     com o detalhe maduro — **pin do usuário falha ALTO** (nunca fallback
+     silencioso); **fallback automático se auto-recupera** (reproba o primary,
+     anuncia a transição 1×); rotação de credencial DENTRO do provider antes de
+     pular pro próximo modelo. + slot **`utility_model`** (tarefas internas
+     baratas: títulos, destilação do §7, compaction).
+  5. **`model_policy.allow`** por agente (refs exatas + wildcard `provider/*`) —
+     governança barata de quais modelos um agente pode usar.
+- **Gotchas RubyLLM (pesquisa 2026-07-19):** o config global é **singleton mutável
+  — nunca mutar por request** (o `LLMConfigurator` hoje faz `RubyLLM.configure` a
+  quente: ok como operação admin rara, documentar a corrida); credenciais POR
+  TENANT exigem `RubyLLM.context` (dup isolado do config, cachear por tenant) —
+  contexto é para CREDENCIAIS/endpoint/timeout variarem, não para modelo variar;
+  `assume_model_exists: true` exige `provider:` e perde metadata do registry
+  (context window, pricing); validar override no write com
+  `RubyLLM.models.find(model, provider)` rescue `ModelNotFoundError`; logar
+  `chat.model.id`/`chat.model.provider` RESOLVIDOS (alias→ID varia por provider)
+  p/ telemetria/billing; timeout/retries são config-level → budget de latência
+  por agente também pede context.
+- **Onde MAIS ter configs desse tipo (inventário Flue/OpenClaw como checklist):**
+  - **Plataforma (Settings):** `default_model`, fallbacks, `utility_model`,
+    logging/nível.
+  - **Por agente (profile):** model/provider ✅, params de geração, compaction
+    (reserve/keep tokens), limits ✅ (`max_tool_calls`), `model_policy`, memória
+    on/off ✅, sandbox (harness-code), heartbeat (futuro).
+  - **Por chat/sessão:** model override, thinking level.
+  - **Por tool:** timeout (✅ global; falta por-tool), **max result size**
+    (hermes), budget por tool.
+- **Ação:** (1) ✅ `default_model` em Settings + `model` opcional no profile +
+  resolução Chat>Agent>default (`ModelResolver`); (2) ✅ override por sessão
+  (`:create_session {model, provider}` → `vars["__llm__"]`); (3) ✅ params de geração
+  no profile (`params` → `with_temperature`/`with_max_output_tokens`/`with_thinking`);
+  (4) 🟡 fallbacks com selection-source — **cadeia + `pinned`/`source` RESOLVIDOS e
+  expostos**; rotação mid-turn deferida; (5) ✅ `model_policy.allow` (exato + wildcard
+  `provider/*`), enforced no modelo resolvido; (6) ✅ gotcha de mutação global
+  documentado no `LLMConfigurator`.
+
+---
+
 ## Priorização recomendada (sequenciamento)
 
 | # | Item | Tema | Prioridade | Depende de |
@@ -529,6 +739,12 @@ conforme demanda.
 | 15 | **Channels de 1ª classe** (web-widget/Slack/…; §8/§9) | Produto | 🟡 | — |
 | 16 | Analytics/dashboard + handoff humano (§9) | Produto | 🟡 | 3 |
 | 17 | **Extração em gems** (`harness-core/-server/-studio/-otel`) — **POR ÚLTIMO** | Ecossistema | 🟢 (último) | 9, 13 |
+| 18 | **Config de LLM v2**: default de plataforma + override por Chat + fallbacks/selection-source + `model_policy` (§10) | Config | ✅ ENTREGUE (rotação mid-turn deferida) | — |
+| 19 | UI/UX rodada 2: busca/filtros + editor markdown de prompt + toggles/polish (§3.2) | UI/UX | 🟡 | 4 |
+| 20 | Onboarding LLM-first: `/start.md` + `/models.json` + docs em `.md` (§5.6) | Docs/OSS | 🟡 | 9 |
+| 21 | **Subagents como primitivo** (isolamento Flue + durabilidade de delegação hermes; §8.1) | Produto | 🟡 | — |
+| 22 | Workflows expostos: runId + event stream + I/O validado — escopo honesto do Flue (§8.1) | Produto | 🟢 | — |
+| 23 | Config estrito + `harness doctor --fix` (§8.1) | Infra/DX | 🟡 | — |
 
 **Três trilhos paralelos naturais:**
 - **Produto/Escala** (1–6 entregues → **6b loadtest de tráfego REAL** (fecha o

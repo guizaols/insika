@@ -17,7 +17,9 @@ module Harness
         attrs = AgentPayload.attrs(command.payload)
         id = AgentPayload.presence(attrs[:id])
         raise Harness::ValidationError, "id is required" if id.nil?
-        raise Harness::ValidationError, "model is required" if AgentPayload.presence(attrs[:model]).nil?
+        # model is OPTIONAL as of v2 (§10): omitted -> resolves the platform
+        # default_model (Settings) at turn start. An agent with neither its own
+        # model nor a platform default fails clearly at the first turn.
         raise Harness::ValidationError, "agent '#{id}' already exists" if @profile_source.fetch(id)
 
         @profile_source.put(Harness::AgentProfile.build(**attrs))

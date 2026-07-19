@@ -53,4 +53,30 @@ RSpec.describe Harness::Commands::CreateSession do
 
     expect(session.vars).to eq({ "b" => 2 })
   end
+
+  describe "per-chat model pin (v2, §10)" do
+    let(:slot) { Harness::ModelResolver::SESSION_SLOT }
+
+    it "stashes model/provider into the reserved vars slot" do
+      session = handler.call(Harness::Command.build(:create_session,
+                                                    { "model" => "gpt-4o", "provider" => "openai", "vars" => { "a" => 1 } }))
+      expect(session.vars[slot]).to eq({ "model" => "gpt-4o", "provider" => "openai" })
+      expect(session.vars["a"]).to eq(1) # user vars preserved alongside the slot
+    end
+
+    it "accepts model without provider" do
+      session = handler.call(Harness::Command.build(:create_session, { "model" => "deepseek-chat" }))
+      expect(session.vars[slot]).to eq({ "model" => "deepseek-chat" })
+    end
+
+    it "no model/provider -> no slot (clean vars)" do
+      session = handler.call(Harness::Command.build(:create_session, { "vars" => { "a" => 1 } }))
+      expect(session.vars).to eq({ "a" => 1 })
+    end
+
+    it "rejects a non-string model" do
+      expect { handler.call(Harness::Command.build(:create_session, { "model" => 42 })) }
+        .to raise_error(Harness::ValidationError, /model must be a String/)
+    end
+  end
 end

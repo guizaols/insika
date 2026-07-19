@@ -11,6 +11,17 @@ module Harness
   # which run without the gem/key). A provider that RubyLLM doesn't recognize (no
   # matching accessor) does NOT blow up: it goes into `skipped` (degrades to "restart
   # recommended", like OpenClaw), the rest applies.
+  #
+  # ⚠️ GOTCHA — global singleton mutation (RubyLLM research, §10). `RubyLLM.configure`
+  # mutates the PROCESS-WIDE singleton config (`RubyLLM.config`). `apply`/`unapply`
+  # here are therefore admin operations (rare, operator-driven: a provider key/base
+  # edit in the Studio), NOT a per-request/per-turn path — a concurrent turn reading
+  # the config mid-mutation would observe a torn key/base. This is tolerable ONLY
+  # because reconfiguration is infrequent and single-writer (one reactor). Do NOT
+  # call this per turn, and do NOT reach for it to vary the MODEL per turn — the
+  # model is chosen at chat build time (ModelResolver -> RubyLLM.chat(model:)), never
+  # by mutating the global. Per-TENANT credentials/endpoints (should they ever be
+  # needed) belong in a cached `RubyLLM.context` (an isolated config dup), not here.
   class LLMConfigurator
     def initialize(provider_store:, configure: nil)
       @provider_store = provider_store
