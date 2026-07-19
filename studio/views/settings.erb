@@ -7,6 +7,7 @@
 
 <nav class="subnav">
   <a href="#general">general</a>
+  <a href="#models">model defaults</a>
   <a href="#llm">LLM providers</a>
 </nav>
 
@@ -44,6 +45,32 @@
       <input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric">
     </label>
     <div class="actions"><button type="submit" class="primary">Save settings</button></div>
+  </form>
+</section>
+
+<!-- ── Model defaults (platform layer, v2 §10) ───────────────────────────── -->
+<section class="section" id="models">
+  <div class="section-head">
+    <h2>Model defaults</h2>
+    <p class="muted">the platform model layer, resolved at turn start as <strong>Chat pin › Agent model › platform default</strong>. An agent with no model of its own inherits <code>default_model</code>.</p>
+  </div>
+  <form class="card" method="post" action="/studio/settings/models">
+    <%== csrf_tag %>
+    <div class="grid-2">
+      <label>default_model <span class="muted">(agents without their own model)</span>
+        <input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-chat">
+      </label>
+      <label>default_provider <span class="muted">(optional)</span>
+        <input type="text" name="default_provider" value="<%= @settings["default_provider"] %>" placeholder="deepseek">
+      </label>
+    </div>
+    <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span>
+      <input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini">
+    </label>
+    <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
+      <input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat">
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save model defaults</button></div>
   </form>
 </section>
 

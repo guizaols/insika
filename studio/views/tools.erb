@@ -21,35 +21,52 @@
 <% if @agents.empty? %>
   <div class="empty">No agents configured.</div>
 <% else %>
-  <p class="muted matrix-hint">Each agent picks its tools. "all" = open allowlist (nil); otherwise only the checked ones. The agent's denylist is preserved.</p>
-  <div class="tool-list">
-    <% @agents.each do |a| %>
-      <form class="card tool-card" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
-        <%== csrf_tag %>
-        <div class="tool-card-head">
-          <div class="agent-id mono"><%= a.id %></div>
-          <label class="check">
-            <input type="checkbox" name="all_tools" value="1"<%== " checked" if a.tools_allow.nil? %>>
-            all tools
-          </label>
-        </div>
-        <% if @tools.empty? %>
-          <p class="muted">No tools registered in the runtime.</p>
-        <% else %>
-          <div class="check-grid">
-            <% @tools.each do |t| %>
-              <label class="check" title="<%= t.description %>">
-                <input type="checkbox" name="tools[]" value="<%= t.name %>"<%== " checked" if tool_allowed_for?(a, t.name) %>>
-                <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %>
+  <p class="muted matrix-hint">Each agent picks its tools. <strong>all</strong> = open allowlist (nil — every tool flows through); otherwise only the checked ones. A <span class="pill locked">locked</span> tool is on the agent's denylist — deny always wins, so it can't be granted here.</p>
+  <div data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter agents by id…" aria-label="Filter agents"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
+    <div class="tool-list">
+      <% @agents.each do |a| %>
+        <form class="card tool-card" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>"
+              data-list-filter-target="item" data-filter-text="<%= a.id %>"
+              data-controller="toggle-counter">
+          <%== csrf_tag %>
+          <div class="tool-card-head">
+            <div class="agent-id mono"><%= a.id %></div>
+            <div class="tool-card-meta">
+              <span class="count-badge mono" data-toggle-counter-target="count"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size} on" %></span>
+              <label class="switch" title="open allowlist — every tool flows through">
+                <input type="checkbox" name="all_tools" value="1"<%== " checked" if a.tools_allow.nil? %>
+                       data-toggle-counter-target="all" data-action="change->toggle-counter#update">
+                <span class="switch-track" aria-hidden="true"></span>
+                <span class="switch-label">all tools</span>
               </label>
-            <% end %>
+            </div>
           </div>
-        <% end %>
-        <% unless Array(a.tools_deny).empty? %>
-          <p class="muted deny">deny: <span class="mono"><%= Array(a.tools_deny).join(", ") %></span></p>
-        <% end %>
-        <div class="actions"><button type="submit" class="primary">Save tools</button></div>
-      </form>
-    <% end %>
+          <% if @tools.empty? %>
+            <p class="muted">No tools registered in the runtime.</p>
+          <% else %>
+            <div class="check-grid tool-grid<%== " is-open" if a.tools_allow.nil? %>" data-toggle-counter-target="grid">
+              <% @tools.each do |t| %>
+                <% denied = tool_denied_for?(a, t.name) %>
+                <label class="check tool-check<%== " locked" if denied %>" title="<%= denied ? "denied — deny wins" : t.description %>">
+                  <input type="checkbox" name="tools[]" value="<%= t.name %>"
+                         <%== " checked" if tool_allowed_for?(a, t.name) && !denied %>
+                         <%== " disabled" if denied %>
+                         data-toggle-counter-target="tool" data-locked="<%= denied %>"
+                         data-action="change->toggle-counter#update">
+                  <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %><% if denied %> <span class="pill locked">locked</span><% end %>
+                </label>
+              <% end %>
+            </div>
+          <% end %>
+          <div class="actions"><button type="submit" class="primary">Save tools</button></div>
+        </form>
+      <% end %>
+    </div>
+    <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
   </div>
 <% end %>

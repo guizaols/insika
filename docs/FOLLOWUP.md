@@ -320,6 +320,21 @@ front Node).
   Studio para tools); (3) redesign dos toggles com estados on/off/travada +
   contadores `N/N on` por grupo; (4) passe de polish visual (tipografia,
   espaçamento, hierarquia) sobre o layout 3 painéis.
+- **✅ ENTREGUE (#19, esta PR).** (1) island `list-filter` (busca client-side,
+  CSP-safe) em agents/skills/tools/chats com contador e Esc-limpa; (2) editor de
+  prompt com syntax-highlight markdown + toggle Preview (renderer markdown próprio,
+  zero-dep) + salvar com Cmd/Ctrl+S; (3) matriz de tools redesenhada — switch
+  `all tools`, contador `N/N on` vivo (island `toggle-counter`) e estado **locked**
+  para tool no denylist (deny sempre vence, checkbox desabilitado); (4) passe de CSS
+  (filter-bar, switch, subgroup de params, preview pane). **Junto foi surfaçada a
+  config v2 (§10 / #18) na UI**, que antes só existia no domínio: Settings ganhou a
+  seção *Model defaults* (`default_model`/`default_provider`/`fallback_models`/
+  `utility_model`); o config do agente ganhou `params` (temperature/max_tokens/
+  thinking, com coerção numérica) + `model fence` (`model_policy.allow`); e o
+  Playground ganhou override de modelo por chat (pin no `create_session`, só em
+  conversa nova). Deferido honesto: preview é um renderer mínimo (não CommonMark
+  completo) e o layout 3-painéis com drill-down do agent-studio não foi portado
+  (ficou no incremento de busca/toggles sobre o layout atual).
 
 ---
 
@@ -740,7 +755,7 @@ que o RubyLLM já oferece nativamente.** ✅ **ENTREGUE** (resolução v2; ver n
 | 16 | Analytics/dashboard + handoff humano (§9) | Produto | 🟡 | 3 |
 | 17 | **Extração em gems** (`harness-core/-server/-studio/-otel`) — **POR ÚLTIMO** | Ecossistema | 🟢 (último) | 9, 13 |
 | 18 | **Config de LLM v2**: default de plataforma + override por Chat + fallbacks/selection-source + `model_policy` (§10) | Config | ✅ ENTREGUE (rotação mid-turn deferida) | — |
-| 19 | UI/UX rodada 2: busca/filtros + editor markdown de prompt + toggles/polish (§3.2) | UI/UX | 🟡 | 4 |
+| 19 | UI/UX rodada 2: busca/filtros + editor markdown de prompt + toggles/polish (§3.2) + surfaçar config v2 na UI | UI/UX | ✅ ENTREGUE (3-painéis drill-down deferido) | 4 |
 | 20 | Onboarding LLM-first: `/start.md` + `/models.json` + docs em `.md` (§5.6) | Docs/OSS | 🟡 | 9 |
 | 21 | **Subagents como primitivo** (isolamento Flue + durabilidade de delegação hermes; §8.1) | Produto | 🟡 | — |
 | 22 | Workflows expostos: runId + event stream + I/O validado — escopo honesto do Flue (§8.1) | Produto | 🟢 | — |
