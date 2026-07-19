@@ -33,6 +33,12 @@ module Harness
     :memory,                          # cross-session memory.
     #                                   nil/false = OFF (parity: provider []; the `remember`
     #                                   tool not wired); true = ON. Same opt-in as capabilities.
+    :params,                          # LLM generation params (v2, §10): a Hash with
+    #                                   temperature/max_tokens/thinking, applied to the chat at
+    #                                   stage 5. {} = provider defaults (parity).
+    :model_policy,                    # governance of WHICH models the agent may use (v2, §10):
+    #                                   { "allow" => [refs] }. nil = NO fence (all models —
+    #                                   parity). Enforced on the RESOLVED model (ModelResolver).
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -48,11 +54,14 @@ module Harness
       approval_timeout: 3_600 # cap on the wait for human approval (~1h)
     }.freeze
 
-    def self.build(id:, model:, provider: nil, base_prompt: "", prompt_files: [],
+    # `model` is OPTIONAL as of v2 (§10): an agent without one resolves the
+    # platform `default_model` (Settings) at turn start via the ModelResolver.
+    def self.build(id:, model: nil, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
-                   capabilities: nil, tools_deferred: nil, memory: nil, metadata: {})
+                   capabilities: nil, tools_deferred: nil, memory: nil,
+                   params: {}, model_policy: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -61,6 +70,7 @@ module Harness
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
         capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
+        params: params || {}, model_policy: model_policy,
         metadata: metadata || {}
       )
     end

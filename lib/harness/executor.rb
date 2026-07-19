@@ -17,7 +17,7 @@ module Harness
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
-                   tool_trace_store: nil)
+                   tool_trace_store: nil, settings_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -34,6 +34,10 @@ module Harness
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
+      # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
+      # platform default) + model_policy + fallback chain. settings_store nil =
+      # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
+      @model_resolver = ModelResolver.new(settings_store: settings_store)
       # RubyLLM glue (stages 5-7): chat assembly delegated to ChatBuilder. Its
       # optional deps tool_catalog (Tool Search) and memory_store (cross-session
       # memory) matter only to it — nil = parity (deferred
@@ -418,7 +422,7 @@ module Harness
           # does not use the Harness chat — it orchestrates RubyLLM internally).
           drain_and_maybe_suspend(task, actor)
           unless workflow_turn?(task)
-            st.chat = create_chat(profile)
+            st.chat = create_chat(profile, st)
             @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
           end
 
@@ -480,9 +484,22 @@ module Harness
             emit(:content, { delta: chunk.content }, task: task) if chunk.content
           end
         end
-        state.usage = usage_of(response)
+        state.usage = with_model_source(usage_of(response), state.model_selection)
         response.content
       end
+    end
+
+    # Annotates the usage with the RESOLVED model-selection source (v2, §10):
+    # where the model came from (:chat/:agent/:platform_default) travels alongside
+    # the resolved model id (from the provider) into the terminal event/Telemetry,
+    # so billing/telemetry can attribute the turn to a config layer. nil usage
+    # (workflow / provider without counts) -> nothing to annotate.
+    def with_model_source(usage, selection)
+      return usage if usage.nil? || selection.nil?
+
+      usage[:model_source] = selection.source
+      usage[:model] ||= selection.model # falls back to the resolved id when the provider omits it
+      usage
     end
 
     # Token usage of the provider's response (RubyLLM::Message exposes
@@ -523,6 +540,7 @@ module Harness
 
     def build_context_request(task, profile, state, resume_from)
       session = task.session_id ? @session_store.find(task.session_id) : nil
+      state.session = session # create_chat reads it for the per-chat model pin (§10)
       hist = command_history(task)
       # `vars` reconciles the seam (the Request/Session provider already
       # called request.vars): session metadata + the explicit `history` in the
@@ -757,16 +775,22 @@ module Harness
     # confined — not covered by unit (factory line). It also loads the system
     # builtins (load_skill/tool_search/remember) that the ChatBuilder assembles at
     # stage 5 — lazy, so the core installs without ruby_llm.
-    def create_chat(profile)
+    def create_chat(profile, state)
       require "ruby_llm"
       require_relative "tools/load_skill"
       require_relative "tools/tool_search"
       require_relative "tools/remember"
-      RubyLLM.chat(
-        model: profile.model,
-        provider: profile.provider,
-        assume_model_exists: !profile.provider.nil?
+      # v2 resolution (§10): Chat pin > Agent model > platform default, model_policy
+      # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
+      selection = @model_resolver.resolve(profile: profile, session: state.session)
+      state.model_selection = selection
+      chat = RubyLLM.chat(
+        model: selection.model,
+        provider: selection.provider,
+        assume_model_exists: selection.assume_model_exists?
       )
+      selection.apply_params(chat) # temperature/max_tokens/thinking (per-agent, §10)
+      chat
     end
 
     # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not

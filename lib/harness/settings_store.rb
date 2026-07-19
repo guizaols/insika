@@ -19,7 +19,18 @@ module Harness
       "max_retries" => 2,
       "turn_timeout" => 120,
       "tool_timeout" => 30,
-      "compaction" => { "enabled" => false, "keep_last" => 20 }
+      "compaction" => { "enabled" => false, "keep_last" => 20 },
+      # LLM config v2 (§10). Platform-wide model layer, resolved by the
+      # ModelResolver under an agent that pins no model of its own:
+      #   default_model/default_provider -> the platform default (Chat > Agent > HERE)
+      #   fallback_models -> ordered chain ["provider/model" | "model", ...] tried
+      #                      when the primary is NOT a user pin (source semantics)
+      #   utility_model   -> slot for cheap internal tasks (titles, distillation,
+      #                      compaction); reserved for later wiring.
+      "default_model" => nil,
+      "default_provider" => nil,
+      "fallback_models" => [],
+      "utility_model" => nil
     }.freeze
 
     def initialize(config_store:)

@@ -98,6 +98,15 @@ module Deploy
     LLM_PROVIDER_STORE = Harness::LLMProviderStore.new(config_store: CONFIG_STORE)
     LLM_CONFIGURATOR  = Harness::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
 
+    # LLM config v2 (§10): seed the PLATFORM default so a modelless agent works out
+    # of the box (Chat > Agent > platform default). Idempotent — only seeds when the
+    # operator hasn't set one; mirrors the boot provider (DeepSeek). The Bia seed
+    # below still pins its own model, so this only kicks in for agents created
+    # WITHOUT a model.
+    if Harness::Coercion.presence(SETTINGS_STORE.get["default_model"]).nil?
+      SETTINGS_STORE.update("default_model" => Deploy::MODEL, "default_provider" => "deepseek")
+    end
+
     # MCP + global system files. MCP instances with
     # masked credentials (durable config); system files apply to
     # ALL agents (injected by the Prompt provider before the identity).
@@ -154,7 +163,8 @@ module Deploy
       session_store: SESSION_STORE, task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE,
       event_stream: EVENT_STREAM, workflow_registry: WORKFLOW_REGISTRY,
       pending_action_store: PENDING_ACTION_STORE, capability_registry: CAPABILITY_REGISTRY,
-      tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE, tool_trace_store: TOOL_TRACE_STORE
+      tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE, tool_trace_store: TOOL_TRACE_STORE,
+      settings_store: SETTINGS_STORE # v2 model resolution: platform default_model + fallbacks (§10)
     )
 
     BUS = Harness::CommandBus.new

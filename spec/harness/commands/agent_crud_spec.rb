@@ -27,9 +27,15 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
       expect(events.map(&:type)).to eq([:agent_created])
     end
 
-    it "id and model are required" do
+    it "id is required" do
       expect { handler.call(cmd(:create_agent, { "model" => "m" })) }.to raise_error(Harness::ValidationError, /id/)
-      expect { handler.call(cmd(:create_agent, { "id" => "x" })) }.to raise_error(Harness::ValidationError, /model/)
+    end
+
+    it "model is OPTIONAL (v2, §10): a modelless agent resolves the platform default at turn start" do
+      profile = handler.call(cmd(:create_agent, { "id" => "x" }))
+      expect(profile.id).to eq("x")
+      expect(profile.model).to be_nil
+      expect(events.map(&:type)).to eq([:agent_created])
     end
 
     it "duplicate id -> ValidationError (does not overwrite)" do

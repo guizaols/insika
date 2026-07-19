@@ -76,6 +76,24 @@ RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
       src.put(Harness::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b demo]))
       expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b demo])
     end
+
+    it "round-trip of params/model_policy (LLM config v2, §10)" do
+      src.put(Harness::AgentProfile.build(
+                id: "loja", model: "m",
+                params: { temperature: 0.2, max_tokens: 300 },
+                model_policy: { "allow" => ["deepseek/*"] }
+              ))
+      got = src.fetch("loja")
+      # params survive as a Hash the resolver consumes (keys become strings via JSON;
+      # ModelResolver#normalize_params re-symbolizes); model_policy stays as authored.
+      expect(got.params).to eq("temperature" => 0.2, "max_tokens" => 300)
+      expect(Harness::ModelPolicy.allowed?(got.model_policy, model: "deepseek-chat", provider: :deepseek)).to be(true)
+    end
+
+    it "round-trip of a modelless agent (model optional, §10)" do
+      src.put(Harness::AgentProfile.build(id: "loja")) # no model
+      expect(src.fetch("loja").model).to be_nil
+    end
   end
 
   describe ".coerce" do

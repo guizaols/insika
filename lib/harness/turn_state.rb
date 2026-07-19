@@ -10,6 +10,10 @@ module Harness
                   :allowed_tools,      # Resolution from the Policy Engine
                   :allowed_skills,
                   :chat,               # the turn's RubyLLM::Chat instance
+                  :session,            # the turn's SessionStore::Session | nil (set at stage 2;
+                  #                      read by create_chat for the per-chat model pin, §10)
+                  :model_selection,    # resolved ModelSelection (v2, §10): model/provider/source/
+                  #                      pinned/params/fallbacks. Set at stage 5; surfaced in usage.
                   :halt_reason         # set by Middleware when short-circuiting
 
     # Internal (not part of the contract): correlation of the current
