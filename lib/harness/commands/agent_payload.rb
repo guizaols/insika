@@ -12,7 +12,7 @@ module Harness
       FIELDS = %i[id model provider base_prompt prompt_files tools_allow tools_deny
                   tools_allow_groups skills context_providers workflows_allow policies
                   prompt_refs limits approvals_required capabilities tools_deferred memory
-                  metadata].freeze
+                  params model_policy metadata].freeze
 
       module_function
 
@@ -24,6 +24,8 @@ module Harness
         out[:provider] = presence(out[:provider])&.to_sym if out.key?(:provider)
         out[:policies] = Array(out[:policies]).map(&:to_sym) if out.key?(:policies)
         out[:limits] = out[:limits].transform_keys(&:to_sym) if out[:limits].is_a?(Hash)
+        # generation params (v2, §10) consumed by symbol key (temperature/max_tokens/thinking).
+        out[:params] = out[:params].transform_keys(&:to_sym) if out[:params].is_a?(Hash)
         out
       end
 

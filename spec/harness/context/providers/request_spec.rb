@@ -34,4 +34,12 @@ RSpec.describe Harness::Context::Providers::Request do
   it "is not required (metadata degrades)" do
     expect(described_class.new.required?).to be(false)
   end
+
+  it "never renders '__'-prefixed internal vars (e.g. the model pin __llm__, §10)" do
+    vars = { "plan" => "pro", Harness::ModelResolver::SESSION_SLOT => { "model" => "secret-m" } }
+    content = described_class.new.call(request(tenant: "acme", vars: vars)).first.content
+    expect(content).to include("plan: pro")
+    expect(content).not_to include("__llm__")
+    expect(content).not_to include("secret-m")
+  end
 end

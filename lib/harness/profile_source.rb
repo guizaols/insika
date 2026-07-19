@@ -99,6 +99,11 @@ module Harness
         capabilities: h[:capabilities],
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
+        # params/model_policy (v2, §10): the resolver tolerates string keys from
+        # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no
+        # re-symbolization needed here.
+        params: h[:params] || {},
+        model_policy: h[:model_policy],
         metadata: h[:metadata] || {}
       )
     end
