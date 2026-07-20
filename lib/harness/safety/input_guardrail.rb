@@ -34,14 +34,14 @@ module Harness
         return nxt.call(state) unless config.input
 
         hit = Detectors.scan_input(state.message.to_s, categories: config.input_categories)
-        return block(state, category: hit[:category], source: :deterministic, detail: hit[:matched]) if hit
+        return block(state, config, category: hit[:category], source: :deterministic, detail: hit[:matched]) if hit
 
         if config.moderator? && (mod = build_moderator(config))
           verdict = mod.classify(state.message.to_s)
           if verdict.block?
             category = moderator_category(verdict)
-            return block(state, category: category, source: :moderator,
-                                detail: verdict.reason, action: verdict.action)
+            return block(state, config, category: category, source: :moderator,
+                                        detail: verdict.reason, action: verdict.action)
           end
         end
 
@@ -54,22 +54,26 @@ module Harness
         @moderator_factory&.call(config)
       end
 
-      # Maps the moderator's category to a safe-response bucket. `escalate` overrides
-      # the category so the caller gets the escalation reply (D5).
+      # The block category. `escalate` (an ACTION) becomes the `escalate` category so
+      # the agent can address it; otherwise the moderator's own category flows
+      # through UNCOLLAPSED — the safe-reply lookup (SafeResponses.for) resolves an
+      # unknown one to the agent's `default` / the neutral built-in, so we don't need
+      # to force it into a fixed bucket here (configuration over convention, §7).
       def moderator_category(verdict)
         return :escalate if verdict.action.to_s == "escalate"
 
-        sym = verdict.category.to_s.to_sym
-        %i[injection sexual abuse].include?(sym) ? sym : :default
+        cat = verdict.category.to_s
+        cat.empty? ? :default : cat.to_sym
       end
 
       # Sets the graceful-halt fields and short-circuits (does NOT call nxt). The
       # Executor reads `guardrail_block` to emit `:guardrail_blocked` (single-emitter
-      # discipline) and `halt_response` to complete the turn. `detail`/matched value
-      # is NOT the raw secret — it is an injection/abuse phrase, safe to log; the
-      # Executor still routes it through the same audit path.
-      def block(state, category:, source:, detail: nil, action: "refuse")
-        state.halt_response = SafeResponses.for(category)
+      # discipline) and `halt_response` to complete the turn. The safe reply honors
+      # the agent's per-category / catch-all overrides (config.responses) before any
+      # built-in default. `detail`/matched value is NOT a raw secret — it is an
+      # injection/abuse phrase, safe to log; the Executor routes it through audit.
+      def block(state, config, category:, source:, detail: nil, action: "refuse")
+        state.halt_response = SafeResponses.for(category, overrides: config.responses)
         state.guardrail_block = {
           category: category.to_s,
           source: source.to_s,

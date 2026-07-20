@@ -174,7 +174,13 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
 - Moderador LLM: um provider/modelo dedicado de safety, ou o mesmo `utility_model`?
 - Categorias canônicas do bloqueio (injection / abuse / sexual / self-harm / off-topic)
   — fixar o enum agora ou deixar o moderador livre?
-- Resposta segura: fixa por categoria (dados, i18n) vs gerada pelo agente sob restrição?
+- ~~Resposta segura: fixa por categoria vs gerada pelo agente sob restrição?~~
+  **RESOLVIDO (config over convention):** o motor é OSS multi-negócio, então NÃO
+  engessa tom/idioma. Built-in `SafeResponses::DEFAULTS` neutros como fallback; cada
+  agente sobrescreve por categoria (ou um `default` catch-all) via
+  `guardrails.responses`. Resolução: `agent[cat] → agent[default] → builtin[cat] →
+  builtin[default]`. A categoria do moderador flui SEM colapso — uma categoria
+  desconhecida cai no `default` do agente, não num bucket forçado. Exposto no Studio.
 
 ## 8. Relação com outras RFCs / itens
 
@@ -226,6 +232,15 @@ seams existentes. Nada de novo estágio na pipeline.
 - **`escalate`.** É uma resposta segura canônica (texto de escalação). Invocar de
   fato `call_support` a partir da Middleware (sem LLM) ficou como follow-up honesto
   (D5): sem a tool, é a recusa/escala fixa.
+- **Resposta segura = config over convention (§7 resolvido).** `SafeResponses` não
+  é mais texto fixo pt-BR/varejo: são defaults NEUTROS sobrescrevíveis por agente
+  (`guardrails.responses`, mapa categoria→texto, + `default` catch-all), resolvidos
+  `agent[cat] → agent[default] → builtin[cat] → builtin[default]`. A categoria do
+  moderador flui sem colapso (D2/D5 relaxado): uma categoria fora do enum forte cai
+  no `default` do agente. Motivação: OSS multi-negócio/idioma não pode ter tom
+  engessado — o motor dá a ferramenta, o agente escolhe. Validado pelo eval: o
+  `promessa-falsa-desconto` **bloqueava com segurança** mas devolvia texto de
+  categoria errada; agora o agente configura a resposta certa.
 - **`output` liga filtro + validador juntos** (um só flag por agente). Bloqueio
   pós-hoc real ainda exige `streaming:false` (override por perfil não criado —
   D3, documentado).

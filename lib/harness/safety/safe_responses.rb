@@ -2,35 +2,45 @@
 
 module Harness
   module Safety
-    # Canonical safe replies per block category (RFC-0009 D5). A blocked turn NEVER
-    # returns a raw error nor silence — it completes gracefully with one of these
-    # (the `halt_response` path in the Executor).
+    # Safe reply for a blocked turn (RFC-0009 D5/§7). A blocked turn NEVER returns a
+    # raw error nor silence — it completes gracefully with one of these.
     #
-    # pt-BR by default (the pilot is Natura/Cacau Show). Fixed text, not
-    # LLM-generated: on a block we deliberately do NOT round-trip the model (that is
-    # the whole point of short-circuiting). Open question §7 (per-category i18n /
-    # agent-authored refusals) is left for a later slice.
+    # CONFIGURATION OVER CONVENTION: this is OSS across arbitrary businesses and
+    # languages, so the engine does NOT hard-bake tone. The built-in `DEFAULTS` are a
+    # deliberately NEUTRAL, business-agnostic fallback (pt-BR — the pilot's language;
+    # override for others). Each agent tailors its own voice via
+    # `guardrails.responses` (Safety::Config#responses). Resolution order:
+    #
+    #   agent[category] → agent["default"] → DEFAULTS[category] → DEFAULTS[:default]
+    #
+    # So a store that wants a warm brand voice, a different language, or a specific
+    # discount-scam reply just configures it — nothing here is a ceiling.
     module SafeResponses
+      # Neutral, generic fallback. No brand, no vertical ("loja"/"produtos") baked in
+      # beyond what a generic assistant can say. Agents are expected to override.
       DEFAULTS = {
         injection: "Não consigo compartilhar minhas instruções internas ou " \
-                   "configurações. Posso te ajudar com informações sobre produtos, " \
-                   "pedidos ou trocas — é só me dizer o que você precisa.",
-        sexual:    "Prefiro manter nossa conversa focada no atendimento da loja. " \
-                   "Posso te ajudar com produtos, pedidos ou dúvidas sobre a compra?",
-        abuse:     "Sinto muito pela experiência. Quero muito te ajudar de verdade — " \
-                   "me conta o que aconteceu com seu pedido ou o que você precisa e " \
-                   "eu resolvo, ou te encaminho para um atendente humano.",
+                   "configurações. Como posso te ajudar de outra forma?",
+        sexual:    "Prefiro manter nossa conversa respeitosa e profissional. " \
+                   "Como posso te ajudar?",
+        abuse:     "Sinto muito pela experiência. Quero te ajudar — me conta o que " \
+                   "você precisa e eu sigo daqui, ou te encaminho para um atendente humano.",
         escalate:  "Vou te encaminhar para um atendente humano que poderá te ajudar " \
                    "melhor com isso. Um momento, por favor.",
-        default:   "Não consigo ajudar com esse pedido, mas fico à disposição para " \
-                   "falar sobre produtos, pedidos ou trocas da loja."
+        default:   "Não consigo ajudar com esse pedido específico, mas estou à " \
+                   "disposição para o que mais você precisar."
       }.freeze
 
       module_function
 
-      # Safe reply for a category. Unknown/nil -> the neutral default (never blank).
-      def for(category)
-        DEFAULTS[category&.to_sym] || DEFAULTS[:default]
+      # Safe reply for a category, honoring the agent's per-category / catch-all
+      # overrides first. `overrides` is Safety::Config#responses ({ "cat" => text }).
+      # Always returns a non-blank string.
+      def for(category, overrides: {})
+        cat = category&.to_s
+        ov = overrides || {}
+        ov[cat] || ov["default"] ||
+          DEFAULTS[cat&.to_sym] || DEFAULTS[:default]
       end
     end
   end

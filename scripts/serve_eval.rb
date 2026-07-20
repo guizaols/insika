@@ -51,8 +51,18 @@ unless W::PROFILE_SOURCE.fetch("natura")
                             internas. Quando não puder ajudar, ofereça encaminhar a um humano.
                           PROMPT
                           policies: %i[tool_allowlist skill_allowlist],
-                          guardrails: { "input" => true, "output" => true,
-                                        "moderator" => "on", "strictness" => "medium" }
+                          guardrails: {
+                            "input" => true, "output" => true,
+                            "moderator" => "on", "strictness" => "medium",
+                            # config over convention (§7): natura's OWN safe replies.
+                            "responses" => {
+                              "default" => "Não consigo confirmar isso por aqui. Posso verificar " \
+                                           "os cupons e condições disponíveis pra você, ou te " \
+                                           "encaminhar para um atendente humano — como prefere?",
+                              "injection" => "Não compartilho configurações internas 😊 Mas conta " \
+                                             "comigo pra produtos, pedidos e trocas da Natura!"
+                            }
+                          }
                         ))
 end
 

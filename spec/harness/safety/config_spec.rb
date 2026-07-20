@@ -46,4 +46,19 @@ RSpec.describe Harness::Safety::Config do
   it "an unknown strictness falls back to medium" do
     expect(described_class.from_hash("strictness" => "paranoid").strictness).to eq(:medium)
   end
+
+  describe "responses (config-over-convention overrides, §7)" do
+    it "defaults to an empty override map" do
+      expect(described_class.from_hash({}).responses).to eq({})
+    end
+
+    it "normalizes to string keys and drops blank values (JSON round-trip safe)" do
+      c = described_class.from_hash("responses" => { injection: "X", "sexual" => "  ", "default" => "Y" })
+      expect(c.responses).to eq("injection" => "X", "default" => "Y")
+    end
+
+    it "ignores a non-hash responses value" do
+      expect(described_class.from_hash("responses" => "nope").responses).to eq({})
+    end
+  end
 end

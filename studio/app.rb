@@ -808,7 +808,17 @@ module Studio
         "strictness" => presence(r.params["guardrail_strictness"]) || "medium"
       }
       (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
+      responses = guardrail_responses_patch(r)
+      out["responses"] = responses unless responses.empty?
       out
+    end
+
+    # Per-category safe-reply overrides (RFC-0009 §7, config over convention). Only
+    # the non-blank fields are persisted; Safety::Config normalizes on read.
+    def guardrail_responses_patch(r)
+      %w[default injection sexual abuse escalate].each_with_object({}) do |cat, acc|
+        (v = presence(r.params["guardrail_response_#{cat}"])) && (acc[cat] = v)
+      end
     end
 
     # Per-agent generation params (v2, §10). The config form OWNS these fields, so

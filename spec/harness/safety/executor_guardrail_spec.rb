@@ -79,7 +79,7 @@ RSpec.describe "Harness::Executor guardrails (RFC-0009)" do
 
       msgs = session_store.find("s1").messages
       expect(msgs.last["role"] || msgs.last[:role]).to eq("assistant")
-      expect((msgs.last["content"] || msgs.last[:content])).to include("atendimento da loja")
+      expect((msgs.last["content"] || msgs.last[:content])).to include("respeitosa")
     end
 
     it "a clean message runs the normal turn (LLM is called)" do
