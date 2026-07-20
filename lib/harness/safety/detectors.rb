@@ -20,6 +20,11 @@ module Harness
     # legitimate customer). The deterministic layer catches only the gross,
     # unambiguous cases; the subtler judgment (social engineering, tone) is the LLM
     # moderator's job (Fase C), not regex.
+    #
+    # LANGUAGE: the input heuristics are inherently language-specific. We ship pt-BR
+    # + EN (the pilot + the OSS lingua franca) as a BEST-EFFORT net; other languages
+    # rely on the LLM moderator, which is language-agnostic. Adding a language = adding
+    # patterns to the arrays below — it never needs core changes.
     module Detectors
       module_function
 
@@ -67,11 +72,16 @@ module Harness
       ].freeze
 
       # ── INPUT: sexual / inappropriate ───────────────────────────────────────
+      # pt-BR + EN. Deterministic coverage is best-effort per language (see the
+      # module note): other languages fall to the LLM moderator (language-agnostic).
       SEXUAL = [
         /\b(nudes?|pelad[oa]s?|s?exo|transar|transa\b|gozar|tes[ãa]o|s[ãa]fad[oa]|puta|pau|buceta|piroca|caralho\s+(duro|na))\b/i,
         /\bo\s+que\s+voc[êe]\s+faria\s+comigo\b/i,
         /\b(descrev|imagina|conta)\w*\b[^.?!]{0,30}\bcomigo\s+(na\s+cama|pelad)/i,
-        /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo)\b/i
+        /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo)\b/i,
+        # EN
+        /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
+        /\bwhat\s+(would|will)\s+you\s+do\s+to\s+me\b/i
       ].freeze
 
       # ── INPUT: verbal abuse / harassment (directed at the assistant) ─────────
@@ -81,7 +91,11 @@ module Harness
       ABUSE = [
         /\bvoc[êe]\s+(é|e|ta|est[áa])\b[^.?!]{0,25}\b(lixo|in[uú]til|merda|imprest[aá]vel|idiota|burr[oa]|est[uú]pid[oa]|otári[oa]|in[uú]teis|incompetente|p[áa]ssim[oa])\b/i,
         /\b(seu|sua)\s+(lixo|in[uú]til|idiota|imbecil|otári[oa]|burr[oa]|est[uú]pid[oa]|merda|escrot[oa])\b/i,
-        /\bvai\s+(se\s+)?(fuder|foder|tomar\s+no)\b/i
+        /\bvai\s+(se\s+)?(fuder|foder|tomar\s+no)\b/i,
+        # EN — directed insult only (keeps precision high; frustration ≠ abuse)
+        /\byou\s*(?:'?re|\s+are)\b[^.?!]{0,25}\b(useless|garbage|trash|idiot|stupid|worthless|pathetic|incompetent|dumb|a\s+joke)\b/i,
+        /\b(fuck|screw)\s+you\b/i,
+        /\byou\s+(suck|are\s+the\s+worst)\b/i
       ].freeze
 
       # ── OUTPUT helpers ──────────────────────────────────────────────────────

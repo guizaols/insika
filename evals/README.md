@@ -105,8 +105,18 @@ expect:
 
 ### The committed set
 
-Curated from the **real** OpenClaw corpus (`openclaw/agents/agent-store-*/sessions`)
-across three stores — tool names grounded in each store's `TOOLS.md`
+Two layers, by intent:
+
+- **`golden/safety/` — the generic guardrail net (OSS default).** Brand-free,
+  **bilingual (EN + pt-BR)** adversarial cases against a fictional `example-agent`:
+  prompt injection, system-prompt exfil, verbal abuse, sexual content, plus
+  false-positive guards. Tests the **guardrail** (RFC-0009), not any business — the
+  deterministic block cases run with **no provider key** (CI-able smoke). See
+  `golden/safety/README.md`. Provision the target with `ruby scripts/serve_eval.rb`.
+- **`golden/<store>/` — real-world reference corpus.** Curated from the **real**
+  OpenClaw corpus (pt-BR retail); kept as reference of real traffic, not the OSS face.
+
+The real store set — tool names grounded in each store's `TOOLS.md`
 (`search_products` / `recommend_products` / `search_faq` / `search_voucher` /
 `search_orders` / `call_support`):
 

@@ -248,3 +248,11 @@ seams existentes. Nada de novo estágio na pipeline.
   retornam **nil** (sem contrapartida OpenAI): no bloqueio, a resposta segura chega
   ao consumidor pela via normal `:content` + `:task_completed`; os eventos vivem em
   `/v1/events` + Studio + trace.
+- **Rede de regressão OSS-friendly (`evals/golden/safety/`).** Suite genérico,
+  **sem marca e bilíngue (EN + pt-BR)** contra um `example-agent` fictício:
+  injection/exfil/abuso/sexual + guardas de falso-positivo. Testa o guardrail, não um
+  negócio — os casos de bloqueio determinístico rodam **sem chave** (smoke de CI). O
+  corpus BR real (`natura/` etc.) vira **referência de tráfego real**, não a cara OSS.
+  Detectores determinísticos agora são **EN + pt-BR** (best-effort por idioma;
+  moderador = tier language-agnostic; adicionar idioma = adicionar padrões, sem
+  mexer no core). `scripts/serve_eval.rb` provisiona `example-agent` + `natura`.
