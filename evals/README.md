@@ -87,27 +87,41 @@ failures (`response.failed`). Full per-tool status lives in the `ToolTraceStore`
 ## Golden format
 
 ```yaml
-id: frete-cep          # unique case id
-agent: demo-store             # target agent (must be provisioned in the harness)
+id: cacau-produto-com-cep    # unique case id
+agent: acme            # target agent id (must match the provisioned agent)
 turns:                       # the conversation to replay, in order
-  - user: "qual o frete pro 01310-100?"
+  - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
 expect:
   tools_called:              # required tools; a trailing "?" = OPTIONAL (never fails)
-    - shipping_quote
-    - search_products?
+    - search_products
+    - recommend_products?
   must_not:                  # named negative detectors
     - pii_leak               #   CPF/CNPJ/credential in the output
     - tool_error             #   any failed tool call in the turn
-  rubric: |                  # LLM-judge criterion (Fase B — deferred)
-    Deve cotar o frete sem inventar prazo…
-  min_score: 0.7             # judge threshold (Fase B)
+  rubric: |                  # LLM-judge criterion (Fase B)
+    Com o CEP em mãos, busca no catálogo e apresenta opções coerentes…
+  min_score: 0.7             # judge threshold
 ```
 
-The raw material is the **179 real user messages** extracted from the OpenClaw
-session logs (`openclaw/agents/*/sessions/*.jsonl`); curation turns a handful into
-goldens with an `expect` block. Start ~15–20 cases over the hot flows (produto,
-frete, objeção, fora-de-escopo) and grow. The same corpus feeds the real-traffic
-loadtest (#6b) — one replay, two purposes.
+### The committed set
+
+Curated from the **real** OpenClaw corpus (`openclaw/agents/agent-store-*/sessions`)
+across three stores — tool names grounded in each store's `TOOLS.md`
+(`search_products` / `recommend_products` / `search_faq` / `search_voucher` /
+`search_orders` / `call_support`):
+
+- **acme** — greeting, CEP-gated search (with/without CEP), FAQ, order status,
+  voucher, human handoff.
+- **demo** — product discovery, order-status (angry), **and real adversarial
+  turns**: a base64 prompt-injection/exfil, a fabricated-discount social-engineering
+  attempt, verbal abuse, an inappropriate request. These double as guardrail evals
+  (§9 / #11).
+- **outlet** — notebook/tablet discovery, greeting.
+
+> **Agent ids:** goldens target `acme` / `demo` / `outlet`. Provision the
+> matching agents (see below) or adjust the `agent:` field to your ids. The same
+> corpus + replay also serves the real-traffic loadtest (#6b) — one replay, two
+> purposes.
 
 ## Two evaluation layers
 
