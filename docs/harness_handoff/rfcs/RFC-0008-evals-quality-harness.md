@@ -72,8 +72,8 @@ Um golden é um arquivo de dados (YAML/JSON em `evals/golden/<agent>/*.yml`), **
 código**, no espírito tools-como-dado. Cada caso:
 
 ```yaml
-id: cacau-frete-cep
-agent: bia-cacau
+id: loja-chocolates-frete-cep
+agent: loja-chocolates
 turns:                       # a conversa a reproduzir (do corpus real, curada)
   - user: "qual o frete pro 01310-100?"
 expect:
@@ -110,7 +110,7 @@ taxa de erro), agora sobre tráfego real — o que fecha o gap do #6b: latência
 tool call + turnos multi-round sob carga, coisa que o greeting sintético não
 exercita.
 
-**Pré-requisito de ambiente:** os agentes-alvo (`bia-cacau` etc.) precisam existir
+**Pré-requisito de ambiente:** os agentes-alvo (`loja-chocolates` etc.) precisam existir
 no harness sob teste. Provisionar via **PackImporter** a partir dos packs reais em
 `openclaw/workspace/agent-store-<id>/*.md` (mesma identidade das lojas do piloto)
 — o runner documenta/automatiza esse passo para a rodada ser reproduzível do zero.

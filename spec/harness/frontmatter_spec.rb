@@ -13,7 +13,7 @@ RSpec.describe Harness::Frontmatter do
 
   it "tolerates `: ` in the description prose (strict YAML would break)" do
     fm = "name: gift-consultant-heuristics\n" \
-         "description: Discovery heuristics. Cacau Show sells chocolate/gift: there is NO size gate. Enable it in discovery."
+         "description: Discovery heuristics. The shop sells chocolate/gift: there is NO size gate. Enable it in discovery."
     meta = described_class.parse(fm)
     expect(meta["name"]).to eq("gift-consultant-heuristics")
     expect(meta["description"]).to include("gift: there is NO size gate") # inner `: ` preserved

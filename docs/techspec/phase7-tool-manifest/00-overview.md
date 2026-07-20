@@ -23,7 +23,7 @@
 
 **Como o OpenClaw faz hoje (descoberto):** as tools são **código TypeScript** — 1 `.ts` por tool,
 **44 `api.registerTool(...)` imperativos** no `index.ts` (sem manifest declarativo, sem
-auto-discovery). Os **grupos** (Globais/Default/Groceries/B2B/Natura/Cacau/Core) **não são
+auto-discovery). Os **grupos** (Globais/Default/Groceries/B2B/<por-merchant>/Core) **não são
 persistidos** — são derivados por convenção de nome/sufixo em runtime. O **enablement por agente**
 vive no `openclaw.json` (`agents.list[].tools.{allow,deny}`: deny vence, allow vazio = herda tudo,
 allow não-vazio = whitelist). O **gating por vertical/loja** (feature flags) vive **no Rails**
