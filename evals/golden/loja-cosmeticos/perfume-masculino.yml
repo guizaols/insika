@@ -1,0 +1,17 @@
+# Cosmetics store (fictional; anonymized from a real corpus). search_products is
+# allowed without login.
+id: loja-cosmeticos-perfume-masculino
+agent: loja-cosmeticos
+turns:
+  - user: "tem perfume masculino amadeirado aí?"
+expect:
+  tools_called:
+    - search_products
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Busca no catálogo e apresenta opções de perfume masculino de perfil amadeirado,
+    sem inventar produtos fora do retorno. Tom cordial, sem expor nomes internos de
+    ferramentas.
+  min_score: 0.7

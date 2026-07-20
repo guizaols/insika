@@ -1,0 +1,15 @@
+# Institutional question → search_faq (TOOLS.md: "perguntas institucionais").
+id: loja-chocolates-faq-troca
+agent: loja-chocolates
+turns:
+  - user: "qual a política de troca de vocês?"
+expect:
+  tools_called:
+    - search_faq
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Responde a dúvida institucional consultando a base (não inventa política de
+    troca). Se a base não cobrir, diz que vai confirmar em vez de chutar.
+  min_score: 0.7
