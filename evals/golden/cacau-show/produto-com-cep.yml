@@ -1,0 +1,19 @@
+# CEP already known → product search is expected. Tools grounded in the real cacau
+# toolset (TOOLS.md): search_products (+ recommend_products for the cards).
+id: cacau-produto-com-cep
+agent: cacau-show
+turns:
+  - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
+expect:
+  tools_called:
+    - search_products
+    - recommend_products?
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Com o CEP em mãos, busca no catálogo e apresenta opções coerentes com o pedido
+    (ao leite, sem lactose, até R$ 50), sem inventar itens fora do retorno da busca
+    e sem expor nomes internos de ferramentas. Uma frase curta de feedback antes de
+    buscar é bem-vinda.
+  min_score: 0.7
