@@ -16,11 +16,41 @@ evals/
     golden.rb           golden loader + validation
     assertions.rb       deterministic checks (tools_called, must_not) over a TurnResult
     report.rb           JSON + markdown report
+    transport.rb        SSE reducer + HttpTransport over /v1/responses
+    runner.rb           replay driver (orchestration; injected transport)
   golden/<agent>/*.yml  the curated cases (DATA, not code)
-  runner.rb             replay driver over /v1/responses      (slice 2 — in progress)
+  run.rb                CLI entrypoint
   baseline.json         accepted scores for gating            (Fase C)
   reports/              run outputs
 ```
+
+## Running
+
+The runner replays the golden set against a **running** harness over the same
+`POST /v1/responses` surface as `scripts/loadtest.rb`. It's on-demand (not CI): it
+needs a live provider key on the server + the target agents provisioned.
+
+```bash
+# 1. boot a harness (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
+# 2. provision the target agent(s) from the real packs (client; POST /v1/agents):
+HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+BIA_INTERNAL_API_TOKEN=… \
+  bundle exec ruby scripts/import_pack.rb openclaw/workspace/agent-store-<id>
+# 3. run the evals:
+OPENCLAW_GATEWAY_TOKEN=local-demo \
+  ruby evals/run.rb --base-url http://localhost:9292 --mode both
+```
+
+Flags: `--base-url`, `--golden-dir`, `--agent <id>` (filter), `--mode eval|perf|both`,
+`--out <file>`, `--timeout`. `--mode perf` reports TTFB/total p50/p95 over the real
+corpus — that's the **#6b** real-traffic loadtest, since it's the same transport as
+`loadtest.rb` but driven by real conversations. The runner **exits non-zero** if any
+eval case fails (the seed of the Fase C pre-merge gate).
+
+**Tool status caveat:** the `/v1/responses` stream carries tool *names* but not
+per-tool status, so over HTTP the `tool_error` detector only catches *turn-level*
+failures (`response.failed`). Full per-tool status lives in the `ToolTraceStore`
+(an in-process enrichment) — a later refinement.
 
 ## Golden format
 
@@ -59,10 +89,13 @@ loadtest (#6b) — one replay, two purposes.
 
 ## Phasing (RFC-0008 §5)
 
-- **Fase A** — engine (loader + deterministic asserts + report) + this README.
-  Unit-tested offline in `spec/evals/`. ← this PR.
-- **Fase B** — `runner.rb` over `/v1/responses` (`--mode perf|eval|both`; shares the
-  transport with `loadtest.rb`, so `perf` mode closes #6b) + LLM-judge + agent
-  provisioning via PackImporter from `openclaw/workspace/agent-store-<id>/`.
-- **Fase C** — `baseline.json` + `--tolerance` gating; the pre-merge gate for
-  prompt/tool/model changes.
+- **Fase A** — engine (loader + deterministic asserts + report). Unit-tested offline.
+  ✅ done.
+- **Runner** — `run.rb` + `transport.rb`/`runner.rb` over `/v1/responses`
+  (`--mode perf|eval|both`; shares the transport with `loadtest.rb`, so `perf` mode
+  closes **#6b**). Provisioning via `scripts/import_pack.rb`. ✅ done (this PR).
+- **Fase B (remaining)** — the **LLM-judge**: score the `rubric` with the
+  `utility_model` (#18) at temp 0; a golden with a rubric currently reads
+  `judge_pending`.
+- **Fase C** — `baseline.json` + `--tolerance` gating (the runner already exits
+  non-zero on a fail; baseline/tolerance is the next step).
