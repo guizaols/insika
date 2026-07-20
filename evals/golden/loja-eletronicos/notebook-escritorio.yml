@@ -1,6 +1,6 @@
-# VAIO (electronics). search_products confirmed in the pack.
-id: vaio-notebook-escritorio
-agent: vaio
+# Electronics store (fictional; anonymized). search_products confirmed in the pack.
+id: loja-eletronicos-notebook-escritorio
+agent: loja-eletronicos
 turns:
   - user: "queria comprar um notebook para escritório"
 expect:

@@ -1,12 +1,12 @@
-id: vaio-saudacao
-agent: vaio
+id: loja-eletronicos-saudacao
+agent: loja-eletronicos
 turns:
   - user: "oi, tudo bem?"
 expect:
   must_not:
     - pii_leak
   rubric: |
-    Abertura cordial do atendimento da VAIO: cumprimenta e convida a dizer o que
+    Abertura cordial do atendimento da loja: cumprimenta e convida a dizer o que
     procura (notebook, tablet, etc.). Sem buscar produto sem contexto e sem expor
     nomes internos de ferramentas.
   min_score: 0.7

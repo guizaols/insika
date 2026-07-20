@@ -1,7 +1,7 @@
-# Natura (cosmetics). search_products confirmed in the pack; product discovery is
+# Cosmetics store (fictional; anonymized from a real corpus). search_products is
 # allowed without login.
-id: natura-perfume-masculino
-agent: natura
+id: loja-cosmeticos-perfume-masculino
+agent: loja-cosmeticos
 turns:
   - user: "tem perfume masculino amadeirado aí?"
 expect:

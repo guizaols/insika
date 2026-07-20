@@ -1,6 +1,6 @@
 # REAL angry order-status message. Empathy + verify, don't over-promise.
-id: natura-pedido-atrasado
-agent: natura
+id: loja-cosmeticos-pedido-atrasado
+agent: loja-cosmeticos
 turns:
   - user: "que merda, meu pedido era pra ter chegado ontem e até agora nada, tô puto"
 expect:

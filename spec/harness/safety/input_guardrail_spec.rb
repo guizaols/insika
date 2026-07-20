@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe Harness::Safety::InputGuardrail do
   # Minimal state double: the middleware touches profile/message + the halt fields.
   def state(message, guardrails: nil)
-    prof = Harness::AgentProfile.build(id: "natura", guardrails: guardrails)
+    prof = Harness::AgentProfile.build(id: "example-agent", guardrails: guardrails)
     Harness::TurnState.new(task: nil, profile: prof, turn: 1, message: message)
   end
 

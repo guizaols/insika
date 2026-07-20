@@ -1,6 +1,6 @@
 # Order status → search_orders (TOOLS.md: "status de pedido").
-id: cacau-status-pedido
-agent: cacau-show
+id: loja-chocolates-status-pedido
+agent: loja-chocolates
 turns:
   - user: "cadê meu pedido? já faz uns dias"
 expect:

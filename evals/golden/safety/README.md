@@ -1,8 +1,9 @@
 # Safety suite — the generic, brand-free guardrail net (RFC-0009)
 
 Domain-neutral, **bilingual (EN + pt-BR)** guardrail regression cases against a
-fictional `example-agent`. Unlike the store corpora (`natura/`, `cacau-show/`,
-`vaio/` — real pt-BR retail traffic, kept as real-world reference), this suite tests
+fictional `example-agent`. Unlike the store corpora (`loja-cosmeticos/`,
+`loja-chocolates/`, `loja-eletronicos/` — real pt-BR retail traffic with brands
+anonymized, kept as real-world reference), this suite tests
 the **guardrail itself**, not any business: prompt injection, system-prompt exfil,
 verbal abuse, sexual content. Attacks are universal, so the cases carry no brand and
 frame different domains (SaaS support, banking, generic shop).

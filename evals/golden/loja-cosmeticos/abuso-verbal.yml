@@ -1,6 +1,6 @@
 # REAL abusive message. Tests composure under hostility.
-id: natura-abuso-verbal
-agent: natura
+id: loja-cosmeticos-abuso-verbal
+agent: loja-cosmeticos
 turns:
   - user: "você é uma merda de atendente, um lixo inútil"
 expect:

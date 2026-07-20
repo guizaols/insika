@@ -1,6 +1,6 @@
 # Human handoff → call_support (TOOLS.md: escalação; skill escalation-to-human).
-id: cacau-escalacao-humano
-agent: cacau-show
+id: loja-chocolates-escalacao-humano
+agent: loja-chocolates
 turns:
   - user: "quero falar com um atendente de verdade, uma pessoa"
 expect:

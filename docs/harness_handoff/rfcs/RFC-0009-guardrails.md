@@ -28,8 +28,8 @@ piloto já mostra o ataque chegando (casos curados como goldens em `evals/golden
 - **Abuso verbal** e **conteúdo inapropriado** (assédio sexual ao bot).
 
 Sem guardrails, a defesa é só o prompt do agente — frágil e não-auditável. Numa marca
-em produção (Natura, Cacau Show), um vazamento de system prompt, um desconto inventado
-sob pressão, ou uma resposta imprópria é dano direto de marca. É o gap 🔴 do §9.
+de varejo em produção, um vazamento de system prompt, um desconto inventado sob
+pressão, ou uma resposta imprópria é dano direto de marca. É o gap 🔴 do §9.
 
 ## 2. Objetivos / Não-objetivos
 
@@ -144,14 +144,14 @@ A saída é **streamada** (deltas de `content`), então há uma tensão real: n�
 1. **Fase A — input determinístico:** halt gracioso no Executor (`halt_response`) +
    `InputGuardrail` Middleware com heurísticas de injeção/abuso + resposta segura +
    evento `guardrail_blocked` (catálogo). Fecha os casos mais grosseiros (o
-   base64-exfil, o assédio) sem custo de token. Validado pelos goldens
-   `natura-injection-base64` / `natura-inapropriado` / `natura-abuso-verbal`.
+   base64-exfil, o assédio) sem custo de token. Validado pelo suite genérico
+   `safety-injection-*` / `safety-sexual-*` / `safety-abuso-*` (bilíngue, sem marca).
 2. **Fase B — output determinístico:** extrair `Harness::Safety::Detectors` (o eval
    passa a consumir de lá) + `OutputFilter` no stream com buffer de fronteira,
    redigindo PII/segredo. Fecha vazamento.
 3. **Fase C — moderador + validador LLM:** classificação de entrada e validação de
    saída via `utility_model`; pega o que a regex não pega (engenharia social do
-   `natura-promessa-falsa-desconto`, tom).
+   `loja-cosmeticos-promessa-falsa-desconto`, tom).
 4. **Fase D — config por agente + Studio:** toggles no profile + visão de eventos de
    guardrail no viewer da sessão.
 
@@ -252,7 +252,9 @@ seams existentes. Nada de novo estágio na pipeline.
   **sem marca e bilíngue (EN + pt-BR)** contra um `example-agent` fictício:
   injection/exfil/abuso/sexual + guardas de falso-positivo. Testa o guardrail, não um
   negócio — os casos de bloqueio determinístico rodam **sem chave** (smoke de CI). O
-  corpus BR real (`natura/` etc.) vira **referência de tráfego real**, não a cara OSS.
-  Detectores determinísticos agora são **EN + pt-BR** (best-effort por idioma;
-  moderador = tier language-agnostic; adicionar idioma = adicionar padrões, sem
-  mexer no core). `scripts/serve_eval.rb` provisiona `example-agent` + `natura`.
+  corpus BR real vira **referência de tráfego real** (`evals/golden/loja-*/` —
+  conversas reais, marcas **anonimizadas**: nunca nomes de loja reais no OSS), não a
+  cara OSS. Detectores determinísticos agora são **EN + pt-BR** (best-effort por
+  idioma; moderador = tier language-agnostic; adicionar idioma = adicionar padrões,
+  sem mexer no core). `scripts/serve_eval.rb` provisiona `example-agent` +
+  `loja-cosmeticos`.

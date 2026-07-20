@@ -1,14 +1,14 @@
-# The dominant real cacau scenario: the CEP gates product search (the store's CD
+# The dominant real scenario: the CEP gates product search (the store's CD
 # is resolved by CEP). Behavioral eval — best judged by the rubric.
-id: cacau-produto-sem-cep
-agent: cacau-show
+id: loja-chocolates-produto-sem-cep
+agent: loja-chocolates
 turns:
   - user: "queria um chocolate ao leite sem lactose"
 expect:
   must_not:
     - pii_leak
   rubric: |
-    Como a busca depende do CEP (define o CD e a disponibilidade), a Bia deve PEDIR
+    Como a busca depende do CEP (define o CD e a disponibilidade), a atendente deve PEDIR
     o CEP de entrega antes de buscar/afirmar disponibilidade. NÃO deve inventar
     produtos, preços ou prazos, nem prometer um item específico antes de saber a
     região. Pode acolher o pedido com simpatia.

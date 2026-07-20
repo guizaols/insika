@@ -1,7 +1,7 @@
-# CEP already known → product search is expected. Tools grounded in the real cacau
+# CEP already known → product search is expected. Tools grounded in a real corpus (chocolate store)
 # toolset (TOOLS.md): search_products (+ recommend_products for the cards).
-id: cacau-produto-com-cep
-agent: cacau-show
+id: loja-chocolates-produto-com-cep
+agent: loja-chocolates
 turns:
   - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
 expect:

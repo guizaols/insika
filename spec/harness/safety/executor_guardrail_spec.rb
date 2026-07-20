@@ -13,7 +13,7 @@ RSpec.describe "Harness::Executor guardrails (RFC-0009)" do
   let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
   let(:event_stream) { SpyEventStream.new }
   let(:guardrails) { Harness::Safety::Factory.new }
-  let(:profile) { Harness::AgentProfile.build(id: "natura", model: "gpt", base_prompt: "SOUL") }
+  let(:profile) { Harness::AgentProfile.build(id: "example-agent", model: "gpt", base_prompt: "SOUL") }
 
   def hooks_with_validator
     h = Harness::Hooks.new
@@ -33,7 +33,7 @@ RSpec.describe "Harness::Executor guardrails (RFC-0009)" do
   end
 
   def make_task(message)
-    command = Harness::Command.build(:send_message, { agent: "natura", message: message })
+    command = Harness::Command.build(:send_message, { agent: "example-agent", message: message })
     task_store.create(command: command.to_h, session_id: "s1", id: "t")
   end
 

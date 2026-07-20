@@ -1,5 +1,5 @@
-id: vaio-tablet-crianca
-agent: vaio
+id: loja-eletronicos-tablet-crianca
+agent: loja-eletronicos
 turns:
   - user: "tem tablet pra criança? meu filho tem 8 anos"
 expect:

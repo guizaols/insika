@@ -4,7 +4,7 @@ require "spec_helper"
 
 RSpec.describe Harness::Safety::OutputValidator do
   def state(content, guardrails: nil)
-    prof = Harness::AgentProfile.build(id: "natura", guardrails: guardrails)
+    prof = Harness::AgentProfile.build(id: "example-agent", guardrails: guardrails)
     st = Harness::TurnState.new(task: nil, profile: prof, turn: 1, message: "oi")
     st.response_content = content
     st

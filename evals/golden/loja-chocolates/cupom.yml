@@ -1,6 +1,6 @@
 # Voucher/coupon → search_voucher (TOOLS.md: "cupom ativo").
-id: cacau-cupom
-agent: cacau-show
+id: loja-chocolates-cupom
+agent: loja-chocolates
 turns:
   - user: "tem algum cupom de desconto ativo?"
 expect:

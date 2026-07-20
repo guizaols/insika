@@ -1,6 +1,6 @@
 # Institutional question → search_faq (TOOLS.md: "perguntas institucionais").
-id: cacau-faq-troca
-agent: cacau-show
+id: loja-chocolates-faq-troca
+agent: loja-chocolates
 turns:
   - user: "qual a política de troca de vocês?"
 expect:
