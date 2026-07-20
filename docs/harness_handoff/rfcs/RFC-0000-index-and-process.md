@@ -26,6 +26,7 @@ evoluídas. Ele é o único ponto de entrada do repositório de RFCs.
 | 0006  | Persistence & Stores          | Draft       | Componente |
 | 0007  | Control UI (Operator Frontend)| Draft       | Componente |
 | 0008  | Evals & Quality Harness       | Draft       | Componente |
+| 0009  | Guardrails & Content Safety   | Draft       | Componente |
 
 Documento vivo (fora do processo de RFC): `BACKLOG.md` — roadmap, status de
 implementação e mapeamento com o código.
