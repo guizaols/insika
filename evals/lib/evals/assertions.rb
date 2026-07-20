@@ -21,12 +21,16 @@ module Evals
   # A single check within a case (e.g. "tool:shipping_quote", "must_not:pii_leak").
   Check = Struct.new(:name, :pass, :detail, keyword_init: true)
 
-  # The verdict for one golden case. `judge_pending` flags a rubric that WILL be
-  # scored in Fase B but isn't yet — so it reads as "not evaluated", never a
-  # silent pass.
-  CaseResult = Struct.new(:id, :agent, :checks, :error, :judge_pending, keyword_init: true) do
-    def pass? = error.nil? && checks.all?(&:pass)
+  # The verdict for one golden case. `judge` (a Judge::Verdict) is attached AFTER
+  # the deterministic pass when the case has a rubric and a judge is configured;
+  # until then a rubric'd case is `judge_pending?` — it reads as "not fully
+  # evaluated", never a silent pass. A case passes only if the deterministic checks
+  # pass AND (there's no judge verdict OR it passed).
+  CaseResult = Struct.new(:id, :agent, :checks, :error, :rubric, :judge, keyword_init: true) do
+    def pass? = error.nil? && checks.all?(&:pass) && (judge.nil? || judge.pass)
     def failures = checks.reject(&:pass)
+    # Has a rubric to score but no verdict yet (judge disabled / not run).
+    def judge_pending? = !rubric.to_s.strip.empty? && judge.nil?
   end
 
   # Deterministic (Fase A) evaluation — cheap, zero-token, zero-flakiness. It's the
@@ -60,14 +64,13 @@ module Evals
     # failing check (there's nothing to assert on a turn that never produced output).
     def evaluate(golden, result)
       if result.error
-        return CaseResult.new(id: golden.id, agent: golden.agent, error: result.error,
-                              judge_pending: false,
+        return CaseResult.new(id: golden.id, agent: golden.agent, error: result.error, rubric: nil, judge: nil,
                               checks: [Check.new(name: "turn", pass: false, detail: "turn error: #{result.error}")])
       end
 
       checks = tool_checks(golden, result) + must_not_checks(golden, result)
-      CaseResult.new(id: golden.id, agent: golden.agent, error: nil,
-                     checks: checks, judge_pending: !golden.rubric.nil?)
+      CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
+                     rubric: golden.rubric, judge: nil)
     end
 
     # Each REQUIRED expected tool must appear in the turn's tool calls. Optional
