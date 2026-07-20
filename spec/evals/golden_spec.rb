@@ -45,12 +45,19 @@ RSpec.describe Evals::GoldenLoader do
     expect(g.min_score).to eq(0.8)
   end
 
-  it "loads the committed sample golden from disk" do
+  it "loads the committed curated golden set from disk" do
     dir = File.expand_path("../../evals/golden", __dir__)
     goldens = described_class.load_dir(dir)
-    expect(goldens.map(&:id)).to include("cacau-frete-cep")
-    sample = goldens.find { |g| g.id == "cacau-frete-cep" }
-    expect(sample.tools_called.map { |t| t[:name] }).to include("shipping_quote")
-    expect(sample.must_not).to include("pii_leak", "tool_error")
+    expect(goldens.size).to be >= 15
+    ids = goldens.map(&:id)
+    expect(ids).to include("cacau-status-pedido", "natura-injection-base64", "vaio-notebook-escritorio")
+
+    orders = goldens.find { |g| g.id == "cacau-status-pedido" }
+    expect(orders.tools_called.map { |t| t[:name] }).to include("search_orders")
+    expect(orders.must_not).to include("pii_leak", "tool_error")
+
+    # ids are unique and every case carries a rubric + a slug agent id
+    expect(ids.uniq.size).to eq(ids.size)
+    expect(goldens).to all(have_attributes(rubric: be_a(String), agent: a_string_matching(/\A[a-z-]+\z/)))
   end
 end

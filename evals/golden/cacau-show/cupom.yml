@@ -1,0 +1,16 @@
+# Voucher/coupon → search_voucher (TOOLS.md: "cupom ativo").
+id: cacau-cupom
+agent: cacau-show
+turns:
+  - user: "tem algum cupom de desconto ativo?"
+expect:
+  tools_called:
+    - search_voucher
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Consulta o cupom ativo pela ferramenta e informa o que está valendo — NÃO
+    inventa um código nem uma porcentagem de desconto. Se não houver cupom, diz isso
+    com simpatia.
+  min_score: 0.7
