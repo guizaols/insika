@@ -18,12 +18,13 @@ module Evals
         "total" => results.size,
         "passed" => passed,
         "failed" => results.size - passed,
-        "judge_pending" => results.count(&:judge_pending),
+        "judge_pending" => results.count(&:judge_pending?),
         "cases" => results.map do |r|
           {
             "id" => r.id, "agent" => r.agent, "pass" => r.pass?,
-            "judge_pending" => r.judge_pending, "error" => r.error,
-            "checks" => r.checks.map { |c| { "name" => c.name, "pass" => c.pass, "detail" => c.detail } }
+            "judge_pending" => r.judge_pending?, "error" => r.error,
+            "checks" => r.checks.map { |c| { "name" => c.name, "pass" => c.pass, "detail" => c.detail } },
+            "judge" => (r.judge && { "score" => r.judge.score, "pass" => r.judge.pass, "reason" => r.judge.reason })
           }
         end
       }
@@ -40,8 +41,12 @@ module Evals
                "**#{h['passed']}/#{h['total']} passed** · #{h['failed']} failed" \
                "#{" · #{h['judge_pending']} awaiting judge (Fase B)" if h['judge_pending'].positive?}", ""]
       results.each do |r|
-        lines << "- #{r.pass? ? '✅' : '❌'} `#{r.id}` (#{r.agent})#{'  ⏳ judge pending' if r.judge_pending}"
+        lines << "- #{r.pass? ? '✅' : '❌'} `#{r.id}` (#{r.agent})#{'  ⏳ judge pending' if r.judge_pending?}"
         r.failures.each { |c| lines << "    - ❌ #{c.name}: #{c.detail}" }
+        if r.judge
+          v = r.judge
+          lines << "    - #{v.pass ? '✅' : '❌'} judge: #{v.score} — #{v.reason}"
+        end
       end
       "#{lines.join("\n")}\n"
     end

@@ -15,8 +15,11 @@ module Evals
   class Runner
     RunCase = Struct.new(:result, :timings, keyword_init: true)
 
-    def initialize(transport:)
+    # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
+    # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
+    def initialize(transport:, judge: nil)
       @transport = transport
+      @judge = judge
     end
 
     # [Golden] -> [RunCase]. Each RunCase carries the CaseResult (for the report) +
@@ -35,7 +38,11 @@ module Evals
         last = outcome.result
         break if last.error
       end
-      RunCase.new(result: Assertions.evaluate(golden, last), timings: timings)
+      result = Assertions.evaluate(golden, last)
+      # Subjective layer: only when a judge is configured, the case has a rubric, and
+      # the turn ran cleanly (nothing to judge on an errored turn).
+      result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
+      RunCase.new(result: result, timings: timings)
     end
   end
 end

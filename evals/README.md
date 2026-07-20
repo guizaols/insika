@@ -17,7 +17,8 @@ evals/
     assertions.rb       deterministic checks (tools_called, must_not) over a TurnResult
     report.rb           JSON + markdown report
     transport.rb        SSE reducer + HttpTransport over /v1/responses
-    runner.rb           replay driver (orchestration; injected transport)
+    runner.rb           replay driver (orchestration; injected transport + judge)
+    judge.rb            LLM-judge — rubric scoring over an injected ask
   golden/<agent>/*.yml  the curated cases (DATA, not code)
   run.rb                CLI entrypoint
   baseline.json         accepted scores for gating            (Fase C)
@@ -46,6 +47,22 @@ Flags: `--base-url`, `--golden-dir`, `--agent <id>` (filter), `--mode eval|perf|
 corpus — that's the **#6b** real-traffic loadtest, since it's the same transport as
 `loadtest.rb` but driven by real conversations. The runner **exits non-zero** if any
 eval case fails (the seed of the Fase C pre-merge gate).
+
+### LLM-judge (rubric scoring)
+
+A golden's `rubric` is scored by an LLM-judge when a judge model is configured;
+otherwise the case stays `judge_pending` (deterministic checks still run). The judge
+runs at temperature 0 and, on a borderline case, a `--quorum` takes the median of N
+samples. An unparseable judge reply scores 0 (fails) — never a silent pass.
+
+```bash
+DEEPSEEK_API_KEY=… OPENCLAW_GATEWAY_TOKEN=local-demo \
+  ruby evals/run.rb --judge-model deepseek-chat --quorum 3 --mode eval
+```
+
+Judge flags: `--judge-model` (or `EVAL_JUDGE_MODEL`), `--judge-provider`, `--quorum`,
+`--no-judge`. Mirrors the intent of the platform `utility_model` (#18) — a cheap
+model for internal tasks.
 
 **Tool status caveat:** the `/v1/responses` stream carries tool *names* but not
 per-tool status, so over HTTP the `tool_error` detector only catches *turn-level*
@@ -94,8 +111,8 @@ loadtest (#6b) — one replay, two purposes.
 - **Runner** — `run.rb` + `transport.rb`/`runner.rb` over `/v1/responses`
   (`--mode perf|eval|both`; shares the transport with `loadtest.rb`, so `perf` mode
   closes **#6b**). Provisioning via `scripts/import_pack.rb`. ✅ done (this PR).
-- **Fase B (remaining)** — the **LLM-judge**: score the `rubric` with the
-  `utility_model` (#18) at temp 0; a golden with a rubric currently reads
-  `judge_pending`.
+- **Fase B — LLM-judge** — `judge.rb`: scores the `rubric` at temp 0 (median over
+  `--quorum`); unparseable → 0. Configured via `--judge-model` (mirrors the intent of
+  the platform `utility_model`, #18). ✅ done (this PR).
 - **Fase C** — `baseline.json` + `--tolerance` gating (the runner already exits
   non-zero on a fail; baseline/tolerance is the next step).

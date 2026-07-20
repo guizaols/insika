@@ -80,9 +80,9 @@ RSpec.describe Evals::Assertions do
     expect(r.checks.map(&:name)).to eq(["turn"])
   end
 
-  it "marks a case with a rubric as judge_pending (Fase B), not a silent pass" do
+  it "marks a case with a rubric as judge_pending? until a verdict is attached" do
     r = described_class.evaluate(golden("rubric" => "seja cordial"), result)
-    expect(r.judge_pending).to be(true)
+    expect(r.judge_pending?).to be(true)
     expect(r.pass?).to be(true) # deterministic checks pass; judge is separate
   end
 
