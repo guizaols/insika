@@ -12,7 +12,7 @@ how to compare against the OpenClaw gateway, how to read the metrics).
   TTFB, total, tokens, cache hit, P50/P95, error rate. Ruby port of OpenClaw's
   `loadtest-gateway.mjs`. `--help` / `--dry-run` supported.
 - **`loadtest-local.sh`** — boots Falcon single-proc (baseline) vs N workers over
-  one shared SQLite (WAL) and counts `database is locked` (proves FOLLOWUP §1.3).
+  one shared SQLite (WAL) and counts `database is locked`.
 - **`bench_store.rb`** — micro-bench of the SQLite write ceiling under N processes
   (no provider needed); reports writes/s, p50/p95/max, `locked`.
 
@@ -26,12 +26,3 @@ how to compare against the OpenClaw gateway, how to read the metrics).
   real tools/skills/memory.
 - **`run_real.rb`** — real multi-turn conversation with Bia (DeepSeek) from the
   CLI, serialized by the SessionActor; streams events, tools, skills and returns.
-
-## One-off migration utilities (outside the product)
-
-- **`openclaw_to_manifest.rb`** — reads the OpenClaw `acheib2b-tools-dev` plugin
-  (`.ts` source of truth) and emits a single `manifest.json` (nested JSON Schema
-  params) consumable by `Harness::ToolManifest`.
-- **`openclaw_to_pack.rb`** — older format: converts the same OpenClaw tools into
-  per-tool harness data-tools (`tools/<name>.json`, flat params). Idempotent;
-  re-run to regenerate after a DB reset, then run `import_pack.rb`.
