@@ -13,7 +13,8 @@ depends_on: ["0001", "0002"]
 > **Status:** Draft. Detalha o subsistema de **segurança de conteúdo** (item #11 do
 > FOLLOWUP). Não é a constituição (0001) nem a pipeline (0002) — descreve UM
 > subsistema novo que se pendura em seams já existentes da pipeline (Middleware +
-> hooks), sob as regras de RFC-0000.
+> hooks), sob as regras de RFC-0000. Exige **uma** mudança pequena de núcleo: o
+> halt gracioso do §3.1 (o short-circuit atual só sabe falhar o turno).
 
 ## 1. Problema
 
@@ -58,20 +59,27 @@ existem (RFC-0002): a **Middleware** (estágio 4, pode HALTAR o turno) na entrad
 ```
 Command Bus → Context Builder → Policy Engine
    → Middleware  ┌─────────────────────────────────────┐
-                 │ InputGuardrail (novo): modera a msg  │  bloqueio → halt_reason
-                 │  · determinístico (regex/heurística) │  + resposta segura
-                 │  · moderador LLM (utility_model)     │
+                 │ InputGuardrail (novo): modera a msg  │  bloqueio → halt_response
+                 │  · determinístico (regex/heurística) │  (halt gracioso: turno
+                 │  · moderador LLM (utility_model)     │  completa c/ resposta segura)
                  └─────────────────────────────────────┘
    → Runtime Executor (tool-loop)
         · content deltas → OutputFilter (novo): redige PII/segredo no stream
    → after_task → OutputValidator (novo): valida o texto final (flag/log/bloqueio*)
-   → Event Stream  (guardrail.blocked / guardrail.flagged — auditável)
+   → Event Stream  (:guardrail_blocked / :guardrail_flagged — auditável)
 ```
 
-### 3.1 Input guardrail — uma Middleware que HALTA
+### 3.1 Input guardrail — uma Middleware que curto-circuita COM resposta
 
-A `Middleware` já expõe exatamente o contrato certo: um link que **não chama `nxt` e
-seta `state.halt_reason`** short-circuita o turno (o Executor prioriza `halt_reason`).
+A `Middleware` tem o seam certo (short-circuit estrutural: não chamar `nxt`), mas o
+contrato atual só conhece o **halt-como-falha**: `state.halt_reason` setado vira
+`raise Harness::Error` no Executor — um erro cru pro cliente, exatamente o que D5
+proíbe. O guardrail precisa de um segundo modo, o **halt gracioso**:
+`state.halt_response` — o Executor trata como turno **completado** (persiste, emite
+`:done`/`:task_completed` com o conteúdo seguro) sem tocar o LLM. É a única mudança
+de núcleo deste RFC — pequena: um branch no retorno da Middleware, reusando os
+stages 8–9.
+
 O `InputGuardrail` é uma Middleware que:
 
 1. roda **detectores determinísticos** (baratos, sempre): heurísticas de injeção
@@ -79,35 +87,43 @@ O `InputGuardrail` é uma Middleware que:
    sobre o prompt), listas de padrões de abuso/assédio;
 2. opcionalmente chama um **moderador LLM** (o `utility_model`, temp 0) que classifica
    `{categoria, ação: allow|refuse|escalate}` — a mesma peça barata do judge (#10);
-3. em **bloqueio**, seta `halt_reason` + injeta uma **resposta segura** por categoria
-   (recusa educada / redireciona / escala via `call_support`), e emite
-   `guardrail.blocked`. Em `allow`, chama `nxt` normalmente.
+3. em **bloqueio**, seta `state.halt_response` com a **resposta segura** por categoria
+   (recusa educada / redireciona / escala, ver D5), e emite
+   `guardrail_blocked`. Em `allow`, chama `nxt` normalmente.
 
-Nada de novo no núcleo — é um link a mais no `MiddlewareStack`, ligado por agente.
+O link entra **uma** vez na `MiddlewareStack` global do deployment (hoje vazia) e se
+**auto-desativa** lendo `guardrails:` do profile via `state` — não existe (nem
+precisa existir) stack por agente.
 
 ### 3.2 Output guardrail — filtro no stream + validador pós-turno
 
 A saída é **streamada** (deltas de `content`), então há uma tensão real: não dá pra
 "desdizer" um texto já enviado. Dois tiers:
 
-- **OutputFilter (determinístico, no stream):** intercepta cada delta e **redige**
-  padrões proibidos antes de emitir — PII (CPF/CNPJ), credenciais (`sk-…`, `Bearer …`)
-  e marcadores de system-prompt. Reusa os **detectores do §10** (`Evals::Assertions`
-  PII_DETECTORS) como fonte única. Barato, sem LLM, seguro por construção.
+- **OutputFilter (determinístico, no stream):** **redige** padrões proibidos antes de
+  emitir — PII (CPF/CNPJ), credenciais (`sk-…`, `Bearer …`) e marcadores de
+  system-prompt. Regex delta-a-delta **não basta**: um CPF pode chegar quebrado entre
+  dois chunks e nenhum dos dois casa sozinho. O filtro mantém um **buffer deslizante**
+  — retém a cauda do stream (tamanho do maior padrão) e só emite o prefixo
+  comprovadamente limpo — ao custo de alguns chars de latência de cauda. Usa os
+  detectores de `Harness::Safety::Detectors` (fonte única, D4). Barato, sem LLM.
 - **OutputValidator (`after_task`):** com o texto final montado, faz uma checagem mais
   rica (opcionalmente LLM) — promessa de desconto não-verificada, fuga de tom — e
-  **emite `guardrail.flagged`** (auditoria). *Bloqueio* pós-hoc só é possível se o
-  agente rodar **não-streaming** (`streaming: false` no Settings/perfil): aí o turno
-  pode ser validado antes de emitir. Para agentes streaming, o validador é
-  detecção+flag, não prevenção — documentar honestamente.
+  **emite `guardrail_flagged`** (auditoria). *Bloqueio* pós-hoc só é possível se o
+  agente rodar **não-streaming**: aí o turno pode ser validado antes de emitir. Hoje
+  `streaming` é setting **geral do deploy** (SettingsStore) — o override por perfil
+  precisa ser criado se o bloqueio for por agente. Para agentes streaming, o validador
+  é detecção+flag, não prevenção — documentar honestamente.
 
 ### 3.3 Configuração + auditoria
 
 - **Por agente:** `guardrails: { input: on|off, output: on|off, moderator: model|nil,
   strictness: … }` no profile (opt-in explícito, como `capabilities`). Default
   conservador (determinístico on, moderador LLM off).
-- **Eventos:** `guardrail.blocked` / `guardrail.flagged` no Event Stream (catálogo
-  fechado) + no `ToolTraceStore`/trace da sessão → o operador vê no Studio (§3.1).
+- **Eventos:** `:guardrail_blocked` / `:guardrail_flagged` (underscore, como
+  `:task_completed` — o catálogo não usa ponto). O catálogo é **fechado**: os dois
+  tipos novos entram no catálogo + no tradutor SSE de `/v1/responses` + no Studio
+  (§3.1), além do `ToolTraceStore`/trace da sessão.
 - **Segredo/PII:** o redigido nunca aparece em claro no evento (mesma disciplina de
   masking do resto).
 
@@ -115,22 +131,24 @@ A saída é **streamada** (deltas de `content`), então há uma tensão real: n�
 
 | # | Decisão | Recomendação |
 |---|---------|--------------|
-| D1 | Onde a entrada engancha? | **Middleware** (estágio 4) — já tem `halt_reason`; zero mudança de núcleo. |
+| D1 | Onde a entrada engancha? | **Middleware** (estágio 4) + **halt gracioso** novo no Executor (`halt_response` → turno completado). Mudança de núcleo pequena mas real — o `halt_reason` atual é falha, não resposta. |
 | D2 | Determinístico vs LLM? | **Ambos, em camadas:** regex/heurística sempre (barato); moderador LLM (`utility_model`) opt-in por agente. |
-| D3 | Bloquear a saída streamada? | **Redigir no stream** (determinístico) + **flag pós-turno**; *bloqueio* real só com `streaming:false`. Honesto sobre o limite. |
-| D4 | Reusar detectores do §10? | **Sim** — `Evals::Assertions` PII/secret é fonte única; evita duas listas divergentes. (Talvez extrair p/ `Harness::Safety::Detectors` consumido pelos dois.) |
-| D5 | Resposta ao bloqueio? | **Recusa segura por categoria** + opção de escalar (`call_support`), nunca um erro cru nem silêncio. |
+| D3 | Bloquear a saída streamada? | **Redigir no stream** (com buffer de fronteira) + **flag pós-turno**; *bloqueio* real só com `streaming:false` (hoje setting de deploy; override por perfil a criar). Honesto sobre o limite. |
+| D4 | Reusar detectores do §10? | **Extrair p/ `Harness::Safety::Detectors`** (runtime) e o eval consumir de lá. Obrigatório, não opcional: o eval é **cliente** do servidor por design — o runtime não pode fazer require de `evals/`. Fonte única, sem listas divergentes. |
+| D5 | Resposta ao bloqueio? | **Recusa segura por categoria** + escalar via `call_support` **quando o pack do agente tiver a tool** (não é builtin) — senão recusa fixa. Nunca um erro cru nem silêncio. |
 | D6 | Config? | **Opt-in por agente** no profile (como `capabilities`); default = determinístico on, moderador off. |
 | D7 | Ligar no CI/gate? | Não; a validação de que o guardrail funciona é **eval** (§10) sobre os goldens adversariais — roda on-demand. |
 
 ## 5. Faseamento
 
-1. **Fase A — input determinístico:** `InputGuardrail` Middleware com heurísticas de
-   injeção/abuso + resposta segura + evento `guardrail.blocked`. Fecha os casos mais
-   grosseiros (o base64-exfil, o assédio) sem custo de token. Validado pelos goldens
+1. **Fase A — input determinístico:** halt gracioso no Executor (`halt_response`) +
+   `InputGuardrail` Middleware com heurísticas de injeção/abuso + resposta segura +
+   evento `guardrail_blocked` (catálogo). Fecha os casos mais grosseiros (o
+   base64-exfil, o assédio) sem custo de token. Validado pelos goldens
    `natura-injection-base64` / `natura-inapropriado` / `natura-abuso-verbal`.
-2. **Fase B — output determinístico:** `OutputFilter` no stream redigindo PII/segredo
-   (detectores do §10). Fecha vazamento.
+2. **Fase B — output determinístico:** extrair `Harness::Safety::Detectors` (o eval
+   passa a consumir de lá) + `OutputFilter` no stream com buffer de fronteira,
+   redigindo PII/segredo. Fecha vazamento.
 3. **Fase C — moderador + validador LLM:** classificação de entrada e validação de
    saída via `utility_model`; pega o que a regex não pega (engenharia social do
    `natura-promessa-falsa-desconto`, tom).
@@ -147,12 +165,12 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
   short-circuit determinístico antes de chamar o LLM.
 - **Streaming vs bloqueio de saída** (D3) → não prometer o que não dá; redigir+flag por
   padrão, bloqueio só non-streaming.
+- **Fronteira de chunk** no OutputFilter → o buffer deslizante resolve, mas um bug ali
+  vaza PII "por construção"; cobrir com testes de padrões partidos em todo offset.
 - **Corrida de listas** de PII/segredo entre §10 e §11 → fonte única (D4).
 
 ## 7. Questões em aberto
 
-- Extrair `Harness::Safety::Detectors` (compartilhado com `Evals`) já na Fase B, ou
-  deixar o eval como dono e o guardrail consumir?
 - Moderador LLM: um provider/modelo dedicado de safety, ou o mesmo `utility_model`?
 - Categorias canônicas do bloqueio (injection / abuse / sexual / self-harm / off-topic)
   — fixar o enum agora ou deixar o moderador livre?
@@ -160,9 +178,11 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
 
 ## 8. Relação com outras RFCs / itens
 
-- **RFC-0002 (pipeline):** input = Middleware (estágio 4, `halt_reason`); output =
-  filtro no stream + `after_task`. Sem novo estágio.
+- **RFC-0002 (pipeline):** input = Middleware (estágio 4, halt gracioso via
+  `halt_response` — extensão do contrato de short-circuit); output = filtro no stream
+  + `after_task`. Sem novo estágio.
 - **RFC-0008 (evals):** os goldens adversariais são a rede de regressão do guardrail;
-  os detectores de PII são fonte única (D4). Guardrails e evals se validam mutuamente.
+  os detectores de PII migram do eval p/ `Harness::Safety::Detectors` e viram fonte
+  única (D4). Guardrails e evals se validam mutuamente.
 - **FOLLOWUP #11** (este) · **#18** (`utility_model` como moderador) · **#9 anti-abuso**
   (rate-limit de borda, complementar, fora daqui) · **§3.1** (eventos no viewer).
