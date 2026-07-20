@@ -13,6 +13,7 @@
 
 require "optparse"
 require "time"
+require "json"
 require "fileutils"
 require_relative "lib/evals/golden"
 require_relative "lib/evals/assertions"
@@ -30,6 +31,10 @@ opts = {
   agent: nil,
   out: nil,
   timeout: 120,
+  # Optional golden.id -> conversation-id map (JSON). Needed when the target
+  # backend resolves state from a pre-existing conversation record (e.g. achei-b2b
+  # requires a real Chat UUID as X-Chat-Id). Absent -> conv defaults to "eval-<id>".
+  conv_map: nil,
   # Judge (Fase B): the model that scores rubrics. Off unless a model is given
   # (via flag or EVAL_JUDGE_MODEL) — without it, rubric'd cases stay judge_pending.
   judge_model: ENV["EVAL_JUDGE_MODEL"],
@@ -46,6 +51,7 @@ OptionParser.new do |o|
   o.on("--base-url URL", "harness base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
   o.on("--golden-dir DIR", "golden set dir (default evals/golden)") { |v| opts[:golden_dir] = v }
   o.on("--agent ID", "only run goldens for this agent") { |v| opts[:agent] = v }
+  o.on("--conv-map FILE", "JSON map golden.id -> conversation id (e.g. real Chat UUIDs)") { |v| opts[:conv_map] = v }
   o.on("--mode MODE", %w[eval perf both], "eval | perf | both (default eval)") { |v| opts[:mode] = v }
   o.on("--out FILE", "write the JSON report here (default evals/reports/<ts>.json)") { |v| opts[:out] = v }
   o.on("--timeout N", Integer, "per-turn read timeout seconds (default 120)") { |v| opts[:timeout] = v }
@@ -82,12 +88,13 @@ goldens = Evals::GoldenLoader.load_dir(opts[:golden_dir])
 goldens.select! { |g| g.agent == opts[:agent] } if opts[:agent]
 abort "eval: no goldens found in #{opts[:golden_dir]}" if goldens.empty?
 
+conv_map = opts[:conv_map] ? JSON.parse(File.read(opts[:conv_map])) : {}
 transport = Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
 judge = build_judge(opts)
 judge_note = judge ? "judge=#{opts[:judge_model]} (q#{opts[:quorum]})" : "judge=off"
 puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) | mode=#{opts[:mode]} | #{judge_note}"
 
-runcases = Evals::Runner.new(transport: transport, judge: judge).run(goldens)
+runcases = Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map).run(goldens)
 results = runcases.map(&:result)
 at = Time.now.utc.iso8601
 
