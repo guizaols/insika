@@ -20,6 +20,7 @@ require_relative "lib/evals/report"
 require_relative "lib/evals/transport"
 require_relative "lib/evals/runner"
 require_relative "lib/evals/judge"
+require_relative "lib/evals/baseline"
 
 opts = {
   base_url: ENV["HARNESS_URL"] || "http://localhost:9292",
@@ -33,7 +34,11 @@ opts = {
   # (via flag or EVAL_JUDGE_MODEL) — without it, rubric'd cases stay judge_pending.
   judge_model: ENV["EVAL_JUDGE_MODEL"],
   judge_provider: ENV["EVAL_JUDGE_PROVIDER"],
-  quorum: 1
+  quorum: 1,
+  # Fase C gating.
+  baseline: nil,
+  tolerance: 0.05,
+  update_baseline: false
 }
 
 OptionParser.new do |o|
@@ -48,6 +53,9 @@ OptionParser.new do |o|
   o.on("--judge-provider PROVIDER", "provider for the judge model (optional)") { |v| opts[:judge_provider] = v }
   o.on("--quorum N", Integer, "judge samples per case; median wins (default 1)") { |v| opts[:quorum] = v }
   o.on("--no-judge", "disable the LLM-judge (rubric cases stay judge_pending)") { opts[:judge_model] = nil }
+  o.on("--baseline FILE", "gate against this baseline (blocks on regressions only)") { |v| opts[:baseline] = v }
+  o.on("--tolerance F", Float, "max judge-score drop before it's a regression (default 0.05)") { |v| opts[:tolerance] = v }
+  o.on("--update-baseline", "write the current run as the baseline and don't gate") { opts[:update_baseline] = true }
   o.on("-h", "--help") { puts o; exit 0 }
 end.parse!
 
@@ -114,9 +122,32 @@ if %w[perf both].include?(opts[:mode])
   puts "  total p50/p95: #{pct(totals, 50)} / #{pct(totals, 95)} ms"
 end
 
-# --- gating: non-zero exit if any eval case failed ------------------------------
-failed = results.count { |r| !r.pass? }
-if %w[eval both].include?(opts[:mode]) && failed.positive?
-  warn "eval: #{failed} case(s) failed"
-  exit 1
+# --- gating (Fase C) ------------------------------------------------------------
+# With a baseline: block only on REGRESSIONS (a passing case that now fails, or a
+# judge score that dropped past --tolerance) — known failures don't wedge the gate.
+# --update-baseline accepts the current run as the new baseline. With no baseline at
+# all, fall back to "fail if any case failed". Perf-only runs never gate.
+if %w[eval both].include?(opts[:mode])
+  default_baseline = File.join(__dir__, "baseline.json")
+  baseline_path = opts[:baseline] || (File.exist?(default_baseline) ? default_baseline : nil)
+
+  if opts[:update_baseline]
+    target = opts[:baseline] || default_baseline
+    Evals::Baseline.write(target, results, at: at)
+    puts "baseline updated: #{target} (#{results.size} cases)"
+  elsif baseline_path
+    regressions = Evals::Baseline.compare(results, Evals::Baseline.load(baseline_path), tolerance: opts[:tolerance])
+    if regressions.any?
+      warn "eval: #{regressions.size} regression(s) vs baseline (#{baseline_path}):"
+      regressions.each { |r| warn "  - #{r.id}: #{r.kind} — #{r.detail}" }
+      exit 1
+    end
+    puts "no regressions vs baseline (#{baseline_path})"
+  else
+    failed = results.count { |r| !r.pass? }
+    if failed.positive?
+      warn "eval: #{failed} case(s) failed (no baseline — run with --update-baseline to accept)"
+      exit 1
+    end
+  end
 end
