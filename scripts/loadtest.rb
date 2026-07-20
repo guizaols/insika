@@ -22,6 +22,11 @@
 #   --concurrency N     concurrent turns per wave            (default: 8)
 #   --iterations N      number of waves per agent            (default: 1)
 #   --message TEXT      user message sent every turn         (default: greeting)
+#   --messages FILE     newline-delimited corpus; each turn round-robins one line
+#                       (overrides --message — real-traffic mix instead of one canned msg)
+#   --users FILE        newline-delimited conversation ids (e.g. real Chat UUIDs);
+#                       turns round-robin across them so tool-backed turns hit a valid
+#                       conversation. Overrides the generated loadtest-<agent>-<idx> id.
 #   --timeout SECONDS   per-request read timeout             (default: 120)
 #   --ports 9292,9293   round-robin across local processes   (default: HARNESS_URL)
 #   --same-user         reuse the same user per agent (measures hot-conversation cache); default off
@@ -47,7 +52,7 @@ USAGE = File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
 # the `--dry-run` and fire real traffic. A value flag with no value is left absent
 # so defaults/warnings kick in downstream.
 BOOL_FLAGS = %w[help dry-run same-user].freeze
-VALUE_FLAGS = %w[agents concurrency iterations message timeout ports].freeze
+VALUE_FLAGS = %w[agents concurrency iterations message messages users timeout ports].freeze
 KNOWN_FLAGS = (BOOL_FLAGS + VALUE_FLAGS).freeze
 
 args = {}
@@ -111,19 +116,45 @@ MESSAGE = args["message"] || "hi, how are you?"
 TIMEOUT = positive_int(args, "timeout", "120")
 SAME_USER = args.key?("same-user") && !%w[false 0 no].include?(args["same-user"].to_s.downcase)
 
+# Corpus + conversation pool (real-traffic mode, #6b). A file supplies the mix of
+# messages / the pool of valid conversation ids; turns round-robin across each by
+# the turn index, so a run spreads deterministically over the corpus and the chats
+# (distinct chats avoid cross-turn cart/CEP state races). Empty file -> abort (a
+# silent fallback to the canned greeting would misreport the run as real-traffic).
+def load_lines(args, key)
+  return nil unless args.key?(key)
+
+  path = args[key]
+  abort "loadtest: --#{key} has no value" if path.nil?
+  abort "loadtest: --#{key} file not found: #{path}" unless File.file?(path)
+  lines = File.readlines(path, chomp: true).map(&:strip).reject(&:empty?)
+  abort "loadtest: --#{key} file #{path} has no usable lines" if lines.empty?
+  lines
+end
+
+MESSAGES = load_lines(args, "messages")
+USERS = load_lines(args, "users")
+
 abort "loadtest: --agents resolved to an empty list" if AGENTS.empty?
 
 def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
 # One turn: streaming POST; measures TTFB/total; extracts the last JSON with `usage`.
+# When a USERS pool / MESSAGES corpus is given, the turn index selects one of each
+# (round-robin) so a run spreads over real chats and the real message mix.
 def run_turn(base_url, agent, idx)
-  user = SAME_USER ? "loadtest-#{agent}" : "loadtest-#{agent}-#{idx}"
+  user = if USERS
+           USERS[idx % USERS.length]
+         else
+           SAME_USER ? "loadtest-#{agent}" : "loadtest-#{agent}-#{idx}"
+         end
+  message = MESSAGES ? MESSAGES[idx % MESSAGES.length] : MESSAGE
   uri = URI.join(base_url + "/", "v1/responses")
   req = Net::HTTP::Post.new(uri)
   req["Authorization"] = "Bearer #{TOKEN}"
   req["Content-Type"] = "application/json"
   req["Accept"] = "text/event-stream"
-  req.body = JSON.generate(model: "openclaw:#{agent}", user: user, stream: true, input: MESSAGE)
+  req.body = JSON.generate(model: "openclaw:#{agent}", user: user, stream: true, input: message)
 
   t0 = mono
   ttfb = nil
@@ -178,12 +209,16 @@ def pct(sorted, p)
 end
 
 total_turns = AGENTS.length * CONC * ITERS
-puts "loadtest -> #{BASE_URLS.join(', ')} | agents=#{AGENTS.join(',')} conc=#{CONC} iters=#{ITERS} turns=#{total_turns}"
+corpus_note = MESSAGES ? "corpus=#{MESSAGES.length}msg" : "msg=canned"
+pool_note = USERS ? "users=#{USERS.length}chats" : (SAME_USER ? "users=same" : "users=synthetic")
+puts "loadtest -> #{BASE_URLS.join(', ')} | agents=#{AGENTS.join(',')} conc=#{CONC} iters=#{ITERS} turns=#{total_turns} | #{corpus_note} #{pool_note}"
 
 if args.key?("dry-run")
   sample = URI.join(BASE_URLS.first + "/", "v1/responses")
-  body = JSON.generate(model: "openclaw:#{AGENTS.first}", user: "loadtest-#{AGENTS.first}-0",
-                       stream: true, input: MESSAGE)
+  sample_user = USERS ? USERS.first : (SAME_USER ? "loadtest-#{AGENTS.first}" : "loadtest-#{AGENTS.first}-0")
+  sample_msg = MESSAGES ? MESSAGES.first : MESSAGE
+  body = JSON.generate(model: "openclaw:#{AGENTS.first}", user: sample_user,
+                       stream: true, input: sample_msg)
   masked = TOKEN.length > 8 ? "#{TOKEN[0, 4]}…#{TOKEN[-2, 2]}" : "***"
   puts "-" * 60
   puts "dry-run — no requests sent. Sample turn:"

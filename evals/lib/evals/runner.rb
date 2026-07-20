@@ -17,9 +17,10 @@ module Evals
 
     # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
     # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
-    def initialize(transport:, judge: nil)
+    def initialize(transport:, judge: nil, conv_map: {})
       @transport = transport
       @judge = judge
+      @conv_map = conv_map || {}
     end
 
     # [Golden] -> [RunCase]. Each RunCase carries the CaseResult (for the report) +
@@ -29,7 +30,10 @@ module Evals
     end
 
     def run_case(golden)
-      conv = "eval-#{golden.id}"
+      # A backend that resolves state from a pre-existing conversation (e.g. achei-b2b
+      # needs a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
+      # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
+      conv = @conv_map[golden.id] || "eval-#{golden.id}"
       last = nil
       timings = []
       golden.user_turns.each do |message|
