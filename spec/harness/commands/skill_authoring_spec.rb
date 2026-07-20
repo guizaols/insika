@@ -32,7 +32,7 @@ RSpec.describe "Skill authoring commands (Phase 4 Stage C)" do
         .to raise_error(Harness::ValidationError, /frontmatter/)
     end
 
-    # Regression (real cacau-show pack): a description with `: ` in the prose broke
+    # Regression (a real merchant pack): a description with `: ` in the prose broke
     # strict YAML -> Psych::SyntaxError (500). Now the tolerant parser accepts it.
     it "accepts frontmatter with `: ` in the description prose (does not raise Psych)" do
       content = "---\nname: gift\ndescription: Discovery. Chocolate/gift: there is NO size gate. Enable it in the briefing.\n---\nbody\n"

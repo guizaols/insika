@@ -103,38 +103,6 @@ bundle exec ruby scripts/import_pack.rb /caminho/do/pack
 
 (ou `POST /v1/agents` na mão, ou criar tudo pelo `/studio`.)
 
-### (Re)gerar os `tools/*.json` a partir do OpenClaw — e re-provisionar após reset do banco
-
-Em vez de escrever os `tools/*.json` à mão, gere-os da **fonte da verdade** (o plugin
-`acheib2b-tools-dev` do OpenClaw) com o conversor. Ele lê os `.ts` (name, slug do
-endpoint, descrição, params top-level do TypeBox) e emite os data-tools do harness —
-**idempotente**, então dá pra rodar **a qualquer momento** (ex.: quando o banco é
-recriado nos testes):
-
-```bash
-PLUGIN=/caminho/openclaw/extensions/acheib2b-tools-dev
-
-# 1) (re)gera os tools/*.json. Sem nomes = REFRESH dos que já existem no dir;
-#    com nomes = gera só esses; dir vazio = gera todas as 44 registradas.
-ruby scripts/openclaw_to_pack.rb "$PLUGIN" ~/Desktop/agent/v2/cacau-show/tools \
-  search_products recommend_products add_to_cart update_cart_quantity remove_from_cart \
-  reopen_cart reset_cart send_finalize_button search_faq search_orders call_support cacau_set_location
-
-# 2) re-provisiona (o token interno entra por env; a URL base sai de ACHEI_INTERNAL_URL)
-OPENCLAW_GATEWAY_TOKEN=local-demo BIA_INTERNAL_API_TOKEN=<token> \
-bundle exec ruby scripts/import_pack.rb ~/Desktop/agent/v2/cacau-show
-```
-
-Fluxo após **reset do banco**: `openclaw_to_pack.rb` (sem nomes → refresh) **+**
-`import_pack.rb`. O conversor pega name/endpoint/params **corretos da fonte** (resolve
-os remaps nome↔slug — `send_finalize_button`→`finalize_button`, `search_faq`→`search_faqs`,
-`call_support`→`support_requests`, `search_voucher`→`search_vouchers` — sem chute). É
-**utilitário de migração** (específico do produto OpenClaw atual), não faz parte do motor.
-
-Como ambos rodam em `localhost`, não precisa de ngrok/tunnel para o loop
-harness↔achei-b2b. (O ingresso do WhatsApp no achei-b2b, esse sim, depende do
-tunnel/simulador — mas isso é do lado do achei-b2b.)
-
 ## Observabilidade OTEL (opt-in) — coletor avulso
 
 O OTEL é **desligado por default** (a gem nem carrega). Pra ver traces local, suba
@@ -159,5 +127,4 @@ O `serve_real` imprime `OTEL → ligado/desligado` na subida. Converse no
 um span `harness.turn` por turno, com filhos `harness.tool`/`harness.data_tool` e
 atributos de tokens/agente/modelo/latência. Parar o coletor: `docker rm -f jaeger`.
 
-> Detalhes do que sai e como ligar: [`techspec/phase6-engine/telemetry-otel.md`](techspec/phase6-engine/telemetry-otel.md).
 > Não versionamos `docker-compose` — o coletor é avulso, decisão de rodar local.

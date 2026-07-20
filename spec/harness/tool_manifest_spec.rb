@@ -143,11 +143,11 @@ RSpec.describe Harness::ToolManifest do
     it "herda group do defaults; tags em UNIÃO (defaults ∪ tool)" do
       m = manifest(defaults: { "group" => "b2b", "tags" => ["internal"] },
                    tools: [{ "name" => "a", "url" => "https://api.test/a" },
-                           { "name" => "b", "url" => "https://api.test/b", "group" => "natura", "tags" => ["loja"] }])
+                           { "name" => "b", "url" => "https://api.test/b", "group" => "beauty", "tags" => ["loja"] }])
       a, b = defn(m)
       expect(a["group"]).to eq("b2b")            # herdou o default
       expect(a["tags"]).to eq(["internal"])
-      expect(b["group"]).to eq("natura")         # tool vence o default
+      expect(b["group"]).to eq("beauty")         # tool vence o default
       expect(b["tags"]).to contain_exactly("internal", "loja") # união
     end
   end
