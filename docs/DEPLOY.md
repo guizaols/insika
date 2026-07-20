@@ -1,7 +1,7 @@
 # DEPLOY — Harness
 
 Como rodar o motor em container (Railway agora, k8s depois) e como medir
-performance/carga. Ver o racional de topologia de dados em [FOLLOWUP.md](FOLLOWUP.md) §1.
+performance/carga.
 
 ## Imagem (Docker)
 
@@ -81,7 +81,7 @@ restart policy.
 
 ## k8s (evolução)
 
-SQLite não compartilha 1 arquivo entre nós. Caminhos (ver FOLLOWUP §1.3):
+SQLite não compartilha 1 arquivo entre nós. Caminhos:
 StatefulSet + PVC por pod + roteamento **sticky-by-agent** (shard por tenant), ou
 **LiteFS**, ou o adapter **Postgres** (opcional). **Litestream** p/ backup/DR desde
 cedo (ortogonal à topologia).

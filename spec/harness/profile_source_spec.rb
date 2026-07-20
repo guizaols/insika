@@ -73,8 +73,8 @@ RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
     end
 
     it "round-trip of tools_allow_groups (Phase 7/D4/F5, Step C)" do
-      src.put(Harness::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b demo]))
-      expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b demo])
+      src.put(Harness::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b beauty]))
+      expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b beauty])
     end
 
     it "round-trip of params/model_policy (LLM config v2, §10)" do

@@ -18,3 +18,16 @@ studio/node_modules/
 .env.*.local
 # Eval run artifacts (evals/run.rb --out); keep the dir, not the outputs
 evals/reports/*.json
+
+# Internal working material — kept locally, NOT tracked/shipped in the OSS repo
+# (RFCs, techspec, handoff bundle, planning docs, pilot benchmarks/scripts).
+docs/README.md
+docs/FOLLOWUP.md
+docs/TRANSLATION-TRACKER.md
+docs/HANDOFF-TECHSPEC.md
+docs/harness_handoff/
+docs/techspec/
+docs/internal/
+docs/harness-handoff.zip
+scripts/internal/
+spec/scripts/
