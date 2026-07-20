@@ -64,6 +64,21 @@ Judge flags: `--judge-model` (or `EVAL_JUDGE_MODEL`), `--judge-provider`, `--quo
 `--no-judge`. Mirrors the intent of the platform `utility_model` (#18) — a cheap
 model for internal tasks.
 
+### Gating against a baseline
+
+`evals/baseline.json` is the accepted state of the set. A gated run blocks only on a
+**regression** — a passing case that now fails, or a judge score that dropped past
+`--tolerance` (default 0.05). Known-failing cases don't wedge the gate; a brand-new
+case absent from the baseline shows in the report but never blocks.
+
+```bash
+ruby evals/run.rb --update-baseline     # accept the current run as the baseline
+ruby evals/run.rb                        # gates against evals/baseline.json if present
+ruby evals/run.rb --baseline other.json --tolerance 0.1
+```
+
+With no baseline file at all, the run falls back to "fail if any case failed".
+
 **Tool status caveat:** the `/v1/responses` stream carries tool *names* but not
 per-tool status, so over HTTP the `tool_error` detector only catches *turn-level*
 failures (`response.failed`). Full per-tool status lives in the `ToolTraceStore`
@@ -114,5 +129,7 @@ loadtest (#6b) — one replay, two purposes.
 - **Fase B — LLM-judge** — `judge.rb`: scores the `rubric` at temp 0 (median over
   `--quorum`); unparseable → 0. Configured via `--judge-model` (mirrors the intent of
   the platform `utility_model`, #18). ✅ done (this PR).
-- **Fase C** — `baseline.json` + `--tolerance` gating (the runner already exits
-  non-zero on a fail; baseline/tolerance is the next step).
+- **Fase C — gating** — `baseline.rb`: `--baseline` blocks only on a **regression**
+  (a passing case that now fails, or a judge score that dropped past `--tolerance`);
+  `--update-baseline` accepts the current run. Known failures don't wedge the gate.
+  ✅ done (this PR).
