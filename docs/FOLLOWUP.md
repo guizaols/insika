@@ -39,7 +39,7 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 >   `bin/`, `scripts/` composition-root, `config/`, `studio/`; ver tracker).
 >
 > **Entregue na rodada de benchmark (PRs #64–#69, mergeados 2026-07-18):**
-> - **§1.1/§1.4 — matriz de benchmark + relatório FECHADOS** (`docs/BENCHMARKS.md`).
+> - **§1.1/§1.4 — matriz de benchmark + relatório FECHADOS** (`docs/internal/BENCHMARKS.md`).
 >   Ruby **4.0.6 default + YJIT** (PR #67); CPU bench (`bench_cpu.rb`, §2) + SQLite bench
 >   (`bench_store.rb`, §3) + e2e vs OpenClaw (§5) + **pernas LOCAIS** (harness Falcon 4-proc
 >   @~30k vs OpenClaw 4-gw, matched — §4a) + **harness Railway 4.0.6** (§4c). **Achado
@@ -56,7 +56,7 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 > - **⏳ GAP que ficou — teste de carga com TRÁFEGO REAL** (não-sintético): TODAS as pernas
 >   acima usam o mesmo greeting enlatado (1 turno, usuário novo, **0 tool call**, não bate no
 >   achei-b2b). O corpus real já está extraído (**179 msgs reais de user** dos session logs do
->   OpenClaw: cacau 97 / natura 51 / vaio 31). Próximo passo abaixo (§1.4 ação 5 + §9 evals).
+>   3 lojas do piloto: ~97 / 51 / 31 sessões). Próximo passo abaixo (§1.4 ação 5 + §9 evals).
 >
 > **Entregue nesta rodada (config de LLM v2, item 18 / §10):**
 > - **`ModelResolver`** — resolução Chat > Agent > default de plataforma no início do turno,
@@ -76,7 +76,7 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
 ### 1.1 Atualizar para Ruby 4 — vale a pena por performance?
 **Recomendação: sim, subir a versão do Ruby — mas o ganho vem do YJIT, não de Ractors.** ✅ **ENTREGUE**
 
-> **Fechado (PRs #67/#69, `docs/BENCHMARKS.md`):** shipado **Ruby 4.0.6 default + YJIT**
+> **Fechado (PRs #67/#69, `docs/internal/BENCHMARKS.md`):** shipado **Ruby 4.0.6 default + YJIT**
 > (`.ruby-version`/`mise.toml`/Dockerfile/Gemfile.lock re-resolvido; suíte verde em 3.3.5 e
 > 4.0.6). Matriz medida `{3.3.5, 4.0.6} × {YJIT off/on} × {local, Railway}` + vs OpenClaw.
 > **Resposta:** vale — 4.0.6+YJIT é o cell mais rápido (~+19% CPU-bound por-turno §2, ~+50–60%
@@ -102,7 +102,7 @@ Legenda de prioridade: 🔴 alta · 🟡 média · 🟢 baixa/oportunista.
   `{Ruby atual, Ruby novo} × {YJIT off, YJIT on} × {local, Railway}` via §1.4;
   (3) **relatório** comparativo (tabelas de TTFB/total/tokens/throughput + o
   `bench_store` CPU-bound) versionado no repo e uma **apresentação na doc**
-  (`docs/BENCHMARKS.md`) incluindo a **comparação vs OpenClaw** (mesmo contrato
+  (`docs/internal/BENCHMARKS.md`) incluindo a **comparação vs OpenClaw** (mesmo contrato
   SSE — ver §1.4). Medir antes de assumir o ganho.
 
 ### 1.2 Podemos usar Ractors além de Fibers?
@@ -197,7 +197,7 @@ mesmo) + entregar um equivalente Ruby nativo no repo.** 🔴
   4. ✅ **Comparação por versão de Ruby + relatório (§1.1) — ENTREGUE** (PRs #67/#69):
      matriz `{3.3.5, 4.0.6} × {YJIT off/on} × {local, Railway}` + `bench_cpu.rb`/
      `bench_store.rb` + rodada **vs OpenClaw** (mesmo contrato via `OPENCLAW_GATEWAY_URL`),
-     consolidada em `docs/BENCHMARKS.md` (§2 CPU, §3 SQLite, §4a/§4c pernas local/Railway,
+     consolidada em `docs/internal/BENCHMARKS.md` (§2 CPU, §3 SQLite, §4a/§4c pernas local/Railway,
      §5 vs OpenClaw). Fecha §1.1 e §1.4.
   5. 🔴 **PENDENTE — loadtest de TRÁFEGO REAL (não-sintético):** todos os números acima
      usam um greeting fixo (1 turno, 0 tool call → não exercita achei-b2b nem o tool-loop).
@@ -750,7 +750,7 @@ que o RubyLLM já oferece nativamente.** ✅ **ENTREGUE** (resolução v2; ver n
 | 3 | Trace de tool calls no viewer do chat (§3.1) | UI/UX | ✅ ENTREGUE | — |
 | 4 | Refresh de UI/UX do `studio/` (§3/#10) | UI/UX | ✅ ENTREGUE | — |
 | 5 | Protótipo `harness-code` (toolset FS/shell + CLI + sandbox) | Ideias | ✅ ENTREGUE | — |
-| 6 | Bump Ruby + YJIT **+ matriz de benchmark `{Ruby atual/novo}×{YJIT}×{local/Railway}` + relatório vs OpenClaw** (`docs/BENCHMARKS.md`) | Perf | ✅ ENTREGUE | 2 |
+| 6 | Bump Ruby + YJIT **+ matriz de benchmark `{Ruby atual/novo}×{YJIT}×{local/Railway}` + relatório vs OpenClaw** (`docs/internal/BENCHMARKS.md`) | Perf | ✅ ENTREGUE | 2 |
 | 6b | **Loadtest de TRÁFEGO REAL** (replay do corpus de 179 msgs + tool calls no achei-b2b; §1.4 ação 5) — o que fecha o "não-sintético" | Perf/Produto | 🔴 | 6, 10 |
 | 7 | Medir teto de escrita SQLite N-procs (✅ via `bench_store.rb`) + **Litestream opt-in/configurável** (backup/DR) | Infra | 🔴 | 2 |
 | 8 | Migração PT→EN — 1º passe ✅; **2º passe 🔄 em curso** | Docs/OSS | 🔴 (p/ OSS) | — |

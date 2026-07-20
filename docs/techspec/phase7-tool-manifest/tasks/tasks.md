@@ -87,4 +87,4 @@ Caminho crítico: **A → B**. C é paralelo. D depende de A+B. E é adiado.
 ## O que NÃO entra (fora do produto)
 
 - O **conversor (task 7 / Etapa D)** é migração one-off, **fora do produto** (`lib/harness` nunca cita
-  achei/openclaw — NF1); vive em `scripts/openclaw_to_manifest.rb`.
+  achei/openclaw — NF1); vive em `scripts/internal/openclaw_to_manifest.rb`.

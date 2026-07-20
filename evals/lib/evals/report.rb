@@ -4,7 +4,7 @@ require "json"
 
 module Evals
   # Renders a run's [CaseResult] as a machine-readable JSON blob (for the baseline
-  # + gating in Fase C) and a human markdown summary (like docs/BENCHMARKS.md).
+  # + gating in Fase C) and a human markdown summary (like docs/internal/BENCHMARKS.md).
   # Pure over the results — takes a clock value in, never reads it (so callers stay
   # deterministic/testable).
   module Report

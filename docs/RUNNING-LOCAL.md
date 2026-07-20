@@ -116,13 +116,13 @@ PLUGIN=/caminho/openclaw/extensions/acheib2b-tools-dev
 
 # 1) (re)gera os tools/*.json. Sem nomes = REFRESH dos que já existem no dir;
 #    com nomes = gera só esses; dir vazio = gera todas as 44 registradas.
-ruby scripts/openclaw_to_pack.rb "$PLUGIN" ~/Desktop/agent/v2/cacau-show/tools \
+ruby scripts/internal/openclaw_to_pack.rb "$PLUGIN" ~/Desktop/agent/v2/my-store/tools \
   search_products recommend_products add_to_cart update_cart_quantity remove_from_cart \
-  reopen_cart reset_cart send_finalize_button search_faq search_orders call_support cacau_set_location
+  reopen_cart reset_cart send_finalize_button search_faq search_orders call_support set_location
 
 # 2) re-provisiona (o token interno entra por env; a URL base sai de ACHEI_INTERNAL_URL)
 OPENCLAW_GATEWAY_TOKEN=local-demo BIA_INTERNAL_API_TOKEN=<token> \
-bundle exec ruby scripts/import_pack.rb ~/Desktop/agent/v2/cacau-show
+bundle exec ruby scripts/import_pack.rb ~/Desktop/agent/v2/my-store
 ```
 
 Fluxo após **reset do banco**: `openclaw_to_pack.rb` (sem nomes → refresh) **+**

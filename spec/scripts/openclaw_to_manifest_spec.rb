@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../scripts/openclaw_to_manifest"
+require_relative "../../scripts/internal/openclaw_to_manifest"
 
 # Correctness proof of the one-off converter (Phase 7, Step D / task 7). HERMETIC:
 # roda sobre um fixture pequeno em spec/fixtures/openclaw_tools (3 tools

@@ -17,7 +17,7 @@ depends_on: ["0001", "0002", "0005", "0007"]
 ## 1. Problema
 
 Hoje o repo tem **teste de unidade** (RSpec, ~1400 exemplos, determinístico) e
-**loadtest** (perf: TTFB/tokens/throughput — `docs/BENCHMARKS.md`). Não tem
+**loadtest** (perf: TTFB/tokens/throughput — `docs/internal/BENCHMARKS.md`). Não tem
 **eval**: teste de *comportamento* do agente ponta-a-ponta. Consequência direta
 (FOLLOWUP §9): **mexer em prompt/tool/modelo é no escuro** — não há rede que pegue
 uma regressão de qualidade (a Bia parou de chamar `search_products`? passou a
@@ -129,7 +129,7 @@ no harness sob teste. Provisionar via **PackImporter** a partir dos packs reais 
 ### 3.4 Relatório & gating
 
 Saída em `evals/reports/<timestamp>.json` + um sumário markdown (como
-`BENCHMARKS.md`): por caso pass/fail + score + motivo; agregados por agente/fluxo.
+`docs/internal/BENCHMARKS.md`): por caso pass/fail + score + motivo; agregados por agente/fluxo.
 **Baseline:** um `evals/baseline.json` versionado; o runner compara e falha (exit≠0)
 se algum caso regride além de um `--tolerance`. É o que se roda **antes de mergear**
 uma mudança de prompt/tool/modelo.

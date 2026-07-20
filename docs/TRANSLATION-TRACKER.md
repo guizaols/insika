@@ -183,7 +183,7 @@ layers. Full suite stays green (1362 examples, 0 failures).
 
 ### Composition-root scripts — done
 - `scripts/import_pack.rb`, `scripts/run_real.rb`, `scripts/serve_real.rb`,
-  `scripts/openclaw_to_pack.rb`, `scripts/openclaw_to_manifest.rb` — comments,
+  `scripts/internal/openclaw_to_pack.rb`, `scripts/internal/openclaw_to_manifest.rb` — comments,
   usage/abort/warn strings and console banners. No spec asserts these.
 - (`scripts/loadtest.rb`, `loadtest-local.sh`, `bench_store.rb`, `README.md`
   were already English — untouched.)

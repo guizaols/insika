@@ -57,7 +57,7 @@ frame that carries it.
 HARNESS_URL=http://localhost:9292 \
 OPENCLAW_GATEWAY_TOKEN=xxx \
 bundle exec ruby scripts/loadtest.rb \
-  --agents bia,agent-store-cacau-show --concurrency 16 --iterations 3 \
+  --agents bia,my-store --concurrency 16 --iterations 3 \
   --message "hi, how are you?"
 ```
 
