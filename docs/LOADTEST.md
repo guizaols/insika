@@ -1,9 +1,8 @@
 # LOADTEST — Harness
 
-How to load-test the harness, how to compare it **apples-to-apples against the
-OpenClaw gateway**, and how to read the numbers. This is the "how to compare"
-companion to [FOLLOWUP.md](FOLLOWUP.md) §1.3 (does SQLite hold up production?) and
-§1.4 (loadtest parity with OpenClaw). For deploy/env details see
+How to load-test the harness, how to compare it **apples-to-apples against another
+gateway**, and how to read the numbers — covering the SQLite-topology question
+(does one box hold up?) and loadtest parity. For deploy/env details see
 [DEPLOY.md](DEPLOY.md).
 
 The whole point: the harness exposes `POST /v1/responses` as an **SSE drop-in** of
@@ -57,7 +56,7 @@ frame that carries it.
 HARNESS_URL=http://localhost:9292 \
 OPENCLAW_GATEWAY_TOKEN=xxx \
 bundle exec ruby scripts/loadtest.rb \
-  --agents bia,agent-store-acme --concurrency 16 --iterations 3 \
+  --agents bia,my-store --concurrency 16 --iterations 3 \
   --message "hi, how are you?"
 ```
 
@@ -207,8 +206,7 @@ engine is behind `/v1/responses`.
 
 ## 6. Checklist — what to measure before choosing a topology
 
-Ties directly to FOLLOWUP §1.3 (SQLite topology) and §1.4 (loadtest parity). Work
-top-down and **measure before assuming** — avoid premature topology optimization.
+Work top-down and **measure before assuming** — avoid premature topology optimization.
 
 | # | Measure | Tool | Decision it informs |
 |---|---------|------|---------------------|
@@ -220,7 +218,7 @@ top-down and **measure before assuming** — avoid premature topology optimizati
 | 6 | Remote (Railway) vs local | `loadtest.rb` with `HARNESS_URL` remote | Network/deploy overhead of the real environment. |
 
 **Reaching for horizontal scale is only justified after 1–3 show the single box is
-the limit.** If it is, FOLLOWUP §1.3 lays out the paths: sharding-by-tenant +
+the limit.** If it is, the paths are: sharding-by-tenant +
 sticky routing (recommended), LiteFS, or an optional Postgres adapter — plus
 Litestream for backup/DR regardless of topology. Do not skip straight to Postgres:
 the numbers usually show SQLite on one big box is not the bottleneck.

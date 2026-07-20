@@ -114,7 +114,7 @@ RSpec.describe Harness::PackImporter do
     end
 
     it "flags: { group => bool } enables only the truthy ones (the false ones PRUNE the group)" do
-      attrs = attrs_for(id: "loja-7", model: "m", flags: { "b2b" => true, "demo" => false, "mcp:tavily" => true })
+      attrs = attrs_for(id: "loja-7", model: "m", flags: { "b2b" => true, "beauty" => false, "mcp:tavily" => true })
       expect(attrs[:tools_allow_groups]).to contain_exactly("b2b", "mcp:tavily")
     end
 
