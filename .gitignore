@@ -12,3 +12,7 @@ studio/node_modules/
 *.db-wal
 *.db-journal
 .playwright-mcp/*
+# Local secrets (sourced by scripts/loadtest-local.sh; NUNCA versionar chaves)
+.env
+.env.local
+.env.*.local
