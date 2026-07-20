@@ -229,9 +229,14 @@ seams existentes. Nada de novo estágio na pipeline.
   emite** `:guardrail_blocked` no `complete_with_halt`; idem `:guardrail_flagged` a
   partir de `state.guardrail_flags`. O Executor não faz `require` de `Safety` — só
   lê Hashes simples do state (mantém o desacoplamento).
-- **`escalate`.** É uma resposta segura canônica (texto de escalação). Invocar de
-  fato `call_support` a partir da Middleware (sem LLM) ficou como follow-up honesto
-  (D5): sem a tool, é a recusa/escala fixa.
+- **`escalate` / comportamento no bloqueio = decisão do AGENTE, não do motor.**
+  O motor NÃO hardcoda o que acontece num bloqueio: a resposta de `escalate` (como
+  qualquer categoria) é `guardrails.responses.escalate` do agente. Deliberadamente
+  NÃO invocamos `call_support` fixo da Middleware — se um agente quer disparar uma
+  tool de handoff, isso é escolha/config dele, não um comportamento embutido do
+  motor. Mesmo princípio do §7 (config over convention): o motor dá a ferramenta e o
+  default neutro; o agente decide o comportamento. Sem a config, cai no default
+  neutro — nunca um comportamento de negócio fixo imposto pelo motor.
 - **Resposta segura = config over convention (§7 resolvido).** `SafeResponses` não
   é mais texto fixo pt-BR/varejo: são defaults NEUTROS sobrescrevíveis por agente
   (`guardrails.responses`, mapa categoria→texto, + `default` catch-all), resolvidos
@@ -241,9 +246,10 @@ seams existentes. Nada de novo estágio na pipeline.
   engessado — o motor dá a ferramenta, o agente escolhe. Validado pelo eval: o
   `promessa-falsa-desconto` **bloqueava com segurança** mas devolvia texto de
   categoria errada; agora o agente configura a resposta certa.
-- **`output` liga filtro + validador juntos** (um só flag por agente). Bloqueio
-  pós-hoc real ainda exige `streaming:false` (override por perfil não criado —
-  D3, documentado).
+- **`output` liga filtro + validador juntos** (um só flag por agente). Redigir-no-
+  stream vs. bloquear-antes-de-emitir também é escolha do agente/deploy, não fixa no
+  motor: o bloqueio pós-hoc real depende de `streaming:false` (o override por perfil
+  é o mecanismo, ainda não criado — D3). Honesto sobre o limite, sem impor.
 - **`:guardrail_blocked`/`:guardrail_flagged` no tradutor SSE** de `/v1/responses`
   retornam **nil** (sem contrapartida OpenAI): no bloqueio, a resposta segura chega
   ao consumidor pela via normal `:content` + `:task_completed`; os eventos vivem em
