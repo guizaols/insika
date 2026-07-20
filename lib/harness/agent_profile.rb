@@ -39,6 +39,10 @@ module Harness
     :model_policy,                    # governance of WHICH models the agent may use (v2, §10):
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
+    :guardrails,                      # content-safety config (RFC-0009 §3.3): { input:, output:,
+    #                                   moderator:, strictness: }. OPT-IN like capabilities —
+    #                                   nil/absent = the conservative default (Safety::Config:
+    #                                   deterministic on, moderator off). Parsed, never a policy.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -61,7 +65,7 @@ module Harness
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, tools_deferred: nil, memory: nil,
-                   params: {}, model_policy: nil, metadata: {})
+                   params: {}, model_policy: nil, guardrails: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -70,7 +74,7 @@ module Harness
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
         capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
-        params: params || {}, model_policy: model_policy,
+        params: params || {}, model_policy: model_policy, guardrails: guardrails,
         metadata: metadata || {}
       )
     end

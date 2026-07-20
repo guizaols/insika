@@ -118,8 +118,17 @@ module Deploy
     CATALOG        = Harness::SkillCatalog.new([File.join(Deploy::ROOT, "deploy", "skills")], store: SKILL_STORE)
     PROMPT_CATALOG = Harness::PromptCatalog.new([])
 
-    HOOKS      = Harness::Hooks.new
-    MIDDLEWARE = Harness::MiddlewareStack.new([])
+    HOOKS = Harness::Hooks.new
+
+    # Guardrails / content safety (RFC-0009). One Factory composes the three seams:
+    # the InputGuardrail Middleware (deterministic scan + opt-in LLM moderator), the
+    # OutputValidator after_task hook (flags residual PII / policy slips), and the
+    # per-turn OutputFilter (stream redaction) injected into the Executor. Per-agent
+    # `guardrails:` config auto-enables/disables each turn; the moderator resolves
+    # the platform utility_model (SettingsStore, #18) as its fallback model.
+    GUARDRAILS = Harness::Safety::Factory.new(settings_store: SETTINGS_STORE)
+    HOOKS.register(:task, after: GUARDRAILS.output_validator)
+    MIDDLEWARE = Harness::MiddlewareStack.new([GUARDRAILS.input_guardrail])
 
     # OpenClaw-style prompts become the IDENTITY (pinned) via the Prompt provider.
     # IDENTITY_FILES is the deployment DEFAULT (used by an agent WITHOUT its
@@ -164,7 +173,8 @@ module Deploy
       event_stream: EVENT_STREAM, workflow_registry: WORKFLOW_REGISTRY,
       pending_action_store: PENDING_ACTION_STORE, capability_registry: CAPABILITY_REGISTRY,
       tool_catalog: TOOL_CATALOG, memory_store: MEMORY_STORE, tool_trace_store: TOOL_TRACE_STORE,
-      settings_store: SETTINGS_STORE # v2 model resolution: platform default_model + fallbacks (§10)
+      settings_store: SETTINGS_STORE, # v2 model resolution: platform default_model + fallbacks (§10)
+      content_filter_factory: GUARDRAILS.content_filter_factory # RFC-0009: stream redaction
     )
 
     BUS = Harness::CommandBus.new

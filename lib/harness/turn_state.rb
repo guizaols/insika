@@ -14,7 +14,18 @@ module Harness
                   #                      read by create_chat for the per-chat model pin, §10)
                   :model_selection,    # resolved ModelSelection (v2, §10): model/provider/source/
                   #                      pinned/params/fallbacks. Set at stage 5; surfaced in usage.
-                  :halt_reason         # set by Middleware when short-circuiting
+                  :halt_reason,        # set by Middleware when short-circuiting (halt-as-FAILURE)
+                  :halt_response,      # set by a Middleware for the GRACEFUL halt (RFC-0009 §3.1):
+                  #                      the safe reply the turn completes with, WITHOUT touching the
+                  #                      LLM. Distinct from halt_reason — a completion, not a failure.
+                  :guardrail_block,    # audit metadata the guardrail sets alongside halt_response
+                  #                      ({category:, source:, action:, detail:}); the Executor (single
+                  #                      emitter) turns it into :guardrail_blocked.
+                  :guardrail_flags,    # [{category:, source:, detail:}] appended by the OutputValidator
+                  #                      (after_task); the Executor emits one :guardrail_flagged each.
+                  :response_content,   # the turn's final assistant text, set at stage 6/on halt so the
+                  #                      after_task validator can inspect it.
+                  :output_filter       # per-turn Safety::OutputFilter (nil = off); redacts the stream.
 
     # Internal (not part of the contract): correlation of the current
     # tool_call <-> tool decorators (side-effects/skip).

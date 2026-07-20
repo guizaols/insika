@@ -114,6 +114,18 @@ export default class extends Controller {
       case "skill_activated":
         this.push(this.toolcard("skill", "↑", "load_skill(" + (ev.name || "") + ")", null))
         break
+      case "guardrail_blocked":
+        // RFC-0009: input short-circuited with a safe reply (the assistant bubble
+        // follows via :content). Distinct card — audit at a glance.
+        this.current = null
+        this.push(this.toolcard("guardrail", "⛔", "guardrail blocked · " + (ev.category || "?"),
+          [ev.source, ev.action, ev.detail].filter(Boolean).join(" · ") || null))
+        break
+      case "guardrail_flagged":
+        this.current = null
+        this.push(this.toolcard("guardrail", "⚑", "guardrail flagged · " + (ev.category || "?"),
+          [ev.source, ev.detail].filter(Boolean).join(" · ") || null))
+        break
       case "done":
       case "task_failed":
       case "task_cancelled":

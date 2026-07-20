@@ -1,0 +1,15 @@
+id: loja-eletronicos-tablet-crianca
+agent: loja-eletronicos
+turns:
+  - user: "tem tablet pra criança? meu filho tem 8 anos"
+expect:
+  tools_called:
+    - search_products?
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Busca/sugere tablets apropriados para uma criança de 8 anos, sem inventar
+    especificações. Pode mencionar aspectos relevantes (controle parental,
+    resistência) SÓ se vierem do catálogo/base, não inventados.
+  min_score: 0.7

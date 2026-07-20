@@ -17,7 +17,7 @@ module Harness
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
-                   tool_trace_store: nil, settings_store: nil)
+                   tool_trace_store: nil, settings_store: nil, content_filter_factory: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -34,6 +34,11 @@ module Harness
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
+      # Guardrails output filter (RFC-0009 §3.2): ->(state) { OutputFilter | nil }.
+      # Injected by the Safety::Factory; nil = off (parity — the stream is untouched).
+      # The INPUT guardrail is a Middleware (in the stack, not here); this is the seam
+      # for the stream-side redaction the Executor owns.
+      @content_filter_factory = content_filter_factory
       # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -426,11 +431,17 @@ module Harness
             @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
           end
 
+          # guardrails (RFC-0009 §3.2): a per-turn stream redactor, built from the
+          # agent's config. nil = off (parity). run_agent_stage feeds every content
+          # delta through it and returns the REDACTED final text.
+          st.output_filter = @content_filter_factory&.call(st)
+
           # stage 6: the turn's single agent interaction. send_message ->
           # chat.ask; trigger_workflow -> workflow.call(input, context:, tools:)
           # Both wrapped by hooks.around(:agent). The return is the
           # turn's final content.
           content = run_agent_stage(task, st)
+          st.response_content = content # after_task OutputValidator inspects this
 
           # stage 8: Persistence (fixed order checkpoint->session->task)
           # pure drain! (NEVER suspends at stage 8 — forbidden window). A
@@ -448,16 +459,21 @@ module Harness
           emit(:task_completed, { task_id: task.id, content: content, usage: st.usage }, task: task)
         end
 
-        # halt (with a reason) or short-circuit without terminating (contract
-        # violation) -> turn failure via the single capture.
-        if state.halt_reason
+        # A Middleware short-circuited (did not call the terminal). Three cases:
+        #   · halt_response set -> GRACEFUL halt (RFC-0009 §3.1): the turn COMPLETES
+        #     with a safe reply, reusing stages 8-9, without ever touching the LLM.
+        #   · halt_reason set    -> halt-as-FAILURE (the pre-existing contract).
+        #   · neither            -> contract violation (short-circuit with no signal).
+        if !terminal_ran && state.halt_response
+          complete_with_halt(task, profile, state)
+        elsif state.halt_reason
           raise Harness::Error, "turn halted: #{state.halt_reason}"
         elsif !terminal_ran
           raise Harness::Error, "middleware curto-circuitou sem halt_reason"
         end
 
           state # subject of the :task pair (after_task receives it; the caller discards)
-        end
+        end.tap { |st| emit_guardrail_flags(task, st) }
       end
     rescue Async::TimeoutError
       raise Harness::TimeoutError.new("turn exceeded #{turn_timeout}s", stage: :turn)
@@ -479,13 +495,25 @@ module Harness
           workflow.call(s.message || {}, context: s.context, tools: s.allowed_tools)
         end
       else
+        filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
         response = @hooks.around(:agent, state) do |s|
-          s.chat.ask(s.message) do |chunk|
-            emit(:content, { delta: chunk.content }, task: task) if chunk.content
+          result = s.chat.ask(s.message) do |chunk|
+            next unless chunk.content
+
+            out = filter ? filter.push(chunk.content) : chunk.content
+            emit(:content, { delta: out }, task: task) unless out.to_s.empty?
           end
+          # release the buffered tail once the stream ends (a value that never
+          # completed into a match is emitted redacted-if-needed, not lost).
+          if filter && !(tail = filter.flush).to_s.empty?
+            emit(:content, { delta: tail }, task: task)
+          end
+          result
         end
         state.usage = with_model_source(usage_of(response), state.model_selection)
-        response.content
+        # persisted/terminal content must match the redacted stream (D3): the filter's
+        # accumulated output, else the raw response.
+        filter ? filter.output : response.content
       end
     end
 
@@ -732,6 +760,41 @@ module Harness
                                agent_id: profile.id, messages: Array(state.context.history),
                                completed_side_effects: [], created_at: Time.now.utc.iso8601
                              ))
+    end
+
+    # GRACEFUL halt (RFC-0009 §3.1): a Middleware short-circuited with a safe reply.
+    # The turn COMPLETES — same stages 8-9 as a normal turn — but the "assistant
+    # content" is the guardrail's safe response, produced with ZERO LLM calls. The
+    # order mirrors a real turn so both the /v1/responses consumer (which reads the
+    # text off :content deltas) and the Studio viewer render it: audit -> safe text
+    # -> persist -> terminal.
+    def complete_with_halt(task, profile, state)
+      content = state.halt_response.to_s
+      state.response_content = content
+
+      if (block = state.guardrail_block)
+        emit(:guardrail_blocked, {
+               task_id: task.id, category: block[:category], source: block[:source],
+               action: block[:action], detail: block[:detail]
+             }, task: task)
+      end
+      emit(:content, { delta: content }, task: task) unless content.empty?
+      persist_turn(task, profile, state, content)
+      emit(:done, { content: content, usage: state.usage }, task: task)
+      emit(:task_completed, { task_id: task.id, content: content, usage: state.usage }, task: task)
+    end
+
+    # Emits one :guardrail_flagged per flag the OutputValidator appended in
+    # after_task (audit only — the turn already completed). Reads a plain Array off
+    # the state, keeping the Executor decoupled from Safety.
+    def emit_guardrail_flags(task, state)
+      return unless state.respond_to?(:guardrail_flags)
+
+      Array(state.guardrail_flags).each do |flag|
+        emit(:guardrail_flagged, {
+               task_id: task.id, category: flag[:category], source: flag[:source], detail: flag[:detail]
+             }, task: task)
+      end
     end
 
     # Stage 8: FIXED order checkpoint -> session -> task. If it crashes

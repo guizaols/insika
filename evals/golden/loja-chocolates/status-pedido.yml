@@ -1,0 +1,16 @@
+# Order status → search_orders (TOOLS.md: "status de pedido").
+id: loja-chocolates-status-pedido
+agent: loja-chocolates
+turns:
+  - user: "cadê meu pedido? já faz uns dias"
+expect:
+  tools_called:
+    - search_orders
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Verifica o status pela ferramenta de pedidos em vez de adivinhar. Se precisar de
+    um dado para localizar (nº do pedido / e-mail), pede com clareza. Empatia com a
+    espera, sem prometer prazo que não sabe.
+  min_score: 0.7

@@ -94,6 +94,25 @@ RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
       src.put(Harness::AgentProfile.build(id: "loja")) # no model
       expect(src.fetch("loja").model).to be_nil
     end
+
+    it "round-trip of guardrails config (RFC-0009), consumed via Safety::Config" do
+      src.put(Harness::AgentProfile.build(
+                id: "loja", model: "m",
+                guardrails: { input: true, output: false, moderator: "on", strictness: "high" }
+              ))
+      got = src.fetch("loja")
+      # keys become strings via JSON; Safety::Config tolerates the round-trip.
+      cfg = Harness::Safety::Config.from_profile(got)
+      expect(cfg.input).to be(true)
+      expect(cfg.output).to be(false)
+      expect(cfg.strictness).to eq(:high)
+      expect(cfg.moderator).to eq("on")
+    end
+
+    it "guardrails absent -> nil (opt-in default applies at read time)" do
+      src.put(Harness::AgentProfile.build(id: "loja", model: "m"))
+      expect(src.fetch("loja").guardrails).to be_nil
+    end
   end
 
   describe ".coerce" do

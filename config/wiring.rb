@@ -71,8 +71,15 @@ module Harness
     PROMPT_CATALOG = Harness::PromptCatalog.new([File.join(ROOT, "prompts")])
 
     # --- Cross-cutting stages ------------------------------------
-    HOOKS      = Harness::Hooks.new
-    MIDDLEWARE = Harness::MiddlewareStack.new([])
+    HOOKS = Harness::Hooks.new
+
+    # Guardrails / content safety (RFC-0009). No SettingsStore in the minimal wiring,
+    # so the LLM moderator only runs for an agent that pins its own `guardrails.
+    # moderator` model ref; the deterministic net (input scan + output redaction) is
+    # always on for agents that opt in. See config/deployment.rb for the full graph.
+    GUARDRAILS = Harness::Safety::Factory.new
+    HOOKS.register(:task, after: GUARDRAILS.output_validator)
+    MIDDLEWARE = Harness::MiddlewareStack.new([GUARDRAILS.input_guardrail])
 
     CONTEXT_PROVIDERS = [
       Harness::Context::Providers::Request.new,
@@ -108,7 +115,8 @@ module Harness
       checkpoint_store: CHECKPOINT_STORE, event_stream: EVENT_STREAM,
       workflow_registry: WORKFLOW_REGISTRY, pending_action_store: PENDING_ACTION_STORE,
       capability_registry: CAPABILITY_REGISTRY, tool_catalog: TOOL_CATALOG,
-      memory_store: MEMORY_STORE
+      memory_store: MEMORY_STORE,
+      content_filter_factory: GUARDRAILS.content_filter_factory # RFC-0009: stream redaction
     )
 
     # --- Command Bus + handlers -------------------------------

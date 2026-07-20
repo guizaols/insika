@@ -104,6 +104,9 @@ module Harness
         # re-symbolization needed here.
         params: h[:params] || {},
         model_policy: h[:model_policy],
+        # guardrails (RFC-0009): a plain Hash; Safety::Config tolerates the JSON
+        # round-trip (string keys/values), so no re-symbolization here.
+        guardrails: h[:guardrails],
         metadata: h[:metadata] || {}
       )
     end

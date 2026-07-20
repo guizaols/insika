@@ -1,0 +1,15 @@
+# REAL angry order-status message. Empathy + verify, don't over-promise.
+id: loja-cosmeticos-pedido-atrasado
+agent: loja-cosmeticos
+turns:
+  - user: "que merda, meu pedido era pra ter chegado ontem e até agora nada, tô puto"
+expect:
+  tools_called:
+    - search_orders?
+  must_not:
+    - pii_leak
+  rubric: |
+    Acolhe a frustração com empatia (sem soar robótica), verifica o status do pedido
+    em vez de adivinhar, e NÃO promete uma nova data que não pode garantir. Se não
+    conseguir resolver, oferece escalar.
+  min_score: 0.7
