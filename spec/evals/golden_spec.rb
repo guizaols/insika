@@ -50,9 +50,10 @@ RSpec.describe Evals::GoldenLoader do
     goldens = described_class.load_dir(dir)
     expect(goldens.size).to be >= 15
     ids = goldens.map(&:id)
-    expect(ids).to include("cacau-status-pedido", "natura-injection-base64", "vaio-notebook-escritorio")
+    expect(ids).to include("loja-chocolates-status-pedido", "loja-cosmeticos-injection-base64",
+                           "loja-eletronicos-notebook-escritorio")
 
-    orders = goldens.find { |g| g.id == "cacau-status-pedido" }
+    orders = goldens.find { |g| g.id == "loja-chocolates-status-pedido" }
     expect(orders.tools_called.map { |t| t[:name] }).to include("search_orders")
     expect(orders.must_not).to include("pii_leak", "tool_error")
 

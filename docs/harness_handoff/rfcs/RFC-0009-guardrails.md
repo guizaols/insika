@@ -1,7 +1,7 @@
 ---
 rfc: "0009"
 title: Guardrails & Content Safety
-status: Draft
+status: Implemented
 type: Componente
 created: 2026-07-20
 supersedes: []
@@ -28,8 +28,8 @@ piloto já mostra o ataque chegando (casos curados como goldens em `evals/golden
 - **Abuso verbal** e **conteúdo inapropriado** (assédio sexual ao bot).
 
 Sem guardrails, a defesa é só o prompt do agente — frágil e não-auditável. Numa marca
-em produção (Natura, Cacau Show), um vazamento de system prompt, um desconto inventado
-sob pressão, ou uma resposta imprópria é dano direto de marca. É o gap 🔴 do §9.
+de varejo em produção, um vazamento de system prompt, um desconto inventado sob
+pressão, ou uma resposta imprópria é dano direto de marca. É o gap 🔴 do §9.
 
 ## 2. Objetivos / Não-objetivos
 
@@ -144,14 +144,14 @@ A saída é **streamada** (deltas de `content`), então há uma tensão real: n�
 1. **Fase A — input determinístico:** halt gracioso no Executor (`halt_response`) +
    `InputGuardrail` Middleware com heurísticas de injeção/abuso + resposta segura +
    evento `guardrail_blocked` (catálogo). Fecha os casos mais grosseiros (o
-   base64-exfil, o assédio) sem custo de token. Validado pelos goldens
-   `natura-injection-base64` / `natura-inapropriado` / `natura-abuso-verbal`.
+   base64-exfil, o assédio) sem custo de token. Validado pelo suite genérico
+   `safety-injection-*` / `safety-sexual-*` / `safety-abuso-*` (bilíngue, sem marca).
 2. **Fase B — output determinístico:** extrair `Harness::Safety::Detectors` (o eval
    passa a consumir de lá) + `OutputFilter` no stream com buffer de fronteira,
    redigindo PII/segredo. Fecha vazamento.
 3. **Fase C — moderador + validador LLM:** classificação de entrada e validação de
    saída via `utility_model`; pega o que a regex não pega (engenharia social do
-   `natura-promessa-falsa-desconto`, tom).
+   `loja-cosmeticos-promessa-falsa-desconto`, tom).
 4. **Fase D — config por agente + Studio:** toggles no profile + visão de eventos de
    guardrail no viewer da sessão.
 
@@ -174,7 +174,13 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
 - Moderador LLM: um provider/modelo dedicado de safety, ou o mesmo `utility_model`?
 - Categorias canônicas do bloqueio (injection / abuse / sexual / self-harm / off-topic)
   — fixar o enum agora ou deixar o moderador livre?
-- Resposta segura: fixa por categoria (dados, i18n) vs gerada pelo agente sob restrição?
+- ~~Resposta segura: fixa por categoria vs gerada pelo agente sob restrição?~~
+  **RESOLVIDO (config over convention):** o motor é OSS multi-negócio, então NÃO
+  engessa tom/idioma. Built-in `SafeResponses::DEFAULTS` neutros como fallback; cada
+  agente sobrescreve por categoria (ou um `default` catch-all) via
+  `guardrails.responses`. Resolução: `agent[cat] → agent[default] → builtin[cat] →
+  builtin[default]`. A categoria do moderador flui SEM colapso — uma categoria
+  desconhecida cai no `default` do agente, não num bucket forçado. Exposto no Studio.
 
 ## 8. Relação com outras RFCs / itens
 
@@ -186,3 +192,69 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
   única (D4). Guardrails e evals se validam mutuamente.
 - **FOLLOWUP #11** (este) · **#18** (`utility_model` como moderador) · **#9 anti-abuso**
   (rate-limit de borda, complementar, fora daqui) · **§3.1** (eventos no viewer).
+
+## 9. Notas de implementação (Fases A–D entregues)
+
+Subsistema em `lib/harness/safety/` (require em `lib/harness.rb`), pendurado nos
+seams existentes. Nada de novo estágio na pipeline.
+
+- **Fase A — input determinístico.** `TurnState#halt_response` +
+  `Executor#complete_with_halt` (halt gracioso: turno **completado** reusando
+  stages 8–9, zero LLM). `Safety::InputGuardrail < Middleware` roda
+  `Detectors.scan_input` e, no bloqueio, seta `halt_response` +
+  `guardrail_block`. Evento `:guardrail_blocked`.
+- **Fase B — output determinístico.** `Safety::Detectors` é a **fonte única**
+  (D4): o eval (`evals/lib/evals/assertions.rb`) passou a `require` o arquivo do
+  runtime (o runtime nunca faz require de `evals/`). `Safety::OutputFilter` redige
+  no stream com **buffer deslizante** — `Detectors::OPEN_TAIL` retém a cauda que
+  ainda pode virar match, inclusive **prefixos literais partidos** (`s`→`sk-`,
+  `Bear`→`Bearer `) e o `sk-…` ilimitado que uma janela fixa não cobre. Coberto por
+  teste de split em **todo offset**. `Safety::OutputValidator` (`after_task`) emite
+  `:guardrail_flagged`.
+- **Fase C — moderador + validador LLM.** `Safety::Moderator` e o tier LLM do
+  validador são **puros sobre um `ask`** injetado (como o Judge do #10),
+  **fail-open** por construção. A `Safety::Factory` resolve o modelo: ref por agente
+  (`guardrails.moderator`) → fallback no `utility_model` (SettingsStore, #18);
+  `require "ruby_llm"` **lazy**.
+- **Fase D — config + Studio.** Campo `guardrails` no `AgentProfile` (opt-in como
+  `capabilities`, round-trip via `Safety::Config`), toggles no `agent_detail` +
+  `config_patch`, e cards `:guardrail_blocked`/`:guardrail_flagged` no
+  `live-transcript`.
+
+**Decisões/desvios conscientes:**
+
+- **Quem emite o evento.** A Middleware não tem emitter (contrato: só recebe
+  `state`). Para preservar o **emissor único** do Executor (seq monotônico + meta +
+  masking centralizado), a Middleware seta `state.guardrail_block` e o **Executor
+  emite** `:guardrail_blocked` no `complete_with_halt`; idem `:guardrail_flagged` a
+  partir de `state.guardrail_flags`. O Executor não faz `require` de `Safety` — só
+  lê Hashes simples do state (mantém o desacoplamento).
+- **`escalate`.** É uma resposta segura canônica (texto de escalação). Invocar de
+  fato `call_support` a partir da Middleware (sem LLM) ficou como follow-up honesto
+  (D5): sem a tool, é a recusa/escala fixa.
+- **Resposta segura = config over convention (§7 resolvido).** `SafeResponses` não
+  é mais texto fixo pt-BR/varejo: são defaults NEUTROS sobrescrevíveis por agente
+  (`guardrails.responses`, mapa categoria→texto, + `default` catch-all), resolvidos
+  `agent[cat] → agent[default] → builtin[cat] → builtin[default]`. A categoria do
+  moderador flui sem colapso (D2/D5 relaxado): uma categoria fora do enum forte cai
+  no `default` do agente. Motivação: OSS multi-negócio/idioma não pode ter tom
+  engessado — o motor dá a ferramenta, o agente escolhe. Validado pelo eval: o
+  `promessa-falsa-desconto` **bloqueava com segurança** mas devolvia texto de
+  categoria errada; agora o agente configura a resposta certa.
+- **`output` liga filtro + validador juntos** (um só flag por agente). Bloqueio
+  pós-hoc real ainda exige `streaming:false` (override por perfil não criado —
+  D3, documentado).
+- **`:guardrail_blocked`/`:guardrail_flagged` no tradutor SSE** de `/v1/responses`
+  retornam **nil** (sem contrapartida OpenAI): no bloqueio, a resposta segura chega
+  ao consumidor pela via normal `:content` + `:task_completed`; os eventos vivem em
+  `/v1/events` + Studio + trace.
+- **Rede de regressão OSS-friendly (`evals/golden/safety/`).** Suite genérico,
+  **sem marca e bilíngue (EN + pt-BR)** contra um `example-agent` fictício:
+  injection/exfil/abuso/sexual + guardas de falso-positivo. Testa o guardrail, não um
+  negócio — os casos de bloqueio determinístico rodam **sem chave** (smoke de CI). O
+  corpus BR real vira **referência de tráfego real** (`evals/golden/loja-*/` —
+  conversas reais, marcas **anonimizadas**: nunca nomes de loja reais no OSS), não a
+  cara OSS. Detectores determinísticos agora são **EN + pt-BR** (best-effort por
+  idioma; moderador = tier language-agnostic; adicionar idioma = adicionar padrões,
+  sem mexer no core). `scripts/serve_eval.rb` provisiona `example-agent` +
+  `loja-cosmeticos`.

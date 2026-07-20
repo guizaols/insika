@@ -68,6 +68,14 @@ module Harness
           failed("task cancelled") + done
         when :error
           failed(event.data[:message] || "error") + done
+        when :guardrail_blocked, :guardrail_flagged
+          # RFC-0009: audit events with no OpenAI Responses counterpart. On a BLOCK
+          # the safe reply still reaches the consumer through the normal :content
+          # deltas + :task_completed path (the turn completes gracefully), so there
+          # is nothing extra to translate here — the events live in /v1/events + the
+          # Studio + the trace. Explicit (not a fall-through) to keep the closed
+          # catalog honest.
+          nil
         end
       end
 

@@ -87,8 +87,8 @@ failures (`response.failed`). Full per-tool status lives in the `ToolTraceStore`
 ## Golden format
 
 ```yaml
-id: cacau-produto-com-cep    # unique case id
-agent: cacau-show            # target agent id (must match the provisioned agent)
+id: loja-chocolates-produto-com-cep  # unique case id
+agent: loja-chocolates       # target agent id (must match the provisioned agent)
 turns:                       # the conversation to replay, in order
   - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
 expect:
@@ -105,22 +105,36 @@ expect:
 
 ### The committed set
 
-Curated from the **real** OpenClaw corpus (`openclaw/agents/agent-store-*/sessions`)
-across three stores — tool names grounded in each store's `TOOLS.md`
+Two layers, by intent:
+
+- **`golden/safety/` — the generic guardrail net (OSS default).** Brand-free,
+  **bilingual (EN + pt-BR)** adversarial cases against a fictional `example-agent`:
+  prompt injection, system-prompt exfil, verbal abuse, sexual content, plus
+  false-positive guards. Tests the **guardrail** (RFC-0009), not any business — the
+  deterministic block cases run with **no provider key** (CI-able smoke). See
+  `golden/safety/README.md`. Provision the target with `ruby scripts/serve_eval.rb`.
+- **`golden/loja-*/` — real-world reference corpus (ANONYMIZED).** Curated from the
+  **real** OpenClaw corpus (pt-BR retail). The conversations are real; the store
+  BRANDS were removed for OSS — generic ids/rubrics (`loja-cosmeticos` /
+  `loja-chocolates` / `loja-eletronicos`), never the real names. Reference of real
+  traffic, not the OSS face.
+
+The real store set — tool names grounded in each store's `TOOLS.md`
 (`search_products` / `recommend_products` / `search_faq` / `search_voucher` /
 `search_orders` / `call_support`):
 
-- **cacau-show** — greeting, CEP-gated search (with/without CEP), FAQ, order status,
-  voucher, human handoff.
-- **natura** — product discovery, order-status (angry), **and real adversarial
+- **loja-chocolates** — greeting, CEP-gated search (with/without CEP), FAQ, order
+  status, voucher, human handoff.
+- **loja-cosmeticos** — product discovery, order-status (angry), **and real adversarial
   turns**: a base64 prompt-injection/exfil, a fabricated-discount social-engineering
   attempt, verbal abuse, an inappropriate request. These double as guardrail evals
-  (§9 / #11).
-- **vaio** — notebook/tablet discovery, greeting.
+  (§9 / #11) — see also the brand-free `golden/safety/` suite.
+- **loja-eletronicos** — notebook/tablet discovery, greeting.
 
-> **Agent ids:** goldens target `cacau-show` / `natura` / `vaio`. Provision the
-> matching agents (see below) or adjust the `agent:` field to your ids. The same
-> corpus + replay also serves the real-traffic loadtest (#6b) — one replay, two
+> **Agent ids:** goldens target `loja-chocolates` / `loja-cosmeticos` /
+> `loja-eletronicos`. Provision the matching agents (see below) or adjust the
+> `agent:` field to your ids. The same corpus + replay also serves the real-traffic
+> loadtest (#6b) — one replay, two
 > purposes.
 
 ## Two evaluation layers

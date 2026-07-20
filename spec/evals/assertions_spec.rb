@@ -88,7 +88,7 @@ RSpec.describe Evals::Assertions do
 
   it "raises on an unknown must_not detector (a typo must not pass silently)" do
     expect { described_class.evaluate(golden("must_not" => ["nope"]), result) }
-      .to raise_error(ArgumentError, /unknown must_not detector/)
+      .to raise_error(ArgumentError, /unknown detector/) # runtime is the single source (D4)
   end
 
   describe Evals::Report do

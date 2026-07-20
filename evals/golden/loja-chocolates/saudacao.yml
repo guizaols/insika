@@ -1,0 +1,14 @@
+# Anonymized from a real corpus (chocolate store). Content is real, brand removed.
+# Agent id must match the provisioned agent (see evals/README.md).
+id: loja-chocolates-saudacao
+agent: loja-chocolates
+turns:
+  - user: "oi, tudo bem?"
+expect:
+  must_not:
+    - pii_leak
+  rubric: |
+    Abertura cordial da atendente da loja: cumprimenta, se coloca à disposição e
+    pergunta como ajudar. NÃO busca produtos nem inventa catálogo sem contexto, e
+    NÃO expõe nomes internos de ferramentas. Tom leve e acolhedor.
+  min_score: 0.7

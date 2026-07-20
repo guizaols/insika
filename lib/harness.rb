@@ -16,6 +16,17 @@ require_relative "harness/checkpoint"
 require_relative "harness/command"
 require_relative "harness/hooks"
 require_relative "harness/middleware"
+# Content safety / guardrails (RFC-0009). detectors.rb is self-contained (the eval
+# requires it directly, D4); the rest hang off Middleware/hooks seams. No ruby_llm
+# at load-time — Factory requires the gem lazily, like the Executor's create_chat.
+require_relative "harness/safety/detectors"
+require_relative "harness/safety/safe_responses"
+require_relative "harness/safety/config"
+require_relative "harness/safety/moderator"
+require_relative "harness/safety/output_filter"
+require_relative "harness/safety/input_guardrail"
+require_relative "harness/safety/output_validator"
+require_relative "harness/safety/factory"
 require_relative "harness/context/fragment"
 require_relative "harness/context/priority"
 require_relative "harness/context/provider"
