@@ -64,6 +64,31 @@
       <textarea name="model_policy_allow" rows="3" placeholder="deepseek/*&#10;openai/gpt-4o-mini"><%= @model_policy_allow %></textarea>
     </label>
 
+    <fieldset class="subgroup">
+      <legend>guardrails <span class="muted">— content safety (RFC-0009)</span></legend>
+      <label class="check">
+        <input type="checkbox" name="guardrail_input" value="1"<%== " checked" if guardrail_field(@guardrails, :input, true) %>>
+        input guardrail <span class="muted">— block injection / abuse / inappropriate before the LLM</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" name="guardrail_output" value="1"<%== " checked" if guardrail_field(@guardrails, :output, true) %>>
+        output guardrail <span class="muted">— redact PII/secret in the stream + flag policy slips</span>
+      </label>
+      <div class="grid-2">
+        <label>strictness
+          <% strictness = guardrail_field(@guardrails, :strictness, "medium").to_s %>
+          <select name="guardrail_strictness">
+            <% %w[low medium high].each do |lvl| %>
+              <option value="<%= lvl %>"<%== " selected" if lvl == strictness %>><%= lvl %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>LLM moderator <span class="muted">(model ref, or <code>on</code> for the platform utility_model; blank = deterministic only)</span>
+          <input type="text" name="guardrail_moderator" value="<%= guardrail_field(@guardrails, :moderator, "") %>" placeholder="deepseek/deepseek-chat">
+        </label>
+      </div>
+    </fieldset>
+
     <div class="actions"><button type="submit" class="primary">Save config</button></div>
   </form>
 </section>

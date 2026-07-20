@@ -1,7 +1,7 @@
 ---
 rfc: "0009"
 title: Guardrails & Content Safety
-status: Draft
+status: Implemented
 type: Componente
 created: 2026-07-20
 supersedes: []
@@ -186,3 +186,50 @@ Fase A+B já entregam a rede determinística; C+D adicionam o julgamento e o con
   única (D4). Guardrails e evals se validam mutuamente.
 - **FOLLOWUP #11** (este) · **#18** (`utility_model` como moderador) · **#9 anti-abuso**
   (rate-limit de borda, complementar, fora daqui) · **§3.1** (eventos no viewer).
+
+## 9. Notas de implementação (Fases A–D entregues)
+
+Subsistema em `lib/harness/safety/` (require em `lib/harness.rb`), pendurado nos
+seams existentes. Nada de novo estágio na pipeline.
+
+- **Fase A — input determinístico.** `TurnState#halt_response` +
+  `Executor#complete_with_halt` (halt gracioso: turno **completado** reusando
+  stages 8–9, zero LLM). `Safety::InputGuardrail < Middleware` roda
+  `Detectors.scan_input` e, no bloqueio, seta `halt_response` +
+  `guardrail_block`. Evento `:guardrail_blocked`.
+- **Fase B — output determinístico.** `Safety::Detectors` é a **fonte única**
+  (D4): o eval (`evals/lib/evals/assertions.rb`) passou a `require` o arquivo do
+  runtime (o runtime nunca faz require de `evals/`). `Safety::OutputFilter` redige
+  no stream com **buffer deslizante** — `Detectors::OPEN_TAIL` retém a cauda que
+  ainda pode virar match, inclusive **prefixos literais partidos** (`s`→`sk-`,
+  `Bear`→`Bearer `) e o `sk-…` ilimitado que uma janela fixa não cobre. Coberto por
+  teste de split em **todo offset**. `Safety::OutputValidator` (`after_task`) emite
+  `:guardrail_flagged`.
+- **Fase C — moderador + validador LLM.** `Safety::Moderator` e o tier LLM do
+  validador são **puros sobre um `ask`** injetado (como o Judge do #10),
+  **fail-open** por construção. A `Safety::Factory` resolve o modelo: ref por agente
+  (`guardrails.moderator`) → fallback no `utility_model` (SettingsStore, #18);
+  `require "ruby_llm"` **lazy**.
+- **Fase D — config + Studio.** Campo `guardrails` no `AgentProfile` (opt-in como
+  `capabilities`, round-trip via `Safety::Config`), toggles no `agent_detail` +
+  `config_patch`, e cards `:guardrail_blocked`/`:guardrail_flagged` no
+  `live-transcript`.
+
+**Decisões/desvios conscientes:**
+
+- **Quem emite o evento.** A Middleware não tem emitter (contrato: só recebe
+  `state`). Para preservar o **emissor único** do Executor (seq monotônico + meta +
+  masking centralizado), a Middleware seta `state.guardrail_block` e o **Executor
+  emite** `:guardrail_blocked` no `complete_with_halt`; idem `:guardrail_flagged` a
+  partir de `state.guardrail_flags`. O Executor não faz `require` de `Safety` — só
+  lê Hashes simples do state (mantém o desacoplamento).
+- **`escalate`.** É uma resposta segura canônica (texto de escalação). Invocar de
+  fato `call_support` a partir da Middleware (sem LLM) ficou como follow-up honesto
+  (D5): sem a tool, é a recusa/escala fixa.
+- **`output` liga filtro + validador juntos** (um só flag por agente). Bloqueio
+  pós-hoc real ainda exige `streaming:false` (override por perfil não criado —
+  D3, documentado).
+- **`:guardrail_blocked`/`:guardrail_flagged` no tradutor SSE** de `/v1/responses`
+  retornam **nil** (sem contrapartida OpenAI): no bloqueio, a resposta segura chega
+  ao consumidor pela via normal `:content` + `:task_completed`; os eventos vivem em
+  `/v1/events` + Studio + trace.

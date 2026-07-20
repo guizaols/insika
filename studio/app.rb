@@ -735,6 +735,8 @@ module Studio
       # model fence. Read tolerant of a string|symbol key (pack JSON round-trip).
       @params = @agent.respond_to?(:params) ? (@agent.params || {}) : {}
       @model_policy_allow = model_policy_allow(@agent)
+      # guardrails config (RFC-0009), tolerant of the pack/JSON round-trip.
+      @guardrails = (@agent.respond_to?(:guardrails) ? @agent.guardrails : nil) || {}
       mem = harness[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
@@ -750,6 +752,17 @@ module Studio
       v = params[key.to_sym]
       v = params[key.to_s] if v.nil?
       v.nil? ? "" : v
+    end
+
+    # A guardrails field off the profile, tolerant of a string|symbol key.
+    # `default` is returned when the whole config or the key is absent (so a
+    # never-configured agent shows the conservative defaults in the form).
+    def guardrail_field(gr, key, default)
+      return default unless gr.is_a?(Hash)
+
+      v = gr[key.to_sym]
+      v = gr[key.to_s] if v.nil?
+      v.nil? ? default : v
     end
 
     # The agent's model fence as newline-joined refs (for the textarea). nil / no
@@ -779,8 +792,23 @@ module Studio
         memory: r.params["memory"] == "1",
         limits: limits,
         params: params_patch(r),
-        model_policy: model_policy_patch(r)
+        model_policy: model_policy_patch(r),
+        guardrails: guardrails_patch(r)
       }
+    end
+
+    # Guardrails config from the form (RFC-0009). The config form OWNS these fields,
+    # so the patch reflects the whole guardrails state. String values round-trip
+    # cleanly through the JSON store; Safety::Config normalizes on read. A blank
+    # moderator drops the key (deterministic only).
+    def guardrails_patch(r)
+      out = {
+        "input" => r.params["guardrail_input"] == "1",
+        "output" => r.params["guardrail_output"] == "1",
+        "strictness" => presence(r.params["guardrail_strictness"]) || "medium"
+      }
+      (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
+      out
     end
 
     # Per-agent generation params (v2, §10). The config form OWNS these fields, so

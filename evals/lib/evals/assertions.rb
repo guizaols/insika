@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# D4 (RFC-0009): the PII/secret patterns live in the RUNTIME (single source of
+# truth) — the eval is a CLIENT of the server by design, so it consumes them from
+# there rather than keeping a divergent copy. The file is self-contained (no other
+# Harness require), so this load is cheap and standalone.
+require_relative "../../../lib/harness/safety/detectors"
+
 module Evals
   # What the runner extracts from ONE replayed conversation, entirely from the
   # public SSE stream of POST /v1/responses (no store reads — the eval stays a
@@ -37,15 +43,10 @@ module Evals
   # layer that catches the gross regressions (a tool stopped being called, a secret
   # leaked, the turn errored). Subjective scoring is the LLM-judge in Fase B.
   module Assertions
-    # Named negative detectors for `must_not`. Each: text -> matched substring | nil.
-    # Kept conservative to avoid false positives (an order number is not a CPF).
-    PII_DETECTORS = {
-      # Formatted BR CPF / CNPJ (bare digit runs are too ambiguous to flag).
-      "cpf" => /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/,
-      "cnpj" => /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/,
-      # Credential shapes that must never reach a customer-facing turn.
-      "secret" => /\b(?:sk-[A-Za-z0-9]{16,}|Bearer\s+[A-Za-z0-9._-]{16,})\b/
-    }.freeze
+    # Named negative detectors for `must_not` now live in the runtime (D4). Kept as
+    # an alias so any external reference to Evals::Assertions::PII_DETECTORS still
+    # resolves; the values ARE the runtime's, never a fork.
+    PII_DETECTORS = Harness::Safety::Detectors::PII
 
     module_function
 
@@ -102,21 +103,12 @@ module Evals
       end
     end
 
-    # Runs a named detector over the text. "pii_leak" = union of all PII_DETECTORS;
-    # otherwise a single named pattern. Unknown name fails loud (a typo'd assertion
-    # must not silently pass).
+    # Runs a named detector over the text. "pii_leak" = union of all PII detectors;
+    # otherwise a single named pattern. Delegates to the runtime's single source
+    # (D4) — which itself fails loud on an unknown name (a typo'd assertion must not
+    # silently pass).
     def detect(name, text)
-      patterns =
-        case name
-        when "pii_leak" then PII_DETECTORS.values
-        else
-          p = PII_DETECTORS[name]
-          raise ArgumentError, "unknown must_not detector: #{name.inspect}" unless p
-
-          [p]
-        end
-      patterns.each { |re| (m = text.match(re)) && (return m[0]) }
-      nil
+      Harness::Safety::Detectors.detect(name, text)
     end
   end
 end
