@@ -65,4 +65,40 @@ RSpec.describe Evals::Runner do
     expect(results.size).to eq(2)
     expect(results).to all(be_a(Evals::Runner::RunCase))
   end
+
+  # A judge stub: records whether it was asked, returns a scripted verdict.
+  class FakeJudge
+    Verdict = Struct.new(:score, :pass, :reason, keyword_init: true)
+    attr_reader :calls
+
+    def initialize(pass:)
+      @pass = pass
+      @calls = 0
+    end
+
+    def score(golden:, result:)
+      @calls += 1
+      Verdict.new(score: @pass ? 0.9 : 0.3, pass: @pass, reason: "stub")
+    end
+  end
+
+  it "attaches a judge verdict for a rubric'd case and folds it into pass?" do
+    t = FakeTransport.new { ok_result }
+    judge = FakeJudge.new(pass: false)
+    rc = described_class.new(transport: t, judge: judge)
+         .run_case(golden("expect" => { "rubric" => "seja cordial" }))
+    expect(judge.calls).to eq(1)
+    expect(rc.result.judge.pass).to be(false)
+    expect(rc.result.pass?).to be(false)      # deterministic ok, but the judge failed it
+    expect(rc.result.judge_pending?).to be(false)
+  end
+
+  it "does NOT invoke the judge on an errored turn" do
+    t = FakeTransport.new { Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
+    judge = FakeJudge.new(pass: true)
+    rc = described_class.new(transport: t, judge: judge)
+         .run_case(golden("expect" => { "rubric" => "x" }))
+    expect(judge.calls).to eq(0)
+    expect(rc.result.pass?).to be(false)
+  end
 end

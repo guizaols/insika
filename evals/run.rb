@@ -19,6 +19,7 @@ require_relative "lib/evals/assertions"
 require_relative "lib/evals/report"
 require_relative "lib/evals/transport"
 require_relative "lib/evals/runner"
+require_relative "lib/evals/judge"
 
 opts = {
   base_url: ENV["HARNESS_URL"] || "http://localhost:9292",
@@ -27,7 +28,12 @@ opts = {
   mode: "eval",
   agent: nil,
   out: nil,
-  timeout: 120
+  timeout: 120,
+  # Judge (Fase B): the model that scores rubrics. Off unless a model is given
+  # (via flag or EVAL_JUDGE_MODEL) — without it, rubric'd cases stay judge_pending.
+  judge_model: ENV["EVAL_JUDGE_MODEL"],
+  judge_provider: ENV["EVAL_JUDGE_PROVIDER"],
+  quorum: 1
 }
 
 OptionParser.new do |o|
@@ -38,17 +44,42 @@ OptionParser.new do |o|
   o.on("--mode MODE", %w[eval perf both], "eval | perf | both (default eval)") { |v| opts[:mode] = v }
   o.on("--out FILE", "write the JSON report here (default evals/reports/<ts>.json)") { |v| opts[:out] = v }
   o.on("--timeout N", Integer, "per-turn read timeout seconds (default 120)") { |v| opts[:timeout] = v }
+  o.on("--judge-model MODEL", "score rubrics with this model (else EVAL_JUDGE_MODEL; off if unset)") { |v| opts[:judge_model] = v }
+  o.on("--judge-provider PROVIDER", "provider for the judge model (optional)") { |v| opts[:judge_provider] = v }
+  o.on("--quorum N", Integer, "judge samples per case; median wins (default 1)") { |v| opts[:quorum] = v }
+  o.on("--no-judge", "disable the LLM-judge (rubric cases stay judge_pending)") { opts[:judge_model] = nil }
   o.on("-h", "--help") { puts o; exit 0 }
 end.parse!
+
+# Builds the LLM-judge if a model is configured. The `ask` uses RubyLLM at
+# temperature 0 (deterministic-ish); credentials come from the standard env. Nil
+# when no judge model is set — rubric'd cases then read as judge_pending.
+def build_judge(opts)
+  return nil unless opts[:judge_model]
+
+  require "ruby_llm"
+  RubyLLM.configure do |c|
+    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
+    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
+    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+  end
+  ask = lambda do |prompt|
+    RubyLLM.chat(model: opts[:judge_model], provider: opts[:judge_provider], assume_model_exists: true)
+           .with_temperature(0).ask(prompt).content
+  end
+  Evals::Judge.new(ask: ask, quorum: opts[:quorum])
+end
 
 goldens = Evals::GoldenLoader.load_dir(opts[:golden_dir])
 goldens.select! { |g| g.agent == opts[:agent] } if opts[:agent]
 abort "eval: no goldens found in #{opts[:golden_dir]}" if goldens.empty?
 
 transport = Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
-puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) | mode=#{opts[:mode]}"
+judge = build_judge(opts)
+judge_note = judge ? "judge=#{opts[:judge_model]} (q#{opts[:quorum]})" : "judge=off"
+puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) | mode=#{opts[:mode]} | #{judge_note}"
 
-runcases = Evals::Runner.new(transport: transport).run(goldens)
+runcases = Evals::Runner.new(transport: transport, judge: judge).run(goldens)
 results = runcases.map(&:result)
 at = Time.now.utc.iso8601
 
