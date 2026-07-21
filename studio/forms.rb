@@ -13,6 +13,17 @@ module Studio
         v = presence(r.params[field])
         limits[field.to_sym] = Integer(v) if v
       end
+      # Per-agent edge overrides (item 33). Unlike the timeouts (always present via
+      # DEFAULT_LIMITS), these are OPT-IN keys: blank DELETES the override (inherit
+      # the platform edge settings); 0 explicitly disables for this agent.
+      %w[chat_rate_limit agent_token_ceiling].each do |field|
+        v = coerce(r.params[field]) { |x| Integer(x) }
+        if v.nil?
+          limits.delete(field.to_sym)
+        else
+          limits[field.to_sym] = v
+        end
+      end
       {
         id: @agent.id,
         model: presence(r.params["model"]),
@@ -141,6 +152,19 @@ module Studio
       kl = presence(r.params["keep_last"])
       patch["compaction"]["keep_last"] = Integer(kl) if kl
       patch
+    end
+
+    # Edge limits (item 33 / §12 G7) — the platform rate-limit/cost layer, saved
+    # from its OWN form (a sub-resource, like models). The limit fields write nil
+    # when blank (off — the EdgeLimiter reads nil/0 as off); the windows fall back
+    # to the built-in defaults when cleared (the limiter guards non-positive).
+    def edge_patch(r)
+      edge = {}
+      %w[chat_rate_limit chat_rate_window agent_token_ceiling agent_token_window].each do |f|
+        edge[f] = coerce(r.params[f]) { |x| Integer(x) }
+      end
+      edge["limit_response"] = presence(r.params["limit_response"])
+      { "edge" => edge }
     end
 
     # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a
