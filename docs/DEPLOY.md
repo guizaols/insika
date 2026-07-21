@@ -26,7 +26,7 @@ curl localhost:9292/up      # {"status":"ok"}
 | `PORT` | `9292` | porta do bind http |
 | `WEB_CONCURRENCY` | `2` | nº de processos (workers) do Falcon |
 | `OPENCLAW_GATEWAY_TOKEN` | cai no `ADMIN_TOKEN` | Bearer de `/v1/responses` e `/v1/agents` (gateway) |
-| `ADMIN_TOKEN` | `local-demo` | token do `/studio` e `/admin` (**troque em prod**) |
+| `ADMIN_TOKEN` | `local-demo` | token de login do `/studio` (**troque em prod**) |
 | `DEEPSEEK_API_KEY` | — | chave do provider. **Sem ela o motor SOBE** (`/up` verde), mas turnos falham até configurar (env ou Studio > LLM providers) — resiliência de nuvem |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | modelo |
 | `ACHEI_INTERNAL_URL` | — | base p/ as data-tools chamarem `/api/internal/*` (ver abaixo) |
@@ -43,7 +43,7 @@ São **dois** segredos com propósitos distintos — em produção use valores
 **DIFERENTES** (o `OPENCLAW_GATEWAY_TOKEN` cair no `ADMIN_TOKEN` é só conveniência
 de dev):
 
-- **`ADMIN_TOKEN`** — login do `/studio` + Bearer do `/admin`. Superfície de
+- **`ADMIN_TOKEN`** — login do `/studio` (cookie-auth). Superfície de
   OPERADOR (só você). Rotacionar é **seguro e independente**: muda no Railway,
   redeploy, e você faz login com o novo. NÃO afeta o achei-b2b.
 - **`OPENCLAW_GATEWAY_TOKEN`** — Bearer do `/v1/responses` e `/v1/agents`. É o
