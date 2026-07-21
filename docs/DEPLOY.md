@@ -5,7 +5,7 @@ performance/carga.
 
 ## Imagem (Docker)
 
-`Dockerfile` (multi-stage, Ruby 3.3.5, YJIT ligado) serve `config.ru` sob Falcon.
+`Dockerfile` (multi-stage, Ruby 4.0.6, YJIT ligado) serve `config.ru` sob Falcon.
 O Studio já vem com o `dist/` versionado — **build sem Node**. O backend é SQLite
 (WAL) durável em `HARNESS_DB`; monte um volume e aponte pra dentro dele.
 
@@ -32,6 +32,10 @@ curl localhost:9292/up      # {"status":"ok"}
 | `CONSUMER_INTERNAL_URL` | — | base p/ as data-tools chamarem `/api/internal/*` (ver abaixo) |
 | `HARNESS_EGRESS_HOSTS` | — | allowlist de host de saída (SSRF guard) |
 | `HARNESS_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | só p/ callback http/loopback (NÃO em cloud) |
+| `LITESTREAM_REPLICA_URL` | — | **liga o Litestream** (backup/DR). Vazio = desligado (default). Ver seção abaixo |
+| `LITESTREAM_ENDPOINT` | — | endpoint S3-compatível (R2/MinIO). Vazio = AWS S3 |
+| `LITESTREAM_REGION` | — | região do bucket (AWS: `us-east-1`; R2: `auto`) |
+| `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` | — | credenciais do bucket (lidas nativamente pelo Litestream) |
 
 ### Tokens & rotação (separe os dois!)
 
@@ -79,12 +83,81 @@ restart policy.
 5. Aponte o consumer-app: `OPENCLAW_GATEWAY_URL=<url pública do Railway>` +
    `OPENCLAW_GATEWAY_TOKEN` batendo com o do motor (ver `RUNNING-LOCAL.md`).
 
+## Backup/DR — Litestream (opt-in, configurável)
+
+O volume único é o **único ponto de perda total** entre piloto e produção
+(corrupção/sumiço do disco = adeus conversas + config). O Litestream faz
+**replicação contínua** do `harness.db` (WAL) para um bucket S3/R2, sem trocar de
+banco e **sem uma linha de Ruby**.
+
+É **desligado por padrão** e liga por ENV — quem roda single-box efêmero não paga
+custo; quem quer durabilidade externa habilita apontando um bucket. O gatilho é
+uma única variável, `LITESTREAM_REPLICA_URL`:
+
+- **vazia (default):** o `deploy/entrypoint.sh` dá `exec` direto no Falcon. O
+  binário do Litestream nem é invocado — comportamento idêntico ao anterior.
+- **setada:** numa box nova o entrypoint **restaura** o `harness.db` do replica
+  *antes* do app abrir o banco (`litestream restore -if-replica-exists`; no-op se
+  o bucket ainda estiver vazio) e depois **supervisiona** o app
+  (`litestream replicate -exec`), replicando o WAL continuamente e fazendo um
+  sync final no shutdown (SIGTERM do Railway).
+
+### Ligar em produção (Railway)
+
+Adicione as vars (mantendo o volume em `/data`):
+
+```bash
+# AWS S3
+LITESTREAM_REPLICA_URL=s3://meu-bucket/harness
+LITESTREAM_REGION=us-east-1
+LITESTREAM_ACCESS_KEY_ID=AKIA...
+LITESTREAM_SECRET_ACCESS_KEY=...
+
+# Cloudflare R2 (S3-compatível): mesmo, + endpoint e region=auto
+LITESTREAM_REPLICA_URL=s3://meu-bucket/harness
+LITESTREAM_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+LITESTREAM_REGION=auto
+LITESTREAM_ACCESS_KEY_ID=...
+LITESTREAM_SECRET_ACCESS_KEY=...
+```
+
+As credenciais são lidas nativamente pelo Litestream (não ficam no
+`deploy/litestream.yml`, que só referencia URL/endpoint/region via `${VAR}`).
+
+### Restore drill (o "done" de verdade — sem drill, backup não conta)
+
+O gap piloto→produção só fecha quando um restore foi **exercitado**. Duas formas:
+
+**1. Local, automatizado (prova o mecanismo, zero credencial):** usa a imagem
+real + um replica `file://`, sobe → replica → apaga o volume → sobe outra box →
+restaura → confere que a linha-marcador sobreviveu e o `/up` está verde.
+
+```bash
+scripts/litestream-restore-drill.sh      # requer docker, sqlite3, curl
+# → [drill] PASS — marker … restored from replica; /up green on the new box.
+```
+
+**2. Produção (o drill que conta pro go-live):** contra o bucket real.
+
+```bash
+# a. com o serviço no ar e replicando, gere alguma config/conversa e confirme
+#    que o replica tem gerações:
+litestream snapshots -config deploy/litestream.yml "$HARNESS_DB"
+
+# b. suba uma box NOVA (volume vazio) com as mesmas LITESTREAM_* → o entrypoint
+#    restaura sozinho no boot. Valide manualmente no /studio que conversas e
+#    config vieram de volta. Alternativa manual do restore:
+litestream restore -config deploy/litestream.yml -o /tmp/restored.db "$HARNESS_DB"
+```
+
+Registre a data do drill no runbook de corte (§12 G8 do FOLLOWUP).
+
 ## k8s (evolução)
 
 SQLite não compartilha 1 arquivo entre nós. Caminhos:
 StatefulSet + PVC por pod + roteamento **sticky-by-agent** (shard por tenant), ou
-**LiteFS**, ou o adapter **Postgres** (opcional). **Litestream** p/ backup/DR desde
-cedo (ortogonal à topologia).
+**LiteFS**, ou o adapter **Postgres** (opcional). **Litestream** (acima) p/ backup/DR
+desde cedo — ortogonal à topologia.
 
 ---
 
