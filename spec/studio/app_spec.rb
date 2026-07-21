@@ -246,6 +246,7 @@ RSpec.describe Studio::App do
     res = Client.new(app).get("/assets/dist/application.css")
     expect(res.status).to eq(200)
     expect(res.headers["content-type"]).to include("text/css")
+    expect(res.headers["cache-control"]).to eq("no-cache") # never serve a stale rebuild
   end
 
   it "doesn't escape the dist dir (path traversal → 404)" do

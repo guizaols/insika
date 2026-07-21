@@ -1036,7 +1036,11 @@ module Studio
       end
 
       response["content-type"] = CONTENT_TYPES.fetch(File.extname(base), "application/octet-stream")
-      response["cache-control"] = "public, max-age=300"
+      # no-cache (revalidate every load) + the ?v=mtime bust in asset_path: a
+      # rebuilt CSS/JS is NEVER served stale, even mid-session across restarts.
+      # Assets are tiny and same-origin, so the revalidation cost is negligible —
+      # correctness over caching for an actively-edited admin UI.
+      response["cache-control"] = "no-cache"
       File.read(path)
     end
 
