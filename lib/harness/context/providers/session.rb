@@ -17,9 +17,16 @@ module Harness
           messages = transcript_for(request)
           return [] if messages.nil? || messages.empty?
 
-          messages.each_with_index.map do |msg, idx|
+          # 1 fragment per EVICTION UNIT (§11 R1): a plain message, OR an
+          # assistant-with-tool_calls together with its tool results. Grouping at
+          # the fragment level means the budget cut (apply_budget) drops a whole
+          # tool cycle atomically — a tool_use is NEVER seeded without its result
+          # (which providers reject), without touching apply_budget itself.
+          eviction_units(messages).each_with_index.map do |unit, idx|
             ContextFragment.build(
-              content: { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] },
+              # single message stays a Hash (compat with existing fragments); a
+              # multi-message cycle is an Array (seed_history flattens it back).
+              content: unit.size == 1 ? unit.first : unit,
               placement: :history,
               # HISTORY_MAX ceiling; idx 0 = oldest (drops first in the cut)
               priority: [Context::Priority::HISTORY_BASE + idx, Context::Priority::HISTORY_MAX].min,
@@ -29,6 +36,43 @@ module Harness
         end
 
         private
+
+        # Groups a flat message list into eviction units. An assistant message
+        # carrying tool_calls absorbs the `role: tool` messages that immediately
+        # follow it (its results). Everything else is a unit of one.
+        def eviction_units(messages)
+          normalized = messages.map { |m| normalize(m) }
+          units = []
+          i = 0
+          while i < normalized.length
+            msg = normalized[i]
+            i += 1
+            if msg[:role].to_s == "assistant" && tool_calls?(msg)
+              cycle = [msg]
+              while i < normalized.length && normalized[i][:role].to_s == "tool"
+                cycle << normalized[i]
+                i += 1
+              end
+              units << cycle
+            else
+              units << [msg]
+            end
+          end
+          units
+        end
+
+        # Symbol-keyed message preserving tool_calls / tool_call_id when present
+        # (a plain message keeps just {role, content} — parity with the old shape).
+        def normalize(msg)
+          h = { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] }
+          tool_calls = msg[:tool_calls] || msg["tool_calls"]
+          tool_call_id = msg[:tool_call_id] || msg["tool_call_id"]
+          h[:tool_calls] = tool_calls if tool_calls
+          h[:tool_call_id] = tool_call_id if tool_call_id
+          h
+        end
+
+        def tool_calls?(msg) = msg[:tool_calls] && !Array(msg[:tool_calls]).empty?
 
         # Precedence: checkpoint -> explicit history -> store.
         # The first present source wins; no merge.

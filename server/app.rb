@@ -109,8 +109,6 @@ module Harness
           handle_read_task(id)
         in ["GET", ["v1", "events"]]
           handle_events(req)
-        in ["POST", ["agent", "messages"]]
-          handle_legacy(req)
         in ["POST", ["a2a"]] if @a2a
           handle_a2a(req)
         in ["GET", [".well-known", "agent-card.json"]] if @a2a
@@ -316,19 +314,6 @@ module Harness
         subscription = @event_stream.subscribe(task_id: req.GET["task_id"],
                                                 session_id: req.GET["session_id"])
         sse_response(subscription)
-      end
-
-      # POST /agent/messages — LEGACY, byte-compatible. Translates to
-      # send_message (the Runner no longer exists). `history` present
-      # -> nothing is persisted (parity). Default agent "sales".
-      def handle_legacy(req)
-        body = parse_body(req)
-        payload = {
-          agent: body[:agent] || "sales",
-          message: body[:message],
-          history: body[:history] || []
-        }
-        message_flow(payload, stream: true)
       end
 
       # POST /a2a — JSON-RPC 2.0: HTTP 200 ALWAYS (the error travels in the envelope,

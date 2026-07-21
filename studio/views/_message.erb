@@ -16,7 +16,15 @@
     <div class="who"><%= role[0, 1].upcase %></div>
     <div class="bubble">
       <div class="role-tag"><%= role %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
-      <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
+      <% unless m["content"].to_s.empty? && Array(m["tool_calls"]).any? %>
+        <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
+      <% end %>
+      <% Array(m["tool_calls"]).each do |tc| %>
+        <details class="toolcard">
+          <summary><span class="arrow">→</span><strong><%= tc["name"] %></strong></summary>
+          <pre><%= message_content(tc["arguments"]) %></pre>
+        </details>
+      <% end %>
     </div>
   </div>
 <% end %>

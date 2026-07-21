@@ -34,8 +34,13 @@ class FakeChat
     self
   end
 
-  def add_message(role:, content:)
-    @messages << { role: role, content: content }
+  # tool_calls/tool_call_id are optional (§11 R1 rehydration): recorded only when
+  # present, so existing callers that seed plain {role, content} are unaffected.
+  def add_message(role:, content:, tool_calls: nil, tool_call_id: nil)
+    msg = { role: role, content: content }
+    msg[:tool_calls] = tool_calls if tool_calls
+    msg[:tool_call_id] = tool_call_id if tool_call_id
+    @messages << msg
     self
   end
 

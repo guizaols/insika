@@ -31,6 +31,13 @@ module Harness
     # tool_call <-> tool decorators (side-effects/skip).
     attr_accessor :current_tool_call
 
+    # Internal (§11 R1): the chat's message count RIGHT AFTER `assemble` (seeded
+    # history) and BEFORE `ask`. persist_turn slices `chat.messages.drop(baseline)`
+    # to serialize the turn's real exchange — user + assistant(tool_calls) + tool
+    # results + final assistant — into the transcript. nil = no chat recorded
+    # (workflow/halt) → persist_turn falls back to the {user, assistant} pair.
+    attr_accessor :chat_baseline
+
     # Internal: impl_name(String) -> STABLE name of the capability that
     # resolved it, computed by resolve_capabilities BEFORE the policy_request and
     # consulted AFTER @policy_engine.decide, at the post-Policy junction, to

@@ -779,6 +779,17 @@ RSpec.describe Studio::App do
     expect(body).to include('class="toolcard result"')
   end
 
+  it "session viewer renders an assistant's tool_calls as cards (§11 R1)" do
+    sess = StoredSession.new(id: "sess-tc", updated_at: "t",
+                             messages: [{ "role" => "assistant", "content" => "",
+                                          "tool_calls" => [{ "id" => "c1", "name" => "search_products",
+                                                             "arguments" => { "q" => "trufa" } }] }])
+    app, = build_app(sessions: { "sess-tc" => sess })
+    body = login(app).get("/sessions/sess-tc").body
+    expect(body).to include("search_products")
+    expect(body).to include("trufa")
+  end
+
   it "the detail's history lists the recent conversations" do
     sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-abc123456789" => sess })
