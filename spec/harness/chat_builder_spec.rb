@@ -176,6 +176,33 @@ RSpec.describe Harness::ChatBuilder do
                                     { role: :assistant, content: "olá" }
                                   ])
     end
+
+    # §11 R1: fidelity between turns.
+    it "reidrata tool_calls (assistant) e tool_call_id (tool) só quando presentes" do
+      builder.seed_history(chat, [
+                             { "role" => "assistant", "content" => "",
+                               "tool_calls" => [{ "id" => "c1", "name" => "search",
+                                                  "arguments" => { "q" => "x" } }] },
+                             { "role" => "tool", "tool_call_id" => "c1", "content" => "res" }
+                           ])
+
+      assistant, tool = chat.messages
+      expect(assistant[:tool_calls]).to be_a(Hash)
+      tc = assistant[:tool_calls]["c1"]
+      expect([tc.id, tc.name, tc.arguments]).to eq(["c1", "search", { "q" => "x" }])
+      expect(tool[:tool_call_id]).to eq("c1")
+      # a mensagem sem tool_calls NÃO ganha a chave (mantém o shape de 2 args do fake)
+      expect(assistant.key?(:tool_call_id)).to be(false)
+    end
+
+    it "achata unidades de eviction (Array) do provider de volta num fluxo plano" do
+      builder.seed_history(chat, [
+                             { role: :user, content: "u" },
+                             [{ role: :assistant, content: "a" }, { role: :tool, content: "t", tool_call_id: "c1" }]
+                           ])
+
+      expect(chat.messages.map { |m| m[:role] }).to eq(%i[user assistant tool])
+    end
   end
 
   describe "#wire_callbacks" do

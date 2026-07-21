@@ -101,6 +101,88 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
     end
   end
 
+  describe "§11 R1 — persistência de tool calls/results (fidelidade entre turnos)" do
+    # Mimics RubyLLM: #ask appends the turn's REAL exchange to #messages (the shared
+    # FakeChat does not — that is what the {user, assistant} fallback covers).
+    let(:recording_chat) do
+      Class.new(FakeChat) do
+        def ask(message)
+          add_message(role: :user, content: message)
+          tc = FakeChat::ToolCall.new("search", { "q" => "x" }, "c1")
+          add_message(role: :assistant, content: "", tool_calls: { "c1" => tc })
+          add_message(role: :tool, content: "resultado da tool", tool_call_id: "c1")
+          add_message(role: :assistant, content: "RAW #{final_content}")
+          FakeChat::Response.new(final_content)
+        end
+      end.new
+    end
+
+    it "persiste o turno inteiro: user, assistant(tool_calls), tool, assistant final" do
+      session_store.create(id: "s1")
+      recording_chat.final_content = "resposta final"
+
+      run_turn(build_executor, make_task, fake_chat: recording_chat)
+
+      msgs = session_store.find("s1").messages
+      expect(msgs.map { |m| m["role"] }).to eq(%w[user assistant tool assistant])
+      expect(msgs[1]["tool_calls"]).to eq([{ "id" => "c1", "name" => "search", "arguments" => { "q" => "x" } }])
+      expect(msgs[2]).to include("role" => "tool", "tool_call_id" => "c1", "content" => "resultado da tool")
+    end
+
+    it "a bolha assistant final carrega o texto REDIGIDO (D3), não o raw do gem" do
+      session_store.create(id: "s1")
+      recording_chat.final_content = "resposta final"
+
+      run_turn(build_executor, make_task, fake_chat: recording_chat)
+
+      expect(session_store.find("s1").messages.last)
+        .to include("role" => "assistant", "content" => "resposta final")
+    end
+
+    it "o checkpoint grava a lista PLANA do turno (o provider reagrupa na leitura)" do
+      session_store.create(id: "s1")
+      recording_chat.final_content = "ok"
+
+      run_turn(build_executor, make_task, fake_chat: recording_chat)
+
+      cp = checkpoint_store.latest("t")
+      expect(cp.messages.map { |m| m["role"] }).to eq(%w[user assistant tool assistant])
+      expect(cp.messages).to all(be_a(Hash)) # plano, sem Arrays aninhados
+    end
+
+    it "FakeChat que NÃO grava messages -> fallback {user, assistant} (compat preservada)" do
+      session_store.create(id: "s1")
+      run_turn(build_executor, make_task) # FakeChat padrão: #ask não popula #messages
+
+      expect(session_store.find("s1").messages.map { |m| m["role"] }).to eq(%w[user assistant])
+    end
+
+    it "trunca role:tool > 4k na persistência (resultado íntegro segue no ToolTraceStore)" do
+      clipped = build_executor.send(:clip_tool_content, "a" * 5_000)
+      expect(clipped).to start_with("a" * 4_000)
+      expect(clipped).to include("truncado")
+      expect(clipped.length).to be < 5_000
+    end
+  end
+
+  describe "§11 B2 — comando tipado (fonte única string||symbol)" do
+    def task_with(command)
+      Struct.new(:command, :session_id).new(command, nil)
+    end
+
+    it "lê o payload por chave string OU symbol via rebuild_command" do
+      executor = build_executor
+      sym = task_with({ type: :send_message, payload: { message: "oi", history: [1] } })
+      str = task_with({ "type" => "send_message", "payload" => { "message" => "oi", "history" => [1] } })
+
+      [sym, str].each do |t|
+        expect(executor.send(:extract_message, t)).to eq("oi")
+        expect(executor.send(:command_history, t)).to eq([1])
+        expect(executor.send(:command_type, t)).to eq("send_message") # sempre String
+      end
+    end
+  end
+
   describe "run_serial (session serialization, P2-03)" do
     it "spawn error marks the task :failed (does not orphan :queued without a terminal state)" do
       executor = build_executor

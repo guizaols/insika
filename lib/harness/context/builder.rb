@@ -97,6 +97,8 @@ module Harness
     def estimable_text(content)
       case content
       when String then content
+      # An eviction unit (§11 R1): a cycle of message Hashes -> sum their text.
+      when Array then content.map { |c| estimable_text(c) }.join(" ")
       when Hash then content.values.map(&:to_s).join(" ")
       else content.to_s
       end
