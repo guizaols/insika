@@ -1,51 +1,46 @@
-<header class="page-head">
-  <h1>Playground<span class="sub">chat with an agent — fires the same <code>send_message</code> as the API</span></h1>
-</header>
-
-<div class="playground"
+<%# Playground — chat surface (T4): config bar on top, transcript scrolls, composer
+   pinned at the bottom. Same form fields/route + live-transcript targets as before;
+   fires the same send_message as the API. %>
+<div class="chat"
      data-controller="live-transcript"
      data-live-transcript-session-value="<%= @session_id %>">
-  <form class="card compose" method="post" action="/studio/playground">
+  <form class="chat-form" method="post" action="/studio/playground">
     <%== csrf_tag %>
-    <div class="row">
-      <label>agent
+    <div class="chat-head">
+      <label class="chat-field">agent
         <select name="agent">
           <% @agents.each do |id| %>
             <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
           <% end %>
         </select>
       </label>
-      <label>session_id
+      <label class="chat-field">session
         <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation">
       </label>
+      <span class="pill info chat-status" data-live-transcript-target="status">disconnected</span>
+      <details class="pin chat-pin">
+        <summary>model override <span class="muted">— pins a NEW conversation (Chat › Agent › platform)</span></summary>
+        <div class="row">
+          <label>model<input type="text" name="model" placeholder="leave empty = agent/platform default"></label>
+          <label>provider<input type="text" name="provider" placeholder="optional"></label>
+        </div>
+      </details>
     </div>
-    <details class="pin">
-      <summary>model override <span class="muted">— pins a NEW conversation (Chat › Agent › platform)</span></summary>
-      <div class="row">
-        <label>model
-          <input type="text" name="model" placeholder="leave empty = agent/platform default">
-        </label>
-        <label>provider
-          <input type="text" name="provider" placeholder="optional">
-        </label>
+
+    <div class="chat-thread">
+      <div class="thread" data-live-transcript-target="stream">
+        <% Array(@history).each do |m| %><%== render("_message", locals: { m: m }) %><% end %>
+        <% if @sent_message %><%== render("_message", locals: { m: { "role" => "user", "content" => @sent_message, "at" => nil } }) %><% end %>
       </div>
-    </details>
-    <label>message
-      <textarea name="message" rows="3" placeholder="Ask the agent something…" required></textarea>
-    </label>
-    <div class="compose-actions">
-      <span class="pill info" data-live-transcript-target="status">disconnected</span>
+      <div class="empty chat-empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@history).empty? && @sent_message.nil? %>>
+        <% if @session_id %>Waiting for turn events…<% else %>Send a message to begin a conversation.<% end %>
+      </div>
+    </div>
+
+    <div class="chat-composer">
+      <textarea name="message" rows="1" placeholder="Ask the agent something…" required
+                aria-label="message"></textarea>
       <button type="submit" class="primary" data-turbo-submits-with="Sending…">Send</button>
     </div>
   </form>
-
-  <div class="card transcript">
-    <div class="thread" data-live-transcript-target="stream">
-      <% Array(@history).each do |m| %><%== render("_message", locals: { m: m }) %><% end %>
-      <% if @sent_message %><%== render("_message", locals: { m: { "role" => "user", "content" => @sent_message, "at" => nil } }) %><% end %>
-    </div>
-    <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@history).empty? && @sent_message.nil? %>>
-      <% if @session_id %>Waiting for turn events…<% else %>Send a message to begin.<% end %>
-    </div>
-  </div>
 </div>
