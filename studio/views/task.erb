@@ -1,0 +1,105 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/tasks">tasks</a> / <span>task</span></nav>
+    <h1>Task
+      <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @task.id %>">
+        <span class="mono"><%= @task.id[0, 16] %></span>
+        <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy" aria-label="Copy full task id">copy id</button>
+      </span>
+      <span class="sub">status <%= @task.status %> · updated <%= @task.updated_at %></span>
+    </h1>
+  </div>
+</header>
+
+<div class="card">
+  <div class="actions">
+    <span class="pill <%= status_class(@task.status) %>"><%= @task.status %></span>
+    <% if @task.session_id %>
+      <span class="muted">session <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(@task.session_id) %>"><%= @task.session_id[0, 12] %></a></span>
+    <% end %>
+    <form method="post" action="<%= task_path(@task.id) %>/pause">
+      <%== csrf_tag %>
+      <button type="submit">Pause</button>
+    </form>
+    <form method="post" action="<%= task_path(@task.id) %>/resume">
+      <%== csrf_tag %>
+      <button type="submit" class="primary">Resume</button>
+    </form>
+    <form method="post" action="<%= task_path(@task.id) %>/cancel"
+          data-turbo-confirm="Cancel this task? In-flight work stops and it can't be resumed.">
+      <%== csrf_tag %>
+      <button type="submit" class="danger">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<% unless Array(@pending).empty? %>
+  <section class="section">
+    <div class="section-head"><h2>Pending approvals</h2></div>
+    <% @pending.each do |pa| %>
+      <div class="card">
+        <div class="skill-name mono"><%= pa.tool %></div>
+        <div class="skill-desc muted">turn <%= pa.turn %> · requested <%= pa.requested_at %></div>
+        <pre><%= message_content(pa.args) %></pre>
+        <div class="actions">
+          <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>">
+            <%== csrf_tag %>
+            <input type="hidden" name="decision" value="approved">
+            <input type="hidden" name="back" value="<%= task_path(@task.id) %>">
+            <button type="submit" class="primary">Approve</button>
+          </form>
+          <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>"
+                data-turbo-confirm="Reject this action? The turn resumes as if the tool was denied.">
+            <%== csrf_tag %>
+            <input type="hidden" name="decision" value="rejected">
+            <input type="hidden" name="back" value="<%= task_path(@task.id) %>">
+            <button type="submit" class="danger">Reject</button>
+          </form>
+        </div>
+      </div>
+    <% end %>
+  </section>
+<% end %>
+
+<section class="section">
+  <div class="section-head"><h2>Command</h2></div>
+  <div class="card"><pre><%= message_content(@task.command) %></pre></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Executions <span class="muted">· <%= Array(@task.executions).size %></span></h2></div>
+  <% if Array(@task.executions).empty? %>
+    <div class="empty">No executions yet.</div>
+  <% else %>
+    <div class="card">
+      <ul class="kv">
+        <% @task.executions.each do |e| %>
+          <li>
+            <span class="k mono">#<%= e.attempt %></span>
+            <span class="v">
+              <span class="pill <%= status_class(e.outcome) %>"><%= e.outcome || "—" %></span>
+              <span class="muted mono"><%= e.started_at %> → <%= e.finished_at || "…" %></span>
+              <% if e.error %><pre><%= e.error %></pre><% end %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Latest checkpoint</h2></div>
+  <% if @checkpoint.nil? %>
+    <div class="empty">No checkpoint recorded.</div>
+  <% else %>
+    <div class="card">
+      <ul class="kv">
+        <li><span class="k">turn</span><span class="v mono"><%= @checkpoint.turn %></span></li>
+        <li><span class="k">messages</span><span class="v mono"><%= Array(@checkpoint.messages).size %></span></li>
+        <li><span class="k">side effects</span><span class="v mono"><%= Array(@checkpoint.completed_side_effects).size %></span></li>
+        <li><span class="k">created</span><span class="v mono"><%= @checkpoint.created_at %></span></li>
+      </ul>
+    </div>
+  <% end %>
+</section>

@@ -62,6 +62,25 @@ RSpec.describe Studio::App do
     def find(id) = sessions[id]
   end
 
+  # §12 G5 — tasks/approvals read stores. Only the surface the pages consume.
+  TaskDouble = Struct.new(:id, :status, :command, :session_id, :executions, :updated_at, keyword_init: true)
+  ExecDouble = Struct.new(:attempt, :started_at, :finished_at, :outcome, :error, keyword_init: true)
+  TaskStoreDouble = Struct.new(:tasks) do # tasks: { id => TaskDouble }
+    def each_id(&blk) = block_given? ? tasks.keys.each(&blk) : tasks.keys.each
+    def find(id) = tasks[id]
+  end
+  # NB: distinct names from the admin specs' PendingDouble/CheckpointDouble —
+  # RSpec constants leak to top-level Object, so a shared name would clobber.
+  StudioPendingRow = Struct.new(:id, :task_id, :turn, :tool, :args, :status, :requested_at, keyword_init: true)
+  PendingStoreDouble = Struct.new(:pendings) do # pendings: [StudioPendingRow]
+    def all_open = pendings.select { |p| p.status == :pending }
+    def open_for(tid) = pendings.select { |p| p.status == :pending && p.task_id == tid }
+  end
+  StudioCheckpointRow = Struct.new(:turn, :messages, :completed_side_effects, :created_at, keyword_init: true)
+  CheckpointStoreDouble = Struct.new(:by_task) do # by_task: { id => StudioCheckpointRow }
+    def latest(id) = by_task[id]
+  end
+
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
               tools_allow: %w[menu calc], skills: %w[pedido], prompt_files: [])
     Harness::AgentProfile.build(id: id, model: model, provider: provider,
@@ -73,7 +92,8 @@ RSpec.describe Studio::App do
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], memory: {}, sessions: {}, settings: nil, llm_providers: [],
-                mcp_instances: [], system_files: {}, tool_traces: {})
+                mcp_instances: [], system_files: {}, tool_traces: {},
+                tasks: {}, pendings: [], checkpoints: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -107,6 +127,9 @@ RSpec.describe Studio::App do
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
       tool_trace_store: trace_store,
+      task_store: TaskStoreDouble.new(tasks),
+      pending_action_store: PendingStoreDouble.new(pendings),
+      checkpoint_store: CheckpointStoreDouble.new(checkpoints),
       session_secret: "x" * 64
     )
     [app, bus]
@@ -1149,5 +1172,163 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/agents").body)
     res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "https://evil.com" })
     expect(res.headers["location"]).to eq("/studio/agents")
+  end
+
+  # --- Tasks & Approvals (§12 G5) ------------------------------------------
+
+  def task(id: "t1", status: :running, session_id: "s1", executions: [])
+    TaskDouble.new(id: id, status: status, command: { "type" => "send_message" },
+                   session_id: session_id, executions: executions, updated_at: "2026-07-21T00:00:00Z")
+  end
+
+  def pending(id: "p1", task_id: "t1", tool: "charge", status: :pending)
+    StudioPendingRow.new(id: id, task_id: task_id, turn: 1, tool: tool,
+                      args: { "amount" => 10 }, status: status, requested_at: "2026-07-21T00:00:00Z")
+  end
+
+  it "lists tasks with a status pill (GET /tasks)" do
+    app, = build_app(tasks: { "t1" => task(id: "t1", status: :running) })
+    res = login(app).get("/tasks")
+    expect(res.status).to eq(200)
+    expect(res.body).to include("t1")
+    expect(res.body).to include("running")
+  end
+
+  it "shows the tasks empty-state when there are none" do
+    app, = build_app
+    expect(login(app).get("/tasks").body).to include("No tasks yet")
+  end
+
+  it "renders a task detail with command + operator controls (GET /tasks/:id)" do
+    exec = ExecDouble.new(attempt: 1, started_at: "t0", finished_at: "t1", outcome: "failed", error: "boom")
+    app, = build_app(tasks: { "t1" => task(executions: [exec]) })
+    res = login(app).get("/tasks/t1")
+    expect(res.status).to eq(200)
+    expect(res.body).to include("send_message")     # the command
+    expect(res.body).to include("/studio/tasks/t1/pause")
+    expect(res.body).to include("/studio/tasks/t1/cancel")
+    expect(res.body).to include("boom")             # the execution error
+  end
+
+  it "404s on a task that doesn't exist" do
+    app, = build_app
+    expect(login(app).get("/tasks/ghost").status).to eq(404)
+  end
+
+  it "shows a task's pending approvals inline on the detail page" do
+    app, = build_app(tasks: { "t1" => task }, pendings: [pending(tool: "refund_order")])
+    res = login(app).get("/tasks/t1")
+    expect(res.body).to include("refund_order")
+    expect(res.body).to include("/studio/approvals/p1")
+  end
+
+  it "shows the latest checkpoint metrics when present" do
+    app, = build_app(
+      tasks: { "t1" => task },
+      checkpoints: { "t1" => StudioCheckpointRow.new(turn: 3, messages: [1, 2], completed_side_effects: [1], created_at: "t0") }
+    )
+    res = login(app).get("/tasks/t1")
+    expect(res.body).to include("Latest checkpoint")
+    expect(res.body).not_to include("No checkpoint recorded")
+  end
+
+  %i[pause resume cancel].each do |action|
+    it "POST /tasks/:id/#{action} dispatches :#{action}_task via the bus" do
+      app, bus = build_app(tasks: { "t1" => task })
+      client = login(app)
+      csrf = csrf_from(client.get("/tasks/t1").body)
+      res = client.post("/tasks/t1/#{action}", params: { "_csrf" => csrf })
+      expect(res.status).to eq(302)
+      expect(res.headers["location"]).to eq("/studio/tasks/t1")
+      cmd = bus.last(:"#{action}_task")
+      expect(cmd).not_to be_nil
+      expect(cmd.payload[:task_id]).to eq("t1")
+      expect(cmd.meta[:transport]).to eq(:studio)
+    end
+  end
+
+  it "blocks a task control POST without CSRF (403)" do
+    app, bus = build_app(tasks: { "t1" => task })
+    client = login(app)
+    client.get("/tasks/t1") # session, but POST omits _csrf
+    expect(client.post("/tasks/t1/cancel").status).to eq(403)
+    expect(bus.types).not_to include(:cancel_task)
+  end
+
+  it "lists pending approvals across tasks with their task status (GET /approvals)" do
+    app, = build_app(tasks: { "t1" => task(status: :waiting) },
+                     pendings: [pending(tool: "charge_card")])
+    res = login(app).get("/approvals")
+    expect(res.status).to eq(200)
+    expect(res.body).to include("charge_card")
+    expect(res.body).to include("waiting")
+  end
+
+  it "shows the approvals empty-state when nothing is pending" do
+    app, = build_app
+    expect(login(app).get("/approvals").body).to include("No pending approvals")
+  end
+
+  it "POST /approvals/:pid approves via :approve_action (operator=studio)" do
+    app, bus = build_app(pendings: [pending])
+    client = login(app)
+    csrf = csrf_from(client.get("/approvals").body)
+    res = client.post("/approvals/p1", params: { "decision" => "approved", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    cmd = bus.last(:approve_action)
+    expect(cmd.payload).to include(pending_id: "p1", decision: "approved", operator: "studio")
+  end
+
+  it "POST /approvals/:pid honours a 'rejected' decision" do
+    app, bus = build_app(pendings: [pending])
+    client = login(app)
+    csrf = csrf_from(client.get("/approvals").body)
+    client.post("/approvals/p1", params: { "decision" => "rejected", "_csrf" => csrf })
+    expect(bus.last(:approve_action).payload[:decision]).to eq("rejected")
+  end
+
+  it "an unknown decision falls back to 'approved' (never dispatches a junk decision)" do
+    app, bus = build_app(pendings: [pending])
+    client = login(app)
+    csrf = csrf_from(client.get("/approvals").body)
+    client.post("/approvals/p1", params: { "decision" => "sudo", "_csrf" => csrf })
+    expect(bus.last(:approve_action).payload[:decision]).to eq("approved")
+  end
+
+  it "redirects an approval back to a safe local path, ignoring an external back" do
+    app, = build_app(pendings: [pending])
+    client = login(app)
+    csrf = csrf_from(client.get("/approvals").body)
+    res = client.post("/approvals/p1",
+                      params: { "decision" => "approved", "back" => "https://evil.com", "_csrf" => csrf })
+    expect(res.headers["location"]).to eq("/studio/approvals")
+  end
+
+  it "redirects an approval to the task detail when back points there" do
+    app, = build_app(tasks: { "t1" => task }, pendings: [pending])
+    client = login(app)
+    csrf = csrf_from(client.get("/tasks/t1").body)
+    res = client.post("/approvals/p1",
+                      params: { "decision" => "approved", "back" => "/studio/tasks/t1", "_csrf" => csrf })
+    expect(res.headers["location"]).to eq("/studio/tasks/t1")
+  end
+
+  it "surfaces a Command error as a red flash (Validation/NotFound → not a 500)" do
+    bus = Class.new(BusDouble) do
+      def dispatch(command)
+        raise Harness::NotFoundError, "task not found" if command.type == :cancel_task
+
+        super
+      end
+    end.new([])
+    app = Class.new(Studio::App)
+    app.configure(command_bus: bus, profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: nil, config: { admin_token: "s3cret" },
+                  task_store: TaskStoreDouble.new({ "t1" => task }), session_secret: "x" * 64)
+    client = login(app)
+    csrf = csrf_from(client.get("/tasks/t1").body)
+    res = client.post("/tasks/t1/cancel", params: { "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(client.get("/tasks/t1").body).to include("task not found") # flash, not a crash
   end
 end

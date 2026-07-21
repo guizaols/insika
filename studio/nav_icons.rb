@@ -16,7 +16,9 @@ module Studio
       mcp: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
       settings: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
       chats: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-      playground: '<polygon points="6 3 20 12 6 21 6 3"/>'
+      playground: '<polygon points="6 3 20 12 6 21 6 3"/>',
+      tasks: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="m18 9 3 3-3 3"/>',
+      approvals: '<path d="M9 12l2 2 4-4"/><path d="M12 3a9 9 0 1 0 9 9"/>'
     }.freeze
 
     def nav_icon(key)

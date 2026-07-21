@@ -65,7 +65,10 @@ Studio::App.configure(
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
-  tool_trace_store: W::TOOL_TRACE_STORE # tool-call trace in the session viewer
+  tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
+  # §12 G5: tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
+  task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
+  pending_action_store: W::PENDING_ACTION_STORE
 )
 
 # Serving mode: turns are born as children of a long-lived supervisor (created lazily

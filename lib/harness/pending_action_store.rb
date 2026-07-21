@@ -63,6 +63,19 @@ module Harness
       end
     end
 
+    # -> [PendingAction] every :pending across all tasks — the approvals inbox
+    # (§12 G5, Studio). Single O(n) scan (vs. open_for per task = O(n·m)); the
+    # UI resolves task context afterwards via TaskStore#find.
+    def all_open
+      @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
+        record = @store.get(SCOPE, key)
+        next if record.nil?
+
+        pa = to_pending(record)
+        pa if pa.status == :pending
+      end
+    end
+
     # -> resolved PendingAction. Only resolves :pending: a double resolution
     # or an invalid decision -> ValidationError; absent -> NotFoundError.
     def resolve(id, decision:, operator: nil)
