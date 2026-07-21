@@ -4,6 +4,8 @@ require "roda"
 require "digest"
 require "securerandom"
 require "rack/utils"
+require "json"
+require "time"
 
 module Studio
   # Harness Studio — the server-rendered management UI, replacing
@@ -549,6 +551,13 @@ module Studio
           @agent = presence(r.params["agent"]) || default_agent
           @session_id = presence(r.params["session_id"])
           @agents = harness[:profile_source].ids.sort
+          # Server-side echo + continuity (§11 A1): render the session's persisted
+          # transcript as bubbles. The user's message is only persisted at the END
+          # of the turn, so the just-sent message rides a one-shot flash bubble
+          # (@sent_message) until it lands in history — an optimistic JS echo can't
+          # work here (POST→redirect wipes the DOM).
+          @history = @session_id ? Array(harness[:session_store]&.find(@session_id)&.messages) : []
+          @sent_message = flash["sent_message"]
           view("playground")
         end
         r.post do
@@ -566,6 +575,9 @@ module Studio
                        create_session(model: presence(r.params["model"]),
                                       provider: presence(r.params["provider"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
+          # Optimistic echo of the just-sent message (§11 A1): survives the redirect
+          # as a one-shot flash, rendered as a user bubble on the next GET.
+          flash["sent_message"] = message unless message.empty?
           r.redirect(playground_path(agent, session_id))
         rescue Harness::ValidationError, Harness::NotFoundError => e
           flash["error"] = e.message
@@ -678,6 +690,26 @@ module Studio
     def default_agent
       ids = harness[:profile_source].ids
       ids.include?("bia") ? "bia" : (ids.first || "bia")
+    end
+
+    # --- Transcript display helpers (playground + session viewer) ------------
+
+    # A stored message's content for display: strings as-is; structured payloads
+    # as pretty JSON. NEVER Ruby #inspect (session.erb:45 leaked hashrockets to the
+    # operator). §11 A2.
+    def message_content(content)
+      return content.to_s if content.is_a?(String)
+
+      JSON.pretty_generate(content)
+    rescue StandardError
+      content.to_s
+    end
+
+    # ISO8601 → "HH:MM" for a transcript timestamp; "" when unparseable/absent.
+    def short_time(iso)
+      Time.parse(iso.to_s).strftime("%H:%M")
+    rescue StandardError
+      ""
     end
 
     # Friendly 404 from any point in the routing (missing agent/session).
