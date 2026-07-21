@@ -1,0 +1,41 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>approvals</span></nav>
+    <h1>Approvals<span class="sub"><%= @approvals.size %> pending</span></h1>
+  </div>
+  <a class="btn" href="/studio/tasks">Tasks →</a>
+</header>
+
+<% if @approvals.empty? %>
+  <div class="empty">No pending approvals. Actions that need a human decision (approval-gated tools) land here.</div>
+<% else %>
+  <% @approvals.each do |a| %>
+    <% pa = a[:pending]; task = a[:task] %>
+    <div class="card">
+      <div class="skill-name mono">
+        <%= pa.tool %>
+        <% if task %><span class="pill <%= status_class(task.status) %>"><%= task.status %></span><% end %>
+      </div>
+      <div class="skill-desc muted">
+        <a class="mono" href="<%= task_path(pa.task_id) %>">task <%= pa.task_id[0, 12] %></a>
+        · turn <%= pa.turn %> · requested <%= pa.requested_at %>
+      </div>
+      <pre><%= message_content(pa.args) %></pre>
+      <div class="actions">
+        <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>">
+          <%== csrf_tag %>
+          <input type="hidden" name="decision" value="approved">
+          <input type="hidden" name="back" value="/studio/approvals">
+          <button type="submit" class="primary">Approve</button>
+        </form>
+        <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>"
+              data-turbo-confirm="Reject this action? The turn resumes as if the tool was denied.">
+          <%== csrf_tag %>
+          <input type="hidden" name="decision" value="rejected">
+          <input type="hidden" name="back" value="/studio/approvals">
+          <button type="submit" class="danger">Reject</button>
+        </form>
+      </div>
+    </div>
+  <% end %>
+<% end %>

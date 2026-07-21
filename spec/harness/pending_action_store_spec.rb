@@ -44,6 +44,15 @@ RSpec.describe Harness::PendingActionStore do
     expect(open.map(&:id)).to eq([a.id]) # only the :pending one from t1
   end
 
+  it "all_open returns every :pending across tasks (approvals inbox, §12 G5)" do
+    a = create(task_id: "t1")
+    b = create(task_id: "t2")
+    resolved = create(task_id: "t1")
+    store.resolve(resolved.id, decision: :rejected, operator: "op")
+
+    expect(store.all_open.map(&:id)).to contain_exactly(a.id, b.id) # both tasks, only :pending
+  end
+
   it "resolve approved records decision, operator and timestamp" do
     pa = create
     resolved = store.resolve(pa.id, decision: :approved, operator: "alice")
