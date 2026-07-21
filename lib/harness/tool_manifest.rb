@@ -204,18 +204,11 @@ module Harness
       (self.class.stringify(base || {})).merge(self.class.stringify(override || {}))
     end
 
-    def blank?(v) = v.nil? || v.to_s.empty?
+    def blank?(v) = Harness::Coercion.blank?(v)
 
     # Deep string keys (the wire may arrive symbolized; the nested JSON Schema
     # must stay string-keyed — same as ToolDefinition's canonicalization).
-    def self.stringify(obj)
-      case obj
-      when Hash then obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = stringify(v) }
-      when Array then obj.map { |v| stringify(v) }
-      when Symbol then obj.to_s
-      else obj
-      end
-    end
+    def self.stringify(obj) = Harness::Coercion.deep_stringify(obj)
 
     def self.presence(str) = Harness::Coercion.presence(str)
   end

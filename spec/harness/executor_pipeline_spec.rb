@@ -171,7 +171,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
     it "trunca role:tool > 4k na persistência (resultado íntegro segue no ToolTraceStore)" do
       clipped = build_executor.send(:clip_tool_content, "a" * 5_000)
       expect(clipped).to start_with("a" * 4_000)
-      expect(clipped).to include("truncado")
+      expect(clipped).to include("truncated")
       expect(clipped.length).to be < 5_000
     end
   end
@@ -306,7 +306,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
 
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
-      expect(task.executions.last.error["message"]).to include("sem halt_reason")
+      expect(task.executions.last.error["message"]).to include("without halt_reason")
     end
 
     it "real empty stack: turn completes normally" do

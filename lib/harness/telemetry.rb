@@ -50,7 +50,7 @@ module Harness
     end
 
     def truthy(value) = %w[1 true yes on].include?(value.to_s.strip.downcase)
-    def present?(value) = !value.to_s.strip.empty?
+    def present?(value) = Harness::Coercion.present?(value)
 
     # --- OTEL adapters (gem boundary; only instantiated after setup's require).
     # They hide OpenTelemetry:: from the Recorder — which stays testable without the gem.

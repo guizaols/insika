@@ -52,6 +52,6 @@ module Harness
     end
 
     def numeric?(v) = v.is_a?(Numeric)
-    def present?(v) = !v.nil? && !v.to_s.strip.empty?
+    def present?(v) = Harness::Coercion.present?(v)
   end
 end
