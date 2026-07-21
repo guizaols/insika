@@ -324,19 +324,21 @@ module Studio
 
         # New skill editor (before the generic String matcher).
         r.get "new" do
-          @skill_name = ""
+          load_skills_master
+          @selected = ""
           @skill_content = new_skill_template
-          view("skill_edit")
+          view("skills")
         end
 
         r.on String do |name|
           name = utf8(name)
-          # GET /studio/skills/:name — editor (island code-editor).
+          # GET /studio/skills/:name — drill with this skill open in the detail.
           r.is do
             r.get do
-              @skill_name = name
+              load_skills_master
+              @selected = name
               @skill_content = skill_source(name)
-              view("skill_edit")
+              view("skills")
             end
           end
           # Enables/disables the skill on N agents at once.
@@ -809,10 +811,21 @@ module Studio
 
     # --- Skills index --------------------------------------------------------
 
-    def render_skills_index
+    # Master data for the Skills drill-down (list + authored badges + agents),
+    # shared by every skill route so the master pane always renders. @selected
+    # drives the detail pane (nil = none, "" = new, name = edit).
+    def load_skills_master
       @skills = (harness[:skill_catalog]&.all || []).sort_by(&:name)
       @stored = harness[:skill_store] ? harness[:skill_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
+    end
+
+    def render_skills_index
+      load_skills_master
+      # Auto-open the first skill (drill-down convention) so the detail pane is
+      # useful on landing; the empty state only shows with an empty catalog.
+      @selected = @skills.first&.name
+      @skill_content = @selected ? skill_source(@selected) : nil
       view("skills")
     end
 

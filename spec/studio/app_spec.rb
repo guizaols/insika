@@ -37,7 +37,7 @@ RSpec.describe Studio::App do
   end
 
   # Stage F read stores (only what the pages consume).
-  SkillEntry = Struct.new(:name, :description, keyword_init: true)
+  SkillEntry = Struct.new(:name, :description, :body, keyword_init: true) # body: real catalog skills expose it (drill editor reads it)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
     def versions(_agent, _name) = []
