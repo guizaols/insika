@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csp-nonce" content="<%= csp_nonce %>">
   <title>Harness Studio</title>
-  <link rel="stylesheet" href="/studio/assets/dist/application.css">
-  <script type="module" src="/studio/assets/dist/application.js" defer></script>
+  <link rel="stylesheet" href="<%= asset_path("application.css") %>">
+  <script type="module" src="<%= asset_path("application.js") %>" defer></script>
 </head>
 <body>
   <% if authenticated? %>

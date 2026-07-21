@@ -1040,6 +1040,19 @@ module Studio
       File.read(path)
     end
 
+    # Cache-busting URL for a dist asset. Dist files are served under a STABLE
+    # name with max-age=300, so a rebuilt CSS/JS stays masked by the browser
+    # cache for 5 min — even across a server restart ("reiniciei e continua
+    # quebrado"). Appending the file mtime as ?v= changes the URL whenever the
+    # asset changes, so the browser always refetches the fresh build. The query
+    # is ignored by serve_asset (it matches on the path segment).
+    def asset_path(file)
+      base = File.basename(file)
+      path = File.join(ASSETS_DIR, base)
+      v = File.file?(path) ? File.mtime(path).to_i : 0
+      "/studio/assets/dist/#{base}?v=#{v}"
+    end
+
     def presence(str)
       s = str.to_s.strip
       s.empty? ? nil : s

@@ -980,6 +980,13 @@ RSpec.describe Studio::App do
     expect(body).to include("environment")
   end
 
+  it "cache-busts the dist assets (?v=) so a rebuild isn't masked by the browser cache" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to match(%r{/studio/assets/dist/application\.css\?v=\d+})
+    expect(body).to match(%r{/studio/assets/dist/application\.js\?v=\d+})
+  end
+
   it "applies the cookie theme server-side (no wrong-theme flash on load)" do
     app, = build_app
     client = login(app)
