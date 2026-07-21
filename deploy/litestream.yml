@@ -1,0 +1,23 @@
+# Litestream replication config — OPT-IN (see deploy/entrypoint.sh + docs/DEPLOY.md).
+#
+# Every value is read from the environment so nothing sensitive is baked into the
+# image. Litestream expands ${VAR} references at load time. Credentials are read by
+# Litestream directly from its native env vars (LITESTREAM_ACCESS_KEY_ID /
+# LITESTREAM_SECRET_ACCESS_KEY) — deliberately NOT referenced here.
+#
+# The whole feature is gated on LITESTREAM_REPLICA_URL: if it is unset the
+# entrypoint never invokes Litestream (zero cost for a single-box ephemeral pilot).
+#
+# Examples of LITESTREAM_REPLICA_URL:
+#   AWS S3     s3://my-bucket/harness         (+ LITESTREAM_REGION)
+#   Cloudflare s3://my-bucket/harness         (+ LITESTREAM_ENDPOINT=https://<acct>.r2.cloudflarestorage.com, LITESTREAM_REGION=auto)
+#   local FS   file:///replica/harness        (used by the restore drill)
+dbs:
+  - path: ${HARNESS_DB}
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}
+        # S3-compatible endpoint (R2/MinIO/Backblaze…). Leave unset for AWS S3;
+        # an empty value expands to "" and Litestream falls back to the default.
+        endpoint: ${LITESTREAM_ENDPOINT}
+        # Region: required by AWS S3 (e.g. us-east-1); "auto" for Cloudflare R2.
+        region: ${LITESTREAM_REGION}
