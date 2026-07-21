@@ -970,6 +970,34 @@ RSpec.describe Studio::App do
     expect(body).to include("No conversations")
   end
 
+  # --- Overview home (T3) --------------------------------------------------
+
+  it "overview home shows counts, an activity chart and recent conversations" do
+    sess = StoredSession.new(id: "sess-home-00001", updated_at: "2026-07-21T00:00:00Z",
+                             messages: [{ "role" => "user", "content" => "oi" }, { "role" => "assistant", "content" => "olá" }])
+    app, = build_app(sessions: { "sess-home-00001" => sess })
+    body = login(app).get("/home").body
+    expect(body).to include("Overview")
+    expect(body).to include("Conversations")
+    expect(body).to include("active now")
+    expect(body).to include("Recent conversations")
+    expect(body).to include("/studio/sessions/sess-home-00001") # recent rail links to the viewer
+    expect(body).to include('class="barchart"')                 # SVG activity chart
+  end
+
+  it "root redirects to the overview home" do
+    app, = build_app
+    res = login(app).get("/")
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to include("/studio/home")
+  end
+
+  it "the nav marks the current section active regardless of the /studio mount prefix" do
+    app, = build_app
+    body = login(app).get("/home").body
+    expect(body).to match(%r{href="/studio/home"[^>]*aria-current="page"})
+  end
+
   # --- Polish & parity (Stage H / task 20) ---------------------------------
 
   it "the app-bar has a health chip and theme switch; the html loads the theme (auto default)" do

@@ -12,14 +12,14 @@
   <% if authenticated? %>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="/studio/agents"><span class="dot"></span>Harness <small>Studio</small></a>
+        <a class="brand" href="/studio/home"><span class="dot"></span>Harness <small>Studio</small></a>
 
         <% nav_sections.each do |group, items| %>
           <div class="nav-group">
-            <div class="nav-label"><%= group %></div>
+            <% unless group.empty? %><div class="nav-label"><%= group %></div><% end %>
             <nav class="nav" aria-label="<%= group %>">
               <% items.each do |label, href, icon| %>
-                <a href="<%= href %>"<%== ' aria-current="page"' if request.path.start_with?(href.sub("/studio", "")) %>>
+                <a href="<%= href %>"<%== ' aria-current="page"' if nav_active?(href) %>>
                   <%== nav_icon(icon) %><span class="lbl"><%= label %></span>
                 </a>
               <% end %>

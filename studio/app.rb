@@ -6,6 +6,7 @@ require "securerandom"
 require "rack/utils"
 require "json"
 require "time"
+require "date"
 require_relative "forms"
 require_relative "nav_icons"
 
@@ -181,8 +182,13 @@ module Studio
         r.redirect(safe_back(r.params["back"]))
       end
 
-      # `/studio` and `/studio/` → agents list.
-      r.root { r.redirect("/studio/agents") }
+      # `/studio` and `/studio/` → overview home.
+      r.root { r.redirect("/studio/home") }
+
+      # --- Overview: at-a-glance dashboard ---------------------
+      r.on "home" do
+        r.is { r.get { render_home } }
+      end
 
       # --- Agents: list + detail/authoring ---------------------
       r.on "agents" do
@@ -608,6 +614,9 @@ module Studio
     # by comparing the path and renders the icon via `nav_icon`.
     def nav_sections
       [
+        ["", [
+          ["Home", "/studio/home", :home]
+        ]],
         ["build", [
           ["Agents", "/studio/agents", :agents],
           ["Skills", "/studio/skills", :skills],
@@ -628,6 +637,16 @@ module Studio
     # NAV_ICONS + nav_icon moved to Studio::NavIcons (§11 B6).
 
     def authenticated? = session["auth"] == true
+
+    # Is the given nav href the current page? Robust to whether request.path
+    # carries the "/studio" mount prefix (it does under serve_real/config.ru, it
+    # doesn't in specs) — strip it from both sides, then exact- or prefix-match
+    # so detail routes (/agents/:id) still light up their section.
+    def nav_active?(href)
+      target = href.sub(%r{\A/studio}, "")
+      path = request.path.sub(%r{\A/studio}, "")
+      path == target || path.start_with?("#{target}/")
+    end
 
     # CSP nonce for inline styles (CodeMirror's injected theme). Stable PER SESSION,
     # not per request: the browser enforces the CSP from the initial document load
@@ -953,6 +972,59 @@ module Studio
 
     def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"
 
+    # --- Overview / home ------------------------------------------------------
+
+    # At-a-glance dashboard: counts + activity + recent conversations. All from
+    # data the Studio already reads (one scan of the session store); no new
+    # metrics pipeline. `active_now` = sessions touched in the last 5 minutes.
+    def render_home
+      ps = harness[:profile_source]
+      sessions = all_sessions
+      @counts = {
+        "conversations" => sessions.size,
+        "messages" => sessions.sum { |s| Array(s.messages).size },
+        "agents" => ps ? ps.all.size : 0,
+        "skills" => harness[:skill_catalog] ? harness[:skill_catalog].all.size : 0,
+        "tools" => harness[:tool_catalog] ? harness[:tool_catalog].all.size : 0,
+        "providers" => harness[:llm_provider_store] ? harness[:llm_provider_store].all.size : 0,
+        "MCP servers" => harness[:mcp_store] ? harness[:mcp_store].all.size : 0
+      }
+      now = Time.now
+      cutoff = now - (5 * 60)
+      @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
+      @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
+      @activity = activity_by_day(sessions, days: 14, now: now)
+      @persistence = harness.dig(:config, :persistence)
+      view("home")
+    end
+
+    def all_sessions
+      store = harness[:session_store]
+      return [] unless store
+
+      store.each_id.filter_map { |sid| store.find(sid) }
+    end
+
+    def parse_time(str)
+      s = str.to_s
+      return nil if s.empty?
+
+      Time.parse(s)
+    rescue ArgumentError
+      nil
+    end
+
+    # [[Date, count], …] — one bucket per day over the window, most-recent last.
+    def activity_by_day(sessions, days:, now:)
+      today = now.to_date
+      buckets = Hash.new(0)
+      sessions.each do |s|
+        t = parse_time(s.updated_at) or next
+        buckets[t.to_date] += 1
+      end
+      (0...days).to_a.reverse.map { |i| d = today - i; [d, buckets[d]] }
+    end
+
     # --- History -------------------------------------------------------------
 
     # Recent conversations (all agents — the Session doesn't stamp the agent that
@@ -963,6 +1035,21 @@ module Studio
 
       store.each_id.filter_map { |sid| store.find(sid) }
            .sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
+    end
+
+    # Compact relative age ("just now", "9min", "3h", "2d") for a timestamp string.
+    def time_ago(str)
+      t = parse_time(str) or return str.to_s
+      secs = (Time.now - t).to_i
+      return "just now" if secs < 60
+
+      mins = secs / 60
+      return "#{mins}min" if mins < 60
+
+      hrs = mins / 60
+      return "#{hrs}h" if hrs < 24
+
+      "#{hrs / 24}d"
     end
 
     def session_preview(session)
