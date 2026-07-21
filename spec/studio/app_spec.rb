@@ -998,6 +998,48 @@ RSpec.describe Studio::App do
     expect(client.get("/skills/new").body).to include('data-controller="dirty-guard"')
   end
 
+  # --- G3: UI robustness — A3 (loading states) + A4 (confirm + copy) -----------
+
+  it "destructive forms carry a data-turbo-confirm prompt (A4)" do
+    app, = build_app(agents: [profile("bia", prompt_files: %w[SOUL.md])],
+                     data_tools: [data_tool(name: "cep")],
+                     mcp_instances: [{ "name" => "tavily" }],
+                     system_files: { "H.md" => "x" },
+                     llm_providers: [{ "api" => "openai", "api_key" => "sk-1" }])
+    client = login(app)
+    expect(client.get("/mcp").body).to include('action="/studio/mcp/delete"', "data-turbo-confirm=")
+    expect(client.get("/tools/def/cep").body).to include("/delete", "data-turbo-confirm=")
+    expect(client.get("/system-files").body).to include('action="/studio/system-files/delete"', "data-turbo-confirm=")
+    expect(client.get("/settings").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
+    expect(client.get("/agents/bia").body).to include("/prompts/delete", "data-turbo-confirm=")
+  end
+
+  it "action buttons declare a data-turbo-submits-with loading label (A3)" do
+    app, = build_app
+    client = login(app)
+    expect(client.get("/playground?agent=chef").body).to include('data-turbo-submits-with="Sending…"')
+    expect(client.get("/agents/bia").body).to include("data-turbo-submits-with=")
+  end
+
+  it "the session id and tool-trace payloads load the clipboard island with a copy button (A4)" do
+    sess = StoredSession.new(id: "sess-copy", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    traces = { "sess-copy" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
+                                 "args" => { "query" => "trufa" }, "result" => { "found" => 3 },
+                                 "ms" => 40, "at" => "2026-07-16T00:00:00Z" }] }
+    app, = build_app(sessions: { "sess-copy" => sess }, tool_traces: traces)
+    body = login(app).get("/sessions/sess-copy").body
+    expect(body).to include('data-controller="clipboard"')
+    expect(body).to include('data-action="clipboard#copy"')
+    expect(body).to include('data-clipboard-text-value="sess-copy"') # full id, not just the [0,16] display
+    expect(body).to include('data-clipboard-target="source"')        # trace <pre> is the copy source
+  end
+
+  it "the bundle registers the clipboard controller (A4)" do
+    app, = build_app
+    js = Client.new(app).get("/assets/dist/application.js").body
+    expect(js).to include("clipboard")
+  end
+
   # --- Agent creation (parity: "each one creates its own BIA") -----------------
 
   it "cria agente via POST /agents (dispatch create_agent) e redireciona pro detalhe" do

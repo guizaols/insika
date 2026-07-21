@@ -44,7 +44,7 @@
     <label>compaction.keep_last (messages)
       <input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric">
     </label>
-    <div class="actions"><button type="submit" class="primary">Save settings</button></div>
+    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save settings</button></div>
   </form>
 </section>
 
@@ -70,7 +70,7 @@
     <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
       <input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat">
     </label>
-    <div class="actions"><button type="submit" class="primary">Save model defaults</button></div>
+    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save model defaults</button></div>
   </form>
 </section>
 
@@ -85,10 +85,10 @@
     <div class="card promptfile">
       <div class="promptfile-head">
         <strong class="mono"><%= p["api"] %></strong>
-        <form method="post" action="/studio/settings/providers/delete">
+        <form method="post" action="/studio/settings/providers/delete" data-turbo-confirm="Remove provider &quot;<%= p["api"] %>&quot;?">
           <%== csrf_tag %>
           <input type="hidden" name="api" value="<%= p["api"] %>">
-          <button type="submit" class="ghost danger">Remove</button>
+          <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
         </form>
       </div>
       <form method="post" action="/studio/settings/providers">
@@ -108,7 +108,7 @@
         <label>models <span class="muted">(comma or newline)</span>
           <input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-chat, deepseek-reasoner">
         </label>
-        <div class="actions"><button type="submit" class="primary">Save provider</button></div>
+        <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save provider</button></div>
       </form>
     </div>
   <% end %>
@@ -134,7 +134,7 @@
       <label>models <span class="muted">(comma or newline)</span>
         <input type="text" name="models" placeholder="gpt-4o, gpt-4o-mini">
       </label>
-      <div class="actions"><button type="submit" class="primary">Create provider</button></div>
+      <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create provider</button></div>
     </form>
   </details>
 </section>
