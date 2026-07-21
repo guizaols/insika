@@ -665,7 +665,7 @@ module Studio
 
     private
 
-    # --- Helpers (escopo de instância; disponíveis nas views) ----------------
+    # --- Helpers (instance scope; available inside the views) ----------------
 
     def harness = self.class.harness
 
@@ -847,12 +847,12 @@ module Studio
       end
       @all_skills = harness[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
-      # v2 (§10) config surfaces: generation params (symbol keys on the profile) +
-      # model fence. Read tolerant of a string|symbol key (pack JSON round-trip).
-      @params = @agent.respond_to?(:params) ? (@agent.params || {}) : {}
+      # v2 (§10) config surfaces: generation params + model fence. AgentProfile.build
+      # string-keys these hashes, so the form helpers read plain string keys.
+      @params = @agent.params
       @model_policy_allow = model_policy_allow(@agent)
-      # guardrails config (RFC-0009), tolerant of the pack/JSON round-trip.
-      @guardrails = (@agent.respond_to?(:guardrails) ? @agent.guardrails : nil) || {}
+      # guardrails config (RFC-0009); nil when the agent never configured any.
+      @guardrails = @agent.guardrails || {}
       mem = harness[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
@@ -860,34 +860,30 @@ module Studio
       view("agent_detail")
     end
 
-    # A generation param off the profile, tolerant of a string|symbol key. Used to
-    # pre-fill the config form (empty string when absent).
+    # A generation param off the profile (string-keyed by AgentProfile.build). Used
+    # to pre-fill the config form (empty string when absent).
     def agent_param(params, key)
       return "" unless params.is_a?(Hash)
 
-      v = params[key.to_sym]
-      v = params[key.to_s] if v.nil?
-      v.nil? ? "" : v
+      params[key.to_s].nil? ? "" : params[key.to_s]
     end
 
-    # A guardrails field off the profile, tolerant of a string|symbol key.
+    # A guardrails field off the profile (string-keyed by AgentProfile.build).
     # `default` is returned when the whole config or the key is absent (so a
     # never-configured agent shows the conservative defaults in the form).
     def guardrail_field(gr, key, default)
       return default unless gr.is_a?(Hash)
 
-      v = gr[key.to_sym]
-      v = gr[key.to_s] if v.nil?
-      v.nil? ? default : v
+      gr[key.to_s].nil? ? default : gr[key.to_s]
     end
 
     # The agent's model fence as newline-joined refs (for the textarea). nil / no
-    # allow list -> "" (no fence). Tolerant of a string|symbol "allow" key.
+    # allow list -> "" (no fence).
     def model_policy_allow(agent)
-      policy = agent.respond_to?(:model_policy) ? agent.model_policy : nil
+      policy = agent.model_policy
       return "" unless policy.is_a?(Hash)
 
-      Array(policy["allow"] || policy[:allow]).join("\n")
+      Array(policy["allow"]).join("\n")
     end
 
     # Config patch from the form (native types: memory bool, limits int).
@@ -1233,7 +1229,7 @@ module Studio
 
     # parse_kv_lines moved to Studio::Forms (§11 B6).
 
-    # CSV/whitespace -> [String] sem vazios.
+    # CSV/whitespace -> [String], blanks dropped.
     def split_list(str)
       str.to_s.split(/[,\n]/).map(&:strip).reject(&:empty?)
     end
@@ -1291,8 +1287,8 @@ module Studio
 
     # Cache-busting URL for a dist asset. Dist files are served under a STABLE
     # name with max-age=300, so a rebuilt CSS/JS stays masked by the browser
-    # cache for 5 min — even across a server restart ("reiniciei e continua
-    # quebrado"). Appending the file mtime as ?v= changes the URL whenever the
+    # cache for 5 min — even across a server restart (the "restarted and it's
+    # still broken" trap). Appending the file mtime as ?v= changes the URL whenever the
     # asset changes, so the browser always refetches the fresh build. The query
     # is ignored by serve_asset (it matches on the path segment).
     def asset_path(file)
@@ -1302,10 +1298,7 @@ module Studio
       "/studio/assets/dist/#{base}?v=#{v}"
     end
 
-    def presence(str)
-      s = str.to_s.strip
-      s.empty? ? nil : s
-    end
+    def presence(str) = Harness::Coercion.presence(str)
 
     # Masked-secret sentinel (to pre-fill credential fields in the
     # forms: resubmitting without touching preserves the real secret in the store).

@@ -321,14 +321,7 @@ module Harness
     private_class_method :deep_symbolize
 
     # Canonical JSON-clean: keys AND symbols become strings (JSON has no symbol).
-    def self.deep_stringify(obj)
-      case obj
-      when Hash then obj.each_with_object({}) { |(k, v), acc| acc[k.to_s] = deep_stringify(v) }
-      when Array then obj.map { |v| deep_stringify(v) }
-      when Symbol then obj.to_s
-      else obj
-      end
-    end
+    def self.deep_stringify(obj) = Harness::Coercion.deep_stringify(obj)
     private_class_method :deep_stringify
 
     # ---- instance -------------------------------------------------------------

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "coercion"
+
 module Harness
   # Single point of per-agent policy.
   # ONE allowlist semantics for tools, skills, providers and workflows
@@ -85,8 +87,14 @@ module Harness
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
         capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
         prompt_caching: prompt_caching,
-        params: params || {}, model_policy: model_policy, guardrails: guardrails,
-        metadata: metadata || {}
+        # The free-form hashes arrive with symbol keys (internal build) OR string
+        # keys (StoredProfileSource JSON round-trip). Normalize to string keys ONCE
+        # here — the single front door every profile passes through — so no reader
+        # downstream has to defend against both (store_id, model_policy, Studio forms).
+        params: Coercion.deep_stringify(params || {}),
+        model_policy: Coercion.deep_stringify(model_policy),
+        guardrails: Coercion.deep_stringify(guardrails),
+        metadata: Coercion.deep_stringify(metadata || {})
       )
     end
 
@@ -96,12 +104,10 @@ module Harness
     end
 
     # store_id of the turn context (ctx.store_id): lives in `metadata` (stable
-    # per store, comes from the pack). Tolerates a string|symbol key (the
-    # StoredProfileSource JSON round-trip stringifies). nil = absent (the data-tool
-    # emits an empty header). It is NOT consumer-specific: `store_id` is a field of the
-    # turn-context contract (§5), generic per project.
-    def store_id
-      (metadata || {})["store_id"] || (metadata || {})[:store_id]
-    end
+    # per store, comes from the pack). `build` string-keys metadata, so a plain
+    # string lookup is enough. nil = absent (the data-tool emits an empty header).
+    # It is NOT consumer-specific: `store_id` is a field of the turn-context contract
+    # (§5), generic per project.
+    def store_id = (metadata || {})["store_id"]
   end
 end
