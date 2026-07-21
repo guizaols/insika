@@ -1,7 +1,11 @@
 <header class="page-head">
   <div>
     <nav class="crumbs"><a href="/studio/chats">chats</a> / <span>session</span></nav>
-    <h1>Session <span class="mono"><%= @session.id[0, 16] %></span>
+    <h1>Session
+      <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @session.id %>">
+        <span class="mono"><%= @session.id[0, 16] %></span>
+        <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy" aria-label="Copy full session id">copy id</button>
+      </span>
       <span class="sub"><%= Array(@session.messages).size %> message(s) · updated <%= @session.updated_at %></span>
     </h1>
   </div>
@@ -26,8 +30,18 @@
               <span class="lat"><%= t["ms"] %>ms</span>
               <span class="at"><%= t["at"] %></span>
             </summary>
-            <div class="kv"><span>args</span><pre><%= t["args"] %></pre></div>
-            <div class="kv"><span>response</span><pre><%= t["result"] %></pre></div>
+            <div class="kv"><span>args</span>
+              <div class="copywrap" data-controller="clipboard">
+                <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
+                <pre data-clipboard-target="source"><%= t["args"] %></pre>
+              </div>
+            </div>
+            <div class="kv"><span>response</span>
+              <div class="copywrap" data-controller="clipboard">
+                <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
+                <pre data-clipboard-target="source"><%= t["result"] %></pre>
+              </div>
+            </div>
           </details>
         <% end %>
       </div>

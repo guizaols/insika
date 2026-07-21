@@ -103,7 +103,7 @@
       </details>
     </fieldset>
 
-    <div class="actions"><button type="submit" class="primary">Save config</button></div>
+    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save config</button></div>
   </form>
 </section>
 
@@ -122,10 +122,10 @@
     <div class="card promptfile">
       <div class="promptfile-head">
         <strong class="mono"><%= pf[:name] %></strong>
-        <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/delete">
+        <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/delete" data-turbo-confirm="Remove prompt file &quot;<%= pf[:name] %>&quot;? This can't be undone.">
           <%== csrf_tag %>
           <input type="hidden" name="file" value="<%= pf[:name] %>">
-          <button type="submit" class="ghost danger">Remove</button>
+          <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
         </form>
       </div>
       <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts" data-controller="dirty-guard">
@@ -134,7 +134,7 @@
         <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
           <textarea name="content" data-code-editor-target="source" rows="10"><%= pf[:content] %></textarea>
         </div>
-        <div class="actions"><button type="submit" class="primary">Save prompt</button></div>
+        <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save prompt</button></div>
       </form>
       <% unless pf[:versions].empty? %>
         <details class="versions">
@@ -167,7 +167,7 @@
       <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
         <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# Identity&#10;You are..."></textarea>
       </div>
-      <div class="actions"><button type="submit" class="primary">Create prompt</button></div>
+      <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create prompt</button></div>
     </form>
   </details>
 </section>
@@ -197,7 +197,7 @@
       </div>
     <% end %>
     <div class="actions">
-      <button type="submit" class="primary">Save skills</button>
+      <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save skills</button>
       <a class="btn ghost" href="/studio/tools">Edit tools →</a>
     </div>
   </form>
@@ -222,7 +222,7 @@
             <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/forget">
               <%== csrf_tag %>
               <input type="hidden" name="key" value="<%= f.key %>">
-              <button type="submit" class="ghost danger">Forget</button>
+              <button type="submit" class="ghost danger" data-turbo-submits-with="Forgetting…">Forget</button>
             </form>
           </li>
         <% end %>
@@ -232,7 +232,7 @@
       <%== csrf_tag %>
       <input type="text" name="key" placeholder="key (e.g. customer_name)" required>
       <input type="text" name="value" placeholder="value" required>
-      <button type="submit" class="primary">Save fact</button>
+      <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save fact</button>
     </form>
   </div>
 
@@ -250,7 +250,7 @@
     <form class="inline-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/note">
       <%== csrf_tag %>
       <input type="text" name="text" placeholder="free-form note…" required>
-      <button type="submit" class="primary">Add note</button>
+      <button type="submit" class="primary" data-turbo-submits-with="Adding…">Add note</button>
     </form>
   </div>
 </section>
