@@ -1,0 +1,33 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>tasks</span></nav>
+    <h1>Tasks<span class="sub"><%= @tasks.size %> task(s)</span></h1>
+  </div>
+  <a class="btn" href="/studio/approvals">Approvals →</a>
+</header>
+
+<% if @tasks.empty? %>
+  <div class="empty">No tasks yet. A task is born when an agent runs a turn.</div>
+<% else %>
+  <div data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter tasks by id, status or session…" aria-label="Filter tasks"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
+    <div class="card">
+      <ul class="history">
+        <% @tasks.each do |t| %>
+          <li data-list-filter-target="item" data-filter-text="<%= t.id %> <%= t.status %> <%= t.session_id %>">
+            <a href="<%= task_path(t.id) %>"><span class="mono"><%= t.id[0, 12] %></span></a>
+            <span class="pill <%= status_class(t.status) %>"><%= t.status %></span>
+            <span class="preview muted">
+              <% if t.session_id %>session <span class="mono"><%= t.session_id[0, 12] %></span> · <% end %><%= Array(t.executions).size %> execution(s) · updated <%= t.updated_at %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+    <div class="empty" data-list-filter-target="empty" hidden>No tasks match your filter.</div>
+  </div>
+<% end %>
