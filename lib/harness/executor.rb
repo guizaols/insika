@@ -52,6 +52,13 @@ module Harness
         checkpoint_store: checkpoint_store, event_stream: event_stream, hooks: hooks,
         tool_catalog: tool_catalog, memory_store: memory_store
       )
+      # Stage-3-tail tool assembly (capability resolution, instantiation, D2
+      # injection, dedup join, ToolEnvelope wrap) — extracted collaborator (§11 B5).
+      @tool_assembly = ToolAssembly.new(
+        tool_registry: tool_registry, capability_registry: capability_registry,
+        event_stream: event_stream, checkpoint_store: checkpoint_store,
+        tool_trace_store: tool_trace_store
+      )
       @running = {}            # task_id => TaskActor (live fibers in this process)
       @seqs = Hash.new(0)      # monotonic counter per task
       @supervised = false      # serving mode? — see #turn_parent
@@ -351,18 +358,8 @@ module Harness
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
     def run_pipeline(task, profile, actor, resume_from)
-      turn = resume_from ? resume_from.turn : 1
-      state = TurnState.new(task: task, profile: profile, turn: turn,
-                            message: extract_message(task))
-      state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat (D3)
-      state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.* (D2/G4)
-      turn_timeout = profile.limits[:turn_timeout] || 300
-      # A turn that MAY require human approval gets budget = approval_timeout
-      # (~1h): the turn's with_timeout must not kill a legitimate operator wait.
-      # LLM runaway is already bounded by max_tool_calls/max_turns.
-      unless Array(profile.approvals_required).empty?
-        turn_timeout = [turn_timeout, profile.limits[:approval_timeout] || 3_600].max
-      end
+      state = build_turn_state(task, profile, resume_from)
+      turn_timeout = turn_timeout_for(profile)
 
       Async::Task.current.with_timeout(turn_timeout) do
         # :task pair: wraps the turn's stages. before_task may
@@ -371,50 +368,7 @@ module Harness
         # possibly rewritten by before_task). Subject == result == TurnState
         # (the Response content lives in the :done event).
         @hooks.around(:task, state) do |state|
-        # stage 2: Context. The :prompt hook pair is wrapped INSIDE the
-        # ContextBuilder#call — do NOT wrap here (a double-wrap would
-        # fire the hooks twice). Hooks is the SAME instance injected into the
-        # Builder and here (for :agent/:task/:tool).
-        request = build_context_request(task, profile, state, resume_from)
-        state.context = @context_builder.call(request)
-        drain_and_maybe_suspend(task, actor)
-
-        # INITIAL checkpoint of the turn ("the checkpoint of turn n contains
-        # the state AT THE START of turn n"). Without it, a crash mid stage 6
-        # (before stage 8) would leave the task orphaned WITH NO checkpoint ->
-        # unrecoverable (Recovery would mark it :failed). Idempotent: only writes on
-        # the 1st turn of a new task — on resume the checkpoint already exists
-        # (find != nil), and on later turns the previous turn's end checkpoint is
-        # already this one's "start".
-        save_initial_checkpoint(task, profile, state)
-
-        # capability-resolution sub-step: BETWEEN Context and Policy.
-        # It only fills state.capability_names for the POST-Policy join — the
-        # policy_request below does NOT change (candidate_tools stays
-        # tool_registry.entries).
-        state.capability_names = resolve_capabilities(profile, state.context)
-
-        # stage 3: Policy (candidate_skills come from the CATALOG, not the
-        # context; candidate_tools = tool_registry.entries, ONLY direct tools —
-        # unchanged)
-        resolution = @policy_engine.decide(policy_request(profile, task, state))
-        # on resume, tool calls already completed in the interrupted turn are
-        # "skipped" (union of standalone key ∪ turn checkpoint).
-        skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
-        # propagates the `skip` to tools PROMOTED by tool_search (same
-        # resume-safety as the eager ones); the builtin reads
-        # Array(state.skip_side_effects).
-        state.skip_side_effects = skip
-        # the Executor instantiates ONLY the allowed ones: the real Engine
-        # returns Entries -> factory.call; a fake already returning instances
-        # passes through (compat shim).
-        # wires the approval gate into the state (the ToolEnvelope reads it at stage 6).
-        state.actor = actor
-        state.approval_coordinator = self
-        state.requires_approval = resolution.requires_approval
-        state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
-        state.allowed_skills = resolution.allowed_skills
-        drain_and_maybe_suspend(task, actor)
+        prepare_turn(task, profile, state, actor, resume_from) # stages 2-3 (mutates state)
 
         # stage 4: Middleware wraps stages 5-9. A link that
         # short-circuits does NOT call the terminal and sets state.halt_reason.
@@ -423,42 +377,7 @@ module Harness
           raise Harness::Error, "turn halted: #{st.halt_reason}" if st.halt_reason
 
           terminal_ran = true
-          # stage 5: assemble chat + check mailbox (send_message only; a workflow
-          # does not use the Harness chat — it orchestrates RubyLLM internally).
-          drain_and_maybe_suspend(task, actor)
-          unless workflow_turn?(task)
-            st.chat = create_chat(profile, st)
-            @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
-            # §11 R1: baseline = seeded-history size, before `ask` appends the turn.
-            st.chat_baseline = Array(st.chat.messages).size if st.chat.respond_to?(:messages)
-          end
-
-          # guardrails (RFC-0009 §3.2): a per-turn stream redactor, built from the
-          # agent's config. nil = off (parity). run_agent_stage feeds every content
-          # delta through it and returns the REDACTED final text.
-          st.output_filter = @content_filter_factory&.call(st)
-
-          # stage 6: the turn's single agent interaction. send_message ->
-          # chat.ask; trigger_workflow -> workflow.call(input, context:, tools:)
-          # Both wrapped by hooks.around(:agent). The return is the
-          # turn's final content.
-          content = run_agent_stage(task, st)
-          st.response_content = content # after_task OutputValidator inspects this
-
-          # stage 8: Persistence (fixed order checkpoint->session->task)
-          # pure drain! (NEVER suspends at stage 8 — forbidden window). A
-          # :pause arriving here arms pause_requested but is NOT honored: it is the
-          # last stage, there is no next boundary; the turn completes and the flag
-          # is discarded with the actor. Benign race: the pause loses to the
-          # completion (the operator sees the task :completed). :cancel here still
-          # raises.
-          actor.drain!
-          persist_turn(task, profile, st, content)
-
-          # stage 9: Response. usage (tokens) captured at stage 6 travels in the
-          # terminal event -> /v1/responses usage + Telemetry (OTEL).
-          emit(:done, { content: content, usage: st.usage }, task: task) # legacy compat
-          emit(:task_completed, { task_id: task.id, content: content, usage: st.usage }, task: task)
+          run_turn_body(task, profile, st, actor) # stages 5-9
         end
 
         # A Middleware short-circuited (did not call the terminal). Three cases:
@@ -479,6 +398,97 @@ module Harness
       end
     rescue Async::TimeoutError
       raise Harness::TimeoutError.new("turn exceeded #{turn_timeout}s", stage: :turn)
+    end
+
+    # Builds the turn's mutable state (turn number, message, memory tenant, D2
+    # turn context). before_task (hooks.around) may still rewrite it before stage 2.
+    def build_turn_state(task, profile, resume_from)
+      turn = resume_from ? resume_from.turn : 1
+      state = TurnState.new(task: task, profile: profile, turn: turn,
+                            message: extract_message(task))
+      state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat (D3)
+      state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.* (D2/G4)
+      state
+    end
+
+    # with_timeout budget for the turn. A turn that MAY require human approval
+    # gets approval_timeout (~1h) so the wrapper does not kill a legitimate
+    # operator wait. LLM runaway is already bounded by max_tool_calls + turn_timeout.
+    def turn_timeout_for(profile)
+      base = profile.limits[:turn_timeout] || 300
+      return base if Array(profile.approvals_required).empty?
+
+      [base, profile.limits[:approval_timeout] || 3_600].max
+    end
+
+    # Stages 2-3: Context -> initial checkpoint -> capability resolution -> Policy
+    # -> tool assembly, each followed by a mailbox drain at the boundary. Mutates
+    # `state` in place (the TurnState possibly rewritten by before_task).
+    def prepare_turn(task, profile, state, actor, resume_from)
+      # stage 2: Context. The :prompt hook pair is wrapped INSIDE the
+      # ContextBuilder#call — do NOT wrap here (a double-wrap would fire the hooks
+      # twice). Hooks is the SAME instance injected into the Builder and here.
+      request = build_context_request(task, profile, state, resume_from)
+      state.context = @context_builder.call(request)
+      drain_and_maybe_suspend(task, actor)
+
+      # INITIAL checkpoint of the turn ("the checkpoint of turn n contains the
+      # state AT THE START of turn n"). Without it, a crash mid stage 6 (before
+      # stage 8) would orphan the task WITH NO checkpoint -> unrecoverable.
+      # Idempotent: only writes on the 1st turn of a new task.
+      save_initial_checkpoint(task, profile, state)
+
+      # capability-resolution sub-step BETWEEN Context and Policy: fills
+      # state.capability_names for the POST-Policy join; candidate_tools stays
+      # tool_registry.entries (a capability does not go through the ToolAllowlist).
+      state.capability_names = resolve_capabilities(profile, state.context)
+
+      # stage 3: Policy (candidate_skills from the CATALOG; candidate_tools =
+      # tool_registry.entries, direct tools only).
+      resolution = @policy_engine.decide(policy_request(profile, task, state))
+      # on resume, tool calls already completed in the interrupted turn are
+      # "skipped" (standalone key ∪ turn checkpoint), propagated to promoted tools too.
+      skip = resume_from ? @checkpoint_store.side_effects(task.id, turn: state.turn) : []
+      state.skip_side_effects = skip
+      # wire the approval gate into the state (the ToolEnvelope reads it at stage 6).
+      state.actor = actor
+      state.approval_coordinator = self
+      state.requires_approval = resolution.requires_approval
+      state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
+      state.allowed_skills = resolution.allowed_skills
+      drain_and_maybe_suspend(task, actor)
+    end
+
+    # Stages 5-9 (inside the Middleware wrap): assemble chat, the single agent
+    # interaction, persistence, terminal event. `st` is the Middleware-yielded state.
+    def run_turn_body(task, profile, st, actor)
+      # stage 5: assemble chat + check mailbox (send_message only; a workflow does
+      # not use the Harness chat — it orchestrates RubyLLM internally).
+      drain_and_maybe_suspend(task, actor)
+      unless workflow_turn?(task)
+        st.chat = create_chat(profile, st)
+        @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
+        # §11 R1: baseline = seeded-history size, before `ask` appends the turn.
+        st.chat_baseline = Array(st.chat.messages).size if st.chat.respond_to?(:messages)
+      end
+
+      # guardrails (RFC-0009 §3.2): per-turn stream redactor (nil = off).
+      st.output_filter = @content_filter_factory&.call(st)
+
+      # stage 6: the turn's single agent interaction (send_message -> chat.ask;
+      # trigger_workflow -> workflow.call). Returns the turn's final content.
+      content = run_agent_stage(task, st)
+      st.response_content = content # after_task OutputValidator inspects this
+
+      # stage 8: Persistence (fixed order checkpoint->session->task). pure drain!
+      # (NEVER suspends at stage 8 — forbidden window): a :pause here arms the flag
+      # but is not honored (last stage); :cancel here still raises.
+      actor.drain!
+      persist_turn(task, profile, st, content)
+
+      # stage 9: Response. usage (tokens) captured at stage 6 travels in the
+      # terminal event -> /v1/responses usage + Telemetry (OTEL).
+      emit(:task_completed, { task_id: task.id, content: content, usage: st.usage }, task: task)
     end
 
     def workflow_turn?(task)
@@ -654,96 +664,14 @@ module Harness
       (hash || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v }
     end
 
-    # Real Engine -> Entries (respond to factory); fakes -> ready instances.
-    # `turn_context` (D2) is deposited into the instances that expose it
-    # (data-tools); the rest ignore it (parity).
-    def instantiate_tools(allowed, turn_context = nil)
-      Array(allowed).map do |t|
-        tool = t.respond_to?(:factory) ? t.factory.call : t
-        inject_turn_context(tool, turn_context)
-        tool
-      end
-    end
+    # Stage-3-tail tool assembly — delegated to ToolAssembly (§11 B5). Kept as
+    # thin private methods so the existing spec contract (executor.send(:...))
+    # stays intact and run_pipeline reads unchanged.
+    def resolve_capabilities(profile, context) = @tool_assembly.resolve_capabilities(profile, context)
+    def assemble_tool_instances(allowed, state) = @tool_assembly.assemble_tool_instances(allowed, state)
 
-    # D2/G3 seam: deposits the turn context into the freshly created instance
-    # (same idea as `remember`, which receives tenant/state) BEFORE the
-    # ToolEnvelope. Duck-typed: only what exposes `turn_context=` (DataDefinedTool)
-    # receives it. nil (a state with no turn_context, e.g. a test stub) -> no-op.
-    def inject_turn_context(tool, turn_context)
-      return if turn_context.nil?
-
-      tool.turn_context = turn_context if tool.respond_to?(:turn_context=)
-    end
-
-    # Resolution sub-step BETWEEN Context and Policy —
-    # it does NOT feed candidate_tools (those stay ONLY tool_registry.entries,
-    # a capability does not go through the ToolAllowlist). Resolves each
-    # capability of the profile to the concrete Entry already registered in the
-    # tool_registry and keeps the impl_name -> capability_name mapping for the
-    # post-Policy join. Errors
-    # (Unavailable/Ambiguous, or an unregistered impl) propagate as a
-    # CapabilityError -> single capture in `execute` (stage :capability). Without
-    # @capability_registry OR without profile.capabilities: {} (parity).
-    def resolve_capabilities(profile, context)
-      return {} if @capability_registry.nil?
-
-      Array(profile.capabilities).each_with_object({}) do |cap_name, names|
-        provider = @capability_registry.resolve(cap_name, profile: profile, context: context,
-                                                           event_stream: @event_stream)
-        next if provider.kind == :workflow # exposure to the agent loop is a follow-up
-
-        entry = @tool_registry.entries.find { |e| e.name == provider.impl_name.to_s }
-        if entry.nil?
-          raise CapabilityError, "capability '#{cap_name}' resolveu para impl " \
-                                 "'#{provider.impl_name}', not registered in tool_registry"
-        end
-
-        names[entry.name] ||= cap_name.to_s # the 1st capability to claim an impl wins
-      end
-    end
-
-    # Joins the direct instances (Policy/ToolAllowlist) with the
-    # capability-sourced ones (grant = profile.capabilities — they never went
-    # through Policy). Avoids double-exposure: if the SAME impl_name was also
-    # allowed directly, the DIRECT instance is discarded — the model sees only the
-    # capability alias.
-    def assemble_tool_instances(allowed, state)
-      names = state.respond_to?(:capability_names) ? (state.capability_names || {}) : {}
-      ctx = state.respond_to?(:turn_context) ? state.turn_context : nil
-      return instantiate_tools(allowed, ctx) if names.empty?
-
-      # Dedup by the ENTRY NAME (registry key = impl_name) BEFORE
-      # instantiating — the INSTANCE's `.name` (RubyLLM) is not the registration
-      # name.
-      direct = Array(allowed).reject { |e| e.respond_to?(:name) && names.key?(e.name.to_s) }
-      instantiate_tools(direct, ctx) + capability_tool_instances(names, ctx)
-    end
-
-    # impl_name -> Capability::ResolvedTool(capability_name:), STILL without
-    # ToolEnvelope (the call site's wrap_tools wraps the whole set — same
-    # order impl -> ResolvedTool -> ToolEnvelope). entry already validated in
-    # resolve_capabilities.
-    def capability_tool_instances(names, turn_context = nil)
-      names.map do |impl_name, capability_name|
-        entry = @tool_registry.entries.find { |e| e.name == impl_name }
-        tool = entry.factory.call
-        inject_turn_context(tool, turn_context)
-        Capability::ResolvedTool.new(tool, capability_name: capability_name,
-                                           impl_name: impl_name)
-      end
-    end
-
-    # Envelopes each allowed tool (per-call timeout + side-effect recording).
-    # The system LoadSkill (configure_chat) is NOT enveloped — it is a system
-    # tool with no side-effect and of trivial latency.
     def wrap_tools(tools, state, skip_side_effects = [])
-      timeout = state.profile.limits[:tool_timeout] || 60
-      tools.map do |tool|
-        ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
-                               tool_registry: @tool_registry, timeout: timeout,
-                               skip_side_effects: skip_side_effects,
-                               trace_recorder: @tool_trace_store)
-      end
+      @tool_assembly.wrap_tools(tools, state, skip_side_effects)
     end
 
     # Stage boundary: drains the mailbox and, if the operator requested a pause,

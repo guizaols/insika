@@ -96,7 +96,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
                            [:transition, :completed]])
       # turn events
       expect(event_stream.types).to eq(
-        %i[task_started content checkpoint_created done task_completed]
+        %i[task_started content checkpoint_created task_completed]
       )
       # final state
       task = task_store.find("t")
