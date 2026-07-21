@@ -128,7 +128,7 @@ RSpec.describe "Integration: kill -> restart -> resume" do
     expect(tool.calls).to eq(0)
     result_event = events.find { |e| e.type == :tool_result }
     expect(result_event.data[:result]).to include("already_executed")
-    expect(events.map(&:type)).to include(:done, :task_completed)
+    expect(events.map(&:type)).to include(:task_completed)
     # checkpoint advanced (turn 1 -> 2) and prune kept the last one
     expect(c[:checkpoint_store].latest("t").turn).to eq(2)
     # intact session: the turn messages appear ONCE (crash was before step 8)

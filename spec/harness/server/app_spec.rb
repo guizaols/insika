@@ -135,7 +135,7 @@ RSpec.describe Harness::Server::App do
   describe "POST /v1/messages (sugar)" do
     it "dispatches :send_message with the translated payload (stream=false)" do
       bus = ServerBusDouble.new { { task_id: "t-1" } }
-      stream = ServerEventStreamDouble.new([event(:done, { content: "" })])
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
       app = build_app(bus: bus, event_stream: stream)
 
       call(app, "POST", "/v1/messages?stream=false",
@@ -264,9 +264,9 @@ RSpec.describe Harness::Server::App do
   end
 
   describe "stream=false aggregates at the terminal" do
-    it "accumulates :content deltas and responds at :done" do
+    it "accumulates :content deltas and responds at :task_completed" do
       events = [event(:content, { delta: "a" }), event(:content, { delta: "b" }),
-                event(:done, { content: "ab" })]
+                event(:task_completed, { content: "ab" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
                       event_stream: ServerEventStreamDouble.new(events))
 

@@ -83,7 +83,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(seen[:tools].map { |t| t.__getobj__ }).to all(respond_to(:name)) # instâncias envelopadas
     stored = task_store.find("t")
     expect(stored.status).to eq(:completed)
-    done = event_stream.events.find { |e| e.type == :done }
+    done = event_stream.events.find { |e| e.type == :task_completed }
     expect(done.data[:content]).to eq("resultado do workflow")
   end
 
@@ -142,7 +142,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(task_store.find("t").status).to eq(:completed)
   end
 
-  it "workflow = 1 turno lógico: exatamente 1 checkpoint ao final; :done com o retorno" do
+  it "workflow = 1 turno lógico: exatamente 1 checkpoint ao final; :task_completed com o retorno" do
     workflow_registry.register("flow", ->(*, **) { 3.times.map { |i| "passo#{i}" }.last })
     executor = build_executor
 
@@ -150,17 +150,18 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
 
     expect(event_stream.types.count(:checkpoint_created)).to eq(1)
     expect(checkpoint_store.latest("t").turn).to eq(2)
-    expect(event_stream.types).to include(:done, :task_completed)
+    expect(event_stream.types).to include(:task_completed)
   end
 
-  it "exception in the workflow -> task :failed, :task_failed + :error" do
+  it "exception in the workflow -> task :failed, :task_failed" do
     workflow_registry.register("flow", ->(*, **) { raise "workflow explodiu" })
     executor = build_executor
 
     expect { run(executor, make_task) }.not_to raise_error
 
     expect(task_store.find("t").status).to eq(:failed)
-    expect(event_stream.types).to include(:task_failed, :error)
+    expect(event_stream.types).to include(:task_failed)
+    expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
   end
 
   it "side-effect + resume: side_effect tool does not re-run on resume (skip by name)" do

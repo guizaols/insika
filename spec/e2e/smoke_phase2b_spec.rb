@@ -139,7 +139,8 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
     expect(task.status).to eq(:failed)
     expect(task.executions.last.error["class"]).to eq("Harness::CapabilityAmbiguous")
     expect(task.executions.last.error["stage"]).to eq("capability")
-    expect(event_stream.types).to include(:task_failed, :error)
+    expect(event_stream.types).to include(:task_failed)
+    expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
     expect(event_stream.events.select { |e| e.type == :capability_resolved }).to be_empty
   end
 

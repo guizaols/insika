@@ -57,7 +57,7 @@ module Harness
 
     # Internal (Phase 6, observability): the turn's token usage (input/output/
     # total/cached + model), captured from the provider's response at stage 6. Goes
-    # to the terminal event (:done/:task_completed) — feeds the usage of
+    # to the terminal event (:task_completed) — feeds the usage of
     # /v1/responses and the Telemetry (OTEL). nil = turn with no model response
     # (workflow) or provider without counts.
     attr_accessor :usage

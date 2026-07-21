@@ -80,7 +80,8 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
 
     expect(asks).to eq(1) # ask ran once, did not re-run
     expect(task_store.find("t").status).to eq(:failed)
-    expect(event_stream.types).to include(:task_failed, :error)
+    expect(event_stream.types).to include(:task_failed)
+    expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
   end
 
   it "before_task that raises: task :failed, chat never built" do
@@ -113,12 +114,12 @@ RSpec.describe "Harness::Executor + hooks (:task/:agent/:tool)" do
     expect(event_stream.types).to include(:tool_call, :tool_result)
   end
 
-  it "after_agent replaces the response; :done carries the substituted content" do
+  it "after_agent replaces the response; :task_completed carries the substituted content" do
     hooks.register(:agent, after: ->(_r) { FakeChat::Response.new("SUBSTITUÍDO") })
 
     run(build_executor)
 
-    done = event_stream.events.find { |e| e.type == :done }
+    done = event_stream.events.find { |e| e.type == :task_completed }
     expect(done.data[:content]).to eq("SUBSTITUÍDO")
   end
 

@@ -42,7 +42,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
   describe "token usage in the terminal event (Phase 6, observability)" do
     TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
 
-    it "captures input/output/total/model from the response -> :done and :task_completed" do
+    it "captures input/output/total/model from the response -> :task_completed" do
       session_store.create(id: "s1")
       executor = build_executor
       chat = FakeChat.new
@@ -50,10 +50,8 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
 
       run_turn(executor, make_task, fake_chat: chat)
 
-      %i[done task_completed].each do |type|
-        ev = event_stream.events.find { |e| e.type == type }
-        expect(ev.data[:usage]).to eq(input_tokens: 12, output_tokens: 8, total_tokens: 20, model: "deepseek-chat")
-      end
+      ev = event_stream.events.find { |e| e.type == :task_completed }
+      expect(ev.data[:usage]).to eq(input_tokens: 12, output_tokens: 8, total_tokens: 20, model: "deepseek-chat")
     end
 
     it "response without token counts -> usage nil (does not invent zeros)" do
@@ -62,6 +60,19 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       run_turn(executor, make_task) # FakeChat::Response = Struct.new(:content), no tokens
 
       expect(event_stream.events.find { |e| e.type == :task_completed }.data[:usage]).to be_nil
+    end
+
+    it "surfaces prompt-cache read + write tokens when the provider reports them (§11 R3)" do
+      executor = build_executor
+      resp = Struct.new(:input_tokens, :output_tokens, :model_id, :cached_tokens, :cache_creation_tokens)
+                   .new(100, 20, "claude", 80, 4096)
+
+      usage = executor.send(:usage_of, resp)
+
+      expect(usage).to include(
+        input_tokens: 100, output_tokens: 20, total_tokens: 120,
+        cached_tokens: 80, cache_creation_tokens: 4096, model: "claude"
+      )
     end
   end
 
@@ -85,7 +96,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
                            [:transition, :completed]])
       # turn events
       expect(event_stream.types).to eq(
-        %i[task_started content checkpoint_created done task_completed]
+        %i[task_started content checkpoint_created task_completed]
       )
       # final state
       task = task_store.find("t")
@@ -192,7 +203,8 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       Sync { executor.run_serial(task, profile: profile) }
 
       expect(task_store.find("t").status).to eq(:failed)
-      expect(event_stream.types).to include(:task_failed, :error)
+      expect(event_stream.types).to include(:task_failed)
+      expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
     end
   end
 
@@ -223,7 +235,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
   end
 
   describe "PolicyDenied at stage 3" do
-    it "emits :policy_denied + :task_failed + :error and never builds the chat" do
+    it "emits :policy_denied + :task_failed and never builds the chat" do
       session_store.create(id: "s1")
       executor = build_executor(policy_engine: DenyAllPolicyEngine.new)
       expect(executor).not_to receive(:create_chat)
@@ -233,7 +245,8 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
         executor.instance_variable_get(:@running)["t"]&.wait
       end
 
-      expect(event_stream.types).to include(:policy_denied, :task_failed, :error)
+      expect(event_stream.types).to include(:policy_denied, :task_failed)
+      expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
       expect(task.executions.last.error).to include("stage" => "policy")
@@ -321,10 +334,11 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
       expect(task.executions.last.error["stage"]).to eq("context")
-      expect(event_stream.types).to include(:task_failed, :error)
+      expect(event_stream.types).to include(:task_failed)
+      expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
     end
 
-    it "StoreError at stage 8 -> :failed stage :persistence + :error" do
+    it "StoreError at stage 8 -> :failed stage :persistence + :task_failed" do
       session_store.create(id: "s1")
       executor = build_executor
       allow(checkpoint_store).to receive(:save).and_raise(Harness::StoreError, "disco cheio")
@@ -334,7 +348,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       task = task_store.find("t")
       expect(task.status).to eq(:failed)
       expect(task.executions.last.error["stage"]).to eq("persistence")
-      expect(event_stream.types).to include(:error)
+      expect(event_stream.types).to include(:task_failed)
     end
   end
 
@@ -439,7 +453,10 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
 
       task = task_store.find("t")
       expect(task.status).to eq(:completed) # durability preserved
-      expect(event_stream.types).to include(:done, :task_completed)
+      # prune is swallowed locally (best-effort): the turn still ends on its
+      # success terminal, with no :error.
+      expect(event_stream.types).to include(:task_completed)
+      expect(event_stream.types).not_to include(:error)
     end
   end
 
@@ -535,8 +552,8 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       # (turn 2) — the turn did not advance (a :cancelled task is terminal, Recovery
       # does not resume it).
       expect(checkpoint_store.latest("t").turn).to eq(1)
-      # :task_cancelled is next-to-last; only :error (compat) comes after
-      expect(event_stream.types.last(2)).to eq(%i[task_cancelled error])
+      # :task_cancelled is the terminal (no legacy :error twin after it, R2b)
+      expect(event_stream.types.last).to eq(:task_cancelled)
     end
   end
 

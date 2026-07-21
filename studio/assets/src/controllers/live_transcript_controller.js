@@ -8,9 +8,9 @@ import { renderMarkdown } from "../markdown"
 // protocolo de eventos já provado no /admin (#24), empacotado como controller
 // Stimulus (CSP estrita 'self' — nada de <script> inline).
 //
-// Curadoria (§11 A1): eventos de bookkeeping não têm bolha (ruído/chips
-// duplicados até o R2b unificar os twins :done/:task_completed).
-const IGNORED = new Set(["task_started", "checkpoint_created", "task_completed"])
+// Curadoria (§11 A1): eventos de bookkeeping não têm bolha. O terminal de
+// sucesso (:task_completed) NÃO é ignorado — vira só a pill de status (abaixo).
+const IGNORED = new Set(["task_started", "checkpoint_created"])
 
 export default class extends Controller {
   static targets = ["stream", "empty", "status"]
@@ -140,6 +140,27 @@ export default class extends Controller {
     this.currentText = ""
   }
 
+  // Compact "1.2k in · 340 out · model" chip from the terminal event's usage
+  // (§11 A5). usage is the shape produced by Executor#usage_of: input_tokens,
+  // output_tokens, optional cached_tokens, model. Renders nothing when the
+  // provider reported no counts (usage nil — e.g. workflow turns, FakeChat).
+  renderUsage(usage) {
+    if (!usage) return
+    const parts = []
+    if (usage.input_tokens != null) parts.push(`${this.fmtTokens(usage.input_tokens)} in`)
+    if (usage.output_tokens != null) parts.push(`${this.fmtTokens(usage.output_tokens)} out`)
+    if (usage.cached_tokens) parts.push(`${this.fmtTokens(usage.cached_tokens)} cached`)
+    if (usage.model) parts.push(usage.model)
+    if (!parts.length) return
+    this.push(this.el("div", "usage-chip", parts.join(" · ")))
+  }
+
+  // 1234 -> "1.2k", 980 -> "980". Keeps the chip short for large token counts.
+  fmtTokens(n) {
+    const v = Number(n) || 0
+    return v >= 1000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(v)
+  }
+
   render(ev) {
     if (IGNORED.has(ev.type)) return
 
@@ -189,10 +210,11 @@ export default class extends Controller {
         this.push(this.toolcard("guardrail", "⚑", "guardrail flagged · " + (ev.category || "?"),
           [ev.source, ev.detail].filter(Boolean).join(" · ") || null))
         break
-      case "done":
-        // Success terminal (twin of :task_completed, curated above): just the
-        // status pill, no chip — the assistant bubble already IS the outcome.
+      case "task_completed":
+        // Success terminal: finalize the bubble, then a compact tokens/model
+        // chip (§11 A5). The bubble already IS the outcome; the chip is the cost.
         this.finishBubble()
+        this.renderUsage(ev.usage)
         this.setStatus("turn finished", "info")
         break
       case "task_failed":

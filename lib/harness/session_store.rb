@@ -58,8 +58,17 @@ module Harness
     end
 
     # -> Session (transcript += messages). Read-modify-write on the task's own
-    # fiber, without a lock (one node, one owner per task). Each message
-    # gets an "at" (ISO8601 UTC) if not provided. NotFoundError if the session does not exist.
+    # fiber, without a lock. Each message gets an "at" (ISO8601 UTC) if not
+    # provided. NotFoundError if the session does not exist.
+    #
+    # CONCURRENCY LIMITATION (§11 R2c): the RMW (read record -> += -> set) is
+    # atomic ONLY because the SessionActor serializes turns of the same session
+    # (one owner at a time). That serialization exists solely in SUPERVISED mode
+    # (the actor loop lives on the supervisor). Two concurrent send_message on the
+    # same session_id OUTSIDE that path (e.g. calling append_messages directly, or
+    # a non-supervised deployment) would interleave read/set and LOSE messages —
+    # there is no compare-and-swap here. Route same-session writes through the
+    # SessionActor; see session_actor.rb.
     def append_messages(id, messages)
       record = fetch!(id)
       incoming = (messages.is_a?(Hash) ? [messages] : Array(messages))

@@ -64,10 +64,10 @@ RSpec.describe "Harness::Executor — :paused suspension" do
       actor.wait
       expect(task_store.find("t").status).to eq(:completed)
       expect(event_stream.types).to include(:task_resumed)
-      # order: paused comes before resumed, resumed before done
+      # order: paused comes before resumed, resumed before the terminal
       types = event_stream.types
       expect(types.index(:task_paused)).to be < types.index(:task_resumed)
-      expect(types.index(:task_resumed)).to be < types.index(:done)
+      expect(types.index(:task_resumed)).to be < types.index(:task_completed)
     end
   end
 
