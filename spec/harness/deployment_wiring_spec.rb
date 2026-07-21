@@ -60,13 +60,12 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # NOTE (B4, commit 1): pause_task/approve_action are NOT on the deployment BUS
-    # here — today they are patched in by config.ru / serve_real.rb after the fact.
-    # G4 commit 2 moves them into the shared graph core and DELETES that patch; this
-    # assertion flips there.
-    it "does NOT yet register the /admin control commands (patched by the entrypoint)" do
-      expect(w::BUS.registered?(:pause_task)).to be(false)
-      expect(w::BUS.registered?(:approve_action)).to be(false)
+    # B4 (commit 2): pause_task/approve_action now come from the SHARED graph core
+    # (Harness::Wiring::Graph#build_core_bus), so the deployment BUS carries them out
+    # of the box — the config.ru:28-34 / serve_real.rb patch is gone.
+    it "registers the /admin control commands from the shared core (no entrypoint patch)" do
+      expect(w::BUS.registered?(:pause_task)).to be(true)
+      expect(w::BUS.registered?(:approve_action)).to be(true)
     end
   end
 

@@ -122,6 +122,9 @@ require_relative "harness/executor"
 require_relative "harness/pack"
 require_relative "harness/pack_importer"
 require_relative "harness/telemetry"
+# Shared composition core for both roots (config/wiring.rb + config/deployment.rb).
+# Only references the classes above at call-time, so require order is unconstrained.
+require_relative "harness/wiring/graph"
 # Do NOT require "harness/tools/load_skill" here: it does `require "ruby_llm"` at
 # the top (inherits from RubyLLM::Tool) and would pull the gem in at load-time. The
 # Executor loads it lazily inside create_chat (D9).
