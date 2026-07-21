@@ -328,6 +328,9 @@
   .toolcard .h .arrow { color:var(--dim); }
   .toolcard pre, pre { background:var(--panel-3); border:1px solid var(--line); border-radius:8px; padding:.65rem .75rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:.8rem; margin:.45rem 0 0; line-height:1.5; }
 
+  /* Turn usage chip (§11 A5) — compact tokens/model summary at the end of a turn. */
+  .usage-chip { display:inline-flex; align-items:center; gap:.4rem; font-family:var(--mono); font-size:.72rem; color:var(--dim); background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:.2rem .6rem; margin:.25rem 0; white-space:nowrap; }
+
   /* Collapsible tool card (§11 A2) — <details> summary is a one-line header;
      body (<pre>) reveals on expand. Applies to live cards and the session viewer. */
   details.toolcard { padding:0; }
