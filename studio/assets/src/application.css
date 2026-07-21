@@ -232,6 +232,9 @@
   label { display:block; font-size:.78rem; font-weight:600; color:var(--dim); margin:.85rem 0 0; letter-spacing:.005em; }
   input[type=text], input[type=password], input[type=number], textarea, select {
     display:block; width:100%; margin-top:.4rem; font:inherit; font-size:.9rem; padding:.6rem .8rem;
+    /* `font:inherit` also inherits the parent <label>'s 600 weight — force normal so
+       field VALUES aren't rendered semibold (reads as "everything is bold"). */
+    font-weight:400;
     border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--panel-2); color:var(--fg);
     transition:border-color .12s, box-shadow .12s, background .12s;
   }
