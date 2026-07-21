@@ -329,6 +329,12 @@
   .drill-item-name > span.txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .drill-item.active .drill-item-name { color:var(--accent); }
   .drill-item-sub { font-size:.74rem; color:var(--dim); margin-top:.15rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .drill-item.drill-item-sm { padding:.42rem .9rem; }
+  .drill-item .drill-item-name .pill { margin-left:auto; }
+  .drill-group-label { font-family:var(--mono); font-size:.64rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); padding:.85rem .9rem .35rem; border-bottom:1px solid var(--line); }
+  /* tool matrix top line inside the detail (counter + all-tools switch) */
+  .matrix-topline { display:flex; align-items:center; gap:.9rem; margin-bottom:.5rem; }
+  .matrix-topline .count-badge { font-size:.74rem; font-weight:600; color:var(--dim); padding:.16rem .5rem; border:1px solid var(--line); border-radius:999px; background:var(--panel-2); white-space:nowrap; }
 
   /* detail: empty state + stacked sections + small head button */
   .drill-empty { flex:1; display:grid; place-items:center; text-align:center; padding:2rem; color:var(--dim); }

@@ -220,7 +220,7 @@ RSpec.describe Studio::App do
     expect(res.headers["x-content-type-options"]).to eq("nosniff")
   end
 
-  it "whitelists a per-request nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
+  it "whitelists a nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
     app, = build_app
     res = Client.new(app).get("/login")
     csp = res.headers["content-security-policy"]
@@ -230,13 +230,19 @@ RSpec.describe Studio::App do
     expect(res.body).to include(%(<meta name="csp-nonce" content="#{nonce}">))
   end
 
-  it "uses a fresh CSP nonce per response" do
+  it "keeps the CSP nonce stable within a session (Turbo+CodeMirror), distinct across sessions" do
     app, = build_app
-    client = Client.new(app)
-    n1 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
-    n2 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
-    expect(n1).not_to be_nil
-    expect(n1).not_to eq(n2)
+    c1 = Client.new(app)
+    # Same session → same nonce on every response: the browser enforces the initial
+    # document's CSP for the whole SPA session, so Turbo-fetched pages must carry the
+    # SAME nonce or CodeMirror's injected <style> gets blocked (unstyled editor).
+    n1a = c1.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    n1b = c1.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    expect(n1a).not_to be_nil
+    expect(n1a).to eq(n1b)
+    # Different session → different nonce (still unguessable, per-user).
+    n2 = Client.new(app).get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    expect(n2).not_to eq(n1a)
   end
 
   # --- Assets --------------------------------------------------------------
@@ -836,7 +842,7 @@ RSpec.describe Studio::App do
   it "the model-defaults form dispatches update_settings with the v2 platform layer" do
     app, bus = build_app
     client = login(app)
-    body = client.get("/settings").body
+    body = client.get("/settings?s=models").body # drill: model defaults section
     expect(body).to include('name="default_model"')
     expect(body).to include('name="fallback_models"')
     csrf = csrf_from(body)
@@ -863,7 +869,7 @@ RSpec.describe Studio::App do
 
   it "settings lists providers with the key MASKED (never plaintext)" do
     app, = build_app(llm_providers: [{ "api" => "deepseek", "api_key" => "sk-secret", "models" => %w[deepseek-chat] }])
-    body = login(app).get("/settings").body
+    body = login(app).get("/settings?s=llm").body # drill: providers section
     expect(body).to include("deepseek")
     expect(body).to include("__OCULTO__")
     expect(body).not_to include("sk-secret")
@@ -1025,7 +1031,7 @@ RSpec.describe Studio::App do
     expect(client.get("/mcp").body).to include('action="/studio/mcp/delete"', "data-turbo-confirm=")
     expect(client.get("/tools/def/cep").body).to include("/delete", "data-turbo-confirm=")
     expect(client.get("/system-files").body).to include('action="/studio/system-files/delete"', "data-turbo-confirm=")
-    expect(client.get("/settings").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
+    expect(client.get("/settings?s=llm").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
     expect(client.get("/agents/bia").body).to include("/prompts/delete", "data-turbo-confirm=")
   end
 

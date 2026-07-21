@@ -423,7 +423,7 @@ module Studio
           with_flash("Agent '#{id}' tools updated.") do
             dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
           end
-          r.redirect("/studio/tools")
+          r.redirect("/studio/tools?a=#{Rack::Utils.escape(id)}")
         end
       end
 
@@ -448,7 +448,7 @@ module Studio
           with_flash("Model defaults saved.") do
             dispatch(:update_settings, { patch: model_defaults_patch(r) })
           end
-          r.redirect("/studio/settings#models")
+          r.redirect("/studio/settings?s=models")
         end
 
         # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
@@ -458,14 +458,14 @@ module Studio
             with_flash("Provider removed.") do
               dispatch(:delete_llm_provider, { api: presence(r.params["api"]) })
             end
-            r.redirect("/studio/settings#llm")
+            r.redirect("/studio/settings?s=llm")
           end
           r.post do
             check_csrf!
             with_flash("Provider saved.") do
               dispatch(:upsert_llm_provider, provider_patch(r))
             end
-            r.redirect("/studio/settings#llm")
+            r.redirect("/studio/settings?s=llm")
           end
         end
       end
@@ -629,9 +629,17 @@ module Studio
 
     def authenticated? = session["auth"] == true
 
-    # Per-request CSP nonce (see the route block). Memoized on the request instance
-    # so the header and the <meta name="csp-nonce"> in the layout carry the same value.
-    def csp_nonce = (@csp_nonce ||= SecureRandom.base64(16))
+    # CSP nonce for inline styles (CodeMirror's injected theme). Stable PER SESSION,
+    # not per request: the browser enforces the CSP from the initial document load
+    # for the whole SPA session, but Turbo Drive fetches later pages carrying their
+    # OWN nonce in the <meta>. A per-request nonce would therefore never match what
+    # the browser enforces after a Turbo navigation, so CodeMirror's <style> gets
+    # blocked and the editor renders unstyled/broken until a full reload. A
+    # session-lifetime nonce keeps the meta constant across Turbo visits (matches the
+    # enforced value) while still being unguessable and per-user — the standard
+    # Turbo+CSP reconciliation. Scripts stay 'self' (no nonce), so this only governs
+    # styles. Memoized on the request instance so header and <meta> agree.
+    def csp_nonce = (@csp_nonce ||= (session["csp_nonce"] ||= SecureRandom.base64(16)))
 
     # --- Polish: theme, health chip, restart banner ----------------
 
@@ -861,6 +869,10 @@ module Studio
       # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = harness[:tool_store] ? harness[:tool_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
+      # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
+      # default to the first agent so the pane is useful on landing.
+      sel = request.params["a"]
+      @sel_agent = (sel && @agents.find { |a| a.id == sel }) || @agents.first
       view("tools")
     end
 
@@ -960,10 +972,12 @@ module Studio
 
     # --- Settings + LLM providers ----------------------------------
 
+    SETTINGS_SECTIONS = %w[general models llm].freeze
     def render_settings
       store = harness[:settings_store]
       @settings = store ? store.get : Harness::SettingsStore::DEFAULTS
       @providers = harness[:llm_provider_store] ? harness[:llm_provider_store].all : []
+      @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
       view("settings")
     end
 
