@@ -25,6 +25,10 @@ export default class extends Controller {
   connect() {
     if (!this.hasSourceTarget) return
     const textarea = this.sourceTarget
+    // Defensive: a stale Turbo snapshot may still carry CodeMirror's generated
+    // DOM (editor, toolbar, preview) from before it was cached. Strip it so we
+    // always mount from the pristine <textarea> — never double-mount.
+    this.cleanupDom()
     textarea.style.display = "none"
 
     // CodeMirror (style-mod) injects a <style> for its base theme + syntax highlight.
@@ -68,6 +72,14 @@ export default class extends Controller {
     this.view = view
 
     if (this.previewValue && isMarkdown) this.mountPreview()
+
+    // Turbo Drive snapshots the DOM on navigation and restores it on the way
+    // back. If CodeMirror's generated DOM is left in place, the restored snapshot
+    // double-mounts / renders broken until a hard reload. Tear back down to the
+    // pristine <textarea> right before Turbo caches — so both the snapshot and
+    // the next connect() start clean.
+    this.beforeCache = () => this.teardown()
+    document.addEventListener("turbo:before-cache", this.beforeCache)
   }
 
   // Edit/Preview toggle: a non-submitting toolbar button + a rendered pane. The
@@ -87,6 +99,8 @@ export default class extends Controller {
     pane.hidden = true
     this.element.appendChild(pane)
 
+    this.toolbar = bar
+    this.pane = pane
     this.editorDom = this.view.dom
     toggle.addEventListener("click", () => {
       const showPreview = pane.hidden
@@ -105,7 +119,25 @@ export default class extends Controller {
     if (form) form.requestSubmit ? form.requestSubmit() : form.submit()
   }
 
-  disconnect() {
+  // Restore the pristine DOM (destroy CodeMirror, drop the toolbar/preview, show
+  // the textarea). Idempotent — safe to call from before-cache and disconnect.
+  teardown() {
     if (this.view) { this.view.destroy(); this.view = null }
+    this.cleanupDom()
+    if (this.hasSourceTarget) this.sourceTarget.style.display = ""
+  }
+
+  // Remove any CodeMirror-generated siblings (editor dom, toolbar, preview pane),
+  // whether from this instance or a restored Turbo snapshot.
+  cleanupDom() {
+    if (this.toolbar) { this.toolbar.remove(); this.toolbar = null }
+    if (this.pane) { this.pane.remove(); this.pane = null }
+    this.element.querySelectorAll(":scope > .cm-editor, :scope > .editor-toolbar, :scope > .markdown-preview")
+      .forEach((n) => n.remove())
+  }
+
+  disconnect() {
+    if (this.beforeCache) { document.removeEventListener("turbo:before-cache", this.beforeCache); this.beforeCache = null }
+    this.teardown()
   }
 }
