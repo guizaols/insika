@@ -42,12 +42,8 @@ class LocalAdminShim
   end
 end
 
-# Completes the BUS with the /admin control Commands (pause/approve) — the
-# base deployment registers only the turn essentials.
-W::BUS.register(:pause_task, Harness::Commands::PauseTask.new(task_store: W::TASK_STORE, executor: W::EXECUTOR))
-W::BUS.register(:approve_action, Harness::Commands::ApproveAction.new(
-                  pending_action_store: W::PENDING_ACTION_STORE, executor: W::EXECUTOR, event_stream: W::EVENT_STREAM
-                ))
+# pause_task/approve_action come from the shared graph core (Harness::Wiring::Graph,
+# §12 G4) — no longer patched in here.
 
 # Session ready for multi-turn in the browser: type session_id "web" in /admin/chat
 # (and agent "bia") so Bia REMEMBERS the previous turns.

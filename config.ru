@@ -26,12 +26,8 @@ require_relative "studio/app"     # management UI (Roda), under /studio
 
 W = Deploy::Wiring
 
-# /admin control Commands (the base deployment registers only the turn
-# essentials; pause/approve enter here, as in serve_real).
-W::BUS.register(:pause_task, Harness::Commands::PauseTask.new(task_store: W::TASK_STORE, executor: W::EXECUTOR))
-W::BUS.register(:approve_action, Harness::Commands::ApproveAction.new(
-                  pending_action_store: W::PENDING_ACTION_STORE, executor: W::EXECUTOR, event_stream: W::EVENT_STREAM
-                ))
+# pause_task/approve_action come from the shared graph core (Harness::Wiring::Graph,
+# §12 G4) — no longer patched in here.
 
 # fail-closed: without ADMIN_TOKEN, /admin and /studio deny. The gateway falls back to
 # ADMIN_TOKEN when OPENCLAW_GATEWAY_TOKEN is not set (serve_real parity).
