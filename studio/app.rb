@@ -6,6 +6,7 @@ require "securerandom"
 require "rack/utils"
 require "json"
 require "time"
+require "date"
 require_relative "forms"
 require_relative "nav_icons"
 
@@ -181,8 +182,13 @@ module Studio
         r.redirect(safe_back(r.params["back"]))
       end
 
-      # `/studio` and `/studio/` → agents list.
-      r.root { r.redirect("/studio/agents") }
+      # `/studio` and `/studio/` → overview home.
+      r.root { r.redirect("/studio/home") }
+
+      # --- Overview: at-a-glance dashboard ---------------------
+      r.on "home" do
+        r.is { r.get { render_home } }
+      end
 
       # --- Agents: list + detail/authoring ---------------------
       r.on "agents" do
@@ -324,19 +330,21 @@ module Studio
 
         # New skill editor (before the generic String matcher).
         r.get "new" do
-          @skill_name = ""
+          load_skills_master
+          @selected = ""
           @skill_content = new_skill_template
-          view("skill_edit")
+          view("skills")
         end
 
         r.on String do |name|
           name = utf8(name)
-          # GET /studio/skills/:name — editor (island code-editor).
+          # GET /studio/skills/:name — drill with this skill open in the detail.
           r.is do
             r.get do
-              @skill_name = name
+              load_skills_master
+              @selected = name
               @skill_content = skill_source(name)
-              view("skill_edit")
+              view("skills")
             end
           end
           # Enables/disables the skill on N agents at once.
@@ -421,7 +429,7 @@ module Studio
           with_flash("Agent '#{id}' tools updated.") do
             dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
           end
-          r.redirect("/studio/tools")
+          r.redirect("/studio/tools?a=#{Rack::Utils.escape(id)}")
         end
       end
 
@@ -446,7 +454,7 @@ module Studio
           with_flash("Model defaults saved.") do
             dispatch(:update_settings, { patch: model_defaults_patch(r) })
           end
-          r.redirect("/studio/settings#models")
+          r.redirect("/studio/settings?s=models")
         end
 
         # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
@@ -456,14 +464,14 @@ module Studio
             with_flash("Provider removed.") do
               dispatch(:delete_llm_provider, { api: presence(r.params["api"]) })
             end
-            r.redirect("/studio/settings#llm")
+            r.redirect("/studio/settings?s=llm")
           end
           r.post do
             check_csrf!
             with_flash("Provider saved.") do
               dispatch(:upsert_llm_provider, provider_patch(r))
             end
-            r.redirect("/studio/settings#llm")
+            r.redirect("/studio/settings?s=llm")
           end
         end
       end
@@ -606,6 +614,9 @@ module Studio
     # by comparing the path and renders the icon via `nav_icon`.
     def nav_sections
       [
+        ["", [
+          ["Home", "/studio/home", :home]
+        ]],
         ["build", [
           ["Agents", "/studio/agents", :agents],
           ["Skills", "/studio/skills", :skills],
@@ -627,13 +638,36 @@ module Studio
 
     def authenticated? = session["auth"] == true
 
-    # Per-request CSP nonce (see the route block). Memoized on the request instance
-    # so the header and the <meta name="csp-nonce"> in the layout carry the same value.
-    def csp_nonce = (@csp_nonce ||= SecureRandom.base64(16))
+    # Is the given nav href the current page? Robust to whether request.path
+    # carries the "/studio" mount prefix (it does under serve_real/config.ru, it
+    # doesn't in specs) — strip it from both sides, then exact- or prefix-match
+    # so detail routes (/agents/:id) still light up their section.
+    def nav_active?(href)
+      target = href.sub(%r{\A/studio}, "")
+      path = request.path.sub(%r{\A/studio}, "")
+      path == target || path.start_with?("#{target}/")
+    end
+
+    # CSP nonce for inline styles (CodeMirror's injected theme). Stable PER SESSION,
+    # not per request: the browser enforces the CSP from the initial document load
+    # for the whole SPA session, but Turbo Drive fetches later pages carrying their
+    # OWN nonce in the <meta>. A per-request nonce would therefore never match what
+    # the browser enforces after a Turbo navigation, so CodeMirror's <style> gets
+    # blocked and the editor renders unstyled/broken until a full reload. A
+    # session-lifetime nonce keeps the meta constant across Turbo visits (matches the
+    # enforced value) while still being unguessable and per-user — the standard
+    # Turbo+CSP reconciliation. Scripts stay 'self' (no nonce), so this only governs
+    # styles. Memoized on the request instance so header and <meta> agree.
+    def csp_nonce = (@csp_nonce ||= (session["csp_nonce"] ||= SecureRandom.base64(16)))
 
     # --- Polish: theme, health chip, restart banner ----------------
 
     def restart_needed? = self.class.restart_needed?
+
+    # Environment label for the sidebar identity chip — reflects the REAL runtime
+    # env (HARNESS_ENV → RACK_ENV → "local") so an operator always knows which box
+    # they are looking at. No new state; just reads the process env.
+    def env_label = (presence(ENV["HARNESS_ENV"]) || presence(ENV["RACK_ENV"]) || "local").to_s
 
     # Theme preference read from the cookie (applied server-side on <html> → no
     # flash). Strict allowlist: an unexpected value falls back to "auto".
@@ -804,10 +838,21 @@ module Studio
 
     # --- Skills index --------------------------------------------------------
 
-    def render_skills_index
+    # Master data for the Skills drill-down (list + authored badges + agents),
+    # shared by every skill route so the master pane always renders. @selected
+    # drives the detail pane (nil = none, "" = new, name = edit).
+    def load_skills_master
       @skills = (harness[:skill_catalog]&.all || []).sort_by(&:name)
       @stored = harness[:skill_store] ? harness[:skill_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
+    end
+
+    def render_skills_index
+      load_skills_master
+      # Auto-open the first skill (drill-down convention) so the detail pane is
+      # useful on landing; the empty state only shows with an empty catalog.
+      @selected = @skills.first&.name
+      @skill_content = @selected ? skill_source(@selected) : nil
       view("skills")
     end
 
@@ -843,6 +888,10 @@ module Studio
       # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = harness[:tool_store] ? harness[:tool_store].names : []
       @agents = harness[:profile_source].all.sort_by(&:id)
+      # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
+      # default to the first agent so the pane is useful on landing.
+      sel = request.params["a"]
+      @sel_agent = (sel && @agents.find { |a| a.id == sel }) || @agents.first
       view("tools")
     end
 
@@ -923,6 +972,59 @@ module Studio
 
     def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"
 
+    # --- Overview / home ------------------------------------------------------
+
+    # At-a-glance dashboard: counts + activity + recent conversations. All from
+    # data the Studio already reads (one scan of the session store); no new
+    # metrics pipeline. `active_now` = sessions touched in the last 5 minutes.
+    def render_home
+      ps = harness[:profile_source]
+      sessions = all_sessions
+      @counts = {
+        "conversations" => sessions.size,
+        "messages" => sessions.sum { |s| Array(s.messages).size },
+        "agents" => ps ? ps.all.size : 0,
+        "skills" => harness[:skill_catalog] ? harness[:skill_catalog].all.size : 0,
+        "tools" => harness[:tool_catalog] ? harness[:tool_catalog].all.size : 0,
+        "providers" => harness[:llm_provider_store] ? harness[:llm_provider_store].all.size : 0,
+        "MCP servers" => harness[:mcp_store] ? harness[:mcp_store].all.size : 0
+      }
+      now = Time.now
+      cutoff = now - (5 * 60)
+      @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
+      @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
+      @activity = activity_by_day(sessions, days: 14, now: now)
+      @persistence = harness.dig(:config, :persistence)
+      view("home")
+    end
+
+    def all_sessions
+      store = harness[:session_store]
+      return [] unless store
+
+      store.each_id.filter_map { |sid| store.find(sid) }
+    end
+
+    def parse_time(str)
+      s = str.to_s
+      return nil if s.empty?
+
+      Time.parse(s)
+    rescue ArgumentError
+      nil
+    end
+
+    # [[Date, count], …] — one bucket per day over the window, most-recent last.
+    def activity_by_day(sessions, days:, now:)
+      today = now.to_date
+      buckets = Hash.new(0)
+      sessions.each do |s|
+        t = parse_time(s.updated_at) or next
+        buckets[t.to_date] += 1
+      end
+      (0...days).to_a.reverse.map { |i| d = today - i; [d, buckets[d]] }
+    end
+
     # --- History -------------------------------------------------------------
 
     # Recent conversations (all agents — the Session doesn't stamp the agent that
@@ -935,6 +1037,21 @@ module Studio
            .sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
     end
 
+    # Compact relative age ("just now", "9min", "3h", "2d") for a timestamp string.
+    def time_ago(str)
+      t = parse_time(str) or return str.to_s
+      secs = (Time.now - t).to_i
+      return "just now" if secs < 60
+
+      mins = secs / 60
+      return "#{mins}min" if mins < 60
+
+      hrs = mins / 60
+      return "#{hrs}h" if hrs < 24
+
+      "#{hrs / 24}d"
+    end
+
     def session_preview(session)
       last = Array(session.messages).reverse.find { |m| %w[user assistant].include?(m["role"]) }
       last && last["content"].to_s
@@ -942,10 +1059,12 @@ module Studio
 
     # --- Settings + LLM providers ----------------------------------
 
+    SETTINGS_SECTIONS = %w[general models llm].freeze
     def render_settings
       store = harness[:settings_store]
       @settings = store ? store.get : Harness::SettingsStore::DEFAULTS
       @providers = harness[:llm_provider_store] ? harness[:llm_provider_store].all : []
+      @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
       view("settings")
     end
 
@@ -1031,8 +1150,25 @@ module Studio
       end
 
       response["content-type"] = CONTENT_TYPES.fetch(File.extname(base), "application/octet-stream")
-      response["cache-control"] = "public, max-age=300"
+      # no-cache (revalidate every load) + the ?v=mtime bust in asset_path: a
+      # rebuilt CSS/JS is NEVER served stale, even mid-session across restarts.
+      # Assets are tiny and same-origin, so the revalidation cost is negligible —
+      # correctness over caching for an actively-edited admin UI.
+      response["cache-control"] = "no-cache"
       File.read(path)
+    end
+
+    # Cache-busting URL for a dist asset. Dist files are served under a STABLE
+    # name with max-age=300, so a rebuilt CSS/JS stays masked by the browser
+    # cache for 5 min — even across a server restart ("reiniciei e continua
+    # quebrado"). Appending the file mtime as ?v= changes the URL whenever the
+    # asset changes, so the browser always refetches the fresh build. The query
+    # is ignored by serve_asset (it matches on the path segment).
+    def asset_path(file)
+      base = File.basename(file)
+      path = File.join(ASSETS_DIR, base)
+      v = File.file?(path) ? File.mtime(path).to_i : 0
+      "/studio/assets/dist/#{base}?v=#{v}"
     end
 
     def presence(str)

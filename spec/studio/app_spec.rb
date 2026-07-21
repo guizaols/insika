@@ -37,7 +37,7 @@ RSpec.describe Studio::App do
   end
 
   # Stage F read stores (only what the pages consume).
-  SkillEntry = Struct.new(:name, :description, keyword_init: true)
+  SkillEntry = Struct.new(:name, :description, :body, keyword_init: true) # body: real catalog skills expose it (drill editor reads it)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
     def versions(_agent, _name) = []
@@ -220,7 +220,7 @@ RSpec.describe Studio::App do
     expect(res.headers["x-content-type-options"]).to eq("nosniff")
   end
 
-  it "whitelists a per-request nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
+  it "whitelists a nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
     app, = build_app
     res = Client.new(app).get("/login")
     csp = res.headers["content-security-policy"]
@@ -230,13 +230,19 @@ RSpec.describe Studio::App do
     expect(res.body).to include(%(<meta name="csp-nonce" content="#{nonce}">))
   end
 
-  it "uses a fresh CSP nonce per response" do
+  it "keeps the CSP nonce stable within a session (Turbo+CodeMirror), distinct across sessions" do
     app, = build_app
-    client = Client.new(app)
-    n1 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
-    n2 = client.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
-    expect(n1).not_to be_nil
-    expect(n1).not_to eq(n2)
+    c1 = Client.new(app)
+    # Same session → same nonce on every response: the browser enforces the initial
+    # document's CSP for the whole SPA session, so Turbo-fetched pages must carry the
+    # SAME nonce or CodeMirror's injected <style> gets blocked (unstyled editor).
+    n1a = c1.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    n1b = c1.get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    expect(n1a).not_to be_nil
+    expect(n1a).to eq(n1b)
+    # Different session → different nonce (still unguessable, per-user).
+    n2 = Client.new(app).get("/login").headers["content-security-policy"][/'nonce-([^']+)'/, 1]
+    expect(n2).not_to eq(n1a)
   end
 
   # --- Assets --------------------------------------------------------------
@@ -246,6 +252,7 @@ RSpec.describe Studio::App do
     res = Client.new(app).get("/assets/dist/application.css")
     expect(res.status).to eq(200)
     expect(res.headers["content-type"]).to include("text/css")
+    expect(res.headers["cache-control"]).to eq("no-cache") # never serve a stale rebuild
   end
 
   it "doesn't escape the dist dir (path traversal → 404)" do
@@ -835,7 +842,7 @@ RSpec.describe Studio::App do
   it "the model-defaults form dispatches update_settings with the v2 platform layer" do
     app, bus = build_app
     client = login(app)
-    body = client.get("/settings").body
+    body = client.get("/settings?s=models").body # drill: model defaults section
     expect(body).to include('name="default_model"')
     expect(body).to include('name="fallback_models"')
     csrf = csrf_from(body)
@@ -862,7 +869,7 @@ RSpec.describe Studio::App do
 
   it "settings lists providers with the key MASKED (never plaintext)" do
     app, = build_app(llm_providers: [{ "api" => "deepseek", "api_key" => "sk-secret", "models" => %w[deepseek-chat] }])
-    body = login(app).get("/settings").body
+    body = login(app).get("/settings?s=llm").body # drill: providers section
     expect(body).to include("deepseek")
     expect(body).to include("__OCULTO__")
     expect(body).not_to include("sk-secret")
@@ -963,6 +970,34 @@ RSpec.describe Studio::App do
     expect(body).to include("No conversations")
   end
 
+  # --- Overview home (T3) --------------------------------------------------
+
+  it "overview home shows counts, an activity chart and recent conversations" do
+    sess = StoredSession.new(id: "sess-home-00001", updated_at: "2026-07-21T00:00:00Z",
+                             messages: [{ "role" => "user", "content" => "oi" }, { "role" => "assistant", "content" => "olá" }])
+    app, = build_app(sessions: { "sess-home-00001" => sess })
+    body = login(app).get("/home").body
+    expect(body).to include("Overview")
+    expect(body).to include("Conversations")
+    expect(body).to include("active now")
+    expect(body).to include("Recent conversations")
+    expect(body).to include("/studio/sessions/sess-home-00001") # recent rail links to the viewer
+    expect(body).to include('class="barchart"')                 # SVG activity chart
+  end
+
+  it "root redirects to the overview home" do
+    app, = build_app
+    res = login(app).get("/")
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to include("/studio/home")
+  end
+
+  it "the nav marks the current section active regardless of the /studio mount prefix" do
+    app, = build_app
+    body = login(app).get("/home").body
+    expect(body).to match(%r{href="/studio/home"[^>]*aria-current="page"})
+  end
+
   # --- Polish & parity (Stage H / task 20) ---------------------------------
 
   it "the app-bar has a health chip and theme switch; the html loads the theme (auto default)" do
@@ -971,6 +1006,20 @@ RSpec.describe Studio::App do
     expect(body).to include('data-theme="auto"')
     expect(body).to include('data-controller="theme"')
     expect(body).to include("runtime online")
+  end
+
+  it "the sidebar shows the environment identity chip" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('class="env-chip"')
+    expect(body).to include("environment")
+  end
+
+  it "cache-busts the dist assets (?v=) so a rebuild isn't masked by the browser cache" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to match(%r{/studio/assets/dist/application\.css\?v=\d+})
+    expect(body).to match(%r{/studio/assets/dist/application\.js\?v=\d+})
   end
 
   it "applies the cookie theme server-side (no wrong-theme flash on load)" do
@@ -1010,7 +1059,7 @@ RSpec.describe Studio::App do
     expect(client.get("/mcp").body).to include('action="/studio/mcp/delete"', "data-turbo-confirm=")
     expect(client.get("/tools/def/cep").body).to include("/delete", "data-turbo-confirm=")
     expect(client.get("/system-files").body).to include('action="/studio/system-files/delete"', "data-turbo-confirm=")
-    expect(client.get("/settings").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
+    expect(client.get("/settings?s=llm").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
     expect(client.get("/agents/bia").body).to include("/prompts/delete", "data-turbo-confirm=")
   end
 
