@@ -82,6 +82,44 @@ RSpec.describe Harness::Context::Providers::Session do
     expect(frag.content).to eq({ role: "assistant", content: "oi" })
   end
 
+  describe "eviction units (§11 R1)" do
+    let(:cycle) do
+      [{ "role" => "user", "content" => "pergunta" },
+       { "role" => "assistant", "content" => "",
+         "tool_calls" => [{ "id" => "c1", "name" => "search", "arguments" => { "q" => "x" } }] },
+       { "role" => "tool", "tool_call_id" => "c1", "content" => "resultado" },
+       { "role" => "assistant", "content" => "resposta final" }]
+    end
+
+    it "agrupa assistant(tool_calls)+tool_results num ÚNICO fragmento (Array)" do
+      frags = provider.call(request(vars: { history: cycle }))
+
+      # 3 unidades: [user] · [assistant+tool] · [assistant final]
+      expect(frags.size).to eq(3)
+      unit = frags[1].content
+      expect(unit).to be_an(Array)
+      expect(unit.map { |m| m[:role].to_s }).to eq(%w[assistant tool])
+    end
+
+    it "a unidade preserva tool_calls (no assistant) e tool_call_id (no tool)" do
+      unit = provider.call(request(vars: { history: cycle }))[1].content
+
+      expect(unit.first[:tool_calls]).to eq([{ "id" => "c1", "name" => "search", "arguments" => { "q" => "x" } }])
+      expect(unit.last[:tool_call_id]).to eq("c1")
+    end
+
+    it "mensagem comum continua um fragmento de Hash único (compat)" do
+      frags = provider.call(request(vars: { history: cycle }))
+
+      expect(frags.first.content).to eq({ role: "user", content: "pergunta" })
+      expect(frags.last.content).to eq({ role: "assistant", content: "resposta final" })
+    end
+
+    it "prioridade é por UNIDADE (a recência conta ciclos, não mensagens)" do
+      expect(provider.call(request(vars: { history: cycle })).map(&:priority)).to eq([60, 61, 62])
+    end
+  end
+
   it "read failure with a requested session -> ContextError" do
     exploding = Class.new do
       def find(_id) = raise Harness::StoreError, "backend caiu"

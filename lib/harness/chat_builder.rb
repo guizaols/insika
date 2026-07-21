@@ -80,11 +80,34 @@ module Harness
     end
 
     # History comes from the context/checkpoint. The {role:, content:} shape
-    # tolerates string keys (JSON from the stores).
+    # tolerates string keys (JSON from the stores). `flatten(1)` dissolves the
+    # Session provider's "eviction units" (an assistant+tool_results cycle grouped
+    # as one Array, §11 R1) back into a flat message stream.
+    #
+    # tool_calls / tool_call_id are rehydrated ONLY when present, so a message
+    # without them keeps the 2-arg shape the specs' FakeChat expects (no unknown
+    # keyword). This is what lets the model SEE the tools it already called.
     def seed_history(chat, messages)
-      Array(messages).each do |m|
-        chat.add_message(role: (m[:role] || m["role"]).to_sym,
-                         content: m[:content] || m["content"])
+      Array(messages).flatten(1).each do |m|
+        attrs = { role: (m[:role] || m["role"]).to_sym, content: m[:content] || m["content"] }
+        tool_calls = m[:tool_calls] || m["tool_calls"]
+        tool_call_id = m[:tool_call_id] || m["tool_call_id"]
+        attrs[:tool_calls] = rehydrate_tool_calls(tool_calls) if tool_calls && !Array(tool_calls).empty?
+        attrs[:tool_call_id] = tool_call_id if tool_call_id
+        chat.add_message(**attrs)
+      end
+    end
+
+    # [{id,name,arguments}] (string|symbol keys) -> {id => RubyLLM::ToolCall}, the
+    # shape RubyLLM seeds an assistant message with. Called only when the gem is
+    # already loaded (create_chat required it before assemble).
+    def rehydrate_tool_calls(list)
+      Array(list).each_with_object({}) do |tc, acc|
+        id = (tc[:id] || tc["id"]).to_s
+        acc[id] = RubyLLM::ToolCall.new(
+          id: id, name: (tc[:name] || tc["name"]).to_s,
+          arguments: tc[:arguments] || tc["arguments"] || {}
+        )
       end
     end
 
