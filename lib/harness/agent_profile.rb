@@ -33,6 +33,16 @@ module Harness
     :memory,                          # cross-session memory.
     #                                   nil/false = OFF (parity: provider []; the `remember`
     #                                   tool not wired); true = ON. Same opt-in as capabilities.
+    :prompt_caching,                  # Anthropic prompt caching (§11 R3): nil/false = OFF
+    #                                   (parity); true = ON. Same opt-in as `memory`. When ON
+    #                                   AND the resolved provider is Anthropic, ChatBuilder sets
+    #                                   ONE cache breakpoint at the end of the system block
+    #                                   (caches tools+system by the tools->system->messages
+    #                                   prefix order; immune to history eviction). PRE-AUDIT:
+    #                                   the system prompt MUST be byte-stable between turns —
+    #                                   a context provider injecting volatile content into
+    #                                   :system turns every turn into a paid cache WRITE with
+    #                                   no read hit. Enable only for stable-system agents.
     :params,                          # LLM generation params (v2, §10): a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
     #                                   stage 5. {} = provider defaults (parity).
@@ -54,7 +64,7 @@ module Harness
   class AgentProfile
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
-      context_budget: 8_000, max_turns: 25, max_tool_calls: 50,
+      context_budget: 8_000, max_tool_calls: 50,
       approval_timeout: 3_600 # cap on the wait for human approval (~1h)
     }.freeze
 
@@ -64,7 +74,7 @@ module Harness
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
-                   capabilities: nil, tools_deferred: nil, memory: nil,
+                   capabilities: nil, tools_deferred: nil, memory: nil, prompt_caching: nil,
                    params: {}, model_policy: nil, guardrails: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
@@ -74,6 +84,7 @@ module Harness
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
         capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
+        prompt_caching: prompt_caching,
         params: params || {}, model_policy: model_policy, guardrails: guardrails,
         metadata: metadata || {}
       )

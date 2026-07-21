@@ -84,7 +84,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
     _result, events = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
     expect(events.map(&:type)).to eq(
-      %i[task_started content content tool_call tool_result checkpoint_created done task_completed]
+      %i[task_started content content tool_call tool_result checkpoint_created task_completed]
     )
   end
 
@@ -110,7 +110,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
     expect(session_store.find("s1").messages.map { |m| m["content"] }).to eq(["oi", "resposta final"])
   end
 
-  it "responds {task_id:} immediately (before :done)" do
+  it "responds {task_id:} immediately (before :task_completed)" do
     session_store.create(id: "s1")
     # the response is synchronous even with the turn queued in the SessionActor (P2-03).
     Sync do
@@ -127,7 +127,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
       agent: "sales", message: "oi", history: [{ role: "user", content: "anterior" }]
     )
 
-    expect(events.map(&:type)).to include(:task_started, :done, :task_completed)
+    expect(events.map(&:type)).to include(:task_started, :task_completed)
     expect(session_store.each_id.to_a).to be_empty # no session created/touched
   end
 end

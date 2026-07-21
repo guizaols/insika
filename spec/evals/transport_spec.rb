@@ -18,7 +18,7 @@ RSpec.describe Evals::Sse do
       Harness::Server::Responses.frame_for(Ev.new(:tool_call, { name: "shipping_quote" })),
       Harness::Server::Responses.frame_for(Ev.new(:content, { delta: "o frete é " })),
       Harness::Server::Responses.frame_for(Ev.new(:content, { delta: "R$ 20" })),
-      Harness::Server::Responses.frame_for(Ev.new(:done, { usage: { model: "deepseek-chat", input_tokens: 5 } }))
+      Harness::Server::Responses.frame_for(Ev.new(:task_completed, { usage: { model: "deepseek-chat", input_tokens: 5 } }))
     )
     r = described_class.reduce(described_class.payloads(raw))
     expect(r[:output_text]).to eq("o frete é R$ 20")

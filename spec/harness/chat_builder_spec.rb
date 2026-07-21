@@ -8,7 +8,7 @@ require "harness/tools/remember"
 RSpec.describe Harness::ChatBuilder do
   Ctx = Struct.new(:system)
   TaskStub = Struct.new(:id, :session_id)
-  ProfileStub = Struct.new(:model, :provider, :limits)
+  ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
                      :current_tool_call, keyword_init: true)
 
@@ -26,9 +26,10 @@ RSpec.describe Harness::ChatBuilder do
   let(:chat) { FakeChat.new }
   let(:task) { TaskStub.new("t", "s") }
 
-  def state(system: "SOUL", allowed_tools: [], allowed_skills: [], limits: {})
+  def state(system: "SOUL", allowed_tools: [], allowed_skills: [], limits: {}, prompt_caching: nil)
     State.new(context: Ctx.new(system), allowed_tools: allowed_tools,
-              allowed_skills: allowed_skills, profile: ProfileStub.new("gpt", nil, limits),
+              allowed_skills: allowed_skills,
+              profile: ProfileStub.new("gpt", nil, limits, prompt_caching),
               task: task)
   end
 
@@ -41,6 +42,41 @@ RSpec.describe Harness::ChatBuilder do
     it "doesn't call with_instructions when the system is empty" do
       builder.configure_chat(chat, state(system: ""))
       expect(chat.instructions).to be_nil
+    end
+
+    context "prompt caching (§11 R3)" do
+      before { require "ruby_llm" }
+
+      def anthropic_chat
+        FakeChat.new.tap { |c| c.model = Struct.new(:provider).new("anthropic") }
+      end
+
+      it "sets ONE system cache breakpoint when caching is on and provider is Anthropic" do
+        c = anthropic_chat
+        builder.configure_chat(c, state(system: "SOUL", prompt_caching: true))
+        raw = c.instructions
+        expect(raw).to be_a(RubyLLM::Content::Raw)
+        block = raw.value.first
+        expect(block[:text]).to eq("SOUL")
+        expect(block[:cache_control]).to eq(type: "ephemeral")
+      end
+
+      it "uses a plain string when caching is on but the provider is NOT Anthropic" do
+        c = FakeChat.new.tap { |ch| ch.model = Struct.new(:provider).new("openai") }
+        builder.configure_chat(c, state(system: "SOUL", prompt_caching: true))
+        expect(c.instructions).to eq("SOUL")
+      end
+
+      it "uses a plain string when caching is off, even on Anthropic (parity default)" do
+        c = anthropic_chat
+        builder.configure_chat(c, state(system: "SOUL", prompt_caching: nil))
+        expect(c.instructions).to eq("SOUL")
+      end
+
+      it "stays off (plain string) when there is no resolved model" do
+        builder.configure_chat(chat, state(system: "SOUL", prompt_caching: true)) # FakeChat#model is nil
+        expect(chat.instructions).to eq("SOUL")
+      end
     end
 
     it "uses the Resolution's tools (ready instances)" do

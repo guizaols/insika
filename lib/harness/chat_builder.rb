@@ -36,7 +36,7 @@ module Harness
     # Assembles the chat with the context (stage 2) and the Resolution's tools (stage 3).
     def configure_chat(chat, state)
       system = state.context.system.to_s
-      chat.with_instructions(system) unless system.empty?
+      apply_instructions(chat, system, state) unless system.empty?
 
       tools = Array(state.allowed_tools).dup
 
@@ -77,6 +77,42 @@ module Harness
       chat.with_tools(*tools) unless tools.empty?
 
       chat
+    end
+
+    # §11 R3: opt-in Anthropic prompt caching. When the agent enables
+    # prompt_caching AND the resolved provider is Anthropic, wrap the system in
+    # the provider's native Content helper with cache: true — ONE breakpoint at
+    # the END of the system block. By Anthropic's prefix order
+    # (tools -> system -> messages), a breakpoint on the last system block caches
+    # tools + system together and is immune to history eviction (messages come
+    # after it). RubyLLM::Content::Raw is Anthropic-specific: build_system_content
+    # emits its blocks verbatim, so the cache_control rides along.
+    #
+    # Any other case (caching off, or a non-Anthropic provider) uses the plain
+    # string — OpenAI caches its prefix on its own; the Raw shape would confuse
+    # non-Anthropic providers. The gem only supports MANUAL caching, and only for
+    # Anthropic.
+    #
+    # PRE-AUDIT (why this is opt-in): the system must be BYTE-STABLE between turns
+    # for a read hit. A context provider that injects volatile content into
+    # :system (timestamps, per-turn data) makes every turn a paid cache WRITE
+    # with no hit — worse than off. Enable only for stable-system agents.
+    def apply_instructions(chat, system, state)
+      if state.profile.prompt_caching && anthropic_provider?(chat)
+        chat.with_instructions(RubyLLM::Providers::Anthropic::Content.new(system, cache: true))
+      else
+        chat.with_instructions(system)
+      end
+    end
+
+    # The RESOLVED provider (chat.model.provider is the slug string, e.g.
+    # "anthropic"), authoritative even when the agent left provider nil and
+    # RubyLLM inferred it from the model id. Any surface without a model (fakes,
+    # a provider that raises) -> false: caching silently stays off.
+    def anthropic_provider?(chat)
+      chat.respond_to?(:model) && chat.model && chat.model.provider.to_s == "anthropic"
+    rescue StandardError
+      false
     end
 
     # History comes from the context/checkpoint. The {role:, content:} shape

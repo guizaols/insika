@@ -37,7 +37,7 @@ module Harness
         when :tool_call      then start_tool(meta, data)
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
-        when :task_completed then finish_turn(meta, data, :ok)   # :done is the legacy twin — ignored
+        when :task_completed then finish_turn(meta, data, :ok)
         when :task_failed    then finish_turn(meta, data, :error)
         when :task_cancelled then finish_turn(meta, data, :cancelled)
         end

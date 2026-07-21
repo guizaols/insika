@@ -99,6 +99,7 @@ module Harness
         capabilities: h[:capabilities],
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
+        prompt_caching: h[:prompt_caching],
         # params/model_policy (v2, §10): the resolver tolerates string keys from
         # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no
         # re-symbolization needed here.

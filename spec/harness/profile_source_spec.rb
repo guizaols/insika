@@ -44,7 +44,7 @@ RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
       expect(got.skills).to eq(%w[pedido])
       expect(got.memory).to be(true)
       # limits gets the defaults on build (merge)
-      expect(got.limits[:max_turns]).to eq(Harness::AgentProfile::DEFAULT_LIMITS[:max_turns])
+      expect(got.limits[:max_tool_calls]).to eq(Harness::AgentProfile::DEFAULT_LIMITS[:max_tool_calls])
     end
 
     it "fetch of absent -> nil; all/ids reflect the store" do

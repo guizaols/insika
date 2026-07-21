@@ -11,8 +11,9 @@ class FakeChat
   attr_reader :instructions, :tools, :messages, :asked
   # script: proc run in the chat's context during #ask (may call
   # emit_chunk/fire_tool_call/fire_tool_result). final_content: content of the final
-  # response.
-  attr_accessor :script, :final_content
+  # response. model: optional stub read by ChatBuilder's provider check (§11 R3);
+  # nil by default (provider check -> false, caching stays off).
+  attr_accessor :script, :final_content, :model
 
   def initialize
     @tools = []

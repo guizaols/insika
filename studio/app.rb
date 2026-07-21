@@ -6,6 +6,8 @@ require "securerandom"
 require "rack/utils"
 require "json"
 require "time"
+require_relative "forms"
+require_relative "nav_icons"
 
 module Studio
   # Harness Studio — the server-rendered management UI, replacing
@@ -23,6 +25,9 @@ module Studio
   # Same-origin assets: versioned esbuild bundle in `assets/dist/*`, served
   # by `/studio/assets/dist/*`. Strict `'self'` CSP (no `unsafe-inline`).
   class App < Roda
+    include Forms     # form -> command-payload parsing (§11 B6)
+    include NavIcons  # nav SVG helper (§11 B6)
+
     # The session cookie lives N days. 7 days = parity with the OpenClaw default.
     SESSION_MAX_AGE = 7 * 24 * 3600
     ASSETS_DIR = File.expand_path("assets/dist", __dir__)
@@ -618,24 +623,7 @@ module Studio
       ]
     end
 
-    # Inline SVG icon (stroke, currentColor) per nav key. Inline SVG is
-    # allowed by the CSP (it's an HTML element, not an external resource). 20×20,
-    # inherits the link color. Source: a Lucide-style line icon set.
-    NAV_ICONS = {
-      agents: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-      skills: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
-      tools: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
-      system: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/>',
-      mcp: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
-      settings: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
-      chats: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-      playground: '<polygon points="6 3 20 12 6 21 6 3"/>'
-    }.freeze
-
-    def nav_icon(key)
-      %(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ) +
-        %(stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">#{NAV_ICONS[key]}</svg>)
-    end
+    # NAV_ICONS + nav_icon moved to Studio::NavIcons (§11 B6).
 
     def authenticated? = session["auth"] == true
 
@@ -811,84 +799,8 @@ module Studio
     # `model` is OPTIONAL as of v2 (§10): blank clears it, so the agent inherits
     # the platform `default_model` via the ModelResolver — the config form is the
     # place that surfaces that layering. params/model_policy: see the helpers below.
-    def config_patch(r)
-      limits = @agent.limits.dup
-      { "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |field|
-        v = presence(r.params[field])
-        limits[field.to_sym] = Integer(v) if v
-      end
-      {
-        id: @agent.id,
-        model: presence(r.params["model"]),
-        provider: r.params["provider"].to_s,
-        memory: r.params["memory"] == "1",
-        limits: limits,
-        params: params_patch(r),
-        model_policy: model_policy_patch(r),
-        guardrails: guardrails_patch(r)
-      }
-    end
-
-    # Guardrails config from the form (RFC-0009). The config form OWNS these fields,
-    # so the patch reflects the whole guardrails state. String values round-trip
-    # cleanly through the JSON store; Safety::Config normalizes on read. A blank
-    # moderator drops the key (deterministic only).
-    def guardrails_patch(r)
-      out = {
-        "input" => r.params["guardrail_input"] == "1",
-        "output" => r.params["guardrail_output"] == "1",
-        "strictness" => presence(r.params["guardrail_strictness"]) || "medium"
-      }
-      (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
-      responses = guardrail_responses_patch(r)
-      out["responses"] = responses unless responses.empty?
-      out
-    end
-
-    # Per-category safe-reply overrides (RFC-0009 §7, config over convention). Only
-    # the non-blank fields are persisted; Safety::Config normalizes on read.
-    def guardrail_responses_patch(r)
-      %w[default injection sexual abuse escalate].each_with_object({}) do |cat, acc|
-        (v = presence(r.params["guardrail_response_#{cat}"])) && (acc[cat] = v)
-      end
-    end
-
-    # Per-agent generation params (v2, §10). The config form OWNS these fields, so
-    # the patch reflects the whole form state: a blank field drops the key (and an
-    # all-blank form clears params to {}). temperature/max_tokens MUST be Numeric —
-    # ModelSelection#apply_params guards on `numeric?` and silently skips a String —
-    # so coerce here; a malformed number is dropped rather than 500-ing the save.
-    # thinking is a reasoning-effort string (low/medium/high), applied verbatim.
-    def params_patch(r)
-      out = {}
-      t = coerce(r.params["temperature"]) { |v| Float(v) }
-      out["temperature"] = t unless t.nil?
-      m = coerce(r.params["max_tokens"]) { |v| Integer(v) }
-      out["max_tokens"] = m unless m.nil?
-      thinking = presence(r.params["thinking"])
-      out["thinking"] = thinking if thinking
-      out
-    end
-
-    # Per-agent model fence (v2, §10): { "allow" => [refs] } where a ref is
-    # "provider/model", "provider/*" or "model". Blank textarea -> nil (NO fence,
-    # all models — parity). Enforced on the RESOLVED model by the ModelResolver,
-    # so a per-chat pin can never escape it.
-    def model_policy_patch(r)
-      refs = split_list(r.params["model_policy_allow"])
-      refs.empty? ? nil : { "allow" => refs }
-    end
-
-    # Parses a numeric-ish form field, returning nil for blank or unparseable input
-    # (never raises — a bad value must not turn a config save into a 500).
-    def coerce(raw)
-      v = presence(raw)
-      return nil unless v
-
-      yield(v)
-    rescue ArgumentError, TypeError
-      nil
-    end
+    # config_patch/guardrails_patch/guardrail_responses_patch/params_patch/
+    # model_policy_patch/coerce moved to Studio::Forms (§11 B6).
 
     # --- Skills index --------------------------------------------------------
 
@@ -982,45 +894,7 @@ module Studio
       }
     end
 
-    # :write_data_tool payload from the form. nested request/response;
-    # headers/query as "key=value" per line (same idiom as the MCP env —
-    # a masked secret comes back as a sentinel and is reconciled in the store).
-    def tool_patch(r)
-      {
-        name: presence(r.params["name"]),
-        description: r.params["description"].to_s,
-        parameters: parse_param_lines(r.params["parameters"]),
-        request: {
-          method: presence(r.params["method"]) || "GET",
-          url: r.params["url"].to_s,
-          headers: parse_kv_lines(r.params["headers"]),
-          query: parse_kv_lines(r.params["query"]),
-          body: presence(r.params["body"])
-        },
-        response: {
-          extract: presence(r.params["extract"]) || "body_raw",
-          path: presence(r.params["path"])
-        },
-        secret_headers: split_list(r.params["secret_headers"]),
-        timeout: presence(r.params["timeout"])
-      }
-    end
-
-    # Parameters: one line per param, pipe-delimited (CSP forbids JS for
-    # dynamic lines; a textarea is the honest path, like the MCP env):
-    #   name | type | required|optional | description
-    def parse_param_lines(text)
-      text.to_s.each_line.filter_map do |line|
-        line = line.strip
-        next if line.empty? || line.start_with?("#")
-
-        name, type, req, desc = line.split("|", 4).map(&:strip)
-        next if name.to_s.empty?
-
-        { "name" => name, "type" => (presence(type) || "string"),
-          "required" => req.to_s.downcase != "optional", "description" => desc.to_s }
-      end
-    end
+    # tool_patch/parse_param_lines moved to Studio::Forms (§11 B6).
 
     # Inverse: params (from the store) -> text for the textarea. Accepts the legacy flat array
     # AND the JSON Schema (Phase 7): renders the TOP-LEVEL view (nesting doesn't fit in the
@@ -1078,50 +952,7 @@ module Studio
     # Settings patch from the form. streaming/compaction are bool
     # (checkbox); the timeouts are integers; compaction.keep_last integer. Only what
     # came in the form enters the patch (the rest and the defaults are preserved in the store).
-    def settings_patch(r)
-      patch = {
-        "streaming" => r.params["streaming"] == "1",
-        "compaction" => {
-          "enabled" => r.params["compaction_enabled"] == "1"
-        }
-      }
-      { "request_timeout" => "request_timeout", "max_retries" => "max_retries",
-        "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |f|
-        v = presence(r.params[f])
-        patch[f] = Integer(v) if v
-      end
-      kl = presence(r.params["keep_last"])
-      patch["compaction"]["keep_last"] = Integer(kl) if kl
-      patch
-    end
-
-    # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a
-    # sub-resource, like providers) so the general-settings save never touches it and
-    # vice-versa. The scalar refs are always present (blank -> nil, which the
-    # deep-merge writes and the ModelResolver reads as "no platform default");
-    # fallback_models is a full-list replace (deep_merge substitutes arrays, so a
-    # resubmit never accumulates).
-    def model_defaults_patch(r)
-      {
-        "default_model" => presence(r.params["default_model"]),
-        "default_provider" => presence(r.params["default_provider"]),
-        "utility_model" => presence(r.params["utility_model"]),
-        "fallback_models" => split_list(r.params["fallback_models"])
-      }
-    end
-
-    # LLM provider from the form. api_key is sentinel-aware: the form
-    # pre-fills with the sentinel when a key already exists, so resubmitting
-    # without touching preserves it; a new string replaces it; "" clears it. models = CSV.
-    def provider_patch(r)
-      {
-        api: presence(r.params["api"]),
-        base_url: r.params["base_url"].to_s,
-        auth_header: r.params["auth_header"].to_s,
-        api_key: r.params["api_key"].to_s,
-        models: split_list(r.params["models"])
-      }
-    end
+    # settings_patch/model_defaults_patch/provider_patch moved to Studio::Forms (§11 B6).
 
     # --- MCP -------------------------------------------------------
 
@@ -1130,21 +961,7 @@ module Studio
       view("mcp")
     end
 
-    # MCP instance from the form. `env` comes as "KEY=value" lines (CSP
-    # forbids inline JS for add/remove line; a textarea is the simple, honest
-    # path). Masked values come back as a sentinel — keeping them preserves
-    # the secret; changing replaces; deleting the line clears it.
-    def mcp_patch(r)
-      {
-        name: presence(r.params["name"]),
-        transport: presence(r.params["transport"]) || "stdio",
-        command: r.params["command"].to_s,
-        url: r.params["url"].to_s,
-        description: r.params["description"].to_s,
-        enabled: r.params["enabled"] == "1",
-        env: parse_kv_lines(r.params["env"])
-      }
-    end
+    # mcp_patch moved to Studio::Forms (§11 B6).
 
     # --- System-files ----------------------------------------------
 
@@ -1164,19 +981,7 @@ module Studio
       view("chats")
     end
 
-    # "KEY=value" per line -> Hash. Ignores blank lines and comments (#).
-    def parse_kv_lines(text)
-      text.to_s.each_line.filter_map do |line|
-        line = line.strip
-        next if line.empty? || line.start_with?("#")
-
-        k, v = line.split("=", 2)
-        k = k.to_s.strip
-        next if k.empty?
-
-        [k, v.to_s.strip]
-      end.to_h
-    end
+    # parse_kv_lines moved to Studio::Forms (§11 B6).
 
     # CSV/whitespace -> [String] sem vazios.
     def split_list(str)

@@ -73,15 +73,6 @@ RSpec.describe Harness::Telemetry::Recorder do
       expect(turn_span.attributes).not_to include("harness.agent")
     end
 
-    it ":done is ignored (legacy twin of :task_completed — no duplicate span/finish)" do
-      recorder.record(ev(:task_started, { agent: "bia" }))
-      recorder.record(ev(:done, { content: "oi" }))       # ignored
-      expect(turn_span).not_to be_finished                # still open
-      recorder.record(ev(:task_completed, {}))
-      expect(tracer.spans.count { |s| s.name == "harness.turn" }).to eq(1)
-      expect(turn_span).to be_finished
-    end
-
     it "task_failed -> status error + record_error(message)" do
       recorder.record(ev(:task_started, { agent: "bia" }))
       recorder.record(ev(:task_failed, { error: "Boom", message: "estourou" }))
