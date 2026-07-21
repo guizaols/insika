@@ -809,6 +809,18 @@ module Harness
     # between writes, the worst case is a new checkpoint with the task :running ->
     # Recovery re-executes the already-saved turn (safe thanks to the side-effect
     # recording).
+    #
+    # CHECKPOINT vs SESSION — the two stores DIVERGE by design (§11 R2c):
+    #   · Checkpoint.messages = flatten_history(context.history) + new_messages,
+    #     i.e. "what the model actually SAW this turn" AFTER budget eviction
+    #     (context.history is the post-budget assembly). It is the deterministic
+    #     replay tape for Recovery: resuming from it reproduces the exact prompt.
+    #     It is per-task and pruned to keep: 1 (only the latest matters for resume).
+    #   · SessionStore = the INTEGRAL source of truth: append-only, never evicted,
+    #     the full human-readable transcript (viewer, audit, next turns' raw input).
+    # So a long session legitimately has a Checkpoint SHORTER than the Session:
+    # that is not drift to reconcile — it is the point. Do NOT "fix" the checkpoint
+    # to carry the full history (it would defeat the budget) nor evict the session.
     def persist_turn(task, profile, state, content)
       new_messages = turn_transcript(state, content)
       transcript = flatten_history(state.context.history) + new_messages
