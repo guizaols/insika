@@ -22,6 +22,11 @@ module Harness
       @handlers[type.to_sym] = handler
     end
 
+    # Introspection for the composition roots / graph specs: which command
+    # types the bus can route. Read-only; does not expose the handlers.
+    def registered?(type) = @handlers.key?(type.to_sym)
+    def types = @handlers.keys
+
     # -> the handler's result. Unregistered type -> synchronous ValidationError,
     # no Task created (never KeyError/NoMethodError).
     def dispatch(command)
