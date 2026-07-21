@@ -61,6 +61,19 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
 
       expect(event_stream.events.find { |e| e.type == :task_completed }.data[:usage]).to be_nil
     end
+
+    it "surfaces prompt-cache read + write tokens when the provider reports them (§11 R3)" do
+      executor = build_executor
+      resp = Struct.new(:input_tokens, :output_tokens, :model_id, :cached_tokens, :cache_creation_tokens)
+                   .new(100, 20, "claude", 80, 4096)
+
+      usage = executor.send(:usage_of, resp)
+
+      expect(usage).to include(
+        input_tokens: 100, output_tokens: 20, total_tokens: 120,
+        cached_tokens: 80, cache_creation_tokens: 4096, model: "claude"
+      )
+    end
   end
 
   describe "happy path with session" do

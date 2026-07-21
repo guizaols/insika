@@ -544,7 +544,13 @@ module Harness
       output = response.output_tokens.to_i
       usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
       if response.respond_to?(:cached_tokens) && response.cached_tokens
-        usage[:cached_tokens] = response.cached_tokens.to_i
+        usage[:cached_tokens] = response.cached_tokens.to_i # cache_read_input_tokens
+      end
+      # §11 R3: prompt-cache WRITE tokens (Anthropic cache_creation_input_tokens),
+      # billed at ~1.25x. Reported so the first (write) turn vs later (read) turns
+      # are distinguishable in telemetry/usage.
+      if response.respond_to?(:cache_creation_tokens) && response.cache_creation_tokens
+        usage[:cache_creation_tokens] = response.cache_creation_tokens.to_i
       end
       usage[:model] = response.model_id.to_s if response.respond_to?(:model_id) && response.model_id
       usage
