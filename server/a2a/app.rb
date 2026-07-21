@@ -10,9 +10,9 @@ require_relative "agent_card"
 module Harness
   module Server
     module A2A
-      # A2A edge handler: injected sub-app (mirrors
-      # Admin::App). A2A is TRANSPORT — translates JSON-RPC↔Command on the SAME
-      # bus, projects Task→A2A, and NEVER leaks an exception (always an error object).
+      # A2A edge handler: injected sub-app mounted by Server::App. A2A is
+      # TRANSPORT — translates JSON-RPC↔Command on the SAME bus, projects
+      # Task→A2A, and NEVER leaks an exception (always an error object).
       class App
         def initialize(command_bus:, task_store:, session_store:, profiles:, skill_catalog:, config:)
           @command_bus = command_bus

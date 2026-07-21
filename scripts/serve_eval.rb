@@ -96,11 +96,9 @@ end
 APP = Harness::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
-  checkpoint_store: W::CHECKPOINT_STORE, pending_action_store: W::PENDING_ACTION_STORE,
-  catalogs: { skills: W::CATALOG, prompts: W::PROMPT_CATALOG },
-  registries: { tools: W::TOOL_REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
+  pending_action_store: W::PENDING_ACTION_STORE,
   provisioner: W::PACK_IMPORTER,
-  config: { admin_token: ENV.fetch("ADMIN_TOKEN", "local-demo"), allowed_origins: [], gateway_token: TOKEN }
+  config: { gateway_token: TOKEN }
 )
 
 BIND = ENV.fetch("BIND", "http://localhost:9292")

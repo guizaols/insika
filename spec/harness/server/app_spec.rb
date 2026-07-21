@@ -18,7 +18,7 @@ RSpec.describe Harness::Server::App do
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
-      catalogs: {}, registries: {}, a2a: a2a, provisioner: provisioner,
+      a2a: a2a, provisioner: provisioner,
       config: { sync_timeout: 0.05 }.merge(config)
     )
   end
@@ -583,9 +583,9 @@ RSpec.describe Harness::Server::App do
       expect(resp.join).to eq("not found")
     end
 
-    it "/admin without token configured -> 503 fail-closed (not 404)" do
+    it "/admin (retired) -> 404 like any other unknown route" do
       status, = call(build_app, "GET", "/admin")
-      expect(status).to eq(503)
+      expect(status).to eq(404)
     end
 
     it "wrong method on a known route -> 404" do

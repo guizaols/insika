@@ -102,10 +102,7 @@ module Harness
     # --- Transport --------------------------------------------------
     CONFIG = {
       bind: ENV.fetch("HARNESS_BIND", "http://0.0.0.0"),
-      port: Integer(ENV.fetch("HARNESS_PORT", "9292")),
-      admin_token: ENV["HARNESS_ADMIN_TOKEN"], # fail-closed: no token -> /admin 503
-      # Strict CORS: strip/reject avoids the footgun of "a.com, b.com" becoming " b.com"
-      allowed_origins: ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
+      port: Integer(ENV.fetch("HARNESS_PORT", "9292"))
     }.freeze
 
     # --- A2A edge — inbound federation, OPT-IN -------------
@@ -142,10 +139,7 @@ module Harness
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
-      checkpoint_store: CHECKPOINT_STORE, # read for /admin/tasks/:id
-      pending_action_store: PENDING_ACTION_STORE, # approvals in /admin + read
-      catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
-      registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
+      pending_action_store: PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
       a2a: A2A_APP, # nil at the base (opt-in) -> A2A routes respond 404
       config: CONFIG
     )

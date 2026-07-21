@@ -4,8 +4,7 @@ require "json"
 require "rack"
 require "async"
 require_relative "sse_body"
-require_relative "admin_auth"
-require_relative "admin/app"
+require_relative "admin_auth" # Bearer checker shared by the gateway edge (fail-closed)
 require_relative "a2a/app" # A2A edge adapter (pulls protocol/errors/message/projection/card)
 require_relative "responses" # OpenAI Responses adapter (/v1/responses) — drop-in for the OpenClaw gateway
 
@@ -33,31 +32,21 @@ module Harness
       TERMINAL_EVENTS = %i[task_completed task_failed task_cancelled].freeze
       private_constant :TERMINAL_EVENTS
 
-      # checkpoint_store: read only ("checkpoints" column of
-      # /admin/tasks/:id). The constitutional rule holds: server/ only READS stores.
+      # The operator control UI now lives in the Studio (§12 G5); server/ is a
+      # pure transport surface (/v1, /a2a). The constitutional rule holds: server/
+      # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
-                     catalogs:, registries:, config:, checkpoint_store: nil,
-                     pending_action_store: nil, a2a: nil, provisioner: nil)
+                     config:, pending_action_store: nil, a2a: nil, provisioner: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
         @task_store = task_store
-        @catalogs = catalogs
-        @registries = registries
         @config = config
         @pending_action_store = pending_action_store # read for GET /v1/tasks/:id
         @a2a = a2a # A2A edge. nil = server does not expose A2A (parity).
         @provisioner = provisioner # PackImporter. nil = provisioning not exposed.
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
-        # Write control UI: receives the bus (dispatches the same Commands
-        # as the API) and the pending_action_store (approvals). /admin does not write to
-        # a store directly — only via Command (transport).
-        @admin = Admin::App.new(
-          command_bus: command_bus, session_store: session_store, task_store: task_store,
-          checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
-          catalogs: catalogs, registries: registries, event_stream: event_stream
-        )
       end
 
       # Explicit routing, NO framework: ~10 routes in a `case`. A single
@@ -83,7 +72,6 @@ module Harness
 
       def route(req)
         segments = req.path_info.split("/").reject(&:empty?)
-        return handle_admin(req) if segments.first == "admin"
 
         case [req.request_method, segments]
         in ["GET", ["up"]]
@@ -119,54 +107,12 @@ module Harness
         end
       end
 
-      # /admin pipeline: preflight OPTIONS (no auth —
-      # browsers don't send Authorization on preflight) -> AdminAuth.check
-      # (fail-closed) -> CORS headers on the response -> delegates to Admin::App.
-      # /admin NEVER dispatches a Command nor writes to a store.
-      def handle_admin(req)
-        origin = req.get_header("HTTP_ORIGIN")
-        return preflight_response(origin) if req.request_method == "OPTIONS"
-
-        cors = cors_headers(origin)
-        case Harness::Server::AdminAuth.check(@config[:admin_token], req.get_header("HTTP_AUTHORIZATION"))
-        when :disabled
-          merge_headers(admin_error(503, "admin disabled"), cors)
-        when :unauthorized
-          merge_headers(admin_error(401, "unauthorized", "www-authenticate" => "Bearer"), cors)
-        else # :ok
-          merge_headers(@admin.call(req), cors)
-        end
-      end
-
-      # STRICT CORS: only returns headers if the Origin is listed
-      # EXACTLY in allowed_origins (no `*`, no suffixes). No Origin (curl,
-      # same origin) -> {}. Default [] = no cross-site origin.
-      def cors_headers(origin)
-        return {} if origin.nil?
-        return {} unless Array(@config[:allowed_origins]).include?(origin)
-
-        { "access-control-allow-origin" => origin, "vary" => "origin" }
-      end
-
-      def preflight_response(origin)
-        headers = { "content-type" => "text/plain" }
-        if origin && Array(@config[:allowed_origins]).include?(origin)
-          headers.merge!(cors_headers(origin),
-                         "access-control-allow-methods" => "GET, POST", # write /admin
-                         "access-control-allow-headers" => "authorization, content-type")
-        end
-        [204, headers, []]
-      end
-
-      def admin_error(status, message, extra_headers = {})
+      # Bearer-gate error (503 disabled / 401 unauthorized), shared by the
+      # gateway surfaces. JSON body, fail-closed.
+      def auth_error(status, message, extra_headers = {})
         [status,
          { "content-type" => "application/json" }.merge(extra_headers),
          [JSON.generate(error: { class: "Harness::Error", message: message })]]
-      end
-
-      def merge_headers(response, extra)
-        status, headers, body = response
-        [status, headers.merge(extra), body]
       end
 
       # POST /v1/commands/:type — generic: every new Command is born with a
@@ -194,8 +140,8 @@ module Harness
       end
 
       # POST /v1/responses — OpenAI Responses adapter (drop-in for the OpenClaw
-      # gateway). Bearer via `config[:gateway_token]` (fail-closed, same
-      # discipline as /admin). Translates the request -> :send_message and the turn's
+      # gateway). Bearer via `config[:gateway_token]` (fail-closed). Translates
+      # the request -> :send_message and the turn's
       # Event Stream -> OpenAI Responses SSE. Always streams (the consumer asks for SSE).
       def handle_responses(req)
         gate = gateway_gate(req)
@@ -261,12 +207,12 @@ module Harness
         json_response(200, @provisioner.delete(id))
       end
 
-      # Gateway Bearer (fail-closed, same discipline as /admin). -> error
-      # response (503/401) OR nil when ok (the handler proceeds).
+      # Gateway Bearer (fail-closed). -> error response (503/401) OR nil when
+      # ok (the handler proceeds).
       def gateway_gate(req)
         case Harness::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
-        when :disabled then admin_error(503, "gateway disabled")
-        when :unauthorized then admin_error(401, "unauthorized", "www-authenticate" => "Bearer")
+        when :disabled then auth_error(503, "gateway disabled")
+        when :unauthorized then auth_error(401, "unauthorized", "www-authenticate" => "Bearer")
         end
       end
 

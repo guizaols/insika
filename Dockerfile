@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Imagem de produção do harness (motor de agentes). Serve /v1/*, /admin/*, /studio
+# Imagem de produção do harness (motor de agentes). Serve /v1/*, /studio
 # e /up sob Falcon (async/streaming). O Studio já vem com o dist/ versionado —
 # NÃO precisa de Node no build.
 #
