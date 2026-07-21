@@ -1,140 +1,114 @@
-<header class="page-head">
-  <div>
-    <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>settings</span></nav>
-    <h1>Settings<span class="sub">runtime config + LLM providers</span></h1>
-  </div>
-</header>
+<%# Settings — drill-down (T2): section list | selected section's form(s).
+   @section (general|models|llm) comes from ?s= and drives the detail. %>
+<% sections = [
+     ["general", "General", "streaming, timeouts, compaction"],
+     ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
+     ["llm",     "LLM providers", "keys, base URL, models per provider"]
+   ] %>
+<div class="drill">
+  <aside class="drill-pane drill-master">
+    <div class="drill-pane-head"><div class="title"><strong>Settings</strong></div></div>
+    <nav class="drill-pane-body drill-list" aria-label="settings sections">
+      <% sections.each do |key, label, sub| %>
+        <a class="drill-item<%== ' active' if @section == key %>" href="/studio/settings?s=<%= key %>">
+          <div class="drill-item-name"><span class="txt"><%= label %></span><% if key == "llm" %><span class="pill info plain"><%= @providers.size %></span><% end %></div>
+          <div class="drill-item-sub"><%= sub %></div>
+        </a>
+      <% end %>
+    </nav>
+  </aside>
 
-<nav class="subnav">
-  <a href="#general">general</a>
-  <a href="#models">model defaults</a>
-  <a href="#llm">LLM providers</a>
-</nav>
-
-<!-- ── General settings ──────────────────────────────────────────────────── -->
-<section class="section" id="general">
-  <div class="section-head">
-    <h2>General</h2>
-    <p class="muted">streaming, timeouts and compaction — saved via <code>update_settings</code> (durable, applies next turn).</p>
-  </div>
-  <form class="card" method="post" action="/studio/settings">
-    <%== csrf_tag %>
-    <label class="check">
-      <input type="checkbox" name="streaming" value="1"<%== " checked" if @settings["streaming"] %>>
-      stream model responses
-    </label>
-    <div class="grid-2">
-      <label>request_timeout (s)
-        <input type="text" name="request_timeout" value="<%= @settings["request_timeout"] %>" inputmode="numeric">
-      </label>
-      <label>max_retries
-        <input type="text" name="max_retries" value="<%= @settings["max_retries"] %>" inputmode="numeric">
-      </label>
-      <label>turn_timeout (s)
-        <input type="text" name="turn_timeout" value="<%= @settings["turn_timeout"] %>" inputmode="numeric">
-      </label>
-      <label>tool_timeout (s)
-        <input type="text" name="tool_timeout" value="<%= @settings["tool_timeout"] %>" inputmode="numeric">
-      </label>
-    </div>
-    <label class="check">
-      <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
-      context compaction
-    </label>
-    <label>compaction.keep_last (messages)
-      <input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric">
-    </label>
-    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save settings</button></div>
-  </form>
-</section>
-
-<!-- ── Model defaults (platform layer, v2 §10) ───────────────────────────── -->
-<section class="section" id="models">
-  <div class="section-head">
-    <h2>Model defaults</h2>
-    <p class="muted">the platform model layer, resolved at turn start as <strong>Chat pin › Agent model › platform default</strong>. An agent with no model of its own inherits <code>default_model</code>.</p>
-  </div>
-  <form class="card" method="post" action="/studio/settings/models">
-    <%== csrf_tag %>
-    <div class="grid-2">
-      <label>default_model <span class="muted">(agents without their own model)</span>
-        <input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-chat">
-      </label>
-      <label>default_provider <span class="muted">(optional)</span>
-        <input type="text" name="default_provider" value="<%= @settings["default_provider"] %>" placeholder="deepseek">
-      </label>
-    </div>
-    <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span>
-      <input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini">
-    </label>
-    <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
-      <input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat">
-    </label>
-    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save model defaults</button></div>
-  </form>
-</section>
-
-<!-- ── LLM providers (api_key masked) ────────────────────────────────────── -->
-<section class="section" id="llm">
-  <div class="section-head">
-    <h2>LLM providers <span class="pill info plain"><%= @providers.size %></span></h2>
-    <p class="muted">key/base/models per provider. The <code>api_key</code> never returns in plaintext — the field shows <code><%= secret_sentinel %></code> when a key is saved; resubmitting untouched preserves it, clearing removes it. Applied at runtime (no restart).</p>
-  </div>
-
-  <% @providers.each do |p| %>
-    <div class="card promptfile">
-      <div class="promptfile-head">
-        <strong class="mono"><%= p["api"] %></strong>
-        <form method="post" action="/studio/settings/providers/delete" data-turbo-confirm="Remove provider &quot;<%= p["api"] %>&quot;?">
+  <section class="drill-pane drill-detail">
+    <% if @section == "general" %>
+      <div class="drill-pane-head">
+        <div class="title"><strong>General</strong></div>
+        <button type="submit" form="set-general" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+      </div>
+      <div class="drill-pane-body">
+        <p class="muted">Streaming, timeouts and compaction — saved via <code>update_settings</code> (durable, applies next turn).</p>
+        <form id="set-general" method="post" action="/studio/settings">
           <%== csrf_tag %>
-          <input type="hidden" name="api" value="<%= p["api"] %>">
-          <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
+          <label class="check">
+            <input type="checkbox" name="streaming" value="1"<%== " checked" if @settings["streaming"] %>>
+            stream model responses
+          </label>
+          <div class="grid-2">
+            <label>request_timeout (s)<input type="text" name="request_timeout" value="<%= @settings["request_timeout"] %>" inputmode="numeric"></label>
+            <label>max_retries<input type="text" name="max_retries" value="<%= @settings["max_retries"] %>" inputmode="numeric"></label>
+            <label>turn_timeout (s)<input type="text" name="turn_timeout" value="<%= @settings["turn_timeout"] %>" inputmode="numeric"></label>
+            <label>tool_timeout (s)<input type="text" name="tool_timeout" value="<%= @settings["tool_timeout"] %>" inputmode="numeric"></label>
+          </div>
+          <label class="check">
+            <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
+            context compaction
+          </label>
+          <label>compaction.keep_last (messages)<input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric"></label>
         </form>
       </div>
-      <form method="post" action="/studio/settings/providers">
-        <%== csrf_tag %>
-        <input type="hidden" name="api" value="<%= p["api"] %>">
-        <div class="grid-2">
-          <label>base_url
-            <input type="text" name="base_url" value="<%= p["base_url"] %>" placeholder="https://api.deepseek.com/v1">
-          </label>
-          <label>auth_header
-            <input type="text" name="auth_header" value="<%= p["auth_header"] %>" placeholder="Authorization">
-          </label>
-        </div>
-        <label>api_key
-          <input type="password" name="api_key" value="<%= p["api_key"] %>" autocomplete="off">
-        </label>
-        <label>models <span class="muted">(comma or newline)</span>
-          <input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-chat, deepseek-reasoner">
-        </label>
-        <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save provider</button></div>
-      </form>
-    </div>
-  <% end %>
 
-  <details class="card newfile">
-    <summary>+ new provider</summary>
-    <form method="post" action="/studio/settings/providers">
-      <%== csrf_tag %>
-      <div class="grid-2">
-        <label>api <span class="muted">(slug, e.g. deepseek)</span>
-          <input type="text" name="api" placeholder="openai" required>
-        </label>
-        <label>base_url
-          <input type="text" name="base_url" placeholder="https://api.openai.com/v1">
-        </label>
+    <% elsif @section == "models" %>
+      <div class="drill-pane-head">
+        <div class="title"><strong>Model defaults</strong></div>
+        <button type="submit" form="set-models" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
       </div>
-      <label>auth_header
-        <input type="text" name="auth_header" placeholder="Authorization">
-      </label>
-      <label>api_key
-        <input type="password" name="api_key" autocomplete="off" placeholder="sk-…">
-      </label>
-      <label>models <span class="muted">(comma or newline)</span>
-        <input type="text" name="models" placeholder="gpt-4o, gpt-4o-mini">
-      </label>
-      <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create provider</button></div>
-    </form>
-  </details>
-</section>
+      <div class="drill-pane-body">
+        <p class="muted">The platform model layer, resolved at turn start as <strong>Chat pin › Agent model › platform default</strong>. An agent with no model of its own inherits <code>default_model</code>.</p>
+        <form id="set-models" method="post" action="/studio/settings/models">
+          <%== csrf_tag %>
+          <div class="grid-2">
+            <label>default_model <span class="muted">(agents without their own model)</span><input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-chat"></label>
+            <label>default_provider <span class="muted">(optional)</span><input type="text" name="default_provider" value="<%= @settings["default_provider"] %>" placeholder="deepseek"></label>
+          </div>
+          <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini"></label>
+          <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat"></label>
+        </form>
+      </div>
+
+    <% else %>
+      <div class="drill-pane-head">
+        <div class="title"><strong>LLM providers <span class="count"><%= @providers.size %></span></strong></div>
+      </div>
+      <div class="drill-pane-body">
+        <p class="muted">Key/base/models per provider. The <code>api_key</code> never returns in plaintext — the field shows <code><%= secret_sentinel %></code> when a key is saved; resubmitting untouched preserves it, clearing removes it. Applied at runtime (no restart).</p>
+        <% @providers.each do |p| %>
+          <div class="card promptfile">
+            <div class="promptfile-head">
+              <strong class="mono"><%= p["api"] %></strong>
+              <form method="post" action="/studio/settings/providers/delete" data-turbo-confirm="Remove provider &quot;<%= p["api"] %>&quot;?">
+                <%== csrf_tag %>
+                <input type="hidden" name="api" value="<%= p["api"] %>">
+                <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
+              </form>
+            </div>
+            <form method="post" action="/studio/settings/providers">
+              <%== csrf_tag %>
+              <input type="hidden" name="api" value="<%= p["api"] %>">
+              <div class="grid-2">
+                <label>base_url<input type="text" name="base_url" value="<%= p["base_url"] %>" placeholder="https://api.deepseek.com/v1"></label>
+                <label>auth_header<input type="text" name="auth_header" value="<%= p["auth_header"] %>" placeholder="Authorization"></label>
+              </div>
+              <label>api_key<input type="password" name="api_key" value="<%= p["api_key"] %>" autocomplete="off"></label>
+              <label>models <span class="muted">(comma or newline)</span><input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-chat, deepseek-reasoner"></label>
+              <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save provider</button></div>
+            </form>
+          </div>
+        <% end %>
+
+        <details class="card newfile"<%== " open" if @providers.empty? %>>
+          <summary>+ new provider</summary>
+          <form method="post" action="/studio/settings/providers">
+            <%== csrf_tag %>
+            <div class="grid-2">
+              <label>api <span class="muted">(slug, e.g. deepseek)</span><input type="text" name="api" placeholder="openai" required></label>
+              <label>base_url<input type="text" name="base_url" placeholder="https://api.openai.com/v1"></label>
+            </div>
+            <label>auth_header<input type="text" name="auth_header" placeholder="Authorization"></label>
+            <label>api_key<input type="password" name="api_key" autocomplete="off" placeholder="sk-…"></label>
+            <label>models <span class="muted">(comma or newline)</span><input type="text" name="models" placeholder="gpt-4o, gpt-4o-mini"></label>
+            <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create provider</button></div>
+          </form>
+        </details>
+      </div>
+    <% end %>
+  </section>
+</div>

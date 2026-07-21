@@ -5,21 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csp-nonce" content="<%= csp_nonce %>">
   <title>Harness Studio</title>
-  <link rel="stylesheet" href="/studio/assets/dist/application.css">
-  <script type="module" src="/studio/assets/dist/application.js" defer></script>
+  <link rel="stylesheet" href="<%= asset_path("application.css") %>">
+  <script type="module" src="<%= asset_path("application.js") %>" defer></script>
 </head>
 <body>
   <% if authenticated? %>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="/studio/agents"><span class="dot"></span>Harness <small>Studio</small></a>
+        <a class="brand" href="/studio/home"><span class="dot"></span>Harness <small>Studio</small></a>
 
         <% nav_sections.each do |group, items| %>
           <div class="nav-group">
-            <div class="nav-label"><%= group %></div>
+            <% unless group.empty? %><div class="nav-label"><%= group %></div><% end %>
             <nav class="nav" aria-label="<%= group %>">
               <% items.each do |label, href, icon| %>
-                <a href="<%= href %>"<%== ' aria-current="page"' if request.path.start_with?(href.sub("/studio", "")) %>>
+                <a href="<%= href %>"<%== ' aria-current="page"' if nav_active?(href) %>>
                   <%== nav_icon(icon) %><span class="lbl"><%= label %></span>
                 </a>
               <% end %>
@@ -32,7 +32,7 @@
             <div class="row"><span class="pill ok online plain">runtime online</span></div>
             <div class="stat">
               <% health_parts.each do |label, value| %>
-                <b><%= value %></b> <%= label %><br>
+                <span class="stat-row"><b><%= value %></b> <%= label %></span>
               <% end %>
             </div>
           </div>
@@ -47,6 +47,13 @@
               <%== csrf_tag %>
               <button type="submit" class="ghost">Sign out</button>
             </form>
+          </div>
+          <div class="env-chip" title="runtime environment">
+            <span class="env-mark" aria-hidden="true"><%= env_label[0, 1].upcase %></span>
+            <div class="env-text">
+              <b><%= env_label %></b>
+              <small>environment</small>
+            </div>
           </div>
         </div>
       </aside>

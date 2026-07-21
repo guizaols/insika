@@ -1,48 +1,86 @@
-<header class="page-head">
-  <h1>Skills<span class="sub"><%= @skills.size %> in catalog · disk (seed) + authored (store wins)</span></h1>
-  <a class="btn primary" href="/studio/skills/new">+ new skill</a>
-</header>
-
-<% if @skills.empty? %>
-  <div class="empty">No skills in the catalog yet. Create the first one under <a href="/studio/skills/new">new skill</a>.</div>
-<% else %>
-  <p class="muted matrix-hint">Choose which agents each skill is available to (<code>load_skill</code>). An agent with an "all" allowlist is left untouched when you uncheck it.</p>
-  <div data-controller="list-filter">
-    <div class="filter-bar">
-      <input type="search" class="filter-input" placeholder="Filter skills by name or description…" aria-label="Filter skills"
-             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+<%# Skills — drill-down (T2): master list | detail editor + availability.
+   Every skill route renders THIS view (index / new / :name); @selected drives
+   which skill is open (nil = none, "" = new). %>
+<div class="drill" data-controller="list-filter">
+  <aside class="drill-pane drill-master">
+    <div class="drill-pane-head">
+      <div class="title"><strong>Skills <span class="count"><%= @skills.size %></span></strong></div>
+      <a class="btn primary btn-sm" href="/studio/skills/new">+ new</a>
     </div>
-  <div class="skill-list">
-    <% @skills.each do |s| %>
-      <form class="card skill-card" method="post" action="/studio/skills/<%= Rack::Utils.escape(s.name) %>/agents"
-            data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
-        <%== csrf_tag %>
-        <div class="skill-card-head">
-          <div>
-            <div class="skill-name mono"><%= s.name %>
-              <% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %>
-            </div>
-            <div class="muted skill-desc"><%= s.description %></div>
-          </div>
-          <a class="btn ghost" href="/studio/skills/<%= Rack::Utils.escape(s.name) %>">Edit</a>
+    <div class="drill-search">
+      <input type="search" class="filter-input" placeholder="Search skills…" aria-label="Filter skills"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+    </div>
+    <nav class="drill-pane-body drill-list" aria-label="skills">
+      <% @skills.each do |s| %>
+        <a class="drill-item<%== ' active' if @selected == s.name %>"
+           href="/studio/skills/<%= Rack::Utils.escape(s.name) %>"
+           data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
+          <div class="drill-item-name"><span class="txt"><%= s.name %></span><% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %></div>
+          <div class="drill-item-sub"><%= s.description %></div>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No skills match your filter.</div>
+    </nav>
+  </aside>
+
+  <section class="drill-pane drill-detail">
+    <% if @selected.nil? %>
+      <div class="drill-empty">
+        <div>
+          <h2>Skills</h2>
+          <p>Pick a skill on the left to edit its <code>SKILL.md</code> and choose which agents can <code>load_skill</code> it — or create a new one.</p>
         </div>
-        <% if @agents.empty? %>
-          <p class="muted">No agents configured.</p>
-        <% else %>
-          <div class="check-grid">
-            <% @agents.each do |a| %>
-              <label class="check">
-                <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, s.name) %>>
-                <span class="mono"><%= a.id %></span>
-              </label>
-            <% end %>
+      </div>
+    <% else %>
+      <% new = @selected == "" %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= new ? "new" : @selected %></span></nav>
+          <strong class="mono"><%= new ? "New skill" : @selected %></strong>
+        </div>
+        <button type="submit" form="skill-form" class="btn primary" data-turbo-submits-with="Saving…">Save skill</button>
+      </div>
+      <div class="drill-pane-body">
+        <form id="skill-form" method="post" action="/studio/skills" data-controller="dirty-guard">
+          <%== csrf_tag %>
+          <% unless new %><input type="hidden" name="name" value="<%= @selected %>"><% end %>
+          <% if new %>
+            <label>name <span class="muted">(canonical — same as <code>name:</code> in the frontmatter)</span>
+              <input type="text" name="name" placeholder="my-skill" required>
+            </label>
+          <% end %>
+          <label>SKILL.md <span class="muted">YAML frontmatter (<code>name</code>, <code>description</code>) + body</span></label>
+          <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
+            <textarea name="content" data-code-editor-target="source" rows="18"><%= @skill_content %></textarea>
           </div>
-          <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Applying…">Apply to agents</button></div>
+        </form>
+
+        <% unless new %>
+          <div class="drill-section">
+            <div class="drill-section-head">
+              <h3>Availability</h3>
+              <span class="muted">which agents can <code>load_skill</code> this — an "all" allowlist is left untouched</span>
+            </div>
+            <form method="post" action="/studio/skills/<%= Rack::Utils.escape(@selected) %>/agents">
+              <%== csrf_tag %>
+              <% if @agents.empty? %>
+                <p class="muted">No agents configured.</p>
+              <% else %>
+                <div class="check-grid">
+                  <% @agents.each do |a| %>
+                    <label class="check">
+                      <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, @selected) %>>
+                      <span class="mono"><%= a.id %></span>
+                    </label>
+                  <% end %>
+                </div>
+                <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Applying…">Apply to agents</button></div>
+              <% end %>
+            </form>
+          </div>
         <% end %>
-      </form>
+      </div>
     <% end %>
-  </div>
-    <div class="empty" data-list-filter-target="empty" hidden>No skills match your filter.</div>
-  </div>
-<% end %>
+  </section>
+</div>

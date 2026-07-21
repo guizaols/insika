@@ -1,51 +1,68 @@
-<header class="page-head">
-  <div>
-    <h1>Tools<span class="sub"><%= @tools.size %> registered · allow/deny per agent</span></h1>
-  </div>
-  <a class="btn primary" href="/studio/tools/def/new">+ new data tool</a>
-</header>
-
-<section class="card">
-  <h2 class="eyebrow">data tools <span class="muted">(HTTP call, no code — editable here)</span></h2>
-  <% if @data_tool_names.empty? %>
-    <div class="empty">No data tools. Create one to give an agent access to an external API without writing Ruby.</div>
-  <% else %>
-    <div class="check-grid">
-      <% @data_tool_names.sort.each do |name| %>
-        <a class="btn ghost mono" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>"><%= name %></a>
-      <% end %>
+<%# Tools — drill-down (T2): [data tools + agents] master | agent tool matrix.
+   @sel_agent (from ?a=) drives the detail; data tools link to their editor page. %>
+<div class="drill" data-controller="list-filter">
+  <aside class="drill-pane drill-master">
+    <div class="drill-pane-head">
+      <div class="title"><strong>Tools <span class="count"><%= @tools.size %></span></strong></div>
+      <a class="btn primary btn-sm" href="/studio/tools/def/new">+ data tool</a>
     </div>
-  <% end %>
-</section>
-
-<% if @agents.empty? %>
-  <div class="empty">No agents configured.</div>
-<% else %>
-  <p class="muted matrix-hint">Each agent picks its tools. <strong>all</strong> = open allowlist (nil — every tool flows through); otherwise only the checked ones. A <span class="pill locked">locked</span> tool is on the agent's denylist — deny always wins, so it can't be granted here.</p>
-  <div data-controller="list-filter">
-    <div class="filter-bar">
-      <input type="search" class="filter-input" placeholder="Filter agents by id…" aria-label="Filter agents"
+    <div class="drill-search">
+      <input type="search" class="filter-input" placeholder="Filter agents…" aria-label="Filter agents"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-      <span class="filter-count mono muted" data-list-filter-target="count"></span>
     </div>
-    <div class="tool-list">
+    <nav class="drill-pane-body drill-list" aria-label="tools and agents">
+      <% unless @data_tool_names.empty? %>
+        <div class="drill-group-label">Data tools · HTTP, editable</div>
+        <% @data_tool_names.sort.each do |name| %>
+          <a class="drill-item drill-item-sm" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>">
+            <div class="drill-item-name"><span class="txt"><%= name %></span><span class="pill plain">data</span></div>
+          </a>
+        <% end %>
+      <% end %>
+      <div class="drill-group-label">Agents · allow / deny</div>
       <% @agents.each do |a| %>
-        <form class="card tool-card" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>"
-              data-list-filter-target="item" data-filter-text="<%= a.id %>"
-              data-controller="toggle-counter">
-          <%== csrf_tag %>
-          <div class="tool-card-head">
-            <div class="agent-id mono"><%= a.id %></div>
-            <div class="tool-card-meta">
-              <span class="count-badge mono" data-toggle-counter-target="count"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size} on" %></span>
-              <label class="switch" title="open allowlist — every tool flows through">
-                <input type="checkbox" name="all_tools" value="1"<%== " checked" if a.tools_allow.nil? %>
-                       data-toggle-counter-target="all" data-action="change->toggle-counter#update">
-                <span class="switch-track" aria-hidden="true"></span>
-                <span class="switch-label">all tools</span>
-              </label>
-            </div>
+        <a class="drill-item<%== ' active' if @sel_agent && @sel_agent.id == a.id %>"
+           href="/studio/tools?a=<%= Rack::Utils.escape(a.id) %>"
+           data-list-filter-target="item" data-filter-text="<%= a.id %>">
+          <div class="drill-item-name"><span class="txt"><%= a.id %></span>
+            <span class="pill plain"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size}" %></span>
           </div>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
+    </nav>
+  </aside>
+
+  <section class="drill-pane drill-detail">
+    <% if @sel_agent.nil? %>
+      <div class="drill-empty">
+        <div>
+          <h2>Tools</h2>
+          <p>Pick an agent to set which tools it can call — or edit a data tool on the left. <strong>all</strong> = open allowlist (every tool flows through); a <span class="pill locked">locked</span> tool is on the denylist (deny always wins).</p>
+        </div>
+      </div>
+    <% else %>
+      <% a = @sel_agent %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <nav class="crumbs"><a href="/studio/tools">tools</a> / <span><%= a.id %></span></nav>
+          <strong class="mono"><%= a.id %></strong>
+        </div>
+        <button type="submit" form="tools-form" class="btn primary" data-turbo-submits-with="Saving…">Save tools</button>
+      </div>
+      <div class="drill-pane-body" data-controller="toggle-counter">
+        <div class="matrix-topline">
+          <span class="count-badge mono" data-toggle-counter-target="count"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size} on" %></span>
+          <label class="switch" title="open allowlist — every tool flows through">
+            <input type="checkbox" name="all_tools" value="1" form="tools-form"<%== " checked" if a.tools_allow.nil? %>
+                   data-toggle-counter-target="all" data-action="change->toggle-counter#update">
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-label">all tools</span>
+          </label>
+        </div>
+        <p class="muted">Checked tools are allowed next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
+        <form id="tools-form" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
+          <%== csrf_tag %>
           <% if @tools.empty? %>
             <p class="muted">No tools registered in the runtime.</p>
           <% else %>
@@ -63,10 +80,8 @@
               <% end %>
             </div>
           <% end %>
-          <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save tools</button></div>
         </form>
-      <% end %>
-    </div>
-    <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
-  </div>
-<% end %>
+      </div>
+    <% end %>
+  </section>
+</div>
