@@ -21,9 +21,14 @@ evals/
     judge.rb            LLM-judge — rubric scoring over an injected ask
   golden/<agent>/*.yml  the curated cases (DATA, not code)
   run.rb                CLI entrypoint
-  baseline.json         accepted scores for gating            (Fase C)
+  BASELINE.md           documented quality baseline (#6b / G2) — number+date+pack
+  baseline.json         machine gate — captured from a real green run (Fase C)
   reports/              run outputs
 ```
+
+The accepted quality baseline for the real-traffic set lives in **`BASELINE.md`**
+(prose: number, date, pack, per-case justification). The machine gate `baseline.json`
+is captured from a real green run (`--update-baseline`), not hand-authored.
 
 ## Running
 

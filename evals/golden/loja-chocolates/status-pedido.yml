@@ -1,11 +1,17 @@
 # Order status → search_orders (TOOLS.md: "status de pedido").
+# The turn gives NO order identifier, and the rubric explicitly accepts the agent
+# asking for the order number / e-mail *before* calling the tool. So search_orders
+# is OPTIONAL ("?"): a correct ask-first turn calls no tool yet. A hard requirement
+# here contradicted the rubric (judge scored the ask-first turn 1.0) — same
+# design as produto-sem-cep, where the missing datum gates the search. The rubric
+# carries the quality judgment; the deterministic layer only guards must_not.
 id: loja-chocolates-status-pedido
 agent: loja-chocolates
 turns:
   - user: "cadê meu pedido? já faz uns dias"
 expect:
   tools_called:
-    - search_orders
+    - search_orders?
   must_not:
     - pii_leak
     - tool_error
