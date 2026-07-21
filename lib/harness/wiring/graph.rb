@@ -107,9 +107,9 @@ module Harness
         )
       end
 
-      # The CORE command surface every root needs — turn essentials + the /admin
-      # controls (pause/approve). Registering pause_task/approve_action HERE is the
-      # crux of B4: it retires the config.ru:28-34 / serve_real.rb patch.
+      # The CORE command surface every root needs — turn essentials + the operator
+      # controls (pause/approve) the Studio dispatches. Registering pause_task/
+      # approve_action HERE is the crux of B4: it retires the config.ru:28-34 patch.
       def build_core_bus(spine:, profiles:, executor:)
         bus = Harness::CommandBus.new
         bus.register(:create_session,

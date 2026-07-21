@@ -4,7 +4,7 @@
 # serialized by the SessionActor. Each turn goes on the session's FIFO queue;
 # turn 2 sees turn 1's transcript (session memory via the Session
 # provider — the reconciled :vars seam). Streams the response, shows
-# tools/skills/results, and renders /admin against the SAME stores.
+# tools/skills/results. Inspect the same conversation in the Studio (/studio/chats).
 #
 # Operation (what unblocked multi-turn): arms executor.supervised = true
 # (SessionActor + long-lived supervisor), and at the end DOES THE TEARDOWN
@@ -16,8 +16,6 @@
 $stdout.sync = true
 require_relative "../config/deployment"
 require "async"
-require "rack"
-require File.join(Dir.pwd, "server", "app")
 
 W = Deploy::Wiring
 SESSION = "demo-bia"
@@ -78,27 +76,3 @@ end
 msgs = W::SESSION_STORE.find(SESSION).messages
 puts "\n\e[1m═══ SUMMARY ═══\e[0m"
 puts "transcript persisted in the session (#{msgs.size} msgs): #{msgs.map { |m| m['role'] }.join(' → ')}"
-
-# --- visualization: renders /admin against the SAME stores ---
-OUT = ENV.fetch("OUT", "/tmp/admin-real")
-require "fileutils"
-FileUtils.mkdir_p(OUT)
-fake = Object.new.tap { |o| def o.dispatch(*) = nil; def o.emit(*) = nil }
-admin = Harness::Server::Admin::App.new(
-  command_bus: fake, session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
-  checkpoint_store: W::CHECKPOINT_STORE, pending_action_store: W::PENDING_ACTION_STORE,
-  catalogs: { skills: W::CATALOG, prompts: W::PROMPT_CATALOG },
-  registries: { tools: W::REGISTRY, workflows: W::WORKFLOW_REGISTRY }, event_stream: fake
-)
-last = @last_task
-routes = {
-  "01-index" => "/admin", "02-sessions" => "/admin/sessions",
-  "03-session" => "/admin/sessions/#{SESSION}", "04-tasks" => "/admin/tasks",
-  "05-task" => "/admin/tasks/#{last&.id}", "08-chat" => "/admin/chat",
-  "09-events" => "/admin/events", "10-skills" => "/admin/skills", "11-plugins" => "/admin/plugins"
-}
-routes.each do |name, path|
-  _s, _h, body = admin.call(Rack::Request.new(Rack::MockRequest.env_for(path)))
-  File.write(File.join(OUT, "#{name}.html"), body.join)
-end
-puts "admin (REAL) rendered in #{OUT}"

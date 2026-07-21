@@ -84,11 +84,8 @@ bus.register(:approve_action,
 
 app = Harness::Server::App.new(
   command_bus: bus, event_stream: event_stream, session_store: session_store,
-  task_store: task_store, checkpoint_store: checkpoint_store,
-  pending_action_store: pending_action_store,
-  catalogs: { skills: skill_catalog, prompts: prompt_catalog },
-  registries: { tools: tool_registry, workflows: workflow_registry, policies: policy_registry },
-  config: { admin_token: nil, allowed_origins: [] }
+  task_store: task_store, pending_action_store: pending_action_store,
+  config: {}
 )
 
 recovery = Harness::Recovery.new(task_store: task_store, checkpoint_store: checkpoint_store, command_bus: bus)
