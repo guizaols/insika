@@ -59,15 +59,15 @@ RSpec.describe Harness::Server::Responses do
       expect(f).to include('"name":"search_products"')
     end
 
-    it ":done -> response.completed + [DONE]" do
-      f = described_class.frame_for(ev(:done, {}))
+    it ":task_completed -> response.completed + [DONE]" do
+      f = described_class.frame_for(ev(:task_completed, {}))
       expect(f).to include('"type":"response.completed"')
       expect(f).to end_with("data: [DONE]\n\n")
     end
 
-    it ":done com usage -> response.completed carrega usage (tokens) + model (Fase 6)" do
-      f = described_class.frame_for(ev(:done, { usage: { input_tokens: 12, output_tokens: 8,
-                                                         total_tokens: 20, model: "deepseek-chat" } }))
+    it ":task_completed com usage -> response.completed carrega usage (tokens) + model (Fase 6)" do
+      f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 12, output_tokens: 8,
+                                                                   total_tokens: 20, model: "deepseek-chat" } }))
       expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
       expect(f).to include('"model":"deepseek-chat"')
       # model is a sibling of usage in the OpenAI shape, not INSIDE usage
@@ -102,7 +102,7 @@ RSpec.describe Harness::Server::Responses do
       stream.emit(ev(:tool_call, { name: "search_products" }))
       stream.emit(ev(:content, { delta: " tudo bem?" }))
       stream.emit(ev(:task_started)) # no match: does not become a frame
-      stream.emit(ev(:done, {}))
+      stream.emit(ev(:task_completed, {}))
       sub.close
       collector.wait
     end
