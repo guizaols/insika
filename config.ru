@@ -4,9 +4,9 @@
 # (Deploy::Wiring — DeepSeek/Bia/gateway_token/provisioner/egress/OTEL) with the
 # Harness Studio under /studio.
 #
-# Unlike scripts/serve_real.rb (dev), it does NOT use the LocalAdminShim: /admin
-# requires the REAL Bearer (ADMIN_TOKEN) — fail-closed. /v1/responses and /v1/agents
-# use the gateway_token (OPENCLAW_GATEWAY_TOKEN, falls back to ADMIN_TOKEN).
+# The operator control UI lives in the Studio (cookie-auth, under /studio). The
+# server surface is transport-only: /v1/responses and /v1/agents use the
+# gateway_token (OPENCLAW_GATEWAY_TOKEN, falls back to ADMIN_TOKEN).
 #
 # Run:
 #   bundle exec falcon serve --bind http://0.0.0.0:$PORT --count $WEB_CONCURRENCY
@@ -29,11 +29,10 @@ W = Deploy::Wiring
 # pause_task/approve_action come from the shared graph core (Harness::Wiring::Graph,
 # §12 G4) — no longer patched in here.
 
-# fail-closed: without ADMIN_TOKEN, /admin and /studio deny. The gateway falls back to
+# fail-closed: without ADMIN_TOKEN, /studio denies login. The gateway falls back to
 # ADMIN_TOKEN when OPENCLAW_GATEWAY_TOKEN is not set (serve_real parity).
-ADMIN_TOKEN     = ENV["ADMIN_TOKEN"].to_s
-GATEWAY_TOKEN   = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN)
-ALLOWED_ORIGINS = ENV.fetch("HARNESS_ALLOWED_ORIGINS", "").split(",").map(&:strip).reject(&:empty?)
+ADMIN_TOKEN   = ENV["ADMIN_TOKEN"].to_s
+GATEWAY_TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN)
 
 # Inbound A2A OPT-IN via HARNESS_A2A_AGENT (gated by the dynamic ProfileSource).
 A2A_APP =
@@ -48,12 +47,10 @@ A2A_APP =
 APP = Harness::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
-  checkpoint_store: W::CHECKPOINT_STORE, pending_action_store: W::PENDING_ACTION_STORE,
-  catalogs: { skills: W::CATALOG, prompts: W::PROMPT_CATALOG },
-  registries: { tools: W::TOOL_REGISTRY, workflows: W::WORKFLOW_REGISTRY, policies: W::POLICY_REGISTRY },
+  pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
   a2a: A2A_APP, # nil without opt-in -> A2A routes respond 404
   provisioner: W::PACK_IMPORTER, # POST/DELETE /v1/agents under the gateway_token
-  config: { admin_token: ADMIN_TOKEN, allowed_origins: ALLOWED_ORIGINS, gateway_token: GATEWAY_TOKEN }
+  config: { gateway_token: GATEWAY_TOKEN }
 )
 
 PERSISTENCE = ENV["HARNESS_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"
@@ -78,7 +75,7 @@ W::EXECUTOR.supervised = true
 # OTEL Telemetry (opt-in). Only when enabled (HARNESS_OTEL); off -> nil -> no-op.
 Harness::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY) if W::TELEMETRY
 
-# /studio -> Studio (Roda, cookie-auth); rest -> Server::App (/admin with real Bearer).
+# /studio -> Studio (Roda, cookie-auth); rest -> Server::App (transport: /v1, /a2a).
 run Rack::URLMap.new(
   "/studio" => Studio::App,
   "/" => APP
