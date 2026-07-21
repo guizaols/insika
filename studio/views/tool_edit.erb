@@ -77,17 +77,17 @@
   </label>
 
   <div class="actions">
-    <button type="submit" class="primary"><%= new ? "Create tool" : "Save tool" %></button>
+    <button type="submit" class="primary" data-turbo-submits-with="<%= new ? "Creating…" : "Saving…" %>"><%= new ? "Create tool" : "Save tool" %></button>
     <a class="btn ghost" href="/studio/tools">← back</a>
   </div>
 </form>
 
 <% unless new %>
-  <form class="card" method="post" action="/studio/tools/def/<%= Rack::Utils.escape(@tool_name) %>/delete">
+  <form class="card" method="post" action="/studio/tools/def/<%= Rack::Utils.escape(@tool_name) %>/delete" data-turbo-confirm="Remove tool &quot;<%= @tool_name %>&quot;? Agents stop seeing it next turn.">
     <%== csrf_tag %>
     <div class="promptfile-head">
       <span class="muted">Remove this tool (agents stop seeing it next turn)</span>
-      <button type="submit" class="ghost danger">Remove tool</button>
+      <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove tool</button>
     </div>
   </form>
 

@@ -17,10 +17,10 @@
       <strong class="mono"><%= m["name"] %>
         <% if m["enabled"] %><span class="pill ok">on</span><% else %><span class="pill warn">off</span><% end %>
       </strong>
-      <form method="post" action="/studio/mcp/delete">
+      <form method="post" action="/studio/mcp/delete" data-turbo-confirm="Remove MCP instance &quot;<%= m["name"] %>&quot;? Agents stop seeing its tools next turn.">
         <%== csrf_tag %>
         <input type="hidden" name="name" value="<%= m["name"] %>">
-        <button type="submit" class="ghost danger">Remove</button>
+        <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
       </form>
     </div>
     <form method="post" action="/studio/mcp">
@@ -51,7 +51,7 @@
       <label>env <span class="muted">(one <code>KEY=value</code> per line)</span>
         <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
       </label>
-      <div class="actions"><button type="submit" class="primary">Save instance</button></div>
+      <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save instance</button></div>
     </form>
   </div>
 <% end %>
@@ -86,6 +86,6 @@
     <label>env <span class="muted">(one <code>KEY=value</code> per line)</span>
       <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
     </label>
-    <div class="actions"><button type="submit" class="primary">Create instance</button></div>
+    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create instance</button></div>
   </form>
 </details>

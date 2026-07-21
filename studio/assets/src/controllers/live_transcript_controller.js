@@ -12,6 +12,9 @@ import { renderMarkdown } from "../markdown"
 // sucesso (:task_completed) NÃO é ignorado — vira só a pill de status (abaixo).
 const IGNORED = new Set(["task_started", "checkpoint_created"])
 
+// Ceiling for the SSE reconnect backoff (§12 A3): 1s→2s→…→30s, then steady.
+const RECONNECT_MAX = 30000
+
 export default class extends Controller {
   static targets = ["stream", "empty", "status"]
   static values = { session: String, task: String }
@@ -20,6 +23,8 @@ export default class extends Controller {
     this.current = null      // streaming assistant bubble's .content node (or null)
     this.currentText = ""    // accumulated Markdown source for that bubble
     this.raf = null
+    this.backoff = 1000      // reconnect delay, doubles per attempt up to RECONNECT_MAX
+    this.reconnectTimer = null
     if (this.sessionValue || this.taskValue) this.open()
   }
 
@@ -37,14 +42,37 @@ export default class extends Controller {
 
     this.setStatus("connecting…", "warn")
     this.es = new EventSource(url)
-    this.es.onopen = () => this.setStatus("connected", "ok")
-    this.es.onerror = () => this.setStatus("disconnected", "err")
+    this.es.onopen = () => { this.backoff = 1000; this.setStatus("connected", "ok") }
+    this.es.onerror = () => this.onError()
     this.es.onmessage = (e) => {
       try { this.render(JSON.parse(e.data)) } catch (_) { this.push(this.chipText(e.data)) }
     }
   }
 
+  // SSE error handling (§12 A3). EventSource retries on its own ONLY while the
+  // socket is still CONNECTING; once the browser gives up (readyState === CLOSED)
+  // it never reconnects. So we let the browser own the transient case and step in
+  // with a capped exponential backoff (1s→30s) once it has closed for good.
+  onError() {
+    if (this.es && this.es.readyState === EventSource.CONNECTING) {
+      this.setStatus("reconnecting…", "warn")
+      return
+    }
+    this.setStatus("disconnected — retrying…", "err")
+    this.scheduleReconnect()
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return   // one pending attempt at a time
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.open()
+    }, this.backoff)
+    this.backoff = Math.min(this.backoff * 2, RECONNECT_MAX)
+  }
+
   close() {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
     if (this.es) { this.es.close(); this.es = null }
   }
 
@@ -61,10 +89,25 @@ export default class extends Controller {
     return e
   }
 
+  // A <pre> payload wrapped with a copy-to-clipboard affordance (§12 A4). The
+  // wrapper declares the `clipboard` controller so Stimulus wires the button on
+  // insertion — CSP-safe, no inline handlers. Same markup contract the server
+  // uses for the trace <pre> blocks in session.erb.
   pre(obj) {
+    const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2)
     const p = this.el("pre")
-    p.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2)
-    return p
+    p.textContent = text
+
+    const wrap = this.el("div", "copywrap")
+    wrap.setAttribute("data-controller", "clipboard")
+    wrap.setAttribute("data-clipboard-text-value", text)
+    const btn = this.el("button", "copy-btn", "copy")
+    btn.type = "button"
+    btn.setAttribute("data-clipboard-target", "button")
+    btn.setAttribute("data-action", "clipboard#copy")
+    wrap.appendChild(btn)
+    wrap.appendChild(p)
+    return wrap
   }
 
   push(node) {

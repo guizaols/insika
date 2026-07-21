@@ -15,10 +15,10 @@
   <div class="card promptfile">
     <div class="promptfile-head">
       <strong class="mono"><%= sf[:name] %></strong>
-      <form method="post" action="/studio/system-files/delete">
+      <form method="post" action="/studio/system-files/delete" data-turbo-confirm="Remove system file &quot;<%= sf[:name] %>&quot;? This can't be undone.">
         <%== csrf_tag %>
         <input type="hidden" name="file" value="<%= sf[:name] %>">
-        <button type="submit" class="ghost danger">Remove</button>
+        <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
       </form>
     </div>
     <form method="post" action="/studio/system-files" data-controller="dirty-guard">
@@ -27,7 +27,7 @@
       <div data-controller="code-editor" data-code-editor-language-value="markdown">
         <textarea name="content" data-code-editor-target="source" rows="10"><%= sf[:content] %></textarea>
       </div>
-      <div class="actions"><button type="submit" class="primary">Save file</button></div>
+      <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save file</button></div>
     </form>
     <% unless sf[:versions].empty? %>
       <details class="versions">
@@ -60,6 +60,6 @@
     <div data-controller="code-editor" data-code-editor-language-value="markdown">
       <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# House rules&#10;Every agent must..."></textarea>
     </div>
-    <div class="actions"><button type="submit" class="primary">Create file</button></div>
+    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create file</button></div>
   </form>
 </details>
