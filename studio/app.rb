@@ -78,7 +78,9 @@ module Studio
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
-                    system_file_store: nil, tool_trace_store: nil, session_secret: nil)
+                    system_file_store: nil, tool_trace_store: nil,
+                    task_store: nil, checkpoint_store: nil, pending_action_store: nil,
+                    session_secret: nil)
         @harness = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -94,7 +96,12 @@ module Studio
           mcp_store: mcp_store, system_file_store: system_file_store,
           # per-session tool-call trace (debug): args + result + status per
           # turn, rendered in the session viewer (FOLLOWUP §3.1).
-          tool_trace_store: tool_trace_store
+          tool_trace_store: tool_trace_store,
+          # operate: tasks + human-in-the-loop approvals (§12 G5). Reads the
+          # task/checkpoint/pending stores to render; controls (pause/resume/
+          # cancel/approve) dispatch on the bus — parity with server/admin.
+          task_store: task_store, checkpoint_store: checkpoint_store,
+          pending_action_store: pending_action_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -557,6 +564,59 @@ module Studio
         end
       end
 
+      # --- Tasks: list + detail + operator controls (§12 G5) -------
+      # Parity with server/admin: READS the task/checkpoint/pending stores to
+      # render; pause/resume/cancel dispatch Commands on the bus (never a direct
+      # store write). Every control audits the ATTEMPT to the EventStream first.
+      r.on "tasks" do
+        r.is { r.get { render_tasks } }
+
+        r.on String do |id|
+          id = utf8(id)
+          r.get do
+            @task = harness[:task_store]&.find(id)
+            next_404 unless @task
+
+            render_task_detail(id)
+          end
+
+          r.post "pause" do
+            check_csrf!
+            control_action(:pause_task, { task_id: id }, ok: "Task paused.")
+            r.redirect(task_path(id))
+          end
+          r.post "resume" do
+            check_csrf!
+            control_action(:resume_task, { task_id: id }, ok: "Task resumed.")
+            r.redirect(task_path(id))
+          end
+          r.post "cancel" do
+            check_csrf!
+            control_action(:cancel_task, { task_id: id }, ok: "Task cancelled.")
+            r.redirect(task_path(id))
+          end
+        end
+      end
+
+      # --- Approvals: human-in-the-loop inbox (§12 G5) -------------
+      # Lists every :pending action across tasks; resolving one dispatches
+      # :approve_action, which resolves the store AND wakes the suspended turn.
+      r.on "approvals" do
+        r.is { r.get { render_approvals } }
+
+        r.on String do |pid|
+          pid = utf8(pid)
+          r.post do
+            check_csrf!
+            decision = r.params["decision"] == "rejected" ? "rejected" : "approved"
+            control_action(:approve_action,
+                           { pending_id: pid, decision: decision, operator: operator_label },
+                           ok: "Approval #{decision}.")
+            r.redirect(safe_back(r.params["back"], default: "/studio/approvals"))
+          end
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /v1/events).
       r.on "playground" do
@@ -629,7 +689,9 @@ module Studio
         ]],
         ["operate", [
           ["Chats", "/studio/chats", :chats],
-          ["Playground", "/studio/playground", :playground]
+          ["Playground", "/studio/playground", :playground],
+          ["Tasks", "/studio/tasks", :tasks],
+          ["Approvals", "/studio/approvals", :approvals]
         ]]
       ]
     end
@@ -691,10 +753,10 @@ module Studio
 
     # Only redirects to a LOCAL path (avoids open-redirect via `back`):
     # starts with "/", but not "//" (protocol-relative) nor contains a scheme.
-    def safe_back(path)
+    def safe_back(path, default: "/studio/agents")
       p = presence(path)
-      return "/studio/agents" unless p&.start_with?("/")
-      return "/studio/agents" if p.start_with?("//") || p.include?("://") || p.include?("\\")
+      return default unless p&.start_with?("/")
+      return default if p.start_with?("//") || p.include?("://") || p.include?("\\")
 
       p
     end
@@ -1099,6 +1161,75 @@ module Studio
       @sessions = recent_sessions(limit: 100)
       view("chats")
     end
+
+    # --- Tasks & Approvals (§12 G5) --------------------------------
+
+    # Task list, most-recently-updated first. Empty-state if no store was injected.
+    def render_tasks
+      store = harness[:task_store]
+      @tasks = store ? store.each_id.filter_map { |id| store.find(id) } : []
+      @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
+      view("tasks")
+    end
+
+    # Task detail: @task is set by the route. Adds the open approvals for this task
+    # and its latest checkpoint (both degrade to empty when the store is absent).
+    def render_task_detail(id)
+      @pending = harness[:pending_action_store] ? harness[:pending_action_store].open_for(id) : []
+      @checkpoint = harness[:checkpoint_store]&.latest(id)
+      view("task")
+    end
+
+    # Approvals inbox: every :pending action across tasks, each paired with its
+    # task (for the status pill + a link into the task detail).
+    def render_approvals
+      pstore = harness[:pending_action_store]
+      tstore = harness[:task_store]
+      @approvals = pstore ? pstore.all_open.map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
+      view("approvals")
+    end
+
+    # An operator control (pause/resume/cancel/approve): audits the ATTEMPT to the
+    # shared EventStream BEFORE dispatching — accountability survives a Command
+    # failure (parity with server/admin's `act`) — then dispatches via the bus with
+    # a success/error flash. The audit carries only metadata, never message/args
+    # (the EventStream is exposed by /v1/events without auth — no content leak).
+    def control_action(type, payload, ok:)
+      emit_operator_action(type, payload)
+      with_flash(ok) { dispatch(type, payload) }
+    end
+
+    def emit_operator_action(type, payload)
+      stream = harness[:event_stream]
+      return unless stream
+
+      stream.emit(Harness::Event.new(
+                    type: :operator_action,
+                    data: { action: type.to_s,
+                            target: payload.slice(:task_id, :pending_id, :decision),
+                            operator: operator_label },
+                    meta: { task_id: payload[:task_id], at: Time.now.utc.iso8601 }
+                  ))
+    end
+
+    # Operator identity for the audit/approval (single admin token → the Studio
+    # is the operator). Mirrors server/admin's operator_of default.
+    def operator_label = "studio"
+
+    # Semantic status class for the .pill CSS (completed=ok, running=run,
+    # waiting/queued/paused=warn, failed/cancelled=err). Parity with admin's
+    # status_pill mapping; used by the tasks/approvals views.
+    def status_class(status)
+      case status.to_s
+      when "completed" then "ok"
+      when "running" then "run"
+      when "waiting", "queued", "paused" then "warn"
+      when "failed", "cancelled" then "err"
+      else "info"
+      end
+    end
+
+    def task_path(id) = "/studio/tasks/#{Rack::Utils.escape(id.to_s)}"
 
     # parse_kv_lines moved to Studio::Forms (§11 B6).
 
