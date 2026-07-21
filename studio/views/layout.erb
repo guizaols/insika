@@ -32,7 +32,7 @@
             <div class="row"><span class="pill ok online plain">runtime online</span></div>
             <div class="stat">
               <% health_parts.each do |label, value| %>
-                <b><%= value %></b> <%= label %><br>
+                <span class="stat-row"><b><%= value %></b> <%= label %></span>
               <% end %>
             </div>
           </div>
@@ -47,6 +47,13 @@
               <%== csrf_tag %>
               <button type="submit" class="ghost">Sign out</button>
             </form>
+          </div>
+          <div class="env-chip" title="runtime environment">
+            <span class="env-mark" aria-hidden="true"><%= env_label[0, 1].upcase %></span>
+            <div class="env-text">
+              <b><%= env_label %></b>
+              <small>environment</small>
+            </div>
           </div>
         </div>
       </aside>

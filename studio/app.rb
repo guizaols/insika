@@ -635,6 +635,11 @@ module Studio
 
     def restart_needed? = self.class.restart_needed?
 
+    # Environment label for the sidebar identity chip — reflects the REAL runtime
+    # env (HARNESS_ENV → RACK_ENV → "local") so an operator always knows which box
+    # they are looking at. No new state; just reads the process env.
+    def env_label = (presence(ENV["HARNESS_ENV"]) || presence(ENV["RACK_ENV"]) || "local").to_s
+
     # Theme preference read from the cookie (applied server-side on <html> → no
     # flash). Strict allowlist: an unexpected value falls back to "auto".
     THEMES = %w[auto light dark].freeze

@@ -973,6 +973,13 @@ RSpec.describe Studio::App do
     expect(body).to include("runtime online")
   end
 
+  it "the sidebar shows the environment identity chip" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('class="env-chip"')
+    expect(body).to include("environment")
+  end
+
   it "applies the cookie theme server-side (no wrong-theme flash on load)" do
     app, = build_app
     client = login(app)

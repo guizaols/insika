@@ -23,7 +23,9 @@
     --accent-weak:rgba(232,169,42,.14); --ring:rgba(232,169,42,.45);
     --ok:#1a7f37; --run:#b45309; --err:#c62f2f; --info:#2563eb;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* Inter/Geist if the operator has them installed (font-src 'self' rules out
+       webfonts); otherwise the platform UI font — SF Pro on macOS. */
+    --sans:"Inter","Inter var","Geist","SF Pro Text",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --radius:12px; --radius-sm:9px; --radius-lg:16px;
     --shadow:0 1px 2px rgba(16,20,40,.05),0 2px 8px rgba(16,20,40,.04);
     --shadow-lg:0 12px 32px rgba(16,20,40,.12);
@@ -65,9 +67,12 @@
   html { -webkit-text-size-adjust:100%; }
   body {
     font-family:var(--sans); margin:0; color:var(--fg); background:var(--ink);
-    line-height:1.55; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-    font-size:15px;
+    line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    text-rendering:optimizeLegibility; font-size:14.5px; letter-spacing:-.006em;
+    font-feature-settings:"cv02","cv03","cv04","cv11","ss01"; font-variant-numeric:tabular-nums;
   }
+  /* Proportional, lining numerals read better in prose/ids; keep tabular for metrics via .tnum. */
+  .tnum { font-variant-numeric:tabular-nums; }
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; text-underline-offset:2px; }
   code, .mono { font-family:var(--mono); font-size:.85em; }
@@ -126,14 +131,24 @@
     border-radius:0 3px 3px 0; background:var(--accent-bg);
   }
 
-  /* Sidebar footer: health readout + theme + logout */
+  /* Sidebar footer: health readout + theme + logout + environment identity */
   .sidebar-foot { margin-top:auto; padding-top:1rem; display:flex; flex-direction:column; gap:.7rem; }
-  .health-card { border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel-2); padding:.6rem .7rem; }
+  .health-card { border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel-2); padding:.65rem .75rem; box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 4%,transparent); }
   .health-card .row { display:flex; align-items:center; gap:.45rem; font-size:.82rem; }
-  .health-card .stat { color:var(--dim); font-size:.78rem; margin-top:.35rem; line-height:1.45; }
-  .health-card .stat b { color:var(--fg); font-weight:600; }
+  .health-card .stat { color:var(--dim); font-size:.76rem; margin-top:.5rem; display:grid; grid-template-columns:1fr 1fr; gap:.25rem .6rem; }
+  .health-card .stat-row { display:flex; align-items:baseline; gap:.3rem; white-space:nowrap; }
+  .health-card .stat b { color:var(--fg); font-weight:650; }
   .foot-actions { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
   .sidebar-foot .logout { margin:0; }
+
+  /* Environment identity chip (footer) — which box am I on. */
+  .env-chip { display:flex; align-items:center; gap:.6rem; padding:.55rem .5rem 0; border-top:1px solid var(--line); margin-top:.15rem; }
+  .env-mark { flex:0 0 auto; width:1.9rem; height:1.9rem; border-radius:9px; display:grid; place-items:center;
+    font-weight:700; font-size:.82rem; color:var(--accent-fg); text-transform:uppercase;
+    background:linear-gradient(150deg,var(--accent-bg),color-mix(in srgb,var(--accent-bg) 65%,#000)); }
+  .env-text { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+  .env-text b { font-size:.84rem; font-weight:600; color:var(--fg); text-transform:capitalize; }
+  .env-text small { font-size:.68rem; color:var(--faint); letter-spacing:.02em; }
 
   /* Theme switch — segmented control */
   .theme-switch { display:inline-flex; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; background:var(--panel); }
@@ -156,28 +171,50 @@
   .flash.ok { color:var(--ok); background:color-mix(in srgb,var(--ok) 11%,transparent); border:1px solid color-mix(in srgb,var(--ok) 32%,transparent); }
 
   /* ── Page scaffold ──────────────────────────────────────────────────── */
-  .page { max-width:1200px; width:100%; margin:0 auto; padding:2rem 2.5rem 5rem; }
-  .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.75rem; }
-  h1 { font-size:1.6rem; font-weight:680; letter-spacing:-.025em; margin:.1rem 0; text-wrap:balance; }
-  h1 .sub { display:block; font-size:.88rem; font-weight:400; color:var(--dim); letter-spacing:0; margin-top:.3rem; }
+  /* Uses the real estate: fills the column up to a wide cap, generous gutters
+     that tighten on narrow screens. Dense pages (tool matrix, agent grid) then
+     lay out multi-column inside this width instead of a skinny 1200px ribbon. */
+  .page { width:100%; max-width:1560px; margin:0 auto; padding:2rem clamp(1.25rem,3.5vw,3rem) 5rem; }
+  /* Sticky page header: the title + primary action stay pinned as you scroll a
+     long form/list — the "action always in reach" pattern. Backdrop keeps text
+     legible over scrolling content. */
+  .page-head {
+    display:flex; align-items:center; justify-content:space-between; gap:1rem 1.5rem; flex-wrap:wrap;
+    margin:-2rem clamp(-3rem,-3.5vw,-1.25rem) 1.9rem; padding:1.1rem clamp(1.25rem,3.5vw,3rem) 1rem;
+    position:sticky; top:0; z-index:20;
+    background:color-mix(in srgb,var(--ink) 88%,transparent); backdrop-filter:blur(12px) saturate(1.4);
+    border-bottom:1px solid var(--line);
+  }
+  .page-head > div:first-child { min-width:0; }
+  .page-head .head-actions { display:flex; align-items:center; gap:.6rem; flex:0 0 auto; }
+  h1 { font-size:1.7rem; font-weight:700; letter-spacing:-.03em; margin:.05rem 0; line-height:1.15; text-wrap:balance; }
+  h1 .sub { display:block; font-size:.9rem; font-weight:450; color:var(--dim); letter-spacing:-.005em; margin-top:.35rem; }
   .muted { color:var(--dim); }
   .eyebrow { font-family:var(--mono); font-size:.68rem; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
 
   .card {
     background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
-    padding:1.15rem 1.25rem; box-shadow:var(--shadow);
+    padding:1.3rem 1.45rem;
+    /* Depth: drop shadow + a 1px top inset highlight so panels lift off the
+       near-black canvas instead of reading as flat outlines. */
+    box-shadow:var(--shadow), inset 0 1px 0 color-mix(in srgb,#fff 5%,transparent);
   }
+  .card + .card { margin-top:1rem; }
 
   /* ── Buttons ────────────────────────────────────────────────────────── */
   .btn, button {
     font:inherit; font-size:.85rem; font-weight:560; cursor:pointer; color:var(--fg);
     background:var(--panel-2); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
-    padding:.5rem .9rem; display:inline-flex; align-items:center; gap:.4rem; line-height:1.2;
-    transition:background .12s, border-color .12s, color .12s, filter .12s;
+    padding:.52rem .95rem; display:inline-flex; align-items:center; gap:.4rem; line-height:1.2;
+    transition:background .12s, border-color .12s, color .12s, filter .12s, box-shadow .12s;
   }
   .btn:hover, button:hover { background:var(--panel-3); border-color:var(--line-strong); text-decoration:none; }
-  .btn.primary, button.primary { background:var(--accent-bg); color:var(--accent-fg); border-color:var(--accent-bg); font-weight:640; }
-  .btn.primary:hover, button.primary:hover { filter:brightness(1.06); color:var(--accent-fg); }
+  .btn.primary, button.primary {
+    background:linear-gradient(180deg,color-mix(in srgb,var(--accent-bg) 92%,#fff),var(--accent-bg));
+    color:var(--accent-fg); border-color:color-mix(in srgb,var(--accent-bg) 70%,#000); font-weight:650;
+    box-shadow:0 1px 2px rgba(0,0,0,.18), inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent);
+  }
+  .btn.primary:hover, button.primary:hover { filter:brightness(1.05); color:var(--accent-fg); }
   .btn.ghost, button.ghost { background:transparent; border-color:transparent; box-shadow:none; color:var(--dim); }
   .btn.ghost:hover, button.ghost:hover { background:var(--panel-2); color:var(--fg); }
   button.danger, .btn.danger { color:var(--err); background:transparent; border-color:transparent; }
@@ -191,12 +228,13 @@
   button.ghost[disabled]:hover { background:transparent; }
 
   /* ── Forms ──────────────────────────────────────────────────────────── */
-  label { display:block; font-size:.8rem; font-weight:600; color:var(--dim); margin:.75rem 0 0; }
+  label { display:block; font-size:.78rem; font-weight:600; color:var(--dim); margin:.85rem 0 0; letter-spacing:.005em; }
   input[type=text], input[type=password], input[type=number], textarea, select {
-    display:block; width:100%; margin-top:.35rem; font:inherit; font-size:.9rem; padding:.55rem .7rem;
+    display:block; width:100%; margin-top:.4rem; font:inherit; font-size:.9rem; padding:.6rem .8rem;
     border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--panel-2); color:var(--fg);
-    transition:border-color .12s, box-shadow .12s;
+    transition:border-color .12s, box-shadow .12s, background .12s;
   }
+  input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover, select:hover { border-color:color-mix(in srgb,var(--line-strong) 70%,var(--fg)); }
   input::placeholder, textarea::placeholder { color:var(--faint); }
   textarea { resize:vertical; }
   input:focus, textarea:focus, select:focus { outline:none; border-color:var(--accent-bg); box-shadow:0 0 0 3px var(--ring); }
@@ -264,6 +302,33 @@
   label.check { display:flex; align-items:center; gap:.55rem; font-weight:500; color:var(--fg); margin:.6rem 0; cursor:pointer; font-size:.9rem; }
   label.check input { width:auto; margin:0; accent-color:var(--accent-bg); }
   .check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.15rem 1rem; margin:.6rem 0; }
+
+  /* Tool matrix cells (§3.2 refit) — each tool is a self-contained chip: a mini
+     toggle, the name (truncates), then its badges. Bordered + min-width:0 so a
+     wide name/badge can never bleed into the neighbour (the old collision). */
+  .tool-grid.check-grid { grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:.5rem .6rem; margin:.9rem 0 0; }
+  label.check.tool-check {
+    display:flex; align-items:center; gap:.55rem; margin:0; min-width:0; font-size:.85rem;
+    padding:.5rem .65rem; border:1px solid var(--line); border-radius:var(--radius-sm);
+    background:var(--panel-2); transition:border-color .12s, background .12s;
+  }
+  label.check.tool-check:hover { border-color:var(--line-strong); }
+  label.check.tool-check:has(input:checked) { border-color:color-mix(in srgb,var(--accent-bg) 42%,var(--line)); background:var(--accent-weak); }
+  label.check.tool-check > .mono { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  label.check.tool-check .pill { flex:0 0 auto; }
+  /* checkbox → mini toggle */
+  .tool-check input[type=checkbox] {
+    appearance:none; -webkit-appearance:none; flex:0 0 auto; margin:0; position:relative;
+    width:1.85rem; height:1.05rem; border-radius:999px; background:var(--line-strong);
+    border:0; cursor:pointer; transition:background .14s;
+  }
+  .tool-check input[type=checkbox]::after {
+    content:""; position:absolute; top:.13rem; left:.13rem; width:.79rem; height:.79rem;
+    border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.35); transition:transform .14s;
+  }
+  .tool-check input[type=checkbox]:checked { background:var(--accent-bg); }
+  .tool-check input[type=checkbox]:checked::after { transform:translateX(.8rem); }
+  .tool-check input[type=checkbox]:disabled { opacity:.45; cursor:not-allowed; }
   .actions { display:flex; align-items:center; gap:.6rem; margin-top:1rem; flex-wrap:wrap; }
   .inline-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.75rem; }
   .inline-form input[type=text] { width:auto; flex:1; min-width:150px; margin-top:0; }
