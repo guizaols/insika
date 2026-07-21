@@ -165,6 +165,24 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
     end
   end
 
+  describe "§11 B2 — comando tipado (fonte única string||symbol)" do
+    def task_with(command)
+      Struct.new(:command, :session_id).new(command, nil)
+    end
+
+    it "lê o payload por chave string OU symbol via rebuild_command" do
+      executor = build_executor
+      sym = task_with({ type: :send_message, payload: { message: "oi", history: [1] } })
+      str = task_with({ "type" => "send_message", "payload" => { "message" => "oi", "history" => [1] } })
+
+      [sym, str].each do |t|
+        expect(executor.send(:extract_message, t)).to eq("oi")
+        expect(executor.send(:command_history, t)).to eq([1])
+        expect(executor.send(:command_type, t)).to eq("send_message") # sempre String
+      end
+    end
+  end
+
   describe "run_serial (session serialization, P2-03)" do
     it "spawn error marks the task :failed (does not orphan :queued without a terminal state)" do
       executor = build_executor

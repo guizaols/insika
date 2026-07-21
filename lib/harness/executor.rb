@@ -307,10 +307,11 @@ module Harness
     # checkpointing is a future slice. One call per tool is safe.
     def pending_id(task_id, turn, tool) = "#{task_id}:#{turn}:#{tool}"
 
-    # command was normalized to string keys by the TaskStore; accept a symbol
-    # too for robustness.
+    # §11 B2: all readings of the persisted command go through rebuild_command
+    # (the single normalizer). command_type stays a STRING (the :task_started
+    # event and the Telemetry attribute are string-typed).
     def command_type(task)
-      task.command[:type] || task.command["type"]
+      rebuild_command(task).type.to_s
     end
 
     # Closes the orphan Execution (open) of an attempt interrupted by a crash,
@@ -551,21 +552,19 @@ module Harness
     end
 
     def workflow_name(task)
-      payload = task.command["payload"] || task.command[:payload] || {}
-      payload["workflow"] || payload[:workflow]
+      rebuild_command(task).payload["workflow"]
     end
 
     # turn message: send_message -> payload.message; trigger_workflow ->
     # payload.input (the input becomes the "user" content and the workflow
     # argument).
     def extract_message(task)
-      payload = task.command["payload"] || task.command[:payload] || {}
-      payload["message"] || payload[:message] || payload["input"] || payload[:input]
+      payload = rebuild_command(task).payload
+      payload["message"] || payload["input"]
     end
 
     def command_history(task)
-      payload = task.command["payload"] || task.command[:payload] || {}
-      payload["history"] || payload[:history]
+      rebuild_command(task).payload["history"]
     end
 
     def build_context_request(task, profile, state, resume_from)
@@ -587,8 +586,7 @@ module Harness
     # Command tenant (Command.build(..., tenant:) -> meta[:tenant],
     # command.rb). Absent -> nil (the MemoryStore applies DEFAULT_TENANT).
     def command_tenant(task)
-      meta = rebuild_command(task).meta
-      meta["tenant"] || meta[:tenant]
+      rebuild_command(task).meta["tenant"]
     end
 
     # Engine memory scope (D3): the Command's EXPLICIT tenant wins (multi-merchant
@@ -631,14 +629,24 @@ module Harness
     end
 
     # The Task persists the Command as a Hash; the WorkflowAllowlist needs
-    # a Command with #type (Symbol) and #payload.
+    # a Command with #type (Symbol) and #payload. §11 B2: the SINGLE point that
+    # reconciles the string||symbol keys of the persisted command — payload/meta
+    # keys are stringified ONCE here, so every reader (command_type/workflow_name/
+    # extract_message/command_history/command_tenant) works with string keys.
     def rebuild_command(task)
       cmd = task.command
       Harness::Command.new(
         type: (cmd["type"] || cmd[:type]).to_s.to_sym,
-        payload: cmd["payload"] || cmd[:payload] || {},
-        meta: cmd["meta"] || cmd[:meta] || {}
+        payload: normalize_keys(cmd["payload"] || cmd[:payload]),
+        meta: normalize_keys(cmd["meta"] || cmd[:meta])
       )
+    end
+
+    # Shallow key stringification (nil -> {}). The persisted command comes
+    # string-keyed from the TaskStore; this only matters for a symbol-keyed
+    # command that bypassed it (fakes/tests).
+    def normalize_keys(hash)
+      (hash || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v }
     end
 
     # Real Engine -> Entries (respond to factory); fakes -> ready instances.
