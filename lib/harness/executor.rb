@@ -429,6 +429,8 @@ module Harness
           unless workflow_turn?(task)
             st.chat = create_chat(profile, st)
             @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
+            # §11 R1: baseline = seeded-history size, before `ask` appends the turn.
+            st.chat_baseline = Array(st.chat.messages).size if st.chat.respond_to?(:messages)
           end
 
           # guardrails (RFC-0009 §3.2): a per-turn stream redactor, built from the
@@ -757,7 +759,7 @@ module Harness
 
       @checkpoint_store.save(Harness::Checkpoint.new(
                                task_id: task.id, turn: state.turn, session_id: task.session_id,
-                               agent_id: profile.id, messages: Array(state.context.history),
+                               agent_id: profile.id, messages: flatten_history(state.context.history),
                                completed_side_effects: [], created_at: Time.now.utc.iso8601
                              ))
     end
@@ -802,11 +804,8 @@ module Harness
     # Recovery re-executes the already-saved turn (safe thanks to the side-effect
     # recording).
     def persist_turn(task, profile, state, content)
-      new_messages = [
-        { role: "user", content: state.message },
-        { role: "assistant", content: content }
-      ]
-      transcript = Array(state.context.history) + new_messages
+      new_messages = turn_transcript(state, content)
+      transcript = flatten_history(state.context.history) + new_messages
 
       @checkpoint_store.save(Harness::Checkpoint.new(
                                task_id: task.id, turn: state.turn + 1, session_id: task.session_id,
@@ -833,6 +832,86 @@ module Harness
 
       emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
     end
+
+    # Truncation cap for a persisted `role: tool` content (§11 R1): the transcript
+    # keeps the loop coherent; the FULL result lives in the ToolTraceStore (viewer).
+    TOOL_CONTENT_CAP = 4_000
+
+    # The turn's messages in the ADDITIVE string-keyed format (§11 R1). Prefers the
+    # real chat transcript (`chat.messages.drop(baseline)`) so tool calls/results
+    # survive between turns; falls back to the {user, assistant} pair when the chat
+    # did not record the turn (workflow, graceful halt, or the specs' FakeChat).
+    # The final assistant text is the REDACTED `content` (output_filter, RFC-0009 D3),
+    # never the raw text the gem stored.
+    def turn_transcript(state, content)
+      recorded = recorded_turn_messages(state)
+      return [{ "role" => "user", "content" => state.message.to_s },
+              { "role" => "assistant", "content" => content.to_s }] if recorded.empty?
+
+      recorded[-1] = recorded[-1].merge("content" => content.to_s) if recorded.last["role"] == "assistant"
+      recorded
+    end
+
+    # Slices the chat's messages added DURING this turn and serializes them.
+    # [] when there is no recorded transcript (baseline nil / no #messages).
+    def recorded_turn_messages(state)
+      chat = state.chat
+      baseline = state.chat_baseline
+      return [] unless chat && baseline && chat.respond_to?(:messages)
+
+      Array(chat.messages).drop(baseline).filter_map { |m| serialize_chat_message(m) }
+    end
+
+    # A RubyLLM::Message (duck-typed) -> string-keyed Hash. Assistant carries
+    # "tool_calls" only when present; tool carries "tool_call_id" + a clipped content.
+    def serialize_chat_message(msg)
+      role = msg_field(msg, :role).to_s
+      content = msg_field(msg, :content).to_s
+      case role
+      when "assistant"
+        calls = serialize_tool_calls(msg_field(msg, :tool_calls))
+        h = { "role" => "assistant", "content" => content }
+        h["tool_calls"] = calls unless calls.empty?
+        h
+      when "tool"
+        { "role" => "tool", "tool_call_id" => msg_field(msg, :tool_call_id).to_s,
+          "content" => clip_tool_content(content) }
+      else
+        { "role" => role, "content" => content }
+      end
+    end
+
+    # RubyLLM keeps tool_calls as {id => ToolCall}; tolerate an Array too. -> [{id,name,arguments}].
+    def serialize_tool_calls(tool_calls)
+      return [] if tool_calls.nil?
+
+      list = tool_calls.is_a?(Hash) ? tool_calls.values : Array(tool_calls)
+      list.filter_map do |tc|
+        next nil unless tc
+
+        { "id" => msg_field(tc, :id).to_s, "name" => msg_field(tc, :name).to_s,
+          "arguments" => msg_field(tc, :arguments) || {} }
+      end
+    end
+
+    # Reads a field off a Message/ToolCall (method) OR a Hash (sym|string key).
+    def msg_field(obj, key)
+      return obj.public_send(key) if obj.respond_to?(key)
+
+      obj[key] || obj[key.to_s] if obj.respond_to?(:[])
+    end
+
+    def clip_tool_content(str)
+      return str if str.length <= TOOL_CONTENT_CAP
+
+      "#{str[0, TOOL_CONTENT_CAP]}…(truncado — resultado íntegro no viewer)"
+    end
+
+    # context.history may carry "eviction units" (an assistant+tool_results cycle
+    # grouped as one Array by the Session provider, §11 R1). Checkpoints store a
+    # FLAT list — the provider regroups on read. Flatten one level; message Hashes
+    # are untouched.
+    def flatten_history(history) = Array(history).flatten(1)
 
     # Stage 6 (factory): the ONLY point that touches the gem. lazy require,
     # confined — not covered by unit (factory line). It also loads the system
