@@ -60,7 +60,7 @@ module Harness
           sse("response.output_item.added",
               { type: "response.output_item.added",
                 item: { type: "function_call", name: event.data[:name].to_s } })
-        when :done, :task_completed
+        when :task_completed
           completed(event) + done
         when :task_failed
           failed(event.data[:message] || "task failed") + done

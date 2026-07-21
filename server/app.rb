@@ -28,8 +28,9 @@ module Harness
       }.freeze
 
       # Terminal events of a turn (close the task subscription in the
-      # transport). :error is kept for consumer compatibility.
-      TERMINAL_EVENTS = %i[done task_failed task_cancelled error].freeze
+      # transport). The overflow :error self-closes its own subscription at the
+      # EventStream (enqueues CLOSED), so it needs no entry here to end `each`.
+      TERMINAL_EVENTS = %i[task_completed task_failed task_cancelled].freeze
       private_constant :TERMINAL_EVENTS
 
       # checkpoint_store: read only ("checkpoints" column of

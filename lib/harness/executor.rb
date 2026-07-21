@@ -234,7 +234,6 @@ module Harness
       @task_store.transition(task.id, to: :cancelled)
       @task_store.finish_execution(task.id, outcome: :cancelled)
       emit(:task_cancelled, { task_id: task.id }, task: task)
-      emit(:error, { message: "task cancelled" }, task: task) # legacy compat
     rescue PolicyDenied => e
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
       fail_task(task, e, stage: :policy)
@@ -278,7 +277,6 @@ module Harness
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: :spawn })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
-      emit(:error, { message: error.message }, task: task)
     rescue Harness::Error
       nil
     end
@@ -331,7 +329,9 @@ module Harness
       # cleanup AFTER transition(:completed)), completed->failed is invalid and
       # would raise ArgumentError INSIDE the rescue, leaking from the fiber. In
       # that case only report the error — the durability of the committed turn is
-      # preserved.
+      # preserved. This :error is the ONE deliberate, non-twin executor error
+      # signal (R2b): the terminal already fired, so a session-scoped subscriber
+      # is the only one that may still see it. Same family as the overflow :error.
       current = @task_store.find(task.id)
       if current && TERMINAL_STATUSES.include?(current.status)
         emit(:error, { message: error.message }, task: task)
@@ -341,7 +341,6 @@ module Harness
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: stage })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
-      emit(:error, { message: error.message }, task: task) # legacy compat
       nil
     end
 
@@ -790,7 +789,6 @@ module Harness
       end
       emit(:content, { delta: content }, task: task) unless content.empty?
       persist_turn(task, profile, state, content)
-      emit(:done, { content: content, usage: state.usage }, task: task)
       emit(:task_completed, { task_id: task.id, content: content, usage: state.usage }, task: task)
     end
 
