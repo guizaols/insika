@@ -40,24 +40,7 @@
     <div class="empty">This session has no messages.</div>
   <% else %>
     <div class="thread">
-      <% Array(@session.messages).each do |m| %>
-        <% role = m["role"].to_s %>
-        <% content = m["content"].is_a?(String) ? m["content"] : m["content"].inspect %>
-        <% if role == "tool" %>
-          <div class="toolcard result">
-            <div class="h"><span class="arrow">←</span><strong>tool</strong></div>
-            <pre><%= content %></pre>
-          </div>
-        <% else %>
-          <div class="msg <%= role %>">
-            <div class="who"><%= role[0, 1].upcase %></div>
-            <div class="bubble">
-              <div class="role-tag"><%= role %></div>
-              <div class="content"><%= content %></div>
-            </div>
-          </div>
-        <% end %>
-      <% end %>
+      <% Array(@session.messages).each do |m| %><%== render("_message", locals: { m: m }) %><% end %>
     </div>
   <% end %>
 </div>
