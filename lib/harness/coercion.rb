@@ -6,10 +6,18 @@ module Harness
   module Coercion
     module_function
 
-    # Present string or nil: "" and nil become nil; everything else becomes a String.
+    # Present string or nil: nil and blank (incl. whitespace-only) become nil;
+    # everything else becomes a stripped String.
     def presence(str)
-      str.nil? || str.to_s.empty? ? nil : str.to_s
+      s = str.to_s.strip
+      s.empty? ? nil : s
     end
+
+    # nil or blank (incl. whitespace-only) -> true.
+    def blank?(value) = value.nil? || value.to_s.strip.empty?
+
+    # Inverse of blank? — a usable, non-empty value.
+    def present?(value) = !blank?(value)
 
     # Normalizes keys and Symbols to String recursively (the stores' JSON model
     # has no Symbol). Hash -> keys and values; Array -> elements.

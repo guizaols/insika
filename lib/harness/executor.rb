@@ -390,7 +390,7 @@ module Harness
         elsif state.halt_reason
           raise Harness::Error, "turn halted: #{state.halt_reason}"
         elsif !terminal_ran
-          raise Harness::Error, "middleware curto-circuitou sem halt_reason"
+          raise Harness::Error, "middleware short-circuited without halt_reason"
         end
 
           state # subject of the :task pair (after_task receives it; the caller discards)
@@ -626,7 +626,7 @@ module Harness
         chat_id: task.session_id,
         agent_id: profile.id,
         tenant: state.tenant, # already = command_tenant || session_id (memory_tenant)
-        store_id: (profile.store_id if profile.respond_to?(:store_id))
+        store_id: profile.store_id
       }
     end
 
@@ -856,7 +856,7 @@ module Harness
     def clip_tool_content(str)
       return str if str.length <= TOOL_CONTENT_CAP
 
-      "#{str[0, TOOL_CONTENT_CAP]}…(truncado — resultado íntegro no viewer)"
+      "#{str[0, TOOL_CONTENT_CAP]}…(truncated — full result in the viewer)"
     end
 
     # context.history may carry "eviction units" (an assistant+tool_results cycle

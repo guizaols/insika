@@ -47,12 +47,9 @@ module Harness
         @responses = responses # { "category" => "safe reply" }, agent override map
       end
 
-      # Builds a Config from a profile (duck-typed on `#guardrails`). A profile
-      # without the field (or a nil/empty value) -> the conservative default.
-      def self.from_profile(profile)
-        raw = profile.respond_to?(:guardrails) ? profile.guardrails : nil
-        from_hash(raw)
-      end
+      # Builds a Config from a profile. A nil/empty `guardrails` -> the
+      # conservative default (see from_hash).
+      def self.from_profile(profile) = from_hash(profile.guardrails)
 
       def self.from_hash(raw)
         h = symbolize(raw)
@@ -87,10 +84,7 @@ module Harness
         !s.empty? && !%w[false 0 off no].include?(s)
       end
 
-      def self.presence(v)
-        s = v.to_s.strip
-        s.empty? ? nil : s
-      end
+      def self.presence(v) = Harness::Coercion.presence(v)
 
       def self.normalize_strictness(v)
         sym = v.to_s.strip.downcase.to_sym

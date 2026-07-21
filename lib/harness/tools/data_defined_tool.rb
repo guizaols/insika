@@ -158,7 +158,7 @@ module Harness
         { error: "HTTP #{result[:status]}: #{result[:body].to_s[0, 200]}" }
       end
 
-      def present?(v) = !(v.nil? || v.to_s.empty?)
+      def present?(v) = Harness::Coercion.present?(v)
 
       # No task correlation (registry tool does not receive TurnState) -> meta {}.
       # Emits only name + status: NEVER body/headers (0 secret leakage, R2).

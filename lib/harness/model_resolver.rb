@@ -22,49 +22,56 @@ module Harness
       @settings_store = settings_store
     end
 
+    # The layer that won resolution, before policy/fallback processing.
+    # `source` is where the model came from (:chat/:agent/:platform_default).
+    Choice = Data.define(:model, :provider, :source, :pinned)
+    private_constant :Choice
+
     # profile: AgentProfile; session: SessionStore::Session | nil.
     # -> ModelSelection. Raises PolicyDenied (model outside the agent's fence) or
     # Error (no model resolvable at any layer).
     def resolve(profile:, session: nil)
       settings = platform_settings
-      model, provider, source, pinned = pick(profile, session, settings)
+      choice = pick(profile, session, settings)
 
-      if blank?(model)
+      if blank?(choice.model)
         raise Harness::Error,
               "no model resolved for agent '#{profile.id}': set the agent model or a platform default_model (Settings)"
       end
 
-      provider = provider&.to_sym
-      enforce_policy!(profile, model, provider)
+      provider = choice.provider&.to_sym
+      enforce_policy!(profile, choice.model, provider)
 
       ModelSelection.new(
-        model: model, provider: provider, source: source, pinned: pinned,
+        model: choice.model, provider: provider, source: choice.source, pinned: choice.pinned,
         params: normalize_params(profile_params(profile)),
-        fallbacks: pinned ? [] : resolve_fallbacks(profile, settings, model, provider)
+        fallbacks: choice.pinned ? [] : resolve_fallbacks(profile, settings, choice.model, provider)
       )
     end
 
     private
 
-    # Chat pin > agent model > platform default. -> [model, provider, source, pinned].
+    # Chat pin > agent model > platform default.
     def pick(profile, session, settings)
       pin = session_pin(session)
       if pin && !blank?(pin[:model])
-        [pin[:model], pin[:provider], :chat, true]
+        Choice.new(model: pin[:model], provider: pin[:provider], source: :chat, pinned: true)
       elsif !blank?(profile.model)
-        [profile.model, profile.provider, :agent, false]
+        Choice.new(model: profile.model, provider: profile.provider, source: :agent, pinned: false)
       else
-        [settings["default_model"], settings["default_provider"], :platform_default, false]
+        Choice.new(model: settings["default_model"], provider: settings["default_provider"],
+                   source: :platform_default, pinned: false)
       end
     end
 
     # Per-session pin from vars["__llm__"] = { "model" =>, "provider" => }.
-    # -> { model:, provider: } | nil (string keys — JSON round-trip).
+    # SessionStore deep_stringifies vars on write, so the slot is always
+    # string-keyed. -> { model:, provider: } | nil.
     def session_pin(session)
       slot = session&.vars&.dig(SESSION_SLOT)
       return nil unless slot.is_a?(Hash)
 
-      { model: slot["model"] || slot[:model], provider: slot["provider"] || slot[:provider] }
+      { model: slot["model"], provider: slot["provider"] }
     end
 
     def enforce_policy!(profile, model, provider)
@@ -109,14 +116,10 @@ module Harness
       @settings_store ? @settings_store.get : {}
     end
 
-    # `params` may be absent on legacy profiles (duck-typed). -> Hash.
-    def profile_params(profile)
-      profile.respond_to?(:params) ? (profile.params || {}) : {}
-    end
-
-    def model_policy(profile)
-      profile.respond_to?(:model_policy) ? profile.model_policy : nil
-    end
+    # AgentProfile always carries `params` (a string-keyed Hash, {} when unset)
+    # and `model_policy` (nil = no fence) — no feature-detection needed.
+    def profile_params(profile) = profile.params
+    def model_policy(profile) = profile.model_policy
 
     # Coerces authored params (string|symbol keys from the JSON round-trip) into
     # the symbol shape ModelSelection#apply_params consumes.
@@ -130,7 +133,7 @@ module Harness
     end
 
     def ref(model, provider) = provider ? "#{provider}/#{model}" : model.to_s
-    def blank?(v) = v.nil? || v.to_s.strip.empty?
-    def presence(v) = blank?(v) ? nil : v.to_s
+    def blank?(v) = Harness::Coercion.blank?(v)
+    def presence(v) = Harness::Coercion.presence(v)
   end
 end

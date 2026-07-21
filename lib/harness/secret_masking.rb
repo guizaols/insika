@@ -29,8 +29,6 @@ module Harness
       s.empty? ? nil : s
     end
 
-    def present?(value)
-      !(value.nil? || value.to_s.empty?)
-    end
+    def present?(value) = Harness::Coercion.present?(value)
   end
 end
