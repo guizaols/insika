@@ -1,0 +1,22 @@
+<%# Shared transcript bubble/tool-card (§11 A1/A2) — one visual language for the
+    playground history, the optimistic echo and the read-only session viewer.
+    Locals: m = stored message hash {"role","content","at"}. `content` may be a
+    String or a structured payload (rendered as pretty JSON, never #inspect).
+    Assistant bubbles carry data-controller="markdown" (markdown.js re-escapes
+    before markup — safe under the strict CSP). %>
+<% role = m["role"].to_s %>
+<% at = short_time(m["at"]) %>
+<% if role == "tool" %>
+  <details class="toolcard result">
+    <summary><span class="arrow">←</span><strong>tool result</strong><% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></summary>
+    <pre><%= message_content(m["content"]) %></pre>
+  </details>
+<% else %>
+  <div class="msg <%= role %>">
+    <div class="who"><%= role[0, 1].upcase %></div>
+    <div class="bubble">
+      <div class="role-tag"><%= role %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
+      <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
+    </div>
+  </div>
+<% end %>

@@ -345,6 +345,28 @@ RSpec.describe Studio::App do
     expect(bus.types).not_to include(:create_session)
   end
 
+  it "playground echoes the just-sent message as a user bubble on the next GET (§11 A1)" do
+    app, = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/playground").body)
+    client.post("/playground", params: { "agent" => "chef", "session_id" => "s1",
+                                          "message" => "olá-echo-42", "_csrf" => csrf })
+    body = client.get("/playground?agent=chef&session_id=s1").body
+    expect(body).to include("olá-echo-42")
+    expect(body).to include('class="msg user"')
+  end
+
+  it "playground GET renders the session's persisted transcript as bubbles (§11 A1)" do
+    sess = StoredSession.new(id: "s1", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "pergunta-persistida" },
+                                        { "role" => "assistant", "content" => "resposta-persistida" }])
+    app, = build_app(sessions: { "s1" => sess })
+    body = login(app).get("/playground?agent=chef&session_id=s1").body
+    expect(body).to include("pergunta-persistida")
+    expect(body).to include("resposta-persistida")
+    expect(body).to include('data-controller="markdown"') # assistant bubble renders Markdown
+  end
+
   it "the app-bar has the skills and tools links (Stage F)" do
     app, = build_app
     body = login(app).get("/agents").body
@@ -737,6 +759,24 @@ RSpec.describe Studio::App do
     expect(body).to include("search_products")
     expect(body).to include("trufa")   # rendered args
     expect(body).to include("found")   # rendered response
+  end
+
+  it "session viewer renders structured content as pretty JSON, not Ruby #inspect (§11 A2)" do
+    sess = StoredSession.new(id: "sess-j", updated_at: "t",
+                             messages: [{ "role" => "assistant", "content" => { "text" => "hi" } }])
+    app, = build_app(sessions: { "sess-j" => sess })
+    body = login(app).get("/sessions/sess-j").body
+    expect(body).to include("&quot;text&quot;") # JSON quotes, escaped once
+    expect(body).not_to include("=&gt;")         # NOT a Ruby hashrocket (#inspect)
+  end
+
+  it "session viewer renders a tool message as a collapsible card (§11 A2)" do
+    sess = StoredSession.new(id: "sess-tool", updated_at: "t",
+                             messages: [{ "role" => "tool", "content" => "resultado-da-tool" }])
+    app, = build_app(sessions: { "sess-tool" => sess })
+    body = login(app).get("/sessions/sess-tool").body
+    expect(body).to include("resultado-da-tool")
+    expect(body).to include('class="toolcard result"')
   end
 
   it "the detail's history lists the recent conversations" do

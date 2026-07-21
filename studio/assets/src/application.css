@@ -328,6 +328,34 @@
   .toolcard .h .arrow { color:var(--dim); }
   .toolcard pre, pre { background:var(--panel-3); border:1px solid var(--line); border-radius:8px; padding:.65rem .75rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:.8rem; margin:.45rem 0 0; line-height:1.5; }
 
+  /* Collapsible tool card (§11 A2) — <details> summary is a one-line header;
+     body (<pre>) reveals on expand. Applies to live cards and the session viewer. */
+  details.toolcard { padding:0; }
+  details.toolcard > summary { cursor:pointer; display:flex; align-items:center; gap:.5rem; padding:.6rem .8rem; list-style:none; font-family:var(--mono); font-size:.82rem; }
+  details.toolcard > summary::-webkit-details-marker { display:none; }
+  details.toolcard > summary::after { content:"▸"; margin-left:auto; color:var(--faint); transition:transform .15s; }
+  details.toolcard[open] > summary::after { transform:rotate(90deg); }
+  details.toolcard > summary .arrow { color:var(--dim); }
+  details.toolcard > pre { margin:0 .8rem .7rem; }
+  .toolcard .badge { font-family:var(--mono); font-size:.64rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:.1rem .4rem; border-radius:5px; }
+  .toolcard .badge.ok { background:color-mix(in srgb,var(--ok) 18%,transparent); color:var(--ok); }
+  .toolcard .badge.err { background:color-mix(in srgb,var(--err) 18%,transparent); color:var(--err); }
+
+  /* Timestamp on a transcript bubble/card header. */
+  .stamp { font-family:var(--mono); font-size:.68rem; color:var(--faint); font-weight:400; letter-spacing:0; text-transform:none; }
+
+  /* Markdown-rendered assistant bubble: block layout (overrides the pre-wrap the
+     plain-text path uses); tight vertical rhythm inside the bubble. */
+  .content.md { white-space:normal; }
+  .content.md > :first-child { margin-top:0; }
+  .content.md > :last-child { margin-bottom:0; }
+  .content.md p { margin:.5rem 0; }
+  .content.md ul, .content.md ol { margin:.5rem 0; padding-left:1.3rem; }
+  .content.md pre { margin:.5rem 0; }
+  .content.md code { font-family:var(--mono); font-size:.85em; }
+  .content.md h1, .content.md h2, .content.md h3, .content.md h4 { margin:.7rem 0 .35rem; line-height:1.25; }
+  .content.md blockquote { margin:.5rem 0; padding-left:.75rem; border-left:3px solid var(--line); color:var(--dim); }
+
   /* ── Signature: session tool-call telemetry timeline ────────────────── */
   /* (moved from an inline <style> in session.erb — inline styles are blocked
      by the strict CSP `style-src 'self'`, so the trace was rendering unstyled.) */

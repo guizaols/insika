@@ -1,21 +1,31 @@
 import { Controller } from "@hotwired/stimulus"
+import { renderMarkdown } from "../markdown"
 
 // live-transcript (island D9) — assina o SSE de /v1/events (mesma origem, sem
 // header de auth: é a API do consumidor) e renderiza o turno ao vivo: deltas de
-// texto viram bolha do assistente; tool_call/tool_result/skill viram tool-cards.
-// Reusa o protocolo de eventos já provado no /admin (#24), agora empacotado como
-// controller Stimulus (CSP estrita 'self' — nada de <script> inline).
+// texto viram bolha do assistente (renderizada como Markdown, §11 A1);
+// tool_call/tool_result/skill viram tool-cards colapsáveis (§11 A2). Reusa o
+// protocolo de eventos já provado no /admin (#24), empacotado como controller
+// Stimulus (CSP estrita 'self' — nada de <script> inline).
+//
+// Curadoria (§11 A1): eventos de bookkeeping não têm bolha (ruído/chips
+// duplicados até o R2b unificar os twins :done/:task_completed).
+const IGNORED = new Set(["task_started", "checkpoint_created", "task_completed"])
+
 export default class extends Controller {
   static targets = ["stream", "empty", "status"]
   static values = { session: String, task: String }
 
   connect() {
-    this.current = null
+    this.current = null      // streaming assistant bubble's .content node (or null)
+    this.currentText = ""    // accumulated Markdown source for that bubble
+    this.raf = null
     if (this.sessionValue || this.taskValue) this.open()
   }
 
   disconnect() {
     this.close()
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null }
   }
 
   open() {
@@ -58,17 +68,39 @@ export default class extends Controller {
   }
 
   push(node) {
-    if (this.hasEmptyTarget) this.emptyTarget.style.display = "none"
+    if (this.hasEmptyTarget) this.emptyTarget.hidden = true
     this.streamTarget.appendChild(node)
     node.scrollIntoView({ block: "end" })
   }
 
-  toolcard(kind, arrow, title, body) {
-    const c = this.el("div", "toolcard " + kind)
-    const h = this.el("div", "h")
-    h.appendChild(this.el("span", "arrow", arrow))
-    h.appendChild(this.el("strong", null, title))
-    c.appendChild(h)
+  // "HH:MM" <time> node from an ISO8601 stamp (ev.meta.at). null = absent/invalid.
+  time(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return null
+    const t = this.el("time", "stamp", d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+    t.setAttribute("datetime", iso)
+    return t
+  }
+
+  // One-line "(args…)" for a collapsed tool-call summary; body keeps the full JSON.
+  argsPreview(args) {
+    if (args == null) return "(…)"
+    let s
+    try { s = typeof args === "string" ? args : JSON.stringify(args) } catch (_) { s = String(args) }
+    s = s.replace(/\s+/g, " ").trim()
+    return "(" + (s.length > 60 ? s.slice(0, 60) + "…" : s) + ")"
+  }
+
+  // Collapsible tool card: <details> with a summary (arrow + title + optional
+  // ok/err badge) and the raw payload in a <pre> body.
+  toolcard(kind, arrow, title, body, badge) {
+    const c = this.el("details", "toolcard " + kind)
+    const s = document.createElement("summary")
+    s.appendChild(this.el("span", "arrow", arrow))
+    s.appendChild(this.el("strong", null, title))
+    if (badge) s.appendChild(this.el("span", "badge " + badge.cls, badge.text))
+    c.appendChild(s)
     if (body != null) c.appendChild(this.pre(body))
     return c
   }
@@ -90,51 +122,87 @@ export default class extends Controller {
     return c
   }
 
+  // Re-render the streaming bubble as Markdown, throttled to one paint per frame.
+  scheduleMarkdown() {
+    if (this.raf) return
+    this.raf = requestAnimationFrame(() => {
+      this.raf = null
+      if (this.current) this.current.innerHTML = renderMarkdown(this.currentText)
+    })
+  }
+
+  // Finalize the open assistant bubble (flush pending Markdown) and detach the
+  // cursor so the next content/tool event starts fresh.
+  finishBubble() {
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null }
+    if (this.current) this.current.innerHTML = renderMarkdown(this.currentText)
+    this.current = null
+    this.currentText = ""
+  }
+
   render(ev) {
+    if (IGNORED.has(ev.type)) return
+
     switch (ev.type) {
-      case "content":
+      case "content": {
         if (!this.current) {
           const msg = this.el("div", "msg assistant")
           msg.appendChild(this.el("div", "who", "A"))
           const b = this.el("div", "bubble")
-          this.current = this.el("div", "content", "")
+          const tag = this.el("div", "role-tag", "assistant")
+          const stamp = this.time(ev.meta && ev.meta.at)
+          if (stamp) { tag.appendChild(document.createTextNode(" · ")); tag.appendChild(stamp) }
+          b.appendChild(tag)
+          this.current = this.el("div", "content md")
           b.appendChild(this.current)
           msg.appendChild(b)
+          this.currentText = ""
           this.push(msg)
         }
-        this.current.textContent += ev.delta || ""
+        this.currentText += ev.delta || ""
+        this.scheduleMarkdown()
         break
+      }
       case "tool_call":
-        this.current = null
-        this.push(this.toolcard("", "→", (ev.name || "tool") + "(…)", ev.arguments))
+        this.finishBubble()
+        this.push(this.toolcard("", "→", (ev.name || "tool") + this.argsPreview(ev.arguments), ev.arguments))
         break
-      case "tool_result":
-        this.push(this.toolcard("result", "←", ev.name || "tool", ev.result))
+      case "tool_result": {
+        const ok = !(ev.result && typeof ev.result === "object" && "error" in ev.result)
+        this.push(this.toolcard("result", "←", ev.name || "tool", ev.result,
+          { cls: ok ? "ok" : "err", text: ok ? "ok" : "error" }))
         break
+      }
       case "skill_activated":
+        this.finishBubble()
         this.push(this.toolcard("skill", "↑", "load_skill(" + (ev.name || "") + ")", null))
         break
       case "guardrail_blocked":
         // RFC-0009: input short-circuited with a safe reply (the assistant bubble
         // follows via :content). Distinct card — audit at a glance.
-        this.current = null
+        this.finishBubble()
         this.push(this.toolcard("guardrail", "⛔", "guardrail blocked · " + (ev.category || "?"),
           [ev.source, ev.action, ev.detail].filter(Boolean).join(" · ") || null))
         break
       case "guardrail_flagged":
-        this.current = null
+        this.finishBubble()
         this.push(this.toolcard("guardrail", "⚑", "guardrail flagged · " + (ev.category || "?"),
           [ev.source, ev.detail].filter(Boolean).join(" · ") || null))
         break
       case "done":
+        // Success terminal (twin of :task_completed, curated above): just the
+        // status pill, no chip — the assistant bubble already IS the outcome.
+        this.finishBubble()
+        this.setStatus("turn finished", "info")
+        break
       case "task_failed":
       case "task_cancelled":
-        this.current = null
+        this.finishBubble()
         this.push(this.chip(ev))
         this.setStatus("turn finished", "info")
         break
       default:
-        this.current = null
+        this.finishBubble()
         this.push(this.chip(ev))
     }
   }
