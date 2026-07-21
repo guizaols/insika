@@ -43,18 +43,27 @@ module Harness
     def call(state, &nxt)
       edge = platform_edge
       limits = state.profile.limits || {}
+      # A resume (crash/pause recovery) re-enters the pipeline for a turn that was
+      # ALREADY admitted: re-counting it would swallow a legitimate message with
+      # the rate-limit reply exactly when the window is saturated. Entry checks
+      # are skipped; the turn's usage still lands on the ledger below.
+      resumed = state.resumed
 
-      if (limit = positive(limits.key?(:chat_rate_limit) ? limits[:chat_rate_limit] : edge["chat_rate_limit"]))
+      if !resumed && (limit = positive(limits.key?(:chat_rate_limit) ? limits[:chat_rate_limit] : edge["chat_rate_limit"]))
         breach = check_chat_rate(state, limit, edge)
         return block(state, edge, **breach) if breach
       end
 
+      # NB: a per-agent key PRESENT with nil (e.g. an imported pack carrying
+      # `"chat_rate_limit": null`) reads as OFF for that agent, not "inherit".
       if (ceiling = positive(limits.key?(:agent_token_ceiling) ? limits[:agent_token_ceiling] : edge["agent_token_ceiling"]))
         token_window = positive(edge["agent_token_window"]) || DEFAULT_TOKEN_WINDOW
-        spent = @ledger.count(TOKENS_KIND, state.profile.id.to_s, window: token_window)
-        if spent >= ceiling
-          return block(state, edge, category: :token_ceiling,
-                                    detail: "agent #{state.profile.id}: #{spent}/#{ceiling} tokens per #{token_window}s")
+        unless resumed
+          spent = @ledger.count(TOKENS_KIND, state.profile.id.to_s, window: token_window)
+          if spent >= ceiling
+            return block(state, edge, category: :token_ceiling,
+                                      detail: "agent #{state.profile.id}: #{spent}/#{ceiling} tokens per #{token_window}s")
+          end
         end
 
         record_after = token_window

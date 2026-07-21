@@ -925,6 +925,15 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_settings).payload[:patch]["edge"]["chat_rate_limit"]).to be_nil
   end
 
+  it "the edge-limits form REJECTS an unparseable number (a typo must not silently disable a limit)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    res = client.post("/settings/edge", params: { "chat_rate_limit" => "2O", "_csrf" => csrf })
+    expect(res.status).to eq(302) # red flash, not a 500
+    expect(bus.last(:update_settings)).to be_nil # nothing dispatched
+  end
+
   it "the model-defaults form does NOT touch the general-settings keys (scoped save)" do
     app, bus = build_app
     client = login(app)

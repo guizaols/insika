@@ -17,7 +17,7 @@ module Studio
       # DEFAULT_LIMITS), these are OPT-IN keys: blank DELETES the override (inherit
       # the platform edge settings); 0 explicitly disables for this agent.
       %w[chat_rate_limit agent_token_ceiling].each do |field|
-        v = coerce(r.params[field]) { |x| Integer(x) }
+        v = edge_int(r.params[field], field)
         if v.nil?
           limits.delete(field.to_sym)
         else
@@ -161,10 +161,23 @@ module Studio
     def edge_patch(r)
       edge = {}
       %w[chat_rate_limit chat_rate_window agent_token_ceiling agent_token_window].each do |f|
-        edge[f] = coerce(r.params[f]) { |x| Integer(x) }
+        edge[f] = edge_int(r.params[f], f)
       end
       edge["limit_response"] = presence(r.params["limit_response"])
       { "edge" => edge }
+    end
+
+    # Strict integer for the edge fields: blank = nil (off / inherit — intentional),
+    # but an UNPARSEABLE value must not silently disable a production limit (the
+    # `coerce` drop-to-nil semantics would turn a typo into "off" with a green
+    # flash). ValidationError -> with_flash renders it as the red flash, no dispatch.
+    def edge_int(raw, field)
+      v = presence(raw)
+      return nil unless v
+
+      Integer(v)
+    rescue ArgumentError, TypeError
+      raise Harness::ValidationError, "#{field} must be an integer (got #{raw.inspect})"
     end
 
     # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a

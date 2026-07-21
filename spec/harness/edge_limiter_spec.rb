@@ -138,6 +138,25 @@ RSpec.describe Harness::EdgeLimiter do
     end
   end
 
+  describe "resumed turns (crash/pause recovery)" do
+    it "skips the entry checks (an admitted turn is never swallowed by the wall)" do
+      mw = limiter({ "chat_rate_limit" => 1 })
+      run(mw, state) # saturates the chat window
+      st = state
+      st.resumed = true
+      expect(run(mw, st)).to be(true) # would be blocked if it counted again
+    end
+
+    it "never blocks a resume on the token ceiling, but still records its usage" do
+      mw = limiter({ "agent_token_ceiling" => 100, "agent_token_window" => 3_600 })
+      run(mw, state, usage: { total_tokens: 200 }) # ledger now over the ceiling
+      st = state
+      st.resumed = true
+      expect(run(mw, st, usage: { total_tokens: 50 })).to be(true)
+      expect(ledger.count("tokens", "bia", window: 3_600)).to eq(250)
+    end
+  end
+
   describe "per-agent limits without any settings store (base wiring)" do
     it "enforces the profile's own limits" do
       mw = limiter(nil)
