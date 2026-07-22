@@ -53,6 +53,40 @@ de dev):
 
 Gerar um token forte: `ruby -rsecurerandom -e 'puts SecureRandom.hex(24)'`.
 
+### Config estrito + `harness doctor` (item 23)
+
+Disciplina de config estilo OpenClaw — **recusa chave desconhecida, sem
+compat silenciosa de schema**. Duas partes:
+
+**1. Gate de boot (`HARNESS_EGRESS_ALLOW_HTTP` etc.).** No boot, o motor valida o
+ambiente contra o schema de chaves conhecidas (`Harness::EnvSchema`): tipo errado
+(`HARNESS_PORT=abc`) e **chave desconhecida no namespace `HARNESS_`** (um typo como
+`HARNESS_EGRES_ALLOW_HTTP` que o runtime ignoraria calado). Por **default só
+AVISA** e sobe assim mesmo (*last-known-good* — uma chave rotacionada ou um typo
+nunca derruba o serviço inteiro; mesma lógica do boot resiliente do DeepSeek).
+Para **recusar o boot** num finding, ligue `HARNESS_CONFIG_STRICT=1`.
+Detecção de chave desconhecida é escopada só ao prefixo `HARNESS_` (nosso); o
+`OPENCLAW_` (compartilhado com o gateway OpenClaw), `LITESTREAM_` e `OTEL_` nunca
+são marcados.
+
+**2. `bin/harness doctor` — diagnóstico sob demanda.** Lê o **mesmo** backend
+durável do servidor (`HARNESS_DB`) sem subir a app inteira (sem DeepSeek, sem
+seed) — seguro rodar contra um volume em produção:
+
+```bash
+harness doctor            # relatório colorido; sai !=0 se houver erro
+harness doctor --json     # relatório machine-readable (CI/monitoramento)
+harness doctor --fix      # aplica os autofixes seguros e re-diagnostica
+harness env               # lista as chaves conhecidas + valores atuais (segredos mascarados)
+```
+
+Checks: env (schema acima), versão de schema do settings (migração pendente →
+`--fix` aplica), `default_model` de plataforma ausente (`--fix` semeia do
+`DEEPSEEK_MODEL`), backend durável vs efêmero, provider LLM configurado,
+`ADMIN_TOKEN` setado. Migrações de schema do settings são **explícitas** (nenhum
+save do Studio reinterpreta dado de shape antigo em silêncio) — a v1 é o baseline;
+um registro pré-versionamento é carimbado por `harness doctor --fix`.
+
 ### Callback pro achei-b2b (tools) — via ngrok
 
 As data-tools chamam de volta `/api/internal/agent_tools/*` do achei-b2b. Com o
