@@ -3,9 +3,12 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
-require_relative "../../../plugins/harness-code/lib/harness_code/workspace"
 
-RSpec.describe HarnessCode::Workspace do
+# The FS boundary is the always-on half of the sandbox primitive (item 35). This
+# is the harness-code prototype's Workspace spec, ported verbatim to the core
+# `Harness::Sandbox::Boundary` — the exact same escape guarantees must hold now
+# that the boundary is a core primitive shared by every provider.
+RSpec.describe Harness::Sandbox::Boundary do
   around do |example|
     Dir.mktmpdir do |dir|
       @root = File.realpath(dir)
@@ -13,33 +16,33 @@ RSpec.describe HarnessCode::Workspace do
     end
   end
 
-  subject(:workspace) { described_class.new(@root) }
+  subject(:boundary) { described_class.new(@root) }
 
   describe "#resolve" do
     it "resolves a relative path to an absolute path inside the root" do
-      expect(workspace.resolve("a/b.txt")).to eq(File.join(@root, "a/b.txt"))
+      expect(boundary.resolve("a/b.txt")).to eq(File.join(@root, "a/b.txt"))
     end
 
     it "normalizes '.' to the root" do
-      expect(workspace.resolve(".")).to eq(@root)
+      expect(boundary.resolve(".")).to eq(@root)
     end
 
     it "blocks '..' traversal that escapes the root" do
-      expect { workspace.resolve("../secret") }.to raise_error(described_class::Escape)
+      expect { boundary.resolve("../secret") }.to raise_error(described_class::Escape)
     end
 
     it "blocks an absolute path outside the root" do
-      expect { workspace.resolve("/etc/passwd") }.to raise_error(described_class::Escape)
+      expect { boundary.resolve("/etc/passwd") }.to raise_error(described_class::Escape)
     end
 
     it "blocks an empty path" do
-      expect { workspace.resolve("  ") }.to raise_error(described_class::Escape)
+      expect { boundary.resolve("  ") }.to raise_error(described_class::Escape)
     end
 
     it "does not treat a sibling with the root as a prefix as inside (boundary)" do
       sibling = "#{@root}-evil"
       FileUtils.mkdir_p(sibling)
-      expect { workspace.resolve(sibling) }.to raise_error(described_class::Escape)
+      expect { boundary.resolve(sibling) }.to raise_error(described_class::Escape)
     ensure
       FileUtils.remove_entry(sibling) if sibling && File.exist?(sibling)
     end
@@ -48,13 +51,13 @@ RSpec.describe HarnessCode::Workspace do
       outside = Dir.mktmpdir
       File.write(File.join(outside, "target.txt"), "secret")
       File.symlink(File.join(outside, "target.txt"), File.join(@root, "link.txt"))
-      expect { workspace.resolve("link.txt") }.to raise_error(described_class::Escape)
+      expect { boundary.resolve("link.txt") }.to raise_error(described_class::Escape)
     ensure
       FileUtils.remove_entry(outside) if outside
     end
 
     it "on for_write, allows a not-yet-existing file whose parent is inside" do
-      expect(workspace.resolve("new/file.txt", for_write: true))
+      expect(boundary.resolve("new/file.txt", for_write: true))
         .to eq(File.join(@root, "new/file.txt"))
     end
 
@@ -68,7 +71,7 @@ RSpec.describe HarnessCode::Workspace do
       File.write(external, "original")
       File.symlink(external, File.join(@root, "link.txt"))
 
-      expect { workspace.resolve("link.txt", for_write: true) }
+      expect { boundary.resolve("link.txt", for_write: true) }
         .to raise_error(described_class::Escape, /symlink/)
     ensure
       FileUtils.remove_entry(outside) if outside
@@ -79,7 +82,7 @@ RSpec.describe HarnessCode::Workspace do
       # Dangling target: File.exist? is false, so only an lstat-based check catches it.
       File.symlink(File.join(outside, "does-not-exist.txt"), File.join(@root, "dangling.txt"))
 
-      expect { workspace.resolve("dangling.txt", for_write: true) }
+      expect { boundary.resolve("dangling.txt", for_write: true) }
         .to raise_error(described_class::Escape, /symlink/)
     ensure
       FileUtils.remove_entry(outside) if outside
@@ -88,16 +91,20 @@ RSpec.describe HarnessCode::Workspace do
 
   describe "#relative" do
     it "renders the root as '.'" do
-      expect(workspace.relative(@root)).to eq(".")
+      expect(boundary.relative(@root)).to eq(".")
     end
 
     it "strips the root prefix" do
-      expect(workspace.relative(File.join(@root, "x/y.rb"))).to eq("x/y.rb")
+      expect(boundary.relative(File.join(@root, "x/y.rb"))).to eq("x/y.rb")
     end
   end
 
   it "fails fast when the root does not exist" do
     expect { described_class.new(File.join(@root, "nope")) }
       .to raise_error(described_class::Escape)
+  end
+
+  it "is aliased as Harness::Sandbox::Escape for ergonomic rescues" do
+    expect(Harness::Sandbox::Escape).to be(described_class::Escape)
   end
 end
