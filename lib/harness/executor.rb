@@ -240,27 +240,32 @@ module Harness
     #   parent turn ends and the child's result is later delivered as a NEW turn on
     #   the parent session (needs a delegation_store — else falls back to sync).
     def run_subagent(agent:, message:, parent_state:, async: false)
-      # Gate = the PARENT's subagents allowlist (a capacity field — never inherited).
-      allowed = Array(parent_state.profile.subagents).map(&:to_s)
-      unless allowed.include?(agent)
-        return { error: "agent '#{agent}' is not in this agent's subagents allowlist" }
-      end
+      plan = plan_subagent({ "agent" => agent, "message" => message }, parent_state)
+      return { error: plan[:error] } if plan[:error]
 
-      # Runtime depth guard (belt-and-suspenders; SubagentGraph is the primary,
-      # definition-time check). parent depth from its turn context, +1 for the child.
-      cap = SubagentGraph.depth_cap
-      depth = (parent_state.turn_context&.dig(:delegation_depth) || 0) + 1
-      return { error: "subagent depth #{depth} exceeds cap #{cap}" } if depth > cap
-
-      child_profile = @profiles[agent]
-      return { error: "agent '#{agent}' not configured" } if child_profile.nil?
-
-      effective = inherit_environment(child_profile, parent_state)
       if async && @delegation_store
-        dispatch_async_child(effective, message, depth, parent_state)
+        dispatch_async_child(plan[:profile], plan[:message], plan[:depth], parent_state)
       else
-        spawn_and_await_child(effective, message, depth, parent_state)
+        spawn_and_await_child(plan[:profile], plan[:message], plan[:depth], parent_state)
       end
+    end
+
+    # RFC-0010 §A (fan-out): runs SEVERAL child turns IN PARALLEL and returns all
+    # results together, in the requested order. This is the real latency win — the
+    # children overlap their provider waits on the reactor, so wall-clock ≈ the
+    # slowest child, not the sum. Always sync-join (a combined result in the parent's
+    # turn); the async deliver-as-new-turn mode is single-child only, by design.
+    # NEVER raises: per-task errors keep their slot; a bad envelope returns { error: }.
+    # -> { results: [{agent:, text:, session_id:} | {agent:, error:}, ...] } | { error: }
+    def run_subagents(tasks:, parent_state:)
+      list = Array(tasks)
+      return { error: "tasks must be a non-empty list of {agent, message}" } if list.empty?
+
+      cap = SubagentGraph.fan_out_cap
+      return { error: "too many subagents in one call: #{list.size} (max #{cap})" } if list.size > cap
+
+      plans = list.map { |t| plan_subagent(t, parent_state) }
+      { results: spawn_all_and_project(plans, parent_state) }
     end
 
     # RFC-0010 Fase 2 (boot): reconciles ASYNC delegations after a crash so a
@@ -742,6 +747,53 @@ module Harness
       child_profile.with(model: model, provider: provider, params: params)
     end
 
+    # Single validation path for a delegation (RFC-0010) — shared by run_subagent
+    # and the fan-out run_subagents. `task` is {agent, message} (string OR symbol
+    # keys — the model's args arrive string-keyed). Returns a resolved plan
+    # { agent:, profile:, message:, depth: } or { agent:, error: } (the agent name is
+    # kept even on error so a fan-out result keeps its slot labeled).
+    def plan_subagent(task, parent_state)
+      agent = (task["agent"] || task[:agent]).to_s
+      message = (task["message"] || task[:message]).to_s
+
+      # Gate = the PARENT's subagents allowlist (a capacity field — never inherited).
+      allowed = Array(parent_state.profile.subagents).map(&:to_s)
+      return { agent: agent, error: "agent '#{agent}' is not in this agent's subagents allowlist" } unless allowed.include?(agent)
+
+      # Runtime depth guard (belt-and-suspenders; SubagentGraph is the primary,
+      # definition-time check). parent depth from its turn context, +1 for the child.
+      cap = SubagentGraph.depth_cap
+      depth = (parent_state.turn_context&.dig(:delegation_depth) || 0) + 1
+      return { agent: agent, error: "subagent depth #{depth} exceeds cap #{cap}" } if depth > cap
+
+      profile = @profiles[agent]
+      return { agent: agent, error: "agent '#{agent}' not configured" } if profile.nil?
+
+      { agent: agent, profile: inherit_environment(profile, parent_state), message: message, depth: depth }
+    end
+
+    # Fan-out barrier: spawn ALL valid children first (non-blocking), THEN await ALL.
+    # Spawning before awaiting is what makes them concurrent — each child spends its
+    # time on the provider HTTP wait, and those waits overlap on the reactor. Invalid
+    # plans keep their ordered slot as an { agent:, error: } result.
+    def spawn_all_and_project(plans, parent_state)
+      spawned = plans.map do |plan|
+        next plan if plan[:error]
+
+        session_id, child_task = create_child(plan[:profile], plan[:message], plan[:depth], parent_state, async: false)
+        spawn(child_task, profile: plan[:profile])
+        { agent: plan[:agent], task_id: child_task.id, session_id: session_id }
+      end
+
+      spawned.each { |s| @running[s[:task_id]]&.wait unless s[:error] }
+      spawned.map do |s|
+        next { agent: s[:agent], error: s[:error] } if s[:error]
+
+        # label each result with its agent so the model can tell the N apart.
+        project_child_result(s[:task_id], s[:session_id], s[:agent], parent_state).merge(agent: s[:agent])
+      end
+    end
+
     # Creates the isolated child session (linked to the parent) + child task.
     # Shared by the sync and async paths. Emits :subagent_started correlated to the
     # PARENT task. -> [child_session_id, child_task].
@@ -1157,6 +1209,7 @@ module Harness
       require_relative "tools/tool_search"
       require_relative "tools/remember"
       require_relative "tools/subagent"
+      require_relative "tools/subagents"
       # v2 resolution (§10): Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)

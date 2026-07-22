@@ -26,6 +26,7 @@ module RubyLLM
   class Tool
     def self.description(_text = nil); end
     def self.param(_name, **_opts); end
+    def self.params(*_args, **_opts); end # array-of-objects schema DSL (spawn_subagents)
   end
 
   # Scripted chat. Two modes:
