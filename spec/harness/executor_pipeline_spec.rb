@@ -622,4 +622,27 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       end
     end
   end
+
+  describe "per-turn timing breakdown (item 34; opt-in via HARNESS_TURN_TIMING)" do
+    it "omits :timing from the terminal event when disabled (default)" do
+      allow(Harness::TurnTiming).to receive(:enabled?).and_return(false)
+      session_store.create(id: "s1")
+      executor = build_executor
+      run_turn(executor, make_task)
+
+      ev = event_stream.events.find { |e| e.type == :task_completed }
+      expect(ev.data).not_to have_key(:timing)
+    end
+
+    it "attaches prep/ttft/gen/total (ms) to the terminal event when enabled" do
+      allow(Harness::TurnTiming).to receive(:enabled?).and_return(true)
+      session_store.create(id: "s1")
+      executor = build_executor
+      run_turn(executor, make_task) # FakeChat emits one chunk -> first_token fires
+
+      timing = event_stream.events.find { |e| e.type == :task_completed }.data[:timing]
+      expect(timing.keys).to contain_exactly(:prep_ms, :ttft_ms, :gen_ms, :total_ms)
+      expect(timing.values).to all(be_a(Numeric))
+    end
+  end
 end
