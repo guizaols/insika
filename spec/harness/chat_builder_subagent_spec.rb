@@ -2,7 +2,8 @@
 
 require "spec_helper"
 require "ruby_llm"
-require "harness/tools/subagent" # the Executor loads it lazily in create_chat; explicit here
+require "harness/tools/subagent"  # the Executor loads these lazily in create_chat;
+require "harness/tools/subagents" # explicit here
 
 # RFC-0010: the spawn_subagent system tool is wired by the ChatBuilder, gated by
 # a runner + a non-empty profile.subagents (the double gate, like `remember`).
@@ -28,14 +29,14 @@ RSpec.describe "Harness::ChatBuilder subagent wiring (RFC-0010)" do
            profile: profile, task: Struct.new(:id, :session_id).new("t", "s"))
   end
 
-  it "wires spawn_subagent when a runner is present AND profile.subagents is non-empty" do
+  it "wires spawn_subagent AND spawn_subagents when a runner is present AND profile.subagents is non-empty" do
     builder(subagent_runner: runner).configure_chat(chat, state(subagents: ["researcher"]))
-    expect(chat.tools.map(&:name)).to include("spawn_subagent")
+    expect(chat.tools.map(&:name)).to include("spawn_subagent", "spawn_subagents")
   end
 
-  it "does NOT wire it when profile.subagents is empty/absent (opt-in)" do
+  it "does NOT wire them when profile.subagents is empty/absent (opt-in)" do
     builder(subagent_runner: runner).configure_chat(chat, state(subagents: nil))
-    expect(chat.tools.map(&:name)).not_to include("spawn_subagent")
+    expect(chat.tools.map(&:name)).not_to include("spawn_subagent", "spawn_subagents")
   end
 
   it "does NOT wire it when no runner is injected (parity for a builder without delegation)" do
