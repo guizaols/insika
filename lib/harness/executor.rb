@@ -358,6 +358,8 @@ module Harness
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
     def run_pipeline(task, profile, actor, resume_from)
+      timing = TurnTiming.new if TurnTiming.enabled?
+      timing&.mark(:prep_start)
       state = build_turn_state(task, profile, resume_from)
       turn_timeout = turn_timeout_for(profile)
 
@@ -377,7 +379,7 @@ module Harness
           raise Harness::Error, "turn halted: #{st.halt_reason}" if st.halt_reason
 
           terminal_ran = true
-          run_turn_body(task, profile, st, actor) # stages 5-9
+          run_turn_body(task, profile, st, actor, timing) # stages 5-9
         end
 
         # A Middleware short-circuited (did not call the terminal). Three cases:
@@ -462,7 +464,7 @@ module Harness
 
     # Stages 5-9 (inside the Middleware wrap): assemble chat, the single agent
     # interaction, persistence, terminal event. `st` is the Middleware-yielded state.
-    def run_turn_body(task, profile, st, actor)
+    def run_turn_body(task, profile, st, actor, timing = nil)
       # stage 5: assemble chat + check mailbox (send_message only; a workflow does
       # not use the Harness chat — it orchestrates RubyLLM internally).
       drain_and_maybe_suspend(task, actor)
@@ -478,7 +480,7 @@ module Harness
 
       # stage 6: the turn's single agent interaction (send_message -> chat.ask;
       # trigger_workflow -> workflow.call). Returns the turn's final content.
-      content = run_agent_stage(task, st)
+      content = run_agent_stage(task, st, timing)
       st.response_content = content # after_task OutputValidator inspects this
 
       # stage 8: Persistence (fixed order checkpoint->session->task). pure drain!
@@ -489,7 +491,10 @@ module Harness
 
       # stage 9: Response. usage (tokens) captured at stage 6 travels in the
       # terminal event -> /v1/responses usage + Telemetry (OTEL).
-      emit(:task_completed, { task_id: task.id, content: content, usage: st.usage }, task: task)
+      timing&.mark(:done)
+      data = { task_id: task.id, content: content, usage: st.usage }
+      data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (HARNESS_TURN_TIMING)
+      emit(:task_completed, data, task: task)
     end
 
     def workflow_turn?(task)
@@ -497,7 +502,7 @@ module Harness
     end
 
     # Stage 6: the single agent interaction. Returns the turn's final content.
-    def run_agent_stage(task, state)
+    def run_agent_stage(task, state, timing = nil)
       if workflow_turn?(task)
         # workflow = a Ruby callable that orchestrates RubyLLM internally (RubyLLM
         # First). tools: are the SAME instances filtered by the Resolution and
@@ -509,10 +514,12 @@ module Harness
         end
       else
         filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
+        timing&.mark(:ask)
         response = @hooks.around(:agent, state) do |s|
           result = s.chat.ask(s.message) do |chunk|
             next unless chunk.content
 
+            timing&.mark(:first_token) # first-write-wins -> real TTFB
             out = filter ? filter.push(chunk.content) : chunk.content
             emit(:content, { delta: out }, task: task) unless out.to_s.empty?
           end
