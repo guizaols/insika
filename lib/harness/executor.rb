@@ -18,7 +18,8 @@ module Harness
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
-                   tool_trace_store: nil, settings_store: nil, content_filter_factory: nil)
+                   tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
+                   delegation_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -40,6 +41,11 @@ module Harness
       # The INPUT guardrail is a Middleware (in the stack, not here); this is the seam
       # for the stream-side redaction the Executor owns.
       @content_filter_factory = content_filter_factory
+      # RFC-0010 Fase 2: durable record of ASYNC delegations. nil = async
+      # delegation OFF (only the synchronous spawn_subagent works — parity). When
+      # present, run_subagent(async: true) dispatches + returns immediately and the
+      # child's result is delivered to the parent session as a NEW turn on completion.
+      @delegation_store = delegation_store
       # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -221,29 +227,67 @@ module Harness
       nil
     end
 
-    # RFC-0010 (item 21): runs a CHILD agent turn synchronously, INSIDE the
-    # parent's turn fiber (called by Tools::Subagent during stage 6). Isolated
-    # context (fresh child session), capability NON-inheritance (child profile
-    # resolved fresh), environment inheritance (model/thinking seeded from the
-    # parent). Returns { text:, session_id: } or { error: } — NEVER raises: a bad
-    # agent/depth/child failure is a message to the model, not a turn-killer.
-    def run_subagent(agent:, message:, parent_state:)
-      # Gate = the PARENT's subagents allowlist (a capacity field — never inherited).
-      allowed = Array(parent_state.profile.subagents).map(&:to_s)
-      unless allowed.include?(agent)
-        return { error: "agent '#{agent}' is not in this agent's subagents allowlist" }
+    # RFC-0010 (item 21): runs a CHILD agent turn (called by Tools::Subagent during
+    # stage 6). Isolated context (fresh child session), capability NON-inheritance
+    # (child profile resolved fresh), environment inheritance (model/thinking seeded
+    # from the parent). NEVER raises: a bad agent/depth/child failure is a message
+    # to the model, not a turn-killer.
+    #
+    # async:false (default, Fase 1) — SYNCHRONOUS: runs the child inside the parent's
+    #   fiber and returns { text:, session_id: } (the child result is the tool result).
+    # async:true (Fase 2) — DURABLE dispatch: spawns the child NON-blocking, persists
+    #   a Delegation, returns { dispatched:, agent:, session_id: } immediately; the
+    #   parent turn ends and the child's result is later delivered as a NEW turn on
+    #   the parent session (needs a delegation_store — else falls back to sync).
+    def run_subagent(agent:, message:, parent_state:, async: false)
+      plan = plan_subagent({ "agent" => agent, "message" => message }, parent_state)
+      return { error: plan[:error] } if plan[:error]
+
+      if async && @delegation_store
+        dispatch_async_child(plan[:profile], plan[:message], plan[:depth], parent_state)
+      else
+        spawn_and_await_child(plan[:profile], plan[:message], plan[:depth], parent_state)
       end
+    end
 
-      # Runtime depth guard (belt-and-suspenders; SubagentGraph is the primary,
-      # definition-time check). parent depth from its turn context, +1 for the child.
-      cap = SubagentGraph.depth_cap
-      depth = (parent_state.turn_context&.dig(:delegation_depth) || 0) + 1
-      return { error: "subagent depth #{depth} exceeds cap #{cap}" } if depth > cap
+    # RFC-0010 §A (fan-out): runs SEVERAL child turns IN PARALLEL and returns all
+    # results together, in the requested order. This is the real latency win — the
+    # children overlap their provider waits on the reactor, so wall-clock ≈ the
+    # slowest child, not the sum. Always sync-join (a combined result in the parent's
+    # turn); the async deliver-as-new-turn mode is single-child only, by design.
+    # NEVER raises: per-task errors keep their slot; a bad envelope returns { error: }.
+    # -> { results: [{agent:, text:, session_id:} | {agent:, error:}, ...] } | { error: }
+    def run_subagents(tasks:, parent_state:)
+      list = Array(tasks)
+      return { error: "tasks must be a non-empty list of {agent, message}" } if list.empty?
 
-      child_profile = @profiles[agent]
-      return { error: "agent '#{agent}' not configured" } if child_profile.nil?
+      cap = SubagentGraph.fan_out_cap
+      return { error: "too many subagents in one call: #{list.size} (max #{cap})" } if list.size > cap
 
-      spawn_and_await_child(inherit_environment(child_profile, parent_state), message, depth, parent_state)
+      plans = list.map { |t| plan_subagent(t, parent_state) }
+      { results: spawn_all_and_project(plans, parent_state) }
+    end
+
+    # RFC-0010 Fase 2 (boot): reconciles ASYNC delegations after a crash so a
+    # completed child's result is never lost. For each undelivered Delegation:
+    #   · child TERMINAL, not captured -> capture + deliver.
+    #   · child TERMINAL, captured (completed) -> deliver (crash before delivery).
+    #   · child NOT terminal -> left as-is; the normal task Recovery resumes the
+    #     child and its terminal hook (finalize_delegation) delivers when it finishes.
+    # Called once at boot AFTER the task Recovery. No-op without a delegation_store.
+    # -> { delivered: [ids] }
+    def recover_delegations
+      return { delivered: [] } unless @delegation_store
+
+      delivered = []
+      @delegation_store.undelivered.each do |deleg|
+        child = @task_store.find(deleg.child_task_id)
+        next unless child && TERMINAL_STATUSES.include?(child.status)
+
+        finalize_delegation(child) # capture (if needed) + claim + deliver
+        delivered << deleg.id
+      end
+      { delivered: delivered }
     end
 
     # Stages 2..9. Runs INSIDE the task's fiber.
@@ -378,6 +422,9 @@ module Harness
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: stage })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
+      # RFC-0010 Fase 2: a FAILED delegation child still delivers — the parent
+      # receives an error note as a new turn (never left hanging).
+      finalize_delegation(task)
       nil
     end
 
@@ -700,33 +747,106 @@ module Harness
       child_profile.with(model: model, provider: provider, params: params)
     end
 
-    # Spawns the isolated child turn (fresh session, own task) and AWAITS it on the
-    # parent's fiber, then projects the child's terminal content. Direct `spawn`
-    # (not spawn_in_session): the child session is brand-new, so there is no
-    # SessionActor contention — the child is parented at turn_parent (supervisor
-    # when serving) and the parent yields cooperatively on `wait`.
-    def spawn_and_await_child(child_profile, message, depth, parent_state)
+    # Single validation path for a delegation (RFC-0010) — shared by run_subagent
+    # and the fan-out run_subagents. `task` is {agent, message} (string OR symbol
+    # keys — the model's args arrive string-keyed). Returns a resolved plan
+    # { agent:, profile:, message:, depth: } or { agent:, error: } (the agent name is
+    # kept even on error so a fan-out result keeps its slot labeled).
+    def plan_subagent(task, parent_state)
+      agent = (task["agent"] || task[:agent]).to_s
+      message = (task["message"] || task[:message]).to_s
+
+      # Gate = the PARENT's subagents allowlist (a capacity field — never inherited).
+      allowed = Array(parent_state.profile.subagents).map(&:to_s)
+      return { agent: agent, error: "agent '#{agent}' is not in this agent's subagents allowlist" } unless allowed.include?(agent)
+
+      # Runtime depth guard (belt-and-suspenders; SubagentGraph is the primary,
+      # definition-time check). parent depth from its turn context, +1 for the child.
+      cap = SubagentGraph.depth_cap
+      depth = (parent_state.turn_context&.dig(:delegation_depth) || 0) + 1
+      return { agent: agent, error: "subagent depth #{depth} exceeds cap #{cap}" } if depth > cap
+
+      profile = @profiles[agent]
+      return { agent: agent, error: "agent '#{agent}' not configured" } if profile.nil?
+
+      { agent: agent, profile: inherit_environment(profile, parent_state), message: message, depth: depth }
+    end
+
+    # Fan-out barrier: spawn ALL valid children first (non-blocking), THEN await ALL.
+    # Spawning before awaiting is what makes them concurrent — each child spends its
+    # time on the provider HTTP wait, and those waits overlap on the reactor. Invalid
+    # plans keep their ordered slot as an { agent:, error: } result.
+    def spawn_all_and_project(plans, parent_state)
+      spawned = plans.map do |plan|
+        next plan if plan[:error]
+
+        session_id, child_task = create_child(plan[:profile], plan[:message], plan[:depth], parent_state, async: false)
+        spawn(child_task, profile: plan[:profile])
+        { agent: plan[:agent], task_id: child_task.id, session_id: session_id }
+      end
+
+      spawned.each { |s| @running[s[:task_id]]&.wait unless s[:error] }
+      spawned.map do |s|
+        next { agent: s[:agent], error: s[:error] } if s[:error]
+
+        # label each result with its agent so the model can tell the N apart.
+        project_child_result(s[:task_id], s[:session_id], s[:agent], parent_state).merge(agent: s[:agent])
+      end
+    end
+
+    # Creates the isolated child session (linked to the parent) + child task.
+    # Shared by the sync and async paths. Emits :subagent_started correlated to the
+    # PARENT task. -> [child_session_id, child_task].
+    def create_child(child_profile, message, depth, parent_state, async:, delegation_id: nil)
       child_session_id = "sub-#{SecureRandom.uuid}"
       @session_store.create(
         id: child_session_id,
         vars: { "parent_session_id" => parent_state.task.session_id,
                 "parent_task_id" => parent_state.task.id, "delegation_depth" => depth }
       )
-      command = Harness::Command.build(
-        :send_message,
-        { "agent" => child_profile.id, "message" => message,
-          "session_id" => child_session_id, "delegation_depth" => depth }
-      ).to_h
+      payload = { "agent" => child_profile.id, "message" => message,
+                  "session_id" => child_session_id, "delegation_depth" => depth }
+      # Async children carry their delegation id in the command payload so the
+      # terminal hook (finalize_delegation) is O(1) — a normal turn has no marker and
+      # skips the delegation store entirely (no per-turn O(n) scan).
+      payload["delegation_id"] = delegation_id if delegation_id
+      command = Harness::Command.build(:send_message, payload).to_h
       child_task = @task_store.create(command: command, session_id: child_session_id)
 
       emit(:subagent_started,
            { agent: child_profile.id, parent_task_id: parent_state.task.id,
-             child_session_id: child_session_id, depth: depth },
+             child_session_id: child_session_id, depth: depth, async: async },
            task: parent_state.task)
+      [child_session_id, child_task]
+    end
 
+    # SYNC (Fase 1): spawns the child and AWAITS it on the parent's fiber, then
+    # projects the terminal content. Direct `spawn` (not spawn_in_session): the
+    # child session is brand-new, so there is no SessionActor contention — the child
+    # is parented at turn_parent and the parent yields cooperatively on `wait`.
+    def spawn_and_await_child(child_profile, message, depth, parent_state)
+      child_session_id, child_task = create_child(child_profile, message, depth, parent_state, async: false)
       spawn(child_task, profile: child_profile)
       @running[child_task.id]&.wait
       project_child_result(child_task.id, child_session_id, child_profile.id, parent_state)
+    end
+
+    # ASYNC (Fase 2): persists a Delegation, spawns the child NON-blocking, and
+    # returns a dispatch ack immediately — the parent turn ends without waiting. The
+    # child's terminal hook (finalize_delegation) delivers the result later, as a
+    # NEW turn on the parent session.
+    def dispatch_async_child(child_profile, message, depth, parent_state)
+      delegation_id = SecureRandom.uuid
+      child_session_id, child_task =
+        create_child(child_profile, message, depth, parent_state, async: true, delegation_id: delegation_id)
+      @delegation_store.create(
+        id: delegation_id,
+        parent_task_id: parent_state.task.id, parent_session_id: parent_state.task.session_id,
+        parent_agent: parent_state.profile.id, child_agent: child_profile.id,
+        child_task_id: child_task.id, child_session_id: child_session_id, depth: depth
+      )
+      spawn(child_task, profile: child_profile)
+      { dispatched: child_task.id, agent: child_profile.id, session_id: child_session_id }
     end
 
     # Child result = last `assistant` message of the child session (R3), or the
@@ -741,13 +861,16 @@ module Harness
         return { error: "subagent '#{agent_id}' failed: #{err || 'unknown error'}" }
       end
 
-      session = @session_store.find(child_session_id)
-      msg = session&.messages&.reverse&.find { |m| (m["role"] || m[:role]).to_s == "assistant" }
-      text = msg && (msg["content"] || msg[:content])
       emit(:subagent_completed,
            { agent: agent_id, child_session_id: child_session_id, state: "completed" },
            task: parent_state.task)
-      { text: text.to_s, session_id: child_session_id }
+      { text: child_final_text(child_session_id).to_s, session_id: child_session_id }
+    end
+
+    def child_final_text(child_session_id)
+      session = @session_store.find(child_session_id)
+      msg = session&.messages&.reverse&.find { |m| (m["role"] || m[:role]).to_s == "assistant" }
+      msg && (msg["content"] || msg[:content])
     end
 
     def child_terminal_error(task)
@@ -755,6 +878,78 @@ module Harness
       return nil unless exec && exec.outcome.to_s == "failed"
 
       exec.error && (exec.error["message"] || exec.error[:message])
+    end
+
+    # RFC-0010 Fase 2 — terminal hook: when a turn ends (success OR failure), if the
+    # task is the child of an ASYNC delegation, capture its result and deliver it to
+    # the parent. Fires for both a normal completion and a resumed one (recovery),
+    # so it needs no live watcher fiber. No-op without a delegation_store or when the
+    # task is not a delegation child. Best-effort: a failure here must NOT re-fail an
+    # already-committed child turn — swallow (recovery re-drives from the record).
+    def finalize_delegation(child_task)
+      return unless @delegation_store
+
+      # Fresh read: the snapshot the hook passes predates transition(:completed/
+      # :failed); the store is the single source of truth for terminal state + the
+      # command marker.
+      child_id = child_task.respond_to?(:id) ? child_task.id : child_task
+      child = @task_store.find(child_id)
+      # Cheap gate: only async delegation children carry a delegation_id in the
+      # command payload — a normal turn skips the store entirely (no O(n) scan).
+      deleg_id = child && rebuild_command(child).payload["delegation_id"]
+      return unless deleg_id
+
+      deleg = @delegation_store.find(deleg_id)
+      return if deleg.nil? || deleg.status == :delivered
+
+      if deleg.status == :dispatched
+        if child.status.to_s == "failed"
+          @delegation_store.mark_completed(deleg.id, error: child_terminal_error(child) || "unknown error")
+        else
+          @delegation_store.mark_completed(deleg.id, result: child_final_text(deleg.child_session_id).to_s)
+        end
+      end
+      deliver_delegation(@delegation_store.find(deleg.id))
+    rescue Harness::Error
+      nil # best-effort: never re-fail a committed child turn (recovery re-drives).
+    end
+
+    # Delivers a captured delegation as a NEW turn on the PARENT session. The claim
+    # (completed -> delivered) makes this AT-MOST-ONCE: only the caller that wins the
+    # transition spawns the delivery turn (the hook and recovery may both fire).
+    # spawn_in_session routes through the parent's SessionActor FIFO — that is what
+    # makes it a new turn "when idle" (queued behind any in-flight parent turn),
+    # preserving role alternation + prompt cache.
+    def deliver_delegation(deleg)
+      return unless @delegation_store.claim_delivery(deleg.id)
+
+      profile = @profiles[deleg.parent_agent]
+      # The parent agent vanished (deleted mid-flight): nothing to deliver to. The
+      # record stays :delivered (claimed) so recovery does not loop on it.
+      return if profile.nil?
+
+      message = format_delegation_message(deleg)
+      command = Harness::Command.build(
+        :send_message,
+        { "agent" => deleg.parent_agent, "message" => message,
+          "session_id" => deleg.parent_session_id, "delegation_id" => deleg.id }
+      ).to_h
+      task = @task_store.create(command: command, session_id: deleg.parent_session_id)
+      emit(:subagent_delivered,
+           { delegation_id: deleg.id, agent: deleg.child_agent,
+             child_session_id: deleg.child_session_id, state: deleg.error ? "failed" : "completed" },
+           task: task)
+      spawn_in_session(task, profile: profile)
+    end
+
+    # The synthetic message the parent turn receives. A clear, self-describing note
+    # so the parent agent knows a delegated subtask returned (and can relay it).
+    def format_delegation_message(deleg)
+      if deleg.error
+        "[subagent:#{deleg.child_agent}] delegated task FAILED: #{deleg.error}"
+      else
+        "[subagent:#{deleg.child_agent}] delegated task completed. Result:\n\n#{deleg.result}"
+      end
     end
 
     # The real Request: command (for the WorkflowAllowlist), context
@@ -917,6 +1112,11 @@ module Harness
       end
 
       emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
+
+      # RFC-0010 Fase 2: if this completed turn is an ASYNC delegation child,
+      # deliver its result to the parent as a NEW turn. No-op for a normal turn
+      # (not a delegation child) or without a delegation_store.
+      finalize_delegation(task)
     end
 
     # Truncation cap for a persisted `role: tool` content (§11 R1): the transcript
@@ -1009,6 +1209,7 @@ module Harness
       require_relative "tools/tool_search"
       require_relative "tools/remember"
       require_relative "tools/subagent"
+      require_relative "tools/subagents"
       # v2 resolution (§10): Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)

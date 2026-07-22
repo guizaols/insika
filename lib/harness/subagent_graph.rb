@@ -19,11 +19,24 @@ module Harness
     # Override with HARNESS_SUBAGENT_DEPTH_CAP.
     DEFAULT_DEPTH_CAP = 5
 
+    # Max children a single `spawn_subagents` fan-out may run — also the concurrency
+    # bound (N concurrent LLM calls hit the provider rate limit + the per-agent token
+    # ceiling of item 33). Override with HARNESS_SUBAGENT_FANOUT_CAP.
+    DEFAULT_FANOUT_CAP = 8
+
     module_function
 
     def depth_cap
-      raw = ENV["HARNESS_SUBAGENT_DEPTH_CAP"]
-      raw && !raw.strip.empty? ? Integer(raw) : DEFAULT_DEPTH_CAP
+      int_env("HARNESS_SUBAGENT_DEPTH_CAP", DEFAULT_DEPTH_CAP)
+    end
+
+    def fan_out_cap
+      int_env("HARNESS_SUBAGENT_FANOUT_CAP", DEFAULT_FANOUT_CAP)
+    end
+
+    def int_env(name, default)
+      raw = ENV[name]
+      raw && !raw.strip.empty? ? Integer(raw) : default
     end
 
     # Validates the whole set. `profiles` is anything enumerable of profiles

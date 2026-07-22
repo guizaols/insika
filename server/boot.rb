@@ -43,10 +43,27 @@ module Harness
       # the turns still in flight — also correct: "recovery before the listen" =
       # dispatch before the listen, not turn completion.
       def run_recovery
-        recovery = @wiring.recovery
-        return recovery.run if Async::Task.current?
+        return do_recovery if Async::Task.current?
 
-        Sync { recovery.run }
+        Sync { do_recovery }
+      end
+
+      # Task recovery THEN delegation recovery (RFC-0010 Fase 2): the delegation
+      # sweep re-delivers completed-but-undelivered async delegations, and depends
+      # on the task sweep having re-dispatched any in-flight children first. Both
+      # create task fibers, so both must run inside the reactor scope of run_recovery.
+      def do_recovery
+        summary = @wiring.recovery.run
+        recover_delegations
+        summary
+      end
+
+      # Duck-typed (like durable?): a wiring without async delegation just omits it.
+      def recover_delegations
+        return unless @wiring.respond_to?(:recover_delegations)
+
+        result = @wiring.recover_delegations
+        log("boot: delegations re-delivered — #{Array(result && result[:delivered]).size}")
       end
 
       # Durability: without a durable backend, nothing is resumed after a

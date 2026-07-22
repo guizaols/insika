@@ -166,6 +166,9 @@ module Harness
     def self.load_plugins = nil
     def self.build_stores = nil
     def self.recovery = RECOVERY
+    # RFC-0010 Fase 2: re-deliver async delegations whose child finished but whose
+    # result was not delivered before a crash. Boot calls it after task recovery.
+    def self.recover_delegations = EXECUTOR.recover_delegations
     def self.app = APP
 
     # Backend durability: SQLite survives restart, Memory does not. Boot logs this so

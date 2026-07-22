@@ -85,6 +85,8 @@ module Harness
       # parent's subagents allowlist, enforced in Executor#run_subagent.
       if @subagent_runner && !Array(state.profile.subagents).empty?
         tools << Tools::Subagent.new(runner: @subagent_runner, state: state)
+        # ...and its parallel sibling (RFC-0010 §A): fan-out N children at once.
+        tools << Tools::Subagents.new(runner: @subagent_runner, state: state)
       end
 
       chat.with_tools(*tools) unless tools.empty?
