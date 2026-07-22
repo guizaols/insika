@@ -5,12 +5,12 @@ require_relative "base"
 
 module HarnessCode
   module Tools
-    # Create or overwrite a file in the workspace. SIDE-EFFECT tool: marked
+    # Create or overwrite a file in the sandbox. SIDE-EFFECT tool: marked
     # `side_effect: true` in the plugin manifest (so the checkpoint/resume
     # machinery treats it as non-idempotent) and listed in the agent profile's
     # `approvals_required` (so the ToolEnvelope suspends the turn for human
     # approval before it runs). Missing parent directories are created inside the
-    # workspace.
+    # sandbox.
     class WriteFile < Base
       description "Creates or overwrites a file in the workspace with the given content. " \
                   "Creates parent directories as needed. Requires human approval."
@@ -21,10 +21,10 @@ module HarnessCode
 
       def execute(path:, content:)
         guard do
-          abs = workspace.resolve(path, for_write: true)
+          abs = sandbox.resolve(path, for_write: true)
           FileUtils.mkdir_p(File.dirname(abs))
           File.write(abs, content.to_s)
-          { path: workspace.relative(abs), bytes: content.to_s.bytesize, status: "written" }
+          { path: sandbox.relative(abs), bytes: content.to_s.bytesize, status: "written" }
         end
       end
     end

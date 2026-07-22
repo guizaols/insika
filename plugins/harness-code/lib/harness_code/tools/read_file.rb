@@ -4,7 +4,7 @@ require_relative "base"
 
 module HarnessCode
   module Tools
-    # Read a UTF-8 text file from the workspace. Read-only (no side_effect, no
+    # Read a UTF-8 text file from the sandbox. Read-only (no side_effect, no
     # approval). Caps the returned size so a huge file can't blow the context.
     class ReadFile < Base
       MAX_BYTES = 200_000
@@ -17,7 +17,7 @@ module HarnessCode
 
       def execute(path:)
         guard do
-          abs = workspace.resolve(path)
+          abs = sandbox.resolve(path)
           raise "not a file: #{path}" unless File.file?(abs)
 
           content = File.read(abs, MAX_BYTES + 1, encoding: "UTF-8")
@@ -26,7 +26,7 @@ module HarnessCode
           # replaces the resulting invalid trailing bytes so we never emit an
           # invalidly-encoded string to the model.
           body = truncated ? content.byteslice(0, MAX_BYTES).scrub : content
-          { path: workspace.relative(abs), content: body, truncated: truncated }
+          { path: sandbox.relative(abs), content: body, truncated: truncated }
         end
       end
     end

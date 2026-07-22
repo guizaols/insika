@@ -5,7 +5,6 @@ require "tmpdir"
 require "fileutils"
 
 PLUGIN_LIB = File.expand_path("../../../plugins/harness-code/lib", __dir__)
-require File.join(PLUGIN_LIB, "harness_code/workspace")
 %w[base read_file list_dir grep write_file edit_file bash].each do |f|
   require File.join(PLUGIN_LIB, "harness_code/tools/#{f}")
 end
@@ -19,7 +18,7 @@ RSpec.describe "HarnessCode tools" do
     Dir.mktmpdir { |dir| @root = File.realpath(dir); example.run }
   end
 
-  let(:workspace) { HarnessCode::Workspace.new(@root) }
+  let(:sandbox) { Harness::Sandbox.build("root" => @root) }
 
   def write(rel, content)
     path = File.join(@root, rel)
@@ -28,7 +27,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::ReadFile do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "has the plain name 'read_file' (not the class-derived one)" do
       expect(tool.name).to eq("read_file")
@@ -47,7 +46,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::ListDir do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "lists files and dirs at the root" do
       write("a.rb", "1")
@@ -64,7 +63,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::Grep do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "finds matching lines with path and line number" do
       write("app/x.rb", "alpha\nTODO fix\nbeta\n")
@@ -106,7 +105,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::WriteFile do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "creates a file (and parent dirs) inside the workspace" do
       result = tool.execute(path: "nested/new.txt", content: "data")
@@ -137,7 +136,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::EditFile do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "replaces a unique string" do
       write("f.rb", "x = 1\ny = 2\n")
@@ -176,7 +175,7 @@ RSpec.describe "HarnessCode tools" do
   end
 
   describe HarnessCode::Tools::Bash do
-    subject(:tool) { described_class.new(workspace: workspace) }
+    subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "runs a command with the working directory pinned to the workspace root" do
       result = tool.execute(command: "pwd")

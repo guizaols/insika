@@ -113,6 +113,23 @@ RSpec.describe "Harness ProfileSource (Phase 4 D2)" do
       src.put(Harness::AgentProfile.build(id: "loja", model: "m"))
       expect(src.fetch("loja").guardrails).to be_nil
     end
+
+    it "round-trip of sandbox config (item 35), consumed via Sandbox.build" do
+      src.put(Harness::AgentProfile.build(
+                id: "loja", model: "m",
+                sandbox: { provider: "docker", image: "ruby:3.3", network: "none" }
+              ))
+      got = src.fetch("loja")
+      # keys become strings via JSON; Sandbox.build tolerates the round-trip.
+      expect(got.sandbox).to eq("provider" => "docker", "image" => "ruby:3.3", "network" => "none")
+      env = Harness::Sandbox.build(got.sandbox.merge("root" => Dir.pwd))
+      expect(env.provider).to be_a(Harness::Sandbox::Docker)
+    end
+
+    it "sandbox absent -> nil (a deployment builds a local sandbox by default)" do
+      src.put(Harness::AgentProfile.build(id: "loja", model: "m"))
+      expect(src.fetch("loja").sandbox).to be_nil
+    end
   end
 
   describe ".coerce" do

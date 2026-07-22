@@ -111,6 +111,9 @@ module Harness
         # guardrails (RFC-0009): a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.
         guardrails: h[:guardrails],
+        # sandbox (item 35): a plain config Hash; Sandbox.build tolerates the JSON
+        # round-trip (string keys), so no re-symbolization here. nil = absent.
+        sandbox: h[:sandbox],
         metadata: h[:metadata] || {}
       )
     end

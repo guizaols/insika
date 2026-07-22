@@ -31,6 +31,19 @@ module HarnessCodeApp
   )
   ENV["HARNESS_CODE_ROOT"] = WORKSPACE_ROOT
 
+  # Declarative sandbox policy (item 35, config-over-code): `local` (in-process,
+  # default) or `docker` (isolated container, `HARNESS_CODE_SANDBOX=docker`). The
+  # SAME hash is stored on the agent profile below AND read by the plugin to build
+  # the tools' Sandbox, so profile and runtime never drift. Docker knobs
+  # (image/network/…) default conservatively inside Harness::Sandbox::Docker and
+  # are overridable via HARNESS_CODE_SANDBOX_* env.
+  SANDBOX_CONFIG = {
+    "provider"   => (ENV["HARNESS_CODE_SANDBOX"].to_s.empty? ? "local" : ENV["HARNESS_CODE_SANDBOX"]),
+    "root"       => WORKSPACE_ROOT,
+    "image"      => ENV["HARNESS_CODE_SANDBOX_IMAGE"],
+    "network"    => ENV["HARNESS_CODE_SANDBOX_NETWORK"]
+  }.reject { |_k, v| v.to_s.empty? }.freeze
+
   MODEL         = ENV.fetch("HARNESS_CODE_MODEL", "deepseek-chat")
   PROVIDER      = ENV.fetch("HARNESS_CODE_PROVIDER", "deepseek").to_sym
   GATEWAY_TOKEN = ENV.fetch("HARNESS_CODE_TOKEN", "local-code")
@@ -150,6 +163,10 @@ module HarnessCodeApp
       tools_allow: %w[read_file list_dir grep write_file edit_file bash],
       policies: %i[tool_allowlist approval_required],
       approvals_required: SIDE_EFFECT_TOOLS,
+      # Config-over-code: the sandbox provider/policy is DATA on the profile,
+      # consumed by Harness::Sandbox.build. The plugin reads the same config from
+      # ENV, so the tools' runtime sandbox matches this declaration.
+      sandbox: HarnessCodeApp::SANDBOX_CONFIG,
       limits: {
         tool_timeout: Integer(ENV.fetch("HARNESS_CODE_TOOL_TIMEOUT", "120")),
         turn_timeout: Integer(ENV.fetch("HARNESS_CODE_TURN_TIMEOUT", "600")),

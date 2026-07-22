@@ -60,6 +60,13 @@ module Harness
     #                                   moderator:, strictness: }. OPT-IN like capabilities —
     #                                   nil/absent = the conservative default (Safety::Config:
     #                                   deterministic on, moderator off). Parsed, never a policy.
+    :sandbox,                         # confined-execution config (item 35, §4.6):
+    #                                   { provider: "local"|"docker", root:, timeout:, ...+provider
+    #                                   keys }. Declarative provider selection (config-over-code) —
+    #                                   consumed by Harness::Sandbox.build. {} = absent (a
+    #                                   deployment builds a `local` sandbox by default). It is
+    #                                   CONFIG, never a policy — it does not decide security by
+    #                                   itself; the FS boundary + approvals do.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -83,7 +90,7 @@ module Harness
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil,
-                   params: {}, model_policy: nil, guardrails: nil, metadata: {})
+                   params: {}, model_policy: nil, guardrails: nil, sandbox: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -104,6 +111,7 @@ module Harness
         params: Coercion.deep_stringify(params || {}),
         model_policy: Coercion.deep_stringify(model_policy),
         guardrails: Coercion.deep_stringify(guardrails),
+        sandbox: Coercion.deep_stringify(sandbox),
         metadata: Coercion.deep_stringify(metadata || {})
       )
     end
