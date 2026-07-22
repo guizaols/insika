@@ -1,6 +1,6 @@
-// Entry do bundle do Studio (D8) — esbuild empacota isto + Stimulus + Turbo +
-// CodeMirror em assets/dist/application.js (same-origin, CSP 'self'). `ruby serve`
-// serve o dist versionado; Node só é preciso para (re)buildar o front.
+// Studio bundle entry (D8) — esbuild packages this + Stimulus + Turbo +
+// CodeMirror into assets/dist/application.js (same-origin, CSP 'self'). `ruby serve`
+// serves the checked-in dist; Node is only needed to (re)build the front-end.
 import { Application } from "@hotwired/stimulus"
 import "@hotwired/turbo"
 

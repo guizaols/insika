@@ -1,10 +1,10 @@
 import { Controller } from "@hotwired/stimulus"
 
-// theme (island polish, Etapa H) — toggle claro/escuro/auto. O tema é aplicado
-// server-side em `<html data-theme>` (lido de um cookie no layout), então NÃO há
-// flash de tema errado no load. Este controller só reage ao clique: troca o
-// atributo em runtime (sem reload) e persiste o cookie que o servidor relê no
-// próximo request. CSP-safe: nada de <script> inline, tudo via data-action.
+// theme (island polish, Stage H) — light/dark/auto toggle. The theme is applied
+// server-side on `<html data-theme>` (read from a cookie in the layout), so there is
+// NO wrong-theme flash on load. This controller only reacts to the click: it swaps the
+// attribute at runtime (no reload) and persists the cookie that the server re-reads on
+// the next request. CSP-safe: no inline <script>, everything via data-action.
 export default class extends Controller {
   static targets = ["opt"]
 
@@ -15,7 +15,7 @@ export default class extends Controller {
   set(event) {
     const value = event.params.value
     document.documentElement.dataset.theme = value
-    // 1 ano; SameSite=Lax casa com o cookie de sessão. path=/ para valer sob /studio.
+    // 1 year; SameSite=Lax matches the session cookie. path=/ so it applies under /studio.
     document.cookie = `harness.theme=${value}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
     this.sync(value)
   }

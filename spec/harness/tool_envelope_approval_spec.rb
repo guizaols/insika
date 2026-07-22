@@ -10,7 +10,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
 
-  # Tool fake: registra os args recebidos e devolve um resultado.
+  # Fake tool: records the received args and returns a result.
   class ChargeTool
     attr_reader :calls
 
@@ -46,7 +46,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
                                     tool_registry: FakeToolRegistry.new, timeout: 60)
   end
 
-  it "tool marcada + aprovada -> executa a tool" do
+  it "marked tool + approved -> runs the tool" do
     tool = ChargeTool.new
     coord = FakeCoordinator.new("approved")
     env = envelope(tool, state_with(requires_approval: ["charge"], coordinator: coord))
@@ -58,7 +58,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
     expect(coord.requested.first).to include(tool: "charge")
   end
 
-  it "tool marcada + rejeitada -> {error: rejected}, NÃO executa (turno segue)" do
+  it "marked tool + rejected -> {error: rejected}, does NOT run (turn continues)" do
     tool = ChargeTool.new
     coord = FakeCoordinator.new("rejected")
     env = envelope(tool, state_with(requires_approval: ["charge"], coordinator: coord))
@@ -69,7 +69,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
     expect(tool.calls).to be_empty
   end
 
-  it "tool NÃO marcada -> executa sem consultar o coordenador" do
+  it "tool NOT marked -> runs without consulting the coordinator" do
     tool = ChargeTool.new
     coord = FakeCoordinator.new("rejected") # must not be called
     env = envelope(tool, state_with(requires_approval: ["outra"], coordinator: coord))
@@ -80,7 +80,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
     expect(coord.requested).to be_empty
   end
 
-  describe "trace de tool-calls (FOLLOWUP §3.1)" do
+  describe "tool-call trace (FOLLOWUP §3.1)" do
     def traced_state(session_id:)
       profile = Harness::AgentProfile.build(id: "a", model: "m")
       task = Struct.new(:id, :session_id).new("t", session_id)
@@ -123,7 +123,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
     end
   end
 
-  describe "Executor#request_approval (coordenador real)" do
+  describe "Executor#request_approval (real coordinator)" do
     let(:task_store) { Harness::TaskStore.new(store: backend) }
     let(:pending_store) { Harness::PendingActionStore.new(store: backend) }
     let(:event_stream) { SpyEventStream.new }
@@ -159,7 +159,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
         expect(task_store.find("t").status).to eq(:waiting)
         expect(event_stream.types).to include(:approval_requested)
 
-        # simula o ApproveAction (task 8): resolve o store + posta :approval
+        # simulates the ApproveAction (task 8): resolves the store + posts :approval
         pending_store.resolve("t:1:charge", decision: :approved, operator: "op")
         actor.post(:approval)
         waiter.wait
@@ -186,7 +186,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
       end
     end
 
-    it "fail-closed: :approval espúrio (antes de resolver) NÃO destrava — re-aguarda" do
+    it "fail-closed: a spurious :approval (before resolving) does NOT unblock — re-waits" do
       task = running_task
       decision = nil
 
@@ -196,9 +196,9 @@ RSpec.describe "ToolEnvelope — approval gate" do
           decision = executor.request_approval(task: task, turn: 1, tool: "charge", args: {}, actor: actor)
         end
         top.sleep(0.02)
-        actor.post(:approval)   # espúrio: nada foi resolvido ainda
+        actor.post(:approval)   # spurious: nothing has been resolved yet
         top.sleep(0.02)
-        expect(task_store.find("t").status).to eq(:waiting) # continua esperando
+        expect(task_store.find("t").status).to eq(:waiting) # still waiting
 
         pending_store.resolve("t:1:charge", decision: :approved, operator: "op")
         actor.post(:approval)   # real
