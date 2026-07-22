@@ -160,6 +160,52 @@ RSpec.describe "Harness::Executor#run_subagent (RFC-0010)" do
     end
   end
 
+  describe "#run_subagents — parallel fan-out (RFC-0010 §A)" do
+    it "runs N children and returns all results in the requested order" do
+      writer = Harness::AgentProfile.build(id: "writer", model: "gpt")
+      executor = build_executor(profiles: { "researcher" => child_profile, "writer" => writer })
+      # each child gets a distinct answer keyed by its agent id
+      allow(executor).to receive(:create_chat) do |profile, _state|
+        FakeChat.new.tap { |c| c.final_content = "answer:#{profile.id}" }
+      end
+      ps = parent_state(subagents: Harness::AgentProfile.build(id: "parent", subagents: %w[researcher writer]))
+
+      result = nil
+      Sync { result = executor.run_subagents(tasks: [{ "agent" => "researcher", "message" => "a" },
+                                                      { "agent" => "writer", "message" => "b" }], parent_state: ps) }
+
+      expect(result[:results].map { |r| r[:text] }).to eq(["answer:researcher", "answer:writer"])
+      expect(result[:results].map { |r| r[:session_id] }).to all(start_with("sub-"))
+    end
+
+    it "keeps a per-task error in its ordered slot (a bad task does not sink the batch)" do
+      executor = build_executor(profiles: { "researcher" => child_profile })
+      allow(executor).to receive(:create_chat).and_return(FakeChat.new.tap { |c| c.final_content = "ok" })
+      ps = parent_state
+
+      result = nil
+      Sync { result = executor.run_subagents(tasks: [{ "agent" => "researcher", "message" => "a" },
+                                                     { "agent" => "ghost", "message" => "b" }], parent_state: ps) }
+
+      expect(result[:results][0]).to include(text: "ok", agent: "researcher")
+      expect(result[:results][1]).to include(agent: "ghost")
+      expect(result[:results][1][:error]).to match(/not in this agent's subagents allowlist/)
+    end
+
+    it "rejects a fan-out larger than the cap" do
+      executor = build_executor(profiles: { "researcher" => child_profile })
+      cap = Harness::SubagentGraph.fan_out_cap
+      tasks = Array.new(cap + 1) { { "agent" => "researcher", "message" => "x" } }
+      result = executor.run_subagents(tasks: tasks, parent_state: parent_state)
+      expect(result[:error]).to match(/too many subagents/)
+    end
+
+    it "rejects an empty list" do
+      executor = build_executor(profiles: { "researcher" => child_profile })
+      expect(executor.run_subagents(tasks: [], parent_state: parent_state)[:error]).to match(/non-empty/)
+    end
+  end
+
   describe "child failure" do
     it "returns { error: } carrying the child's terminal error, never raising" do
       executor = build_executor(profiles: { "researcher" => child_profile })
