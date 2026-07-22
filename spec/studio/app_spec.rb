@@ -469,6 +469,22 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:memory]).to be(false)
   end
 
+  it "config writes the per-agent edge overrides; blank DELETES them (inherit platform)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "chat_rate_limit" => "5", "agent_token_ceiling" => "0", "_csrf" => csrf
+                })
+    limits = bus.last(:update_agent).payload[:limits]
+    expect(limits[:chat_rate_limit]).to eq(5)
+    expect(limits[:agent_token_ceiling]).to eq(0) # 0 = explicitly off for this agent
+
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "chat_rate_limit" => "", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:limits]).not_to have_key(:chat_rate_limit)
+  end
+
   # --- config v2 (§10) surfacing -------------------------------------------
 
   it "config with a blank model clears it (inherit the platform default)" do
@@ -879,6 +895,43 @@ RSpec.describe Studio::App do
     expect(patch["default_provider"]).to eq("deepseek")
     expect(patch["fallback_models"]).to eq(%w[deepseek/deepseek-chat openai/gpt-4o-mini])
     expect(patch["utility_model"]).to eq("deepseek-chat")
+  end
+
+  it "the edge-limits form dispatches update_settings with the edge layer only (item 33)" do
+    app, bus = build_app
+    client = login(app)
+    body = client.get("/settings?s=edge").body # drill: edge limits section
+    expect(body).to include('name="chat_rate_limit"')
+    expect(body).to include('name="agent_token_ceiling"')
+    csrf = csrf_from(body)
+    client.post("/settings/edge", params: {
+                  "chat_rate_limit" => "20", "chat_rate_window" => "60",
+                  "agent_token_ceiling" => "500000", "agent_token_window" => "86400",
+                  "limit_response" => "Muitas mensagens; aguarde.", "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch.keys).to eq(["edge"])
+    expect(patch["edge"]["chat_rate_limit"]).to eq(20)
+    expect(patch["edge"]["agent_token_ceiling"]).to eq(500_000)
+    expect(patch["edge"]["limit_response"]).to eq("Muitas mensagens; aguarde.")
+  end
+
+  it "the edge-limits form writes nil for blank limits (off) without 500-ing" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    res = client.post("/settings/edge", params: { "chat_rate_limit" => "", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(bus.last(:update_settings).payload[:patch]["edge"]["chat_rate_limit"]).to be_nil
+  end
+
+  it "the edge-limits form REJECTS an unparseable number (a typo must not silently disable a limit)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    res = client.post("/settings/edge", params: { "chat_rate_limit" => "2O", "_csrf" => csrf })
+    expect(res.status).to eq(302) # red flash, not a 500
+    expect(bus.last(:update_settings)).to be_nil # nothing dispatched
   end
 
   it "the model-defaults form does NOT touch the general-settings keys (scoped save)" do

@@ -3,6 +3,7 @@
 <% sections = [
      ["general", "General", "streaming, timeouts, compaction"],
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
+     ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
      ["llm",     "LLM providers", "keys, base URL, models per provider"]
    ] %>
 <div class="drill">
@@ -61,6 +62,25 @@
           </div>
           <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini"></label>
           <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat"></label>
+        </form>
+      </div>
+
+    <% elsif @section == "edge" %>
+      <div class="drill-pane-head">
+        <div class="title"><strong>Edge limits</strong></div>
+        <button type="submit" form="set-edge" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+      </div>
+      <div class="drill-pane-body">
+        <p class="muted">The named place where volume/cost abuse is cut, <strong>before any LLM spend</strong>. Blank/0 = off (opt-in). A breached turn completes gracefully with the safe reply below. Per-agent overrides live in each agent's config.</p>
+        <form id="set-edge" method="post" action="/studio/settings/edge">
+          <%== csrf_tag %>
+          <div class="grid-2">
+            <label>chat_rate_limit <span class="muted">(turn attempts per chat per window)</span><input type="text" name="chat_rate_limit" value="<%= @settings.dig("edge", "chat_rate_limit") %>" inputmode="numeric" placeholder="off"></label>
+            <label>chat_rate_window (s)<input type="text" name="chat_rate_window" value="<%= @settings.dig("edge", "chat_rate_window") %>" inputmode="numeric" placeholder="60"></label>
+            <label>agent_token_ceiling <span class="muted">(total tokens per agent per window)</span><input type="text" name="agent_token_ceiling" value="<%= @settings.dig("edge", "agent_token_ceiling") %>" inputmode="numeric" placeholder="off"></label>
+            <label>agent_token_window (s)<input type="text" name="agent_token_window" value="<%= @settings.dig("edge", "agent_token_window") %>" inputmode="numeric" placeholder="86400"></label>
+          </div>
+          <label>limit_response <span class="muted">(safe reply on breach; blank = neutral built-in)</span><input type="text" name="limit_response" value="<%= @settings.dig("edge", "limit_response") %>" placeholder="Estou recebendo muitas mensagens agora…"></label>
         </form>
       </div>
 

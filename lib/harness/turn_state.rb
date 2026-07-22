@@ -45,6 +45,12 @@ module Harness
     # capability_registry or empty profile.capabilities (parity).
     attr_accessor :capability_names
 
+    # Internal (item 33): true when this turn re-enters the pipeline via
+    # resume_task/recovery. The EdgeLimiter reads it to NEVER re-count or block a
+    # turn that was already admitted — a crash/pause under a saturated window must
+    # not swallow a legitimate message with the rate-limit reply.
+    attr_accessor :resumed
+
     # Internal (memory): the turn's tenant (from the Command), scope of the write path
     # (`remember` tool). Set in run_pipeline; nil = DEFAULT_TENANT in the MemoryStore.
     attr_accessor :tenant

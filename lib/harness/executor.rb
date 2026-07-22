@@ -408,6 +408,7 @@ module Harness
                             message: extract_message(task))
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat (D3)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.* (D2/G4)
+      state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
       state
     end
 
@@ -722,7 +723,13 @@ module Harness
              }, task: task)
       end
       emit(:content, { delta: content }, task: task) unless content.empty?
-      persist_turn(task, profile, state, content)
+      # An EDGE-blocked turn (rate limit / token ceiling, item 33) completes but
+      # stays OUT of the session history: a flood at the wall must not bloat the
+      # session nor evict real conversation from the context budget — the
+      # :guardrail_blocked event is the audit trail. Content-guardrail blocks
+      # keep persisting (RFC-0009: the refusal is part of the conversation).
+      persist_turn(task, profile, state, content,
+                   session: state.guardrail_block&.[](:source) != "edge")
       emit(:task_completed, { task_id: task.id, content: content, usage: state.usage }, task: task)
     end
 
@@ -755,7 +762,7 @@ module Harness
     # So a long session legitimately has a Checkpoint SHORTER than the Session:
     # that is not drift to reconcile — it is the point. Do NOT "fix" the checkpoint
     # to carry the full history (it would defeat the budget) nor evict the session.
-    def persist_turn(task, profile, state, content)
+    def persist_turn(task, profile, state, content, session: true)
       new_messages = turn_transcript(state, content)
       transcript = flatten_history(state.context.history) + new_messages
 
@@ -766,8 +773,9 @@ module Harness
                              ))
 
       # session only when the turn is from a persisted session; one-shot/history
-      # do not persist TO THE SESSION (but always checkpoint).
-      @session_store.append_messages(task.session_id, new_messages) if task.session_id
+      # do not persist TO THE SESSION (but always checkpoint). `session: false` is
+      # the edge-blocked halt (see complete_with_halt).
+      @session_store.append_messages(task.session_id, new_messages) if session && task.session_id
 
       # finish_execution (closes the Execution) BEFORE transition(:completed) —
       # transition without error: does not close, so the finish is needed here.
