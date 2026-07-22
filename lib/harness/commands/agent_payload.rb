@@ -11,8 +11,8 @@ module Harness
       # Fields accepted by AgentProfile.build (order irrelevant).
       FIELDS = %i[id model provider base_prompt prompt_files tools_allow tools_deny
                   tools_allow_groups skills context_providers workflows_allow policies
-                  prompt_refs limits approvals_required capabilities tools_deferred memory
-                  params model_policy guardrails metadata].freeze
+                  prompt_refs limits approvals_required capabilities subagents tools_deferred
+                  memory params model_policy guardrails metadata].freeze
 
       module_function
 

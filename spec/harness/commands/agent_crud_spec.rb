@@ -43,6 +43,20 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
       expect { handler.call(cmd(:create_agent, { "id" => "bia", "model" => "m2" })) }
         .to raise_error(Harness::ValidationError, /already exists/)
     end
+
+    # RFC-0010 §4.4: definition-time cycle/depth check.
+    it "persists a valid subagents allowlist" do
+      source.put(Harness::AgentProfile.build(id: "child", model: "m"))
+      profile = handler.call(cmd(:create_agent, { "id" => "parent", "model" => "m", "subagents" => %w[child] }))
+      expect(profile.subagents).to eq(%w[child])
+    end
+
+    it "rejects a subagents allowlist that closes a cycle (nothing persisted)" do
+      source.put(Harness::AgentProfile.build(id: "a", model: "m", subagents: %w[parent]))
+      expect { handler.call(cmd(:create_agent, { "id" => "parent", "model" => "m", "subagents" => %w[a] })) }
+        .to raise_error(Harness::SubagentCycleError)
+      expect(source.fetch("parent")).to be_nil
+    end
   end
 
   describe Harness::Commands::UpdateAgent do
@@ -60,6 +74,13 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
     it "nonexistent agent -> NotFoundError" do
       expect { handler.call(cmd(:update_agent, { "id" => "nope", "model" => "m" })) }
         .to raise_error(Harness::NotFoundError)
+    end
+
+    # RFC-0010 §4.4: an update that ADDS subagents is validated too.
+    it "rejects an update that introduces a self-cycle (keeps the old profile)" do
+      expect { handler.call(cmd(:update_agent, { "id" => "bia", "subagents" => %w[bia] })) }
+        .to raise_error(Harness::SubagentCycleError)
+      expect(source.fetch("bia").subagents).to be_nil # unchanged
     end
   end
 
