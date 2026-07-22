@@ -14,11 +14,11 @@ RSpec.describe Harness::Server::App do
 
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
-                config: {}, a2a: nil, provisioner: nil)
+                config: {}, a2a: nil, provisioner: nil, workflow_registry: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
-      a2a: a2a, provisioner: provisioner,
+      a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       config: { sync_timeout: 0.05 }.merge(config)
     )
   end
@@ -144,6 +144,61 @@ RSpec.describe Harness::Server::App do
       cmd = bus.dispatched.last
       expect(cmd.type).to eq(:send_message)
       expect(cmd.payload).to eq(agent: "sales", message: "oi")
+    end
+  end
+
+  describe "workflows exposed (item 22 / §4.4)" do
+    # Read-only registry double: exposes a discovery catalog.
+    def registry_double(catalog = [])
+      Class.new do
+        def initialize(catalog) = (@catalog = catalog)
+        def catalog = @catalog
+      end.new(catalog)
+    end
+
+    it "GET /v1/workflows returns the catalog (READ — no dispatch)" do
+      cat = [{ "name" => "flow", "description" => "d", "input_schema" => { "type" => "object" }, "output_schema" => nil }]
+      bus = ServerBusDouble.new
+      app = build_app(bus: bus, workflow_registry: registry_double(cat))
+
+      status, _h, resp = call(app, "GET", "/v1/workflows")
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to eq("workflows" => cat)
+      expect(bus.dispatched).to be_empty
+    end
+
+    it "POST /v1/workflows/:name (async default) -> 202 {run_id, task_id} + dispatches :trigger_workflow from the route" do
+      bus = ServerBusDouble.new { { task_id: "run-1", run_id: "run-1" } }
+      app = build_app(bus: bus, workflow_registry: registry_double)
+
+      status, _h, resp = call(app, "POST", "/v1/workflows/flow",
+                              body: '{"agent":"sales","input":{"q":"x"},"session_id":"s-1"}')
+
+      expect(status).to eq(202)
+      expect(json_body(resp)).to eq("run_id" => "run-1", "task_id" => "run-1")
+      cmd = bus.dispatched.last
+      expect(cmd.type).to eq(:trigger_workflow)
+      expect(cmd.payload).to eq(workflow: "flow", agent: "sales", input: { q: "x" }, session_id: "s-1")
+      expect(cmd.meta[:transport]).to eq(:http)
+    end
+
+    it "POST /v1/workflows/:name?stream=true -> 200 SSE body (streams the run)" do
+      bus = ServerBusDouble.new { { task_id: "run-1", run_id: "run-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" }, task_id: "run-1")])
+      app = build_app(bus: bus, event_stream: stream, workflow_registry: registry_double)
+
+      status, headers, body = call(app, "POST", "/v1/workflows/flow?stream=true", body: '{"agent":"sales"}')
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("text/event-stream")
+      expect(body).to be_a(Harness::Server::SSEBody)
+    end
+
+    it "workflows NOT exposed (registry nil) -> 404 on both routes (parity)" do
+      app = build_app(workflow_registry: nil)
+      expect(call(app, "GET", "/v1/workflows").first).to eq(404)
+      expect(call(app, "POST", "/v1/workflows/flow", body: "{}").first).to eq(404)
     end
   end
 

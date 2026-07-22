@@ -45,9 +45,19 @@ module Harness
           raise Harness::NotFoundError, "workflow '#{workflow}' not registered"
         end
 
+        # I/O by schema (item 22 / §4.4): the INPUT is validated SYNCHRONOUSLY —
+        # a non-conforming input is a WorkflowSchemaError (< ValidationError -> 422)
+        # with NO run created. `definition` reads the schema metadata without
+        # resolving the factory (stays out of the fiber). No-op without an input_schema.
+        @workflow_registry.definition(workflow).validate_input!(input)
+
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
         @executor.spawn_in_session(task, profile: profile)
-        { task_id: task.id }
+        # runId = the run's durable record, which IS the Task (checkpointed +
+        # recoverable). Exposed under both names so the workflow consumer has a
+        # stable `run_id` while every task surface (GET /v1/tasks/:id, the event
+        # stream) keeps working unchanged.
+        { task_id: task.id, run_id: task.id }
       end
 
       private

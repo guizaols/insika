@@ -35,10 +35,15 @@ module Harness
 
     # -> instance (factory.call) | raise NotFoundError.
     def resolve(name)
-      entry = @entries[name.to_s]
-      raise Harness::NotFoundError, "'#{name}' not registered in #{self.class}" if entry.nil?
+      entry(name).factory.call
+    end
 
-      entry.factory.call
+    # -> the raw Entry (name/plugin/metadata/factory) | raise NotFoundError. For
+    # readers that need the metadata WITHOUT resolving the factory (discovery,
+    # WorkflowRegistry#definition).
+    def entry(name)
+      @entries[name.to_s] ||
+        (raise Harness::NotFoundError, "'#{name}' not registered in #{self.class}")
     end
 
     def entries = @entries.values

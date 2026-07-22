@@ -318,6 +318,11 @@ module Harness
     rescue PolicyDenied => e
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
       fail_task(task, e, stage: :policy)
+    rescue Harness::WorkflowSchemaError => e
+      # Item 22 / §4.4: a workflow OUTPUT that violates its output_schema. Distinct
+      # stage so a contract breach is not conflated with an :unknown failure. (INPUT
+      # is validated synchronously in TriggerWorkflow -> 422, never reaches here.)
+      fail_task(task, e, stage: :workflow_schema)
     rescue ContextError => e
       fail_task(task, e, stage: :context)
     rescue CapabilityError => e
@@ -584,11 +589,20 @@ module Harness
         # workflow = a Ruby callable that orchestrates RubyLLM internally (RubyLLM
         # First). tools: are the SAME instances filtered by the Resolution and
         # enveloped (stage 7) — the workflow inherits timeout/side-effect/skip.
-        workflow = @workflow_registry.resolve(workflow_name(task))
-        @hooks.around(:agent, state) do |s|
+        # Item 22 / §4.4: the EXPOSED surface — the run (== task.id) is announced on
+        # the stream (:workflow_started), the RETURN is validated against the
+        # output_schema (WorkflowSchemaError -> :workflow_schema stage), and the
+        # typed output is published (:workflow_completed).
+        definition = @workflow_registry.definition(workflow_name(task))
+        emit(:workflow_started,
+             { run_id: task.id, workflow: definition.name, input: state.message || {} }, task: task)
+        output = @hooks.around(:agent, state) do |s|
           # input omitted from the payload -> {} (the workflow expects a Hash).
-          workflow.call(s.message || {}, context: s.context, tools: s.allowed_tools)
+          definition.call(s.message || {}, context: s.context, tools: s.allowed_tools)
         end
+        definition.validate_output!(output)
+        emit(:workflow_completed, { run_id: task.id, workflow: definition.name, output: output }, task: task)
+        output
       else
         filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
         timing&.mark(:ask)
