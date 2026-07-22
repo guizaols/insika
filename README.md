@@ -17,6 +17,7 @@ from one deployment.
 - **Memory** — cross-session facts and notes, per agent.
 - **Guardrails** — content-safety (prompt-injection, PII/secret redaction, abuse) on input and output, opt-in and configurable per agent.
 - **Observability** — an event stream, per-session tool-call traces, optional OpenTelemetry.
+- **Negligible overhead** — the engine adds well under a millisecond per turn; a neutral, key-free benchmark reproduces it ([docs/BENCHMARK.md](docs/BENCHMARK.md)).
 
 ## Requirements
 
@@ -105,6 +106,7 @@ bundle exec rspec
 - [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md) — running locally, the control UI, OpenTelemetry.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — production deploy (Falcon, durable SQLite volume, tokens).
 - [docs/LOADTEST.md](docs/LOADTEST.md) — load-testing and data-topology.
+- [docs/BENCHMARK.md](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
 
 ## Status
 
