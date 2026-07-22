@@ -13,7 +13,18 @@ module Harness
     SCOPE = "settings"
     KEY   = "general"
 
+    # STRICT config, settings layer (item 23 / §8.1 — "no silent config compat: toda
+    # migração de schema explícita"). The settings record carries a `schema_version`;
+    # every shape change is a numbered migration here, applied ONLY by the explicit
+    # `migrate!` (Studio settings saves never silently reinterpret old-shaped data).
+    # v1 is the baseline: a pre-versioning record (no `schema_version`) reads as 0 and
+    # `harness doctor --fix` stamps it to 1. Add a real change as MIGRATIONS[2] = proc
+    # and bump SCHEMA_VERSION.
+    SCHEMA_VERSION = 1
+    MIGRATIONS = {}.freeze # target_version(Integer) => ->(record_hash){ migrated_hash }
+
     DEFAULTS = {
+      "schema_version" => SCHEMA_VERSION,
       "streaming" => true,
       "request_timeout" => 120,
       "max_retries" => 2,
@@ -66,6 +77,39 @@ module Harness
       merged = deep_merge(get, stringify(patch || {}))
       @cs.put(SCOPE, KEY, merged)
       merged
+    end
+
+    # RAW persisted schema version (bypasses the DEFAULTS overlay, which would always
+    # report the current one). nil = no settings persisted yet (fresh deploy — nothing
+    # to migrate); an Integer otherwise, 0 for a pre-versioning record.
+    def stored_schema_version
+      raw = stored
+      return nil if raw.empty?
+
+      Integer(raw["schema_version"] || 0)
+    end
+
+    # Which numbered migrations still need to run. [] when fresh or already current.
+    def pending_migrations
+      from = stored_schema_version
+      return [] if from.nil? || from >= SCHEMA_VERSION
+
+      ((from + 1)..SCHEMA_VERSION).to_a
+    end
+
+    # Applies the pending migrations EXPLICITLY (in order) and stamps the version. No-op
+    # when fresh or already current. -> resulting schema_version (Integer).
+    def migrate!
+      data = stored
+      return SCHEMA_VERSION if data.empty?
+
+      pending_migrations.each do |version|
+        migration = MIGRATIONS[version]
+        data = stringify(migration.call(data)) if migration
+      end
+      data["schema_version"] = SCHEMA_VERSION
+      @cs.put(SCOPE, KEY, data)
+      SCHEMA_VERSION
     end
 
     private

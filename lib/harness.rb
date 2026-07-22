@@ -2,6 +2,7 @@
 
 require_relative "harness/errors"
 require_relative "harness/coercion"
+require_relative "harness/env_schema"
 require_relative "harness/allowlist"
 require_relative "harness/event"
 require_relative "harness/agent_profile"
@@ -130,6 +131,9 @@ require_relative "harness/executor"
 require_relative "harness/pack"
 require_relative "harness/pack_importer"
 require_relative "harness/telemetry"
+# Strict config + diagnosis (item 23 / §8.1). Doctor reads the config stores above;
+# EnvSchema (required at the top) is its env layer.
+require_relative "harness/doctor"
 # Shared composition core for both roots (config/wiring.rb + config/deployment.rb).
 # Only references the classes above at call-time, so require order is unconstrained.
 require_relative "harness/wiring/graph"
@@ -138,4 +142,5 @@ require_relative "harness/wiring/graph"
 # Executor loads it lazily inside create_chat (D9).
 
 module Harness
+  VERSION = "0.1.0"
 end
