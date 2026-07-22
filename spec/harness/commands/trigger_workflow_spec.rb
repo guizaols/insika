@@ -32,9 +32,10 @@ RSpec.describe Harness::Commands::TriggerWorkflow do
 
   def call(pl) = handler.call(Harness::Command.build(:trigger_workflow, pl))
 
-  it "valid path: creates a :queued Task with a persisted command, spawns, returns {task_id:}" do
+  it "valid path: creates a :queued Task with a persisted command, spawns, returns {task_id:, run_id:}" do
     result = call(payload(session_id: nil))
-    expect(result).to match({ task_id: kind_of(String) })
+    expect(result).to match({ task_id: kind_of(String), run_id: kind_of(String) })
+    expect(result[:run_id]).to eq(result[:task_id]) # runId == the durable run record (the Task)
     task = task_store.find(result[:task_id])
     expect(task.status).to eq(:queued)
     expect(task.command["type"]).to eq("trigger_workflow")
@@ -73,5 +74,26 @@ RSpec.describe Harness::Commands::TriggerWorkflow do
   it "input defaults to {} when absent" do
     result = call({ workflow: "flow", agent: "sales" })
     expect(task_store.find(result[:task_id]).status).to eq(:queued)
+  end
+
+  describe "I/O by schema (item 22 / §4.4)" do
+    before do
+      workflow_registry.register(
+        "schemad", ->(i, **) { i },
+        input_schema: { "type" => "object", "properties" => { "q" => { "type" => "string" } }, "required" => ["q"] }
+      )
+    end
+
+    it "conforming input -> run created" do
+      result = call(payload(workflow: "schemad", input: { q: "hello" }))
+      expect(task_store.find(result[:task_id]).status).to eq(:queued)
+    end
+
+    it "non-conforming input -> WorkflowSchemaError (< ValidationError), NO run created" do
+      expect { call(payload(workflow: "schemad", input: { n: 1 })) }
+        .to raise_error(Harness::WorkflowSchemaError) { |e| expect(e.phase).to eq(:input) }
+      expect(executor.spawned).to be_empty
+      expect(task_store.each_id.to_a).to be_empty
+    end
   end
 end

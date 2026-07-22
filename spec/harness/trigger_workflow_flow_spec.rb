@@ -164,6 +164,50 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
   end
 
+  it "emits :workflow_started and :workflow_completed carrying run_id + typed I/O (item 22 / §4.4)" do
+    workflow_registry.register("flow", ->(input, **) { { "echo" => input } })
+    executor = build_executor
+
+    run(executor, make_task(input: { "q" => "x" }))
+
+    started = event_stream.events.find { |e| e.type == :workflow_started }
+    completed = event_stream.events.find { |e| e.type == :workflow_completed }
+    expect(started.data).to include(run_id: "t", workflow: "flow", input: { "q" => "x" })
+    expect(completed.data).to include(run_id: "t", workflow: "flow", output: { "echo" => { "q" => "x" } })
+    # runId == the terminal task's id (the durable run record).
+    expect(started.meta[:task_id]).to eq("t")
+  end
+
+  it "output that violates output_schema -> task :failed at :workflow_schema, no :workflow_completed" do
+    workflow_registry.register(
+      "flow", ->(*, **) { { "wrong" => true } },
+      output_schema: { "type" => "object", "properties" => { "ok" => { "type" => "boolean" } }, "required" => ["ok"] }
+    )
+    executor = build_executor
+
+    run(executor, make_task)
+
+    task = task_store.find("t")
+    expect(task.status).to eq(:failed)
+    expect(task.executions.last.error["stage"]).to eq("workflow_schema")
+    expect(task.executions.last.error["class"]).to eq("Harness::WorkflowSchemaError")
+    expect(event_stream.types).to include(:workflow_started, :task_failed)
+    expect(event_stream.types).not_to include(:workflow_completed)
+  end
+
+  it "conforming output passes validation and completes normally" do
+    workflow_registry.register(
+      "flow", ->(*, **) { { "ok" => true } },
+      output_schema: { "type" => "object", "properties" => { "ok" => { "type" => "boolean" } }, "required" => ["ok"] }
+    )
+    executor = build_executor
+
+    run(executor, make_task)
+
+    expect(task_store.find("t").status).to eq(:completed)
+    expect(event_stream.types).to include(:workflow_completed, :task_completed)
+  end
+
   it "side-effect + resume: side_effect tool does not re-run on resume (skip by name)" do
     calls = 0
     tool_registry.register("charge", poro_tool("charge") { calls += 1 }, side_effect: true)
