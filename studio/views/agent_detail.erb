@@ -55,13 +55,8 @@
         <label>max_tokens
           <input type="text" name="max_tokens" value="<%= agent_param(@params, :max_tokens) %>" inputmode="numeric" placeholder="4096">
         </label>
-        <label>thinking <span class="muted">(effort)</span>
-          <% thinking = agent_param(@params, :thinking).to_s %>
-          <select name="thinking">
-            <% ["", "low", "medium", "high"].each do |effort| %>
-              <option value="<%= effort %>"<%== " selected" if effort == thinking %>><%= effort.empty? ? "off" : effort %></option>
-            <% end %>
-          </select>
+        <label>reasoning <span class="muted">(off/on/effort — blank = inherit model/platform)</span>
+          <%== thinking_select("thinking", agent_param(@params, :thinking), "inherit") %>
         </label>
       </div>
     </fieldset>

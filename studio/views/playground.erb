@@ -19,10 +19,11 @@
       </label>
       <span class="pill info chat-status" data-live-transcript-target="status">disconnected</span>
       <details class="pin chat-pin">
-        <summary>model override <span class="muted">— pins a NEW conversation (Chat › Agent › platform)</span></summary>
+        <summary>overrides <span class="muted">— pin a NEW conversation (Chat › Agent › Model › platform)</span></summary>
         <div class="row">
           <label>model<input type="text" name="model" placeholder="leave empty = agent/platform default"></label>
           <label>provider<input type="text" name="provider" placeholder="optional"></label>
+          <label>reasoning<%== thinking_select("thinking", nil, "agent/platform default") %></label>
         </div>
       </details>
     </div>

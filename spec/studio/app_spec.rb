@@ -364,6 +364,17 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:provider]).to eq("deepseek")
   end
 
+  it "playground passes the per-chat reasoning override (thinking) to create_session" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/playground").body)
+    client.post("/playground", params: {
+                  "agent" => "chef", "session_id" => "", "message" => "oi",
+                  "thinking" => "off", "_csrf" => csrf
+                })
+    expect(bus.last(:create_session).payload[:thinking]).to eq("off")
+  end
+
   it "playground does NOT create a session (nor pin) when continuing an existing one" do
     app, bus = build_app
     client = login(app)
@@ -940,7 +951,31 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/settings").body)
     client.post("/settings/models", params: { "default_model" => "x", "_csrf" => csrf })
     patch = bus.last(:update_settings).payload[:patch]
-    expect(patch.keys).to contain_exactly("default_model", "default_provider", "fallback_models", "utility_model")
+    expect(patch.keys).to contain_exactly("default_model", "default_provider", "fallback_models",
+                                          "utility_model", "thinking")
+  end
+
+  it "the model-defaults form carries the GLOBAL reasoning default (thinking)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings/models", params: { "default_model" => "x", "thinking" => "off", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["thinking"]).to eq("off")
+  end
+
+  it "the per-model form parses ref|effort lines into the model_params map" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings/model-params", params: {
+                  "model_params" => "deepseek/deepseek-v4-flash | off\n# comment\ndeepseek-chat | low",
+                  "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch["model_params"]).to eq(
+      "deepseek/deepseek-v4-flash" => { "thinking" => "off" },
+      "deepseek-chat" => { "thinking" => "low" }
+    )
   end
 
   it "settings lists providers with the key MASKED (never plaintext)" do

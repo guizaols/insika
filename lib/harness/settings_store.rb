@@ -31,6 +31,12 @@ module Harness
       "default_provider" => nil,
       "fallback_models" => [],
       "utility_model" => nil,
+      # Reasoning control (§10, 4-layer: Chat > Agent > Model > Global). `thinking`
+      # is the GLOBAL default (off/on/low/medium/high; nil = provider default);
+      # `model_params` is the PER-MODEL layer, a map "<provider/model>"|"<model>" ->
+      # { "thinking" => ... }. Both resolved by the ModelResolver.
+      "thinking" => nil,
+      "model_params" => {},
       # Edge limits (item 33 / §12 G7) — the platform layer of the EdgeLimiter.
       # nil/0 = off (opt-in). chat_rate_limit = turn attempts per chat per
       # chat_rate_window (s); agent_token_ceiling = total tokens per agent per

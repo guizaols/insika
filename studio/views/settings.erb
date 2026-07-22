@@ -62,6 +62,19 @@
           </div>
           <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini"></label>
           <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat"></label>
+          <label>reasoning <span class="muted">(global default — off/on/effort; blank = provider default)</span>
+            <%== thinking_select("thinking", @settings["thinking"], "provider default") %>
+          </label>
+        </form>
+
+        <hr>
+        <p class="muted">Per-model reasoning defaults — the layer between global and agent (resolved <strong>Chat › Agent › Model › Global</strong>). One per line.</p>
+        <form id="set-model-params" method="post" action="/studio/settings/model-params">
+          <%== csrf_tag %>
+          <label>model_params <span class="muted">(one per line: <code>provider/model | off|on|low|medium|high</code>)</span>
+            <textarea name="model_params" rows="4" placeholder="deepseek/deepseek-v4-flash | off"><%= model_params_text(@settings["model_params"]) %></textarea>
+          </label>
+          <div class="actions"><button type="submit" class="btn primary" data-turbo-submits-with="Saving…">Save per-model</button></div>
         </form>
       </div>
 

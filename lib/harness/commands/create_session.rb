@@ -41,19 +41,24 @@ module Harness
 
       private
 
-      # Reads `model`/`provider` (string|symbol keys) and, when present, writes the
-      # reserved vars slot. Both must be strings; absent -> vars unchanged.
+      # Reads `model`/`provider`/`thinking` (string|symbol keys) and, when any is
+      # present, writes the reserved vars slot. All must be strings; `thinking` is
+      # the per-chat reasoning override (off/on/low/medium/high) and may be set
+      # WITHOUT a model pin. Absent -> vars unchanged.
       def apply_model_pin(vars, payload)
         model = payload[:model] || payload["model"]
         provider = payload[:provider] || payload["provider"]
-        return vars if model.nil? && provider.nil?
+        thinking = payload[:thinking] || payload["thinking"]
+        return vars if model.nil? && provider.nil? && thinking.nil?
 
         raise Harness::ValidationError, "model must be a String" unless model.nil? || model.is_a?(String)
         raise Harness::ValidationError, "provider must be a String" unless provider.nil? || provider.is_a?(String)
+        raise Harness::ValidationError, "thinking must be a String" unless thinking.nil? || thinking.is_a?(String)
 
         pin = {}
         pin["model"] = model if model
         pin["provider"] = provider if provider
+        pin["thinking"] = thinking if thinking
         vars[Harness::ModelResolver::SESSION_SLOT] = pin
         vars
       end

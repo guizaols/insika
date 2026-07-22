@@ -116,4 +116,46 @@ RSpec.describe Harness::ModelResolver do
       expect(sel.params).to eq(temperature: 0.3, max_tokens: 100)
     end
   end
+
+  # §10 4-layer reasoning control: thinking resolved Chat > Agent > Model > Global.
+  describe "reasoning (thinking) resolution across layers" do
+    def resolve_thinking(agent: nil, chat: nil, global: nil, model_params: nil, model: "m", provider: :deepseek)
+      overrides = {}
+      overrides["thinking"] = global unless global.nil?
+      overrides["model_params"] = model_params unless model_params.nil?
+      prof = profile(model: model, provider: provider, params: agent ? { "thinking" => agent } : {})
+      sess = chat ? session_with({ Harness::ModelResolver::SESSION_SLOT => { "thinking" => chat } }) : nil
+      described_class.new(settings_store: settings(overrides)).resolve(profile: prof, session: sess).params[:thinking]
+    end
+
+    it "nothing set anywhere -> no thinking (provider default)" do
+      expect(resolve_thinking).to be_nil
+    end
+
+    it "global only" do
+      expect(resolve_thinking(global: "off")).to eq("off")
+    end
+
+    it "per-model overrides global (matched by provider/model ref)" do
+      expect(resolve_thinking(global: "high", model_params: { "deepseek/m" => { "thinking" => "off" } })).to eq("off")
+    end
+
+    it "per-model matches the bare model id too" do
+      expect(resolve_thinking(global: "high", model_params: { "m" => { "thinking" => "low" } })).to eq("low")
+    end
+
+    it "agent overrides per-model and global" do
+      expect(resolve_thinking(agent: "medium", global: "off",
+                              model_params: { "deepseek/m" => { "thinking" => "high" } })).to eq("medium")
+    end
+
+    it "chat overrides everything (most specific wins)" do
+      expect(resolve_thinking(chat: "off", agent: "high", global: "low")).to eq("off")
+    end
+
+    it "the chat thinking override applies even without a model pin" do
+      # session slot carries thinking but no model -> model still resolves from agent
+      expect(resolve_thinking(chat: "on", agent: "high")).to eq("on")
+    end
+  end
 end

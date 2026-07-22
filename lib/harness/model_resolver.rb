@@ -44,7 +44,7 @@ module Harness
 
       ModelSelection.new(
         model: choice.model, provider: provider, source: choice.source, pinned: choice.pinned,
-        params: normalize_params(profile_params(profile)),
+        params: resolve_params(profile, session, settings, choice.model, provider),
         fallbacks: choice.pinned ? [] : resolve_fallbacks(profile, settings, choice.model, provider)
       )
     end
@@ -120,6 +120,43 @@ module Harness
     # and `model_policy` (nil = no fence) — no feature-detection needed.
     def profile_params(profile) = profile.params
     def model_policy(profile) = profile.model_policy
+
+    # Generation params: the agent's temperature/max_tokens plus the reasoning
+    # control (`thinking`) resolved across the 4 layers. A resolved nil means
+    # "nothing set anywhere" -> drop the key so the provider default stands.
+    def resolve_params(profile, session, settings, model, provider)
+      params = normalize_params(profile_params(profile))
+      thinking = resolve_thinking(profile, session, settings, model, provider)
+      thinking.nil? ? params.tap { |p| p.delete(:thinking) } : params.merge(thinking: thinking)
+    end
+
+    # First non-blank of Chat > Agent > Model-default > Global (most specific wins).
+    def resolve_thinking(profile, session, settings, model, provider)
+      [
+        chat_thinking(session),
+        presence(profile.params["thinking"]),
+        model_thinking(settings, model, provider),
+        presence(settings["thinking"])
+      ].find { |v| !blank?(v) }
+    end
+
+    # Per-chat override: the `thinking` slot in the session pin (vars["__llm__"]),
+    # independent of whether the chat also pinned a model.
+    def chat_thinking(session)
+      slot = session&.vars&.dig(SESSION_SLOT)
+      slot.is_a?(Hash) ? presence(slot["thinking"]) : nil
+    end
+
+    # Per-model default: settings["model_params"][ref]["thinking"], matched by the
+    # full "provider/model" ref first, then the bare model id.
+    def model_thinking(settings, model, provider)
+      map = settings["model_params"]
+      return nil unless map.is_a?(Hash)
+
+      ref = provider ? "#{provider}/#{model}" : nil
+      entry = (ref && map[ref]) || map[model.to_s]
+      entry.is_a?(Hash) ? presence(entry["thinking"]) : nil
+    end
 
     # Coerces authored params (string|symbol keys from the JSON round-trip) into
     # the symbol shape ModelSelection#apply_params consumes.

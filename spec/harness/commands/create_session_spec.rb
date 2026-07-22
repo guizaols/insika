@@ -78,5 +78,21 @@ RSpec.describe Harness::Commands::CreateSession do
       expect { handler.call(Harness::Command.build(:create_session, { "model" => 42 })) }
         .to raise_error(Harness::ValidationError, /model must be a String/)
     end
+
+    it "stashes the per-chat reasoning override (thinking) into the slot" do
+      session = handler.call(Harness::Command.build(:create_session,
+                                                    { "model" => "deepseek-v4-flash", "thinking" => "off" }))
+      expect(session.vars[slot]).to eq({ "model" => "deepseek-v4-flash", "thinking" => "off" })
+    end
+
+    it "accepts thinking WITHOUT a model pin (reasoning-only override)" do
+      session = handler.call(Harness::Command.build(:create_session, { "thinking" => "on" }))
+      expect(session.vars[slot]).to eq({ "thinking" => "on" })
+    end
+
+    it "rejects a non-string thinking" do
+      expect { handler.call(Harness::Command.build(:create_session, { "thinking" => 3 })) }
+        .to raise_error(Harness::ValidationError, /thinking must be a String/)
+    end
   end
 end
