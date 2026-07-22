@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# Fase 7, Etapa B (task 3+4): manifesto -> Hashes de ToolDefinition. Adapters de
-# envelope (raw/OpenAI/MCP), defaults inheritance, endpoint->url (R6) and resolution
-# de {{secret.*}}/{{env.*}} na ingestão com o guard de vazamento (R3).
+# Phase 7, Stage B (task 3+4): manifest -> ToolDefinition Hashes. Envelope
+# adapters (raw/OpenAI/MCP), defaults inheritance, endpoint->url (R6) and resolution
+# of {{secret.*}}/{{env.*}} at ingestion with the leak guard (R3).
 RSpec.describe Harness::ToolManifest do
   let(:env) { { "CONSUMER_URL" => "http://localhost:3000" } }
   let(:secrets) { { "TOKEN" => "s3cr3t" } }
@@ -17,7 +17,7 @@ RSpec.describe Harness::ToolManifest do
     manifest_obj.tool_definitions(secrets: secrets, env: env)
   end
 
-  # defaults típicos do consumer (base_url por env, auth por secret, ctx por turno).
+  # typical consumer defaults (base_url from env, auth from secret, ctx per turn).
   def consumer_defaults
     { "base_url" => "{{env.CONSUMER_URL}}",
       "path_template" => "/api/internal/agent_tools/{endpoint}",
@@ -30,22 +30,22 @@ RSpec.describe Harness::ToolManifest do
   end
 
   describe ".from_h" do
-    it "tolera chaves symbol e string; version default = 1" do
+    it "tolerates symbol and string keys; version default = 1" do
       m = described_class.from_h(defaults: {}, tools: [{ name: "x" }])
       expect(m.version).to eq(1)
       expect(m.tools.first["name"] || m.tools.first[:name]).to eq("x")
     end
 
-    it "rejeita defaults/tools do tipo errado (erro estrutural)" do
+    it "rejects defaults/tools of the wrong type (structural error)" do
       expect { described_class.from_h("defaults" => []) }.to raise_error(Harness::ValidationError, /defaults/)
       expect { described_class.from_h("tools" => {}) }.to raise_error(Harness::ValidationError, /tools/)
     end
   end
 
-  describe "adapters de envelope (D3)" do
+  describe "envelope adapters (D3)" do
     let(:params) { { "type" => "object", "properties" => { "q" => { "type" => "string" } }, "required" => ["q"] } }
 
-    it "cru: parameters é JSON Schema" do
+    it "raw: parameters is a JSON Schema" do
       m = manifest(tools: [{ "name" => "raw", "url" => "https://api.test/x", "parameters" => params }])
       d = defn(m).first
       expect(d["name"]).to eq("raw")
@@ -61,7 +61,7 @@ RSpec.describe Harness::ToolManifest do
       expect(d["parameters"]).to eq(params)
     end
 
-    it "MCP: inputSchema (name/description no topo)" do
+    it "MCP: inputSchema (name/description at the top)" do
       m = manifest(tools: [{ "name" => "mcp", "description" => "d", "url" => "https://api.test/x",
                              "inputSchema" => params }])
       d = defn(m).first
@@ -70,20 +70,20 @@ RSpec.describe Harness::ToolManifest do
     end
   end
 
-  describe "herança de defaults + endpoint->url (R6)" do
-    it "monta url = base_url + path_template({endpoint}) e herda method/headers/response" do
+  describe "defaults inheritance + endpoint->url (R6)" do
+    it "builds url = base_url + path_template({endpoint}) and inherits method/headers/response" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "search_products", "endpoint" => "search_faqs", "description" => "b",
                              "parameters" => { "type" => "object", "properties" => {}, "required" => [] } }])
       d = defn(m, secrets: secrets, env: env).first
-      # endpoint (slug) != name -> remap por DADO, nunca inferido do name (R6)
+      # endpoint (slug) != name -> remap by DATA, never inferred from the name (R6)
       expect(d["request"]["url"]).to eq("http://localhost:3000/api/internal/agent_tools/search_faqs")
       expect(d["request"]["method"]).to eq("POST")
       expect(d["request"]["headers"]).to include("Content-Type" => "application/json")
       expect(d["response"]).to eq("extract" => "body_raw")
     end
 
-    it "url explícita da tool vence base_url/path_template" do
+    it "the tool's explicit url wins over base_url/path_template" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "ping", "url" => "https://api.test/ping", "method" => "GET",
                              "parameters" => { "type" => "object", "properties" => {}, "required" => [] } }])
@@ -107,7 +107,7 @@ RSpec.describe Harness::ToolManifest do
   end
 
   describe "resolution of {{env.*}} / {{secret.*}} (task 4)" do
-    it "resolve env na url e secret no header (com prefixo 'Bearer ')" do
+    it "resolves env in the url and secret in the header (with the 'Bearer ' prefix)" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "t", "endpoint" => "t" }])
       d = defn(m, secrets: secrets, env: env).first
@@ -116,7 +116,7 @@ RSpec.describe Harness::ToolManifest do
       expect(d["secret_headers"]).to eq(["Authorization"])
     end
 
-    it "deixa {{param}} e {{ctx.*}} INTACTOS (resolvem no turno)" do
+    it "leaves {{param}} and {{ctx.*}} INTACT (they resolve at the turn)" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "t", "endpoint" => "t", "body" => "{\"q\":\"{{q}}\"}",
                              "parameters" => { "type" => "object", "properties" => { "q" => { "type" => "string" } }, "required" => ["q"] } }])
@@ -132,34 +132,34 @@ RSpec.describe Harness::ToolManifest do
     end
   end
 
-  describe "group/tags (Etapa C: D4/F5)" do
-    it "propaga group/tags da tool" do
+  describe "group/tags (Stage C: D4/F5)" do
+    it "propagates the tool's group/tags" do
       m = manifest(tools: [{ "name" => "t", "url" => "https://api.test/x", "group" => "b2b", "tags" => ["catalog"] }])
       d = defn(m).first
       expect(d["group"]).to eq("b2b")
       expect(d["tags"]).to eq(["catalog"])
     end
 
-    it "herda group do defaults; tags em UNIÃO (defaults ∪ tool)" do
+    it "inherits group from defaults; tags in UNION (defaults ∪ tool)" do
       m = manifest(defaults: { "group" => "b2b", "tags" => ["internal"] },
                    tools: [{ "name" => "a", "url" => "https://api.test/a" },
                            { "name" => "b", "url" => "https://api.test/b", "group" => "beauty", "tags" => ["loja"] }])
       a, b = defn(m)
-      expect(a["group"]).to eq("b2b")            # herdou o default
+      expect(a["group"]).to eq("b2b")            # inherited the default
       expect(a["tags"]).to eq(["internal"])
-      expect(b["group"]).to eq("beauty")         # tool vence o default
-      expect(b["tags"]).to contain_exactly("internal", "loja") # união
+      expect(b["group"]).to eq("beauty")         # tool wins over the default
+      expect(b["tags"]).to contain_exactly("internal", "loja") # union
     end
   end
 
-  describe "segurança de secret (R3 + guard de vazamento)" do
-    it "recusa secret_header com valor LITERAL (sem {{secret.*}}) — R3" do
+  describe "secret safety (R3 + leak guard)" do
+    it "rejects a secret_header with a LITERAL value (no {{secret.*}}) — R3" do
       d = consumer_defaults.merge("headers" => consumer_defaults["headers"].merge("Authorization" => "Bearer HARDCODED"))
       m = manifest(defaults: d, tools: [{ "name" => "t", "endpoint" => "t" }])
       expect { defn(m, secrets: secrets, env: env) }.to raise_error(Harness::ValidationError, /never a literal.*R3/)
     end
 
-    it "recusa {{secret.*}} FORA de um secret_header (leak sem masking)" do
+    it "rejects {{secret.*}} OUTSIDE a secret_header (leak without masking)" do
       m = manifest(defaults: { "base_url" => "https://api.test", "path_template" => "/{endpoint}", "method" => "GET" },
                    tools: [{ "name" => "t", "endpoint" => "t",
                              "headers" => { "X-Leak" => "{{secret.TOKEN}}" } }])

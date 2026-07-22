@@ -214,7 +214,7 @@ RSpec.describe Harness::ChatBuilder do
     end
 
     # §11 R1: fidelity between turns.
-    it "reidrata tool_calls (assistant) e tool_call_id (tool) só quando presentes" do
+    it "rehydrates tool_calls (assistant) and tool_call_id (tool) only when present" do
       builder.seed_history(chat, [
                              { "role" => "assistant", "content" => "",
                                "tool_calls" => [{ "id" => "c1", "name" => "search",
@@ -227,11 +227,11 @@ RSpec.describe Harness::ChatBuilder do
       tc = assistant[:tool_calls]["c1"]
       expect([tc.id, tc.name, tc.arguments]).to eq(["c1", "search", { "q" => "x" }])
       expect(tool[:tool_call_id]).to eq("c1")
-      # a mensagem sem tool_calls NÃO ganha a chave (mantém o shape de 2 args do fake)
+      # the message without tool_calls does NOT get the key (keeps the fake's 2-arg shape)
       expect(assistant.key?(:tool_call_id)).to be(false)
     end
 
-    it "achata unidades de eviction (Array) do provider de volta num fluxo plano" do
+    it "flattens the provider's eviction units (Array) back into a flat flow" do
       builder.seed_history(chat, [
                              { role: :user, content: "u" },
                              [{ role: :assistant, content: "a" }, { role: :tool, content: "t", tool_call_id: "c1" }]

@@ -1,4 +1,4 @@
-# Build context enxuto: fora tudo que não vai pra imagem.
+# Lean build context: leave out everything that doesn't go into the image.
 .git
 .github
 .claude

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Fase 5 Etapa A: store versionado + mascarado das tools por dados.
+# Phase 5 Stage A: versioned + masked store for data-defined tools.
 RSpec.describe Harness::ToolStore do
   subject(:store) { described_class.new(config_store: Harness::ConfigStore.new(store: Harness::Stores::Memory.new)) }
 
@@ -26,12 +26,12 @@ RSpec.describe Harness::ToolStore do
     }
   end
 
-  it "write/get round-trip; names/all listam; all_raw p/ overlay" do
+  it "write/get round-trip; names/all list; all_raw for overlay" do
     store.write(def_attrs(name: "cep"))
     store.write(def_attrs(name: "clima", request: { url: "https://c.test/{{cep}}" }))
 
     expect(store.get("cep")["name"]).to eq("cep")
-    expect(store.names).to eq(%w[cep clima])            # lexicográfico
+    expect(store.names).to eq(%w[cep clima])            # lexicographic
     expect(store.all.map { |d| d["name"] }).to contain_exactly("cep", "clima")
     expect(store.all_raw.size).to eq(2)
   end
@@ -41,7 +41,7 @@ RSpec.describe Harness::ToolStore do
       .to raise_error(Harness::ValidationError, /name/)
   end
 
-  it "mascara headers secretos em get/all; get_raw devolve o real" do
+  it "masks secret headers in get/all; get_raw returns the real one" do
     store.write(with_secret(token: "SECRET-123"))
 
     masked = store.get("api")
@@ -56,9 +56,9 @@ RSpec.describe Harness::ToolStore do
     expect(dump).not_to include("SUPERSECRET")
   end
 
-  it "sentinel de volta preserva o segredo; string nova substitui" do
+  it "sentinel sent back preserves the secret; a new string replaces it" do
     store.write(with_secret(token: "ORIG"))
-    # UI reenvia mascarado (sentinel) -> preserva ORIG
+    # UI resends the masked value (sentinel) -> preserves ORIG
     store.write(with_secret.merge(request: {
                                     method: "POST", url: "https://api.test/x",
                                     headers: { "Authorization" => Harness::SecretMasking::SENTINEL, "X-Trace" => "off" }
@@ -66,12 +66,12 @@ RSpec.describe Harness::ToolStore do
     expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer ORIG")
     expect(store.get_raw("api")["request"]["headers"]["X-Trace"]).to eq("off")
 
-    # nova string substitui
+    # a new string replaces it
     store.write(with_secret(token: "NOVO"))
     expect(store.get_raw("api")["request"]["headers"]["Authorization"]).to eq("Bearer NOVO")
   end
 
-  it "sobrescrever versiona; create_only recusa" do
+  it "overwriting creates a version; create_only refuses" do
     store.write(def_attrs(name: "cep", description: "v1"))
     store.write(def_attrs(name: "cep", description: "v2"))
     expect(store.versions("cep").map { |h| h["definition"]["description"] }).to eq(["v1"])

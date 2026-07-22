@@ -2,16 +2,16 @@
 
 require "ruby_llm"
 
-# Plugin de exemplo. O módulo responde a .register(api) — o análogo Ruby do
-# register(api) { api.registerTool(...) } do OpenClaw.
+# Example plugin. The module responds to .register(api) — the Ruby analogue of
+# OpenClaw's register(api) { api.registerTool(...) }.
 module WeatherPlugin
   class GetWeather < RubyLLM::Tool
-    description "Consulta o clima atual de uma cidade"
-    param :city, desc: "Nome da cidade"
+    description "Looks up the current weather for a city"
+    param :city, desc: "City name"
 
     def execute(city:)
-      # STUB — plugue uma API real de clima aqui.
-      { city: city, temp_c: 24, condition: "ensolarado" }
+      # STUB — plug in a real weather API here.
+      { city: city, temp_c: 24, condition: "sunny" }
     end
   end
 

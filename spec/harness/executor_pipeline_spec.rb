@@ -112,7 +112,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "§11 R1 — persistência de tool calls/results (fidelidade entre turnos)" do
+  describe "§11 R1 — persistence of tool calls/results (fidelity across turns)" do
     # Mimics RubyLLM: #ask appends the turn's REAL exchange to #messages (the shared
     # FakeChat does not — that is what the {user, assistant} fallback covers).
     let(:recording_chat) do
@@ -128,7 +128,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       end.new
     end
 
-    it "persiste o turno inteiro: user, assistant(tool_calls), tool, assistant final" do
+    it "persists the whole turn: user, assistant(tool_calls), tool, final assistant" do
       session_store.create(id: "s1")
       recording_chat.final_content = "resposta final"
 
@@ -140,7 +140,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       expect(msgs[2]).to include("role" => "tool", "tool_call_id" => "c1", "content" => "resultado da tool")
     end
 
-    it "a bolha assistant final carrega o texto REDIGIDO (D3), não o raw do gem" do
+    it "the final assistant bubble carries the REDACTED text (D3), not the gem's raw" do
       session_store.create(id: "s1")
       recording_chat.final_content = "resposta final"
 
@@ -150,7 +150,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
         .to include("role" => "assistant", "content" => "resposta final")
     end
 
-    it "o checkpoint grava a lista PLANA do turno (o provider reagrupa na leitura)" do
+    it "the checkpoint records the turn's FLAT list (the provider regroups on read)" do
       session_store.create(id: "s1")
       recording_chat.final_content = "ok"
 
@@ -158,17 +158,17 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
 
       cp = checkpoint_store.latest("t")
       expect(cp.messages.map { |m| m["role"] }).to eq(%w[user assistant tool assistant])
-      expect(cp.messages).to all(be_a(Hash)) # plano, sem Arrays aninhados
+      expect(cp.messages).to all(be_a(Hash)) # flat, no nested Arrays
     end
 
-    it "FakeChat que NÃO grava messages -> fallback {user, assistant} (compat preservada)" do
+    it "FakeChat that does NOT record messages -> {user, assistant} fallback (compat preserved)" do
       session_store.create(id: "s1")
-      run_turn(build_executor, make_task) # FakeChat padrão: #ask não popula #messages
+      run_turn(build_executor, make_task) # default FakeChat: #ask does not populate #messages
 
       expect(session_store.find("s1").messages.map { |m| m["role"] }).to eq(%w[user assistant])
     end
 
-    it "trunca role:tool > 4k na persistência (resultado íntegro segue no ToolTraceStore)" do
+    it "truncates role:tool > 4k on persistence (the full result stays in the ToolTraceStore)" do
       clipped = build_executor.send(:clip_tool_content, "a" * 5_000)
       expect(clipped).to start_with("a" * 4_000)
       expect(clipped).to include("truncated")
@@ -176,12 +176,12 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "§11 B2 — comando tipado (fonte única string||symbol)" do
+  describe "§11 B2 — typed command (single source string||symbol)" do
     def task_with(command)
       Struct.new(:command, :session_id).new(command, nil)
     end
 
-    it "lê o payload por chave string OU symbol via rebuild_command" do
+    it "reads the payload by string OR symbol key via rebuild_command" do
       executor = build_executor
       sym = task_with({ type: :send_message, payload: { message: "oi", history: [1] } })
       str = task_with({ "type" => "send_message", "payload" => { "message" => "oi", "history" => [1] } })
@@ -189,7 +189,7 @@ RSpec.describe "Harness::Executor pipeline (stages 2-9)" do
       [sym, str].each do |t|
         expect(executor.send(:extract_message, t)).to eq("oi")
         expect(executor.send(:command_history, t)).to eq([1])
-        expect(executor.send(:command_type, t)).to eq("send_message") # sempre String
+        expect(executor.send(:command_type, t)).to eq("send_message") # always a String
       end
     end
   end

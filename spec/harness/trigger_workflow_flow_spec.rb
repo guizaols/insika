@@ -3,8 +3,8 @@
 require "spec_helper"
 require "async"
 
-# Stage 6 variant integration (workflow) — fake PORO workflow, collaborators
-# fake da suíte da task 12. Sem ruby_llm.
+# Stage 6 variant integration (workflow) — fake PORO workflow, fake
+# collaborators from the task 12 suite. No ruby_llm.
 RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
   let(:backend) { Harness::Stores::Memory.new }
   let(:session_store) { Harness::SessionStore.new(store: backend) }
@@ -27,9 +27,9 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     }
   end
 
-  # O Engine emite :policy_denied no SEU stream; o Executor é a fonte
-  # correlacionada (com seq) no stream da pipeline (doc 03 L3). Streams
-  # separated avoid a duplicate event — wiring decision (task 26).
+  # The Engine emits :policy_denied on ITS OWN stream; the Executor is the
+  # correlated source (with seq) on the pipeline stream (doc 03 L3). Separate
+  # streams avoid a duplicate event — wiring decision (task 26).
   let(:engine_stream) { SpyEventStream.new }
 
   def build_executor(allowed_tools: [])
@@ -44,7 +44,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     )
   end
 
-  # Tool PORO como INSTÂNCIA callable com #name (o workflow chama tool.call).
+  # Tool PORO as a callable INSTANCE with #name (the workflow calls tool.call).
   def poro_tool(name, &body)
     obj = Object.new
     obj.define_singleton_method(:name) { name }
@@ -64,7 +64,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     end
   end
 
-  it "invoca o workflow com input, context (ContextPackage) e tools (instâncias filtradas)" do
+  it "invokes the workflow with input, context (ContextPackage) and tools (filtered instances)" do
     seen = {}
     workflow_registry.register("flow", lambda { |input, context:, tools:|
       seen[:input] = input
@@ -72,7 +72,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
       seen[:tools] = tools
       "resultado do workflow"
     })
-    # policy permite a tool "t" (via ToolAllowlist, allow nil -> todas required)
+    # policy allows the tool "t" (via ToolAllowlist, allow nil -> all required)
     tool_registry.register("t", poro_tool("t"))
     executor = build_executor
 
@@ -80,18 +80,18 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
 
     expect(seen[:input]).to eq({ "q" => "x" })
     expect(seen[:context]).to be_a(ContextPackage)
-    expect(seen[:tools].map { |t| t.__getobj__ }).to all(respond_to(:name)) # instâncias envelopadas
+    expect(seen[:tools].map { |t| t.__getobj__ }).to all(respond_to(:name)) # enveloped instances
     stored = task_store.find("t")
     expect(stored.status).to eq(:completed)
     done = event_stream.events.find { |e| e.type == :task_completed }
     expect(done.data[:content]).to eq("resultado do workflow")
   end
 
-  it "tools filtradas pela Resolution: a tool negada nunca chega ao workflow" do
+  it "tools filtered by the Resolution: the denied tool never reaches the workflow" do
     got_tools = nil
     workflow_registry.register("flow", ->(_i, context:, tools:) { got_tools = tools; "ok" })
     tool_registry.register("allowed", poro_tool("allowed"))
-    tool_registry.register("negada", poro_tool("negada"), optional: true) # optional sem opt-in -> deny
+    tool_registry.register("negada", poro_tool("negada"), optional: true) # optional without opt-in -> deny
     executor = build_executor
 
     run(executor, make_task)
@@ -101,7 +101,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(names).not_to include("negada")
   end
 
-  it "WorkflowAllowlist: workflow fora de workflows_allow -> :policy_denied + task :failed, workflow nunca invocado" do
+  it "WorkflowAllowlist: workflow outside workflows_allow -> :policy_denied + task :failed, workflow never invoked" do
     invoked = false
     workflow_registry.register("flow", ->(*, **) { invoked = true })
     profile_no_wf = Harness::AgentProfile.build(id: "sales", model: "gpt",
@@ -123,8 +123,8 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
 
     expect(invoked).to be(false)
     expect(task_store.find("t").status).to eq(:failed)
-    # exatamente 1 :policy_denied na pipeline (o correlacionado do Executor) —
-    # sem duplicata (o do Engine foi p/ engine_stream).
+    # exactly 1 :policy_denied on the pipeline (the Executor's correlated one) —
+    # no duplicate (the Engine's went to engine_stream).
     expect(event_stream.types.count(:policy_denied)).to eq(1)
     expect(event_stream.events.find { |e| e.type == :policy_denied }.meta[:seq]).to be_a(Integer)
   end
@@ -142,7 +142,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(task_store.find("t").status).to eq(:completed)
   end
 
-  it "workflow = 1 turno lógico: exatamente 1 checkpoint ao final; :task_completed com o retorno" do
+  it "workflow = 1 logical turn: exactly 1 checkpoint at the end; :task_completed with the return" do
     workflow_registry.register("flow", ->(*, **) { 3.times.map { |i| "passo#{i}" }.last })
     executor = build_executor
 
@@ -211,12 +211,12 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
   it "side-effect + resume: side_effect tool does not re-run on resume (skip by name)" do
     calls = 0
     tool_registry.register("charge", poro_tool("charge") { calls += 1 }, side_effect: true)
-    # workflow chama a tool (envelopada) — na 1ª exec registra o side-effect
+    # the workflow calls the tool (enveloped) — on the 1st exec it records the side-effect
     workflow_registry.register("flow", ->(_i, context:, tools:) { tools.first.call({}); "ok" })
     executor = build_executor
 
-    # Ato 1: monta estado pós-crash — turno 1 rodou a tool (side-effect na avulsa),
-    # checkpoint turn 1, task running com Execution aberta.
+    # Act 1: builds the post-crash state — turn 1 ran the tool (standalone side-effect),
+    # checkpoint turn 1, task running with an open Execution.
     make_task
     task_store.begin_execution("t")
     task_store.transition("t", to: :running)
@@ -231,8 +231,8 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
       executor.instance_variable_get(:@running)["t"]&.wait
     end
 
-    expect(calls).to eq(0) # a tool NÃO reexecutou (skip por nome)
+    expect(calls).to eq(0) # the tool did NOT re-execute (skip by name)
     expect(task_store.find("t").status).to eq(:completed)
-    expect(task_store.find("t").executions.size).to eq(2) # nova Execution
+    expect(task_store.find("t").executions.size).to eq(2) # new Execution
   end
 end

@@ -1202,7 +1202,7 @@ RSpec.describe Studio::App do
 
   # --- Agent creation (parity: "each one creates its own BIA") -----------------
 
-  it "cria agente via POST /agents (dispatch create_agent) e redireciona pro detalhe" do
+  it "creates an agent via POST /agents (dispatches create_agent) and redirects to the detail" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents").body)
@@ -1228,9 +1228,9 @@ RSpec.describe Studio::App do
     expect(login(app).get("/mcp").body).to include("No MCP instances")
   end
 
-  # --- Banner de restart recomendado ---------------------------------------
+  # --- Recommended restart banner ------------------------------------------
 
-  it "acende o banner de restart ao mexer em MCP e some ao dispensar" do
+  it "lights the restart banner when touching MCP and clears it on dismiss" do
     app, = build_app
     client = login(app)
     expect(client.get("/agents").body).not_to include("Restart recommended")

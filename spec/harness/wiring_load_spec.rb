@@ -1,26 +1,26 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../config/wiring" # composition root real (constrói o grafo eager)
+require_relative "../../config/wiring" # real composition root (builds the eager graph)
 
-# Guard de carga do composition root (P2B task 11): a fatia B acrescentou
-# CAPABILITY_REGISTRY + TOOL_CATALOG e o Context::Providers::ToolSearch — este
-# spec trava que o wiring real ainda constrói sem erro com essas adições.
+# Load guard for the composition root (P2B task 11): slice B added
+# CAPABILITY_REGISTRY + TOOL_CATALOG and Context::Providers::ToolSearch — this
+# spec locks that the real wiring still builds without error with these additions.
 RSpec.describe Harness::Wiring do
-  it "constrói CAPABILITY_REGISTRY e TOOL_CATALOG" do
+  it "builds CAPABILITY_REGISTRY and TOOL_CATALOG" do
     expect(described_class::CAPABILITY_REGISTRY).to be_a(Harness::CapabilityRegistry)
     expect(described_class::TOOL_CATALOG).to be_a(Harness::ToolCatalog)
   end
 
-  it "inclui o Context::Providers::ToolSearch no CONTEXT_PROVIDERS" do
+  it "includes Context::Providers::ToolSearch in CONTEXT_PROVIDERS" do
     expect(described_class::CONTEXT_PROVIDERS).to include(a_kind_of(Harness::Context::Providers::ToolSearch))
   end
 
-  it "EXECUTOR construído sem ArgumentError (kwargs capability_registry/tool_catalog aceitos)" do
+  it "EXECUTOR built without ArgumentError (capability_registry/tool_catalog kwargs accepted)" do
     expect(described_class::EXECUTOR).to be_a(Harness::Executor)
   end
 
-  it "constrói MEMORY_STORE e inclui o Memory provider no CONTEXT_PROVIDERS (P2C)" do
+  it "builds MEMORY_STORE and includes the Memory provider in CONTEXT_PROVIDERS (P2C)" do
     expect(described_class::MEMORY_STORE).to be_a(Harness::MemoryStore)
     expect(described_class::CONTEXT_PROVIDERS).to include(a_kind_of(Harness::Context::Providers::Memory))
   end

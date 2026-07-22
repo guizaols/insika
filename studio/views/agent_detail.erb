@@ -92,7 +92,7 @@
         <summary>safe replies — override per category <span class="muted">(blank = engine default; this agent's voice/language)</span></summary>
         <% gr_resp = (@guardrails["responses"] || @guardrails[:responses] || {}) %>
         <label>default <span class="muted">(catch-all for any blocked category)</span>
-          <textarea name="guardrail_response_default" rows="2" placeholder="Não consigo ajudar com esse pedido específico…"><%= guardrail_field(gr_resp, :default, "") %></textarea>
+          <textarea name="guardrail_response_default" rows="2" placeholder="I can't help with that particular request…"><%= guardrail_field(gr_resp, :default, "") %></textarea>
         </label>
         <div class="grid-2">
           <% %w[injection sexual abuse escalate].each do |cat| %>

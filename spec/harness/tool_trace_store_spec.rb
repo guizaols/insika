@@ -29,12 +29,12 @@ RSpec.describe Harness::ToolTraceStore do
     expect(store.for_session("")).to eq([])
   end
 
-  it "detecta erro (result com chave error) -> ok=false" do
+  it "detects an error (result with an error key) -> ok=false" do
     store.record(session_id: "s", entry: entry(result: { "error" => "HTTP 404" }))
     expect(store.for_session("s").first["ok"]).to be(false)
   end
 
-  it "mascara valores de chaves sensíveis (recursivo)" do
+  it "masks the values of sensitive keys (recursive)" do
     store.record(session_id: "s", entry: entry(
                                      args: { "Authorization" => "Bearer SEGREDO", "nested" => { "api_key" => "xyz", "q" => "ok" } }
                                    ))
@@ -45,7 +45,7 @@ RSpec.describe Harness::ToolTraceStore do
     expect(args).to include("ok") # non-sensitive value preserved
   end
 
-  it "trunca campos grandes (args/result)" do
+  it "truncates large fields (args/result)" do
     store.record(session_id: "s", entry: entry(result: "x" * 5000))
     expect(store.for_session("s").first["result"]).to end_with("…(truncado)")
     expect(store.for_session("s").first["result"].length).to be <= (2000 + 20)
@@ -54,7 +54,7 @@ RSpec.describe Harness::ToolTraceStore do
   it "caps the per-session list (does not grow unbounded)" do
     (described_class::MAX_PER_SESSION + 30).times { |i| store.record(session_id: "s", entry: entry(call_id: "c#{i}")) }
     expect(store.for_session("s").size).to eq(described_class::MAX_PER_SESSION)
-    # mantém as MAIS RECENTES
+    # keeps the MOST RECENT ones
     expect(store.for_session("s").last["call_id"]).to eq("c#{described_class::MAX_PER_SESSION + 29}")
   end
 

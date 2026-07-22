@@ -4,8 +4,8 @@ require "securerandom"
 require "time"
 
 module Harness
-  # Durable record of an ASYNC delegation (RFC-0010 §5, item 21 Fase 2, hermes
-  # "durabilidade de delegação"). The synchronous subagent (Fase 1) needs no
+  # Durable record of an ASYNC delegation (RFC-0010 §5, item 21 Phase 2, hermes
+  # "delegation durability"). The synchronous subagent (Phase 1) needs no
   # record — it lives and dies inside the parent's turn. The ASYNC subagent does:
   # the parent DISPATCHES and its turn ends; the child runs independently; when the
   # child finishes, its result is delivered to the parent as a NEW turn (never

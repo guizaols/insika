@@ -10,7 +10,7 @@ RSpec.describe Harness::Server::A2A::App do
   let(:skill_catalog) { Harness::SkillCatalog.new([]) }
   let(:profiles) { { "assistant" => Harness::AgentProfile.build(id: "assistant", model: "m", base_prompt: "SOUL") } }
 
-  # Bus FAKE (unit): reproduz o mínimo dos handlers de forma determinística. A
+  # FAKE bus (unit): reproduces the minimum of the handlers deterministically. The
   # integration with the REAL handlers/Executor is the E2E smoke (task 8).
   let(:command_bus) do
     Class.new do
@@ -67,13 +67,13 @@ RSpec.describe Harness::Server::A2A::App do
   end
 
   describe "tasks/get" do
-    it "projeta o estado corrente" do
+    it "projects the current state" do
       task = task_store.create(command: { "type" => "send_message" }, session_id: "s1")
       res = rpc("tasks/get", { "id" => task.id })
       expect(res[:result][:status][:state]).to eq("submitted")
     end
 
-    it "task completed -> status.message com o conteúdo do transcript" do
+    it "task completed -> status.message with the transcript content" do
       task = task_store.create(command: { "type" => "send_message" }, session_id: "s1")
       session_store.create(id: "s1", vars: {})
       session_store.append_messages("s1", [{ "role" => "user", "content" => "oi" },
@@ -88,13 +88,13 @@ RSpec.describe Harness::Server::A2A::App do
       expect(res[:result][:status][:message][:parts].first[:text]).to eq("olá!")
     end
 
-    it "task inexistente -> -32001" do
+    it "nonexistent task -> -32001" do
       expect(rpc("tasks/get", { "id" => "nope" })[:error][:code]).to eq(Harness::Server::A2A::Errors::TASK_NOT_FOUND)
     end
   end
 
   describe "tasks/cancel" do
-    it "despacha cancel_task e projeta 'canceled'" do
+    it "dispatches cancel_task and projects 'canceled'" do
       task = task_store.create(command: { "type" => "send_message" }, session_id: "s1")
       res = rpc("tasks/cancel", { "id" => task.id })
       expect(command_bus.dispatched.map(&:type)).to eq(%i[cancel_task])
@@ -102,7 +102,7 @@ RSpec.describe Harness::Server::A2A::App do
     end
   end
 
-  describe "erros" do
+  describe "errors" do
     it "unknown method -> -32601" do
       expect(rpc("foo/bar")[:error][:code]).to eq(Harness::Server::A2A::Errors::METHOD_NOT_FOUND)
     end
@@ -120,7 +120,7 @@ RSpec.describe Harness::Server::A2A::App do
   end
 
   describe "#agent_card" do
-    it "monta o card do agente configurado" do
+    it "builds the card for the configured agent" do
       card = app.agent_card
       expect(card[:name]).to eq("assistant")
       expect(card[:url]).to eq("https://h.example/a2a")
@@ -129,10 +129,10 @@ RSpec.describe Harness::Server::A2A::App do
   end
 
   # §9.6: A2A::App already does ProfileSource.coerce — passing a StoredProfileSource
-  # (a fonte dinâmica do deployment) faz o AgentCard/inbound enxergarem agentes
+  # (the deployment's dynamic source) makes the AgentCard/inbound see agents
   # created in Studio, without a static PROFILES.
   describe "profiles via StoredProfileSource (§9.6)" do
-    it "resolve o agent_card de um agente criado no store (Studio)" do
+    it "resolves the agent_card of an agent created in the store (Studio)" do
       cs = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
       src = Harness::StoredProfileSource.new(config_store: cs)
       src.put(Harness::AgentProfile.build(id: "bia", model: "m", base_prompt: "SOUL da Bia"))

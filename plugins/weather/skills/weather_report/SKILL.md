@@ -1,16 +1,16 @@
 ---
 name: weather_report
-description: Use quando o cliente pergunta sobre clima, temperatura ou previsão do tempo de uma cidade.
+description: Use when the customer asks about weather, temperature or the forecast for a city.
 ---
 
 # Weather Report
 
-Quando o cliente pergunta sobre o clima:
+When the customer asks about the weather:
 
-1. Chame a tool `get_weather` com a cidade.
-2. Responda com a temperatura e a condição, de forma curta.
+1. Call the `get_weather` tool with the city.
+2. Reply with the temperature and the condition, briefly.
 
-## Restrições
+## Constraints
 
-- Se a cidade não for informada, pergunte qual antes de chamar a tool.
-- Não invente previsão de dias futuros — a tool só dá o clima atual.
+- If the city is not provided, ask which one before calling the tool.
+- Do not make up a forecast for future days — the tool only returns the current weather.

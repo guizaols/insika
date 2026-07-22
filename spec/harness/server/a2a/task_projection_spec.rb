@@ -8,7 +8,7 @@ RSpec.describe Harness::Server::A2A::TaskProjection do
 
   def task(status, id: "t1", session: "s1") = FakeTask.new(id, status, session)
 
-  it "mapeia cada estado do núcleo para o TaskState A2A" do
+  it "maps each core state to the A2A TaskState" do
     {
       queued: "submitted", running: "working", waiting: "input-required",
       paused: "working", completed: "completed", failed: "failed", cancelled: "canceled"
@@ -27,12 +27,12 @@ RSpec.describe Harness::Server::A2A::TaskProjection do
     expect(a2a[:status][:timestamp]).to eq("2026-01-01T00:00:00Z")
   end
 
-  it "completed traz o content em status.message (TextPart, role agent)" do
+  it "completed carries the content in status.message (TextPart, role agent)" do
     a2a = described_class.call(task(:completed), at: "T", content: "resposta")
     expect(a2a[:status][:message]).to eq({ role: "agent", parts: [{ kind: "text", text: "resposta" }] })
   end
 
-  it "failed traz o erro em status.message" do
+  it "failed carries the error in status.message" do
     a2a = described_class.call(task(:failed), at: "T", error: "boom")
     expect(a2a[:status][:message][:parts].first[:text]).to eq("boom")
   end
