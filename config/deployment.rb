@@ -12,6 +12,21 @@ require "ruby_llm"
 require_relative "../deploy/tools"
 
 module Deploy
+  # STRICT config gate (item 23 / §8.1). Validates the environment against the engine
+  # schema PLUS this deployment's own keys. Default = WARN (last-known-good: a rotated
+  # key or a typo must never take the whole service down — same reasoning as the
+  # resilient DEEPSEEK boot below); set HARNESS_CONFIG_STRICT=1 to refuse boot instead.
+  # `harness doctor` gives the same report on demand.
+  ENV_SPECS = [
+    Harness::EnvSchema.spec(name: "DEEPSEEK_API_KEY", secret: true, description: "DeepSeek API key (turns fail until set — env or Studio)."),
+    Harness::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-chat)."),
+    Harness::EnvSchema.spec(name: "TOOL_TIMEOUT", type: :integer, description: "Per-tool-call timeout (s)."),
+    Harness::EnvSchema.spec(name: "TURN_TIMEOUT", type: :integer, description: "Per-turn timeout (s)."),
+    Harness::EnvSchema.spec(name: "ACHEI_INTERNAL_URL", type: :url, description: "Consumer internal API base (data-tool callbacks)."),
+    Harness::EnvSchema.spec(name: "BIA_INTERNAL_API_TOKEN", secret: true, description: "Bearer for the consumer internal API.")
+  ].freeze
+  Harness::EnvSchema.enforce!(extra: ENV_SPECS)
+
   # Cloud resilience (FOLLOWUP): without the key, does NOT bring down the process — the engine
   # comes up (/up green) and turns fail with a clear error until the key exists (via env
   # OR via Studio > LLM providers, which reconfigures RubyLLM at runtime). A
