@@ -187,14 +187,16 @@ module HarnessCodeApp
                  Harness::Commands::ApproveAction.new(pending_action_store: PENDING_ACTION_STORE,
                                                       executor: EXECUTOR, event_stream: EVENT_STREAM))
 
+    # G6/B7 (#93) slimmed Server::App to a pure /v1+/a2a transport: it no longer
+    # takes checkpoint_store/catalogs/registries (skills/tools/workflows are the
+    # Executor's concern, resolved per turn, not the HTTP edge's). Wire only what
+    # the transport reads: the bus, the event stream, the two stores it reads for
+    # GET /v1/tasks/:id, and the gateway_token Bearer.
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
-      checkpoint_store: CHECKPOINT_STORE, pending_action_store: PENDING_ACTION_STORE,
-      catalogs: { skills: CATALOG, prompts: PROMPT_CATALOG },
-      registries: { tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY },
-      config: { gateway_token: HarnessCodeApp::GATEWAY_TOKEN,
-                admin_token: HarnessCodeApp::GATEWAY_TOKEN, allowed_origins: [] }
+      pending_action_store: PENDING_ACTION_STORE,
+      config: { gateway_token: HarnessCodeApp::GATEWAY_TOKEN }
     )
 
     def self.durable? = BACKEND.is_a?(Harness::Stores::SQLite)
