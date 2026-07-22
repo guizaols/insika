@@ -122,6 +122,13 @@ module Deploy
     # platform utility_model (SettingsStore, #18) as its fallback model.
     GUARDRAILS = Harness::Safety::Factory.new(settings_store: SETTINGS_STORE)
 
+    # Production edge (item 33 / §12 G7): rate-limit per chat + token ceiling per
+    # agent, both opt-in (Studio > Settings > Edge limits; per-agent overrides in
+    # the agent config). Counters durable in the SAME backend as everything else.
+    EDGE_LIMITER = Harness::EdgeLimiter.new(
+      ledger: Harness::UsageLedger.new(store: BACKEND), settings_store: SETTINGS_STORE
+    )
+
     # OpenClaw-style prompts become the IDENTITY (pinned) via the Prompt provider.
     # IDENTITY_FILES is the deployment DEFAULT (used by an agent WITHOUT its own
     # prompt_files). An agent with `profile.prompt_files` reads its content from the
@@ -162,6 +169,7 @@ module Deploy
       tool_registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG,
       skill_catalog: CATALOG, prompt_catalog: PROMPT_CATALOG,
       guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS,
+      edge_limiter: EDGE_LIMITER,
       executor_extra: {
         settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks (§10)
         tool_trace_store: TOOL_TRACE_STORE

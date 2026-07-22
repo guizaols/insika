@@ -32,6 +32,21 @@ RSpec.describe "Settings + masking (Phase 4 Step D)" do
       expect(settings.get["compaction"]["keep_last"]).to eq(20)
     end
 
+    it "edge limits default OFF with the windows pre-filled (item 33)" do
+      edge = settings.get["edge"]
+      expect(edge["chat_rate_limit"]).to be_nil
+      expect(edge["agent_token_ceiling"]).to be_nil
+      expect(edge["chat_rate_window"]).to eq(60)
+      expect(edge["agent_token_window"]).to eq(86_400)
+    end
+
+    it "an edge patch deep-merges (a limit save keeps the window defaults)" do
+      settings.update("edge" => { "chat_rate_limit" => 20 })
+      edge = settings.get["edge"]
+      expect(edge["chat_rate_limit"]).to eq(20)
+      expect(edge["chat_rate_window"]).to eq(60)
+    end
+
     it "update does a shallow merge and deep in compaction; persists" do
       settings.update("streaming" => false, "compaction" => { "enabled" => true })
       got = settings.get

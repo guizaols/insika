@@ -30,7 +30,19 @@ module Harness
       "default_model" => nil,
       "default_provider" => nil,
       "fallback_models" => [],
-      "utility_model" => nil
+      "utility_model" => nil,
+      # Edge limits (item 33 / §12 G7) — the platform layer of the EdgeLimiter.
+      # nil/0 = off (opt-in). chat_rate_limit = turn attempts per chat per
+      # chat_rate_window (s); agent_token_ceiling = total tokens per agent per
+      # agent_token_window (s). limit_response overrides the safe reply.
+      # Per-agent overrides live in profile.limits (same keys, sans windows).
+      "edge" => {
+        "chat_rate_limit" => nil,
+        "chat_rate_window" => 60,
+        "agent_token_ceiling" => nil,
+        "agent_token_window" => 86_400,
+        "limit_response" => nil
+      }
     }.freeze
 
     def initialize(config_store:)

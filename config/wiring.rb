@@ -62,6 +62,11 @@ module Harness
     # always on for agents that opt in. See config/deployment.rb for the full graph.
     GUARDRAILS = Harness::Safety::Factory.new
 
+    # Production edge (item 33). No SettingsStore at the base, so only an agent
+    # that carries its own limits (chat_rate_limit / agent_token_ceiling) is
+    # limited; without them the link is pass-through (parity).
+    EDGE_LIMITER = Harness::EdgeLimiter.new(ledger: Harness::UsageLedger.new(store: BACKEND))
+
     # Agent profiles (data-driven). EMPTY at the base — a concrete deployment (or the
     # smoke wiring) registers the profiles.
     PROFILES = {}.freeze
@@ -82,7 +87,8 @@ module Harness
       spine: SPINE, profiles: PROFILES,
       tool_registry: REGISTRY, tool_catalog: TOOL_CATALOG,
       skill_catalog: CATALOG, prompt_catalog: PROMPT_CATALOG,
-      guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS
+      guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS,
+      edge_limiter: EDGE_LIMITER
     )
 
     CONTEXT_BUILDER = GRAPH.context_builder

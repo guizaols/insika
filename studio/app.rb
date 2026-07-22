@@ -464,6 +464,16 @@ module Studio
           r.redirect("/studio/settings?s=models")
         end
 
+        # Edge limits (item 33 / §12 G7): the platform rate-limit/cost layer.
+        # Its own form for the same reason as models — saves never cross-clobber.
+        r.post "edge" do
+          check_csrf!
+          with_flash("Edge limits saved.") do
+            dispatch(:update_settings, { patch: edge_patch(r) })
+          end
+          r.redirect("/studio/settings?s=edge")
+        end
+
         # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
         r.on "providers" do
           r.post "delete" do
@@ -1117,7 +1127,7 @@ module Studio
 
     # --- Settings + LLM providers ----------------------------------
 
-    SETTINGS_SECTIONS = %w[general models llm].freeze
+    SETTINGS_SECTIONS = %w[general models edge llm].freeze
     def render_settings
       store = harness[:settings_store]
       @settings = store ? store.get : Harness::SettingsStore::DEFAULTS

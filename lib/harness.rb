@@ -16,6 +16,10 @@ require_relative "harness/checkpoint"
 require_relative "harness/command"
 require_relative "harness/hooks"
 require_relative "harness/middleware"
+# Production edge (item 33 / §12 G7): windowed counters + the rate-limit/cost
+# Middleware. Both inert until configured (nil/0 = off).
+require_relative "harness/usage_ledger"
+require_relative "harness/edge_limiter"
 # Content safety / guardrails (RFC-0009). detectors.rb is self-contained (the eval
 # requires it directly, D4); the rest hang off Middleware/hooks seams. No ruby_llm
 # at load-time — Factory requires the gem lazily, like the Executor's create_chat.

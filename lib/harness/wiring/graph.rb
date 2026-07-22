@@ -66,10 +66,14 @@ module Harness
       #                    both wirings compose RFC-0009 identically.
       # executor_extra:    optional Executor kwargs a root adds (deployment passes
       #                    settings_store + tool_trace_store; the base passes none).
+      # edge_limiter:      optional EdgeLimiter (item 33 / §12 G7). It goes BEFORE
+      #                    the InputGuardrail so a flood can't spend the LLM
+      #                    moderator; nil = no edge (parity).
       def build(spine:, profiles:, tool_registry:, tool_catalog:, skill_catalog:,
-                prompt_catalog:, guardrails:, context_providers:, executor_extra: {})
+                prompt_catalog:, guardrails:, context_providers:, edge_limiter: nil,
+                executor_extra: {})
         spine.hooks.register(:task, after: guardrails.output_validator)
-        middleware = Harness::MiddlewareStack.new([guardrails.input_guardrail])
+        middleware = Harness::MiddlewareStack.new([edge_limiter, guardrails.input_guardrail].compact)
 
         context_builder = Harness::ContextBuilder.new(
           providers: context_providers, event_stream: spine.event_stream, hooks: spine.hooks

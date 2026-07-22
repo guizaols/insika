@@ -34,6 +34,12 @@
       <label>tool_timeout (s)
         <input type="text" name="tool_timeout" value="<%= @agent.limits[:tool_timeout] %>" inputmode="numeric">
       </label>
+      <label>chat_rate_limit <span class="muted">(turns/chat/window; blank = platform, 0 = off)</span>
+        <input type="text" name="chat_rate_limit" value="<%= @agent.limits[:chat_rate_limit] %>" inputmode="numeric" placeholder="inherit platform edge">
+      </label>
+      <label>agent_token_ceiling <span class="muted">(tokens/window; blank = platform, 0 = off)</span>
+        <input type="text" name="agent_token_ceiling" value="<%= @agent.limits[:agent_token_ceiling] %>" inputmode="numeric" placeholder="inherit platform edge">
+      </label>
     </div>
     <label class="check">
       <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
