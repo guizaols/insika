@@ -1,15 +1,15 @@
 import { Controller } from "@hotwired/stimulus"
 import { renderMarkdown } from "../markdown"
 
-// live-transcript (island D9) — assina o SSE de /v1/events (mesma origem, sem
-// header de auth: é a API do consumidor) e renderiza o turno ao vivo: deltas de
-// texto viram bolha do assistente (renderizada como Markdown, §11 A1);
-// tool_call/tool_result/skill viram tool-cards colapsáveis (§11 A2). Reusa o
-// protocolo de eventos já provado no /admin (#24), empacotado como controller
-// Stimulus (CSP estrita 'self' — nada de <script> inline).
+// live-transcript (island D9) — subscribes to the SSE stream from /v1/events (same
+// origin, no auth header: it's the consumer API) and renders the turn live: text
+// deltas become an assistant bubble (rendered as Markdown, §11 A1);
+// tool_call/tool_result/skill become collapsible tool-cards (§11 A2). Reuses the
+// event protocol already proven in /admin (#24), packaged as a Stimulus controller
+// (strict CSP 'self' — no inline <script>).
 //
-// Curadoria (§11 A1): eventos de bookkeeping não têm bolha. O terminal de
-// sucesso (:task_completed) NÃO é ignorado — vira só a pill de status (abaixo).
+// Curation (§11 A1): bookkeeping events get no bubble. The success terminal
+// (:task_completed) is NOT ignored — it just becomes the status pill (below).
 const IGNORED = new Set(["task_started", "checkpoint_created"])
 
 // Ceiling for the SSE reconnect backoff (§12 A3): 1s→2s→…→30s, then steady.

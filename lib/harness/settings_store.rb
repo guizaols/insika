@@ -13,8 +13,8 @@ module Harness
     SCOPE = "settings"
     KEY   = "general"
 
-    # STRICT config, settings layer (item 23 / §8.1 — "no silent config compat: toda
-    # migração de schema explícita"). The settings record carries a `schema_version`;
+    # STRICT config, settings layer (item 23 / §8.1 — "no silent config compat: every
+    # schema migration explicit"). The settings record carries a `schema_version`;
     # every shape change is a numbered migration here, applied ONLY by the explicit
     # `migrate!` (Studio settings saves never silently reinterpret old-shaped data).
     # v1 is the baseline: a pre-versioning record (no `schema_version`) reads as 0 and

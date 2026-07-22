@@ -1,57 +1,57 @@
-# Harness Studio (Fase 4)
+# Harness Studio (Phase 4)
 
-UI de gestão server-rendered (Roda + Hotwire), montada sob `/studio`. Substitui o
-agent-studio do OpenClaw — **um processo, um deploy, uma linguagem**. Fala com o
-runtime pela mesma superfície da API (despacha Commands no `CommandBus`, lê o
-`ProfileSource`/stores); **nunca** escreve em store direto.
+Server-rendered management UI (Roda + Hotwire), mounted under `/studio`. Replaces
+OpenClaw's agent-studio — **one process, one deploy, one language**. It talks to the
+runtime through the same surface as the API (dispatches Commands on the `CommandBus`,
+reads the `ProfileSource`/stores); it **never** writes to a store directly.
 
-## Rodar (sem Node)
+## Run (without Node)
 
-O bundle de front (`assets/dist/*`) é **versionado**. `ruby scripts/serve_real.rb`
-serve o Studio direto — não precisa de Node:
+The front-end bundle (`assets/dist/*`) is **checked in**. `ruby scripts/serve_real.rb`
+serves the Studio directly — no Node required:
 
 ```bash
-export DEEPSEEK_API_KEY=...        # chave do agente (openclaw/.env.local)
-export ADMIN_TOKEN=troque-isto     # token de login do Studio (D7)
+export DEEPSEEK_API_KEY=...        # the agent's key (openclaw/.env.local)
+export ADMIN_TOKEN=change-me       # Studio login token (D7)
 ruby scripts/serve_real.rb         # → http://localhost:9292/studio
 ```
 
-Login em `/studio/login` com o `ADMIN_TOKEN`. Cookie de sessão httpOnly/SameSite=Lax
-(D7); o secret de sessão deriva do token de admin (estável entre restarts).
+Log in at `/studio/login` with the `ADMIN_TOKEN`. Session cookie is httpOnly/SameSite=Lax
+(D7); the session secret is derived from the admin token (stable across restarts).
 
-## Editar o front (precisa de Node)
+## Edit the front-end (needs Node)
 
-Só quem mexe no CSS/JS precisa do Node. O pipeline é **esbuild + Tailwind** (D8):
+Only people touching the CSS/JS need Node. The pipeline is **esbuild + Tailwind** (D8):
 
 ```bash
 cd studio
 npm install
-npm run build        # gera assets/dist/{application.js,application.css} (versionados)
-npm run watch        # rebuild contínuo em dev
+npm run build        # generates assets/dist/{application.js,application.css} (checked in)
+npm run watch        # continuous rebuild in dev
 ```
 
 - `assets/src/application.js` — entry: Stimulus + Turbo + controllers.
-- `assets/src/controllers/` — islands (D9): `live-transcript` (SSE de /v1/events),
-  `code-editor` (CodeMirror 6; usado na autoria de prompts/skills — Etapa F).
-- `assets/src/application.css` — Tailwind (`base`/preflight) + design system em
+- `assets/src/controllers/` — islands (D9): `live-transcript` (SSE from /v1/events),
+  `code-editor` (CodeMirror 6; used for authoring prompts/skills — Stage F).
+- `assets/src/application.css` — Tailwind (`base`/preflight) + design system in
   `@layer components`.
 
-CSP estrita `'self'` (sem `unsafe-inline`): todo JS/CSS vem do bundle same-origin.
+Strict CSP `'self'` (no `unsafe-inline`): all JS/CSS comes from the same-origin bundle.
 
-## Estrutura
+## Structure
 
 ```
 studio/
-  app.rb            # Studio::App (Roda): rotas, auth por cookie, CSRF, CSP, assets
-  views/            # ERB (escape automático): layout, login, agents, playground, 404
-  assets/src/       # fontes do front (Node)
-  assets/dist/      # bundle versionado (servido por /studio/assets/dist/*)
+  app.rb            # Studio::App (Roda): routes, cookie auth, CSRF, CSP, assets
+  views/            # ERB (auto-escaped): layout, login, agents, playground, 404
+  assets/src/       # front-end sources (Node)
+  assets/dist/      # checked-in bundle (served from /studio/assets/dist/*)
   package.json      # build:css / build:js / build / watch
   tailwind.config.js
 ```
 
-## Estado (Etapa E — tasks 12-14)
+## Status (Stage E — tasks 12-14)
 
-Páginas prontas: **login**, **agents (lista)**, **playground (SSE)**. As páginas de
-autoria (agents-detail/prompts/skills/tools/mcp/settings/system-files/chats) chegam
-nas Etapas F/G. Backend de config (Etapas A–D) já completo.
+Pages ready: **login**, **agents (list)**, **playground (SSE)**. The authoring pages
+(agents-detail/prompts/skills/tools/mcp/settings/system-files/chats) arrive in
+Stages F/G. Config backend (Stages A–D) already complete.

@@ -5,9 +5,9 @@ require "async"
 require_relative "../../../server/responses"
 require_relative "../../../server/sse_body"
 
-# Fase 6 Etapa A: adapter OpenAI Responses (/v1/responses) — drop-in do gateway
-# OpenClaw. Testa o parse do request e o mapa Event->frame SSE (fidelidade ao
-# parser do OpenclawDispatcher, R1).
+# Phase 6 Stage A: OpenAI Responses adapter (/v1/responses) — drop-in for the
+# OpenClaw gateway. Tests request parsing and the Event->SSE frame map (fidelity
+# to the OpenclawDispatcher parser, R1).
 RSpec.describe Harness::Server::Responses do
   # minimal req responding to get_header (unique name so it doesn't leak a constant).
   RespReqDouble = Struct.new(:headers) do
@@ -18,7 +18,7 @@ RSpec.describe Harness::Server::Responses do
   def ev(type, data = {}) = Harness::Event.new(type: type, data: data, meta: { task_id: "t" })
 
   describe ".parse_request" do
-    it "extrai agente de model 'openclaw:<agent>', user e input string" do
+    it "extracts the agent from model 'openclaw:<agent>', user, and string input" do
       body = { model: "openclaw:agent-store-x", user: "chat-1", stream: true, input: "oi" }
       out = described_class.parse_request(body, req)
       expect(out).to eq(agent: "agent-store-x", user: "chat-1", message: "oi")
@@ -29,7 +29,7 @@ RSpec.describe Harness::Server::Responses do
       expect(out[:agent]).to eq("agent-y")
     end
 
-    it "input como array de partes -> junta os textos" do
+    it "input as an array of parts -> joins the texts" do
       body = { model: "openclaw:a", user: "c", input: [{ text: "linha1" }, { "text" => "linha2" }] }
       expect(described_class.parse_request(body, req)[:message]).to eq("linha1\nlinha2")
     end
@@ -65,7 +65,7 @@ RSpec.describe Harness::Server::Responses do
       expect(f).to end_with("data: [DONE]\n\n")
     end
 
-    it ":task_completed com usage -> response.completed carrega usage (tokens) + model (Fase 6)" do
+    it ":task_completed with usage -> response.completed carries usage (tokens) + model (Phase 6)" do
       f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 12, output_tokens: 8,
                                                                    total_tokens: 20, model: "deepseek-chat" } }))
       expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
@@ -81,7 +81,7 @@ RSpec.describe Harness::Server::Responses do
       expect(f).to include("data: [DONE]")
     end
 
-    it "eventos sem correspondência -> nil (pulados)" do
+    it "events with no match -> nil (skipped)" do
       expect(described_class.frame_for(ev(:task_started))).to be_nil
       expect(described_class.frame_for(ev(:tool_result, { name: "x", result: "y" }))).to be_nil
       expect(described_class.frame_for(ev(:skill_activated, { name: "s" }))).to be_nil
@@ -114,6 +114,6 @@ RSpec.describe Harness::Server::Responses do
     expect(joined).to include('"delta":" tudo bem?"')
     expect(joined).to include('"type":"response.completed"')
     expect(joined).to end_with("data: [DONE]\n\n")
-    expect(joined).not_to include("task_started") # evento pulado
+    expect(joined).not_to include("task_started") # skipped event
   end
 end

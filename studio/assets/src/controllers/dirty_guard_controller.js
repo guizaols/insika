@@ -1,13 +1,13 @@
 import { Controller } from "@hotwired/stimulus"
 
-// dirty-guard (island polish, Etapa H) — evita perder edição não salva. Marca o
-// form como "sujo" ao primeiro input/change; se o operador tentar sair (fechar
-// aba, recarregar ou navegar via Turbo) com edição pendente, confirma antes.
-// O submit limpa o estado (o POST/redirect que segue não deve disparar o aviso).
+// dirty-guard (island polish, Stage H) — prevents losing unsaved edits. Marks the
+// form as "dirty" on the first input/change; if the operator tries to leave (close
+// the tab, reload, or navigate via Turbo) with a pending edit, it confirms first.
+// Submitting clears the state (the POST/redirect that follows must not trigger the warning).
 //
-// O island code-editor (CodeMirror) reflete no <textarea> e dispara um evento
-// `input` sintético — por isso o listener no nível do form captura edições no
-// editor, não só nos <input> nativos.
+// The code-editor island (CodeMirror) reflects into the <textarea> and dispatches a
+// synthetic `input` event — so the form-level listener captures edits in the editor,
+// not just in native <input>s.
 export default class extends Controller {
   connect() {
     this.dirty = false
@@ -16,10 +16,10 @@ export default class extends Controller {
     this.onBeforeUnload = (e) => {
       if (!this.dirty) return
       e.preventDefault()
-      e.returnValue = "" // exigido por alguns navegadores para mostrar o prompt nativo
+      e.returnValue = "" // required by some browsers to show the native prompt
     }
     this.onVisit = (e) => {
-      if (this.dirty && !window.confirm("Há alterações não salvas. Sair mesmo assim?")) {
+      if (this.dirty && !window.confirm("You have unsaved changes. Leave anyway?")) {
         e.preventDefault()
       }
     }

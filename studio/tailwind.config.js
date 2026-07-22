@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
-// Tailwind do Studio (D8). O produto usa classes semânticas de componente
-// (@layer components em application.css), então o JIT gera pouco além do
-// preflight/base — os globs abaixo cobrem utilitários eventuais usados nas views.
+// Studio's Tailwind (D8). The product uses semantic component classes
+// (@layer components in application.css), so the JIT generates little beyond
+// preflight/base — the globs below cover the occasional utilities used in the views.
 module.exports = {
   content: [
     "./views/**/*.erb",

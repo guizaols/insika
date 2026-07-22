@@ -7,7 +7,7 @@
 > toolset, plus the `status-pedido` gold fix landed with this doc (2026-07-21).
 
 This is the **documented baseline** that FOLLOWUP §12 **G2** allows in place of a hard
-7/7 ("rerun até 7/7 — **ou baseline menor documentado com justificativa**"). The
+7/7 ("rerun until 7/7 — **or a smaller documented baseline with justification**"). The
 plumbing was declared **GO** on 2026-07-20 (tools hit achei-b2b and return 200, 40/40,
 0 errors; prompt-cache engages at the real ~27k identity; conc=8 clean). None of the
 open failures is a harness defect — they are gold or **pack** issues, and pack quality
