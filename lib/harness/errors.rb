@@ -100,4 +100,22 @@ module Harness
       super(message || "subagent depth #{depth} exceeds cap #{cap}")
     end
   end
+
+  # Workflow I/O contract violation (item 22 / §4.4). A workflow may declare an
+  # `input_schema` / `output_schema`; a value that does not conform is rejected.
+  # INPUT is validated SYNCHRONOUSLY (TriggerWorkflow) so it is a ValidationError
+  # -> HTTP 422, no run created. OUTPUT is validated inside the fiber after the
+  # workflow returns -> task :failed at the :workflow_schema stage. `errors` is the
+  # per-field detail (dry-schema-compatible `#errors.to_h`); `phase` is :input|:output.
+  class WorkflowSchemaError < ValidationError
+    attr_reader :phase, :errors
+
+    def initialize(message = nil, phase: nil, errors: {})
+      @phase = phase
+      @errors = errors || {}
+      detail = @errors.map { |field, msgs| "#{field}: #{Array(msgs).join(', ')}" }.join("; ")
+      base = message || "workflow #{phase} failed schema validation"
+      super(detail.empty? ? base : "#{base} (#{detail})")
+    end
+  end
 end

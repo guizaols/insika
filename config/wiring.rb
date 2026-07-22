@@ -147,6 +147,9 @@ module Harness
       session_store: SESSION_STORE, task_store: TASK_STORE,
       pending_action_store: PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
       a2a: A2A_APP, # nil at the base (opt-in) -> A2A routes respond 404
+      # Base-only: workflows are exposed here (the deployment does not). Enables
+      # GET /v1/workflows (discovery) + POST /v1/workflows/:name (item 22 / §4.4).
+      workflow_registry: WORKFLOW_REGISTRY,
       config: CONFIG
     )
 
