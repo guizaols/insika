@@ -47,11 +47,41 @@ module Harness
       chat.public_send(method, value) if chat.respond_to?(method)
     end
 
-    def apply_thinking(chat, effort)
-      chat.with_thinking(effort: effort.to_sym) if chat.respond_to?(:with_thinking)
+    # The resolved reasoning control (§10, 4-layer). Two axes folded into one field:
+    #   off              -> reasoning DISABLED (thinking:{type:disabled})
+    #   on               -> reasoning ENABLED, provider-default effort
+    #   low|medium|high  -> reasoning enabled at that effort (reasoning_effort)
+    # Blank/nil never reaches here (apply_params guards on present?), so no config
+    # anywhere = the provider's own default.
+    #
+    # ruby_llm 1.16's with_thinking only EMITS reasoning_effort and cannot toggle
+    # on/off; the on/off ride on with_params (deep-merged over the payload). The
+    # thinking:{type:} shape is DeepSeek's OpenAI-compat contract — gated to it
+    # (nil provider = the platform default, DeepSeek here); other providers get
+    # effort-only until their toggle wire is mapped (e.g. Anthropic output_config).
+    def apply_thinking(chat, value)
+      case value.to_s
+      when "off"
+        chat.with_params(thinking: { type: "disabled" }) if reasoning_toggle_supported?(chat)
+      when "on"
+        chat.with_params(thinking: { type: "enabled" }) if reasoning_toggle_supported?(chat)
+      when "low", "medium", "high"
+        chat.with_thinking(effort: value.to_sym) if chat.respond_to?(:with_thinking)
+      end
+    end
+
+    def reasoning_toggle_supported?(chat)
+      chat.respond_to?(:with_params) && (provider.nil? || provider.to_sym == :deepseek)
     end
 
     def numeric?(v) = v.is_a?(Numeric)
     def present?(v) = Harness::Coercion.present?(v)
   end
+
+  # The selectable reasoning values (§10, 4-layer). Blank/absent = inherit the
+  # broader layer; these are the explicit choices. Shared with the Studio forms.
+  # Defined on the class OUTSIDE the Data.define block on purpose: a constant
+  # assigned inside the block would land in the enclosing lexical scope (Harness),
+  # not on ModelSelection.
+  ModelSelection::THINKING_LEVELS = %w[off on low medium high].freeze
 end

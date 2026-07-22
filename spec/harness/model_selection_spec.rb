@@ -13,6 +13,7 @@ RSpec.describe Harness::ModelSelection do
     def with_temperature(v) = (@calls << [:with_temperature, v]; self)
     def with_max_output_tokens(v) = (@calls << [:with_max_output_tokens, v]; self)
     def with_thinking(effort:) = (@calls << [:with_thinking, effort]; self)
+    def with_params(**params) = (@calls << [:with_params, params]; self)
   end
   let(:fake_chat_class) { recording_chat }
 
@@ -63,6 +64,48 @@ RSpec.describe Harness::ModelSelection do
     it "returns the chat (chainable)" do
       chat = fake_chat_class.new
       expect(described_class.new(model: "m").apply_params(chat)).to be(chat)
+    end
+  end
+
+  # §10 4-layer reasoning control: the resolved `thinking` maps to the provider wire.
+  describe "#apply_thinking (reasoning toggle)" do
+    def sel(thinking, provider: :deepseek)
+      described_class.new(model: "m", provider: provider, params: { thinking: thinking })
+    end
+
+    it "off -> with_params(thinking: {type: disabled}) (ruby_llm can't disable via with_thinking)" do
+      chat = fake_chat_class.new
+      sel("off").apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { thinking: { type: "disabled" } }]])
+    end
+
+    it "on -> with_params(thinking: {type: enabled})" do
+      chat = fake_chat_class.new
+      sel("on").apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { thinking: { type: "enabled" } }]])
+    end
+
+    it "an effort -> with_thinking(effort:) (reasoning_effort), NOT the toggle param" do
+      chat = fake_chat_class.new
+      sel("medium").apply_params(chat)
+      expect(chat.calls).to eq([[:with_thinking, :medium]])
+    end
+
+    it "nil provider (platform default = DeepSeek here) still applies the toggle" do
+      chat = fake_chat_class.new
+      sel("off", provider: nil).apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { thinking: { type: "disabled" } }]])
+    end
+
+    it "gates the toggle to DeepSeek: a non-DeepSeek provider gets no thinking param" do
+      chat = fake_chat_class.new
+      sel("off", provider: :openai).apply_params(chat)
+      expect(chat.calls).to eq([]) # toggle wire not mapped for this provider yet
+    end
+
+    it "duck-typed: a chat without with_params is skipped, not crashed" do
+      bare = Object.new
+      expect { sel("off").apply_params(bare) }.not_to raise_error
     end
   end
 end

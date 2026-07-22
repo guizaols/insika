@@ -159,6 +159,7 @@ def run_turn(base_url, agent, idx)
   t0 = mono
   ttfb = nil
   usage = nil
+  timing = nil # server-side breakdown (HARNESS_TURN_TIMING; item 34)
   http = Net::HTTP.new(uri.host, uri.port)
   http.use_ssl = uri.scheme == "https"
   http.read_timeout = TIMEOUT
@@ -187,6 +188,8 @@ def run_turn(base_url, agent, idx)
               obj = JSON.parse(payload)
               u = obj.dig("response", "usage") || obj["usage"]
               usage = u if u
+              tm = obj.dig("response", "timing")
+              timing = tm if tm
             rescue JSON::ParserError
               nil
             end
@@ -195,7 +198,8 @@ def run_turn(base_url, agent, idx)
       end
     end
   end
-  { ok: true, status: status, ttfb: (ttfb || (mono - t0)) * 1000.0, total: (mono - t0) * 1000.0, usage: usage }
+  { ok: true, status: status, ttfb: (ttfb || (mono - t0)) * 1000.0, total: (mono - t0) * 1000.0,
+    usage: usage, timing: timing }
 rescue StandardError => e
   { ok: false, error: e.class.to_s }
 end
@@ -262,3 +266,18 @@ puts "TTFB  p50/p95:  #{pct(ttfbs, 50)} / #{pct(ttfbs, 95)} ms"
 puts "total p50/p95:  #{pct(totals, 50)} / #{pct(totals, 95)} ms"
 puts "mean tokens:    #{toks.empty? ? '-' : (toks.sum.to_f / toks.length).round(0)}"
 puts "mean cache hit: #{cache_hits.empty? ? '-' : (cache_hits.sum.to_f / cache_hits.length).round(0)} tokens"
+
+# Server-side latency split (HARNESS_TURN_TIMING; item 34). Only when the server
+# reported it — a run without the flag prints nothing extra.
+timings = ok.map { |r| r[:timing] }.compact
+unless timings.empty?
+  phase = ->(k) { timings.map { |t| t[k] || t[k.to_s] }.compact.sort }
+  prep = phase.call(:prep_ms)
+  ttft = phase.call(:ttft_ms)
+  gen  = phase.call(:gen_ms)
+  puts "-" * 60
+  puts "server timing (n=#{timings.length}, HARNESS_TURN_TIMING):"
+  puts "  prep  p50/p95:  #{pct(prep, 50)} / #{pct(prep, 95)} ms   (local: context build + policy + chat assembly)"
+  puts "  ttft  p50/p95:  #{pct(ttft, 50)} / #{pct(ttft, 95)} ms   (provider: ask -> 1st token)"
+  puts "  gen   p50/p95:  #{pct(gen, 50)} / #{pct(gen, 95)} ms   (streaming the rest)"
+end
