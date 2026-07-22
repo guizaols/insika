@@ -29,7 +29,7 @@ module HarnessCode
         guard do
           regexp = Regexp.new(pattern.to_s, timeout: PATTERN_TIMEOUT)
           rel = path.to_s.strip.empty? ? "." : path
-          base = workspace.resolve(rel)
+          base = sandbox.resolve(rel)
           matches = scan(files_under(base), regexp)
           { matches: matches, truncated: matches.size >= MAX_MATCHES }
         rescue Regexp::TimeoutError
@@ -48,7 +48,7 @@ module HarnessCode
         # scan with large packed data.
         Dir.glob(File.join(base, "**", "*"), File::FNM_DOTMATCH)
            .reject { |f| f.split(File::SEPARATOR).include?(".git") }
-           .select { |f| File.file?(f) && workspace.inside?(f) }
+           .select { |f| File.file?(f) && sandbox.inside?(f) }
       end
 
       def scan(files, regexp)
@@ -57,7 +57,7 @@ module HarnessCode
           File.foreach(file).with_index(1) do |line, number|
             next unless regexp.match?(line)
 
-            matches << { path: workspace.relative(file), line: number, text: line.chomp[0, 300] }
+            matches << { path: sandbox.relative(file), line: number, text: line.chomp[0, 300] }
             return matches if matches.size >= MAX_MATCHES
           end
         rescue ArgumentError # binary file / invalid byte sequence — skip
