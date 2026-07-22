@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require "securerandom"
 require "async/queue"
 
 module Harness
@@ -50,7 +51,11 @@ module Harness
       @chat_builder = ChatBuilder.new(
         tool_registry: tool_registry, skill_catalog: skill_catalog,
         checkpoint_store: checkpoint_store, event_stream: event_stream, hooks: hooks,
-        tool_catalog: tool_catalog, memory_store: memory_store
+        tool_catalog: tool_catalog, memory_store: memory_store,
+        # RFC-0010: the ChatBuilder wires the spawn_subagent system tool (gated by
+        # profile.subagents) and hands it this Executor as the runner. `self` is not
+        # yet fully built here, but the ChatBuilder only STORES it (used per-turn).
+        subagent_runner: self
       )
       # Stage-3-tail tool assembly (capability resolution, instantiation, D2
       # injection, dedup join, ToolEnvelope wrap) — extracted collaborator (§11 B5).
@@ -214,6 +219,31 @@ module Harness
       @session_actors.each_value(&:stop)
       @session_actors.clear
       nil
+    end
+
+    # RFC-0010 (item 21): runs a CHILD agent turn synchronously, INSIDE the
+    # parent's turn fiber (called by Tools::Subagent during stage 6). Isolated
+    # context (fresh child session), capability NON-inheritance (child profile
+    # resolved fresh), environment inheritance (model/thinking seeded from the
+    # parent). Returns { text:, session_id: } or { error: } — NEVER raises: a bad
+    # agent/depth/child failure is a message to the model, not a turn-killer.
+    def run_subagent(agent:, message:, parent_state:)
+      # Gate = the PARENT's subagents allowlist (a capacity field — never inherited).
+      allowed = Array(parent_state.profile.subagents).map(&:to_s)
+      unless allowed.include?(agent)
+        return { error: "agent '#{agent}' is not in this agent's subagents allowlist" }
+      end
+
+      # Runtime depth guard (belt-and-suspenders; SubagentGraph is the primary,
+      # definition-time check). parent depth from its turn context, +1 for the child.
+      cap = SubagentGraph.depth_cap
+      depth = (parent_state.turn_context&.dig(:delegation_depth) || 0) + 1
+      return { error: "subagent depth #{depth} exceeds cap #{cap}" } if depth > cap
+
+      child_profile = @profiles[agent]
+      return { error: "agent '#{agent}' not configured" } if child_profile.nil?
+
+      spawn_and_await_child(inherit_environment(child_profile, parent_state), message, depth, parent_state)
     end
 
     # Stages 2..9. Runs INSIDE the task's fiber.
@@ -634,8 +664,97 @@ module Harness
         chat_id: task.session_id,
         agent_id: profile.id,
         tenant: state.tenant, # already = command_tenant || session_id (memory_tenant)
-        store_id: profile.store_id
+        store_id: profile.store_id,
+        # RFC-0010: current delegation depth (0 for a top-level turn). Carried in
+        # the child command's payload by run_subagent; read here so the child's OWN
+        # spawn_subagent tool sees depth+1 and the runtime cap holds down the chain.
+        delegation_depth: delegation_depth(task)
       }
+    end
+
+    # Delegation depth of THIS turn (RFC-0010): the value run_subagent stamped in
+    # the child command, or 0 for a top-level turn. Integer-coerced (JSON round-trip
+    # of the persisted command may deliver a String).
+    def delegation_depth(task)
+      rebuild_command(task).payload["delegation_depth"].to_i
+    end
+
+    # RFC-0010 R2: environment (model/thinking) inherits as DEFAULT — the child's
+    # explicit value wins; when absent, seed from the parent's RESOLVED selection.
+    # Capacity fields are untouched (R1: the child profile is used as-is). Returns
+    # the child profile unchanged when there is nothing to inherit.
+    def inherit_environment(child_profile, parent_state)
+      sel = parent_state.model_selection
+      return child_profile if sel.nil?
+
+      model = child_profile.model || sel.model
+      provider = child_profile.provider || sel.provider
+      params = child_profile.params.dup # build stringified it => string keys
+      inherited_thinking = (sel.params || {})[:thinking]
+      params["thinking"] = inherited_thinking if !params.key?("thinking") && !inherited_thinking.nil?
+
+      return child_profile if model == child_profile.model &&
+                              provider == child_profile.provider &&
+                              params == child_profile.params
+
+      child_profile.with(model: model, provider: provider, params: params)
+    end
+
+    # Spawns the isolated child turn (fresh session, own task) and AWAITS it on the
+    # parent's fiber, then projects the child's terminal content. Direct `spawn`
+    # (not spawn_in_session): the child session is brand-new, so there is no
+    # SessionActor contention — the child is parented at turn_parent (supervisor
+    # when serving) and the parent yields cooperatively on `wait`.
+    def spawn_and_await_child(child_profile, message, depth, parent_state)
+      child_session_id = "sub-#{SecureRandom.uuid}"
+      @session_store.create(
+        id: child_session_id,
+        vars: { "parent_session_id" => parent_state.task.session_id,
+                "parent_task_id" => parent_state.task.id, "delegation_depth" => depth }
+      )
+      command = Harness::Command.build(
+        :send_message,
+        { "agent" => child_profile.id, "message" => message,
+          "session_id" => child_session_id, "delegation_depth" => depth }
+      ).to_h
+      child_task = @task_store.create(command: command, session_id: child_session_id)
+
+      emit(:subagent_started,
+           { agent: child_profile.id, parent_task_id: parent_state.task.id,
+             child_session_id: child_session_id, depth: depth },
+           task: parent_state.task)
+
+      spawn(child_task, profile: child_profile)
+      @running[child_task.id]&.wait
+      project_child_result(child_task.id, child_session_id, child_profile.id, parent_state)
+    end
+
+    # Child result = last `assistant` message of the child session (R3), or the
+    # terminal error if the child turn failed. Same projection as the A2A edge.
+    def project_child_result(child_task_id, child_session_id, agent_id, parent_state)
+      task = @task_store.find(child_task_id)
+      if task && task.status.to_s == "failed"
+        err = child_terminal_error(task)
+        emit(:subagent_completed,
+             { agent: agent_id, child_session_id: child_session_id, state: "failed" },
+             task: parent_state.task)
+        return { error: "subagent '#{agent_id}' failed: #{err || 'unknown error'}" }
+      end
+
+      session = @session_store.find(child_session_id)
+      msg = session&.messages&.reverse&.find { |m| (m["role"] || m[:role]).to_s == "assistant" }
+      text = msg && (msg["content"] || msg[:content])
+      emit(:subagent_completed,
+           { agent: agent_id, child_session_id: child_session_id, state: "completed" },
+           task: parent_state.task)
+      { text: text.to_s, session_id: child_session_id }
+    end
+
+    def child_terminal_error(task)
+      exec = task.executions.last
+      return nil unless exec && exec.outcome.to_s == "failed"
+
+      exec.error && (exec.error["message"] || exec.error[:message])
     end
 
     # The real Request: command (for the WorkflowAllowlist), context
@@ -889,6 +1008,7 @@ module Harness
       require_relative "tools/load_skill"
       require_relative "tools/tool_search"
       require_relative "tools/remember"
+      require_relative "tools/subagent"
       # v2 resolution (§10): Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
