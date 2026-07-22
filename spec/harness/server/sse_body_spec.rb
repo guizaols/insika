@@ -5,8 +5,8 @@ require "async"
 require_relative "../../../server/sse_body"
 
 RSpec.describe Harness::Server::SSEBody do
-  # Subscription-espião: entrega eventos e grava close/cancel. `cancel` NUNCA
-  # must be called (L4: the SSEBody never cancels the task).
+  # Spy subscription: delivers events and records close/cancel. `cancel` must
+  # NEVER be called (L4: the SSEBody never cancels the task).
   class SpySub
     attr_reader :closed, :cancelled
 
@@ -28,10 +28,10 @@ RSpec.describe Harness::Server::SSEBody do
     Harness::Event.new(type: type, data: data, meta: meta)
   end
 
-  # SSEBody é um STREAMING body do Rack 3: dirige-se por `#call(stream)`, onde
-  # `stream` responde a #write/#close (o SSEStreamDouble coleta os frames). Isso
+  # SSEBody is a Rack 3 STREAMING body: driven by `#call(stream)`, where
+  # `stream` responds to #write/#close (the SSEStreamDouble collects the frames). This
   # mirrors the Protocol::HTTP::Body::Stream that protocol-rack passes in production.
-  it "formata o wire como Event#to_h em JSON (D5)" do
+  it "formats the wire as Event#to_h in JSON (D5)" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     event = ev(:content, { delta: "x" })
@@ -47,17 +47,17 @@ RSpec.describe Harness::Server::SSEBody do
     expect(fs.chunks.first).to eq("data: #{JSON.generate(event.to_h)}\n\n")
   end
 
-  it "honra o serialize: injetado e pula eventos que ele mapeia p/ nil" do
+  it "honors the injected serialize: and skips events it maps to nil" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     fs = SSEStreamDouble.new
-    # serializer custom: só :content vira frame; o resto é pulado (nil).
+    # custom serializer: only :content becomes a frame; the rest is skipped (nil).
     serialize = ->(e) { e.type == :content ? "X:#{e.data[:delta]}\n\n" : nil }
 
     Sync do
       collector = Async { described_class.new(subscription: sub, serialize: serialize).call(fs) }
       stream.emit(ev(:content, { delta: "a" }))
-      stream.emit(ev(:task_started))            # -> nil, pulado
+      stream.emit(ev(:task_started))            # -> nil, skipped
       stream.emit(ev(:content, { delta: "b" }))
       sub.close
       collector.wait
@@ -66,7 +66,7 @@ RSpec.describe Harness::Server::SSEBody do
     expect(fs.chunks).to eq(["X:a\n\n", "X:b\n\n"])
   end
 
-  it "preserva a ordem dos eventos" do
+  it "preserves the event order" do
     stream = Harness::EventStream.new
     sub = stream.subscribe
     events = (1..3).map { |i| ev(:content, { delta: i.to_s }, { task_id: "t", seq: i }) }
@@ -89,7 +89,7 @@ RSpec.describe Harness::Server::SSEBody do
 
     Sync do |task|
       collector = Async { described_class.new(subscription: sub, heartbeat: 0.05).call(fs) }
-      task.sleep(0.15) # sem eventos: força ≥1 timeout de heartbeat
+      task.sleep(0.15) # no events: forces ≥1 heartbeat timeout
       sub.close
       collector.wait
     end
@@ -116,7 +116,7 @@ RSpec.describe Harness::Server::SSEBody do
 
   it "client disconnects: closes the subscription, does not propagate an exception, does not cancel the task" do
     sub = SpySub.new([ev(:content, { delta: "x" })])
-    fs = SSEStreamDouble.new(raise_on_write: true) # stream.write levanta = socket fechado
+    fs = SSEStreamDouble.new(raise_on_write: true) # stream.write raises = closed socket
 
     Sync do
       expect do
@@ -126,16 +126,16 @@ RSpec.describe Harness::Server::SSEBody do
 
     expect(sub.closed).to be(true)
     expect(sub.cancelled).to be(false) # L4: execution belongs to the runtime
-    expect(fs.closed?).to be(true)     # o body sempre fecha o stream
+    expect(fs.closed?).to be(true)     # the body always closes the stream
   end
 
-  describe "cap de 1000 eventos por Subscription (doc 07 §5)" do
-    it "fecha com :error local ao exceder o cap; emit nunca bloqueia" do
+  describe "cap of 1000 events per Subscription (doc 07 §5)" do
+    it "closes with a local :error when exceeding the cap; emit never blocks" do
       stream = Harness::EventStream.new
       sub = stream.subscribe
 
-      # 1001 emissões sem consumo: a 1001ª estoura o cap. `emit` é O(subscribers)
-      # e nunca bloqueia — se bloqueasse, este laço travaria.
+      # 1001 emissions without consumption: the 1001st overflows the cap. `emit` is O(subscribers)
+      # and never blocks — if it blocked, this loop would hang.
       1001.times { |i| stream.emit(Harness::Event.new(type: :content, data: { i: i }, meta: {})) }
 
       collected = []

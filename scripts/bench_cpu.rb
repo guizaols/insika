@@ -71,7 +71,7 @@ REQUEST = {
 REQUEST_JSON = JSON.generate(REQUEST).freeze
 
 # 1) Serialize the response envelope (assistant message + usage). Exercises
-#    JSON.generate over nested hashes/arrays — the "montagem de contexto/serialização".
+#    JSON.generate over nested hashes/arrays — the "context assembly/serialization".
 def bench_serialize
   payload = {
     "id" => "resp_abc123",

@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
-# Imagem de produção do harness (motor de agentes). Serve /v1/*, /studio
-# e /up sob Falcon (async/streaming). O Studio já vem com o dist/ versionado —
-# NÃO precisa de Node no build.
+# Production image for the harness (agent engine). Serves /v1/*, /studio
+# and /up under Falcon (async/streaming). The Studio ships with dist/ checked in —
+# NO Node needed at build time.
 #
-# Backend: SQLite (WAL) durável em HARNESS_DB. Em produção monte um volume e
-# aponte HARNESS_DB pra dentro dele (ex.: /data/harness.db) — senão o Recovery
-# não tem o que retomar após restart.
+# Backend: durable SQLite (WAL) at HARNESS_DB. In production mount a volume and
+# point HARNESS_DB inside it (e.g. /data/harness.db) — otherwise Recovery
+# has nothing to resume after a restart.
 
 # ---- builder: compiles the native gems (sqlite3) --------------------------
 # Ruby 4.0.x is the recommended/tested runtime (see .ruby-version and
@@ -56,26 +56,26 @@ ENV BUNDLE_DEPLOYMENT=1 \
     PORT=9292 \
     HARNESS_DB=/data/harness.db
 
-# Roda como root: o volume durável (Railway Volume / k8s PVC) é montado em /data
-# em RUNTIME, sobrepondo o dir da imagem — com usuário não-root o mount vem
-# root-owned e o SQLite não conseguiria escrever o harness.db. Pro piloto
-# (container single-tenant) root é aceitável; hardening não-root (fsGroup/
-# init-chown) fica p/ o k8s. Ver docs/DEPLOY.md.
+# Runs as root: the durable volume (Railway Volume / k8s PVC) is mounted at /data
+# at RUNTIME, shadowing the image's dir — with a non-root user the mount comes
+# root-owned and SQLite could not write harness.db. For the pilot
+# (single-tenant container) root is acceptable; non-root hardening (fsGroup/
+# init-chown) is left for k8s. See docs/DEPLOY.md.
 RUN mkdir -p /data
 WORKDIR /app
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --from=builder /usr/local/bin/litestream /usr/local/bin/litestream
 COPY . .
 
-# O volume /data é montado pelo orquestrador, NÃO pela instrução VOLUME do Docker
-# (o Railway a rejeita). HARNESS_DB aponta pra /data (ver ENV acima).
+# The /data volume is mounted by the orchestrator, NOT by Docker's VOLUME
+# instruction (Railway rejects it). HARNESS_DB points to /data (see ENV above).
 EXPOSE 9292
 
-# O entrypoint decide o boot: com LITESTREAM_REPLICA_URL setado, restaura o
-# harness.db do replica (box nova) e supervisiona o app sob Litestream (backup/DR
-# opt-in — ver deploy/entrypoint.sh + docs/DEPLOY.md); sem a var, dá `exec` direto
-# no Falcon (custo zero, comportamento idêntico ao anterior). Falcon lê o config.ru
-# (Boot -> Wiring -> recovery ANTES de aceitar conexão); bind em http (o proxy do
-# Railway/Ingress faz o TLS). WEB_CONCURRENCY controla o nº de processos forkados
-# (default 2; num box maior, aumente — ver docs/DEPLOY.md sobre SQLite WAL).
+# The entrypoint decides the boot: with LITESTREAM_REPLICA_URL set, it restores
+# harness.db from the replica (fresh box) and supervises the app under Litestream
+# (opt-in backup/DR — see deploy/entrypoint.sh + docs/DEPLOY.md); without the var, it
+# `exec`s Falcon directly (zero cost, identical to the previous behavior). Falcon reads
+# config.ru (Boot -> Wiring -> recovery BEFORE accepting connections); binds over http
+# (the Railway/Ingress proxy terminates TLS). WEB_CONCURRENCY controls the number of
+# forked processes (default 2; on a bigger box, raise it — see docs/DEPLOY.md on SQLite WAL).
 CMD ["sh", "deploy/entrypoint.sh"]

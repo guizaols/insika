@@ -110,7 +110,7 @@ RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
         wait_alive(port)
 
         # the task was resumed and completed
-        task = wait_until(timeout: 20, msg: "task concluir pós-reboot") do
+        task = wait_until(timeout: 20, msg: "task to complete post-reboot") do
           resp = http(port, :get, "/v1/tasks/#{task_id}")
           next unless resp && resp.code == "200"
 

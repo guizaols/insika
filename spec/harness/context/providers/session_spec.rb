@@ -91,31 +91,31 @@ RSpec.describe Harness::Context::Providers::Session do
        { "role" => "assistant", "content" => "resposta final" }]
     end
 
-    it "agrupa assistant(tool_calls)+tool_results num ÚNICO fragmento (Array)" do
+    it "groups assistant(tool_calls)+tool_results into a SINGLE fragment (Array)" do
       frags = provider.call(request(vars: { history: cycle }))
 
-      # 3 unidades: [user] · [assistant+tool] · [assistant final]
+      # 3 units: [user] · [assistant+tool] · [final assistant]
       expect(frags.size).to eq(3)
       unit = frags[1].content
       expect(unit).to be_an(Array)
       expect(unit.map { |m| m[:role].to_s }).to eq(%w[assistant tool])
     end
 
-    it "a unidade preserva tool_calls (no assistant) e tool_call_id (no tool)" do
+    it "the unit preserves tool_calls (on the assistant) and tool_call_id (on the tool)" do
       unit = provider.call(request(vars: { history: cycle }))[1].content
 
       expect(unit.first[:tool_calls]).to eq([{ "id" => "c1", "name" => "search", "arguments" => { "q" => "x" } }])
       expect(unit.last[:tool_call_id]).to eq("c1")
     end
 
-    it "mensagem comum continua um fragmento de Hash único (compat)" do
+    it "a plain message stays a single Hash fragment (compat)" do
       frags = provider.call(request(vars: { history: cycle }))
 
       expect(frags.first.content).to eq({ role: "user", content: "pergunta" })
       expect(frags.last.content).to eq({ role: "assistant", content: "resposta final" })
     end
 
-    it "prioridade é por UNIDADE (a recência conta ciclos, não mensagens)" do
+    it "priority is per UNIT (recency counts cycles, not messages)" do
       expect(provider.call(request(vars: { history: cycle })).map(&:priority)).to eq([60, 61, 62])
     end
   end

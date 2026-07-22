@@ -61,17 +61,17 @@ RSpec.describe Harness::ToolEnvelope do
   end
 
   describe "per-call timeout" do
-    it "estourou o timeout -> devolve erro serializado ao modelo, NÃO propaga (turno segue)" do
+    it "timeout fired -> returns a serialized error to the model, does NOT propagate (the turn continues)" do
       tool = EnvSleepyTool.new
       env = envelope(tool, state_for, timeout: 0.01)
 
       result = Sync { env.call({ "x" => 1 }) }
 
       expect(result).to eq({ error: "TimeoutError: tool exceeded 0.01s" })
-      expect(tool.calls).to eq([{ "x" => 1 }]) # a tool ENTROU; foi interrompida no meio
+      expect(tool.calls).to eq([{ "x" => 1 }]) # the tool WAS entered; it was interrupted midway
     end
 
-    it "timeout NÃO grava side-effect (record só após retorno bem-sucedido)" do
+    it "timeout does NOT record a side-effect (recorded only after a successful return)" do
       registry = FakeToolRegistry.new(side_effect_names: ["slow"])
       state = state_for(current_tool_call: Struct.new(:id).new("call-1"))
       env = envelope(EnvSleepyTool.new, state, timeout: 0.01, tool_registry: registry)
@@ -81,7 +81,7 @@ RSpec.describe Harness::ToolEnvelope do
       expect(checkpoint_store.side_effects("t", turn: 1)).to be_empty
     end
 
-    it "timeout é rastreado com ok=false quando há trace_recorder" do
+    it "timeout is traced with ok=false when there is a trace_recorder" do
       recorder = Harness::ToolTraceStore.new(store: backend)
       env = envelope(EnvSleepyTool.new, state_for(session_id: "s"), timeout: 0.01,
                                                                     trace_recorder: recorder)
@@ -95,8 +95,8 @@ RSpec.describe Harness::ToolEnvelope do
     end
   end
 
-  describe "skip-on-resume (side-effect já executado no turno interrompido)" do
-    it "call_id em skip_side_effects -> marker {skipped}, NÃO re-executa a tool" do
+  describe "skip-on-resume (side-effect already executed in the interrupted turn)" do
+    it "call_id in skip_side_effects -> {skipped} marker, does NOT re-execute the tool" do
       tool = EnvEchoTool.new
       state = state_for(current_tool_call: Struct.new(:id).new("call-42"))
       env = envelope(tool, state, skip_side_effects: ["call-42"])
@@ -107,7 +107,7 @@ RSpec.describe Harness::ToolEnvelope do
       expect(tool.calls).to be_empty
     end
 
-    it "call_id AUSENTE do skip -> executa normal" do
+    it "call_id ABSENT from the skip set -> executes normally" do
       tool = EnvEchoTool.new
       state = state_for(current_tool_call: Struct.new(:id).new("call-99"))
       env = envelope(tool, state, skip_side_effects: ["outro-id"])
@@ -118,8 +118,8 @@ RSpec.describe Harness::ToolEnvelope do
       expect(tool.calls.size).to eq(1)
     end
 
-    it "correlação por NOME (workflow, sem provider id): skip é por-tool, não por-call" do
-      tool = EnvEchoTool.new # current_tool_call nil -> correlation_id cai no name "echo"
+    it "correlation by NAME (workflow, no provider id): skip is per-tool, not per-call" do
+      tool = EnvEchoTool.new # current_tool_call nil -> correlation_id falls back to the name "echo"
       env = envelope(tool, state_for, skip_side_effects: ["echo"])
 
       result = Sync { env.call({}) }
@@ -129,8 +129,8 @@ RSpec.describe Harness::ToolEnvelope do
     end
   end
 
-  describe "record_side_effect! (grava ANTES de o resultado voltar ao modelo)" do
-    it "tool marcada como side-effect -> grava o call_id de correlação no checkpoint_store" do
+  describe "record_side_effect! (records BEFORE the result returns to the model)" do
+    it "tool marked as a side-effect -> records the correlation call_id in the checkpoint_store" do
       registry = FakeToolRegistry.new(side_effect_names: ["echo"])
       state = state_for(current_tool_call: Struct.new(:id).new("call-7"))
       env = envelope(EnvEchoTool.new, state, tool_registry: registry)
@@ -140,16 +140,16 @@ RSpec.describe Harness::ToolEnvelope do
       expect(checkpoint_store.side_effects("t", turn: 1)).to eq(["call-7"])
     end
 
-    it "tool NÃO marcada -> não grava nada" do
+    it "tool NOT marked -> records nothing" do
       state = state_for(current_tool_call: Struct.new(:id).new("call-7"))
-      env = envelope(EnvEchoTool.new, state) # FakeToolRegistry sem side_effect_names
+      env = envelope(EnvEchoTool.new, state) # FakeToolRegistry without side_effect_names
 
       Sync { env.call({}) }
 
       expect(checkpoint_store.side_effects("t", turn: 1)).to be_empty
     end
 
-    it "sem current_tool_call, o side-effect é gravado pelo NOME real da tool" do
+    it "without current_tool_call, the side-effect is recorded by the tool's real NAME" do
       registry = FakeToolRegistry.new(side_effect_names: ["echo"])
       env = envelope(EnvEchoTool.new, state_for, tool_registry: registry)
 
@@ -159,8 +159,8 @@ RSpec.describe Harness::ToolEnvelope do
     end
   end
 
-  describe "impl_name (alias de capability)" do
-    it "resolve side_effect?/correlação sobre o impl_name real, não sobre o alias" do
+  describe "impl_name (capability alias)" do
+    it "resolves side_effect?/correlation against the real impl_name, not the alias" do
       registry = FakeToolRegistry.new(side_effect_names: ["real_tool"])
       env = envelope(EnvAliasTool.new, state_for, tool_registry: registry)
 
@@ -171,8 +171,8 @@ RSpec.describe Harness::ToolEnvelope do
     end
   end
 
-  describe "delegação (SimpleDelegator)" do
-    it "delega name/description ao tool real" do
+  describe "delegation (SimpleDelegator)" do
+    it "delegates name/description to the real tool" do
       env = envelope(EnvEchoTool.new, state_for)
       expect(env.name).to eq("echo")
     end
