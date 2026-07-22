@@ -464,6 +464,16 @@ module Studio
           r.redirect("/studio/settings?s=models")
         end
 
+        # Per-model reasoning defaults (§10, the per-model layer): its own form so a
+        # model-defaults save never clobbers the per-model map, and vice-versa.
+        r.post "model-params" do
+          check_csrf!
+          with_flash("Per-model params saved.") do
+            dispatch(:update_settings, { patch: model_params_patch(r) })
+          end
+          r.redirect("/studio/settings?s=models")
+        end
+
         # Edge limits (item 33 / §12 G7): the platform rate-limit/cost layer.
         # Its own form for the same reason as models — saves never cross-clobber.
         r.post "edge" do
@@ -656,7 +666,8 @@ module Studio
           # whatever it was pinned to.
           session_id = typed_session ||
                        create_session(model: presence(r.params["model"]),
-                                      provider: presence(r.params["provider"]))
+                                      provider: presence(r.params["provider"]),
+                                      thinking: presence(r.params["thinking"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
           # Optimistic echo of the just-sent message (§11 A1): survives the redirect
           # as a one-shot flash, rendered as a user bubble on the next GET.
@@ -876,6 +887,31 @@ module Studio
       return "" unless params.is_a?(Hash)
 
       params[key.to_s].nil? ? "" : params[key.to_s]
+    end
+
+    # Renders the reasoning <select> shared by the agent config, settings and
+    # playground (§10, 4-layer). `blank_label` names the empty option — the
+    # "inherit the broader layer" / provider-default choice. Values come from a
+    # fixed constant (safe to emit); `current` is only compared, never output.
+    def thinking_select(name, current, blank_label)
+      cur = current.to_s
+      options = [["", blank_label]] + Harness::ModelSelection::THINKING_LEVELS.map { |v| [v, v] }
+      rows = options.map do |value, label|
+        %(<option value="#{value}"#{' selected' if value == cur}>#{label}</option>)
+      end.join
+      %(<select name="#{name}">#{rows}</select>)
+    end
+
+    # Renders the per-model reasoning map ({ "ref" => { "thinking" => v } }) back to
+    # the textarea lines "ref | thinking" that model_params_patch parses. Only refs
+    # with a set thinking are shown (blank ones are inherit no-ops).
+    def model_params_text(map)
+      return "" unless map.is_a?(Hash)
+
+      map.filter_map do |ref, cfg|
+        t = cfg.is_a?(Hash) ? cfg["thinking"] : nil
+        "#{ref} | #{t}" if t
+      end.join("\n")
     end
 
     # A guardrails field off the profile (string-keyed by AgentProfile.build).
@@ -1258,10 +1294,11 @@ module Studio
     # stashes them in the reserved `vars["__llm__"]` slot the ModelResolver reads as
     # the highest-precedence layer (Chat > Agent > platform default). Only non-blank
     # values are sent, so an empty override leaves the session unpinned.
-    def create_session(model: nil, provider: nil)
+    def create_session(model: nil, provider: nil, thinking: nil)
       payload = { vars: { "canal" => "studio" } }
       payload[:model] = model if model
       payload[:provider] = provider if provider
+      payload[:thinking] = thinking if thinking
       dispatch(:create_session, payload).id
     end
 
