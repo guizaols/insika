@@ -16,7 +16,7 @@ from one deployment.
 - **Tools & skills** — code tools + data-defined tools, progressive skill loading, MCP import.
 - **Memory** — cross-session facts and notes, per agent.
 - **Guardrails** — content-safety (prompt-injection, PII/secret redaction, abuse) on input and output, opt-in and configurable per agent.
-- **Observability** — an event stream, per-session tool-call traces, optional OpenTelemetry.
+- **Observability** — an event stream, per-session tool-call traces, optional OpenTelemetry ([docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)).
 - **Negligible overhead** — the engine adds well under a millisecond per turn; a neutral, key-free benchmark reproduces it ([docs/BENCHMARK.md](docs/BENCHMARK.md)).
 
 ## Requirements
@@ -103,7 +103,8 @@ bundle exec rspec
 
 ## More docs
 
-- [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md) — running locally, the control UI, OpenTelemetry.
+- [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md) — running locally and the control UI.
+- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry tracing (opt-in): turns → traces, local & production setup.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — production deploy (Falcon, durable SQLite volume, tokens).
 - [docs/LOADTEST.md](docs/LOADTEST.md) — load-testing and data-topology.
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
