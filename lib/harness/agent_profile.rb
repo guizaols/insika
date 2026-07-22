@@ -29,6 +29,11 @@ module Harness
     :approvals_required,              # tools that require approval (ApprovalRequired)
     :capabilities,                    # intents the agent can trigger.
     #                                   nil = NONE (opt-in, see above).
+    :subagents,                       # allowlist of child agent ids this agent MAY spawn
+    #                                   (RFC-0010, item 21). CAPACITY field — NEVER inherits;
+    #                                   opt-in like `capabilities`: nil/absent = NONE (do NOT
+    #                                   "fix" to nil = all). Present => the `spawn_subagent`
+    #                                   system tool is wired (ChatBuilder), gated by this set.
     :tools_deferred,                  # searchable-not-wired tools (Tool Search).
     #                                   nil = no deferred (all eager — parity);
     #                                   [names] ⊆ allowed_tools, exposed via tool_search.
@@ -76,7 +81,8 @@ module Harness
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
                    context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
-                   capabilities: nil, tools_deferred: nil, memory: nil, prompt_caching: nil,
+                   capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
+                   prompt_caching: nil,
                    params: {}, model_policy: nil, guardrails: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
@@ -85,7 +91,11 @@ module Harness
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
-        capabilities: capabilities, tools_deferred: tools_deferred, memory: memory,
+        capabilities: capabilities,
+        # opt-in like capabilities: nil => NONE. Array-normalize a present value so
+        # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
+        subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
+        tools_deferred: tools_deferred, memory: memory,
         prompt_caching: prompt_caching,
         # The free-form hashes arrive with symbol keys (internal build) OR string
         # keys (StoredProfileSource JSON round-trip). Normalize to string keys ONCE

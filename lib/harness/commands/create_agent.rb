@@ -22,12 +22,26 @@ module Harness
         # model nor a platform default fails clearly at the first turn.
         raise Harness::ValidationError, "agent '#{id}' already exists" if @profile_source.fetch(id)
 
-        @profile_source.put(Harness::AgentProfile.build(**attrs))
+        profile = Harness::AgentProfile.build(**attrs)
+        # RFC-0010 §4.4: definition-time cycle + depth check. Only a profile that
+        # introduces edges (non-empty subagents) can create a violation — a
+        # childless agent is always a safe leaf. Raises SubagentError (a
+        # ValidationError) BEFORE persisting, so a bad graph never lands.
+        validate_subagent_graph!(profile)
+        @profile_source.put(profile)
         emit(:agent_created, id)
         @profile_source.fetch(id) # returns the persisted profile (symbols already normalized)
       end
 
       private
+
+      # Validates the delegation graph with `profile` added to the current set.
+      def validate_subagent_graph!(profile)
+        return if Array(profile.subagents).empty?
+
+        others = @profile_source.all.reject { |p| p.id.to_s == profile.id.to_s }
+        Harness::SubagentGraph.validate!(others + [profile])
+      end
 
       def emit(type, id)
         @event_stream.emit(Harness::Event.new(
