@@ -191,8 +191,29 @@ module Studio
         "default_model" => presence(r.params["default_model"]),
         "default_provider" => presence(r.params["default_provider"]),
         "utility_model" => presence(r.params["utility_model"]),
-        "fallback_models" => split_list(r.params["fallback_models"])
+        "fallback_models" => split_list(r.params["fallback_models"]),
+        # GLOBAL reasoning default (§10, 4-layer). Blank -> nil = provider default.
+        "thinking" => presence(r.params["thinking"])
       }
+    end
+
+    # Per-model reasoning defaults (§10, the per-model layer). One line per model:
+    #   <provider/model | model> | <off|on|low|medium|high>
+    # CSP forbids JS for dynamic rows, so a textarea of lines is the honest path
+    # (same idiom as the MCP env / tool params). A blank effort -> {} for that ref
+    # (an inherit no-op). deep_merge merges per-ref, so refs accumulate; clearing an
+    # override = set its effort blank (removing the ref entirely is a later refinement).
+    def model_params_patch(r)
+      map = r.params["model_params"].to_s.each_line.each_with_object({}) do |line, acc|
+        line = line.strip
+        next if line.empty? || line.start_with?("#")
+
+        ref, thinking = line.split("|", 2).map(&:strip)
+        next if ref.to_s.empty?
+
+        acc[ref] = { "thinking" => presence(thinking) }.compact
+      end
+      { "model_params" => map }
     end
 
     # LLM provider from the form. api_key is sentinel-aware: the form
