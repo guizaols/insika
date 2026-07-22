@@ -103,28 +103,10 @@ bundle exec ruby scripts/import_pack.rb /caminho/do/pack
 
 (ou `POST /v1/agents` na mão, ou criar tudo pelo `/studio`.)
 
-## Observabilidade OTEL (opt-in) — coletor avulso
+## Observabilidade OTEL (opt-in)
 
-O OTEL é **desligado por default** (a gem nem carrega). Pra ver traces local, suba
-um coletor OTLP avulso — o mais rápido é o **Jaeger all-in-one** (expõe OTLP em
-`4318` e a UI em `16686`):
-
-```bash
-docker run --rm -d --name jaeger \
-  -p 16686:16686 -p 4318:4318 \
-  jaegertracing/all-in-one:latest
-```
-
-Depois suba o motor com o OTEL ligado apontando pro coletor:
-
-```bash
-HARNESS_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
-```
-
-O `serve_real` imprime `OTEL → ligado/desligado` na subida. Converse no
-`/admin/chat` e veja os traces em **`http://localhost:16686`** (serviço `harness`):
-um span `harness.turn` por turno, com filhos `harness.tool`/`harness.data_tool` e
-atributos de tokens/agente/modelo/latência. Parar o coletor: `docker rm -f jaeger`.
-
-> Não versionamos `docker-compose` — o coletor é avulso, decisão de rodar local.
+O OTEL é **desligado por default** (a gem nem carrega). Para ligar, ver traces
+local num coletor avulso (Jaeger one-liner) e a config de produção, veja o guia
+canônico: [`OBSERVABILITY.md`](OBSERVABILITY.md). Resumo: `HARNESS_OTEL=1` +
+`OTEL_EXPORTER_OTLP_ENDPOINT=...` e cada turno vira um trace `harness.turn` com
+filhos `harness.tool`/`harness.data_tool`.
