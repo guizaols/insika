@@ -1,0 +1,33 @@
+{
+  "at": "2026-07-22T13:43:14Z",
+  "cases": {
+    "loja-chocolates-cupom": {
+      "pass": false,
+      "score": 1.0
+    },
+    "loja-chocolates-escalacao-humano": {
+      "pass": true,
+      "score": 1.0
+    },
+    "loja-chocolates-faq-troca": {
+      "pass": false,
+      "score": 0.0
+    },
+    "loja-chocolates-produto-com-cep": {
+      "pass": false,
+      "score": 0.0
+    },
+    "loja-chocolates-produto-sem-cep": {
+      "pass": true,
+      "score": 1.0
+    },
+    "loja-chocolates-saudacao": {
+      "pass": true,
+      "score": 1.0
+    },
+    "loja-chocolates-status-pedido": {
+      "pass": true,
+      "score": 1.0
+    }
+  }
+}
