@@ -16,15 +16,18 @@ harness engine (no core changes). It combines:
 Two independent controls protect the highest-risk tools:
 
 1. **Sandbox (always on, enforced by the tools).** Every path a tool touches is
-   resolved through `HarnessCode::Workspace`, which confines all operations to a
-   single **workspace root** (`HARNESS_CODE_ROOT`, default: cwd). `..` traversal,
-   absolute paths outside the root, and symlinks are rejected *before any IO* —
-   the final path component may never be a symlink (a write target that is a
-   symlink, including a *broken* one pointing outside the root, is refused rather
-   than followed), and any existing target's realpath must stay inside the root.
-   `bash` runs with its working directory pinned to the root
-   (advisory — a shell can still reach absolute paths, which is why it is also
-   approval-gated).
+   resolved through the core **`Harness::Sandbox`** primitive (item 35), which
+   confines all operations to a single **root** (`HARNESS_CODE_ROOT`, default:
+   cwd). `..` traversal, absolute paths outside the root, and symlinks are
+   rejected *before any IO* — the final path component may never be a symlink (a
+   write target that is a symlink, including a *broken* one pointing outside the
+   root, is refused rather than followed), and any existing target's realpath must
+   stay inside the root. `bash` runs through the sandbox's **exec provider**:
+   `local` (default; working directory pinned to the root — advisory, since a
+   shell can still reach absolute paths, which is why it is also approval-gated)
+   or `docker` (real container isolation, `HARNESS_CODE_SANDBOX=docker`). Either
+   provider enforces a hard-kill wall-clock timeout. See
+   [`docs/SANDBOX.md`](../../docs/SANDBOX.md) for the primitive and its config.
 2. **Approval (reuses the engine).** `write_file`, `edit_file`, and `bash` are
    marked `side_effect: true` in the plugin manifest and listed in the profile's
    `approvals_required`. The builtin `ApprovalRequired` policy marks them and the
@@ -85,7 +88,10 @@ Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
 
 | var | default | meaning |
 |-----|---------|---------|
-| `HARNESS_CODE_ROOT` | cwd | workspace root the tools are sandboxed to |
+| `HARNESS_CODE_ROOT` | cwd | sandbox root the tools are confined to |
+| `HARNESS_CODE_SANDBOX` | `local` | exec provider: `local` (in-process) or `docker` (container) |
+| `HARNESS_CODE_SANDBOX_IMAGE` | `alpine:3.20` | docker image for the `docker` provider |
+| `HARNESS_CODE_SANDBOX_NETWORK` | `none` | docker `--network` for the `docker` provider |
 | `HARNESS_CODE_TOKEN` | `local-code` | bearer for `/v1/responses` |
 | `HARNESS_CODE_MODEL` | `deepseek-chat` | model id |
 | `HARNESS_CODE_PROVIDER` | `deepseek` | RubyLLM provider |
@@ -99,17 +105,22 @@ Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
 ```
 plugins/harness-code/         # the toolset (autodiscoverable plugin, RFC-0003)
   harness.plugin.yml          # manifest: tool names + side_effect flags
-  plugin.rb                   # register(api): block factories, shared Workspace
+  plugin.rb                   # register(api): block factories, shared core Sandbox
   lib/harness_code/
-    workspace.rb              # the sandbox boundary
     tools/{read_file,list_dir,grep,write_file,edit_file,bash}.rb
+
+lib/harness/sandbox/          # the core Sandbox primitive (item 35)
+  boundary.rb                 # FS confinement (always on)
+  local.rb / docker.rb        # exec providers
+  runner.rb                   # shared hard-kill spawn
 
 examples/harness-code/        # the example app (consumes the core as a lib)
   boot.rb                     # deployment wiring: engine + plugin + profile + app
   server.rb                   # Async::HTTP server launcher
   bin/harness-code            # the CLI client (net/http + json, stdlib only)
 
-spec/plugins/harness_code/    # tests: workspace, tools, approval wiring
+spec/plugins/harness_code/    # tests: tools, approval wiring
+spec/harness/sandbox/         # tests: boundary + providers (core primitive)
 ```
 
 ## Not in the prototype (next steps)
@@ -118,8 +129,6 @@ spec/plugins/harness_code/    # tests: workspace, tools, approval wiring
   has no frame for `approval_requested`, so the CLI watches the raw `/v1/events`
   SSE stream and resolves via `POST /v1/commands/approve_action`. A first-class
   approval frame in the adapter would remove that side-channel.
-- `bash` blocks the fiber for the duration of the command (no hard timeout kill);
-  a production runner would spawn detached and kill on timeout.
 - Diff previews in the approval prompt, richer `grep` (globs/ignore files),
   streaming shell output, multi-workspace, and per-tool allow/deny beyond the
   read-vs-write split.

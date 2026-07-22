@@ -19,12 +19,12 @@ module HarnessCode
 
       def execute(path:, old_string:, new_string:)
         guard do
-          abs = workspace.resolve(path)
+          abs = sandbox.resolve(path)
           raise "not a file: #{path}" unless File.file?(abs)
 
           content = File.read(abs, encoding: "UTF-8")
           occurrences = content.scan(old_string.to_s).size
-          raise "old_string not found in #{workspace.relative(abs)}" if occurrences.zero?
+          raise "old_string not found in #{sandbox.relative(abs)}" if occurrences.zero?
           if occurrences > 1
             raise "old_string is not unique (#{occurrences} matches) — add more surrounding context"
           end
@@ -34,7 +34,7 @@ module HarnessCode
           # in the replacement even when the pattern is a literal string, which
           # would silently corrupt replacements containing a backslash.
           File.write(abs, content.sub(old_string.to_s) { new_string.to_s })
-          { path: workspace.relative(abs), status: "edited" }
+          { path: sandbox.relative(abs), status: "edited" }
         end
       end
     end
