@@ -103,6 +103,26 @@ RSpec.describe Harness::AgentProfile do
     end
   end
 
+  describe "subagents (RFC-0010, capacity field — never inherits)" do
+    it "defaults to nil (opt-in: NONE, like capabilities)" do
+      expect(described_class.build(id: "a", model: "m").subagents).to be_nil
+    end
+
+    it "normalizes a present value to [String] (accepts symbols)" do
+      profile = described_class.build(id: "a", model: "m", subagents: [:researcher, "writer"])
+      expect(profile.subagents).to eq(%w[researcher writer])
+    end
+
+    it "an explicit empty list stays [] (present but no children)" do
+      expect(described_class.build(id: "a", model: "m", subagents: []).subagents).to eq([])
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(id: "a", model: "m", subagents: ["researcher"])
+      expect(profile.to_h[:subagents]).to eq(["researcher"])
+    end
+  end
+
   describe "metadata + store_id (Phase 6, turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

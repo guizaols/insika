@@ -11,7 +11,7 @@ module Harness
   # Executor, injected as the `emit` callable.
   class ChatBuilder
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
-                   hooks:, tool_catalog: nil, memory_store: nil)
+                   hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -19,6 +19,10 @@ module Harness
       @hooks = hooks
       @tool_catalog = tool_catalog
       @memory_store = memory_store
+      # RFC-0010: the object exposing #run_subagent (the Executor). nil = the
+      # spawn_subagent system tool is never wired (parity for a builder used
+      # without delegation, e.g. some unit stubs).
+      @subagent_runner = subagent_runner
     end
 
     # Configures an already-created chat with the context (stage 2) and the
@@ -72,6 +76,15 @@ module Harness
       if @memory_store && state.profile.memory
         tools << Tools::Remember.new(@memory_store, state.tenant,
                                      event_stream: @event_stream, state: state)
+      end
+
+      # spawn_subagent is the delegation system tool (RFC-0010) — wired only with a
+      # runner present AND profile.subagents non-empty (a double gate, like
+      # remember). Never enveloped: in the synchronous mode the child lives in the
+      # parent's envelope. The runtime gate on WHICH agent is spawnable is the
+      # parent's subagents allowlist, enforced in Executor#run_subagent.
+      if @subagent_runner && !Array(state.profile.subagents).empty?
+        tools << Tools::Subagent.new(runner: @subagent_runner, state: state)
       end
 
       chat.with_tools(*tools) unless tools.empty?

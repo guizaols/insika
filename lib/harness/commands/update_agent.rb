@@ -24,12 +24,25 @@ module Harness
         # to_h of the current profile brings the correct symbols; patch overwrites only
         # what was sent. id never changes (rename = create+delete, out of scope).
         merged = existing.to_h.merge(patch).merge(id: id)
-        @profile_source.put(Harness::AgentProfile.build(**merged))
+        profile = Harness::AgentProfile.build(**merged)
+        # RFC-0010 §4.4: definition-time cycle + depth check (an update may ADD
+        # subagents to an existing agent). Raises SubagentError before persisting.
+        validate_subagent_graph!(profile)
+        @profile_source.put(profile)
         @event_stream.emit(Harness::Event.new(
                              type: :agent_updated, data: { agent_id: id },
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         @profile_source.fetch(id)
+      end
+
+      private
+
+      def validate_subagent_graph!(profile)
+        return if Array(profile.subagents).empty?
+
+        others = @profile_source.all.reject { |p| p.id.to_s == profile.id.to_s }
+        Harness::SubagentGraph.validate!(others + [profile])
       end
     end
   end

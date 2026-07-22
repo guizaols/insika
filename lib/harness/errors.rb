@@ -74,4 +74,30 @@ module Harness
       super(message || "capability #{capability} ambiguous between #{candidates.inspect}")
     end
   end
+
+  # Subagent graph integrity (RFC-0010 §4.4). Raised at DEFINITION-time
+  # (CreateAgent/UpdateAgent/boot) by SubagentGraph.validate! — a subagents
+  # allowlist that forms a cycle or exceeds the depth cap is a configuration
+  # error, never a runtime surprise. A ValidationError so the authoring Command
+  # fails cleanly (HTTP 422, no profile persisted).
+  class SubagentError < ValidationError; end
+
+  class SubagentCycleError < SubagentError
+    attr_reader :cycle
+
+    def initialize(message = nil, cycle: [])
+      @cycle = cycle
+      super(message || "subagent cycle detected: #{cycle.join(' -> ')}")
+    end
+  end
+
+  class SubagentDepthExceeded < SubagentError
+    attr_reader :depth, :cap
+
+    def initialize(message = nil, depth: nil, cap: nil)
+      @depth = depth
+      @cap = cap
+      super(message || "subagent depth #{depth} exceeds cap #{cap}")
+    end
+  end
 end

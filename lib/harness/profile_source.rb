@@ -97,6 +97,9 @@ module Harness
         limits: symbolize_limits(h[:limits]),
         approvals_required: h[:approvals_required],
         capabilities: h[:capabilities],
+        # subagents (RFC-0010): allowlist of child ids; build re-normalizes to
+        # [String]. nil round-trips as nil (opt-in: NONE).
+        subagents: h[:subagents],
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
         prompt_caching: h[:prompt_caching],
