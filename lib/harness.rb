@@ -138,6 +138,10 @@ require_relative "harness/doctor"
 # Shared composition core for both roots (config/wiring.rb + config/deployment.rb).
 # Only references the classes above at call-time, so require order is unconstrained.
 require_relative "harness/wiring/graph"
+# Public Ruby DSL (item 36): Harness.agent { … }. The Builder is gem-free (it only
+# generates a Pack); the runtime (chat/serve) is required lazily by Definition, so
+# `require "harness"` stays free of ruby_llm and the HTTP server.
+require_relative "harness/dsl"
 # Do NOT require "harness/tools/load_skill" here: it does `require "ruby_llm"` at
 # the top (inherits from RubyLLM::Tool) and would pull the gem in at load-time. The
 # Executor loads it lazily inside create_chat (D9).

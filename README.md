@@ -25,24 +25,50 @@ from one deployment.
 
 ## Quickstart
 
-```bash
-bundle install
+Define an agent in Ruby and talk to it — the whole program:
 
-# Single-process server (control UI + API) on :9292, seeded with a demo agent "bia".
-DEEPSEEK_API_KEY=sk-... ruby scripts/serve_real.rb
+```ruby
+require "harness"
+
+assistant = Harness.agent("assistant") do
+  model "deepseek-chat"
+  provider :deepseek
+  instructions "You are Bia, a concise and friendly assistant. Answer briefly."
+end
+
+puts assistant.reply("hi, what can you do?")   # one turn, in-process
 ```
 
-First turn over the drop-in API (SSE):
+```bash
+bundle install
+DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb "hi, what can you do?"
+```
+
+Swap `reply` for `serve` and the same agent is a server — control UI (`/studio`)
+plus the drop-in `/v1/responses` API on `:9292`:
+
+```ruby
+assistant.serve   # http://localhost:9292/studio  +  POST /v1/responses
+```
+
+```bash
+DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb --serve
+```
+
+Then, over the drop-in API (SSE) — `model` is the agent id:
 
 ```bash
 curl -N http://localhost:9292/v1/responses \
   -H "Authorization: Bearer local-demo" \
   -H "Content-Type: application/json" \
-  -d '{"model":"bia","user":"chat-1","stream":true,"input":"hi, what can you do?"}'
+  -d '{"model":"assistant","user":"chat-1","stream":true,"input":"hi, what can you do?"}'
 ```
 
-Or open the control UI at **http://localhost:9292/studio** (log in with the token
-`local-demo`) to create agents, edit prompts/skills/tools, and watch turns live.
+The DSL is **thin sugar over config-over-code**: `Harness.agent { … }.to_pack` is a
+plain provisioning pack — the same portable artifact you can create/edit at runtime
+through the control UI or `POST /v1/agents`. Nothing is a bypass; the DSL just
+*generates the data*. For the full demo deployment (real tools/skills/memory), see
+`scripts/serve_real.rb`.
 
 ## The API
 
