@@ -36,7 +36,8 @@ module Harness
       # pure transport surface (/v1, /a2a). The constitutional rule holds: server/
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
-                     config:, pending_action_store: nil, a2a: nil, provisioner: nil)
+                     config:, pending_action_store: nil, a2a: nil, provisioner: nil,
+                     workflow_registry: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -45,6 +46,11 @@ module Harness
         @pending_action_store = pending_action_store # read for GET /v1/tasks/:id
         @a2a = a2a # A2A edge. nil = server does not expose A2A (parity).
         @provisioner = provisioner # PackImporter. nil = provisioning not exposed.
+        # Item 22 / §4.4: READ-ONLY registry, injected only where workflows are
+        # exposed (the minimal wiring). nil = no /v1/workflows routes (parity — the
+        # deployment does not expose workflows). Reading a catalog is a READ, like a
+        # store read: the constitutional rule (no Executor/store-writes/RubyLLM) holds.
+        @workflow_registry = workflow_registry
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -82,6 +88,10 @@ module Harness
           handle_create_session(req)
         in ["POST", ["v1", "messages"]]
           handle_send_message(req)
+        in ["GET", ["v1", "workflows"]] if @workflow_registry
+          handle_list_workflows
+        in ["POST", ["v1", "workflows", name]] if @workflow_registry
+          handle_trigger_workflow(req, name)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
         in ["POST", ["v1", "tools", "manifest"]]
@@ -137,6 +147,28 @@ module Harness
       def handle_send_message(req)
         stream = req.GET["stream"] != "false"
         message_flow(parse_body(req), stream: stream)
+      end
+
+      # GET /v1/workflows — discovery (item 22 / §4.4). Direct read of the
+      # registry catalog (name + description + the I/O schema contract). Not a
+      # Command; opt-in via the injected registry.
+      def handle_list_workflows
+        json_response(200, { workflows: @workflow_registry.catalog })
+      end
+
+      # POST /v1/workflows/:name — triggers a workflow RUN. The name comes from the
+      # ROUTE; agent/input/session_id from the body. Two shapes:
+      #   · default        -> 202 { run_id, task_id } immediately (async at-most-once
+      #     run; observe via GET /v1/tasks/:run_id or GET /v1/events?task_id=:run_id).
+      #   · ?stream=true    -> SSE of the run's events (incl. :workflow_started /
+      #     :workflow_completed), closing at the terminal event.
+      # A bad input (input_schema) is a synchronous 422 with no run (WorkflowSchemaError
+      # -> ValidationError in #call); an unknown workflow/agent -> 404/422.
+      def handle_trigger_workflow(req, name)
+        body = parse_body(req)
+        payload = { workflow: name, agent: body[:agent],
+                    input: body[:input], session_id: body[:session_id] }.compact
+        workflow_flow(payload, stream: req.GET["stream"] == "true")
       end
 
       # POST /v1/responses — OpenAI Responses adapter (drop-in for the OpenClaw
@@ -306,6 +338,33 @@ module Harness
         subscription.bind(task_id: task_id)
         filtered = TaskFilter.new(subscription, task_id)
         stream ? sse_response(filtered, serialize: serialize) : aggregate_response(filtered, task_id)
+      end
+
+      # Workflow trigger flow (item 22). Async by default (the honest workflow
+      # contract: fire the run, return the runId); ?stream=true streams the run's
+      # events like a turn. Same subscribe-before-dispatch discipline as
+      # message_flow so no eager event is lost when streaming. A synchronous handler
+      # error (bad input / unknown workflow) closes the subscription and propagates
+      # to #call (HTTP status).
+      def workflow_flow(payload, stream:)
+        command = Harness::Command.build(:trigger_workflow, payload, transport: :http)
+
+        unless stream
+          result = dispatch_with_timeout(command)
+          return json_response(202, { run_id: result[:run_id] || result[:task_id], task_id: result[:task_id] })
+        end
+
+        subscription = @event_stream.subscribe
+        result =
+          begin
+            @command_bus.dispatch(command)
+          rescue StandardError
+            subscription.close
+            raise
+          end
+        task_id = result[:task_id]
+        subscription.bind(task_id: task_id)
+        sse_response(TaskFilter.new(subscription, task_id))
       end
 
       # stream=false: aggregates by iterating the filtered subscription in the
