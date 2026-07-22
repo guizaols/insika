@@ -5,9 +5,13 @@ provisioning, running locally, migrating, and load-testing.
 
 ## Load & performance testing
 
-See [../docs/LOADTEST.md](../docs/LOADTEST.md) for the full guide (how to run,
-how to compare against the OpenClaw gateway, how to read the metrics).
+See [../docs/BENCHMARK.md](../docs/BENCHMARK.md) for the neutral engine benchmark
+and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
 
+- **`bench.rb`** — neutral, reproducible, **provider-free** benchmark of the engine
+  overhead per turn (context build, policy, tool round-trip, streaming, persistence)
+  across synthetic scenarios (greeting / tool_call / multi_turn). No API key. Reports
+  p50/p95 latency, throughput, and per-token pipeline overhead. `--help` / `--json`.
 - **`loadtest.rb`** — end-to-end load test hitting `POST /v1/responses` (SSE):
   TTFB, total, tokens, cache hit, P50/P95, error rate. Ruby port of OpenClaw's
   `loadtest-gateway.mjs`. `--help` / `--dry-run` supported.
