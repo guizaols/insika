@@ -36,6 +36,7 @@ module Harness
         task_store           = Harness::TaskStore.new(store: backend)
         checkpoint_store     = Harness::CheckpointStore.new(store: backend)
         pending_action_store = Harness::PendingActionStore.new(store: backend)
+        delegation_store     = Harness::DelegationStore.new(store: backend)
         memory_store         = Harness::MemoryStore.new(store: backend)
 
         code_tool_registry = Harness::ToolRegistry.new
@@ -51,6 +52,7 @@ module Harness
           backend: backend, event_stream: Harness::EventStream.new,
           session_store: session_store, task_store: task_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
+          delegation_store: delegation_store,
           memory_store: memory_store, code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Harness::CapabilityRegistry.new, hooks: Harness::Hooks.new
@@ -92,6 +94,7 @@ module Harness
           capability_registry: spine.capability_registry, tool_catalog: tool_catalog,
           memory_store: spine.memory_store,
           content_filter_factory: guardrails.content_filter_factory, # RFC-0009: stream redaction
+          delegation_store: spine.delegation_store, # RFC-0010 Fase 2: async delegation durability
           **executor_extra
         )
 
@@ -101,6 +104,7 @@ module Harness
           backend: spine.backend, event_stream: spine.event_stream,
           session_store: spine.session_store, task_store: spine.task_store,
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
+          delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
           policy_registry: spine.policy_registry, capability_registry: spine.capability_registry,
@@ -138,8 +142,8 @@ module Harness
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
-        :pending_action_store, :memory_store, :code_tool_registry, :workflow_registry,
-        :policy_registry, :capability_registry, :hooks, keyword_init: true
+        :pending_action_store, :delegation_store, :memory_store, :code_tool_registry,
+        :workflow_registry, :policy_registry, :capability_registry, :hooks, keyword_init: true
       )
 
       # Full graph (phase 2 output). `code_tool_registry` is the plain code registry
@@ -147,7 +151,8 @@ module Harness
       # deployment's overlay, or the same code registry at the base).
       Result = Struct.new(
         :backend, :event_stream,
-        :session_store, :task_store, :checkpoint_store, :pending_action_store, :memory_store,
+        :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
+        :memory_store,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

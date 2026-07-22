@@ -30,7 +30,15 @@ RSpec.describe Harness::Tools::Subagent do
     result = tool.execute(agent: "researcher", message: "find X")
 
     expect(result).to eq({ text: "child answer", session_id: "sub-1" })
-    expect(r.calls).to eq([{ agent: "researcher", message: "find X", parent_state: state }])
+    expect(r.calls).to eq([{ agent: "researcher", message: "find X", parent_state: state, async: false }])
+  end
+
+  it "async:true dispatches and returns the ack (result arrives later as a new turn)" do
+    r = runner({ dispatched: "child-task-1", agent: "researcher", session_id: "sub-9" })
+    result = described_class.new(runner: r, state: state).execute(agent: "researcher", message: "long job", async: true)
+
+    expect(result).to eq({ dispatched: true, agent: "researcher", session_id: "sub-9" })
+    expect(r.calls.first).to include(async: true)
   end
 
   it "coerces agent/message to strings before delegating" do

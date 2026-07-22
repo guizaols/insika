@@ -17,12 +17,16 @@ module Harness
     # returns its result. The child result = its text + the linked child session
     # id (§4.3 R3).
     class Subagent < RubyLLM::Tool
-      description "Delegates a self-contained task to a specialized child agent " \
-                  "and returns its final answer. The child runs in an ISOLATED " \
-                  "context (it does not see this conversation) — pass everything " \
-                  "it needs in `message`. Use only for scoped sub-tasks."
+      description "Delegates a self-contained task to a specialized child agent. " \
+                  "The child runs in an ISOLATED context (it does not see this " \
+                  "conversation) — pass everything it needs in `message`. By default " \
+                  "it BLOCKS and returns the child's final answer. Set async:true to " \
+                  "fire-and-forget a long task: it returns immediately and the child's " \
+                  "result arrives later as a new message on this conversation."
       param :agent, desc: "Id of the child agent to delegate to (must be one this agent may spawn)"
       param :message, desc: "The self-contained task/prompt for the child agent"
+      param :async, type: :boolean, required: false,
+                    desc: "true = dispatch and continue (result delivered later); default false = wait for the answer"
 
       # otherwise RubyLLM derives "harness--tools--subagent" from the class name.
       def name = "spawn_subagent"
@@ -36,12 +40,16 @@ module Harness
       # The child result is returned to the model as the tool result. On error we
       # return { error: } (never raise) — a bad `agent`/depth/child failure is a
       # message to the model, not a turn-killer (parity with A2ARemote).
-      def execute(agent:, message:)
-        result = @runner.run_subagent(agent: agent.to_s, message: message.to_s, parent_state: @state)
+      def execute(agent:, message:, async: false)
+        result = @runner.run_subagent(agent: agent.to_s, message: message.to_s,
+                                      parent_state: @state, async: async == true)
         return { error: result[:error] } if result[:error]
 
-        # Link the child session id alongside the text so a multi-step parent can
-        # reference it and the transcript stays auditable (§4.3 R3 / §7).
+        # async dispatch: the ack (the child result arrives later as a new turn).
+        return { dispatched: true, agent: result[:agent], session_id: result[:session_id] } if result[:dispatched]
+
+        # sync: link the child session id alongside the text so a multi-step parent
+        # can reference it and the transcript stays auditable (§4.3 R3 / §7).
         { text: result[:text], session_id: result[:session_id] }
       end
     end
