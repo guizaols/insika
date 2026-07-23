@@ -115,6 +115,12 @@ Command Bus → Context Builder → Policy Engine → Middleware → Executor (t
 Durable stores (SQLite, or in-memory for dev) hold sessions, tasks and checkpoints.
 A deeper architecture guide is in progress.
 
+**Concurrency:** the engine runs on the [Async](https://github.com/socketry/async)
+fiber scheduler and serves under [Falcon](https://github.com/socketry/falcon).
+Because an LLM turn is almost entirely spent waiting on the provider, fibers let one
+process carry many concurrent turns on a few connections rather than a thread per
+request — the model [RubyLLM's async guide](https://rubyllm.com/async/) recommends.
+
 ## Tests
 
 ```bash
@@ -123,6 +129,7 @@ bundle exec rspec
 
 ## More docs
 
+- [docs/WHY.md](docs/WHY.md) — why a runtime (vs a DIY loop, an assembled framework, or a hosted gateway).
 - [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md) — running locally and the control UI.
 - [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry tracing (opt-in): turns → traces, local & production setup.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — production deploy (Falcon, durable SQLite volume, tokens).

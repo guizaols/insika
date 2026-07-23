@@ -53,6 +53,31 @@ RSpec.describe Harness::DSL do
       expect(pk.config[:tools_allow]).to include("cart")
     end
 
+    it "guardrails(...) stores content-safety config on the pack (RFC-0009, opt-in)" do
+      pk = Harness.agent("safe") do
+        model "m"
+        guardrails input: true, output: true, strictness: "high",
+                   responses: { "injection" => "I can't help with that." }
+      end.to_pack
+      expect(pk.config[:guardrails]).to eq(
+        "input" => true, "output" => true, "strictness" => "high",
+        "responses" => { "injection" => "I can't help with that." }
+      )
+    end
+
+    it "guardrails config round-trips through import to Safety::Config" do
+      profile = import_and_read(
+        Harness.agent("safe") do
+          model "m"
+          guardrails input: true, output: true, strictness: "high"
+        end.to_pack
+      )
+      cfg = Harness::Safety::Config.from_profile(profile)
+      expect(cfg.input).to be(true)
+      expect(cfg.output).to be(true)
+      expect(cfg.strictness).to eq(:high)
+    end
+
     it "raw SKILL.md content (already has frontmatter) passes through untouched" do
       raw = "---\nname: promo\ndescription: promos\n---\n\nAlways mention the promo."
       pk = Harness.agent("x") { model "m"; skill "promo", raw }.to_pack
