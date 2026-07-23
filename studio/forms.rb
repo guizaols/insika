@@ -177,7 +177,7 @@ module Studio
 
       Integer(v)
     rescue ArgumentError, TypeError
-      raise Harness::ValidationError, "#{field} must be an integer (got #{raw.inspect})"
+      raise Insika::ValidationError, "#{field} must be an integer (got #{raw.inspect})"
     end
 
     # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a

@@ -6,9 +6,9 @@
 # what the model produces.
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/guardrails/guarded_agent.rb
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 
-guarded = Harness.agent("guarded") do
+guarded = Insika.agent("guarded") do
   model "deepseek-chat"
   provider :deepseek
   instructions "You are a helpful assistant."

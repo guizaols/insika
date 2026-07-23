@@ -2,7 +2,7 @@
 
 # PRODUCTION rackup (served by Falcon). Assembles the deployment's FULL app
 # (Deploy::Wiring — DeepSeek/Bia/gateway_token/provisioner/egress/OTEL) with the
-# Harness Studio under /studio.
+# Insika Studio under /studio.
 #
 # The operator control UI lives in the Studio (cookie-auth, under /studio). The
 # server surface is transport-only: /v1/responses and /v1/agents use the
@@ -26,7 +26,7 @@ require_relative "studio/app"     # management UI (Roda), under /studio
 
 W = Deploy::Wiring
 
-# pause_task/approve_action come from the shared graph core (Harness::Wiring::Graph,
+# pause_task/approve_action come from the shared graph core (Insika::Wiring::Graph,
 # §12 G4) — no longer patched in here.
 
 # fail-closed: without ADMIN_TOKEN, /studio denies login. The gateway falls back to
@@ -37,7 +37,7 @@ GATEWAY_TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN)
 # Inbound A2A OPT-IN via HARNESS_A2A_AGENT (gated by the dynamic ProfileSource).
 A2A_APP =
   if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
-    Harness::Server::A2A::App.new(
+    Insika::Server::A2A::App.new(
       command_bus: W::BUS, task_store: W::TASK_STORE, session_store: W::SESSION_STORE,
       profiles: W::PROFILE_SOURCE, skill_catalog: W::CATALOG,
       config: { a2a_agent: a2a_agent, base_url: ENV["HARNESS_PUBLIC_URL"] || "http://localhost:9292" }
@@ -49,12 +49,12 @@ A2A_APP =
 # are OSS DX aimed at self-hosters. When enabled it reports the platform models
 # (masked — slugs + model ids only, no keys/urls), NOT the tenant's agent ids.
 ONBOARDING =
-  if Harness::EnvSchema.truthy?(ENV["HARNESS_ONBOARDING"])
-    Harness::Onboarding.standard(root: __dir__, settings_store: W::SETTINGS_STORE,
+  if Insika::EnvSchema.truthy?(ENV["HARNESS_ONBOARDING"])
+    Insika::Onboarding.standard(root: __dir__, settings_store: W::SETTINGS_STORE,
                                  provider_store: W::LLM_PROVIDER_STORE)
   end
 
-APP = Harness::Server::App.new(
+APP = Insika::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
@@ -84,7 +84,7 @@ Studio::App.configure(
 W::EXECUTOR.supervised = true
 
 # OTEL Telemetry (opt-in). Only when enabled (HARNESS_OTEL); off -> nil -> no-op.
-Harness::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY) if W::TELEMETRY
+Insika::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY) if W::TELEMETRY
 
 # /studio -> Studio (Roda, cookie-auth); rest -> Server::App (transport: /v1, /a2a).
 run Rack::URLMap.new(

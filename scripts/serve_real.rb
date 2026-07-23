@@ -29,7 +29,7 @@ W = Deploy::Wiring
 # fallback, gates /v1/responses + /v1/agents (gateway_token). Never a real secret.
 ADMIN_TOKEN = ENV.fetch("ADMIN_TOKEN", "local-demo")
 
-# pause_task/approve_action come from the shared graph core (Harness::Wiring::Graph,
+# pause_task/approve_action come from the shared graph core (Insika::Wiring::Graph,
 # §12 G4) — no longer patched in here.
 
 # Session ready for multi-turn in the browser: pick session_id "web" (agent "bia")
@@ -42,7 +42,7 @@ W::SESSION_STORE.create(id: "web", vars: { "canal" => "navegador" }) unless W::S
 # a missing agent -> nil -> Server::App does not expose the A2A routes.
 A2A_APP =
   if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
-    Harness::Server::A2A::App.new(
+    Insika::Server::A2A::App.new(
       command_bus: W::BUS, task_store: W::TASK_STORE, session_store: W::SESSION_STORE,
       profiles: W::PROFILE_SOURCE, skill_catalog: W::CATALOG,
       config: { a2a_agent: a2a_agent,
@@ -50,7 +50,7 @@ A2A_APP =
     )
   end
 
-APP = Harness::Server::App.new(
+APP = Insika::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
@@ -63,7 +63,7 @@ APP = Harness::Server::App.new(
   # the full local demo — it's the "build my first agent" front door. Reports the
   # platform models AND the demo's served agents (their ids ARE the /v1/responses
   # `model`), all from masked/read-only sources.
-  onboarding: Harness::Onboarding.standard(
+  onboarding: Insika::Onboarding.standard(
     root: File.expand_path("..", __dir__),
     settings_store: W::SETTINGS_STORE, provider_store: W::LLM_PROVIDER_STORE,
     agents: -> { W::PROFILE_SOURCE.all.map { |p| { id: p.id, model: p.model, provider: p.provider } } }
@@ -74,7 +74,7 @@ APP = Harness::Server::App.new(
             public_url: ENV["HARNESS_PUBLIC_URL"] }
 )
 
-# Harness Studio: Roda app mounted under /studio, with cookie login — the
+# Insika Studio: Roda app mounted under /studio, with cookie login — the
 # browser sends the session cookie (no Bearer needed). The session secret derives
 # from ADMIN_TOKEN. Log in at /studio/login with the ADMIN_TOKEN below.
 # persistence hint for the health chip (durable in SQLite when
@@ -109,7 +109,7 @@ endpoint = Async::HTTP::Endpoint.parse(BIND)
 middleware = Protocol::Rack::Adapter.new(DISPATCH)
 
 puts "\e[1mHarness — serving for real (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
-puts "  #{BIND}/studio        → Harness Studio (login: token \"#{ADMIN_TOKEN}\")"
+puts "  #{BIND}/studio        → Insika Studio (login: token \"#{ADMIN_TOKEN}\")"
 puts "  #{BIND}/studio/chats  → chat with Bia (agent: bia · session_id: web)"
 puts "  #{BIND}/studio/tasks  → tasks / approvals console"
 puts "  Ctrl-C to stop."
@@ -120,6 +120,6 @@ Async do
   W::EXECUTOR.supervised = true # serving mode: turns survive the disconnect
   # OTEL Telemetry (opt-in): connects the Recorder to the Event Stream INSIDE the reactor.
   # No-op when TELEMETRY is nil (off).
-  Harness::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY)
+  Insika::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY)
   Async::HTTP::Server.new(middleware, endpoint).run
 end

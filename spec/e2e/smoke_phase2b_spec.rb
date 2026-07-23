@@ -4,8 +4,8 @@ require "spec_helper"
 require "async"
 # The Executor loads them lazily in create_chat; here create_chat is stubbed, so
 # we require them explicitly (same discipline as executor_chat_spec).
-require "harness/tools/load_skill"
-require "harness/tools/tool_search"
+require "insika/tools/load_skill"
+require "insika/tools/tool_search"
 
 # E2E smoke for slice B (P2B): CommandBus + SendMessage + Executor + mocked
 # RubyLLM (FakeChat via create_chat stub). REAL components: CapabilityRegistry,
@@ -22,38 +22,38 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
     def call(_args = {}) = "executed:#{@name}"
   end
 
-  let(:backend)          { Harness::Stores::Memory.new }
-  let(:session_store)    { Harness::SessionStore.new(store: backend) }
-  let(:task_store)       { Harness::TaskStore.new(store: backend) }
-  let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
+  let(:backend)          { Insika::Stores::Memory.new }
+  let(:session_store)    { Insika::SessionStore.new(store: backend) }
+  let(:task_store)       { Insika::TaskStore.new(store: backend) }
+  let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
   let(:event_stream)     { SpyEventStream.new }
 
-  let(:tool_registry)       { Harness::ToolRegistry.new }
-  let(:capability_registry) { Harness::CapabilityRegistry.new }
-  let(:tool_catalog)        { Harness::ToolCatalog.new(tool_registry: tool_registry) }
+  let(:tool_registry)       { Insika::ToolRegistry.new }
+  let(:capability_registry) { Insika::CapabilityRegistry.new }
+  let(:tool_catalog)        { Insika::ToolCatalog.new(tool_registry: tool_registry) }
 
   let(:policy_registry) do
-    Harness::PolicyRegistry.new.tap { |r| r.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist) }
+    Insika::PolicyRegistry.new.tap { |r| r.register(:tool_allowlist, Insika::Policy::Builtin::ToolAllowlist) }
   end
-  let(:policy_engine) { Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream) }
+  let(:policy_engine) { Insika::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream) }
 
   let(:profiles) do
     {
-      "cap_top" => Harness::AgentProfile.build(
+      "cap_top" => Insika::AgentProfile.build(
         id: "cap_top", model: "fake", policies: [:tool_allowlist], capabilities: [:browse]
       ),
-      "cap_deny_top" => Harness::AgentProfile.build(
+      "cap_deny_top" => Insika::AgentProfile.build(
         id: "cap_deny_top", model: "fake", policies: [:tool_allowlist],
         capabilities: [:browse], tools_deny: ["browser_b"]
       ),
-      "cap_ambiguous" => Harness::AgentProfile.build(
+      "cap_ambiguous" => Insika::AgentProfile.build(
         id: "cap_ambiguous", model: "fake", policies: [:tool_allowlist], capabilities: [:ambiguous_cap]
       ),
-      "deferred_ok" => Harness::AgentProfile.build(
+      "deferred_ok" => Insika::AgentProfile.build(
         id: "deferred_ok", model: "fake", policies: [:tool_allowlist],
         tools_allow: %w[eager_tool send_email], tools_deferred: ["send_email"]
       ),
-      "deferred_nil" => Harness::AgentProfile.build(
+      "deferred_nil" => Insika::AgentProfile.build(
         id: "deferred_nil", model: "fake", policies: [:tool_allowlist],
         tools_allow: %w[eager_tool send_email] # tools_deferred: nil (default) — parity
       )
@@ -61,10 +61,10 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
   end
 
   let(:executor) do
-    Harness::Executor.new(
+    Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: policy_engine,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
-      tool_registry: tool_registry, skill_catalog: Harness::SkillCatalog.new([]),
+      tool_registry: tool_registry, skill_catalog: Insika::SkillCatalog.new([]),
       profiles: profiles, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: event_stream,
       capability_registry: capability_registry, tool_catalog: tool_catalog
@@ -72,9 +72,9 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
   end
 
   let(:bus) do
-    Harness::CommandBus.new.tap do |b|
+    Insika::CommandBus.new.tap do |b|
       b.register(:send_message,
-                 Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store,
+                 Insika::Commands::SendMessage.new(profiles: profiles, session_store: session_store,
                                                     task_store: task_store, executor: executor))
     end
   end
@@ -102,7 +102,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
     allow(executor).to receive(:create_chat).and_return(chat)
     result = nil
     Sync do |parent|
-      result = bus.dispatch(Harness::Command.build(:send_message, { agent: agent, message: "oi" }))
+      result = bus.dispatch(Insika::Command.build(:send_message, { agent: agent, message: "oi" }))
       100.times do
         t = task_store.find(result[:task_id])
         break if t && TERMINAL.include?(t.status.to_s)
@@ -137,7 +137,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
   it "same-plugin tie -> CapabilityAmbiguous; turn fails at :capability; no :capability_resolved" do
     task, = run_turn(agent: "cap_ambiguous")
     expect(task.status).to eq(:failed)
-    expect(task.executions.last.error["class"]).to eq("Harness::CapabilityAmbiguous")
+    expect(task.executions.last.error["class"]).to eq("Insika::CapabilityAmbiguous")
     expect(task.executions.last.error["stage"]).to eq("capability")
     expect(event_stream.types).to include(:task_failed)
     expect(event_stream.types).not_to include(:error) # R2b: no legacy twin

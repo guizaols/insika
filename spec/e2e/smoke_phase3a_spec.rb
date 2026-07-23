@@ -9,16 +9,16 @@ require_relative "../../server/a2a/app"
 # Executor, only the chat mocked (FakeChat via create_chat stub). Proves inbound
 # A2A federation end to end, without an API key.
 RSpec.describe "smoke E2E: A2A inbound adapter (slice A)", :smoke do
-  let(:backend)          { Harness::Stores::Memory.new }
-  let(:session_store)    { Harness::SessionStore.new(store: backend) }
-  let(:task_store)       { Harness::TaskStore.new(store: backend) }
-  let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
-  let(:event_stream)     { Harness::EventStream.new }
-  let(:skill_catalog)    { Harness::SkillCatalog.new([]) }
-  let(:profiles)         { { "assistant" => Harness::AgentProfile.build(id: "assistant", model: "fake", base_prompt: "SOUL") } }
+  let(:backend)          { Insika::Stores::Memory.new }
+  let(:session_store)    { Insika::SessionStore.new(store: backend) }
+  let(:task_store)       { Insika::TaskStore.new(store: backend) }
+  let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
+  let(:event_stream)     { Insika::EventStream.new }
+  let(:skill_catalog)    { Insika::SkillCatalog.new([]) }
+  let(:profiles)         { { "assistant" => Insika::AgentProfile.build(id: "assistant", model: "fake", base_prompt: "SOUL") } }
 
   let(:executor) do
-    Harness::Executor.new(
+    Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
       tool_registry: FakeToolRegistry.new, skill_catalog: skill_catalog,
@@ -28,15 +28,15 @@ RSpec.describe "smoke E2E: A2A inbound adapter (slice A)", :smoke do
   end
 
   let(:bus) do
-    Harness::CommandBus.new.tap do |b|
-      b.register(:create_session, Harness::Commands::CreateSession.new(session_store: session_store, event_stream: event_stream))
-      b.register(:send_message, Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
-      b.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: task_store, executor: executor))
+    Insika::CommandBus.new.tap do |b|
+      b.register(:create_session, Insika::Commands::CreateSession.new(session_store: session_store, event_stream: event_stream))
+      b.register(:send_message, Insika::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
+      b.register(:cancel_task, Insika::Commands::CancelTask.new(task_store: task_store, executor: executor))
     end
   end
 
   let(:a2a) do
-    Harness::Server::A2A::App.new(
+    Insika::Server::A2A::App.new(
       command_bus: bus, task_store: task_store, session_store: session_store,
       profiles: profiles, skill_catalog: skill_catalog,
       config: { a2a_agent: "assistant", base_url: "https://h.example" }
@@ -98,11 +98,11 @@ RSpec.describe "smoke E2E: A2A inbound adapter (slice A)", :smoke do
   end
 
   it "tasks/get for a nonexistent id -> -32001" do
-    expect(rpc("tasks/get", { "id" => "nope" })[:error][:code]).to eq(Harness::Server::A2A::Errors::TASK_NOT_FOUND)
+    expect(rpc("tasks/get", { "id" => "nope" })[:error][:code]).to eq(Insika::Server::A2A::Errors::TASK_NOT_FOUND)
   end
 
   it "unknown method -> -32601 (never leaks)" do
-    expect(rpc("foo/bar")[:error][:code]).to eq(Harness::Server::A2A::Errors::METHOD_NOT_FOUND)
+    expect(rpc("foo/bar")[:error][:code]).to eq(Insika::Server::A2A::Errors::METHOD_NOT_FOUND)
   end
 
   it "tasks/cancel of a terminal task dispatches without error and projects the Task" do

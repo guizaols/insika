@@ -18,7 +18,7 @@ RSpec.describe "HarnessCode tools" do
     Dir.mktmpdir { |dir| @root = File.realpath(dir); example.run }
   end
 
-  let(:sandbox) { Harness::Sandbox.build("root" => @root) }
+  let(:sandbox) { Insika::Sandbox.build("root" => @root) }
 
   def write(rel, content)
     path = File.join(@root, rel)

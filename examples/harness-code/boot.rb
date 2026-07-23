@@ -16,7 +16,7 @@
 # No core files are modified. Requiring this file gives HarnessCodeApp::Wiring.
 
 require "yaml"
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 require "ruby_llm"
 require_relative "../../server/app"
 
@@ -35,7 +35,7 @@ module HarnessCodeApp
   # default) or `docker` (isolated container, `HARNESS_CODE_SANDBOX=docker`). The
   # SAME hash is stored on the agent profile below AND read by the plugin to build
   # the tools' Sandbox, so profile and runtime never drift. Docker knobs
-  # (image/network/…) default conservatively inside Harness::Sandbox::Docker and
+  # (image/network/…) default conservatively inside Insika::Sandbox::Docker and
   # are overridable via HARNESS_CODE_SANDBOX_* env.
   SANDBOX_CONFIG = {
     "provider"   => (ENV["HARNESS_CODE_SANDBOX"].to_s.empty? ? "local" : ENV["HARNESS_CODE_SANDBOX"]),
@@ -90,32 +90,32 @@ module HarnessCodeApp
   module Wiring
     BACKEND =
       if (db = ENV["HARNESS_DB"]) && !db.empty?
-        Harness::Stores::SQLite.new(path: db)
+        Insika::Stores::SQLite.new(path: db)
       else
-        Harness::Stores::Memory.new
+        Insika::Stores::Memory.new
       end
 
-    SESSION_STORE        = Harness::SessionStore.new(store: BACKEND)
-    TASK_STORE           = Harness::TaskStore.new(store: BACKEND)
-    CHECKPOINT_STORE     = Harness::CheckpointStore.new(store: BACKEND)
-    PENDING_ACTION_STORE = Harness::PendingActionStore.new(store: BACKEND)
-    MEMORY_STORE         = Harness::MemoryStore.new(store: BACKEND)
-    EVENT_STREAM         = Harness::EventStream.new
+    SESSION_STORE        = Insika::SessionStore.new(store: BACKEND)
+    TASK_STORE           = Insika::TaskStore.new(store: BACKEND)
+    CHECKPOINT_STORE     = Insika::CheckpointStore.new(store: BACKEND)
+    PENDING_ACTION_STORE = Insika::PendingActionStore.new(store: BACKEND)
+    MEMORY_STORE         = Insika::MemoryStore.new(store: BACKEND)
+    EVENT_STREAM         = Insika::EventStream.new
 
-    REGISTRY          = Harness::ToolRegistry.new
-    WORKFLOW_REGISTRY = Harness::WorkflowRegistry.new
-    POLICY_REGISTRY   = Harness::PolicyRegistry.new
-    POLICY_REGISTRY.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
-    POLICY_REGISTRY.register(:skill_allowlist, Harness::Policy::Builtin::SkillAllowlist)
-    POLICY_REGISTRY.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
+    REGISTRY          = Insika::ToolRegistry.new
+    WORKFLOW_REGISTRY = Insika::WorkflowRegistry.new
+    POLICY_REGISTRY   = Insika::PolicyRegistry.new
+    POLICY_REGISTRY.register(:tool_allowlist, Insika::Policy::Builtin::ToolAllowlist)
+    POLICY_REGISTRY.register(:skill_allowlist, Insika::Policy::Builtin::SkillAllowlist)
+    POLICY_REGISTRY.register(:approval_required, Insika::Policy::Builtin::ApprovalRequired)
 
-    HOOKS               = Harness::Hooks.new
-    MIDDLEWARE          = Harness::MiddlewareStack.new([])
-    CAPABILITY_REGISTRY = Harness::CapabilityRegistry.new
+    HOOKS               = Insika::Hooks.new
+    MIDDLEWARE          = Insika::MiddlewareStack.new([])
+    CAPABILITY_REGISTRY = Insika::CapabilityRegistry.new
 
     # Load the FS/shell toolset via the real plugin Loader (autodiscovery).
     PLUGIN_DIR = File.join(HarnessCodeApp::REPO_ROOT, "plugins", "harness-code")
-    Harness::Plugin::Loader.new(
+    Insika::Plugin::Loader.new(
       roots: [PLUGIN_DIR],
       registries: {
         tools: REGISTRY, workflows: WORKFLOW_REGISTRY, policies: POLICY_REGISTRY,
@@ -136,35 +136,35 @@ module HarnessCodeApp
                             .select { |_name, meta| meta["side_effect"] }
                             .keys.freeze
 
-    TOOL_CATALOG   = Harness::ToolCatalog.new(tool_registry: REGISTRY)
-    CATALOG        = Harness::SkillCatalog.new([])
-    PROMPT_CATALOG = Harness::PromptCatalog.new([])
+    TOOL_CATALOG   = Insika::ToolCatalog.new(tool_registry: REGISTRY)
+    CATALOG        = Insika::SkillCatalog.new([])
+    PROMPT_CATALOG = Insika::PromptCatalog.new([])
 
     CONTEXT_PROVIDERS = [
-      Harness::Context::Providers::Request.new,
-      Harness::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
-      Harness::Context::Providers::Skill.new(catalog: CATALOG),
-      Harness::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
-      Harness::Context::Providers::Session.new(session_store: SESSION_STORE)
+      Insika::Context::Providers::Request.new,
+      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
+      Insika::Context::Providers::Skill.new(catalog: CATALOG),
+      Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
+      Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
-    CONTEXT_BUILDER = Harness::ContextBuilder.new(
+    CONTEXT_BUILDER = Insika::ContextBuilder.new(
       providers: CONTEXT_PROVIDERS, event_stream: EVENT_STREAM, hooks: HOOKS
     )
-    POLICY_ENGINE = Harness::Policy::Engine.new(
+    POLICY_ENGINE = Insika::Policy::Engine.new(
       policy_registry: POLICY_REGISTRY, event_stream: EVENT_STREAM
     )
 
     # The code agent. Read tools are ungated; write/shell tools are listed in
     # approvals_required, so the ApprovalRequired policy marks them and the
     # ToolEnvelope suspends the turn for human approval before they execute.
-    PROFILE = Harness::AgentProfile.build(
+    PROFILE = Insika::AgentProfile.build(
       id: "harness-code", model: HarnessCodeApp::MODEL, provider: HarnessCodeApp::PROVIDER,
       base_prompt: HarnessCodeApp::SYSTEM_PROMPT,
       tools_allow: %w[read_file list_dir grep write_file edit_file bash],
       policies: %i[tool_allowlist approval_required],
       approvals_required: SIDE_EFFECT_TOOLS,
       # Config-over-code: the sandbox provider/policy is DATA on the profile,
-      # consumed by Harness::Sandbox.build. The plugin reads the same config from
+      # consumed by Insika::Sandbox.build. The plugin reads the same config from
       # ENV, so the tools' runtime sandbox matches this declaration.
       sandbox: HarnessCodeApp::SANDBOX_CONFIG,
       limits: {
@@ -176,7 +176,7 @@ module HarnessCodeApp
     )
     PROFILES = { "harness-code" => PROFILE }.freeze
 
-    EXECUTOR = Harness::Executor.new(
+    EXECUTOR = Insika::Executor.new(
       context_builder: CONTEXT_BUILDER, policy_engine: POLICY_ENGINE,
       middleware: MIDDLEWARE, hooks: HOOKS,
       tool_registry: REGISTRY, skill_catalog: CATALOG, profiles: PROFILES,
@@ -187,21 +187,21 @@ module HarnessCodeApp
       memory_store: MEMORY_STORE
     )
 
-    BUS = Harness::CommandBus.new
+    BUS = Insika::CommandBus.new
     BUS.register(:create_session,
-                 Harness::Commands::CreateSession.new(session_store: SESSION_STORE,
+                 Insika::Commands::CreateSession.new(session_store: SESSION_STORE,
                                                       event_stream: EVENT_STREAM))
     BUS.register(:send_message,
-                 Harness::Commands::SendMessage.new(profiles: PROFILES, session_store: SESSION_STORE,
+                 Insika::Commands::SendMessage.new(profiles: PROFILES, session_store: SESSION_STORE,
                                                     task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:cancel_task,
-                 Harness::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))
+                 Insika::Commands::CancelTask.new(task_store: TASK_STORE, executor: EXECUTOR))
     BUS.register(:pause_task,
-                 Harness::Commands::PauseTask.new(task_store: TASK_STORE, executor: EXECUTOR))
+                 Insika::Commands::PauseTask.new(task_store: TASK_STORE, executor: EXECUTOR))
     # Human-in-the-loop approvals: the CLI posts this command to resolve a
     # pending FS/shell action and wake the suspended turn.
     BUS.register(:approve_action,
-                 Harness::Commands::ApproveAction.new(pending_action_store: PENDING_ACTION_STORE,
+                 Insika::Commands::ApproveAction.new(pending_action_store: PENDING_ACTION_STORE,
                                                       executor: EXECUTOR, event_stream: EVENT_STREAM))
 
     # G6/B7 (#93) slimmed Server::App to a pure /v1+/a2a transport: it no longer
@@ -209,13 +209,13 @@ module HarnessCodeApp
     # Executor's concern, resolved per turn, not the HTTP edge's). Wire only what
     # the transport reads: the bus, the event stream, the two stores it reads for
     # GET /v1/tasks/:id, and the gateway_token Bearer.
-    APP = Harness::Server::App.new(
+    APP = Insika::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       pending_action_store: PENDING_ACTION_STORE,
       config: { gateway_token: HarnessCodeApp::GATEWAY_TOKEN }
     )
 
-    def self.durable? = BACKEND.is_a?(Harness::Stores::SQLite)
+    def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
   end
 end

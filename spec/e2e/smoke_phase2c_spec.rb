@@ -3,9 +3,9 @@
 require "spec_helper"
 require "async"
 # create_chat is stubbed in the smoke -> we require the builtins explicitly.
-require "harness/tools/load_skill"
-require "harness/tools/tool_search"
-require "harness/tools/remember"
+require "insika/tools/load_skill"
+require "insika/tools/tool_search"
+require "insika/tools/remember"
 
 # E2E smoke for slice C (P2C): CommandBus + SendMessage + Executor + MemoryStore +
 # ContextBuilder REAL, only the chat mocked. Uses the real ContextBuilder (with the
@@ -13,43 +13,43 @@ require "harness/tools/remember"
 # false green on the cross-session read criterion. Tenant comes from the Command
 # (proves the D6 threading).
 RSpec.describe "smoke E2E: cross-session memory (slice C)", :smoke do
-  let(:backend)          { Harness::Stores::Memory.new }
-  let(:session_store)    { Harness::SessionStore.new(store: backend) }
-  let(:task_store)       { Harness::TaskStore.new(store: backend) }
-  let(:checkpoint_store) { Harness::CheckpointStore.new(store: backend) }
+  let(:backend)          { Insika::Stores::Memory.new }
+  let(:session_store)    { Insika::SessionStore.new(store: backend) }
+  let(:task_store)       { Insika::TaskStore.new(store: backend) }
+  let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
   let(:event_stream)     { SpyEventStream.new }
-  let(:memory)           { Harness::MemoryStore.new(store: backend) }
+  let(:memory)           { Insika::MemoryStore.new(store: backend) }
 
   # REAL ContextBuilder with the Memory provider (+ Prompt for the base identity).
   let(:context_builder) do
     providers = [
-      Harness::Context::Providers::Prompt.new(base: "", files: [], catalog: nil),
-      Harness::Context::Providers::Memory.new(store: memory)
+      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: nil),
+      Insika::Context::Providers::Memory.new(store: memory)
     ]
-    Harness::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: Harness::Hooks.new)
+    Insika::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: Insika::Hooks.new)
   end
 
   let(:profiles) do
     {
-      "mem_on"  => Harness::AgentProfile.build(id: "mem_on", model: "fake", base_prompt: "SOUL", memory: true),
-      "mem_off" => Harness::AgentProfile.build(id: "mem_off", model: "fake", base_prompt: "SOUL") # memory: nil
+      "mem_on"  => Insika::AgentProfile.build(id: "mem_on", model: "fake", base_prompt: "SOUL", memory: true),
+      "mem_off" => Insika::AgentProfile.build(id: "mem_off", model: "fake", base_prompt: "SOUL") # memory: nil
     }
   end
 
   let(:executor) do
-    Harness::Executor.new(
+    Insika::Executor.new(
       context_builder: context_builder, policy_engine: NullPolicyEngine.new,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
-      tool_registry: FakeToolRegistry.new, skill_catalog: Harness::SkillCatalog.new([]),
+      tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
       profiles: profiles, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: event_stream, memory_store: memory
     )
   end
 
   let(:bus) do
-    Harness::CommandBus.new.tap do |b|
+    Insika::CommandBus.new.tap do |b|
       b.register(:send_message,
-                 Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store,
+                 Insika::Commands::SendMessage.new(profiles: profiles, session_store: session_store,
                                                     task_store: task_store, executor: executor))
     end
   end
@@ -60,7 +60,7 @@ RSpec.describe "smoke E2E: cross-session memory (slice C)", :smoke do
     allow(executor).to receive(:create_chat).and_return(chat)
     result = nil
     Sync do |parent|
-      result = bus.dispatch(Harness::Command.build(:send_message, { agent: agent, message: "oi" }, tenant: tenant))
+      result = bus.dispatch(Insika::Command.build(:send_message, { agent: agent, message: "oi" }, tenant: tenant))
       100.times do
         t = task_store.find(result[:task_id])
         break if t && TERMINAL.include?(t.status.to_s)

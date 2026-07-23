@@ -15,7 +15,7 @@
 # BIA_INTERNAL_API_TOKEN replaces the __BIA_INTERNAL_API_TOKEN__ placeholder in the
 # tools' secret_headers in memory — the secret does NOT live in the pack's .json.
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "net/http"
 require "json"
 require "uri"
@@ -25,7 +25,7 @@ base   = ENV.fetch("HARNESS_URL", "http://localhost:9292")
 token  = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 secret = ENV["BIA_INTERNAL_API_TOKEN"]
 
-pack = Harness::Pack.from_dir(dir)
+pack = Insika::Pack.from_dir(dir)
 
 # Inject the real internal token into the secret_headers (stays off disk).
 placeholder = "__BIA_INTERNAL_API_TOKEN__"

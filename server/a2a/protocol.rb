@@ -2,7 +2,7 @@
 
 require_relative "errors"
 
-module Harness
+module Insika
   module Server
     module A2A
       # JSON-RPC 2.0 envelope. PURE — receives the already

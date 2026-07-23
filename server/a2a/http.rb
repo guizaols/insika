@@ -2,7 +2,7 @@
 
 require "json"
 
-module Harness
+module Insika
   module Server
     module A2A
       # Production HTTP adapter: implements the duck-type

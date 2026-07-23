@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Harness public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE (item 37).
+# Insika public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE (item 37).
 #
 # Measures the ENGINE OVERHEAD of a turn: everything the harness does around the
 # model — context build, policy, guardrail detectors, chat assembly, the tool
@@ -60,7 +60,7 @@ end
 ENV.delete("HARNESS_DB")
 ENV["HARNESS_TURN_TIMING"] = "1"
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "async"
 
 # --- flag parsing (--name value / boolean --name) -----------------------------
@@ -187,7 +187,7 @@ class StubChat
 end
 
 # ---------------------------------------------------------------------------
-# One scenario: a DSL-built agent (the public Harness.agent {} path — same import
+# One scenario: a DSL-built agent (the public Insika.agent {} path — same import
 # round-trip a real deployment uses) with its create_chat swapped for a StubChat.
 class Scenario
   attr_reader :name
@@ -215,7 +215,7 @@ class Scenario
   def build_definition
     name = @name
     ident = identity_text(IDENTITY)
-    Harness.agent("bench-#{name}") do
+    Insika.agent("bench-#{name}") do
       model "stub-model"
       provider "stub"
       instructions "Synthetic benchmark agent (#{name})."
@@ -274,7 +274,7 @@ class Driver
   # Fire one turn; returns its task_id (does not wait).
   def dispatch(idx)
     res = @scenario.bus.dispatch(
-      Harness::Command.build(:send_message, @scenario.payload(idx), transport: :cli)
+      Insika::Command.build(:send_message, @scenario.payload(idx), transport: :cli)
     )
     res[:task_id]
   end
@@ -355,7 +355,7 @@ results = SCENARIOS.map { |s| run_scenario(s) }
 if JSON_OUT
   require "json"
   puts JSON.pretty_generate(
-    engine: "harness #{Harness::VERSION}",
+    engine: "harness #{Insika::VERSION}",
     ruby: RUBY_DESCRIPTION,
     yjit: (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?),
     config: { iterations: ITERS, warmup: WARMUP, concurrency: CONC, waves: WAVES,
@@ -369,7 +369,7 @@ end
 
 yjit = (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?) ? "YJIT" : "no-YJIT"
 puts "harness bench — engine overhead, provider-free (no LLM call)"
-puts "engine #{Harness::VERSION} · #{RUBY_ENGINE} #{RUBY_VERSION} (#{yjit})"
+puts "engine #{Insika::VERSION} · #{RUBY_ENGINE} #{RUBY_VERSION} (#{yjit})"
 puts "config: iters=#{ITERS} warmup=#{WARMUP} conc=#{CONC} waves=#{WAVES} " \
      "identity=#{IDENTITY}tok history=#{HISTORY} out=#{OUT_TOKENS}tok"
 results.each do |r|

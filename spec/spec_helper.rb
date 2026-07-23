@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 
 # Real RubyLLM if installed; otherwise the requireable stub (doc 03 §7). Done early
 # so tools/load_skill.rb's `require "ruby_llm"` (lazy in production) resolves in the

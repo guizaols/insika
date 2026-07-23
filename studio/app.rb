@@ -11,7 +11,7 @@ require_relative "forms"
 require_relative "nav_icons"
 
 module Studio
-  # Harness Studio — the server-rendered management UI, replacing
+  # Insika Studio — the server-rendered management UI, replacing
   # OpenClaw's agent-studio. FRAMEWORK AT THE EDGE: it's a separate
   # Roda app, mounted under `/studio`; `lib/harness` and `server/` do NOT gain
   # a Roda dependency. It talks to the runtime through the SAME surface as the API:
@@ -673,7 +673,7 @@ module Studio
           # as a one-shot flash, rendered as a user bubble on the next GET.
           flash["sent_message"] = message unless message.empty?
           r.redirect(playground_path(agent, session_id))
-        rescue Harness::ValidationError, Harness::NotFoundError => e
+        rescue Insika::ValidationError, Insika::NotFoundError => e
           flash["error"] = e.message
           r.redirect(playground_path(agent, typed_session))
         end
@@ -838,7 +838,7 @@ module Studio
     # result. `tenant` is only used by memory.
     def dispatch(type, payload, tenant: nil)
       harness[:command_bus].dispatch(
-        Harness::Command.build(type, payload, transport: :studio, tenant: tenant)
+        Insika::Command.build(type, payload, transport: :studio, tenant: tenant)
       )
     end
 
@@ -849,7 +849,7 @@ module Studio
       result = yield
       flash["notice"] = success
       result
-    rescue Harness::ValidationError, Harness::NotFoundError => e
+    rescue Insika::ValidationError, Insika::NotFoundError => e
       flash["error"] = e.message
       nil
     end
@@ -895,7 +895,7 @@ module Studio
     # fixed constant (safe to emit); `current` is only compared, never output.
     def thinking_select(name, current, blank_label)
       cur = current.to_s
-      options = [["", blank_label]] + Harness::ModelSelection::THINKING_LEVELS.map { |v| [v, v] }
+      options = [["", blank_label]] + Insika::ModelSelection::THINKING_LEVELS.map { |v| [v, v] }
       rows = options.map do |value, label|
         %(<option value="#{value}"#{' selected' if value == cur}>#{label}</option>)
       end.join
@@ -1166,7 +1166,7 @@ module Studio
     SETTINGS_SECTIONS = %w[general models edge llm].freeze
     def render_settings
       store = harness[:settings_store]
-      @settings = store ? store.get : Harness::SettingsStore::DEFAULTS
+      @settings = store ? store.get : Insika::SettingsStore::DEFAULTS
       @providers = harness[:llm_provider_store] ? harness[:llm_provider_store].all : []
       @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
       view("settings")
@@ -1245,7 +1245,7 @@ module Studio
       stream = harness[:event_stream]
       return unless stream
 
-      stream.emit(Harness::Event.new(
+      stream.emit(Insika::Event.new(
                     type: :operator_action,
                     data: { action: type.to_s,
                             target: payload.slice(:task_id, :pending_id, :decision),
@@ -1345,11 +1345,11 @@ module Studio
       "/studio/assets/dist/#{base}?v=#{v}"
     end
 
-    def presence(str) = Harness::Coercion.presence(str)
+    def presence(str) = Insika::Coercion.presence(str)
 
     # Masked-secret sentinel (to pre-fill credential fields in the
     # forms: resubmitting without touching preserves the real secret in the store).
-    def secret_sentinel = Harness::SecretMasking::SENTINEL
+    def secret_sentinel = Insika::SecretMasking::SENTINEL
 
     # An MCP instance's env (already MASKED) -> "KEY=value" text per line,
     # for the textarea. Sorts by key (stable across renders).
