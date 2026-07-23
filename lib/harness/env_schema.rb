@@ -94,6 +94,7 @@ module Harness
       spec(name: "HARNESS_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in, item 34)."),
       spec(name: "HARNESS_SUBAGENT_FANOUT_CAP", type: :integer, description: "Max parallel children in spawn_subagents (default 8)."),
       spec(name: "HARNESS_CONFIG_STRICT", type: :boolean, description: "Refuse boot on any config finding instead of warning (item 23)."),
+      spec(name: "HARNESS_ONBOARDING", type: :boolean, description: "Expose the public onboarding surface (/start.md, /models.json, /docs) in production (opt-in, item 20)."),
       spec(name: "OPENCLAW_GATEWAY_TOKEN", secret: true, description: "Bearer for /v1 + /a2a (falls back to ADMIN_TOKEN)."),
       spec(name: "OPENCLAW_AGENTS_DIR", type: :path, description: "Directory of OpenClaw-style agent packs."),
       spec(name: "OPENCLAW_PLUGIN_DIR", type: :path, description: "Directory of plugins to load."),

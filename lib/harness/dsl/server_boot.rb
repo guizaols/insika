@@ -50,7 +50,21 @@ module Harness
           session_store: @graph.session_store, task_store: @graph.task_store,
           pending_action_store: @graph.pending_action_store,
           provisioner: Harness::PackImporter.new(bus: @graph.bus, profiles: @graph.profiles),
+          # Item 20 / §5.6: the OSS onboarding surface (start.md + models.json + docs).
+          # This is the primary "build my first agent" target — models.json reports the
+          # DSL's stores + the single agent this process serves (its id IS the `model`).
+          onboarding: build_onboarding,
           config: { gateway_token: @token }
+        )
+      end
+
+      def build_onboarding
+        config = @rt.pack.config
+        Harness::Onboarding.standard(
+          root: File.expand_path("../../..", __dir__),
+          settings_store: @rt.component(:settings_store),
+          provider_store: @rt.component(:provider_store),
+          agents: -> { [{ id: config[:id], model: config[:model], provider: config[:provider] }] }
         )
       end
 
@@ -81,6 +95,7 @@ module Harness
         puts "\e[1mHarness — serving agent \"#{agent}\"\e[0m"
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", model: \"#{agent}\")"
+        puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
         puts "  Ctrl-C to stop."
       end
     end

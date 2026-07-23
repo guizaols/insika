@@ -37,7 +37,7 @@ module Harness
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
-                     workflow_registry: nil)
+                     workflow_registry: nil, onboarding: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -51,6 +51,12 @@ module Harness
         # deployment does not expose workflows). Reading a catalog is a READ, like a
         # store read: the constitutional rule (no Executor/store-writes/RubyLLM) holds.
         @workflow_registry = workflow_registry
+        # Item 20 / §5.6: LLM-first onboarding surface (start.md + models.json +
+        # docs). PUBLIC (no auth — the whole point of the "read <base>/start.md" trick
+        # is that the developer's coding agent can fetch it), and READ-ONLY, so the
+        # constitutional rule holds. nil = routes not exposed (parity — the production
+        # deployment opts in). Reading files/masked stores is a READ, like a store read.
+        @onboarding = onboarding
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -82,6 +88,14 @@ module Harness
         case [req.request_method, segments]
         in ["GET", ["up"]]
           health # readiness/liveness (Railway/k8s) — no auth, no store access
+        in ["GET", ["start.md"]] if @onboarding
+          markdown_response(200, @onboarding.start_md(base_url: public_base(req)))
+        in ["GET", ["models.json"]] if @onboarding
+          json_response(200, @onboarding.models_json(base_url: public_base(req)))
+        in ["GET", ["docs"]] if @onboarding
+          json_response(200, { docs: @onboarding.docs_index(base_url: public_base(req)) })
+        in ["GET", ["docs", file]] if @onboarding && file.end_with?(".md")
+          handle_doc(file)
         in ["POST", ["v1", "commands", type]]
           handle_command(req, type)
         in ["POST", ["v1", "sessions"]]
@@ -147,6 +161,23 @@ module Harness
       def handle_send_message(req)
         stream = req.GET["stream"] != "false"
         message_flow(parse_body(req), stream: stream)
+      end
+
+      # GET /docs/:name.md — one public doc as raw markdown (item 20 / §5.6). The
+      # slug is a KEY of the onboarding allowlist, so no filesystem traversal is
+      # possible; an unknown slug -> 404. `file` still carries the ".md" suffix.
+      def handle_doc(file)
+        markdown = @onboarding.doc(file.sub(/\.md\z/, ""))
+        return not_found if markdown.nil?
+
+        markdown_response(200, markdown)
+      end
+
+      # Public base url for the interpolated onboarding links. Prefers an explicit
+      # config[:public_url] (behind a proxy/TLS terminator the request scheme is the
+      # internal http), else the request's own base_url.
+      def public_base(req)
+        Harness::Coercion.presence(@config[:public_url]) || req.base_url
       end
 
       # GET /v1/workflows — discovery (item 22 / §4.4). Direct read of the
@@ -458,6 +489,12 @@ module Harness
 
       def json_response(status, body)
         [status, { "content-type" => "application/json" }, [JSON.generate(body)]]
+      end
+
+      # Raw markdown (start.md / a public doc). charset is explicit so a coding agent
+      # fetching over HTTP decodes accents correctly.
+      def markdown_response(status, text)
+        [status, { "content-type" => "text/markdown; charset=utf-8" }, [text]]
       end
 
       def error_response(status, error)
