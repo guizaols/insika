@@ -101,6 +101,14 @@ module Harness
       # --- knobs -----------------------------------------------------------
       def memory(on = true) = @config[:memory] = on
 
+      # Content-safety guardrails (RFC-0009) — opt-in and configurable per agent.
+      # Pure config-over-code: the hash is stored on the profile and consumed by
+      # Safety::Config.from_profile. Merges, so repeated calls accumulate.
+      #   guardrails input: true, output: true, strictness: "medium",
+      #              moderator: "deepseek/deepseek-chat",
+      #              responses: { "injection" => "I can't help with that." }
+      def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # LLM generation params (v2, §10). `param :temperature, 0.2` or `params(...)`.
       def param(key, value) = (@config[:params] ||= {})[key.to_sym] = value
       def params(hash) = (@config[:params] ||= {}).merge!(hash.transform_keys(&:to_sym))

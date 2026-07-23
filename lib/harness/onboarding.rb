@@ -36,6 +36,7 @@ module Harness
     # tracked `.md` prose (README + docs/*.md).
     PUBLIC_DOCS = {
       "readme" => "README.md",
+      "why" => "docs/WHY.md",
       "running-local" => "docs/RUNNING-LOCAL.md",
       "deploy" => "docs/DEPLOY.md",
       "sandbox" => "docs/SANDBOX.md",
