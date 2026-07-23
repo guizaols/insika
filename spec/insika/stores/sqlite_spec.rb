@@ -11,7 +11,7 @@ RSpec.describe Insika::Stores::SQLite do
 
     after { store.close }
 
-    it_behaves_like "a harness store"
+    it_behaves_like "an Insika store"
   end
 
   context "with a file in tmpdir" do
@@ -25,7 +25,7 @@ RSpec.describe Insika::Stores::SQLite do
       FileUtils.remove_entry(tmpdir) if File.directory?(tmpdir)
     end
 
-    it_behaves_like "a harness store"
+    it_behaves_like "an Insika store"
 
     # The only backend-specific tests allowed (doc 01 §7).
 
@@ -110,7 +110,7 @@ RSpec.describe Insika::Stores::SQLite do
   end
 
   describe "lazy require of the sqlite3 gem (doc 01 §8)" do
-    it "require \"harness\" does not load the sqlite3 gem before the first new" do
+    it "require \"insika\" does not load the sqlite3 gem before the first new" do
       # Clean subprocess: within the suite the gem was already required by other
       # specs (random order), so we test in an isolated ruby. bundler/setup
       # activates the gems load path (async is a core dependency) but does NOT

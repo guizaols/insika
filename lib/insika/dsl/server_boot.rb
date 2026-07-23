@@ -92,7 +92,7 @@ module Insika
       def banner
         base = "http://#{@host}:#{@port}"
         agent = @rt.pack.config[:id]
-        puts "\e[1mHarness — serving agent \"#{agent}\"\e[0m"
+        puts "\e[1mInsika — serving agent \"#{agent}\"\e[0m"
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", model: \"#{agent}\")"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"

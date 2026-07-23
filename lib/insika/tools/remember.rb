@@ -16,7 +16,7 @@ module Insika
       param :value, desc: "The content to remember"
       param :key, desc: "Fact key (e.g.: 'plan', 'name'); omit for a note", required: false
 
-      # otherwise RubyLLM derives "harness--tools--remember" from the class name.
+      # otherwise RubyLLM derives "insika--tools--remember" from the class name.
       def name = "remember"
 
       def initialize(store, tenant, event_stream:, state:)

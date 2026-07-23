@@ -108,7 +108,7 @@ BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
 middleware = Protocol::Rack::Adapter.new(DISPATCH)
 
-puts "\e[1mHarness — serving for real (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
+puts "\e[1mInsika — serving for real (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
 puts "  #{BIND}/studio        → Insika Studio (login: token \"#{ADMIN_TOKEN}\")"
 puts "  #{BIND}/studio/chats  → chat with Bia (agent: bia · session_id: web)"
 puts "  #{BIND}/studio/tasks  → tasks / approvals console"

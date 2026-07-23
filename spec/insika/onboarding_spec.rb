@@ -85,7 +85,7 @@ RSpec.describe Insika::Onboarding do
 
       expect(json[:providers]).to eq([{ slug: "deepseek", models: %w[deepseek-chat deepseek-reasoner] }])
       # no secret / connection detail leaks in the providers payload (the top-level
-      # base_url is the harness's OWN url, which is fine).
+      # base_url is the insika's OWN url, which is fine).
       expect(JSON.generate(json[:providers])).not_to match(/OCULTO|base_url|auth_header|api_key/)
     end
 

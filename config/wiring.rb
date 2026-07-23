@@ -125,7 +125,7 @@ module Insika
       end
 
     # --- A2A outbound — outbound federation, OPT-IN --------
-    # The harness calls remote A2A agents as tools. One tool per remote from
+    # The insika calls remote A2A agents as tools. One tool per remote from
     # HARNESS_A2A_REMOTES ("id=url,.."); without the env -> nothing registered (parity).
     # The gem's `require` lives IN THE BLOCK (loaded on the 1st instance, turn time
     # -> wiring-load stays gem-free).

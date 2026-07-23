@@ -3,7 +3,7 @@
 # Micro-bench of the WRITE CEILING of Stores::SQLite under N PROCESSES.
 # Isolates the question "does SQLite hold up multi-process?" from LLM-provider
 # noise: it measures raw write contention against the SAME file (WAL +
-# busy_timeout + BEGIN IMMEDIATE + in-process semaphore — the harness's real
+# busy_timeout + BEGIN IMMEDIATE + in-process semaphore — the insika's real
 # production config).
 #
 # Each process opens its own handle on the SAME db and runs M write transactions

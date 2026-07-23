@@ -28,7 +28,7 @@ module Insika
       param :async, type: :boolean, required: false,
                     desc: "true = dispatch and continue (result delivered later); default false = wait for the answer"
 
-      # otherwise RubyLLM derives "harness--tools--subagent" from the class name.
+      # otherwise RubyLLM derives "insika--tools--subagent" from the class name.
       def name = "spawn_subagent"
 
       def initialize(runner:, state:)

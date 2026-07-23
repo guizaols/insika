@@ -25,7 +25,7 @@ module Insika
     # -> Recorder wired to the real OTEL | nil (disabled). Idempotent per process
     # (configures the SDK once). It's the gem BOUNDARY: not covered by unit tests (like
     # the Executor's create_chat); the Recorder's logic is tested with a fake tracer.
-    def setup(service_name: "harness", env: ENV)
+    def setup(service_name: "insika", env: ENV)
       return nil unless enabled?(env)
 
       require "opentelemetry/sdk"
@@ -34,7 +34,7 @@ module Insika
         OpenTelemetry::SDK.configure { |c| c.service_name = service_name }
         @configured = true
       end
-      Recorder.new(tracer: OTelTracer.new(OpenTelemetry.tracer_provider.tracer("harness")))
+      Recorder.new(tracer: OTelTracer.new(OpenTelemetry.tracer_provider.tracer("insika")))
     end
 
     # Wires the Recorder to the Event Stream: subscribes to ALL events and feeds the

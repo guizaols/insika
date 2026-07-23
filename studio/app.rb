@@ -13,7 +13,7 @@ require_relative "nav_icons"
 module Studio
   # Insika Studio — the server-rendered management UI, replacing
   # OpenClaw's agent-studio. FRAMEWORK AT THE EDGE: it's a separate
-  # Roda app, mounted under `/studio`; `lib/harness` and `server/` do NOT gain
+  # Roda app, mounted under `/studio`; `lib/insika` and `server/` do NOT gain
   # a Roda dependency. It talks to the runtime through the SAME surface as the API:
   # dispatches Commands on the CommandBus and READS profiles/stores — never writes to a store
   # directly (the transport's constitutional rule).
@@ -63,7 +63,7 @@ module Studio
 
     class << self
       # Runtime dependencies injected at boot (same surface as Server::App).
-      attr_reader :harness
+      attr_reader :insika
 
       # Studio wiring (called by the boot: serve_real / config.ru). Loads the
       # plugins that depend on the secret (sessions/csrf/flash) and stores the deps.
@@ -81,7 +81,7 @@ module Studio
                     system_file_store: nil, tool_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     session_secret: nil)
-        @harness = {
+        @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
           agent_file_store: agent_file_store, skill_store: skill_store,
@@ -202,7 +202,7 @@ module Studio
         # /studio/agents — agents grid (reads the ProfileSource).
         r.is do
           r.get do
-            @agents = harness[:profile_source].all.sort_by(&:id)
+            @agents = insika[:profile_source].all.sort_by(&:id)
             view("agents")
           end
 
@@ -225,7 +225,7 @@ module Studio
         # /studio/agents/:id — an agent's authoring page.
         r.on String do |id|
           id = utf8(id)
-          @agent = harness[:profile_source].fetch(id)
+          @agent = insika[:profile_source].fetch(id)
           next_404 unless @agent
 
           # GET /studio/agents/:id — config + prompts + skills + memory + history.
@@ -397,7 +397,7 @@ module Studio
             # GET /studio/tools/def/:name — loaded editor (secret masked).
             r.is do
               r.get do
-                tool = harness[:tool_store]&.get(name)
+                tool = insika[:tool_store]&.get(name)
                 next_404 unless tool
                 render_tool_edit(name: name, tool: tool)
               end
@@ -430,7 +430,7 @@ module Studio
         r.post String do |id|
           check_csrf!
           id = utf8(id)
-          profile = harness[:profile_source].fetch(id)
+          profile = insika[:profile_source].fetch(id)
           next_404 unless profile
           allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
           with_flash("Agent '#{id}' tools updated.") do
@@ -573,11 +573,11 @@ module Studio
         r.on String do |sid|
           sid = utf8(sid)
           r.get do
-            @session = harness[:session_store]&.find(sid)
+            @session = insika[:session_store]&.find(sid)
             next_404 unless @session
 
             # Session's tool-call trace (debug): grouped by turn in the view.
-            @tool_traces = (harness[:tool_trace_store]&.for_session(sid) || [])
+            @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
             view("session")
           end
@@ -594,7 +594,7 @@ module Studio
         r.on String do |id|
           id = utf8(id)
           r.get do
-            @task = harness[:task_store]&.find(id)
+            @task = insika[:task_store]&.find(id)
             next_404 unless @task
 
             render_task_detail(id)
@@ -643,13 +643,13 @@ module Studio
         r.get do
           @agent = presence(r.params["agent"]) || default_agent
           @session_id = presence(r.params["session_id"])
-          @agents = harness[:profile_source].ids.sort
+          @agents = insika[:profile_source].ids.sort
           # Server-side echo + continuity (§11 A1): render the session's persisted
           # transcript as bubbles. The user's message is only persisted at the END
           # of the turn, so the just-sent message rides a one-shot flash bubble
           # (@sent_message) until it lands in history — an optimistic JS echo can't
           # work here (POST→redirect wipes the DOM).
-          @history = @session_id ? Array(harness[:session_store]&.find(@session_id)&.messages) : []
+          @history = @session_id ? Array(insika[:session_store]&.find(@session_id)&.messages) : []
           @sent_message = flash["sent_message"]
           view("playground")
         end
@@ -688,7 +688,7 @@ module Studio
 
     # --- Helpers (instance scope; available inside the views) ----------------
 
-    def harness = self.class.harness
+    def insika = self.class.insika
 
     # Sidebar navigation, grouped by operator intent (build / runtime /
     # operate). Each item: [label, href, icon-key]. The view marks the active item
@@ -764,10 +764,10 @@ module Studio
     # the Studio already reads — no new ping. Persistence (durable/ephemeral)
     # comes from config, if boot supplied it (serve_real does; specs don't need).
     def health_parts
-      parts = [["agents", harness[:profile_source].all.size]]
-      parts << ["LLM providers", harness[:llm_provider_store].all.size] if harness[:llm_provider_store]
-      parts << ["MCP servers", harness[:mcp_store].all.size] if harness[:mcp_store]
-      persistence = harness[:config][:persistence]
+      parts = [["agents", insika[:profile_source].all.size]]
+      parts << ["LLM providers", insika[:llm_provider_store].all.size] if insika[:llm_provider_store]
+      parts << ["MCP servers", insika[:mcp_store].all.size] if insika[:mcp_store]
+      persistence = insika[:config][:persistence]
       parts << ["persistence", persistence.to_s] if persistence && !persistence.to_s.empty?
       parts
     end
@@ -785,7 +785,7 @@ module Studio
     # Fail-closed BY CONSTRUCTION (AdminAuth parity): with no token configured, the
     # compare never passes → studio inaccessible. Constant-time comparison.
     def authenticate(provided)
-      configured = harness[:config][:admin_token].to_s
+      configured = insika[:config][:admin_token].to_s
       provided = provided.to_s
       return false if configured.empty? || provided.empty?
 
@@ -793,7 +793,7 @@ module Studio
     end
 
     def default_agent
-      ids = harness[:profile_source].ids
+      ids = insika[:profile_source].ids
       ids.include?("bia") ? "bia" : (ids.first || "bia")
     end
 
@@ -837,7 +837,7 @@ module Studio
     # Dispatches a Command through the bus (same surface as the API) and returns the
     # result. `tenant` is only used by memory.
     def dispatch(type, payload, tenant: nil)
-      harness[:command_bus].dispatch(
+      insika[:command_bus].dispatch(
         Insika::Command.build(type, payload, transport: :studio, tenant: tenant)
       )
     end
@@ -858,7 +858,7 @@ module Studio
 
     def render_agent_detail
       id = @agent.id
-      store = harness[:agent_file_store]
+      store = insika[:agent_file_store]
       @prompt_files = Array(@agent.prompt_files).map do |name|
         {
           name: name.to_s,
@@ -866,7 +866,7 @@ module Studio
           versions: store ? store.versions(id, name) : []
         }
       end
-      @all_skills = harness[:skill_catalog]&.all || []
+      @all_skills = insika[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
       # v2 (§10) config surfaces: generation params + model fence. AgentProfile.build
       # string-keys these hashes, so the form helpers read plain string keys.
@@ -874,7 +874,7 @@ module Studio
       @model_policy_allow = model_policy_allow(@agent)
       # guardrails config (RFC-0009); nil when the agent never configured any.
       @guardrails = @agent.guardrails || {}
-      mem = harness[:memory_store]
+      mem = insika[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
       @recent_sessions = recent_sessions
@@ -946,9 +946,9 @@ module Studio
     # shared by every skill route so the master pane always renders. @selected
     # drives the detail pane (nil = none, "" = new, name = edit).
     def load_skills_master
-      @skills = (harness[:skill_catalog]&.all || []).sort_by(&:name)
-      @stored = harness[:skill_store] ? harness[:skill_store].names : []
-      @agents = harness[:profile_source].all.sort_by(&:id)
+      @skills = (insika[:skill_catalog]&.all || []).sort_by(&:name)
+      @stored = insika[:skill_store] ? insika[:skill_store].names : []
+      @agents = insika[:profile_source].all.sort_by(&:id)
     end
 
     def render_skills_index
@@ -964,10 +964,10 @@ module Studio
     # reconstruct from what the catalog parsed (editing a disk skill
     # creates an override in the store — Store wins).
     def skill_source(name)
-      raw = harness[:skill_store]&.get(name)
+      raw = insika[:skill_store]&.get(name)
       return raw if raw
 
-      skill = harness[:skill_catalog]&.find(name)
+      skill = insika[:skill_catalog]&.find(name)
       return new_skill_template(name) unless skill
 
       "---\nname: #{skill.name}\ndescription: #{skill.description}\n---\n\n#{skill.body}\n"
@@ -987,11 +987,11 @@ module Studio
     # --- Tools matrix --------------------------------------------------------
 
     def render_tools_matrix
-      @tools = (harness[:tool_catalog]&.all || []).sort_by(&:name)
+      @tools = (insika[:tool_catalog]&.all || []).sort_by(&:name)
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
-      @data_tool_names = harness[:tool_store] ? harness[:tool_store].names : []
-      @agents = harness[:profile_source].all.sort_by(&:id)
+      @data_tool_names = insika[:tool_store] ? insika[:tool_store].names : []
+      @agents = insika[:profile_source].all.sort_by(&:id)
       # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
       # default to the first agent so the pane is useful on landing.
       sel = request.params["a"]
@@ -1025,7 +1025,7 @@ module Studio
     def render_tool_edit(name:, tool:)
       @tool_name = name
       @form = tool_form(tool)
-      @versions = tool && harness[:tool_store] ? harness[:tool_store].versions(name) : []
+      @versions = tool && insika[:tool_store] ? insika[:tool_store].versions(name) : []
       view("tool_edit")
     end
 
@@ -1082,28 +1082,28 @@ module Studio
     # data the Studio already reads (one scan of the session store); no new
     # metrics pipeline. `active_now` = sessions touched in the last 5 minutes.
     def render_home
-      ps = harness[:profile_source]
+      ps = insika[:profile_source]
       sessions = all_sessions
       @counts = {
         "conversations" => sessions.size,
         "messages" => sessions.sum { |s| Array(s.messages).size },
         "agents" => ps ? ps.all.size : 0,
-        "skills" => harness[:skill_catalog] ? harness[:skill_catalog].all.size : 0,
-        "tools" => harness[:tool_catalog] ? harness[:tool_catalog].all.size : 0,
-        "providers" => harness[:llm_provider_store] ? harness[:llm_provider_store].all.size : 0,
-        "MCP servers" => harness[:mcp_store] ? harness[:mcp_store].all.size : 0
+        "skills" => insika[:skill_catalog] ? insika[:skill_catalog].all.size : 0,
+        "tools" => insika[:tool_catalog] ? insika[:tool_catalog].all.size : 0,
+        "providers" => insika[:llm_provider_store] ? insika[:llm_provider_store].all.size : 0,
+        "MCP servers" => insika[:mcp_store] ? insika[:mcp_store].all.size : 0
       }
       now = Time.now
       cutoff = now - (5 * 60)
       @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
       @activity = activity_by_day(sessions, days: 14, now: now)
-      @persistence = harness.dig(:config, :persistence)
+      @persistence = insika.dig(:config, :persistence)
       view("home")
     end
 
     def all_sessions
-      store = harness[:session_store]
+      store = insika[:session_store]
       return [] unless store
 
       store.each_id.filter_map { |sid| store.find(sid) }
@@ -1134,7 +1134,7 @@ module Studio
     # Recent conversations (all agents — the Session doesn't stamp the agent that
     # produced it). Most recent first, capped.
     def recent_sessions(limit: 8)
-      store = harness[:session_store]
+      store = insika[:session_store]
       return [] unless store
 
       store.each_id.filter_map { |sid| store.find(sid) }
@@ -1165,9 +1165,9 @@ module Studio
 
     SETTINGS_SECTIONS = %w[general models edge llm].freeze
     def render_settings
-      store = harness[:settings_store]
+      store = insika[:settings_store]
       @settings = store ? store.get : Insika::SettingsStore::DEFAULTS
-      @providers = harness[:llm_provider_store] ? harness[:llm_provider_store].all : []
+      @providers = insika[:llm_provider_store] ? insika[:llm_provider_store].all : []
       @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
       view("settings")
     end
@@ -1180,7 +1180,7 @@ module Studio
     # --- MCP -------------------------------------------------------
 
     def render_mcp
-      @instances = harness[:mcp_store] ? harness[:mcp_store].all : []
+      @instances = insika[:mcp_store] ? insika[:mcp_store].all : []
       view("mcp")
     end
 
@@ -1189,7 +1189,7 @@ module Studio
     # --- System-files ----------------------------------------------
 
     def render_system_files
-      store = harness[:system_file_store]
+      store = insika[:system_file_store]
       names = store ? store.list : []
       @system_files = names.map do |name|
         { name: name, content: store.read(name).to_s, versions: store.versions(name) }
@@ -1208,7 +1208,7 @@ module Studio
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     def render_tasks
-      store = harness[:task_store]
+      store = insika[:task_store]
       @tasks = store ? store.each_id.filter_map { |id| store.find(id) } : []
       @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
       view("tasks")
@@ -1217,16 +1217,16 @@ module Studio
     # Task detail: @task is set by the route. Adds the open approvals for this task
     # and its latest checkpoint (both degrade to empty when the store is absent).
     def render_task_detail(id)
-      @pending = harness[:pending_action_store] ? harness[:pending_action_store].open_for(id) : []
-      @checkpoint = harness[:checkpoint_store]&.latest(id)
+      @pending = insika[:pending_action_store] ? insika[:pending_action_store].open_for(id) : []
+      @checkpoint = insika[:checkpoint_store]&.latest(id)
       view("task")
     end
 
     # Approvals inbox: every :pending action across tasks, each paired with its
     # task (for the status pill + a link into the task detail).
     def render_approvals
-      pstore = harness[:pending_action_store]
-      tstore = harness[:task_store]
+      pstore = insika[:pending_action_store]
+      tstore = insika[:task_store]
       @approvals = pstore ? pstore.all_open.map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
       view("approvals")
     end
@@ -1242,7 +1242,7 @@ module Studio
     end
 
     def emit_operator_action(type, payload)
-      stream = harness[:event_stream]
+      stream = insika[:event_stream]
       return unless stream
 
       stream.emit(Insika::Event.new(

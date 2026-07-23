@@ -17,7 +17,7 @@ fx = Insika.agent("fx") do
   PROMPT
 
   # A declarative HTTP tool. `{{from}}` / `{{to}}` are the model-supplied params;
-  # the harness substitutes them at call time. Public HTTPS endpoint, no API key.
+  # the insika substitutes them at call time. Public HTTPS endpoint, no API key.
   data_tool(
     "name"        => "convert_currency",
     "description" => "Latest reference exchange rate between two currencies.",

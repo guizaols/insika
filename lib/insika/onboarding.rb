@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # LLM-first onboarding surface (item 20 / §5.6). The "Flue trick": the harness
+  # LLM-first onboarding surface (item 20 / §5.6). The "Flue trick": the insika
   # serves, from itself, a `start.md` addressed to the DEVELOPER'S OWN coding agent
   # ("Read <base>/start.md then help me build my first agent") plus a machine-readable
   # `/models.json` and the public docs mirrored as raw markdown. It is `rails new`
@@ -156,7 +156,7 @@ module Insika
       end
     end
 
-    # Agents already served by THIS harness — over the drop-in API the `model` field
+    # Agents already served by THIS insika — over the drop-in API the `model` field
     # is the agent id, so this is the list of ids a client can call right now.
     def served_agents
       list = @agents.respond_to?(:call) ? Array(@agents.call) : nil

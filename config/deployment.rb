@@ -16,7 +16,7 @@ module Deploy
   # schema PLUS this deployment's own keys. Default = WARN (last-known-good: a rotated
   # key or a typo must never take the whole service down — same reasoning as the
   # resilient DEEPSEEK boot below); set HARNESS_CONFIG_STRICT=1 to refuse boot instead.
-  # `harness doctor` gives the same report on demand.
+  # `insika doctor` gives the same report on demand.
   ENV_SPECS = [
     Insika::EnvSchema.spec(name: "DEEPSEEK_API_KEY", secret: true, description: "DeepSeek API key (turns fail until set — env or Studio)."),
     Insika::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-chat)."),
@@ -264,7 +264,7 @@ module Deploy
     # OPT-IN observability (Phase 6): OTEL only turns on with HARNESS_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via
     # Telemetry.attach (serving arm) — consumes the EVENT_STREAM into spans.
-    TELEMETRY = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "harness"))
+    TELEMETRY = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))
 
     def self.stores = { session: SESSION_STORE, task: TASK_STORE, checkpoint: CHECKPOINT_STORE, pending: PENDING_ACTION_STORE, memory: MEMORY_STORE }
   end

@@ -3,7 +3,7 @@
 # Micro-bench of the CONTEXT-BUILD cost per turn (item 34 / §13.1, action 1:
 # "profile the assembly before caching — know WHERE the ms are").
 #
-# It isolates the LOCAL prefix-assembly cost (what the harness pays BEFORE the
+# It isolates the LOCAL prefix-assembly cost (what the insika pays BEFORE the
 # first LLM token, and what OpenClaw beats us on in TTFB) from any provider
 # latency: no LLM is called. It seeds a realistic ~27k-token identity into a
 # SQLite AgentFileStore (the production layout) and times, per turn:

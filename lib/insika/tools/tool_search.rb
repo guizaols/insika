@@ -8,14 +8,14 @@ module Insika
     # searches the deferred catalog and PROMOTES the relevant ones into the live chat via
     # chat.with_tools (verified to propagate on the next round of the same `ask`
     # in ruby_llm 1.16). `require "ruby_llm"` stays in THIS file (it inherits from
-    # RubyLLM::Tool) — it does not enter lib/harness.rb; the Executor loads it lazily in
+    # RubyLLM::Tool) — it does not enter lib/insika.rb; the Executor loads it lazily in
     # configure_chat (like LoadSkill).
     class ToolSearch < RubyLLM::Tool
       description "Searches and enables additional tools by describing the need"
       param :query, desc: "What you need to do (e.g.: 'send email', 'generate invoice')"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class
-      # (Insika::Tools::ToolSearch) it produces "harness--tools--tool_search", not
+      # (Insika::Tools::ToolSearch) it produces "insika--tools--tool_search", not
       # "tool_search". Explicit override: the name the model calls must match
       # the catalog/docs/tests.
       def name = "tool_search"

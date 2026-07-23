@@ -18,7 +18,7 @@ module Insika
     # every shape change is a numbered migration here, applied ONLY by the explicit
     # `migrate!` (Studio settings saves never silently reinterpret old-shaped data).
     # v1 is the baseline: a pre-versioning record (no `schema_version`) reads as 0 and
-    # `harness doctor --fix` stamps it to 1. Add a real change as MIGRATIONS[2] = proc
+    # `insika doctor --fix` stamps it to 1. Add a real change as MIGRATIONS[2] = proc
     # and bump SCHEMA_VERSION.
     SCHEMA_VERSION = 1
     MIGRATIONS = {}.freeze # target_version(Integer) => ->(record_hash){ migrated_hash }

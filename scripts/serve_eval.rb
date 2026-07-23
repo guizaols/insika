@@ -105,7 +105,7 @@ BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
 middleware = Protocol::Rack::Adapter.new(APP)
 
-puts "\e[1mHarness — serving for evals (guardrails on · moderator on)\e[0m"
+puts "\e[1mInsika — serving for evals (guardrails on · moderator on)\e[0m"
 puts "  #{BIND}/v1/responses  → gateway (token: \"#{TOKEN}\")"
 puts "  agents: example-agent (safety suite) · loja-cosmeticos (pt-BR reference)"
 puts "  Ctrl-C to stop."

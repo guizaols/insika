@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Deployment wiring for the "harness-code" prototype: a Claude-Code-style code
-# agent built ON TOP of the harness engine, consuming it as a library. It builds
+# agent built ON TOP of the insika engine, consuming it as a library. It builds
 # the SAME object graph as config/wiring.rb (stores, registries, policy engine,
 # executor, command bus, HTTP app) but with:
 #

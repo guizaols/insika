@@ -79,7 +79,7 @@ module Insika
     # ToolDefinition validates its parameters against. It implements the SAME
     # `#call(value) -> result{#success?, #errors}` contract as dry-schema, so the
     # Definition treats both uniformly. Not a full JSON Schema engine (no
-    # composition/$ref — the subset the harness supports everywhere); permissive on
+    # composition/$ref — the subset the insika supports everywhere); permissive on
     # unknown keys (JSON Schema's additionalProperties default).
     class Schema
       # dry-schema-compatible result. `errors` is { "field.path" => ["message", …] }.

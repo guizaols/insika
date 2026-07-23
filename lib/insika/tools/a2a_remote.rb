@@ -6,7 +6,7 @@ module Insika
   module Tools
     # Delegates to a remote A2A agent. A NORMAL Tool Registry tool — the
     # agent's allowlist governs who may delegate. Lazy require of the gem: it does NOT
-    # enter lib/harness.rb; it is loaded in the registration block (wiring) on the 1st
+    # enter lib/insika.rb; it is loaded in the registration block (wiring) on the 1st
     # instance. One instance per remote agent (its own name/description).
     class A2ARemote < RubyLLM::Tool
       param :message, desc: "The message/task for the remote agent"
@@ -21,7 +21,7 @@ module Insika
       end
 
       # name/description per INSTANCE (RubyLLM derives them from the class; we override —
-      # otherwise the model would see "harness--tools--a2a_remote" for every remote).
+      # otherwise the model would see "insika--tools--a2a_remote" for every remote).
       def name = @tool_name
       def description = @description
 

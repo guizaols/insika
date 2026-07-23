@@ -40,7 +40,7 @@ module Insika
         required: %w[tasks]
       )
 
-      # otherwise RubyLLM derives "harness--tools--subagents" from the class name.
+      # otherwise RubyLLM derives "insika--tools--subagents" from the class name.
       def name = "spawn_subagents"
 
       def initialize(runner:, state:)

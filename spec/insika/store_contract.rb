@@ -7,12 +7,12 @@
 #
 #   RSpec.describe Insika::Stores::Memory do
 #     subject(:store) { described_class.new }
-#     it_behaves_like "a harness store"
+#     it_behaves_like "an Insika store"
 #   end
 #
 # Do not include backend-specific cases here (file durability,
 # WAL, concurrency) — those belong to task 4.
-RSpec.shared_examples "a harness store" do
+RSpec.shared_examples "an Insika store" do
   describe "#get / #set (round-trip)" do
     it "C1 preserves Hash with string keys" do # C1
       store.set("s", "k", { "a" => 1, "b" => [1, 2] })

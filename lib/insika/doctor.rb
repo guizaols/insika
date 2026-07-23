@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # `harness doctor` (item 23 / §8.1 — OpenClaw's "strict config + doctor --fix",
+  # `insika doctor` (item 23 / §8.1 — OpenClaw's "strict config + doctor --fix",
   # "the repo's best productization discipline"). A read-only diagnosis of a
   # deployment's configuration that turns the scattered, silent boot warnings into
   # ONE structured report — and, with `--fix`, applies the safe autofixes.

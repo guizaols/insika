@@ -7,7 +7,7 @@
 # Recovery BEFORE any request). Consumed by config.ru (rackup) and by serve.rb (the
 # test's single-process server).
 root = File.expand_path("../../..", __dir__)
-require File.join(root, "lib", "harness")
+require File.join(root, "lib", "insika")
 require File.join(root, "server", "app")
 require File.join(root, "server", "boot")
 

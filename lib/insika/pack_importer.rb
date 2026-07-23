@@ -87,7 +87,7 @@ module Insika
     # per-group allowlist from FLAGS declared in the pack config — DATA, never a
     # core convention (NF1). The engine doesn't know "groceries_v2"/"b2b": the pack
     # declares which GROUPS are enabled; the flag->group mapping is the
-    # responsibility of provisioning/the pack, not the harness. Two forms (union):
+    # responsibility of provisioning/the pack, not the insika. Two forms (union):
     #   - `enabled_groups: ["default", "b2b"]`  — explicit list of ON groups.
     #   - `flags: { "b2b" => true, "natura" => false }` — the flag key IS the group
     #     name; only the truthy ones enter (the false ones CUT the group).

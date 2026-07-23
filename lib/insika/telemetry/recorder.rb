@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Telemetry
-    # Translates the harness Event Stream into OTEL SPANS — the already-existing
+    # Translates the insika Event Stream into OTEL SPANS — the already-existing
     # observability spine becomes traces without touching the core (Events observe; Telemetry only
     # consumes). One span per TURN (harness.turn) with child spans per tool
     # (harness.tool / harness.data_tool), correlated by task_id. Latency comes

@@ -9,14 +9,14 @@ module Insika
     # skill that the policy did not expose).
     #
     # `require "ruby_llm"` stays in THIS file (it inherits from
-    # RubyLLM::Tool), which is why it does NOT enter lib/harness.rb: the Executor
+    # RubyLLM::Tool), which is why it does NOT enter lib/insika.rb: the Executor
     # loads it lazily inside create_chat.
     class LoadSkill < RubyLLM::Tool
       description "Loads the complete instructions (SKILL.md) of a skill by name"
       param :name, desc: "Exact skill name, as listed in <available_skills>"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class it produces
-      # "harness--tools--load_skill", not "load_skill" (which wire_callbacks/
+      # "insika--tools--load_skill", not "load_skill" (which wire_callbacks/
       # :skill_activated and SkillCatalog#format_for_prompt assume). Explicit
       # override. Coexists with
       # `param :name` (verified: the param is still present).

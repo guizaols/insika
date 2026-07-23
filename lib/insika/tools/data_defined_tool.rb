@@ -9,7 +9,7 @@ module Insika
     # DATA-DEFINED tool: one class, N instances parameterized by a
     # ToolDefinition (the same pattern as A2ARemote). It makes an HTTP call described
     # in config — no Ruby code per tool. Since it inherits RubyLLM::Tool (pulls in the gem),
-    # it is NOT required in lib/harness.rb; the overlay loads it lazily at registration
+    # it is NOT required in lib/insika.rb; the overlay loads it lazily at registration
     # (Step B). Phase 5, Step A.
     #
     # Contract preserved by duck-typing: it overrides name/description/parameters/

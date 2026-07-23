@@ -20,12 +20,12 @@ module Insika
   #
   # Insika::Doctor reuses `validate` for its `env:*` checks; the boot roots call
   # `enforce!`. A deployment layers its own keys on via `extra:` (see
-  # config/deployment.rb) so `harness env` and `harness doctor` see the full picture.
+  # config/deployment.rb) so `insika env` and `insika doctor` see the full picture.
   module EnvSchema
     module_function
 
     # One env key the engine knows about. `type` drives validation; `secret` masks
-    # the value in `harness env`; `enum` restricts allowed values; `required` makes
+    # the value in `insika env`; `enum` restricts allowed values; `required` makes
     # a blank value a finding (engine keys are all optional — deployment resilience —
     # so `required` is used by deployment extras, not the defaults here).
     Spec = Data.define(:name, :type, :secret, :required, :enum, :description) do
@@ -53,7 +53,7 @@ module Insika
     end
 
     # A problem (or an :ok note) about the environment. dry/serializable — the proc-
-    # free shape Doctor and `harness env` both render.
+    # free shape Doctor and `insika env` both render.
     Finding = Data.define(:key, :kind, :severity, :message) do
       def to_h = { "key" => key, "kind" => kind.to_s, "severity" => severity.to_s, "message" => message }
     end
@@ -99,7 +99,7 @@ module Insika
       spec(name: "OPENCLAW_AGENTS_DIR", type: :path, description: "Directory of OpenClaw-style agent packs."),
       spec(name: "OPENCLAW_PLUGIN_DIR", type: :path, description: "Directory of plugins to load."),
       spec(name: "ADMIN_TOKEN", secret: true, description: "Studio login token; unset -> /studio fail-closed."),
-      spec(name: "OTEL_SERVICE_NAME", description: "Service name for OTEL spans (default: harness).")
+      spec(name: "OTEL_SERVICE_NAME", description: "Service name for OTEL spans (default: insika).")
     ].freeze
 
     # -> [Finding]. `extra` = deployment/app specs to fold into the known set (and to
@@ -130,7 +130,7 @@ module Insika
       findings
     end
 
-    # -> the specs the engine + a root know about (DEFAULT + extra), for `harness env`.
+    # -> the specs the engine + a root know about (DEFAULT + extra), for `insika env`.
     def known_specs(extra: []) = (DEFAULT + Array(extra)).sort_by(&:name)
 
     # BOOT GATE. Validates the environment, WARNS every finding via `warn` (a callable
