@@ -10,7 +10,7 @@ PLUGIN_LIB = File.expand_path("../../../plugins/harness-code/lib", __dir__)
 end
 
 # Exercises the tools' behaviour through #execute directly (the RubyLLM tool-loop
-# is not involved), mirroring spec/harness/tools/remember_spec.rb. Every tool
+# is not involved), mirroring spec/insika/tools/remember_spec.rb. Every tool
 # shares one Workspace, so the sandbox is proven once per tool: a path escape
 # comes back as a structured { error: } result, never an exception.
 RSpec.describe "HarnessCode tools" do
@@ -18,7 +18,7 @@ RSpec.describe "HarnessCode tools" do
     Dir.mktmpdir { |dir| @root = File.realpath(dir); example.run }
   end
 
-  let(:sandbox) { Harness::Sandbox.build("root" => @root) }
+  let(:sandbox) { Insika::Sandbox.build("root" => @root) }
 
   def write(rel, content)
     path = File.join(@root, rel)

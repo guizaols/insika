@@ -17,7 +17,7 @@ RSpec.describe "harness-code example boots", :smoke do
   it "constructs the full wiring (engine + plugin + profile + Server::App) without error" do
     repo_root = File.expand_path("../..", __dir__)
     script = 'require "./examples/harness-code/boot"; ' \
-             'raise "no app" unless HarnessCodeApp::Wiring::APP.is_a?(Harness::Server::App); ' \
+             'raise "no app" unless HarnessCodeApp::Wiring::APP.is_a?(Insika::Server::App); ' \
              'print "BOOT OK"'
     out, status = Open3.capture2e("ruby", "-Ilib", "-e", script, chdir: repo_root)
 

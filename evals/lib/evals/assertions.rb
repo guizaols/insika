@@ -3,8 +3,8 @@
 # D4 (RFC-0009): the PII/secret patterns live in the RUNTIME (single source of
 # truth) — the eval is a CLIENT of the server by design, so it consumes them from
 # there rather than keeping a divergent copy. The file is self-contained (no other
-# Harness require), so this load is cheap and standalone.
-require_relative "../../../lib/harness/safety/detectors"
+# Insika require), so this load is cheap and standalone.
+require_relative "../../../lib/insika/safety/detectors"
 
 module Evals
   # What the runner extracts from ONE replayed conversation, entirely from the
@@ -46,7 +46,7 @@ module Evals
     # Named negative detectors for `must_not` now live in the runtime (D4). Kept as
     # an alias so any external reference to Evals::Assertions::PII_DETECTORS still
     # resolves; the values ARE the runtime's, never a fork.
-    PII_DETECTORS = Harness::Safety::Detectors::PII
+    PII_DETECTORS = Insika::Safety::Detectors::PII
 
     module_function
 
@@ -108,7 +108,7 @@ module Evals
     # (D4) — which itself fails loud on an unknown name (a typo'd assertion must not
     # silently pass).
     def detect(name, text)
-      Harness::Safety::Detectors.detect(name, text)
+      Insika::Safety::Detectors.detect(name, text)
     end
   end
 end

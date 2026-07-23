@@ -43,7 +43,7 @@ TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", "local-demo")
 # Platform utility_model (#18): the cheap model the guardrail moderator falls back
 # to when an agent opts in with `moderator: "on"`. Idempotent — only seeds when the
 # operator hasn't set one. Mirrors the boot provider (DeepSeek).
-if Harness::Coercion.presence(W::SETTINGS_STORE.get["utility_model"]).nil?
+if Insika::Coercion.presence(W::SETTINGS_STORE.get["utility_model"]).nil?
   W::SETTINGS_STORE.update("utility_model" => "deepseek/#{Deploy::MODEL}")
 end
 
@@ -51,7 +51,7 @@ end
 # Guardrails ON, neutral defaults (no `responses` override — the engine's neutral
 # built-ins). Deterministic strictness=medium covers the EN + pt-BR attack cases.
 unless W::PROFILE_SOURCE.fetch("example-agent")
-  W::PROFILE_SOURCE.put(Harness::AgentProfile.build(
+  W::PROFILE_SOURCE.put(Insika::AgentProfile.build(
                           id: "example-agent", model: Deploy::MODEL, provider: :deepseek,
                           base_prompt: <<~PROMPT,
                             You are a helpful virtual assistant for a business. Be concise and
@@ -68,7 +68,7 @@ end
 # corpus). Guardrails ON, moderator ON, + a `responses` override showing per-agent
 # voice (config over convention, §7). Idempotent seed.
 unless W::PROFILE_SOURCE.fetch("loja-cosmeticos")
-  W::PROFILE_SOURCE.put(Harness::AgentProfile.build(
+  W::PROFILE_SOURCE.put(Insika::AgentProfile.build(
                           id: "loja-cosmeticos", model: Deploy::MODEL, provider: :deepseek,
                           base_prompt: <<~PROMPT,
                             Você é a atendente virtual de uma loja de cosméticos. Seja cordial e
@@ -93,7 +93,7 @@ unless W::PROFILE_SOURCE.fetch("loja-cosmeticos")
                         ))
 end
 
-APP = Harness::Server::App.new(
+APP = Insika::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
@@ -105,7 +105,7 @@ BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
 middleware = Protocol::Rack::Adapter.new(APP)
 
-puts "\e[1mHarness — serving for evals (guardrails on · moderator on)\e[0m"
+puts "\e[1mInsika — serving for evals (guardrails on · moderator on)\e[0m"
 puts "  #{BIND}/v1/responses  → gateway (token: \"#{TOKEN}\")"
 puts "  agents: example-agent (safety suite) · loja-cosmeticos (pt-BR reference)"
 puts "  Ctrl-C to stop."

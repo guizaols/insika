@@ -3,7 +3,7 @@
 # Micro-bench of the WRITE CEILING of Stores::SQLite under N PROCESSES.
 # Isolates the question "does SQLite hold up multi-process?" from LLM-provider
 # noise: it measures raw write contention against the SAME file (WAL +
-# busy_timeout + BEGIN IMMEDIATE + in-process semaphore — the harness's real
+# busy_timeout + BEGIN IMMEDIATE + in-process semaphore — the insika's real
 # production config).
 #
 # Each process opens its own handle on the SAME db and runs M write transactions
@@ -25,7 +25,7 @@ if %w[-h --help].include?(ARGV[0])
   exit 0
 end
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "async"
 require "json"
 require "tmpdir"
@@ -74,13 +74,13 @@ def run_round(procs, db_path)
   result_dir = Dir.mktmpdir("bench-res")
   # Pre-initialize the file (DDL + WAL) in the PARENT: avoids the race of N
   # children running CREATE TABLE / PRAGMA WAL concurrently on a fresh db.
-  Harness::Stores::SQLite.new(path: db_path).close
+  Insika::Stores::SQLite.new(path: db_path).close
 
   started = mono
 
   pids = procs.times.map do |p|
     Process.fork do
-      store = Harness::Stores::SQLite.new(path: db_path)
+      store = Insika::Stores::SQLite.new(path: db_path)
       lats = []
       locked = 0
       Sync do
@@ -89,7 +89,7 @@ def run_round(procs, db_path)
           begin
             store.set("bench", "p#{p}-#{i}", PAYLOAD)
             lats << (mono - t0) * 1000.0            # ms
-          rescue Harness::StoreError => e
+          rescue Insika::StoreError => e
             locked += 1 if e.message =~ /lock|busy/i
           end
         end

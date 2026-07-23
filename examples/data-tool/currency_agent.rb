@@ -5,9 +5,9 @@
 # it in its tool-loop. No Ruby class, no rebuild — the tool is a row.
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/data-tool/currency_agent.rb "1 USD in BRL?"
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 
-fx = Harness.agent("fx") do
+fx = Insika.agent("fx") do
   model "deepseek-chat"
   provider :deepseek
   instructions <<~PROMPT
@@ -17,7 +17,7 @@ fx = Harness.agent("fx") do
   PROMPT
 
   # A declarative HTTP tool. `{{from}}` / `{{to}}` are the model-supplied params;
-  # the harness substitutes them at call time. Public HTTPS endpoint, no API key.
+  # the insika substitutes them at call time. Public HTTPS endpoint, no API key.
   data_tool(
     "name"        => "convert_currency",
     "description" => "Latest reference exchange rate between two currencies.",

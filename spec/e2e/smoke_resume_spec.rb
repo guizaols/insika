@@ -163,7 +163,7 @@ RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
   # :waiting; the operator sees the pending action and approves via HTTP -> the tool
   # executes and the turn completes. (The CRASH-SAFE path — post-kill re-execution
   # using the durable PendingAction — is covered by
-  # spec/harness/tool_envelope_approval_spec at the integration level. See task 14's
+  # spec/insika/tool_envelope_approval_spec at the integration level. See task 14's
   # Notes about the :waiting-turn recovery limitation at boot.)
   it "approval: tool suspends in :waiting; operator approves via HTTP -> turn completes", :smoke do
     Dir.mktmpdir("harness-smoke-appr") do |dir|

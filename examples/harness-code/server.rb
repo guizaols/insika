@@ -31,7 +31,7 @@ BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint   = Async::HTTP::Endpoint.parse(BIND)
 middleware = Protocol::Rack::Adapter.new(W::APP)
 
-puts "\e[1mharness-code — code agent on the harness engine\e[0m"
+puts "\e[1mharness-code — code agent on the insika engine\e[0m"
 puts "  workspace : #{HarnessCodeApp::WORKSPACE_ROOT}"
 puts "  model     : #{HarnessCodeApp::PROVIDER}:#{HarnessCodeApp::MODEL}"
 puts "  bind      : #{BIND}"

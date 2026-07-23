@@ -1,0 +1,226 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "insika/tools/data_defined_tool" # the overlay loads it lazily; explicit in the test
+
+RSpec.describe Insika::Tools::DataDefinedTool do
+  # fake http: records the request, returns the configured result. Unique name to avoid
+  # colliding with the ::FakeHttp from other specs (top-level constant via `class`).
+  class FakeDataHttp
+    attr_reader :last
+
+    def initialize(result) = (@result = result)
+    def request(**req) = (@last = req; @result)
+  end
+
+  # permissive egress (the real guard has its own spec; here we don't want DNS).
+  PermissiveEgress = Class.new { def violation(*, **) = nil }.new
+
+  let(:events) { [] }
+  let(:event_stream) { Class.new { def initialize(s) = (@s = s); def emit(e) = @s << e }.new(events) }
+
+  def tool(definition_attrs, result:, egress: PermissiveEgress, egress_options: {})
+    d = Insika::ToolDefinition.build(**definition_attrs)
+    described_class.new(definition: d, http: FakeDataHttp.new(result), egress: egress,
+                        egress_options: egress_options, event_stream: event_stream)
+  end
+
+  let(:cep_def) do
+    { name: "cep", description: "Consulta CEP",
+      parameters: [{ name: "cep", type: "string", required: true }],
+      request: { method: "GET", url: "https://viacep.com.br/ws/{{cep}}/json" },
+      response: { extract: "json_path", path: "localidade" } }
+  end
+
+  it "name/description/parameters per instance; params_schema is derived" do
+    t = tool(cep_def, result: { status: 200, body: "{}" })
+    expect(t.name).to eq("cep")
+    expect(t.description).to eq("Consulta CEP")
+    expect(t.parameters.keys).to eq([:cep])
+    expect(t.params_schema["properties"]).to have_key("cep")
+    expect(t.params_schema["required"]).to include("cep")
+  end
+
+  # Phase 7, Stage A — PROOF: a NESTED parameter (search_products) is exposed to the
+  # model via params_schema (what the providers serialize) AND interpolated into the body.
+  describe "nested param (JSON Schema)" do
+    let(:search_def) do
+      {
+        name: "search_products", description: "busca no catálogo",
+        parameters: {
+          "type" => "object",
+          "properties" => {
+            "query_filter_pairs" => {
+              "type" => "array", "minItems" => 1,
+              "items" => {
+                "type" => "object",
+                "properties" => {
+                  "query" => { "type" => "string" },
+                  "filters" => { "type" => "object", "additionalProperties" => true }
+                },
+                "required" => ["query"]
+              }
+            }
+          },
+          "required" => ["query_filter_pairs"]
+        },
+        request: { method: "POST", url: "https://api.test/search",
+                   body: '{"pairs":{{query_filter_pairs}}}' },
+        response: { extract: "body_raw" }
+      }
+    end
+
+    it "exposes the nested schema to the model via params_schema" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      schema = t.params_schema
+      items = schema.dig("properties", "query_filter_pairs", "items")
+      expect(items["type"]).to eq("object")
+      expect(items["properties"]).to have_key("query")
+      expect(items.dig("properties", "filters", "type")).to eq("object")
+    end
+
+    it "interpolates the nested value (array of objects) into the body as JSON" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      pairs = [{ "query" => "arroz", "filters" => { "brand" => "tio" } }]
+      t.execute(query_filter_pairs: pairs)
+      body = t.instance_variable_get(:@http).last[:body]
+      expect(JSON.parse(body)).to eq("pairs" => pairs)
+    end
+  end
+
+  def last_url(t) = t.instance_variable_get(:@http).last[:url]
+
+  it "GET + json_path: interpolates the URL, extracts the path" do
+    t = tool(cep_def, result: { status: 200, body: '{"localidade":"São Paulo"}' })
+    expect(t.execute(cep: "01001000")).to eq("São Paulo")
+    expect(last_url(t)).to eq("https://viacep.com.br/ws/01001000/json")
+  end
+
+  it "percent-encodes a value in the URL" do
+    t = tool(cep_def, result: { status: 200, body: '{"localidade":"x"}' })
+    t.execute(cep: "a b/c")
+    expect(last_url(t)).to eq("https://viacep.com.br/ws/a%20b%2Fc/json")
+  end
+
+  it "body_raw returns the raw body; HTTP>=400 becomes {error:}" do
+    ok = tool(cep_def.merge(response: { extract: "body_raw" }), result: { status: 200, body: "PONG" })
+    expect(ok.execute(cep: "1")).to eq("PONG")
+    bad = tool(cep_def.merge(response: { extract: "body_raw" }), result: { status: 404, body: "nope" })
+    expect(bad.execute(cep: "1")).to match(error: /HTTP 404/)
+  end
+
+  it "extract status returns the status regardless of error" do
+    t = tool(cep_def.merge(response: { extract: "status" }), result: { status: 503, body: "" })
+    expect(t.execute(cep: "1")).to eq(status: 503)
+  end
+
+  it "missing json_path / non-JSON response become {error:}" do
+    miss = tool(cep_def, result: { status: 200, body: '{"outro":1}' })
+    expect(miss.execute(cep: "1")).to match(error: /not found/)
+    nojson = tool(cep_def, result: { status: 200, body: "<html>" })
+    expect(nojson.execute(cep: "1")).to match(error: /not JSON/)
+  end
+
+  it "missing required param -> {error:} (does not call HTTP)" do
+    t = tool(cep_def, result: { status: 200, body: "{}" })
+    expect(t.execute).to match(error: /missing required/)
+  end
+
+  it "blocked egress -> {error:} (does not call HTTP)" do
+    blocking = Class.new { def violation(*, **) = "private-network destination blocked" }.new
+    t = tool(cep_def, result: { status: 200, body: "{}" }, egress: blocking)
+    expect(t.execute(cep: "1")).to match(error: /destination blocked/)
+  end
+
+  it "POST: interpolates query, header and body with JSON escaping" do
+    post_def = {
+      name: "busca", description: "busca",
+      parameters: [{ name: "q", type: "string" }, { name: "tok", type: "string" }],
+      request: { method: "POST", url: "https://api.test/search",
+                 query: { "lang" => "pt" }, headers: { "Authorization" => "Bearer {{tok}}" },
+                 body: '{"q":"{{q}}"}' },
+      response: { extract: "body_raw" }, secret_headers: ["Authorization"]
+    }
+    t = tool(post_def, result: { status: 200, body: "ok" })
+    t.execute(q: 'a"b', tok: "T1")
+    req = t.instance_variable_get(:@http).last
+    expect(req[:method]).to eq("POST")
+    expect(req[:url]).to eq("https://api.test/search?lang=pt")
+    expect(req[:headers]["Authorization"]).to eq("Bearer T1")
+    expect(req[:body]).to eq('{"q":"a\"b"}')            # quotes escaped for valid JSON
+  end
+
+  # Phase 6/D2/G3: the TURN ids (not the model's) become X-Chat-Id/X-Store-Id/
+  # X-Agent-Id — the PROOF of Stage B (without them every /api/internal/* tool 403s).
+  describe "turn context {{ctx.*}}" do
+    let(:internal_def) do
+      { name: "cart", description: "carrinho da loja",
+        parameters: [{ name: "sku", type: "string", required: true }],
+        request: { method: "POST", url: "https://api.internal/agent_tools/cart",
+                   headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Store-Id" => "{{ctx.store_id}}",
+                              "X-Agent-Id" => "{{ctx.agent_id}}", "Authorization" => "Bearer S3CR3T" },
+                   body: '{"sku":"{{sku}}","tenant":"{{ctx.tenant}}"}' },
+        response: { extract: "status" }, secret_headers: ["Authorization"] }
+    end
+
+    def headers_of(t) = t.instance_variable_get(:@http).last[:headers]
+
+    it "emits X-Chat-Id/X-Store-Id/X-Agent-Id from the turn context" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "chat-42", store_id: "loja-7", agent_id: "bia", tenant: "chat-42" }
+      t.execute(sku: "ABC")
+      h = headers_of(t)
+      expect(h["X-Chat-Id"]).to eq("chat-42")
+      expect(h["X-Store-Id"]).to eq("loja-7")
+      expect(h["X-Agent-Id"]).to eq("bia")
+      expect(h["Authorization"]).to eq("Bearer S3CR3T") # static secret, not ctx
+      body = t.instance_variable_get(:@http).last[:body]
+      expect(body).to eq('{"sku":"ABC","tenant":"chat-42"}')
+    end
+
+    it "accepts string keys in the turn context (JSON round-trip)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { "chat_id" => "c1", "store_id" => "s1", "agent_id" => "a1", "tenant" => "c1" }
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Chat-Id"]).to eq("c1")
+    end
+
+    it "missing ctx -> empty header (does not inject a model arg with the same name)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      # without turn_context set (default {})
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Store-Id"]).to eq("")
+    end
+
+    it "the model does NOT control ctx: a model arg 'chat_id' is ignored in ctx.*" do
+      spoof_def = {
+        name: "cart2", description: "d",
+        parameters: [{ name: "chat_id", type: "string", required: true }],
+        request: { method: "GET", url: "https://api.internal/x",
+                   headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Model" => "{{chat_id}}" } },
+        response: { extract: "status" }
+      }
+      t = tool(spoof_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "real-chat" }
+      t.execute(chat_id: "spoofed")
+      h = headers_of(t)
+      expect(h["X-Chat-Id"]).to eq("real-chat") # from the turn
+      expect(h["X-Model"]).to eq("spoofed")     # from the model, separate channel
+    end
+
+    it "CRLF in a ctx value is stripped from the header (anti-injection)" do
+      t = tool(internal_def, result: { status: 200, body: "" })
+      t.turn_context = { chat_id: "a\r\nX-Evil: 1", store_id: "", agent_id: "", tenant: "" }
+      t.execute(sku: "X")
+      expect(headers_of(t)["X-Chat-Id"]).to eq("aX-Evil: 1")
+    end
+  end
+
+  it "emits :data_tool_call with status, without leaking body/secret" do
+    t = tool(cep_def, result: { status: 200, body: '{"localidade":"X"}' })
+    t.execute(cep: "1")
+    ev = events.last
+    expect(ev.type).to eq(:data_tool_call)
+    expect(ev.data).to eq(tool: "cep", status: 200)
+  end
+end

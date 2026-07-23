@@ -7,7 +7,7 @@ require_relative "message"
 require_relative "task_projection"
 require_relative "agent_card"
 
-module Harness
+module Insika
   module Server
     module A2A
       # A2A edge handler: injected sub-app mounted by Server::App. A2A is
@@ -18,7 +18,7 @@ module Harness
           @command_bus = command_bus
           @task_store = task_store
           @session_store = session_store
-          @profiles = Harness::ProfileSource.coerce(profiles)
+          @profiles = Insika::ProfileSource.coerce(profiles)
           @skill_catalog = skill_catalog
           @config = config # { a2a_agent:, base_url: }
         end
@@ -104,7 +104,7 @@ module Harness
           exec.error && (exec.error["message"] || exec.error[:message])
         end
 
-        def build(type, payload) = Harness::Command.build(type, payload, transport: :a2a)
+        def build(type, payload) = Insika::Command.build(type, payload, transport: :a2a)
         def now = Time.now.utc.iso8601
       end
     end

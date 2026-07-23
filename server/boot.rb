@@ -2,7 +2,7 @@
 
 require "async"
 
-module Harness
+module Insika
   module Server
     # Turns the components into a service.
     # MANDATORY order, no parallelism: plugins → stores → recovery → (app

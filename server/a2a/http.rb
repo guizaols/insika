@@ -2,12 +2,12 @@
 
 require "json"
 
-module Harness
+module Insika
   module Server
     module A2A
       # Production HTTP adapter: implements the duck-type
       # `post_json(url, body) -> Hash` over async-http (runs on the turn's reactor).
-      # BOUNDARY — the lib require lives here, never in lib/harness.rb/wiring-load.
+      # BOUNDARY — the lib require lives here, never in lib/insika.rb/wiring-load.
       # The Client (the logic) is tested with a fake; this adapter, with a light test.
       class Http
         HEADERS = [["content-type", "application/json"], ["accept", "application/json"]].freeze

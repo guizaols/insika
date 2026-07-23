@@ -4,9 +4,9 @@
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/hello-agent/hello.rb "your message"
 #   DEEPSEEK_API_KEY=sk-... ruby examples/hello-agent/hello.rb --serve
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 
-assistant = Harness.agent("assistant") do
+assistant = Insika.agent("assistant") do
   model "deepseek-chat"
   provider :deepseek
   instructions "You are a concise, friendly assistant. Answer briefly."
