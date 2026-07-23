@@ -2,7 +2,7 @@
 
 require "json"
 
-module Harness
+module Insika
   module Server
     # OpenAI Responses edge adapter (`/v1/responses`) — the contract that the
     # OpenClaw gateway consumers already speak (see consumer-app
@@ -25,13 +25,13 @@ module Harness
       def parse_request(body, req)
         agent = body[:model].to_s.sub(/\Aopenclaw:/, "")
         agent = req.get_header("HTTP_X_OPENCLAW_AGENT").to_s if agent.empty?
-        raise Harness::ValidationError, "model/agent missing" if agent.strip.empty?
+        raise Insika::ValidationError, "model/agent missing" if agent.strip.empty?
 
         user = body[:user].to_s
-        raise Harness::ValidationError, "user missing" if user.strip.empty?
+        raise Insika::ValidationError, "user missing" if user.strip.empty?
 
         message = extract_input(body[:input])
-        raise Harness::ValidationError, "input empty" if message.strip.empty?
+        raise Insika::ValidationError, "input empty" if message.strip.empty?
 
         { agent: agent.strip, user: user, message: message }
       end

@@ -5,9 +5,9 @@
 #
 # `serve` instead of `reply` boots the control UI (/studio) + drop-in API (/v1):
 #   DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb --serve
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 
-assistant = Harness.agent("assistant") do
+assistant = Insika.agent("assistant") do
   model "deepseek-chat"
   provider :deepseek
   instructions "You are Bia, a concise and friendly assistant. Answer briefly."

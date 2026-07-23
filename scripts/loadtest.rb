@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# Load-test for the harness — hits POST /v1/responses DIRECTLY (the production
+# Load-test for the insika — hits POST /v1/responses DIRECTLY (the production
 # path: consumer-app/WhatsApp -> engine). Ruby equivalent of OpenClaw's
 # loadtest-gateway.mjs; since the SSE contract is the SAME, it enables an
-# apples-to-apples comparison of harness vs gateway.
+# apples-to-apples comparison of insika vs gateway.
 #
 # Per turn it measures: TTFB (time to first SSE byte), total time, and the
 # `usage` (tokens + cache hit) from the last frame that carries usage. Fires N

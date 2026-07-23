@@ -3,7 +3,7 @@
 require "rack"
 require "rack/utils"
 
-module Harness
+module Insika
   module Server
     # Minimal operator auth. Fail-closed BY CONSTRUCTION: with no
     # token configured, /admin does not exist to the world (503) — never open

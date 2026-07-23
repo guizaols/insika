@@ -11,24 +11,24 @@ require "async"
 #      coordinator, rejecting or running the tool based on the operator decision.
 RSpec.describe "harness-code approval wiring" do
   describe "profile + policy engine" do
-    let(:event_stream) { Harness::EventStream.new }
+    let(:event_stream) { Insika::EventStream.new }
 
     let(:registry) do
-      Harness::ToolRegistry.new.tap do |r|
+      Insika::ToolRegistry.new.tap do |r|
         %w[read_file list_dir grep].each { |n| r.register(n, plugin: "harness-code") { nil } }
         %w[write_file edit_file bash].each { |n| r.register(n, side_effect: true, plugin: "harness-code") { nil } }
       end
     end
 
     let(:policy_registry) do
-      Harness::PolicyRegistry.new.tap do |pr|
-        pr.register(:tool_allowlist, Harness::Policy::Builtin::ToolAllowlist)
-        pr.register(:approval_required, Harness::Policy::Builtin::ApprovalRequired)
+      Insika::PolicyRegistry.new.tap do |pr|
+        pr.register(:tool_allowlist, Insika::Policy::Builtin::ToolAllowlist)
+        pr.register(:approval_required, Insika::Policy::Builtin::ApprovalRequired)
       end
     end
 
     let(:profile) do
-      Harness::AgentProfile.build(
+      Insika::AgentProfile.build(
         id: "harness-code", model: "fake",
         tools_allow: %w[read_file list_dir grep write_file edit_file bash],
         policies: %i[tool_allowlist approval_required],
@@ -37,8 +37,8 @@ RSpec.describe "harness-code approval wiring" do
     end
 
     subject(:resolution) do
-      engine = Harness::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream)
-      request = Harness::Policy::PolicyRequest.new(
+      engine = Insika::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream)
+      request = Insika::Policy::PolicyRequest.new(
         profile: profile, command: nil, context: nil,
         candidate_tools: registry.entries, candidate_skills: []
       )
@@ -62,9 +62,9 @@ RSpec.describe "harness-code approval wiring" do
 
   describe "ToolEnvelope approval gate" do
     let(:task) { Struct.new(:id, :session_id).new("t1", "s1") }
-    let(:profile) { Harness::AgentProfile.build(id: "harness-code", model: "fake") }
+    let(:profile) { Insika::AgentProfile.build(id: "harness-code", model: "fake") }
     let(:state) do
-      Harness::TurnState.new(task: task, profile: profile, turn: 1, message: "go").tap do |s|
+      Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "go").tap do |s|
         s.requires_approval = %w[write_file]
         s.approval_coordinator = coordinator
         s.actor = Object.new
@@ -80,11 +80,11 @@ RSpec.describe "harness-code approval wiring" do
       end.new
     end
 
-    let(:tool_registry) { instance_double(Harness::ToolRegistry, side_effect?: true) }
+    let(:tool_registry) { instance_double(Insika::ToolRegistry, side_effect?: true) }
     let(:checkpoint_store) { double("checkpoint_store", record_side_effect: nil) }
 
     let(:envelope) do
-      Harness::ToolEnvelope.new(tool, state: state, checkpoint_store: checkpoint_store,
+      Insika::ToolEnvelope.new(tool, state: state, checkpoint_store: checkpoint_store,
                                       tool_registry: tool_registry, timeout: 5)
     end
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Eval runner CLI (RFC-0008). Replays the golden set against a RUNNING harness over
+# Eval runner CLI (RFC-0008). Replays the golden set against a RUNNING insika over
 # POST /v1/responses and reports the verdict. On-demand (not CI): it needs a live
 # provider key + the target agents provisioned (see evals/README.md).
 #
@@ -48,7 +48,7 @@ opts = {
 
 OptionParser.new do |o|
   o.banner = "Usage: ruby evals/run.rb [options]"
-  o.on("--base-url URL", "harness base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
+  o.on("--base-url URL", "insika base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
   o.on("--golden-dir DIR", "golden set dir (default evals/golden)") { |v| opts[:golden_dir] = v }
   o.on("--agent ID", "only run goldens for this agent") { |v| opts[:agent] = v }
   o.on("--conv-map FILE", "JSON map golden.id -> conversation id (e.g. real Chat UUIDs)") { |v| opts[:conv_map] = v }

@@ -83,7 +83,7 @@ RSpec.describe Studio::App do
 
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
               tools_allow: %w[menu calc], skills: %w[pedido], prompt_files: [])
-    Harness::AgentProfile.build(id: id, model: model, provider: provider,
+    Insika::AgentProfile.build(id: id, model: model, provider: provider,
                                 memory: memory, tools_allow: tools_allow,
                                 skills: skills, prompt_files: prompt_files)
   end
@@ -99,20 +99,20 @@ RSpec.describe Studio::App do
     # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
     # from them when rendering; writes via the bus Commands). Seeded from the params
     # to exercise the settings/LLM/MCP/system-files read-path.
-    cfg = Harness::ConfigStore.new(store: Harness::Stores::Memory.new)
-    settings_store = Harness::SettingsStore.new(config_store: cfg)
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    settings_store = Insika::SettingsStore.new(config_store: cfg)
     settings_store.update(settings) if settings
-    provider_store = Harness::LLMProviderStore.new(config_store: cfg)
+    provider_store = Insika::LLMProviderStore.new(config_store: cfg)
     llm_providers.each { |p| provider_store.upsert(p) }
-    mcp_store = Harness::McpStore.new(config_store: cfg)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
     mcp_instances.each { |m| mcp_store.upsert(m) }
-    system_file_store = Harness::SystemFileStore.new(config_store: cfg)
+    system_file_store = Insika::SystemFileStore.new(config_store: cfg)
     system_files.each { |name, content| system_file_store.write(name, content) }
     # REAL ToolStore (Phase 5): the authoring page reads from it; writes via the bus.
-    tool_store = Harness::ToolStore.new(config_store: cfg)
+    tool_store = Insika::ToolStore.new(config_store: cfg)
     data_tools.each { |d| tool_store.write(d) }
     # REAL ToolTraceStore (debug §3.1): the session view reads from it.
-    trace_store = Harness::ToolTraceStore.new(store: Harness::Stores::Memory.new)
+    trace_store = Insika::ToolTraceStore.new(store: Insika::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
@@ -439,9 +439,9 @@ RSpec.describe Studio::App do
   it "resolves a binary path id against the SQLite store (encoding regression)" do
     require "tmpdir"
     Dir.mktmpdir do |dir|
-      store = Harness::Stores::SQLite.new(path: File.join(dir, "cfg.db"))
-      src = Harness::StoredProfileSource.new(config_store: Harness::ConfigStore.new(store: store))
-      src.put(Harness::AgentProfile.build(id: "bia", model: "m", provider: :deepseek, memory: true))
+      store = Insika::Stores::SQLite.new(path: File.join(dir, "cfg.db"))
+      src = Insika::StoredProfileSource.new(config_store: Insika::ConfigStore.new(store: store))
+      src.put(Insika::AgentProfile.build(id: "bia", model: "m", provider: :deepseek, memory: true))
       app = Class.new(Studio::App)
       app.configure(command_bus: BusDouble.new([]), profile_source: src, event_stream: nil,
                     config: { admin_token: "s3cret" },
@@ -607,7 +607,7 @@ RSpec.describe Studio::App do
   end
 
   it "detail shows the agent's memory facts (tenant = id)" do
-    fact = Harness::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
+    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
     app, = build_app(memory: { "bia" => { facts: [fact], notes: [] } })
     body = login(app).get("/agents/bia").body
     expect(body).to include("nome")
@@ -673,7 +673,7 @@ RSpec.describe Studio::App do
   end
 
   it "renders a denied tool as LOCKED (disabled, deny wins) — can't be granted here" do
-    denied = Harness::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
+    denied = Insika::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
     app, = build_app(agents: [denied])
     body = login(app).get("/tools").body
     expect(body).to include("locked")
@@ -750,7 +750,7 @@ RSpec.describe Studio::App do
                        }, secret_headers: ["Authorization"])
     app, = build_app(data_tools: [secret])
     body = login(app).get("/tools/def/api").body
-    expect(body).to include(Harness::SecretMasking::SENTINEL)
+    expect(body).to include(Insika::SecretMasking::SENTINEL)
     expect(body).not_to include("TOPSECRET")
   end
 
@@ -1404,7 +1404,7 @@ RSpec.describe Studio::App do
   it "surfaces a Command error as a red flash (Validation/NotFound → not a 500)" do
     bus = Class.new(BusDouble) do
       def dispatch(command)
-        raise Harness::NotFoundError, "task not found" if command.type == :cancel_task
+        raise Insika::NotFoundError, "task not found" if command.type == :cancel_task
 
         super
       end

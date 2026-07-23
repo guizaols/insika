@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Harness
+module Insika
   module Server
     module A2A
       # Message parts translation: TextPart only in this slice.

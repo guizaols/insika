@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Harness
+module Insika
   module Server
     module A2A
       # A2A adapter error map: standard JSON-RPC 2.0 codes +
@@ -20,7 +20,7 @@ module Harness
         # request). Anything else -> INTERNAL_ERROR (generic message, no stack).
         def self.from_exception(error)
           case error
-          when Harness::ValidationError, Harness::NotFoundError
+          when Insika::ValidationError, Insika::NotFoundError
             [INVALID_PARAMS, error.message]
           else
             [INTERNAL_ERROR, "internal error"]

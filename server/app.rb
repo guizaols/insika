@@ -8,7 +8,7 @@ require_relative "admin_auth" # Bearer checker shared by the gateway edge (fail-
 require_relative "a2a/app" # A2A edge adapter (pulls protocol/errors/message/projection/card)
 require_relative "responses" # OpenAI Responses adapter (/v1/responses) — drop-in for the OpenClaw gateway
 
-module Harness
+module Insika
   module Server
     # Rack app. Transports ONLY
     # translate requests into Commands — the server holds no business
@@ -70,9 +70,9 @@ module Harness
         route(req)
       rescue JSON::ParserError => e
         error_response(400, e) # malformed JSON, before any dispatch
-      rescue Harness::ValidationError => e
+      rescue Insika::ValidationError => e
         error_response(422, e)
-      rescue Harness::NotFoundError => e
+      rescue Insika::NotFoundError => e
         error_response(404, e)
       rescue Async::TimeoutError => e
         error_response(504, e) # synchronous control request exceeded the ceiling
@@ -136,21 +136,21 @@ module Harness
       def auth_error(status, message, extra_headers = {})
         [status,
          { "content-type" => "application/json" }.merge(extra_headers),
-         [JSON.generate(error: { class: "Harness::Error", message: message })]]
+         [JSON.generate(error: { class: "Insika::Error", message: message })]]
       end
 
       # POST /v1/commands/:type — generic: every new Command is born with a
       # transport. The control vs turn distinction is BY THE SHAPE of the result (the
       # transport knows no semantics).
       def handle_command(req, type)
-        command = Harness::Command.build(type.to_sym, parse_body(req), transport: :http)
+        command = Insika::Command.build(type.to_sym, parse_body(req), transport: :http)
         command_response(dispatch_with_timeout(command))
       end
 
       # POST /v1/sessions — sugar for create_session; 201 {session}.
       def handle_create_session(req)
         body = parse_body(req)
-        command = Harness::Command.build(:create_session, { vars: body[:vars] || {} },
+        command = Insika::Command.build(:create_session, { vars: body[:vars] || {} },
                                          transport: :http)
         session = dispatch_with_timeout(command)
         json_response(201, { session: session.to_h })
@@ -177,7 +177,7 @@ module Harness
       # config[:public_url] (behind a proxy/TLS terminator the request scheme is the
       # internal http), else the request's own base_url.
       def public_base(req)
-        Harness::Coercion.presence(@config[:public_url]) || req.base_url
+        Insika::Coercion.presence(@config[:public_url]) || req.base_url
       end
 
       # GET /v1/workflows — discovery (item 22 / §4.4). Direct read of the
@@ -226,7 +226,7 @@ module Harness
         gate = gateway_gate(req)
         return gate if gate
 
-        pack = Harness::Pack.from_h(parse_raw_body(req))
+        pack = Insika::Pack.from_h(parse_raw_body(req))
         json_response(200, @provisioner.import(pack)) # Validation/NotFound -> 422/404 in #call
       end
 
@@ -242,7 +242,7 @@ module Harness
         gate = gateway_gate(req)
         return gate if gate
 
-        command = Harness::Command.build(:import_tools, parse_raw_body(req), transport: :http)
+        command = Insika::Command.build(:import_tools, parse_raw_body(req), transport: :http)
         json_response(200, dispatch_with_timeout(command))
       end
 
@@ -257,7 +257,7 @@ module Harness
         gate = gateway_gate(req)
         return gate if gate
 
-        command = Harness::Command.build(:import_mcp_tools, { name: name }, transport: :http)
+        command = Insika::Command.build(:import_mcp_tools, { name: name }, transport: :http)
         json_response(200, dispatch_with_timeout(command))
       end
 
@@ -273,7 +273,7 @@ module Harness
       # Gateway Bearer (fail-closed). -> error response (503/401) OR nil when
       # ok (the handler proceeds).
       def gateway_gate(req)
-        case Harness::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
+        case Insika::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
         when :disabled then auth_error(503, "gateway disabled")
         when :unauthorized then auth_error(401, "unauthorized", "www-authenticate" => "Bearer")
         end
@@ -287,7 +287,7 @@ module Harness
         return if @session_store.find(user)
 
         @command_bus.dispatch(
-          Harness::Command.build(:create_session, { id: user, vars: { channel: "responses" } }, transport: :http)
+          Insika::Command.build(:create_session, { id: user, vars: { channel: "responses" } }, transport: :http)
         )
       rescue ArgumentError
         nil
@@ -296,7 +296,7 @@ module Harness
       # GET /v1/sessions/:id — direct read (not a Command).
       def handle_read_session(id)
         session = @session_store.find(id)
-        raise Harness::NotFoundError, "session not found: #{id}" if session.nil?
+        raise Insika::NotFoundError, "session not found: #{id}" if session.nil?
 
         json_response(200, { session: session.to_h })
       end
@@ -306,7 +306,7 @@ module Harness
       # Store; nothing is lost if the client disconnected.
       def handle_read_task(id)
         task = @task_store.find(id)
-        raise Harness::NotFoundError, "task not found: #{id}" if task.nil?
+        raise Insika::NotFoundError, "task not found: #{id}" if task.nil?
 
         body = { task: task_to_h(task) }
         # pending approvals: this is where the consumer/operator sees
@@ -351,7 +351,7 @@ module Harness
       # happens here, BEFORE the SSE opens -> closes the subscription and propagates to the
       # #call rescue (becomes an HTTP status).
       def message_flow(payload, stream:, serialize: nil)
-        command = Harness::Command.build(:send_message, payload, transport: :http)
+        command = Insika::Command.build(:send_message, payload, transport: :http)
         subscription = @event_stream.subscribe
         result =
           begin
@@ -378,7 +378,7 @@ module Harness
       # error (bad input / unknown workflow) closes the subscription and propagates
       # to #call (HTTP status).
       def workflow_flow(payload, stream:)
-        command = Harness::Command.build(:trigger_workflow, payload, transport: :http)
+        command = Insika::Command.build(:trigger_workflow, payload, transport: :http)
 
         unless stream
           result = dispatch_with_timeout(command)
@@ -414,7 +414,7 @@ module Harness
           case event.type
           when :content        then content << event.data[:delta].to_s
           when :task_failed    then error = { class: event.data[:error], message: event.data[:message] }
-          when :task_cancelled then error = { class: "Harness::CancelledError", message: "task cancelled" }
+          when :task_cancelled then error = { class: "Insika::CancelledError", message: "task cancelled" }
           when :error          then error ||= { class: nil, message: event.data[:message] }
           end
         end

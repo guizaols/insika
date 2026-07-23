@@ -13,7 +13,7 @@ require_relative "lib/harness_code/tools/bash"
 # it once at boot. Each tool is registered with a BLOCK factory (like the A2A
 # remote tools in config/wiring.rb) so the Executor gets a fresh instance per
 # turn — every instance shares one stateless, immutable core Sandbox
-# (`Harness::Sandbox::Env`, item 35).
+# (`Insika::Sandbox::Env`, item 35).
 #
 # The Sandbox is assembled from declarative config: `HARNESS_CODE_SANDBOX`
 # selects the provider (local [default] / docker) and `HARNESS_CODE_ROOT` the
@@ -27,7 +27,7 @@ module HarnessCodePlugin
   module_function
 
   # Declarative sandbox config, resolved from the environment. Empty/absent keys
-  # are dropped so Harness::Sandbox.build applies its own defaults (local
+  # are dropped so Insika::Sandbox.build applies its own defaults (local
   # provider, cwd root).
   def sandbox_config
     {
@@ -40,7 +40,7 @@ module HarnessCodePlugin
     }.reject { |_k, v| v.to_s.empty? }
   end
 
-  def sandbox = Harness::Sandbox.build(sandbox_config)
+  def sandbox = Insika::Sandbox.build(sandbox_config)
 
   def register(api)
     sbx = sandbox

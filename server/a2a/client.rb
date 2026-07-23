@@ -2,7 +2,7 @@
 
 require_relative "message"
 
-module Harness
+module Insika
   module Server
     module A2A
       # JSON-RPC response envelope carrying `error` (the remote refused/failed).

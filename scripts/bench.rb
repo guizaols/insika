@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-# Harness public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE (item 37).
+# Insika public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE (item 37).
 #
-# Measures the ENGINE OVERHEAD of a turn: everything the harness does around the
+# Measures the ENGINE OVERHEAD of a turn: everything the insika does around the
 # model — context build, policy, guardrail detectors, chat assembly, the tool
 # round-trip, streaming, persistence, checkpoint, the event stream — WITHOUT ever
 # calling an LLM provider. The model is replaced by a deterministic in-process
@@ -11,11 +11,11 @@
 #     bundle exec ruby scripts/bench.rb
 #
 # WHY provider-free. A turn's wall-clock is dominated by the provider round-trip,
-# which the harness does not control (a real-turn profile showed local assembly
+# which the insika does not control (a real-turn profile showed local assembly
 # ~0.05ms and time-to-first-token bounded by the provider). A benchmark that
 # called a provider would (a) require a key — not reproducible by third parties,
 # (b) name a baseline — not neutral, (c) drown the engine signal in provider
-# noise. So this suite isolates and reports ONLY what the harness controls:
+# noise. So this suite isolates and reports ONLY what the insika controls:
 #   · per-turn engine latency (p50/p95), split prep / first-token / generation
 #     via HARNESS_TURN_TIMING;
 #   · engine throughput (turns/s) under concurrency;
@@ -60,7 +60,7 @@ end
 ENV.delete("HARNESS_DB")
 ENV["HARNESS_TURN_TIMING"] = "1"
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "async"
 
 # --- flag parsing (--name value / boolean --name) -----------------------------
@@ -187,7 +187,7 @@ class StubChat
 end
 
 # ---------------------------------------------------------------------------
-# One scenario: a DSL-built agent (the public Harness.agent {} path — same import
+# One scenario: a DSL-built agent (the public Insika.agent {} path — same import
 # round-trip a real deployment uses) with its create_chat swapped for a StubChat.
 class Scenario
   attr_reader :name
@@ -215,7 +215,7 @@ class Scenario
   def build_definition
     name = @name
     ident = identity_text(IDENTITY)
-    Harness.agent("bench-#{name}") do
+    Insika.agent("bench-#{name}") do
       model "stub-model"
       provider "stub"
       instructions "Synthetic benchmark agent (#{name})."
@@ -274,7 +274,7 @@ class Driver
   # Fire one turn; returns its task_id (does not wait).
   def dispatch(idx)
     res = @scenario.bus.dispatch(
-      Harness::Command.build(:send_message, @scenario.payload(idx), transport: :cli)
+      Insika::Command.build(:send_message, @scenario.payload(idx), transport: :cli)
     )
     res[:task_id]
   end
@@ -335,7 +335,7 @@ def run_scenario(name)
     end
     wall = mono - started
     gen_p50 = latency.dig(:gen, :p50)
-    # Pipeline cost per streamed token (µs) — the harness's own per-token work
+    # Pipeline cost per streamed token (µs) — the insika's own per-token work
     # (filter/emit/event stream), NOT model generation speed (provider-bound).
     per_token_us = gen_p50 ? (gen_p50 * 1000.0 / OUT_TOKENS).round(2) : nil
     throughput = { turns_per_s: (completed / wall).round(1), wall_s: wall.round(2),
@@ -355,12 +355,12 @@ results = SCENARIOS.map { |s| run_scenario(s) }
 if JSON_OUT
   require "json"
   puts JSON.pretty_generate(
-    engine: "harness #{Harness::VERSION}",
+    engine: "insika #{Insika::VERSION}",
     ruby: RUBY_DESCRIPTION,
     yjit: (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?),
     config: { iterations: ITERS, warmup: WARMUP, concurrency: CONC, waves: WAVES,
               identity_tokens: IDENTITY, history_turns: HISTORY, output_tokens: OUT_TOKENS },
-    note: "provider-free engine benchmark; latency = harness overhead only " \
+    note: "provider-free engine benchmark; latency = insika overhead only " \
           "(no model call). See docs/BENCHMARK.md.",
     results: results
   )
@@ -368,8 +368,8 @@ if JSON_OUT
 end
 
 yjit = (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?) ? "YJIT" : "no-YJIT"
-puts "harness bench — engine overhead, provider-free (no LLM call)"
-puts "engine #{Harness::VERSION} · #{RUBY_ENGINE} #{RUBY_VERSION} (#{yjit})"
+puts "insika bench — engine overhead, provider-free (no LLM call)"
+puts "engine #{Insika::VERSION} · #{RUBY_ENGINE} #{RUBY_VERSION} (#{yjit})"
 puts "config: iters=#{ITERS} warmup=#{WARMUP} conc=#{CONC} waves=#{WAVES} " \
      "identity=#{IDENTITY}tok history=#{HISTORY} out=#{OUT_TOKENS}tok"
 results.each do |r|
@@ -389,7 +389,7 @@ results.each do |r|
   puts "  throughput (concurrency=#{t[:concurrency]}):"
   puts "    #{t[:turns_per_s]} turns/s over #{t[:wall_s]}s (#{t[:completed]} turns)"
   puts "    pipeline overhead: #{t[:per_token_overhead_us] || '-'} µs/token " \
-       "(harness per-token work — NOT model generation speed, which is provider-bound)"
+       "(insika per-token work — NOT model generation speed, which is provider-bound)"
 end
 puts "-" * 66
 puts "Provider excluded by design — see docs/BENCHMARK.md for methodology."

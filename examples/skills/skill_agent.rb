@@ -5,9 +5,9 @@
 # via the built-in load_skill tool, only when a turn actually needs it.
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/skills/skill_agent.rb "refund order #4471"
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 
-support = Harness.agent("support") do
+support = Insika.agent("support") do
   model "deepseek-chat"
   provider :deepseek
   instructions <<~PROMPT

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Provisions a PACK (docs/prompt-base/06 folder: agent.config.json + *.md +
-# skills/*/SKILL.md + tools/*.json) into the harness that IS RUNNING, via
+# skills/*/SKILL.md + tools/*.json) into the insika that IS RUNNING, via
 # POST /v1/agents. Runs as a CLIENT (does not boot the deployment; does not need
 # DEEPSEEK_API_KEY) — the SERVER does the import, so the tool overlay and the
 # skill catalog reload IN the server process (effective on the next turn).
@@ -15,7 +15,7 @@
 # BIA_INTERNAL_API_TOKEN replaces the __BIA_INTERNAL_API_TOKEN__ placeholder in the
 # tools' secret_headers in memory — the secret does NOT live in the pack's .json.
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "net/http"
 require "json"
 require "uri"
@@ -25,7 +25,7 @@ base   = ENV.fetch("HARNESS_URL", "http://localhost:9292")
 token  = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 secret = ENV["BIA_INTERNAL_API_TOKEN"]
 
-pack = Harness::Pack.from_dir(dir)
+pack = Insika::Pack.from_dir(dir)
 
 # Inject the real internal token into the secret_headers (stays off disk).
 placeholder = "__BIA_INTERNAL_API_TOKEN__"

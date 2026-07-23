@@ -8,7 +8,7 @@ require_relative "assertions"
 module Evals
   # How the runner turns a (agent, conversation, message) into a TurnResult. The
   # runner depends only on this seam, so it's unit-testable with a fake — the real
-  # HttpTransport is exercised against a running harness.
+  # HttpTransport is exercised against a running insika.
   #
   # One turn's outcome: the TurnResult the engine asserts on + perf timing (ttfb/
   # total in ms) so `--mode perf` reports real latency over the real corpus (#6b).

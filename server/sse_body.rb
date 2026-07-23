@@ -5,7 +5,7 @@ require "timeout"
 require "async"
 require "async/queue"
 
-module Harness
+module Insika
   module Server
     # SSE response body (evolves `SSEStream`). `SSEStream`
     # received a producer block (the Runner wrote into it); `SSEBody` DRAINS a

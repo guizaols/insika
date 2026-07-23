@@ -51,7 +51,7 @@ Sync do |parent|
 
     # SESSION turn (session_id): enters the SessionActor's FIFO queue; turn 2
     # already sees turn 1 in the transcript (real memory, no mock).
-    res = W::BUS.dispatch(Harness::Command.build(:send_message,
+    res = W::BUS.dispatch(Insika::Command.build(:send_message,
                                                  { agent: "bia", message: msg, session_id: SESSION },
                                                  transport: :cli))
     tid = res[:task_id]

@@ -6,9 +6,9 @@
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/memory/memory_agent.rb
 #   DEEPSEEK_API_KEY=sk-... HARNESS_DB=./memory.db ruby examples/memory/memory_agent.rb  # survives restarts
-require_relative "../../lib/harness"
+require_relative "../../lib/insika"
 
-concierge = Harness.agent("concierge") do
+concierge = Insika.agent("concierge") do
   model "deepseek-chat"
   provider :deepseek
   memory true
