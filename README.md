@@ -113,7 +113,8 @@ Command Bus → Context Builder → Policy Engine → Middleware → Executor (t
 ```
 
 Durable stores (SQLite, or in-memory for dev) hold sessions, tasks and checkpoints.
-A deeper architecture guide is in progress.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline, the tool-loop,
+checkpoint recovery, and the composition root (with diagrams).
 
 **Concurrency:** the engine runs on the [Async](https://github.com/socketry/async)
 fiber scheduler and serves under [Falcon](https://github.com/socketry/falcon).
@@ -129,10 +130,26 @@ bundle exec rspec
 
 ## More docs
 
+**Start here**
+
 - [docs/WHY.md](docs/WHY.md) — why a runtime (vs a DIY loop, an assembled framework, or a hosted gateway).
 - [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md) — running locally and the control UI.
-- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry tracing (opt-in): turns → traces, local & production setup.
+- [examples/](examples/) — one small runnable project per capability.
+
+**Capabilities**
+
+- [docs/AGENTS.md](docs/AGENTS.md) — create/edit agents; the AgentProfile and its five access layers.
+- [docs/TOOLS.md](docs/TOOLS.md) — code vs data vs MCP tools; manifests; egress troubleshooting.
+- [docs/SKILLS.md](docs/SKILLS.md) — the SKILL.md format and progressive loading.
+- [docs/CONTEXT.md](docs/CONTEXT.md) — what fills a turn's prompt; budget/eviction; memory.
+- [docs/SECURITY.md](docs/SECURITY.md) — guardrails, sandbox, egress, approvals, edge limits, secrets.
+- [docs/SANDBOX.md](docs/SANDBOX.md) — the confined-execution primitive.
+
+**Operate & understand**
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the engine, the turn pipeline, and diagrams.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — production deploy (Falcon, durable SQLite volume, tokens).
+- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry tracing (opt-in): turns → traces, local & production setup.
 - [docs/LOADTEST.md](docs/LOADTEST.md) — load-testing and data-topology.
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
 
