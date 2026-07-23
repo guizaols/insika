@@ -142,6 +142,12 @@ module Harness
       end
     end
 
+    # Onboarding surface (item 20 / §5.6): start.md + models.json + public docs. The
+    # base has no SettingsStore/LLMProviderStore and empty PROFILES, so models.json
+    # here carries only the thinking levels (still a coherent document); the DSL serve
+    # and the deployment pass their real stores/agents.
+    ONBOARDING = Harness::Onboarding.standard(root: ROOT)
+
     APP = Harness::Server::App.new(
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
@@ -150,6 +156,7 @@ module Harness
       # Base-only: workflows are exposed here (the deployment does not). Enables
       # GET /v1/workflows (discovery) + POST /v1/workflows/:name (item 22 / §4.4).
       workflow_registry: WORKFLOW_REGISTRY,
+      onboarding: ONBOARDING, # GET /start.md + /models.json + /docs (public)
       config: CONFIG
     )
 

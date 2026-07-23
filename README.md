@@ -71,6 +71,26 @@ through the control UI or `POST /v1/agents`. Nothing is a bypass; the DSL just
 *generates the data*. For the full demo deployment (real tools/skills/memory), see
 `scripts/serve_real.rb`.
 
+## Let your coding agent build the first one
+
+A running harness serves its own **LLM-first onboarding**: point your coding agent
+(Claude Code, Cursor, an IDE assistant) at it and let it do the setup.
+
+```
+Read http://localhost:9292/start.md then help me build my first agent
+```
+
+`start.md` is a skill-structured prompt (gather context → decide → build → self-check →
+guardrails against known failure modes). Alongside it:
+
+- **`GET /models.json`** — machine-readable: configured providers + model ids, the
+  platform default, the valid `thinking` levels, and the agents already served (their
+  id is the `/v1/responses` `model`). No secrets — model ids and slugs only.
+- **`GET /docs`** + **`GET /docs/<name>.md`** — these docs mirrored as raw markdown.
+
+The surface is public (no token) and on by default when you `serve` from the DSL or run
+the local demo. In production it is opt-in (`HARNESS_ONBOARDING=1`).
+
 ## The API
 
 `POST /v1/responses` — Bearer token (`local-demo` in the demo):
