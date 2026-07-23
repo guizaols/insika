@@ -37,6 +37,12 @@ module Harness
     PUBLIC_DOCS = {
       "readme" => "README.md",
       "why" => "docs/WHY.md",
+      "agents" => "docs/AGENTS.md",
+      "tools" => "docs/TOOLS.md",
+      "skills" => "docs/SKILLS.md",
+      "context" => "docs/CONTEXT.md",
+      "security" => "docs/SECURITY.md",
+      "architecture" => "docs/ARCHITECTURE.md",
       "running-local" => "docs/RUNNING-LOCAL.md",
       "deploy" => "docs/DEPLOY.md",
       "sandbox" => "docs/SANDBOX.md",

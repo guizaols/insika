@@ -1,65 +1,69 @@
-# Rodar o Harness local
+# Running the Harness locally
 
-Sobe o motor single-process (a Bia/DeepSeek) servindo `/studio`, `/admin/*` e
-`/v1/*`. Cada mensagem dispara o MESMO `send_message` da API — tools/skills/
-memória reais.
+Boots the engine single-process, serving `/studio` and `/v1/*` against a demo
+agent (the `bia` persona on DeepSeek). Every message runs the **same**
+`send_message` the API runs — real tools, skills, and memory.
 
-## Subir
+## Boot
 
 ```bash
 cd harness
 DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 ```
 
-> Use **`bundle exec`** (a isolação do bundler importa — OTEL está no Gemfile).
-> É single-process: `Ctrl-C` / `kill -9` libera a porta na hora.
+> Use **`bundle exec`** (bundler isolation matters — the optional OpenTelemetry gem
+> is in the Gemfile). It is single-process: `Ctrl-C` frees the port immediately.
 
-Abra em `http://localhost:9292`:
+Open `http://localhost:9292`:
 
-| URL | O quê |
-|-----|-------|
-| `/studio` | UI de gestão (login com o token; default `local-demo`) |
-| `/admin/chat` | conversar com a Bia (agente `bia`, `session_id: web` já pronto p/ multi-turn) |
-| `/admin/events` | tool-cards ao vivo (filtre por `session_id: web`) |
-| `/v1/responses` | ingresso OpenAI Responses (Bearer) — o contrato do gateway |
-| `/v1/agents` | provisionamento por pack (Bearer) — `POST` importa, `DELETE /:id` remove |
-| `/v1/messages` | send_message (SSE) |
+| URL | What |
+|-----|------|
+| `/studio` | management UI (log in with the token; default `local-demo`) |
+| `/studio/chats` | chat with the demo agent (`agent: bia`, `session_id: web`, multi-turn ready) |
+| `/studio/tasks` | tasks / approvals console |
+| `/v1/responses` | OpenAI-Responses ingress (Bearer) — the drop-in API contract |
+| `/v1/agents` | provisioning by definition/pack (Bearer) — `POST` imports, `DELETE /:id` removes |
+| `/v1/messages` | `send_message` sugar (SSE when `?stream` is set) |
 
-## Variáveis (todas opcionais)
+## Variables (all optional)
 
-| Env | Default | Efeito |
+| Env | Default | Effect |
 |-----|---------|--------|
-| `HARNESS_DB` | — (memória efêmera) | caminho SQLite → config + execução sobrevivem a restart |
-| `BIND` | `http://localhost:9292` | host:porta |
-| `ADMIN_TOKEN` | `local-demo` | token do `/studio` e `/admin` |
-| `OPENCLAW_GATEWAY_TOKEN` | cai no `ADMIN_TOKEN` | Bearer de `/v1/responses` e `/v1/agents` |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | modelo |
+| `HARNESS_DB` | — (ephemeral memory) | SQLite path → config + execution survive a restart |
+| `BIND` | `http://localhost:9292` | host:port |
+| `ADMIN_TOKEN` | `local-demo` | token for `/studio` |
+| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | model |
 
-Com persistência:
+With persistence:
 
 ```bash
 DEEPSEEK_API_KEY=sk-... HARNESS_DB=./harness.db bundle exec ruby scripts/serve_real.rb
 ```
 
-## Apontar o consumer-app para o harness local
+## Pointing a Responses client at the local engine
 
-O consumer-app (Rails, `:3000`) já fala o contrato do gateway. Para ele mandar os
-turnos ao harness local (`:9292`) no lugar do gateway OpenClaw:
+Anything that speaks the OpenAI Responses contract can drive the local engine —
+that is the whole point of the `/v1/responses` drop-in. Point your client's base
+URL at `http://localhost:9292`, send the API Bearer, and address an agent by id as
+the `model`:
 
-**1. Apontar o dispatcher para o harness.** O `OpenclawGatewayConfig` resolve a
-URL assim: modo `emergency` usa `emergency_url`; senão `ENV["OPENCLAW_GATEWAY_URL"]`.
-O token é sempre `ENV["OPENCLAW_GATEWAY_TOKEN"]`. Duas formas:
-- **Admin (sem restart):** em `/admin/openclaw_gateway_configs`, ligue o modo
-  **emergencial** com `emergency_url = http://localhost:9292`.
-- **Env:** `OPENCLAW_GATEWAY_URL=http://localhost:9292` no consumer-app.
+```bash
+curl -N http://localhost:9292/v1/responses \
+  -H "Authorization: Bearer local-demo" \
+  -H "Content-Type: application/json" \
+  -d '{ "model": "bia", "user": "web", "stream": true, "input": "hello" }'
+```
 
-Faça o `OPENCLAW_GATEWAY_TOKEN` do consumer-app **bater** com o do harness
-(`OPENCLAW_GATEWAY_TOKEN`, ou o `ADMIN_TOKEN` default `local-demo`).
+`user` is the session id (any stable id for a multi-turn conversation).
 
-**2. Deixar o harness CHAMAR DE VOLTA a API interna do consumer-app.** As data-tools
-batem em `http://localhost:3000/api/internal/agent_tools/*` — `http` + loopback,
-que o egress guard bloqueia por default (SSRF). Ligue o opt-in **parando no host
-do consumer-app** ao subir o harness:
+## Wiring an agent's tools back to your backend
+
+If the agent has **data-tools** that call your own HTTP backend (see
+[Tools](TOOLS.md)), and both the engine and that backend run on your machine, the
+tools target `http://localhost:<port>/…` — plain `http` on a loopback address,
+which the egress guard blocks by default (SSRF defense). Enable the opt-in
+**pinned to your backend's host** when you boot:
 
 ```bash
 HARNESS_EGRESS_ALLOW_HTTP=1 HARNESS_EGRESS_ALLOW_PRIVATE=1 \
@@ -67,46 +71,51 @@ HARNESS_EGRESS_HOSTS=localhost,127.0.0.1 \
 DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 ```
 
-> `HARNESS_EGRESS_HOSTS` restringe o egress liberado só ao host interno (defesa
-> em profundidade) — sem ele, `ALLOW_PRIVATE` abre qualquer destino privado.
+> `HARNESS_EGRESS_HOSTS` restricts the opened egress to just the internal host
+> (defense-in-depth) — without it, `ALLOW_PRIVATE` opens *any* private destination.
+> These `ALLOW_*` vars are for the fully-local loop only; never set them in the
+> cloud. See [Security](SECURITY.md#egress-the-ssrf-boundary).
 
-**3. Provisionar o agente da loja no harness.** O harness precisa do agente +
-tools apontando de volta pro consumer-app. Um **pack** é a pasta:
+## Provisioning an agent
+
+An agent is created from a **definition** — a folder ("pack") with an agent config,
+prompt files, skills, and one data-tool per file:
 
 ```
 <pack>/
   agent.config.json     # { id, model, provider, memory, metadata }
-  *.md                  # IDENTITY/SOUL/AGENTS/TOOLS/... (viram prompt_files)
-  skills/<nome>/SKILL.md
-  tools/<tool>.json     # 1 data-tool por arquivo
+  *.md                  # prompt files (identity, tools notes, …)
+  skills/<name>/SKILL.md
+  tools/<tool>.json     # one data-tool per file
 ```
 
-Cada `tools/<tool>.json`:
-- `request.url` = `http://localhost:3000/api/internal/agent_tools/<rota>`
-  (⚠ o **nome** da tool = o que o modelo chama; a **rota** pode diferir — ex.
-  `send_finalize_button`→`finalize_button`, `search_faq`→`search_faqs`,
-  `call_support`→`support_requests`. Confira em `config/routes.rb` do consumer-app)
-- `request.headers`: `X-Chat-Id: {{ctx.chat_id}}`, `X-Store-Id: {{ctx.store_id}}`,
-  `X-Agent-Id: {{ctx.agent_id}}` (contexto de TURNO — Etapa B) +
-  `Authorization: Bearer __BIA_INTERNAL_API_TOKEN__` como **`secret_header`**
-- o `id` do agente deve bater com o `openclaw_agent_id` da Store no consumer-app
-  (ele resolve a loja por `X-Agent-Id`; então `metadata.store_id` pode ficar vazio)
+> **Data-tool URLs must be literal on the pack path.** The pack import does not
+> resolve `{{env.*}}` — bake the backend base URL into each `tools/*.json` at
+> generation time. (Only the *manifest* path resolves `{{env.*}}`.) See
+> [Tools](TOOLS.md#the-one-gotcha-env-templating-is-manifest-only).
 
-Provisione com o CLI (roda como cliente contra o server no ar — o token interno
-entra por env, fora do disco):
+Provision it (runs as a client against the live server; the internal token comes
+from the environment, never disk):
 
 ```bash
 HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
-BIA_INTERNAL_API_TOKEN=<token interno> \
-bundle exec ruby scripts/import_pack.rb /caminho/do/pack
+  bundle exec ruby scripts/import_pack.rb /path/to/pack
 ```
 
-(ou `POST /v1/agents` na mão, ou criar tudo pelo `/studio`.)
+…or `POST /v1/agents` directly, or build the agent by hand in the `/studio`. All
+paths land on the same import. See [Agents](AGENTS.md) for the from-scratch flow
+and the `Harness.agent { … }` DSL.
 
-## Observabilidade OTEL (opt-in)
+## Observability (OpenTelemetry, opt-in)
 
-O OTEL é **desligado por default** (a gem nem carrega). Para ligar, ver traces
-local num coletor avulso (Jaeger one-liner) e a config de produção, veja o guia
-canônico: [`OBSERVABILITY.md`](OBSERVABILITY.md). Resumo: `HARNESS_OTEL=1` +
-`OTEL_EXPORTER_OTLP_ENDPOINT=...` e cada turno vira um trace `harness.turn` com
-filhos `harness.tool`/`harness.data_tool`.
+OpenTelemetry is **off by default** (the gem does not even load). To turn it on,
+see traces in a local collector (a one-line Jaeger), and the production config, see
+[OBSERVABILITY.md](OBSERVABILITY.md). In short: `HARNESS_OTEL=1` +
+`OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a `harness.turn` trace with
+`harness.tool` / `harness.data_tool` children.
+
+## See also
+
+- [Agents](AGENTS.md) — create and configure an agent.
+- [Tools](TOOLS.md) — define data-tools and troubleshoot egress.
+- [Deploy](DEPLOY.md) — running the same image durably in a container.
