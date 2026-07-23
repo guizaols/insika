@@ -15,10 +15,10 @@ RSpec.describe Evals::Sse do
 
   it "reduces a real Responses stream into text + tool names + usage" do
     raw = stream(
-      Harness::Server::Responses.frame_for(Ev.new(:tool_call, { name: "shipping_quote" })),
-      Harness::Server::Responses.frame_for(Ev.new(:content, { delta: "o frete é " })),
-      Harness::Server::Responses.frame_for(Ev.new(:content, { delta: "R$ 20" })),
-      Harness::Server::Responses.frame_for(Ev.new(:task_completed, { usage: { model: "deepseek-chat", input_tokens: 5 } }))
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "shipping_quote" })),
+      Insika::Server::Responses.frame_for(Ev.new(:content, { delta: "o frete é " })),
+      Insika::Server::Responses.frame_for(Ev.new(:content, { delta: "R$ 20" })),
+      Insika::Server::Responses.frame_for(Ev.new(:task_completed, { usage: { model: "deepseek-chat", input_tokens: 5 } }))
     )
     r = described_class.reduce(described_class.payloads(raw))
     expect(r[:output_text]).to eq("o frete é R$ 20")
@@ -28,7 +28,7 @@ RSpec.describe Evals::Sse do
   end
 
   it "surfaces a response.failed as the turn error" do
-    raw = Harness::Server::Responses.frame_for(Ev.new(:task_failed, { message: "boom" }))
+    raw = Insika::Server::Responses.frame_for(Ev.new(:task_failed, { message: "boom" }))
     r = described_class.reduce(described_class.payloads(raw))
     expect(r[:error]).to eq("boom")
   end

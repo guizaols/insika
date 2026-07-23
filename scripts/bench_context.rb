@@ -3,7 +3,7 @@
 # Micro-bench of the CONTEXT-BUILD cost per turn (item 34 / §13.1, action 1:
 # "profile the assembly before caching — know WHERE the ms are").
 #
-# It isolates the LOCAL prefix-assembly cost (what the harness pays BEFORE the
+# It isolates the LOCAL prefix-assembly cost (what the insika pays BEFORE the
 # first LLM token, and what OpenClaw beats us on in TTFB) from any provider
 # latency: no LLM is called. It seeds a realistic ~27k-token identity into a
 # SQLite AgentFileStore (the production layout) and times, per turn:
@@ -29,7 +29,7 @@ if %w[-h --help].include?(ARGV[0])
   exit 0
 end
 
-require_relative "../lib/harness"
+require_relative "../lib/insika"
 require "async"
 require "tmpdir"
 require "securerandom"
@@ -69,22 +69,22 @@ def show(label, samples_ms)
 end
 
 Dir.mktmpdir do |dir|
-  backend = Harness::Stores::SQLite.new(path: File.join(dir, "bench.db"))
-  store = Harness::ConfigStore.new(store: backend)
-  agent_files = Harness::AgentFileStore.new(config_store: store)
-  profiles = Harness::StoredProfileSource.new(config_store: store)
+  backend = Insika::Stores::SQLite.new(path: File.join(dir, "bench.db"))
+  store = Insika::ConfigStore.new(store: backend)
+  agent_files = Insika::AgentFileStore.new(config_store: store)
+  profiles = Insika::StoredProfileSource.new(config_store: store)
 
   # Seed: one ~27k-token identity file + a profile that pins it (context_budget
   # generous so nothing is evicted — we measure assembly, not eviction).
   identity = identity_text(IDENTITY_TOKENS)
   agent_files.write(AGENT_ID, "IDENTITY.md", identity)
-  profiles.put(Harness::AgentProfile.build(
+  profiles.put(Insika::AgentProfile.build(
                  id: AGENT_ID, model: "deepseek-chat", provider: :deepseek,
                  prompt_files: ["IDENTITY.md"], limits: { context_budget: 40_000 }
                ))
 
-  prompt = Harness::Context::Providers::Prompt.new(agent_files: agent_files)
-  builder = Harness::ContextBuilder.new(providers: [prompt], event_stream: event_stream)
+  prompt = Insika::Context::Providers::Prompt.new(agent_files: agent_files)
+  builder = Insika::ContextBuilder.new(providers: [prompt], event_stream: event_stream)
 
   approx_chars = identity.length
   puts "bench_context: #{ITERS} iters · identity #{IDENTITY_TOKENS} tok " \
@@ -104,7 +104,7 @@ Dir.mktmpdir do |dir|
   Async do
     # Warm the store's page cache / any lazy init so iteration 1 isn't an outlier.
     profiles.fetch(AGENT_ID)
-    req0 = Harness::ContextRequest.new(session: nil, message: "warm", profile: profiles.fetch(AGENT_ID),
+    req0 = Insika::ContextRequest.new(session: nil, message: "warm", profile: profiles.fetch(AGENT_ID),
                                        tenant: nil, vars: {}, checkpoint: nil)
     builder.call(req0)
 
@@ -113,7 +113,7 @@ Dir.mktmpdir do |dir|
       profile = profiles.fetch(AGENT_ID)
       fetch_ms << (monotonic - t) * 1000
 
-      req = Harness::ContextRequest.new(session: nil, message: "meu CEP é 30130-010, tem trufa?",
+      req = Insika::ContextRequest.new(session: nil, message: "meu CEP é 30130-010, tem trufa?",
                                         profile: profile, tenant: nil, vars: {}, checkpoint: nil)
 
       t = monotonic

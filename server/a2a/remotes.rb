@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Harness
+module Insika
   module Server
     module A2A
       # Remote A2A agents config. Parses "id=url,id2=url2".

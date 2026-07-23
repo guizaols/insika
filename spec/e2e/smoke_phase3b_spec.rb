@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require_relative "../../server/a2a/app"
 require_relative "../../server/a2a/client"
-require "harness/tools/a2a_remote"
+require "insika/tools/a2a_remote"
 
 # E2E smoke for Phase 3 slice B (P3B): LOOPBACK FEDERATION outbound→inbound
 # in-process. The "remote" is our own inbound A2A::App (slice A). A loopback http
@@ -21,27 +21,27 @@ RSpec.describe "smoke E2E: A2A loopback federation (slice B)", :smoke do
   # Assembles a complete worker (inbound A2A::App + bus + Executor + FakeChat).
   # -> [inbound_app, executor, chat]. `policy` lets you force a failure (DenyAll).
   def build_worker(final: "42", policy: NullPolicyEngine.new)
-    backend = Harness::Stores::Memory.new
-    session_store = Harness::SessionStore.new(store: backend)
-    task_store = Harness::TaskStore.new(store: backend)
-    checkpoint_store = Harness::CheckpointStore.new(store: backend)
-    events = Harness::EventStream.new
-    profiles = { "worker" => Harness::AgentProfile.build(id: "worker", model: "fake", base_prompt: "W") }
-    executor = Harness::Executor.new(
+    backend = Insika::Stores::Memory.new
+    session_store = Insika::SessionStore.new(store: backend)
+    task_store = Insika::TaskStore.new(store: backend)
+    checkpoint_store = Insika::CheckpointStore.new(store: backend)
+    events = Insika::EventStream.new
+    profiles = { "worker" => Insika::AgentProfile.build(id: "worker", model: "fake", base_prompt: "W") }
+    executor = Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: policy,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
-      tool_registry: FakeToolRegistry.new, skill_catalog: Harness::SkillCatalog.new([]),
+      tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
       profiles: profiles, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: events
     )
-    bus = Harness::CommandBus.new.tap do |b|
-      b.register(:create_session, Harness::Commands::CreateSession.new(session_store: session_store, event_stream: events))
-      b.register(:send_message, Harness::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
-      b.register(:cancel_task, Harness::Commands::CancelTask.new(task_store: task_store, executor: executor))
+    bus = Insika::CommandBus.new.tap do |b|
+      b.register(:create_session, Insika::Commands::CreateSession.new(session_store: session_store, event_stream: events))
+      b.register(:send_message, Insika::Commands::SendMessage.new(profiles: profiles, session_store: session_store, task_store: task_store, executor: executor))
+      b.register(:cancel_task, Insika::Commands::CancelTask.new(task_store: task_store, executor: executor))
     end
-    inbound = Harness::Server::A2A::App.new(
+    inbound = Insika::Server::A2A::App.new(
       command_bus: bus, task_store: task_store, session_store: session_store,
-      profiles: profiles, skill_catalog: Harness::SkillCatalog.new([]),
+      profiles: profiles, skill_catalog: Insika::SkillCatalog.new([]),
       config: { a2a_agent: "worker", base_url: "loopback" }
     )
     chat = FakeChat.new.tap { |c| c.final_content = final }
@@ -54,8 +54,8 @@ RSpec.describe "smoke E2E: A2A loopback federation (slice B)", :smoke do
 
   # The orchestrator's remote tool, pointing (via loopback) at the inbound worker.
   def remote_tool(inbound)
-    client = Harness::Server::A2A::Client.new(http: LoopbackHttp.new(inbound), sleeper: ->(_s) {})
-    Harness::Tools::A2ARemote.new(client: client, url: "loopback",
+    client = Insika::Server::A2A::Client.new(http: LoopbackHttp.new(inbound), sleeper: ->(_s) {})
+    Insika::Tools::A2ARemote.new(client: client, url: "loopback",
                                   tool_name: "remote_worker", description: "delega ao worker",
                                   event_stream: event_stream)
   end

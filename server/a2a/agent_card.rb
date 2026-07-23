@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Harness
+module Insika
   module Server
     module A2A
       # A2A AgentCard: discovery for the exposed agent. One agent

@@ -1,0 +1,123 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# `insika` CLI (item 23 / §8.1 — "config estrito + doctor --fix"). The operator's
+# DX front door to the strict-config discipline:
+#
+#   insika doctor [--fix] [--json]   diagnose the deployment config; --fix applies
+#                                     the safe autofixes; exits non-zero on any error
+#   insika env    [--json]           list the known config keys + current (masked) values
+#   insika version                   print the engine version
+#   insika help                      this text
+#
+# It reads the SAME durable backend the server does (HARNESS_DB -> SQLite, else
+# ephemeral memory), building only the config stores it needs — no full app boot, no
+# DEEPSEEK, no seeding. So it is safe to run against a live deployment's volume.
+
+require "optparse"
+require_relative "../lib/insika"
+
+module Insika
+  module CLI
+    module_function
+
+    def main(argv)
+      command = argv.shift || "help"
+      case command
+      when "doctor"  then doctor(argv)
+      when "env"     then env(argv)
+      when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
+      when "help", "--help", "-h" then puts usage
+      else
+        warn "unknown command: #{command}\n\n#{usage}"
+        exit 2
+      end
+    end
+
+    def usage
+      <<~TXT
+        insika #{Insika::VERSION} — agent engine CLI
+
+        Usage: insika <command> [options]
+
+        Commands:
+          doctor [--fix] [--json]   diagnose the deployment configuration (item 23)
+          env    [--json]           list known config keys + current (masked) values
+          version                   print the engine version
+          help                      show this help
+
+        Environment:
+          HARNESS_DB                SQLite path (durable). Unset -> ephemeral memory.
+          HARNESS_CONFIG_STRICT     when truthy, the server refuses boot on any finding.
+      TXT
+    end
+
+    # insika doctor [--fix] [--json]
+    def doctor(argv)
+      opts = { fix: false, json: false }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika doctor [--fix] [--json]"
+        o.on("--fix", "apply the safe autofixes, then re-diagnose") { opts[:fix] = true }
+        o.on("--json", "emit the report as JSON") { opts[:json] = true }
+      end.parse!(argv)
+
+      doc = build_doctor
+      report = opts[:fix] ? doc.fix!.last : doc.run
+
+      if opts[:json]
+        require "json"
+        puts JSON.pretty_generate(report.to_h)
+      else
+        puts report.to_s(color: $stdout.tty?)
+      end
+      exit(report.ok? ? 0 : 1)
+    end
+
+    # insika env [--json]
+    def env(argv)
+      json = false
+      OptionParser.new do |o|
+        o.banner = "Usage: insika env [--json]"
+        o.on("--json", "emit as JSON") { json = true }
+      end.parse!(argv)
+
+      rows = Insika::EnvSchema.known_specs.map do |s|
+        raw = ENV[s.name]
+        { "key" => s.name, "type" => s.type.to_s, "secret" => s.secret?,
+          "set" => !raw.nil?, "value" => display_value(s, raw), "description" => s.description }
+      end
+
+      if json
+        require "json"
+        puts JSON.pretty_generate(rows)
+      else
+        rows.each do |r|
+          state = r["set"] ? r["value"] : "(unset)"
+          puts format("%-30s %-8s %s", r["key"], r["type"], state)
+        end
+      end
+    end
+
+    # -- helpers -------------------------------------------------------
+
+    # Config stores over the real durable backend — no app boot / no DEEPSEEK.
+    def build_doctor
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      Insika::Doctor.new(
+        env: ENV,
+        settings_store: Insika::SettingsStore.new(config_store: config_store),
+        llm_provider_store: Insika::LLMProviderStore.new(config_store: config_store),
+        backend: backend
+      )
+    end
+
+    def display_value(spec, raw)
+      return "(unset)" if raw.nil?
+
+      spec.secret? ? "•••• (set, #{raw.to_s.length} chars)" : raw
+    end
+  end
+end
+
+Insika::CLI.main(ARGV) if $PROGRAM_NAME == __FILE__

@@ -23,7 +23,7 @@ end
 
 # Raises ContextError (single-capture test of stage 2).
 class RaisingContextBuilder
-  def call(_request) = raise Harness::ContextError.new("builder falhou", provider: :fake)
+  def call(_request) = raise Insika::ContextError.new("builder falhou", provider: :fake)
 end
 
 # Resolution-like. allowed_tools = injected instances; allowed_skills = names.
@@ -43,7 +43,7 @@ end
 # Denies everything at stage 3 (RubyLLM is never touched).
 class DenyAllPolicyEngine
   def decide(_request)
-    raise Harness::PolicyDenied.new(policy: "deny_all", reason: "tudo negado no teste")
+    raise Insika::PolicyDenied.new(policy: "deny_all", reason: "tudo negado no teste")
   end
 end
 

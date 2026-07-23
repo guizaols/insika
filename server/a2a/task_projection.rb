@@ -2,7 +2,7 @@
 
 require_relative "message"
 
-module Harness
+module Insika
   module Server
     module A2A
       # Task (core) -> A2A Task projection. PURE.

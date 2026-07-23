@@ -2,8 +2,8 @@
 
 require "yaml"
 
-# Evals — the quality harness (RFC-0008). It lives OUTSIDE the core: nothing under
-# `lib/harness/**` requires it, and it talks to the engine only through the public
+# Evals — the quality insika (RFC-0008). It lives OUTSIDE the core: nothing under
+# `lib/insika/**` requires it, and it talks to the engine only through the public
 # API (like the loadtest). The `Evals::` namespace keeps it clearly a client.
 module Evals
   # A curated behavior case, loaded from a data file (evals/golden/<agent>/*.yml).
