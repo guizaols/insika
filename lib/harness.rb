@@ -78,6 +78,9 @@ require_relative "harness/overlay_tool_registry"
 require_relative "harness/settings_store"
 require_relative "harness/llm_provider_store"
 require_relative "harness/llm_configurator"
+# LLM-first onboarding surface (item 20 / §5.6): serves start.md + models.json + the
+# public docs. Reads the settings/provider stores above at call-time (order is free).
+require_relative "harness/onboarding"
 require_relative "harness/mcp_store"
 require_relative "harness/mcp_http_client"
 require_relative "harness/mcp_tool_ingestor"

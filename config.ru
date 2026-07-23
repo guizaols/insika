@@ -44,13 +44,24 @@ A2A_APP =
     )
   end
 
+# Onboarding surface (item 20 / §5.6) — OPT-IN in production via HARNESS_ONBOARDING.
+# Off by default: this deployment serves a private tenant, and start.md/docs/models
+# are OSS DX aimed at self-hosters. When enabled it reports the platform models
+# (masked — slugs + model ids only, no keys/urls), NOT the tenant's agent ids.
+ONBOARDING =
+  if Harness::EnvSchema.truthy?(ENV["HARNESS_ONBOARDING"])
+    Harness::Onboarding.standard(root: __dir__, settings_store: W::SETTINGS_STORE,
+                                 provider_store: W::LLM_PROVIDER_STORE)
+  end
+
 APP = Harness::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
   a2a: A2A_APP, # nil without opt-in -> A2A routes respond 404
   provisioner: W::PACK_IMPORTER, # POST/DELETE /v1/agents under the gateway_token
-  config: { gateway_token: GATEWAY_TOKEN }
+  onboarding: ONBOARDING, # nil unless HARNESS_ONBOARDING -> onboarding routes 404
+  config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["HARNESS_PUBLIC_URL"] }
 )
 
 PERSISTENCE = ENV["HARNESS_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"

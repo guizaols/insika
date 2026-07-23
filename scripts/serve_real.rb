@@ -59,9 +59,19 @@ APP = Harness::Server::App.new(
   # /v1/responses — the GatewayClient provisions stores at runtime via POST/DELETE
   # /v1/agents. Always exposed in serve real (the gateway needs it).
   provisioner: W::PACK_IMPORTER,
+  # Onboarding surface (item 20 / §5.6): start.md + models.json + docs. Always on in
+  # the full local demo — it's the "build my first agent" front door. Reports the
+  # platform models AND the demo's served agents (their ids ARE the /v1/responses
+  # `model`), all from masked/read-only sources.
+  onboarding: Harness::Onboarding.standard(
+    root: File.expand_path("..", __dir__),
+    settings_store: W::SETTINGS_STORE, provider_store: W::LLM_PROVIDER_STORE,
+    agents: -> { W::PROFILE_SOURCE.all.map { |p| { id: p.id, model: p.model, provider: p.provider } } }
+  ),
   # gateway_token: Bearer for /v1/responses + /v1/agents (drop-in for the OpenClaw
   # gateway). The consumer sends OPENCLAW_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
-  config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN) }
+  config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN),
+            public_url: ENV["HARNESS_PUBLIC_URL"] }
 )
 
 # Harness Studio: Roda app mounted under /studio, with cookie login — the

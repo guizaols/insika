@@ -14,11 +14,12 @@ RSpec.describe Harness::Server::App do
 
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
-                config: {}, a2a: nil, provisioner: nil, workflow_registry: nil)
+                config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
+      onboarding: onboarding,
       config: { sync_timeout: 0.05 }.merge(config)
     )
   end
@@ -626,6 +627,82 @@ RSpec.describe Harness::Server::App do
       expect(status).to eq(200)
       expect(headers["content-type"]).to eq("application/json")
       expect(json_body(resp)).to eq("status" => "ok")
+    end
+  end
+
+  describe "onboarding surface (item 20 / §5.6)" do
+    # Duck-typed double: the app only calls these four reads.
+    let(:onboarding) do
+      Class.new do
+        attr_reader :seen_base
+        def start_md(base_url:) = (@seen_base = base_url; "# start (#{base_url})")
+        def models_json(base_url:) = { base_url: base_url, thinking_levels: %w[off on] }
+        def docs_index(base_url:) = [{ name: "readme", url: "#{base_url}/docs/readme.md" }]
+        def doc(slug) = (slug == "readme" ? "# Harness readme" : nil)
+      end.new
+    end
+
+    it "GET /start.md -> 200 raw markdown, base url from the request" do
+      app = build_app(onboarding: onboarding)
+      status, headers, resp = call(app, "GET", "/start.md")
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("text/markdown; charset=utf-8")
+      expect(resp.join).to eq("# start (http://example.org)")
+      expect(onboarding.seen_base).to eq("http://example.org")
+    end
+
+    it "GET /models.json -> 200 application/json" do
+      app = build_app(onboarding: onboarding)
+      status, headers, resp = call(app, "GET", "/models.json")
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("application/json")
+      expect(json_body(resp)).to include("thinking_levels" => %w[off on])
+    end
+
+    it "GET /docs -> 200 with the doc index" do
+      status, _h, resp = call(build_app(onboarding: onboarding), "GET", "/docs")
+      expect(status).to eq(200)
+      expect(json_body(resp)["docs"].first).to include("name" => "readme")
+    end
+
+    it "GET /docs/:name.md -> 200 raw markdown for a known doc" do
+      status, headers, resp = call(build_app(onboarding: onboarding), "GET", "/docs/readme.md")
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("text/markdown; charset=utf-8")
+      expect(resp.join).to eq("# Harness readme")
+    end
+
+    it "GET /docs/:name.md -> 404 for an unknown doc" do
+      status, = call(build_app(onboarding: onboarding), "GET", "/docs/missing.md")
+      expect(status).to eq(404)
+    end
+
+    it "GET /docs/:name (no .md) is not an onboarding route -> 404" do
+      status, = call(build_app(onboarding: onboarding), "GET", "/docs/readme")
+      expect(status).to eq(404)
+    end
+
+    it "config[:public_url] overrides the request base (behind a TLS proxy)" do
+      app = build_app(onboarding: onboarding, config: { public_url: "https://harness.example" })
+      call(app, "GET", "/start.md")
+      expect(onboarding.seen_base).to eq("https://harness.example")
+    end
+
+    it "the routes are OPT-IN: with no onboarding injected they 404 (parity)" do
+      app = build_app # onboarding: nil
+      expect(call(app, "GET", "/start.md").first).to eq(404)
+      expect(call(app, "GET", "/models.json").first).to eq(404)
+      expect(call(app, "GET", "/docs").first).to eq(404)
+      expect(call(app, "GET", "/docs/readme.md").first).to eq(404)
+    end
+
+    it "the surface is PUBLIC — no bearer required (like /up)" do
+      app = build_app(onboarding: onboarding, config: { gateway_token: "secret" })
+      expect(call(app, "GET", "/start.md").first).to eq(200)
+      expect(call(app, "GET", "/models.json").first).to eq(200)
     end
   end
 
