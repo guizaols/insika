@@ -121,7 +121,7 @@ module Insika
 
   # Strict configuration violation (item 23 / §8.1 — OpenClaw's config discipline:
   # "recusa boot com chave desconhecida, no silent config compat"). Raised by
-  # EnvSchema.enforce! at boot ONLY when strictness is on (HARNESS_CONFIG_STRICT) —
+  # EnvSchema.enforce! at boot ONLY when strictness is on (INSIKA_CONFIG_STRICT) —
   # by default a bad key WARNS and the engine still boots (last-known-good: a rotated
   # env or a typo never takes the whole service down). `findings` carries the
   # per-key detail (EnvSchema::Finding) so the operator can fix the config.

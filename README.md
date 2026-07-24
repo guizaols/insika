@@ -89,7 +89,7 @@ guardrails against known failure modes). Alongside it:
 - **`GET /docs`** + **`GET /docs/<name>.md`** — these docs mirrored as raw markdown.
 
 The surface is public (no token) and on by default when you `serve` from the DSL or run
-the local demo. In production it is opt-in (`HARNESS_ONBOARDING=1`).
+the local demo. In production it is opt-in (`INSIKA_ONBOARDING=1`).
 
 ## The API
 

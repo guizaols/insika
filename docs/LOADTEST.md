@@ -26,7 +26,7 @@ All three take `--help` / `-h`.
 Isolates "does SQLite survive multi-process?" from LLM-provider noise. N processes
 hammer writes against the **same file** using the harness's real production config
 (WAL + `busy_timeout` + `BEGIN IMMEDIATE` + in-process semaphore). It uses a fresh
-temp db per round, so it never touches your `HARNESS_DB`.
+temp db per round, so it never touches your `INSIKA_DB`.
 
 ```bash
 bundle exec ruby scripts/bench_store.rb [PROCS_CSV] [WRITES_PER_PROC]
@@ -53,7 +53,7 @@ first SSE byte), total time, and the `usage` block (tokens + cache hit) of the l
 frame that carries it.
 
 ```bash
-HARNESS_URL=http://localhost:9292 \
+INSIKA_URL=http://localhost:9292 \
 OPENCLAW_GATEWAY_TOKEN=xxx \
 bundle exec ruby scripts/loadtest.rb \
   --agents bia,my-store --concurrency 16 --iterations 3 \
@@ -61,7 +61,7 @@ bundle exec ruby scripts/loadtest.rb \
 ```
 
 Runs against a local server **or** a remote one (e.g. Railway) — just point
-`HARNESS_URL` at it.
+`INSIKA_URL` at it.
 
 ### Flags
 
@@ -81,7 +81,7 @@ Runs against a local server **or** a remote one (e.g. Railway) — just point
 
 | Env | Default | Meaning |
 |-----|---------|---------|
-| `HARNESS_URL` | `http://localhost:9292` | base URL of the engine |
+| `INSIKA_URL` | `http://localhost:9292` | base URL of the engine |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for `/v1/responses` |
 | `DEEPSEEK_API_KEY` | — | must be configured **on the server** for real turns (not read by the client) |
 
@@ -89,7 +89,7 @@ Use `--dry-run` to sanity-check your flags/URL/token before firing real traffic
 (and to confirm the request body without needing a running server):
 
 ```bash
-HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
+INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
   bundle exec ruby scripts/loadtest.rb --agents bia --concurrency 16 --dry-run
 ```
 
@@ -140,7 +140,7 @@ Two ways to compare, both valid because the SSE contract is identical.
 
 ### 4a. Ruby native (`loadtest.rb`) against both
 
-Run the same `loadtest.rb` invocation twice — once with `HARNESS_URL` pointing at
+Run the same `loadtest.rb` invocation twice — once with `INSIKA_URL` pointing at
 the harness, once at the gateway (its `/v1/responses` speaks the same protocol).
 Keep `--agents`, `--concurrency`, `--iterations` and `--message` identical, and use
 matching agents on both sides. Compare the printed TTFB/total/cache/error lines.
@@ -215,7 +215,7 @@ Work top-down and **measure before assuming** — avoid premature topology optim
 | 3 | Multi-proc on one box: does throughput scale, `locked` = 0? | `loadtest-local.sh` | Do more Falcon workers help, and does the shared WAL hold? Sets `WEB_CONCURRENCY`. |
 | 4 | Harness vs gateway, identical knobs | §4 (either method) | Is the harness at parity with the engine it replaces before cut-over? |
 | 5 | Cold vs hot conversation (cache) | `loadtest.rb` with/without `--same-user 1` | Expected steady-state cost/latency once conversations warm up. |
-| 6 | Remote (Railway) vs local | `loadtest.rb` with `HARNESS_URL` remote | Network/deploy overhead of the real environment. |
+| 6 | Remote (Railway) vs local | `loadtest.rb` with `INSIKA_URL` remote | Network/deploy overhead of the real environment. |
 
 **Reaching for horizontal scale is only justified after 1–3 show the single box is
 the limit.** If it is, the paths are: sharding-by-tenant +

@@ -88,7 +88,7 @@ module Insika
           response[:usage] = usage.reject { |k, _| k.to_s == "model" }
           response[:model] = model if model
         end
-        # Opt-in per-turn latency breakdown (HARNESS_TURN_TIMING; item 34). Absent
+        # Opt-in per-turn latency breakdown (INSIKA_TURN_TIMING; item 34). Absent
         # by default — a non-standard sibling used only for TTFB diagnostics.
         (timing = event.data[:timing]) && (response[:timing] = timing)
         sse("response.completed", { type: "response.completed", response: response })

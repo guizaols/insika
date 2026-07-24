@@ -15,8 +15,13 @@ module Deploy
   # STRICT config gate (item 23 / §8.1). Validates the environment against the engine
   # schema PLUS this deployment's own keys. Default = WARN (last-known-good: a rotated
   # key or a typo must never take the whole service down — same reasoning as the
-  # resilient DEEPSEEK boot below); set HARNESS_CONFIG_STRICT=1 to refuse boot instead.
+  # resilient DEEPSEEK boot below); set INSIKA_CONFIG_STRICT=1 to refuse boot instead.
   # `insika doctor` gives the same report on demand.
+  #
+  # Env rename (pass 2): backfill INSIKA_* from any legacy HARNESS_* alias BEFORE the
+  # gate and before any read below — the process ENV speaks the new names from here on
+  # (a deprecation warning names the ones still set under the old prefix).
+  Insika::EnvSchema.reconcile_legacy!
   ENV_SPECS = [
     Insika::EnvSchema.spec(name: "DEEPSEEK_API_KEY", secret: true, description: "DeepSeek API key (turns fail until set — env or Studio)."),
     Insika::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-chat)."),
@@ -48,7 +53,7 @@ module Deploy
 
   module Wiring
     # --- Shared spine (Insika::Wiring::Graph) --------------------
-    # Durability-aware backend: HARNESS_DB -> SQLite (config + execution survive
+    # Durability-aware backend: INSIKA_DB -> SQLite (config + execution survive
     # restart); missing -> Memory (dev/demo). The same backend holds execution AND
     # configuration. Policy builtins: tool/skill allowlist + approval_required (no
     # :workflow_allowlist — the deployment does not expose workflows).
@@ -73,7 +78,7 @@ module Deploy
     Deploy::Tools::ALL.each { |name, klass| REGISTRY.register(name, plugin: "pizzaria") { klass.new } }
 
     # Durable config: profiles + prompt workspace + authored skills live HERE (SQLite
-    # when HARNESS_DB; otherwise ephemeral Memory).
+    # when INSIKA_DB; otherwise ephemeral Memory).
     CONFIG_STORE      = Insika::ConfigStore.new(store: BACKEND)
     AGENT_FILE_STORE  = Insika::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Insika::SkillStore.new(config_store: CONFIG_STORE)
@@ -89,12 +94,12 @@ module Deploy
     # For the engine to CALL BACK the consumer's internal API (consumer-app
     # /api/internal/*), which is http/loopback locally, enable via env — preferably
     # STOPPING at a known host (NF4):
-    #   HARNESS_EGRESS_ALLOW_HTTP=1  HARNESS_EGRESS_ALLOW_PRIVATE=1
-    #   HARNESS_EGRESS_HOSTS=localhost,127.0.0.1
+    #   INSIKA_EGRESS_ALLOW_HTTP=1  INSIKA_EGRESS_ALLOW_PRIVATE=1
+    #   INSIKA_EGRESS_HOSTS=localhost,127.0.0.1
     EGRESS_OPTIONS = {
-      allow_http: ENV["HARNESS_EGRESS_ALLOW_HTTP"].to_s == "1",
-      allow_private: ENV["HARNESS_EGRESS_ALLOW_PRIVATE"].to_s == "1",
-      host_allowlist: ENV["HARNESS_EGRESS_HOSTS"].to_s.split(",").map(&:strip).reject(&:empty?).then { |l| l.empty? ? nil : l }
+      allow_http: ENV["INSIKA_EGRESS_ALLOW_HTTP"].to_s == "1",
+      allow_private: ENV["INSIKA_EGRESS_ALLOW_PRIVATE"].to_s == "1",
+      host_allowlist: ENV["INSIKA_EGRESS_HOSTS"].to_s.split(",").map(&:strip).reject(&:empty?).then { |l| l.empty? ? nil : l }
     }.compact
     TOOL_REGISTRY = Insika::OverlayToolRegistry.new(
       base: REGISTRY, tool_store: TOOL_STORE, http: Insika::HttpClient.new,
@@ -261,7 +266,7 @@ module Deploy
     # It's what the provisioning API (the GatewayClient) triggers.
     PACK_IMPORTER = Insika::PackImporter.new(bus: BUS, profiles: PROFILE_SOURCE)
 
-    # OPT-IN observability (Phase 6): OTEL only turns on with HARNESS_OTEL / OTEL envs.
+    # OPT-IN observability (Phase 6): OTEL only turns on with INSIKA_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via
     # Telemetry.attach (serving arm) — consumes the EVENT_STREAM into spans.
     TELEMETRY = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))

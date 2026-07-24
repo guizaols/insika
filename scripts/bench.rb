@@ -17,7 +17,7 @@
 # (b) name a baseline — not neutral, (c) drown the engine signal in provider
 # noise. So this suite isolates and reports ONLY what the insika controls:
 #   · per-turn engine latency (p50/p95), split prep / first-token / generation
-#     via HARNESS_TURN_TIMING;
+#     via INSIKA_TURN_TIMING;
 #   · engine throughput (turns/s) under concurrency;
 #   · engine streaming throughput (tokens/s pushed through the pipeline — NOT
 #     model generation speed, which is provider-bound and out of scope).
@@ -46,7 +46,7 @@
 #   --json                emit the results as JSON (for CI gating)
 #   --help                show this help and exit
 #
-# The run is hermetic: it forces the in-memory backend (ignores HARNESS_DB) and a
+# The run is hermetic: it forces the in-memory backend (ignores INSIKA_DB) and a
 # temp file store, so it never touches a real deployment's volume.
 
 if %w[-h --help].include?(ARGV[0])
@@ -57,8 +57,9 @@ end
 
 # Hermetic + honest timing BEFORE the engine loads: Memory backend (never touch a
 # real volume) and the per-turn latency split turned on.
-ENV.delete("HARNESS_DB")
-ENV["HARNESS_TURN_TIMING"] = "1"
+ENV.delete("INSIKA_DB")
+ENV.delete("HARNESS_DB") # legacy alias — keep the in-memory backend truly hermetic
+ENV["INSIKA_TURN_TIMING"] = "1"
 
 require_relative "../lib/insika"
 require "async"
@@ -308,7 +309,7 @@ def run_scenario(name)
     # Warmup — JIT / lazy init / page cache, not measured.
     WARMUP.times { |i| driver.await([driver.dispatch(-(i + 1))]) }
 
-    # Latency pass: one turn at a time; timing comes from HARNESS_TURN_TIMING
+    # Latency pass: one turn at a time; timing comes from INSIKA_TURN_TIMING
     # (monotonic, provider-free), not wall-clock, so scheduler noise stays out.
     totals = []
     preps = []

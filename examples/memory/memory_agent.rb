@@ -5,7 +5,7 @@
 # later turns — including turns in a DIFFERENT session. Memory is per-agent.
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/memory/memory_agent.rb
-#   DEEPSEEK_API_KEY=sk-... HARNESS_DB=./memory.db ruby examples/memory/memory_agent.rb  # survives restarts
+#   DEEPSEEK_API_KEY=sk-... INSIKA_DB=./memory.db ruby examples/memory/memory_agent.rb  # survives restarts
 require_relative "../../lib/insika"
 
 concierge = Insika.agent("concierge") do

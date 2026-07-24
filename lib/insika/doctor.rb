@@ -124,7 +124,7 @@ module Insika
     def check_db
       unless @backend.is_a?(Insika::Stores::SQLite)
         return [Finding.new(check: "db", severity: :info,
-                            message: "ephemeral backend (HARNESS_DB unset) — config and state do NOT survive a restart", fix: nil)]
+                            message: "ephemeral backend (INSIKA_DB unset) — config and state do NOT survive a restart", fix: nil)]
       end
 
       @backend.get("__doctor__", "probe") # a read round-trips the handle; raises if the file is broken

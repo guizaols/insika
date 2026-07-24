@@ -27,7 +27,7 @@ gem "tilt", "~> 2.8"       # template rendering (studio)
 gem "erubi", "~> 1.13"     # ERB with automatic escaping (XSS-safe) for the studio
 
 # OPT-IN observability (Phase 6, Telemetry): OTEL is only REQUIRED lazily in
-# Harness::Telemetry.setup when enabled (HARNESS_OTEL / OTEL_EXPORTER_OTLP_*).
+# Harness::Telemetry.setup when enabled (INSIKA_OTEL / OTEL_EXPORTER_OTLP_*).
 # Off -> gems in the bundle but never loaded (parity, zero overhead). The
 # Recorder is tested with an injected FAKE tracer; the gem only enters at the setup
 # boundary (not covered by unit, like the Executor's create_chat).
