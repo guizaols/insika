@@ -11,7 +11,7 @@ module Insika
     module AdminAuth
       module_function
 
-      # config_token: config[:admin_token] (the wiring reads HARNESS_ADMIN_TOKEN).
+      # config_token: config[:admin_token] (the wiring reads ADMIN_TOKEN).
       # header: raw Authorization value.
       # -> :disabled | :unauthorized | :ok
       def check(config_token, header)

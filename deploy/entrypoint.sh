@@ -8,10 +8,13 @@
 #      the DB), and
 #   2. supervises the app process, replicating the SQLite WAL continuously to the
 #      replica and doing a final sync on shutdown.
-# Zero Ruby code change: the DB path is the same HARNESS_DB the app already uses.
+# Zero Ruby code change: the DB path is the same INSIKA_DB the app already uses.
 set -e
 
-DB="${HARNESS_DB:-/data/harness.db}"
+# INSIKA_DB is the current name; HARNESS_DB is honored as a deprecated alias. Resolve
+# once and re-export as INSIKA_DB so litestream.yml (${INSIKA_DB}) and the app agree.
+DB="${INSIKA_DB:-${HARNESS_DB:-/data/harness.db}}"
+export INSIKA_DB="${DB}"
 APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-2}"
 
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then

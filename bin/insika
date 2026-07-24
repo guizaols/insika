@@ -10,7 +10,7 @@
 #   insika version                   print the engine version
 #   insika help                      this text
 #
-# It reads the SAME durable backend the server does (HARNESS_DB -> SQLite, else
+# It reads the SAME durable backend the server does (INSIKA_DB -> SQLite, else
 # ephemeral memory), building only the config stores it needs — no full app boot, no
 # DEEPSEEK, no seeding. So it is safe to run against a live deployment's volume.
 
@@ -47,8 +47,8 @@ module Insika
           help                      show this help
 
         Environment:
-          HARNESS_DB                SQLite path (durable). Unset -> ephemeral memory.
-          HARNESS_CONFIG_STRICT     when truthy, the server refuses boot on any finding.
+          INSIKA_DB                 SQLite path (durable). Unset -> ephemeral memory.
+          INSIKA_CONFIG_STRICT      when truthy, the server refuses boot on any finding.
       TXT
     end
 

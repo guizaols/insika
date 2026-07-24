@@ -29,7 +29,7 @@ Open `http://localhost:9292`:
 
 | Env | Default | Effect |
 |-----|---------|--------|
-| `HARNESS_DB` | — (ephemeral memory) | SQLite path → config + execution survive a restart |
+| `INSIKA_DB` | — (ephemeral memory) | SQLite path → config + execution survive a restart |
 | `BIND` | `http://localhost:9292` | host:port |
 | `ADMIN_TOKEN` | `local-demo` | token for `/studio` |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` |
@@ -38,7 +38,7 @@ Open `http://localhost:9292`:
 With persistence:
 
 ```bash
-DEEPSEEK_API_KEY=sk-... HARNESS_DB=./harness.db bundle exec ruby scripts/serve_real.rb
+DEEPSEEK_API_KEY=sk-... INSIKA_DB=./harness.db bundle exec ruby scripts/serve_real.rb
 ```
 
 ## Pointing a Responses client at the local engine
@@ -66,12 +66,12 @@ which the egress guard blocks by default (SSRF defense). Enable the opt-in
 **pinned to your backend's host** when you boot:
 
 ```bash
-HARNESS_EGRESS_ALLOW_HTTP=1 HARNESS_EGRESS_ALLOW_PRIVATE=1 \
-HARNESS_EGRESS_HOSTS=localhost,127.0.0.1 \
+INSIKA_EGRESS_ALLOW_HTTP=1 INSIKA_EGRESS_ALLOW_PRIVATE=1 \
+INSIKA_EGRESS_HOSTS=localhost,127.0.0.1 \
 DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 ```
 
-> `HARNESS_EGRESS_HOSTS` restricts the opened egress to just the internal host
+> `INSIKA_EGRESS_HOSTS` restricts the opened egress to just the internal host
 > (defense-in-depth) — without it, `ALLOW_PRIVATE` opens *any* private destination.
 > These `ALLOW_*` vars are for the fully-local loop only; never set them in the
 > cloud. See [Security](SECURITY.md#egress-the-ssrf-boundary).
@@ -98,7 +98,7 @@ Provision it (runs as a client against the live server; the internal token comes
 from the environment, never disk):
 
 ```bash
-HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
   bundle exec ruby scripts/import_pack.rb /path/to/pack
 ```
 
@@ -110,7 +110,7 @@ and the `Harness.agent { … }` DSL.
 
 OpenTelemetry is **off by default** (the gem does not even load). To turn it on,
 see traces in a local collector (a one-line Jaeger), and the production config, see
-[OBSERVABILITY.md](OBSERVABILITY.md). In short: `HARNESS_OTEL=1` +
+[OBSERVABILITY.md](OBSERVABILITY.md). In short: `INSIKA_OTEL=1` +
 `OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a `harness.turn` trace with
 `harness.tool` / `harness.data_tool` children.
 

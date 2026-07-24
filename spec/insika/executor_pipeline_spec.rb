@@ -623,7 +623,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "per-turn timing breakdown (item 34; opt-in via HARNESS_TURN_TIMING)" do
+  describe "per-turn timing breakdown (item 34; opt-in via INSIKA_TURN_TIMING)" do
     it "omits :timing from the terminal event when disabled (default)" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
       session_store.create(id: "s1")

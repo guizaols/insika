@@ -10,14 +10,16 @@ module Insika
   # (parity, zero overhead). The OTEL gem is only REQUIRED lazily in `setup`
   # (enabled), never at core load — like ruby_llm in the Executor.
   #
-  # Turn on: `HARNESS_OTEL=1` OR the standard OTEL envs
+  # Turn on: `INSIKA_OTEL=1` OR the standard OTEL envs
   # (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`). The destination/protocol
-  # follows the OTEL SDK's default config (env) — SigNoz/Tempo/Jaeger/Collector.
+  # follows the OTEL SDK's default config (env) — SigNoz/Tempo/Jaeger/Collector. The
+  # OTEL_* keys are the OpenTelemetry SDK's own env and stay verbatim; only our opt-in
+  # toggle is renamed (INSIKA_OTEL, with the HARNESS_OTEL alias still read).
   module Telemetry
     module_function
 
     def enabled?(env = ENV)
-      truthy(env["HARNESS_OTEL"]) ||
+      truthy(Insika::EnvSchema.read("INSIKA_OTEL", env)) ||
         present?(env["OTEL_EXPORTER_OTLP_ENDPOINT"]) ||
         present?(env["OTEL_TRACES_EXPORTER"])
     end

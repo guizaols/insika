@@ -95,11 +95,11 @@ unless explicitly opted in.
 
 | Env | Effect |
 |-----|--------|
-| `HARNESS_EGRESS_HOSTS` | host allowlist (CSV) — the safe, specific way to permit a backend |
-| `HARNESS_EGRESS_ALLOW_HTTP=1` | permit plain `http` — **loopback dev only** |
-| `HARNESS_EGRESS_ALLOW_PRIVATE=1` | permit private/loopback IPs — **dev only** |
+| `INSIKA_EGRESS_HOSTS` | host allowlist (CSV) — the safe, specific way to permit a backend |
+| `INSIKA_EGRESS_ALLOW_HTTP=1` | permit plain `http` — **loopback dev only** |
+| `INSIKA_EGRESS_ALLOW_PRIVATE=1` | permit private/loopback IPs — **dev only** |
 
-Restricting `HARNESS_EGRESS_HOSTS` to exactly the hosts a tool needs is
+Restricting `INSIKA_EGRESS_HOSTS` to exactly the hosts a tool needs is
 defense-in-depth: without it, `ALLOW_PRIVATE` opens *any* private destination.
 **Never set the `ALLOW_*` vars in a cloud deployment** — a public backend over
 `https` already passes the strict default.
@@ -148,8 +148,8 @@ the model:
 ## Config discipline
 
 Configuration is validated against a schema of known keys at boot. An unknown key
-in the `HARNESS_` namespace (a typo the runtime would otherwise ignore) or a
-wrong-typed value is **surfaced**, and `HARNESS_CONFIG_STRICT=1` turns findings
+in the `INSIKA_` namespace (a typo the runtime would otherwise ignore) or a
+wrong-typed value is **surfaced**, and `INSIKA_CONFIG_STRICT=1` turns findings
 into a boot refusal. By default the engine warns and boots on last-known-good — a
 rotated key or a typo never takes the whole service down. The `harness doctor`
 command runs the same checks on demand against a live database. See
