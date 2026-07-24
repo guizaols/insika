@@ -1,5 +1,5 @@
 <div class="card auth-card">
-  <div class="brand big"><span class="dot"></span>Harness <small>Studio</small></div>
+  <div class="brand big"><span class="dot"></span>Insika <small>Studio</small></div>
   <p class="muted lead">Sign in with your operator token to manage your agents.</p>
 
   <% if @error %>
@@ -10,7 +10,7 @@
     <%== csrf_tag %>
     <label>Operator token
       <input type="password" name="token" autocomplete="current-password" autofocus
-             placeholder="HARNESS_ADMIN_TOKEN">
+             placeholder="ADMIN_TOKEN">
     </label>
     <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Signing in…">Sign in</button></div>
   </form>

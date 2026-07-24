@@ -2,7 +2,7 @@
 
 module Insika
   # Opt-in per-turn latency breakdown (item 34 / §13.1, action 1: locate the
-  # TTFB cost with real-turn data). OFF unless HARNESS_TURN_TIMING is set — when
+  # TTFB cost with real-turn data). OFF unless INSIKA_TURN_TIMING is set — when
   # off the Executor never allocates one and the hot path pays only `nil&.mark`.
   #
   # Splits a turn into the three windows that answer "is TTFB local or provider?":
@@ -17,7 +17,7 @@ module Insika
     ENABLED_VALUES = %w[1 true yes on].freeze
 
     def self.enabled?(env = ENV)
-      ENABLED_VALUES.include?(env["HARNESS_TURN_TIMING"].to_s.strip.downcase)
+      ENABLED_VALUES.include?(Insika::EnvSchema.read("INSIKA_TURN_TIMING", env).to_s.strip.downcase)
     end
 
     def initialize

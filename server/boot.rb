@@ -73,7 +73,7 @@ module Insika
         return unless @wiring.respond_to?(:durable?)
         return if @wiring.durable?
 
-        log("boot: WARNING — EPHEMERAL backend (no HARNESS_DB): recovery will " \
+        log("boot: WARNING — EPHEMERAL backend (no INSIKA_DB): recovery will " \
             "not resume anything after a restart (doc 02 §6).")
       end
 

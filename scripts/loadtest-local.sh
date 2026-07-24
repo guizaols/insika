@@ -68,7 +68,7 @@ wait_up() {
 boot() {
   count="$1"; LOG="$WORK/falcon-$count.log"
   echo "=== booting Falcon --count $count (port $PORT, db $DB) ==="
-  ( cd "$REPO" && HARNESS_DB="$DB" OPENCLAW_GATEWAY_TOKEN="$TOKEN" ADMIN_TOKEN="$TOKEN" \
+  ( cd "$REPO" && INSIKA_DB="$DB" OPENCLAW_GATEWAY_TOKEN="$TOKEN" ADMIN_TOKEN="$TOKEN" \
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" RUBY_YJIT_ENABLE=1 \
       bundle exec falcon serve --bind "http://0.0.0.0:$PORT" --count "$count" \
       >"$LOG" 2>&1 ) & PID=$!
@@ -76,7 +76,7 @@ boot() {
 }
 
 sweep() {
-  HARNESS_URL="http://localhost:$PORT" OPENCLAW_GATEWAY_TOKEN="$TOKEN" \
+  INSIKA_URL="http://localhost:$PORT" OPENCLAW_GATEWAY_TOKEN="$TOKEN" \
     bundle exec ruby "$REPO/scripts/loadtest.rb" --agents "$AGENT" --concurrency "$CONC" --iterations 2
 }
 

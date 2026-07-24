@@ -106,9 +106,9 @@ Server-Side Request Forgery defense. The default posture is **strict: public
 
 | Env | Effect |
 |-----|--------|
-| `HARNESS_EGRESS_HOSTS` | allowlist of hosts (CSV). The safe way to permit a specific backend. |
-| `HARNESS_EGRESS_ALLOW_HTTP=1` | permit plain `http` — **loopback dev only** |
-| `HARNESS_EGRESS_ALLOW_PRIVATE=1` | permit private/loopback IPs — **dev only** |
+| `INSIKA_EGRESS_HOSTS` | allowlist of hosts (CSV). The safe way to permit a specific backend. |
+| `INSIKA_EGRESS_ALLOW_HTTP=1` | permit plain `http` — **loopback dev only** |
+| `INSIKA_EGRESS_ALLOW_PRIVATE=1` | permit private/loopback IPs — **dev only** |
 
 > ⚠️ **Egress failures are silent.** When a tool targets a blocked host (e.g. a
 > plain-`http` localhost backend without the opt-ins), the guard turns the block

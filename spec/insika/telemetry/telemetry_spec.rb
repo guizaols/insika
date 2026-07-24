@@ -12,10 +12,14 @@ RSpec.describe Insika::Telemetry do
       expect(described_class.enabled?({})).to be(false)
     end
 
-    it "true with HARNESS_OTEL truthy" do
+    it "true with INSIKA_OTEL truthy" do
+      expect(described_class.enabled?({ "INSIKA_OTEL" => "1" })).to be(true)
+      expect(described_class.enabled?({ "INSIKA_OTEL" => "true" })).to be(true)
+      expect(described_class.enabled?({ "INSIKA_OTEL" => "0" })).to be(false)
+    end
+
+    it "still honors the deprecated HARNESS_OTEL alias" do
       expect(described_class.enabled?({ "HARNESS_OTEL" => "1" })).to be(true)
-      expect(described_class.enabled?({ "HARNESS_OTEL" => "true" })).to be(true)
-      expect(described_class.enabled?({ "HARNESS_OTEL" => "0" })).to be(false)
     end
 
     it "true with the standard OTEL envs" do

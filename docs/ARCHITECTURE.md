@@ -196,7 +196,7 @@ differs.
 ```mermaid
 flowchart TD
   subgraph phase1 [spine — infra, identical across roots]
-    backend["backend<br/>SQLite (HARNESS_DB) or Memory"]
+    backend["backend<br/>SQLite (INSIKA_DB) or Memory"]
     backend --> dstores[domain stores<br/>session · task · checkpoint · memory · …]
     reg[registries<br/>tools · workflows · policies + builtins]
     caps[capability registry]
@@ -224,7 +224,7 @@ flowchart TD
   root2[server deployment] --> phase1
 ```
 
-`backend_from_env` picks the backend: `HARNESS_DB` set → durable SQLite (the
+`backend_from_env` picks the backend: `INSIKA_DB` set → durable SQLite (the
 prerequisite for recovery); unset → ephemeral in-memory (dev/demo). Registering the
 operator commands (`pause_task`, `approve_action`) in the shared core is what lets
 both roots expose the Studio's controls without a per-root patch. The guardrails

@@ -51,7 +51,7 @@ run_container() {
   docker run -d --name "harness-drill-$1" \
     -p 0:9292 \
     -v "${DATA}:/data" -v "${REPLICA}:/replica" \
-    -e "HARNESS_DB=/data/harness.db" \
+    -e "INSIKA_DB=/data/harness.db" \
     -e "ADMIN_TOKEN=drill" \
     -e "LITESTREAM_REPLICA_URL=${REPLICA_URL}" \
     "${IMAGE}"

@@ -39,7 +39,7 @@ needs a live provider key on the server + the target agents provisioned.
 ```bash
 # 1. boot a harness (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
 # 2. provision the target agent(s) from the real packs (client; POST /v1/agents):
-HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
 BIA_INTERNAL_API_TOKEN=… \
   bundle exec ruby scripts/import_pack.rb openclaw/workspace/agent-store-<id>
 # 3. run the evals:

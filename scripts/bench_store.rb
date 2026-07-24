@@ -17,7 +17,7 @@
 #   bundle exec ruby scripts/bench_store.rb [PROCS_CSV] [WRITES_PER_PROC]
 #   e.g.: bundle exec ruby scripts/bench_store.rb 1,2,4,8 2000
 #
-# Does NOT touch your HARNESS_DB — uses a temp file isolated per round.
+# Does NOT touch your INSIKA_DB — uses a temp file isolated per round.
 
 if %w[-h --help].include?(ARGV[0])
   puts File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }

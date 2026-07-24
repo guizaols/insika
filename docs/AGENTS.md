@@ -164,7 +164,7 @@ deliberately. See [`examples/`](../examples/) for the fan-out pattern.
 ## Where agent data lives
 
 Every agent is a row in one SQLite key-value table (WAL mode), namespaced under
-`config:agents`. The database file is `HARNESS_DB`. The profile source reads
+`config:agents`. The database file is `INSIKA_DB`. The profile source reads
 **fresh** on each dispatch, which is why Studio and API edits take effect on the
 next turn with no restart. See [Deploy](DEPLOY.md) for the durable-volume setup and
 [Context](CONTEXT.md#the-volume) for why editing a committed file does *not* change

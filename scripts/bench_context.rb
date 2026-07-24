@@ -21,7 +21,7 @@
 #   bundle exec ruby scripts/bench_context.rb [ITERS] [IDENTITY_TOKENS]
 #   e.g.: bundle exec ruby scripts/bench_context.rb 500 27000
 #
-# Uses a temp SQLite file — does NOT touch your HARNESS_DB.
+# Uses a temp SQLite file — does NOT touch your INSIKA_DB.
 
 if %w[-h --help].include?(ARGV[0])
   puts File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }

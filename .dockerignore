@@ -12,7 +12,7 @@ tmp
 log
 *.log
 
-# Bancos/sidecars locais (o volume monta HARNESS_DB em runtime)
+# Bancos/sidecars locais (o volume monta INSIKA_DB em runtime)
 *.db
 *.db-shm
 *.db-wal

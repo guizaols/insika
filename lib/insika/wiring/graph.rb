@@ -20,11 +20,11 @@ module Insika
     module Graph
       module_function
 
-      # Backend by config: HARNESS_DB set → durable SQLite (survives restart, the
+      # Backend by config: INSIKA_DB set → durable SQLite (survives restart, the
       # prerequisite for Recovery); missing → ephemeral Memory (dev/demo). The same
-      # rule lived verbatim in both roots.
+      # rule lived verbatim in both roots. Dual-read honors the legacy HARNESS_DB alias.
       def backend_from_env(env = ENV)
-        db = env["HARNESS_DB"]
+        db = Insika::EnvSchema.read("INSIKA_DB", env)
         db && !db.empty? ? Insika::Stores::SQLite.new(path: db) : Insika::Stores::Memory.new
       end
 

@@ -6,14 +6,18 @@ RSpec.describe Insika::TurnTiming do
   describe ".enabled?" do
     it "is off by default (absent / blank / falsey values)" do
       [nil, "", "  ", "0", "false", "no", "off"].each do |v|
-        expect(described_class.enabled?({ "HARNESS_TURN_TIMING" => v })).to be(false)
+        expect(described_class.enabled?({ "INSIKA_TURN_TIMING" => v })).to be(false)
       end
     end
 
     it "is on for the accepted truthy values (case/space-insensitive)" do
       %w[1 true yes on TRUE  Yes].each do |v|
-        expect(described_class.enabled?({ "HARNESS_TURN_TIMING" => " #{v} " })).to be(true)
+        expect(described_class.enabled?({ "INSIKA_TURN_TIMING" => " #{v} " })).to be(true)
       end
+    end
+
+    it "still honors the deprecated HARNESS_TURN_TIMING alias" do
+      expect(described_class.enabled?({ "HARNESS_TURN_TIMING" => "1" })).to be(true)
     end
   end
 

@@ -16,26 +16,26 @@ module Insika
   # surfaces as a clean "not found" at runtime (run_subagent), not a boot failure.
   module SubagentGraph
     # Longest delegation chain allowed (root counts as depth 0; each spawn +1).
-    # Override with HARNESS_SUBAGENT_DEPTH_CAP.
+    # Override with INSIKA_SUBAGENT_DEPTH_CAP.
     DEFAULT_DEPTH_CAP = 5
 
     # Max children a single `spawn_subagents` fan-out may run — also the concurrency
     # bound (N concurrent LLM calls hit the provider rate limit + the per-agent token
-    # ceiling of item 33). Override with HARNESS_SUBAGENT_FANOUT_CAP.
+    # ceiling of item 33). Override with INSIKA_SUBAGENT_FANOUT_CAP.
     DEFAULT_FANOUT_CAP = 8
 
     module_function
 
     def depth_cap
-      int_env("HARNESS_SUBAGENT_DEPTH_CAP", DEFAULT_DEPTH_CAP)
+      int_env("INSIKA_SUBAGENT_DEPTH_CAP", DEFAULT_DEPTH_CAP)
     end
 
     def fan_out_cap
-      int_env("HARNESS_SUBAGENT_FANOUT_CAP", DEFAULT_FANOUT_CAP)
+      int_env("INSIKA_SUBAGENT_FANOUT_CAP", DEFAULT_FANOUT_CAP)
     end
 
     def int_env(name, default)
-      raw = ENV[name]
+      raw = Insika::EnvSchema.read(name)
       raw && !raw.strip.empty? ? Integer(raw) : default
     end
 

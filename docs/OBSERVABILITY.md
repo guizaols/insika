@@ -33,7 +33,7 @@ SDK.
 
 Enabled by environment — no new code flag:
 
-- `HARNESS_OTEL=1`, **or**
+- `INSIKA_OTEL=1`, **or**
 - the standard OTEL envs (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`).
 
 Destination, protocol and headers follow the **OTEL SDK's default config** (env):
@@ -60,7 +60,7 @@ docker run --rm -d --name jaeger \
 Then boot the engine with OTEL enabled, pointed at the collector:
 
 ```bash
-HARNESS_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+INSIKA_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
   DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 ```
 
@@ -78,7 +78,7 @@ attributes. Stop the collector with `docker rm -f jaeger`.
 Set the OTEL envs on the deployment and every worker exports to your collector:
 
 ```bash
-HARNESS_OTEL=1
+INSIKA_OTEL=1
 OTEL_EXPORTER_OTLP_ENDPOINT=https://<your-collector>:4318
 OTEL_SERVICE_NAME=harness        # optional; names the service
 # plus any standard OTEL_EXPORTER_OTLP_HEADERS your backend needs

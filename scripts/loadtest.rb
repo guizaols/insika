@@ -11,7 +11,7 @@
 # total, mean tokens, cache-hit rate and error rate. Standard library only.
 #
 # Usage:
-#   HARNESS_URL=http://localhost:9292 \
+#   INSIKA_URL=http://localhost:9292 \
 #   OPENCLAW_GATEWAY_TOKEN=xxx \
 #   bundle exec ruby scripts/loadtest.rb \
 #     --agents bia,my-store --concurrency 16 --iterations 3 \
@@ -28,13 +28,13 @@
 #                       turns round-robin across them so tool-backed turns hit a valid
 #                       conversation. Overrides the generated loadtest-<agent>-<idx> id.
 #   --timeout SECONDS   per-request read timeout             (default: 120)
-#   --ports 9292,9293   round-robin across local processes   (default: HARNESS_URL)
+#   --ports 9292,9293   round-robin across local processes   (default: INSIKA_URL)
 #   --same-user         reuse the same user per agent (measures hot-conversation cache); default off
 #   --dry-run           print the plan + a sample request and exit (no traffic)
 #   --help              show this help and exit
 #
 # Environment:
-#   HARNESS_URL                base URL of the engine        (default: http://localhost:9292)
+#   INSIKA_URL                base URL of the engine        (default: http://localhost:9292)
 #   OPENCLAW_GATEWAY_TOKEN     Bearer for /v1/responses; falls back to ADMIN_TOKEN, then "local-demo"
 
 require "net/http"
@@ -107,7 +107,7 @@ rescue ArgumentError, TypeError
 end
 
 TOKEN = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
-base = (ENV["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
+base = (ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
 BASE_URLS = (args["ports"] ? args["ports"].split(",").map { |p| "http://localhost:#{p.strip}" } : [base])
 AGENTS = (args["agents"] || "bia").split(",").map(&:strip).reject(&:empty?)
 CONC = positive_int(args, "concurrency", "8")
@@ -159,7 +159,7 @@ def run_turn(base_url, agent, idx)
   t0 = mono
   ttfb = nil
   usage = nil
-  timing = nil # server-side breakdown (HARNESS_TURN_TIMING; item 34)
+  timing = nil # server-side breakdown (INSIKA_TURN_TIMING; item 34)
   http = Net::HTTP.new(uri.host, uri.port)
   http.use_ssl = uri.scheme == "https"
   http.read_timeout = TIMEOUT
@@ -267,7 +267,7 @@ puts "total p50/p95:  #{pct(totals, 50)} / #{pct(totals, 95)} ms"
 puts "mean tokens:    #{toks.empty? ? '-' : (toks.sum.to_f / toks.length).round(0)}"
 puts "mean cache hit: #{cache_hits.empty? ? '-' : (cache_hits.sum.to_f / cache_hits.length).round(0)} tokens"
 
-# Server-side latency split (HARNESS_TURN_TIMING; item 34). Only when the server
+# Server-side latency split (INSIKA_TURN_TIMING; item 34). Only when the server
 # reported it — a run without the flag prints nothing extra.
 timings = ok.map { |r| r[:timing] }.compact
 unless timings.empty?
@@ -276,7 +276,7 @@ unless timings.empty?
   ttft = phase.call(:ttft_ms)
   gen  = phase.call(:gen_ms)
   puts "-" * 60
-  puts "server timing (n=#{timings.length}, HARNESS_TURN_TIMING):"
+  puts "server timing (n=#{timings.length}, INSIKA_TURN_TIMING):"
   puts "  prep  p50/p95:  #{pct(prep, 50)} / #{pct(prep, 95)} ms   (local: context build + policy + chat assembly)"
   puts "  ttft  p50/p95:  #{pct(ttft, 50)} / #{pct(ttft, 95)} ms   (provider: ask -> 1st token)"
   puts "  gen   p50/p95:  #{pct(gen, 50)} / #{pct(gen, 95)} ms   (streaming the rest)"

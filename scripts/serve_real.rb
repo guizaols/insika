@@ -36,17 +36,17 @@ ADMIN_TOKEN = ENV.fetch("ADMIN_TOKEN", "local-demo")
 # in the Studio chat so Bia REMEMBERS the previous turns.
 W::SESSION_STORE.create(id: "web", vars: { "canal" => "navegador" }) unless W::SESSION_STORE.find("web")
 
-# Inbound A2A (§9.6): OPT-IN via HARNESS_A2A_AGENT, gated by PROFILE_SOURCE —
+# Inbound A2A (§9.6): OPT-IN via INSIKA_A2A_AGENT, gated by PROFILE_SOURCE —
 # reads the SAME dynamic ProfileSource as the deployment, so the AgentCard/inbound
 # see agents created in the Studio (no longer a static PROFILES). Without the env /
 # a missing agent -> nil -> Server::App does not expose the A2A routes.
 A2A_APP =
-  if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
+  if (a2a_agent = ENV["INSIKA_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
     Insika::Server::A2A::App.new(
       command_bus: W::BUS, task_store: W::TASK_STORE, session_store: W::SESSION_STORE,
       profiles: W::PROFILE_SOURCE, skill_catalog: W::CATALOG,
       config: { a2a_agent: a2a_agent,
-                base_url: ENV["HARNESS_PUBLIC_URL"] || ENV.fetch("BIND", "http://localhost:9292") }
+                base_url: ENV["INSIKA_PUBLIC_URL"] || ENV.fetch("BIND", "http://localhost:9292") }
     )
   end
 
@@ -71,15 +71,15 @@ APP = Insika::Server::App.new(
   # gateway_token: Bearer for /v1/responses + /v1/agents (drop-in for the OpenClaw
   # gateway). The consumer sends OPENCLAW_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
   config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN),
-            public_url: ENV["HARNESS_PUBLIC_URL"] }
+            public_url: ENV["INSIKA_PUBLIC_URL"] }
 )
 
 # Insika Studio: Roda app mounted under /studio, with cookie login — the
 # browser sends the session cookie (no Bearer needed). The session secret derives
 # from ADMIN_TOKEN. Log in at /studio/login with the ADMIN_TOKEN below.
 # persistence hint for the health chip (durable in SQLite when
-# HARNESS_DB is set; ephemeral in memory otherwise).
-PERSISTENCE = (ENV["HARNESS_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)")
+# INSIKA_DB is set; ephemeral in memory otherwise).
+PERSISTENCE = (ENV["INSIKA_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)")
 
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
@@ -114,7 +114,7 @@ puts "  #{BIND}/studio/chats  → chat with Bia (agent: bia · session_id: web)"
 puts "  #{BIND}/studio/tasks  → tasks / approvals console"
 puts "  Ctrl-C to stop."
 
-puts "  OTEL          → #{W::TELEMETRY ? "on (spans to OTLP)" : "off (HARNESS_OTEL to enable)"}"
+puts "  OTEL          → #{W::TELEMETRY ? "on (spans to OTLP)" : "off (INSIKA_OTEL to enable)"}"
 
 Async do
   W::EXECUTOR.supervised = true # serving mode: turns survive the disconnect

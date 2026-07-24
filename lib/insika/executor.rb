@@ -575,7 +575,7 @@ module Insika
       # terminal event -> /v1/responses usage + Telemetry (OTEL).
       timing&.mark(:done)
       data = { task_id: task.id, content: content, usage: st.usage }
-      data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (HARNESS_TURN_TIMING)
+      data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       emit(:task_completed, data, task: task)
     end
 

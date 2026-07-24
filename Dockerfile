@@ -3,8 +3,8 @@
 # and /up under Falcon (async/streaming). The Studio ships with dist/ checked in —
 # NO Node needed at build time.
 #
-# Backend: durable SQLite (WAL) at HARNESS_DB. In production mount a volume and
-# point HARNESS_DB inside it (e.g. /data/harness.db) — otherwise Recovery
+# Backend: durable SQLite (WAL) at INSIKA_DB. In production mount a volume and
+# point INSIKA_DB inside it (e.g. /data/harness.db) — otherwise Recovery
 # has nothing to resume after a restart.
 
 # ---- builder: compiles the native gems (sqlite3) --------------------------
@@ -54,7 +54,7 @@ ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_PATH=/usr/local/bundle \
     RUBY_YJIT_ENABLE=1 \
     PORT=9292 \
-    HARNESS_DB=/data/harness.db
+    INSIKA_DB=/data/harness.db
 
 # Runs as root: the durable volume (Railway Volume / k8s PVC) is mounted at /data
 # at RUNTIME, shadowing the image's dir — with a non-root user the mount comes
@@ -68,7 +68,7 @@ COPY --from=builder /usr/local/bin/litestream /usr/local/bin/litestream
 COPY . .
 
 # The /data volume is mounted by the orchestrator, NOT by Docker's VOLUME
-# instruction (Railway rejects it). HARNESS_DB points to /data (see ENV above).
+# instruction (Railway rejects it). INSIKA_DB points to /data (see ENV above).
 EXPOSE 9292
 
 # The entrypoint decides the boot: with LITESTREAM_REPLICA_URL set, it restores

@@ -24,7 +24,7 @@ require_relative "lib/evals/judge"
 require_relative "lib/evals/baseline"
 
 opts = {
-  base_url: ENV["HARNESS_URL"] || "http://localhost:9292",
+  base_url: ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292",
   token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo",
   golden_dir: File.expand_path("golden", __dir__),
   mode: "eval",
