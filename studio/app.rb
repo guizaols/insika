@@ -19,7 +19,7 @@ module Studio
   # directly (the transport's constitutional rule).
   #
   # SESSION/cookie auth: login compares the token in constant time against
-  # `HARNESS_ADMIN_TOKEN`, sets an httpOnly SameSite=Lax cookie and protects `/studio/*`
+  # `ADMIN_TOKEN`, sets an httpOnly SameSite=Lax cookie and protects `/studio/*`
   # fail-closed (no token configured → login never validates → studio inaccessible).
   # Replaces the manual `LocalAdminShim`/Bearer. CSRF on the POSTs.
   #
@@ -165,7 +165,7 @@ module Studio
             session["auth"] = true
             r.redirect("/studio/agents")
           else
-            @error = "Invalid token, or the studio is disabled (set HARNESS_ADMIN_TOKEN)."
+            @error = "Invalid token, or the studio is disabled (set ADMIN_TOKEN)."
             response.status = 401
             view("login")
           end
@@ -748,9 +748,9 @@ module Studio
     def restart_needed? = self.class.restart_needed?
 
     # Environment label for the sidebar identity chip — reflects the REAL runtime
-    # env (HARNESS_ENV → RACK_ENV → "local") so an operator always knows which box
+    # env (INSIKA_ENV → RACK_ENV → "local") so an operator always knows which box
     # they are looking at. No new state; just reads the process env.
-    def env_label = (presence(ENV["HARNESS_ENV"]) || presence(ENV["RACK_ENV"]) || "local").to_s
+    def env_label = (presence(Insika::EnvSchema.read("INSIKA_ENV")) || presence(ENV["RACK_ENV"]) || "local").to_s
 
     # Theme preference read from the cookie (applied server-side on <html> → no
     # flash). Strict allowlist: an unexpected value falls back to "auto".

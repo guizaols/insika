@@ -7,7 +7,7 @@ measure performance and load.
 
 The `Dockerfile` (multi-stage, YJIT on) serves `config.ru` under Falcon. The Studio
 ships with its `dist/` built and vendored — **no Node in the build**. The backend
-is durable SQLite (WAL) at `HARNESS_DB`; mount a volume and point it inside.
+is durable SQLite (WAL) at `INSIKA_DB`; mount a volume and point it inside.
 
 ```bash
 docker build -t harness .
@@ -22,7 +22,7 @@ curl localhost:9292/up      # {"status":"ok"}
 
 | Env | Default | Effect |
 |-----|---------|--------|
-| `HARNESS_DB` | `/data/harness.db` (in the image) | durable SQLite path (**mount a volume!**) |
+| `INSIKA_DB` | `/data/harness.db` (in the image) | durable SQLite path (**mount a volume!**) |
 | `PORT` | `9292` | HTTP bind port |
 | `WEB_CONCURRENCY` | `2` | number of Falcon worker processes |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
@@ -30,12 +30,19 @@ curl localhost:9292/up      # {"status":"ok"}
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | model |
 | `ACHEI_INTERNAL_URL` | — | base URL for data-tools calling back a consumer's internal API (see below) |
-| `HARNESS_EGRESS_HOSTS` | — | outbound host allowlist (SSRF guard) |
-| `HARNESS_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**) |
+| `INSIKA_EGRESS_HOSTS` | — | outbound host allowlist (SSRF guard) |
+| `INSIKA_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**) |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |
 | `LITESTREAM_ENDPOINT` | — | S3-compatible endpoint (R2/MinIO). Empty = AWS S3 |
 | `LITESTREAM_REGION` | — | bucket region (AWS: `us-east-1`; R2: `auto`) |
 | `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` | — | bucket credentials (read natively by Litestream) |
+
+> **Renamed from `HARNESS_*` → `INSIKA_*`.** Every engine variable now uses the
+> `INSIKA_` prefix. The old `HARNESS_*` names are still honored as deprecated aliases
+> — set either one and the engine reads it, logging a one-line deprecation notice at
+> boot (`insika doctor` reports it too). Migrate at your convenience; the legacy names
+> will be dropped in a future release. (`INSIKA_DB`'s default path keeps the
+> `harness.db` filename so existing volumes are untouched.)
 
 ### Tokens & rotation (keep the two separate!)
 
@@ -58,16 +65,16 @@ Config discipline that **rejects unknown keys — no silent schema tolerance**. 
 parts:
 
 **1. Boot gate.** On boot, the engine validates the environment against a schema of
-known keys (`Harness::EnvSchema`): a wrong type (`HARNESS_PORT=abc`) or an
-**unknown key in the `HARNESS_` namespace** (a typo like `HARNESS_EGRES_ALLOW_HTTP`
+known keys (`Harness::EnvSchema`): a wrong type (`INSIKA_PORT=abc`) or an
+**unknown key in the `INSIKA_` namespace** (a typo like `INSIKA_EGRES_ALLOW_HTTP`
 the runtime would silently ignore). By **default it only warns** and boots anyway
 (*last-known-good* — a rotated key or a typo never takes the whole service down).
-To **refuse boot** on any finding, set `HARNESS_CONFIG_STRICT=1`. Unknown-key
-detection is scoped to the `HARNESS_` prefix; the shared `OPENCLAW_`, `LITESTREAM_`,
+To **refuse boot** on any finding, set `INSIKA_CONFIG_STRICT=1`. Unknown-key
+detection is scoped to the `INSIKA_` prefix; the shared `OPENCLAW_`, `LITESTREAM_`,
 and `OTEL_` namespaces are never flagged.
 
 **2. `bin/harness doctor` — on-demand diagnostics.** Reads the **same** durable
-backend the server uses (`HARNESS_DB`) without booting the whole app (no provider,
+backend the server uses (`INSIKA_DB`) without booting the whole app (no provider,
 no seed) — safe to run against a production volume:
 
 ```bash
@@ -92,12 +99,12 @@ cloud** and your backend **on your machine** (`:3000`), expose it over a public
 ```bash
 # in the tool/manifest: base_url = {{env.ACHEI_INTERNAL_URL}}
 ACHEI_INTERNAL_URL=https://your-tunnel.example.dev
-HARNESS_EGRESS_HOSTS=your-tunnel.example.dev
+INSIKA_EGRESS_HOSTS=your-tunnel.example.dev
 ```
 
 Because the tunnel is **public `https`**, the strict egress guard (the default)
 **already allows it** — you do **not** need `ALLOW_HTTP`/`ALLOW_PRIVATE` (those are
-only for a fully-local loop). Restricting `HARNESS_EGRESS_HOSTS` to the tunnel host
+only for a fully-local loop). Restricting `INSIKA_EGRESS_HOSTS` to the tunnel host
 is the secure posture. See [Security](SECURITY.md#egress-the-ssrf-boundary).
 
 ## Railway
@@ -106,11 +113,11 @@ is the secure posture. See [Security](SECURITY.md#egress-the-ssrf-boundary).
 healthcheck, and a restart policy.
 
 1. Create the project/service from this repo (builder = Dockerfile).
-2. **Volume**: mount it at `/data` (the default `HARNESS_DB` points there) —
+2. **Volume**: mount it at `/data` (the default `INSIKA_DB` points there) —
    without a volume, SQLite is ephemeral and recovery resumes nothing after a
    redeploy.
 3. **Vars**: `DEEPSEEK_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `ACHEI_INTERNAL_URL`,
-   `HARNESS_EGRESS_HOSTS` (and `WEB_CONCURRENCY` to match your plan/CPU).
+   `INSIKA_EGRESS_HOSTS` (and `WEB_CONCURRENCY` to match your plan/CPU).
 4. The healthcheck hits `/up`.
 5. Point your consumer at the service's public URL, with a matching API token
    (see [RUNNING-LOCAL.md](RUNNING-LOCAL.md)).
@@ -174,12 +181,12 @@ scripts/litestream-restore-drill.sh      # needs docker, sqlite3, curl
 ```bash
 # a. with the service live and replicating, generate some config/conversation and
 #    confirm the replica has generations:
-litestream snapshots -config deploy/litestream.yml "$HARNESS_DB"
+litestream snapshots -config deploy/litestream.yml "$INSIKA_DB"
 
 # b. boot a NEW box (empty volume) with the same LITESTREAM_* vars → the entrypoint
 #    restores on boot. Verify manually in /studio that conversations and config came
 #    back. Manual restore alternative:
-litestream restore -config deploy/litestream.yml -o /tmp/restored.db "$HARNESS_DB"
+litestream restore -config deploy/litestream.yml -o /tmp/restored.db "$INSIKA_DB"
 ```
 
 ## Kubernetes (evolution)
@@ -225,7 +232,7 @@ cache hits, P50/P95, error rate. Runs against local or a remote deployment. See
 [LOADTEST.md](LOADTEST.md).
 
 ```bash
-HARNESS_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
+INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
   bundle exec ruby scripts/loadtest.rb --agents assistant --concurrency 16 --iterations 3
 ```
 

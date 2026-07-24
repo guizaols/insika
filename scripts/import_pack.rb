@@ -7,7 +7,7 @@
 # skill catalog reload IN the server process (effective on the next turn).
 #
 # Usage:
-#   HARNESS_URL=http://localhost:9292 \
+#   INSIKA_URL=http://localhost:9292 \
 #   OPENCLAW_GATEWAY_TOKEN=local-demo \
 #   BIA_INTERNAL_API_TOKEN=<achei-b2b internal token> \
 #   bundle exec ruby scripts/import_pack.rb /path/to/pack
@@ -21,7 +21,7 @@ require "json"
 require "uri"
 
 dir = ARGV[0] or abort("usage: import_pack.rb <pack-dir>")
-base   = ENV.fetch("HARNESS_URL", "http://localhost:9292")
+base   = ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292"
 token  = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 secret = ENV["BIA_INTERNAL_API_TOKEN"]
 

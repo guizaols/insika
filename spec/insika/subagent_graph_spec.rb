@@ -63,12 +63,18 @@ RSpec.describe Insika::SubagentGraph do
       expect(described_class.depth_cap).to eq(described_class::DEFAULT_DEPTH_CAP)
     end
 
-    it "honors HARNESS_SUBAGENT_DEPTH_CAP" do
-      original = ENV["HARNESS_SUBAGENT_DEPTH_CAP"]
-      ENV["HARNESS_SUBAGENT_DEPTH_CAP"] = "9"
+    it "honors INSIKA_SUBAGENT_DEPTH_CAP (and the deprecated HARNESS_ alias)" do
+      original = ENV["INSIKA_SUBAGENT_DEPTH_CAP"]
+      original_legacy = ENV["HARNESS_SUBAGENT_DEPTH_CAP"]
+      ENV["INSIKA_SUBAGENT_DEPTH_CAP"] = "9"
       expect(described_class.depth_cap).to eq(9)
+
+      ENV.delete("INSIKA_SUBAGENT_DEPTH_CAP")
+      ENV["HARNESS_SUBAGENT_DEPTH_CAP"] = "7"
+      expect(described_class.depth_cap).to eq(7)
     ensure
-      ENV["HARNESS_SUBAGENT_DEPTH_CAP"] = original
+      ENV["INSIKA_SUBAGENT_DEPTH_CAP"] = original
+      ENV["HARNESS_SUBAGENT_DEPTH_CAP"] = original_legacy
     end
   end
 end

@@ -26,11 +26,11 @@ RSpec.describe Insika::Wiring do
   end
 
   it "A2A_APP is nil by default (opt-in; empty PROFILES at the base) and the APP builds (P3A)" do
-    expect(described_class::A2A_APP).to be_nil # no HARNESS_A2A_AGENT / empty PROFILES
+    expect(described_class::A2A_APP).to be_nil # no INSIKA_A2A_AGENT / empty PROFILES
     expect(described_class::APP).to be_a(Insika::Server::App) # aceita a2a: nil
   end
 
-  it "A2A_CLIENT built; without HARNESS_A2A_REMOTES no remote_* tool is registered (P3B)" do
+  it "A2A_CLIENT built; without INSIKA_A2A_REMOTES no remote_* tool is registered (P3B)" do
     expect(described_class::A2A_CLIENT).to be_a(Insika::Server::A2A::Client)
     expect(described_class::REGISTRY.names.grep(/^remote_/)).to eq([])
   end

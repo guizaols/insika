@@ -34,8 +34,8 @@ by default — that's the SSRF defense. Two things to know:
   *look* like it worked while nothing left the process. Always confirm real calls
   by the tool trace (a healthy call shows the backend's `200`), not by the reply.
 - **Opting in is a deployment decision, not a DSL one.** To let tools reach an
-  internal/private backend you set `HARNESS_EGRESS_ALLOW_HTTP` /
-  `HARNESS_EGRESS_ALLOW_PRIVATE` and pin `HARNESS_EGRESS_HOSTS` on the *deployment*
+  internal/private backend you set `INSIKA_EGRESS_ALLOW_HTTP` /
+  `INSIKA_EGRESS_ALLOW_PRIVATE` and pin `INSIKA_EGRESS_HOSTS` on the *deployment*
   (see [`docs/DEPLOY.md`](../../docs/DEPLOY.md)). The in-process DSL runtime here
   is intentionally strict — public HTTPS only.
 

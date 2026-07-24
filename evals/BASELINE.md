@@ -46,7 +46,7 @@ achei-b2b-owned and do **not** touch the critical path of a production conversat
 
 See `README.md` §"Running" and `docs/internal/BENCHMARKS.md` §4d. In short: boot
 `scripts/serve_real.rb` with a provider key + the EgressGuard allow vars
-(`HARNESS_EGRESS_ALLOW_HTTP/PRIVATE/HOSTS` — see the localhost-tools gotcha), provision
+(`INSIKA_EGRESS_ALLOW_HTTP/PRIVATE/HOSTS` — see the localhost-tools gotcha), provision
 the agent via `scripts/import_pack.rb`, create real sim-chats and map them with
 `--conv-map` (the tool contract needs a real Chat UUID as `X-Chat-Id`), then:
 

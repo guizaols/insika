@@ -13,7 +13,7 @@
 #   Cloudflare s3://my-bucket/harness         (+ LITESTREAM_ENDPOINT=https://<acct>.r2.cloudflarestorage.com, LITESTREAM_REGION=auto)
 #   local FS   file:///replica/harness        (used by the restore drill)
 dbs:
-  - path: ${HARNESS_DB}
+  - path: ${INSIKA_DB}
     replicas:
       - url: ${LITESTREAM_REPLICA_URL}
         # S3-compatible endpoint (R2/MinIO/Backblaze…). Leave unset for AWS S3;

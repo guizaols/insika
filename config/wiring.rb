@@ -21,13 +21,17 @@ require_relative "../server/a2a/client"
 require_relative "../server/a2a/http"
 require_relative "../server/a2a/remotes"
 
+# Env rename (pass 2): backfill INSIKA_* from any legacy HARNESS_* alias before this
+# root reads the process ENV below.
+Insika::EnvSchema.reconcile_legacy!
+
 module Insika
   module Wiring
     ROOT = File.expand_path("..", __dir__)
 
     # --- Shared spine + graph (Insika::Wiring::Graph) ------------
-    # HARNESS_DB set -> durable SQLite (survives kill -9 + reboot, the phase's
-    # criterion); missing -> ephemeral Memory. Production MUST set HARNESS_DB for
+    # INSIKA_DB set -> durable SQLite (survives kill -9 + reboot, the phase's
+    # criterion); missing -> ephemeral Memory. Production MUST set INSIKA_DB for
     # Recovery to have something to resume. Memory/SQLite parity is in the contract
     # suite. The minimal wiring ALSO registers :workflow_allowlist (workflows are a
     # base capability; the deployment does not expose them).
@@ -107,30 +111,30 @@ module Insika
 
     # --- Transport --------------------------------------------------
     CONFIG = {
-      bind: ENV.fetch("HARNESS_BIND", "http://0.0.0.0"),
-      port: Integer(ENV.fetch("HARNESS_PORT", "9292"))
+      bind: ENV.fetch("INSIKA_BIND", "http://0.0.0.0"),
+      port: Integer(ENV.fetch("INSIKA_PORT", "9292"))
     }.freeze
 
     # --- A2A edge — inbound federation, OPT-IN -------------
-    # Exposed only when HARNESS_A2A_AGENT points to an existing profile (PROFILES is
+    # Exposed only when INSIKA_A2A_AGENT points to an existing profile (PROFILES is
     # empty at the base). Without the env / a missing agent -> nil -> no A2A routes.
     A2A_APP =
-      if (a2a_agent = ENV["HARNESS_A2A_AGENT"]) && PROFILES[a2a_agent]
+      if (a2a_agent = ENV["INSIKA_A2A_AGENT"]) && PROFILES[a2a_agent]
         Insika::Server::A2A::App.new(
           command_bus: BUS, task_store: TASK_STORE, session_store: SESSION_STORE,
           profiles: PROFILES, skill_catalog: CATALOG,
           config: { a2a_agent: a2a_agent,
-                    base_url: ENV["HARNESS_PUBLIC_URL"] || "http://localhost:#{CONFIG[:port]}" }
+                    base_url: ENV["INSIKA_PUBLIC_URL"] || "http://localhost:#{CONFIG[:port]}" }
         )
       end
 
     # --- A2A outbound — outbound federation, OPT-IN --------
     # The insika calls remote A2A agents as tools. One tool per remote from
-    # HARNESS_A2A_REMOTES ("id=url,.."); without the env -> nothing registered (parity).
+    # INSIKA_A2A_REMOTES ("id=url,.."); without the env -> nothing registered (parity).
     # The gem's `require` lives IN THE BLOCK (loaded on the 1st instance, turn time
     # -> wiring-load stays gem-free).
     A2A_CLIENT = Insika::Server::A2A::Client.new(http: Insika::Server::A2A::Http.new)
-    Insika::Server::A2A::Remotes.parse(ENV["HARNESS_A2A_REMOTES"].to_s).each do |remote|
+    Insika::Server::A2A::Remotes.parse(ENV["INSIKA_A2A_REMOTES"].to_s).each do |remote|
       REGISTRY.register("remote_#{remote.id}", plugin: "a2a") do
         require "ruby_llm"
         require_relative "../lib/insika/tools/a2a_remote"
@@ -182,7 +186,7 @@ module Insika
     def self.app = APP
 
     # Backend durability: SQLite survives restart, Memory does not. Boot logs this so
-    # the operator doesn't come up without durability by mistake (HARNESS_DB not set).
+    # the operator doesn't come up without durability by mistake (INSIKA_DB not set).
     def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
   end
 end

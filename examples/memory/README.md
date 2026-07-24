@@ -30,8 +30,8 @@ remembered and re-injected.
 
 - `remember` is a **system tool**, wired automatically by the double gate
   "memory store present **and** `memory true`" — you don't add it to the allowlist.
-- Without `HARNESS_DB`, memory lives in-process (fine for a single run, both
-  sessions in one process). Set `HARNESS_DB=./memory.db` to make facts survive a
+- Without `INSIKA_DB`, memory lives in-process (fine for a single run, both
+  sessions in one process). Set `INSIKA_DB=./memory.db` to make facts survive a
   restart.
 - Facts and notes are also visible and editable in the control UI (`/studio`),
   per agent.
