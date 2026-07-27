@@ -14,7 +14,7 @@ module Insika
       Discovered = Data.define(:id, :name, :root, :tool_names, :workflow_names,
                                :capability_names, :skill_dirs, :prompt_dirs, :config)
 
-      MANIFEST_GLOB = "{harness.plugin.yml,plugin.yml}"
+      MANIFEST_GLOB = "{insika.plugin.yml,plugin.yml}"
       SUPPORTED_CONTRACTS = %w[tools workflows capabilities].freeze
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
@@ -78,14 +78,14 @@ module Insika
         @announced_roots.any? { |root| dir == root || dir.start_with?("#{root}#{File::SEPARATOR}") }
       end
 
-      # One manifest per directory: harness.plugin.yml takes precedence over
+      # One manifest per directory: insika.plugin.yml takes precedence over
       # plugin.yml (same dir). Order preserved (root precedence — first wins via `seen`).
       def manifest_files
         selected = {}
         @roots.each do |root|
           Dir.glob(File.join(root, "**", MANIFEST_GLOB)).sort.each do |file|
             dir = File.dirname(file)
-            selected[dir] = file if selected[dir].nil? || File.basename(file) == "harness.plugin.yml"
+            selected[dir] = file if selected[dir].nil? || File.basename(file) == "insika.plugin.yml"
           end
         end
         selected.values
@@ -96,7 +96,7 @@ module Insika
         return nil unless manifest.is_a?(Hash)
 
         if File.basename(file) == "plugin.yml"
-          warn "[plugin #{manifest['id']}] plugin.yml is deprecated — rename to harness.plugin.yml"
+          warn "[plugin #{manifest['id']}] plugin.yml is deprecated — rename to insika.plugin.yml"
         end
         manifest
       rescue StandardError => e

@@ -5,18 +5,18 @@ require "async"
 
 # Proves the FS/shell toolset REUSES the engine's existing approval machinery
 # rather than inventing a parallel path:
-#   1. the "harness-code" profile + the builtin ApprovalRequired policy mark
+#   1. the "insika-code" profile + the builtin ApprovalRequired policy mark
 #      write_file/edit_file/bash (and only those) as requiring approval;
 #   2. the ToolEnvelope gate consults that marking and suspends via the approval
 #      coordinator, rejecting or running the tool based on the operator decision.
-RSpec.describe "harness-code approval wiring" do
+RSpec.describe "insika-code approval wiring" do
   describe "profile + policy engine" do
     let(:event_stream) { Insika::EventStream.new }
 
     let(:registry) do
       Insika::ToolRegistry.new.tap do |r|
-        %w[read_file list_dir grep].each { |n| r.register(n, plugin: "harness-code") { nil } }
-        %w[write_file edit_file bash].each { |n| r.register(n, side_effect: true, plugin: "harness-code") { nil } }
+        %w[read_file list_dir grep].each { |n| r.register(n, plugin: "insika-code") { nil } }
+        %w[write_file edit_file bash].each { |n| r.register(n, side_effect: true, plugin: "insika-code") { nil } }
       end
     end
 
@@ -29,7 +29,7 @@ RSpec.describe "harness-code approval wiring" do
 
     let(:profile) do
       Insika::AgentProfile.build(
-        id: "harness-code", model: "fake",
+        id: "insika-code", model: "fake",
         tools_allow: %w[read_file list_dir grep write_file edit_file bash],
         policies: %i[tool_allowlist approval_required],
         approvals_required: %w[write_file edit_file bash]
@@ -62,7 +62,7 @@ RSpec.describe "harness-code approval wiring" do
 
   describe "ToolEnvelope approval gate" do
     let(:task) { Struct.new(:id, :session_id).new("t1", "s1") }
-    let(:profile) { Insika::AgentProfile.build(id: "harness-code", model: "fake") }
+    let(:profile) { Insika::AgentProfile.build(id: "insika-code", model: "fake") }
     let(:state) do
       Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "go").tap do |s|
         s.requires_approval = %w[write_file]

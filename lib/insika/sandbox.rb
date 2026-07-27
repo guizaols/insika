@@ -8,7 +8,7 @@ require_relative "sandbox/docker"
 
 module Insika
   # Sandbox primitive (item 35 / COMPETITIVE-ANALYSIS §4.6): a single, pluggable
-  # interface for confined execution, promoted to the core from the harness-code
+  # interface for confined execution, promoted to the core from the insika-code
   # prototype. Two halves:
   #
   #   * FS confinement (`Boundary`) — ALWAYS host-side, always on: every path a

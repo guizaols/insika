@@ -1,6 +1,6 @@
 # Observability — OpenTelemetry (opt-in)
 
-Harness already has an observability spine: the **event stream**. Every turn emits
+Insika already has an observability spine: the **event stream**. Every turn emits
 structured events (`task_started`, `tool_call`/`tool_result`, `data_tool_call`,
 `task_completed`/`task_failed`/`task_cancelled`), each stamped with
 `task_id`/`session_id`/`seq`/`at`. The OpenTelemetry bridge is a **consumer** of
@@ -10,24 +10,24 @@ never gains an OTEL call — events observe, telemetry translates. It's the same
 
 The bridge speaks the standard the market already runs on: point any OTLP backend
 (Grafana Tempo, Datadog, Honeycomb, SigNoz, Jaeger, the OpenTelemetry Collector)
-at Harness and a real turn shows up as a full trace.
+at Insika and a real turn shows up as a full trace.
 
 ## What you get
 
-One span per **turn** (`harness.turn`), with **child spans** per tool
-(`harness.tool`) and per data-tool (`harness.data_tool`), correlated by `task_id`.
+One span per **turn** (`insika.turn`), with **child spans** per tool
+(`insika.tool`) and per data-tool (`insika.data_tool`), correlated by `task_id`.
 Latency is the span duration, reconstructed from the events' real `at` timestamps.
 Tokens/cost, agent and model ride as **attributes** — your backend aggregates them
-into metrics, so Harness does not depend on the (less mature in Ruby) OTEL metrics
+into metrics, so Insika does not depend on the (less mature in Ruby) OTEL metrics
 SDK.
 
 | Span | Attributes |
 |------|------------|
-| `harness.turn` | `harness.task_id`, `harness.session_id`, `harness.agent`, `harness.command` |
-| `harness.turn` (on finish) | `harness.tokens.input` / `.output` / `.total` / `.cached`, `harness.model` |
-| `harness.turn` (on finish) | `harness.status` = `ok` / `error` / `cancelled` (+ OTEL error status on failure) |
-| `harness.tool` | `harness.tool` (tool name) |
-| `harness.data_tool` | `harness.tool`, `harness.http.status` |
+| `insika.turn` | `insika.task_id`, `insika.session_id`, `insika.agent`, `insika.command` |
+| `insika.turn` (on finish) | `insika.tokens.input` / `.output` / `.total` / `.cached`, `insika.model` |
+| `insika.turn` (on finish) | `insika.status` = `ok` / `error` / `cancelled` (+ OTEL error status on failure) |
+| `insika.tool` | `insika.tool` (tool name) |
+| `insika.data_tool` | `insika.tool`, `insika.http.status` |
 
 ## Turning it on (opt-in, parity when off)
 
@@ -38,12 +38,12 @@ Enabled by environment — no new code flag:
 
 Destination, protocol and headers follow the **OTEL SDK's default config** (env):
 point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector. `OTEL_SERVICE_NAME` names
-the service (default `harness`).
+the service (default `insika`).
 
-**Off (the default):** `Harness::Telemetry.setup` returns `nil`, the OTEL gem is
+**Off (the default):** `Insika::Telemetry.setup` returns `nil`, the OTEL gem is
 **never loaded** (lazy `require`, like the LLM client), and nothing is
 instrumented — zero overhead. This is enforced by a test
-(`spec/harness/load_guard_spec.rb`: "require harness does not load
+(`spec/insika/load_guard_spec.rb`: "require insika does not load
 OpenTelemetry").
 
 ## Local: a standalone collector
@@ -66,8 +66,8 @@ INSIKA_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
 
 `serve_real` prints `OTEL → on (spans to OTLP)` on boot. Chat at
 `http://localhost:9292/studio` and open the traces at
-**`http://localhost:16686`** (service `harness`): one `harness.turn` span per turn,
-with `harness.tool`/`harness.data_tool` children and the token/agent/model/latency
+**`http://localhost:16686`** (service `insika`): one `insika.turn` span per turn,
+with `insika.tool`/`insika.data_tool` children and the token/agent/model/latency
 attributes. Stop the collector with `docker rm -f jaeger`.
 
 > We don't version a `docker-compose` file — the collector is standalone, a
@@ -80,7 +80,7 @@ Set the OTEL envs on the deployment and every worker exports to your collector:
 ```bash
 INSIKA_OTEL=1
 OTEL_EXPORTER_OTLP_ENDPOINT=https://<your-collector>:4318
-OTEL_SERVICE_NAME=harness        # optional; names the service
+OTEL_SERVICE_NAME=insika        # optional; names the service
 # plus any standard OTEL_EXPORTER_OTLP_HEADERS your backend needs
 ```
 
@@ -112,7 +112,7 @@ the turn does not). Span operations are cheap, so there's ample headroom.
 
 ---
 
-*Packaging note.* Today the bridge lives in the Harness repo as an opt-in core
-module — no separate install, no separate versioning. When Harness extracts its
-subsystems into gems it becomes `harness-otel`; because the bridge is already a
+*Packaging note.* Today the bridge lives in the Insika repo as an opt-in core
+module — no separate install, no separate versioning. When Insika extracts its
+subsystems into gems it becomes `insika-otel`; because the bridge is already a
 pure event-stream consumer with a single gem boundary, that cut lands clean.

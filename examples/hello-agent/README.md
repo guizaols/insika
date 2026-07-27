@@ -34,7 +34,7 @@ curl -N http://localhost:9292/v1/responses \
 
 ## Notes
 
-- `Harness.agent { … }` **generates data** — `.to_pack` is the same portable
+- `Insika.agent { … }` **generates data** — `.to_pack` is the same portable
   artifact the control UI or `POST /v1/agents` consumes. The DSL is sugar, not a
   bypass.
 - Any provider RubyLLM supports works: set `provider`/`model` and the matching

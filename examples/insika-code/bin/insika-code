@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Minimal terminal client for the harness-code prototype. A REPL that talks to
+# Minimal terminal client for the engine-code prototype. A REPL that talks to
 # the engine over its HTTP API (stdlib only — net/http + json), exactly like the
 # production path (achei-b2b / WhatsApp -> POST /v1/responses):
 #
@@ -17,7 +17,7 @@
 # Usage:
 #   HARNESS_CODE_URL=http://localhost:9292 \
 #   HARNESS_CODE_TOKEN=local-code \
-#   ruby examples/harness-code/bin/harness-code
+#   ruby examples/insika-code/bin/insika-code
 #
 # Env:
 #   HARNESS_CODE_URL     server base URL (default http://localhost:9292)

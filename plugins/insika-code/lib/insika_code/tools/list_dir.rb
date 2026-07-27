@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module HarnessCode
+module InsikaCode
   module Tools
     # List the entries of a directory in the workspace (one level, not
     # recursive). Read-only.
