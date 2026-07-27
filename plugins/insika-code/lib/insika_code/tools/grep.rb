@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module HarnessCode
+module InsikaCode
   module Tools
     # Search files in the workspace for lines matching a regular expression.
     # Implemented in pure Ruby (Dir.glob + Regexp) rather than shelling out, so

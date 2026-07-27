@@ -686,9 +686,9 @@ RSpec.describe Insika::Server::App do
     end
 
     it "config[:public_url] overrides the request base (behind a TLS proxy)" do
-      app = build_app(onboarding: onboarding, config: { public_url: "https://harness.example" })
+      app = build_app(onboarding: onboarding, config: { public_url: "https://insika.example" })
       call(app, "GET", "/start.md")
-      expect(onboarding.seen_base).to eq("https://harness.example")
+      expect(onboarding.seen_base).to eq("https://insika.example")
     end
 
     it "the routes are OPT-IN: with no onboarding injected they 404 (parity)" do

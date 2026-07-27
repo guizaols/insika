@@ -5,7 +5,7 @@ deterministic unit net and `scripts/loadtest.rb` measures perf, **evals** answer
 "did the agent still behave well?" after a prompt/tool/model change — the net that
 was missing (FOLLOWUP §9 / #10). Design: **RFC-0008**.
 
-It lives OUTSIDE the core: nothing under `lib/harness/**` requires it. Like the
+It lives OUTSIDE the core: nothing under `lib/insika/**` requires it. Like the
 loadtest, it talks to the engine only through the public API (`POST /v1/responses`).
 
 ## Layout
@@ -32,12 +32,12 @@ is captured from a real green run (`--update-baseline`), not hand-authored.
 
 ## Running
 
-The runner replays the golden set against a **running** harness over the same
+The runner replays the golden set against a **running** engine over the same
 `POST /v1/responses` surface as `scripts/loadtest.rb`. It's on-demand (not CI): it
 needs a live provider key on the server + the target agents provisioned.
 
 ```bash
-# 1. boot a harness (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
+# 1. boot the engine (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
 # 2. provision the target agent(s) from the real packs (client; POST /v1/agents):
 INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
 BIA_INTERNAL_API_TOKEN=… \

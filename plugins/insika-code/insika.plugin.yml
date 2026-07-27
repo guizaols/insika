@@ -1,12 +1,12 @@
-id: harness-code
-name: Harness Code
+id: insika-code
+name: Insika Code
 description: >-
   FS/shell toolset for a code-editing agent (read_file, list_dir, grep,
   write_file, edit_file, bash), sandboxed to a workspace root. Write and shell
   tools are marked side_effect and are meant to be listed in the agent's
   approvals_required so the engine gates them behind human approval.
 entry: plugin.rb
-module: HarnessCodePlugin
+module: InsikaCodePlugin
 contracts:
   tools:
     - read_file

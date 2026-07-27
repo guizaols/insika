@@ -45,22 +45,22 @@ RSpec.describe Insika::Telemetry::Recorder do
     Insika::Event.new(type: type, data: data, meta: { task_id: task_id, session_id: session_id, at: at })
   end
 
-  def turn_span = tracer.spans.find { |s| s.name == "harness.turn" }
+  def turn_span = tracer.spans.find { |s| s.name == "insika.turn" }
 
   describe "turn span" do
-    it "task_started -> opens harness.turn with attributes and start_time; completed closes with tokens+status" do
+    it "task_started -> opens insika.turn with attributes and start_time; completed closes with tokens+status" do
       recorder.record(ev(:task_started, { agent: "bia", command: "send_message" }, at: "2026-07-15T12:00:00Z"))
       recorder.record(ev(:task_completed,
                          { content: "oi", usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20, model: "deepseek" } },
                          at: "2026-07-15T12:00:03Z"))
 
       s = turn_span
-      expect(s.name).to eq("harness.turn")
-      expect(s.attributes).to include("harness.task_id" => "t1", "harness.session_id" => "chat-9",
-                                      "harness.agent" => "bia", "harness.command" => "send_message",
-                                      "harness.status" => "ok",
-                                      "harness.tokens.input" => 12, "harness.tokens.output" => 8,
-                                      "harness.tokens.total" => 20, "harness.model" => "deepseek")
+      expect(s.name).to eq("insika.turn")
+      expect(s.attributes).to include("insika.task_id" => "t1", "insika.session_id" => "chat-9",
+                                      "insika.agent" => "bia", "insika.command" => "send_message",
+                                      "insika.status" => "ok",
+                                      "insika.tokens.input" => 12, "insika.tokens.output" => 8,
+                                      "insika.tokens.total" => 20, "insika.model" => "deepseek")
       expect(s.start_time).to eq(Time.parse("2026-07-15T12:00:00Z"))
       expect(s.end_time).to eq(Time.parse("2026-07-15T12:00:03Z"))
       expect(s).to be_finished
@@ -69,14 +69,14 @@ RSpec.describe Insika::Telemetry::Recorder do
     it "does not inject a nil attribute (session/agent absent)" do
       recorder.record(ev(:task_started, { command: "send_message" }, session_id: nil))
       recorder.record(ev(:task_completed, {}))
-      expect(turn_span.attributes).not_to include("harness.session_id")
-      expect(turn_span.attributes).not_to include("harness.agent")
+      expect(turn_span.attributes).not_to include("insika.session_id")
+      expect(turn_span.attributes).not_to include("insika.agent")
     end
 
     it "task_failed -> status error + record_error(message)" do
       recorder.record(ev(:task_started, { agent: "bia" }))
       recorder.record(ev(:task_failed, { error: "Boom", message: "estourou" }))
-      expect(turn_span.attributes["harness.status"]).to eq("error")
+      expect(turn_span.attributes["insika.status"]).to eq("error")
       expect(turn_span.error).to eq("estourou")
     end
   end
@@ -84,12 +84,12 @@ RSpec.describe Insika::Telemetry::Recorder do
   describe "tool spans (children of the turn)" do
     before { recorder.record(ev(:task_started, { agent: "bia" }, at: "2026-07-15T12:00:00Z")) }
 
-    it "tool_call/tool_result -> harness.tool child, FIFO-correlated, with duration" do
+    it "tool_call/tool_result -> insika.tool child, FIFO-correlated, with duration" do
       recorder.record(ev(:tool_call, { name: "search" }, at: "2026-07-15T12:00:01Z"))
       recorder.record(ev(:tool_result, { name: "search", result: "ok" }, at: "2026-07-15T12:00:02Z"))
 
-      tool = tracer.spans.find { |s| s.name == "harness.tool" }
-      expect(tool.attributes["harness.tool"]).to eq("search")
+      tool = tracer.spans.find { |s| s.name == "insika.tool" }
+      expect(tool.attributes["insika.tool"]).to eq("search")
       expect(tool.parent).to eq(turn_span)                # child of the turn
       expect(tool.start_time).to eq(Time.parse("2026-07-15T12:00:01Z"))
       expect(tool.end_time).to eq(Time.parse("2026-07-15T12:00:02Z"))
@@ -100,14 +100,14 @@ RSpec.describe Insika::Telemetry::Recorder do
       recorder.record(ev(:tool_call, { name: "a" }))
       recorder.record(ev(:tool_call, { name: "b" }))
       recorder.record(ev(:tool_result, { name: "a" })) # closes the 1st open one (a)
-      tools = tracer.spans.select { |s| s.name == "harness.tool" }
-      expect(tools.map { |s| [s.attributes["harness.tool"], s.finished?] }).to eq([["a", true], ["b", false]])
+      tools = tracer.spans.select { |s| s.name == "insika.tool" }
+      expect(tools.map { |s| [s.attributes["insika.tool"], s.finished?] }).to eq([["a", true], ["b", false]])
     end
 
-    it "data_tool_call -> point-in-time harness.data_tool with tool + http.status" do
+    it "data_tool_call -> point-in-time insika.data_tool with tool + http.status" do
       recorder.record(ev(:data_tool_call, { tool: "add_to_cart", status: 200 }, at: "2026-07-15T12:00:01Z"))
-      dt = tracer.spans.find { |s| s.name == "harness.data_tool" }
-      expect(dt.attributes).to include("harness.tool" => "add_to_cart", "harness.http.status" => 200)
+      dt = tracer.spans.find { |s| s.name == "insika.data_tool" }
+      expect(dt.attributes).to include("insika.tool" => "add_to_cart", "insika.http.status" => 200)
       expect(dt.parent).to eq(turn_span)
       expect(dt.start_time).to eq(dt.end_time) # point-in-time
       expect(dt).to be_finished
@@ -116,7 +116,7 @@ RSpec.describe Insika::Telemetry::Recorder do
     it "a tool open when the turn fails is closed (no orphan span)" do
       recorder.record(ev(:tool_call, { name: "search" }))
       recorder.record(ev(:task_failed, { message: "x" }))
-      expect(tracer.spans.find { |s| s.name == "harness.tool" }).to be_finished
+      expect(tracer.spans.find { |s| s.name == "insika.tool" }).to be_finished
     end
   end
 

@@ -1,26 +1,26 @@
 # frozen_string_literal: true
 
-# Deployment wiring for the "harness-code" prototype: a Claude-Code-style code
+# Deployment wiring for the "insika-code" prototype: a Claude-Code-style code
 # agent built ON TOP of the insika engine, consuming it as a library. It builds
 # the SAME object graph as config/wiring.rb (stores, registries, policy engine,
 # executor, command bus, HTTP app) but with:
 #
-#   * the FS/shell toolset from plugins/harness-code, loaded through the real
+#   * the FS/shell toolset from plugins/insika-code, loaded through the real
 #     Plugin::Loader (RFC-0003 autodiscovery);
-#   * one agent profile ("harness-code") that allows those tools and lists the
+#   * one agent profile ("insika-code") that allows those tools and lists the
 #     write/shell ones in `approvals_required` — so the engine's existing
 #     human-approval gate protects them;
 #   * a gateway token so POST /v1/responses (the OpenAI Responses adapter the CLI
 #     speaks) is authenticated.
 #
-# No core files are modified. Requiring this file gives HarnessCodeApp::Wiring.
+# No core files are modified. Requiring this file gives InsikaCodeApp::Wiring.
 
 require "yaml"
 require_relative "../../lib/insika"
 require "ruby_llm"
 require_relative "../../server/app"
 
-module HarnessCodeApp
+module InsikaCodeApp
   REPO_ROOT = File.expand_path("../..", __dir__)
 
   # The sandbox root every FS/shell tool is confined to. Resolved once and
@@ -65,7 +65,7 @@ module HarnessCodeApp
   end
 
   SYSTEM_PROMPT = <<~PROMPT.freeze
-    You are harness-code, a terminal coding assistant operating inside a single
+    You are insika-code, a terminal coding assistant operating inside a single
     workspace directory. You help the user read, search, and edit code and run
     shell commands, all confined to that workspace.
 
@@ -114,7 +114,7 @@ module HarnessCodeApp
     CAPABILITY_REGISTRY = Insika::CapabilityRegistry.new
 
     # Load the FS/shell toolset via the real plugin Loader (autodiscovery).
-    PLUGIN_DIR = File.join(HarnessCodeApp::REPO_ROOT, "plugins", "harness-code")
+    PLUGIN_DIR = File.join(InsikaCodeApp::REPO_ROOT, "plugins", "insika-code")
     Insika::Plugin::Loader.new(
       roots: [PLUGIN_DIR],
       registries: {
@@ -122,7 +122,7 @@ module HarnessCodeApp
         capabilities: CAPABILITY_REGISTRY, hooks: HOOKS,
         middleware: MIDDLEWARE, context_providers: []
       },
-      enabled: ["harness-code"], event_stream: EVENT_STREAM
+      enabled: ["insika-code"], event_stream: EVENT_STREAM
     ).load_all
 
     # Defense-in-depth (example-local, no core change): derive the approval set
@@ -131,7 +131,7 @@ module HarnessCodeApp
     # add a side-effecting tool and forget to list it, and it would run ungated.
     # Reading it from the manifest (the single source of truth) makes that class
     # of mistake impossible. See README §"Security boundary".
-    SIDE_EFFECT_TOOLS = YAML.load_file(File.join(PLUGIN_DIR, "harness.plugin.yml"))
+    SIDE_EFFECT_TOOLS = YAML.load_file(File.join(PLUGIN_DIR, "insika.plugin.yml"))
                             .fetch("tool_metadata", {})
                             .select { |_name, meta| meta["side_effect"] }
                             .keys.freeze
@@ -158,15 +158,15 @@ module HarnessCodeApp
     # approvals_required, so the ApprovalRequired policy marks them and the
     # ToolEnvelope suspends the turn for human approval before they execute.
     PROFILE = Insika::AgentProfile.build(
-      id: "harness-code", model: HarnessCodeApp::MODEL, provider: HarnessCodeApp::PROVIDER,
-      base_prompt: HarnessCodeApp::SYSTEM_PROMPT,
+      id: "insika-code", model: InsikaCodeApp::MODEL, provider: InsikaCodeApp::PROVIDER,
+      base_prompt: InsikaCodeApp::SYSTEM_PROMPT,
       tools_allow: %w[read_file list_dir grep write_file edit_file bash],
       policies: %i[tool_allowlist approval_required],
       approvals_required: SIDE_EFFECT_TOOLS,
       # Config-over-code: the sandbox provider/policy is DATA on the profile,
       # consumed by Insika::Sandbox.build. The plugin reads the same config from
       # ENV, so the tools' runtime sandbox matches this declaration.
-      sandbox: HarnessCodeApp::SANDBOX_CONFIG,
+      sandbox: InsikaCodeApp::SANDBOX_CONFIG,
       limits: {
         tool_timeout: Integer(ENV.fetch("HARNESS_CODE_TOOL_TIMEOUT", "120")),
         turn_timeout: Integer(ENV.fetch("HARNESS_CODE_TURN_TIMEOUT", "600")),
@@ -174,7 +174,7 @@ module HarnessCodeApp
         max_tool_calls: 100
       }
     )
-    PROFILES = { "harness-code" => PROFILE }.freeze
+    PROFILES = { "insika-code" => PROFILE }.freeze
 
     EXECUTOR = Insika::Executor.new(
       context_builder: CONTEXT_BUILDER, policy_engine: POLICY_ENGINE,
@@ -213,7 +213,7 @@ module HarnessCodeApp
       command_bus: BUS, event_stream: EVENT_STREAM,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       pending_action_store: PENDING_ACTION_STORE,
-      config: { gateway_token: HarnessCodeApp::GATEWAY_TOKEN }
+      config: { gateway_token: InsikaCodeApp::GATEWAY_TOKEN }
     )
 
     def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)

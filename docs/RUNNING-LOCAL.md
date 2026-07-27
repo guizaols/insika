@@ -1,4 +1,4 @@
-# Running the Harness locally
+# Running the Insika locally
 
 Boots the engine single-process, serving `/studio` and `/v1/*` against a demo
 agent (the `bia` persona on DeepSeek). Every message runs the **same**
@@ -7,7 +7,7 @@ agent (the `bia` persona on DeepSeek). Every message runs the **same**
 ## Boot
 
 ```bash
-cd harness
+cd insika
 DEEPSEEK_API_KEY=sk-... bundle exec ruby scripts/serve_real.rb
 ```
 
@@ -38,7 +38,7 @@ Open `http://localhost:9292`:
 With persistence:
 
 ```bash
-DEEPSEEK_API_KEY=sk-... INSIKA_DB=./harness.db bundle exec ruby scripts/serve_real.rb
+DEEPSEEK_API_KEY=sk-... INSIKA_DB=./insika.db bundle exec ruby scripts/serve_real.rb
 ```
 
 ## Pointing a Responses client at the local engine
@@ -104,15 +104,15 @@ INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
 
 …or `POST /v1/agents` directly, or build the agent by hand in the `/studio`. All
 paths land on the same import. See [Agents](AGENTS.md) for the from-scratch flow
-and the `Harness.agent { … }` DSL.
+and the `Insika.agent { … }` DSL.
 
 ## Observability (OpenTelemetry, opt-in)
 
 OpenTelemetry is **off by default** (the gem does not even load). To turn it on,
 see traces in a local collector (a one-line Jaeger), and the production config, see
 [OBSERVABILITY.md](OBSERVABILITY.md). In short: `INSIKA_OTEL=1` +
-`OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a `harness.turn` trace with
-`harness.tool` / `harness.data_tool` children.
+`OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a `insika.turn` trace with
+`insika.tool` / `insika.data_tool` children.
 
 ## See also
 

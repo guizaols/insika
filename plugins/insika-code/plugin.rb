@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 require "ruby_llm"
-require_relative "lib/harness_code/tools/read_file"
-require_relative "lib/harness_code/tools/list_dir"
-require_relative "lib/harness_code/tools/grep"
-require_relative "lib/harness_code/tools/write_file"
-require_relative "lib/harness_code/tools/edit_file"
-require_relative "lib/harness_code/tools/bash"
+require_relative "lib/insika_code/tools/read_file"
+require_relative "lib/insika_code/tools/list_dir"
+require_relative "lib/insika_code/tools/grep"
+require_relative "lib/insika_code/tools/write_file"
+require_relative "lib/insika_code/tools/edit_file"
+require_relative "lib/insika_code/tools/bash"
 
 # Autodiscoverable plugin (RFC-0003): the same shape as plugins/weather. The
 # module responds to `.register(api)`; the Loader requires this file and calls
@@ -18,12 +18,12 @@ require_relative "lib/harness_code/tools/bash"
 # The Sandbox is assembled from declarative config: `HARNESS_CODE_SANDBOX`
 # selects the provider (local [default] / docker) and `HARNESS_CODE_ROOT` the
 # confinement root — the SAME shape stored on the agent profile's `sandbox`
-# block (config-over-code). See examples/harness-code/boot.rb.
+# block (config-over-code). See examples/insika-code/boot.rb.
 #
 # The manifest declares the six tool names and their side_effect flags; this
 # file supplies the implementations. Whether write_file/edit_file/bash actually
 # require human approval is decided by the AGENT PROFILE's `approvals_required`.
-module HarnessCodePlugin
+module InsikaCodePlugin
   module_function
 
   # Declarative sandbox config, resolved from the environment. Empty/absent keys
@@ -44,11 +44,11 @@ module HarnessCodePlugin
 
   def register(api)
     sbx = sandbox
-    api.register_tool("read_file")  { HarnessCode::Tools::ReadFile.new(sandbox: sbx) }
-    api.register_tool("list_dir")   { HarnessCode::Tools::ListDir.new(sandbox: sbx) }
-    api.register_tool("grep")       { HarnessCode::Tools::Grep.new(sandbox: sbx) }
-    api.register_tool("write_file") { HarnessCode::Tools::WriteFile.new(sandbox: sbx) }
-    api.register_tool("edit_file")  { HarnessCode::Tools::EditFile.new(sandbox: sbx) }
-    api.register_tool("bash")       { HarnessCode::Tools::Bash.new(sandbox: sbx) }
+    api.register_tool("read_file")  { InsikaCode::Tools::ReadFile.new(sandbox: sbx) }
+    api.register_tool("list_dir")   { InsikaCode::Tools::ListDir.new(sandbox: sbx) }
+    api.register_tool("grep")       { InsikaCode::Tools::Grep.new(sandbox: sbx) }
+    api.register_tool("write_file") { InsikaCode::Tools::WriteFile.new(sandbox: sbx) }
+    api.register_tool("edit_file")  { InsikaCode::Tools::EditFile.new(sandbox: sbx) }
+    api.register_tool("bash")       { InsikaCode::Tools::Bash.new(sandbox: sbx) }
   end
 end

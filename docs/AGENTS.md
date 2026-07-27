@@ -10,7 +10,7 @@ keeps the profile it captured when it started; the next turn sees the new one.
 > Smallest possible agent — see [`examples/hello-agent/`](../examples/hello-agent/):
 >
 > ```ruby
-> agent = Harness.agent("assistant") do
+> agent = Insika.agent("assistant") do
 >   model "deepseek-chat"
 >   provider :deepseek
 >   instructions "You are a concise, friendly assistant."
@@ -24,7 +24,7 @@ keeps the profile it captured when it started; the next turn sees the new one.
 All three land on the **same** config-over-code import path — they differ only in
 ergonomics, not in what they produce.
 
-- **DSL** — `Harness.agent("id") { … }` builds an agent definition and imports it
+- **DSL** — `Insika.agent("id") { … }` builds an agent definition and imports it
   into the durable store. Best for code-defined agents and examples. The DSL
   auto-enables the tool- and skill-allowlist policies. `model` is optional — a nil
   model resolves the platform `default_model` at turn start.

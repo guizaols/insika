@@ -1,6 +1,4 @@
-# Harness
-
-> **Working name.** The project name/namespace isn't final yet.
+# Insika
 
 A Ruby runtime for **LLM agents in production**: a durable, resumable turn pipeline
 behind an **OpenAI-Responses-compatible** HTTP API (`POST /v1/responses`), with tools,
@@ -29,9 +27,9 @@ from one deployment.
 Define an agent in Ruby and talk to it — the whole program:
 
 ```ruby
-require "harness"
+require "insika"
 
-assistant = Harness.agent("assistant") do
+assistant = Insika.agent("assistant") do
   model "deepseek-chat"
   provider :deepseek
   instructions "You are Bia, a concise and friendly assistant. Answer briefly."
@@ -65,7 +63,7 @@ curl -N http://localhost:9292/v1/responses \
   -d '{"model":"assistant","user":"chat-1","stream":true,"input":"hi, what can you do?"}'
 ```
 
-The DSL is **thin sugar over config-over-code**: `Harness.agent { … }.to_pack` is a
+The DSL is **thin sugar over config-over-code**: `Insika.agent { … }.to_pack` is a
 plain provisioning pack — the same portable artifact you can create/edit at runtime
 through the control UI or `POST /v1/agents`. Nothing is a bypass; the DSL just
 *generates the data*. For the full demo deployment (real tools/skills/memory), see
@@ -73,7 +71,7 @@ through the control UI or `POST /v1/agents`. Nothing is a bypass; the DSL just
 
 ## Let your coding agent build the first one
 
-A running harness serves its own **LLM-first onboarding**: point your coding agent
+A running instance serves its own **LLM-first onboarding**: point your coding agent
 (Claude Code, Cursor, an IDE assistant) at it and let it do the setup.
 
 ```

@@ -1,14 +1,14 @@
-# harness-code — a code agent on the harness engine
+# insika-code — a code agent on the engine engine
 
 A **prototype** Claude-Code-style coding agent built entirely *on top of* the
-harness engine (no core changes). It combines:
+Insika engine (no core changes). It combines:
 
 - a **FS/shell toolset** shipped as an autodiscoverable plugin
-  (`plugins/harness-code/`): `read_file`, `list_dir`, `grep`, `write_file`,
+  (`plugins/insika-code/`): `read_file`, `list_dir`, `grep`, `write_file`,
   `edit_file`, `bash`;
-- an **agent profile** (`harness-code`) that allows those tools and puts the
+- an **agent profile** (`insika-code`) that allows those tools and puts the
   write/shell ones behind the engine's human-approval gate;
-- a **minimal CLI** (`bin/harness-code`) that talks to the engine over the same
+- a **minimal CLI** (`bin/insika-code`) that talks to the engine over the same
   `POST /v1/responses` (SSE) contract used in production.
 
 ## Security boundary
@@ -16,7 +16,7 @@ harness engine (no core changes). It combines:
 Two independent controls protect the highest-risk tools:
 
 1. **Sandbox (always on, enforced by the tools).** Every path a tool touches is
-   resolved through the core **`Harness::Sandbox`** primitive (item 35), which
+   resolved through the core **`Insika::Sandbox`** primitive (item 35), which
    confines all operations to a single **root** (`HARNESS_CODE_ROOT`, default:
    cwd). `..` traversal, absolute paths outside the root, and symlinks are
    rejected *before any IO* — the final path component may never be a symlink (a
@@ -41,7 +41,7 @@ Read-only tools (`read_file`, `list_dir`, `grep`) are not approval-gated.
 > does *not* auto-gate side-effecting tools; the manifest's `side_effect` flag
 > only informs the checkpoint/resume machinery. The human gate is applied purely
 > by the profile listing the tool in `approvals_required`. Therefore **every**
-> tool marked `side_effect: true` in `harness.plugin.yml` **MUST** appear in the
+> tool marked `side_effect: true` in `insika.plugin.yml` **MUST** appear in the
 > profile's `approvals_required` — this is a non-negotiable security
 > prerequisite, not a convenience. Omitting one lets a mutating/shell tool run
 > ungated. To make this drift impossible, `boot.rb` derives `approvals_required`
@@ -55,7 +55,7 @@ Two terminals. **Server:**
 ```bash
 HARNESS_CODE_ROOT=/path/to/your/project \
 DEEPSEEK_API_KEY=sk-...            # or ANTHROPIC_API_KEY / OPENAI_API_KEY (+ set HARNESS_CODE_PROVIDER/MODEL) \
-ruby examples/harness-code/server.rb
+ruby examples/insika-code/server.rb
 ```
 
 **CLI** (prints the exact command on server startup):
@@ -63,7 +63,7 @@ ruby examples/harness-code/server.rb
 ```bash
 HARNESS_CODE_URL=http://localhost:9292 \
 HARNESS_CODE_TOKEN=local-code \
-ruby examples/harness-code/bin/harness-code
+ruby examples/insika-code/bin/insika-code
 ```
 
 Example session:
@@ -103,24 +103,24 @@ Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
 ## Layout
 
 ```
-plugins/harness-code/         # the toolset (autodiscoverable plugin, RFC-0003)
-  harness.plugin.yml          # manifest: tool names + side_effect flags
+plugins/insika-code/         # the toolset (autodiscoverable plugin, RFC-0003)
+  insika.plugin.yml          # manifest: tool names + side_effect flags
   plugin.rb                   # register(api): block factories, shared core Sandbox
-  lib/harness_code/
+  lib/insika_code/
     tools/{read_file,list_dir,grep,write_file,edit_file,bash}.rb
 
-lib/harness/sandbox/          # the core Sandbox primitive (item 35)
+lib/insika/sandbox/          # the core Sandbox primitive (item 35)
   boundary.rb                 # FS confinement (always on)
   local.rb / docker.rb        # exec providers
   runner.rb                   # shared hard-kill spawn
 
-examples/harness-code/        # the example app (consumes the core as a lib)
+examples/insika-code/        # the example app (consumes the core as a lib)
   boot.rb                     # deployment wiring: engine + plugin + profile + app
   server.rb                   # Async::HTTP server launcher
-  bin/harness-code            # the CLI client (net/http + json, stdlib only)
+  bin/insika-code            # the CLI client (net/http + json, stdlib only)
 
-spec/plugins/harness_code/    # tests: tools, approval wiring
-spec/harness/sandbox/         # tests: boundary + providers (core primitive)
+spec/plugins/insika_code/    # tests: tools, approval wiring
+spec/insika/sandbox/         # tests: boundary + providers (core primitive)
 ```
 
 ## Not in the prototype (next steps)

@@ -1,4 +1,4 @@
-# Harness Studio (Phase 4)
+# Insika Studio (Phase 4)
 
 Server-rendered management UI (Roda + Hotwire), mounted under `/studio`. Replaces
 OpenClaw's agent-studio — **one process, one deploy, one language**. It talks to the

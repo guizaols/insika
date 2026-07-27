@@ -140,8 +140,8 @@ RSpec.describe Insika::Onboarding do
       root = File.expand_path("../..", __dir__)
       onboarding = described_class.standard(root: root)
 
-      md = onboarding.start_md(base_url: "https://harness.example")
-      expect(md).to include("https://harness.example/models.json")
+      md = onboarding.start_md(base_url: "https://insika.example")
+      expect(md).to include("https://insika.example/models.json")
       expect(md).not_to include("{{") # no un-substituted placeholder leaks
 
       # all shipped public docs resolve to real files

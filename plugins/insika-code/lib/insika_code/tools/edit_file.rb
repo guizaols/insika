@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module HarnessCode
+module InsikaCode
   module Tools
     # Replace an exact string in an existing workspace file. SIDE-EFFECT tool
     # (approval-gated, same as write_file). Fails loudly when `old_string` is

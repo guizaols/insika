@@ -16,7 +16,7 @@ export default class extends Controller {
     const value = event.params.value
     document.documentElement.dataset.theme = value
     // 1 year; SameSite=Lax matches the session cookie. path=/ so it applies under /studio.
-    document.cookie = `harness.theme=${value}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
+    document.cookie = `insika.theme=${value}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
     this.sync(value)
   }
 

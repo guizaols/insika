@@ -1,6 +1,6 @@
 # Sandbox — confined execution
 
-`Harness::Sandbox` is the engine primitive for **confined execution**: a single,
+`Insika::Sandbox` is the engine primitive for **confined execution**: a single,
 pluggable interface a tool holds to touch the filesystem and run commands inside
 a bounded environment. It follows the principle of the *narrowest sandbox that
 supports the task* — cheap in-process confinement by default, real container
@@ -16,7 +16,7 @@ It has two halves:
 
 ## The FS boundary
 
-`Harness::Sandbox::Boundary` confines every path to one root directory. It
+`Insika::Sandbox::Boundary` confines every path to one root directory. It
 rejects, before touching disk:
 
 - `..` traversal that escapes the root (path normalized, then string-contained on
@@ -27,7 +27,7 @@ rejects, before touching disk:
   existing target's real path (`File.realpath`) must also be contained — a symlink
   inside the root pointing outside is refused rather than followed.
 
-An escape raises `Harness::Sandbox::Escape`; tools rescue it and return a
+An escape raises `Insika::Sandbox::Escape`; tools rescue it and return a
 structured `{ error: ... }` to the model, never a crashed turn.
 
 The boundary is **always host-side**, for both providers. With `docker`, the FS
@@ -37,7 +37,7 @@ isolated. That is the "narrowest sandbox" line: don't containerize a file read.
 
 ## Exec providers
 
-`sandbox.exec(command)` returns a `Harness::Sandbox::Result`
+`sandbox.exec(command)` returns a `Insika::Sandbox::Result`
 (`exit_status`, `output`, `timed_out`). Both providers enforce a **hard-kill
 wall-clock timeout**: on the deadline the process — and, via its own process
 group, any children — is force-killed and the partial output is returned with
@@ -64,7 +64,7 @@ The provider and its policy are **data on the agent profile**, under the
 `sandbox` key — never a branch in tool code:
 
 ```ruby
-Harness::AgentProfile.build(
+Insika::AgentProfile.build(
   id: "coder",
   # ...
   sandbox: {
@@ -82,7 +82,7 @@ Harness::AgentProfile.build(
 A deployment turns that config into the object every tool holds:
 
 ```ruby
-sandbox = Harness::Sandbox.build(profile.sandbox)   # => Harness::Sandbox::Env
+sandbox = Insika::Sandbox.build(profile.sandbox)   # => Insika::Sandbox::Env
 
 sandbox.resolve("src/app.rb")        # host path, guaranteed inside the root
 sandbox.exec("bundle exec rspec")    # => Result(exit_status:, output:, timed_out:)
@@ -94,11 +94,11 @@ sandbox by default.
 
 ## Reference deployment
 
-`plugins/harness-code` is the reference consumer: the FS/shell toolset
+`plugins/insika-code` is the reference consumer: the FS/shell toolset
 (`read_file`, `list_dir`, `grep`, `write_file`, `edit_file`, `bash`) is built on
-this primitive, and `examples/harness-code/boot.rb` declares the `sandbox` block
+this primitive, and `examples/insika-code/boot.rb` declares the `sandbox` block
 on its profile while the plugin builds the matching `Sandbox` from the same
-config. See [`examples/harness-code/README.md`](../examples/harness-code/README.md).
+config. See [`examples/insika-code/README.md`](../examples/insika-code/README.md).
 
 The sandbox is one of two independent controls on the high-risk tools; the other
 is the engine's human-approval gate (`approvals_required` + the `ToolEnvelope`

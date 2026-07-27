@@ -23,7 +23,7 @@ RSpec.describe "Integration: kill -> restart -> resume" do
     end
   end
 
-  let(:db_path) { File.join(@dir, "harness.db") }
+  let(:db_path) { File.join(@dir, "insika.db") }
   let(:profile) { Insika::AgentProfile.build(id: "sales", model: "gpt", base_prompt: "SOUL") }
   # shared side-effect tool: proves it is NOT re-executed on resume.
   let(:tool) do

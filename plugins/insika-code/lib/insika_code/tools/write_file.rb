@@ -3,7 +3,7 @@
 require "fileutils"
 require_relative "base"
 
-module HarnessCode
+module InsikaCode
   module Tools
     # Create or overwrite a file in the sandbox. SIDE-EFFECT tool: marked
     # `side_effect: true` in the plugin manifest (so the checkpoint/resume

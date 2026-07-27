@@ -1136,7 +1136,7 @@ RSpec.describe Studio::App do
   it "applies the cookie theme server-side (no wrong-theme flash on load)" do
     app, = build_app
     client = login(app)
-    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=dark")
+    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; insika.theme=dark")
     _, _, body = app.call(env)
     html = body.each.to_a.join
     expect(html).to include('data-theme="dark"')
@@ -1145,7 +1145,7 @@ RSpec.describe Studio::App do
   it "an unexpected theme cookie falls back to auto (strict allowlist)" do
     app, = build_app
     client = login(app)
-    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; harness.theme=hackerman")
+    env = Rack::MockRequest.env_for("/agents", "HTTP_COOKIE" => "#{client.cookie}; insika.theme=hackerman")
     _, _, body = app.call(env)
     expect(body.each.to_a.join).to include('data-theme="auto"')
   end

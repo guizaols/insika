@@ -111,7 +111,7 @@ module Studio
         # derives from the token) and the flag would stay stuck on.
         @restart_needed = false
         secret = session_secret || derive_secret(config[:admin_token])
-        plugin :sessions, key: "harness.studio", secret: secret,
+        plugin :sessions, key: "insika.studio", secret: secret,
                           max_seconds: SESSION_MAX_AGE, same_site: :lax
         # CSRF token bound to the SESSION (not the method+path pair). route_csrf's
         # per-path binding uses `request.path` = POST-MOUNT PATH_INFO ("/login",
@@ -126,7 +126,7 @@ module Studio
       # sessions). Derives from the admin token → stable across restarts (the session
       # survives) without a new env var; change the token and all sessions drop.
       def derive_secret(admin_token)
-        Digest::SHA512.hexdigest("harness-studio-session-v1:#{admin_token}")
+        Digest::SHA512.hexdigest("insika-studio-session-v1:#{admin_token}")
       end
 
       # --- Restart recommended — per-process state -------------------
@@ -756,7 +756,7 @@ module Studio
     # flash). Strict allowlist: an unexpected value falls back to "auto".
     THEMES = %w[auto light dark].freeze
     def theme_pref
-      value = request.cookies["harness.theme"].to_s
+      value = request.cookies["insika.theme"].to_s
       THEMES.include?(value) ? value : "auto"
     end
 

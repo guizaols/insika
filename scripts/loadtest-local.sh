@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LOCAL multi-process load-test of the harness (Falcon --count N) over ONE SHARED
+# LOCAL multi-process load-test of the engine (Falcon --count N) over ONE SHARED
 # SQLite file (WAL). Runs the load sweep against: (a) 1 worker = single-process
 # baseline; (b) N workers = multi-process on the same box. Since the provider is
 # the same in both runs, if the multi-process run recovers throughput the ceiling
@@ -41,8 +41,8 @@ case "$WORKERS$CONC" in
     ;;
 esac
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/harness-loadtest.XXXXXX")"
-DB="$WORK/harness.db"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/insika-loadtest.XXXXXX")"
+DB="$WORK/insika.db"
 
 [ -f "$REPO/.env.local" ] && { set -a; . "$REPO/.env.local"; set +a; }
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then

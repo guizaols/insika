@@ -44,7 +44,7 @@ The corpus is just data — the engine is a generic `/v1/responses` client:
 - **New attack / language:** drop a `*.yml` here. If it's a language the deterministic
   detectors don't cover, enable the LLM moderator on the agent (`guardrails.moderator`)
   — it's language-agnostic. To harden the deterministic tier for a language, add
-  patterns to `Harness::Safety::Detectors` (single source, D4).
+  patterns to `Insika::Safety::Detectors` (single source, D4).
 - **Tool scenarios:** point `--golden-dir` at your own corpus and provision an agent
   that has those tools; `tools_called` checks match tool *names* from the stream, so
   any toolset works.

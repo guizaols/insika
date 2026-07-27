@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-# Production image for the harness (agent engine). Serves /v1/*, /studio
+# Production image for the engine (agent engine). Serves /v1/*, /studio
 # and /up under Falcon (async/streaming). The Studio ships with dist/ checked in —
 # NO Node needed at build time.
 #
 # Backend: durable SQLite (WAL) at INSIKA_DB. In production mount a volume and
-# point INSIKA_DB inside it (e.g. /data/harness.db) — otherwise Recovery
+# point INSIKA_DB inside it (e.g. /data/insika.db) — otherwise Recovery
 # has nothing to resume after a restart.
 
 # ---- builder: compiles the native gems (sqlite3) --------------------------
@@ -54,11 +54,11 @@ ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_PATH=/usr/local/bundle \
     RUBY_YJIT_ENABLE=1 \
     PORT=9292 \
-    INSIKA_DB=/data/harness.db
+    INSIKA_DB=/data/insika.db
 
 # Runs as root: the durable volume (Railway Volume / k8s PVC) is mounted at /data
 # at RUNTIME, shadowing the image's dir — with a non-root user the mount comes
-# root-owned and SQLite could not write harness.db. For the pilot
+# root-owned and SQLite could not write insika.db. For the pilot
 # (single-tenant container) root is acceptable; non-root hardening (fsGroup/
 # init-chown) is left for k8s. See docs/DEPLOY.md.
 RUN mkdir -p /data
@@ -72,7 +72,7 @@ COPY . .
 EXPOSE 9292
 
 # The entrypoint decides the boot: with LITESTREAM_REPLICA_URL set, it restores
-# harness.db from the replica (fresh box) and supervises the app under Litestream
+# insika.db from the replica (fresh box) and supervises the app under Litestream
 # (opt-in backup/DR — see deploy/entrypoint.sh + docs/DEPLOY.md); without the var, it
 # `exec`s Falcon directly (zero cost, identical to the previous behavior). Falcon reads
 # config.ru (Boot -> Wiring -> recovery BEFORE accepting connections); binds over http
