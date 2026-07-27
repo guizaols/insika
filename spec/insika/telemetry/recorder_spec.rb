@@ -38,6 +38,35 @@ RSpec.describe Insika::Telemetry::Recorder do
     end
   end
 
+  # fake instrument/meter: records every (value, attributes) pair the Recorder emits.
+  class FakeInstrument
+    attr_reader :name, :unit, :points
+
+    def initialize(name, unit)
+      @name = name
+      @unit = unit
+      @points = []
+    end
+
+    def add(value, attributes:) = @points << [value, attributes]
+    def record(value, attributes:) = @points << [value, attributes]
+  end
+
+  class FakeMeter
+    attr_reader :instruments
+
+    def initialize = (@instruments = {})
+
+    def create_counter(name, unit: nil, description: nil) = build(name, unit, description)
+    def create_histogram(name, unit: nil, description: nil) = build(name, unit, description)
+
+    def [](name) = @instruments.fetch(name)
+
+    private
+
+    def build(name, unit, _description) = (@instruments[name] = FakeInstrument.new(name, unit))
+  end
+
   let(:tracer) { FakeTracer.new }
   subject(:recorder) { described_class.new(tracer: tracer) }
 
@@ -79,6 +108,54 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(turn_span.attributes["insika.status"]).to eq("error")
       expect(turn_span.error).to eq("estourou")
     end
+
+    # Item 16 / P4: the tenant is the one operator-set grouping label; it rides the
+    # :task_started payload (Executor#started_data) and is absent when unset.
+    it "carries insika.tenant when the command declared one" do
+      recorder.record(ev(:task_started, { agent: "bia", tenant: "loja-42" }))
+      recorder.record(ev(:task_completed, {}))
+      expect(turn_span.attributes["insika.tenant"]).to eq("loja-42")
+    end
+
+    it "no tenant declared -> no insika.tenant attribute" do
+      recorder.record(ev(:task_started, { agent: "bia" }))
+      expect(turn_span.attributes).not_to include("insika.tenant")
+    end
+
+    it "reports cache-creation tokens and the resolved model_source" do
+      recorder.record(ev(:task_started, { agent: "bia" }))
+      recorder.record(ev(:task_completed,
+                         { usage: { input_tokens: 10, output_tokens: 2, cache_creation_tokens: 7,
+                                    model: "deepseek-chat", model_source: "agent" } }))
+      expect(turn_span.attributes).to include("insika.tokens.cache_creation" => 7,
+                                              "insika.model_source" => "agent")
+    end
+  end
+
+  # Item 16 / P4 — estimated cost. The Recorder does no arithmetic of its own: it
+  # asks the injected Pricing, and reports nothing when there is no price.
+  describe "estimated cost" do
+    let(:pricing) { Insika::Telemetry::Pricing.new({ "m" => { "input" => 1.0, "output" => 2.0 } }) }
+    subject(:recorder) { described_class.new(tracer: tracer, pricing: pricing) }
+
+    it "priced model -> insika.cost.usd on the turn span" do
+      recorder.record(ev(:task_started, { agent: "bia" }))
+      recorder.record(ev(:task_completed, { usage: { model: "m", input_tokens: 1_000_000, output_tokens: 0 } }))
+      expect(turn_span.attributes["insika.cost.usd"]).to eq(1.0)
+    end
+
+    it "unpriced model -> no cost attribute (a gap, not a zero)" do
+      recorder.record(ev(:task_started, { agent: "bia" }))
+      recorder.record(ev(:task_completed, { usage: { model: "unknown", input_tokens: 999, output_tokens: 1 } }))
+      expect(turn_span.attributes).not_to include("insika.cost.usd")
+    end
+
+    it "no pricing injected -> no cost attribute" do
+      plain = described_class.new(tracer: tracer)
+      plain.record(ev(:task_started, { agent: "bia" }))
+      plain.record(ev(:task_completed, { usage: { model: "m", input_tokens: 1_000_000, output_tokens: 0 } }))
+      expect(turn_span.attributes).not_to include("insika.cost.usd")
+    end
   end
 
   describe "tool spans (children of the turn)" do
@@ -117,6 +194,106 @@ RSpec.describe Insika::Telemetry::Recorder do
       recorder.record(ev(:tool_call, { name: "search" }))
       recorder.record(ev(:task_failed, { message: "x" }))
       expect(tracer.spans.find { |s| s.name == "insika.tool" }).to be_finished
+    end
+  end
+
+  # Item 16 / P4 — metrics beside traces: the SAME events feed counters/histograms,
+  # so a backend charts volume/latency/tokens/cost without aggregating spans. The
+  # metric attribute set is a deliberate LOW-CARDINALITY subset (no task/session id).
+  describe "metrics" do
+    let(:meter) { FakeMeter.new }
+    let(:pricing) { Insika::Telemetry::Pricing.new({ "m" => { "input" => 1.0, "output" => 0.0 } }) }
+    subject(:recorder) { described_class.new(tracer: tracer, meter: meter, pricing: pricing) }
+
+    def start(at: "2026-07-15T12:00:00Z")
+      recorder.record(ev(:task_started, { agent: "bia", tenant: "loja-42", command: "send_message" }, at: at))
+    end
+
+    it "a finished turn counts once and records its duration, labelled by outcome" do
+      start
+      recorder.record(ev(:task_completed, { usage: { model: "m" } }, at: "2026-07-15T12:00:03Z"))
+
+      labels = { "insika.agent" => "bia", "insika.tenant" => "loja-42",
+                 "insika.command" => "send_message", "insika.status" => "ok", "insika.model" => "m" }
+      expect(meter["insika.turns"].points).to eq([[1, labels]])
+      expect(meter["insika.turn.duration"].points).to eq([[3.0, labels]])
+    end
+
+    it "the metric labels never carry task_id/session_id (cardinality contract)" do
+      start
+      recorder.record(ev(:task_completed, {}))
+      keys = meter["insika.turns"].points.flat_map { |(_, a)| a.keys }
+      expect(keys).not_to include("insika.task_id", "insika.session_id")
+    end
+
+    it "a failed turn is counted with status=error" do
+      start
+      recorder.record(ev(:task_failed, { message: "estourou" }))
+      expect(meter["insika.turns"].points.dig(0, 1)).to include("insika.status" => "error")
+    end
+
+    it "tokens ride ONE counter split by insika.token.type" do
+      start
+      recorder.record(ev(:task_completed,
+                         { usage: { model: "m", input_tokens: 12, output_tokens: 8, cached_tokens: 5,
+                                    cache_creation_tokens: 3 } }))
+      by_type = meter["insika.tokens"].points.to_h { |(n, a)| [a["insika.token.type"], n] }
+      expect(by_type).to eq("input" => 12, "output" => 8, "cached" => 5, "cache_creation" => 3)
+    end
+
+    it "estimated cost lands on the insika.cost counter in USD" do
+      start
+      recorder.record(ev(:task_completed, { usage: { model: "m", input_tokens: 2_000_000, output_tokens: 0 } }))
+      expect(meter["insika.cost"].points).to eq([[2.0, { "insika.agent" => "bia", "insika.tenant" => "loja-42",
+                                                         "insika.command" => "send_message",
+                                                         "insika.model" => "m" }]])
+      expect(meter["insika.cost"].unit).to eq("{USD}")
+    end
+
+    it "an unpriced model contributes no cost point" do
+      start
+      recorder.record(ev(:task_completed, { usage: { model: "unknown", input_tokens: 5, output_tokens: 1 } }))
+      expect(meter["insika.cost"].points).to be_empty
+    end
+
+    it "tool calls count with their duration and kind" do
+      start
+      recorder.record(ev(:tool_call, { name: "search" }, at: "2026-07-15T12:00:01Z"))
+      recorder.record(ev(:tool_result, { name: "search" }, at: "2026-07-15T12:00:02Z"))
+
+      labels = { "insika.agent" => "bia", "insika.tenant" => "loja-42", "insika.command" => "send_message",
+                 "insika.tool" => "search", "insika.tool.kind" => "tool" }
+      expect(meter["insika.tool.calls"].points).to eq([[1, labels]])
+      expect(meter["insika.tool.duration"].points).to eq([[1.0, labels]])
+    end
+
+    it "data-tools count as kind=data_tool with the HTTP status, and record no duration" do
+      start
+      recorder.record(ev(:data_tool_call, { tool: "add_to_cart", status: 200 }))
+      expect(meter["insika.tool.calls"].points.dig(0, 1))
+        .to include("insika.tool.kind" => "data_tool", "insika.http.status" => 200)
+      expect(meter["insika.tool.duration"].points).to be_empty # point-in-time event
+    end
+
+    it "an unfinished tool (turn failed mid-way) is not counted as a completed call" do
+      start
+      recorder.record(ev(:tool_call, { name: "search" }))
+      recorder.record(ev(:task_failed, { message: "x" }))
+      expect(meter["insika.tool.calls"].points).to be_empty
+    end
+
+    it "an unknown timestamp records no duration (never a made-up latency)" do
+      start(at: nil)
+      recorder.record(ev(:task_completed, {}, at: "2026-07-15T12:00:03Z"))
+      expect(meter["insika.turns"].points.size).to eq(1)
+      expect(meter["insika.turn.duration"].points).to be_empty
+    end
+
+    it "no meter injected -> spans only, no metric calls at all" do
+      plain = described_class.new(tracer: tracer)
+      plain.record(ev(:task_started, { agent: "bia" }))
+      expect { plain.record(ev(:task_completed, { usage: { model: "m", input_tokens: 1 } })) }.not_to raise_error
+      expect(meter.instruments).to be_empty
     end
   end
 

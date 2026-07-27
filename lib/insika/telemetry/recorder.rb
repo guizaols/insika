@@ -4,28 +4,64 @@ require "time"
 
 module Insika
   module Telemetry
-    # Translates the insika Event Stream into OTEL SPANS — the already-existing
-    # observability spine becomes traces without touching the core (Events observe; Telemetry only
-    # consumes). One span per TURN (insika.turn) with child spans per tool
-    # (insika.tool / insika.data_tool), correlated by task_id. Latency comes
-    # from the span duration; tokens/cost and agent/model come from the ATTRIBUTES — the
-    # backend (SigNoz/Tempo/…) aggregates them into metrics. Without depending on the metrics SDK.
+    # Translates the insika Event Stream into OTEL SPANS and METRICS — the
+    # already-existing observability spine becomes telemetry without touching the
+    # core (Events observe; Telemetry only consumes).
+    #
+    # SPANS: one per TURN (insika.turn) with child spans per tool (insika.tool /
+    # insika.data_tool), correlated by task_id. Latency is the span duration; the
+    # agent/tenant/model/tokens/cost ride as ATTRIBUTES.
+    #
+    # METRICS (item 16 / P4): the SAME events also feed counters and histograms, so
+    # volume/latency/tokens/cost are chartable WITHOUT span aggregation (which not
+    # every backend does, and none does cheaply at retention). Metric attributes are
+    # a deliberate LOW-CARDINALITY subset of the span attributes — never task_id or
+    # session_id. `meter:` nil -> spans only (the metrics SDK is optional).
+    #
+    # `pricing:` nil -> no cost attribute/metric. Cost is an ESTIMATE from an
+    # operator-declared rates table (see Pricing) — the engine ships no prices.
     #
     # PURE/testable: talks to a DUCK-TYPED `tracer` (start_span/set_attribute/
-    # record_error/finish) — the real OTEL adapter is injected in Telemetry.setup, a
-    # fake in tests. Does NOT reference OpenTelemetry:: (loads without the gem).
+    # record_error/finish) and `meter` (create_counter/create_histogram -> add/
+    # record) — the real OTEL adapters are injected in Telemetry.setup, fakes in
+    # tests. Does NOT reference OpenTelemetry:: (loads without the gem).
     #
     # Robust: `record` NEVER raises (telemetry doesn't bring down a turn). Timestamps
     # come from each event's `meta.at` (spans reconstructed with real time).
     class Recorder
-      Turn = Struct.new(:span, :tools) # tools = FIFO queue of open tool spans
+      Turn = Struct.new(:span, :tools, :labels, :start) # tools = FIFO queue of open tools
+      OpenTool = Struct.new(:span, :name, :start)
 
       # Ceiling of open turns: a kill -9 without a terminal event would leave the turn
       # hanging; when exceeded, the oldest is closed (defensive, bounded memory).
       MAX_OPEN = 1_000
 
-      def initialize(tracer:)
+      # The metric instruments of the convention, created once per Recorder. Names
+      # and units are part of the documented contract (docs/OBSERVABILITY.md) —
+      # renaming one breaks every dashboard built on it.
+      class Instruments
+        attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration
+
+        def initialize(meter)
+          @turns = meter.create_counter("insika.turns", unit: "{turn}",
+                                                        description: "Turns completed, by outcome")
+          @turn_duration = meter.create_histogram("insika.turn.duration", unit: "s",
+                                                                         description: "Wall time of a turn")
+          @tokens = meter.create_counter("insika.tokens", unit: "{token}",
+                                                          description: "Tokens consumed, by type")
+          @cost = meter.create_counter("insika.cost", unit: "{USD}",
+                                                      description: "Estimated turn cost in USD")
+          @tool_calls = meter.create_counter("insika.tool.calls", unit: "{call}",
+                                                                  description: "Tool invocations")
+          @tool_duration = meter.create_histogram("insika.tool.duration", unit: "s",
+                                                                         description: "Wall time of a tool call")
+        end
+      end
+
+      def initialize(tracer:, meter: nil, pricing: nil)
         @tracer = tracer
+        @instruments = meter && Instruments.new(meter)
+        @pricing = pricing
         @turns = {}
       end
 
@@ -51,47 +87,59 @@ module Insika
       def start_turn(meta, data)
         id = meta[:task_id] or return
         evict_oldest if @turns.size >= MAX_OPEN
+        at = ts(meta[:at])
+        # The metric label base: agent/tenant/command only — the low-cardinality
+        # dimensions a dashboard groups by. task_id/session_id stay on the span.
+        labels = attrs("insika.agent" => data[:agent], "insika.tenant" => data[:tenant],
+                       "insika.command" => data[:command]&.to_s)
         span = @tracer.start_span(
-          "insika.turn", parent: nil, start_time: ts(meta[:at]),
-          attributes: attrs("insika.task_id" => id, "insika.session_id" => meta[:session_id],
-                            "insika.agent" => data[:agent], "insika.command" => data[:command]&.to_s)
+          "insika.turn", parent: nil, start_time: at,
+          attributes: labels.merge(attrs("insika.task_id" => id, "insika.session_id" => meta[:session_id]))
         )
-        @turns[id] = Turn.new(span, [])
+        @turns[id] = Turn.new(span, [], labels, at)
       end
 
       def start_tool(meta, data)
         turn = @turns[meta[:task_id]] or return
-        span = @tracer.start_span("insika.tool", parent: turn.span, start_time: ts(meta[:at]),
-                                  attributes: attrs("insika.tool" => data[:name]&.to_s))
-        turn.tools << span
+        at = ts(meta[:at])
+        name = data[:name]&.to_s
+        span = @tracer.start_span("insika.tool", parent: turn.span, start_time: at,
+                                  attributes: attrs("insika.tool" => name))
+        turn.tools << OpenTool.new(span, name, at)
       end
 
       # FIFO: the model calls a tool and receives the result before the next one, so
       # the result matches the first open tool span of the turn.
       def finish_tool(meta)
         turn = @turns[meta[:task_id]] or return
-        span = turn.tools.shift or return
-        span.finish(end_time: ts(meta[:at]))
+        tool = turn.tools.shift or return
+        at = ts(meta[:at])
+        tool.span.finish(end_time: at)
+        count_tool(turn, tool.name, "tool", elapsed(tool.start, at))
       end
 
       # data-tool emits a single event (name + HTTP status) -> point span.
       def point_tool(meta, data)
         turn = @turns[meta[:task_id]] or return
         at = ts(meta[:at])
+        name = data[:tool]&.to_s
         span = @tracer.start_span("insika.data_tool", parent: turn.span, start_time: at,
-                                  attributes: attrs("insika.tool" => data[:tool]&.to_s,
+                                  attributes: attrs("insika.tool" => name,
                                                     "insika.http.status" => data[:status]))
         span.finish(end_time: at)
+        count_tool(turn, name, "data_tool", nil, "insika.http.status" => data[:status])
       end
 
       def finish_turn(meta, data, status)
         turn = @turns.delete(meta[:task_id]) or return
         at = ts(meta[:at])
-        set_usage(turn.span, data[:usage])
+        usage = data[:usage]
+        set_usage(turn.span, usage)
         turn.span.set_attribute("insika.status", status.to_s)
         turn.span.record_error(data[:message].to_s) if status == :error
-        turn.tools.each { |s| s.finish(end_time: at) } # orphaned tool spans (failure mid-way)
+        turn.tools.each { |t| t.span.finish(end_time: at) } # orphans (failure mid-way)
         turn.span.finish(end_time: at)
+        count_turn(turn, usage, status.to_s, elapsed(turn.start, at))
       end
 
       def set_usage(span, usage)
@@ -101,20 +149,71 @@ module Insika
         span.set_attribute("insika.tokens.output", usage[:output_tokens]) if usage[:output_tokens]
         span.set_attribute("insika.tokens.total", usage[:total_tokens]) if usage[:total_tokens]
         span.set_attribute("insika.tokens.cached", usage[:cached_tokens]) if usage[:cached_tokens]
+        span.set_attribute("insika.tokens.cache_creation", usage[:cache_creation_tokens]) if usage[:cache_creation_tokens]
         span.set_attribute("insika.model", usage[:model].to_s) if usage[:model]
+        span.set_attribute("insika.model_source", usage[:model_source].to_s) if usage[:model_source]
+        cost = estimated_cost(usage)
+        span.set_attribute("insika.cost.usd", cost) if cost
       end
+
+      # --- metrics (no-op when no meter was injected) ------------------------
+
+      def count_turn(turn, usage, status, seconds)
+        return unless @instruments
+
+        model = usage && usage[:model]
+        labels = turn.labels.merge(attrs("insika.status" => status, "insika.model" => model&.to_s))
+        @instruments.turns.add(1, attributes: labels)
+        @instruments.turn_duration.record(seconds, attributes: labels) if seconds
+        count_usage(turn, usage)
+      end
+
+      # Tokens ride ONE counter split by `insika.token.type` (instead of four
+      # instruments) so a dashboard sums or splits them with the same query.
+      def count_usage(turn, usage)
+        return unless usage
+
+        base = turn.labels.merge(attrs("insika.model" => usage[:model]&.to_s))
+        { "input" => usage[:input_tokens], "output" => usage[:output_tokens],
+          "cached" => usage[:cached_tokens], "cache_creation" => usage[:cache_creation_tokens] }.each do |type, n|
+          @instruments.tokens.add(n.to_i, attributes: base.merge("insika.token.type" => type)) if n
+        end
+        cost = estimated_cost(usage)
+        @instruments.cost.add(cost, attributes: base) if cost
+      end
+
+      def count_tool(turn, name, kind, seconds, extra = {})
+        return unless @instruments
+
+        labels = turn.labels.merge(attrs({ "insika.tool" => name, "insika.tool.kind" => kind }.merge(extra)))
+        @instruments.tool_calls.add(1, attributes: labels)
+        @instruments.tool_duration.record(seconds, attributes: labels) if seconds
+      end
+
+      def estimated_cost(usage) = @pricing&.cost(usage)
+
+      # -----------------------------------------------------------------------
 
       def evict_oldest
         _id, turn = @turns.shift
         return unless turn
 
-        turn.tools.each { |s| s.finish(end_time: nil) }
+        turn.tools.each { |t| t.span.finish(end_time: nil) }
         turn.span.set_attribute("insika.status", "abandoned")
         turn.span.finish(end_time: nil)
+        count_turn(turn, nil, "abandoned", nil)
       end
 
       # OTEL doesn't accept an attribute with a nil value — drops the absent keys.
       def attrs(hash) = hash.reject { |_, v| v.nil? }
+
+      # Seconds between two reconstructed timestamps; nil when either is unknown
+      # (a histogram must not record a made-up duration).
+      def elapsed(from, to)
+        return nil if from.nil? || to.nil?
+
+        [to - from, 0.0].max.to_f
+      end
 
       # ISO8601 (meta.at) -> Time; nil-safe (the span uses "now" when nil).
       def ts(at)

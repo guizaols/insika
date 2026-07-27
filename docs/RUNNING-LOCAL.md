@@ -108,11 +108,13 @@ and the `Insika.agent { … }` DSL.
 
 ## Observability (OpenTelemetry, opt-in)
 
-OpenTelemetry is **off by default** (the gem does not even load). To turn it on,
-see traces in a local collector (a one-line Jaeger), and the production config, see
-[OBSERVABILITY.md](OBSERVABILITY.md). In short: `INSIKA_OTEL=1` +
-`OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a `insika.turn` trace with
-`insika.tool` / `insika.data_tool` children.
+OpenTelemetry is **off by default** (the gems do not even load). To turn it on, see
+traces in a local collector (a one-line Jaeger), and read the attribute convention
+and the production config, see [OBSERVABILITY.md](OBSERVABILITY.md). In short:
+`INSIKA_OTEL=1` + `OTEL_EXPORTER_OTLP_ENDPOINT=…`, and every turn becomes a
+`insika.turn` trace with `insika.tool` / `insika.data_tool` children, plus counters
+and histograms (`insika.turns`, `insika.turn.duration`, `insika.tokens`,
+`insika.cost`) you can chart without aggregating spans.
 
 ## See also
 

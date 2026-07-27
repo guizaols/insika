@@ -33,6 +33,11 @@ gem "erubi", "~> 1.13"     # ERB with automatic escaping (XSS-safe) for the stud
 # boundary (not covered by unit, like the Executor's create_chat).
 gem "opentelemetry-sdk", "~> 1.10"          # insika-server only
 gem "opentelemetry-exporter-otlp", "~> 0.31" # OTLP exporter (SigNoz/Tempo/etc.)
+# Metrics beside traces (item 16 / P4): counters/histograms so a backend charts
+# volume/latency/tokens/cost without aggregating spans. Still 0.x upstream, so the
+# require is guarded — absent from the bundle degrades to traces only.
+gem "opentelemetry-metrics-sdk", "~> 0.15"
+gem "opentelemetry-exporter-otlp-metrics", "~> 0.10"
 
 group :development, :test do
   gem "rspec"
