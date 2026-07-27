@@ -22,6 +22,7 @@ export default class extends Controller {
   connect() {
     this.current = null      // streaming assistant bubble's .content node (or null)
     this.currentText = ""    // accumulated Markdown source for that bubble
+    this.thinkingPre = null  // open thinking card's <pre> node (or null)
     this.raf = null
     this.backoff = 1000      // reconnect delay, doubles per attempt up to RECONNECT_MAX
     this.reconnectTimer = null
@@ -183,6 +184,31 @@ export default class extends Controller {
     this.currentText = ""
   }
 
+  // The provider's reasoning (:thinking deltas). ONE collapsed card per run of
+  // consecutive deltas — a card per delta would be unreadable — closed by default:
+  // it's the deliberation, not the answer. The card is the whole point of the event
+  // (it never reaches the customer through /v1/responses), so the operator can open
+  // it and see why the turn searched what it searched.
+  appendThinking(delta) {
+    if (!this.thinkingPre) {
+      this.finishBubble()
+      const card = this.el("details", "toolcard thinking")
+      const s = document.createElement("summary")
+      s.appendChild(this.el("span", "arrow", "…"))
+      s.appendChild(this.el("strong", null, "thinking"))
+      card.appendChild(s)
+      this.thinkingPre = this.el("pre")
+      card.appendChild(this.thinkingPre)
+      this.push(card)
+    }
+    this.thinkingPre.textContent += delta
+  }
+
+  // Detach the thinking cursor so the next run of deltas opens a fresh card.
+  finishThinking() {
+    this.thinkingPre = null
+  }
+
   // Compact "1.2k in · 340 out · model" chip from the terminal event's usage
   // (§11 A5). usage is the shape produced by Executor#usage_of: input_tokens,
   // output_tokens, optional cached_tokens, model. Renders nothing when the
@@ -206,8 +232,12 @@ export default class extends Controller {
 
   render(ev) {
     if (IGNORED.has(ev.type)) return
+    if (ev.type !== "thinking") this.finishThinking()
 
     switch (ev.type) {
+      case "thinking":
+        this.appendThinking(ev.delta || "")
+        break
       case "content": {
         if (!this.current) {
           const msg = this.el("div", "msg assistant")

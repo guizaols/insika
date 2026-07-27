@@ -51,7 +51,10 @@ flowchart LR
   provider, one process runs many concurrent turns on a fiber scheduler instead of
   pinning a thread per call.
 - **Event Stream** is in-process pub/sub. Every event carries `task_id` and a
-  monotonic `seq`, so one stream multiplexes many turns and replays reliably.
+  monotonic `seq`, so one stream multiplexes many turns and replays reliably. Not
+  every event is for the end user: the provider's reasoning rides it as `:thinking`
+  for the Studio and the trace, and the `/v1/responses` edge deliberately drops it —
+  deliberation is observability, not the answer.
 
 ## A turn, end to end
 
