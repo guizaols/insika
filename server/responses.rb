@@ -68,6 +68,14 @@ module Insika
           failed("task cancelled") + done
         when :error
           failed(event.data[:message] || "error") + done
+        when :thinking
+          # The provider's reasoning is DELIBERATELY not translated. OpenAI Responses
+          # does have a reasoning frame, but this consumer streams every text delta
+          # straight to the end customer (achei-b2b's OpenclawDispatcher accumulates
+          # the deltas into the WhatsApp reply), so anything mapped here would be read
+          # out loud. The thinking stays internal: /v1/events + the Studio + the trace.
+          # Explicit (not a fall-through) to keep the closed catalog honest.
+          nil
         when :guardrail_blocked, :guardrail_flagged
           # RFC-0009: audit events with no OpenAI Responses counterpart. On a BLOCK
           # the safe reply still reaches the consumer through the normal :content

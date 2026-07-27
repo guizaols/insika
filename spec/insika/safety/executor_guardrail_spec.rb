@@ -112,6 +112,26 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
       completed = event_stream.events.find { |e| e.type == :task_completed }
       expect(completed.data[:content]).to eq("aqui está: [REDACTED:cpf] pronto")
     end
+
+    it "reasoning bypasses the filter WITHOUT polluting it — the answer is still redacted" do
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = proc do
+        emit_chunk("aqui está: 123.")
+        emit_thinking("o cpf dele é 999.888.777-66") # interleaved mid-value
+        emit_chunk("456.789-01 pronto")
+      end
+      run_turn(executor, make_task("qual meu cpf cadastrado?"), fake_chat: chat)
+
+      # The filter buffers a partial CPF across chunks; a reasoning chunk pushed
+      # through it would flush the tail and break the match.
+      completed = event_stream.events.find { |e| e.type == :task_completed }
+      expect(completed.data[:content]).to eq("aqui está: [REDACTED:cpf] pronto")
+      # The thinking travels RAW: it is internal (no /v1/responses frame), and the
+      # redactor's job is the customer-facing answer.
+      thinking = event_stream.events.select { |e| e.type == :thinking }.map { |e| e.data[:delta] }
+      expect(thinking).to eq(["o cpf dele é 999.888.777-66"])
+    end
   end
 
   describe "output validator — post-turn flag (§3.2)" do
