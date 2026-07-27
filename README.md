@@ -1,5 +1,14 @@
 # Insika
 
+**Your agent is the idea. Insika is what holds it up in production.**
+
+*Insika* is Zulu for the pillar that carries a structure — the part nobody admires and
+everything rests on. A turn that survives a crash, tools that cannot wander off, limits
+that hold under load, and an API your clients already speak. Build the agent; the
+scaffolding is already here.
+
+---
+
 A Ruby runtime for **LLM agents in production**: a durable, resumable turn pipeline
 behind an **OpenAI-Responses-compatible** HTTP API (`POST /v1/responses`), with tools,
 skills, cross-session memory, per-agent policy, content-safety guardrails, and a web
