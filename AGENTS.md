@@ -43,7 +43,7 @@ the surrounding style instead of running a formatter.
 | `config/` | `deployment.rb`, `wiring.rb` — the real deployment's wiring |
 | `plugins/`, `examples/`, `scripts/`, `evals/` | plugins, runnable examples, operator scripts, evaluation harness |
 | `spec/` | mirrors `lib/`; 170+ spec files |
-| `docs/` | public docs, also served raw at `GET /docs/<name>.md` |
+| `docs/` | public docs — one source read three ways: GitHub, `GET /docs/<name>.md`, and the Jekyll site rooted here (`docs/_config.yml`) |
 
 ## Rules that bite
 
@@ -75,6 +75,10 @@ the surrounding style instead of running a formatter.
   reader of the public repo can see them.
 - `studio/assets/dist/` **is** committed so `serve` runs without Node. If you touch
   `assets/src/`, rebuild and commit the bundle.
+- A `docs/*.md` file is simultaneously a Jekyll page, so it starts with a frontmatter
+  block. `Insika::Onboarding#doc` strips it — keep that true. Links between docs must
+  stay relative; a link to anything outside `docs/` needs an absolute GitHub URL.
+  `docs/` has its own `Gemfile` (Jekyll only); the root `bundle install` never sees it.
 - The `Dockerfile` pins `INSIKA_DB=/data/harness.db` — that filename is real data on a
   live volume. Renaming it boots an empty database. Rename the variable spelling if you
   must; leave the path alone.

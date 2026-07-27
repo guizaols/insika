@@ -1,3 +1,10 @@
+---
+title: Load test
+parent: Operate & prove it
+nav_order: 3
+permalink: /loadtest/
+---
+
 # LOADTEST — Insika
 
 How to load-test the engine, how to compare it **apples-to-apples against another

@@ -1,3 +1,10 @@
+---
+title: Architecture
+parent: Understand the idea
+nav_order: 2
+permalink: /architecture/
+---
+
 # Architecture
 
 This is the engineering reference — how a turn actually runs, why the pieces are
@@ -26,7 +33,7 @@ A request enters as a Command, becomes a Task running on its own fiber, and stre
 its progress out through the Event Stream as it moves down the pipeline.
 
 ```mermaid
-flowchart LR
+flowchart TD
   client([HTTP client]) -->|"POST /v1/responses"| bus[Command Bus]
   bus -->|turn command| task[Task actor<br/>Async fiber]
   task --> cb[Context Builder]
@@ -61,31 +68,27 @@ flowchart LR
 The Executor runs a fixed sequence of stages. Each stage boundary drains the
 mailbox, so a cancel or pause is honored at a safe point — never mid-write.
 
-```mermaid
-sequenceDiagram
-  participant C as Client
-  participant B as Command Bus
-  participant X as Executor
-  participant CB as Context Builder
-  participant P as Policy Engine
-  participant M as Middleware
-  participant L as RubyLLM/provider
-  participant S as Stores
+The numbers are the engine's own — the same stage numbers `executor.rb` uses. The
+sequence has no stage 7; the numbering is kept as the code has it rather than
+renumbered here.
 
-  C->>B: send_message(agent, session, input)
-  B->>X: create Task (fiber), return task_id
-  X->>CB: build context (providers, budget, pinned)
-  CB-->>X: context package
-  X->>S: initial checkpoint (start of turn)
-  X->>P: decide (allowed tools/skills, approval tags)
-  P-->>X: resolution
-  Note over X,M: Middleware wraps the rest:<br/>edge limit → input guardrail
-  M->>X: proceed (or graceful halt)
-  X->>L: assemble chat + ask (stream)
-  L-->>C: content deltas (SSE, via Event Stream)
-  L->>X: tool call(s) → tool-loop
-  X->>S: persist (checkpoint → session → task)
-  X-->>C: task_completed (usage)
+```mermaid
+flowchart TD
+  s1["1 · Command Bus<br/>send_message → Task on a fiber, task_id returned"]
+  s2["2 · Context Builder<br/>providers, budget, pinned"]
+  ck["initial checkpoint<br/>the state at the START of the turn"]
+  s3["3 · Policy Engine<br/>allowed tools/skills, approval tags"]
+  s1 --> s2 --> ck --> s3 --> mw
+
+  subgraph mw ["4 · Middleware wraps everything below — edge limit → input guardrail"]
+    s5["5 · assemble chat"]
+    s6["6 · agent interaction<br/>chat.ask + tool-loop"]
+    s8["8 · Persistence<br/>checkpoint → session → task"]
+    s9["9 · Response<br/>task_completed + usage"]
+    s5 --> s6 --> s8 --> s9
+  end
+
+  s9 --> hook["after-task hook<br/>output guardrail"]
 ```
 
 The order is not arbitrary:
@@ -138,9 +141,9 @@ recorded in the checkpoint so a resume does not re-run them.
 Tools become data in the store through two runtime paths, both hot (no restart):
 
 ```mermaid
-flowchart LR
+flowchart TD
   subgraph manifest [Manifest path]
-    m["POST /v1/tools/manifest"] --> sub["substitute {{env.*}} / {{secret.*}}"]
+    m["POST /v1/tools/manifest"] --> sub["substitute<br/>{{env.*}} / {{secret.*}}"]
     sub --> val1[validate each tool]
   end
   subgraph mcp [MCP path]
@@ -166,21 +169,16 @@ at startup the recovery scan finds tasks that were mid-flight and resumes each f
 its last valid checkpoint — the *same* code path a `resume_task` command uses.
 
 ```mermaid
-stateDiagram-v2
-  [*] --> running: send_message
-  running --> checkpointed: turn persisted
-  checkpointed --> running: next turn
-  running --> waiting: approval required
-  waiting --> running: approve_action
-  running --> crashed: process killed
-  crashed --> running: boot recovery / resume_task
-  note right of crashed
-    resume replays from the last
-    checkpoint; completed
-    side-effects are skipped
-  end note
-  checkpointed --> completed: task_completed
-  completed --> [*]
+flowchart LR
+  start(( )) -->|send_message| running[running]
+  running -->|turn persisted| checkpointed[checkpointed]
+  checkpointed -->|next turn| running
+  running -->|approval required| waiting[waiting]
+  waiting -->|approve_action| running
+  running -->|process killed| crashed[crashed]
+  crashed -->|boot recovery / resume_task| running
+  checkpointed -->|task_completed| completed[completed]
+  completed --> done(((  )))
 ```
 
 Resume always replays from the *start of the last checkpointed turn*. Tool calls
@@ -198,34 +196,31 @@ differs.
 
 ```mermaid
 flowchart TD
-  subgraph phase1 [spine — infra, identical across roots]
-    backend["backend<br/>SQLite (INSIKA_DB) or Memory"]
-    backend --> dstores[domain stores<br/>session · task · checkpoint · memory · …]
-    reg[registries<br/>tools · workflows · policies + builtins]
+  root1[minimal wiring] --> phase1
+  root2[server deployment] --> phase1
+
+  subgraph phase1 [Phase 1 · spine — infra, identical across roots]
+    backend["backend<br/>SQLite (INSIKA_DB) or Memory"] --> dstores[domain stores<br/>session · task · checkpoint · memory]
+    reg[registries<br/>tools · workflows · policies]
     caps[capability registry]
     es2[event stream]
     hk[hooks]
   end
-  subgraph phase2 [build — assembled on the spine]
-    cbz[Context Builder]
-    pez[Policy Engine]
-    mwz["Middleware<br/>(edge limiter → input guardrail)"]
-    exz[Executor]
-    busz[Command Bus<br/>6 core commands]
-  end
-  phase1 --> phase2
-  dstores --> exz
-  reg --> pez
-  es2 --> exz
-  hk --> exz
-  cbz --> exz
-  pez --> exz
-  mwz --> exz
-  exz --> busz
 
-  root1[minimal wiring] --> phase1
-  root2[server deployment] --> phase1
+  phase1 ==>|"Graph.build(spine:)"| phase2
+
+  subgraph phase2 [Phase 2 · build — assembled on the spine]
+    cbz[Context Builder] --> exz[Executor]
+    pez[Policy Engine] --> exz
+    mwz["Middleware<br/>edge limiter → input guardrail"] --> exz
+    exz --> busz[Command Bus<br/>6 core commands]
+  end
 ```
+
+Everything in phase 1 is passed into phase 2: the domain stores, registries,
+capability registry, event stream and hooks are all constructor arguments of the
+Executor and the Command Bus (`spine.*` throughout `Graph.build`). The arrow is one
+call, not one wire.
 
 `backend_from_env` picks the backend: `INSIKA_DB` set → durable SQLite (the
 prerequisite for recovery); unset → ephemeral in-memory (dev/demo). Registering the

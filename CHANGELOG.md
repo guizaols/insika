@@ -47,3 +47,11 @@ Everything below is what the first release will contain.
 - **Operations** — SQLite (or in-memory) stores, Falcon on the Async fiber scheduler,
   strict configuration validation with a `doctor` check, and a provider-free benchmark
   that measures engine overhead alone.
+- **Documentation site** — the `docs/*.md` files are also a Jekyll (Just the Docs) site
+  published at <https://guizaols.github.io/insika/>. Same files, no copy: what GitHub
+  renders, what `GET /docs/<name>.md` serves, and what the site publishes are one source.
+
+### Changed
+
+- `GET /docs/<name>.md` strips the docs-site frontmatter, so the raw markdown a coding
+  agent receives is the prose only.

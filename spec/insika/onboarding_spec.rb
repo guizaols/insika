@@ -117,6 +117,23 @@ RSpec.describe Insika::Onboarding do
       expect(build.doc("secret")).to be_nil
       expect(build.doc("../README")).to be_nil
     end
+
+    # P7: the docs/*.md files ARE the Jekyll site's pages, so they carry a frontmatter
+    # block. The raw-markdown API must not grow sidebar metadata because of that.
+    context "when a doc carries the docs-site frontmatter" do
+      before do
+        File.write(@readme, "---\ntitle: Why Insika\nparent: Understand\nnav_order: 1\n---\n\n# Insika\n\nhello docs\n")
+      end
+
+      it "strips it, serving the prose exactly as before the site existed" do
+        expect(build.doc("readme")).to eq("# Insika\n\nhello docs\n")
+      end
+
+      it "takes the index title from the frontmatter, not the heading" do
+        index = build.docs_index(base_url: "http://x")
+        expect(index).to eq([{ name: "readme", title: "Why Insika", url: "http://x/docs/readme.md" }])
+      end
+    end
   end
 
   describe ".standard" do
@@ -144,9 +161,12 @@ RSpec.describe Insika::Onboarding do
       expect(md).to include("https://insika.example/models.json")
       expect(md).not_to include("{{") # no un-substituted placeholder leaks
 
-      # all shipped public docs resolve to real files
+      # all shipped public docs resolve to real files, and none of them serves the
+      # docs-site frontmatter — every one starts at its own `# Heading`.
       described_class::PUBLIC_DOCS.each_key do |slug|
-        expect(onboarding.doc(slug)).to be_a(String), "missing public doc: #{slug}"
+        markdown = onboarding.doc(slug)
+        expect(markdown).to be_a(String), "missing public doc: #{slug}"
+        expect(markdown).to start_with("# "), "frontmatter leaked into /docs/#{slug}.md"
       end
     end
   end
