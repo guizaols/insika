@@ -41,7 +41,7 @@ the surrounding style instead of running a formatter.
 | `server/` | HTTP/SSE transport only (`/v1`, `/a2a`); no business logic |
 | `studio/` | the control UI (Roda + ERB, Stimulus/Turbo); `assets/dist/` is **checked in** |
 | `config/` | `deployment.rb`, `wiring.rb` — the real deployment's wiring |
-| `plugins/`, `examples/`, `scripts/`, `evals/` | plugins, runnable examples, operator scripts, evaluation harness |
+| `plugins/`, `examples/`, `scripts/`, `evals/` | plugins (manifest + entry — see `docs/PLUGINS.md`), runnable examples, operator scripts, evaluation harness |
 | `spec/` | mirrors `lib/`; 170+ spec files |
 | `docs/` | public docs — one source read three ways: GitHub, `GET /docs/<name>.md`, and the Jekyll site rooted here (`docs/_config.yml`) |
 

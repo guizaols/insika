@@ -241,11 +241,13 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Stores | `lib/insika/stores/*`, `lib/insika/*_store.rb` |
 | Recovery | `lib/insika/recovery.rb` |
 | Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
+| Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | HTTP/SSE surface | `server/*` |
 
 ## See also
 
 - [Agents](AGENTS.md) · [Tools](TOOLS.md) · [Skills](SKILLS.md) ·
-  [Context](CONTEXT.md) · [Security](SECURITY.md) — the capability guides.
+  [Context](CONTEXT.md) · [Plugins](PLUGINS.md) · [Security](SECURITY.md) — the
+  capability guides.
 - [Deploy](DEPLOY.md) — running the engine durably.
 - [Benchmark](BENCHMARK.md) — the per-turn engine overhead, reproducible.
