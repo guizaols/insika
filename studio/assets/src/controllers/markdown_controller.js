@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
-import { renderMarkdown } from "../markdown"
+import { renderMarkdown } from "../markdown.js"
 
 // markdown (§11 A1) — renders a server-emitted plain-text bubble as Markdown once
 // on connect. The source is the element's textContent (ERB already escaped it into
