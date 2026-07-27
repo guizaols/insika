@@ -1,3 +1,10 @@
+---
+title: Context
+parent: Build an agent
+nav_order: 4
+permalink: /context/
+---
+
 # Context
 
 Every turn, the **Context Builder** assembles the model's prompt from a fixed set
@@ -57,7 +64,7 @@ later turns — **including turns in a different session**. Memory is scoped per
 agent. This is distinct from *session history*, which is the transcript of one
 conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
-[`examples/memory/`](../examples/memory/) for a runnable cross-session example.
+[`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
 
 ## The provider prefix cache
 

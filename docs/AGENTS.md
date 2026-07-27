@@ -1,3 +1,10 @@
+---
+title: Agents
+parent: Build an agent
+nav_order: 1
+permalink: /agents/
+---
+
 # Agents
 
 An **agent** is the unit you configure and address. It is an immutable
@@ -7,7 +14,7 @@ is **data**: created and edited at runtime through the DSL, the API, or the
 Studio, and every edit is **hot** — no restart, no redeploy. An in-flight turn
 keeps the profile it captured when it started; the next turn sees the new one.
 
-> Smallest possible agent — see [`examples/hello-agent/`](../examples/hello-agent/):
+> Smallest possible agent — see [`examples/hello-agent/`](https://github.com/guizaols/insika/tree/main/examples/hello-agent/):
 >
 > ```ruby
 > agent = Insika.agent("assistant") do
@@ -102,7 +109,7 @@ matters, and editable hot.
 
 `tools_allow` / `tools_deny` / `tools_allow_groups` decide which tools enter the
 turn's tool-loop, enforced by the tool-allowlist policy. See [Tools](TOOLS.md)
-for how tools are defined and registered, and [`examples/data-tool/`](../examples/data-tool/).
+for how tools are defined and registered, and [`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/).
 
 ### Layer 2: Policies and approvals
 
@@ -118,7 +125,7 @@ See [Security](SECURITY.md#human-approval).
 `guardrails` configures input/output content safety per agent — **opt-in**, so an
 agent that says nothing gets a conservative default (deterministic detectors on,
 LLM moderator off). See [Security](SECURITY.md#guardrails) and
-[`examples/guardrails/`](../examples/guardrails/).
+[`examples/guardrails/`](https://github.com/guizaols/insika/tree/main/examples/guardrails/).
 
 ### Layer 4: Edge limits (flood and spend control)
 
@@ -159,7 +166,7 @@ An agent can delegate to **subagents**: named child agents it may invoke as a
 tool, fanning work out and collecting results. Subagents are **opt-in**
 (`subagents` defaults to none) and the graph is validated for cycles and depth at
 create time. This is off by default because it multiplies model calls — enable it
-deliberately. See [`examples/`](../examples/) for the fan-out pattern.
+deliberately. See [`examples/`](https://github.com/guizaols/insika/tree/main/examples/) for the fan-out pattern.
 
 ## Where agent data lives
 
@@ -177,4 +184,4 @@ a running agent.
 - [Context](CONTEXT.md) — what fills a turn's prompt, and memory.
 - [Security](SECURITY.md) — guardrails, sandbox, approvals, edge limits.
 - [Architecture](ARCHITECTURE.md) — how a turn actually runs.
-- [`examples/`](../examples/) — one runnable project per capability.
+- [`examples/`](https://github.com/guizaols/insika/tree/main/examples/) — one runnable project per capability.

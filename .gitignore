@@ -19,6 +19,12 @@ studio/node_modules/
 # Eval run artifacts (evals/run.rb --out); keep the dir, not the outputs
 evals/reports/*.json
 
+# Docs site (docs/ is the Jekyll site root). `docs/llms.txt` is a build-time COPY of
+# the repo-root llms.txt, staged by .github/workflows/pages.yml — never commit it.
+docs/_site/
+docs/.jekyll-cache/
+docs/llms.txt
+
 # Internal working material — kept locally, NOT tracked/shipped in the OSS repo
 # (RFCs, techspec, handoff bundle, planning docs, pilot benchmarks/scripts).
 docs/README.md

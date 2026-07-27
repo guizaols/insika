@@ -1,0 +1,109 @@
+# Jekyll configuration for the public docs site (Just the Docs theme).
+#
+# The site root IS this `docs/` directory, so every page on the site is the SAME
+# markdown file that a live instance serves at `GET /docs/<slug>.md` and that
+# GitHub renders in the repo. One source, no copy to drift. Each doc carries a
+# small Jekyll frontmatter block for the sidebar; `Insika::Onboarding#doc` strips
+# it, so the raw-markdown API is unchanged.
+#
+# Built and deployed by .github/workflows/pages.yml. Local preview:
+#   cd docs && bundle install && bundle exec jekyll serve --livereload
+title: Insika
+description: >-
+  A Ruby runtime for LLM agents in production — a durable, resumable turn pipeline
+  behind an OpenAI-Responses-compatible HTTP API.
+url: https://guizaols.github.io
+baseurl: /insika
+repository: guizaols/insika
+lang: en-US
+
+theme: just-the-docs
+
+plugins:
+  # `[Tools](TOOLS.md)` must keep working in all three places it is read: GitHub,
+  # the raw-markdown API, and this site. This plugin rewrites the site copy.
+  - jekyll-relative-links
+  - jekyll-sitemap
+
+# Pages here write their own `# Heading`; the theme does not inject one.
+#
+# `render_with_liquid: false` is NOT optional: the docs describe Insika's own env
+# templating (`{{env.API_KEY}}`, `{{secret.*}}`, `{{ctx.*}}`), and Liquid — which runs
+# before kramdown, code fences included — evaluates those to the empty string and
+# silently publishes docs that lie. Page CONTENT therefore gets no Liquid; layouts and
+# includes (the theme) still do.
+#
+# The scope is `*.md` and not `""` on purpose: `""` also matches the theme's own
+# `assets/css/*.scss` pages, which need both the layout left alone and Liquid ON.
+defaults:
+  - scope:
+      path: "*.md"
+      type: "pages"
+    values:
+      layout: "default"
+      render_with_liquid: false
+
+# Just the Docs 0.12.0's own SCSS still uses `@import`, `darken()` and `map-get()`,
+# which Dart Sass deprecated. Nothing here is ours to fix and nothing breaks before
+# Dart Sass 3.0, so the noise is silenced by ID rather than left to bury real errors.
+# Drop these when the theme ships a `@use`-based release.
+sass:
+  quiet_deps: true
+  silence_deprecations:
+    - import
+    - global-builtin
+    - color-functions
+
+# docs/ARCHITECTURE.md draws the pipeline in Mermaid; without this key the theme
+# emits no Mermaid runtime at all and the ```mermaid fences render as plain code.
+# Loaded from jsDelivr, pinned — GitHub renders the same fences natively.
+mermaid:
+  version: "11.16.0"
+
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 2
+  preview_words_before: 3
+  preview_words_after: 3
+  tokenizer_separator: /[\s/]+/
+  rel_url: true
+  button: false
+
+heading_anchors: true
+back_to_top: true
+back_to_top_text: "Back to top"
+
+aux_links:
+  "GitHub": "https://github.com/guizaols/insika"
+aux_links_new_tab: true
+
+# Liquid is NOT evaluated inside config values, so the baseurl is spelled out here.
+# If `baseurl` above changes, change it here too.
+footer_content: >-
+  Insika is MIT-licensed. Reading this as an agent? <a href="/insika/llms.txt">llms.txt</a>
+  indexes these docs as raw markdown.
+
+# Everything that is NOT public docs. The internal material (FOLLOWUP, techspec,
+# internal/, the handoff bundle) is gitignored and therefore absent from a CI
+# checkout — it is listed anyway so a LOCAL preview can never publish it either.
+exclude:
+  # Jekyll's own defaults, restated because `exclude` replaces them.
+  - .sass-cache/
+  - .jekyll-cache/
+  - Gemfile
+  - Gemfile.lock
+  - node_modules/
+  - vendor/
+  # The start.md TEMPLATE: it carries {{BASE_URL}} placeholders that only a live
+  # instance substitutes, so it belongs to the engine, not to the site.
+  - onboarding/
+  # Internal, gitignored (see .gitignore).
+  - README.md
+  - FOLLOWUP.md
+  - TRANSLATION-TRACKER.md
+  - HANDOFF-TECHSPEC.md
+  - internal/
+  - techspec/
+  - harness_handoff/
+  - harness-handoff.zip
