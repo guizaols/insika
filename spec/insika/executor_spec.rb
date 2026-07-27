@@ -20,11 +20,25 @@ RSpec.describe Insika::Executor do
   let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
   let(:event_stream) { Insika::EventStream.new }
 
-  def create_task(id: "t")
+  def create_task(id: "t", meta: {})
     task_store.create(
-      command: { type: "send_message", payload: {}, meta: {} },
+      command: { type: "send_message", payload: {}, meta: meta },
       session_id: "s", id: id
     )
+  end
+
+  # Drives one spawn to completion and returns the collected events.
+  def collect_events(task, profile: nil)
+    collected = []
+    Sync do |parent|
+      sub = event_stream.subscribe(task_id: task.id)
+      consumer = parent.async { sub.each { |e| collected << e } }
+      executor.spawn(task, profile: profile)
+      live_actor(task.id)&.wait
+      sub.close
+      consumer.wait
+    end
+    collected
   end
 
   # Reference to the live actor (white-box introspection — acceptable in the skeleton).
@@ -52,6 +66,19 @@ RSpec.describe Insika::Executor do
       expect(started).not_to be_nil
       expect(started.meta[:seq]).to eq(1)
       expect(started.data[:command]).to eq("send_message")
+    end
+
+    # Item 16 / P4: the observability convention groups by the operator-set tenant,
+    # so :task_started must carry it — and must NOT invent a null when it is absent.
+    it ":task_started carries the command's tenant, and omits the key when unset" do
+      allow(executor).to receive(:run_pipeline)
+
+      with_tenant = collect_events(create_task(id: "t1", meta: { "tenant" => "loja-42" }))
+                    .find { |e| e.type == :task_started }
+      expect(with_tenant.data[:tenant]).to eq("loja-42")
+
+      without = collect_events(create_task(id: "t2")).find { |e| e.type == :task_started }
+      expect(without.data).not_to have_key(:tenant)
     end
   end
 

@@ -259,4 +259,4 @@ DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh 4 24
 - [RUNNING-LOCAL.md](RUNNING-LOCAL.md) — run the engine locally, single-process.
 - [Security](SECURITY.md) — tokens, egress, strict config.
 - [BENCHMARK.md](BENCHMARK.md) — the neutral, key-free engine benchmark.
-- [OBSERVABILITY.md](OBSERVABILITY.md) — OpenTelemetry tracing (opt-in).
+- [OBSERVABILITY.md](OBSERVABILITY.md) — OpenTelemetry traces + metrics (opt-in).

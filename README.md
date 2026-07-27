@@ -147,7 +147,7 @@ bundle exec rspec
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the engine, the turn pipeline, and diagrams.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — production deploy (Falcon, durable SQLite volume, tokens).
-- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry tracing (opt-in): turns → traces, local & production setup.
+- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — OpenTelemetry (opt-in): turns → traces and metrics, the attribute convention, dashboard recipes.
 - [docs/LOADTEST.md](docs/LOADTEST.md) — load-testing and data-topology.
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
 
