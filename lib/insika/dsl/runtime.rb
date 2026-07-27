@@ -15,28 +15,38 @@ module Insika
     class Runtime
       TERMINAL = %i[task_completed task_failed task_cancelled].freeze
 
-      # graph: the assembled Wiring::Graph::Result; pack: the imported Pack. Both
-      # read by the server boot and the specs.
-      attr_reader :graph, :pack
+      # graph: the assembled Wiring::Graph::Result; pack: the PRIMARY imported
+      # Pack; packs: every imported Pack (one per agent — a System has N, a
+      # Definition has one). All read by the server boot and the specs.
+      attr_reader :graph, :pack, :packs
 
+      # `definition` is a Definition (one agent) or a System (N agents). Both
+      # answer #pack/#id; a System also answers #packs. Duck-typed on purpose:
+      # the runtime does not care how many agents it hosts, only that each one
+      # arrives as an ordinary Pack.
       def initialize(definition)
         @definition = definition
-        @pack = definition.pack
+        @packs = (definition.respond_to?(:packs) ? Array(definition.packs) : [definition.pack]).freeze
+        @pack = @packs.first
         @graph = build_graph
         configure_llm
         seed_default_model
-        import_pack
+        import_packs
       end
 
-      # The imported profile, read back from the store (config-over-code round-trip).
-      def profile
-        @graph.profiles.fetch(@definition.id) ||
-          (raise Insika::Error, "agent '#{@definition.id}' was not imported")
+      # An imported profile, read back from the store (config-over-code
+      # round-trip). Defaults to the primary agent.
+      def profile(agent_id = nil)
+        id = (agent_id || @definition.id).to_s
+        @graph.profiles.fetch(id) ||
+          (raise Insika::Error, "agent '#{id}' was not imported")
       end
 
       # One turn, in-process → the assistant's text. session_id nil = stateless
       # one-shot; a value threads multi-turn memory (created on first use).
-      def chat(message, session_id: nil, timeout: nil)
+      # `agent:` targets one agent of a system (default: the primary).
+      def chat(message, session_id: nil, timeout: nil, agent: nil)
+        @turn_agent = (agent || @definition.id).to_s
         require "async"
         outcome = { text: nil, error: nil }
         Async do |task|
@@ -68,7 +78,7 @@ module Insika
       def dispatch_turn(message, session_id)
         @graph.bus.dispatch(Insika::Command.build(
                               :send_message,
-                              { agent: @definition.id, message: message, session_id: session_id },
+                              { agent: @turn_agent || @definition.id, message: message, session_id: session_id },
                               transport: :cli
                             ))
       end
@@ -203,15 +213,28 @@ module Insika
         (@definition.runtime_options[:provider] || @pack.config[:provider] || "deepseek").to_s
       end
 
+      # Every distinct provider the system uses, primary first. A fan-out system
+      # routinely mixes providers (one specialist on Anthropic, another on
+      # OpenAI), and configuring only the primary would leave the others without
+      # a key — a 401 at the first delegation, far from its cause.
+      def provider_names
+        ([provider_name] + @packs.filter_map { |p| Insika::Coercion.presence(p.config[:provider])&.to_s }).uniq
+      end
+
       def configure_llm
         return unless RubyLLM.respond_to?(:configure) # absent under the test stub
 
-        provider = provider_name
-        key = @definition.runtime_options[:api_key] || ENV["#{provider.upcase}_API_KEY"]
-        base = @definition.runtime_options[:api_base] || default_base_for(provider)
+        primary = provider_name
         RubyLLM.configure do |cfg|
-          apply_llm(cfg, "#{provider}_api_key", key)
-          apply_llm(cfg, "#{provider}_api_base", base)
+          provider_names.each do |provider|
+            # The explicit api_key/api_base belong to the PRIMARY provider; the
+            # others resolve from the conventional <PROVIDER>_API_KEY.
+            explicit = provider == primary
+            key = (explicit ? @definition.runtime_options[:api_key] : nil) || ENV["#{provider.upcase}_API_KEY"]
+            base = (explicit ? @definition.runtime_options[:api_base] : nil) || default_base_for(provider)
+            apply_llm(cfg, "#{provider}_api_key", key)
+            apply_llm(cfg, "#{provider}_api_base", base)
+          end
           cfg.request_timeout = 120
           cfg.max_retries = 2
         end
@@ -241,8 +264,13 @@ module Insika
         c[:settings_store].update("default_model" => model.to_s, "default_provider" => provider_name)
       end
 
-      def import_pack
-        Insika::PackImporter.new(bus: @graph.bus, profiles: @components[:profile_source]).import(@pack)
+      # One import per agent, in declaration order. Order is not significant for
+      # delegation: `SubagentGraph.validate!` treats an unknown child id as a
+      # LEAF, so a parent declared before its children imports cleanly and the
+      # reference resolves once they land.
+      def import_packs
+        importer = Insika::PackImporter.new(bus: @graph.bus, profiles: @components[:profile_source])
+        @packs.each { |pack| importer.import(pack) }
       end
     end
   end

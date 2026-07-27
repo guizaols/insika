@@ -64,12 +64,15 @@ module Insika
       end
 
       def build_onboarding
-        config = @rt.pack.config
+        configs = @rt.packs.map(&:config)
         Insika::Onboarding.standard(
           root: File.expand_path("../../..", __dir__),
           settings_store: @rt.component(:settings_store),
           provider_store: @rt.component(:provider_store),
-          agents: -> { [{ id: config[:id], model: config[:model], provider: config[:provider] }] }
+          # EVERY agent this process serves — each id IS a `model` on
+          # /v1/responses, so a coding agent reading models.json sees the whole
+          # system, not just the first one.
+          agents: -> { configs.map { |c| { id: c[:id], model: c[:model], provider: c[:provider] } } }
         )
       end
 
@@ -96,10 +99,12 @@ module Insika
 
       def banner(telemetry = nil)
         base = "http://#{@host}:#{@port}"
-        agent = @rt.pack.config[:id]
-        puts "\e[1mInsika — serving agent \"#{agent}\"\e[0m"
+        ids = @rt.packs.map { |p| p.config[:id].to_s }
+        headline = ids.one? ? "agent \"#{ids.first}\"" : "#{ids.size} agents: #{ids.map(&:inspect).join(', ')}"
+        models = ids.one? ? "model: \"#{ids.first}\"" : "model: one of #{ids.map(&:inspect).join(', ')}"
+        puts "\e[1mInsika — serving #{headline}\e[0m"
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
-        puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", model: \"#{agent}\")"
+        puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", #{models})"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry

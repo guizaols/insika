@@ -166,7 +166,32 @@ An agent can delegate to **subagents**: named child agents it may invoke as a
 tool, fanning work out and collecting results. Subagents are **opt-in**
 (`subagents` defaults to none) and the graph is validated for cycles and depth at
 create time. This is off by default because it multiplies model calls — enable it
-deliberately. See [`examples/`](https://github.com/guizaols/insika/tree/main/examples/) for the fan-out pattern.
+deliberately.
+
+Delegation only means something when the children are resolvable in the same
+graph, which is what `Insika.system` is for — several agents, one runtime:
+
+```ruby
+system = Insika.system do
+  agent("security")    { instructions "Review code for security issues." }
+  agent("performance") { instructions "Review code for performance issues." }
+
+  agent "reviewer" do
+    instructions "Delegate to the specialists, then synthesize their reports."
+    subagents "security", "performance"
+  end
+end
+
+system.reply("reviewer", code)   # one turn; the parent fans out and synthesizes
+system.serve                     # all three on /studio + /v1 (each id is a `model`)
+```
+
+The parent gets two system tools: `spawn_subagent` (one child) and
+`spawn_subagents` (**N children in parallel**, one combined result — wall-clock
+is the slowest child, not the sum, capped by `INSIKA_SUBAGENT_FANOUT_CAP`,
+default 8). A child inherits the *environment* (model, thinking) as a default and
+**never** inherits capability: its tools, skills and own subagents come from its
+own profile.
 
 ## Where agent data lives
 

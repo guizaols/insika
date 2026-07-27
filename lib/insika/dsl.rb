@@ -28,6 +28,49 @@ module Insika
       Builder.new(id).build(&block)
     end
 
+    # Insika.system { agent("a") { … }; agent("b") { … } } → System.
+    def system(&block)
+      SystemBuilder.new.build(&block)
+    end
+
+    # Collects several agents into ONE runtime. A single agent is a Definition;
+    # more than one needs a container, because delegation (`subagents`) and any
+    # multi-agent pattern only mean something when the children live in the same
+    # graph. It adds no new engine path: each agent is still its own Pack,
+    # imported through the standard PackImporter.
+    class SystemBuilder
+      def initialize
+        @definitions = []
+        @runtime = {}
+      end
+
+      def build(&block)
+        instance_eval(&block) if block
+        raise ArgumentError, "Insika.system needs at least one agent" if @definitions.empty?
+
+        System.new(definitions: @definitions, runtime: @runtime)
+      end
+
+      # Declares one agent — the SAME block the standalone `Insika.agent` takes.
+      # Returns its Definition, so a script can keep a handle if it wants one.
+      def agent(id, &block)
+        definition = Builder.new(id).build(&block)
+        if @definitions.any? { |d| d.id == definition.id }
+          raise ArgumentError, "duplicate agent id in system: #{definition.id}"
+        end
+
+        @definitions << definition
+        definition
+      end
+
+      # System-wide runtime knobs (NOT part of any pack): they configure the LLM
+      # clients for every agent. A per-agent `provider` still wins for that agent;
+      # this is the default and the place to put a shared key.
+      def provider(name) = @runtime[:provider] = name.to_s
+      def api_key(value) = @runtime[:api_key] = value.to_s
+      def api_base(value) = @runtime[:api_base] = value.to_s
+    end
+
     # Collects the declarations and emits a Insika::Pack. Declarations map 1:1 to
     # the pack manifest (AgentProfile.build attrs) + the pack's files/skills/tools —
     # so what you write is exactly the data the engine stores.
@@ -98,6 +141,15 @@ module Insika
         n
       end
 
+      # --- delegation ------------------------------------------------------
+      # subagents "security", "performance" → the child agents this one MAY
+      # spawn (RFC-0010). CAPACITY field: opt-in, never inherited, and the ids
+      # must be agents of the same system (`Insika.system { … }`) or already in
+      # the store. Present ⇒ the engine wires `spawn_subagent`/`spawn_subagents`.
+      def subagents(*ids)
+        @config[:subagents] = ids.flatten.map(&:to_s)
+      end
+
       # --- knobs -----------------------------------------------------------
       def memory(on = true) = @config[:memory] = on
 
@@ -166,6 +218,13 @@ module Insika
   def agent(id, &block)
     DSL.agent(id, &block)
   end
+
+  # Several agents in one runtime — the shape every multi-agent pattern needs
+  # (delegation, fan-out/fan-in, routing). Returns a Insika::DSL::System.
+  def system(&block)
+    DSL.system(&block)
+  end
 end
 
 require_relative "dsl/definition"
+require_relative "dsl/system"
