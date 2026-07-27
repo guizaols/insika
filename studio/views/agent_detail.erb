@@ -220,7 +220,7 @@
           <li>
             <span class="k mono"><%= f.key %></span>
             <span class="v"><%= f.value %></span>
-            <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/forget">
+            <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/forget" data-turbo-confirm="Forget &quot;<%= f.key %>&quot;? The agent loses this fact from the next turn on.">
               <%== csrf_tag %>
               <input type="hidden" name="key" value="<%= f.key %>">
               <button type="submit" class="ghost danger" data-turbo-submits-with="Forgetting…">Forget</button>

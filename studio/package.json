@@ -7,7 +7,8 @@
     "build:css": "tailwindcss -i assets/src/application.css -o assets/dist/application.css --minify",
     "build:js": "esbuild assets/src/application.js --bundle --format=esm --minify --target=es2020 --outfile=assets/dist/application.js",
     "build": "npm run build:css && npm run build:js",
-    "watch": "npm run build:css -- --watch & npm run build:js -- --watch"
+    "watch": "npm run build:css -- --watch & npm run build:js -- --watch",
+    "test": "node --test 'test/*.test.mjs'"
   },
   "dependencies": {
     "@codemirror/commands": "^6.6.0",
