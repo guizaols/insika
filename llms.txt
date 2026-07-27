@@ -1,0 +1,50 @@
+# Insika
+
+> Insika is a Ruby runtime for LLM agents in production: a durable, resumable turn
+> pipeline behind an OpenAI-Responses-compatible HTTP API (`POST /v1/responses`), with
+> tools, skills, cross-session memory, per-agent policy, content-safety guardrails, and a
+> web control UI. Agents are data — created and edited at runtime, no redeploy.
+
+Insika is the operational layer around a model call, not another way to call a model. It
+builds on [RubyLLM](https://rubyllm.com) for the chat/tool primitives and adds the parts
+production needs: checkpointing, policy, safety, limits, observability and a drop-in API.
+Engine overhead is ~0.4 ms p50 per turn.
+
+Every link below is raw markdown. A running instance serves the same docs at
+`GET /docs/<name>.md` (index at `GET /docs`), its model catalog at `GET /models.json`, and
+an imperative build-my-first-agent prompt at `GET /start.md`.
+
+## Start here
+
+- [README](https://raw.githubusercontent.com/guizaols/insika/main/README.md): what Insika is, the one-file first agent, and the router to everything else.
+- [Why Insika](https://raw.githubusercontent.com/guizaols/insika/main/docs/WHY.md): why a runtime rather than a DIY loop, an assembled framework, or a hosted gateway.
+- [Running locally](https://raw.githubusercontent.com/guizaols/insika/main/docs/RUNNING-LOCAL.md): boot the engine, the control UI, pointing a Responses client at it, wiring tools to your own backend.
+- [Onboarding prompt](https://raw.githubusercontent.com/guizaols/insika/main/docs/onboarding/start.md): the skill-structured prompt a coding agent follows to build a first agent (served live at `/start.md`).
+
+## Core concepts
+
+- [Agents](https://raw.githubusercontent.com/guizaols/insika/main/docs/AGENTS.md): the AgentProfile, its five access layers, and creating or editing agents at runtime via UI, pack import, or `POST /v1/agents`.
+- [Tools](https://raw.githubusercontent.com/guizaols/insika/main/docs/TOOLS.md): code tools, data-defined tools, MCP import, manifests, and egress troubleshooting.
+- [Skills](https://raw.githubusercontent.com/guizaols/insika/main/docs/SKILLS.md): the SKILL.md format and progressive, on-demand loading.
+- [Context](https://raw.githubusercontent.com/guizaols/insika/main/docs/CONTEXT.md): what fills a turn's prompt, the token budget and eviction, cross-session memory.
+- [Architecture](https://raw.githubusercontent.com/guizaols/insika/main/docs/ARCHITECTURE.md): the turn pipeline, the tool-loop, checkpoint recovery, the fiber concurrency model, composition roots.
+
+## Operate in production
+
+- [Security](https://raw.githubusercontent.com/guizaols/insika/main/docs/SECURITY.md): the security features — content-safety guardrails, egress guard, approvals, edge limits, secret handling.
+- [Sandbox](https://raw.githubusercontent.com/guizaols/insika/main/docs/SANDBOX.md): the confined-execution primitive for untrusted tool code.
+- [Deploy](https://raw.githubusercontent.com/guizaols/insika/main/docs/DEPLOY.md): containerized deploy under Falcon, durable SQLite volume, tokens and environment.
+- [Observability](https://raw.githubusercontent.com/guizaols/insika/main/docs/OBSERVABILITY.md): the event stream, plus opt-in OpenTelemetry — turns as traces and metrics, attribute conventions, dashboard recipes.
+
+## Proof
+
+- [Benchmark](https://raw.githubusercontent.com/guizaols/insika/main/docs/BENCHMARK.md): the neutral, provider-free engine benchmark — methodology, numbers, and how to rerun it without an API key.
+- [Load test](https://raw.githubusercontent.com/guizaols/insika/main/docs/LOADTEST.md): load-testing the engine end-to-end and comparing data topologies.
+
+## Optional
+
+- [AGENTS.md](https://raw.githubusercontent.com/guizaols/insika/main/AGENTS.md): conventions for an agent working *on* this codebase — commands, layout, binding rules, gotchas.
+- [Contributing](https://raw.githubusercontent.com/guizaols/insika/main/CONTRIBUTING.md): setup, the house rules, and what makes a useful PR.
+- [Vulnerability disclosure](https://raw.githubusercontent.com/guizaols/insika/main/SECURITY.md): how to report a vulnerability privately, and what is in or out of scope.
+- [Changelog](https://raw.githubusercontent.com/guizaols/insika/main/CHANGELOG.md): pre-release; nothing is tagged yet.
+- [Code of conduct](https://raw.githubusercontent.com/guizaols/insika/main/CODE_OF_CONDUCT.md): Contributor Covenant 2.1 and the enforcement contact.
