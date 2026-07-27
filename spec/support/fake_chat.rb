@@ -6,7 +6,11 @@
 # task 12's integration.
 class FakeChat
   ToolCall = Struct.new(:name, :arguments, :id)
-  Response = Struct.new(:content)
+  Response = Struct.new(:content) # content-only chunk: does NOT respond to #thinking
+  # Reasoning chunk, shaped like RubyLLM's: the text lives in chunk.thinking.text and
+  # content is nil (the provider streams the deliberation BEFORE the answer).
+  Thought = Struct.new(:text)
+  ThinkingChunk = Struct.new(:content, :thinking)
 
   attr_reader :instructions, :tools, :messages, :asked
   # script: proc run in the chat's context during #ask (may call
@@ -79,5 +83,10 @@ class FakeChat
   # Emits a streaming chunk (as RubyLLM does in the ask block).
   def emit_chunk(text)
     @on_chunk&.call(Response.new(text))
+  end
+
+  # Emits a REASONING chunk (DeepSeek reasoning_content / Anthropic thinking block).
+  def emit_thinking(text)
+    @on_chunk&.call(ThinkingChunk.new(nil, Thought.new(text)))
   end
 end

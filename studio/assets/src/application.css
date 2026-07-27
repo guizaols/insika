@@ -519,6 +519,9 @@
   .toolcard.skill { border-left-color:var(--accent-bg); }
   .toolcard.muted-card { border-left-color:var(--faint); }
   .toolcard.guardrail { border-left-color:var(--err); background:color-mix(in srgb,var(--err) 8%,var(--panel-2)); }
+  /* Provider reasoning (:thinking) — deliberately quiet: it is not the answer. */
+  .toolcard.thinking { border-left-color:var(--faint); }
+  .toolcard.thinking > summary strong, .toolcard.thinking > pre { color:var(--dim); font-style:italic; }
   .toolcard .h { display:flex; align-items:center; gap:.5rem; font-family:var(--mono); font-size:.82rem; }
   .toolcard .h .arrow { color:var(--dim); }
   .toolcard pre, pre { background:var(--panel-3); border:1px solid var(--line); border-radius:8px; padding:.65rem .75rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:.8rem; margin:.45rem 0 0; line-height:1.5; }

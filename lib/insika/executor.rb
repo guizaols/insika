@@ -608,6 +608,7 @@ module Insika
         timing&.mark(:ask)
         response = @hooks.around(:agent, state) do |s|
           result = s.chat.ask(s.message) do |chunk|
+            emit_thinking(chunk, task)
             next unless chunk.content
 
             timing&.mark(:first_token) # first-write-wins -> real TTFB
@@ -626,6 +627,29 @@ module Insika
         # accumulated output, else the raw response.
         filter ? filter.output : response.content
       end
+    end
+
+    # The provider's REASONING (DeepSeek `reasoning_content`, Anthropic thinking
+    # blocks): RubyLLM parks it in `chunk.thinking`, NEVER in `chunk.content`, so it
+    # was being dropped on the floor — invisible in the Studio and in the trace. It
+    # rides the Event Stream as its OWN type (:thinking), and `/v1/responses`
+    # deliberately does not translate it: the deliberation is observability, not the
+    # answer, and must not cross the edge to the end customer.
+    #
+    # Three deliberate omissions:
+    # · the guardrail filter is NOT applied — it accumulates the PERSISTED content
+    #   (D3), and pushing reasoning through it would corrupt the turn's answer;
+    # · `timing.mark(:first_token)` stays on :content — TTFB means the first token the
+    #   customer can see (item 34's baselines measure that, not the first thought);
+    # · nothing is persisted — the reasoning is not part of the conversation.
+    #
+    # Duck-typed like `usage_of`: a provider/fake with no thinking -> nothing to emit.
+    def emit_thinking(chunk, task)
+      return unless chunk.respond_to?(:thinking)
+
+      thought = chunk.thinking
+      text = thought.respond_to?(:text) ? thought.text : thought # RubyLLM::Thinking | String | nil
+      emit(:thinking, { delta: text.to_s }, task: task) unless text.to_s.empty?
     end
 
     # Annotates the usage with the RESOLVED model-selection source (v2, §10):

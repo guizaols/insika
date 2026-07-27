@@ -86,6 +86,10 @@ RSpec.describe Insika::Server::Responses do
       expect(described_class.frame_for(ev(:tool_result, { name: "x", result: "y" }))).to be_nil
       expect(described_class.frame_for(ev(:skill_activated, { name: "s" }))).to be_nil
     end
+
+    it ":thinking -> nil: the provider's reasoning NEVER crosses the edge" do
+      expect(described_class.frame_for(ev(:thinking, { delta: "deixa eu pensar" }))).to be_nil
+    end
   end
 
   it "drains a whole turn as OpenAI Responses frames (SSE integration)" do
@@ -98,6 +102,7 @@ RSpec.describe Insika::Server::Responses do
       collector = Async do
         Insika::Server::SSEBody.new(subscription: sub, serialize: described_class.method(:frame_for)).call(fs)
       end
+      stream.emit(ev(:thinking, { delta: "vou saudar o cliente" })) # internal only
       stream.emit(ev(:content, { delta: "Oi" }))
       stream.emit(ev(:tool_call, { name: "search_products" }))
       stream.emit(ev(:content, { delta: " tudo bem?" }))
@@ -115,5 +120,6 @@ RSpec.describe Insika::Server::Responses do
     expect(joined).to include('"type":"response.completed"')
     expect(joined).to end_with("data: [DONE]\n\n")
     expect(joined).not_to include("task_started") # skipped event
+    expect(joined).not_to include("vou saudar o cliente") # reasoning stays internal
   end
 end
