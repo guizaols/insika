@@ -1,11 +1,11 @@
-# LOADTEST — Harness
+# LOADTEST — Insika
 
-How to load-test the harness, how to compare it **apples-to-apples against another
+How to load-test the engine, how to compare it **apples-to-apples against another
 gateway**, and how to read the numbers — covering the SQLite-topology question
 (does one box hold up?) and loadtest parity. For deploy/env details see
 [DEPLOY.md](DEPLOY.md).
 
-The whole point: the harness exposes `POST /v1/responses` as an **SSE drop-in** of
+The whole point: the engine exposes `POST /v1/responses` as an **SSE drop-in** of
 the OpenClaw gateway. Same contract → the same load tools work against either side,
 so you can measure the engine you are about to ship against the gateway it replaces.
 
@@ -24,7 +24,7 @@ All three take `--help` / `-h`.
 ## 1. `bench_store.rb` — SQLite write ceiling (no provider)
 
 Isolates "does SQLite survive multi-process?" from LLM-provider noise. N processes
-hammer writes against the **same file** using the harness's real production config
+hammer writes against the **same file** using the engine's real production config
 (WAL + `busy_timeout` + `BEGIN IMMEDIATE` + in-process semaphore). It uses a fresh
 temp db per round, so it never touches your `INSIKA_DB`.
 
@@ -134,27 +134,27 @@ The final block prints the lock counts; the expected reading is `0` for both:
 
 ---
 
-## 4. Apples-to-apples: harness vs the OpenClaw gateway
+## 4. Apples-to-apples: Insika vs the OpenClaw gateway
 
 Two ways to compare, both valid because the SSE contract is identical.
 
 ### 4a. Ruby native (`loadtest.rb`) against both
 
 Run the same `loadtest.rb` invocation twice — once with `INSIKA_URL` pointing at
-the harness, once at the gateway (its `/v1/responses` speaks the same protocol).
+the engine, once at the gateway (its `/v1/responses` speaks the same protocol).
 Keep `--agents`, `--concurrency`, `--iterations` and `--message` identical, and use
 matching agents on both sides. Compare the printed TTFB/total/cache/error lines.
 
 ### 4b. Reuse OpenClaw's `loadtest-gateway.mjs` unmodified
 
 `loadtest.rb` is the Ruby port of OpenClaw's `loadtest-gateway.mjs`. You do **not**
-need to change that script to point it at the harness — because the harness is a
+need to change that script to point it at the engine — because the engine is a
 drop-in for the gateway, you only change **where it points**:
 
 ```bash
 # In the OpenClaw checkout, run its gateway loadtest against the HARNESS:
 OPENCLAW_GATEWAY_URL=http://localhost:9292 \
-OPENCLAW_GATEWAY_TOKEN=<same bearer the harness accepts> \
+OPENCLAW_GATEWAY_TOKEN=<same bearer the engine accepts> \
 node scripts/loadtest-gateway.mjs --agents bia --concurrency 16 --iterations 3
 ```
 
@@ -164,15 +164,15 @@ gateway, and diff the two reports. This is the shadow comparison the pilot needs
 **What the operator must have in hand** (this repo does not vendor OpenClaw):
 
 - The OpenClaw checkout containing `scripts/loadtest-gateway.mjs` and Node installed.
-- A **bearer token accepted by both** sides. For the harness that is
+- A **bearer token accepted by both** sides. For the engine that is
   `OPENCLAW_GATEWAY_TOKEN` (see DEPLOY.md); point the gateway run at its own token.
 - **The same agent id provisioned on both** sides (e.g. `bia`) so `model:
-  openclaw:<agent>` resolves on each. On the harness, provision via
+  openclaw:<agent>` resolves on each. On the engine, provision via
   `scripts/import_pack.rb`.
 - The **same provider** (or an equivalent-latency one) behind each, otherwise you
   are comparing providers, not engines.
 - Both endpoints reachable from where you run the client, warmed up (hit `/up` on
-  the harness first), and ideally driven from the same machine to remove network
+  the engine first), and ideally driven from the same machine to remove network
   skew.
 
 Keep every knob identical between the two runs — the only variable should be which
@@ -183,7 +183,7 @@ engine is behind `/v1/responses`.
 ## 5. Reading the metrics
 
 - **TTFB** (time to first SSE byte) — how fast the user starts seeing a response.
-  Dominated by provider latency + the harness's per-turn setup (context build,
+  Dominated by provider latency + the engine's per-turn setup (context build,
   policy, first model call). This is the number that most shapes perceived latency.
 - **total** — full turn wall time including the whole tool-loop and streamed
   output. `total − TTFB` is roughly the streaming/tool-loop tail.
@@ -213,7 +213,7 @@ Work top-down and **measure before assuming** — avoid premature topology optim
 | 1 | SQLite write ceiling & `locked` count under N procs | `bench_store.rb` | Is SQLite a bottleneck at all on one box? (Expected: no.) |
 | 2 | Single-proc baseline TTFB/total/P95/throughput | `loadtest.rb` (or `loadtest-local.sh` count 1) | The reference point for everything else. |
 | 3 | Multi-proc on one box: does throughput scale, `locked` = 0? | `loadtest-local.sh` | Do more Falcon workers help, and does the shared WAL hold? Sets `WEB_CONCURRENCY`. |
-| 4 | Harness vs gateway, identical knobs | §4 (either method) | Is the harness at parity with the engine it replaces before cut-over? |
+| 4 | Insika vs gateway, identical knobs | §4 (either method) | Is the engine at parity with the engine it replaces before cut-over? |
 | 5 | Cold vs hot conversation (cache) | `loadtest.rb` with/without `--same-user 1` | Expected steady-state cost/latency once conversations warm up. |
 | 6 | Remote (Railway) vs local | `loadtest.rb` with `INSIKA_URL` remote | Network/deploy overhead of the real environment. |
 

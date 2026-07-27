@@ -2,7 +2,7 @@
 
 require_relative "base"
 
-module HarnessCode
+module InsikaCode
   module Tools
     # Read a UTF-8 text file from the sandbox. Read-only (no side_effect, no
     # approval). Caps the returned size so a huge file can't blow the context.

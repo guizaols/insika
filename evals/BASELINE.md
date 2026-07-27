@@ -10,8 +10,8 @@ This is the **documented baseline** that FOLLOWUP §12 **G2** allows in place of
 7/7 ("rerun until 7/7 — **or a smaller documented baseline with justification**"). The
 plumbing was declared **GO** on 2026-07-20 (tools hit achei-b2b and return 200, 40/40,
 0 errors; prompt-cache engages at the real ~27k identity; conc=8 clean). None of the
-open failures is a harness defect — they are gold or **pack** issues, and pack quality
-is owned by achei-b2b, not the harness (product decision, §11/§12).
+open failures is an engine defect — they are gold or **pack** issues, and pack quality
+is owned by achei-b2b, not the engine (product decision, §11/§12).
 
 ## Per-case state
 
@@ -20,12 +20,12 @@ is owned by achei-b2b, not the harness (product decision, §11/§12).
 | 1 | `saudacao` | ✅ pass | — | Cordial opening, no invented catalog. |
 | 2 | `produto-sem-cep` | ✅ pass | — | Correctly asks for the CEP before searching (CEP gates the CD). |
 | 3 | `escalacao-humano` | ✅ pass | — | Escalates via `call_support`, no invented SLA. |
-| 4 | `status-pedido` | ✅ pass *(after gold fix)* | harness (fixed) | **Was a gold defect, not a miss.** The deterministic `tools_called: [search_orders]` contradicted the case's own rubric, which explicitly permits asking for the order number first; the judge scored the ask-first turn **1.0**. Fixed here → `search_orders?` (optional), mirroring `produto-sem-cep`. The rubric carries the quality judgment. |
+| 4 | `status-pedido` | ✅ pass *(after gold fix)* | engine (fixed) | **Was a gold defect, not a miss.** The deterministic `tools_called: [search_orders]` contradicted the case's own rubric, which explicitly permits asking for the order number first; the judge scored the ask-first turn **1.0**. Fixed here → `search_orders?` (optional), mirroring `produto-sem-cep`. The rubric carries the quality judgment. |
 | 5 | `cupom` | ❌ known-fail | **achei-b2b pack** | The agent has **no voucher tool in its allowlist**, so `search_voucher` can't be called. The gold is *correct* (the store should be able to report an active coupon) — left failing on purpose so the gap stays visible. **Fix = add a voucher tool to the agent's allowlist** (pack side); do **not** weaken the gold. |
 | 6 | `faq-troca` | ❌ known-fail | **achei-b2b pack** | `search_faq` returns 200, but the agent **escalates to a human** instead of presenting the policy. Prompt-quality gap in the Cacau Show pack. |
 | 7 | `produto-com-cep` | ❌ known-fail | **achei-b2b pack** | With the CEP in hand the agent calls `search_products` ~4× and **gives up**, even though the catalog *does* contain a matching item ("Tablete laCreme Zero Lactose"). Prompt/tool-loop quality gap in the pack. |
 
-**4/7** is the accepted harness+gold baseline. The 3 open cases (5–7) are all
+**4/7** is the accepted engine+gold baseline. The 3 open cases (5–7) are all
 achei-b2b-owned and do **not** touch the critical path of a production conversation
 (they are quality/coverage, not correctness of the engine).
 
@@ -35,7 +35,7 @@ achei-b2b-owned and do **not** touch the critical path of a production conversat
   see `README.md` §"Gating against a baseline") is intentionally **absent** — it must be
   captured from a real green run via `ruby evals/run.rb --update-baseline`, not
   hand-authored (hand-writing scores would be fabricating eval results). Capture it at
-  the **G8 shadow** step, once the harness is pointed at the production achei-b2b. Until
+  the **G8 shadow** step, once the engine is pointed at the production achei-b2b. Until
   then a run with no baseline falls back to "fail if any case failed" — expected, given
   the 3 documented known-failures.
 - Numbers 1–4 above reflect the **2026-07-20** run; case 4 is asserted from that run's

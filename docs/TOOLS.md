@@ -1,6 +1,6 @@
 # Tools
 
-A **tool** is a function the model can call inside a turn. Harness has three
+A **tool** is a function the model can call inside a turn. Insika has three
 kinds, and the distinction that matters is **who can change one at runtime**:
 
 | | **Code tool** | **Data tool** | **MCP tool** |
@@ -69,7 +69,7 @@ A tool appears in the Studio panel and enters an agent's tool-loop when it is
 Four ways to write a data tool into the store — all **hot** (registry and catalog
 reload, no restart):
 
-1. **DSL** — `data_tool(name:, …)` in a `Harness.agent { … }` block.
+1. **DSL** — `data_tool(name:, …)` in a `Insika.agent { … }` block.
 2. **Studio** — the Tools panel editor.
 3. **Manifest** — `POST /v1/tools/manifest`. Partial failure is isolated: one
    malformed tool becomes an `errors[]` entry; only a structural manifest error

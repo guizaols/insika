@@ -25,7 +25,7 @@ RSpec.describe Insika::Plugin::Loader do
   end
 
   # Writes a plugin (manifest + Ruby PORO entry — no ruby_llm).
-  def write_plugin(id, manifest_yaml, entry_ruby, manifest_name: "harness.plugin.yml")
+  def write_plugin(id, manifest_yaml, entry_ruby, manifest_name: "insika.plugin.yml")
     dir = File.join(@root, id)
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, manifest_name), manifest_yaml)
@@ -78,10 +78,10 @@ RSpec.describe Insika::Plugin::Loader do
     expect { load(enabled: %w[beta]) }.to output(/plugin.yml is deprecated/).to_stderr
   end
 
-  it "harness.plugin.yml takes precedence over plugin.yml in the same dir (no warn)" do
+  it "insika.plugin.yml takes precedence over plugin.yml in the same dir (no warn)" do
     dir = File.join(@root, "gamma")
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "harness.plugin.yml"), "id: gamma\ncontracts: { tools: [] }\n")
+    File.write(File.join(dir, "insika.plugin.yml"), "id: gamma\ncontracts: { tools: [] }\n")
     File.write(File.join(dir, "plugin.yml"), "id: gamma_old\ncontracts: { tools: [] }\n")
 
     result = nil
@@ -240,10 +240,10 @@ RSpec.describe Insika::Plugin::Loader do
     root_a = File.join(@root, "ra")
     root_b = File.join(@root, "rb")
     [root_a, root_b].each { |r| FileUtils.mkdir_p(File.join(r, "dup")) }
-    File.write(File.join(root_a, "dup", "harness.plugin.yml"),
+    File.write(File.join(root_a, "dup", "insika.plugin.yml"),
                "id: dup\nmodule: DupA\nentry: plugin.rb\ncontracts: { tools: [ta] }\n")
     File.write(File.join(root_a, "dup", "plugin.rb"), poro_entry("DupA", "def self.register(api) = api.register_tool('ta', Class.new)"))
-    File.write(File.join(root_b, "dup", "harness.plugin.yml"),
+    File.write(File.join(root_b, "dup", "insika.plugin.yml"),
                "id: dup\nmodule: DupB\nentry: plugin.rb\ncontracts: { tools: [tb] }\n")
     File.write(File.join(root_b, "dup", "plugin.rb"), poro_entry("DupB", "def self.register(api) = api.register_tool('tb', Class.new)"))
 
@@ -430,7 +430,7 @@ RSpec.describe Insika::Plugin::Loader do
     def write_in(root, id, mod, tool)
       dir = File.join(root, id)
       FileUtils.mkdir_p(dir)
-      File.write(File.join(dir, "harness.plugin.yml"),
+      File.write(File.join(dir, "insika.plugin.yml"),
                  "id: #{id}\nmodule: #{mod}\nentry: plugin.rb\ncontracts: { tools: [#{tool}] }\n")
       File.write(File.join(dir, "plugin.rb"),
                  poro_entry(mod, "def self.register(api) = api.register_tool('#{tool}', Class.new)"))

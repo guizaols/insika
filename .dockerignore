@@ -12,11 +12,10 @@ tmp
 log
 *.log
 
-# Bancos/sidecars locais (o volume monta INSIKA_DB em runtime)
+# Local databases/sidecars (the volume mounts INSIKA_DB at runtime)
 *.db
 *.db-shm
 *.db-wal
-harness.db*
 
 .DS_Store
 .env

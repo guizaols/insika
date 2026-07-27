@@ -9,9 +9,9 @@
 # entrypoint never invokes Litestream (zero cost for a single-box ephemeral pilot).
 #
 # Examples of LITESTREAM_REPLICA_URL:
-#   AWS S3     s3://my-bucket/harness         (+ LITESTREAM_REGION)
-#   Cloudflare s3://my-bucket/harness         (+ LITESTREAM_ENDPOINT=https://<acct>.r2.cloudflarestorage.com, LITESTREAM_REGION=auto)
-#   local FS   file:///replica/harness        (used by the restore drill)
+#   AWS S3     s3://my-bucket/insika         (+ LITESTREAM_REGION)
+#   Cloudflare s3://my-bucket/insika         (+ LITESTREAM_ENDPOINT=https://<acct>.r2.cloudflarestorage.com, LITESTREAM_REGION=auto)
+#   local FS   file:///replica/insika        (used by the restore drill)
 dbs:
   - path: ${INSIKA_DB}
     replicas:

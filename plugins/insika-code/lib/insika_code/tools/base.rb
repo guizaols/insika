@@ -5,7 +5,7 @@ require "ruby_llm"
 # Insika::Sandbox is always loaded before any plugin (the Plugin::Loader is part
 # of the engine), so the constant resolves at call time without a require here —
 # same convention as the other plugin tools (they never require the core).
-module HarnessCode
+module InsikaCode
   module Tools
     # Shared base for the code toolset. One instance per turn (the plugin
     # registers block factories that inject a shared, stateless Sandbox).
