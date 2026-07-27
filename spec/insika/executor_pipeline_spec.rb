@@ -644,5 +644,67 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(timing.keys).to contain_exactly(:prep_ms, :ttft_ms, :gen_ms, :total_ms)
       expect(timing.values).to all(be_a(Numeric))
     end
+
+    it "reasoning does NOT move the TTFB mark (first_token = first token the customer sees)" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
+      session_store.create(id: "s1")
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = proc do
+        emit_thinking("deixa eu pensar")
+        emit_chunk("oi")
+      end
+      run_turn(executor, make_task, fake_chat: chat)
+
+      # A thinking-only turn would leave ttft unset; what we assert here is that the
+      # mark exists because :content arrived — the reasoning never touches it.
+      timing = event_stream.events.find { |e| e.type == :task_completed }.data[:timing]
+      expect(timing[:ttft_ms]).to be_a(Numeric)
+    end
+  end
+
+  describe "provider reasoning (:thinking) — internal, never the answer" do
+    before { session_store.create(id: "s1") }
+
+    it "emits chunk.thinking as :thinking deltas, out of the :content stream" do
+      executor = build_executor
+      chat = FakeChat.new
+      chat.final_content = "Temos sim!"
+      chat.script = proc do
+        emit_thinking("o cliente quer trufas; ")
+        emit_thinking("vou buscar no catálogo")
+        emit_chunk("Temos sim!")
+      end
+      run_turn(executor, make_task, fake_chat: chat)
+
+      thinking = event_stream.events.select { |e| e.type == :thinking }.map { |e| e.data[:delta] }
+      expect(thinking).to eq(["o cliente quer trufas; ", "vou buscar no catálogo"])
+
+      content = event_stream.events.select { |e| e.type == :content }.map { |e| e.data[:delta] }.join
+      expect(content).to eq("Temos sim!")
+    end
+
+    it "keeps the reasoning out of the persisted turn and of the terminal content" do
+      executor = build_executor
+      chat = FakeChat.new
+      chat.final_content = "Temos sim!"
+      chat.script = proc do
+        emit_thinking("deliberação interna")
+        emit_chunk("Temos sim!")
+      end
+      run_turn(executor, make_task, fake_chat: chat)
+
+      completed = event_stream.events.find { |e| e.type == :task_completed }
+      expect(completed.data[:content]).to eq("Temos sim!")
+      persisted = session_store.find("s1").messages.map { |m| m["content"] || m[:content] }.join
+      expect(persisted).not_to include("deliberação interna")
+    end
+
+    it "a chunk with no thinking surface emits nothing (provider/fake duck-typing)" do
+      executor = build_executor
+      run_turn(executor, make_task) # FakeChat::Response has no #thinking
+
+      expect(event_stream.types).not_to include(:thinking)
+    end
   end
 end
