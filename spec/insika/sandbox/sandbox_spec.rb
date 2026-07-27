@@ -75,6 +75,23 @@ RSpec.describe Insika::Sandbox do
       expect(env.exec("printf 'abcdefghij'").output.bytesize).to eq(5)
     end
 
+    # A command's output is arbitrary bytes, and it becomes a tool result — so it
+    # gets JSON-serialized into the transcript and the SSE stream. Anything not
+    # valid UTF-8 has to die here, at the boundary, not at serialization time.
+    it "keeps accented output serializable" do
+      output = env.exec("printf 'não 🚀'").output
+
+      expect(output).to eq("não 🚀")
+      expect { JSON.generate(o: output) }.not_to raise_error
+    end
+
+    it "scrubs invalid bytes out of the output" do
+      output = env.exec("printf 'ok \\303('").output
+
+      expect(output).to be_valid_encoding
+      expect { JSON.generate(o: output) }.not_to raise_error
+    end
+
     # The real improvement over the prototype's capture2e: a hung command is
     # hard-killed at the deadline instead of holding the caller until the OS
     # returns. Uses a short timeout and asserts it trips fast.
