@@ -832,7 +832,7 @@ module Studio
     # is born — the Roda edge — so the core (framework-agnostic) only sees
     # UTF-8 strings. The bytes come from the already-decoded URL (UTF-8), so
     # force_encoding is correct, not a reinterpretation.
-    def utf8(str) = str.to_s.dup.force_encoding(Encoding::UTF_8)
+    def utf8(str) = Insika::Coercion.utf8(str)
 
     # Dispatches a Command through the bus (same surface as the API) and returns the
     # result. `tenant` is only used by memory.
