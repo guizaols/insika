@@ -1,3 +1,10 @@
+---
+title: Sandbox
+parent: Ship it
+nav_order: 2
+permalink: /sandbox/
+---
+
 # Sandbox — confined execution
 
 `Insika::Sandbox` is the engine primitive for **confined execution**: a single,
@@ -98,7 +105,7 @@ sandbox by default.
 (`read_file`, `list_dir`, `grep`, `write_file`, `edit_file`, `bash`) is built on
 this primitive, and `examples/insika-code/boot.rb` declares the `sandbox` block
 on its profile while the plugin builds the matching `Sandbox` from the same
-config. See [`examples/insika-code/README.md`](../examples/insika-code/README.md).
+config. See [`examples/insika-code/README.md`](https://github.com/guizaols/insika/blob/main/examples/insika-code/README.md).
 
 The sandbox is one of two independent controls on the high-risk tools; the other
 is the engine's human-approval gate (`approvals_required` + the `ToolEnvelope`

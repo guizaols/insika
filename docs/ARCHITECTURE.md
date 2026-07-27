@@ -1,3 +1,10 @@
+---
+title: Architecture
+parent: Understand the idea
+nav_order: 2
+permalink: /architecture/
+---
+
 # Architecture
 
 This is the engineering reference — how a turn actually runs, why the pieces are

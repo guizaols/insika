@@ -1,0 +1,64 @@
+# Builds and publishes the docs site (docs/ = the Jekyll site root) to GitHub Pages.
+# Repo setting required once: Settings → Pages → Source = "GitHub Actions".
+#
+# The theme (Just the Docs) is not on GitHub Pages' allowed-plugins list, so the
+# build runs here with the gems pinned in docs/Gemfile.lock — the same versions a
+# local `cd docs && bundle exec jekyll serve` uses.
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "llms.txt"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; never cancel one mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: docs
+
+      # llms.txt lives at the REPO root (that is where a reader looks for it) and
+      # must be served from the SITE root. Copied in, never committed — see
+      # .gitignore.
+      - name: Stage llms.txt at the site root
+        run: cp llms.txt docs/llms.txt
+
+      - name: Build
+        run: bundle exec jekyll build
+        working-directory: docs
+        env:
+          JEKYLL_ENV: production
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
