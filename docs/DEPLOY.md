@@ -1,3 +1,10 @@
+---
+title: Deploy
+parent: Ship it
+nav_order: 3
+permalink: /deploy/
+---
+
 # Deploy
 
 How to run the engine in a container (Railway today, Kubernetes later) and how to

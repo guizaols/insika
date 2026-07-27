@@ -1,3 +1,10 @@
+---
+title: Skills
+parent: Build an agent
+nav_order: 3
+permalink: /skills/
+---
+
 # Skills
 
 A **skill** is a named playbook an agent loads **on demand**. It is a directory
@@ -7,7 +14,7 @@ is allowed; it pulls the full *body* into context only when a turn actually call
 for it. That is **progressive loading** — an agent can "know" twenty skills exist
 while paying for the text of only the ones it opens.
 
-See [`examples/skills/`](../examples/skills/) for a runnable one.
+See [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/skills/) for a runnable one.
 
 ## Format
 
@@ -87,4 +94,4 @@ Two ways to satisfy both:
 - [Context](CONTEXT.md) — how the skills list is budgeted into a turn.
 - [Agents](AGENTS.md) — the skills allowlist.
 - [Tools](TOOLS.md) — `load_skill` and deferred-tool progressive disclosure.
-- [`examples/skills/`](../examples/skills/) — progressive loading, runnable.
+- [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/skills/) — progressive loading, runnable.

@@ -1,3 +1,10 @@
+---
+title: Observability
+parent: Operate & prove it
+nav_order: 1
+permalink: /observability/
+---
+
 # Observability — OpenTelemetry (opt-in)
 
 Insika already has an observability spine: the **event stream**. Every turn emits

@@ -1,3 +1,10 @@
+---
+title: Running locally
+parent: Build an agent
+nav_order: 5
+permalink: /running-local/
+---
+
 # Running the Insika locally
 
 Boots the engine single-process, serving `/studio` and `/v1/*` against a demo

@@ -1,3 +1,10 @@
+---
+title: Tools
+parent: Build an agent
+nav_order: 2
+permalink: /tools/
+---
+
 # Tools
 
 A **tool** is a function the model can call inside a turn. Insika has three
@@ -22,7 +29,7 @@ shadows a code tool.
 
 A data tool is defined entirely by config — this is the operator-facing kind, and
 the one you create and change without a rebuild. See
-[`examples/data-tool/`](../examples/data-tool/) for a runnable one.
+[`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/) for a runnable one.
 
 ```jsonc
 {
@@ -143,4 +150,4 @@ Work down this checklist:
 - [Agents](AGENTS.md) — allowlists, groups, and per-agent tool exposure.
 - [Security](SECURITY.md) — egress, sandbox, and approval gating together.
 - [Architecture](ARCHITECTURE.md) — the tool-loop and side-effect checkpointing.
-- [`examples/data-tool/`](../examples/data-tool/) — a runnable data tool + the egress note.
+- [`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/) — a runnable data tool + the egress note.

@@ -116,14 +116,29 @@ module Insika
 
     # Raw markdown for one public doc, by slug. nil = unknown slug (the transport 404s).
     # No path traversal is possible: `slug` must be a KEY of the injected allowlist.
+    #
+    # The Jekyll frontmatter the docs site needs (title/parent/nav_order — the same
+    # files ARE the site's pages) is STRIPPED here: a coding agent asked for the prose,
+    # not for sidebar metadata, and this keeps the response byte-identical to what it
+    # was before the site existed.
     def doc(slug)
+      read_doc(slug)&.sub(FRONTMATTER, "")
+    end
+
+    private
+
+    # Leading YAML block, plus the blank line after it, so the body still starts at
+    # its `# Heading`. Same shape SkillCatalog accepts.
+    FRONTMATTER = /\A---\s*\n(.*?)\n---\s*\n+/m
+    private_constant :FRONTMATTER
+
+    # Whole file, frontmatter included. nil = unknown slug or a file that vanished.
+    def read_doc(slug)
       path = @docs[slug.to_s]
       return nil if path.nil? || !File.file?(path)
 
       File.read(path)
     end
-
-    private
 
     def substitute(text, base)
       text
@@ -168,10 +183,15 @@ module Insika
       end
     end
 
-    # First markdown heading, else the humanized slug.
+    # Frontmatter `title` (what the site's sidebar shows — one source for both
+    # surfaces), else the first markdown heading, else the humanized slug.
     def doc_title(slug)
-      body = doc(slug)
-      heading = body&.lines&.find { |l| l.start_with?("# ") }
+      raw = read_doc(slug)
+      front = raw&.match(FRONTMATTER)
+      title = front && presence(Frontmatter.parse(front[1])["title"])
+      return title if title
+
+      heading = raw&.lines&.find { |l| l.start_with?("# ") }
       heading ? heading.sub(/\A#\s*/, "").strip : slug.tr("-_", "  ").capitalize
     end
 

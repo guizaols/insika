@@ -1,0 +1,14 @@
+# frozen_string_literal: true
+
+# Gems for the docs SITE only — deliberately separate from the engine's root
+# Gemfile so `bundle install` at the root never pulls Jekyll. Run from this
+# directory (`cd docs`), which is also the Jekyll site root.
+source "https://rubygems.org"
+
+gem "jekyll", "~> 4.4"
+gem "just-the-docs", "0.12.0"
+
+# Keeps `[Tools](TOOLS.md)` clickable on the site (GitHub Pages enables this by
+# default; we build with Actions, so it has to be declared).
+gem "jekyll-relative-links", "~> 0.7"
+gem "jekyll-sitemap", "~> 1.4"

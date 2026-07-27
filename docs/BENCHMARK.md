@@ -1,3 +1,10 @@
+---
+title: Benchmark
+parent: Operate & prove it
+nav_order: 2
+permalink: /benchmark/
+---
+
 # Benchmark — engine overhead, neutral & reproducible
 
 This is the engine's public performance benchmark. It is **neutral** (no

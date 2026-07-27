@@ -1,3 +1,10 @@
+---
+title: Why Insika
+parent: Understand the idea
+nav_order: 1
+permalink: /why/
+---
+
 # Why Insika
 
 **Ruby is ready for production AI.** The narrative that you must reach for Python
@@ -34,7 +41,7 @@ puts agent.reply("hi, what can you do?")   # one turn, in-process
 agent.serve                                 # ...or a full server: /studio + /v1/responses
 ```
 
-Every capability below is reachable the same way — see [`examples/`](../examples/),
+Every capability below is reachable the same way — see [`examples/`](https://github.com/guizaols/insika/tree/main/examples/),
 one small runnable project per capability.
 
 ## Four ways to run an agent
@@ -125,6 +132,6 @@ production**. If that's not you yet, reach for less:
 
 ## See also
 
-- [README](../README.md) — quickstart and the drop-in `/v1/responses` API.
+- [README](https://github.com/guizaols/insika#readme) — quickstart and the drop-in `/v1/responses` API.
 - [BENCHMARK.md](BENCHMARK.md) — the neutral, reproducible engine benchmark.
 - [OBSERVABILITY.md](OBSERVABILITY.md) — OpenTelemetry tracing (opt-in).

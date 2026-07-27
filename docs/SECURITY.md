@@ -1,3 +1,10 @@
+---
+title: Security
+parent: Ship it
+nav_order: 1
+permalink: /security/
+---
+
 # Security
 
 An agent runtime runs untrusted input through a model that can call tools and
@@ -46,7 +53,7 @@ See [Agents §Layer 4](AGENTS.md#layer-4-edge-limits-flood-and-spend-control).
 
 Content safety runs on both sides of a turn, **opt-in per agent**. An agent that
 configures nothing gets a conservative default: deterministic detectors on, LLM
-moderator off. See [`examples/guardrails/`](../examples/guardrails/).
+moderator off. See [`examples/guardrails/`](https://github.com/guizaols/insika/tree/main/examples/guardrails/).
 
 - **Input** — deterministic detectors (prompt-injection, abuse) run *before* the
   model. A flagged input gets a **safe refusal without burning a model turn** — an

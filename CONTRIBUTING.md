@@ -72,9 +72,26 @@ These are not style preferences — they are how the engine stays small.
 
 ## Documentation
 
-Public docs live in `docs/*.md` and are served by a running instance at
-`GET /docs/<name>.md`, so they are both the website source and an agent-readable
-surface. One source, no copies. `docs/internal/` is not part of the repo.
+Public docs live in `docs/*.md`. The same files are three things at once: what GitHub
+renders, what a running instance serves at `GET /docs/<name>.md`, and the pages of the
+site at [guizaols.github.io/insika](https://guizaols.github.io/insika/). One source, no
+copies. `docs/internal/` is not part of the repo.
+
+`docs/` is also the Jekyll site root ([Just the Docs](https://just-the-docs.com), built
+by `.github/workflows/pages.yml`). To preview:
+
+```bash
+cd docs && bundle install && bundle exec jekyll serve --livereload
+```
+
+Two rules when adding or moving a doc: give it the small frontmatter block the sidebar
+needs (`title` / `parent` / `nav_order` / `permalink` — copy a neighbour, keep the
+permalink equal to the `/docs/<slug>.md` slug), and add it to
+`Insika::Onboarding::PUBLIC_DOCS` so the API serves it too. The frontmatter is stripped
+before it reaches `GET /docs/<name>.md`, and a spec proves it. Links between docs stay
+**relative** (`[Tools](TOOLS.md)`) so they work in all three places; anything outside
+`docs/` — `examples/`, the README — needs an absolute GitHub URL, since the site root is
+`docs/`.
 
 ## Reporting
 

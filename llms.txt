@@ -10,9 +10,10 @@ builds on [RubyLLM](https://rubyllm.com) for the chat/tool primitives and adds t
 production needs: checkpointing, policy, safety, limits, observability and a drop-in API.
 Engine overhead is ~0.4 ms p50 per turn.
 
-Every link below is raw markdown. A running instance serves the same docs at
-`GET /docs/<name>.md` (index at `GET /docs`), its model catalog at `GET /models.json`, and
-an imperative build-my-first-agent prompt at `GET /start.md`.
+Every link below is raw markdown — the same files the human-facing site renders at
+<https://guizaols.github.io/insika/>. A running instance serves them too, at
+`GET /docs/<name>.md` (index at `GET /docs`), alongside its model catalog at
+`GET /models.json` and an imperative build-my-first-agent prompt at `GET /start.md`.
 
 ## Start here
 
