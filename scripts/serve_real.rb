@@ -114,7 +114,7 @@ puts "  #{BIND}/studio/chats  → chat with Bia (agent: bia · session_id: web)"
 puts "  #{BIND}/studio/tasks  → tasks / approvals console"
 puts "  Ctrl-C to stop."
 
-puts "  OTEL          → #{W::TELEMETRY ? "on (spans to OTLP)" : "off (INSIKA_OTEL to enable)"}"
+puts "  OTEL          → #{W::TELEMETRY ? "on (#{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP)" : "off (INSIKA_OTEL to enable)"}"
 
 Async do
   W::EXECUTOR.supervised = true # serving mode: turns survive the disconnect
