@@ -34,10 +34,15 @@ module Insika
         dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => app)
         endpoint = Async::HTTP::Endpoint.parse("http://#{@host}:#{@port}")
         middleware = Protocol::Rack::Adapter.new(dispatch)
+        # Item 16 / P4: the OTEL bridge is opt-in but must be reachable from the DSL
+        # front door too — the convention is worthless if only config.ru can export.
+        # nil (the default) -> attach is a no-op and no gem is loaded.
+        telemetry = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))
 
-        banner
+        banner(telemetry)
         Async do
           @graph.executor.supervised = true # serving mode: turns survive disconnects
+          Insika::Telemetry.attach(event_stream: @graph.event_stream, recorder: telemetry)
           Async::HTTP::Server.new(middleware, endpoint).run
         end
       end
@@ -89,13 +94,15 @@ module Insika
         @graph.durable? ? "durable (sqlite)" : "ephemeral (memory)"
       end
 
-      def banner
+      def banner(telemetry = nil)
         base = "http://#{@host}:#{@port}"
         agent = @rt.pack.config[:id]
         puts "\e[1mInsika — serving agent \"#{agent}\"\e[0m"
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", model: \"#{agent}\")"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
+        # Only when on: an off-by-default line in the OSS front door is noise.
+        puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
         puts "  Ctrl-C to stop."
       end
     end

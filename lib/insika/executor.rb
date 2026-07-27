@@ -302,7 +302,7 @@ module Insika
       # already :running (running->running is invalid) -> no transition.
       status = @task_store.find(task.id).status
       @task_store.transition(task.id, to: :running) if %i[queued paused waiting].include?(status)
-      emit(:task_started, { task_id: task.id, command: command_type(task), agent: profile&.id }, task: task)
+      emit(:task_started, started_data(task, profile), task: task)
 
       actor.drain!
       run_pipeline(task, profile, actor, resume_from)
@@ -695,6 +695,18 @@ module Insika
       # of its own.
       ContextRequest.new(profile: profile, message: state.message, session: session,
                          checkpoint: resume_from, tenant: command_tenant(task), vars: vars)
+    end
+
+    # :task_started payload. Carries the EXPLICIT command tenant (item 16 / P4) so
+    # the observability convention can group by it — the one operator-set label that
+    # is not derivable from the task itself. Omitted when absent: the terminal
+    # events keep their shape and no consumer sees a null it never saw before. NOT
+    # memory_tenant: that one falls back to the chat id (per-chat cardinality).
+    def started_data(task, profile)
+      data = { task_id: task.id, command: command_type(task), agent: profile&.id }
+      tenant = command_tenant(task)
+      data[:tenant] = tenant if tenant
+      data
     end
 
     # Command tenant (Command.build(..., tenant:) -> meta[:tenant],

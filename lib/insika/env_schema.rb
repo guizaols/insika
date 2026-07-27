@@ -106,6 +106,7 @@ module Insika
       spec(name: "INSIKA_EGRESS_ALLOW_PRIVATE", type: :boolean, description: "Allow egress to private/loopback ranges (SSRF guard off)."),
       spec(name: "INSIKA_EGRESS_HOSTS", type: :csv, description: "Comma-separated host allowlist for data-tool egress."),
       spec(name: "INSIKA_OTEL", type: :boolean, description: "Turn on OpenTelemetry export (opt-in)."),
+      spec(name: "INSIKA_MODEL_PRICING", description: "JSON rates table (USD per million tokens) for the estimated-cost attribute; unset -> no cost reported."),
       spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in, item 34)."),
       spec(name: "INSIKA_SUBAGENT_DEPTH_CAP", type: :integer, description: "Max delegation depth in the subagent graph (default 5)."),
       spec(name: "INSIKA_SUBAGENT_FANOUT_CAP", type: :integer, description: "Max parallel children in spawn_subagents (default 8)."),
