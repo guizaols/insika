@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language"
 import { markdown } from "@codemirror/lang-markdown"
 import { json } from "@codemirror/lang-json"
-import { renderMarkdown } from "../markdown"
+import { renderMarkdown } from "../markdown.js"
 
 // code-editor (island D9) — wraps CodeMirror 6 over a <textarea> (which stays the
 // field the form submits; the editor only mirrors into it). Bundled through esbuild;

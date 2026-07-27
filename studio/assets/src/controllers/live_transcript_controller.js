@@ -1,5 +1,5 @@
 import { Controller } from "@hotwired/stimulus"
-import { renderMarkdown } from "../markdown"
+import { renderMarkdown } from "../markdown.js"
 
 // live-transcript (island D9) — subscribes to the SSE stream from /v1/events (same
 // origin, no auth header: it's the consumer API) and renders the turn live: text
