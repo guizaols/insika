@@ -18,7 +18,7 @@ RSpec.describe Insika::Stores::SQLite do
     subject(:store) { described_class.new(path: db_path) }
 
     let(:tmpdir) { Dir.mktmpdir }
-    let(:db_path) { File.join(tmpdir, "harness-test.db") }
+    let(:db_path) { File.join(tmpdir, "insika-test.db") }
 
     after do
       store.close

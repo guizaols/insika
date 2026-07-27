@@ -188,7 +188,7 @@ cooperative — checked at stage boundaries, never in the middle of a store writ
 
 ## Composition root
 
-The whole graph is wired in one place — `Harness::Wiring::Graph` — in two phases,
+The whole graph is wired in one place — `Insika::Wiring::Graph` — in two phases,
 so the two deployment roots (a minimal in-process wiring and the full server
 deployment) share the parts that are identical and layer on only what genuinely
 differs.
@@ -235,14 +235,14 @@ validator as the after-task hook, so both roots enforce content safety identical
 
 | Concern | Code |
 |---------|------|
-| Composition root | `lib/harness/wiring/graph.rb` |
-| Command bus + handlers | `lib/harness/command_bus.rb`, `lib/harness/commands/*` |
-| Turn pipeline | `lib/harness/executor.rb` |
-| Context assembly | `lib/harness/context/*` |
-| Policy | `lib/harness/policy/*` |
-| Stores | `lib/harness/stores/*`, `lib/harness/*_store.rb` |
-| Recovery | `lib/harness/recovery.rb` |
-| Tools (data/manifest/MCP) | `lib/harness/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
+| Composition root | `lib/insika/wiring/graph.rb` |
+| Command bus + handlers | `lib/insika/command_bus.rb`, `lib/insika/commands/*` |
+| Turn pipeline | `lib/insika/executor.rb` |
+| Context assembly | `lib/insika/context/*` |
+| Policy | `lib/insika/policy/*` |
+| Stores | `lib/insika/stores/*`, `lib/insika/*_store.rb` |
+| Recovery | `lib/insika/recovery.rb` |
+| Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
 | HTTP/SSE surface | `server/*` |
 
 ## See also

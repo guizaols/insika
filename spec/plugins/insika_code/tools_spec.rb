@@ -4,16 +4,16 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 
-PLUGIN_LIB = File.expand_path("../../../plugins/harness-code/lib", __dir__)
+PLUGIN_LIB = File.expand_path("../../../plugins/insika-code/lib", __dir__)
 %w[base read_file list_dir grep write_file edit_file bash].each do |f|
-  require File.join(PLUGIN_LIB, "harness_code/tools/#{f}")
+  require File.join(PLUGIN_LIB, "insika_code/tools/#{f}")
 end
 
 # Exercises the tools' behaviour through #execute directly (the RubyLLM tool-loop
 # is not involved), mirroring spec/insika/tools/remember_spec.rb. Every tool
 # shares one Workspace, so the sandbox is proven once per tool: a path escape
 # comes back as a structured { error: } result, never an exception.
-RSpec.describe "HarnessCode tools" do
+RSpec.describe "InsikaCode tools" do
   around do |example|
     Dir.mktmpdir { |dir| @root = File.realpath(dir); example.run }
   end
@@ -26,7 +26,7 @@ RSpec.describe "HarnessCode tools" do
     File.write(path, content)
   end
 
-  describe HarnessCode::Tools::ReadFile do
+  describe InsikaCode::Tools::ReadFile do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "has the plain name 'read_file' (not the class-derived one)" do
@@ -45,7 +45,7 @@ RSpec.describe "HarnessCode tools" do
     end
   end
 
-  describe HarnessCode::Tools::ListDir do
+  describe InsikaCode::Tools::ListDir do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "lists files and dirs at the root" do
@@ -62,7 +62,7 @@ RSpec.describe "HarnessCode tools" do
     end
   end
 
-  describe HarnessCode::Tools::Grep do
+  describe InsikaCode::Tools::Grep do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "finds matching lines with path and line number" do
@@ -100,11 +100,11 @@ RSpec.describe "HarnessCode tools" do
 
       expect(result[:error]).to match(/timed out/)
       # Well under a hang: the guard trips near PATTERN_TIMEOUT (2s), not runaway.
-      expect(elapsed).to be < (HarnessCode::Tools::Grep::PATTERN_TIMEOUT + 3)
+      expect(elapsed).to be < (InsikaCode::Tools::Grep::PATTERN_TIMEOUT + 3)
     end
   end
 
-  describe HarnessCode::Tools::WriteFile do
+  describe InsikaCode::Tools::WriteFile do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "creates a file (and parent dirs) inside the workspace" do
@@ -135,7 +135,7 @@ RSpec.describe "HarnessCode tools" do
     end
   end
 
-  describe HarnessCode::Tools::EditFile do
+  describe InsikaCode::Tools::EditFile do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "replaces a unique string" do
@@ -174,7 +174,7 @@ RSpec.describe "HarnessCode tools" do
     end
   end
 
-  describe HarnessCode::Tools::Bash do
+  describe InsikaCode::Tools::Bash do
     subject(:tool) { described_class.new(sandbox: sandbox) }
 
     it "runs a command with the working directory pinned to the workspace root" do

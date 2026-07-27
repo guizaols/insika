@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Doubles shared by the harness-server specs (task 24). They live in spec/support so
+# Doubles shared by the insika-server specs (task 24). They live in spec/support so
 # as not to depend on constant leakage between files (the suite runs in random
 # order).
 

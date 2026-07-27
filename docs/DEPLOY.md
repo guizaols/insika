@@ -10,11 +10,11 @@ ships with its `dist/` built and vendored — **no Node in the build**. The back
 is durable SQLite (WAL) at `INSIKA_DB`; mount a volume and point it inside.
 
 ```bash
-docker build -t harness .
-docker run -p 9292:9292 -v harness-data:/data \
+docker build -t insika .
+docker run -p 9292:9292 -v insika-data:/data \
   -e DEEPSEEK_API_KEY=sk-... \
   -e OPENCLAW_GATEWAY_TOKEN=change-me \
-  harness
+  insika
 curl localhost:9292/up      # {"status":"ok"}
 ```
 
@@ -22,7 +22,7 @@ curl localhost:9292/up      # {"status":"ok"}
 
 | Env | Default | Effect |
 |-----|---------|--------|
-| `INSIKA_DB` | `/data/harness.db` (in the image) | durable SQLite path (**mount a volume!**) |
+| `INSIKA_DB` | `/data/insika.db` (in the image) | durable SQLite path (**mount a volume!**) |
 | `PORT` | `9292` | HTTP bind port |
 | `WEB_CONCURRENCY` | `2` | number of Falcon worker processes |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
@@ -41,8 +41,17 @@ curl localhost:9292/up      # {"status":"ok"}
 > `INSIKA_` prefix. The old `HARNESS_*` names are still honored as deprecated aliases
 > — set either one and the engine reads it, logging a one-line deprecation notice at
 > boot (`insika doctor` reports it too). Migrate at your convenience; the legacy names
-> will be dropped in a future release. (`INSIKA_DB`'s default path keeps the
-> `harness.db` filename so existing volumes are untouched.)
+> will be dropped in a future release.
+
+> **The database filename changed too** — the image now defaults to
+> `INSIKA_DB=/data/insika.db` (it was `/data/harness.db`). **Existing volumes are
+> adopted automatically:** the container entrypoint renames the old file — with its
+> `-wal`/`-shm` siblings, before anything opens it — when the configured path does
+> not exist yet. Nothing to run by hand, no data lost, and a no-op from the second
+> boot on. To keep the old filename instead, point `INSIKA_DB` at it: the variable
+> is the knob, the image only picks a default. (The adoption lives in
+> `deploy/entrypoint.sh`, not in the engine — it is deploy baggage, not a runtime
+> behavior.)
 
 ### Tokens & rotation (keep the two separate!)
 
@@ -59,13 +68,13 @@ values (the API token falling back to `ADMIN_TOKEN` is a dev convenience only):
 
 Generate a strong token: `ruby -rsecurerandom -e 'puts SecureRandom.hex(24)'`.
 
-### Strict config and `harness doctor`
+### Strict config and `insika doctor`
 
 Config discipline that **rejects unknown keys — no silent schema tolerance**. Two
 parts:
 
 **1. Boot gate.** On boot, the engine validates the environment against a schema of
-known keys (`Harness::EnvSchema`): a wrong type (`INSIKA_PORT=abc`) or an
+known keys (`Insika::EnvSchema`): a wrong type (`INSIKA_PORT=abc`) or an
 **unknown key in the `INSIKA_` namespace** (a typo like `INSIKA_EGRES_ALLOW_HTTP`
 the runtime would silently ignore). By **default it only warns** and boots anyway
 (*last-known-good* — a rotated key or a typo never takes the whole service down).
@@ -73,15 +82,15 @@ To **refuse boot** on any finding, set `INSIKA_CONFIG_STRICT=1`. Unknown-key
 detection is scoped to the `INSIKA_` prefix; the shared `OPENCLAW_`, `LITESTREAM_`,
 and `OTEL_` namespaces are never flagged.
 
-**2. `bin/harness doctor` — on-demand diagnostics.** Reads the **same** durable
+**2. `bin/insika doctor` — on-demand diagnostics.** Reads the **same** durable
 backend the server uses (`INSIKA_DB`) without booting the whole app (no provider,
 no seed) — safe to run against a production volume:
 
 ```bash
-harness doctor            # colored report; exits != 0 on any error
-harness doctor --json     # machine-readable (CI / monitoring)
-harness doctor --fix      # applies the safe autofixes and re-diagnoses
-harness env               # lists known keys + current values (secrets masked)
+insika doctor            # colored report; exits != 0 on any error
+insika doctor --json     # machine-readable (CI / monitoring)
+insika doctor --fix      # applies the safe autofixes and re-diagnoses
+insika env               # lists known keys + current values (secrets masked)
 ```
 
 Checks: env (the schema above), settings schema version (a pending migration →
@@ -126,7 +135,7 @@ healthcheck, and a restart policy.
 
 A single volume is the **one point of total loss** between a pilot and production
 (disk corruption/loss = goodbye conversations + config). Litestream does
-**continuous replication** of `harness.db` (its WAL) to an S3/R2 bucket, without
+**continuous replication** of `insika.db` (its WAL) to an S3/R2 bucket, without
 changing databases and **without a line of Ruby**.
 
 It is **off by default** and turns on by env — a single-box ephemeral deploy pays
@@ -135,7 +144,7 @@ variable, `LITESTREAM_REPLICA_URL`:
 
 - **empty (default):** the entrypoint `exec`s Falcon directly. The Litestream binary
   is never invoked — behavior identical to not having it.
-- **set:** on a fresh box the entrypoint **restores** `harness.db` from the replica
+- **set:** on a fresh box the entrypoint **restores** `insika.db` from the replica
   *before* the app opens it (`litestream restore -if-replica-exists`; a no-op if the
   bucket is still empty), then **supervises** the app (`litestream replicate -exec`),
   replicating the WAL continuously and doing a final sync on shutdown (Railway's
@@ -147,13 +156,13 @@ Add the vars (keep the volume at `/data`):
 
 ```bash
 # AWS S3
-LITESTREAM_REPLICA_URL=s3://my-bucket/harness
+LITESTREAM_REPLICA_URL=s3://my-bucket/insika
 LITESTREAM_REGION=us-east-1
 LITESTREAM_ACCESS_KEY_ID=AKIA...
 LITESTREAM_SECRET_ACCESS_KEY=...
 
 # Cloudflare R2 (S3-compatible): same, + endpoint and region=auto
-LITESTREAM_REPLICA_URL=s3://my-bucket/harness
+LITESTREAM_REPLICA_URL=s3://my-bucket/insika
 LITESTREAM_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
 LITESTREAM_REGION=auto
 LITESTREAM_ACCESS_KEY_ID=...

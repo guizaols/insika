@@ -1,7 +1,7 @@
 # Security
 
 An agent runtime runs untrusted input through a model that can call tools and
-touch the outside world. Harness treats that as the core problem, not an add-on.
+touch the outside world. Insika treats that as the core problem, not an add-on.
 Every control below is **built into the engine**, **configured as data** (not
 hand-rolled per agent), and composes with the others. This page is the map;
 each section links to the deeper guide.
@@ -151,9 +151,9 @@ Configuration is validated against a schema of known keys at boot. An unknown ke
 in the `INSIKA_` namespace (a typo the runtime would otherwise ignore) or a
 wrong-typed value is **surfaced**, and `INSIKA_CONFIG_STRICT=1` turns findings
 into a boot refusal. By default the engine warns and boots on last-known-good — a
-rotated key or a typo never takes the whole service down. The `harness doctor`
+rotated key or a typo never takes the whole service down. The `insika doctor`
 command runs the same checks on demand against a live database. See
-[Deploy](DEPLOY.md#strict-config-and-harness-doctor).
+[Deploy](DEPLOY.md#strict-config-and-insika-doctor).
 
 ## See also
 

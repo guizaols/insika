@@ -16,13 +16,13 @@ Right now 1 USD is about 5.43 BRL (ECB reference rate for 2026-07-23).
 ```
 
 Under the hood: the model calls `convert_currency(from: "USD", to: "BRL")`, the
-harness fills the URL template and does the GET to
+the engine fills the URL template and does the GET to
 `https://api.frankfurter.app/latest`, and the JSON comes back into the tool-loop
 for the model to summarize.
 
 ## Egress guard (SSRF protection) — read this
 
-Data-tools make **server-side** HTTP calls, so the harness ships an egress guard
+Data-tools make **server-side** HTTP calls, so the engine ships an egress guard
 that is **strict by default: public HTTPS only.** This example works with no
 configuration because its endpoint is public HTTPS.
 

@@ -1,19 +1,19 @@
-# Why Harness
+# Why Insika
 
 **Ruby is ready for production AI.** The narrative that you must reach for Python
 to ship serious LLM applications is out of date. [RubyLLM](https://rubyllm.com)
 gave the language a first-class, provider-agnostic LLM client — chat, tools,
 streaming, embeddings, moderation — a genuinely valuable foundation that closed
-the "Ruby can't do AI" gap. Harness is the next layer up: it takes those
+the "Ruby can't do AI" gap. Insika is the next layer up: it takes those
 primitives and makes an agent *dependable in production*.
 
 Because **an agent without a harness is just a chat loop.** The model does the
 reasoning, but everything that makes an agent survive contact with real traffic —
-durable state, tools, guardrails, evals, operations — lives in the harness around
+durable state, tools, guardrails, evals, operations — lives in the engine around
 it. Those harnesses exist, mature, for other ecosystems. Ruby teams have mostly
 been told to glue libraries together. They shouldn't have to.
 
-Harness is an **agent runtime for Ruby**: the turn pipeline, the operational
+Insika is an **agent runtime for Ruby**: the turn pipeline, the operational
 surface, and the safety layer, in one deployable piece — behind an
 OpenAI-Responses-compatible API. It stands on RubyLLM for the provider layer and
 adds everything between a chat call and a production agent.
@@ -22,9 +22,9 @@ And it does it *ergonomically*. A complete, running agent is a few lines of Ruby
 the same speed-to-first-agent story Python teams tell, without leaving Ruby:
 
 ```ruby
-require "harness"
+require "insika"
 
-agent = Harness.agent("assistant") do
+agent = Insika.agent("assistant") do
   model "deepseek-chat"
   provider :deepseek
   instructions "You are a concise, friendly assistant."
@@ -55,7 +55,7 @@ wrong — they're different amounts of "build it yourself":
 
 How they compare on what production actually demands:
 
-| | Raw SDK loop | Assemble a framework | Hosted gateway | **Harness (runtime)** |
+| | Raw SDK loop | Assemble a framework | Hosted gateway | **Insika (runtime)** |
 |---|:---:|:---:|:---:|:---:|
 | Get a first agent talking | ✅ | ⚠️ | ✅ | ✅ |
 | Add/change a tool without a redeploy | ❌ | ❌ | ⚠️ | ✅ |
@@ -92,7 +92,7 @@ How they compare on what production actually demands:
   queue cluster, no orchestrator, no managed database required to start — and it
   runs a real production workload today.
 - **Fibers, not a thread per request.** An LLM turn is almost all *waiting* on the
-  provider. Harness runs on the [Async](https://github.com/socketry/async) fiber
+  provider. Insika runs on the [Async](https://github.com/socketry/async) fiber
   scheduler and serves under [Falcon](https://github.com/socketry/falcon), so one
   process handles thousands of concurrent turns on a handful of connections instead
   of pinning a heavyweight thread per call. This is exactly the model
@@ -110,12 +110,12 @@ How they compare on what production actually demands:
 
 ## When a lighter tool is the right call
 
-Harness is for when an agent has to run **unattended, durably, and safely, in
+Insika is for when an agent has to run **unattended, durably, and safely, in
 production**. If that's not you yet, reach for less:
 
 - If you only need LLM calls with tools in Ruby and nothing operational around
   them, **[RubyLLM](https://rubyllm.com) alone is excellent** — and it's exactly
-  what Harness builds on. Reach for Harness when "nothing operational around them"
+  what Insika builds on. Reach for Insika when "nothing operational around them"
   stops being true: when the agent has to run unattended, recover from crashes,
   enforce safety, and be operable by someone who isn't you.
 - If your team is committed to another language ecosystem, use a runtime native to
