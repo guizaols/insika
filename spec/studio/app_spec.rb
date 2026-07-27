@@ -1161,17 +1161,21 @@ RSpec.describe Studio::App do
   # --- G3: UI robustness — A3 (loading states) + A4 (confirm + copy) -----------
 
   it "destructive forms carry a data-turbo-confirm prompt (A4)" do
+    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
     app, = build_app(agents: [profile("bia", prompt_files: %w[SOUL.md])],
                      data_tools: [data_tool(name: "cep")],
                      mcp_instances: [{ "name" => "tavily" }],
                      system_files: { "H.md" => "x" },
+                     memory: { "bia" => { facts: [fact], notes: [] } },
                      llm_providers: [{ "api" => "openai", "api_key" => "sk-1" }])
     client = login(app)
     expect(client.get("/mcp").body).to include('action="/studio/mcp/delete"', "data-turbo-confirm=")
     expect(client.get("/tools/def/cep").body).to include("/delete", "data-turbo-confirm=")
     expect(client.get("/system-files").body).to include('action="/studio/system-files/delete"', "data-turbo-confirm=")
     expect(client.get("/settings?s=llm").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
-    expect(client.get("/agents/bia").body).to include("/prompts/delete", "data-turbo-confirm=")
+    detail = client.get("/agents/bia").body
+    expect(detail).to include("/prompts/delete", "data-turbo-confirm=")
+    expect(detail).to include('/memory/forget" data-turbo-confirm=')
   end
 
   it "action buttons declare a data-turbo-submits-with loading label (A3)" do
