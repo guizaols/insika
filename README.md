@@ -151,7 +151,15 @@ bundle exec rspec
 - [docs/LOADTEST.md](docs/LOADTEST.md) — load-testing and data-topology.
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
 
+## Contributing
+
+Bug reports with a reproduction and small, focused PRs are the most useful thing right
+now — see [CONTRIBUTING.md](CONTRIBUTING.md) (setup, house rules) and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Vulnerabilities go through
+[SECURITY.md](SECURITY.md), never a public issue.
+
 ## Status
 
-Pre-release — APIs may still change. Name, license, and the full docs site are part
-of an in-progress OSS-readiness pass.
+Pre-release — APIs may still change, nothing is tagged yet
+([CHANGELOG.md](CHANGELOG.md)). Licensed **MIT** ([LICENSE](LICENSE)). The full docs
+site is the last open piece of the OSS-readiness pass.
