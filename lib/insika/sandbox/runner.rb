@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require_relative "../coercion"
 
 module Insika
   module Sandbox
@@ -65,10 +66,14 @@ module Insika
       # Collect the reader's output within a grace window. After a kill the write
       # end closes and `out.read` returns promptly; the bound guards a reader that
       # somehow does not (returns "" rather than blocking the fiber forever).
+      #
+      # The output of an arbitrary command is arbitrary bytes: scrubbed to valid
+      # UTF-8 before clipping (the clip is then by character, never splitting one)
+      # because it becomes a tool result and gets JSON-serialized downstream.
       def drain(reader, max_output)
         return "" if reader.join(DRAIN_TIMEOUT).nil?
 
-        (reader.value || "")[0, max_output]
+        Insika::Coercion.utf8(reader.value)[0, max_output]
       end
     end
   end
