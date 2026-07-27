@@ -101,8 +101,10 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Benchmark](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
 - [Load test](docs/LOADTEST.md) — load-testing and data topology.
 
-Reading this repo as an agent? [llms.txt](llms.txt) indexes the docs; [AGENTS.md](AGENTS.md)
-is for working *on* the code.
+All of the above is also browsable, searchable and cross-linked at
+**[guizaols.github.io/insika](https://guizaols.github.io/insika/)** — the same files,
+rendered. Reading this repo as an agent? [llms.txt](llms.txt) indexes the docs;
+[AGENTS.md](AGENTS.md) is for working *on* the code.
 
 ## Under the hood, in one line
 
@@ -125,5 +127,4 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Vulnerabilities go through
 ## Status
 
 Pre-release — APIs may still change, nothing is tagged yet
-([CHANGELOG.md](CHANGELOG.md)). Licensed **MIT** ([LICENSE](LICENSE)). The full docs site
-is the last open piece of the OSS-readiness pass.
+([CHANGELOG.md](CHANGELOG.md)). Licensed **MIT** ([LICENSE](LICENSE)).
