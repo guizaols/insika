@@ -91,7 +91,7 @@ RSpec.describe Studio::App do
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
-                data_tools: [], memory: {}, sessions: {}, settings: nil, llm_providers: [],
+                data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {},
                 tasks: {}, pendings: [], checkpoints: {})
     bus = BusDouble.new([])
@@ -111,6 +111,12 @@ RSpec.describe Studio::App do
     # REAL ToolStore (Phase 5): the authoring page reads from it; writes via the bus.
     tool_store = Insika::ToolStore.new(config_store: cfg)
     data_tools.each { |d| tool_store.write(d) }
+    # Records written straight to the ConfigStore, BYPASSING validation — the only way to
+    # seed a definition the engine no longer accepts (a legacy one). The editor has to
+    # open those: it is where they get fixed.
+    raw_data_tools.each do |name, definition|
+      cfg.put("tools", name, { "definition" => definition, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
+    end
     # REAL ToolTraceStore (debug §3.1): the session view reads from it.
     trace_store = Insika::ToolTraceStore.new(store: Insika::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
@@ -732,6 +738,36 @@ RSpec.describe Studio::App do
     expect(body).to include(">data<")                             # badge in the matrix
   end
 
+  # A data tool the overlay refuses is absent from the catalog (and from every agent's
+  # matrix) with only a stderr warn. The panel still lists it from the store, so this is
+  # where you notice — and the editor link is how you fix it.
+  it "marks a stored data tool that is missing from the catalog as dropped" do
+    app, = build_app(data_tools: [data_tool(name: "cep")],
+                     tools: [SkillEntry.new(name: "menu", description: "cardápio")])
+    body = login(app).get("/tools").body
+    expect(body).to include('href="/studio/tools/def/cep"')
+    expect(body).to include(">dropped<")
+  end
+
+  it "does not mark a registered data tool as dropped" do
+    app, = build_app(data_tools: [data_tool(name: "cep")],
+                     tools: [SkillEntry.new(name: "cep", description: "Consulta cep")])
+    expect(login(app).get("/tools").body).not_to include(">dropped<")
+  end
+
+  it "opens the editor for a legacy definition the engine now refuses, spelling the array out" do
+    legacy = { "name" => "recommend_products", "description" => "destaca produtos",
+               "parameters" => [{ "name" => "products", "type" => "array", "required" => true,
+                                  "description" => "os UUIDs" }],
+               "request" => { "method" => "POST", "url" => "https://api.test/x", "headers" => {},
+                              "query" => {}, "body" => '{"p":{{products}}}' },
+               "response" => { "extract" => "body_raw", "path" => nil },
+               "secret_headers" => [], "side_effect" => true, "timeout" => nil }
+    app, = build_app(raw_data_tools: { "recommend_products" => legacy })
+    body = login(app).get("/tools/def/recommend_products").body
+    expect(body).to include("products | array:string | required | os UUIDs")
+  end
+
   it "GET /tools/def/new renders the empty form" do
     app, = build_app
     body = login(app).get("/tools/def/new").body
@@ -800,6 +836,88 @@ RSpec.describe Studio::App do
   it "GET /tools/def/:name nonexistent → 404" do
     app, = build_app
     expect(login(app).get("/tools/def/fantasma").status).to eq(404)
+  end
+
+  # The editor used to render only the TOP LEVEL of a nested schema and write the flat
+  # form back — so opening a nested tool and saving it silently replaced its schema with
+  # one its author never wrote (an array of objects became an array of strings).
+  describe "nested parameters (the editor must not flatten)" do
+    let(:nested_schema) do
+      { "type" => "object",
+        "properties" => {
+          "query_filter_pairs" => {
+            "type" => "array",
+            "items" => { "type" => "object",
+                         "properties" => { "query" => { "type" => "string" },
+                                           "filters" => { "type" => "object", "properties" => {} } },
+                         "required" => ["query"] }
+          }
+        },
+        "required" => ["query_filter_pairs"] }
+    end
+
+    def nested_tool
+      data_tool(name: "search_products", parameters: nested_schema,
+                request: { method: "POST", url: "https://api.test/search",
+                           body: '{"pairs":{{query_filter_pairs}}}' },
+                response: { extract: "body_raw" })
+    end
+
+    it "renders the schema as JSON, not as a lossy flat line" do
+      app, = build_app(data_tools: [nested_tool])
+      body = login(app).get("/tools/def/search_products").body
+      expect(body).to include("&quot;items&quot;")               # the nesting is on screen
+      expect(body).to include("&quot;query_filter_pairs&quot;")
+      expect(body).not_to include("query_filter_pairs | array")  # the old flat rendering
+    end
+
+    it "round-trips: saving what the editor rendered writes the SAME schema back" do
+      app, bus = build_app(data_tools: [nested_tool])
+      client = login(app)
+      page = client.get("/tools/def/search_products").body
+      rendered = CGI.unescapeHTML(page[%r{<textarea name="parameters"[^>]*>(.*?)</textarea>}m, 1])
+      client.post("/tools/def/search_products", params: {
+                    "name" => "search_products", "description" => "busca", "method" => "POST",
+                    "url" => "https://api.test/search", "body" => '{"pairs":{{query_filter_pairs}}}',
+                    "parameters" => rendered, "extract" => "body_raw", "_csrf" => csrf_from(page)
+                  })
+      expect(bus.last(:write_data_tool).payload[:parameters]).to eq(nested_schema)
+    end
+
+    it "invalid JSON is a flash error, not a write" do
+      app, bus = build_app(data_tools: [nested_tool])
+      client = login(app)
+      csrf = csrf_from(client.get("/tools/def/search_products").body)
+      client.post("/tools/def/search_products", params: {
+                    "name" => "search_products", "description" => "busca", "method" => "POST",
+                    "url" => "https://api.test/search", "parameters" => '{"type":"object",', "_csrf" => csrf
+                  })
+      expect(bus.last(:write_data_tool)).to be_nil
+      expect(client.get("/tools/def/search_products").body).to include("invalid JSON Schema")
+    end
+  end
+
+  it "a list of scalars round-trips through the flat form as array:string" do
+    app, bus = build_app(data_tools: [data_tool(
+      name: "recommend_products",
+      parameters: { "type" => "object",
+                    "properties" => { "products" => { "type" => "array", "items" => { "type" => "string" } } },
+                    "required" => ["products"] },
+      request: { method: "POST", url: "https://api.test/x", body: '{"p":{{products}}}' },
+      response: { extract: "body_raw" }
+    )])
+    client = login(app)
+    page = client.get("/tools/def/recommend_products").body
+    expect(page).to include("products | array:string | required")
+
+    client.post("/tools/def/recommend_products", params: {
+                  "name" => "recommend_products", "description" => "d", "method" => "POST",
+                  "url" => "https://api.test/x", "body" => '{"p":{{products}}}',
+                  "parameters" => "products | array:string | required | os UUIDs",
+                  "extract" => "body_raw", "_csrf" => csrf_from(page)
+                })
+    expect(bus.last(:write_data_tool).payload[:parameters])
+      .to eq([{ "name" => "products", "type" => "array:string", "required" => true, "description" => "os UUIDs" }])
   end
 
   # --- History (read-only viewer) — task 17 --------------------------------

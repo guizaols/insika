@@ -20,10 +20,11 @@ module Insika
   #
   # `parameters` is **JSON Schema** (the interlingua of OpenAI/Anthropic/MCP; Phase 7/D1):
   # a nestable object, fed straight into RubyLLM's `params_schema` (provider-
-  # agnostic). The **legacy flat array** (`[{name,type,required}]`) is SUGAR: it is
-  # automatically lifted to JSON Schema at build time (zero regression — R2). Ingestion
-  # validates a **safe subset** of JSON Schema (R1): it rejects composition (oneOf/
-  # anyOf/allOf/$ref/…) that not every provider supports.
+  # agnostic). The **flat array** (`[{name,type,required}]`) is SUGAR for the simple
+  # case: it is lifted to JSON Schema at build time. The sugar covers scalars and
+  # `array:<scalar>` — it CANNOT express an array of objects, and says so instead of
+  # guessing an item type. Ingestion validates a **safe subset** of JSON Schema (R1):
+  # it rejects composition (oneOf/anyOf/allOf/$ref/…) that not every provider supports.
   #
   # Validation lives HERE (single source): `build`/`from_h` raise ValidationError
   # on malformed input. Name uniqueness and collision with a code tool are NOT
@@ -36,7 +37,12 @@ module Insika
   )
 
   class ToolDefinition
-    PARAM_TYPES = %w[string number boolean array].freeze   # legacy flat-sugar types
+    # Flat-sugar types: the SCALARS, plus `array:<scalar>` for a list. There is no bare
+    # `array`: an array without an item type is an INCOMPLETE declaration, and the
+    # engine refuses to guess one (see lift_flat_params).
+    PARAM_TYPES = %w[string number integer boolean].freeze
+    ARRAY_SUGAR_RE = /\Aarray:(string|number|integer|boolean)\z/
+    ARRAY_SUGAR = PARAM_TYPES.map { |t| "array:#{t}" }.freeze
     HTTP_METHODS = %w[GET HEAD POST PUT PATCH DELETE].freeze
     IDEMPOTENT = %w[GET HEAD].freeze              # side_effect default = false
     EXTRACTS = %w[body_raw status json_path].freeze
@@ -136,9 +142,16 @@ module Insika
     def self.empty_schema = { "type" => "object", "properties" => {}, "required" => [] }
     private_class_method :empty_schema
 
-    # Legacy flat sugar -> JSON Schema. Preserves Phase 5 validation (NAME_RE,
-    # duplicates, PARAM_TYPES). A legacy `array` (without items) gets string items,
-    # mirroring RubyLLM's default (zero regression).
+    # Flat sugar -> JSON Schema. Preserves Phase 5 validation (NAME_RE, duplicates,
+    # PARAM_TYPES) and lifts `array:<scalar>` into proper `items`.
+    #
+    # A bare `array` is REFUSED. It used to lift to `items: {type:"string"}` — the
+    # engine inventing half the contract. That default is invisible in the authoring
+    # UI and silently correct-looking, so an array-of-OBJECTS param (the common shape:
+    # `[{query, filters}]`) reached the provider declared as an array of STRINGS. The
+    # model then obeyed the schema it was given, the backend answered 200, and the
+    # results were garbage — a failure with no error anywhere. The JSON Schema path
+    # already refuses `array` without `items` (validate_array!); the sugar now agrees.
     def self.lift_flat_params(list)
       seen = {}
       properties = {}
@@ -150,18 +163,32 @@ module Insika
         raise Insika::ValidationError, "param '#{pname}' duplicated" if seen[pname]
 
         seen[pname] = true
-        type = (p[:type] || "string").to_s
-        raise Insika::ValidationError, "param '#{pname}': invalid type #{type.inspect}" unless PARAM_TYPES.include?(type)
-
-        prop = { "type" => type }
+        prop = flat_property(pname, (p[:type] || "string").to_s)
         prop["description"] = p[:description].to_s unless p[:description].to_s.empty?
-        prop["items"] = { "type" => "string" } if type == "array"
         properties[pname] = prop
         required << pname if p.fetch(:required, true)
       end
       { "type" => "object", "properties" => properties, "required" => required }
     end
     private_class_method :lift_flat_params
+
+    # One flat type -> the property schema. Raises on a bare `array` with the spelling
+    # that fixes it, and on anything else unknown.
+    def self.flat_property(pname, type)
+      if (m = ARRAY_SUGAR_RE.match(type))
+        { "type" => "array", "items" => { "type" => m[1] } }
+      elsif PARAM_TYPES.include?(type)
+        { "type" => type }
+      elsif type == "array"
+        raise Insika::ValidationError,
+              "param '#{pname}': type 'array' needs an item type — use #{ARRAY_SUGAR.join('/')} " \
+              "for a list of scalars, or declare the full JSON Schema for a list of objects"
+      else
+        raise Insika::ValidationError,
+              "param '#{pname}': invalid type #{type.inspect} (#{(PARAM_TYPES + ARRAY_SUGAR).join('/')})"
+      end
+    end
+    private_class_method :flat_property
 
     # The top level is always an object (the model always sends an args object). A Hash
     # without "type" but with "properties" is assumed to be an object; any other top-level

@@ -108,6 +108,7 @@ module Insika
         env: ENV,
         settings_store: Insika::SettingsStore.new(config_store: config_store),
         llm_provider_store: Insika::LLMProviderStore.new(config_store: config_store),
+        tool_store: Insika::ToolStore.new(config_store: config_store),
         backend: backend
       )
     end
