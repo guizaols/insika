@@ -167,10 +167,34 @@ RSpec.describe Insika::ToolDefinition do
       )
     end
 
-    it "flat array type=array gets string items (parity with RubyLLM)" do
-      d = described_class.build(**valid_attrs(parameters: [{ name: "tags", type: "array" }],
-                                              request: { url: "https://a.test/{{tags}}" }))
-      expect(d.parameters.dig("properties", "tags")).to eq("type" => "array", "items" => { "type" => "string" })
+    # The engine does NOT invent an item type. A bare `array` used to lift to
+    # `items: {type:"string"}`, which is how an array-of-objects param reached a
+    # provider declared as an array of strings — the model obeyed, the backend
+    # answered 200, and nothing anywhere reported an error.
+    it "refuses a flat param typed bare 'array', naming the spelling that fixes it" do
+      expect { described_class.build(**valid_attrs(parameters: [{ name: "tags", type: "array" }],
+                                                   request: { url: "https://a.test/{{tags}}" })) }
+        .to raise_error(Insika::ValidationError, /'tags'.*needs an item type.*array:string/)
+    end
+
+    it "lifts array:<scalar> into items" do
+      %w[string number integer boolean].each do |item|
+        d = described_class.build(**valid_attrs(parameters: [{ name: "tags", type: "array:#{item}" }],
+                                                request: { url: "https://a.test/{{tags}}" }))
+        expect(d.parameters.dig("properties", "tags")).to eq("type" => "array", "items" => { "type" => item })
+      end
+    end
+
+    it "lifts a flat integer param" do
+      d = described_class.build(**valid_attrs(parameters: [{ name: "qty", type: "integer" }],
+                                              request: { url: "https://a.test/{{qty}}" }))
+      expect(d.parameters.dig("properties", "qty")).to eq("type" => "integer")
+    end
+
+    it "rejects an unknown flat type, listing the accepted ones" do
+      expect { described_class.build(**valid_attrs(parameters: [{ name: "x", type: "object" }],
+                                                   request: { url: "https://a.test/{{x}}" })) }
+        .to raise_error(Insika::ValidationError, %r{invalid type "object".*array:string}m)
     end
 
     it "accepts nested JSON Schema (object/array) and preserves it string-keyed" do

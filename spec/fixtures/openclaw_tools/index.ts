@@ -6,6 +6,7 @@ import { createSearchProductsTool } from "./tools/search-products.js";
 import { createSearchFaqTool } from "./tools/search-faq.js";
 import { createSendFinalizeButtonTool } from "./tools/send-finalize-button.js";
 import { createDormantTool } from "./tools/dormant.js";
+import { createExoticTool } from "./tools/exotic.js";
 
 const plugin = {
   id: "fixture-tools",
@@ -14,6 +15,9 @@ const plugin = {
     api.registerTool((ctx: any) => createSearchProductsTool(resolveCtx(ctx)));
     api.registerTool((ctx: any) => createSearchFaqTool(resolveCtx(ctx)));
     api.registerTool((ctx: any) => createSendFinalizeButtonTool(resolveCtx(ctx)));
+    // Registered, but its params have no equivalent in the safe subset -> the converter
+    // SKIPS it (and reports it) instead of emitting a guessed schema.
+    api.registerTool((ctx: any) => createExoticTool(resolveCtx(ctx)));
     // createDormantTool é importado mas NÃO registrado -> não entra no manifesto.
   },
 };

@@ -86,6 +86,22 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       body = t.instance_variable_get(:@http).last[:body]
       expect(JSON.parse(body)).to eq("pairs" => pairs)
     end
+
+    # The production failure: the model sent a list of STRINGS for a list of objects.
+    # It used to be interpolated as-is, the backend answered 200, and the wrong results
+    # came back with no error anywhere. Now the call never leaves the process.
+    it "a list of strings where the schema declares objects -> {error:}, no HTTP call" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      expect(t.execute(query_filter_pairs: ["trufa Acme"]))
+        .to match(error: /query_filter_pairs\[0\]: expected an object/)
+      expect(t.instance_variable_get(:@http).last).to be_nil
+    end
+
+    it "names the missing nested property so the model can retry correctly" do
+      t = tool(search_def, result: { status: 200, body: "ok" })
+      expect(t.execute(query_filter_pairs: [{ "filters" => {} }]))
+        .to match(error: /query_filter_pairs\[0\]\.query: missing/)
+    end
   end
 
   def last_url(t) = t.instance_variable_get(:@http).last[:url]

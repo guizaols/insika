@@ -106,7 +106,7 @@ module Studio
       {
         name: presence(r.params["name"]),
         description: r.params["description"].to_s,
-        parameters: parse_param_lines(r.params["parameters"]),
+        parameters: parse_parameters(r.params["parameters"]),
         request: {
           method: presence(r.params["method"]) || "GET",
           url: r.params["url"].to_s,
@@ -123,7 +123,24 @@ module Studio
       }
     end
 
-    # Parameters: one line per param, pipe-delimited (CSP forbids JS for
+    # Parameters, TWO accepted syntaxes in one field (auto-detected, no mode toggle):
+    # text starting with `{` is a full JSON Schema — the only form that expresses
+    # nesting (an array of objects, a nested object); anything else is the flat
+    # pipe-delimited sugar. This is what keeps the editor from being a lossy
+    # round-trip: a nested tool renders as JSON here and saves back as the same JSON,
+    # instead of being flattened into a shape its author never wrote.
+    def parse_parameters(text)
+      s = text.to_s.strip
+      return parse_param_lines(text) unless s.start_with?("{")
+
+      begin
+        JSON.parse(s)
+      rescue JSON::ParserError => e
+        raise Insika::ValidationError, "parameters: invalid JSON Schema (#{e.message.lines.first.to_s.strip})"
+      end
+    end
+
+    # Flat sugar: one line per param, pipe-delimited (CSP forbids JS for
     # dynamic lines; a textarea is the honest path, like the MCP env):
     #   name | type | required|optional | description
     def parse_param_lines(text)

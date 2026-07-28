@@ -59,9 +59,13 @@ module Insika
         end
       end
 
+      # The args are checked against the tool's own JSON Schema BEFORE the request is
+      # built: a call the schema does not allow becomes `{ error: }` the model can act
+      # on, instead of a wrongly-shaped request that a backend answers 200 to.
       def execute(**kwargs)
-        missing = @definition.required_params.reject { |n| present?(kwargs[n.to_sym]) }
-        return { error: "missing required parameter(s): #{missing.join(', ')}" } unless missing.empty?
+        if (bad = Insika::SchemaGuard.violation(@definition.parameters, kwargs))
+          return { error: bad }
+        end
 
         req = build_request(kwargs)
         reason = @egress.violation(req[:url], **@egress_options)
@@ -166,8 +170,6 @@ module Insika
 
         { error: "HTTP #{result[:status]}: #{result[:body].to_s[0, 200]}" }
       end
-
-      def present?(v) = Insika::Coercion.present?(v)
 
       # No task correlation (registry tool does not receive TurnState) -> meta {}.
       # Emits only name + status: NEVER body/headers (0 secret leakage, R2).

@@ -36,8 +36,8 @@
     <input type="text" name="url" value="<%= @form[:url] %>" placeholder="https://viacep.com.br/ws/{{cep}}/json" required>
   </label>
 
-  <label>parameters <span class="muted">(one per line: <code>name | type | required|optional | description</code>)</span>
-    <textarea name="parameters" rows="4" placeholder="cep | string | required | The ZIP code to look up"><%= @form[:parameters] %></textarea>
+  <label>parameters <span class="muted">(one per line: <code>name | type | required|optional | description</code> — type is <code>string</code>/<code>number</code>/<code>integer</code>/<code>boolean</code> or <code>array:string</code>. For a list of objects or a nested object, paste a full <strong>JSON Schema</strong> instead: any text starting with <code>{</code> is read as one.)</span>
+    <textarea name="parameters" rows="6" placeholder="cep | string | required | The ZIP code to look up"><%= @form[:parameters] %></textarea>
   </label>
 
   <div class="grid-2">
