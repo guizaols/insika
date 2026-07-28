@@ -152,9 +152,18 @@ module Insika
         end
       end
 
-      def http_ok?(result) = result[:status] < 400
+      # 2xx only. A 3xx is NOT success: the HttpClient does not follow redirects
+      # (the EgressGuard cleared the authored URL, not the hop's destination), and
+      # servers send a 3xx with an empty body — so treating it as ok handed the
+      # model "" and it narrated a plausible outage. A moved API must read as an
+      # error naming its new URL, which is a definition to fix.
+      def http_ok?(result) = result[:status] >= 200 && result[:status] < 300
 
       def http_error(result)
+        if (300..399).cover?(result[:status]) && result[:location]
+          return { error: "HTTP #{result[:status]}: moved to #{result[:location]}" }
+        end
+
         { error: "HTTP #{result[:status]}: #{result[:body].to_s[0, 200]}" }
       end
 
