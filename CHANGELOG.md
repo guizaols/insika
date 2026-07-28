@@ -64,3 +64,16 @@ Everything below is what the first release will contain.
   wires the prompt provider with `base: ""`, so an agent whose identity was inline ran
   with *no* identity. Agents whose identity comes from `prompt_files` (the production
   path) were unaffected.
+- **`max_tokens` now reaches the provider.** The agent param was authored in the DSL,
+  the Studio and a pack, resolved onto the turn — and then sent to the chat as
+  `with_max_output_tokens`, a method no version of `ruby_llm` has. Guarded by
+  `respond_to?`, it was skipped in silence, so an agent with a token ceiling ran without
+  one. It now rides `with_params(max_tokens:)`, merged into a single call with the
+  reasoning toggle (`with_params` replaces the gem's whole params hash, so two calls
+  would drop the first one's keys).
+- **A data-tool whose API moved now says so.** A 3xx counted as success, and since
+  servers send a redirect with an empty body, the model received `""` and narrated a
+  plausible outage. The HTTP client still does not follow the hop — the egress guard
+  cleared the authored URL, not the redirect's destination — but the tool now returns
+  `HTTP 301: moved to <url>`, which names the definition to fix. This is what broke
+  `examples/data-tool/currency_agent.rb` (its endpoint moved host).

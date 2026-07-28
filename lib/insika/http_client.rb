@@ -11,7 +11,13 @@ module Insika
   # avoids OOM). It is INJECTABLE: tests pass a double (none hit the network);
   # Stage C can swap in async-http without touching DataDefinedTool.
   #
-  # Contract: request(method:, url:, headers:, body:, timeout:) -> { status:, body: }.
+  # Contract: request(method:, url:, headers:, body:, timeout:) -> { status:, body: }
+  # (+ `location:` on a 3xx). It does NOT follow redirects: the destination is
+  # cleared by the EgressGuard in the CALLER (DataDefinedTool), before the call —
+  # a hop taken in here would carry the model's tool call to a host nobody
+  # allowed (an SSRF around the guard). A data-tool whose API moved gets a
+  # 3xx surfaced as an error naming the new URL, and the fix is to author the
+  # final URL in the definition.
   class HttpClient
     DEFAULT_TIMEOUT = 30
     MAX_BYTES = 1_000_000 # 1 MB
@@ -46,6 +52,9 @@ module Insika
           # UTF-8 (see Coercion.utf8) because it goes on to be a tool result —
           # transcript, event, SSE frame — and JSON.generate rejects anything else.
           result = { status: resp.code.to_i, body: Coercion.utf8(collected) }
+          # The redirect TARGET, so a moved API is reported as "moved to <url>"
+          # instead of a bare 3xx with the empty body servers send with it.
+          result[:location] = resp["location"].to_s if resp["location"]
         end
         result
       end

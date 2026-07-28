@@ -17,7 +17,12 @@ fx = Insika.agent("fx") do
   PROMPT
 
   # A declarative HTTP tool. `{{from}}` / `{{to}}` are the model-supplied params;
-  # the insika substitutes them at call time. Public HTTPS endpoint, no API key.
+  # insika substitutes them at call time. Public HTTPS endpoint, no API key.
+  #
+  # Author the FINAL url: the HTTP client does not follow redirects (the egress
+  # allowlist cleared this host, not wherever a hop points), so an endpoint that
+  # moved comes back as "HTTP 301: moved to <url>" — which is your cue to update
+  # this line. api.frankfurter.app now redirects here.
   data_tool(
     "name"        => "convert_currency",
     "description" => "Latest reference exchange rate between two currencies.",
@@ -31,7 +36,7 @@ fx = Insika.agent("fx") do
     },
     "request"  => {
       "method" => "GET",
-      "url"    => "https://api.frankfurter.app/latest?from={{from}}&to={{to}}"
+      "url"    => "https://api.frankfurter.dev/v1/latest?from={{from}}&to={{to}}"
     },
     "response" => { "extract" => "body_raw" }
   )

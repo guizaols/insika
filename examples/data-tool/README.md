@@ -17,8 +17,13 @@ Right now 1 USD is about 5.43 BRL (ECB reference rate for 2026-07-23).
 
 Under the hood: the model calls `convert_currency(from: "USD", to: "BRL")`, the
 the engine fills the URL template and does the GET to
-`https://api.frankfurter.app/latest`, and the JSON comes back into the tool-loop
-for the model to summarize.
+`https://api.frankfurter.dev/v1/latest`, and the JSON comes back into the
+tool-loop for the model to summarize.
+
+Author the **final** URL. The HTTP client does not follow redirects — the egress
+allowlist cleared the host you wrote, not wherever a hop might point — so a moved
+endpoint returns `HTTP 301: moved to <url>` to the model instead of the empty body
+a 3xx carries. When a tool starts answering that, update the definition.
 
 ## Egress guard (SSRF protection) — read this
 

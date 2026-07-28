@@ -16,13 +16,14 @@ RSpec.describe Insika::HttpClient do
   # Minimal HTTP/1.1 server on an ephemeral port. `chunks` are written raw, one
   # write per element, so a multi-byte character can be SPLIT across two socket
   # reads — exactly the case that byte-level accumulation has to survive.
-  def with_server(chunks:, status: "200 OK")
+  def with_server(chunks:, status: "200 OK", location: nil)
     server = TCPServer.new("127.0.0.1", 0)
     thread = Thread.new do
       socket = server.accept
       while (line = socket.gets) && !line.strip.empty?; end # request line + headers
       body = chunks.join.b
       socket.write("HTTP/1.1 #{status}\r\nContent-Type: application/json\r\n" \
+                   "#{location ? "Location: #{location}\r\n" : ''}" \
                    "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n")
       chunks.each { |c| socket.write(c) }
       socket.close
@@ -73,6 +74,25 @@ RSpec.describe Insika::HttpClient do
     expect(result[:body]).to be_valid_encoding
     expect(result[:body]).to start_with("ok ")
     expect { JSON.generate(body: result[:body]) }.not_to raise_error
+  end
+
+  # It deliberately does NOT follow the hop: the EgressGuard cleared the authored
+  # URL, not the redirect's destination. The target is REPORTED so a data-tool
+  # whose API moved fails with something actionable (DataDefinedTool turns this
+  # into "HTTP 301: moved to <url>") instead of the empty body a 3xx carries.
+  it "does not follow a redirect: returns the 3xx and its Location" do
+    result = with_server(chunks: [""], status: "301 Moved Permanently",
+                         location: "https://api.example.test/v2/latest") { |url| get(url) }
+
+    expect(result[:status]).to eq(301)
+    expect(result[:location]).to eq("https://api.example.test/v2/latest")
+    expect(result[:body]).to eq("")
+  end
+
+  it "a 2xx response carries no location key" do
+    result = with_server(chunks: ["{}"]) { |url| get(url) }
+
+    expect(result).not_to have_key(:location)
   end
 
   it "caps the response size by bytes" do
