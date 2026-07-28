@@ -37,6 +37,12 @@ Everything below is what the first release will contain.
   flood before it costs an LLM call, backed by a usage ledger.
 - **Subagents** — bounded fan-out delegation with a concurrency cap, and workflows
   exposed over the API.
+- **Parallel tool calls** — opt-in via `limits[:tool_concurrency]`, one number that is
+  both the switch and the cap on how many of a batch run at once. Off by default, and
+  automatically off for any turn holding an approval-required tool (two calls suspended
+  for an operator would deadlock on the single per-task mailbox). Documented trade-offs:
+  `max_tool_calls` becomes approximate, tool results are recorded in completion order,
+  and a turn deadline waits for in-flight calls instead of cancelling them.
 - **Studio** — a web control UI for agents, prompts, skills, tools, sessions, tasks,
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,

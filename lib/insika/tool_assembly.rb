@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "async"
+require "async/semaphore"
+
 module Insika
   # Turn-scoped assembly of the agent's tool instances (pipeline stage 3 tail):
   # capability resolution, instantiation (Entry#factory | ready instance),
@@ -70,6 +73,7 @@ module Insika
     # tool with no side-effect and of trivial latency.
     def wrap_tools(tools, state, skip_side_effects = [])
       timeout = state.profile.limits[:tool_timeout] || 60
+      install_tool_gate(state)
       tools.map do |tool|
         ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
                                tool_registry: @tool_registry, timeout: timeout,
@@ -79,6 +83,24 @@ module Insika
     end
 
     private
+
+    # D4 (item 30): the model decides the fan-out, so without a cap a batch of 15
+    # data-tools is 15 simultaneous requests to the same upstream — which is how
+    # one turn earns a 429 for every other turn in the process. Note the contrast
+    # with the primitives that already shipped: `spawn_subagents` caps at 8
+    # (SubagentGraph.fan_out_cap) and `Tools::Concurrency.gather` takes `max:`.
+    #
+    # The cap is enforced in OUR decorator, not in the gem (which has none): ONE
+    # semaphore per turn, installed here — once, in the turn's own fiber, before
+    # any tool can run — and acquired by every ToolEnvelope. Off (nil) unless the
+    # turn actually got concurrency, so the serial path allocates nothing.
+    # A state that predates these fields (a unit stub) is left alone.
+    def install_tool_gate(state)
+      return unless state.respond_to?(:tool_gate) && state.respond_to?(:tool_concurrency)
+
+      cap = state.tool_concurrency
+      state.tool_gate = cap ? Async::Semaphore.new(cap) : nil
+    end
 
     # Real Engine -> Entries (respond to factory); fakes -> ready instances.
     # `turn_context` (D2) is deposited into the instances that expose it

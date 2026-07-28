@@ -118,6 +118,31 @@ RSpec.describe Insika::Context::Providers::Session do
     it "priority is per UNIT (recency counts cycles, not messages)" do
       expect(provider.call(request(vars: { history: cycle })).map(&:priority)).to eq([60, 61, 62])
     end
+
+    # D6 (item 30): with parallel tool calls the `role: tool` messages are appended
+    # in COMPLETION order, so a transcript can carry the results of c1/c2/c3 in any
+    # order. The grouping is POSITIONAL — consecutive tool messages after an
+    # assistant that has tool_calls — so it does not care, and this pins that: one
+    # unit, all three results, still keyed by their own tool_call_id.
+    it "tolerates tool results in completion order, not call order" do
+      out_of_order = [
+        { "role" => "assistant", "content" => "",
+          "tool_calls" => [{ "id" => "c1", "name" => "slow", "arguments" => {} },
+                           { "id" => "c2", "name" => "fast", "arguments" => {} },
+                           { "id" => "c3", "name" => "mid", "arguments" => {} }] },
+        { "role" => "tool", "tool_call_id" => "c2", "content" => "second finished first" },
+        { "role" => "tool", "tool_call_id" => "c3", "content" => "third finished second" },
+        { "role" => "tool", "tool_call_id" => "c1", "content" => "first finished last" },
+        { "role" => "assistant", "content" => "resposta final" }
+      ]
+
+      frags = provider.call(request(vars: { history: out_of_order }))
+
+      expect(frags.size).to eq(2) # [assistant + its 3 results] · [final assistant]
+      unit = frags.first.content
+      expect(unit.map { |m| m[:role].to_s }).to eq(%w[assistant tool tool tool])
+      expect(unit.drop(1).map { |m| m[:tool_call_id] }).to eq(%w[c2 c3 c1])
+    end
   end
 
   it "read failure with a requested session -> ContextError" do
