@@ -6,12 +6,15 @@ require "spec_helper"
 RSpec.describe Insika::ModelSelection do
   # Records the fluent with_* calls the way a RubyLLM chat exposes them. Named
   # uniquely to avoid clobbering the shared spec/support/fake_chat.rb constant.
+  # It may ONLY expose methods the real RubyLLM::Chat has (ruby_llm_contract_spec
+  # guards that): a double that answers a setter the gem lacks turns this file
+  # into theater — which is how `with_max_output_tokens` passed for months while
+  # max_tokens never reached a provider.
   recording_chat = Class.new do
     attr_reader :calls
 
     def initialize = (@calls = [])
     def with_temperature(v) = (@calls << [:with_temperature, v]; self)
-    def with_max_output_tokens(v) = (@calls << [:with_max_output_tokens, v]; self)
     def with_thinking(effort:) = (@calls << [:with_thinking, effort]; self)
     def with_params(**params) = (@calls << [:with_params, params]; self)
   end
@@ -36,9 +39,27 @@ RSpec.describe Insika::ModelSelection do
       described_class.new(model: "m", params: { temperature: 0.2, max_tokens: 200, thinking: "high" }).apply_params(chat)
       expect(chat.calls).to eq([
                                  [:with_temperature, 0.2],
-                                 [:with_max_output_tokens, 200],
+                                 [:with_params, { max_tokens: 200 }],
                                  [:with_thinking, :high]
                                ])
+    end
+
+    # max_tokens has no with_* setter in the gem — it rides with_params, which is
+    # deep-merged OVER the provider payload (and so also overrides Anthropic's
+    # registry-derived cap).
+    it "sends max_tokens as a provider param" do
+      chat = fake_chat_class.new
+      described_class.new(model: "m", params: { max_tokens: 512 }).apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { max_tokens: 512 }]])
+    end
+
+    # with_params REPLACES the gem's whole params hash: two calls would drop the
+    # first one's keys, so max_tokens + the reasoning toggle must travel together.
+    it "merges max_tokens and the reasoning toggle into ONE with_params call" do
+      chat = fake_chat_class.new
+      described_class.new(model: "m", provider: :deepseek,
+                          params: { max_tokens: 300, thinking: "off" }).apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { max_tokens: 300, thinking: { type: "disabled" } }]])
     end
 
     it "skips absent params" do
@@ -68,7 +89,7 @@ RSpec.describe Insika::ModelSelection do
   end
 
   # §10 4-layer reasoning control: the resolved `thinking` maps to the provider wire.
-  describe "#apply_thinking (reasoning toggle)" do
+  describe "the reasoning toggle" do
     def sel(thinking, provider: :deepseek)
       described_class.new(model: "m", provider: provider, params: { thinking: thinking })
     end

@@ -64,3 +64,10 @@ Everything below is what the first release will contain.
   wires the prompt provider with `base: ""`, so an agent whose identity was inline ran
   with *no* identity. Agents whose identity comes from `prompt_files` (the production
   path) were unaffected.
+- **`max_tokens` now reaches the provider.** The agent param was authored in the DSL,
+  the Studio and a pack, resolved onto the turn — and then sent to the chat as
+  `with_max_output_tokens`, a method no version of `ruby_llm` has. Guarded by
+  `respond_to?`, it was skipped in silence, so an agent with a token ceiling ran without
+  one. It now rides `with_params(max_tokens:)`, merged into a single call with the
+  reasoning toggle (`with_params` replaces the gem's whole params hash, so two calls
+  would drop the first one's keys).
