@@ -991,6 +991,10 @@ module Studio
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = insika[:tool_store] ? insika[:tool_store].names : []
+      # Stored but NOT in the catalog = the overlay refused the definition and dropped it
+      # (only a stderr warn otherwise). The pane still links its editor, so the panel is
+      # where you see it and where you fix it. `insika doctor` reports the same set.
+      @dropped_tool_names = @data_tool_names - @tools.map(&:name)
       @agents = insika[:profile_source].all.sort_by(&:id)
       # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
       # default to the first agent so the pane is useful on landing.
@@ -1038,7 +1042,7 @@ module Studio
       {
         name: t["name"].to_s, description: t["description"].to_s,
         method: req["method"] || "GET", url: req["url"].to_s,
-        parameters: param_lines(t["parameters"]),
+        parameters: params_text(t["parameters"]),
         query: env_lines(req["query"]), headers: env_lines(req["headers"]),
         secret_headers: Array(t["secret_headers"]).join(", "),
         body: req["body"].to_s,
@@ -1047,11 +1051,18 @@ module Studio
       }
     end
 
-    # tool_patch/parse_param_lines moved to Studio::Forms (§11 B6).
+    # tool_patch/parse_parameters moved to Studio::Forms (§11 B6).
 
-    # Inverse: params (from the store) -> text for the textarea. Accepts the legacy flat array
-    # AND the JSON Schema (Phase 7): renders the TOP-LEVEL view (nesting doesn't fit in the
-    # flat textarea — nested tools are authored via manifest, Step B).
+    # Inverse of parse_parameters: the stored params -> text for the textarea. A schema
+    # the flat sugar can express round-trips as pipe lines (the friendly form); anything
+    # NESTED renders as JSON Schema — the same text the form parses back, so opening and
+    # saving a nested tool is a no-op instead of a silent flattening.
+    def params_text(params)
+      return param_lines(params) if flat_sugar?(params)
+
+      JSON.pretty_generate(params)
+    end
+
     def param_lines(params)
       flat_params(params).map do |p|
         req = p["required"] == false ? "optional" : "required"
@@ -1060,18 +1071,55 @@ module Studio
     end
 
     # JSON Schema (Hash) OR flat array -> top-level [{name,type,required,description}].
+    # An array property renders with its item type (`array:string`) — the spelling the
+    # sugar accepts back. A legacy record with a bare `array` renders as `array:string`
+    # too: that IS what it meant, now written down (see ToolDefinition.flat_property).
     def flat_params(params)
       if params.is_a?(Hash)
         props = params["properties"] || {}
         required = Array(params["required"]).map(&:to_s)
         props.map do |name, schema|
           schema ||= {}
-          { "name" => name.to_s, "type" => (schema["type"] || "string").to_s,
+          { "name" => name.to_s, "type" => flat_type(schema),
             "required" => required.include?(name.to_s), "description" => schema["description"].to_s }
         end
       else
-        Array(params)
+        Array(params).map { |p| p.is_a?(Hash) ? p.merge("type" => flat_type_from_legacy(p)) : p }
       end
+    end
+
+    # Can the flat textarea express this schema without losing anything? Only if every
+    # top-level property is a scalar (or a list of scalars) and carries no keyword the
+    # sugar cannot write back (nested properties, enum, minItems…).
+    def flat_sugar?(params)
+      return true unless params.is_a?(Hash)
+      return false unless (params.keys - %w[type properties required]).empty?
+
+      (params["properties"] || {}).all? { |_, schema| flat_sugar_property?(schema) }
+    end
+
+    def flat_sugar_property?(schema)
+      return false unless schema.is_a?(Hash)
+      return false unless (schema.keys - %w[type description items]).empty?
+
+      type = schema["type"].to_s
+      return Insika::ToolDefinition::PARAM_TYPES.include?(type) unless type == "array"
+
+      items = schema["items"]
+      items.is_a?(Hash) && items.keys == ["type"] &&
+        Insika::ToolDefinition::PARAM_TYPES.include?(items["type"].to_s)
+    end
+
+    def flat_type(schema)
+      type = (schema["type"] || "string").to_s
+      return type unless type == "array"
+
+      "array:#{schema.dig('items', 'type') || 'string'}"
+    end
+
+    def flat_type_from_legacy(param)
+      type = (param["type"] || "string").to_s
+      type == "array" ? "array:string" : type
     end
 
     def tool_def_path(name) = "/studio/tools/def/#{Rack::Utils.escape(name.to_s)}"

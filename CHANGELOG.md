@@ -83,3 +83,25 @@ Everything below is what the first release will contain.
   cleared the authored URL, not the redirect's destination — but the tool now returns
   `HTTP 301: moved to <url>`, which names the definition to fix. This is what broke
   `examples/data-tool/currency_agent.rb` (its endpoint moved host).
+- **A data tool's parameters are no longer half-invented by the engine.** In the flat
+  authoring form, a param typed `array` used to lift to `items: {type: "string"}` — an
+  item type nobody wrote. So a param whose API takes a list of *objects*
+  (`[{query, filters}]`) reached the provider declared as a list of *strings*: the model
+  obeyed the schema it was given, the backend answered `200`, and the results were
+  wrong with no error anywhere. Three changes close that loop:
+  - bare `array` is refused at ingestion (the JSON Schema path already refused an array
+    without `items`); the flat form now spells a list of scalars `array:string` /
+    `array:number` / `array:integer` / `array:boolean`, and a list of objects is written
+    as JSON Schema. **Breaking for authoring**; `insika doctor` reports any stored tool
+    left behind and offers the meaning-preserving rewrite.
+  - the Studio tool editor no longer flattens what it cannot render. A nested schema
+    shows as JSON Schema and saves back unchanged — before, opening and saving a nested
+    tool silently replaced its schema with the broken flat one.
+  - a tool call's arguments are validated against the tool's own schema before the
+    request is built, so a malformed call becomes an `{ error: }` naming the offending
+    path (`query_filter_pairs[0]: expected an object, got a string`) that the model can
+    act on. Structure is strict; scalars accept their lossless string form (`"2"`,
+    `"true"`) and are never coerced.
+- **`insika doctor` now sees broken data tools.** A stored definition that no longer
+  builds is dropped by the tool overlay with only a stderr warning — the agent quietly
+  loses the tool. The new `data-tools` check is that drop's report.

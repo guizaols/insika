@@ -75,6 +75,56 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  # A stored tool whose definition stopped building is dropped by the overlay with only
+  # a stderr warn — the agent silently loses the tool. This check is that drop's report.
+  describe "data tools" do
+    let(:tool_store) { Insika::ToolStore.new(config_store: config_store) }
+
+    def store_legacy(name, parameters)
+      config_store.put("tools", name, { "definition" => {
+                         "name" => name, "description" => "d", "parameters" => parameters,
+                         "request" => { "method" => "POST", "url" => "https://a.test", "headers" => {},
+                                        "query" => {}, "body" => nil },
+                         "response" => { "extract" => "body_raw", "path" => nil },
+                         "secret_headers" => [], "side_effect" => true, "timeout" => nil
+                       }, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
+    end
+
+    it "is skipped when no tool_store is injected" do
+      expect(doctor.run.findings.map(&:check)).not_to include("data-tools")
+    end
+
+    it "ok when every definition builds" do
+      store_legacy("ping", [{ "name" => "q", "type" => "string", "required" => true }])
+      finding = doctor(tool_store: tool_store).run.findings.find { |f| f.check == "data-tools" }
+      expect(finding.severity).to eq(:ok)
+      expect(finding.message).to match(/1 data tool/)
+    end
+
+    it "errors on a legacy bare `array` param, and offers the lossless spelling as a fix" do
+      store_legacy("recommend_products", [{ "name" => "products", "type" => "array", "required" => true }])
+      doc = doctor(tool_store: tool_store)
+      finding = doc.run.findings.find { |f| f.check == "data-tools" }
+      expect(finding.severity).to eq(:error)
+      expect(finding.message).to match(/'recommend_products' is dropped from the catalog.*needs an item type/)
+      expect(finding).to be_fixable
+
+      _before, after = doc.fix!
+      expect(after.findings.find { |f| f.check == "data-tools" }.severity).to eq(:ok)
+      expect(tool_store.get("recommend_products")["parameters"])
+        .to eq("type" => "object",
+               "properties" => { "products" => { "type" => "array", "items" => { "type" => "string" } } },
+               "required" => ["products"])
+    end
+
+    it "reports a definition it cannot repair without offering a guess" do
+      store_legacy("broken", [{ "name" => "Bad Name", "type" => "string" }])
+      finding = doctor(tool_store: tool_store).run.findings.find { |f| f.check == "data-tools" }
+      expect(finding.severity).to eq(:error)
+      expect(finding).not_to be_fixable
+    end
+  end
+
   describe "#fix!" do
     it "runs the fixable findings and re-diagnoses to green" do
       # pre-versioning settings record (no schema_version) + no default_model
