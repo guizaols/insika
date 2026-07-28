@@ -57,10 +57,12 @@ module Insika
       end
     end
 
-    def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, backend: nil, extra_env_specs: [])
+    def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
+                   backend: nil, extra_env_specs: [])
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
+      @tool_store = tool_store
       @backend = backend
       @extra_env_specs = extra_env_specs
     end
@@ -79,7 +81,8 @@ module Insika
 
     private
 
-    def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider check_admin_token]
+    def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
+                    check_admin_token check_data_tools]
 
     def safe(check)
       Array(send(check))
@@ -148,6 +151,51 @@ module Insika
 
       [Finding.new(check: "admin-token", severity: :warn,
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
+    end
+
+    # A stored data-tool whose definition no longer builds is INVISIBLE at runtime: the
+    # overlay warns to stderr and drops it, so the agent simply stops seeing the tool.
+    # This check is that drop's only report. The one legacy case is auto-fixable: a
+    # flat param typed bare `array`, which used to mean "list of strings" — the fix
+    # writes that meaning down as `array:string` and changes nothing at runtime.
+    def check_data_tools
+      return [] unless @tool_store
+
+      broken = @tool_store.all_raw.filter_map { |raw| broken_tool(raw) }
+      total = @tool_store.names.length
+      return [ok("data-tools", "#{total} data tool(s): every definition valid")] if broken.empty?
+
+      broken
+    end
+
+    def broken_tool(raw)
+      Insika::ToolDefinition.from_h(raw)
+      nil
+    rescue Insika::ValidationError => e
+      name = raw.is_a?(Hash) ? raw["name"].to_s : ""
+      fix = array_sugar_fix(raw)
+      message = "tool '#{name}' is dropped from the catalog: #{e.message}"
+      # The autofix preserves the OLD behaviour, which is not always the INTENDED one:
+      # a list of objects has been reaching the model declared as a list of strings.
+      # Say so, so nobody reads a green doctor as "this tool is right".
+      message += " — the fix only writes down what it has been sending (a list of strings); " \
+                 "if the API expects objects, paste the real JSON Schema in Studio instead" if fix
+      Finding.new(check: "data-tools", severity: :error, fix: fix, message: message)
+    end
+
+    # A fix ONLY when spelling the legacy bare `array` explicitly is enough to make the
+    # definition build — never a guess at a broken definition we don't understand.
+    def array_sugar_fix(raw)
+      params = raw.is_a?(Hash) ? raw["parameters"] : nil
+      return nil unless params.is_a?(Array) && params.any? { |p| p.is_a?(Hash) && p["type"].to_s == "array" }
+
+      candidate = raw.merge("parameters" => params.map do |p|
+        p.is_a?(Hash) && p["type"].to_s == "array" ? p.merge("type" => "array:string") : p
+      end)
+      Insika::ToolDefinition.from_h(candidate)
+      -> { @tool_store.write(candidate) }
+    rescue Insika::ValidationError
+      nil
     end
 
     # -- helpers -------------------------------------------------------

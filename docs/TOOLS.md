@@ -49,6 +49,44 @@ the one you create and change without a rebuild. See
 }
 ```
 
+### Parameters: the schema is the contract
+
+`parameters` is **JSON Schema**, and it reaches the provider verbatim — it is the only
+thing telling the model what shape to send. The engine never fills a gap in it.
+
+For simple params there is a flat sugar (what the Studio's textarea and a hand-written
+manifest accept), one line per param:
+
+```
+cep      | string       | required | The ZIP code to look up
+tags     | array:string | optional | Labels to filter by
+quantity | integer      | required | How many
+```
+
+Types are `string`, `number`, `integer`, `boolean`, and `array:<scalar>` for a list.
+There is **no bare `array`**: a list without an item type is an incomplete declaration,
+and it is rejected instead of being guessed at. A list of **objects** — the common
+`[{query, filters}]` shape — cannot be written in the flat form at all; write the JSON
+Schema, which is what the Studio field reads when the text starts with `{`:
+
+```jsonc
+{ "type": "object",
+  "properties": {
+    "query_filter_pairs": {
+      "type": "array",
+      "items": { "type": "object",
+                 "properties": { "query":   { "type": "string" },
+                                 "filters": { "type": "object", "properties": {} } },
+                 "required": ["query"] } } },
+  "required": ["query_filter_pairs"] }
+```
+
+**Arguments are checked against the schema at call time.** A call the schema does not
+allow never becomes a request: it returns an `{ error: … }` naming the path
+(`query_filter_pairs[0]: expected an object, got a string`), which the model reads and
+retries against. Structure is strict; a scalar may arrive in its lossless string form
+(`"2"`, `"true"`) and is never coerced — what the model sent is what the request carries.
+
 **Placeholders** are resolved at turn time:
 
 - `{{param}}` — a declared top-level parameter, filled from the model's call.
@@ -171,7 +209,9 @@ registered, allowed, offered to the model, and still blocked at call time.
 Work down this checklist:
 
 1. **Registered?** Is it in the catalog (Studio Tools panel)? If not, the write
-   or import failed — check the manifest `errors[]`.
+   or import failed — check the manifest `errors[]`, and run `insika doctor`: a stored
+   definition that no longer validates is dropped from the catalog, and the
+   `data-tools` check is the only place that says so.
 2. **Allowed for this agent?** In `tools_allow` (or an allowed group), and not in
    `tools_deny`?
 3. **Egress?** If it *appears and is called* but "fails", open the trace — a
