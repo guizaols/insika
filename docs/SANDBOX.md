@@ -101,7 +101,8 @@ sandbox by default.
 
 ## Reference deployment
 
-`plugins/insika-code` is the reference consumer: the FS/shell toolset
+`plugins/insika-code` (a tier-2 code plugin — see [Plugins](PLUGINS.md)) is the
+reference consumer: the FS/shell toolset
 (`read_file`, `list_dir`, `grep`, `write_file`, `edit_file`, `bash`) is built on
 this primitive, and `examples/insika-code/boot.rb` declares the `sandbox` block
 on its profile while the plugin builds the matching `Sandbox` from the same

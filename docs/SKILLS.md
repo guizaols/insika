@@ -94,4 +94,5 @@ Two ways to satisfy both:
 - [Context](CONTEXT.md) — how the skills list is budgeted into a turn.
 - [Agents](AGENTS.md) — the skills allowlist.
 - [Tools](TOOLS.md) — `load_skill` and deferred-tool progressive disclosure.
+- [Plugins](PLUGINS.md) — shipping skills inside a plugin, and the two extension tiers.
 - [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/skills/) — progressive loading, runnable.

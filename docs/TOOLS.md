@@ -148,6 +148,7 @@ Work down this checklist:
 ## See also
 
 - [Agents](AGENTS.md) — allowlists, groups, and per-agent tool exposure.
+- [Plugins](PLUGINS.md) — where a code tool comes from, and how to package one.
 - [Security](SECURITY.md) — egress, sandbox, and approval gating together.
 - [Architecture](ARCHITECTURE.md) — the tool-loop and side-effect checkpointing.
 - [`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/) — a runnable data tool + the egress note.

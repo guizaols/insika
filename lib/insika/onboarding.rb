@@ -41,6 +41,7 @@ module Insika
       "tools" => "docs/TOOLS.md",
       "skills" => "docs/SKILLS.md",
       "context" => "docs/CONTEXT.md",
+      "plugins" => "docs/PLUGINS.md",
       "security" => "docs/SECURITY.md",
       "architecture" => "docs/ARCHITECTURE.md",
       "running-local" => "docs/RUNNING-LOCAL.md",
