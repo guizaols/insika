@@ -55,3 +55,12 @@ Everything below is what the first release will contain.
 
 - `GET /docs/<name>.md` strips the docs-site frontmatter, so the raw markdown a coding
   agent receives is the prose only.
+
+### Fixed
+
+- **An agent's inline identity now reaches the model.** `base_prompt` — what the DSL's
+  `instructions` and a pack manifest set — was stored, round-tripped and advertised on
+  the A2A agent card, but never injected into the system prompt: every composition root
+  wires the prompt provider with `base: ""`, so an agent whose identity was inline ran
+  with *no* identity. Agents whose identity comes from `prompt_files` (the production
+  path) were unaffected.

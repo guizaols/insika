@@ -28,6 +28,7 @@ Every link below is raw markdown — the same files the human-facing site render
 - [Tools](https://raw.githubusercontent.com/guizaols/insika/main/docs/TOOLS.md): code tools, data-defined tools, MCP import, manifests, and egress troubleshooting.
 - [Skills](https://raw.githubusercontent.com/guizaols/insika/main/docs/SKILLS.md): the SKILL.md format and progressive, on-demand loading.
 - [Context](https://raw.githubusercontent.com/guizaols/insika/main/docs/CONTEXT.md): what fills a turn's prompt, the token budget and eviction, cross-session memory.
+- [Workflows](https://raw.githubusercontent.com/guizaols/insika/main/docs/WORKFLOWS.md): deterministic orchestration of several agents — the five agentic-workflow patterns (sequential, routing, parallel fan-out/fan-in, evaluator-optimizer, orchestrator-workers), schema-validated I/O, durable runs, and when to let the model choose instead.
 - [Plugins](https://raw.githubusercontent.com/guizaols/insika/main/docs/PLUGINS.md): the two extension tiers — config-only (data tools, MCP, skills) and code (a gem with a manifest that registers tools, policies, middleware or context providers).
 - [Architecture](https://raw.githubusercontent.com/guizaols/insika/main/docs/ARCHITECTURE.md): the turn pipeline, the tool-loop, checkpoint recovery, the fiber concurrency model, composition roots.
 

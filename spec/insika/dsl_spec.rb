@@ -182,4 +182,211 @@ RSpec.describe Insika::DSL do
       expect(agent.runtime.graph.profiles.fetch("assistant")).to be_a(Insika::AgentProfile)
     end
   end
+
+  # Multi-agent DSL: the shape every agentic-workflow pattern needs. The claim
+  # under test is that a System adds NO new engine path — N agents, N ordinary
+  # packs, one graph, the same standard import.
+  describe "Insika.system → several agents in one runtime" do
+    subject(:system) do
+      Insika.system do
+        provider :deepseek
+
+        agent "security" do
+          model "deepseek-chat"
+          instructions "Review code for security issues."
+        end
+
+        agent "performance" do
+          model "deepseek-chat"
+          instructions "Review code for performance issues."
+        end
+
+        agent "reviewer" do
+          model "deepseek-chat"
+          instructions "Delegate to the specialists, then synthesize."
+          subagents "security", "performance"
+        end
+      end
+    end
+
+    it "generates one Pack per agent, in declaration order" do
+      expect(system.to_packs.map { |p| p.config[:id] }).to eq(%w[security performance reviewer])
+      expect(system.to_packs).to all(be_a(Insika::Pack))
+    end
+
+    it "carries `subagents` on the parent's pack (the delegation allowlist is data)" do
+      reviewer = system.to_packs.last
+      expect(reviewer.config[:subagents]).to eq(%w[security performance])
+    end
+
+    it "imports EVERY agent into one shared ProfileSource" do
+      profiles = system.runtime.graph.profiles
+      expect(%w[security performance reviewer].map { |id| profiles.fetch(id) })
+        .to all(be_a(Insika::AgentProfile))
+    end
+
+    it "round-trips `subagents` through the import (what wires spawn_subagent)" do
+      expect(system.profile("reviewer").subagents).to eq(%w[security performance])
+      expect(system.profile("security").subagents).to be_nil # opt-in: absent = none
+    end
+
+    it "rejects a duplicate agent id" do
+      expect do
+        Insika.system do
+          agent("dup") { model "m" }
+          agent("dup") { model "m" }
+        end
+      end.to raise_error(ArgumentError, /duplicate agent id/)
+    end
+
+    it "rejects an empty system" do
+      expect { Insika.system { nil } }.to raise_error(ArgumentError, /at least one agent/)
+    end
+
+    it "raises a clear NotFoundError for an agent outside the system" do
+      expect { system.reply("nope", "hi") }
+        .to raise_error(Insika::NotFoundError, /not in this system.*security/m)
+    end
+
+    describe "#reply targets one agent explicitly" do
+      def with_scripted_llm(runtime, final:)
+        chat = FakeChat.new
+        chat.final_content = final
+        chat.script = proc { emit_chunk(final) }
+        runtime.graph.executor.define_singleton_method(:create_chat) { |*_a, **_k| chat }
+      end
+
+      it "dispatches the turn to the named agent" do
+        with_scripted_llm(system.runtime, final: "reviewed")
+        dispatched = []
+        bus = system.runtime.graph.bus
+        original = bus.method(:dispatch)
+        bus.define_singleton_method(:dispatch) do |command|
+          dispatched << command.payload[:agent] if command.type == :send_message
+          original.call(command)
+        end
+
+        expect(system.reply("performance", "look at this")).to eq("reviewed")
+        expect(dispatched).to eq(["performance"])
+      end
+    end
+
+    # The point of the whole container: a parent declared with `subagents` can
+    # actually delegate through the graph the DSL built. Without this the field
+    # would be data nobody honours.
+    it "the parent really delegates to a declared child (RFC-0010, through the DSL graph)" do
+      executor = system.runtime.graph.executor
+      child_chat = FakeChat.new.tap do |c|
+        c.final_content = "no SQL injection found"
+        c.script = proc { emit_chunk("no SQL injection found") }
+      end
+      allow(executor).to receive(:create_chat).and_return(child_chat)
+
+      task = system.runtime.graph.task_store.create(
+        command: Insika::Command.build(:send_message, { agent: "reviewer", message: "go" }).to_h,
+        session_id: nil, id: "parent-task"
+      )
+      state = Insika::TurnState.new(task: task, profile: system.profile("reviewer"), turn: 1, message: "go")
+      state.turn_context = {}
+
+      result = nil
+      Sync { result = executor.run_subagent(agent: "security", message: "review this", parent_state: state) }
+
+      expect(result[:text]).to eq("no SQL injection found")
+      expect(result[:session_id]).not_to be_nil
+    end
+
+    it "refuses to delegate to an agent outside the parent's allowlist" do
+      executor = system.runtime.graph.executor
+      task = system.runtime.graph.task_store.create(
+        command: Insika::Command.build(:send_message, { agent: "security", message: "go" }).to_h,
+        session_id: nil, id: "leaf-task"
+      )
+      # `security` declares no subagents → opt-in means NONE, not "all".
+      state = Insika::TurnState.new(task: task, profile: system.profile("security"), turn: 1, message: "go")
+      state.turn_context = {}
+
+      result = nil
+      Sync { result = executor.run_subagent(agent: "performance", message: "x", parent_state: state) }
+
+      expect(result[:error]).to match(/not allowed|allowlist|cannot/i)
+    end
+  end
+
+  # Workflows from the DSL: deterministic Ruby around agent turns, registered in
+  # the SAME WorkflowRegistry a deployment uses — so a DSL workflow is durable
+  # (its run IS a Task), schema-validated at the edges, and discoverable.
+  describe "Insika.system → workflows" do
+    subject(:system) do
+      Insika.system do
+        agent("writer") { model "m"; instructions "write" }
+        agent("editor") { model "m"; instructions "edit" }
+
+        workflow "echo",
+                 description: "Echoes its input — no model call.",
+                 input: { type: "object", properties: { topic: { type: "string" } }, required: ["topic"] },
+                 output: { type: "object", properties: { text: { type: "string" } } } do |input, _ctx|
+          { "text" => input["topic"].upcase }
+        end
+
+        workflow("chain") { |input, ctx| { "text" => ctx.ask("writer", input["topic"].to_s) } }
+      end
+    end
+
+    def script(runtime, final)
+      chat = FakeChat.new
+      chat.final_content = final
+      chat.script = proc { emit_chunk(final) }
+      runtime.graph.executor.define_singleton_method(:create_chat) { |*_a, **_k| chat }
+    end
+
+    it "registers them with description and schemas (the discovery catalog)" do
+      catalog = system.runtime.graph.workflow_registry.catalog
+      echo = catalog.find { |w| w["name"] == "echo" }
+
+      expect(system.runtime.graph.workflow_registry.names).to eq(%w[echo chain])
+      expect(echo["description"]).to eq("Echoes its input — no model call.")
+      expect(echo["input_schema"]["required"]).to eq(["topic"])
+    end
+
+    it "#run returns the workflow's typed OUTPUT (not the turn text)" do
+      expect(system.run("echo", input: { "topic" => "fibers" })).to eq({ "text" => "FIBERS" })
+    end
+
+    it "refuses a bad input synchronously, creating NO run" do
+      expect { system.run("echo", input: { "nope" => 1 }) }
+        .to raise_error(Insika::WorkflowSchemaError, /topic/)
+      expect(system.runtime.graph.task_store.each_id.count).to eq(0)
+    end
+
+    it "raises NotFoundError for an unregistered workflow" do
+      expect { system.run("nope", input: {}) }.to raise_error(Insika::NotFoundError, /not registered/)
+    end
+
+    it "ctx.ask runs a turn against the named agent" do
+      script(system.runtime, "drafted")
+      expect(system.run("chain", input: { "topic" => "x" })).to eq({ "text" => "drafted" })
+    end
+
+    it "ctx.gather runs blocks concurrently and returns them IN ORDER" do
+      ctx = Insika::DSL::WorkflowAdapter::Context.new(runtime: system.runtime, context: nil, tools: [])
+      expect(ctx.gather(-> { :a }, -> { :b }, -> { :c })).to eq(%i[a b c])
+    end
+
+    it "rejects a duplicate workflow name" do
+      expect do
+        Insika.system do
+          agent("a") { model "m" }
+          workflow("dup") { |_i, _c| 1 }
+          workflow("dup") { |_i, _c| 2 }
+        end
+      end.to raise_error(ArgumentError, /duplicate workflow/)
+    end
+
+    it "a system with NO workflows does not register :trigger_workflow (parity)" do
+      plain = Insika.system { agent("solo") { model "m" } }
+      expect { plain.runtime.graph.bus.dispatch(Insika::Command.build(:trigger_workflow, {})) }
+        .to raise_error(Insika::Error)
+    end
+  end
 end

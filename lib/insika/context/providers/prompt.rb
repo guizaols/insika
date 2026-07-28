@@ -49,6 +49,13 @@ module Insika
         def build_identity(profile)
           parts = [@base]
           parts.concat(system_parts) # global system files, for EVERY agent
+          # The agent's OWN inline identity (`base_prompt` — what the DSL's
+          # `instructions` and a pack's manifest set). It was stored, round-tripped
+          # and advertised on the A2A agent card while never reaching the model:
+          # every root wires `base: ""`, so an agent whose identity was inline had
+          # NO identity at all, and a chatty model answered plausibly enough to hide
+          # it. Additive to prompt_files, not exclusive: an agent may carry both.
+          parts << profile&.base_prompt.to_s
           sources = Array(profile&.prompt_files)
           if sources.empty?
             @files.each { |f| parts << File.read(f, encoding: "UTF-8") if File.exist?(f) }

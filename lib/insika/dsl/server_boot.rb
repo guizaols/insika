@@ -59,17 +59,26 @@ module Insika
           # This is the primary "build my first agent" target — models.json reports the
           # DSL's stores + the single agent this process serves (its id IS the `model`).
           onboarding: build_onboarding,
+          # Item 22: GET /v1/workflows + POST /v1/workflows/:name, opt-in by
+          # injection like every other edge — nil when the system declares none,
+          # so the routes simply do not exist (404, parity).
+          workflow_registry: (@graph.workflow_registry if workflows?),
           config: { gateway_token: @token }
         )
       end
 
+      def workflows? = !@graph.workflow_registry.names.empty?
+
       def build_onboarding
-        config = @rt.pack.config
+        configs = @rt.packs.map(&:config)
         Insika::Onboarding.standard(
           root: File.expand_path("../../..", __dir__),
           settings_store: @rt.component(:settings_store),
           provider_store: @rt.component(:provider_store),
-          agents: -> { [{ id: config[:id], model: config[:model], provider: config[:provider] }] }
+          # EVERY agent this process serves — each id IS a `model` on
+          # /v1/responses, so a coding agent reading models.json sees the whole
+          # system, not just the first one.
+          agents: -> { configs.map { |c| { id: c[:id], model: c[:model], provider: c[:provider] } } }
         )
       end
 
@@ -96,11 +105,14 @@ module Insika
 
       def banner(telemetry = nil)
         base = "http://#{@host}:#{@port}"
-        agent = @rt.pack.config[:id]
-        puts "\e[1mInsika — serving agent \"#{agent}\"\e[0m"
+        ids = @rt.packs.map { |p| p.config[:id].to_s }
+        headline = ids.one? ? "agent \"#{ids.first}\"" : "#{ids.size} agents: #{ids.map(&:inspect).join(', ')}"
+        models = ids.one? ? "model: \"#{ids.first}\"" : "model: one of #{ids.map(&:inspect).join(', ')}"
+        puts "\e[1mInsika — serving #{headline}\e[0m"
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
-        puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", model: \"#{agent}\")"
+        puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", #{models})"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
+        puts "  #{base}/v1/workflows    → #{@graph.workflow_registry.names.join(', ')}" if workflows?
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
         puts "  Ctrl-C to stop."
