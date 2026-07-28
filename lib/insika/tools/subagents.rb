@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ruby_llm"
+require_relative "agent_enum"
 
 module Insika
   module Tools
@@ -46,7 +47,21 @@ module Insika
       def initialize(runner:, state:)
         @runner = runner
         @state = state
+        @allowed = Array(state.profile.subagents).map(&:to_s)
         super()
+      end
+
+      # Same reason as `spawn_subagent`: the parent's allowlist is per-turn data,
+      # so the ids are named per instance — in the description and as an `enum` on
+      # each task's `agent`. See Tools::AgentEnum.
+      def description
+        return super if @allowed.empty?
+
+        "#{super} Agents you may spawn: #{@allowed.join(', ')}."
+      end
+
+      def params_schema
+        @agent_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @allowed, path: %i[tasks agent])
       end
 
       # -> { results: [{agent:, text:, session_id:} | {agent:, error:}] } | { error: }.

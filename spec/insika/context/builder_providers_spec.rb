@@ -50,6 +50,31 @@ RSpec.describe "ContextBuilder + real providers" do
     expect(pkg.system).to eq(expected)
   end
 
+  # Regression: `profile.base_prompt` (what the DSL's `instructions` and a pack
+  # manifest set) reached the STORE and the A2A agent card but never the model —
+  # every composition root wires `base: ""`, so an agent whose identity was inline
+  # ran with no identity at all. It hid because a chatty model still answers
+  # plausibly; it was caught by asking a live provider to reply "BANANA" and
+  # getting the capital of France.
+  it "injects the agent's own base_prompt into the system prompt" do
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "You are Bia.", skills: [])
+
+    pkg = build([Insika::Context::Providers::Prompt.new(base: "")], profile)
+
+    expect(pkg.system).to eq("You are Bia.")
+  end
+
+  it "keeps base_prompt ADDITIVE to the wiring base and the agent's prompt files" do
+    identity = File.join(@dir, "IDENTITY.md")
+    File.write(identity, "Never promise a delivery date.")
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "You are Bia.",
+                                          prompt_files: [identity], skills: [])
+
+    pkg = build([Insika::Context::Providers::Prompt.new(base: "Platform preamble.")], profile)
+
+    expect(pkg.system).to eq("Platform preamble.\n\nYou are Bia.\n\nNever promise a delivery date.")
+  end
+
   it "under tight budget: old history evicted first; skills and identity intact (L7)" do
     write_skill("cardapio")
     catalog = Insika::SkillCatalog.new(@dir)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ruby_llm"
+require_relative "agent_enum"
 
 module Insika
   module Tools
@@ -34,7 +35,24 @@ module Insika
       def initialize(runner:, state:)
         @runner = runner
         @state = state
+        @allowed = Array(state.profile.subagents).map(&:to_s)
         super()
+      end
+
+      # The parent's allowlist is per-TURN data, so it is named per instance: the
+      # ids go into the description AND as an `enum` on `agent`. Measured, not
+      # guessed — with only "must be one this agent may spawn" in the schema, a
+      # real provider answered "let me check which agents are available" and then
+      # did the work itself instead of delegating. A model cannot call what it
+      # cannot name.
+      def description
+        return super if @allowed.empty?
+
+        "#{super} Agents you may spawn: #{@allowed.join(', ')}."
+      end
+
+      def params_schema
+        @agent_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @allowed, path: %i[agent])
       end
 
       # The child result is returned to the model as the tool result. On error we
