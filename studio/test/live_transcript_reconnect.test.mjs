@@ -54,9 +54,9 @@ function build({ session = "sess-1", task = "" } = {}) {
 const live = () => FakeEventSource.opened.at(-1)
 const sockets = () => FakeEventSource.opened.length
 
-test("subscribes to /v1/events scoped to the session", () => {
+test("subscribes to /studio/events scoped to the session", () => {
   const c = build()
-  assert.equal(live().url, "/v1/events?session_id=sess-1")
+  assert.equal(live().url, "/studio/events?session_id=sess-1")
   assert.deepEqual(c.statuses, ["connecting…"])
   c.close()
 })
@@ -85,7 +85,7 @@ test("reconnects after a dropped stream once the browser has closed it", (t) => 
 
   t.mock.timers.tick(1)
   assert.equal(sockets(), 2, "a fresh socket is opened")
-  assert.equal(live().url, "/v1/events?session_id=sess-1")
+  assert.equal(live().url, "/studio/events?session_id=sess-1")
   c.close()
 })
 

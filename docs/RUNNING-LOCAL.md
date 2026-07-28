@@ -30,7 +30,12 @@ Open `http://localhost:9292`:
 | `/studio/tasks` | tasks / approvals console |
 | `/v1/responses` | OpenAI-Responses ingress (Bearer) — the drop-in API contract |
 | `/v1/agents` | provisioning by definition/pack (Bearer) — `POST` imports, `DELETE /:id` removes |
-| `/v1/messages` | `send_message` sugar (SSE when `?stream` is set) |
+| `/v1/messages` | `send_message` sugar (Bearer; SSE when `?stream` is set) |
+
+Every `/v1` and `/a2a` route needs the Bearer. The exceptions are `/up` and, when
+`INSIKA_ONBOARDING` is on, `/start.md`, `/models.json` and `/docs*` — a route is closed
+unless it is on the allowlist in `server/app.rb`. With no token configured at all the
+whole surface answers `503`, never open by omission.
 
 ## Variables (all optional)
 
@@ -39,7 +44,7 @@ Open `http://localhost:9292`:
 | `INSIKA_DB` | — (ephemeral memory) | SQLite path → config + execution survive a restart |
 | `BIND` | `http://localhost:9292` | host:port |
 | `ADMIN_TOKEN` | `local-demo` | token for `/studio` |
-| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` |
+| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for the whole `/v1` + `/a2a` surface |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | model |
 
 With persistence:

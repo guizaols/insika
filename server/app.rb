@@ -84,6 +84,8 @@ module Insika
 
       def route(req)
         segments = req.path_info.split("/").reject(&:empty?)
+        gate = public_route?(req.request_method, segments) ? nil : gateway_gate(req)
+        return gate if gate
 
         case [req.request_method, segments]
         in ["GET", ["up"]]
@@ -129,6 +131,31 @@ module Insika
         else
           not_found # wrong method/route (or A2A not exposed -> @a2a nil)
         end
+      end
+
+      # The ONLY routes that answer without the gateway Bearer. Everything else is gated
+      # in `route`, before the dispatch — an ALLOWLIST, because the previous shape (each
+      # handler calling `gateway_gate` itself) is a rule you have to remember: the generic
+      # `POST /v1/commands/:type` never called it, so every authoring Command
+      # (`write_agent_file`, `upsert_llm_provider`, `delete_agent`…) was reachable by
+      # anyone who knew the URL, as were the session/task/event reads. A route added
+      # tomorrow is closed by default; making it public is now a deliberate edit here.
+      #
+      # `/up` is the health probe (no store access). The onboarding surface is opt-in
+      # (INSIKA_ONBOARDING) and exists to be read by a coding agent before it has any
+      # credential — turning it on is the operator choosing to publish it.
+      PUBLIC_ROUTES = [
+        ["GET", ["up"]],
+        ["GET", ["start.md"]],
+        ["GET", ["models.json"]],
+        ["GET", ["docs"]],
+        ["GET", [".well-known", "agent-card.json"]] # A2A discovery: the card is the ad
+      ].freeze
+
+      def public_route?(method, segments)
+        return true if PUBLIC_ROUTES.include?([method, segments])
+
+        method == "GET" && segments.length == 2 && segments.first == "docs"
       end
 
       # Bearer-gate error (503 disabled / 401 unauthorized), shared by the
