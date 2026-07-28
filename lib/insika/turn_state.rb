@@ -27,9 +27,34 @@ module Insika
                   #                      after_task validator can inspect it.
                   :output_filter       # per-turn Safety::OutputFilter (nil = off); redacts the stream.
 
-    # Internal (not part of the contract): correlation of the current
-    # tool_call <-> tool decorators (side-effects/skip).
-    attr_accessor :current_tool_call
+    # Internal (not part of the contract): per-CALL correlation between RubyLLM's
+    # tool callbacks and the tool decorators — `current_tool_call` keys the
+    # side-effect checkpoint / resume skip / trace, `current_tool_name` labels the
+    # :tool_result event.
+    #
+    # They live in FIBER STORAGE, not in ivars, and that is the whole point:
+    # `before_tool_call` → `tool.call` → `after_tool_result` all run in the SAME
+    # fiber, and with `ToolConcurrency` (item 30) there is one fiber PER CALL. A
+    # single slot on this shared object would let one in-flight call overwrite
+    # another's — a side-effect recorded under the wrong id (so a resume skips the
+    # wrong tool, or re-runs a non-idempotent one) and a mislabelled event. Both
+    # silent. One writer per fiber needs no lock; serial execution is unchanged,
+    # since a lone fiber writes and reads its own storage.
+    #
+    # Read/written ONLY through here so the rule has one home.
+    CALL_KEY = :insika_tool_call
+    NAME_KEY = :insika_tool_name
+
+    def current_tool_call = Fiber[CALL_KEY]
+    def current_tool_name = Fiber[NAME_KEY]
+
+    def current_tool_call=(call)
+      Fiber[CALL_KEY] = call
+    end
+
+    def current_tool_name=(name)
+      Fiber[NAME_KEY] = name
+    end
 
     # Internal (§11 R1): the chat's message count RIGHT AFTER `assemble` (seeded
     # history) and BEFORE `ask`. persist_turn slices `chat.messages.drop(baseline)`
@@ -86,6 +111,12 @@ module Insika
       @turn = turn
       @message = message
       @capability_names = {}
+      # Fiber storage is INHERITED by fibers created later, so a turn spawned from
+      # inside a tool call (a subagent child) would start out carrying its
+      # parent's correlation. Clearing at turn start keeps a child from keying its
+      # own side-effects under the parent's tool_call id.
+      self.current_tool_call = nil
+      self.current_tool_name = nil
     end
   end
 end
