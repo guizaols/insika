@@ -34,6 +34,9 @@
       <label>tool_timeout (s)
         <input type="text" name="tool_timeout" value="<%= @agent.limits[:tool_timeout] %>" inputmode="numeric">
       </label>
+      <label>tool_concurrency <span class="muted">(parallel tool calls; 1 = serial, off for turns with approvals)</span>
+        <input type="text" name="tool_concurrency" value="<%= @agent.limits[:tool_concurrency] %>" inputmode="numeric">
+      </label>
       <label>chat_rate_limit <span class="muted">(turns/chat/window; blank = platform, 0 = off)</span>
         <input type="text" name="chat_rate_limit" value="<%= @agent.limits[:chat_rate_limit] %>" inputmode="numeric" placeholder="inherit platform edge">
       </label>

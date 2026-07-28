@@ -58,6 +58,116 @@ RSpec.describe "RubyLLM boundary contract" do
     expect(keywords).to include(:model, :provider, :assume_model_exists)
   end
 
+  # Item 30. Insika passes `concurrency:` to with_tools and nothing else — the cap
+  # is ours (ToolAssembly#install_tool_gate), the mode selection is not exposed.
+  # Everything below is a GEM fact our docs promise; if a version changes any of
+  # them, the promise is wrong and this fails instead of production.
+  describe "parallel tool calls (item 30)" do
+    it "with_tools takes the concurrency: keyword ChatBuilder passes" do
+      keywords = RubyLLM::Chat.instance_method(:with_tools).parameters.select { |k, _| k == :key }.map(&:last)
+      expect(keywords).to include(:concurrency)
+    end
+
+    it ":fibers is an admissible mode (the only one Insika will ever send)" do
+      expect(RubyLLM::ToolConcurrency.supported?(:fibers)).to be(true)
+    end
+
+    # ChatBuilder sends the tools AND the keyword in ONE call, and `with_tools`
+    # re-applies `@concurrency` once per tool before the outer update — so the order
+    # inside the gem decides whether our value survives. Asserted on a REAL Chat,
+    # since that is the only thing that can go wrong here. Building one touches the
+    # PROCESS-WIDE config singleton (see LLMConfigurator's gotcha), so the key is
+    # restored; nothing here reaches the network.
+    it "ChatBuilder's exact call lands on a real Chat's #concurrency" do
+      previous = RubyLLM.config.openai_api_key
+      RubyLLM.configure { |c| c.openai_api_key = "spec-only" }
+      chat = RubyLLM.chat(model: "gpt-4o-mini", provider: :openai, assume_model_exists: true)
+
+      chat.with_tools(RubyLLM::Tool.new, concurrency: :fibers)
+
+      expect(chat.concurrency).to eq(:fibers)
+    ensure
+      RubyLLM.configure { |c| c.openai_api_key = previous }
+    end
+
+    # F1: before_tool_call -> tool.call -> after_tool_result run in the SAME child
+    # fiber. This is what makes TurnState's fiber-storage correlation correct and a
+    # single mutable slot wrong (P11a).
+    it "one fiber per call, spanning the whole callback/call/result cycle" do
+      fibers = {}
+      RubyLLM::ToolConcurrency.run(:fibers, { "a" => "a", "b" => "b" }) do |id|
+        seen = [Fiber.current.object_id]
+        Async::Task.current.sleep(0.01) # a switch point, so the fibers really interleave
+        fibers[id] = seen << Fiber.current.object_id
+      end
+
+      expect(fibers["a"].uniq.size).to eq(1)          # one fiber for the whole call
+      expect(fibers["a"].first).not_to eq(fibers["b"].first) # and a different one per call
+    end
+
+    # F3 / D5: an exception in one call does NOT stop its siblings — every tool in
+    # the batch runs, and the raise surfaces after collection. That is why
+    # `max_tool_calls` stops being exact under concurrency (up to N-1 extra tools
+    # execute), which docs/TOOLS.md states rather than pretending otherwise.
+    it "a failing call does not stop its siblings; the raise comes after the batch" do
+      ran = []
+      expect do
+        RubyLLM::ToolConcurrency.run(:fibers, { "a" => "a", "b" => "b", "c" => "c" }) do |id|
+          ran << id
+          raise "boom" if id == "a"
+
+          "ok"
+        end
+      end.to raise_error("boom")
+
+      expect(ran.sort).to eq(%w[a b c])
+    end
+
+    # F2 / D6: on_result fires in COMPLETION order, so the `role: tool` transcript
+    # messages are appended as results arrive, not in call order. Providers key
+    # results by tool_call_id so the wire stays valid — see the Session provider
+    # spec for the eviction-unit grouping that has to tolerate it.
+    it "results are delivered in completion order, not call order" do
+      order = []
+      RubyLLM::ToolConcurrency.run(:fibers, { "slow" => "slow", "fast" => "fast" },
+                                   on_result: ->(tool_call, _v) { order << tool_call }) do |id|
+        Async::Task.current.sleep(0.05) if id == "slow"
+        id
+      end
+
+      expect(order).to eq(%w[fast slow])
+    end
+
+    # D7. The map assumed the turn timeout would CANCEL tool calls in flight,
+    # because the gem nests `Async{}` under our task. It does not, and this is the
+    # spec that says so: `with_timeout` raises in the fiber blocked on `.wait`, and
+    # an Async task does not finish before its children do — so the turn timeout
+    # surfaces only AFTER the in-flight calls return. Serial execution is prompt
+    # (the tool runs in the turn's own fiber, and ToolEnvelope's ToolTimeout is a
+    # distinct class precisely so the turn timeout is never swallowed); concurrent
+    # execution can overrun `turn_timeout` by up to `tool_timeout`, which is what
+    # bounds it. Written down in docs/TOOLS.md rather than pretended away.
+    it "the turn timeout waits for in-flight tool calls instead of cancelling them" do
+      finished = []
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      expect do
+        Sync do |task|
+          task.with_timeout(0.05) do
+            RubyLLM::ToolConcurrency.run(:fibers, { "a" => "a" }) do |id|
+              Async::Task.current.sleep(0.3) # stands in for a tool bounded by tool_timeout
+              finished << id
+            end
+          end
+        end
+      end.to raise_error(Async::TimeoutError)
+
+      expect(finished).to eq(["a"]) # ran to completion despite the 0.05s deadline
+      # ...and the raise reached the caller only after it did.
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be >= 0.3
+    end
+  end
+
   it "with_thinking takes effort: (the reasoning effort levels)" do
     keywords = RubyLLM::Chat.instance_method(:with_thinking).parameters.select { |k, _| k == :key }.map(&:last)
     expect(keywords).to include(:effort)

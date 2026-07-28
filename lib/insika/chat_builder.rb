@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "time"
+
 module Insika
   # Assembles the turn's chat (pipeline stages 5-7): instructions, eager/deferred
   # tool partition, system tools (tool_search/load_skill/remember),
@@ -89,9 +91,50 @@ module Insika
         tools << Tools::Subagents.new(runner: @subagent_runner, state: state)
       end
 
-      chat.with_tools(*tools) unless tools.empty?
+      unless tools.empty?
+        # Item 30: the ONLY place the gem is told to run tool calls in parallel.
+        # `:fibers` is not a preference but the only admissible mode — `:threads`
+        # breaks ToolEnvelope's `Async::Task.current.with_timeout`, the SQLite
+        # store's fiber semaphore, and the turn's own durability (mailbox,
+        # approvals, cancellation are all expressed in fiber terms). The number
+        # the operator configured is OUR cap (D4, ToolAssembly#install_tool_gate);
+        # the gem has none.
+        if tool_concurrency_for(state)
+          chat.with_tools(*tools, concurrency: :fibers)
+        else
+          chat.with_tools(*tools)
+        end
+      end
 
       chat
+    end
+
+    # The turn's effective tool concurrency (nil = serial), plus the ONE thing the
+    # gate owes the operator: when the profile asked for parallel tool calls and
+    # this turn silently cannot have them (D3 — an approval-required tool would
+    # deadlock two fibers on the single per-task mailbox), say so once. Otherwise
+    # the speedup just vanishes with no reason given. The rule itself lives in
+    # TurnState; a state predating those readers (a unit stub) means off.
+    def tool_concurrency_for(state)
+      return nil unless state.respond_to?(:tool_concurrency)
+
+      effective = state.tool_concurrency
+      return effective if effective
+
+      requested = state.requested_tool_concurrency
+      warn_tool_concurrency_gated(state, requested) if requested
+      nil
+    end
+
+    def warn_tool_concurrency_gated(state, requested)
+      gated = Array(state.requires_approval)
+      @event_stream.emit(Insika::Event.new(
+                           type: :provider_warning,
+                           data: { provider: "tool_concurrency",
+                                   message: "parallel tool calls (#{requested}) disabled for this turn: " \
+                                            "#{gated.size} tool(s) require approval (#{gated.join(', ')})" },
+                           meta: { task_id: state.task&.id, at: Time.now.utc.iso8601 }
+                         ))
     end
 
     # §11 R3: opt-in Anthropic prompt caching. When the agent enables

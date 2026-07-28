@@ -9,7 +9,9 @@ module Studio
   module Forms
     def config_patch(r)
       limits = @agent.limits.dup
-      { "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |field|
+      # Always present via DEFAULT_LIMITS (tool_concurrency defaults to 1 = serial),
+      # so a blank field just keeps whatever is stored.
+      %w[turn_timeout tool_timeout tool_concurrency].each do |field|
         v = presence(r.params[field])
         limits[field.to_sym] = Integer(v) if v
       end

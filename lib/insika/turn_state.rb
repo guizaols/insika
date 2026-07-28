@@ -105,6 +105,36 @@ module Insika
     # by the coordinator for await(:approval)).
     attr_accessor :requires_approval, :approval_coordinator, :actor
 
+    # Internal (item 30 / D4): the turn's shared in-flight cap for tool calls —
+    # ONE Async::Semaphore(tool_concurrency), installed by ToolAssembly#wrap_tools
+    # and acquired by every ToolEnvelope, INCLUDING the ones tool_search promotes
+    # mid-turn (they read it off the state, so the cap survives promotion).
+    # nil = concurrency off: no gate, no overhead, serial execution unchanged.
+    attr_accessor :tool_gate
+
+    # Item 30: parallel tool calls, resolved PER TURN and read by ChatBuilder
+    # (whether to hand the gem `concurrency:`) and ToolAssembly (the gate's size).
+    #
+    # `requested_tool_concurrency` is what the operator configured;
+    # `tool_concurrency` is what this turn actually gets. They differ for exactly
+    # one reason — D3: `Executor#request_approval` blocks on `actor.await(:approval)`,
+    # and the mailbox is one queue per TASK. Two fibers waiting there share it,
+    # `dequeue` wakes exactly one, the message is consumed, and the other fiber
+    # hangs until `approval_timeout` (~1h). So a turn that can suspend for a human
+    # runs its tools serially. Per-TURN and not per-profile because
+    # `requires_approval` comes from the Resolution: it can be empty on a turn
+    # whose profile does list approvals.
+    def requested_tool_concurrency
+      n = ((profile.respond_to?(:limits) && profile.limits) || {})[:tool_concurrency].to_i
+      n > 1 ? n : nil
+    end
+
+    def tool_concurrency
+      return nil unless Array(requires_approval).empty?
+
+      requested_tool_concurrency
+    end
+
     def initialize(task:, profile:, turn:, message:)
       @task = task
       @profile = profile

@@ -72,11 +72,40 @@ lookups.
 ```ruby
 DEFAULT_LIMITS = {
   turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
-  context_budget: 8_000, max_tool_calls: 50, approval_timeout: 3_600
+  context_budget: 8_000, max_tool_calls: 50, approval_timeout: 3_600,
+  tool_concurrency: 1
 }
 ```
 
 `build` merges your overrides over these — you set only the deltas.
+
+### `tool_concurrency` — parallel tool calls
+
+When the model asks for several tools in one step, they run **one at a time by
+default**. Raise `tool_concurrency` and they run together, capped at that number
+in flight:
+
+```ruby
+limit :tool_concurrency, 4   # nil / 0 / 1 = serial (the default); N = at most N at once
+```
+
+One number is both the switch and the cap. It pays off only when a turn issues
+several **slow, independent** calls (data tools waiting on HTTP) — the wall-clock
+becomes the slowest call instead of the sum. It buys nothing for fast in-process
+tools, and it is the *model* that decides the fan-out, which is why the cap is not
+optional: an uncapped batch of 15 data tools is 15 simultaneous requests to the
+same backend.
+
+> ⚠️ **It is silently disabled for any turn that has an approval-required tool.**
+> The approval wait is one mailbox per task, so two tool calls suspended for an
+> operator would deadlock — the turn runs serially instead. The downgrade is
+> per *turn*, not per agent (an agent that lists approvals still gets parallelism
+> on turns where none of the allowed tools require one), and it emits one
+> `provider_warning` event so the lost speedup is never a mystery.
+
+Two behaviours change once it is on — see [Tools](TOOLS.md#parallel-tool-calls):
+`max_tool_calls` becomes approximate, and the transcript records tool results in
+completion order.
 
 > ⚠️ **`context_budget` defaults to 8000 tokens.** A large system prompt (a rich
 > persona can run tens of thousands of tokens) exceeds it, and a pinned identity

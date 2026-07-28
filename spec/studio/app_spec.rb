@@ -472,6 +472,20 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:limits][:turn_timeout]).to eq(90)
   end
 
+  # Item 30: the third tool-execution bound sits in the same form as the two
+  # timeouts, so an operator can turn parallel tool calls on without the DSL.
+  it "config writes tool_concurrency, and a blank field keeps what is stored" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "tool_concurrency" => "4", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:limits][:tool_concurrency]).to eq(4)
+
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "tool_concurrency" => "", "_csrf" => csrf })
+    expect(bus.last(:update_agent).payload[:limits][:tool_concurrency]).to eq(1) # DEFAULT_LIMITS
+  end
+
   it "config without the memory checkbox writes memory=false" do
     app, bus = build_app
     client = login(app)
