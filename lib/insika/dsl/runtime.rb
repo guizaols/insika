@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ruby_llm"
+require_relative "workflow_adapter"
 
 module Insika
   module DSL
@@ -46,22 +47,24 @@ module Insika
       # one-shot; a value threads multi-turn memory (created on first use).
       # `agent:` targets one agent of a system (default: the primary).
       def chat(message, session_id: nil, timeout: nil, agent: nil)
-        @turn_agent = (agent || @definition.id).to_s
-        require "async"
-        outcome = { text: nil, error: nil }
-        Async do |task|
-          serving = !session_id.nil?
-          @graph.executor.supervised = true if serving
-          ensure_session(session_id) if session_id
-          sub = @graph.event_stream.subscribe
-          res = dispatch_turn(message, session_id)
-          sub.bind(task_id: res[:task_id])
-          drain(sub, outcome, task, timeout)
-          teardown_serving if serving
-        end.wait
-        raise Insika::Error, "turn #{outcome[:error]}" if outcome[:error]
+        command = Insika::Command.build(
+          :send_message,
+          { agent: (agent || @definition.id).to_s, message: message, session_id: session_id },
+          transport: :cli
+        )
+        run_command(command, session_id: session_id, timeout: timeout)[:text]
+      end
 
-        outcome[:text]
+      # Triggers a declared workflow and returns its OUTPUT (the typed value the
+      # workflow returned), not the turn text. A schema violation on the input
+      # raises here, synchronously, with no run created — same contract as
+      # POST /v1/workflows/:name.
+      def run_workflow(name, input:, agent:, timeout: nil)
+        command = Insika::Command.build(
+          :trigger_workflow, { workflow: name, agent: agent, input: input }, transport: :cli
+        )
+        outcome = run_command(command, session_id: nil, timeout: timeout)
+        outcome.key?(:output) ? outcome[:output] : outcome[:text]
       end
 
       # Boot the control UI (/studio) + drop-in API (/v1). Blocks on the reactor.
@@ -75,22 +78,51 @@ module Insika
 
       private
 
-      def dispatch_turn(message, session_id)
-        @graph.bus.dispatch(Insika::Command.build(
-                              :send_message,
-                              { agent: @turn_agent || @definition.id, message: message, session_id: session_id },
-                              transport: :cli
-                            ))
+      # Dispatch + drain, shared by a turn and a workflow run: subscribe BEFORE
+      # dispatching (the fiber may emit eagerly), bind to the task, read to the
+      # terminal event. A synchronous handler error (unknown agent/workflow, bad
+      # input against the schema) propagates from `dispatch` untouched — the
+      # caller sees the real ValidationError/NotFoundError, not a turn failure.
+      def run_command(command, session_id:, timeout:)
+        require "async"
+        outcome = {}
+        rejected = nil
+        Async do |task|
+          serving = !session_id.nil?
+          @graph.executor.supervised = true if serving
+          ensure_session(session_id) if session_id
+          sub = @graph.event_stream.subscribe
+          res = begin
+            @graph.bus.dispatch(command)
+          rescue StandardError => e
+            # CAPTURED, not re-raised inside the reactor: letting it escape the
+            # Async block logs "Task may have ended with unhandled exception" —
+            # alarming noise for a DOCUMENTED rejection (a schema violation, an
+            # unknown agent). Re-raised verbatim below, outside the reactor.
+            sub.close
+            rejected = e
+            next
+          end
+          sub.bind(task_id: res[:task_id])
+          drain(sub, outcome, task, timeout)
+          teardown_serving if serving
+        end.wait
+        raise rejected if rejected
+        raise Insika::Error, "turn #{outcome[:error]}" if outcome[:error]
+
+        outcome
       end
 
       # Reads the stream until this turn reaches a terminal event, then stops.
+      # A workflow run also carries its typed OUTPUT, which is not the turn text.
       def drain(sub, outcome, task, timeout)
         reader = task.async do
           sub.each do |ev|
             case ev.type
-            when :task_completed then outcome[:text] = ev.data[:content].to_s
-            when :task_failed    then outcome[:error] = "failed: #{ev.data[:message] || ev.data[:error]}"
-            when :task_cancelled then outcome[:error] = "cancelled"
+            when :task_completed      then outcome[:text] = ev.data[:content].to_s
+            when :workflow_completed  then outcome[:output] = ev.data[:output]
+            when :task_failed         then outcome[:error] = "failed: #{ev.data[:message] || ev.data[:error]}"
+            when :task_cancelled      then outcome[:error] = "cancelled"
             end
             sub.close if TERMINAL.include?(ev.type)
           end
@@ -114,7 +146,13 @@ module Insika
 
       def build_graph
         backend = Insika::Wiring::Graph.backend_from_env
-        spine = Insika::Wiring::Graph.spine(backend: backend)
+        # :workflow_allowlist joins the builtins here for the same reason the
+        # minimal wiring registers it: this root CAN expose workflows. An agent
+        # that never names one keeps `workflows_allow` nil = all (parity).
+        spine = Insika::Wiring::Graph.spine(
+          backend: backend,
+          extra_policy_builtins: { workflow_allowlist: Insika::Policy::Builtin::WorkflowAllowlist }
+        )
         c = build_components(backend, spine)
         @components = c
 
@@ -127,7 +165,32 @@ module Insika
           executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store] }
         )
         register_authoring_commands(graph, c)
+        register_workflows(graph)
         graph
+      end
+
+      # Declared workflows land in the SAME registry a deployment uses, so a DSL
+      # workflow is discoverable (`GET /v1/workflows`), schema-validated and
+      # durable (its run IS a Task) exactly like a hand-wired one. The
+      # :trigger_workflow command is registered only when there is something to
+      # trigger — parity: a system without workflows behaves as before.
+      def register_workflows(graph)
+        declared = @definition.respond_to?(:workflows) ? Array(@definition.workflows) : []
+        return if declared.empty?
+
+        declared.each do |w|
+          callable = WorkflowAdapter.new(block: w[:block], runtime: self)
+          graph.workflow_registry.register(
+            w[:name], callable,
+            description: w[:description], input_schema: w[:input_schema], output_schema: w[:output_schema]
+          )
+        end
+
+        graph.bus.register(:trigger_workflow, Insika::Commands::TriggerWorkflow.new(
+                                                profiles: graph.profiles, session_store: graph.session_store,
+                                                task_store: graph.task_store, executor: graph.executor,
+                                                workflow_registry: graph.workflow_registry
+                                              ))
       end
 
       def build_components(backend, spine)

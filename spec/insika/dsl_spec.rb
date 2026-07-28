@@ -312,4 +312,81 @@ RSpec.describe Insika::DSL do
       expect(result[:error]).to match(/not allowed|allowlist|cannot/i)
     end
   end
+
+  # Workflows from the DSL: deterministic Ruby around agent turns, registered in
+  # the SAME WorkflowRegistry a deployment uses — so a DSL workflow is durable
+  # (its run IS a Task), schema-validated at the edges, and discoverable.
+  describe "Insika.system → workflows" do
+    subject(:system) do
+      Insika.system do
+        agent("writer") { model "m"; instructions "write" }
+        agent("editor") { model "m"; instructions "edit" }
+
+        workflow "echo",
+                 description: "Echoes its input — no model call.",
+                 input: { type: "object", properties: { topic: { type: "string" } }, required: ["topic"] },
+                 output: { type: "object", properties: { text: { type: "string" } } } do |input, _ctx|
+          { "text" => input["topic"].upcase }
+        end
+
+        workflow("chain") { |input, ctx| { "text" => ctx.ask("writer", input["topic"].to_s) } }
+      end
+    end
+
+    def script(runtime, final)
+      chat = FakeChat.new
+      chat.final_content = final
+      chat.script = proc { emit_chunk(final) }
+      runtime.graph.executor.define_singleton_method(:create_chat) { |*_a, **_k| chat }
+    end
+
+    it "registers them with description and schemas (the discovery catalog)" do
+      catalog = system.runtime.graph.workflow_registry.catalog
+      echo = catalog.find { |w| w["name"] == "echo" }
+
+      expect(system.runtime.graph.workflow_registry.names).to eq(%w[echo chain])
+      expect(echo["description"]).to eq("Echoes its input — no model call.")
+      expect(echo["input_schema"]["required"]).to eq(["topic"])
+    end
+
+    it "#run returns the workflow's typed OUTPUT (not the turn text)" do
+      expect(system.run("echo", input: { "topic" => "fibers" })).to eq({ "text" => "FIBERS" })
+    end
+
+    it "refuses a bad input synchronously, creating NO run" do
+      expect { system.run("echo", input: { "nope" => 1 }) }
+        .to raise_error(Insika::WorkflowSchemaError, /topic/)
+      expect(system.runtime.graph.task_store.each_id.count).to eq(0)
+    end
+
+    it "raises NotFoundError for an unregistered workflow" do
+      expect { system.run("nope", input: {}) }.to raise_error(Insika::NotFoundError, /not registered/)
+    end
+
+    it "ctx.ask runs a turn against the named agent" do
+      script(system.runtime, "drafted")
+      expect(system.run("chain", input: { "topic" => "x" })).to eq({ "text" => "drafted" })
+    end
+
+    it "ctx.gather runs blocks concurrently and returns them IN ORDER" do
+      ctx = Insika::DSL::WorkflowAdapter::Context.new(runtime: system.runtime, context: nil, tools: [])
+      expect(ctx.gather(-> { :a }, -> { :b }, -> { :c })).to eq(%i[a b c])
+    end
+
+    it "rejects a duplicate workflow name" do
+      expect do
+        Insika.system do
+          agent("a") { model "m" }
+          workflow("dup") { |_i, _c| 1 }
+          workflow("dup") { |_i, _c| 2 }
+        end
+      end.to raise_error(ArgumentError, /duplicate workflow/)
+    end
+
+    it "a system with NO workflows does not register :trigger_workflow (parity)" do
+      plain = Insika.system { agent("solo") { model "m" } }
+      expect { plain.runtime.graph.bus.dispatch(Insika::Command.build(:trigger_workflow, {})) }
+        .to raise_error(Insika::Error)
+    end
+  end
 end

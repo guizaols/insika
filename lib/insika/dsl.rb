@@ -41,6 +41,7 @@ module Insika
     class SystemBuilder
       def initialize
         @definitions = []
+        @workflows = []
         @runtime = {}
       end
 
@@ -48,7 +49,7 @@ module Insika
         instance_eval(&block) if block
         raise ArgumentError, "Insika.system needs at least one agent" if @definitions.empty?
 
-        System.new(definitions: @definitions, runtime: @runtime)
+        System.new(definitions: @definitions, workflows: @workflows, runtime: @runtime)
       end
 
       # Declares one agent — the SAME block the standalone `Insika.agent` takes.
@@ -61,6 +62,32 @@ module Insika
 
         @definitions << definition
         definition
+      end
+
+      # Declares a WORKFLOW: deterministic Ruby orchestrating agent turns, for the
+      # shapes a single tool-loop should not decide on its own — chaining, routing,
+      # evaluate-and-retry. It is registered in the same WorkflowRegistry a
+      # deployment uses, so it gets a durable run (the run id IS a Task),
+      # `:workflow_started`/`:workflow_completed` on the event stream, and — when
+      # served — `GET /v1/workflows` + `POST /v1/workflows/:name`.
+      #
+      #   workflow "draft", input: { type: "object", required: ["topic"], … } do |input, ctx|
+      #     draft = ctx.ask("writer", "Write about #{input['topic']}")
+      #     ctx.ask("editor", "Tighten this:\n#{draft}")
+      #   end
+      #
+      # `input:`/`output:` take a JSON Schema Hash (validated by the engine's
+      # zero-dep validator) or any dry-schema-compatible `#call`-able. A bad input
+      # is refused synchronously, with NO run created.
+      def workflow(name, description: nil, input: nil, output: nil, &block)
+        raise ArgumentError, "workflow '#{name}' needs a block" if block.nil?
+
+        name = name.to_s
+        raise ArgumentError, "duplicate workflow in system: #{name}" if @workflows.any? { |w| w[:name] == name }
+
+        @workflows << { name: name, description: description,
+                        input_schema: input, output_schema: output, block: block }
+        name
       end
 
       # System-wide runtime knobs (NOT part of any pack): they configure the LLM

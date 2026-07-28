@@ -59,9 +59,15 @@ module Insika
           # This is the primary "build my first agent" target — models.json reports the
           # DSL's stores + the single agent this process serves (its id IS the `model`).
           onboarding: build_onboarding,
+          # Item 22: GET /v1/workflows + POST /v1/workflows/:name, opt-in by
+          # injection like every other edge — nil when the system declares none,
+          # so the routes simply do not exist (404, parity).
+          workflow_registry: (@graph.workflow_registry if workflows?),
           config: { gateway_token: @token }
         )
       end
+
+      def workflows? = !@graph.workflow_registry.names.empty?
 
       def build_onboarding
         configs = @rt.packs.map(&:config)
@@ -106,6 +112,7 @@ module Insika
         puts "  #{base}/studio          → control UI (login token: \"#{@token}\")"
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", #{models})"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
+        puts "  #{base}/v1/workflows    → #{@graph.workflow_registry.names.join(', ')}" if workflows?
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
         puts "  Ctrl-C to stop."

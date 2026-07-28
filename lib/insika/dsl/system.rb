@@ -15,10 +15,11 @@ module Insika
     # require the child agents to be resolvable in the SAME ProfileSource. A
     # Definition owns exactly one pack, so those patterns had no home in the DSL.
     class System
-      attr_reader :definitions, :runtime_options
+      attr_reader :definitions, :workflows, :runtime_options
 
-      def initialize(definitions:, runtime: {})
+      def initialize(definitions:, workflows: [], runtime: {})
         @definitions = definitions.freeze
+        @workflows = workflows.freeze
         # Agent-level runtime knobs merged in declaration order, then the
         # system-level ones on top (an explicit `provider`/`api_key` in the
         # system block is the shared default and wins the tie).
@@ -59,8 +60,20 @@ module Insika
       end
       alias_method :chat, :reply
 
+      # Runs a declared workflow and returns its output. `agent:` is the profile
+      # the run executes under (policy, limits, context) — it defaults to the
+      # primary agent, since a workflow's own steps pick their agents explicitly.
+      # A bad input raises before any run is created (schema is enforced at the
+      # edge, exactly as it is over HTTP).
+      def run(workflow_name, input: {}, agent: nil, timeout: nil)
+        runtime.run_workflow(workflow_name.to_s, input: input,
+                                                 agent: (agent || id).to_s, timeout: timeout)
+      end
+
       # Boot the control UI (/studio) + the drop-in API (/v1) with EVERY agent of
       # the system served — each agent's id is a `model` on /v1/responses.
+      # With workflows declared, `GET /v1/workflows` + `POST /v1/workflows/:name`
+      # are exposed too.
       def serve(port: 9292, host: "localhost", token: nil, **opts)
         runtime.serve(port: port, host: host, token: token, **opts)
       end
