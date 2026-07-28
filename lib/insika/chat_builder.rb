@@ -166,9 +166,12 @@ module Insika
     # :skill_activated. Adds the max_tool_calls counter: the loop is RubyLLM's;
     # here we only count and abort.
     def wire_callbacks(chat, state, emit)
+      # Per-TURN counter: safe as a closure local even under concurrent tool calls
+      # (MRI fibers do not preempt between the read and the write). The per-CALL
+      # correlation is NOT — it lives in fiber storage behind TurnState, because
+      # each call gets its own fiber once tool concurrency is on.
       tool_calls = 0
       max_tool_calls = state.profile.limits[:max_tool_calls] || 50
-      last_tool_name = nil
 
       chat.before_tool_call do |tool_call|
         # call<->decorator correlation (side-effects/skip) — 1st line.
@@ -186,8 +189,12 @@ module Insika
         # model executes. A hook exception here aborts the turn.
         tool_call = @hooks.run_before(:tool, tool_call)
 
-        last_tool_name = tool_call.name.to_s
-        if last_tool_name == "load_skill"
+        # The name of the (possibly hook-altered) subject, for the :tool_result
+        # label. Also fiber-scoped: as a closure local it belonged to the TURN, so
+        # under concurrency `after_tool_result` labelled every result with whichever
+        # call started last.
+        state.current_tool_name = tool_call.name.to_s
+        if state.current_tool_name == "load_skill"
           args = tool_call.arguments || {}
           emit.call(:skill_activated, { name: args["name"] || args[:name] })
         else
@@ -197,7 +204,7 @@ module Insika
 
       chat.after_tool_result do |result|
         result = @hooks.run_after(:tool, result)
-        emit.call(:tool_result, { name: last_tool_name, result: result.to_s })
+        emit.call(:tool_result, { name: state.current_tool_name, result: result.to_s })
       end
     end
   end

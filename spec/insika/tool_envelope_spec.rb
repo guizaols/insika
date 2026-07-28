@@ -177,4 +177,79 @@ RSpec.describe Insika::ToolEnvelope do
       expect(env.name).to eq("echo")
     end
   end
+
+  # Item 30 / P11a. The correlation the envelope reads (`state.current_tool_call`)
+  # used to be ONE slot on the shared TurnState. RubyLLM 1.16 runs each tool call
+  # of a batch in its own fiber — `before_tool_call` → `tool.call` →
+  # `after_tool_result` all inside it — so with a single slot the second call's id
+  # overwrote the first's between the callback and the read: the side-effect got
+  # checkpointed under the WRONG id, and a resume then skips the wrong tool or
+  # re-runs a non-idempotent one. Silent, and only reachable under concurrency.
+  describe "per-call correlation under CONCURRENT tool calls (fiber-scoped)" do
+    class EnvYieldingTool
+      def name = "charge"
+      def call(_args) = "charged"
+    end
+
+    # Models what the gem really does per call, in ONE fiber: run the
+    # `before_tool_call` callbacks (which set the correlation and then do work that
+    # CAN yield — our hooks plus the event emit), and only afterwards invoke the
+    # tool. The yield between the write and the envelope's read is the whole race:
+    # with one shared slot, the fiber that yields longest comes back and reads
+    # SOMEBODY ELSE'S id. `settle` staggers the two so the interleaving is forced,
+    # not hoped for.
+    def concurrent_call(state, env, call_id, settle:)
+      state.current_tool_call = Struct.new(:id).new(call_id)
+      Async::Task.current.sleep(settle)
+      env.call({ "id" => call_id })
+    end
+
+    # A writes, then sleeps LONGER than B: B writes over the slot and finishes
+    # first, so A resumes to find B's id. Deterministic ordering, no flake.
+    def two_interleaved_calls(state, env, results = {})
+      Sync do |task|
+        [["call-A", 0.05], ["call-B", 0.01]].map do |id, settle|
+          task.async { results[id] = concurrent_call(state, env, id, settle: settle) }
+        end.each(&:wait)
+      end
+      results
+    end
+
+    it "checkpoints each call under its OWN id (was: both under the last writer's)" do
+      registry = FakeToolRegistry.new(side_effect_names: ["charge"])
+      state = state_for
+      env = envelope(EnvYieldingTool.new, state, tool_registry: registry)
+
+      two_interleaved_calls(state, env)
+
+      expect(checkpoint_store.side_effects("t", turn: 1)).to contain_exactly("call-A", "call-B")
+    end
+
+    it "skips ONLY the call that already ran, and runs the other (resume correctness)" do
+      state = state_for
+      env = envelope(EnvYieldingTool.new, state, skip_side_effects: ["call-B"])
+
+      results = two_interleaved_calls(state, env)
+
+      # With one shared slot, A read B's id and was skipped in B's place: the
+      # non-idempotent call the resume was meant to protect ran anyway, and the
+      # one it was meant to run did not.
+      expect(results["call-B"]).to eq({ "skipped" => "already_executed" })
+      expect(results["call-A"]).to eq("charged")
+    end
+
+    it "traces each call with its own id" do
+      recorder = Class.new do
+        attr_reader :entries
+        def initialize = (@entries = [])
+        def record(session_id:, entry:) = @entries << entry
+      end.new
+      state = state_for(session_id: "s1")
+      env = envelope(EnvYieldingTool.new, state, trace_recorder: recorder)
+
+      two_interleaved_calls(state, env)
+
+      expect(recorder.entries.map { |e| e["call_id"] }).to contain_exactly("call-A", "call-B")
+    end
+  end
 end

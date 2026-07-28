@@ -10,7 +10,7 @@ RSpec.describe Insika::ChatBuilder do
   TaskStub = Struct.new(:id, :session_id)
   ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
-                     :current_tool_call, keyword_init: true)
+                     :current_tool_call, :current_tool_name, keyword_init: true)
 
   let(:inert) { Object.new }
   let(:skill_catalog) { instance_double("Insika::SkillCatalog") }
@@ -257,6 +257,37 @@ RSpec.describe Insika::ChatBuilder do
       expect(sink.map { |e| e[:type] }).to eq(%i[tool_call tool_result])
       expect(sink.first[:data]).to eq({ name: "lookup", arguments: { "q" => "x" } })
       expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado" })
+    end
+
+    # Item 30 / P11a. The :tool_result label used to be a closure local shared by
+    # the whole TURN, so with `ToolConcurrency` (one fiber per call, callbacks
+    # included) `after_tool_result` labelled every result with whichever call
+    # STARTED last. Mislabelled events poison the Studio trace, /v1/events and the
+    # OTel tool spans — silently, since the payload still looks well-formed.
+    it "labels each :tool_result with ITS OWN call, with two calls in flight" do
+      require "async"
+      sink = []
+      # A REAL TurnState: the correlation is fiber-scoped inside it, which is the
+      # thing under test (the Struct stub above would hide it behind a plain slot).
+      real_state = Insika::TurnState.new(
+        task: TaskStub.new("t", "s"), turn: 1, message: "hi",
+        profile: ProfileStub.new("m", nil, {}, nil)
+      )
+      builder.wire_callbacks(chat, real_state, recording_emit(sink))
+
+      Sync do |task|
+        [["slow_tool", 0.05], ["fast_tool", 0.01]].map do |name, settle|
+          task.async do
+            chat.fire_tool_call(name: name, arguments: {})
+            task.sleep(settle) # the provider round-trip / the tool's own IO
+            chat.fire_tool_result("#{name} result")
+          end
+        end.each(&:wait)
+      end
+
+      labels = sink.select { |e| e[:type] == :tool_result }
+                   .to_h { |e| [e[:data][:result], e[:data][:name]] }
+      expect(labels).to eq("fast_tool result" => "fast_tool", "slow_tool result" => "slow_tool")
     end
 
     it "emits :skill_activated (not :tool_call) for load_skill" do

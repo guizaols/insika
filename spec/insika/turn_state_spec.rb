@@ -59,8 +59,51 @@ RSpec.describe Insika::TurnState do
       end
     end
 
-    it "current_tool_call defaults to nil (correlation — single slot filled in before_tool_call)" do
+    it "current_tool_call defaults to nil (correlation, filled in before_tool_call)" do
       expect(build.current_tool_call).to be_nil
+    end
+  end
+
+  # Item 30 / P11a: the per-call correlation is the ONE pair of fields that is not
+  # an ivar. `before_tool_call` → `tool.call` → `after_tool_result` run in the same
+  # fiber, and tool concurrency gives each call its own — so a shared slot would let
+  # calls overwrite each other's identity. Serial behaviour is unchanged.
+  describe "per-call correlation is FIBER-scoped" do
+    it "keeps one fiber's correlation invisible to another" do
+      require "async"
+      state = build
+      seen = {}
+
+      Sync do |task|
+        [["call-A", 0.05], ["call-B", 0.01]].map do |id, settle|
+          task.async do
+            state.current_tool_call = id
+            state.current_tool_name = "tool-#{id}"
+            task.sleep(settle) # the other fiber writes while this one waits
+            seen[id] = [state.current_tool_call, state.current_tool_name]
+          end
+        end.each(&:wait)
+      end
+
+      expect(seen).to eq("call-A" => ["call-A", "tool-call-A"],
+                         "call-B" => ["call-B", "tool-call-B"])
+    end
+
+    it "a new turn starts CLEAN even inside a fiber that already holds a correlation" do
+      # Fiber storage is inherited by fibers created later, so a subagent child
+      # spawned from inside a tool call would otherwise key its own side-effects
+      # under the parent's tool_call id.
+      require "async"
+      inherited = nil
+
+      Sync do |task|
+        task.async do
+          build.current_tool_call = "parent-call"
+          task.async { inherited = build.current_tool_call }.wait # the child turn
+        end.wait
+      end
+
+      expect(inherited).to be_nil
     end
 
     it "skip_side_effects defaults to nil (Array(nil) => [] in the envelope; new turn)" do

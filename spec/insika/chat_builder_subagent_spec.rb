@@ -10,7 +10,7 @@ require "insika/tools/subagents" # explicit here
 RSpec.describe "Insika::ChatBuilder subagent wiring (RFC-0010)" do
   Ctx2 = Struct.new(:system)
   St = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
-                  :current_tool_call, keyword_init: true)
+                  :current_tool_call, :current_tool_name, keyword_init: true)
 
   let(:runner) { Class.new { def run_subagent(**) = { text: "x", session_id: "sub-1" } }.new }
   let(:skill_catalog) { instance_double("Insika::SkillCatalog") }
