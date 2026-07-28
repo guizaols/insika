@@ -109,6 +109,28 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(bad.execute(cep: "1")).to match(error: /HTTP 404/)
   end
 
+  # A moved API is the way a data-tool rots: the HttpClient does not follow the
+  # hop (the EgressGuard only cleared the authored URL), and a 3xx carries an
+  # EMPTY body — counted as success, the model got "" and narrated an outage.
+  describe "a redirect (the API moved)" do
+    let(:moved) { { status: 301, body: "", location: "https://api.example.test/v2/latest" } }
+
+    it "body_raw -> {error:} naming the new URL, never the empty body" do
+      t = tool(cep_def.merge(response: { extract: "body_raw" }), result: moved)
+      expect(t.execute(cep: "1")).to eq(error: "HTTP 301: moved to https://api.example.test/v2/latest")
+    end
+
+    it "json_path -> {error:}, not 'response is not JSON'" do
+      t = tool(cep_def, result: moved)
+      expect(t.execute(cep: "1")).to match(error: /moved to/)
+    end
+
+    it "a 3xx without a Location still reports the status" do
+      t = tool(cep_def.merge(response: { extract: "body_raw" }), result: { status: 304, body: "" })
+      expect(t.execute(cep: "1")).to eq(error: "HTTP 304: ")
+    end
+  end
+
   it "extract status returns the status regardless of error" do
     t = tool(cep_def.merge(response: { extract: "status" }), result: { status: 503, body: "" })
     expect(t.execute(cep: "1")).to eq(status: 503)
