@@ -13,6 +13,10 @@ class FakeChat
   ThinkingChunk = Struct.new(:content, :thinking)
 
   attr_reader :instructions, :tools, :messages, :asked
+  # Item 30: whatever the LAST with_tools passed as `concurrency:` (nil = the
+  # serial default). The real Chat exposes it as #concurrency; the contract spec
+  # pins that the keyword exists there too.
+  attr_reader :concurrency
   # script: proc run in the chat's context during #ask (may call
   # emit_chunk/fire_tool_call/fire_tool_result). final_content: content of the final
   # response. model: optional stub read by ChatBuilder's provider check (§11 R3);
@@ -34,8 +38,9 @@ class FakeChat
     self
   end
 
-  def with_tools(*tools)
+  def with_tools(*tools, concurrency: nil)
     @tools.concat(tools)
+    @concurrency = concurrency
     self
   end
 

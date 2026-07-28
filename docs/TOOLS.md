@@ -105,6 +105,40 @@ resolve at turn time, not ingestion).
    enable one. This is progressive disclosure for large toolsets — see
    [Context](CONTEXT.md).
 
+## Parallel tool calls
+
+A model can ask for several tools in one step. By default the engine runs them one
+at a time. Set `limits[:tool_concurrency]` above 1 (see
+[Agents](AGENTS.md#tool_concurrency--parallel-tool-calls)) and the calls in that
+batch run concurrently, **at most N in flight**, on the turn's own reactor — so
+the wall-clock of a batch of slow data tools approaches the slowest call rather
+than their sum. The cap covers every enveloped tool of the turn, including the
+ones `tool_search` promotes mid-turn.
+
+It applies only to what the *model* fans out. Two primitives already parallelize
+deterministically and are unaffected: `spawn_subagents` (capped at 8 children) and
+`Insika::Tools::Concurrency.gather` (fan-out inside one tool). System tools —
+`tool_search`, `load_skill`, `remember`, `spawn_subagent` — are not enveloped and
+so are not gated by the cap; they are trivial or capped on their own.
+
+Turning it on changes three things, all of them worth knowing before you do:
+
+- **`max_tool_calls` becomes approximate.** The limit is checked per call, but a
+  call that trips it does not stop its siblings — the whole batch finishes and the
+  turn then fails. With a cap of 4, up to 3 extra tools may have executed. The turn
+  still fails at the right boundary; the count is just no longer exact.
+- **The transcript records results in completion order.** Providers key results by
+  `tool_call_id`, so the wire stays valid and persistence is faithful to what was
+  sent — but a replayed transcript no longer reads in call order.
+- **`turn_timeout` can overrun by up to `tool_timeout`.** A turn deadline does not
+  cancel a tool call already in flight in a sibling fiber; it waits for it. Each
+  call is still bounded by its own `tool_timeout`, which is what bounds the
+  overrun. Serial execution is unaffected (there, the deadline lands directly in
+  the fiber running the tool).
+
+Approvals and concurrency are mutually exclusive per turn — the approval gate wins
+and the turn goes serial. That is a deadlock avoided, not a preference.
+
 ## Egress: the SSRF guard (and its silent failure)
 
 Data tools make outbound HTTP, so every call passes through the **EgressGuard**, a

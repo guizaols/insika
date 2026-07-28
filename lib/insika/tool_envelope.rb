@@ -55,7 +55,7 @@ module Insika
       end
 
       started = monotonic
-      result = Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) }
+      result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) } }
       record_side_effect!(call_id) if side_effect?
       trace(call_id, args, result, started)
       result
@@ -68,6 +68,18 @@ module Insika
     private
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    # D4 (item 30): with parallel tool calls on, the turn's shared semaphore
+    # (TurnState#tool_gate, sized by `limits[:tool_concurrency]`) caps how many run
+    # at once. Wraps the REAL call ONLY — the approval wait and the skip check are
+    # outside it, so a call blocked on a human never holds a slot, and the per-call
+    # `tool_timeout` clock starts after the slot is granted rather than while
+    # queueing for one. The trace's `ms` DOES include the queue wait: that is the
+    # wall-clock the model waited. No gate (the default, serial) = straight through.
+    def with_gate(&)
+      gate = @state.respond_to?(:tool_gate) ? @state.tool_gate : nil
+      gate ? gate.acquire(&) : yield
+    end
 
     # Records the call for debugging in the Studio (name + model args + result +
     # ms), keyed by the SESSION. Masking/truncation is the ToolTraceStore's job;
