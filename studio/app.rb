@@ -9,6 +9,9 @@ require "time"
 require "date"
 require_relative "forms"
 require_relative "nav_icons"
+# The live transcript's SSE body. Shared with the server on purpose: one wire format
+# (Event#to_h) for the same EventStream, whichever door the client came through.
+require_relative "../server/sse_body"
 
 module Studio
   # Insika Studio — the server-rendered management UI, replacing
@@ -48,7 +51,7 @@ module Studio
 
     # Strict CSP: no `unsafe-inline`. Everything comes from the same-origin bundle in
     # /studio/assets/dist. `connect-src 'self'` covers the playground's EventSource
-    # (SSE from /v1/events, same origin). `img-src data:` covers inline SVG/icons.
+    # (SSE from /studio/events, same origin). `img-src data:` covers inline SVG/icons.
     plugin :content_security_policy do |csp|
       csp.default_src :none
       csp.script_src :self
@@ -187,6 +190,24 @@ module Studio
         check_csrf!
         self.class.clear_restart_needed!
         r.redirect(safe_back(r.params["back"]))
+      end
+
+      # GET /studio/events — the live transcript's SSE, on the STUDIO's own auth.
+      # `EventSource` cannot send an Authorization header, so the browser used to read
+      # the server's `/v1/events` directly — which is why that route had to stay open to
+      # the world, streaming assistant text for any session to anyone who knew the URL.
+      # Now the browser talks to the Studio (session cookie, already required above) and
+      # `/v1` is machine-only, behind its Bearer. Same process, same EventStream, same
+      # wire — only the door changed.
+      r.get "events" do
+        next_404 unless insika[:event_stream] # no stream wired: the feature is not there
+        subscription = insika[:event_stream].subscribe(
+          task_id: presence(r.params["task_id"]), session_id: presence(r.params["session_id"])
+        )
+        r.halt([200,
+                { "content-type" => "text/event-stream", "cache-control" => "no-cache",
+                  "x-accel-buffering" => "no" },
+                Insika::Server::SSEBody.new(subscription: subscription)])
       end
 
       # `/studio` and `/studio/` → overview home.
@@ -638,7 +659,7 @@ module Studio
       end
 
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
-      # response live through the `live-transcript` island (SSE from /v1/events).
+      # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
         r.get do
           @agent = presence(r.params["agent"]) || default_agent
@@ -1282,8 +1303,8 @@ module Studio
     # An operator control (pause/resume/cancel/approve): audits the ATTEMPT to the
     # shared EventStream BEFORE dispatching — accountability survives a Command
     # failure (parity with server/admin's `act`) — then dispatches via the bus with
-    # a success/error flash. The audit carries only metadata, never message/args
-    # (the EventStream is exposed by /v1/events without auth — no content leak).
+    # a success/error flash. The audit carries only metadata, never message/args —
+    # an event reaches every subscriber of the stream, so it stays free of content.
     def control_action(type, payload, ok:)
       emit_operator_action(type, payload)
       with_flash(ok) { dispatch(type, payload) }

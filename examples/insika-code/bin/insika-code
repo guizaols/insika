@@ -117,6 +117,7 @@ def watch_events(seen)
     uri = URI.join(BASE + "/", "v1/events?session_id=#{URI.encode_www_form_component(SESSION)}")
     req = Net::HTTP::Get.new(uri)
     req["Accept"] = "text/event-stream"
+    req["Authorization"] = "Bearer #{TOKEN}" # the whole /v1 surface is behind the Bearer
     parser = SSEParser.new
     http_for(uri).request(req) do |res|
       res.read_body do |chunk|
