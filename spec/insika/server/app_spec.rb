@@ -20,17 +20,80 @@ RSpec.describe Insika::Server::App do
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       onboarding: onboarding,
-      config: { sync_timeout: 0.05 }.merge(config)
+      config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
 
-  def call(app, method, path, body: nil)
+  # Every route except the public allowlist needs the gateway Bearer, so the default
+  # request carries it. `auth: nil` sends none (the gate's own cases); `auth: "x"` sends
+  # a wrong one.
+  TOKEN = "sekret"
+
+  def call(app, method, path, body: nil, auth: TOKEN)
     opts = { method: method }
     opts[:input] = body if body
-    app.call(Rack::MockRequest.env_for(path, opts))
+    env = Rack::MockRequest.env_for(path, opts)
+    env["HTTP_AUTHORIZATION"] = "Bearer #{auth}" if auth
+    app.call(env)
   end
 
   def json_body(resp) = JSON.parse(resp.join)
+
+  # The gate lives in `route`, before the dispatch, as an ALLOWLIST of public routes.
+  # It used to be each handler's job to call it, and the generic /v1/commands/:type
+  # never did: every authoring Command (write_agent_file, upsert_llm_provider,
+  # delete_agent…) was reachable by anyone who knew the URL, as were the session/task
+  # reads. These cases are the guard for that class, not for one route.
+  describe "the gateway gate (fail-closed by default)" do
+    # Duck-typed stubs: the gate answers before any of them is touched.
+    let(:registry) { Class.new { def catalog = [] }.new }
+    let(:onboarding) do
+      Class.new do
+        def start_md(base_url:) = "# start #{base_url}"
+        def models_json(base_url:) = { base_url: base_url }
+        def docs_index(base_url:) = []
+        def doc(_slug) = "# doc"
+      end.new
+    end
+
+    it "refuses every mutating/reading v1 route without a Bearer" do
+      bus = ServerBusDouble.new { { task_id: "t" } }
+      app = build_app(bus: bus, workflow_registry: registry, provisioner: Object.new)
+      [%w[POST /v1/commands/write_data_tool], %w[POST /v1/commands/delete_agent],
+       %w[POST /v1/sessions], %w[POST /v1/messages], %w[POST /v1/responses],
+       %w[POST /v1/tools/manifest], %w[POST /v1/agents], %w[POST /v1/workflows/flow],
+       %w[GET /v1/workflows], %w[GET /v1/sessions/s-1], %w[GET /v1/tasks/t-1],
+       %w[GET /v1/events]].each do |method, path|
+        status, = call(app, method, path, body: "{}", auth: nil)
+        expect(status).to eq(401), "expected 401 for #{method} #{path}, got #{status}"
+      end
+      expect(bus.dispatched).to be_empty # nothing reached the bus
+    end
+
+    it "refuses a wrong Bearer" do
+      status, = call(build_app, "POST", "/v1/commands/write_data_tool", body: "{}", auth: "WRONG")
+      expect(status).to eq(401)
+    end
+
+    it "is 503 (not open) when no token is configured at all" do
+      app = build_app(config: { gateway_token: nil })
+      status, = call(app, "POST", "/v1/commands/write_data_tool", body: "{}", auth: nil)
+      expect(status).to eq(503)
+    end
+
+    it "keeps the public routes open: /up and the onboarding surface" do
+      app = build_app(onboarding: onboarding, config: { gateway_token: nil })
+      expect(call(app, "GET", "/up", auth: nil).first).to eq(200)
+      expect(call(app, "GET", "/start.md", auth: nil).first).to eq(200)
+      expect(call(app, "GET", "/models.json", auth: nil).first).to eq(200)
+      expect(call(app, "GET", "/docs", auth: nil).first).to eq(200)
+      expect(call(app, "GET", "/docs/TOOLS.md", auth: nil).first).to eq(200)
+    end
+
+    it "an unknown route answers the gate first (no route enumeration)" do
+      expect(call(build_app, "GET", "/v1/whatever", auth: nil).first).to eq(401)
+    end
+  end
 
   describe "POST /v1/commands/:type (generic)" do
     it "translates body into Command(type, payload, transport: :http)" do
@@ -405,7 +468,7 @@ RSpec.describe Insika::Server::App do
     end
 
     it "no gateway_token configured -> 503 fail-closed" do
-      app = build_app # config without gateway_token
+      app = build_app(config: { gateway_token: nil })
       status, = call(app, "POST", "/v1/responses", body: responses_body)
       expect(status).to eq(503)
     end
@@ -479,7 +542,7 @@ RSpec.describe Insika::Server::App do
     end
 
     it "no gateway_token configured -> 503 fail-closed" do
-      app = build_app(provisioner: ProvisionerDouble.new) # config without gateway_token
+      app = build_app(provisioner: ProvisionerDouble.new, config: { gateway_token: nil })
       status, = call(app, "POST", "/v1/agents", body: pack_body)
       expect(status).to eq(503)
     end
@@ -542,7 +605,7 @@ RSpec.describe Insika::Server::App do
     end
 
     it "no gateway_token configured -> 503 fail-closed" do
-      status, = call(build_app, "POST", "/v1/tools/manifest", body: manifest_body)
+      status, = call(build_app(config: { gateway_token: nil }), "POST", "/v1/tools/manifest", body: manifest_body)
       expect(status).to eq(503)
     end
 
@@ -583,7 +646,7 @@ RSpec.describe Insika::Server::App do
 
   describe "live MCP ingestion POST /v1/mcp/:name/import (Phase 7, Stage E)" do
     it "no gateway_token configured -> 503 fail-closed" do
-      status, = call(build_app, "POST", "/v1/mcp/tavily/import")
+      status, = call(build_app(config: { gateway_token: nil }), "POST", "/v1/mcp/tavily/import")
       expect(status).to eq(503)
     end
 

@@ -51,11 +51,16 @@ RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
 
   def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+  # The /v1 surface is behind the gateway Bearer (fail-closed), so every smoke request
+  # carries the token boot_app configures.
+  SMOKE_TOKEN = "smoke-token"
+
   def http(port, method, path, body: nil)
     uri = URI("http://127.0.0.1:#{port}#{path}")
     req = (method == :post ? Net::HTTP::Post : Net::HTTP::Get).new(uri)
     req.body = body if body
     req["content-type"] = "application/json" if body
+    req["authorization"] = "Bearer #{SMOKE_TOKEN}"
     Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 5) { |h| h.request(req) }
   rescue StandardError
     nil # server still booting / between reboots

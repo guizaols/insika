@@ -15,6 +15,7 @@ each section links to the deeper guide.
 
 The layers, from the edge inward:
 
+0. **[The Bearer gate](#the-bearer-gate)** — nothing but the health probe answers without a token.
 1. **[Edge limits](#edge-limits)** — stop a flood before it costs anything.
 2. **[Input guardrails](#guardrails)** — refuse injection/abuse without a model turn.
 3. **[Human approval](#human-approval)** — gate high-risk tool calls on an operator.
@@ -23,9 +24,32 @@ The layers, from the edge inward:
 6. **[Output guardrails](#guardrails)** — moderate and redact what streams back.
 7. **[Secrets](#secrets-live-only-in-the-environment)** — never on disk, never in the model.
 
+## The Bearer gate
+
+The `/v1` and `/a2a` surface answers only with
+`Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>` (which falls back to `ADMIN_TOKEN`).
+The check runs in the router, **before** any dispatch, against an **allowlist** of
+public routes — so a route added later is closed until someone deliberately publishes
+it. Only these answer without a token:
+
+| Route | Why |
+|---|---|
+| `GET /up` | health/readiness probe; touches no store |
+| `GET /start.md`, `/models.json`, `/docs`, `/docs/<name>.md` | the onboarding surface, opt-in via `INSIKA_ONBOARDING`: it exists to be read by a coding agent that has no credential yet |
+| `GET /.well-known/agent-card.json` | A2A discovery — the card is the advertisement |
+
+**With no token configured, the surface is not open — it is `503`.** Fail-closed by
+construction, the same posture as `/studio`, which denies login without `ADMIN_TOKEN`.
+`insika doctor` warns when neither is set.
+
+This matters most for `POST /v1/commands/<type>`, the generic Command ingress: it can
+dispatch **any** registered authoring Command (`write_agent_file`, `write_data_tool`,
+`upsert_llm_provider`, `update_settings`, `delete_agent`). Treat that token as
+operator-grade — it is not a read key, and a leak is agent takeover, not just usage.
+
 ## Edge limits
 
-The outermost gate. The edge limiter wraps a turn **before** the input guardrail,
+The next gate. The edge limiter wraps a turn **before** the input guardrail,
 so a flood cannot even spend an LLM moderator call. Two independent, opt-in
 ceilings (nil/0 = off):
 

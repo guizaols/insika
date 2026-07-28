@@ -62,6 +62,23 @@ Everything below is what the first release will contain.
 - `GET /docs/<name>.md` strips the docs-site frontmatter, so the raw markdown a coding
   agent receives is the prose only.
 
+### Security
+
+- **The `/v1` surface is closed by default.** `POST /v1/commands/<type>` — the generic
+  Command ingress, which dispatches **any** registered authoring Command
+  (`write_agent_file`, `write_data_tool`, `upsert_llm_provider`, `update_settings`,
+  `delete_agent`) — answered **without any Authorization header**, as did
+  `POST /v1/sessions`, `POST /v1/messages`, `POST /v1/workflows/<name>`, and the
+  `GET /v1/sessions/:id` · `/v1/tasks/:id` · `/v1/events` reads. Anyone who knew a
+  deployment's URL could rewrite an agent's prompt, repoint a tool at their own host,
+  swap the LLM provider's credentials, or read every conversation.
+
+  The gate was each handler's job to call, and the generic route never did. It now runs
+  in the router, before any dispatch, against an **allowlist** of public routes (`/up`,
+  the opt-in onboarding surface, the A2A agent card) — so the next route added is closed
+  until someone publishes it deliberately. With no token configured the whole surface is
+  `503`, never open by omission. `/a2a` is now behind the same Bearer.
+
 ### Fixed
 
 - **An agent's inline identity now reaches the model.** `base_prompt` — what the DSL's

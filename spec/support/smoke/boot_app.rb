@@ -85,7 +85,9 @@ bus.register(:approve_action,
 app = Insika::Server::App.new(
   command_bus: bus, event_stream: event_stream, session_store: session_store,
   task_store: task_store, pending_action_store: pending_action_store,
-  config: {}
+  # The /v1 surface is fail-closed: no token configured -> 503 for everything. The
+  # smoke drives it over HTTP, so it configures one (the spec sends this Bearer).
+  config: { gateway_token: ENV.fetch("SMOKE_TOKEN", "smoke-token") }
 )
 
 recovery = Insika::Recovery.new(task_store: task_store, checkpoint_store: checkpoint_store, command_bus: bus)

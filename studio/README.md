@@ -31,7 +31,7 @@ npm run watch        # continuous rebuild in dev
 ```
 
 - `assets/src/application.js` — entry: Stimulus + Turbo + controllers.
-- `assets/src/controllers/` — islands (D9): `live-transcript` (SSE from /v1/events),
+- `assets/src/controllers/` — islands (D9): `live-transcript` (SSE from /studio/events),
   `code-editor` (CodeMirror 6; used for authoring prompts/skills — Stage F).
 - `assets/src/application.css` — Tailwind (`base`/preflight) + design system in
   `@layer components`.

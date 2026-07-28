@@ -1,8 +1,9 @@
 import { Controller } from "@hotwired/stimulus"
 import { renderMarkdown } from "../markdown.js"
 
-// live-transcript (island D9) — subscribes to the SSE stream from /v1/events (same
-// origin, no auth header: it's the consumer API) and renders the turn live: text
+// live-transcript (island D9) — subscribes to the SSE stream from /studio/events (same
+// origin; EventSource cannot send a Bearer, so the stream rides the Studio's session
+// cookie instead of the machine-facing /v1) and renders the turn live: text
 // deltas become an assistant bubble (rendered as Markdown, §11 A1);
 // tool_call/tool_result/skill become collapsible tool-cards (§11 A2). Reuses the
 // event protocol already proven in /admin (#24), packaged as a Stimulus controller
@@ -39,7 +40,7 @@ export default class extends Controller {
     const params = new URLSearchParams()
     if (this.taskValue) params.set("task_id", this.taskValue)
     if (this.sessionValue) params.set("session_id", this.sessionValue)
-    const url = "/v1/events" + (params.toString() ? "?" + params.toString() : "")
+    const url = "/studio/events" + (params.toString() ? "?" + params.toString() : "")
 
     this.setStatus("connecting…", "warn")
     this.es = new EventSource(url)
