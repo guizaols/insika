@@ -79,7 +79,13 @@ module Insika
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
       context_budget: 8_000, max_tool_calls: 50,
-      approval_timeout: 3_600 # cap on the wait for human approval (~1h)
+      approval_timeout: 3_600, # cap on the wait for human approval (~1h)
+      # Item 30: parallel tool calls. ONE number is both the switch and the cap
+      # (nil/0/1 = serial, the default; N > 1 = at most N tool calls in flight).
+      # It sits next to tool_timeout/max_tool_calls because it is the third bound
+      # on tool execution. Read through TurnState#tool_concurrency, which also
+      # applies the approval gate (D3).
+      tool_concurrency: 1
     }.freeze
 
     # `model` is OPTIONAL as of v2 (§10): an agent without one resolves the

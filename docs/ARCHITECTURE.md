@@ -114,6 +114,12 @@ the engine wraps each tool the model may call in a **ToolEnvelope** that enforce
 the per-tool timeout, records side-effects for checkpointing, skips
 already-completed side-effects on resume, and fires the approval gate.
 
+When a step contains several tool calls they are executed **one at a time**, unless
+the agent raised `limits[:tool_concurrency]` — then the batch runs on the turn's
+reactor with at most that many in flight, one fiber per call, and the envelope's
+shared semaphore is the cap. A turn with an approval-required tool always runs
+serially. See [Tools](TOOLS.md#parallel-tool-calls) for what that changes.
+
 ```mermaid
 flowchart TD
   ask[chat.ask -> model] --> dec{tool call?}
