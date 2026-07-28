@@ -93,7 +93,7 @@ RSpec.describe Studio::App do
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {},
-                tasks: {}, pendings: [], checkpoints: {})
+                tasks: {}, pendings: [], checkpoints: {}, event_stream: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -122,7 +122,7 @@ RSpec.describe Studio::App do
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
-      event_stream: nil, config: { admin_token: admin_token },
+      event_stream: event_stream, config: { admin_token: admin_token },
       agent_file_store: AgentFileStoreDouble.new(agent_files),
       skill_store: SkillStoreDouble.new(stored_skills),
       skill_catalog: SkillCatalogDouble.new(skills),
@@ -717,6 +717,47 @@ RSpec.describe Studio::App do
     cmd = bus.last(:set_agent_tools)
     expect(cmd.payload[:allow]).to eq(["menu"])
     expect(cmd.payload).to have_key(:deny)
+  end
+
+  # The live transcript's SSE. It used to read the server's /v1/events straight from the
+  # browser — EventSource cannot send a Bearer — which is why that route had to stay open
+  # to the world while streaming assistant text. The stream now rides the Studio's own
+  # cookie, so /v1 could close.
+  describe "GET /events (live transcript SSE)" do
+    # Records what the island asked to subscribe to. The body is NEVER drained here:
+    # SSEBody exposes #call (Rack 3 streaming), not #each, on purpose.
+    let(:stream_double) do
+      Class.new do
+        attr_reader :scope
+
+        def subscribe(task_id:, session_id:) = (@scope = { task_id: task_id, session_id: session_id }; self)
+      end.new
+    end
+
+    it "answers the SSE headers with a streaming body, scoped to the session" do
+      app, = build_app(event_stream: stream_double)
+      client = login(app)
+      env = Rack::MockRequest.env_for("/events?session_id=sess-1", "HTTP_COOKIE" => client.cookie)
+      status, headers, body = app.call(env)
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to eq("text/event-stream")
+      expect(headers["cache-control"]).to eq("no-cache")
+      expect(body).to be_a(Insika::Server::SSEBody)
+      expect(stream_double.scope).to eq(task_id: nil, session_id: "sess-1")
+    end
+
+    it "is behind the session like every other page (anonymous -> login)" do
+      app, = build_app(event_stream: stream_double)
+      resp = Rack::MockRequest.new(app).get("/events?session_id=sess-1")
+      expect(resp.status).to eq(302)
+      expect(resp.headers["location"]).to eq("/studio/login")
+    end
+
+    it "404s when no event stream is wired (the feature is not there)" do
+      app, = build_app # event_stream: nil
+      expect(login(app).get("/events").status).to eq(404)
+    end
   end
 
   # --- Data-driven tools (authoring) — Phase 5 Stage C ---------------------
