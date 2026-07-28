@@ -86,6 +86,7 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Tools](docs/TOOLS.md) — code vs data vs MCP tools, manifests, egress troubleshooting.
 - [Skills](docs/SKILLS.md) — the SKILL.md format and progressive loading.
 - [Context](docs/CONTEXT.md) — what fills a turn's prompt; budget, eviction, memory.
+- [Workflows](docs/WORKFLOWS.md) — deterministic orchestration of several agents: the five patterns, and when to let the model choose instead.
 - [Plugins](docs/PLUGINS.md) — the two extension tiers: config-only, or a gem the engine loads.
 - [Running locally](docs/RUNNING-LOCAL.md) — the local demo, the control UI, wiring tools to your own backend.
 - [examples/](examples/) — one small runnable project per capability.

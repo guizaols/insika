@@ -17,6 +17,8 @@ DEEPSEEK_API_KEY=sk-... ruby examples/<name>/<file>.rb
 | [memory/](memory/) | Cross-session memory (`remember`) | `ruby examples/memory/memory_agent.rb` |
 | [guardrails/](guardrails/) | Content-safety guardrails, opt-in per agent | `ruby examples/guardrails/guarded_agent.rb` |
 
+| [agentic-workflows/](agentic-workflows/) | The five composition patterns: sequential, routing, parallel, evaluator, delegation | `ruby examples/agentic-workflows/sequential.rb` |
+
 Plus the flagship:
 
 - [insika-code/](insika-code/) — a Claude-Code-style coding agent built entirely
@@ -57,7 +59,6 @@ system.reply("reviewer", code)   # target agent is always explicit
 system.serve                     # all of them on /studio + /v1
 ```
 
-## Not yet shown (DSL surface in progress)
-
-Exposed `workflows` have no DSL setter yet, so they aren't a one-file example
-here. Until then, see the full deployment wiring in `config/wiring.rb`.
+Workflows are declared in the same block — `workflow "name", input:, output: do
+|input, ctx| … end` — and every one of them is durable, schema-validated and
+exposed over HTTP when served. See [Workflows](../docs/WORKFLOWS.md).

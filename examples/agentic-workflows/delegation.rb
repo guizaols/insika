@@ -26,8 +26,8 @@ RUBY
 desk = Insika.system do
   provider :deepseek
 
-  agent "security"    { model "deepseek-chat"; instructions "Security reviewer. ONE sentence." }
-  agent "performance" { model "deepseek-chat"; instructions "Performance reviewer. ONE sentence." }
+  agent("security")    { model "deepseek-chat"; instructions "Security reviewer. ONE sentence." }
+  agent("performance") { model "deepseek-chat"; instructions "Performance reviewer. ONE sentence." }
 
   agent "lead" do
     model "deepseek-chat"

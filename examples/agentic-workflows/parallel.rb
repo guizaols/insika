@@ -20,9 +20,9 @@ RUBY
 review = Insika.system do
   provider :deepseek
 
-  agent "security"    { model "deepseek-chat"; instructions "Review code for SECURITY issues. ONE sentence." }
-  agent "performance" { model "deepseek-chat"; instructions "Review code for PERFORMANCE issues. ONE sentence." }
-  agent "style"       { model "deepseek-chat"; instructions "Review code for Ruby STYLE. ONE sentence." }
+  agent("security")    { model "deepseek-chat"; instructions "Review code for SECURITY issues. ONE sentence." }
+  agent("performance") { model "deepseek-chat"; instructions "Review code for PERFORMANCE issues. ONE sentence." }
+  agent("style")       { model "deepseek-chat"; instructions "Review code for Ruby STYLE. ONE sentence." }
 
   agent "lead" do
     model "deepseek-chat"

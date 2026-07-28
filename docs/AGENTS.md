@@ -186,6 +186,10 @@ system.reply("reviewer", code)   # one turn; the parent fans out and synthesizes
 system.serve                     # all three on /studio + /v1 (each id is a `model`)
 ```
 
+When the *shape* of the work is known in advance — draft then edit, classify then
+answer, three reviewers then a summary — put the choice in Ruby instead: see
+[Workflows](WORKFLOWS.md).
+
 The parent gets two system tools: `spawn_subagent` (one child) and
 `spawn_subagents` (**N children in parallel**, one combined result — wall-clock
 is the slowest child, not the sum, capped by `INSIKA_SUBAGENT_FANOUT_CAP`,
