@@ -1,7 +1,7 @@
 ---
 title: Running locally
 parent: Build an agent
-nav_order: 5
+nav_order: 6
 permalink: /running-local/
 ---
 
