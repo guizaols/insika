@@ -152,6 +152,16 @@ RSpec.describe Insika::ToolManifest do
     end
   end
 
+  it "carries halt_when through, and never inherits it from defaults" do
+    halt = { "json_path" => "tool_result.status", "equals" => ["SUBSCRIBED"] }
+    m = manifest(defaults: { "halt_when" => halt },
+                 tools: [{ "name" => "a", "url" => "https://api.test/a" },
+                         { "name" => "b", "url" => "https://api.test/b", "halt_when" => halt }])
+    a, b = defn(m)
+    expect(a).not_to have_key("halt_when") # a sibling's ending is not a shared default
+    expect(b["halt_when"]).to eq(halt)
+  end
+
   describe "secret safety (R3 + leak guard)" do
     it "rejects a secret_header with a LITERAL value (no {{secret.*}}) — R3" do
       d = achei_defaults.merge("headers" => achei_defaults["headers"].merge("Authorization" => "Bearer HARDCODED"))

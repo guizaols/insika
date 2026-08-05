@@ -82,8 +82,17 @@ class FakeChat
     else
       emit_chunk("chunk")
     end
+    # A tool with `halt_when` ended the turn: the REAL Chat returns the Tool::Halt
+    # from its loop instead of a Message (see ruby_llm_contract_spec), so the double
+    # must be able to as well — otherwise the Executor's branch is untestable here and
+    # only production would find out.
+    return RubyLLM::Tool::Halt.new(@halt_with) if @halt_with
+
     Response.new(@final_content)
   end
+
+  # Makes the next #ask return a Tool::Halt carrying this payload.
+  def halt_with!(payload) = (@halt_with = payload)
 
   # Emits a streaming chunk (as RubyLLM does in the ask block).
   def emit_chunk(text)

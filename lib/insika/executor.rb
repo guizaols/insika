@@ -606,6 +606,10 @@ module Insika
       else
         filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
         timing&.mark(:ask)
+        # What actually reached the consumer. Only read on a halted turn (`halt_when`),
+        # where there is no Message to take `#content` from and the transcript must
+        # still match the bytes that were streamed.
+        streamed = +""
         response = @hooks.around(:agent, state) do |s|
           result = s.chat.ask(s.message) do |chunk|
             emit_thinking(chunk, task)
@@ -613,7 +617,10 @@ module Insika
 
             timing&.mark(:first_token) # first-write-wins -> real TTFB
             out = filter ? filter.push(chunk.content) : chunk.content
-            emit(:content, { delta: out }, task: task) unless out.to_s.empty?
+            next if out.to_s.empty?
+
+            streamed << out.to_s
+            emit(:content, { delta: out }, task: task)
           end
           # release the buffered tail once the stream ends (a value that never
           # completed into a match is emitted redacted-if-needed, not lost).
@@ -622,10 +629,20 @@ module Insika
           end
           result
         end
-        state.usage = with_model_source(usage_of(response), state.model_selection)
-        # persisted/terminal content must match the redacted stream (D3): the filter's
-        # accumulated output, else the raw response.
-        filter ? filter.output : response.content
+        # HALTED BY A TOOL RESULT (`halt_when`): RubyLLM returns the Tool::Halt itself
+        # instead of a Message, and its `content` is the tool PAYLOAD — the ordinary
+        # path below would ship the envelope to the customer as the answer. The turn is
+        # worth exactly what was streamed BEFORE the tool call (usually the model's
+        # "vou te inscrever agora"), and nothing after: the backend already said the
+        # rest. Empty stream -> empty turn, which is what the consumer suppresses.
+        if response.is_a?(RubyLLM::Tool::Halt)
+          filter ? filter.output : streamed
+        else
+          state.usage = with_model_source(usage_of(response), state.model_selection)
+          # persisted/terminal content must match the redacted stream (D3): the filter's
+          # accumulated output, else the raw response.
+          filter ? filter.output : response.content
+        end
       end
     end
 

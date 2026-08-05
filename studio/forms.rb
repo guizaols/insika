@@ -99,11 +99,19 @@ module Studio
       nil
     end
 
+    # Fields a tool CAN carry that this form does not render. The store REPLACES the
+    # record on write, so anything missing here is erased — a save that only fixed a
+    # typo in the description would silently drop them (the class of bug §12 already
+    # paid for once). `stored` carries them through untouched.
+    UNEDITED_TOOL_FIELDS = %w[group tags halt_when].freeze
+
     # :write_data_tool payload from the form. nested request/response;
     # headers/query as "key=value" per line (same idiom as the MCP env —
     # a masked secret comes back as a sentinel and is reconciled in the store).
-    def tool_patch(r)
-      {
+    # `stored` = the definition being edited (nil when creating).
+    def tool_patch(r, stored = nil)
+      preserved = (stored || {}).slice(*UNEDITED_TOOL_FIELDS).compact
+      preserved.merge(
         name: presence(r.params["name"]),
         description: r.params["description"].to_s,
         parameters: parse_parameters(r.params["parameters"]),
@@ -120,7 +128,7 @@ module Studio
         },
         secret_headers: split_list(r.params["secret_headers"]),
         timeout: presence(r.params["timeout"])
-      }
+      )
     end
 
     # Parameters, TWO accepted syntaxes in one field (auto-detected, no mode toggle):
