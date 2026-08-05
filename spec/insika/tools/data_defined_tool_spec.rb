@@ -125,6 +125,34 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(bad.execute(cep: "1")).to match(error: /HTTP 404/)
   end
 
+  # A failure body is often the backend TALKING (status + instruction). Flattened into
+  # a 200-char slice, the instruction was lost exactly when the model needed it.
+  describe "a JSON body on a failure" do
+    let(:def_raw) { cep_def.merge(response: { extract: "body_raw" }) }
+
+    it "rides along parsed, under its own key" do
+      envelope = '{"tool_result":{"status":"NOT_FOUND","llm_instruction":"peça para a pessoa recomeçar"}}'
+      out = tool(def_raw, result: { status: 404, body: envelope }).execute(cep: "1")
+      expect(out[:error]).to eq("HTTP 404")                                 # still an error
+      expect(out[:body]["tool_result"]["status"]).to eq("NOT_FOUND")        # and still readable
+      expect(out[:body]["tool_result"]["llm_instruction"]).to include("recomeçar")
+    end
+
+    it "a non-JSON body stays truncated — an HTML error page is noise, not a message" do
+      out = tool(def_raw, result: { status: 500, body: "<html>#{'x' * 500}</html>" }).execute(cep: "1")
+      expect(out[:error]).to start_with("HTTP 500: <html>")
+      expect(out).not_to have_key(:body)
+      expect(out[:error].bytesize).to be < 250
+    end
+
+    it "an oversized JSON body is not forwarded whole" do
+      big = JSON.generate({ "items" => Array.new(400) { "padding-padding" } })
+      out = tool(def_raw, result: { status: 502, body: big }).execute(cep: "1")
+      expect(out).not_to have_key(:body)
+      expect(out[:error]).to start_with("HTTP 502:")
+    end
+  end
+
   # A moved API is the way a data-tool rots: the HttpClient does not follow the
   # hop (the EgressGuard only cleared the authored URL), and a 3xx carries an
   # EMPTY body — counted as success, the model got "" and narrated an outage.
