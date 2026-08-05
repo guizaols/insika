@@ -2,6 +2,10 @@
 
 require "spec_helper"
 require "async"
+# WorkflowAdapter is only reached through `dsl/runtime`, which the System requires
+# lazily — so an example that names the constant directly fails on the orderings where
+# no earlier example built a runtime. Explicit here instead of order-dependent.
+require "insika/dsl/workflow_adapter"
 
 # Public Ruby DSL (item 36 / §13.3). Proves the two things the item is about:
 #   1. the DSL GENERATES the data — Insika.agent { … }.to_pack is a plain Pack;
