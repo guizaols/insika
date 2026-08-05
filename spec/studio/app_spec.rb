@@ -858,6 +858,28 @@ RSpec.describe Studio::App do
     expect(p).not_to have_key(:create_only)
   end
 
+  # The form renders neither halt_when nor group/tags, and the store REPLACES the
+  # record: without carrying them through, editing the description alone would erase
+  # the halt condition and the customer would start getting the duplicate message again.
+  it "POST /tools/def/:name preserves the fields the form does not render" do
+    tool = data_tool(name: "subscribe", group: "faith", tags: %w[faith b2b],
+                     halt_when: { json_path: "tool_result.status", equals: ["SUBSCRIBED"] })
+    app, bus = build_app(data_tools: [tool])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/subscribe").body)
+
+    client.post("/tools/def/subscribe", params: {
+                  "name" => "subscribe", "description" => "só corrigi a descrição",
+                  "method" => "POST", "url" => "https://app.test/subscribe", "_csrf" => csrf
+                })
+
+    p = bus.last(:write_data_tool).payload
+    expect(p[:description]).to eq("só corrigi a descrição")
+    expect(p["halt_when"]).to eq("json_path" => "tool_result.status", "equals" => ["SUBSCRIBED"])
+    expect(p["group"]).to eq("faith")
+    expect(p["tags"]).to eq(%w[faith b2b])
+  end
+
   it "POST /tools/def/:name/delete dispatches :delete_data_tool" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)

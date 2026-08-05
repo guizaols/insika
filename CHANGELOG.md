@@ -26,6 +26,12 @@ Everything below is what the first release will contain.
   the API and UI produce. `reply` for one in-process turn, `serve` for the server.
 - **Tools** — code tools, tools defined as data (declarative HTTP manifests), and MCP
   import, all behind a tool envelope with timeouts and optional human approval.
+- **`halt_when`** — a data-tool can end the turn from its own **response**
+  (`{ "json_path": "tool_result.status", "equals": ["SUBSCRIBED"] }`), for backends that
+  perform the side effect *and* notify the customer themselves: without it the model
+  writes a second confirmation and the person gets the message twice. Per result, not
+  per tool — the same call still lets the model explain a failure. See
+  [Tools](docs/TOOLS.md#halt_when-when-the-answer-is-already-out).
 - **Skills** — the `SKILL.md` format with progressive loading, so an agent's context
   grows only when it needs to.
 - **Memory** — cross-session facts and notes, per agent.
