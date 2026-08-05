@@ -185,5 +185,31 @@ RSpec.describe Insika::EnvSchema do
       expect(described_class.truthy?("0")).to be(false)
       expect(described_class.truthy?(nil)).to be(false)
     end
+
+    it "honours every spelling the schema advertises as a :boolean" do
+      %w[1 true yes on].each { |on| expect(described_class.truthy?(on)).to be(true), "#{on.inspect} should be on" }
+      %w[0 false no off].each { |off| expect(described_class.truthy?(off)).to be(false), "#{off.inspect} should be off" }
+    end
+
+    # The guard for a class of bug, not for one line. `config/deployment.rb` read the
+    # egress flags with a hand-rolled `== "1"`, so `INSIKA_EGRESS_ALLOW_HTTP=true` —
+    # a spelling `insika env` validates — was silently FALSE and every data-tool died
+    # with "destination blocked", pointing at the URL instead of at the flag. A local
+    # copy of the predicate is how that drifts; there is one home for it.
+    it "is the only way the codebase reads a boolean env flag" do
+      root = File.expand_path("../..", __dir__)
+      files = Dir[File.join(root, "{lib,server,studio,config}/**/*.rb")]
+      offenders = files.filter_map do |file|
+        hits = File.readlines(file).each_with_index.select do |line, _|
+          line.include?("ENV[") && line.match?(/==\s*["'](1|true|yes|on)["']/)
+        end
+        next if hits.empty?
+
+        "#{file.delete_prefix("#{root}/")}:#{hits.map { |_, i| i + 1 }.join(',')}"
+      end
+
+      expect(offenders).to be_empty,
+                           "hand-rolled boolean env read (use Insika::EnvSchema.truthy?): #{offenders.join(' ')}"
+    end
   end
 end

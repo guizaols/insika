@@ -14,10 +14,11 @@ module Insika
   # Marks are monotonic; `mark` is first-write-wins so `first_token` records the
   # FIRST content chunk even though it is called on every chunk.
   class TurnTiming
-    ENABLED_VALUES = %w[1 true yes on].freeze
-
+    # EnvSchema owns "is this flag on?" (1/true/yes/on) — the same predicate that
+    # validates the :boolean keys, so a spelling `insika env` accepts is a spelling
+    # the reader honours.
     def self.enabled?(env = ENV)
-      ENABLED_VALUES.include?(Insika::EnvSchema.read("INSIKA_TURN_TIMING", env).to_s.strip.downcase)
+      Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_TURN_TIMING", env))
     end
 
     def initialize

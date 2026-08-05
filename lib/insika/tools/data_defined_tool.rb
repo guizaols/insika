@@ -172,12 +172,34 @@ module Insika
       # error naming its new URL, which is a definition to fix.
       def http_ok?(result) = result[:status] >= 200 && result[:status] < 300
 
+      # A non-2xx is an ERROR — the backend said so, and the model has to know the call
+      # failed. But the body of a failure is often the backend TALKING: an envelope with
+      # a status and an instruction ("chat not found — ask the person to start over").
+      # Flattening it into a 200-char slice of a string threw that away exactly when the
+      # model needed it most, so a JSON body rides along parsed, under its own key.
+      # A non-JSON body (an HTML error page) stays truncated: it is noise, not a message.
+      ERROR_BODY_MAX = 2_000
+
       def http_error(result)
         if (300..399).cover?(result[:status]) && result[:location]
           return { error: "HTTP #{result[:status]}: moved to #{result[:location]}" }
         end
 
-        { error: "HTTP #{result[:status]}: #{result[:body].to_s[0, 200]}" }
+        raw = result[:body].to_s
+        parsed = parse_error_body(raw)
+        return { error: "HTTP #{result[:status]}", body: parsed } if parsed
+
+        { error: "HTTP #{result[:status]}: #{raw[0, 200]}" }
+      end
+
+      # -> parsed JSON body worth forwarding | nil (not JSON, or too big to be a message).
+      def parse_error_body(raw)
+        return nil if raw.empty? || raw.bytesize > ERROR_BODY_MAX
+
+        parsed = JSON.parse(raw)
+        parsed.is_a?(Hash) || parsed.is_a?(Array) ? parsed : nil
+      rescue JSON::ParserError
+        nil
       end
 
       # No task correlation (registry tool does not receive TurnState) -> meta {}.

@@ -72,7 +72,10 @@ module Insika
       table.empty? ? nil : table
     end
 
-    def truthy(value) = %w[1 true yes on].include?(value.to_s.strip.downcase)
+    # One home for "is this flag on?" — EnvSchema, which is also what validates the
+    # :boolean keys in `insika env`/doctor. A local copy is how the deployment's egress
+    # flags drifted into accepting only "1".
+    def truthy(value) = Insika::EnvSchema.truthy?(value)
     def present?(value) = Insika::Coercion.present?(value)
 
     # The metrics SDK is OPTIONAL: absent from the bundle -> traces only, never a
