@@ -96,9 +96,15 @@ module Deploy
     # STOPPING at a known host (NF4):
     #   INSIKA_EGRESS_ALLOW_HTTP=1  INSIKA_EGRESS_ALLOW_PRIVATE=1
     #   INSIKA_EGRESS_HOSTS=localhost,127.0.0.1
+    #
+    # Read through EnvSchema.truthy? (1/true/yes/on), which is what the schema
+    # ADVERTISES for a :boolean key. This used to be a hand-rolled `== "1"`, so
+    # `INSIKA_EGRESS_ALLOW_HTTP=true` — valid per `insika env`, and the spelling
+    # anyone writes first — was read as FALSE and every data-tool died with
+    # "destination blocked: http not allowed", pointing at the URL instead of the flag.
     EGRESS_OPTIONS = {
-      allow_http: ENV["INSIKA_EGRESS_ALLOW_HTTP"].to_s == "1",
-      allow_private: ENV["INSIKA_EGRESS_ALLOW_PRIVATE"].to_s == "1",
+      allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
+      allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"]),
       host_allowlist: ENV["INSIKA_EGRESS_HOSTS"].to_s.split(",").map(&:strip).reject(&:empty?).then { |l| l.empty? ? nil : l }
     }.compact
     TOOL_REGISTRY = Insika::OverlayToolRegistry.new(
