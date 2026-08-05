@@ -73,7 +73,16 @@ module Insika
 
         result = @http.request(**req)
         emit(result[:status])
-        extract(result)
+        payload = extract(result)
+        # The RESPONSE says the turn is over (`halt_when`): the backend already
+        # answered the customer, so letting the model comment would deliver the
+        # message twice. RubyLLM's Tool::Halt ends its loop right here — no second
+        # provider call, and the decision is the engine's, not a request in a prompt.
+        # Only on a 2xx: an error body that happens to carry the value is a failure,
+        # and a failure must reach the model.
+        return RubyLLM::Tool::Halt.new(payload) if http_ok?(result) && @definition.halt?(result[:body])
+
+        payload
       rescue StandardError => e
         { error: "HTTP call failed: #{e.message}" }
       end

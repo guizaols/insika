@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "uri"
+require "json"
 
 module Insika
   # Definition of a DATA-DEFINED TOOL (no Ruby code): name, description, parameters
@@ -33,7 +34,7 @@ module Insika
   # (masks/reconciles); the definition itself is agnostic to masking.
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
-    :secret_headers, :side_effect, :timeout, :group, :tags
+    :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when
   )
 
   class ToolDefinition
@@ -72,7 +73,8 @@ module Insika
     # (already-normalized symbol keys); use from_h for a raw Hash from the store/UI.
     # `parameters` accepts JSON Schema (Hash) OR the legacy flat array.
     def self.build(name:, description:, request:, parameters: nil, response: nil,
-                   secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil)
+                   secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil,
+                   halt_when: nil)
       name = name.to_s
       raise Insika::ValidationError, "name must match #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
@@ -90,7 +92,8 @@ module Insika
         name: name, description: desc, parameters: schema, request: req, response: resp,
         secret_headers: Array(secret_headers).map(&:to_s), side_effect: effect,
         timeout: timeout.nil? ? nil : Integer(timeout),
-        group: normalize_group(group), tags: normalize_tags(tags)
+        group: normalize_group(group), tags: normalize_tags(tags),
+        halt_when: normalize_halt_when(halt_when)
       )
     end
 
@@ -101,7 +104,7 @@ module Insika
         name: h[:name], description: h[:description], parameters: h[:parameters],
         request: h[:request] || {}, response: h[:response],
         secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout],
-        group: h[:group], tags: h[:tags]
+        group: h[:group], tags: h[:tags], halt_when: h[:halt_when]
       )
     end
 
@@ -302,6 +305,33 @@ module Insika
     end
     private_class_method :normalize_request
 
+    # HALT CONDITION (optional): when the tool's RESPONSE says the turn is already
+    # answered, the model must not speak again. The classic case is a backend that
+    # performs the side effect AND sends its own confirmation to the customer: with
+    # the model free to comment, the person gets the message twice.
+    #
+    #   "halt_when" => { "json_path" => "tool_result.status", "equals" => ["SUBSCRIBED"] }
+    #
+    # By RESULT, not by tool: the same call that halts on SUBSCRIBED must let the
+    # model explain a SUBSCRIPTION_FAILED. Evaluated against the parsed response
+    # body (independent of `response.extract`, which shapes what the MODEL sees) —
+    # a non-JSON body simply never matches. `equals` is compared as strings: JSON
+    # gives no type guarantee across backends and a status is a label, not a number.
+    # -> { json_path:, equals: [String] } | nil
+    def self.normalize_halt_when(halt_when)
+      return nil if halt_when.nil?
+
+      h = deep_symbolize(halt_when)
+      path = h[:json_path].to_s
+      raise Insika::ValidationError, "halt_when requires json_path" if path.empty?
+
+      values = Array(h[:equals]).map(&:to_s)
+      raise Insika::ValidationError, "halt_when requires a non-empty equals list" if values.empty?
+
+      { json_path: path, equals: values }
+    end
+    private_class_method :normalize_halt_when
+
     def self.normalize_response(response)
       r = deep_symbolize(response || {})
       extract = (r[:extract] || "body_raw").to_s
@@ -363,8 +393,26 @@ module Insika
         "response" => response.transform_keys(&:to_s),
         "secret_headers" => secret_headers,
         "side_effect" => side_effect, "timeout" => timeout,
-        "group" => group, "tags" => tags
+        "group" => group, "tags" => tags,
+        "halt_when" => halt_when&.transform_keys(&:to_s)
       }
+    end
+
+    # -> true when this response ENDS the turn (no further model call). `body` is the
+    # raw response body; a parse failure or a missing path means "does not halt" —
+    # never end a turn on a guess.
+    def halt?(body)
+      return false if halt_when.nil?
+
+      parsed = JSON.parse(body.to_s)
+      value = halt_when[:json_path].split(".").reduce(parsed) do |cur, seg|
+        return false unless cur.is_a?(Hash) && cur.key?(seg)
+
+        cur[seg]
+      end
+      halt_when[:equals].include?(value.to_s)
+    rescue JSON::ParserError
+      false
     end
 
     # Names of the required top-level parameters (DataDefinedTool validates presence

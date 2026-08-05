@@ -107,6 +107,43 @@ retries against. Structure is strict; a scalar may arrive in its lossless string
   checkpoint/replay semantics (a completed side-effecting tool is not re-run on
   resume — see [Architecture](ARCHITECTURE.md#durability-checkpoints-and-resume)).
 
+### `halt_when`: when the answer is already out
+
+Some tools do the work **and** deliver the news. A backend that subscribes a customer
+and sends its own confirmation over the channel has already said everything there is to
+say: if the model then writes "all set, you're subscribed!", the person gets the message
+twice. The usual patch is to ask the model to stay quiet in the tool's instructions —
+which works until the turn it doesn't, and the failure lands in front of a customer.
+
+`halt_when` moves the decision from the prompt to the engine. It reads the tool's own
+**response**, and when it matches, the turn ends right there — no further provider call:
+
+```jsonc
+{ "name": "subscribe_to_learning_path",
+  "request": { "method": "POST", "url": "https://app.example/subscribe" },
+  "halt_when": { "json_path": "tool_result.status", "equals": ["SUBSCRIBED"] } }
+```
+
+By **result**, not by tool. The same call that goes silent on `SUBSCRIBED` must let the
+model explain a `SUBSCRIPTION_FAILED` ("you are already enrolled") — one tool, two
+endings, decided by what the backend actually returned.
+
+- `json_path` is a dotted path into the parsed response body, and `equals` a list of
+  values compared **as strings** (a status is a label; JSON types vary by backend).
+- It reads the **body**, independently of `response.extract` — which shapes what the
+  *model* sees, not what the engine decides on.
+- It only fires on a **2xx**. An error response that happens to carry the value is a
+  failure, and a failure must reach the model.
+- A non-JSON body or a missing path simply does not match: a turn never ends on a guess.
+
+A halted turn keeps whatever the model had already streamed *before* the call (usually a
+"let me get that for you") and adds nothing after it. Streamed nothing → the turn
+completes empty, which is exactly what a channel consumer drops.
+
+> The Studio's tool editor does not render this field (nor `group`/`tags`), but a save
+> there **preserves** it — the form carries the stored values through instead of
+> replacing the record with only what it shows.
+
 ## Registering a tool
 
 A tool appears in the Studio panel and enters an agent's tool-loop when it is

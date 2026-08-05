@@ -39,6 +39,52 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
+  # A data-tool with `halt_when` ends the turn from its RESULT: the backend already
+  # answered the customer (it performed the side effect AND sent the confirmation), so
+  # a second message from the model would be a duplicate. RubyLLM returns the
+  # Tool::Halt in place of a Message; the turn must complete with NO text.
+  describe "turn halted by a tool result (halt_when)" do
+    it "keeps what was streamed before the call and never the tool payload" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = -> { emit_chunk("vou te inscrever agora") } # the model's lead-in
+      chat.halt_with!('{"tool_result":{"status":"SUBSCRIBED"}}')
+
+      run_turn(executor, make_task, fake_chat: chat)
+
+      completed = event_stream.events.find { |e| e.type == :task_completed }
+      expect(completed).not_to be_nil                                  # a completion, not a failure
+      expect(completed.data[:content]).to eq("vou te inscrever agora") # the stream, verbatim
+      expect(completed.data[:content]).not_to include("SUBSCRIBED")    # never the envelope
+      expect(completed.data[:usage]).to be_nil                         # Halt carries no token counts
+    end
+
+    it "nothing streamed -> empty turn, which is what the consumer suppresses" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = -> {} # the tool halted before the model said anything
+      chat.halt_with!('{"tool_result":{"status":"SUBSCRIBED"}}')
+
+      run_turn(executor, make_task, fake_chat: chat)
+
+      expect(event_stream.events.find { |e| e.type == :task_completed }.data[:content]).to eq("")
+    end
+
+    it "emits no :content — the consumer has nothing to deliver" do
+      session_store.create(id: "s1")
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = -> {} # no chunks: the model never got to speak
+      chat.halt_with!('{"tool_result":{"status":"SUBSCRIBED"}}')
+
+      run_turn(executor, make_task, fake_chat: chat)
+
+      expect(event_stream.events.map(&:type)).not_to include(:content)
+    end
+  end
+
   describe "token usage in the terminal event (Phase 6, observability)" do
     TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
 

@@ -425,7 +425,10 @@ module Studio
               # POST /studio/tools/def/:name — updates (upsert).
               r.post do
                 check_csrf!
-                with_flash("Tool '#{name}' saved.") { dispatch(:write_data_tool, tool_patch(r)) }
+                # The stored definition rides along so the fields this form does not
+                # render (group/tags/halt_when) survive the save — see UNEDITED_TOOL_FIELDS.
+                stored = insika[:tool_store]&.get(name)
+                with_flash("Tool '#{name}' saved.") { dispatch(:write_data_tool, tool_patch(r, stored)) }
                 r.redirect(tool_def_path(name))
               end
             end

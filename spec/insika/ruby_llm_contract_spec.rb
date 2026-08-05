@@ -58,6 +58,27 @@ RSpec.describe "RubyLLM boundary contract" do
     expect(keywords).to include(:model, :provider, :assume_model_exists)
   end
 
+  # `halt_when` (data-tools). DataDefinedTool returns a Tool::Halt and the Executor
+  # branches on it instead of reading `#content` — the gem's own short-circuit is what
+  # makes a halted turn skip the next provider call. If a version drops the class or
+  # stops returning it from the tool loop, the turn would resume and the customer would
+  # get the duplicate message the feature exists to prevent — silently, since a double
+  # of ours would still behave.
+  describe "Tool::Halt (halt_when)" do
+    it "the class exists and exposes #content, as DataDefinedTool/Executor assume" do
+      expect(defined?(RubyLLM::Tool::Halt)).to eq("constant")
+      expect(RubyLLM::Tool::Halt.new("x").content).to eq("x")
+    end
+
+    it "the tool loop RETURNS the Halt instead of completing another round" do
+      # `handle_sequential_tool_calls` is the gem's decision point: it keeps the Halt
+      # and `handle_tool_calls` returns it in place of `complete`.
+      source = RubyLLM::Chat.instance_method(:handle_tool_calls).source_location
+      body = File.readlines(source.first)[(source.last - 1), 12].join
+      expect(body).to include("halt_result")
+    end
+  end
+
   # Item 30. Insika passes `concurrency:` to with_tools and nothing else — the cap
   # is ours (ToolAssembly#install_tool_gate), the mode selection is not exposed.
   # Everything below is a GEM fact our docs promise; if a version changes any of
@@ -241,6 +262,7 @@ RSpec.describe "RubyLLM boundary contract" do
       asked instructions model=
       script script= final_content final_content=
       fire_tool_call fire_tool_result emit_chunk emit_thinking
+      halt_with!
     ].freeze
 
     it "doubles only methods RubyLLM::Chat really has" do

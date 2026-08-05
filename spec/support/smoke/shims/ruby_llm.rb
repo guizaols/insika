@@ -27,6 +27,16 @@ module RubyLLM
     def self.description(_text = nil); end
     def self.param(_name, **_opts); end
     def self.params(*_args, **_opts); end # array-of-objects schema DSL (spawn_subagents)
+
+    # `halt_when`: the Executor tests every response with `is_a?(Tool::Halt)`, so the
+    # class must exist here too — without it the smoke turn dies on a NameError that
+    # looks like a hang. The smoke never produces one; it only needs to be nameable.
+    class Halt
+      attr_reader :content
+
+      def initialize(content) = (@content = content)
+      def to_s = @content.to_s
+    end
   end
 
   # Scripted chat. Two modes:
