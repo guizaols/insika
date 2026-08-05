@@ -254,6 +254,49 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     end
   end
 
+  # halt_when: the RESPONSE ends the turn. The case that motivated it: the backend
+  # performs the side effect AND sends its own confirmation to the customer — with the
+  # model free to comment, the person gets the message twice.
+  describe "halt_when" do
+    let(:subscribe_def) do
+      { name: "subscribe", description: "Inscreve",
+        parameters: [{ name: "id", type: "integer", required: true }],
+        request: { method: "POST", url: "https://app.test/subscribe", body: '{"id":"{{id}}"}' },
+        halt_when: { json_path: "tool_result.status", equals: ["SUBSCRIBED"] } }
+    end
+
+    it "returns Tool::Halt when the status matches (RubyLLM ends its loop)" do
+      body = '{"tool_result":{"status":"SUBSCRIBED","llm_instruction":"nada a dizer"}}'
+      result = tool(subscribe_def, result: { status: 200, body: body }).execute(id: 6)
+      expect(result).to be_a(RubyLLM::Tool::Halt)
+      expect(result.content).to eq(body) # the payload still reaches the transcript
+    end
+
+    it "does NOT halt on another status — the model has to explain the failure" do
+      body = '{"tool_result":{"status":"SUBSCRIPTION_FAILED","llm_instruction":"já inscrito"}}'
+      result = tool(subscribe_def, result: { status: 200, body: body }).execute(id: 6)
+      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+      expect(result).to eq(body)
+    end
+
+    it "does NOT halt on a non-2xx that happens to carry the value (failure reaches the model)" do
+      body = '{"tool_result":{"status":"SUBSCRIBED"}}'
+      result = tool(subscribe_def, result: { status: 500, body: body }).execute(id: 6)
+      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+    end
+
+    it "does NOT halt on a non-JSON body — never end a turn on a guess" do
+      result = tool(subscribe_def, result: { status: 200, body: "SUBSCRIBED" }).execute(id: 6)
+      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+    end
+
+    it "without halt_when nothing changes (the default is the model speaking)" do
+      plain = subscribe_def.reject { |k, _| k == :halt_when }
+      body = '{"tool_result":{"status":"SUBSCRIBED"}}'
+      expect(tool(plain, result: { status: 200, body: body }).execute(id: 6)).to eq(body)
+    end
+  end
+
   it "emits :data_tool_call with status, without leaking body/secret" do
     t = tool(cep_def, result: { status: 200, body: '{"localidade":"X"}' })
     t.execute(cep: "1")
