@@ -176,6 +176,21 @@ the model:
   [Deploy](DEPLOY.md)). Rotating the API bearer requires updating both the runtime
   and every consumer in the same step.
 
+## Grading sends text to a judge (evals)
+
+A rubric is scored by a model, so running an eval sends that case's **user turns and
+the assistant reply** to every judge in the panel ([Evals](EVALS.md)). Two
+consequences worth stating out loud:
+
+- **The judges are a second provider surface.** Configure them deliberately: a panel
+  of three models is three vendors seeing those conversations. Judges are opt-in and
+  empty by default — with none configured, only the deterministic assertions run and
+  nothing leaves the deployment.
+- **A case is curated text, not live traffic.** The corpus is authored from real
+  conversations with PII removed at curation time. That masking is a human step, not
+  an automatic one: treat a golden case as something that WILL be read by an external
+  model and reviewed in a pull request.
+
 ## Reading traffic back (refinement)
 
 A refinement run reads an agent's own transcripts and tool traces to report what
