@@ -75,6 +75,19 @@ module Insika
     #                                   and above must be enabled explicitly. It is CONFIG,
     #                                   never a policy — the write allowlist it carries is
     #                                   enforced by the applier, not by this field.
+    :capabilities_declared,           # FACTS ABOUT THIS DEPLOYMENT that are not tools
+    #                                   (RFC-0014 §3.5): %w[promotions human_handoff
+    #                                   b2b_pricing]. An eval case declares what it
+    #                                   `requires` and is SKIPPED — never failed — where
+    #                                   the deployment lacks it, which is what makes one
+    #                                   corpus usable across stores. A flat list the
+    #                                   OPERATOR writes: inferring "this store has
+    #                                   promotions" from data is how a suite starts lying.
+    #                                   nil/[] = declares nothing.
+    #                                   NOT `capabilities` above — that one is the
+    #                                   capability-resolution intents the agent may
+    #                                   trigger, a runtime allowlist. This one decides
+    #                                   nothing at runtime and is read only by the evals.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -105,7 +118,7 @@ module Insika
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
-                   refinement: nil, metadata: {})
+                   refinement: nil, capabilities_declared: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -128,6 +141,9 @@ module Insika
         guardrails: Coercion.deep_stringify(guardrails),
         sandbox: Coercion.deep_stringify(sandbox),
         refinement: Coercion.deep_stringify(refinement),
+        # Flat [String] — the evals compare it against a case's `requires`, and a
+        # symbol/string mix there would be a silent miss.
+        capabilities_declared: Array(capabilities_declared).map(&:to_s),
         metadata: Coercion.deep_stringify(metadata || {})
       )
     end

@@ -6,6 +6,10 @@ id: ocean-drop-tracking-sem-identificacao
 agent: agent-store-ocean-drop
 turns:
   - user: "comprei e meu pedido não chegou"
+# Uma loja sem rastreio de pedido não FALHA aqui — o caso não tinha o que testar.
+requires:
+  tools:
+    - search_orders
 expect:
   tools_called:
     - search_orders

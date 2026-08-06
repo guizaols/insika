@@ -1381,8 +1381,9 @@ end
 # The case as the YAML an operator edits — the same shape `evals/golden/**` holds,
 # so there is one format to learn and a pull request can review what was authored.
 def golden_yaml(golden)
-  YAML.dump({ "id" => golden.id, "agent" => golden.agent,
-              "turns" => golden.turns, "expect" => golden.expect })
+  h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+  h["requires"] = golden.requires unless golden.requires.empty? # dropping it would un-skip the case
+  YAML.dump(h.merge("expect" => golden.expect))
 end
 
     # --- Refinement (RFC-0013 phase A) -----------------------------

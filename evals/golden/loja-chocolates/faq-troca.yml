@@ -3,6 +3,9 @@ id: loja-chocolates-faq-troca
 agent: loja-chocolates
 turns:
   - user: "qual a política de troca de vocês?"
+requires:
+  tools:
+    - search_faq
 expect:
   tools_called:
     - search_faq
