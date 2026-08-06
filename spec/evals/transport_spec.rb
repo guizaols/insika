@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../evals/lib/evals/transport"
 require_relative "../../server/responses"
 
 # SSE reduction (RFC-0008 runner). Pure over the /v1/responses stream — the frames
 # are built with the REAL producer (server/responses.rb) so the eval can't silently
 # drift from the contract it depends on.
-RSpec.describe Evals::Sse do
+RSpec.describe Insika::Evals::Sse do
   # Minimal Event double matching what Responses.frame_for reads.
   Ev = Struct.new(:type, :data)
 

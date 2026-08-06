@@ -19,7 +19,8 @@ module Studio
       playground: '<polygon points="6 3 20 12 6 21 6 3"/>',
       tasks: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="m18 9 3 3-3 3"/>',
       approvals: '<path d="M9 12l2 2 4-4"/><path d="M12 3a9 9 0 1 0 9 9"/>',
-      refinement: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/><path d="m9 12 2 2 4-4"/>'
+      refinement: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/><path d="m9 12 2 2 4-4"/>',
+      evals: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'
     }.freeze
 
     def nav_icon(key)

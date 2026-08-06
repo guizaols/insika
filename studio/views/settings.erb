@@ -4,6 +4,7 @@
      ["general", "General", "streaming, timeouts, compaction"],
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
      ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
+     ["evals",   "Evals", "who grades a rubric, and how a panel agrees"],
      ["llm",     "LLM providers", "keys, base URL, models per provider"]
    ] %>
 <div class="drill">
@@ -96,6 +97,31 @@
           <label>limit_response <span class="muted">(safe reply on breach; blank = neutral built-in)</span><input type="text" name="limit_response" value="<%= @settings.dig("edge", "limit_response") %>" placeholder="Estou recebendo muitas mensagens agora…"></label>
         </form>
       </div>
+
+<% elsif @section == "evals" %>
+  <div class="drill-pane-head">
+    <div class="title"><strong>Evals</strong></div>
+    <button type="submit" form="set-evals" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+  </div>
+  <div class="drill-pane-body">
+    <p class="muted">Who grades a <a href="/studio/evals">case</a>'s rubric. <strong>One model per line</strong> as <code>provider/model</code> — several lines make a PANEL, and two different models disagreeing is the signal worth having (sampling one model N times mostly measures its own variance). Empty = deterministic assertions only, and rubric'd cases read as <code>judge_pending</code>.</p>
+    <form id="set-evals" method="post" action="/studio/settings/evals">
+      <%== csrf_tag %>
+      <label>judges<textarea name="judges" rows="4" spellcheck="false" placeholder="deepseek/deepseek-chat&#10;openai/gpt-5-mini"><%= Array(@settings.dig("evals", "judges")).map { |j| [j["provider"], j["model"]].compact.reject(&:empty?).join("/") }.join("\n") %></textarea></label>
+      <div class="grid-2">
+        <label>aggregate <span class="muted">(how the panel's scores combine)</span>
+          <select name="aggregate">
+            <% %w[median mean min].each do |k| %>
+              <option value="<%= k %>"<%== ' selected' if @settings.dig("evals", "aggregate") == k %>><%= k %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>min_agreement <span class="muted">(fraction that must pass; 1.0 = unanimous)</span><input type="text" name="min_agreement" value="<%= @settings.dig("evals", "min_agreement") %>" inputmode="decimal" placeholder="0.5"></label>
+        <label>quorum <span class="muted">(samples per judge)</span><input type="text" name="quorum" value="<%= @settings.dig("evals", "quorum") %>" inputmode="numeric" placeholder="1"></label>
+        <label>tolerance <span class="muted">(max score drop before it's a regression)</span><input type="text" name="tolerance" value="<%= @settings.dig("evals", "tolerance") %>" inputmode="decimal" placeholder="0.05"></label>
+      </div>
+    </form>
+  </div>
 
     <% else %>
       <div class="drill-pane-head">

@@ -48,6 +48,24 @@ module Insika
       # { "thinking" => ... }. Both resolved by the ModelResolver.
       "thinking" => nil,
       "model_params" => {},
+      # Evals (RFC-0008, panel by RFC-0013 §3.9). The GRADERS are platform config, so
+      # the operator picks them in the Studio instead of remembering a CLI flag:
+      #   judges        -> [{ "model" =>, "provider" => }, …]. [] = deterministic
+      #                    asserts only (rubric'd cases read as judge_pending).
+      #   aggregate     -> median | mean | min — how the panel's scores become the one
+      #                    the report and the baseline read.
+      #   min_agreement -> fraction of judges that must pass for the case to pass.
+      #   quorum        -> samples per judge (variance), on top of the panel.
+      #   tolerance     -> max judge-score drop before it counts as a regression.
+      # Additive key: reads overlay DEFAULTS, so no numbered migration is due (only a
+      # later SHAPE change to this key would earn one).
+      "evals" => {
+        "judges" => [],
+        "aggregate" => "median",
+        "min_agreement" => 0.5,
+        "quorum" => 1,
+        "tolerance" => 0.05
+      },
       # Edge limits (item 33 / §12 G7) — the platform layer of the EdgeLimiter.
       # nil/0 = off (opt-in). chat_rate_limit = turn attempts per chat per
       # chat_rate_window (s); agent_token_ceiling = total tokens per agent per

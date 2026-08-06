@@ -1,11 +1,10 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../evals/lib/evals/golden"
 
 # Evals golden loader (RFC-0008, Fase A). Data-file validation: a malformed golden
 # must fail LOUD at load, never silently drop (a dropped case = a hole in the net).
-RSpec.describe Evals::GoldenLoader do
+RSpec.describe Insika::Evals::GoldenLoader do
   def build(overrides = {})
     described_class.build({
       "id" => "c1", "agent" => "bia", "turns" => [{ "user" => "oi" }], "expect" => {}

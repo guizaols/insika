@@ -8,4 +8,5 @@ permalink: /operate/
 # Operate & prove it
 
 Turns as traces and metrics, the engine's measured overhead, how to load-test it
-yourself, and reading a live agent's own traffic back as a report of what broke.
+yourself, the cases that grade an agent, and reading a live agent's own traffic back as
+a report of what broke.

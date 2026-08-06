@@ -53,6 +53,13 @@ Everything below is what the first release will contain.
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,
   so a coding agent can set up the first agent by reading a running instance.
+- **Evals** — a small corpus of real conversations, replayed against a running deployment
+  and checked two ways: deterministic assertions (was the tool called, did a CPF leak)
+  and a **rubric** scored by a judge. Cases are YAML data, authorable in the Studio as
+  well as in the repo, and the graders are a **panel of distinct models** with
+  configurable aggregation and agreement — sampling one model N times measures its
+  variance, not its bias. A baseline turns a run into a pre-merge gate that blocks only
+  on regressions. See [Evals](docs/EVALS.md).
 - **Refinement** — an agent's own traffic read back as a ranked report of what broke:
   repeated tool errors grouped by their normalized signature, failed turns, customers
   repeating themselves, canned safe replies served instead of answers, and granted tools

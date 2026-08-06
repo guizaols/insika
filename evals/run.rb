@@ -6,8 +6,14 @@
 # provider key + the target agents provisioned (see evals/README.md).
 #
 # Usage:
-#   ADMIN_TOKEN=… ruby evals/run.rb [--base-url URL] [--golden-dir DIR]
+#   ADMIN_TOKEN=… ruby evals/run.rb [--base-url URL] [--source store|dir]
 #                                   [--agent ID] [--mode eval|perf|both] [--out FILE]
+#
+# Cases come from the STORE when a deployment has any (`insika evals:import` seeds it
+# from `evals/golden/`), else from the corpus on disk — so an operator can add a case
+# in the Studio without a checkout, and a checkout still runs without a database.
+# The JUDGES come from `settings["evals"]` unless a flag overrides them: a panel of
+# distinct models is configuration, not a thing to remember on the command line.
 #
 # Exit code: non-zero if any eval case failed (the seed of the Fase C pre-merge gate).
 
@@ -15,13 +21,10 @@ require "optparse"
 require "time"
 require "json"
 require "fileutils"
-require_relative "lib/evals/golden"
-require_relative "lib/evals/assertions"
-require_relative "lib/evals/report"
-require_relative "lib/evals/transport"
-require_relative "lib/evals/runner"
-require_relative "lib/evals/judge"
-require_relative "lib/evals/baseline"
+# The harness itself lives in the engine now (`Insika::Evals`, RFC-0013 §3.7) — one
+# evaluator, three callers: this CLI, the refinement gate, and the Studio. This file
+# is the CLI: flags, wiring, exit code.
+require_relative "../lib/insika"
 
 opts = {
   base_url: ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292",
@@ -50,6 +53,7 @@ OptionParser.new do |o|
   o.banner = "Usage: ruby evals/run.rb [options]"
   o.on("--base-url URL", "insika base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
   o.on("--golden-dir DIR", "golden set dir (default evals/golden)") { |v| opts[:golden_dir] = v }
+  o.on("--source SRC", %w[auto store dir], "where cases come from (default auto)") { |v| opts[:source] = v }
   o.on("--agent ID", "only run goldens for this agent") { |v| opts[:agent] = v }
   o.on("--conv-map FILE", "JSON map golden.id -> conversation id (e.g. real Chat UUIDs)") { |v| opts[:conv_map] = v }
   o.on("--mode MODE", %w[eval perf both], "eval | perf | both (default eval)") { |v| opts[:mode] = v }
@@ -57,7 +61,9 @@ OptionParser.new do |o|
   o.on("--timeout N", Integer, "per-turn read timeout seconds (default 120)") { |v| opts[:timeout] = v }
   o.on("--judge-model MODEL", "score rubrics with this model (else EVAL_JUDGE_MODEL; off if unset)") { |v| opts[:judge_model] = v }
   o.on("--judge-provider PROVIDER", "provider for the judge model (optional)") { |v| opts[:judge_provider] = v }
-  o.on("--quorum N", Integer, "judge samples per case; median wins (default 1)") { |v| opts[:quorum] = v }
+  o.on("--quorum N", Integer, "samples per judge; median wins (default from settings, else 1)") { |v| opts[:quorum] = v }
+  o.on("--aggregate KIND", %w[median mean min], "how a judge PANEL's scores combine") { |v| opts[:aggregate] = v }
+  o.on("--min-agreement F", Float, "fraction of judges that must pass (default 0.5)") { |v| opts[:min_agreement] = v }
   o.on("--no-judge", "disable the LLM-judge (rubric cases stay judge_pending)") { opts[:judge_model] = nil }
   o.on("--baseline FILE", "gate against this baseline (blocks on regressions only)") { |v| opts[:baseline] = v }
   o.on("--tolerance F", Float, "max judge-score drop before it's a regression (default 0.05)") { |v| opts[:tolerance] = v }
@@ -65,11 +71,30 @@ OptionParser.new do |o|
   o.on("-h", "--help") { puts o; exit 0 }
 end.parse!
 
-# Builds the LLM-judge if a model is configured. The `ask` uses RubyLLM at
-# temperature 0 (deterministic-ish); credentials come from the standard env. Nil
-# when no judge model is set — rubric'd cases then read as judge_pending.
-def build_judge(opts)
-  return nil unless opts[:judge_model]
+# Platform config (the same record the Studio edits). Absent database -> {}, and every
+# read below falls back to the DEFAULTS the SettingsStore already overlays.
+def eval_settings
+  db = Insika::EnvSchema.read("INSIKA_DB", ENV)
+  return {} if db.nil? || db.empty?
+
+  store = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+  Insika::SettingsStore.new(config_store: store).get["evals"] || {}
+rescue StandardError => e
+  warn "eval: could not read settings (#{e.class}) — using flags/defaults only"
+  {}
+end
+
+# The judge PANEL: one entry per model. Flags win over `settings["evals"]["judges"]`,
+# which is where an operator configures them (RFC-0013 §3.9). Nil when there is nobody
+# to ask — rubric'd cases then read as judge_pending instead of silently passing.
+def build_judge(opts, settings)
+  models = if opts[:judge_model]
+             [{ "model" => opts[:judge_model], "provider" => opts[:judge_provider] }]
+           else
+             Array(settings["judges"])
+           end
+  models = models.map { |m| m.transform_keys(&:to_s) }.reject { |m| m["model"].to_s.strip.empty? }
+  return nil if models.empty?
 
   require "ruby_llm"
   RubyLLM.configure do |c|
@@ -77,35 +102,59 @@ def build_judge(opts)
     c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
     c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
   end
-  ask = lambda do |prompt|
-    RubyLLM.chat(model: opts[:judge_model], provider: opts[:judge_provider], assume_model_exists: true)
-           .with_temperature(0).ask(prompt).content
+  asks = models.map do |m|
+    lambda do |prompt|
+      RubyLLM.chat(model: m["model"], provider: m["provider"], assume_model_exists: true)
+             .with_temperature(0).ask(prompt).content
+    end
   end
-  Evals::Judge.new(ask: ask, quorum: opts[:quorum])
+  [Insika::Evals::Judge.new(asks: asks,
+                            quorum: opts[:quorum] || settings["quorum"] || 1,
+                            aggregate: opts[:aggregate] || settings["aggregate"] || "median",
+                            min_agreement: opts[:min_agreement] || settings["min_agreement"] || 0.5),
+   models.map { |m| m["model"] }]
 end
 
-goldens = Evals::GoldenLoader.load_dir(opts[:golden_dir])
-goldens.select! { |g| g.agent == opts[:agent] } if opts[:agent]
-abort "eval: no goldens found in #{opts[:golden_dir]}" if goldens.empty?
+# Cases from the STORE when the deployment has any, else the corpus on disk. `auto`
+# prefers the store precisely because that is the authored, operator-editable copy;
+# `--source dir` is how a checkout runs with no database at all.
+def load_goldens(opts)
+  db = Insika::EnvSchema.read("INSIKA_DB", ENV)
+  if opts[:source] != "dir" && db && !db.empty?
+    store = Insika::GoldenStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db)))
+    cases = store.all
+    invalid = store.invalid
+    warn "eval: #{invalid.size} stored case(s) no longer validate and were skipped: #{invalid.join(', ')}" if invalid.any?
+    return [cases, "store"] if cases.any?
+
+    abort "eval: --source store, but the store holds no case (run `insika evals:import`)" if opts[:source] == "store"
+  end
+  [Insika::Evals::GoldenLoader.load_dir(opts[:golden_dir]), opts[:golden_dir]]
+end
+
+settings = eval_settings
+goldens, source = load_goldens(opts)
+goldens = goldens.select { |g| g.agent == opts[:agent] } if opts[:agent]
+abort "eval: no goldens found in #{source}" if goldens.empty?
 
 conv_map = opts[:conv_map] ? JSON.parse(File.read(opts[:conv_map])) : {}
-transport = Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
-judge = build_judge(opts)
-judge_note = judge ? "judge=#{opts[:judge_model]} (q#{opts[:quorum]})" : "judge=off"
-puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) | mode=#{opts[:mode]} | #{judge_note}"
+transport = Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
+judge, judge_models = build_judge(opts, settings)
+judge_note = judge ? "judges=#{judge_models.join('+')}" : "judge=off"
+puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
 
-runcases = Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map).run(goldens)
+runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map).run(goldens)
 results = runcases.map(&:result)
 at = Time.now.utc.iso8601
 
 # --- eval verdict ---------------------------------------------------------------
 if %w[eval both].include?(opts[:mode])
   puts
-  puts Evals::Report.to_markdown(results, at: at)
+  puts Insika::Evals::Report.to_markdown(results, at: at)
 
   out = opts[:out] || File.join(__dir__, "reports", "#{at.tr(':', '-')}.json")
   FileUtils.mkdir_p(File.dirname(out))
-  File.write(out, Evals::Report.to_json(results, at: at))
+  File.write(out, Insika::Evals::Report.to_json(results, at: at))
   puts "report: #{out}"
 end
 
@@ -140,10 +189,10 @@ if %w[eval both].include?(opts[:mode])
 
   if opts[:update_baseline]
     target = opts[:baseline] || default_baseline
-    Evals::Baseline.write(target, results, at: at)
+    Insika::Evals::Baseline.write(target, results, at: at)
     puts "baseline updated: #{target} (#{results.size} cases)"
   elsif baseline_path
-    regressions = Evals::Baseline.compare(results, Evals::Baseline.load(baseline_path), tolerance: opts[:tolerance])
+    regressions = Insika::Evals::Baseline.compare(results, Insika::Evals::Baseline.load(baseline_path), tolerance: (opts[:tolerance] || settings["tolerance"] || 0.05))
     if regressions.any?
       warn "eval: #{regressions.size} regression(s) vs baseline (#{baseline_path}):"
       regressions.each { |r| warn "  - #{r.id}: #{r.kind} — #{r.detail}" }

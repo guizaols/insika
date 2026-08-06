@@ -2,17 +2,14 @@
 
 require "spec_helper"
 require "tmpdir"
-require_relative "../../evals/lib/evals/assertions"
-require_relative "../../evals/lib/evals/judge"
-require_relative "../../evals/lib/evals/baseline"
 
 # Fase C gating (RFC-0008 §3.4). Regression = a passing case that now fails, or a
 # judge score that dropped past the tolerance. Known failures never block.
-RSpec.describe Evals::Baseline do
+RSpec.describe Insika::Evals::Baseline do
   def case_result(id, pass:, score: nil)
-    judge = score && Evals::Judge::Verdict.new(score: score, pass: score >= 0.7, reason: "")
-    Evals::CaseResult.new(id: id, agent: "bia", error: nil, rubric: (score && "r"), judge: judge,
-                          checks: [Evals::Check.new(name: "x", pass: pass, detail: "")])
+    judge = score && Insika::Evals::Judge::Verdict.new(score: score, pass: score >= 0.7, reason: "")
+    Insika::Evals::CaseResult.new(id: id, agent: "bia", error: nil, rubric: (score && "r"), judge: judge,
+                          checks: [Insika::Evals::Check.new(name: "x", pass: pass, detail: "")])
   end
 
   def snapshot(results) = described_class.snapshot(results, at: "t0")

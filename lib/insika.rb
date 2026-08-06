@@ -87,6 +87,21 @@ require_relative "insika/llm_configurator"
 # LLM-first onboarding surface (item 20 / §5.6): serves start.md + models.json + the
 # public docs. Reads the settings/provider stores above at call-time (order is free).
 require_relative "insika/onboarding"
+# Evals (RFC-0008) — the quality harness, moved under lib/ so the engine can call it
+# (the RFC-0013 refinement gate scores a candidate agent with the SAME judge the CLI
+# uses; a second copy would be the worst outcome). It stays a CLIENT of the engine:
+# HttpTransport talks to a running deployment, nothing here reads a store. Pure Ruby +
+# stdlib; the judge's provider call is injected, so no ruby_llm at load time.
+require_relative "insika/evals/golden"
+require_relative "insika/evals/assertions"
+require_relative "insika/evals/judge"
+require_relative "insika/evals/runner"
+require_relative "insika/evals/report"
+require_relative "insika/evals/baseline"
+require_relative "insika/evals/transport"
+# Authored eval cases (RFC-0013 §3.7): the corpus becomes editable without a
+# checkout. Requires the loader above (it is the one validator).
+require_relative "insika/golden_store"
 require_relative "insika/mcp_store"
 require_relative "insika/mcp_http_client"
 require_relative "insika/mcp_tool_ingestor"
@@ -114,6 +129,7 @@ require_relative "insika/commands/memory_put_fact"
 require_relative "insika/commands/memory_forget_fact"
 require_relative "insika/commands/memory_add_note"
 require_relative "insika/commands/run_refinement"
+require_relative "insika/commands/write_golden"
 require_relative "insika/commands/update_settings"
 require_relative "insika/commands/upsert_llm_provider"
 require_relative "insika/commands/delete_llm_provider"
