@@ -11,13 +11,20 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-const node = (tag, cls, text) => ({
-  tag, cls, text, children: [], textContent: "", attrs: {},
-  appendChild(child) { this.children.push(child); return child },
-  setAttribute(k, v) { this.attrs[k] = v }
-})
+const node = (tag, cls, text) => {
+  const n = {
+    tag, cls, text, children: [], textContent: "", attrs: {}, classes: new Set(),
+    appendChild(child) { this.children.push(child); return child },
+    setAttribute(k, v) { this.attrs[k] = v }
+  }
+  n.classList = { toggle: (name, on) => (on ? n.classes.add(name) : n.classes.delete(name)) }
+  return n
+}
 
-globalThis.document = { createElement: (tag) => node(tag, null, null) }
+globalThis.document = {
+  createElement: (tag) => node(tag, null, null),
+  createTextNode: (text) => node("#text", null, text)
+}
 globalThis.EventSource = class { constructor() {} close() {} }
 globalThis.requestAnimationFrame = () => 1 // never painted: no DOM to paint into
 globalThis.cancelAnimationFrame = () => {}

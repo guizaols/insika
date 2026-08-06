@@ -30,7 +30,11 @@ def stream_events(parent)
   reader = parent.async do
     sub.each do |ev|
       case ev.type
-      when :content         then print(ev.data[:delta])
+      # The answer, published whole when its message ends. Everything the model said
+      # on the way there is :intermediate — dimmed here so a real run SHOWS what the
+      # customer does not get (P19; this is the script the reasoning leak surfaced in).
+      when :content         then puts("\n#{ev.data[:delta]}")
+      when :intermediate    then print("\e[2m#{ev.data[:delta]}\e[0m")
       when :tool_call       then puts("\n  \e[36m→ #{ev.data[:name]}(#{ev.data[:arguments].inspect})\e[0m")
       when :tool_result     then puts("  \e[36m← #{ev.data[:name]}: #{ev.data[:result].to_s[0, 220]}\e[0m")
       when :skill_activated  then puts("\n  \e[35m↑ load_skill(#{ev.data[:name]})\e[0m")

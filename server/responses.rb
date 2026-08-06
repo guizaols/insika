@@ -68,13 +68,19 @@ module Insika
           failed("task cancelled") + done
         when :error
           failed(event.data[:message] || "error") + done
-        when :thinking
-          # The provider's reasoning is DELIBERATELY not translated. OpenAI Responses
-          # does have a reasoning frame, but this consumer streams every text delta
-          # straight to the end customer (achei-b2b's OpenclawDispatcher accumulates
-          # the deltas into the WhatsApp reply), so anything mapped here would be read
-          # out loud. The thinking stays internal: /v1/events + the Studio + the trace.
-          # Explicit (not a fall-through) to keep the closed catalog honest.
+        when :thinking, :intermediate
+          # NEITHER is the answer, and this consumer streams every text delta straight
+          # to the end customer (achei-b2b's OpenclawDispatcher accumulates the deltas
+          # into the WhatsApp reply), so anything mapped here would be read out loud.
+          #
+          # :thinking is the provider's reasoning channel. :intermediate is the model's
+          # own prose that did not turn out to be the answer — the narration of a
+          # message that also called a tool, or the reasoning-in-content a model emits
+          # when it has no tool to call. A real store's prompt sent 132 deltas of an
+          # English monologue this way before TurnOutput started holding them back.
+          #
+          # Both stay internal: /studio/events + the Studio + the trace. Explicit (not
+          # a fall-through) to keep the closed catalog honest.
           nil
         when :guardrail_blocked, :guardrail_flagged
           # RFC-0009: audit events with no OpenAI Responses counterpart. On a BLOCK
