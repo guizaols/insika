@@ -1,19 +1,16 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../evals/lib/evals/golden"
-require_relative "../../evals/lib/evals/assertions"
-require_relative "../../evals/lib/evals/report"
 
 # Evals deterministic assertion engine (RFC-0008, Fase A). Pure over (Golden,
 # TurnResult) — no server, no tokens.
-RSpec.describe Evals::Assertions do
+RSpec.describe Insika::Evals::Assertions do
   def golden(expect)
-    Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }], "expect" => expect })
+    Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }], "expect" => expect })
   end
 
   def result(output_text: "ok", tool_calls: [], error: nil)
-    Evals::TurnResult.new(output_text: output_text, tool_calls: tool_calls, error: error)
+    Insika::Evals::TurnResult.new(output_text: output_text, tool_calls: tool_calls, error: error)
   end
 
   describe "tools_called" do
@@ -91,19 +88,19 @@ RSpec.describe Evals::Assertions do
       .to raise_error(ArgumentError, /unknown detector/) # runtime is the single source (D4)
   end
 
-  describe Evals::Report do
+  describe Insika::Evals::Report do
     it "aggregates pass/fail/judge_pending counts" do
       results = [
-        Evals::Assertions.evaluate(golden("tools_called" => ["a"]), result(tool_calls: [{ "name" => "a" }])),
-        Evals::Assertions.evaluate(golden("tools_called" => ["b"]), result(tool_calls: [])),
-        Evals::Assertions.evaluate(golden("rubric" => "x"), result)
+        Insika::Evals::Assertions.evaluate(golden("tools_called" => ["a"]), result(tool_calls: [{ "name" => "a" }])),
+        Insika::Evals::Assertions.evaluate(golden("tools_called" => ["b"]), result(tool_calls: [])),
+        Insika::Evals::Assertions.evaluate(golden("rubric" => "x"), result)
       ]
-      h = Evals::Report.to_h(results, at: "2026-07-19T00:00:00Z")
+      h = Insika::Evals::Report.to_h(results, at: "2026-07-19T00:00:00Z")
       expect(h["total"]).to eq(3)
       expect(h["passed"]).to eq(2)
       expect(h["failed"]).to eq(1)
       expect(h["judge_pending"]).to eq(1)
-      expect(Evals::Report.to_markdown(results, at: "2026-07-19T00:00:00Z")).to include("2/3 passed")
+      expect(Insika::Evals::Report.to_markdown(results, at: "2026-07-19T00:00:00Z")).to include("2/3 passed")
     end
   end
 end

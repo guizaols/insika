@@ -93,7 +93,7 @@ RSpec.describe Studio::App do
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {},
-                tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], event_stream: nil)
+                tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -117,6 +117,10 @@ RSpec.describe Studio::App do
     raw_data_tools.each do |name, definition|
       cfg.put("tools", name, { "definition" => definition, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
     end
+    # Eval cases (RFC-0008 §3.1): the REAL store, seeded through its own validating
+    # write — the page must be exercised against what the loader accepts.
+    golden_store = Insika::GoldenStore.new(config_store: cfg)
+    goldens.each { |g| golden_store.write(g) }
     # RFC-0013 phase A: refinement runs, seeded through the REAL store's own API
     # (create + complete) so the page is exercised against the record shape the
     # collector actually writes. refinement_runs: [{ agent:, findings: [...] }, …].
@@ -145,7 +149,7 @@ RSpec.describe Studio::App do
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
-      refinement_store: refinement_store,
+      refinement_store: refinement_store, golden_store: golden_store,
       session_secret: "x" * 64
     )
     [app, bus]
@@ -1591,6 +1595,122 @@ RSpec.describe Studio::App do
     client.post("/approvals/p1", params: { "decision" => "sudo", "_csrf" => csrf })
     expect(bus.last(:approve_action).payload[:decision]).to eq("approved")
   end
+
+# --- Evals: cases authored without a checkout (RFC-0008 §3.1) -------------
+# The rubric is the part of an eval a domain owner can write, so it has to be
+# editable where they already are. Writes go through :write_golden like everything
+# else — the Studio never touches a store directly.
+
+def a_golden(id: "loja-cupom", agent: "loja")
+  { "id" => id, "agent" => agent, "turns" => [{ "user" => "tem cupom?" }],
+    "expect" => { "tools_called" => ["search_voucher"], "rubric" => "Consults the coupon by tool." } }
+end
+
+it "lists the stored cases grouped by agent (GET /evals)" do
+  app, = build_app(goldens: [a_golden, a_golden(id: "outra-x", agent: "outra")])
+  res = login(app).get("/evals")
+
+  expect(res.status).to eq(200)
+  expect(res.body).to include("loja-cupom", "outra-x", "2 case(s)")
+end
+
+it "opens a case as the same YAML the corpus files hold" do
+  app, = build_app(goldens: [a_golden])
+  body = login(app).get("/evals?id=loja-cupom").body
+
+  expect(body).to include("id: loja-cupom")
+  expect(body).to include("search_voucher")
+  expect(body).to include("Consults the coupon by tool.")
+end
+
+it "offers a template when nothing is selected (an empty store is not a dead end)" do
+  app, = build_app
+  body = login(app).get("/evals").body
+  expect(body).to include("No case yet", "insika evals:import", "min_score")
+end
+
+it "POST /evals dispatches :write_golden with the parsed case" do
+  app, bus = build_app
+  client = login(app)
+  csrf = csrf_from(client.get("/evals").body)
+  yaml = "id: novo\nagent: loja\nturns:\n  - user: oi\nexpect:\n  rubric: seja gentil\n"
+
+  res = client.post("/evals", params: { "yaml" => yaml, "id" => "novo", "_csrf" => csrf })
+
+  expect(res.status).to eq(302)
+  expect(bus.last(:write_golden).payload[:case])
+    .to eq({ "id" => "novo", "agent" => "loja", "turns" => [{ "user" => "oi" }],
+             "expect" => { "rubric" => "seja gentil" } })
+end
+
+it "malformed YAML is a red flash, never a dispatch" do
+  app, bus = build_app
+  client = login(app)
+  csrf = csrf_from(client.get("/evals").body)
+
+  client.post("/evals", params: { "yaml" => "id: [unclosed", "_csrf" => csrf })
+
+  expect(bus.types).not_to include(:write_golden)
+  expect(client.get("/evals").body).to include("invalid YAML")
+end
+
+it "YAML that is not a mapping is refused with a message that says what is expected" do
+  app, bus = build_app
+  client = login(app)
+  csrf = csrf_from(client.get("/evals").body)
+
+  client.post("/evals", params: { "yaml" => "- just\n- a list\n", "_csrf" => csrf })
+
+  expect(bus.types).not_to include(:write_golden)
+  expect(client.get("/evals").body).to include("must be a YAML mapping")
+end
+
+it "flags stored cases that no longer validate — a run would skip them silently" do
+  app, = build_app
+  # Straight into the ConfigStore: the store's own write validates, so the only way to
+  # hold a broken case is to have broken it underneath.
+  app.insika[:golden_store].instance_variable_get(:@cs).put("goldens", "bad", { "case" => { "id" => "bad" } })
+
+  expect(login(app).get("/evals").body).to include("no longer validate", "bad")
+end
+
+it "POST /evals/:id/delete dispatches :delete_golden" do
+  app, bus = build_app(goldens: [a_golden])
+  client = login(app)
+  csrf = csrf_from(client.get("/evals?id=loja-cupom").body)
+
+  res = client.post("/evals/loja-cupom/delete", params: { "_csrf" => csrf })
+
+  expect(res.status).to eq(302)
+  expect(bus.last(:delete_golden).payload).to eq(id: "loja-cupom")
+end
+
+it "the judges panel round-trips through Settings › Evals" do
+  app, bus = build_app
+  client = login(app)
+  csrf = csrf_from(client.get("/settings?s=evals").body)
+
+  client.post("/settings/evals", params: { "judges" => "deepseek/deepseek-chat\ngpt-5-mini\n\n",
+                                          "aggregate" => "min", "min_agreement" => "1.0",
+                                          "quorum" => "2", "tolerance" => "0.1", "_csrf" => csrf })
+
+  patch = bus.last(:update_settings).payload[:patch]["evals"]
+  expect(patch["judges"]).to eq([{ "provider" => "deepseek", "model" => "deepseek-chat" },
+                                 { "model" => "gpt-5-mini" }])
+  expect(patch.values_at("aggregate", "min_agreement", "quorum", "tolerance"))
+    .to eq(["min", 1.0, 2, 0.1])
+end
+
+it "a non-numeric min_agreement is refused instead of quietly becoming 'off'" do
+  app, bus = build_app
+  client = login(app)
+  csrf = csrf_from(client.get("/settings?s=evals").body)
+
+  client.post("/settings/evals", params: { "min_agreement" => "half", "_csrf" => csrf })
+
+  expect(bus.types).not_to include(:update_settings)
+  expect(client.get("/settings?s=evals").body).to include("min_agreement must be a number")
+end
 
   # --- Refinement (RFC-0013 phase A) ---------------------------------------
   # Read-only page + one button. There is no scheduler in the engine, so the button

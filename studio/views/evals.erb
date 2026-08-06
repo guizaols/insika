@@ -1,0 +1,83 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>evals</span></nav>
+    <h1>Evals<span class="sub"><%= @cases.size %> case(s)</span></h1>
+  </div>
+  <a class="btn" href="/studio/settings?s=evals">Judges →</a>
+</header>
+
+<% if @invalid.any? %>
+  <div class="empty">
+    <strong><%= @invalid.size %> case(s) no longer validate</strong> and are SKIPPED by a run:
+    <span class="mono"><%= @invalid.join(", ") %></span>. Fix the YAML or re-import the corpus
+    (<code>insika evals:import</code>).
+  </div>
+<% end %>
+
+<div class="drill">
+  <aside class="drill-pane drill-master">
+    <div class="drill-pane-head"><div class="title"><strong>Cases</strong></div></div>
+    <nav class="drill-pane-body drill-list" aria-label="eval cases">
+      <% if @cases.empty? %>
+        <div class="empty">No case yet. Seed the corpus with <code>insika evals:import</code>, or write one on the right.</div>
+      <% end %>
+      <% @by_agent.each do |agent, cases| %>
+        <div class="nav-label"><%= agent %></div>
+        <% cases.each do |g| %>
+          <a class="drill-item<%== ' active' if @case && @case.id == g.id %>" href="/studio/evals?id=<%= Rack::Utils.escape(g.id) %>">
+            <div class="drill-item-name"><span class="txt mono"><%= g.id %></span><% if g.rubric.to_s.strip.empty? %><span class="pill info plain">no rubric</span><% end %></div>
+            <div class="drill-item-sub"><%= g.user_turns.first %></div>
+          </a>
+        <% end %>
+      <% end %>
+    </nav>
+  </aside>
+
+  <section class="drill-pane drill-detail">
+    <div class="drill-pane-head">
+      <div class="title"><strong><%= @case ? @case.id : "New case" %></strong></div>
+      <div class="actions">
+        <% if @case %>
+          <form method="post" action="/studio/evals/<%= Rack::Utils.escape(@case.id) %>/delete"
+                data-turbo-confirm="Remove case &quot;<%= @case.id %>&quot;? The corpus on disk is the way back.">
+            <%== csrf_tag %>
+            <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
+          </form>
+        <% end %>
+        <button type="submit" form="set-golden" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+      </div>
+    </div>
+    <div class="drill-pane-body">
+      <p class="muted">
+        A case is data, in the same YAML the corpus files hold — so this is what a pull
+        request reviews. <code>expect.rubric</code> is plain language and is the part a
+        judge scores; <code>tools_called</code> and <code>must_not</code> are checked
+        deterministically, with no model involved. Saved through
+        <code>write_golden</code> and validated on the way in.
+      </p>
+      <form id="set-golden" method="post" action="/studio/evals">
+        <%== csrf_tag %>
+        <input type="hidden" name="id" value="<%= @case&.id %>">
+        <label>case (YAML)
+          <textarea name="yaml" rows="22" spellcheck="false" class="mono"><%= @case_yaml || <<~YAML %>
+            id: my-agent-coupon
+            agent: my-agent
+            turns:
+              - user: "tem cupom de desconto?"
+            expect:
+              tools_called:
+                - search_voucher
+              must_not:
+                - pii_leak
+                - tool_error
+              rubric: |
+                Consults the active coupon with the tool and says what it is — does NOT
+                invent a code or a discount. If there is none, says so kindly.
+              min_score: 0.7
+          YAML
+          </textarea>
+        </label>
+      </form>
+    </div>
+  </section>
+</div>

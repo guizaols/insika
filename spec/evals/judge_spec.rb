@@ -1,19 +1,16 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../evals/lib/evals/golden"
-require_relative "../../evals/lib/evals/assertions"
-require_relative "../../evals/lib/evals/judge"
 
 # LLM-judge (RFC-0008 §3.3, Fase B). Pure over an injected `ask` — no real LLM.
-RSpec.describe Evals::Judge do
+RSpec.describe Insika::Evals::Judge do
   def golden(expect)
-    Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia",
+    Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia",
                                "turns" => [{ "user" => "qual o frete?" }], "expect" => expect })
   end
 
   def result(text = "o frete é R$ 20 para SP capital")
-    Evals::TurnResult.new(output_text: text, tool_calls: [], error: nil)
+    Insika::Evals::TurnResult.new(output_text: text, tool_calls: [], error: nil)
   end
 
   it "returns nil when there is no rubric to score" do
@@ -64,4 +61,50 @@ RSpec.describe Evals::Judge do
     # median(0.2, 0.9, 0.8) = 0.8 -> passes at 0.7
     expect(j.score(golden: golden("rubric" => "x"), result: result).pass).to be(true)
   end
+
+  # RFC-0013 §3.9: `quorum` samples ONE model N times (its variance); a PANEL asks
+  # different models (their disagreement), which is the signal worth having.
+  describe "a panel of distinct judges" do
+    def judge_of(*scores, **opts)
+      asks = scores.map { |s| ->(_prompt) { %({"score": #{s}, "reason": "r#{s}"}) } }
+      described_class.new(asks: asks, **opts)
+    end
+
+    let(:golden) { Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "a", "turns" => [{ "user" => "hi" }], "expect" => { "rubric" => "be kind", "min_score" => 0.7 } }) }
+    let(:result) { Insika::Evals::TurnResult.new(output_text: "hello", tool_calls: [], error: nil) }
+
+    it "keeps every judge's score visible instead of averaging it away" do
+      verdict = judge_of(0.9, 0.4, 0.8).score(golden: golden, result: result)
+      expect(verdict.judges).to eq([0.9, 0.4, 0.8])
+    end
+
+    it "aggregates the reported score (median by default)" do
+      expect(judge_of(0.9, 0.4, 0.8).score(golden: golden, result: result).score).to eq(0.8)
+      expect(judge_of(0.9, 0.4, 0.8, aggregate: :mean).score(golden: golden, result: result).score).to eq(0.7)
+      expect(judge_of(0.9, 0.4, 0.8, aggregate: :min).score(golden: golden, result: result).score).to eq(0.4)
+    end
+
+    it "passes on a MAJORITY of judges by default (each against the case's min_score)" do
+      expect(judge_of(0.9, 0.4, 0.8).score(golden: golden, result: result).pass).to be(true)  # 2 of 3
+      expect(judge_of(0.9, 0.4, 0.4).score(golden: golden, result: result).pass).to be(false) # 1 of 3
+    end
+
+    it "min_agreement 1.0 demands unanimity — one dissenter fails the case" do
+      verdict = judge_of(0.9, 0.8, 0.65, min_agreement: 1.0).score(golden: golden, result: result)
+      expect([verdict.score, verdict.pass]).to eq([0.8, false])
+    end
+
+    it "a single ask still behaves exactly as before" do
+      one = described_class.new(ask: ->(_p) { '{"score": 0.9, "reason": "ok"}' })
+      verdict = one.score(golden: golden, result: result)
+      expect([verdict.score, verdict.pass, verdict.judges]).to eq([0.9, true, [0.9]])
+    end
+
+    it "refuses to be built without a judge, and refuses an unknown aggregate" do
+      expect { described_class.new(asks: []) }.to raise_error(ArgumentError, /at least one/)
+      expect { described_class.new(ask: ->(_p) { "" }, aggregate: :vibes) }
+        .to raise_error(ArgumentError, /unknown aggregate/)
+    end
+  end
 end
+
