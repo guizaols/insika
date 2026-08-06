@@ -88,6 +88,21 @@ module Insika
     #                                   capability-resolution intents the agent may
     #                                   trigger, a runtime allowlist. This one decides
     #                                   nothing at runtime and is read only by the evals.
+    :edge_stream,                     # WHICH INTERNAL CHANNELS MAY CROSS TO THE CUSTOMER:
+    #                                   { "thinking" => bool, "intermediate" => bool }.
+    #                                   {} / absent = NEITHER, which is the safe default and
+    #                                   the reason the engine holds them back at all: the
+    #                                   answer is `:content`, and a turn's other text (the
+    #                                   provider's reasoning, the model narrating its tool
+    #                                   loop) is for the Studio and the trace. A product that
+    #                                   WANTS to show reasoning — a chat UI with a "thinking"
+    #                                   panel — opts in per agent, and each channel then gets
+    #                                   its OWN frame type at `/v1/responses`, never the
+    #                                   answer's. Turning it on for a channel where the
+    #                                   consumer concatenates every delta into one message
+    #                                   (WhatsApp) puts the deliberation in front of a
+    #                                   customer; that is the operator's call to make, not a
+    #                                   default to inherit.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -118,7 +133,7 @@ module Insika
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
-                   refinement: nil, capabilities_declared: nil, metadata: {})
+                   refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -144,6 +159,7 @@ module Insika
         # Flat [String] — the evals compare it against a case's `requires`, and a
         # symbol/string mix there would be a silent miss.
         capabilities_declared: Array(capabilities_declared).map(&:to_s),
+        edge_stream: Coercion.deep_stringify(edge_stream || {}),
         metadata: Coercion.deep_stringify(metadata || {})
       )
     end
@@ -159,5 +175,13 @@ module Insika
     # It is NOT consumer-specific: `store_id` is a field of the turn-context contract
     # (§5), generic per project.
     def store_id = (metadata || {})["store_id"]
+
+    # May this channel (:thinking / :intermediate) cross to the customer? Tolerant
+    # of the string values a form or a pack round-trip produces ("1"/"true"), and
+    # of anything else being absent: the safe reading is the default one.
+    def stream_public?(channel)
+      v = (edge_stream || {})[channel.to_s]
+      [true, "true", "1", "yes", "on"].include?(v)
+    end
   end
 end

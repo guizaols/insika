@@ -609,7 +609,8 @@ module Insika
         # TurnOutput owns what the customer is allowed to read: chunks ride
         # :intermediate live and only the message that ENDS the turn is published as
         # :content. Registered on the chat (fresh per turn, so no callback leaks).
-        output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) })
+        output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
+                                public_intermediate: state.profile.stream_public?(:intermediate))
         state.chat.after_message { |message| output.message_ended(message) } if state.chat.respond_to?(:after_message)
 
         # `asked` is what the provider returned, BEFORE the :agent after-hook had a
@@ -617,8 +618,9 @@ module Insika
         # the ordinary "the hook returned what it received".
         asked = nil
         response = @hooks.around(:agent, state) do |s|
+          public_thinking = state.profile.stream_public?(:thinking)
           asked = s.chat.ask(s.message) do |chunk|
-            emit_thinking(chunk, task)
+            emit_thinking(chunk, task, public: public_thinking)
             next unless chunk.content
 
             timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
@@ -665,9 +667,13 @@ module Insika
     # The provider's REASONING (DeepSeek `reasoning_content`, Anthropic thinking
     # blocks): RubyLLM parks it in `chunk.thinking`, NEVER in `chunk.content`, so it
     # was being dropped on the floor — invisible in the Studio and in the trace. It
-    # rides the Event Stream as its OWN type (:thinking), and `/v1/responses`
-    # deliberately does not translate it: the deliberation is observability, not the
-    # answer, and must not cross the edge to the end customer.
+    # rides the Event Stream as its OWN type (:thinking), and `/v1/responses` does not
+    # translate it BY DEFAULT: the deliberation is observability, not the answer.
+    #
+    # An agent may opt in (`edge_stream thinking: true`) — a product with a "thinking"
+    # panel wants it — and then the event is TAGGED `public: true` and the edge gives
+    # it the reasoning frame, never the answer's. The tag rides the event because
+    # `Responses.frame_for` is a pure static mapper with no agent in scope.
     #
     # Three deliberate omissions:
     # · the guardrail filter is NOT applied — it accumulates the PERSISTED content
@@ -678,12 +684,16 @@ module Insika
     # · nothing is persisted — the reasoning is not part of the conversation.
     #
     # Duck-typed like `usage_of`: a provider/fake with no thinking -> nothing to emit.
-    def emit_thinking(chunk, task)
+    def emit_thinking(chunk, task, public: false)
       return unless chunk.respond_to?(:thinking)
 
       thought = chunk.thinking
       text = thought.respond_to?(:text) ? thought.text : thought # RubyLLM::Thinking | String | nil
-      emit(:thinking, { delta: text.to_s }, task: task) unless text.to_s.empty?
+      return if text.to_s.empty?
+
+      data = { delta: text.to_s }
+      data[:public] = true if public
+      emit(:thinking, data, task: task)
     end
 
     # Annotates the usage with the RESOLVED model-selection source (v2, §10):
