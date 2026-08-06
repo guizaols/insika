@@ -15,7 +15,13 @@
   <div class="msg <%= role %>">
     <div class="who"><%= role[0, 1].upcase %></div>
     <div class="bubble">
-      <div class="role-tag"><%= role %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
+      <%# `role` says where a message sits; `origin` says who wrote it, and the two
+          come apart (the engine delivering a subagent result as a "user" turn, a
+          guardrail's canned reply, a human operator after a handoff). Shown only
+          when it is NOT the natural producer for the role — otherwise every bubble
+          would carry a label that says nothing. %>
+      <% origin = Insika::MessageOrigin.origin_of(m) unless Insika::MessageOrigin.customer?(m) || Insika::MessageOrigin.agent?(m) %>
+      <div class="role-tag"><%= role %><% if origin %> · <span class="origin"><%= origin %></span><% end %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
       <% unless m["content"].to_s.empty? && Array(m["tool_calls"]).any? %>
         <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
       <% end %>
