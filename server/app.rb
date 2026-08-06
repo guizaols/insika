@@ -37,7 +37,7 @@ module Insika
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
-                     workflow_registry: nil, onboarding: nil)
+                     workflow_registry: nil, onboarding: nil, profiles: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -57,6 +57,11 @@ module Insika
         # constitutional rule holds. nil = routes not exposed (parity — the production
         # deployment opts in). Reading files/masked stores is a READ, like a store read.
         @onboarding = onboarding
+        # RFC-0014 §3.2: READ-ONLY ProfileSource, so `GET /v1/agents/:id` can answer
+        # what an agent has — the eval is a client and cannot read a store. Same
+        # constitutional footing as the workflow registry: reading a catalog is a
+        # READ. nil = the route 404s (parity).
+        @profiles = profiles
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -118,6 +123,8 @@ module Insika
           handle_provision(req)
         in ["DELETE", ["v1", "agents", id]] if @provisioner
           handle_deprovision(req, id)
+        in ["GET", ["v1", "agents", id]] if @profiles
+          handle_read_agent(id)
         in ["GET", ["v1", "sessions", id]]
           handle_read_session(id)
         in ["GET", ["v1", "tasks", id]]
@@ -295,6 +302,28 @@ module Insika
         return gate if gate
 
         json_response(200, @provisioner.delete(id))
+      end
+
+      # GET /v1/agents/:id — what this deployment HAS for that agent, so an eval
+      # (a client: it never reads a store) can tell "this case cannot run here" from
+      # "this case failed" (RFC-0014 §3.2). Deliberately NOT the profile: the prompt,
+      # the model and the guardrail config are none of the caller's business. Just the
+      # two facts a case declares `requires` against.
+      #
+      # `tools` is the DECLARED allowlist, and `null` means the agent has an open one
+      # (every registered tool) — the client reads that as "cannot rule anything out"
+      # and runs the case rather than skipping it.
+      def handle_read_agent(id)
+        profile = @profiles.fetch(id)
+        raise Insika::NotFoundError, "agent not found: #{id}" if profile.nil?
+
+        allow = profile.tools_allow
+        deny = Array(profile.tools_deny).map(&:to_s)
+        json_response(200, {
+                        id: profile.id,
+                        tools: allow.nil? ? nil : (Array(allow).map(&:to_s) - deny),
+                        capabilities: Array(profile.capabilities_declared).map(&:to_s)
+                      })
       end
 
       # Gateway Bearer (fail-closed). -> error response (503/401) OR nil when

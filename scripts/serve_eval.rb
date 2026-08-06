@@ -98,6 +98,7 @@ APP = Insika::Server::App.new(
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
   provisioner: W::PACK_IMPORTER,
+  profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — what `requires` resolves against
   config: { gateway_token: TOKEN }
 )
 

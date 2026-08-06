@@ -65,6 +65,48 @@ module Insika
       end
     end
 
+    # What the deployment HAS, per agent (RFC-0014 §3.2), read over the same gated
+    # `/v1` the replay uses. The eval stays a client: it asks the engine instead of
+    # keeping its own idea of which tools exist.
+    #
+    # `#for(id)` -> { "tools" => [names] | nil, "capabilities" => [names] } | nil.
+    # nil means UNRESOLVED — the agent is not there, the route is not wired, the
+    # deployment is unreachable — and the Runner treats that as "run the case
+    # anyway". Silence must not shrink a suite. Answers are memoized: a corpus has
+    # many cases per agent and this is the same answer every time.
+    class HttpCapabilities
+      def initialize(base_url:, token:, timeout: 10)
+        @base = base_url
+        @token = token
+        @timeout = timeout
+        @cache = {}
+      end
+
+      def for(agent_id)
+        @cache.fetch(agent_id) { @cache[agent_id] = fetch(agent_id) }
+      end
+
+      private
+
+      def fetch(agent_id)
+        uri = URI.join("#{@base}/", "v1/agents/#{URI.encode_www_form_component(agent_id)}")
+        req = Net::HTTP::Get.new(uri)
+        req["Authorization"] = "Bearer #{@token}"
+
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http.read_timeout = @timeout
+        http.open_timeout = @timeout
+        res = http.start { http.request(req) }
+        return nil unless res.code.to_i == 200
+
+        body = JSON.parse(res.body)
+        { "tools" => body["tools"], "capabilities" => Array(body["capabilities"]) }
+      rescue StandardError, JSON::ParserError
+        nil
+      end
+    end
+
     # Drives real turns over POST /v1/responses — the SAME surface as
     # scripts/loadtest.rb, so `--mode perf` is apples-to-apples with the loadtest and
     # closes the real-traffic gap (#6b). A conversation is keyed by `user` (the

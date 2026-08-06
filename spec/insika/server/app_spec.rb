@@ -14,12 +14,13 @@ RSpec.describe Insika::Server::App do
 
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
-                config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil)
+                config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
+                profiles: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
-      onboarding: onboarding,
+      onboarding: onboarding, profiles: profiles,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -518,6 +519,64 @@ RSpec.describe Insika::Server::App do
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
       status, = app.call(env)
       expect(status).to eq(422)
+    end
+  end
+
+  # RFC-0014 §3.2. The eval is a CLIENT — it never reads a store — so it needs one
+  # gated read to tell "this case cannot run here" from "this case failed".
+  describe "GET /v1/agents/:id (capability view)" do
+    def profiles_with(profile)
+      Insika::ProfileSource.coerce(profile.id => profile)
+    end
+
+    let(:profile) do
+      Insika::AgentProfile.build(id: "demo-store", model: "m",
+                                 tools_allow: %w[search_products search_orders],
+                                 tools_deny: %w[search_orders],
+                                 capabilities_declared: %w[promotions])
+    end
+
+    it "answers the two facts a case declares `requires` against" do
+      status, _h, body = call(build_app(profiles: profiles_with(profile)), "GET", "/v1/agents/demo-store")
+
+      expect(status).to eq(200)
+      # deny wins, so a denied tool is NOT available — a case requiring it must skip.
+      expect(json_body(body)).to eq("id" => "demo-store", "tools" => %w[search_products],
+                                    "capabilities" => %w[promotions])
+    end
+
+    it "reports an OPEN allowlist as null, not as an empty set" do
+      open = Insika::AgentProfile.build(id: "bia", model: "m")
+
+      _s, _h, body = call(build_app(profiles: profiles_with(open)), "GET", "/v1/agents/bia")
+
+      # [] would mean "has no tools" and would skip every case; null means "every
+      # registered tool", which the client reads as "cannot rule anything out".
+      expect(json_body(body)["tools"]).to be_nil
+    end
+
+    it "never leaks the profile — no prompt, no model, no guardrail config" do
+      full = Insika::AgentProfile.build(id: "bia", model: "secret-model", base_prompt: "SOUL",
+                                        guardrails: { "output" => true })
+
+      _s, _h, body = call(build_app(profiles: profiles_with(full)), "GET", "/v1/agents/bia")
+
+      expect(json_body(body).keys).to contain_exactly("id", "tools", "capabilities")
+    end
+
+    it "unknown agent -> 404" do
+      status, = call(build_app(profiles: profiles_with(profile)), "GET", "/v1/agents/nope")
+      expect(status).to eq(404)
+    end
+
+    it "not wired -> 404 (parity)" do
+      status, = call(build_app, "GET", "/v1/agents/demo-store")
+      expect(status).to eq(404)
+    end
+
+    it "is behind the gateway Bearer like every other /v1 read" do
+      status, = call(build_app(profiles: profiles_with(profile)), "GET", "/v1/agents/demo-store", auth: nil)
+      expect(status).to eq(401)
     end
   end
 

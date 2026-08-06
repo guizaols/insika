@@ -32,11 +32,19 @@ module Insika
     # until then a rubric'd case is `judge_pending?` — it reads as "not fully
     # evaluated", never a silent pass. A case passes only if the deterministic checks
     # pass AND (there's no judge verdict OR it passed).
-    CaseResult = Struct.new(:id, :agent, :checks, :error, :rubric, :judge, keyword_init: true) do
-      def pass? = error.nil? && checks.all?(&:pass) && (judge.nil? || judge.pass)
+    #
+    # `skipped` (a reason, nil = it ran) is the THIRD outcome (RFC-0014 §3.2): the
+    # deployment lacks something the case declared it needs, so there was nothing to
+    # assert. It is never a pass and never a failure — a suite of 40 cases where 12
+    # are skipped says something true, where 40 cases with 12 failures on capability
+    # grounds says nothing and gets ignored.
+    CaseResult = Struct.new(:id, :agent, :checks, :error, :rubric, :judge, :skipped, keyword_init: true) do
+      def skipped? = !skipped.nil?
+      def pass? = !skipped? && error.nil? && checks.all?(&:pass) && (judge.nil? || judge.pass)
       def failures = checks.reject(&:pass)
-      # Has a rubric to score but no verdict yet (judge disabled / not run).
-      def judge_pending? = !rubric.to_s.strip.empty? && judge.nil?
+      # Has a rubric to score but no verdict yet (judge disabled / not run). A skipped
+      # case is not pending anything — nobody is going to judge a turn that never ran.
+      def judge_pending? = !skipped? && !rubric.to_s.strip.empty? && judge.nil?
     end
 
     # Deterministic (Fase A) evaluation — cheap, zero-token, zero-flakiness. It's the
@@ -72,6 +80,34 @@ module Insika
       }.freeze
 
       module_function
+
+      # WHAT THIS DEPLOYMENT LACKS for the case to be worth running (RFC-0014 §3.2).
+      # -> [reason]; empty = run it.
+      #
+      # `available` is the deployment's answer for this agent:
+      #   { "tools" => [names] | nil, "capabilities" => [names] }
+      # `tools` nil means an OPEN allowlist — the agent may call every registered tool,
+      # so no tool requirement can be judged missing and the case runs. That is the
+      # deliberate reading: "I could not rule it out" must not become a skip, or a
+      # permissive agent would quietly stop being tested.
+      def unmet_requirements(golden, available)
+        tools = available["tools"]
+        declared = Array(available["capabilities"]).map(&:to_s)
+
+        missing_tools = tools.nil? ? [] : golden.required_tools - Array(tools).map(&:to_s)
+        missing_caps = golden.required_capabilities - declared
+
+        reasons = []
+        reasons << "tool not available: #{missing_tools.join(', ')}" unless missing_tools.empty?
+        reasons << "capability not declared: #{missing_caps.join(', ')}" unless missing_caps.empty?
+        reasons
+      end
+
+      # The case did not run and MUST NOT read as either a pass or a failure.
+      def skip(golden, reason)
+        CaseResult.new(id: golden.id, agent: golden.agent, checks: [], error: nil,
+                       rubric: nil, judge: nil, skipped: reason)
+      end
 
       # A tool status counts as success when it's blank/"ok"/"success" or a 2xx code.
       def ok_status?(status)

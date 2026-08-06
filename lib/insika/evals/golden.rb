@@ -11,7 +11,7 @@ module Insika
   module Evals
     # A curated behavior case, loaded from a data file (evals/golden/<agent>/*.yml).
     # Data, not code — same spirit as tools-as-data. See evals/README.md for the format.
-    Golden = Struct.new(:id, :agent, :turns, :expect, :source, keyword_init: true) do
+    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :source, keyword_init: true) do
       # The user messages to replay, in order.
       def user_turns = turns.map { |t| t["user"] }
 
@@ -31,6 +31,12 @@ module Insika
       # How much the agent should ask before acting (RFC-0014 §3.3). nil = the store
       # has no opinion and only the rubric decides.
       def policy = GoldenLoader.presence(expect["policy"])
+
+      # What the DEPLOYMENT must have for this case to mean anything (RFC-0014 §3.2).
+      # Empty = runs everywhere.
+      def required_tools = Array(requires["tools"]).map(&:to_s)
+      def required_capabilities = Array(requires["capabilities"]).map(&:to_s)
+      def requirements? = !(required_tools + required_capabilities).empty?
 
       # LLM-judge rubric + threshold (consumed in Fase B — deferred here).
       def rubric = expect["rubric"]
@@ -68,7 +74,13 @@ module Insika
         raise InvalidGolden, "#{source}: 'expect' must be a mapping (case '#{id}')" unless expect.is_a?(Hash)
 
         validate_policy!(expect["policy"], id: id, source: source)
-        Golden.new(id: id, agent: agent, turns: turns, expect: expect, source: source)
+        requires = raw["requires"] || {}
+        unless requires.is_a?(Hash)
+          raise InvalidGolden, "#{source}: 'requires' must be a mapping (case '#{id}')"
+        end
+
+        Golden.new(id: id, agent: agent, turns: turns, expect: expect,
+                   requires: requires, source: source)
       end
 
       # A typo'd policy must not silently mean "no policy" — the case would go on

@@ -126,9 +126,14 @@ module Insika
 
     # Golden -> the plain mapping (what YAML holds and what the store persists).
     # `source` is a load-time detail, never part of the case.
+    # `requires` is omitted when empty so a case that runs everywhere stays as short
+    # in the store as it is on disk — but it is NEVER dropped when present: a case
+    # that silently lost its requirements would come back as a failure on every
+    # deployment that lacks the tool, which is the exact lie `requires` exists to end.
     def case_hash(golden)
-      { "id" => golden.id, "agent" => golden.agent,
-        "turns" => golden.turns, "expect" => golden.expect }
+      h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+      h["requires"] = golden.requires unless golden.requires.empty?
+      h.merge("expect" => golden.expect)
     end
 
     def timestamp = Time.now.utc.iso8601
