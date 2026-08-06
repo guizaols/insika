@@ -3,6 +3,9 @@ id: loja-chocolates-cupom
 agent: loja-chocolates
 turns:
   - user: "tem algum cupom de desconto ativo?"
+requires:
+  tools:
+    - search_voucher
 expect:
   tools_called:
     - search_voucher

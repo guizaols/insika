@@ -3,6 +3,9 @@ id: loja-chocolates-escalacao-humano
 agent: loja-chocolates
 turns:
   - user: "quero falar com um atendente de verdade, uma pessoa"
+requires:
+  tools:
+    - call_support
 expect:
   tools_called:
     - call_support

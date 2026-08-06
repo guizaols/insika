@@ -143,8 +143,20 @@ judge, judge_models = build_judge(opts, settings)
 judge_note = judge ? "judges=#{judge_models.join('+')}" : "judge=off"
 puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
 
-runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map).run(goldens)
+# What the deployment HAS, per agent — what a case's `requires` resolves against
+# (RFC-0014 §3.2). Same base_url and token as the replay; an unreachable or older
+# deployment answers nil and the case RUNS, warned about below.
+capabilities = Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
+runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map,
+                                     capabilities: capabilities).run(goldens)
 results = runcases.map(&:result)
+
+# A case that declared requirements, was not skipped, and was not resolved either:
+# it ran unchecked. Say so once, rather than letting the run look fully gated.
+unresolved = goldens.select(&:requirements?).map(&:agent).uniq.reject { |a| capabilities.for(a) }
+unless unresolved.empty?
+  warn "eval: could not read /v1/agents for #{unresolved.join(', ')} — cases with `requires` ran unchecked"
+end
 at = Time.now.utc.iso8601
 
 # --- eval verdict ---------------------------------------------------------------
@@ -200,7 +212,7 @@ if %w[eval both].include?(opts[:mode])
     end
     puts "no regressions vs baseline (#{baseline_path})"
   else
-    failed = results.count { |r| !r.pass? }
+    failed = results.reject(&:skipped?).count { |r| !r.pass? }
     if failed.positive?
       warn "eval: #{failed} case(s) failed (no baseline — run with --update-baseline to accept)"
       exit 1

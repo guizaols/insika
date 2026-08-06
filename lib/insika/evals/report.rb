@@ -14,15 +14,20 @@ module Insika
       # -> Hash ready for JSON. `at` is an ISO-8601 string stamped by the caller.
       def to_h(results, at:)
         passed = results.count(&:pass?)
+        skipped = results.count(&:skipped?)
         {
           "at" => at,
           "total" => results.size,
           "passed" => passed,
-          "failed" => results.size - passed,
+          # A skipped case is neither: counting it as failed is the lie this outcome
+          # exists to stop, and counting it as passed is worse.
+          "failed" => results.size - passed - skipped,
+          "skipped" => skipped,
           "judge_pending" => results.count(&:judge_pending?),
           "cases" => results.map do |r|
             {
               "id" => r.id, "agent" => r.agent, "pass" => r.pass?,
+              "skipped" => r.skipped,
               "judge_pending" => r.judge_pending?, "error" => r.error,
               "checks" => r.checks.map { |c| { "name" => c.name, "pass" => c.pass, "detail" => c.detail } },
               "judge" => (r.judge && { "score" => r.judge.score, "pass" => r.judge.pass, "reason" => r.judge.reason })
@@ -39,9 +44,17 @@ module Insika
       def to_markdown(results, at:)
         h = to_h(results, at: at)
         lines = ["# Eval report — #{at}", "",
-                 "**#{h['passed']}/#{h['total']} passed** · #{h['failed']} failed" \
+                 "**#{h['passed']}/#{h['total'] - h['skipped']} passed** · #{h['failed']} failed" \
+                 "#{" · #{h['skipped']} skipped" if h['skipped'].positive?}" \
                  "#{" · #{h['judge_pending']} awaiting judge (Fase B)" if h['judge_pending'].positive?}", ""]
         results.each do |r|
+          if r.skipped?
+            # WITH the reason, always: "12 skipped" alone is indistinguishable from a
+            # suite that quietly stopped testing anything.
+            lines << "- ⏭️ `#{r.id}` (#{r.agent}) — skipped: #{r.skipped}"
+            next
+          end
+
           lines << "- #{r.pass? ? '✅' : '❌'} `#{r.id}` (#{r.agent})#{'  ⏳ judge pending' if r.judge_pending?}"
           r.failures.each { |c| lines << "    - ❌ #{c.name}: #{c.detail}" }
           if r.judge

@@ -60,6 +60,7 @@ APP = Insika::Server::App.new(
   pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
   a2a: A2A_APP, # nil without opt-in -> A2A routes respond 404
   provisioner: W::PACK_IMPORTER, # POST/DELETE /v1/agents under the gateway_token
+  profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
   onboarding: ONBOARDING, # nil unless INSIKA_ONBOARDING -> onboarding routes 404
   config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"] }
 )
