@@ -7,6 +7,7 @@ require "rack/utils"
 require "json"
 require "time"
 require "date"
+require "yaml"
 require_relative "forms"
 require_relative "nav_icons"
 # The live transcript's SSE body. Shared with the server on purpose: one wire format
@@ -83,7 +84,7 @@ module Studio
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, tool_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
-                    refinement_store: nil, session_secret: nil)
+                    refinement_store: nil, golden_store: nil, session_secret: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -107,7 +108,9 @@ module Studio
           pending_action_store: pending_action_store,
           # refinement runs (RFC-0013 phase A): the ranked failure report per agent.
           # Read-only here; the "Run" button dispatches :run_refinement on the bus.
-          refinement_store: refinement_store
+          refinement_store: refinement_store,
+          # eval cases (RFC-0008 §3.1): read to render; writes go through :write_golden.
+          golden_store: golden_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -511,6 +514,16 @@ module Studio
           r.redirect("/studio/settings?s=edge")
         end
 
+        # Evals (RFC-0008 / RFC-0013 §3.9): the judge PANEL and how it agrees. Its own
+        # form, like models and edge — a save here must not clobber those.
+        r.post "evals" do
+          check_csrf!
+          with_flash("Evals settings saved.") do
+            dispatch(:update_settings, { patch: evals_patch(r) })
+          end
+          r.redirect("/studio/settings?s=evals")
+        end
+
         # LLM providers (sub-resource): CRUD with masked api_key (sentinel).
         r.on "providers" do
           r.post "delete" do
@@ -664,6 +677,30 @@ module Studio
         end
       end
 
+# --- Evals: the cases that grade an agent (RFC-0008 §3.1) -------
+# A case is DATA in the same YAML shape the corpus files use, so what an operator
+# edits here is what a pull request would review. The one loader validates it, on
+# the way in — a malformed case is a red flash, never a silently skipped test.
+r.on "evals" do
+  r.is do
+    r.get { render_evals }
+    r.post do
+      check_csrf!
+      with_flash("Case saved.") { dispatch(:write_golden, golden_patch(r)) }
+      r.redirect("/studio/evals?id=#{Rack::Utils.escape(presence(r.params['id']).to_s)}")
+    end
+  end
+
+  r.on String do |id|
+    id = utf8(id)
+    r.post "delete" do
+      check_csrf!
+      with_flash("Case removed.") { dispatch(:delete_golden, { id: id }) }
+      r.redirect("/studio/evals")
+    end
+  end
+end
+
       # --- Refinement: what broke in real traffic (RFC-0013 phase A) --
       # Read-only page + one button. The button dispatches :run_refinement, which
       # scans the agent's own tasks/sessions/traces and records a ranked report.
@@ -757,7 +794,8 @@ module Studio
           ["Playground", "/studio/playground", :playground],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
-          ["Refinement", "/studio/refinement", :refinement]
+          ["Refinement", "/studio/refinement", :refinement],
+          ["Evals", "/studio/evals", :evals]
         ]]
       ]
     end
@@ -1256,7 +1294,7 @@ module Studio
 
     # --- Settings + LLM providers ----------------------------------
 
-    SETTINGS_SECTIONS = %w[general models edge llm].freeze
+    SETTINGS_SECTIONS = %w[general models edge evals llm].freeze
     def render_settings
       store = insika[:settings_store]
       @settings = store ? store.get : Insika::SettingsStore::DEFAULTS
@@ -1323,6 +1361,29 @@ module Studio
       @approvals = pstore ? pstore.all_open.map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
       view("approvals")
     end
+
+# --- Evals (RFC-0008 §3.1) -------------------------------------
+
+# The stored cases, grouped by agent, plus the one being edited (?id=). Cases whose
+# stored mapping no longer validates are listed separately: a broken case must be
+# visible, because a run silently skips it.
+def render_evals
+  store = insika[:golden_store]
+  @cases = store ? store.all : []
+  @invalid = store ? store.invalid : []
+  @by_agent = @cases.group_by(&:agent).sort.to_h
+  wanted = presence(request.params["id"])
+  @case = wanted && @cases.find { |g| g.id == wanted }
+  @case_yaml = @case ? golden_yaml(@case) : nil
+  view("evals")
+end
+
+# The case as the YAML an operator edits — the same shape `evals/golden/**` holds,
+# so there is one format to learn and a pull request can review what was authored.
+def golden_yaml(golden)
+  YAML.dump({ "id" => golden.id, "agent" => golden.agent,
+              "turns" => golden.turns, "expect" => golden.expect })
+end
 
     # --- Refinement (RFC-0013 phase A) -----------------------------
 

@@ -194,6 +194,57 @@ module Studio
       { "edge" => edge }
     end
 
+    # An eval case arrives as the YAML text the operator edited — the same shape the
+    # corpus files hold, so there is one format to learn and a pull request can review
+    # what was authored. Decoding happens HERE, at the transport edge; the SHAPE is
+    # validated by the one loader inside the store, so both doors agree.
+    def golden_patch(r)
+      parsed = begin
+        YAML.safe_load(r.params["yaml"].to_s, permitted_classes: [], aliases: false)
+      rescue Psych::SyntaxError => e
+        raise Insika::ValidationError, "invalid YAML: #{e.message}"
+      end
+      raise Insika::ValidationError, "the case must be a YAML mapping (id/agent/turns/expect)" unless parsed.is_a?(Hash)
+
+      { case: parsed }
+    end
+
+    # Evals graders (RFC-0013 §3.9). `judges` is one `provider/model` per LINE — a
+    # textarea, because the SIZE of the panel is the point and a fixed pair of fields
+    # would cap it at two. A bare `model` (no slash) is valid: the provider is then
+    # inferred by RubyLLM, same as everywhere else.
+    def evals_patch(r)
+      judges = r.params["judges"].to_s.lines.filter_map do |line|
+        ref = presence(line)
+        next unless ref
+
+        provider, model = ref.include?("/") ? ref.split("/", 2) : [nil, ref]
+        { "provider" => presence(provider), "model" => presence(model) }.compact
+      end.reject { |j| j["model"].nil? }
+
+      {
+        "evals" => {
+          "judges" => judges,
+          "aggregate" => %w[median mean min].include?(r.params["aggregate"]) ? r.params["aggregate"] : "median",
+          # Same strictness as the edge fields: a typo must not silently become "off"
+          # (min_agreement 0 would pass a case no judge liked).
+          "min_agreement" => edge_float(r.params["min_agreement"], "min_agreement"),
+          "quorum" => edge_int(r.params["quorum"], "quorum"),
+          "tolerance" => edge_float(r.params["tolerance"], "tolerance")
+        }.compact
+      }
+    end
+
+    # Strict float, blank = nil (inherit the default). Mirrors edge_int.
+    def edge_float(raw, field)
+      v = presence(raw)
+      return nil unless v
+
+      Float(v)
+    rescue ArgumentError, TypeError
+      raise Insika::ValidationError, "#{field} must be a number (got #{raw.inspect})"
+    end
+
     # Strict integer for the edge fields: blank = nil (off / inherit — intentional),
     # but an UNPARSEABLE value must not silently disable a production limit (the
     # `coerce` drop-to-nil semantics would turn a typo into "off" with a green

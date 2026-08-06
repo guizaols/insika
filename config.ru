@@ -79,7 +79,9 @@ Studio::App.configure(
   pending_action_store: W::PENDING_ACTION_STORE,
   # RFC-0013 phase A: the Refinement page reads the runs; the button dispatches
   # :run_refinement on the bus (the Studio never writes a store directly).
-  refinement_store: W::REFINEMENT_STORE
+  refinement_store: W::REFINEMENT_STORE,
+  # eval cases: the rubric is authored here (writes go through :write_golden).
+  golden_store: W::GOLDEN_STORE
 )
 
 # Serving mode: turns are born as children of a long-lived supervisor (created lazily

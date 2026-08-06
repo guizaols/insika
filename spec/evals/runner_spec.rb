@@ -1,12 +1,10 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../evals/lib/evals/golden"
-require_relative "../../evals/lib/evals/runner"
 
 # Runner orchestration (RFC-0008). Pure over the Transport — a fake makes the
 # replay/evaluate loop testable offline, no server or LLM.
-RSpec.describe Evals::Runner do
+RSpec.describe Insika::Evals::Runner do
   # Returns a scripted TurnResult per message; records the messages it saw.
   class FakeTransport
     attr_reader :seen
@@ -18,17 +16,17 @@ RSpec.describe Evals::Runner do
 
     def turn(agent:, conv:, message:)
       @seen << { agent: agent, conv: conv, message: message }
-      Evals::TurnOutcome.new(result: @script.call(message), ttfb: 1.0, total: 2.0)
+      Insika::Evals::TurnOutcome.new(result: @script.call(message), ttfb: 1.0, total: 2.0)
     end
   end
 
   def golden(overrides = {})
-    Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia",
+    Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia",
                                 "turns" => [{ "user" => "oi" }], "expect" => {} }.merge(overrides))
   end
 
   def ok_result(tools = [])
-    Evals::TurnResult.new(output_text: "ok", tool_calls: tools, error: nil)
+    Insika::Evals::TurnResult.new(output_text: "ok", tool_calls: tools, error: nil)
   end
 
   it "replays a single turn and evaluates it" do
@@ -52,7 +50,7 @@ RSpec.describe Evals::Runner do
 
   it "aborts the conversation on a turn error and fails the case" do
     g = golden("turns" => [{ "user" => "a" }, { "user" => "b" }])
-    t = FakeTransport.new { Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
+    t = FakeTransport.new { Insika::Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
     rc = described_class.new(transport: t).run_case(g)
     expect(rc.result.pass?).to be(false)
     expect(rc.result.error).to eq("timeout")
@@ -63,7 +61,7 @@ RSpec.describe Evals::Runner do
     t = FakeTransport.new { ok_result }
     results = described_class.new(transport: t).run([golden, golden("id" => "c2")])
     expect(results.size).to eq(2)
-    expect(results).to all(be_a(Evals::Runner::RunCase))
+    expect(results).to all(be_a(Insika::Evals::Runner::RunCase))
   end
 
   # A judge stub: records whether it was asked, returns a scripted verdict.
@@ -94,7 +92,7 @@ RSpec.describe Evals::Runner do
   end
 
   it "does NOT invoke the judge on an errored turn" do
-    t = FakeTransport.new { Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
+    t = FakeTransport.new { Insika::Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
     judge = FakeJudge.new(pass: true)
     rc = described_class.new(transport: t, judge: judge)
          .run_case(golden("expect" => { "rubric" => "x" }))
