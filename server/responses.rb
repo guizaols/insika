@@ -21,7 +21,17 @@ module Insika
     module Responses
       module_function
 
-      # -> { agent:, user:, message: } | raise ValidationError.
+      # -> { agent:, user:, message:, origin? } | raise ValidationError.
+      #
+      # `origin` is the consumer declaring WHO wrote the input it is sending. It
+      # matters here more than anywhere: this adapter's `input` is a STRING the
+      # consumer already composed out of context blocks plus the customer's text
+      # (`<memoria> …`, `<store_cep_obrigatorio> …`), so a transcript reader cannot
+      # tell the two apart — the first refinement run over real traffic reported 219
+      # "the customer repeated themselves" that were the engine reading its own
+      # fragment back. A consumer that sends `origin: "engine"` on a composed turn
+      # gets that filtered structurally instead of by a regex on the leading tag.
+      # Omitted = a customer typed it, which is what every turn meant before.
       def parse_request(body, req)
         agent = body[:model].to_s.sub(/\Aopenclaw:/, "")
         agent = req.get_header("HTTP_X_OPENCLAW_AGENT").to_s if agent.empty?
@@ -33,7 +43,9 @@ module Insika
         message = extract_input(body[:input])
         raise Insika::ValidationError, "input empty" if message.strip.empty?
 
-        { agent: agent.strip, user: user, message: message }
+        out = { agent: agent.strip, user: user, message: message }
+        (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
+        out
       end
 
       # V1: `input` is a STRING (the dispatcher composes the blocks + user text). Tolerates

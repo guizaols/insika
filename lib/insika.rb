@@ -2,6 +2,7 @@
 
 require_relative "insika/errors"
 require_relative "insika/coercion"
+require_relative "insika/message_origin"
 require_relative "insika/env_schema"
 require_relative "insika/allowlist"
 require_relative "insika/event"

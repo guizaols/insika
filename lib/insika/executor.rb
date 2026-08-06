@@ -783,6 +783,14 @@ module Insika
       rebuild_command(task).meta["tenant"]
     end
 
+    # Who produced the message this turn is answering (MessageOrigin). Absent for an
+    # ordinary turn — a customer typed it — and declared by the producer when not:
+    # the engine delivering a delegation result, or a consumer that composed the
+    # input out of context blocks. Validated where it enters (Commands::SendMessage).
+    def command_origin(task)
+      Coercion.presence(rebuild_command(task).payload["origin"])
+    end
+
     # Engine memory scope (D3): the Command's EXPLICIT tenant wins (multi-merchant
     # override); otherwise the SESSION (=chat) — engine-owner memory is per-chat.
     # Symmetric to the READ path (Memory provider). One-shot with no tenant -> nil
@@ -1025,8 +1033,11 @@ module Insika
       message = format_delegation_message(deleg)
       command = Insika::Command.build(
         :send_message,
+        # `origin: engine` — this "user" message is Insika writing to itself. Without
+        # it a report reads a delegation result as something the customer said.
         { "agent" => deleg.parent_agent, "message" => message,
-          "session_id" => deleg.parent_session_id, "delegation_id" => deleg.id }
+          "session_id" => deleg.parent_session_id, "delegation_id" => deleg.id,
+          "origin" => Insika::MessageOrigin::ENGINE }
       ).to_h
       task = @task_store.create(command: command, session_id: deleg.parent_session_id)
       emit(:subagent_delivered,
@@ -1143,7 +1154,11 @@ module Insika
       # session nor evict real conversation from the context budget — the
       # :guardrail_blocked event is the audit trail. Content-guardrail blocks
       # keep persisting (RFC-0009: the refusal is part of the conversation).
-      persist_turn(task, profile, state, content,
+      # The reply is the guardrail's, produced with zero LLM calls — so it is NOT the
+      # agent talking, and a report that counts it as the agent repeating itself is
+      # reading the engine's own canned text (the `safe_reply` finding exists exactly
+      # because that text is otherwise indistinguishable in the transcript).
+      persist_turn(task, profile, state, content, reply_origin: MessageOrigin::ENGINE,
                    session: state.guardrail_block&.[](:source) != "edge")
       emit(:task_completed, { task_id: task.id, content: content, usage: state.usage }, task: task)
     end
@@ -1177,8 +1192,8 @@ module Insika
     # So a long session legitimately has a Checkpoint SHORTER than the Session:
     # that is not drift to reconcile — it is the point. Do NOT "fix" the checkpoint
     # to carry the full history (it would defeat the budget) nor evict the session.
-    def persist_turn(task, profile, state, content, session: true)
-      new_messages = turn_transcript(state, content)
+    def persist_turn(task, profile, state, content, session: true, reply_origin: nil)
+      new_messages = turn_transcript(state, content, origin: command_origin(task), reply_origin: reply_origin)
       transcript = flatten_history(state.context.history) + new_messages
 
       @checkpoint_store.save(Insika::Checkpoint.new(
@@ -1223,11 +1238,20 @@ module Insika
     # did not record the turn (workflow, graceful halt, or the specs' FakeChat).
     # The final assistant text is the REDACTED `content` (output_filter, RFC-0009 D3),
     # never the raw text the gem stored.
-    def turn_transcript(state, content)
+    # `origin` (MessageOrigin) travels on the turn's Command and is stamped on the
+    # message it describes: the INCOMING one. It is absent for an ordinary turn, and
+    # present when the engine wrote the text itself (an async delegation result
+    # delivered as a new turn) or when the consumer declared that it composed it.
+    # The reply's origin is not a parameter — the model wrote it, unless a guardrail
+    # short-circuited, which `complete_with_halt` says explicitly.
+    def turn_transcript(state, content, origin: nil, reply_origin: nil)
       recorded = recorded_turn_messages(state)
-      return [{ "role" => "user", "content" => state.message.to_s },
-              { "role" => "assistant", "content" => content.to_s }] if recorded.empty?
+      if recorded.empty?
+        return [MessageOrigin.stamp({ "role" => "user", "content" => state.message.to_s }, origin),
+                MessageOrigin.stamp({ "role" => "assistant", "content" => content.to_s }, reply_origin)]
+      end
 
+      recorded[0] = MessageOrigin.stamp(recorded[0], origin) if recorded[0]["role"] == "user"
       recorded[-1] = recorded[-1].merge("content" => content.to_s) if recorded.last["role"] == "assistant"
       recorded
     end

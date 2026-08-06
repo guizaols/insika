@@ -246,8 +246,9 @@ module Insika
 
         parsed = Responses.parse_request(parse_body(req), req) # ValidationError -> 422
         ensure_session(parsed[:user])
-        message_flow({ agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] },
-                     stream: true, serialize: Responses.method(:frame_for))
+        payload = { agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] }
+        payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
+        message_flow(payload, stream: true, serialize: Responses.method(:frame_for))
       end
 
       # POST /v1/agents — provisions (upserts) an agent from a standardized
