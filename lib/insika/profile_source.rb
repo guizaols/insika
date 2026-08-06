@@ -114,6 +114,9 @@ module Insika
         # sandbox (item 35): a plain config Hash; Sandbox.build tolerates the JSON
         # round-trip (string keys), so no re-symbolization here. nil = absent.
         sandbox: h[:sandbox],
+        # refinement (RFC-0013): a plain config Hash read with string keys by the
+        # RunRefinement handler; nil round-trips as nil (= report-only).
+        refinement: h[:refinement],
         metadata: h[:metadata] || {}
       )
     end

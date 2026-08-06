@@ -176,6 +176,24 @@ the model:
   [Deploy](DEPLOY.md)). Rotating the API bearer requires updating both the runtime
   and every consumer in the same step.
 
+## Reading traffic back (refinement)
+
+A refinement run reads an agent's own transcripts and tool traces to report what
+broke ([Refinement](REFINEMENT.md)). Two properties keep that from becoming a
+second copy of your customers' data:
+
+- **It quotes as little as possible, redacted.** Only the `repetition` finding
+  carries customer words, and every snippet goes through the same detectors that
+  redact a customer-facing turn (formatted CPF/CNPJ, API secrets). Tool arguments
+  and results are never copied — only the normalized error signature is. That is
+  not a general PII scrubber: a phone number typed into a chat can survive into a
+  snippet, so the page sits behind the Studio login like the transcripts do.
+- **Provenance is ids.** A run record stores session ids, never their contents, and
+  the events it emits carry counts only.
+
+A run also cannot change anything: it calls no model and writes nothing but its own
+report. Editing an agent from its traffic is a later, separately gated feature.
+
 ## Config discipline
 
 Configuration is validated against a schema of known keys at boot. An unknown key

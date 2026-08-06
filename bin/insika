@@ -26,6 +26,7 @@ module Insika
       case command
       when "doctor"  then doctor(argv)
       when "env"     then env(argv)
+      when "refine"  then refine(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -43,6 +44,7 @@ module Insika
         Commands:
           doctor [--fix] [--json]   diagnose the deployment configuration (item 23)
           env    [--json]           list known config keys + current (masked) values
+          refine --agent ID [...]   report what broke in an agent's real traffic (RFC-0013)
           version                   print the engine version
           help                      show this help
 
@@ -98,7 +100,94 @@ module Insika
       end
     end
 
+    # insika refine --agent ID [--last-sessions N] [--since ISO8601] [--full] [--json]
+    #
+    # RFC-0013 phase A: reads the agent's own traffic and records a ranked failure
+    # report. Read-only with respect to the agent — it writes only the run record.
+    # There is no scheduler in the engine (§3.10): this command and the Studio button
+    # are how a run starts, and a cron that wants one calls this.
+    def refine(argv)
+      opts = { json: false, full: false }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika refine --agent ID [options]"
+        o.on("--agent ID", "agent whose traffic to read (required)") { |v| opts[:agent] = v }
+        o.on("--last-sessions N", Integer, "read the N most recent conversations") { |v| opts[:last_sessions] = v }
+        o.on("--since ISO8601", "read only turns from this instant on") { |v| opts[:since] = v }
+        o.on("--full", "ignore the previous run and read the whole window") { opts[:full] = true }
+        o.on("--json", "emit the report as JSON") { opts[:json] = true }
+      end.parse!(argv)
+
+      abort "insika refine: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+
+      # A misspelled agent or a bad window is operator error, not a bug: one line and
+      # exit 2 (like an unknown command), never a Ruby backtrace. Exit 1 stays what it
+      # means everywhere else in this CLI — "it ran and found trouble".
+      run = begin
+        run_refinement(opts)
+      rescue Insika::Error, ArgumentError => e
+        warn "insika refine: #{e.message}"
+        exit 2
+      end
+      if opts[:json]
+        require "json"
+        puts JSON.pretty_generate(run.to_h)
+      else
+        puts refine_report(run)
+      end
+      exit(run.status == :failed ? 1 : 0)
+    end
+
     # -- helpers -------------------------------------------------------
+
+    # Builds the handler over the real durable backend — same "no app boot" rule as
+    # `doctor`: no DEEPSEEK, no seeding, no reactor. Safe against a live volume,
+    # because the only write is the run record.
+    def run_refinement(opts)
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      profiles = Insika::StoredProfileSource.new(config_store: config_store)
+      handler = Insika::Commands::RunRefinement.new(
+        profiles: profiles,
+        refinement_store: Insika::RefinementStore.new(store: backend),
+        collector: Insika::Refinement::EvidenceCollector.new(
+          task_store: Insika::TaskStore.new(store: backend),
+          session_store: Insika::SessionStore.new(store: backend),
+          tool_trace_store: Insika::ToolTraceStore.new(store: backend),
+          profiles: profiles,
+          settings_store: Insika::SettingsStore.new(config_store: config_store)
+        ),
+        event_stream: Insika::EventStream.new
+      )
+      handler.call(Insika::Command.build(:run_refinement, {
+                                          agent: opts[:agent], since: opts[:since],
+                                          last_sessions: opts[:last_sessions], full: opts[:full]
+                                        }.compact, transport: :cli))
+    end
+
+    INDENT = " " * 23 # aligns the provenance line under the finding's title
+
+    def refine_report(run)
+      head = "#{run.agent_id} — #{run.status} (#{refine_window(run.window)})"
+      return "#{head}\n  #{run.error}" if run.status == :failed
+      return "#{head}\n  nothing found in this window" if run.findings.empty?
+
+      rows = run.findings.map do |f|
+        line = format("  %-14s ×%-4d %s", f["kind"], f["count"], f["title"])
+        line += "\n#{INDENT}#{f['detail']}" if f["detail"]
+        line += "\n#{INDENT}sessions: #{Array(f['sessions']).join(', ')}" if Array(f["sessions"]).any?
+        line
+      end
+      ([head] + rows).join("\n")
+    end
+
+    # An empty window in the record means "the collector's own default" — resolve it
+    # for display instead of printing the word "default".
+    def refine_window(window)
+      return "since #{window['since']}" if window["since"]
+
+      n = window["last_sessions"] || Insika::Refinement::EvidenceCollector::DEFAULT_WINDOW
+      "last #{n} session(s)"
+    end
 
     # Config stores over the real durable backend — no app boot / no DEEPSEEK.
     def build_doctor

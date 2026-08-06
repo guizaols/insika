@@ -38,6 +38,7 @@ Every link below is raw markdown — the same files the human-facing site render
 - [Sandbox](https://raw.githubusercontent.com/guizaols/insika/main/docs/SANDBOX.md): the confined-execution primitive for untrusted tool code.
 - [Deploy](https://raw.githubusercontent.com/guizaols/insika/main/docs/DEPLOY.md): containerized deploy under Falcon, durable SQLite volume, tokens and environment.
 - [Observability](https://raw.githubusercontent.com/guizaols/insika/main/docs/OBSERVABILITY.md): the event stream, plus opt-in OpenTelemetry — turns as traces and metrics, attribute conventions, dashboard recipes.
+- [Refinement](https://raw.githubusercontent.com/guizaols/insika/main/docs/REFINEMENT.md): reading an agent's own production traffic back as a ranked failure report — the findings, the window, the privacy rules, and why there is no scheduler.
 
 ## Proof
 

@@ -67,6 +67,14 @@ module Insika
     #                                   deployment builds a `local` sandbox by default). It is
     #                                   CONFIG, never a policy — it does not decide security by
     #                                   itself; the FS boundary + approvals do.
+    :refinement,                      # self-improvement config (RFC-0013 §3.8):
+    #                                   { mode: "report"|"propose"|"auto_apply", window: {…},
+    #                                   files: [allowlist], max_findings:, … }. nil/absent =
+    #                                   REPORT-ONLY (phase A writes nothing to the agent, so
+    #                                   reading your own traces needs no opt-in); `propose`
+    #                                   and above must be enabled explicitly. It is CONFIG,
+    #                                   never a policy — the write allowlist it carries is
+    #                                   enforced by the applier, not by this field.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
     #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
@@ -96,7 +104,8 @@ module Insika
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil,
-                   params: {}, model_policy: nil, guardrails: nil, sandbox: nil, metadata: {})
+                   params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
+                   refinement: nil, metadata: {})
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -118,6 +127,7 @@ module Insika
         model_policy: Coercion.deep_stringify(model_policy),
         guardrails: Coercion.deep_stringify(guardrails),
         sandbox: Coercion.deep_stringify(sandbox),
+        refinement: Coercion.deep_stringify(refinement),
         metadata: Coercion.deep_stringify(metadata || {})
       )
     end

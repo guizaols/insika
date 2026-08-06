@@ -93,7 +93,7 @@ RSpec.describe Studio::App do
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {},
-                tasks: {}, pendings: [], checkpoints: {}, event_stream: nil)
+                tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], event_stream: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -117,6 +117,15 @@ RSpec.describe Studio::App do
     raw_data_tools.each do |name, definition|
       cfg.put("tools", name, { "definition" => definition, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
     end
+    # RFC-0013 phase A: refinement runs, seeded through the REAL store's own API
+    # (create + complete) so the page is exercised against the record shape the
+    # collector actually writes. refinement_runs: [{ agent:, findings: [...] }, …].
+    refinement_store = Insika::RefinementStore.new(store: Insika::Stores::Memory.new)
+    refinement_runs.each_with_index do |run, i|
+      row = refinement_store.create(agent_id: run[:agent], window: run[:window] || { "last_sessions" => 200 },
+                                    at: format("2026-08-0%dT10:00:00Z", i + 1))
+      refinement_store.complete(row.id, findings: run[:findings] || [])
+    end
     # REAL ToolTraceStore (debug §3.1): the session view reads from it.
     trace_store = Insika::ToolTraceStore.new(store: Insika::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
@@ -136,6 +145,7 @@ RSpec.describe Studio::App do
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
+      refinement_store: refinement_store,
       session_secret: "x" * 64
     )
     [app, bus]
@@ -1580,6 +1590,66 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/approvals").body)
     client.post("/approvals/p1", params: { "decision" => "sudo", "_csrf" => csrf })
     expect(bus.last(:approve_action).payload[:decision]).to eq("approved")
+  end
+
+  # --- Refinement (RFC-0013 phase A) ---------------------------------------
+  # Read-only page + one button. There is no scheduler in the engine, so the button
+  # (and the CLI) are how a run starts.
+
+  it "shows the refinement empty-state before an agent has ever been run" do
+    app, = build_app
+    res = login(app).get("/refinement")
+    expect(res.status).to eq(200)
+    expect(res.body).to include("No run yet")
+  end
+
+  it "renders the latest report: kind, count, title and a link to the session" do
+    finding = { "kind" => "tool_error", "key" => "tool_error:shipping_quote:cep is required",
+                "title" => "shipping_quote failed: cep is required", "count" => 4,
+                "severity" => 3, "sessions" => %w[sess-abc123456789], "detail" => nil }
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [finding] }])
+
+    res = login(app).get("/refinement?agent=bia")
+
+    expect(res.body).to include("tool_error")
+    expect(res.body).to include("shipping_quote failed: cep is required")
+    expect(res.body).to include("×4")
+    expect(res.body).to include("/studio/sessions/sess-abc123456789")
+  end
+
+  it "says so when the window was clean (a run with no findings)" do
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [] }])
+    expect(login(app).get("/refinement?agent=bia").body).to include("Nothing found in this window")
+  end
+
+  it "POST /refinement dispatches :run_refinement for the chosen agent" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/refinement").body)
+
+    res = client.post("/refinement", params: { "agent" => "chef", "_csrf" => csrf })
+
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/refinement?agent=chef")
+    expect(bus.last(:run_refinement).payload).to eq(agent: "chef", full: false)
+  end
+
+  it "the full-window checkbox reaches the command as a boolean" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/refinement").body)
+
+    client.post("/refinement", params: { "agent" => "bia", "full" => "1", "_csrf" => csrf })
+
+    expect(bus.last(:run_refinement).payload[:full]).to be(true)
+  end
+
+  it "POST /refinement without the CSRF token never dispatches" do
+    app, bus = build_app
+    client = login(app)
+    client.get("/refinement")
+    expect(client.post("/refinement", params: { "agent" => "bia" }).status).to eq(403)
+    expect(bus.types).not_to include(:run_refinement)
   end
 
   it "redirects an approval back to a safe local path, ignoring an external back" do

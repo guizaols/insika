@@ -189,6 +189,17 @@ levels map to the provider's thinking-effort parameter. This is a control
 primitive, not a latency lever — turning reasoning off does not necessarily speed
 up a turn, because most of a turn's latency is the provider itself, not thinking.
 
+## Refinement
+
+`refinement` configures how an agent's own traffic is read back as a report — what
+broke, how often, in which conversations. Unlike the layers above it grants
+nothing: a run calls no model and edits nothing, so it needs no opt-in and an
+absent key still reports. See [Refinement](REFINEMENT.md).
+
+```ruby
+refine window: { last_sessions: 200 }, max_findings: 20
+```
+
 ## Delegation (subagents)
 
 An agent can delegate to **subagents**: named child agents it may invoke as a

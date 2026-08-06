@@ -76,7 +76,10 @@ Studio::App.configure(
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
   # §12 G5: tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
-  pending_action_store: W::PENDING_ACTION_STORE
+  pending_action_store: W::PENDING_ACTION_STORE,
+  # RFC-0013 phase A: the Refinement page reads the runs; the button dispatches
+  # :run_refinement on the bus (the Studio never writes a store directly).
+  refinement_store: W::REFINEMENT_STORE
 )
 
 # Serving mode: turns are born as children of a long-lived supervisor (created lazily

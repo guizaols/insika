@@ -50,6 +50,7 @@ module Insika
       "sandbox" => "docs/SANDBOX.md",
       "benchmark" => "docs/BENCHMARK.md",
       "observability" => "docs/OBSERVABILITY.md",
+      "refinement" => "docs/REFINEMENT.md",
       "loadtest" => "docs/LOADTEST.md"
     }.freeze
 
