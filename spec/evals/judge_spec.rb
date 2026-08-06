@@ -62,6 +62,31 @@ RSpec.describe Insika::Evals::Judge do
     expect(j.score(golden: golden("rubric" => "x"), result: result).pass).to be(true)
   end
 
+  # RFC-0014 §3.3, the judge's half of `policy`. How much a store wants its agent to
+  # ask before acting is a per-store decision; a judge that is not TOLD it guesses,
+  # and would be wrong for half the stores.
+  describe "the store's policy in the prompt" do
+    def prompt_for(expect)
+      seen = nil
+      described_class.new(ask: lambda { |p|
+        seen = p
+        '{"score": 1}'
+      }).score(golden: golden(expect), result: result)
+      seen
+    end
+
+    it "states the policy in the same words the deterministic layer checks" do
+      prompt = prompt_for("rubric" => "x", "policy" => "ask_once")
+
+      expect(prompt).to include("STORE POLICY")
+      expect(prompt).to include("AT MOST ONE question per reply")
+    end
+
+    it "says nothing when the store has no opinion — a default would invent one" do
+      expect(prompt_for("rubric" => "x")).not_to include("STORE POLICY")
+    end
+  end
+
   # RFC-0013 §3.9: `quorum` samples ONE model N times (its variance); a PANEL asks
   # different models (their disagreement), which is the signal worth having.
   describe "a panel of distinct judges" do

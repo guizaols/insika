@@ -42,6 +42,34 @@ expect:
 Turns replay **in order** under one conversation, so a case can build context ("what
 about the shipping?" after "I want the 70% bar"); the assertions run on the last turn.
 
+### `policy` — how much the agent should ask before acting
+
+One optional key, because this is the thing a rubric cannot carry alone. Whether the
+agent should establish the objective before searching, or act on the first plausible
+reading, is a decision **your store** makes — a universal rule would be wrong for half
+of them. Declare it and two things happen: a check that costs nothing runs, and the
+judge is told the rule instead of guessing it.
+
+```yaml
+expect:
+  policy: ask_once
+```
+
+| policy | the check | the judge is told |
+|---|---|---|
+| `ask_once` | no reply asks more than one question | two questions in one message is a failure |
+| `investigate_first` | turn 1 asks something and calls no tool | ask on a vague request, don't search immediately |
+| `act_fast` | turn 1 calls a tool | asking what a search would answer is a failure |
+
+Omit it and only the rubric decides. Unlike the other assertions, a policy is checked
+on **every** turn — "one question per reply" is a rule about each reply, and in the
+case that motivated this the violation was on the first one.
+
+Question counting is deliberately crude: a run of `?` counts once, and URLs are dropped
+so a tracking link's query string is not read as the agent asking something. It is a
+policy signal, not grammar — and crude was enough to catch an agent breaking a rule
+written in its own prompt, twice, with no model in the loop.
+
 Cases live in two places, and it is the same YAML in both:
 
 - **`evals/golden/**`** in the repo — the curated corpus, reviewable in a pull request,

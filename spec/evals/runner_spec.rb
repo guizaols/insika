@@ -48,6 +48,23 @@ RSpec.describe Insika::Evals::Runner do
     expect(t.seen.map { |s| s[:conv] }.uniq).to eq(["eval-c"])
   end
 
+  # The tool/content assertions read the last turn; the policy checks read every one.
+  # "at most one question per reply" is a rule about EACH reply, and the violation the
+  # feature exists for was on turn 1 — evaluating only the last one would miss it.
+  it "hands EVERY turn to the policy checks, not just the last" do
+    g = golden("turns" => [{ "user" => "oi" }, { "user" => "e aí?" }],
+               "expect" => { "policy" => "ask_once" })
+    t = FakeTransport.new do |msg|
+      msg == "oi" ? Insika::Evals::TurnResult.new(output_text: "pra você ou presente? qual tamanho?",
+                                                  tool_calls: [], error: nil) : ok_result
+    end
+
+    rc = described_class.new(transport: t).run_case(g)
+
+    expect(rc.result.pass?).to be(false)
+    expect(rc.result.failures.first.detail).to include("turn 1")
+  end
+
   it "aborts the conversation on a turn error and fails the case" do
     g = golden("turns" => [{ "user" => "a" }, { "user" => "b" }])
     t = FakeTransport.new { Insika::Evals::TurnResult.new(output_text: "", tool_calls: [], error: "timeout") }
