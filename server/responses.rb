@@ -68,20 +68,33 @@ module Insika
           failed("task cancelled") + done
         when :error
           failed(event.data[:message] || "error") + done
-        when :thinking, :intermediate
-          # NEITHER is the answer, and this consumer streams every text delta straight
-          # to the end customer (achei-b2b's OpenclawDispatcher accumulates the deltas
-          # into the WhatsApp reply), so anything mapped here would be read out loud.
+        when :thinking
+          # The provider's reasoning. Internal unless the AGENT opted in
+          # (`edge_stream thinking: true`), which tags the event. Even then it does
+          # NOT become answer text: it gets the Responses reasoning frame, so a
+          # consumer that only accumulates `output_text` deltas — achei-b2b's
+          # dispatcher, which turns them into one WhatsApp message — is unaffected,
+          # and one that renders reasoning has something to render.
+          if public_delta(event)
+            sse("response.reasoning_summary_text.delta",
+                { type: "response.reasoning_summary_text.delta", delta: event.data[:delta].to_s })
+          end
+        when :intermediate
+          # The model's own prose that did not turn out to be the answer — the
+          # narration of a message that also called a tool, or the reasoning-in-content
+          # a model emits when it has no tool to call. A real store's prompt sent 132
+          # deltas of an English monologue this way before TurnOutput held them back.
           #
-          # :thinking is the provider's reasoning channel. :intermediate is the model's
-          # own prose that did not turn out to be the answer — the narration of a
-          # message that also called a tool, or the reasoning-in-content a model emits
-          # when it has no tool to call. A real store's prompt sent 132 deltas of an
-          # English monologue this way before TurnOutput started holding them back.
-          #
-          # Both stay internal: /studio/events + the Studio + the trace. Explicit (not
-          # a fall-through) to keep the closed catalog honest.
-          nil
+          # NAMESPACED on purpose when published. There is no `response.*` event for
+          # "text the assistant said that is not the answer": in the real protocol that
+          # text IS `output_text.delta`, told apart only by an output-item index this
+          # adapter does not carry. So a `response.*` type here would be a lie a strict
+          # client would believe. `insika.*` is obviously ours and unknown types are
+          # ignored — which is the safe failure.
+          if public_delta(event)
+            sse("insika.intermediate.delta",
+                { type: "insika.intermediate.delta", delta: event.data[:delta].to_s })
+          end
         when :guardrail_blocked, :guardrail_flagged
           # RFC-0009: audit events with no OpenAI Responses counterpart. On a BLOCK
           # the safe reply still reaches the consumer through the normal :content
@@ -92,6 +105,12 @@ module Insika
           nil
         end
       end
+
+      # Did the AGENT opt this channel in? The Executor tags the event (`edge_stream`)
+      # because this mapper is pure and static — no agent, no stores, no state. An
+      # untagged event is internal, which is the default and the safe reading — and
+      # "not published" must be nil, like every other unmapped event in the catalog.
+      def public_delta(event) = event.data[:public] == true
 
       def completed(event)
         response = {}

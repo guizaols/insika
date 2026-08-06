@@ -46,9 +46,13 @@ module Insika
 
     # filter: Safety::OutputFilter | nil (RFC-0009 §3.2 — nil = stream untouched).
     # emit:   ->(type, data) — the Executor's emitter, already bound to the task.
-    def initialize(filter:, emit:)
+    # public_intermediate: the agent opted this channel in (`edge_stream`), so the
+    #   narration is TAGGED and `/v1/responses` gives it its own frame. Default false:
+    #   an internal event stays internal unless someone said otherwise.
+    def initialize(filter:, emit:, public_intermediate: false)
       @filter = filter
       @emit = emit
+      @public_intermediate = public_intermediate
       @pending = +""           # text of the message currently streaming
       @last_intermediate = +"" # text of the last message that turned out NOT to be the answer
       @candidate = nil
@@ -62,7 +66,7 @@ module Insika
       return if slice.empty?
 
       @pending << slice
-      @emit.call(:intermediate, { delta: slice })
+      emit_intermediate(slice)
     end
 
     # A message ended (RubyLLM `after_message`). Only an assistant message decides
@@ -87,7 +91,7 @@ module Insika
       return if tail.empty?
 
       @pending << tail
-      @emit.call(:intermediate, { delta: tail })
+      emit_intermediate(tail)
     end
 
     # Emits the answer and returns it. Empty text emits no event — an empty turn is
@@ -105,6 +109,15 @@ module Insika
     def halt_text = @last_intermediate.empty? ? @pending : @last_intermediate
 
     private
+
+    # `public: true` is the whole difference between an event the edge drops and one
+    # it translates. The flag travels on the EVENT because `frame_for` is a pure
+    # static mapper with no agent in scope — the profile is read once, here.
+    def emit_intermediate(text)
+      data = { delta: text }
+      data[:public] = true if @public_intermediate
+      @emit.call(:intermediate, data)
+    end
 
     def assistant?(message) = field(message, :role).to_s == "assistant"
 
