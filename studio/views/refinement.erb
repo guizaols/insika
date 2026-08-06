@@ -1,0 +1,92 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>refinement</span></nav>
+    <h1>Refinement<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
+  </div>
+  <a class="btn" href="/studio/chats">Chats →</a>
+</header>
+
+<% if @agents.empty? %>
+  <div class="empty">No agents yet. Create one first — a refinement run reads an agent's own traffic.</div>
+<% else %>
+  <div class="card">
+    <form method="post" action="/studio/refinement" class="actions">
+      <%== csrf_tag %>
+      <label>
+        Agent
+        <select name="agent">
+          <% @agents.each do |id| %>
+            <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
+          <% end %>
+        </select>
+      </label>
+      <label title="Ignore the previous run and read the full window instead of only what happened since.">
+        <input type="checkbox" name="full" value="1"> full window
+      </label>
+      <button type="submit" class="primary">Run</button>
+    </form>
+    <div class="skill-desc muted">
+      A run reads this agent's own tasks, transcripts and tool traces and records what
+      broke, ranked. It never edits the agent and never calls a model.
+    </div>
+  </div>
+
+  <% if @agent && @agents.size > 1 %>
+    <div class="filter-bar">
+      <% @agents.each do |id| %>
+        <a class="btn" href="/studio/refinement?agent=<%= Rack::Utils.escape(id) %>"<%== ' aria-current="page"' if id == @agent %>><%= id %></a>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if @run.nil? %>
+    <div class="empty">No run yet for <span class="mono"><%= @agent %></span>. Press Run to read the last conversations.</div>
+  <% else %>
+    <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %> · <%= @run.finished_at || @run.started_at %></span></h2>
+
+    <% if @run.status == :failed %>
+      <div class="empty">This run failed: <span class="mono"><%= @run.error %></span></div>
+    <% elsif @run.findings.empty? %>
+      <div class="empty">Nothing found in this window. Either traffic was clean, or the window was empty.</div>
+    <% else %>
+      <div class="card">
+        <ul class="history">
+          <% @run.findings.each do |f| %>
+            <li>
+              <span class="pill"><%= f["kind"] %></span>
+              <span class="mono">×<%= f["count"] %></span>
+              <span class="preview"><%= f["title"] %></span>
+              <% if f["detail"] %><div class="skill-desc muted"><%= f["detail"] %></div><% end %>
+              <% if Array(f["sessions"]).any? %>
+                <div class="skill-desc muted">
+                  <% Array(f["sessions"]).each do |sid| %>
+                    <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid[0, 12] %></a>
+                  <% end %>
+                </div>
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+  <% end %>
+
+  <% if @runs.any? %>
+    <h2>Runs<span class="sub">most recent first</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @runs.each do |run| %>
+          <li>
+            <span class="pill <%= run.status == :failed ? 'err' : 'ok' %>"><%= run.status %></span>
+            <span class="mono"><%= run.id[0, 12] %></span>
+            <span class="preview muted">
+              <%= run.findings.size %> finding(s) ·
+              window <%= refinement_window(run.window) %> ·
+              <%= run.started_at %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+<% end %>

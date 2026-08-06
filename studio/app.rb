@@ -83,7 +83,7 @@ module Studio
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, tool_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
-                    session_secret: nil)
+                    refinement_store: nil, session_secret: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -104,7 +104,10 @@ module Studio
           # task/checkpoint/pending stores to render; controls (pause/resume/
           # cancel/approve) dispatch on the bus — parity with server/admin.
           task_store: task_store, checkpoint_store: checkpoint_store,
-          pending_action_store: pending_action_store
+          pending_action_store: pending_action_store,
+          # refinement runs (RFC-0013 phase A): the ranked failure report per agent.
+          # Read-only here; the "Run" button dispatches :run_refinement on the bus.
+          refinement_store: refinement_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -661,6 +664,23 @@ module Studio
         end
       end
 
+      # --- Refinement: what broke in real traffic (RFC-0013 phase A) --
+      # Read-only page + one button. The button dispatches :run_refinement, which
+      # scans the agent's own tasks/sessions/traces and records a ranked report.
+      # Phase A never edits the agent, so there is nothing to approve here yet.
+      r.on "refinement" do
+        r.is do
+          r.get { render_refinement }
+          r.post do
+            check_csrf!
+            agent = presence(r.params["agent"])
+            payload = { agent: agent, full: r.params["full"] == "1" }
+            control_action(:run_refinement, payload, ok: "Refinement run finished.")
+            r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
+          end
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
@@ -736,7 +756,8 @@ module Studio
           ["Chats", "/studio/chats", :chats],
           ["Playground", "/studio/playground", :playground],
           ["Tasks", "/studio/tasks", :tasks],
-          ["Approvals", "/studio/approvals", :approvals]
+          ["Approvals", "/studio/approvals", :approvals],
+          ["Refinement", "/studio/refinement", :refinement]
         ]]
       ]
     end
@@ -1303,6 +1324,28 @@ module Studio
       view("approvals")
     end
 
+    # --- Refinement (RFC-0013 phase A) -----------------------------
+
+    # The agent's latest failure report + its run history. Empty-state when no store
+    # was injected or the agent has never been run — the page is the invitation to
+    # run it, so there is nothing to hide behind a nil.
+    def render_refinement
+      @agents = insika[:profile_source].ids.sort
+      @agent = presence(request.params["agent"]) || @agents.first
+      store = insika[:refinement_store]
+      @runs = @agent && store ? store.for_agent(@agent, limit: 10) : []
+      @run = @runs.find(&:terminal?)
+      view("refinement")
+    end
+
+    # A run's window in words. An EMPTY window means "the collector's own default" —
+    # resolve it for the operator instead of rendering a blank.
+    def refinement_window(window)
+      return "since #{window['since']}" if window["since"]
+
+      "last #{window['last_sessions'] || Insika::Refinement::EvidenceCollector::DEFAULT_WINDOW} conversation(s)"
+    end
+
     # An operator control (pause/resume/cancel/approve): audits the ATTEMPT to the
     # shared EventStream BEFORE dispatching — accountability survives a Command
     # failure (parity with server/admin's `act`) — then dispatches via the bus with
@@ -1320,7 +1363,7 @@ module Studio
       stream.emit(Insika::Event.new(
                     type: :operator_action,
                     data: { action: type.to_s,
-                            target: payload.slice(:task_id, :pending_id, :decision),
+                            target: payload.slice(:task_id, :pending_id, :decision, :agent),
                             operator: operator_label },
                     meta: { task_id: payload[:task_id], at: Time.now.utc.iso8601 }
                   ))

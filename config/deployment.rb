@@ -68,6 +68,7 @@ module Deploy
     CHECKPOINT_STORE     = SPINE.checkpoint_store
     PENDING_ACTION_STORE = SPINE.pending_action_store
     MEMORY_STORE         = SPINE.memory_store
+    REFINEMENT_STORE     = SPINE.refinement_store
     REGISTRY             = SPINE.code_tool_registry
     WORKFLOW_REGISTRY    = SPINE.workflow_registry
     POLICY_REGISTRY      = SPINE.policy_registry
@@ -229,6 +230,18 @@ module Deploy
     BUS.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     BUS.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     BUS.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    # Refinement (RFC-0013 phase A): reads the agent's OWN traffic (tasks + sessions +
+    # tool traces) and records a ranked failure report. Read-only — no model call and
+    # no edit to the agent — so it needs no per-agent opt-in; `propose`/`auto_apply`
+    # (phase C) will. Settings are injected so the collector recognizes the edge
+    # limiter's canned reply as evidence.
+    REFINEMENT_COLLECTOR = Insika::Refinement::EvidenceCollector.new(
+      task_store: TASK_STORE, session_store: SESSION_STORE,
+      tool_trace_store: TOOL_TRACE_STORE, profiles: PROFILE_SOURCE,
+      settings_store: SETTINGS_STORE
+    )
+    BUS.register(:run_refinement, Insika::Commands::RunRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, collector: REFINEMENT_COLLECTOR, event_stream: EVENT_STREAM))
+
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))

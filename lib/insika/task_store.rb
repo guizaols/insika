@@ -42,12 +42,15 @@ module Insika
 
     # -> Task (status :queued). command: Hash ({type:, payload:, meta:}) or
     # any object that responds to to_h (e.g. Insika::Command).
-    # ArgumentError if the id already exists.
-    def create(command:, session_id: nil, id: SecureRandom.uuid)
+    # ArgumentError if the id already exists. `at` (ISO8601) is injectable for
+    # deterministic tests — the timestamp has SECOND precision, so two tasks created
+    # in the same second are indistinguishable by time to any reader ordering by it
+    # (same rationale as MemoryStore#add_note).
+    def create(command:, session_id: nil, id: SecureRandom.uuid, at: nil)
       key = key_for(id)
       raise ArgumentError, "task already exists: #{id}" unless @store.get(SCOPE, key).nil?
 
-      now = timestamp
+      now = at || timestamp
       record = {
         "id" => id.to_s,
         "status" => "queued",

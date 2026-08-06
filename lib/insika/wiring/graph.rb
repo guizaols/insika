@@ -38,6 +38,10 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
+        # RFC-0013 phase A: refinement RUNS (reports over real traffic). Runtime data,
+        # same backend as sessions/tasks — the collector and the command that write it
+        # are the root's business (deployment-only, like the memory commands).
+        refinement_store     = Insika::RefinementStore.new(store: backend)
 
         code_tool_registry = Insika::ToolRegistry.new
         workflow_registry  = Insika::WorkflowRegistry.new
@@ -53,7 +57,8 @@ module Insika
           session_store: session_store, task_store: task_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
-          memory_store: memory_store, code_tool_registry: code_tool_registry,
+          memory_store: memory_store, refinement_store: refinement_store,
+          code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new
         )
@@ -105,7 +110,8 @@ module Insika
           session_store: spine.session_store, task_store: spine.task_store,
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
           delegation_store: spine.delegation_store,
-          memory_store: spine.memory_store, code_tool_registry: spine.code_tool_registry,
+          memory_store: spine.memory_store, refinement_store: spine.refinement_store,
+          code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
           policy_registry: spine.policy_registry, capability_registry: spine.capability_registry,
           tool_catalog: tool_catalog, skill_catalog: skill_catalog, prompt_catalog: prompt_catalog,
@@ -142,7 +148,8 @@ module Insika
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
-        :pending_action_store, :delegation_store, :memory_store, :code_tool_registry,
+        :pending_action_store, :delegation_store, :memory_store, :refinement_store,
+        :code_tool_registry,
         :workflow_registry, :policy_registry, :capability_registry, :hooks, keyword_init: true
       )
 
@@ -152,7 +159,7 @@ module Insika
       Result = Struct.new(
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
-        :memory_store,
+        :memory_store, :refinement_store,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,
