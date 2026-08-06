@@ -15,9 +15,10 @@ that stream: it translates the events into OTEL **spans** and **metrics**. The c
 (Executor, tools) never gains an OTEL call — events observe, telemetry translates.
 It's the same "events observe" principle the SSE surface already uses.
 
-Not every event on the stream is a turn. Operator actions and refinement runs
-(`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md))
-travel the same stream and are **ignored** by the bridge: they open no span and
+Not every event on the stream is a turn. Operator actions, refinement runs
+(`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md)) and
+authoring writes (`:golden_written`, `:agent_file_written`, …) travel the same stream
+and are **ignored** by the bridge: they open no span and
 touch no instrument, because they are not part of a turn's latency or cost. Any
 other subscriber still sees them.
 
