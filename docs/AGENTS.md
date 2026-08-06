@@ -63,6 +63,11 @@ turn as Server-Sent Events.
 ## The AgentProfile
 
 A profile is built through one front door — `AgentProfile.build(id:, model: nil, …)`.
+A prompt file is **text**. Passing a structured value where the markdown belongs —
+a `{"content": …}` wrapper in a pack, or a store entry read and written back — is
+rejected, not coerced: `to_s` on a Hash produces Ruby's `#inspect`, and a prompt made
+of that is served on every turn while looking healthy.
+
 Its free-form hashes (`params`, `guardrails`, `sandbox`, `metadata`, …) are
 normalized to string keys once, at build time; no reader downstream does dual-key
 lookups.

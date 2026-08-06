@@ -24,7 +24,12 @@ module Insika
         profile = @profile_source.fetch(agent_id) ||
                   (raise Insika::NotFoundError, "agent '#{agent_id}' not found")
 
-        entry = @agent_files.write(agent_id, file, p[:content].to_s, create_only: !!p[:create_only])
+        # `.to_s` used to be unconditional here, which is how a JSON body carrying an
+        # OBJECT for `content` became a prompt file holding Ruby's #inspect of it. The
+        # store refuses that now; keep the coercion for scalars (a form always sends a
+        # String, and nil means "clear the file").
+        content = Insika::AgentFileStore.text!(p[:content], agent_id, file).to_s
+        entry = @agent_files.write(agent_id, file, content, create_only: !!p[:create_only])
         # Writing a prompt registers it in prompt_files — otherwise the Prompt provider
         # would never load it. It's the Command's job, not the dispatcher's.
         register_prompt_file(profile, file)

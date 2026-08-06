@@ -58,11 +58,12 @@ module Insika
     end
 
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
-                   backend: nil, extra_env_specs: [])
+                   agent_file_store: nil, backend: nil, extra_env_specs: [])
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
       @tool_store = tool_store
+      @agent_file_store = agent_file_store
       @backend = backend
       @extra_env_specs = extra_env_specs
     end
@@ -82,7 +83,7 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_data_tools]
+                    check_admin_token check_data_tools check_prompt_files]
 
     def safe(check)
       Array(send(check))
@@ -158,6 +159,35 @@ module Insika
     # This check is that drop's only report. The one legacy case is auto-fixable: a
     # flat param typed bare `array`, which used to mean "list of strings" — the fix
     # writes that meaning down as `array:string` and changes nothing at runtime.
+# A prompt file holding the Ruby #inspect of a Hash instead of markdown. The write
+# path refuses this now, but a deployment corrupted BEFORE that guard keeps serving
+# the mangled prompt on every turn, and nothing else would ever say so: the file is
+# present, non-empty, and the agent answers — worse than a crash. Found on the pilot
+# by an `insika refine` report, three weeks after the fact.
+def check_prompt_files
+  return [] unless @agent_file_store
+
+  agents = @agent_file_store.agents
+  wrapped = agents.flat_map do |agent|
+    @agent_file_store.list(agent).filter_map do |name|
+      next unless wrapped_content?(@agent_file_store.read(agent, name))
+
+      Finding.new(check: "prompt-files", severity: :error, fix: nil,
+                  message: "agent '#{agent}' file '#{name}' holds a serialized object, not text — " \
+                           "the model receives `{\"content\" => …}` on one line, escapes and all. " \
+                           "Recover the markdown from inside the wrapper and write it back.")
+    end
+  end
+  return wrapped if wrapped.any?
+
+  total = agents.sum { |a| @agent_file_store.list(a).length }
+  [ok("prompt-files", "#{total} prompt file(s) across #{agents.length} agent(s): all text")]
+end
+
+# Cheap and specific: Ruby's inspect of a Hash whose first key is a string. A real
+# prompt does not open with `{"…" =>`.
+def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
+
     def check_data_tools
       return [] unless @tool_store
 

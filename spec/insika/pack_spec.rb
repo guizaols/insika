@@ -80,4 +80,25 @@ RSpec.describe Insika::Pack do
       expect([pack.files, pack.skills, pack.tools]).to eq([{}, {}, []])
     end
   end
+
+  # `{"files": {"AGENTS.md": {"content": "…"}}}` is the shape anyone writes first, and
+  # only the KEYS used to be normalized: the object reached the store as Ruby's
+  # #inspect and became the agent's prompt. Refused at the front door now.
+  describe "files/skills must be text" do
+    it "refuses a nested object for a file, naming it" do
+      expect { described_class.from_h({ files: { "AGENTS.md" => { "content" => "# hi" } } }) }
+        .to raise_error(Insika::ValidationError, /files\['AGENTS\.md'\] must be the file's text, got Hash/)
+    end
+
+    it "refuses a nested object for a skill" do
+      expect { described_class.from_h({ skills: { "pedido" => { "content" => "x" } } }) }
+        .to raise_error(Insika::ValidationError, /skills\['pedido'\]/)
+    end
+
+    it "accepts plain text (the shape a pack has always had)" do
+      pack = described_class.from_h({ files: { "AGENTS.md" => "# hi" }, skills: { "s" => "y" } })
+      expect([pack.files, pack.skills]).to eq([{ "AGENTS.md" => "# hi" }, { "s" => "y" }])
+    end
+  end
 end
+

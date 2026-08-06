@@ -159,4 +159,39 @@ RSpec.describe Insika::Doctor do
       expect(s).to match(/error\(s\).*warning\(s\)/)
     end
   end
+
+  # A prompt file holding a serialized object serves a mangled prompt on every turn and
+  # nothing else reports it: the file is present, non-empty, and the agent answers.
+  describe "prompt-files check" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:files) { Insika::AgentFileStore.new(config_store: cs) }
+
+    it "flags a file whose content is a serialized entry" do
+      files.write("bia", "IDENTITY.md", "# Sou a Bia\n\nOlá.")
+      # Written straight to the ConfigStore: the store's own guard refuses this now, so
+      # the only way to have it is to have been corrupted BEFORE the guard existed.
+      cs.put("agent_files", "loja",
+             { "files" => { "TOOLS.md" => { "content" => %({"content" => "# Tools\\n", "history" => []}),
+                                            "updated_at" => "2026-07-16T21:48:33Z", "history" => [] } } })
+
+      report = described_class.new(env: {}, agent_file_store: files).run
+      finding = report.findings.find { |f| f.check == "prompt-files" }
+
+      expect(finding.severity).to eq(:error)
+      expect(finding.message).to include("agent 'loja' file 'TOOLS.md'")
+      expect(finding.fixable?).to be(false) # recovering the markdown is not a one-liner
+    end
+
+    it "is ok when every file is text" do
+      files.write("bia", "IDENTITY.md", "# Sou a Bia")
+      finding = described_class.new(env: {}, agent_file_store: files).run
+                               .findings.find { |f| f.check == "prompt-files" }
+      expect([finding.severity, finding.message]).to eq([:ok, "1 prompt file(s) across 1 agent(s): all text"])
+    end
+
+    it "is skipped without the store" do
+      expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("prompt-files")
+    end
+  end
 end
+

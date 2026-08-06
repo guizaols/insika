@@ -76,6 +76,18 @@ Everything below is what the first release will contain.
 - `GET /docs/<name>.md` strips the docs-site frontmatter, so the raw markdown a coding
   agent receives is the prose only.
 
+### Fixed
+
+- **A prompt file could silently become a serialized object.** `Pack.from_h` normalized
+  only the KEYS of `files`/`skills`, and both `WriteAgentFile` and `AgentFileStore#write`
+  called `to_s` on whatever they were handed — so a pack shaped
+  `{"files": {"AGENTS.md": {"content": "…"}}}`, or an entry read and written back, was
+  stored as Ruby's `#inspect` of the object. The agent then received its whole prompt as
+  one line of `{"content" => "…\n…"}`, escapes and all, on every turn, while the file
+  looked perfectly healthy: present, non-empty, and the agent still answered. All three
+  layers now refuse a Hash or an Array instead of coercing it, and `insika doctor` sweeps
+  existing prompt files for the same shape.
+
 ### Security
 
 - **The `/v1` surface is closed by default.** `POST /v1/commands/<type>` — the generic
