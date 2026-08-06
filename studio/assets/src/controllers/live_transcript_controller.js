@@ -22,6 +22,9 @@ export default class extends Controller {
 
   connect() {
     this.current = null      // streaming assistant bubble's .content node (or null)
+    this.currentBubble = null // its .bubble wrapper (draft ⇄ answer styling)
+    this.currentTag = null    // its .role-tag node
+    this.currentStamp = null  // the <time> node, re-appended when the tag is relabelled
     this.currentText = ""    // accumulated Markdown source for that bubble
     this.thinkingPre = null  // open thinking card's <pre> node (or null)
     this.raf = null
@@ -167,6 +170,34 @@ export default class extends Controller {
     return c
   }
 
+  // Opens the assistant bubble if none is streaming, and sets whether it is a draft
+  // (:intermediate — dashed and dimmed, labelled so nobody reads it as delivered) or
+  // the answer (:content). One bubble serves both: the answer's text arrives as the
+  // same deltas that drafted it, so :content promotes what is already on screen.
+  appendDelta(ev, draft) {
+    if (!this.current) {
+      const msg = this.el("div", "msg assistant")
+      msg.appendChild(this.el("div", "who", "A"))
+      const b = this.el("div", "bubble")
+      this.currentTag = this.el("div", "role-tag")
+      const stamp = this.time(ev.meta && ev.meta.at)
+      b.appendChild(this.currentTag)
+      this.current = this.el("div", "content md")
+      b.appendChild(this.current)
+      msg.appendChild(b)
+      this.currentBubble = b
+      this.currentStamp = stamp
+      this.currentText = ""
+      this.push(msg)
+    }
+    this.currentBubble.classList.toggle("draft", draft)
+    this.currentTag.textContent = draft ? "intermediate · not sent" : "assistant"
+    if (this.currentStamp) {
+      this.currentTag.appendChild(document.createTextNode(" · "))
+      this.currentTag.appendChild(this.currentStamp)
+    }
+  }
+
   // Re-render the streaming bubble as Markdown, throttled to one paint per frame.
   scheduleMarkdown() {
     if (this.raf) return
@@ -182,6 +213,9 @@ export default class extends Controller {
     if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null }
     if (this.current) this.current.innerHTML = renderMarkdown(this.currentText)
     this.current = null
+    this.currentBubble = null
+    this.currentTag = null
+    this.currentStamp = null
     this.currentText = ""
   }
 
@@ -239,25 +273,22 @@ export default class extends Controller {
       case "thinking":
         this.appendThinking(ev.delta || "")
         break
-      case "content": {
-        if (!this.current) {
-          const msg = this.el("div", "msg assistant")
-          msg.appendChild(this.el("div", "who", "A"))
-          const b = this.el("div", "bubble")
-          const tag = this.el("div", "role-tag", "assistant")
-          const stamp = this.time(ev.meta && ev.meta.at)
-          if (stamp) { tag.appendChild(document.createTextNode(" · ")); tag.appendChild(stamp) }
-          b.appendChild(tag)
-          this.current = this.el("div", "content md")
-          b.appendChild(this.current)
-          msg.appendChild(b)
-          this.currentText = ""
-          this.push(msg)
-        }
+      case "intermediate":
+        // Live text that is NOT yet the answer: the model narrating the tool loop,
+        // or reasoning in prose. The customer never receives it (/v1/responses drops
+        // the frame) — the operator does, which is the whole point of the event.
+        this.appendDelta(ev, true)
         this.currentText += ev.delta || ""
         this.scheduleMarkdown()
         break
-      }
+      case "content":
+        // The answer, published whole when its message ended. It arrives right after
+        // its own :intermediate deltas, so promote that bubble in place (replace, do
+        // not append) instead of printing the same text twice.
+        this.appendDelta(ev, false)
+        this.currentText = ev.delta || ""
+        this.scheduleMarkdown()
+        break
       case "tool_call":
         this.finishBubble()
         this.push(this.toolcard("", "→", (ev.name || "tool") + this.argsPreview(ev.arguments), ev.arguments))

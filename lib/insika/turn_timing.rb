@@ -13,6 +13,11 @@ module Insika
   #
   # Marks are monotonic; `mark` is first-write-wins so `first_token` records the
   # FIRST content chunk even though it is called on every chunk.
+  #
+  # `ttft_ms` is the PROVIDER's first token, not the first byte the customer can
+  # read: TurnOutput publishes a message once it ends, so the customer-visible
+  # answer lands inside `gen_ms`. Measuring the provider is the point — item 34's
+  # baselines (~720 ms, provider-bound) stay comparable across that change.
   class TurnTiming
     # EnvSchema owns "is this flag on?" (1/true/yes/on) — the same predicate that
     # validates the :boolean keys, so a spelling `insika env` accepts is a spelling

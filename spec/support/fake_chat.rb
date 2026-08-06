@@ -7,6 +7,14 @@
 class FakeChat
   ToolCall = Struct.new(:name, :arguments, :id)
   Response = Struct.new(:content) # content-only chunk: does NOT respond to #thinking
+  # A completed message, as the gem hands it to `after_message`. TurnOutput reads
+  # exactly `role` + `tool_call?` off it: a message that called a tool was not the
+  # answer. The real Chat fires this for the assistant message BEFORE running the
+  # tools (complete_once -> after_message -> handle_tool_calls), which is why
+  # #fire_tool_call closes the message first — see ruby_llm_contract_spec.
+  Message = Struct.new(:role, :content, :tool_calls) do
+    def tool_call? = !(tool_calls.nil? || tool_calls.empty?)
+  end
   # Reasoning chunk, shaped like RubyLLM's: the text lives in chunk.thinking.text and
   # content is nil (the provider streams the deliberation BEFORE the answer).
   Thought = Struct.new(:text)
@@ -28,6 +36,8 @@ class FakeChat
     @messages = []
     @before_tool_call = nil
     @after_tool_result = nil
+    @after_message = nil
+    @streamed = +""
     @asked = nil
     @script = nil
     @final_content = "final"
@@ -64,10 +74,29 @@ class FakeChat
     self
   end
 
+  def after_message(&blk)
+    @after_message = blk
+    self
+  end
+
   # Drives the registered callbacks (simulates RubyLLM's loop). Propagates any
   # exception raised inside the callback (e.g. the max_tool_calls guard-rail).
+  #
+  # Closes the assistant message first, WITH the call on it: in the gem the model
+  # cannot ask for a tool and keep talking in the same message, so whatever was
+  # streamed before this point is narration, not the answer. A double that skipped
+  # the boundary would let intermediate text pass for the answer here and only here.
   def fire_tool_call(name:, arguments: {}, id: "call_1")
-    @before_tool_call&.call(ToolCall.new(name, arguments, id))
+    call = ToolCall.new(name, arguments, id)
+    fire_end_message(role: "assistant", tool_calls: { id => call })
+    @before_tool_call&.call(call)
+  end
+
+  # Closes a message, as the gem's `after_message` does. Each message streams its
+  # own text, so the "did this one stream anything?" tracker resets with it.
+  def fire_end_message(role: "assistant", content: nil, tool_calls: nil)
+    @streamed = +""
+    @after_message&.call(Message.new(role, content, tool_calls))
   end
 
   def fire_tool_result(result)
@@ -77,17 +106,29 @@ class FakeChat
   def ask(message, &on_chunk)
     @asked = message
     @on_chunk = on_chunk
+    @streamed = +""
     if @script
       instance_exec(&@script) # script uses emit_chunk/fire_tool_call/fire_tool_result
     else
-      emit_chunk("chunk")
+      emit_chunk(@final_content)
     end
     # A tool with `halt_when` ended the turn: the REAL Chat returns the Tool::Halt
     # from its loop instead of a Message (see ruby_llm_contract_spec), so the double
     # must be able to as well — otherwise the Executor's branch is untestable here and
-    # only production would find out.
-    return RubyLLM::Tool::Halt.new(@halt_with) if @halt_with
+    # only production would find out. A halt always came from a tool call, so the
+    # assistant message that carried it is closed here for the scripts that halt
+    # without going through #fire_tool_call.
+    if @halt_with
+      fire_end_message(role: "assistant", tool_calls: { "call_halt" => "halt" })
+      return RubyLLM::Tool::Halt.new(@halt_with)
+    end
 
+    # A real provider's message content IS what it streamed — the gem builds the
+    # Message out of the chunks. A script that only set `final_content` (or that
+    # streamed its text before a tool call) would otherwise close a message whose
+    # text no chunk carried, and TurnOutput publishes what was streamed.
+    emit_chunk(@final_content) if @streamed.empty? && !@final_content.to_s.empty?
+    fire_end_message(role: "assistant", content: @final_content)
     Response.new(@final_content)
   end
 
@@ -96,6 +137,7 @@ class FakeChat
 
   # Emits a streaming chunk (as RubyLLM does in the ask block).
   def emit_chunk(text)
+    @streamed << text.to_s
     @on_chunk&.call(Response.new(text))
   end
 

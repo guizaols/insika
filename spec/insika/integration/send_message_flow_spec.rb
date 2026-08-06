@@ -83,8 +83,13 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
     session_store.create(id: "s1")
     _result, events = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
+    # P19: "Oi"/" tudo bem" were said on the message that then called the tool, so
+    # they are narration — they ride :intermediate and stop there. Only the message
+    # that ENDS the turn ("resposta final") is published as :content, which is the
+    # single frame /v1/responses translates.
     expect(events.map(&:type)).to eq(
-      %i[task_started content content tool_call tool_result checkpoint_created task_completed]
+      %i[task_started intermediate intermediate tool_call tool_result
+         intermediate content checkpoint_created task_completed]
     )
   end
 
