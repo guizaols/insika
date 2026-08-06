@@ -36,6 +36,19 @@ module Insika
       REPETITION_JACCARD  = 0.6
       REPETITION_MIN_WORDS = 3    # "oi"/"sim" repeated is not a defect
 
+      # A context provider can inject a `:history` fragment as a USER-role message,
+      # and the Executor persists it into the transcript like any other (it is what
+      # the model saw). Those messages are the ENGINE talking to itself, and counting
+      # them as the customer repeating themselves turned the first production run into
+      # 219 false positives. They are recognizable because a fragment opens with its
+      # own tag (`<store_cep_obrigatorio> …`), which no customer types.
+      #
+      # This is a heuristic standing in for a missing structural marker: the
+      # transcript does not record WHO produced a message beyond its role. Marking
+      # injected messages at the source is the real fix and belongs to whoever touches
+      # the transcript shape next.
+      INJECTED_FRAGMENT_RE = /\A<[a-z][a-z0-9_:.-]*>/i
+
       # Weight of a finding kind when ranking (count × severity).
       SEVERITY = {
         tool_error: 3, task_failed: 3, safe_reply: 2, repetition: 2, tool_unused: 1
@@ -46,8 +59,11 @@ module Insika
       # `sessions` is provenance — ids only, capped, never content.
       Finding = Data.define(:kind, :key, :title, :count, :severity, :sessions, :detail)
 
-      # What a run looked at, alongside what it found.
-      Report = Data.define(:agent_id, :window, :findings, :sessions_seen, :turns_seen)
+      # What a run looked at, alongside what it found. `excluded` is reported rather
+      # than swallowed: a window that quietly dropped half the traffic reads like a
+      # clean deployment.
+      Report = Data.define(:agent_id, :window, :findings, :sessions_seen, :turns_seen,
+                           :excluded)
 
       def initialize(task_store:, session_store:, tool_trace_store:, profiles:,
                      settings_store: nil)
@@ -60,13 +76,20 @@ module Insika
 
       # -> Report. `since` (ISO8601) wins over `last_sessions` when both are given:
       # an incremental run ("what happened since the last one") is the common case.
+      #
+      # `exclude_sessions` drops sessions whose id starts with any of the given
+      # prefixes. It defaults to NOTHING — a report must not decide on its own what
+      # counts as real traffic — but a deployment that replays load tests or debug
+      # conversations into the same store needs it: on the pilot, `loadtest-` sessions
+      # outnumbered real ones and drowned every genuine finding.
       def collect(agent_id:, last_sessions: DEFAULT_WINDOW, since: nil,
-                  max_findings: DEFAULT_MAX_FINDINGS)
+                  max_findings: DEFAULT_MAX_FINDINGS, exclude_sessions: [])
         agent = agent_id.to_s
         profile = @profiles[agent] ||
                   (raise Insika::NotFoundError, "agent '#{agent}' not configured")
 
-        tasks = window_tasks(agent, last_sessions: last_sessions, since: since)
+        tasks, excluded = window_tasks(agent, last_sessions: last_sessions, since: since,
+                                              exclude_sessions: Array(exclude_sessions))
         session_ids = tasks.filter_map { |t| presence(t.session_id) }.uniq
         traces = session_ids.to_h { |sid| [sid, @tool_trace_store.for_session(sid)] }
 
@@ -85,16 +108,17 @@ module Insika
           agent_id: agent,
           window: since ? { "since" => since.to_s } : { "last_sessions" => last_sessions },
           findings: rank(findings).first(max_findings),
-          sessions_seen: session_ids.size, turns_seen: tasks.size
+          sessions_seen: session_ids.size, turns_seen: tasks.size, excluded: excluded
         )
       end
 
       private
 
-      # The agent's turns, most recent first. O(n) over every task: the key is a UUID
-      # so `list` cannot order by time and there is no index by agent — same
-      # trade-off TaskStore#with_status already takes (one node, local SQLite).
-      def window_tasks(agent, last_sessions:, since:)
+      # The agent's turns, most recent first, and how many were excluded.
+      # -> [[Task], Integer]. O(n) over every task: the key is a UUID so `list` cannot
+      # order by time and there is no index by agent — same trade-off
+      # TaskStore#with_status already takes (one node, local SQLite).
+      def window_tasks(agent, last_sessions:, since:, exclude_sessions:)
         # The id breaks the tie: `created_at` has second precision, so several turns
         # can share it and `sort_by` alone would order them arbitrarily — two runs over
         # the same data must produce the same window.
@@ -103,9 +127,17 @@ module Insika
                          .select { |t| agent_of(t) == agent }
                          .sort_by { |t| [t.created_at.to_s, t.id] }.reverse
 
-        return all.select { |t| t.created_at.to_s >= since.to_s } if presence(since)
+        kept = exclude_sessions.empty? ? all : all.reject { |t| excluded?(t, exclude_sessions) }
+        excluded = all.size - kept.size
 
-        take_until_sessions(all, last_sessions)
+        return [kept.select { |t| t.created_at.to_s >= since.to_s }, excluded] if presence(since)
+
+        [take_until_sessions(kept, last_sessions), excluded]
+      end
+
+      def excluded?(task, prefixes)
+        sid = task.session_id.to_s
+        prefixes.any? { |p| sid.start_with?(p.to_s) }
       end
 
       # Walks newest-first and stops once `limit` DISTINCT sessions have been seen —
@@ -222,8 +254,13 @@ module Insika
 
       def messages(session_id) = Array(@session_store.find(session_id)&.messages)
 
+      # What the CUSTOMER actually said: user-role messages that the engine did not
+      # inject itself (see INJECTED_FRAGMENT_RE).
       def user_messages(session_id)
-        messages(session_id).select { |m| m["role"].to_s == "user" }.map { |m| m["content"].to_s }
+        messages(session_id)
+          .select { |m| m["role"].to_s == "user" }
+          .map { |m| m["content"].to_s }
+          .reject { |text| INJECTED_FRAGMENT_RE.match?(text.lstrip) }
       end
 
       def assistant_messages(session_id)
