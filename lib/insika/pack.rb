@@ -25,11 +25,27 @@ module Insika
       h = hash || {}
       new(
         config: symbolize(dig(h, :config) || {}),
-        files: stringify_keys(dig(h, :files) || {}),
-        skills: stringify_keys(dig(h, :skills) || {}),
+        files: text_values!(stringify_keys(dig(h, :files) || {}), "files"),
+        skills: text_values!(stringify_keys(dig(h, :skills) || {}), "skills"),
         tools: Array(dig(h, :tools))
       )
     end
+
+    # A pack's files and skills are NAME => MARKDOWN. Only the keys used to be
+    # normalized, so `{"files": {"AGENTS.md": {"content": "…"}}}` — the shape anyone
+    # writes first — was accepted and reached the store as Ruby's #inspect of the
+    # object. Refuse at the front door, where the name of the offending file is still
+    # in hand.
+    def self.text_values!(hash, field)
+      hash.each do |name, value|
+        next if value.is_a?(String)
+
+        raise Insika::ValidationError,
+              "pack #{field}['#{name}'] must be the file's text, got #{value.class} — " \
+              "a nested object (e.g. {\"content\": …}) is not unwrapped, it is stored verbatim"
+      end
+    end
+    private_class_method :text_values!
 
     # Folder on disk (docs/prompt-base/06): `agent.config.json` + `*.md` at the
     # root + `skills/<name>/SKILL.md` + `tools/*.json` (1 ToolDefinition per file).

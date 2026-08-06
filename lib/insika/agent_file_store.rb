@@ -36,10 +36,29 @@ module Insika
       files(agent_id).keys.sort
     end
 
+    # -> [String] every agent that has a workspace here (what `doctor` sweeps).
+    def agents = @cs.keys(SCOPE).sort
+
+    # A prompt file is TEXT. `to_s` on a structured value produces Ruby's `#inspect`
+    # and stores it as if it were the prompt: the pilot lost all 11 files of its
+    # production agent that way (someone wrote an ENTRY back as content, so the
+    # markdown reached the model as `{"content" => "…\n…"}` on a single line, escapes
+    # and all, for three weeks). Nothing legitimate passes a Hash or an Array here, so
+    # this is the one place that has to refuse instead of coerce.
+    def self.text!(content, agent_id, filename)
+      return content if content.is_a?(String)
+      return content.to_s unless content.is_a?(Hash) || content.is_a?(Array)
+
+      raise Insika::ValidationError,
+            "content for '#{filename}' (agent '#{agent_id}') must be text, got #{content.class} — " \
+            "pass the file's markdown, not the store entry or a wrapper object"
+    end
+
     # Writes (upsert). create_only: refuses to overwrite. Versions the previous
     # content into history. -> Hash (the stored entry).
     def write(agent_id, filename, content, create_only: false)
       name = filename.to_s
+      content = self.class.text!(content, agent_id, name)
       record = @cs.get(SCOPE, agent_id.to_s) || { "files" => {} }
       record["files"] ||= {}
       current = record["files"][name]
