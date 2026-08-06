@@ -24,9 +24,10 @@ RSpec.describe Insika::RefinementStore do
 
   it "complete stores the findings and closes as :completed" do
     run = store.create(agent_id: "bia")
-    done = store.complete(run.id, findings: [finding])
+    done = store.complete(run.id, findings: [finding], excluded: 12)
 
     expect(done.status).to eq(:completed)
+    expect(done.excluded).to eq(12) # what the window dropped is part of the record
     expect(done.findings_count).to eq(1)
     expect(done.findings.first["kind"]).to eq("tool_error")
     expect(done.finished_at).not_to be_nil

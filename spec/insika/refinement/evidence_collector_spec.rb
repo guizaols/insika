@@ -98,6 +98,32 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
     expect(finding.detail).not_to include("123.456.789-00")
   end
 
+  # Found by the first run against real pilot traffic: a context provider injects a
+  # `:history` fragment as a USER message, the Executor persists it like any other, and
+  # counting it produced 219 "the customer repeated themselves" on one agent.
+  it "never counts an engine-injected context fragment as the customer speaking" do
+    turn(session: "s1")
+    fragment = "<cacau_cep_obrigatorio> Ainda NÃO sei o CEP do cliente. A busca depende da loja."
+    conversation(id: "s1", messages: [
+                   { "role" => "user", "content" => fragment },
+                   { "role" => "assistant", "content" => "qual seu CEP?" },
+                   { "role" => "user", "content" => fragment }
+                 ])
+
+    expect(collector.collect(agent_id: "bia").findings.map(&:kind)).not_to include(:repetition)
+  end
+
+  it "still sees a real repetition that merely follows an injected fragment" do
+    turn(session: "s1")
+    conversation(id: "s1", messages: [
+                   { "role" => "user", "content" => "<store_context> loja 42, CD São Paulo" },
+                   { "role" => "user", "content" => "queria saber do frete pro meu endereço" },
+                   { "role" => "user", "content" => "queria saber do frete pro meu endereço mesmo" }
+                 ])
+
+    expect(collector.collect(agent_id: "bia").findings.map(&:kind)).to include(:repetition)
+  end
+
   it "does not call a two-word greeting a repetition" do
     turn(session: "s1")
     conversation(id: "s1", messages: [
@@ -187,6 +213,34 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
 
     expect(report.sessions_seen).to eq(2)     # s3 + s2, the two most recent
     expect(report.turns_seen).to eq(2)
+  end
+
+  describe "exclude_sessions" do
+    # Also found by the first production run: `loadtest-` sessions outnumbered real
+    # ones, so every genuine finding was drowned by synthetic traffic.
+    it "drops sessions by id prefix and REPORTS how many, rather than hiding them" do
+      turn(session: "loadtest-1", at: "2026-08-05T10:00:00Z")
+      turn(session: "real-1", at: "2026-08-05T10:00:01Z")
+      tool_call(session: "loadtest-1", result: { "error" => "synthetic" })
+      tool_call(session: "real-1", result: { "error" => "genuine" })
+
+      report = collector.collect(agent_id: "bia", exclude_sessions: %w[loadtest- debug-])
+
+      expect(report.sessions_seen).to eq(1)
+      expect(report.excluded).to eq(1)
+      expect(report.findings.map(&:key)).to include("tool_error:shipping_quote:genuine")
+      expect(report.findings.map(&:key)).not_to include("tool_error:shipping_quote:synthetic")
+    end
+
+    it "excludes nothing by default — a report does not decide what real traffic is" do
+      turn(session: "loadtest-1")
+      tool_call(session: "loadtest-1", result: { "error" => "synthetic" })
+
+      report = collector.collect(agent_id: "bia")
+
+      expect(report.excluded).to eq(0)
+      expect(report.findings.map(&:key)).to include("tool_error:shipping_quote:synthetic")
+    end
   end
 
   it "an unknown agent is a NotFoundError, not an empty report" do
