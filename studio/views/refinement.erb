@@ -42,7 +42,7 @@
   <% if @run.nil? %>
     <div class="empty">No run yet for <span class="mono"><%= @agent %></span>. Press Run to read the last conversations.</div>
   <% else %>
-    <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %> · <%= @run.finished_at || @run.started_at %></span></h2>
+    <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %><% if @run.excluded.to_i.positive? %> · <%= @run.excluded %> turn(s) excluded<% end %> · <%= @run.finished_at || @run.started_at %></span></h2>
 
     <% if @run.status == :failed %>
       <div class="empty">This run failed: <span class="mono"><%= @run.error %></span></div>
