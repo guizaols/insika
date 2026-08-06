@@ -249,6 +249,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |
+| Evals (cases, judges, gate) | `lib/insika/evals/*`, `lib/insika/golden_store.rb`; `evals/run.rb` is the CLI |
 | HTTP/SSE surface | `server/*` |
 
 ## See also
@@ -256,6 +257,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 - [Agents](AGENTS.md) · [Tools](TOOLS.md) · [Skills](SKILLS.md) ·
   [Context](CONTEXT.md) · [Plugins](PLUGINS.md) · [Security](SECURITY.md) — the
   capability guides.
+- [Evals](EVALS.md) — the cases that grade an agent, and the pre-merge gate.
 - [Refinement](REFINEMENT.md) — reading a live agent's own traffic back as a report.
 - [Deploy](DEPLOY.md) — running the engine durably.
 - [Benchmark](BENCHMARK.md) — the per-turn engine overhead, reproducible.
