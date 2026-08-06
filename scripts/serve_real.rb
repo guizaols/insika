@@ -53,7 +53,7 @@ A2A_APP =
 APP = Insika::Server::App.new(
   command_bus: W::BUS, event_stream: W::EVENT_STREAM,
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
-  pending_action_store: W::PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
+  pending_action_store: W::PENDING_ACTION_STORE,
   a2a: A2A_APP, # nil without opt-in -> A2A routes respond 404
   # provisioner: pack importer (Phase 6/D4) under the SAME Bearer as
   # /v1/responses — the GatewayClient provisions stores at runtime via POST/DELETE
@@ -94,7 +94,10 @@ Studio::App.configure(
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
   # §12 G5: tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
-  pending_action_store: W::PENDING_ACTION_STORE
+  pending_action_store: W::PENDING_ACTION_STORE,
+  # RFC-0013 phase A: the Refinement page reads the runs; the button dispatches
+  # :run_refinement on the bus (the Studio never writes a store directly).
+  refinement_store: W::REFINEMENT_STORE
 )
 
 # URLMap routes /studio -> Studio (Roda, cookie-auth) and the rest -> Server::App

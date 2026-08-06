@@ -63,6 +63,6 @@ secrets), `GET /docs` and `GET /docs/<name>.md`. Public and on by default when y
 - **[Understand the idea](understand.md)** — why a runtime rather than a DIY loop, and how a turn actually runs.
 - **[Build an agent](build.md)** — agents, tools, skills, context, and the local loop.
 - **[Ship it](ship.md)** — security, confined execution, deployment.
-- **[Operate & prove it](operate.md)** — observability, the benchmark, load testing.
+- **[Operate & prove it](operate.md)** — observability, the benchmark, load testing, refinement.
 
 Pre-release: APIs may still change and nothing is tagged yet. Licensed MIT.
