@@ -100,6 +100,19 @@ RSpec.describe Insika::DSL do
       expect(import_and_read(Insika.agent("x") { model "m" }.to_pack).capabilities_declared).to eq([])
     end
 
+    it "edge_stream(...) round-trips to the profile, and absent means neither channel" do
+      profile = import_and_read(
+        Insika.agent("panel") do
+          model "m"
+          edge_stream thinking: true
+        end.to_pack
+      )
+
+      expect(profile.stream_public?(:thinking)).to be(true)
+      expect(profile.stream_public?(:intermediate)).to be(false)
+      expect(import_and_read(Insika.agent("x") { model "m" }.to_pack).stream_public?(:thinking)).to be(false)
+    end
+
     it "raw SKILL.md content (already has frontmatter) passes through untouched" do
       raw = "---\nname: promo\ndescription: promos\n---\n\nAlways mention the promo."
       pk = Insika.agent("x") { model "m"; skill "promo", raw }.to_pack

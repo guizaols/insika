@@ -202,6 +202,25 @@ levels map to the provider's thinking-effort parameter. This is a control
 primitive, not a latency lever — turning reasoning off does not necessarily speed
 up a turn, because most of a turn's latency is the provider itself, not thinking.
 
+Whether the reasoning ever reaches the **customer** is a separate switch, off by
+default:
+
+```ruby
+edge_stream thinking: true, intermediate: false
+```
+
+`thinking` is the provider's reasoning; `intermediate` is the model narrating its
+own tool loop ("let me look that up"). Both are always on the event stream for the
+Studio and the trace — this decides only whether `/v1/responses` translates them,
+and each opted-in channel gets its own frame type, never the answer's. See
+[Architecture](ARCHITECTURE.md#what-crosses-the-edge).
+
+> ⚠️ Turn it on knowing your consumer. One that concatenates every text delta into
+> a single message — a WhatsApp adapter — will only be affected once it learns to
+> read the new frames, and when it does, the deliberation is what the customer
+> reads. That is the operator's call, which is why it is neither a default nor a
+> global.
+
 ## Refinement
 
 `refinement` configures how an agent's own traffic is read back as a report — what

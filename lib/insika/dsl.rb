@@ -202,6 +202,14 @@ module Insika
         (@config[:capabilities_declared] ||= []).concat(names.flatten.map(&:to_s))
       end
 
+      # Which internal channels may cross to the CUSTOMER. Both off by default: the
+      # answer is the answer, and the provider's reasoning (`thinking`) or the model
+      # narrating its tool loop (`intermediate`) is for the Studio and the trace.
+      # Each opted-in channel gets its OWN frame type at `/v1/responses` — never the
+      # answer's — so a consumer that only reads the answer is unaffected either way.
+      #   edge_stream thinking: true, intermediate: false
+      def edge_stream(hash) = (@config[:edge_stream] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # LLM generation params (v2, §10). `param :temperature, 0.2` or `params(...)`.
       def param(key, value) = (@config[:params] ||= {})[key.to_sym] = value
       def params(hash) = (@config[:params] ||= {}).merge!(hash.transform_keys(&:to_sym))
