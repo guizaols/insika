@@ -1,0 +1,16 @@
+# outros.incompleto — 307 conversas com média de 5,5 mensagens: gente que manda um
+# "oi" e some. A abertura é a resposta mais repetida da loja, e a mais fácil de
+# estragar despejando catálogo.
+id: ocean-drop-saudacao
+agent: agent-store-ocean-drop
+turns:
+  - user: "oi, boa tarde"
+expect:
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Cumprimenta no tom da loja e faz UMA pergunta que abre a conversa. Não despeja o
+    catálogo, não lista produtos que ninguém pediu e não dispara busca sem ter o que
+    buscar. Curto.
+  min_score: 0.7

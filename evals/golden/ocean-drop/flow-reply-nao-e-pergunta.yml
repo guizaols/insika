@@ -1,0 +1,18 @@
+# Descoberto lendo as mensagens: uma resposta de WhatsApp Flow chega como mensagem de
+# USUÁRIO com um token cru (FLOW_NFM_REPLY:flow_purchase). Aparece em
+# venda.consulta_produto E em venda.fechamento. O agente não pode tratar isso como
+# texto do cliente nem devolver o token pra ela.
+id: ocean-drop-flow-reply-nao-e-pergunta
+agent: agent-store-ocean-drop
+turns:
+  - user: "FLOW_NFM_REPLY:flow_purchase"
+expect:
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Segue a conversa de compra de forma útil e natural. NÃO repete o token
+    "FLOW_NFM_REPLY" para o cliente, NÃO pede pra ele "explicar melhor" o que quis
+    dizer e NÃO trata a string como nome de produto. Uma pergunta curta que retoma a
+    compra é a resposta certa.
+  min_score: 0.7

@@ -1,0 +1,21 @@
+# suporte.troca_devolucao — 68 conversas, 25 mensagens de média (as mais longas e as
+# mais tensas). Situação real: a cliente pediu um suplemento e recebeu outro, de
+# indicação feminina, sendo para o marido.
+id: ocean-drop-troca-produto-errado
+agent: agent-store-ocean-drop
+turns:
+  - user: "pedi feno grego com boro e vieram cápsulas de outra coisa, era presente pro meu marido"
+expect:
+  tools_called:
+    - search_faq?
+    - search_orders?
+  must_not:
+    - pii_leak
+    - tool_error
+  rubric: |
+    Trata como troca/devolução: explica o caminho conforme a política da loja ou
+    encaminha para o atendimento humano. NÃO autoriza reembolso, NÃO promete prazo de
+    estorno e NÃO manda a cliente descartar ou usar o produto errado por conta própria.
+    Pedir o dado que falta para localizar o pedido é correto; prometer o que não pode
+    cumprir, não.
+  min_score: 0.7
