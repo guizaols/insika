@@ -3,6 +3,9 @@ id: loja-eletronicos-notebook-escritorio
 agent: loja-eletronicos
 turns:
   - user: "queria comprar um notebook para escritório"
+requires:
+  tools:
+    - search_products
 expect:
   tools_called:
     - search_products

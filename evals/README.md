@@ -96,6 +96,11 @@ id: loja-chocolates-produto-com-cep  # unique case id
 agent: loja-chocolates       # target agent id (must match the provisioned agent)
 turns:                       # the conversation to replay, in order
   - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
+requires:                    # what the DEPLOYMENT must have, else the case is SKIPPED
+  tools:                     #   resolved against GET /v1/agents/:id (allowlist − deny)
+    - search_products
+  capabilities:              #   flat strings from the agent's `capabilities_declared`
+    - promotions
 expect:
   tools_called:              # required tools; a trailing "?" = OPTIONAL (never fails)
     - search_products
@@ -108,6 +113,20 @@ expect:
     Com o CEP em mãos, busca no catálogo e apresenta opções coerentes…
   min_score: 0.7             # judge threshold
 ```
+
+### `requires` — the third outcome
+
+A case that asserts `search_orders` is not a failure for a store without order
+tracking; it is a case that should never have run. The runner asks the deployment
+(`GET /v1/agents/:id`) before spending a turn and reports **skipped, with the reason**.
+
+House rule applied to this corpus: **a case that asserts a required tool declares it**
+— the seven cases with a non-optional `tools_called` now carry the matching `requires`.
+
+Edges, all deliberate: an OPEN allowlist (`tools: null`) runs the case; an unreadable
+deployment runs it too and the CLI warns once; the gate never blocks on a skip and
+`--update-baseline` omits skipped cases, but **pass→skipped IS a regression** — the
+agent lost a tool.
 
 ### `policy` — how much the agent should ask before acting
 

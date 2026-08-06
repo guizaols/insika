@@ -117,6 +117,8 @@ module Insika
         # refinement (RFC-0013): a plain config Hash read with string keys by the
         # RunRefinement handler; nil round-trips as nil (= report-only).
         refinement: h[:refinement],
+        # capabilities_declared (RFC-0014 §3.5): flat [String]; build re-normalizes.
+        capabilities_declared: h[:capabilities_declared],
         metadata: h[:metadata] || {}
       )
     end

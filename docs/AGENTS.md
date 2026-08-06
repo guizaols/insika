@@ -134,6 +134,14 @@ Three capabilities invert the default — `nil`/absent means **OFF**, not "all":
 `subagents`, `memory`, and `guardrails` (each defaults to off or a conservative
 setting, never "everything on").
 
+### Declaring what this deployment has
+
+`declares "promotions", "human_handoff"` records facts about the deployment that
+are not tools. It decides **nothing** at runtime — it exists so an eval case can
+say what it needs and be *skipped* where it is absent instead of failing for the
+wrong reason (see [Evals](EVALS.md)). A flat list you write: inferring "this store
+has promotions" from data is how a test suite starts lying.
+
 ## The five access layers
 
 What an agent may do is layered. Each layer is independent, opt-in where it

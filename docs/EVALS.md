@@ -42,6 +42,44 @@ expect:
 Turns replay **in order** under one conversation, so a case can build context ("what
 about the shipping?" after "I want the 70% bar"); the assertions run on the last turn.
 
+### `requires` — a case that cannot run here is skipped, not failed
+
+Deployments differ. Some stores have order tracking wired, some do not; some run
+promotions, some do not. A case asserting `search_orders` is **not a failure** for a
+store without it — it is a case that should never have run, and a red suite nobody
+trusts is worse than a small one.
+
+```yaml
+requires:
+  tools: [search_orders]        # must be available to the agent
+  capabilities: [promotions]    # facts the operator declared about the deployment
+expect:
+  tools_called:
+    - search_orders
+```
+
+The runner asks the deployment what that agent has (`GET /v1/agents/:id`, gated like
+every `/v1` read) **before** spending a turn, and reports a third outcome beside pass
+and fail: **skipped, with the reason**. The rule of thumb: a case that asserts a tool
+should require it.
+
+Capabilities are a flat list the operator writes on the agent — inferring "this store
+has promotions" from data is how a suite starts lying:
+
+```ruby
+declares "promotions", "human_handoff"
+```
+
+Three deliberate edges:
+
+- An agent with an **open** tool allowlist runs the case. "I could not rule it out" is
+  not a reason to stop testing something.
+- If the deployment cannot be read at all, cases with `requires` **run**, and the CLI
+  says so once. A suite must not shrink in silence.
+- The gate never blocks *on* a skip, and `--update-baseline` leaves skipped cases out
+  of the baseline entirely. But a case that used to pass here and is now skipped **is**
+  reported as a regression: it means the agent lost a tool.
+
 ### `policy` — how much the agent should ask before acting
 
 One optional key, because this is the thing a rubric cannot carry alone. Whether the

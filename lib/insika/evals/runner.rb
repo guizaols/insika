@@ -18,10 +18,19 @@ module Insika
 
       # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
       # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
-      def initialize(transport:, judge: nil, conv_map: {})
+      #
+      # capabilities: what the DEPLOYMENT has, per agent — anything answering
+      # `#for(agent_id)` with { "tools" =>, "capabilities" => } or nil. Used to skip a
+      # case the deployment cannot satisfy (RFC-0014 §3.2), BEFORE spending a turn on
+      # it. nil (or an unknown agent) = no resolution, and then a case with `requires`
+      # RUNS and says so in the report: "could not rule it out" is not a reason to
+      # stop testing something, and a suite that shrinks in silence is the failure
+      # this feature exists to avoid.
+      def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil)
         @transport = transport
         @judge = judge
         @conv_map = conv_map || {}
+        @capabilities = capabilities
       end
 
       # [Golden] -> [RunCase]. Each RunCase carries the CaseResult (for the report) +
@@ -31,6 +40,9 @@ module Insika
       end
 
       def run_case(golden)
+        skip = skip_reason(golden)
+        return RunCase.new(result: Assertions.skip(golden, skip), timings: []) if skip
+
         # A backend that resolves state from a pre-existing conversation (e.g. consumer-app
         # needs a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
         # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
@@ -51,6 +63,20 @@ module Insika
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
         RunCase.new(result: result, timings: timings)
+      end
+
+      private
+
+      # -> the reason to skip, or nil to run. A case with no `requires` always runs
+      # (and never even asks), which keeps the whole existing corpus untouched.
+      def skip_reason(golden)
+        return nil unless golden.requirements?
+
+        available = @capabilities&.for(golden.agent)
+        return nil if available.nil? # unresolved: run it, and the report says so
+
+        unmet = Assertions.unmet_requirements(golden, available)
+        unmet.empty? ? nil : unmet.join("; ")
       end
     end
   end

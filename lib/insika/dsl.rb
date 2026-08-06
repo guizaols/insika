@@ -194,6 +194,14 @@ module Insika
       #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md]
       def refine(hash) = (@config[:refinement] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # Facts about THIS deployment that are not tools (RFC-0014 §3.5), so an eval
+      # case can declare what it needs and be skipped where it is absent instead of
+      # failing for the wrong reason.
+      #   declares "promotions", "human_handoff"
+      def declares(*names)
+        (@config[:capabilities_declared] ||= []).concat(names.flatten.map(&:to_s))
+      end
+
       # LLM generation params (v2, §10). `param :temperature, 0.2` or `params(...)`.
       def param(key, value) = (@config[:params] ||= {})[key.to_sym] = value
       def params(hash) = (@config[:params] ||= {}).merge!(hash.transform_keys(&:to_sym))

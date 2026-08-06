@@ -161,6 +161,9 @@ module Insika
       # GET /v1/workflows (discovery) + POST /v1/workflows/:name (item 22 / §4.4).
       workflow_registry: WORKFLOW_REGISTRY,
       onboarding: ONBOARDING, # GET /start.md + /models.json + /docs (public)
+      # GET /v1/agents/:id — read-only capability view (evals). Coerced because the
+      # base wiring keeps a plain Hash of profiles, and the route needs the source API.
+      profiles: Insika::ProfileSource.coerce(PROFILES),
       config: CONFIG
     )
 

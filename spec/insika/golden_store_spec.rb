@@ -27,6 +27,20 @@ RSpec.describe Insika::GoldenStore do
     expect(golden.min_score).to eq(0.7)
   end
 
+  # A case that lost its `requires` on the way through the store would come back as a
+  # FAILURE on every deployment lacking the tool — the exact lie the key exists to end.
+  it "keeps `requires` across the store and back out to YAML" do
+    store.write(a_case.merge("requires" => { "tools" => %w[search_voucher] }))
+
+    expect(store.find("loja-cupom").required_tools).to eq(%w[search_voucher])
+
+    Dir.mktmpdir do |dir|
+      store.export_dir(dir)
+      exported = Insika::Evals::GoldenLoader.load_dir(dir).first
+      expect(exported.required_tools).to eq(%w[search_voucher])
+    end
+  end
+
   it "validates on WRITE with the same loader the files use — no second validator" do
     expect { store.write(a_case.merge("turns" => [])) }
       .to raise_error(Insika::Evals::GoldenLoader::InvalidGolden, /non-empty array/)

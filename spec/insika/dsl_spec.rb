@@ -82,6 +82,24 @@ RSpec.describe Insika::DSL do
       expect(cfg.strictness).to eq(:high)
     end
 
+    # RFC-0014 §3.5. It decides nothing at runtime; it exists so an eval case can be
+    # SKIPPED where the deployment lacks something, instead of failing for the wrong
+    # reason — so the one thing that matters is that it survives the round-trip.
+    it "declares(...) round-trips to capabilities_declared on the profile" do
+      profile = import_and_read(
+        Insika.agent("loja") do
+          model "m"
+          declares "promotions", "human_handoff"
+        end.to_pack
+      )
+
+      expect(profile.capabilities_declared).to eq(%w[promotions human_handoff])
+    end
+
+    it "an agent that declares nothing carries an empty list, never nil" do
+      expect(import_and_read(Insika.agent("x") { model "m" }.to_pack).capabilities_declared).to eq([])
+    end
+
     it "raw SKILL.md content (already has frontmatter) passes through untouched" do
       raw = "---\nname: promo\ndescription: promos\n---\n\nAlways mention the promo."
       pk = Insika.agent("x") { model "m"; skill "promo", raw }.to_pack

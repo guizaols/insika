@@ -4,6 +4,9 @@ id: loja-cosmeticos-perfume-masculino
 agent: loja-cosmeticos
 turns:
   - user: "tem perfume masculino amadeirado aí?"
+requires:
+  tools:
+    - search_products
 expect:
   tools_called:
     - search_products

@@ -4,6 +4,9 @@ id: loja-chocolates-produto-com-cep
 agent: loja-chocolates
 turns:
   - user: "meu CEP é 01310-100. quero um chocolate ao leite sem lactose até R$ 50"
+requires:
+  tools:
+    - search_products
 expect:
   tools_called:
     - search_products
