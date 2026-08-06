@@ -119,6 +119,8 @@ module Insika
         refinement: h[:refinement],
         # capabilities_declared (RFC-0014 §3.5): flat [String]; build re-normalizes.
         capabilities_declared: h[:capabilities_declared],
+        # edge_stream: which internal channels may cross to the customer. {} = neither.
+        edge_stream: h[:edge_stream],
         metadata: h[:metadata] || {}
       )
     end

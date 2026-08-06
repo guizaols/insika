@@ -12,7 +12,8 @@ module Insika
       FIELDS = %i[id model provider base_prompt prompt_files tools_allow tools_deny
                   tools_allow_groups skills context_providers workflows_allow policies
                   prompt_refs limits approvals_required capabilities subagents tools_deferred
-                  memory params model_policy guardrails refinement capabilities_declared metadata].freeze
+                  memory params model_policy guardrails refinement capabilities_declared
+                  edge_stream metadata].freeze
 
       module_function
 

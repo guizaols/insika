@@ -87,6 +87,23 @@ The exception is `halt_when`: a tool that ends the turn has already answered the
 customer, so the model's lead-in before that call *is* the turn, and it is
 published as the answer.
 
+**Neither default is a law.** A product with a "thinking" panel wants the
+reasoning, and a chat UI may want the progress line. An agent opts a channel in:
+
+```ruby
+edge_stream thinking: true, intermediate: false
+```
+
+Two things keep that from re-opening the hole. Nothing crosses unless someone
+opted in, per agent. And what crosses gets its **own frame type**, never the
+answer's — `response.reasoning_summary_text.delta` for reasoning, and a namespaced
+`insika.intermediate.delta` for the narration, because the Responses protocol has
+no honest event for "assistant text that is not the answer" (there, that text *is*
+`output_text.delta`, told apart only by an output-item index this adapter does not
+carry). So a consumer that accumulates `output_text` deltas into one message —
+WhatsApp — is unaffected by the switch, and one that renders reasoning has
+something to render.
+
 ## A turn, end to end
 
 The Executor runs a fixed sequence of stages. Each stage boundary drains the
