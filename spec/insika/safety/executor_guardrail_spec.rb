@@ -113,6 +113,23 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
       expect(completed.data[:content]).to eq("aqui está: [REDACTED:cpf] pronto")
     end
 
+    # P19 moved the live stream to :intermediate, which the Studio renders. The
+    # filter sits BEFORE the split, so the redaction covers both — a CPF must not
+    # reach an operator's screen just because it is not the answer yet.
+    it "redacts the live :intermediate deltas too, not only the published answer" do
+      executor = build_executor
+      chat = FakeChat.new
+      chat.script = proc do
+        emit_chunk("aqui está: 123.")
+        emit_chunk("456.789-01 pronto")
+      end
+      run_turn(executor, make_task("qual meu cpf cadastrado?"), fake_chat: chat)
+
+      live = event_stream.events.select { |e| e.type == :intermediate }.map { |e| e.data[:delta] }.join
+      expect(live).not_to include("123.456.789-01")
+      expect(live).to eq("aqui está: [REDACTED:cpf] pronto")
+    end
+
     it "reasoning bypasses the filter WITHOUT polluting it — the answer is still redacted" do
       executor = build_executor
       chat = FakeChat.new

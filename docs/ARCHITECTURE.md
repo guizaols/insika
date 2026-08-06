@@ -59,9 +59,33 @@ flowchart TD
   pinning a thread per call.
 - **Event Stream** is in-process pub/sub. Every event carries `task_id` and a
   monotonic `seq`, so one stream multiplexes many turns and replays reliably. Not
-  every event is for the end user: the provider's reasoning rides it as `:thinking`
-  for the Studio and the trace, and the `/v1/responses` edge deliberately drops it —
-  deliberation is observability, not the answer.
+  every event is for the end user — see the edge contract below.
+
+### What crosses the edge
+
+A turn is not one assistant message. Between the user's message and the answer the
+model may narrate the tool loop ("let me look that up"), apologise for a tool that
+failed, or — when it has no tool to call — reason in prose. All of it arrives as
+ordinary content chunks, indistinguishable at the token level from the answer.
+
+So the engine publishes rather than relays: **`:content` carries the answer — the
+text of the assistant message that *ends* the turn**. It is emitted once, whole,
+when that message ends. Everything else the model says rides `:intermediate`, and
+the provider's own reasoning channel rides `:thinking`. Both are real events —
+the Studio renders them and the trace keeps them, which is how an operator sees
+what the model was doing — and `/v1/responses` deliberately translates neither.
+
+Two consequences worth knowing before you build on it:
+
+- The customer-visible stream is per **message**, not per token. A consumer that
+  accumulates deltas gets the same text; one that renders them live gets it in one
+  piece. Watch `:intermediate` if you want the keystrokes.
+- A turn that dies mid-message publishes nothing. Half a sentence was never an
+  answer; the fragment is still on the stream for whoever is debugging it.
+
+The exception is `halt_when`: a tool that ends the turn has already answered the
+customer, so the model's lead-in before that call *is* the turn, and it is
+published as the answer.
 
 ## A turn, end to end
 

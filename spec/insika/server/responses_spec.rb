@@ -90,6 +90,15 @@ RSpec.describe Insika::Server::Responses do
     it ":thinking -> nil: the provider's reasoning NEVER crosses the edge" do
       expect(described_class.frame_for(ev(:thinking, { delta: "deixa eu pensar" }))).to be_nil
     end
+
+    # P19. This consumer accumulates every delta into ONE WhatsApp message, so a
+    # frame here is a message a customer reads. Model text that did not turn out to
+    # be the answer — the narration before a tool call, the reasoning-in-prose a
+    # model emits when it has no tool to call — must not produce one.
+    it ":intermediate -> nil: only the answer crosses the edge" do
+      monologue = "Let me look into this. However, I notice this is Joe's Pizzeria context…"
+      expect(described_class.frame_for(ev(:intermediate, { delta: monologue }))).to be_nil
+    end
   end
 
   it "drains a whole turn as OpenAI Responses frames (SSE integration)" do

@@ -606,45 +606,61 @@ module Insika
       else
         filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
         timing&.mark(:ask)
-        # What actually reached the consumer. Only read on a halted turn (`halt_when`),
-        # where there is no Message to take `#content` from and the transcript must
-        # still match the bytes that were streamed.
-        streamed = +""
+        # TurnOutput owns what the customer is allowed to read: chunks ride
+        # :intermediate live and only the message that ENDS the turn is published as
+        # :content. Registered on the chat (fresh per turn, so no callback leaks).
+        output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) })
+        state.chat.after_message { |message| output.message_ended(message) } if state.chat.respond_to?(:after_message)
+
+        # `asked` is what the provider returned, BEFORE the :agent after-hook had a
+        # chance to replace it — the only way to tell an explicit substitution from
+        # the ordinary "the hook returned what it received".
+        asked = nil
         response = @hooks.around(:agent, state) do |s|
-          result = s.chat.ask(s.message) do |chunk|
+          asked = s.chat.ask(s.message) do |chunk|
             emit_thinking(chunk, task)
             next unless chunk.content
 
-            timing&.mark(:first_token) # first-write-wins -> real TTFB
-            out = filter ? filter.push(chunk.content) : chunk.content
-            next if out.to_s.empty?
+            timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
+            output.push(chunk.content)
+          end
+        end
+        # release the redactor's retained tail (a value that never completed into a
+        # match is emitted redacted-if-needed, not lost) before reading anything back.
+        output.flush
+        state.usage = with_model_source(usage_of(response), state.model_selection) unless halted?(response)
 
-            streamed << out.to_s
-            emit(:content, { delta: out }, task: task)
-          end
-          # release the buffered tail once the stream ends (a value that never
-          # completed into a match is emitted redacted-if-needed, not lost).
-          if filter && !(tail = filter.flush).to_s.empty?
-            emit(:content, { delta: tail }, task: task)
-          end
-          result
-        end
-        # HALTED BY A TOOL RESULT (`halt_when`): RubyLLM returns the Tool::Halt itself
-        # instead of a Message, and its `content` is the tool PAYLOAD — the ordinary
-        # path below would ship the envelope to the customer as the answer. The turn is
-        # worth exactly what was streamed BEFORE the tool call (usually the model's
-        # "vou te inscrever agora"), and nothing after: the backend already said the
-        # rest. Empty stream -> empty turn, which is what the consumer suppresses.
-        if response.is_a?(RubyLLM::Tool::Halt)
-          filter ? filter.output : streamed
-        else
-          state.usage = with_model_source(usage_of(response), state.model_selection)
-          # persisted/terminal content must match the redacted stream (D3): the filter's
-          # accumulated output, else the raw response.
-          filter ? filter.output : response.content
-        end
+        output.publish(turn_answer(response, asked, output, filter))
       end
     end
+
+    # WHAT THE CUSTOMER GETS, in precedence order. Published once, at the end of the
+    # stage, because the `:agent` after-hook runs after the message boundary and is
+    # allowed to have the last word.
+    def turn_answer(response, asked, output, filter)
+      # HALTED BY A TOOL RESULT (`halt_when`): RubyLLM returns the Tool::Halt itself
+      # instead of a Message, and its `content` is the tool PAYLOAD — publishing it
+      # would ship the envelope to the customer as the answer. The turn is worth
+      # exactly the lead-in of the message that called the tool (the model's "vou te
+      # inscrever agora"), and nothing after: the backend already said the rest.
+      # Nothing streamed -> empty turn, which is what the consumer suppresses.
+      return output.halt_text if halted?(response)
+      # An :agent after-hook REPLACED the response. An explicit override outranks
+      # what the model streamed (the OutputValidator still sees the result).
+      return content_of(response) unless response.equal?(asked)
+      # The normal path: the message that ended the turn, as it was streamed and
+      # (when guardrails are on) redacted.
+      return output.candidate if output.candidate
+
+      # No message boundary was reported — a transport that does not implement
+      # `after_message`. Fall back to the whole turn's redacted text, else the raw
+      # response: the pre-boundary behaviour, kept as the floor.
+      filter ? filter.output : content_of(response)
+    end
+
+    def halted?(response) = response.is_a?(RubyLLM::Tool::Halt)
+
+    def content_of(response) = response.respond_to?(:content) ? response.content : response.to_s
 
     # The provider's REASONING (DeepSeek `reasoning_content`, Anthropic thinking
     # blocks): RubyLLM parks it in `chunk.thinking`, NEVER in `chunk.content`, so it
@@ -656,8 +672,9 @@ module Insika
     # Three deliberate omissions:
     # · the guardrail filter is NOT applied — it accumulates the PERSISTED content
     #   (D3), and pushing reasoning through it would corrupt the turn's answer;
-    # · `timing.mark(:first_token)` stays on :content — TTFB means the first token the
-    #   customer can see (item 34's baselines measure that, not the first thought);
+    # · `timing.mark(:first_token)` stays on the content chunks — ttft is the
+    #   PROVIDER's first token (item 34's baselines measure that, not the first
+    #   thought, and not when TurnOutput publishes the answer);
     # · nothing is persisted — the reasoning is not part of the conversation.
     #
     # Duck-typed like `usage_of`: a provider/fake with no thinking -> nothing to emit.

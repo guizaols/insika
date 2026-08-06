@@ -140,9 +140,11 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       # then stage 8's order: checkpoint -> session -> finish -> transition
       expect(order).to eq([[:transition, :running], :checkpoint, :checkpoint, :session, :finish,
                            [:transition, :completed]])
-      # turn events
+      # turn events. The chunk rides :intermediate as it arrives and the SAME text
+      # is published as :content when the message ends — one is the live stream, the
+      # other is the answer, and only the second crosses /v1/responses.
       expect(event_stream.types).to eq(
-        %i[task_started content checkpoint_created task_completed]
+        %i[task_started intermediate content checkpoint_created task_completed]
       )
       # final state
       task = task_store.find("t")
