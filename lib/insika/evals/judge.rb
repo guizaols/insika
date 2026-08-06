@@ -32,6 +32,21 @@ module Insika
       DEFAULT_MIN_SCORE = 0.7
       AGGREGATES = %i[median mean min].freeze
 
+      # The store's operating policy, stated to the judge in the same words the
+      # deterministic layer checks. Empty when the store has no opinion — then the
+      # rubric alone decides, and inventing a default here would be inventing an
+      # opinion for someone else's store.
+      POLICY_INSTRUCTIONS = {
+        "ask_once" => "This store allows AT MOST ONE question per reply. Two questions in " \
+                      "one message is a failure even if the content is otherwise good.",
+        "investigate_first" => "This store wants the objective established BEFORE acting: on a " \
+                               "vague request the assistant should ask (once or twice, not a " \
+                               "form), not search immediately.",
+        "act_fast" => "This store wants the assistant to ACT on the first plausible reading and " \
+                      "refine after — asking something it could have answered by searching is a " \
+                      "failure."
+      }.freeze
+
       # ask:  ->(prompt) { "<raw model text>" } — one judge (kept: the common case).
       # asks: [callable, …] — a panel, one entry per model.
       def initialize(ask: nil, asks: nil, quorum: 1, aggregate: :median, min_agreement: 0.5)
@@ -51,7 +66,7 @@ module Insika
         rubric = golden.rubric.to_s.strip
         return nil if rubric.empty?
 
-        prompt = build_prompt(rubric, golden.user_turns, result.output_text.to_s)
+        prompt = build_prompt(rubric, golden.user_turns, result.output_text.to_s, golden.policy)
         min = golden.min_score || DEFAULT_MIN_SCORE
         panel = @asks.map { |ask| judge_once(ask, prompt, min) }
 
@@ -80,14 +95,18 @@ module Insika
         end
       end
 
-      def build_prompt(rubric, user_turns, reply)
+      # The `policy` is the one thing a rubric cannot carry alone (RFC-0014 §3.3): how
+      # much this store wants the agent to ask before acting is a per-store decision,
+      # and a judge that is not TOLD it will guess — half the time wrongly. The
+      # deterministic half is `Assertions.policy_checks`; this is the other half.
+      def build_prompt(rubric, user_turns, reply, policy = nil)
         <<~PROMPT
           You are a strict QA judge for a customer-service AI assistant. Judge the
           ASSISTANT REPLY against the RUBRIC — nothing else.
 
           RUBRIC:
           #{rubric}
-
+          #{policy_clause(policy)}
           CONVERSATION (user turns, in order):
           #{user_turns.map { |t| "- #{t}" }.join("\n")}
 
@@ -98,6 +117,13 @@ module Insika
           JSON object, no prose:
           {"score": <0..1>, "reason": "<one short sentence>"}
         PROMPT
+      end
+
+      def policy_clause(policy)
+        instruction = POLICY_INSTRUCTIONS[policy.to_s]
+        return "" unless instruction
+
+        "\nSTORE POLICY (weigh this as part of the rubric):\n#{instruction}\n"
       end
 
       # Extracts the first {...} block and parses it. Any failure (no JSON, bad JSON,

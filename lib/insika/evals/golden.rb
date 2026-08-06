@@ -28,6 +28,10 @@ module Insika
       # Names of the negative assertions to run (e.g. "pii_leak", "tool_error").
       def must_not = Array(expect["must_not"]).map(&:to_s)
 
+      # How much the agent should ask before acting (RFC-0014 §3.3). nil = the store
+      # has no opinion and only the rubric decides.
+      def policy = GoldenLoader.presence(expect["policy"])
+
       # LLM-judge rubric + threshold (consumed in Fase B — deferred here).
       def rubric = expect["rubric"]
       def min_score = expect["min_score"]
@@ -63,7 +67,20 @@ module Insika
         expect = raw["expect"] || {}
         raise InvalidGolden, "#{source}: 'expect' must be a mapping (case '#{id}')" unless expect.is_a?(Hash)
 
+        validate_policy!(expect["policy"], id: id, source: source)
         Golden.new(id: id, agent: agent, turns: turns, expect: expect, source: source)
+      end
+
+      # A typo'd policy must not silently mean "no policy" — the case would go on
+      # passing while the rule it was written for stopped being checked. The
+      # `Assertions` constant is resolved at CALL time (this file loads first, and
+      # assertions.rb touches `Safety::Detectors` at load time).
+      def validate_policy!(value, id:, source:)
+        name = presence(value)
+        return if name.nil? || Assertions::POLICIES.key?(name)
+
+        raise InvalidGolden, "#{source}: unknown policy #{name.inspect} (case '#{id}') — " \
+                             "known: #{Assertions::POLICIES.keys.join(', ')}"
       end
 
       # turns: a non-empty array of { "user" => String }. Rejects anything else so a

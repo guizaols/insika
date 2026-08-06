@@ -48,6 +48,29 @@ module Insika
       # resolves; the values ARE the runtime's, never a fork.
       PII_DETECTORS = Insika::Safety::Detectors::PII
 
+      # HOW MUCH THE AGENT SHOULD ASK BEFORE ACTING (RFC-0014 §3.3). Declared per
+      # case because it is a per-STORE decision, not a universal rule: sometimes the
+      # agent should establish the objective before searching ("energia, treino ou
+      # sono?" — Acme does this well), and sometimes asking again is the
+      # failure and it should just search. A global assertion would be wrong half
+      # the time; the judge is TOLD the policy (Judge#build_prompt) and this layer
+      # checks the half that needs no reader.
+      #
+      # Each rule is stated as the CUSTOMER-VISIBLE fact it checks. RFC-0014 phrased
+      # this as "questions before the first tool call", written before P19: text a
+      # model emits before calling a tool never reaches the customer now (it rides
+      # `:intermediate`), and the eval is a client of `/v1/responses`, so what it can
+      # observe per turn is the published answer plus the tools that turn called.
+      # That is also the honest scope — a question nobody received is not a question.
+      POLICIES = {
+        # "UMA PERGUNTA POR VEZ" — the rule Insika broke twice under a 28 KB prompt.
+        "ask_once" => "at most one question per reply",
+        # Establish the objective before acting on a vague opener.
+        "investigate_first" => "asks before calling a tool, on the first turn",
+        # Act on the first plausible reading; refine after.
+        "act_fast" => "calls a tool on the first turn instead of asking"
+      }.freeze
+
       module_function
 
       # A tool status counts as success when it's blank/"ok"/"success" or a 2xx code.
@@ -63,13 +86,23 @@ module Insika
 
       # Golden + TurnResult -> CaseResult. A turn that failed to run yields a single
       # failing check (there's nothing to assert on a turn that never produced output).
-      def evaluate(golden, result)
+      #
+      # `turns` is every turn of the conversation, in order; `result` is the last one
+      # (what the tool/content assertions have always run on). The policy checks need
+      # all of them — "one question per reply" is a rule about every reply, and the
+      # violation that motivated this was on the FIRST turn. Defaults to the single
+      # result so existing callers keep working.
+      def evaluate(golden, result, turns: nil)
         if result.error
           return CaseResult.new(id: golden.id, agent: golden.agent, error: result.error, rubric: nil, judge: nil,
                                 checks: [Check.new(name: "turn", pass: false, detail: "turn error: #{result.error}")])
         end
 
-        checks = tool_checks(golden, result) + must_not_checks(golden, result)
+        # NOT `Array(turns)`: TurnResult is a Struct, so Array() would explode a single
+        # one into its members and hand the policy checks three strings.
+        conversation = turns.nil? || turns.empty? ? [result] : turns
+        checks = tool_checks(golden, result) + must_not_checks(golden, result) +
+                 policy_checks(golden, conversation)
         CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
                        rubric: golden.rubric, judge: nil)
       end
@@ -101,6 +134,63 @@ module Insika
                       detail: hit ? "matched #{hit.inspect}" : "clean")
           end
         end
+      end
+
+      # The declared `policy`, checked deterministically over the conversation. No
+      # policy -> no check (and nothing to explain in the report).
+      def policy_checks(golden, turns)
+        name = golden.policy
+        return [] if name.nil?
+
+        # Exhaustive on purpose: a policy added to POLICIES without a rule here would
+        # otherwise fall into whichever branch was last and check the wrong thing.
+        pass, detail = case name
+                       when "ask_once" then ask_once(turns)
+                       when "investigate_first" then investigate_first(turns.first)
+                       when "act_fast" then act_fast(turns.first)
+                       else raise ArgumentError, "policy #{name.inspect} has no rule"
+                       end
+        [Check.new(name: "policy:#{name}", pass: pass, detail: detail)]
+      end
+
+      # Every reply asks at most one question. Reported with the offending turn and
+      # the reply itself — "2 questions" alone sends the reader digging.
+      def ask_once(turns)
+        offender = turns.each_with_index.find { |t, _| count_questions(t.output_text) > 1 }
+        return [true, "at most one question per reply"] unless offender
+
+        turn, i = offender
+        [false, "turn #{i + 1} asked #{count_questions(turn.output_text)} questions: " \
+                "#{turn.output_text.to_s.strip[0, 160].inspect}"]
+      end
+
+      def investigate_first(turn)
+        return [false, "no turn to check"] if turn.nil?
+
+        tools = turn.tool_names
+        return [false, "called #{tools.join(', ')} before asking anything"] unless tools.empty?
+        return [false, "answered without asking: #{turn.output_text.to_s.strip[0, 160].inspect}"] if
+          count_questions(turn.output_text).zero?
+
+        [true, "asked before acting"]
+      end
+
+      def act_fast(turn)
+        return [false, "no turn to check"] if turn.nil?
+
+        tools = turn.tool_names
+        return [true, "acted: called #{tools.join(', ')}"] unless tools.empty?
+
+        [false, "asked instead of acting: #{turn.output_text.to_s.strip[0, 160].inspect}"]
+      end
+
+      # Questions in ONE reply. Deliberately crude and deliberately documented: a run
+      # of "?" counts once ("já pensou??" is one question), and URLs are dropped first
+      # so a tracking link's query string is not read as the agent asking something.
+      # It is a policy signal, not grammar — and it already caught a real violation
+      # ("é pra você ou tá pensando em presentear alguém? E qual seu tamanho?").
+      def count_questions(text)
+        text.to_s.gsub(%r{https?://\S+}, " ").scan(/\?+/).size
       end
 
       # Runs a named detector over the text. "pii_leak" = union of all PII detectors;
