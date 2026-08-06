@@ -53,6 +53,13 @@ Everything below is what the first release will contain.
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,
   so a coding agent can set up the first agent by reading a running instance.
+- **Refinement** — an agent's own traffic read back as a ranked report of what broke:
+  repeated tool errors grouped by their normalized signature, failed turns, customers
+  repeating themselves, canned safe replies served instead of answers, and granted tools
+  that never fired. Provenance is session ids; snippets go through the same redaction as
+  a customer-facing turn. Fired by hand (`insika refine --agent <id>` or the Studio
+  button) — the engine grows no scheduler. It calls no model and edits nothing.
+  See [Refinement](docs/REFINEMENT.md).
 - **Observability** — an event stream and per-session tool-call traces always on, plus
   opt-in OpenTelemetry traces *and* metrics under a documented, vendor-neutral attribute
   convention with an operator-declared pricing table for estimated cost.

@@ -188,6 +188,12 @@ module Insika
       #              responses: { "injection" => "I can't help with that." }
       def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # Refinement (RFC-0013) — how the agent's own instruction files may be
+      # improved from real traffic. Same config-over-code shape as `guardrails`;
+      # omitting it entirely leaves the agent report-only (phase A writes nothing).
+      #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md]
+      def refine(hash) = (@config[:refinement] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # LLM generation params (v2, §10). `param :temperature, 0.2` or `params(...)`.
       def param(key, value) = (@config[:params] ||= {})[key.to_sym] = value
       def params(hash) = (@config[:params] ||= {}).merge!(hash.transform_keys(&:to_sym))
