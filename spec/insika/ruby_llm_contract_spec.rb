@@ -79,6 +79,34 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
+  # The MESSAGE BOUNDARY (P19). TurnOutput publishes `:content` only for the message
+  # that ends the turn, and it learns which one that is from `after_message`. Three
+  # gem facts hold that up; if any changes, intermediate text starts reaching the
+  # customer again — the exact failure the mechanism exists to prevent, and one a
+  # double would keep hiding.
+  describe "after_message (what TurnOutput publishes)" do
+    it "Chat exposes the additive callback the Executor registers" do
+      expect(RubyLLM::Chat.public_instance_methods).to include(:after_message)
+    end
+
+    it "a Message says whether it called tools — the whole decision" do
+      expect(RubyLLM::Message.public_instance_methods).to include(:tool_call?, :role, :content)
+      call = RubyLLM::ToolCall.new(id: "c1", name: "search", arguments: {})
+      expect(RubyLLM::Message.new(role: :assistant, content: "vou buscar",
+                                  tool_calls: { "c1" => call }).tool_call?).to be(true)
+      expect(RubyLLM::Message.new(role: :assistant, content: "achei").tool_call?).to be(false)
+    end
+
+    # Order is the load-bearing part: the callback has to fire for the assistant
+    # message BEFORE the gem runs the tools, or a halted turn would lose the lead-in
+    # `halt_when` exists to deliver (PR #130).
+    it "fires for the assistant message before the tool loop runs" do
+      source = RubyLLM::Chat.instance_method(:complete_once).source_location
+      body = File.readlines(source.first)[(source.last - 1), 16].join
+      expect(body).to match(/run_callbacks\(:after_message.*\n.*\n.*tool_call\?/)
+    end
+  end
+
   # Item 30. Insika passes `concurrency:` to with_tools and nothing else — the cap
   # is ours (ToolAssembly#install_tool_gate), the mode selection is not exposed.
   # Everything below is a GEM fact our docs promise; if a version changes any of
@@ -261,7 +289,7 @@ RSpec.describe "RubyLLM boundary contract" do
     SCAFFOLDING = %i[
       asked instructions model=
       script script= final_content final_content=
-      fire_tool_call fire_tool_result emit_chunk emit_thinking
+      fire_tool_call fire_tool_result fire_end_message emit_chunk emit_thinking
       halt_with!
     ].freeze
 
