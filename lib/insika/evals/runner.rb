@@ -35,15 +35,18 @@ module Insika
         # needs a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
         # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
         conv = @conv_map[golden.id] || "eval-#{golden.id}"
-        last = nil
+        turns = []
         timings = []
         golden.user_turns.each do |message|
           outcome = @transport.turn(agent: golden.agent, conv: conv, message: message)
           timings << { ttfb: outcome.ttfb, total: outcome.total }
-          last = outcome.result
-          break if last.error
+          turns << outcome.result
+          break if outcome.result.error
         end
-        result = Assertions.evaluate(golden, last)
+        last = turns.last
+        # Tool/content assertions read the last turn (unchanged); the policy checks
+        # read every turn — "one question per reply" is a rule about each of them.
+        result = Assertions.evaluate(golden, last, turns: turns)
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?

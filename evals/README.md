@@ -103,10 +103,31 @@ expect:
   must_not:                  # named negative detectors
     - pii_leak               #   CPF/CNPJ/credential in the output
     - tool_error             #   any failed tool call in the turn
+  policy: ask_once           # how much this store wants the agent to ask (optional)
   rubric: |                  # LLM-judge criterion (Fase B)
     Com o CEP em mãos, busca no catálogo e apresenta opções coerentes…
   min_score: 0.7             # judge threshold
 ```
+
+### `policy` — how much the agent should ask before acting
+
+Per STORE, not universal: sometimes the agent should establish the objective before
+searching, sometimes asking again is the failure. Omit it and only the rubric decides.
+
+| policy | deterministic check | the judge is told |
+|---|---|---|
+| `ask_once` | no reply contains more than one question | two questions in one message is a failure |
+| `investigate_first` | turn 1 asks something and calls no tool | ask on a vague request, don't search immediately |
+| `act_fast` | turn 1 calls a tool | asking what a search would answer is a failure |
+
+Both halves fire: the check costs nothing and cannot flake, and the same policy goes
+into the judge's prompt (a judge that is not told the store's rule guesses it).
+Question counting is crude on purpose — a run of `?` counts once and URLs are dropped
+first — and it already caught a real violation of a rule written in a store's own
+prompt: *"é pra você ou tá pensando em presentear alguém? E qual seu tamanho?"*
+
+Unlike `tools_called` and `must_not`, the policy is checked on **every** turn, not
+only the last: "one question per reply" is a rule about each reply.
 
 ### The committed set
 
@@ -144,10 +165,10 @@ The real store set — tool names grounded in each store's `TOOLS.md`
 
 ## Two evaluation layers
 
-- **Deterministic (Fase A — here):** `tools_called` / `must_not` are pure checks
-  over the turn's tool events + output text. Zero tokens, zero flakiness — catches
-  the gross regressions (a tool stopped being called, a secret leaked, a tool
-  errored).
+- **Deterministic (Fase A — here):** `tools_called` / `must_not` / `policy` are pure
+  checks over the turn's tool events + output text. Zero tokens, zero flakiness —
+  catches the gross regressions (a tool stopped being called, a secret leaked, a tool
+  errored, the agent asked three things at once).
 - **LLM-judge (Fase B):** a rubric-scored pass using the `utility_model` (Settings,
   #18) at temperature 0. A golden with a `rubric` reads as **judge-pending** until
   then — never a silent pass.
