@@ -18,7 +18,10 @@ module Insika
     # agent_files/skills: the CONTENT of per-agent prompts
     # and shared skills lives in the Store (single source of truth,
     # a SQLite backup), not on disk — disk becomes only seed/import.
-    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools].freeze
+    # goldens: authored eval cases (RFC-0008 §3.1 / RFC-0013 §3.7) — config, like the
+    # prompts and skills: the corpus on disk is seed and export, the store is what a
+    # deployment runs and what the Studio edits.
+    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools goldens].freeze
 
     class UnknownScope < Insika::Error; end
 

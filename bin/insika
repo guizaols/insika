@@ -27,6 +27,8 @@ module Insika
       when "doctor"  then doctor(argv)
       when "env"     then env(argv)
       when "refine"  then refine(argv)
+      when "evals:import" then evals_import(argv)
+      when "evals:export" then evals_export(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -45,6 +47,8 @@ module Insika
           doctor [--fix] [--json]   diagnose the deployment configuration (item 23)
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic (RFC-0013)
+          evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
+          evals:export [--dir D]    write the stored cases back out as YAML
           version                   print the engine version
           help                      show this help
 
@@ -140,7 +144,51 @@ module Insika
       exit(run.status == :failed ? 1 : 0)
     end
 
+# insika evals:import [--dir evals/golden] [--keep-existing]
+#
+# The corpus on disk is the SEED and the export format; the store is what a
+# deployment runs and what the Studio edits (RFC-0013 §3.7). Importing is how a
+# fresh deploy gets the cases, and how a broken edit is undone.
+def evals_import(argv)
+  opts = { dir: File.expand_path("../evals/golden", __dir__), overwrite: true }
+  OptionParser.new do |o|
+    o.banner = "Usage: insika evals:import [--dir DIR] [--keep-existing]"
+    o.on("--dir DIR", "corpus directory (default evals/golden)") { |v| opts[:dir] = v }
+    o.on("--keep-existing", "do not overwrite a case already in the store") { opts[:overwrite] = false }
+  end.parse!(argv)
+
+  ids = golden_store.import_dir(opts[:dir], overwrite: opts[:overwrite])
+  puts "imported #{ids.size} case(s) from #{opts[:dir]}"
+  puts ids.sort.map { |id| "  #{id}" }.join("\n") unless ids.empty?
+rescue Insika::Evals::GoldenLoader::InvalidGolden => e
+  warn "insika evals:import: #{e.message}"
+  exit 2
+end
+
+# insika evals:export [--dir DIR] — the store back to YAML, one file per case under
+# <dir>/<agent>/<id>.yml. Same format `evals:import` reads: no converter to keep
+# honest, so a case authored in the Studio can be reviewed in a pull request.
+def evals_export(argv)
+  opts = { dir: File.expand_path("../evals/golden", __dir__), force: false }
+  OptionParser.new do |o|
+    o.banner = "Usage: insika evals:export [--dir DIR] [--force]"
+    o.on("--dir DIR", "destination (default evals/golden)") { |v| opts[:dir] = v }
+    o.on("--force", "rewrite an existing corpus (drops the files' comments)") { opts[:force] = true }
+  end.parse!(argv)
+
+  paths = golden_store.export_dir(opts[:dir], force: opts[:force])
+  puts "exported #{paths.size} case(s) to #{opts[:dir]}"
+rescue Insika::ValidationError => e
+  warn "insika evals:export: #{e.message}"
+  exit 2
+end
+
     # -- helpers -------------------------------------------------------
+
+    def golden_store
+      backend = Insika::Wiring::Graph.backend_from_env
+      Insika::GoldenStore.new(config_store: Insika::ConfigStore.new(store: backend))
+    end
 
     # Builds the handler over the real durable backend — same "no app boot" rule as
     # `doctor`: no DEEPSEEK, no seeding, no reactor. Safe against a live volume,

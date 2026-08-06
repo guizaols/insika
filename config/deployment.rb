@@ -242,6 +242,13 @@ module Deploy
     )
     BUS.register(:run_refinement, Insika::Commands::RunRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, collector: REFINEMENT_COLLECTOR, event_stream: EVENT_STREAM))
 
+    # Eval cases as data (RFC-0008 §3.1 / RFC-0013 §3.7): authored in the Studio and
+    # validated by the same loader the corpus files go through. The corpus on disk stays
+    # the seed (`insika evals:import`) and the export format.
+    GOLDEN_STORE = Insika::GoldenStore.new(config_store: CONFIG_STORE)
+    BUS.register(:write_golden, Insika::Commands::WriteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:delete_golden, Insika::Commands::DeleteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
+
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))

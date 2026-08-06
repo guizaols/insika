@@ -166,3 +166,33 @@ The real store set — tool names grounded in each store's `TOOLS.md`
   (a passing case that now fails, or a judge score that dropped past `--tolerance`);
   `--update-baseline` accepts the current run. Known failures don't wedge the gate.
   ✅ done (this PR).
+
+## Where the code and the cases live (RFC-0013 §3.7)
+
+The harness moved to **`lib/insika/evals/*`** (`Insika::Evals::…`) so the engine can
+call it — the refinement gate has to score a candidate agent with the SAME judge, and a
+second copy of the judge would be the worst possible outcome. It is still a CLIENT of a
+running deployment (HTTP through `POST /v1/responses`, never a store read), and
+`run.rb` is a thin CLI over it.
+
+The cases moved too, in the sense that a DEPLOYMENT reads them from its store:
+
+- `evals/golden/**` (here) — the curated corpus: reviewable in a pull request, carries
+  the comments that explain each case, and is the seed for a fresh deployment.
+- the store — what a run uses when there is one, editable in **Studio → Evals**. The
+  rubric is the part of an eval a domain owner can actually write, and asking them for
+  a git branch means it never gets written.
+
+```bash
+insika evals:import                    # corpus -> store
+insika evals:import --keep-existing    # keep what was authored in the Studio
+insika evals:export --dir /tmp/cases   # store -> YAML, at the paths it came from
+ruby evals/run.rb --source dir         # ignore the store entirely
+```
+
+`evals:export` refuses to overwrite this directory without `--force`: `YAML.dump` drops
+the comments, and they are half of why the corpus is readable.
+
+The **judges** are configuration now (Studio → Settings → Evals, or
+`settings["evals"]`): a panel of distinct models, with `aggregate` and
+`min_agreement`. `--judge-model` still overrides for a one-off. See `docs/EVALS.md`.
