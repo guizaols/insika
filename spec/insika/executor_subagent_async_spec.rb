@@ -93,6 +93,12 @@ RSpec.describe "Insika::Executor async delegation (RFC-0010 Fase 2)" do
       msgs = session_store.find("parent-sess").messages
       user_msg = msgs.find { |m| m["role"] == "user" }
       expect(user_msg["content"]).to include("[subagent:researcher]").and include("the finding")
+      # ...and it SAYS it is the engine's. `role: user` here is the delivery
+      # mechanism, not a customer — a report that counts it as one is reading
+      # Insika writing to itself (the class of bug that produced 219 false
+      # positives on the first real run).
+      expect(user_msg["origin"]).to eq("engine")
+      expect(Insika::MessageOrigin.customer?(user_msg)).to be(false)
 
       d = delegation_store.find_by_child_task(result[:dispatched])
       expect(d.status).to eq(:delivered)

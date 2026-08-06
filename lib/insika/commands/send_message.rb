@@ -32,6 +32,11 @@ module Insika
         end
 
         validate_history!(p[:history]) if p[:history]
+# WHO wrote this message (MessageOrigin). Absent = a customer typed it, which
+# is what a turn has always meant. Refused here rather than downstream: a
+# typo'd origin would read as absent, and a marker that silently means
+# "unmarked" is worse than none — it looks like the filtering is on.
+Insika::MessageOrigin.parse!(p[:origin])
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
             (raise Insika::NotFoundError, "session '#{p[:session_id]}' not found")
@@ -51,7 +56,8 @@ module Insika
           agent: payload[:agent] || payload["agent"],
           message: payload[:message] || payload["message"],
           session_id: payload[:session_id] || payload["session_id"],
-          history: payload[:history] || payload["history"]
+          history: payload[:history] || payload["history"],
+origin: payload[:origin] || payload["origin"]
         }
       end
 

@@ -36,17 +36,19 @@ module Insika
       REPETITION_JACCARD  = 0.6
       REPETITION_MIN_WORDS = 3    # "oi"/"sim" repeated is not a defect
 
-      # A context provider can inject a `:history` fragment as a USER-role message,
-      # and the Executor persists it into the transcript like any other (it is what
-      # the model saw). Those messages are the ENGINE talking to itself, and counting
-      # them as the customer repeating themselves turned the first production run into
-      # 219 false positives. They are recognizable because a fragment opens with its
-      # own tag (`<store_cep_obrigatorio> …`), which no customer types.
+      # LEGACY FALLBACK, for transcripts written before messages carried an origin.
       #
-      # This is a heuristic standing in for a missing structural marker: the
-      # transcript does not record WHO produced a message beyond its role. Marking
-      # injected messages at the source is the real fix and belongs to whoever touches
-      # the transcript shape next.
+      # A message the engine wrote itself — an injected context fragment, a delegation
+      # result delivered as a new turn — is persisted with `role: user` like any
+      # other, because it is what the model saw. Counting those as the customer
+      # repeating themselves turned the first production run into 219 false positives,
+      # every one of them the engine reading its own `<store_cep_obrigatorio>` back.
+      #
+      # `MessageOrigin` is the structural answer and is preferred whenever a message
+      # carries it. This regex stays for everything written before that field existed
+      # (the pilot's database is full of it) and for consumers that have not started
+      # declaring `origin` — it is a guess, and it only ever runs on messages that
+      # made no claim about themselves.
       INJECTED_FRAGMENT_RE = /\A<[a-z][a-z0-9_:.-]*>/i
 
       # Weight of a finding kind when ranking (count × severity).
@@ -196,13 +198,22 @@ module Insika
 
       # A canned safe reply reached the customer: a guardrail block or an edge limit.
       # Those decisions are events, not records (see the class comment), so the reply
-      # text IS the evidence. Exact match — these strings are emitted verbatim.
+      # text IS the evidence.
+      #
+      # This is the one finding that reads the engine's OWN replies, so it looks at
+      # every assistant-role message rather than the agent's (`assistant_messages`
+      # deliberately excludes them). Two ways to recognise one, and the first is now
+      # exact: a reply the engine wrote SAYS so (`origin: engine`). The canned-text
+      # match stays for transcripts written before that — and for a text match the
+      # strings are emitted verbatim, so it is an exact compare, never a prefix.
       def safe_reply_findings(session_ids, profile)
         canned = canned_replies(profile)
-        return [] if canned.empty?
 
         hits = session_ids.flat_map do |sid|
-          assistant_messages(sid).select { |t| canned.include?(t.strip) }.map { |t| [sid, t] }
+          messages(sid)
+            .select { |m| m["role"].to_s == "assistant" }
+            .select { |m| MessageOrigin.origin_of(m) == MessageOrigin::ENGINE || canned.include?(m["content"].to_s.strip) }
+            .map { |m| [sid, m["content"].to_s] }
         end
         group(hits) do |_sid, text|
           [:safe_reply, "safe_reply", "a canned safe reply was served instead of an answer",
@@ -254,17 +265,23 @@ module Insika
 
       def messages(session_id) = Array(@session_store.find(session_id)&.messages)
 
-      # What the CUSTOMER actually said: user-role messages that the engine did not
-      # inject itself (see INJECTED_FRAGMENT_RE).
+      # What the CUSTOMER actually said. A message that DECLARES its origin is taken
+      # at its word; one that declares nothing falls back to the tag heuristic, which
+      # is all a pre-origin transcript offers.
       def user_messages(session_id)
         messages(session_id)
-          .select { |m| m["role"].to_s == "user" }
+          .select { |m| MessageOrigin.customer?(m) }
           .map { |m| m["content"].to_s }
           .reject { |text| INJECTED_FRAGMENT_RE.match?(text.lstrip) }
       end
 
+      # What the AGENT actually replied — not a guardrail's canned safe reply, and not
+      # a human operator's typing in an imported transcript. Both are `role: assistant`
+      # and neither is the model, so scoring them as the agent's work is wrong in both
+      # directions: it flags text no model produced, and it credits the model with a
+      # human's rescue.
       def assistant_messages(session_id)
-        messages(session_id).select { |m| m["role"].to_s == "assistant" }.map { |m| m["content"].to_s }
+        messages(session_id).select { |m| MessageOrigin.agent?(m) }.map { |m| m["content"].to_s }
       end
 
       # The second element of every consecutive pair that overlaps past the threshold.

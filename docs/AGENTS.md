@@ -60,6 +60,13 @@ POST /v1/responses
 `user` is the session id (see [Context](CONTEXT.md)); `stream: true` streams the
 turn as Server-Sent Events.
 
+An optional `"origin"` declares **who wrote the input**. Omit it and it means what
+it always meant: a customer typed this. Send `"engine"` when your consumer composed
+the message out of context blocks (`<memoria> …`) rather than relaying something a
+person said — the transcript then records it, and a report stops counting your own
+injected text as the customer repeating themselves. See
+[Refinement](REFINEMENT.md#who-wrote-a-message).
+
 ## The AgentProfile
 
 A profile is built through one front door — `AgentProfile.build(id:, model: nil, …)`.

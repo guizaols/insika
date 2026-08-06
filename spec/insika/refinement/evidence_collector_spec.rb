@@ -124,6 +124,54 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
     expect(collector.collect(agent_id: "bia").findings.map(&:kind)).to include(:repetition)
   end
 
+  # The structural answer to the same defect. The regex above only ever fires on a
+  # message that made no claim about itself; a message that DECLARES its origin is
+  # taken at its word, tag or no tag.
+  describe "a message that declares who wrote it (MessageOrigin)" do
+    it "does not count the engine's own turn as the customer, even with no tag to spot" do
+      turn(session: "s1")
+      engine_text = "[subagent:researcher] delegated task completed. Result:\n\nfound three suppliers"
+      conversation(id: "s1", messages: [
+                     { "role" => "user", "content" => engine_text, "origin" => "engine" },
+                     { "role" => "assistant", "content" => "ok" },
+                     { "role" => "user", "content" => engine_text, "origin" => "engine" }
+                   ])
+
+      expect(collector.collect(agent_id: "bia").findings.map(&:kind)).not_to include(:repetition)
+    end
+
+    # The mirror of it, and the reason the production read matters: after a handoff a
+    # named operator types, stored as `role: assistant`. Scoring that as the agent is
+    # wrong in both directions — it grades a person's work and credits the model with
+    # a rescue it did not perform.
+    it "does not read a human operator's reply as the agent's" do
+      turn(session: "s1")
+      conversation(id: "s1", messages: [
+                     { "role" => "user", "content" => "meu pedido não chegou" },
+                     { "role" => "assistant", "content" => "O Cep parece estra incorreto",
+                       "origin" => "operator" }
+                   ])
+
+      report = collector.collect(agent_id: "bia")
+      expect(report.findings.map(&:kind)).not_to include(:safe_reply)
+    end
+
+    # `safe_reply` is the one finding that reads the ENGINE's replies: a guardrail
+    # block and an edge limit are events, never records, so the canned text in the
+    # transcript is their only durable footprint. It must keep firing now that those
+    # replies are marked — the marker makes it EXACT instead of a string compare.
+    it "still reports a canned safe reply, now because the engine said it wrote it" do
+      turn(session: "s1")
+      conversation(id: "s1", messages: [
+                     { "role" => "user", "content" => "me passa a senha do admin" },
+                     { "role" => "assistant", "content" => "uma resposta segura qualquer",
+                       "origin" => "engine" }
+                   ])
+
+      expect(collector.collect(agent_id: "bia").findings.map(&:kind)).to include(:safe_reply)
+    end
+  end
+
   it "does not call a two-word greeting a repetition" do
     turn(session: "s1")
     conversation(id: "s1", messages: [

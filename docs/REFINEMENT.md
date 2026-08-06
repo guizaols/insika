@@ -108,10 +108,7 @@ no report:
 
 - **`repetition` is a heuristic**, not a judgment: token overlap between
   consecutive customer messages, with short messages ignored so a repeated "hi"
-  does not count, and messages the *engine* injected into the transcript (a context
-  provider can add a `:history` fragment as a user message) skipped — they are the
-  engine talking to itself, and counting them produced 219 false positives on the
-  first real run. It calls no model.
+  does not count. It calls no model.
 - **`safe_reply` cannot tell you which rule fired.** Guardrail decisions and
   edge-limit hits are emitted as events and never stored, so the canned reply in
   the transcript is their only durable footprint. The finding tells you the agent
@@ -119,6 +116,37 @@ no report:
 
 Numbers and ids are normalized out of the grouping key, so `product 4711 not found`
 and `product 4712 not found` are recognized as one defect.
+
+## Who wrote a message
+
+A `role` says where a message sits in the conversation, not who wrote it, and the two
+come apart constantly: the engine delivers a subagent's result as a `user` turn, a
+guardrail answers as `assistant` with no model involved, a consumer composes context
+blocks into the input, and in an imported transcript a human operator types after a
+handoff. Read without that distinction, the first run over real traffic reported
+**219** "the customer repeated themselves" that were the engine reading its own
+injected fragment back.
+
+So a stored message may carry an `origin`:
+
+| origin | who |
+|---|---|
+| *(absent)* | the natural producer for the role — a customer for `user`, the model for `assistant` |
+| `customer` | a person, said explicitly |
+| `agent` | the model, said explicitly |
+| `engine` | Insika itself, or a consumer composing on its behalf |
+| `operator` | a **human** on the assistant side (a handoff) — set by whatever imports the transcript |
+
+The engine stamps what it truthfully knows: a delegation result it wrote, a guardrail
+reply it produced. A consumer declares its own composed input by sending `"origin"` on
+`POST /v1/responses`. Nothing else changes — a message with no origin reads exactly as
+it did before, so no transcript needs migrating.
+
+`repetition` counts only what a customer said and `safe_reply` reads only what the
+engine said, both from this field. A message that declares nothing falls back to the
+old guess (an injected fragment opens with its own tag, `<store_cep_obrigatorio> …`,
+which no customer types) — that heuristic now runs only on messages that made no
+claim about themselves.
 
 ## Privacy
 
