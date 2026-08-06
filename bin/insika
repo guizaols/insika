@@ -202,6 +202,9 @@ module Insika
         settings_store: Insika::SettingsStore.new(config_store: config_store),
         llm_provider_store: Insika::LLMProviderStore.new(config_store: config_store),
         tool_store: Insika::ToolStore.new(config_store: config_store),
+        # Prompt-file corruption is invisible from the outside (the file is there, the
+        # agent answers) — the sweep is the only thing that names it.
+        agent_file_store: Insika::AgentFileStore.new(config_store: config_store),
         backend: backend
       )
     end

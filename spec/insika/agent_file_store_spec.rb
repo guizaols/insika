@@ -69,4 +69,30 @@ RSpec.describe Insika::AgentFileStore do
     (0..(described_class::HISTORY_MAX + 3)).each { |i| store.write("bia", "f.md", "v#{i}") }
     expect(store.versions("bia", "f.md").length).to eq(described_class::HISTORY_MAX)
   end
+
+  # The pilot lost all 11 prompt files of its production agent this way: something
+  # wrote an ENTRY back as content, `to_s` turned it into Ruby's #inspect, and the
+  # model received `{"content" => "…\n…"}` on one line for three weeks. Nothing
+  # legitimate passes a Hash here, so the store refuses instead of coercing.
+  describe "content must be text" do
+    it "refuses a Hash — the mistake that corrupted the pilot" do
+      expect { store.write("bia", "IDENTITY.md", { "content" => "# Sou a Bia", "updated_at" => "now" }) }
+        .to raise_error(Insika::ValidationError, /must be text, got Hash/)
+      expect(store.read("bia", "IDENTITY.md")).to be_nil # nothing was written
+    end
+
+    it "refuses an Array too" do
+      expect { store.write("bia", "IDENTITY.md", ["# Sou a Bia"]) }
+        .to raise_error(Insika::ValidationError, /got Array/)
+    end
+
+    it "still coerces scalars (nil clears a file; a number is text)" do
+      store.write("bia", "IDENTITY.md", "# Sou a Bia")
+      store.write("bia", "IDENTITY.md", nil)
+      expect(store.read("bia", "IDENTITY.md")).to eq("")
+      store.write("bia", "VERSION", 3)
+      expect(store.read("bia", "VERSION")).to eq("3")
+    end
+  end
 end
+
