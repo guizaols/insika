@@ -17,6 +17,7 @@ module Insika
     #   last_sessions  Integer — the N most recent conversations instead
     #   full           truthy — ignore the previous run and use the full window
     #   max_findings   Integer cap on the report
+    #   exclude_sessions [prefix] — session ids to drop (load tests, debug traffic)
     #
     # Window resolution (first that applies): explicit payload -> INCREMENTAL (since
     # the previous run for this agent, unless `full`) -> the agent's configured
@@ -51,12 +52,15 @@ module Insika
 
         begin
           report = @collector.collect(
-            agent_id: agent, max_findings: max_findings(p, config), **collect_args(window)
+            agent_id: agent, max_findings: max_findings(p, config),
+            exclude_sessions: exclude_sessions(p, config), **collect_args(window)
           )
-          done = @refinement_store.complete(run.id, findings: report.findings)
+          done = @refinement_store.complete(run.id, findings: report.findings,
+                                            excluded: report.excluded)
           emit(:refinement_report, agent: agent, run_id: run.id, status: done.status,
                                    findings: done.findings_count,
-                                   sessions: report.sessions_seen, turns: report.turns_seen)
+                                   sessions: report.sessions_seen, turns: report.turns_seen,
+                                   excluded: report.excluded)
           done
         rescue StandardError => e
           @refinement_store.fail(run.id, error: e.message)
@@ -109,6 +113,13 @@ module Insika
       def max_findings(payload, config)
         raw = payload[:max_findings] || config["max_findings"]
         raw ? Integer(raw) : Refinement::EvidenceCollector::DEFAULT_MAX_FINDINGS
+      end
+
+      # Session-id prefixes to drop (load tests, debug conversations). Configured per
+      # agent; a payload list overrides it for one run. Never defaulted — the report
+      # does not get to decide what counts as real traffic.
+      def exclude_sessions(payload, config)
+        Array(payload[:exclude_sessions] || config["exclude_sessions"]).map(&:to_s)
       end
 
       def emit(type, **data)

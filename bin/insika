@@ -114,6 +114,9 @@ module Insika
         o.on("--last-sessions N", Integer, "read the N most recent conversations") { |v| opts[:last_sessions] = v }
         o.on("--since ISO8601", "read only turns from this instant on") { |v| opts[:since] = v }
         o.on("--full", "ignore the previous run and read the whole window") { opts[:full] = true }
+        o.on("--exclude PREFIXES", "comma-separated session-id prefixes to drop (e.g. loadtest-,debug-)") do |v|
+          opts[:exclude_sessions] = v.split(",").map(&:strip).reject(&:empty?)
+        end
         o.on("--json", "emit the report as JSON") { opts[:json] = true }
       end.parse!(argv)
 
@@ -160,7 +163,8 @@ module Insika
       )
       handler.call(Insika::Command.build(:run_refinement, {
                                           agent: opts[:agent], since: opts[:since],
-                                          last_sessions: opts[:last_sessions], full: opts[:full]
+                                          last_sessions: opts[:last_sessions], full: opts[:full],
+                                          exclude_sessions: opts[:exclude_sessions]
                                         }.compact, transport: :cli))
     end
 

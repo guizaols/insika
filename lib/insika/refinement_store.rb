@@ -26,7 +26,7 @@ module Insika
     # collecting -> completed | no_findings | failed (all terminal).
     STATUSES = %i[collecting completed no_findings failed].freeze
 
-    Run = Data.define(:id, :agent_id, :status, :window, :findings,
+    Run = Data.define(:id, :agent_id, :status, :window, :findings, :excluded,
                       :started_at, :finished_at, :error) do
       def terminal? = status != :collecting
       def findings_count = findings.size
@@ -47,7 +47,7 @@ module Insika
       started = at || timestamp
       record = {
         "id" => id.to_s, "agent_id" => agent, "status" => "collecting",
-        "window" => deep_stringify(window || {}), "findings" => [],
+        "window" => deep_stringify(window || {}), "findings" => [], "excluded" => 0,
         "started_at" => started, "finished_at" => nil, "error" => nil
       }
       @store.set(SCOPE, key_for(agent, started, id), record)
@@ -57,11 +57,14 @@ module Insika
     # Closes a run with its findings. Empty findings -> :no_findings (a distinct
     # outcome from :completed — "we looked and it was clean" is a real answer, not a
     # failure). -> Run. ArgumentError if the run is already terminal.
-    def complete(id, findings:)
+    # `excluded` is how many turns the window dropped on purpose (synthetic
+    # traffic) — recorded so a report never reads cleaner than the data was.
+    def complete(id, findings:, excluded: 0)
       update(id) do |record|
         guard_open!(record)
         list = Array(findings).map { |f| deep_stringify(f.respond_to?(:to_h) ? f.to_h : f) }
         record["findings"] = list
+        record["excluded"] = Integer(excluded)
         record["status"] = list.empty? ? "no_findings" : "completed"
         record["finished_at"] = timestamp
       end
@@ -136,7 +139,7 @@ module Insika
       Run.new(
         id: record["id"], agent_id: record["agent_id"],
         status: record["status"].to_sym, window: record["window"] || {},
-        findings: record["findings"] || [],
+        findings: record["findings"] || [], excluded: record["excluded"] || 0,
         started_at: record["started_at"], finished_at: record["finished_at"],
         error: record["error"]
       )

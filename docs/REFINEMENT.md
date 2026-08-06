@@ -70,10 +70,23 @@ most recent conversations.
 | `--last-sessions N` | the N most recent conversations, however many turns those took |
 | `--since ISO8601` | only turns from that instant on |
 | `--full` | ignore the previous run and use the configured window |
+| `--exclude PREFIXES` | drop sessions whose id starts with any of these (e.g. `loadtest-,debug-`) |
 | `--json` | the run record as JSON, for a pipeline |
 
 The window is stored on the run, so a report read months later still says what it
 looked at.
+
+## Synthetic traffic
+
+If load tests, evals or debug conversations land in the same store as real ones,
+they will dominate the report — on the pilot they outnumbered real conversations
+and buried every genuine finding, including 203 turns failing for a reason that
+only occurs under the load-test profile.
+
+`exclude_sessions` (or `--exclude`) drops sessions by id prefix. It defaults to
+**nothing**: a report does not get to decide what counts as real traffic. What it
+dropped is counted on the run and shown next to the findings, so a filtered window
+never reads like a clean deployment.
 
 ## What it looks for
 
@@ -95,7 +108,10 @@ no report:
 
 - **`repetition` is a heuristic**, not a judgment: token overlap between
   consecutive customer messages, with short messages ignored so a repeated "hi"
-  does not count. It calls no model.
+  does not count, and messages the *engine* injected into the transcript (a context
+  provider can add a `:history` fragment as a user message) skipped — they are the
+  engine talking to itself, and counting them produced 219 false positives on the
+  first real run. It calls no model.
 - **`safe_reply` cannot tell you which rule fired.** Guardrail decisions and
   edge-limit hits are emitted as events and never stored, so the canned reply in
   the transcript is their only durable footprint. The finding tells you the agent
@@ -134,6 +150,7 @@ end
 |---|---|---|
 | `window.last_sessions` | 200 | conversations read when the run is not incremental |
 | `max_findings` | 20 | cap on the report |
+| `exclude_sessions` | none | session-id prefixes to drop |
 | `mode` | `"report"` | `report` is all that exists today; a typo here is refused, never silently downgraded |
 
 ## Events

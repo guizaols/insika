@@ -59,7 +59,8 @@ Everything below is what the first release will contain.
   that never fired. Provenance is session ids; snippets go through the same redaction as
   a customer-facing turn. Fired by hand (`insika refine --agent <id>` or the Studio
   button) — the engine grows no scheduler. It calls no model and edits nothing.
-  See [Refinement](docs/REFINEMENT.md).
+  `exclude_sessions` keeps load-test and debug traffic from burying real findings, and
+  reports what it dropped. See [Refinement](docs/REFINEMENT.md).
 - **Observability** — an event stream and per-session tool-call traces always on, plus
   opt-in OpenTelemetry traces *and* metrics under a documented, vendor-neutral attribute
   convention with an operator-declared pricing table for estimated cost.

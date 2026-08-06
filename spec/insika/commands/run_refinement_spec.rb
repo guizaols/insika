@@ -29,7 +29,7 @@ RSpec.describe Insika::Commands::RunRefinement do
         @calls << kwargs
         Insika::Refinement::EvidenceCollector::Report.new(
           agent_id: kwargs[:agent_id], window: {}, findings: @findings,
-          sessions_seen: 3, turns_seen: 7
+          sessions_seen: 3, turns_seen: 7, excluded: 0
         )
       end
     end.new(findings)
@@ -67,7 +67,7 @@ RSpec.describe Insika::Commands::RunRefinement do
   it "an empty report is :no_findings, not a failure" do
     allow(collector).to receive(:collect).and_return(
       Insika::Refinement::EvidenceCollector::Report.new(
-        agent_id: "bia", window: {}, findings: [], sessions_seen: 0, turns_seen: 0
+        agent_id: "bia", window: {}, findings: [], sessions_seen: 0, turns_seen: 0, excluded: 0
       )
     )
 
@@ -117,7 +117,7 @@ RSpec.describe Insika::Commands::RunRefinement do
 
     it "with neither config nor a previous run, the collector's own default applies" do
       handler.call(cmd({ "agent" => "bia" }))
-      expect(collector.calls.last).to eq({ agent_id: "bia", max_findings: 20 })
+      expect(collector.calls.last).to eq({ agent_id: "bia", max_findings: 20, exclude_sessions: [] })
     end
   end
 
