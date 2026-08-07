@@ -88,6 +88,38 @@ RSpec.describe Insika::Refinement::Gate do
       expect(report.reason).to match(/no recorded baseline/)
     end
 
+    # The same hole as a missing baseline, with a record standing in front of it.
+    # `compare` only reports a regression against a case the baseline had PASSING, so
+    # a baseline where nothing passes cannot produce one — every candidate sails
+    # through, including a harmful one. Found by running the gate against a real
+    # agent after a broken replay recorded an all-red baseline.
+    it "refuses an all-red baseline, which would let every candidate through" do
+      seed_case
+      baseline!("quotes-freight" => { "pass" => false, "score" => nil })
+      report = gate.first.score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+      expect(report.passed).to be(false)
+      expect(report.reason).to match(/no PASSING case.*every candidate would pass/m)
+    end
+
+    it "refuses a baseline recorded with no cases at all" do
+      seed_case
+      baseline!({})
+      expect(gate.first.score(agent_id: "support", candidate: candidate, run_id: "r1").reason)
+        .to match(/no PASSING case/)
+    end
+
+    # One green case is enough to make the gate meaningful — the refusal is about
+    # "nothing can regress", not about coverage.
+    it "runs when at least one baselined case passes, even alongside failing ones" do
+      seed_case
+      seed_case(id: "another")
+      baseline!("quotes-freight" => { "pass" => true, "score" => nil },
+                "another" => { "pass" => false, "score" => nil })
+      report = gate.first.score(agent_id: "support", candidate: candidate, run_id: "r1")
+      expect(report.reason).to be_nil
+    end
+
     it "clones nothing when it refuses" do
       seed_case
       g, transport = gate
@@ -172,11 +204,17 @@ RSpec.describe Insika::Refinement::Gate do
     end
 
     # A case the baseline already had failing must not wedge the gate: refinement
-    # exists to fix those, and blocking on them means nothing can ever land.
+    # exists to fix those, and blocking on them means nothing can ever land. It needs
+    # a green case beside it, or the all-red refusal above (correctly) fires first.
     it "does not block on a case that was already failing" do
-      baseline!("quotes-freight" => { "pass" => false, "score" => nil })
-      g, = gate(script: { "quotes-freight" => { text: "sei lá", tools: [] } })
-      expect(g.score(agent_id: "support", candidate: candidate, run_id: "r1").passed).to be(true)
+      seed_case(id: "greets")
+      baseline!("quotes-freight" => { "pass" => false, "score" => nil },
+                "greets" => { "pass" => true, "score" => nil })
+      g, = gate(script: { "quotes-freight" => { text: "sei lá", tools: [] },
+                          "greets" => { text: "oi!", tools: ["shipping_quote"] } })
+      report = g.score(agent_id: "support", candidate: candidate, run_id: "r1")
+      expect(report.passed).to be(true)
+      expect(report.regressions).to be_empty
     end
   end
 

@@ -44,8 +44,10 @@ Everything below is what the first release will contain.
   apply re-checks every anchor and refuses the whole proposal if anything drifted.
   Approving writes through the versioned file store, so rollback is the Restore
   button that was already there. Opt-in per agent (`refine mode: :propose, files:
-  %w[TOOLS.md]`); an agent with no golden cases, or with no recorded baseline,
-  **cannot be edited at all** — the gate refuses rather than passing vacuously. See
+  %w[TOOLS.md]`); an agent with no golden cases, with no recorded baseline, or with a
+  baseline in which nothing passes, **cannot be edited at all** — the gate refuses
+  rather than passing vacuously (a regression is measured against a case that *was*
+  passing, so an all-red baseline would wave everything through). See
   [Refinement](docs/REFINEMENT.md#changing-the-agent-the-gate).
 - **The eval baseline is a per-agent record, not only a file** — `evals/baseline.json`
   works from a checkout; the refinement gate runs inside a deployment that has none.
