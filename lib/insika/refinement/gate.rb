@@ -38,13 +38,19 @@ module Insika
       # transport, because the gate is constructed at boot and the deployment's own
       # URL/token are what it has to talk to; passing the built object would freeze a
       # credential the operator can rotate.
+      # capabilities_factory: -> an `Evals::HttpCapabilities` for the clone, or nil.
+      # Without it a case whose `requires` the agent cannot satisfy RUNS and fails
+      # (RFC-0014 §3.2 says it must skip) — and then the gate and `evals/run.rb`, the
+      # two callers of the one evaluator, disagree about what the corpus even
+      # measures. §3.7 exists to prevent exactly that.
       def initialize(profiles:, agent_files:, goldens:, baselines:, transport_factory:,
-                     judge_factory: nil, tolerance: DEFAULT_TOLERANCE)
+                     capabilities_factory: nil, judge_factory: nil, tolerance: DEFAULT_TOLERANCE)
         @profiles = profiles
         @agent_files = agent_files
         @goldens = goldens
         @baselines = baselines
         @transport_factory = transport_factory
+        @capabilities_factory = capabilities_factory
         @judge_factory = judge_factory
         @tolerance = tolerance
       end
@@ -136,7 +142,9 @@ module Insika
       # what is measured is the edit and nothing else.
       def replay(cases, clone_id)
         retargeted = cases.map { |g| g.class.new(**g.to_h.merge(agent: clone_id)) }
-        runner = Insika::Evals::Runner.new(transport: @transport_factory.call, judge: @judge_factory&.call)
+        runner = Insika::Evals::Runner.new(transport: @transport_factory.call,
+                                           judge: @judge_factory&.call,
+                                           capabilities: @capabilities_factory&.call)
         runner.run(retargeted).map(&:result)
       end
 
