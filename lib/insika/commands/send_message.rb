@@ -7,6 +7,15 @@ module Insika
     # Stream. Validations that fail do NOT create a Task
     # (ValidationError/NotFoundError -> direct HTTP response).
     class SendMessage
+      # RFC-0015 §5.5 — surfaces whose response can carry the `merged` verdict, and
+      # therefore the only ones allowed to coalesce. `/v1/responses` is NOT here:
+      # its body is OpenAI-shaped SSE with nowhere to put the field, and it is
+      # frozen because a live consumer speaks it. Coalescing a caller that cannot
+      # hear the verdict makes it deliver the same answer once per fragment, which
+      # is worse than not coalescing at all. Channels declare themselves by
+      # `channel:<id>` once RFC-0011 §6 lands.
+      COALESCABLE_TRANSPORTS = %i[http:json].freeze
+
       def initialize(profiles:, session_store:, task_store:, executor:)
         @profiles = ProfileSource.coerce(profiles)
         @session_store = session_store
@@ -42,6 +51,17 @@ Insika::MessageOrigin.parse!(p[:origin])
             (raise Insika::NotFoundError, "session '#{p[:session_id]}' not found")
         end
 
+        # RFC-0015 §5.3 — a fragment for a session whose turn is still at the door
+        # joins it instead of becoming a turn of its own. Asked BEFORE `create` so a
+        # merge leaves no orphan :queued task behind (Recovery replays :queued at
+        # boot). Only offered on a surface that can report the verdict back —
+        # §5.5: coalescing a caller that cannot hear `merged` makes it deliver the
+        # same answer twice.
+        if coalescable?(command) &&
+           (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
+          return { task_id: joined, merged: true }
+        end
+
         # command.to_h persists the entire Command in the Task;
         # ResumeTask re-reads payload.message from there.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
@@ -50,6 +70,11 @@ Insika::MessageOrigin.parse!(p[:origin])
       end
 
       private
+
+      def coalescable?(command)
+        transport = command.meta[:transport]
+        COALESCABLE_TRANSPORTS.include?(transport) || transport.to_s.start_with?("channel:")
+      end
 
       def normalize(payload)
         {

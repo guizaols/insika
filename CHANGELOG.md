@@ -49,6 +49,17 @@ Everything below is what the first release will contain.
   for an operator would deadlock on the single per-task mailbox). Documented trade-offs:
   `max_tool_calls` becomes approximate, tool results are recorded in completion order,
   and a turn deadline waits for in-flight calls instead of cancelling them.
+- **Message coalescing** — opt-in via `limits[:queue_mode] = "collect"` plus
+  `debounce_ms`, so the fragments a person types in a row ("oi" / "queria saber do
+  pedido" / "1234567") become one turn instead of three. The quiet window is held on
+  the session's own fiber, never on the request, so the caller is still acked
+  immediately. `debounce_max_ms` caps the total deferral. Off by default
+  (`followup` = one turn per message, today's behavior), resolved session vars →
+  agent → platform, where a key set explicitly to `nil`/`0` means *off*, not
+  *inherit*. Only offered on surfaces whose response can report
+  `{"merged": true}` — a caller that cannot hear that verdict would deliver the same
+  answer once per fragment, so `/v1/responses` and open streams are refused rather
+  than silently coalesced.
 - **Studio** — a web control UI for agents, prompts, skills, tools, sessions, tasks,
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,

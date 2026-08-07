@@ -16,11 +16,16 @@ that stream: it translates the events into OTEL **spans** and **metrics**. The c
 It's the same "events observe" principle the SSE surface already uses.
 
 Not every event on the stream is a turn. Operator actions, refinement runs
-(`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md)) and
-authoring writes (`:golden_written`, `:agent_file_written`, …) travel the same stream
-and are **ignored** by the bridge: they open no span and
+(`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md)),
+authoring writes (`:golden_written`, `:agent_file_written`, …) and queue bookkeeping
+(`:turn_coalesced` — see [Agents](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy))
+travel the same stream and are **ignored** by the bridge: they open no span and
 touch no instrument, because they are not part of a turn's latency or cost. Any
 other subscriber still sees them.
+
+`:turn_coalesced` is worth subscribing to even so: it is the only record that the
+fragments a customer typed in a row arrived as separate messages, since merging
+them creates no task of its own.
 
 The bridge speaks the standard the market already runs on: point any OTLP backend
 at Insika and a real turn shows up as a full trace, next to counters and histograms
