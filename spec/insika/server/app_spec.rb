@@ -588,6 +588,28 @@ RSpec.describe Insika::Server::App do
                                     "capabilities" => %w[promotions])
     end
 
+    # THE regression this class of bug hides in. Rack hands `PATH_INFO` as
+    # ASCII-8BIT, so a route param arrives BINARY; the sqlite3 driver binds a binary
+    # string as a BLOB, which never matches a TEXT column. Every one of these reads
+    # answered 404 on a durable deployment while every spec stayed green, because an
+    # in-memory store is a Ruby Hash and a binary string is `eql?` to its UTF-8 twin.
+    #
+    # So this case is deliberately backed by REAL SQLite. A double or the memory
+    # store would pass with the bug present, which is exactly how it shipped.
+    it "finds the agent when the path arrives as ASCII-8BIT (sqlite binds binary as a BLOB)" do
+      config_store = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: ":memory:"))
+      source = Insika::StoredProfileSource.new(config_store: config_store)
+      source.put(Insika::AgentProfile.build(id: "demo-store", model: "m", tools_allow: %w[search_products]))
+
+      env = Rack::MockRequest.env_for("/v1/agents/demo-store", method: "GET")
+      expect(env["PATH_INFO"].encoding).to eq(Encoding::ASCII_8BIT) # the precondition
+      env["HTTP_AUTHORIZATION"] = "Bearer #{TOKEN}"
+      status, _h, body = build_app(profiles: source).call(env)
+
+      expect(status).to eq(200)
+      expect(json_body(body)["tools"]).to eq(%w[search_products])
+    end
+
     it "reports an OPEN allowlist as null, not as an empty set" do
       open = Insika::AgentProfile.build(id: "bia", model: "m")
 

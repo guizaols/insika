@@ -279,6 +279,17 @@ module Deploy
       # would be the worst outcome, because the gate would grade against a rubric
       # nobody tuned. nil when nobody is configured: then a rubric'd case reads as
       # judge_pending, which is visible, instead of silently passing.
+      # RFC-0014 §3.2: a case the deployment cannot satisfy is SKIPPED, not failed.
+      # The eval CLI already resolves that over the same gated `/v1/agents/:id`; the
+      # gate has to resolve it the same way or the two disagree about what the corpus
+      # measures.
+      capabilities_factory: lambda {
+        Insika::Evals::HttpCapabilities.new(
+          base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
+                    "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
+          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+        )
+      },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
     )
     BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM))
