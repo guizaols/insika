@@ -92,8 +92,8 @@ Everything below is what the first release will contain.
   such route at all. See [Channels](docs/CHANNELS.md).
 - **The web widget** — one `<script>` tag on a site and the adopter has an agent: a
   bubble, a panel, and the answer streaming in token by token, with no backend of
-  theirs, no build step and no npm. It is the native channel for a team with *no*
-  messaging stack, and the first one where the reply rides the request's own
+  theirs, no build step and no npm. It is the channel for a team with *no* messaging
+  stack of its own, and the first one where the reply rides the request's own
   connection. Because the caller is an anonymous browser there is no secret to check,
   so three things stand in for one: an exact-match origin allowlist, an agent
   allowlist (a visitor addresses what the operator published and nothing else), and a

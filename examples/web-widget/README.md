@@ -1,9 +1,9 @@
 # web-widget
 
 **One `<script>` tag and you have an agent on your site.** No backend of yours, no
-build step, no npm. This is the native channel for a team with no messaging stack —
-if you already own WhatsApp or Slack, you want [relay-channel](../relay-channel/)
-instead.
+build step, no npm. This is the channel for a team with no messaging stack of its
+own — if your customers are on WhatsApp or Slack, you want
+[relay-channel](../relay-channel/) instead, and you keep the integration you have.
 
 ```html
 <script src="http://127.0.0.1:9494/channels/web/asset/widget.js"
