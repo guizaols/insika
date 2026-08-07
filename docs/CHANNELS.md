@@ -45,8 +45,123 @@ the integration.
 Both are permanent. Relay is not a migration step, and there is no point at which
 you are expected to "graduate" to native.
 
-> **Available today: the relay.** The web widget, Slack and native WhatsApp are
+> **Available today: the web widget and the relay.** Slack and native WhatsApp are
 > specified (RFC-0011) and not built. This page documents what exists.
+
+## The web widget
+
+The native channel for a team with no messaging stack: **one `<script>` tag on your
+site and you have an agent**. No backend of yours, no build step, no npm.
+
+```html
+<script src="https://agents.example.com/channels/web/asset/widget.js"
+        data-agent="support" data-title="Ask us anything" defer></script>
+```
+
+It renders a bubble in the corner, opens a panel, and streams the answer token by
+token on the same connection it sent the message on. Everything it needs it reads
+off its own tag — including the engine's address, derived from the script's own
+`src`, so you never configure a host twice.
+
+| Attribute | Required | What it does |
+|---|---|---|
+| `data-agent` | **yes** | which agent answers. Must be on `INSIKA_WIDGET_AGENTS` |
+| `data-title` | — | the panel header (default `Chat`) |
+| `data-placeholder` | — | the input's placeholder |
+| `data-greeting` | — | a first message from the agent, shown without running a turn |
+
+Theming is a block of CSS custom properties. Set them anywhere on the page:
+
+```css
+:root {
+  --insika-accent: #0f766e;   --insika-on-accent: #fff;
+  --insika-bg: #fff;          --insika-fg: #111827;
+  --insika-muted: #f0fdfa;    --insika-border: rgba(0,0,0,.12);
+  --insika-font: "Inter", system-ui, sans-serif;
+  --insika-offset: 20px;      /* distance from the corner */
+}
+```
+
+A runnable page lives in
+[`examples/web-widget/`](https://github.com/guizaols/insika/tree/main/examples/web-widget).
+
+### Setting it up
+
+Two environment variables, and **both are the switch** — with either one missing the
+channel is not mounted and every `/channels/web/*` route answers `404`:
+
+```bash
+INSIKA_WIDGET_ORIGINS=https://shop.example,https://www.shop.example
+INSIKA_WIDGET_AGENTS=support
+```
+
+`INSIKA_WIDGET_ORIGINS` is an **exact-match** list of the origins allowed to embed
+the widget. No wildcards, no subdomain matching, and no value that means "anyone" —
+`https://shop.example` does not admit `https://a.shop.example`. Include every origin
+your site actually serves from, `www` included.
+
+`INSIKA_WIDGET_AGENTS` is the list of agents a visitor may address. An anonymous
+browser addresses these and nothing else, so an internal agent in the same
+deployment stays out of reach even if someone edits the `data-agent` in devtools.
+
+### A rate limit is required, not suggested
+
+**The widget answers `503` until a chat rate limit is configured.** This is the one
+place the engine refuses to run rather than warn, because a public endpoint with an
+LLM behind it and no ceiling is an unmetered bill that arrives before anybody
+notices.
+
+Either source satisfies it — the platform default, in Studio → Settings:
+
+```json
+{ "edge": { "chat_rate_limit": 6, "chat_rate_window": 60 } }
+```
+
+or a per-agent `limits.chat_rate_limit` on **every** agent in
+`INSIKA_WIDGET_AGENTS`. The bucket is the minted session id, so one visitor cannot
+spend another's allowance. `insika doctor` tells you which half is missing.
+
+### The three routes
+
+You never call these yourself — the widget does — but they are the contract, and
+anything can speak them.
+
+```
+POST /channels/web/sessions          -> 201 {"session_id": "web:8f3c…"}
+POST /channels/web/messages          -> 200 text/event-stream
+GET  /channels/web/asset/widget.js   -> the script
+```
+
+```jsonc
+POST /channels/web/messages
+Content-Type: application/json
+
+{ "agent": "support", "session_id": "web:8f3c…", "message": "cadê meu pedido?" }
+```
+
+The reply is SSE on that same connection — four frame types, and an unknown one is
+safe to ignore:
+
+```
+event: delta     data: {"delta":"Seu pedido "}     the answer, token by token
+event: working   data: {"name":"order_status"}     a tool is running
+event: done      data: {}                          the turn ended
+event: error     data: {"message":"…"}             it ended badly
+```
+
+**The engine issues the session id and the client never proposes one.** `POST
+/messages` with an id nobody minted is a `404`, never a new conversation: on an
+anonymous endpoint, create-on-write means anyone who guesses an id can read someone
+else's chat. The widget keeps the id it was given in `localStorage`, so a returning
+visitor continues the same conversation.
+
+### What the widget does not do in phase 1
+
+File upload, typing indicators, history across devices, and i18n of its own chrome
+(the four words on the buttons). It also never retries a message POST: that request
+runs a turn, so re-sending it costs a second LLM call and can put a second answer in
+front of the customer. A dropped stream shows what arrived and lets the person ask
+again.
 
 ## What the relay does not do — on purpose
 
@@ -206,31 +321,61 @@ redirect its own conversation.
 
 A channel is a plain object — no base class. Register it from a plugin
 (see [Plugins](/plugins/)) with `contracts: { channels: [<id>] }` in the manifest,
-and it mounts at `/channels/<id>/events`.
+and it mounts under `/channels/<id>/`.
+
+Two members are always there; the rest of the object decides which shape you get.
 
 ```ruby
 class MyChannel
   def id = "mine"
 
-  # -> :ok | :unauthorized | :disabled. Never open by omission.
+  # -> :ok | :unauthorized | :disabled. Never open by omission — a channel with
+  # no `authenticate` at all is refused with 503 rather than defaulted open.
   def authenticate(req) = ...
 
   # Rack request + parsed body -> the fields the engine turns into a turn.
+  def parse(req, body:) = ...
+end
+```
+
+**Shape B** (the platform calls you back later) adds `deliver`, and that alone
+mounts `POST /channels/<id>/events`:
+
+```ruby
   def parse(req, body:)
     { agent: …, external_id: …, message: …, event_id: …, vars: {} }
   end
 
   def session_id_for(external_id) = "#{id}:#{external_id}"
 
-  # Shape B only: hand ONE reply to the platform. -> HTTP status.
+  # Hand ONE reply to the platform. -> HTTP status.
   # Raise Insika::DeliveryError when the request could not be made at all.
   def deliver(payload, to:, delivery_id: nil) = ...
-end
 ```
 
-Everything except `deliver` is shared: the outbox, the at-most-once claim, the
-bounded retry, the inbound dedup and the queue. A channel that needs to branch
-anywhere else is a sign the seam is wrong, not that the channel is special.
+**Shape A** (the reply rides the request's own connection) adds `frame_for`, which
+mounts `POST /channels/<id>/messages`, plus whichever of these it wants:
+
+```ruby
+  def parse(req, body:) = { agent: …, session_id: …, message: … }
+
+  # Turn Event -> an SSE frame | nil for an event with no counterpart.
+  def frame_for(event) = ...
+
+  # Optional: mounts POST /channels/<id>/sessions. The engine issues the id.
+  def mint_session_id = "#{id}:#{SecureRandom.hex(16)}"
+
+  # Optional: mounts GET /channels/<id>/asset/:f. A CLOSED map of names, never a
+  # path — anything resolving a filesystem path from a URL is a traversal.
+  def asset(name) = { content_type: …, body: …, etag: …, cache_control: … }
+
+  # Optional: the CORS headers for this origin, or none.
+  def cors_headers(origin) = ...
+```
+
+Everything else is shared — the outbox, the at-most-once claim, the bounded retry,
+the inbound dedup and the queue. A channel that needs to branch anywhere but
+`deliver` is a sign the seam is wrong, not that the channel is special.
 
 ## Observability
 

@@ -222,5 +222,47 @@ RSpec.describe Insika::Doctor do
       expect(finding.message).to include("NOT mounted")
     end
   end
+
+  # The widget is the one PUBLIC channel, so its misconfigurations cost money rather
+  # than merely failing — and the 503 it answers reads to an operator as "broken"
+  # unless something says which half is missing.
+  describe "web-widget check" do
+    def widget_finding(env, settings: nil)
+      described_class.new(env: env, settings_store: settings)
+        .run.findings.find { |f| f.check == "web-widget" }
+    end
+
+    def settings_with(edge) = Class.new { define_method(:get) { { "edge" => edge } } }.new
+
+    it "says nothing when nobody asked for a widget" do
+      expect(widget_finding({})).to be_nil
+    end
+
+    it "is ok with both allowlists and a platform rate limit" do
+      finding = widget_finding({ "INSIKA_WIDGET_ORIGINS" => "https://shop.example",
+                                 "INSIKA_WIDGET_AGENTS" => "support" },
+                               settings: settings_with({ "chat_rate_limit" => 6 }))
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "warns on either half of the switch, naming the missing one" do
+      origins_only = widget_finding({ "INSIKA_WIDGET_ORIGINS" => "https://shop.example" })
+      expect(origins_only.severity).to eq(:warn)
+      expect(origins_only.message).to include("INSIKA_WIDGET_AGENTS")
+
+      agents_only = widget_finding({ "INSIKA_WIDGET_AGENTS" => "support" })
+      expect(agents_only.message).to include("INSIKA_WIDGET_ORIGINS")
+    end
+
+    # A per-agent limit still satisfies the gate and the profiles are not readable
+    # from here, so this is a warning — but it is the likeliest reason for a 503.
+    it "warns on a mount with no platform rate limit — the likeliest cause of a 503" do
+      finding = widget_finding({ "INSIKA_WIDGET_ORIGINS" => "https://shop.example",
+                                 "INSIKA_WIDGET_AGENTS" => "support" },
+                               settings: settings_with({}))
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("503")
+    end
+  end
 end
 
