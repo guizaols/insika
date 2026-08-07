@@ -90,6 +90,7 @@ require_relative "insika/http_client"
 # through both — and after registry.rb, which ChannelRegistry extends.
 require_relative "insika/channel_registry"
 require_relative "insika/channels/relay"
+require_relative "insika/channels/web"
 require_relative "insika/channel_delivery"
 require_relative "insika/overlay_tool_registry"
 require_relative "insika/settings_store"

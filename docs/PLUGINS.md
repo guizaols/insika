@@ -107,7 +107,7 @@ side-effecting tools marked so an agent can gate them behind approval).
 Anything addressable by name must be declared in `contracts`; registering an
 undeclared name logs a warning and is **ignored**, so a plugin cannot quietly
 widen its own surface between versions. For a channel the name is also a URL
-segment (`/channels/<name>/events`), so the declaration is what stops a plugin
+segment (`/channels/<name>/…`), so the declaration is what stops a plugin
 from mounting a route nobody asked for.
 
 `api.config` returns the manifest's `config` hash, frozen.

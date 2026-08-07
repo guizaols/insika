@@ -86,10 +86,21 @@ Everything below is what the first release will contain.
   the provider's last word and publishing, so the two never disagree. Applies to every
   cancel, not just `interrupt`.
 - **Channels** — a way in and out for people, registered by id and mounted on one
-  generic route (`POST /channels/<id>/events`). A channel translates and authenticates,
+  generic route family under `/channels/<id>/`. A channel translates and authenticates,
   and does nothing else: it may refuse a request, never widen one. Plugins register
   their own through `contracts.channels`, and a deployment that registers none has no
   such route at all. See [Channels](docs/CHANNELS.md).
+- **The web widget** — one `<script>` tag on a site and the adopter has an agent: a
+  bubble, a panel, and the answer streaming in token by token, with no backend of
+  theirs, no build step and no npm. It is the native channel for a team with *no*
+  messaging stack, and the first one where the reply rides the request's own
+  connection. Because the caller is an anonymous browser there is no secret to check,
+  so three things stand in for one: an exact-match origin allowlist, an agent
+  allowlist (a visitor addresses what the operator published and nothing else), and a
+  **mandatory chat rate limit** — the widget answers `503` until one is configured,
+  which is the only place the engine refuses to serve rather than warn. The engine
+  issues session ids and the client never proposes one. See
+  [Channels](docs/CHANNELS.md#the-web-widget).
 - **The relay channel** — for an adopter who already owns a messaging stack (a WhatsApp
   BSP, a Zendesk, a legacy app) and wants the engine for the **turn**, not the platform.
   You POST the customer's message to `/channels/relay/events`; the engine acks

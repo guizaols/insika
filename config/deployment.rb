@@ -309,6 +309,17 @@ module Deploy
     )
     CHANNEL_REGISTRY.register(RELAY.id, RELAY) if RELAY
 
+    # The web widget (§5) — the other half of the same seam, for an adopter with no
+    # messaging stack at all. Its switch is the two allowlists (which sites may embed
+    # it, which agents it may address), and its credential is the chat rate limit:
+    # the channel answers 503 until one is configured, because a public endpoint with
+    # an LLM behind it and no ceiling is an unmetered bill.
+    WEB_WIDGET = Insika::Channels::Web.from_env(
+      chat_rate_limit: Insika::Channels::Web.limit_resolver(profiles: PROFILE_SOURCE,
+                                                            settings_store: SETTINGS_STORE)
+    )
+    CHANNEL_REGISTRY.register(WEB_WIDGET.id, WEB_WIDGET) if WEB_WIDGET
+
     # Boot sweep for replies a previous process committed but never handed over
     # (§6.5). Duck-typed by Server::Boot, exactly like recover_delegations.
     def self.recover_channel_deliveries = EXECUTOR.recover_channel_deliveries

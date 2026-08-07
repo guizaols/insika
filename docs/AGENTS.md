@@ -369,7 +369,10 @@ LLM moderator off). See [Security](SECURITY.md#guardrails) and
 
 ### Layer 4: Edge limits (flood and spend control)
 
-Two independent, opt-in ceilings, enforced *before* the model is ever called:
+Two independent, opt-in ceilings, enforced *before* the model is ever called —
+opt-in everywhere except on a public channel, where `chat_rate_limit` is
+[required](CHANNELS.md#a-rate-limit-is-required-not-suggested) and the
+[web widget](CHANNELS.md#the-web-widget) refuses to serve without one:
 
 - **`chat_rate_limit`** — turn attempts per session per `chat_rate_window`.
 - **`agent_token_ceiling`** — total tokens per agent per `agent_token_window`.

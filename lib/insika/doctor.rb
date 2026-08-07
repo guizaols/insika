@@ -83,7 +83,8 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_data_tools check_prompt_files check_relay_channel]
+                    check_admin_token check_data_tools check_prompt_files check_relay_channel
+                    check_web_widget]
 
     def safe(check)
       Array(send(check))
@@ -172,6 +173,38 @@ module Insika
         [Finding.new(check: "relay-channel", severity: :warn,
                      message: "INSIKA_RELAY_DELIVER_URL set without INSIKA_RELAY_TOKEN — the relay channel is NOT mounted (the token is the switch)", fix: nil)]
       end
+    end
+
+    # The widget is the one PUBLIC channel, so its misconfigurations are the ones that
+    # cost money rather than just failing (RFC-0011 §5.3/§5.4). Three of them, in the
+    # order they bite: half the switch set (mounted nowhere, or mounted addressing
+    # nothing), and a mount with no chat rate limit anywhere — which the channel
+    # refuses with a 503 rather than opening, but which reads to an operator as "the
+    # widget is broken" unless something says why.
+    def check_web_widget
+      origins = Insika::Coercion.present?(@env["INSIKA_WIDGET_ORIGINS"])
+      agents  = Insika::Coercion.present?(@env["INSIKA_WIDGET_AGENTS"])
+      return [] unless origins || agents
+
+      unless origins && agents
+        missing = origins ? "INSIKA_WIDGET_AGENTS" : "INSIKA_WIDGET_ORIGINS"
+        return [Finding.new(check: "web-widget", severity: :warn,
+                            message: "#{missing} unset — the web widget is NOT mounted (both allowlists are the switch)", fix: nil)]
+      end
+
+      return [ok("web-widget", "web widget mounted at /channels/web (origins + agents allowlisted, rate limit configured)")] if platform_chat_rate_limit
+
+      # No platform default. A per-agent `limits.chat_rate_limit` still satisfies the
+      # gate, and the profiles are not readable from here, so this is a warning and
+      # not an error — but it is the likeliest reason a widget answers 503.
+      [Finding.new(check: "web-widget", severity: :warn,
+                   message: "no platform edge.chat_rate_limit — the widget answers 503 unless EVERY agent in " \
+                            "INSIKA_WIDGET_AGENTS sets limits.chat_rate_limit (a public channel with no ceiling is not served)", fix: nil)]
+    end
+
+    def platform_chat_rate_limit
+      value = ((@settings_store&.get || {})["edge"] || {})["chat_rate_limit"]
+      value.to_i.positive?
     end
 
     # A stored data-tool whose definition no longer builds is INVISIBLE at runtime: the

@@ -49,12 +49,13 @@ operator-grade — it is not a read key, and a leak is agent takeover, not just 
 
 ## Channels authenticate themselves
 
-`POST /channels/<id>/events` is the one route family that does **not** answer to the
-gateway token — and it is not an exception to the rule above, it is the same rule
-with a different credential. A messaging platform has no way to send your gateway
-token; what it can send is its own scheme (a shared secret for the
-[relay](CHANNELS.md), an HMAC signature for Slack). So the channel does the check,
-and the router refuses before parsing anything:
+`/channels/<id>/…` is the one route family that does **not** answer to the gateway
+token — and it is not an exception to the rule above, it is the same rule with a
+different credential. A messaging platform has no way to send your gateway token,
+and neither has a visitor's browser; what they can send is their own scheme (a
+shared secret for the [relay](CHANNELS.md), an HMAC signature for Slack, an origin
+for the widget). So the channel does the check, and the router refuses before
+parsing anything:
 
 | The channel says | The route answers |
 |---|---|
@@ -68,6 +69,9 @@ not mounted at all (`404`); one that is mounted always has a secret. That is
 deliberate: a public inbound route with an LLM behind it is a money faucet, and
 [edge limits](#edge-limits) are the second line, not the first.
 
+The routes are enumerated in the router, not prefix-matched, so a channel route
+added tomorrow is gated by default and publishing it is a deliberate edit.
+
 Two more things a relay operator owns:
 
 - **The callback URL is egress.** The delivery POST goes through the
@@ -76,6 +80,42 @@ Two more things a relay operator owns:
   today, and that POST carries a customer's conversation.
 - **`event_id` is a safety property, not an optimization.** Without it a retried
   webhook is a second turn you pay for and a second message the customer reads.
+
+### A public channel: the web widget
+
+The [widget](CHANNELS.md#the-web-widget) is different from every other surface here
+in one way that changes the whole posture: **the caller is an anonymous browser, so
+there is no secret to check.** Three controls stand in for the missing credential,
+and it is worth being precise about which of them is actually load-bearing.
+
+- **The rate limit is the real defense, and it is mandatory.** The widget answers
+  `503` until a chat rate limit exists — the platform's `edge.chat_rate_limit` or a
+  per-agent `limits.chat_rate_limit` on every published agent. This is the only
+  place in the engine that refuses to serve rather than warn, because the failure
+  mode is a bill rather than an error. The bucket is the minted session id, and it
+  is checked *before* the input guardrail so a flood cannot even spend the
+  moderator. See [edge limits](#edge-limits).
+- **The agent allowlist is a real boundary.** `INSIKA_WIDGET_AGENTS` is what an
+  anonymous visitor may address. Editing `data-agent` in devtools to name an
+  internal agent gets a `422`, not that agent.
+- **The origin allowlist is a browser courtesy, not a control.** `Access-Control-
+  Allow-Origin` is enforced by the browser, and curl sends whatever origin it
+  likes. It stops another *site* from embedding your widget; it does not stop a
+  script. Configure it (exact match, no wildcards — `https://shop.example` does not
+  admit `https://a.shop.example`) and then do not count on it.
+
+Two more properties worth knowing:
+
+- **The engine issues session ids; the client never proposes one.** `POST
+  /channels/web/messages` with an unminted id is a `404`. Create-on-write on an
+  anonymous endpoint means anyone who guesses an id joins someone else's
+  conversation, and the ids are 128 random bits for the same reason. A session also
+  belongs to exactly one channel — a widget visitor cannot stream a relay
+  customer's conversation by pasting its id.
+- **What the visitor types is data, at the most cuttable priority.** Untrusted
+  input from a public channel enters at `REQUEST` (40) like any other turn content,
+  and the [guardrails](#guardrails) run before the model. A channel may refuse a
+  request; it can never widen what the agent is allowed to do.
 
 ## Edge limits
 
