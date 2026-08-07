@@ -51,6 +51,14 @@
         <span class="mono"><%= @proposal.gate["passed_cases"] %>/<%= @proposal.gate["cases"] %> case(s)</span>
         <span class="muted">no regression against <%= @proposal.gate["baseline_cases"] %> baselined case(s)</span>
         <span class="muted">· proposed by <span class="mono"><%= cand["proposer"] %></span></span>
+        <%# RFC-0013 §3.9 — when a PANEL ran, the operator is looking at the winner of
+            several, and which ones it beat is part of the decision. %>
+        <% if @proposal.panel.size > 1 %>
+          <span class="muted">· best of <%= @proposal.panel.size %> candidate(s)</span>
+        <% end %>
+        <% if @proposal.cost && @proposal.cost["spent"].to_i.positive? %>
+          <span class="muted">· <%= @proposal.cost["spent"] %> tokens</span>
+        <% end %>
       </div>
       <% if presence(cand["rationale"]) %>
         <div class="skill-desc muted"><%= cand["rationale"] %></div>
@@ -85,6 +93,30 @@
         content — undo it any time from the file's History.
       </div>
     </div>
+
+    <%# The candidates that LOST. Shown because the panel's value is comparative: an
+        operator deciding whether the loop earns its keep needs to see that three
+        models were asked and what the other two wrote. %>
+    <% losers = @proposal.panel.reject { |e| (e["candidate"] || {})["id"] == cand["id"] } %>
+    <% if losers.any? %>
+      <h2>Also proposed<span class="sub">scored and not chosen</span></h2>
+      <div class="card">
+        <ul class="history">
+          <% losers.each do |entry| %>
+            <% other = entry["candidate"] || {}; verdict = entry["gate"] || {} %>
+            <li>
+              <span class="pill <%= verdict["passed"] ? 'ok' : 'err' %>"><%= verdict["passed"] ? "passed" : "no" %></span>
+              <span class="mono"><%= Array(entry["proposers"]).join(" + ") %></span>
+              <span class="preview muted">
+                <%= Array(other["edits"]).size %> edit(s)
+                <% if verdict["cases"].to_i.positive? %>· <%= verdict["passed_cases"] %>/<%= verdict["cases"] %> case(s)<% end %>
+                <% if presence(verdict["reason"]) %>· <%= verdict["reason"] %><% end %>
+              </span>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
   <% end %>
 
   <% if @run.nil? %>
@@ -105,10 +137,34 @@
           <button type="submit" class="primary">Propose a fix</button>
         </form>
         <div class="skill-desc muted">
-          Asks this agent's configured proposer for a small, anchored edit to its
-          allowlisted files, then scores it by replaying the golden set against a
-          throwaway clone. Nothing is written until you approve it. Takes a while and
-          costs provider calls — the replay is a real conversation per case.
+          Asks this agent's configured proposer(s) for a small, anchored edit to its
+          allowlisted files, then scores each one by replaying the golden set against a
+          throwaway clone and keeps the best. Nothing is written until you approve it.
+          Takes a while and costs provider calls — the replay is a real conversation per
+          case, per candidate.
+        </div>
+      </div>
+    <% end %>
+
+    <%# RFC-0013 §3.6 — `mode: auto_apply` changed this agent's files with nobody in
+        the loop, so the page owes the operator exactly three things: what changed, why,
+        and where to undo it. The write versioned, so History IS the undo. %>
+    <% if @run.status == :applied && (@run.decision || {})["by"] == "auto_apply" %>
+      <div class="card">
+        <div class="skill-desc">
+          <span class="pill ok">auto-applied</span>
+          <span class="muted"><%= (@run.decision || {})["note"] %> · <%= (@run.decision || {})["at"] %></span>
+        </div>
+        <% Array((@run.candidate || {})["edits"]).each do |e| %>
+          <div class="skill-desc">
+            <span class="pill"><%= e["op"] %></span>
+            <a class="mono" href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?file=<%= Rack::Utils.escape(e["file"]) %>"><%= e["file"] %></a>
+          </div>
+          <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
+<% end %><span class="ins">+ <%= e["after"] %></span></pre>
+        <% end %>
+        <div class="skill-desc muted">
+          Undo it from the file's History — the previous content is one click away.
         </div>
       </div>
     <% end %>
@@ -165,6 +221,8 @@
             <span class="preview muted">
               <%= run.findings.size %> finding(s) ·
               window <%= refinement_window(run.window) %> ·
+              <% if run.panel.size > 1 %><%= run.panel.size %> candidate(s) · <% end %>
+              <% if run.cost && run.cost["spent"].to_i.positive? %><%= run.cost["spent"] %> tokens · <% end %>
               <%= run.started_at %>
             </span>
           </li>

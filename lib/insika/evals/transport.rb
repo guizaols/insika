@@ -13,7 +13,14 @@ module Insika
     #
     # One turn's outcome: the TurnResult the engine asserts on + perf timing (ttfb/
     # total in ms) so `--mode perf` reports real latency over the real corpus (#6b).
-    TurnOutcome = Struct.new(:result, :ttfb, :total, keyword_init: true)
+    #
+    # `usage` is the turn's token counts as the deployment reported them
+    # (`response.completed`), or nil when the provider sent none. It is carried, never
+    # asserted on: the consumer is RFC-0013's refinement budget, which has to bound the
+    # cost of a gate replay and cannot invent the number. nil is preserved as nil
+    # rather than zeroed — "the provider did not say" and "it cost nothing" are
+    # different facts, and a budget that confuses them stops being a budget.
+    TurnOutcome = Struct.new(:result, :ttfb, :total, :usage, keyword_init: true)
 
     # Pure reduction of the /v1/responses SSE stream. Kept separate from the HTTP so
     # it's testable offline with canned frames (server/responses.rb is the producer).
@@ -154,7 +161,7 @@ module Insika
         TurnOutcome.new(
           result: TurnResult.new(output_text: reduced[:output_text],
                                  tool_calls: reduced[:tool_calls], error: reduced[:error]),
-          ttfb: ttfb, total: (mono - t0) * 1000.0
+          ttfb: ttfb, total: (mono - t0) * 1000.0, usage: reduced[:usage]
         )
       rescue StandardError => e
         failure(e.class.to_s, t0)
