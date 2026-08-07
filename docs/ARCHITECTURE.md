@@ -107,7 +107,10 @@ something to render.
 ## A turn, end to end
 
 The Executor runs a fixed sequence of stages. Each stage boundary drains the
-mailbox, so a cancel or pause is honored at a safe point — never mid-write.
+mailbox, so a cancel or pause is honored at a safe point — never mid-write. One of
+those boundaries sits **between the provider's last word and publishing the answer**:
+a turn cancelled while the model was working publishes nothing, so what the customer
+read and what the transcript holds never disagree.
 
 The numbers are the engine's own — the same stage numbers `executor.rb` uses. The
 sequence has no stage 7; the numbering is kept as the code has it rather than
