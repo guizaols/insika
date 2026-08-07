@@ -470,6 +470,19 @@
   .matrix-hint { margin:0 0 1.25rem; font-size:.88rem; }
   .deny { font-size:.82rem; margin:.5rem 0 0; }
 
+  /* Refinement proposal diff (RFC-0013 §5). Deliberately not a full diff view: an
+     anchored edit is two lines, and rendering it as two lines is what makes the
+     approval a five-second decision instead of a code review. */
+  pre.diff { font-family:var(--mono); font-size:.82rem; line-height:1.55; margin:.4rem 0 .9rem;
+             padding:.6rem .75rem; border:1px solid var(--line); border-radius:8px;
+             white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg-soft, transparent); }
+  pre.diff .del { display:block; color:#b4232b; text-decoration:line-through; text-decoration-thickness:1px; }
+  pre.diff .ins { display:block; color:#1a7f45; }
+  @media (prefers-color-scheme: dark) {
+    pre.diff .del { color:#ff8a8a; }
+    pre.diff .ins { color:#6ee7a8; }
+  }
+
   /* History rows */
   ul.history li { display:flex; align-items:center; gap:.75rem; padding:.55rem 0; border-bottom:1px solid var(--line); font-size:.88rem; }
   ul.history li:last-child { border-bottom:0; }

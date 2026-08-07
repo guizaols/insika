@@ -84,6 +84,22 @@ ruby evals/run.rb --baseline other.json --tolerance 0.1
 
 With no baseline file at all, the run falls back to "fail if any case failed".
 
+**The baseline also lives in the store, per agent.** The pre-merge gate above reads
+the file, which is right for a checkout. The [refinement gate](../docs/REFINEMENT.md)
+does not have one — it runs inside a deployment — so the accepted state is also a
+record per agent, and the file is its export:
+
+```bash
+insika evals:baseline import     # split baseline.json into per-agent records
+insika evals:baseline show       # what each agent's accepted state covers
+insika evals:baseline export     # back to one file, for a pull request
+```
+
+`import` resolves each case's agent through the golden store, so run
+`insika evals:import` first. A case the store does not know is **reported, not
+guessed at** — silently dropping it would shrink the accepted state, and a smaller
+baseline is a weaker gate.
+
 **Tool status caveat:** the `/v1/responses` stream carries tool *names* but not
 per-tool status, so over HTTP the `tool_error` detector only catches *turn-level*
 failures (`response.failed`). Full per-tool status lives in the `ToolTraceStore`

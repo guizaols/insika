@@ -179,7 +179,11 @@ end
 | `window.last_sessions` | 200 | conversations read when the run is not incremental |
 | `max_findings` | 20 | cap on the report |
 | `exclude_sessions` | none | session-id prefixes to drop |
-| `mode` | `"report"` | `report` is all that exists today; a typo here is refused, never silently downgraded |
+| `mode` | `"report"` | `report` reads and writes nothing. `propose` allows a gated, human-approved edit (below). A mode the engine does not know is refused, never silently downgraded |
+| `files` | none | the ONLY files a proposal may edit. Empty means report-only |
+| `max_edits` | 3 | edits a single proposal may carry |
+| `max_bytes` | 1200 | size of one edit's replacement text |
+| `max_total_growth` | 0.15 | how much a proposal may grow a file, as a fraction of its current size |
 
 ## Events
 
@@ -190,13 +194,102 @@ the OpenTelemetry bridge — see [Observability](OBSERVABILITY.md)) can watch it
 |---|---|
 | `:refinement_started` | agent, run id, window |
 | `:refinement_report` | agent, run id, status, findings, sessions, turns |
+| `:refinement_proposed` | agent, run id, proposer, edits, dropped |
+| `:refinement_gated` | agent, run id, passed, reason, cases, passed_cases, regressions |
+| `:refinement_applied` | agent, run id, by, files, edits |
+| `:refinement_rejected` | agent, run id, by |
+
+File **names** appear on the applied event, because an operator needs to know what
+changed. File **contents** never do.
+
+## Changing the agent: the gate
+
+A report tells you what broke. Changing the prompt because of it is a separate,
+opt-in step, and the whole design is in one sentence: **a proposed edit is scored by
+running it, and a human approves it before it reaches anyone.**
+
+```
+proposal ──▶ clone the agent ──▶ apply the edits to the CLONE ──▶ replay the golden
+             set ──▶ compare to the accepted baseline ──▶ a human approves ──▶ write
+```
+
+Nothing here asks a model whether an edit looks good. That measures nothing. What
+the gate measures is whether the agent still passes the cases it was passing, on
+real turns, with its real tools and guardrails.
+
+### What a proposal looks like
+
+Data, not a rewritten file:
+
+```jsonc
+{
+  "rationale": "Two findings share a cause: TOOLS.md never says the CEP is required.",
+  "edits": [{
+    "file":   "TOOLS.md",                              // must be in `files`
+    "op":     "replace",                               // replace | append
+    "anchor": "## shipping_quote",                     // a label for the reviewer
+    "before": "Use shipping_quote to quote freight.",  // must still match, exactly and once
+    "after":  "Use shipping_quote to quote freight. Always ask for the CEP first.",
+    "addresses": ["tool_error:shipping_quote"]
+  }]
+}
+```
+
+Anchored and small is not a style preference. It makes the diff a five-second
+decision instead of a code review, it makes the gate's result attributable to an
+edit you can point at, and it makes staleness detectable: if `before` no longer
+matches the file, the edit is dropped rather than applied by fuzzy match — which is
+how a loop like this would otherwise silently overwrite something you wrote.
+
+An edit that breaks a bound is dropped **with a reason** and the rest of the
+proposal still goes to the gate. A proposal whose every edit dropped is refused
+before anything runs.
+
+### What the gate needs
+
+Two things, and it refuses without either:
+
+- **Golden cases for the agent.** No cases, no gate, no writes. Declaring them is
+  the price of admission to automated editing — and the cheapest thing you can do
+  to make this safe. See [Evals](EVALS.md).
+- **A recorded baseline** — the accepted state of those cases:
+
+  ```bash
+  insika evals:import            # the corpus into the store
+  insika evals:baseline import   # the accepted state, per agent
+  insika evals:baseline show
+  ```
+
+  Without one, "did anything regress?" has no answer, and a gate that answered
+  "nothing regressed" would be reporting that it did not look. So it refuses.
+
+The clone is a throwaway agent (`<agent>-cand-<run>`) with the same profile, tools
+and guardrails, and it is deleted afterwards — including when the replay fails.
+**Any** regression disqualifies the candidate. A case that was already failing does
+not: refinement exists to fix those.
+
+### Approving
+
+A candidate that passes the gate parks the run at `awaiting_approval` and shows up
+on the Refinement page with the diff, what it claims to address, and its score. You
+approve or reject; nothing applies itself.
+
+Approving writes each edit through the agent's file store, which versions the
+previous content — so **rollback is the Restore button that was already there**, in
+the file's History. There is no separate undo to learn.
+
+Between the gate and your approval, someone may have edited the same file by hand.
+The apply re-checks every `before` against the file as it is now and refuses the
+whole proposal if anything drifted. A partial application would leave a prompt in a
+state nobody reviewed and the gate never scored.
 
 ## What this is not
 
-It does not edit your agent, propose a change, or run your evals. Those are the
-later phases of the same loop, and each of them has to earn its place: an edit that
-reaches a customer must be verified against a graded test set and approved by a
-human, with one-click rollback, or it has no business existing. The report comes
-first because it is the part that is useful without any of that machinery — and
-because if the findings turn out to be noise in your deployment, the correct answer
-is to stop here.
+It does not propose the edit for you — a model writing the candidate is the next
+phase, and it has to earn its place against a documented bar before it ships. It
+has no scheduler: a run happens because a person or a cron asked for one. It cannot
+touch your guardrails, tools, policies, model pins or limits, and not because a
+prompt tells it not to — there is no code path (see [Security](SECURITY.md)).
+
+And if the findings turn out to be noise in your deployment, the correct answer is
+to stop at the report. That is a valid steady state, not a half-finished setup.
