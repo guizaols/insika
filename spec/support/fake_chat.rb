@@ -34,9 +34,13 @@ class FakeChat
   def initialize
     @tools = []
     @messages = []
-    @before_tool_call = nil
-    @after_tool_result = nil
-    @after_message = nil
+    @before_tool_call = []
+    @after_tool_result = []
+    # ADDITIVE, like the gem's: `@callbacks[name] << block`. A single slot here made the
+    # double silently drop every registration but the last — and stage 6 registers two
+    # (TurnOutput's publishing boundary and the RFC-0015 steer injector), so the one
+    # that lost would have looked like a feature that never fires.
+    @after_message = []
     @streamed = +""
     @asked = nil
     @script = nil
@@ -65,17 +69,17 @@ class FakeChat
   end
 
   def before_tool_call(&blk)
-    @before_tool_call = blk
+    @before_tool_call << blk
     self
   end
 
   def after_tool_result(&blk)
-    @after_tool_result = blk
+    @after_tool_result << blk
     self
   end
 
   def after_message(&blk)
-    @after_message = blk
+    @after_message << blk
     self
   end
 
@@ -89,18 +93,31 @@ class FakeChat
   def fire_tool_call(name:, arguments: {}, id: "call_1")
     call = ToolCall.new(name, arguments, id)
     fire_end_message(role: "assistant", tool_calls: { id => call })
-    @before_tool_call&.call(call)
+    @before_tool_call.each { |blk| blk.call(call) }
   end
 
   # Closes a message, as the gem's `after_message` does. Each message streams its
   # own text, so the "did this one stream anything?" tracker resets with it.
   def fire_end_message(role: "assistant", content: nil, tool_calls: nil)
     @streamed = +""
-    @after_message&.call(Message.new(role, content, tool_calls))
+    @after_message.each { |blk| blk.call(Message.new(role, content, tool_calls)) }
   end
 
+  # Only the RAW-result callback (the gem's `after_tool_result`), which is where a
+  # `Tool::Halt` is still recognizable. The `role: tool` message that follows it in the
+  # gem is #fire_tool_result_message — a script that needs the batch boundary calls both,
+  # in that order.
   def fire_tool_result(result)
-    @after_tool_result&.call(result)
+    @after_tool_result.each { |blk| blk.call(result) }
+  end
+
+  # The gem's `add_tool_result_message`: the result becomes a `role: tool` message AND
+  # closes it through `after_message`. That boundary — the LAST result of a batch — is
+  # where RFC-0015 appends a steered message, so a double that only fired
+  # `after_tool_result` could not exercise it at all.
+  def fire_tool_result_message(result, id: "call_1")
+    add_message(role: :tool, content: result.to_s, tool_call_id: id)
+    fire_end_message(role: "tool", content: result.to_s)
   end
 
   def ask(message, &on_chunk)
