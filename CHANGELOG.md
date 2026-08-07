@@ -72,6 +72,19 @@ Everything below is what the first release will contain.
   release the message as the next turn on the session rather than losing it. Same
   surface rule as coalescing: only a caller that can hear `{"steered": true}` may steer,
   since the reply belongs to the turn it joined.
+- **Message interrupt** — opt-in via `limits[:queue_mode] = "interrupt"`, for the message
+  that makes the turn in flight *wrong* ("não, esquece isso"). That turn is abandoned at
+  its next boundary and the new message becomes an ordinary turn, with its own `task_id`
+  and its own reply — so unlike coalescing and steering it needs no verdict field and
+  works on every surface. A tool call in flight still runs to completion and is recorded:
+  the batch is one unit of work, and faking failures would teach the model that tools
+  failed when they did not.
+- **A cancelled turn publishes nothing.** A cancel that arrived while the provider was
+  working used to be observed only after the answer had already been streamed, so the
+  customer read the reply of a turn that then terminated `:cancelled` and persisted
+  nothing — text delivered, transcript silent about it. There is now a boundary between
+  the provider's last word and publishing, so the two never disagree. Applies to every
+  cancel, not just `interrupt`.
 - **Studio** — a web control UI for agents, prompts, skills, tools, sessions, tasks,
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,

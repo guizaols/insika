@@ -14,15 +14,9 @@ RSpec.describe Insika::Commands::SendMessage do
   let(:profile) { Insika::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
 
-  # Executor double that only records the spawn (the real fiber is the integration).
-  let(:executor) do
-    Class.new do
-      attr_reader :spawned
-
-      def initialize = (@spawned = [])
-      def spawn_in_session(task, profile:, resume_from: nil) = @spawned << [task, profile]
-    end.new
-  end
+  # Records the spawn and declines every RFC-0015 door (the real fiber is the
+  # integration). See spec/support/fake_turn_executor.rb.
+  let(:executor) { FakeTurnExecutor.new }
 
   def payload(**over)
     { agent: "sales", message: "oi" }.merge(over)
@@ -94,27 +88,9 @@ RSpec.describe Insika::Commands::SendMessage do
                           task_store: task_store, executor: collecting_executor)
     end
 
-    # Accepts every fragment, so any call that reaches it merges.
-    let(:collecting_executor) do
-      Class.new do
-        attr_reader :spawned, :asked
-
-        def initialize
-          @spawned = []
-          @asked = []
-        end
-
-        def spawn_in_session(task, profile:, resume_from: nil) = @spawned << [task, profile]
-
-        def collect_into_pending(session_id, text, profile:)
-          @asked << [session_id, text]
-          "t-open"
-        end
-
-        # Never reached in this group: a turn is either at the door or running.
-        def steer_into_running(_session_id, _text, profile:) = nil
-      end.new
-    end
+    # Accepts every fragment, so any call that reaches the door merges. The steer door
+    # declines throughout: a turn is either still at the door or running, never both.
+    let(:collecting_executor) { FakeTurnExecutor.new(collect: "t-open") }
 
     def send_from(transport, **over)
       session_store.create(id: "s1")
@@ -158,14 +134,7 @@ RSpec.describe Insika::Commands::SendMessage do
     end
 
     it "no pending turn to join -> the ordinary path, with a real task" do
-      declining = Class.new do
-        attr_reader :spawned
-
-        def initialize = (@spawned = [])
-        def spawn_in_session(task, profile:, resume_from: nil) = @spawned << task
-        def collect_into_pending(_session_id, _text, profile:) = nil
-        def steer_into_running(_session_id, _text, profile:) = nil
-      end.new
+      declining = FakeTurnExecutor.new
       session_store.create(id: "s1")
 
       result = described_class.new(profiles: profiles, session_store: session_store,
@@ -180,24 +149,7 @@ RSpec.describe Insika::Commands::SendMessage do
 
   describe "RFC-0015 §5.1 — steering a turn that is already running" do
     # No turn at the door (collect declines), one running (steer accepts).
-    let(:steering_executor) do
-      Class.new do
-        attr_reader :spawned, :asked
-
-        def initialize
-          @spawned = []
-          @asked = []
-        end
-
-        def spawn_in_session(task, profile:, resume_from: nil) = @spawned << [task, profile]
-        def collect_into_pending(_session_id, _text, profile:) = nil
-
-        def steer_into_running(session_id, text, profile:)
-          @asked << [session_id, text]
-          "t-running"
-        end
-      end.new
-    end
+    let(:steering_executor) { FakeTurnExecutor.new(steer: "t-running") }
 
     subject(:handler) do
       described_class.new(profiles: profiles, session_store: session_store,
@@ -223,6 +175,49 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(result).to match({ task_id: kind_of(String) })
       expect(steering_executor.asked).to be_empty
       expect(steering_executor.spawned.size).to eq(1)
+    end
+  end
+
+  # §6.4 — interrupt JOINS nothing: this message keeps its own task and its own reply, so
+  # there is no verdict to report and therefore no surface to gate.
+  describe "RFC-0015 §6.4 — interrupting the turn in flight" do
+    let(:interrupting_executor) { FakeTurnExecutor.new(interrupt: "t-abandoned") }
+
+    subject(:handler) do
+      described_class.new(profiles: profiles, session_store: session_store,
+                          task_store: task_store, executor: interrupting_executor)
+    end
+
+    def send_from(transport)
+      session_store.create(id: "s1")
+      handler.call(Insika::Command.build(:send_message, payload(session_id: "s1"), transport: transport))
+    end
+
+    it "spawns a turn of its own and names it as what replaced the abandoned one" do
+      result = send_from(:"http:json")
+
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(interrupting_executor.spawned.size).to eq(1)
+      expect(interrupting_executor.interrupts).to eq([["s1", result[:task_id]]])
+    end
+
+    it "works on /v1/responses too — there is no verdict it would need to carry" do
+      result = send_from(:http)
+
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(interrupting_executor.interrupts.first.last).to eq(result[:task_id])
+    end
+
+    it "is asked with the task ALREADY created, so the event can correlate the two" do
+      result = send_from(:"http:json")
+
+      expect(task_store.find(result[:task_id])).not_to be_nil
+    end
+
+    it "a one-shot carries no session, which is what the real door refuses on" do
+      handler.call(Insika::Command.build(:send_message, payload, transport: :"http:json"))
+
+      expect(interrupting_executor.interrupts.first.first).to be_nil
     end
   end
 end

@@ -12,13 +12,9 @@ RSpec.describe "Integration: turn with StoredProfileSource (Phase 4 D2)" do
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
 
-  # Executor double: only records the profile the Command resolved and passed to spawn.
-  let(:executor) do
-    Class.new do
-      attr_reader :spawned
-      def spawn_in_session(task, profile:, resume_from: nil) = (@spawned = profile; task.id)
-    end.new
-  end
+  # Records the spawn and declines the RFC-0015 doors — what matters here is the PROFILE
+  # the Command resolved and handed over.
+  let(:executor) { FakeTurnExecutor.new }
 
   let(:handler) do
     Insika::Commands::SendMessage.new(
@@ -37,7 +33,8 @@ RSpec.describe "Integration: turn with StoredProfileSource (Phase 4 D2)" do
 
     res = handler.call(Insika::Command.build(:send_message, { agent: "bia", message: "oi" }))
     expect(res[:task_id]).to be_a(String)
-    expect(executor.spawned.id).to eq("bia")
-    expect(executor.spawned.provider).to eq(:deepseek) # round-trip preserved on the real path
+    spawned_profile = executor.spawned.last.last
+    expect(spawned_profile.id).to eq("bia")
+    expect(spawned_profile.provider).to eq(:deepseek) # round-trip preserved on the real path
   end
 end

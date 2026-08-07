@@ -261,6 +261,38 @@ module Insika
       task.id
     end
 
+    # RFC-0015 §6.4 — the `interrupt` door: the turn in flight is answering a question
+    # the customer has already replaced, so it is abandoned and the new message becomes an
+    # ordinary turn. -> the abandoned task's id, or nil (nothing was running).
+    #
+    # Unlike `collect`/`steer` this one JOINS nothing: `replaced_by` already has its own
+    # task and its own reply, so there is no verdict to report and every surface can use
+    # it, `/v1/responses` included.
+    #
+    # What "abandon" means here is Insika's existing cancellation semantics, unchanged:
+    # `:cancel` is observed only at a stage boundary, so a tool call in flight runs to
+    # completion and is recorded. Cancelling the not-yet-started calls of a batch would
+    # leave it half applied, and fabricating failure results would teach the model that
+    # tools failed when they did not (D7 records the same boundary for `turn_timeout`).
+    def interrupt_running(session_id, profile:, replaced_by: nil)
+      return nil unless @supervised && session_id
+
+      return nil unless queue_policy(profile, session_id).interrupt?
+
+      session_actor = @session_actors[session_id]
+      return nil unless session_actor&.alive?
+
+      task = session_actor.current_task
+      return nil if task.nil?
+
+      actor = @running[task.id]
+      return nil if actor.nil?
+
+      actor.post(:cancel)
+      emit(:turn_interrupted, { task_id: task.id, replaced_by: replaced_by }, task: task)
+      task.id
+    end
+
     # The SessionActor writes the merged fragment through this (it has no store of
     # its own, by design — it owns scheduling, not persistence).
     attr_reader :task_store
@@ -765,6 +797,16 @@ module Insika
         # match is emitted redacted-if-needed, not lost) before reading anything back.
         output.flush
         state.usage = with_model_source(usage_of(response), state.model_selection) unless halted?(response)
+
+        # BOUNDARY BEFORE THE ANSWER GOES OUT. A cancel that arrived while the provider
+        # was working used to be observed at stage 8 — AFTER `:content` had already been
+        # published — so the customer read the answer of a turn that then terminated
+        # `:cancelled` and persisted nothing: text delivered, transcript silent about it.
+        # Honoring it here is what makes `interrupt` (RFC-0015 §6.4) mean anything, and it
+        # is a safe boundary: the tool batch is finished and nothing is half applied.
+        # A `:pause` is deliberately NOT honored here (drain!, not the suspending form):
+        # holding a completed answer for an operator would strand it unpublished.
+        state.actor&.drain!
 
         output.publish(turn_answer(response, asked, output, filter))
       end

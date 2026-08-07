@@ -5,16 +5,19 @@ require_relative "coercion"
 module Insika
   # RFC-0015 §4 — what happens to an inbound message for a session that is ALREADY
   # busy. Today the engine has exactly one answer, "it waits in line"; this names
-  # that answer `followup` and adds two others:
+  # that answer `followup` and adds three others:
   #
-  #   collect — the message arrived BEFORE the turn started: merge the fragments
-  #             into one turn (the whole mechanism is a timer at the door).
-  #   steer   — the turn is ALREADY running tools: append the message to the run in
-  #             flight, at a tool-batch boundary, so the customer's correction lands
-  #             before the model's next step instead of after the whole run.
+  #   collect   — the message arrived BEFORE the turn started: merge the fragments
+  #               into one turn (the whole mechanism is a timer at the door).
+  #   steer     — the turn is ALREADY running tools: append the message to the run in
+  #               flight, at a tool-batch boundary, so the customer's correction lands
+  #               before the model's next step instead of after the whole run.
+  #   interrupt — the turn is running and is now answering the wrong question: abandon
+  #               it at its next boundary and let the new message be its own turn.
   #
-  # The two never compete for the same message: `collect` only ever touches a turn
-  # that has not started, `steer` only ever a turn that has.
+  # They never compete for the same message: `collect` only ever touches a turn that
+  # has not started; `steer` and `interrupt` only a turn that has, and they differ in
+  # whether the run in flight is still worth finishing.
   #
   # Resolution per message, the order EdgeLimiter already documents
   # (`edge_limiter.rb:17`) — configuration over convention:
@@ -29,12 +32,11 @@ module Insika
   # `turn_timeout` because they are bounds on the same thing — how much work one
   # turn is allowed to absorb.
   class QueuePolicy
-    # Delivered. A mode outside this set is refused rather than approximated.
-    IMPLEMENTED_MODES = %i[followup collect steer].freeze
-    # Specified by RFC-0015 but delivered in later PRs. Named so a typo and a
-    # not-yet-shipped mode are DIFFERENT errors: silently treating `interrupt` as
-    # `followup` would look exactly like an interrupt that never fires.
-    PLANNED_MODES = %i[interrupt].freeze
+    # All four of RFC-0015 are delivered, so there is no "specified but unshipped"
+    # tier any more — a mode outside this set is a typo, and it is refused rather than
+    # approximated. Treating an unknown mode as `followup` would look exactly like a
+    # mode that never fires.
+    MODES = %i[followup collect steer interrupt].freeze
 
     DEFAULTS = {
       queue_mode: :followup,
@@ -90,6 +92,11 @@ module Insika
     # then refusing.
     def steer? = @mode == :steer && @steer_max_messages.positive?
 
+    # Does this policy abandon the turn in flight? The new message then becomes an
+    # ordinary turn of its own — which is why `interrupt`, unlike the two joining modes,
+    # needs no verdict field and works on every surface.
+    def interrupt? = @mode == :interrupt
+
     # The content of the injected message. `steer_join` frames it when an agent needs
     # the model to know this text arrived mid-run ("the customer just added: %{message}");
     # nil — the default — appends exactly what the person typed. A plain gsub, not
@@ -106,17 +113,10 @@ module Insika
       return DEFAULTS[:queue_mode] if Coercion.blank?(value)
 
       name = value.to_s.strip.downcase.to_sym
-      return name if IMPLEMENTED_MODES.include?(name)
-
-      if PLANNED_MODES.include?(name)
-        raise Insika::ValidationError,
-              "queue_mode '#{name}' is specified by RFC-0015 but not implemented yet " \
-              "(available: #{IMPLEMENTED_MODES.join(', ')})"
-      end
+      return name if MODES.include?(name)
 
       raise Insika::ValidationError,
-            "unknown queue_mode: #{value.inspect} " \
-            "(expected #{(IMPLEMENTED_MODES + PLANNED_MODES).join(', ')})"
+            "unknown queue_mode: #{value.inspect} (expected #{MODES.join(', ')})"
     end
 
     # A present key WINS even carrying nil/0 — "off for this agent", never

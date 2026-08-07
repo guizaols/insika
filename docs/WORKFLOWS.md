@@ -198,6 +198,12 @@ end
   batch of the engine's to use as a boundary. A message that arrives while a workflow
   run is in flight becomes the next turn on the session, which is what `followup`
   does. Steering is refused at the door, not silently dropped.
+- **A running workflow reaches no boundary until it returns.** The engine's stage
+  boundaries sit *around* the workflow call, not inside it, so `queue_mode:
+  "interrupt"` (and a plain `cancel_task`) is observed only once the workflow is done:
+  the steps run, and then the run is abandoned without publishing or persisting. If you
+  need a run to stop early, that decision belongs inside the workflow — it is ordinary
+  Ruby, so `return` on the condition you care about.
 - **Braces bite in Ruby.** `agent "x" { … }` is a syntax error (`{` binds to the
   argument); write `agent("x") { … }` or `agent "x" do … end`.
 

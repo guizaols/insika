@@ -76,14 +76,11 @@ RSpec.describe Insika::QueuePolicy do
   end
 
   describe "mode validation" do
-    it "accepts the implemented modes, as String or Symbol" do
+    it "accepts all four modes, as String or Symbol" do
       expect(described_class.resolve(profile({ queue_mode: "collect" })).mode).to eq(:collect)
       expect(described_class.resolve(profile({ queue_mode: :followup })).mode).to eq(:followup)
-    end
-
-    it "REFUSES a specified-but-unshipped mode instead of silently behaving as followup" do
-      expect { described_class.resolve(profile({ queue_mode: "interrupt" })) }
-        .to raise_error(Insika::ValidationError, /not implemented yet/)
+      expect(described_class.resolve(profile({ queue_mode: "steer" })).mode).to eq(:steer)
+      expect(described_class.resolve(profile({ queue_mode: :interrupt })).mode).to eq(:interrupt)
     end
 
     it "refuses an unknown mode" do
@@ -100,6 +97,17 @@ RSpec.describe Insika::QueuePolicy do
     it "is true only for the collect mode" do
       expect(described_class.resolve(profile({ queue_mode: "collect" })).collect?).to be(true)
       expect(described_class.resolve(profile({ queue_mode: "followup" })).collect?).to be(false)
+    end
+  end
+
+  describe "#interrupt? (RFC-0015 §6.4)" do
+    it "is true only for the interrupt mode, and takes no knob of its own" do
+      policy = described_class.resolve(profile({ queue_mode: "interrupt" }))
+
+      expect(policy.interrupt?).to be(true)
+      expect(policy.steer?).to be(false)
+      expect(policy.collect?).to be(false)
+      expect(described_class.resolve(profile({ queue_mode: "steer" })).interrupt?).to be(false)
     end
   end
 
