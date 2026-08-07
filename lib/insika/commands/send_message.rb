@@ -75,6 +75,12 @@ Insika::MessageOrigin.parse!(p[:origin])
         # command.to_h persists the entire Command in the Task;
         # ResumeTask re-reads payload.message from there.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
+        # RFC-0015 §6.4 — `interrupt` mode: the turn in flight is now answering the wrong
+        # question, so it is abandoned at its next boundary. This message keeps its OWN
+        # task and its own reply (that is why it needs no verdict and no surface gate), and
+        # the cancel is posted after `create` so the event can name what replaced what.
+        # No-op in every other mode.
+        @executor.interrupt_running(p[:session_id], profile: profile, replaced_by: task.id)
         @executor.spawn_in_session(task, profile: profile)
         { task_id: task.id }
       end
