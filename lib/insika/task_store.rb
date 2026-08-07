@@ -124,6 +124,31 @@ module Insika
       to_task(record)
     end
 
+    # RFC-0015 §5.3 (`collect`): appends a fragment to a task's message while it is
+    # still waiting at the door. -> Task.
+    #
+    # ONLY on :queued, and that guard is the whole safety of the feature: once a
+    # turn is :running its input has been read into the Chat, seeded into the
+    # context and possibly sent to the provider — rewriting it there would mean the
+    # transcript disagrees with what the model actually saw. ArgumentError on any
+    # other status, so a lost race fails loudly instead of corrupting a turn.
+    def append_message(id, text, separator: "\n")
+      fragment = presence(text)
+      return to_task(fetch!(id)) if fragment.nil?
+
+      record = fetch!(id)
+      unless record["status"] == "queued"
+        raise ArgumentError, "task #{id} is #{record['status']}, not queued: its message is already in flight"
+      end
+
+      payload = (record["command"]["payload"] ||= {})
+      current = presence(payload["message"])
+      payload["message"] = current ? "#{current}#{separator}#{fragment}" : fragment
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_task(record)
+    end
+
     # -> [Task] with one of the given statuses. O(n) scan at boot;
     # acceptable (one node, local SQLite).
     def with_status(*statuses)
