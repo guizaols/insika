@@ -65,6 +65,24 @@ module Insika
                                     "run `insika evals:baseline import` or record one before gating")
         end
 
+        # And an ALL-RED baseline is the same hole with a record in front of it.
+        # `compare` only reports a regression against a case the baseline had
+        # PASSING, so a baseline where nothing passes cannot produce one: every
+        # candidate sails through, including a harmful one.
+        #
+        # Found by running this against a real agent: a replay that 401'd recorded a
+        # baseline of two failures, and from then on the gate accepted everything —
+        # including an edit written to be harmful. "Known-failing cases do not wedge
+        # the gate" is the right rule for the pre-merge check (a red case is work in
+        # progress, not a blocker); here it degrades into "nothing can ever fail",
+        # and a gate that cannot fail is not a gate.
+        if passing_cases(baseline).zero?
+          return refusal(candidate, "the recorded baseline for '#{agent_id}' has no PASSING case " \
+                                    "(#{baseline_size(baseline)} recorded, all failing) — nothing could " \
+                                    "regress, so every candidate would pass. Fix the agent or the cases, " \
+                                    "then re-record the baseline from a green run")
+        end
+
         clone_id = clone_id_for(agent_id, run_id)
         begin
           build_clone(agent_id, clone_id, candidate)
@@ -81,7 +99,15 @@ module Insika
       # in a provider bill, and scoped to the run so two gates cannot collide.
       def clone_id_for(agent_id, run_id) = "#{agent_id}-cand-#{run_id.to_s.delete('-')[0, 8]}"
 
+      # How many accepted cases could actually regress. This is the gate's real
+      # strength, and it is worth being able to say out loud.
+      def passing_cases(baseline)
+        (baseline["cases"] || {}).count { |_id, entry| entry.is_a?(Hash) && entry["pass"] }
+      end
+
       private
+
+      def baseline_size(baseline) = (baseline["cases"] || {}).size
 
       # Same profile, same tools, same guardrails — only the id and the instruction
       # files differ. Copying the profile rather than editing the real one is what

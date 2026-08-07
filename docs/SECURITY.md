@@ -297,9 +297,11 @@ properties are worth stating because each one is a way this could have gone wron
 
 - **An edit is verified by running it, not by asking a model.** The candidate is
   applied to a throwaway clone of the agent and the golden set is replayed against
-  it; any regression disqualifies it. An agent with no cases, or with no recorded
-  baseline, **cannot be edited at all** — the gate refuses instead of passing
-  vacuously.
+  it; any regression disqualifies it. An agent with no cases, with no recorded
+  baseline, or with a baseline in which nothing passes, **cannot be edited at all** —
+  the gate refuses instead of passing vacuously. That last case is the subtle one: a
+  regression is measured against a case that was passing, so an all-red baseline
+  cannot produce one and would wave everything through.
 - **A human approves.** A gate pass parks the proposal for review; nothing applies
   itself. Approving writes through the versioned file store, so undo is the Restore
   button that was already there.
