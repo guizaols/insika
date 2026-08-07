@@ -7,13 +7,13 @@ module Insika
     # Stream. Validations that fail do NOT create a Task
     # (ValidationError/NotFoundError -> direct HTTP response).
     class SendMessage
-      # RFC-0015 §5.5 — surfaces whose response can carry the `merged` verdict, and
-      # therefore the only ones allowed to coalesce. `/v1/responses` is NOT here:
-      # its body is OpenAI-shaped SSE with nowhere to put the field, and it is
-      # frozen because a live consumer speaks it. Coalescing a caller that cannot
-      # hear the verdict makes it deliver the same answer once per fragment, which
-      # is worse than not coalescing at all. Channels declare themselves by
-      # `channel:<id>` once RFC-0011 §6 lands.
+      # RFC-0015 §5.5 — surfaces whose response can carry the "you do not own the reply"
+      # verdict (`merged` for `collect`, `steered` for `steer`), and therefore the only
+      # ones where a message may join another turn. `/v1/responses` is NOT here: its body
+      # is OpenAI-shaped SSE with nowhere to put the field, and it is frozen because a
+      # live consumer speaks it. Joining a caller that cannot hear the verdict makes it
+      # deliver the same answer once per message, which is worse than not joining at all.
+      # Channels declare themselves by `channel:<id>` once RFC-0011 §6 lands.
       COALESCABLE_TRANSPORTS = %i[http:json].freeze
 
       def initialize(profiles:, session_store:, task_store:, executor:)
@@ -57,9 +57,19 @@ Insika::MessageOrigin.parse!(p[:origin])
         # boot). Only offered on a surface that can report the verdict back —
         # §5.5: coalescing a caller that cannot hear `merged` makes it deliver the
         # same answer twice.
-        if coalescable?(command) &&
-           (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
-          return { task_id: joined, merged: true }
+        if coalescable?(command)
+          if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
+            return { task_id: joined, merged: true }
+          end
+
+          # RFC-0015 §5.1 — the turn is already RUNNING: the message is appended to it at
+          # the next tool-batch boundary. Same verdict as a merge, different word: the
+          # answer comes out of `task_id`, which is not this call's to deliver. Asked
+          # after `collect` because the two cannot both apply — a turn is either still at
+          # the door or running.
+          if (steered = @executor.steer_into_running(p[:session_id], message, profile: profile))
+            return { task_id: steered, steered: true }
+          end
         end
 
         # command.to_h persists the entire Command in the Task;

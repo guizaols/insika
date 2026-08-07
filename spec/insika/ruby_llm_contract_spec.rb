@@ -107,6 +107,59 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
+  # The TOOL-BATCH boundary (RFC-0015 `steer`). SteerInjector appends a `user` message
+  # after the LAST tool result of a batch, and every step of that is a gem fact: a
+  # `user` message landing one result too early is rejected outright by Anthropic and
+  # merely tolerated by OpenAI, so the failure would be per-provider and invisible here.
+  describe "the tool-batch boundary (what SteerInjector counts)" do
+    # Stage 6 registers TWO after_message callbacks (TurnOutput's publishing boundary and
+    # SteerInjector's counter). On a real Chat both run, in registration order. A double
+    # that kept one slot silently dropped the first — which is a feature that never fires,
+    # not an error anyone would see. Nothing here reaches the network.
+    it "after_message is ADDITIVE, in registration order" do
+      previous = RubyLLM.config.openai_api_key
+      RubyLLM.configure { |c| c.openai_api_key = "spec-only" }
+      chat = RubyLLM.chat(model: "gpt-4o-mini", provider: :openai, assume_model_exists: true)
+      calls = []
+
+      chat.after_message { calls << :first }
+      chat.after_message { calls << :second }
+      chat.send(:run_callbacks, :after_message, :end_message, nil)
+
+      expect(calls).to eq(%i[first second])
+    ensure
+      RubyLLM.configure { |c| c.openai_api_key = previous }
+    end
+
+    it "fires for each `role: tool` result message, which is what makes N countable" do
+      source = RubyLLM::Chat.instance_method(:add_tool_result_message).source_location
+      body = File.readlines(source.first)[(source.last - 1), 8].join
+
+      expect(body).to include("role: :tool")
+      expect(body).to include("run_callbacks(:after_message")
+    end
+
+    # `after_tool_result` gets the RAW result, so a Halt is still recognizable there. By
+    # the time it becomes a message its content is the payload, indistinguishable from an
+    # ordinary result — and appending to a halted batch would leave the message
+    # unanswered forever, because there is no next model step.
+    it "after_tool_result sees the result itself, before it becomes a message" do
+      source = RubyLLM::Chat.instance_method(:execute_tool_with_callbacks).source_location
+      body = File.readlines(source.first)[(source.last - 1), 7].join
+
+      expect(body).to match(/result = execute_tool/)
+      expect(body).to match(/run_callbacks\(:after_tool_result, :tool_result, result\)/)
+    end
+
+    # The tail append itself: `add_message` is what SteerInjector calls, and the next
+    # model step reads `messages` — so a message appended at the boundary is in the
+    # prompt without anything already sent being rewritten (the prompt cache survives).
+    it "add_message appends to the same list provider_completion sends" do
+      source = RubyLLM::Chat.instance_method(:add_message).source_location
+      expect(File.readlines(source.first)[(source.last - 1), 5].join).to include("messages <<")
+    end
+  end
+
   # Item 30. Insika passes `concurrency:` to with_tools and nothing else — the cap
   # is ours (ToolAssembly#install_tool_gate), the mode selection is not exposed.
   # Everything below is a GEM fact our docs promise; if a version changes any of
@@ -289,7 +342,8 @@ RSpec.describe "RubyLLM boundary contract" do
     SCAFFOLDING = %i[
       asked instructions model=
       script script= final_content final_content=
-      fire_tool_call fire_tool_result fire_end_message emit_chunk emit_thinking
+      fire_tool_call fire_tool_result fire_tool_result_message fire_end_message
+      emit_chunk emit_thinking
       halt_with!
     ].freeze
 

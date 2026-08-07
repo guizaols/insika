@@ -1,6 +1,7 @@
 <%# Shared transcript bubble/tool-card (§11 A1/A2) — one visual language for the
     playground history, the optimistic echo and the read-only session viewer.
-    Locals: m = stored message hash {"role","content","at"}. `content` may be a
+    Locals: m = stored message hash {"role","content","at"}; prev = the message before
+    it in the thread, or nil (used only to spot a steered message). `content` may be a
     String or a structured payload (rendered as pretty JSON, never #inspect).
     Assistant bubbles carry data-controller="markdown" (markdown.js re-escapes
     before markup — safe under the strict CSP). %>
@@ -21,7 +22,14 @@
           when it is NOT the natural producer for the role — otherwise every bubble
           would carry a label that says nothing. %>
       <% origin = Insika::MessageOrigin.origin_of(m) unless Insika::MessageOrigin.customer?(m) || Insika::MessageOrigin.agent?(m) %>
-      <div class="role-tag"><%= role %><% if origin %> · <span class="origin"><%= origin %></span><% end %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
+      <%# STEERED (RFC-0015): a customer message sitting right after a tool result arrived
+          while the turn was running and was appended at a tool-batch boundary. Derived
+          from position, not from a field — a steered message declares no origin, and it
+          is right not to: a person typed it. Nothing else in the engine ever puts a user
+          message after a tool result. Without the marker an operator reads two customer
+          messages in one turn with no explanation. %>
+      <% steered = role == "user" && prev && prev["role"].to_s == "tool" %>
+      <div class="role-tag"><%= role %><% if origin %> · <span class="origin"><%= origin %></span><% end %><% if steered %> · <span class="origin">steered</span><% end %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
       <% unless m["content"].to_s.empty? && Array(m["tool_calls"]).any? %>
         <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
       <% end %>

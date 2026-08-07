@@ -82,7 +82,7 @@ RSpec.describe Insika::QueuePolicy do
     end
 
     it "REFUSES a specified-but-unshipped mode instead of silently behaving as followup" do
-      expect { described_class.resolve(profile({ queue_mode: "steer" })) }
+      expect { described_class.resolve(profile({ queue_mode: "interrupt" })) }
         .to raise_error(Insika::ValidationError, /not implemented yet/)
     end
 
@@ -100,6 +100,46 @@ RSpec.describe Insika::QueuePolicy do
     it "is true only for the collect mode" do
       expect(described_class.resolve(profile({ queue_mode: "collect" })).collect?).to be(true)
       expect(described_class.resolve(profile({ queue_mode: "followup" })).collect?).to be(false)
+    end
+  end
+
+  describe "steer (RFC-0015 §6.3)" do
+    it "is off unless the mode asks for it, and carries the documented bound" do
+      expect(described_class.resolve(profile({})).steer?).to be(false)
+      policy = described_class.resolve(profile({ queue_mode: "steer" }))
+      expect(policy.steer?).to be(true)
+      expect(policy.steer_max_messages).to eq(5)
+    end
+
+    it "steer_max_messages of 0 is an agent saying no, not a bound of zero to trip later" do
+      expect(described_class.resolve(profile({ queue_mode: "steer", steer_max_messages: 0 })).steer?)
+        .to be(false)
+    end
+
+    it "the bound resolves through the platform layer like every other queue key" do
+      policy = described_class.resolve(profile({ queue_mode: "steer" }),
+                                       settings_store: settings({ "steer_max_messages" => 2 }))
+
+      expect(policy.steer_max_messages).to eq(2)
+    end
+
+    it "#frame appends the raw text by default and the template when there is one" do
+      expect(described_class.resolve(profile({ queue_mode: "steer" })).frame("1234")).to eq("1234")
+      framed = described_class.resolve(profile({ queue_mode: "steer",
+                                                 steer_join: "added: %{message}" }))
+      expect(framed.frame("1234")).to eq("added: 1234")
+    end
+
+    it "REFUSES a steer_join that would drop the message" do
+      expect { described_class.resolve(profile({ queue_mode: "steer", steer_join: "the customer spoke" })) }
+        .to raise_error(Insika::ValidationError, /must contain/)
+    end
+
+    it "a platform template does not become 0 on the way through (text, not integer)" do
+      policy = described_class.resolve(profile({ queue_mode: "steer" }),
+                                       settings_store: settings({ "steer_join" => "add: %{message}" }))
+
+      expect(policy.frame("x")).to eq("add: x")
     end
   end
 end

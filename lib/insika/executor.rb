@@ -223,6 +223,44 @@ module Insika
       actor.collect(text)
     end
 
+    # RFC-0015 §5.1 — the `steer` door: a message for a session whose turn is ALREADY
+    # running is appended to that run instead of becoming a turn of its own.
+    # -> the RUNNING task's id (the turn that will answer it), or nil (create a task and
+    # spawn as usual, which is `followup`).
+    #
+    # Asked BEFORE a task is created, like the `collect` door, and for the same reason.
+    # The post lands in the turn's mailbox; `SteerInjector` reads it at the next
+    # tool-batch boundary. Nothing here touches the run in flight — a message that no
+    # boundary ever arrives for is released as a follow-up turn (#release_steered).
+    def steer_into_running(session_id, text, profile:)
+      return nil unless @supervised && session_id
+
+      policy = queue_policy(profile, session_id)
+      return nil unless policy.steer?
+
+      session_actor = @session_actors[session_id]
+      return nil unless session_actor&.alive?
+
+      # No turn running (or one still at the door): there is nothing to steer INTO.
+      # A turn at the door belongs to `collect`, which is a different mode.
+      task = session_actor.current_task
+      return nil if task.nil?
+      # A workflow turn orchestrates RubyLLM itself and has no Insika chat to append to
+      # (docs/WORKFLOWS.md says so). Refused at the door so the message becomes an
+      # ordinary next turn instead of a phantom one.
+      return nil if workflow_turn?(task)
+
+      actor = @running[task.id]
+      return nil if actor.nil?
+      # The bound is on what ONE run may absorb, so it counts posts and not the buffer:
+      # a message already injected still spent its slot. Overflow degrades to
+      # `followup` rather than growing an unbounded tail.
+      return nil if actor.user_messages_posted >= policy.steer_max_messages
+
+      actor.post(:user_message, text)
+      task.id
+    end
+
     # The SessionActor writes the merged fragment through this (it has no store of
     # its own, by design — it owns scheduling, not persistence).
     attr_reader :task_store
@@ -233,6 +271,46 @@ module Insika
     # creates no task of its own. Ids and times, never content.
     def emit_coalesced(task, merged:, arrivals: [])
       emit(:turn_coalesced, { task_id: task.id, merged: merged, arrivals: arrivals }, task: task)
+    end
+
+    # RFC-0015 §5.2 — a steered message the run could NOT absorb: no tool batch ever
+    # closed (a text-only turn), the batch ended in `halt_when`, the turn failed, or it
+    # was cancelled. The message is a person's and must not evaporate, so it is released
+    # as the next turn on this session — which is `followup`, arrived at late.
+    #
+    # Runs in `execute`'s ensure, on the dying turn's fiber: `spawn_in_session` only
+    # enqueues, and the session loop is still awaiting THIS turn, so the follow-up runs
+    # after it, in order.
+    def release_steered(task, profile, actor)
+      # Cheap gate first: a turn nobody steered pays one integer read and no store round
+      # trip, which is every turn on every agent that never turned the mode on.
+      return unless actor.user_messages_posted.positive?
+
+      # Only a turn that actually FINISHED releases. A process going down (Async::Stop
+      # through this ensure) leaves the task `:running` for Recovery to replay, and
+      # spawning a follow-up during shutdown would parent a turn on a supervisor that is
+      # already stopping. The honest limitation: a steered message lives in memory until a
+      # boundary writes it to the transcript, so a hard stop in that window loses it.
+      current = @task_store.find(task.id)
+      return unless current && TERMINAL_STATUSES.include?(current.status)
+
+      texts = actor.take_user_messages!
+      return if texts.empty?
+
+      command = Insika::Command.build(
+        :send_message,
+        # No `origin`: a person typed this, which is exactly what an absent origin means.
+        { "agent" => profile.id, "message" => texts.join("\n"), "session_id" => task.session_id }
+      ).to_h
+      follow_up = @task_store.create(command: command, session_id: task.session_id)
+      emit(:turn_steer_released, { task_id: task.id, released_as: follow_up.id, count: texts.size },
+           task: task)
+      spawn_in_session(follow_up, profile: profile)
+    rescue Insika::Error
+      # Best-effort: the turn is already terminal and durable, and a store that refuses
+      # here must not turn a committed turn into a failed one. The message is then lost,
+      # and the ABSENCE of :turn_steer_released is what says so — there is no half state.
+      nil
     end
 
     # Runs ONE turn serially (called by the SessionActor loop):
@@ -371,6 +449,10 @@ module Insika
       fail_task(task, e, stage: :unknown)
     ensure
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
+      # Deregistered FIRST on purpose: from here on the `steer` door finds no actor for
+      # this session and answers nil, so a message arriving during the release becomes
+      # its own turn instead of a post into a mailbox nobody reads again.
+      release_steered(task, profile, actor)
     end
 
     private
@@ -536,6 +618,11 @@ module Insika
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat (D3)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.* (D2/G4)
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
+      # RFC-0015: resolved for the RUN, not per message, so what the turn accepts cannot
+      # change under it. Same cost as the EdgeLimiter's per-turn resolution. Only for a
+      # SESSION turn: steering needs a session to arrive through, and resolving here for a
+      # one-shot would make an unrelated turn fail on a queue key it can never use.
+      state.queue_policy = task.session_id ? queue_policy(profile, task.session_id) : nil
       state
     end
 
@@ -655,6 +742,10 @@ module Insika
         output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
                                 public_intermediate: state.profile.stream_public?(:intermediate))
         state.chat.after_message { |message| output.message_ended(message) } if state.chat.respond_to?(:after_message)
+        # RFC-0015 §5.2: `steer` only. Registered AFTER TurnOutput so the publishing
+        # decision for a message is made before anything is appended after it — the
+        # gem's callbacks are additive and run in registration order.
+        install_steer_injector(task, state)
 
         # `asked` is what the provider returned, BEFORE the :agent after-hook had a
         # chance to replace it — the only way to tell an explicit substitution from
@@ -677,6 +768,28 @@ module Insika
 
         output.publish(turn_answer(response, asked, output, filter))
       end
+    end
+
+    # RFC-0015 §5.2 — wires the tool-batch boundary that lets a message which arrived
+    # mid-run enter the conversation. No-op unless the agent asked for `steer`: an
+    # unregistered callback is the difference between a feature that is off and one that
+    # is on and finds nothing.
+    def install_steer_injector(task, state)
+      policy = state.queue_policy
+      return unless policy&.steer? && task.session_id && state.actor
+      # A chat that does not answer the three callbacks cannot host the boundary (the smoke
+      # shim, a minimal double). Steering is then simply off, never half-wired.
+      return unless %i[after_message after_tool_result add_message].all? { |m| state.chat.respond_to?(m) }
+
+      injector = SteerInjector.new(
+        chat: state.chat, actor: state.actor, policy: policy,
+        # `task_id` in the payload as well as the meta, so `:turn_steered` reads like
+        # `:turn_coalesced` for a subscriber that only looks at data.
+        emit: ->(type, data) { emit(type, data.merge(task_id: task.id), task: task) }
+      )
+      state.chat.after_message { |message| injector.message_ended(message) }
+      state.chat.after_tool_result { |result| injector.tool_result(result) }
+      injector
     end
 
     # WHAT THE CUSTOMER GETS, in precedence order. Published once, at the end of the

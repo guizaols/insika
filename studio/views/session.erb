@@ -54,7 +54,9 @@
     <div class="empty">This session has no messages.</div>
   <% else %>
     <div class="thread">
-      <% Array(@session.messages).each do |m| %><%== render("_message", locals: { m: m }) %><% end %>
+      <%# `prev` is what makes a STEERED message visible: a customer message that lands
+          right after a tool result arrived mid-run (RFC-0015). See _message.erb. %>
+      <% Array(@session.messages).each_with_index do |m, i| %><%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %><% end %>
     </div>
   <% end %>
 </div>

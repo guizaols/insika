@@ -5,8 +5,16 @@ require_relative "coercion"
 module Insika
   # RFC-0015 §4 — what happens to an inbound message for a session that is ALREADY
   # busy. Today the engine has exactly one answer, "it waits in line"; this names
-  # that answer `followup` and adds `collect`, which merges fragments that arrive
-  # BEFORE the turn starts into a single turn.
+  # that answer `followup` and adds two others:
+  #
+  #   collect — the message arrived BEFORE the turn started: merge the fragments
+  #             into one turn (the whole mechanism is a timer at the door).
+  #   steer   — the turn is ALREADY running tools: append the message to the run in
+  #             flight, at a tool-batch boundary, so the customer's correction lands
+  #             before the model's next step instead of after the whole run.
+  #
+  # The two never compete for the same message: `collect` only ever touches a turn
+  # that has not started, `steer` only ever a turn that has.
   #
   # Resolution per message, the order EdgeLimiter already documents
   # (`edge_limiter.rb:17`) — configuration over convention:
@@ -22,19 +30,25 @@ module Insika
   # turn is allowed to absorb.
   class QueuePolicy
     # Delivered. A mode outside this set is refused rather than approximated.
-    IMPLEMENTED_MODES = %i[followup collect].freeze
+    IMPLEMENTED_MODES = %i[followup collect steer].freeze
     # Specified by RFC-0015 but delivered in later PRs. Named so a typo and a
-    # not-yet-shipped mode are DIFFERENT errors: silently treating `steer` as
-    # `followup` would look exactly like steering that never fires.
-    PLANNED_MODES = %i[steer interrupt].freeze
+    # not-yet-shipped mode are DIFFERENT errors: silently treating `interrupt` as
+    # `followup` would look exactly like an interrupt that never fires.
+    PLANNED_MODES = %i[interrupt].freeze
 
     DEFAULTS = {
       queue_mode: :followup,
-      debounce_ms: 0,       # 0 = no window: dequeue immediately, today's path
-      debounce_max_ms: 10_000 # ceiling on the TOTAL deferral (see #debounce_deadline_ms)
+      debounce_ms: 0,          # 0 = no window: dequeue immediately, today's path
+      debounce_max_ms: 10_000, # ceiling on the TOTAL deferral (see #debounce_deadline_ms)
+      steer_max_messages: 5,   # how many messages ONE run may absorb; overflow = followup
+      steer_join: nil          # nil = the raw text; a template frames it (see #frame)
     }.freeze
 
-    attr_reader :mode, :debounce_ms, :debounce_max_ms
+    # The placeholder `steer_join` must carry, so a template that would silently
+    # drop the customer's message is a config error and not a lost message.
+    JOIN_PLACEHOLDER = "%{message}"
+
+    attr_reader :mode, :debounce_ms, :debounce_max_ms, :steer_max_messages, :steer_join
 
     # profile: an AgentProfile (or nil); settings_store: nil = no platform layer;
     # vars: the session's vars Hash (string keys, as the SessionStore returns).
@@ -45,17 +59,24 @@ module Insika
       new(
         mode: mode!(pick_mode(vars, limits, platform)),
         debounce_ms: pick(:debounce_ms, limits, platform),
-        debounce_max_ms: pick(:debounce_max_ms, limits, platform)
+        debounce_max_ms: pick(:debounce_max_ms, limits, platform),
+        steer_max_messages: pick(:steer_max_messages, limits, platform),
+        steer_join: pick_text(:steer_join, limits, platform)
       )
     end
 
-    def initialize(mode:, debounce_ms:, debounce_max_ms:)
+    def initialize(mode:, debounce_ms:, debounce_max_ms:,
+                   steer_max_messages: DEFAULTS[:steer_max_messages], steer_join: nil)
       @mode = mode
       @debounce_ms = [debounce_ms.to_i, 0].max
       # A non-positive ceiling would mean "defer forever", which nobody wants and
       # which a stray 0 in a config would silently buy. Fall back to the default.
       max = debounce_max_ms.to_i
       @debounce_max_ms = max.positive? ? max : DEFAULTS[:debounce_max_ms]
+      # 0 (or a negative) is a legitimate "never steer on this agent" — unlike the
+      # ceiling above, it forbids rather than defers forever, so it is honored.
+      @steer_max_messages = [steer_max_messages.to_i, 0].max
+      @steer_join = join!(steer_join)
     end
 
     # Does this policy want messages held at the door at all?
@@ -63,6 +84,21 @@ module Insika
 
     # Does this policy merge into a turn that has not started yet?
     def collect? = @mode == :collect
+
+    # Does this policy append into a turn that is already running? `steer_max_messages`
+    # of 0 is the agent saying no, so it answers false rather than steering once and
+    # then refusing.
+    def steer? = @mode == :steer && @steer_max_messages.positive?
+
+    # The content of the injected message. `steer_join` frames it when an agent needs
+    # the model to know this text arrived mid-run ("the customer just added: %{message}");
+    # nil — the default — appends exactly what the person typed. A plain gsub, not
+    # `format`: the text is a customer's, and a stray `%` in it must not raise.
+    def frame(text)
+      return text.to_s if @steer_join.nil?
+
+      @steer_join.gsub(JOIN_PLACEHOLDER, text.to_s)
+    end
 
     # A mode name -> Symbol, or raise. Blank = the default (an absent key is not
     # an error; a WRONG key is).
@@ -94,6 +130,15 @@ module Insika
       DEFAULTS[key]
     end
 
+    # Same rule as #pick for a key whose value is TEXT: `to_i` would turn a template
+    # into 0. A present-but-nil key still means "off for this agent".
+    def self.pick_text(key, limits, platform)
+      return limits[key] if limits.key?(key)
+      return platform[key.to_s] if platform.key?(key.to_s)
+
+      DEFAULTS[key]
+    end
+
     def self.pick_mode(vars, limits, platform)
       from_vars = (vars || {})["queue_mode"] || (vars || {})[:queue_mode]
       return from_vars if Coercion.present?(from_vars)
@@ -102,6 +147,21 @@ module Insika
       platform["queue_mode"]
     end
 
-    private_class_method :pick, :pick_mode
+    private_class_method :pick, :pick_text, :pick_mode
+
+    private
+
+    # A template that does not carry the placeholder would drop the customer's message
+    # while the turn still looked steered. Refused where the operator is (config time),
+    # not at 14:02 on a live conversation.
+    def join!(value)
+      return nil if Coercion.blank?(value)
+
+      text = value.to_s
+      return text if text.include?(JOIN_PLACEHOLDER)
+
+      raise Insika::ValidationError,
+            "steer_join must contain #{JOIN_PLACEHOLDER} (got #{value.inspect})"
+    end
   end
 end

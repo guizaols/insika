@@ -70,6 +70,12 @@ module Insika
     # capability_registry or empty profile.capabilities (parity).
     attr_accessor :capability_names
 
+    # Internal (RFC-0015): the turn's resolved QueuePolicy. Read at stage 6 to decide
+    # whether this run accepts steered messages, and how they are worded. Resolved once
+    # per turn, in build_turn_state — an edit to the agent mid-run does not change the
+    # rules the run started under.
+    attr_accessor :queue_policy
+
     # Internal (item 33): true when this turn re-enters the pipeline via
     # resume_task/recovery. The EdgeLimiter reads it to NEVER re-count or block a
     # turn that was already admitted — a crash/pause under a saturated window must

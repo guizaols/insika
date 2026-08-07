@@ -30,8 +30,8 @@
 
     <div class="chat-thread">
       <div class="thread" data-live-transcript-target="stream">
-        <% Array(@history).each do |m| %><%== render("_message", locals: { m: m }) %><% end %>
-        <% if @sent_message %><%== render("_message", locals: { m: { "role" => "user", "content" => @sent_message, "at" => nil } }) %><% end %>
+        <% Array(@history).each_with_index do |m, i| %><%== render("_message", locals: { m: m, prev: i.positive? ? @history[i - 1] : nil }) %><% end %>
+        <% if @sent_message %><%== render("_message", locals: { m: { "role" => "user", "content" => @sent_message, "at" => nil }, prev: nil }) %><% end %>
       </div>
       <div class="empty chat-empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@history).empty? && @sent_message.nil? %>>
         <% if @session_id %>Waiting for turn events…<% else %>Send a message to begin a conversation.<% end %>

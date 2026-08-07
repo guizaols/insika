@@ -240,6 +240,19 @@ RSpec.describe Insika::Server::App do
       expect(JSON.parse(body.join)).to eq({ "task_id" => "t-open", "merged" => true })
       expect(body.join).not_to include("a resposta")
     end
+
+    it "a steered message answers 200 {task_id, steered} and opens NO stream either" do
+      bus = ServerBusDouble.new { { task_id: "t-running", steered: true } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "a resposta" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, _headers, body = call(app, "POST", "/v1/messages?stream=false",
+                                    body: '{"agent":"sales","message":"e no sábado?"}')
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.join)).to eq({ "task_id" => "t-running", "steered" => true })
+      expect(body.join).not_to include("a resposta")
+    end
   end
 
   describe "workflows exposed (item 22 / §4.4)" do

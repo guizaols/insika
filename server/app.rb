@@ -194,9 +194,9 @@ module Insika
       # "false" -> 200 JSON aggregated at the terminal event.
       def handle_send_message(req)
         stream = req.GET["stream"] != "false"
-        # RFC-0015 §5.5: only the aggregated-JSON form has room for `merged`, so
-        # only it is allowed to coalesce. Once the stream is open there is no way
-        # to tell the caller it does not own the reply.
+        # RFC-0015 §5.5: only the aggregated-JSON form has room for the `merged`/`steered`
+        # verdict, so only it may join a message to another turn. Once the stream is open
+        # there is no way to tell the caller it does not own the reply.
         message_flow(parse_body(req), stream: stream, transport: stream ? :http : :"http:json")
       end
 
@@ -421,13 +421,15 @@ module Insika
             raise
           end
 
-        # RFC-0015 §5.5: the message joined a turn still waiting at the door, so
-        # this call owns no reply — the one holding `task_id` does. Say exactly
-        # that and open no stream; a caller that delivered this response's (empty)
-        # output would duplicate the answer.
-        if result[:merged]
+        # RFC-0015 §5.5: the message joined another turn — one still waiting at the
+        # door (`merged`) or one already running (`steered`). Either way this call
+        # owns no reply; the one holding `task_id` does. Say exactly that and open no
+        # stream: a caller that delivered this response's (empty) output would
+        # duplicate the answer.
+        if result[:merged] || result[:steered]
           subscription.close
-          return json_response(200, { task_id: result[:task_id], merged: true })
+          verdict = result[:merged] ? :merged : :steered
+          return json_response(200, { task_id: result[:task_id], verdict => true })
         end
 
         task_id = result[:task_id]

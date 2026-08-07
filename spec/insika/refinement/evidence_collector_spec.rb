@@ -118,10 +118,39 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
     conversation(id: "s1", messages: [
                    { "role" => "user", "content" => "<store_context> loja 42, CD São Paulo" },
                    { "role" => "user", "content" => "queria saber do frete pro meu endereço" },
+                   { "role" => "assistant", "content" => "posso ajudar com outra coisa?" },
                    { "role" => "user", "content" => "queria saber do frete pro meu endereço mesmo" }
                  ])
 
     expect(collector.collect(agent_id: "bia").findings.map(&:kind)).to include(:repetition)
+  end
+
+  # RFC-0015. `collect` merges the fragments a person types into one turn and `steer`
+  # appends one into a run in flight, so a turn holding two customer messages is now
+  # ordinary. Someone still typing is not someone repeating themselves, and a steered
+  # message correctly declares no origin — so the reply between them is the only signal
+  # there is.
+  it "does not flag two customer messages in a row: nobody answered in between" do
+    turn(session: "s1")
+    conversation(id: "s1", messages: [
+                   { "role" => "user", "content" => "queria saber do frete pro meu endereço" },
+                   { "role" => "user", "content" => "queria saber do frete pro meu endereço mesmo" },
+                   { "role" => "assistant", "content" => "claro, qual seu CEP?" }
+                 ])
+
+    expect(collector.collect(agent_id: "bia").findings.map(&:kind)).not_to include(:repetition)
+  end
+
+  it "counts the SAME text as a repetition once a reply sits between the two" do
+    turn(session: "s1")
+    conversation(id: "s1", messages: [
+                   { "role" => "user", "content" => "quero cancelar o pedido 1234" },
+                   { "role" => "assistant", "content" => "temos promoções hoje!" },
+                   { "role" => "user", "content" => "quero cancelar o pedido 1234" }
+                 ])
+
+    finding = collector.collect(agent_id: "bia").findings.find { |f| f.kind == :repetition }
+    expect(finding.count).to eq(1)
   end
 
   # The structural answer to the same defect. The regex above only ever fires on a

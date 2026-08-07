@@ -192,6 +192,12 @@ end
   pick those themselves.
 - **A workflow turn assembles no chat.** Stage 5 is skipped: there is no
   model call for the *workflow itself*, only for the turns its steps start.
+  One consequence worth naming: `queue_mode: "steer"`
+  ([Agents](AGENTS.md#steer--the-message-arrives-while-the-turn-is-already-running))
+  cannot append into a running workflow — there is no chat to append to, and no tool
+  batch of the engine's to use as a boundary. A message that arrives while a workflow
+  run is in flight becomes the next turn on the session, which is what `followup`
+  does. Steering is refused at the door, not silently dropped.
 - **Braces bite in Ruby.** `agent "x" { … }` is a syntax error (`{` binds to the
   argument); write `agent("x") { … }` or `agent "x" do … end`.
 
