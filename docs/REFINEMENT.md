@@ -335,12 +335,20 @@ each expensive step, never in the middle of one. A candidate the run could not a
 is recorded as "not gated — the budget was spent", never dropped in silence, and the
 run's cost is on the record where you can see whether the loop earns its keep.
 
-Two things to know about the number. It counts what the **deployment reported** — the
-proposal's tokens and the replay's, as they came back from the provider. And when a
-provider reports nothing, that leg is tallied as *unmetered* rather than as zero,
-because a budget that quietly reads unmetered spend as free stops being a budget. If
-your provider is silent, the bounds that still hold are structural: the fan-out cap on
-the panel, `max_edits`, and the gate's own refusals.
+Two things to know about the number.
+
+**It counts the prompt cache.** A turn on a 27 KB pack reports `total_tokens: 88` with
+`cached_tokens: 26624` — the engine's `total_tokens` is input + output and deliberately
+excludes the cached prefix. A budget built on that alone would let a run send hundreds
+of times what its ceiling said, so the budget bills `total + cached` and records the
+cached share separately. On a real panel run against the pilot: **382,325 tokens spent,
+362,752 of them cached** — 95%. Cached tokens are cheaper than fresh ones; they are not
+free, and a ceiling has to see them.
+
+**And when a provider reports nothing**, that leg is tallied as *unmetered* rather than
+as zero, because a budget that quietly reads unmetered spend as free stops being a
+budget. If your provider is silent, the bounds that still hold are structural: the
+fan-out cap on the panel, `max_edits`, and the gate's own refusals.
 
 ### What the gate needs
 
@@ -365,6 +373,19 @@ Two things, and it refuses without either:
   every candidate — including a harmful one — sails through. If that is where you
   are, the agent needs fixing before it needs refining: get to a green run, record
   it, then gate.
+
+- **A judge, if your baseline was recorded with one.** A rubric'd case with no judge
+  verdict counts as a pass, so replaying without a judge against a judged baseline
+  does not measure less — it measures backwards, and every candidate reads as an
+  improvement. Measured: gating the pilot with no judge configured reported **6/6, no
+  regression** against a baseline the same corpus had just scored **2/6**. So the gate
+  refuses that combination. Configure the panel in Studio → Settings → Evals (or
+  `settings["evals"]["judges"]`), or re-record the baseline without a judge — then both
+  sides are equally deterministic, which is weak but not inverted.
+
+  With the judge on, the same two candidates were **rejected**: both dropped
+  `status-pedido` from 1.0 to 0.7, one also dropped `saudacao`. That is the gate doing
+  its job, on edits the broken version had waved through.
 
 The clone is a throwaway agent (`<agent>-cand-<run>`) with the same profile, tools
 and guardrails, and it is deleted afterwards — including when the replay fails.

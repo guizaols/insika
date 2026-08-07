@@ -57,7 +57,8 @@
           <span class="muted">· best of <%= @proposal.panel.size %> candidate(s)</span>
         <% end %>
         <% if @proposal.cost && @proposal.cost["spent"].to_i.positive? %>
-          <span class="muted">· <%= @proposal.cost["spent"] %> tokens</span>
+          <span class="muted">· <%= @proposal.cost["spent"] %> tokens<% if @proposal.cost["cached"].to_i.positive? %>
+            (<%= @proposal.cost["cached"] %> cached)<% end %></span>
         <% end %>
       </div>
       <% if presence(cand["rationale"]) %>

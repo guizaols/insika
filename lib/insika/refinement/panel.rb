@@ -22,15 +22,25 @@ module Insika
         limit = tokens.to_i
         @limit = limit.positive? ? limit : nil
         @spent = 0
+        @cached = 0
         @unmetered = 0
       end
 
       def limited? = !@limit.nil?
 
-      # nil/0 tokens = the leg happened but reported nothing.
-      def spend(tokens)
+      # `tokens` is what the leg SENT, prompt cache included — see
+      # `Evals::Runner#billed_tokens` for why the engine's `total_tokens` alone is not
+      # that number. `cached` is the part of it that was cached, carried so the record
+      # can explain a total rather than just state one. nil/0 tokens = the leg
+      # happened and reported nothing.
+      def spend(tokens, cached: nil)
         count = tokens.to_i
-        count.positive? ? @spent += count : @unmetered += 1
+        if count.positive?
+          @spent += count
+          @cached += cached.to_i
+        else
+          @unmetered += 1
+        end
         self
       end
 
@@ -38,7 +48,8 @@ module Insika
 
       def remaining = limited? ? [@limit - @spent, 0].max : nil
 
-      def to_h = { "tokens" => @limit, "spent" => @spent, "unmetered" => @unmetered }
+      def to_h = { "tokens" => @limit, "spent" => @spent, "cached" => @cached,
+                   "unmetered" => @unmetered }
     end
 
     # The proposer PANEL (RFC-0013 §3.9 / §3.5): N models write N independent
@@ -161,7 +172,10 @@ module Insika
         proposals.each do |proposal|
           candidate = CandidateBuilder.build(proposal, allowlist: allowlist,
                                                        contents: contents, limits: limits)
-          @budget.spend(proposal.is_a?(Hash) ? proposal["tokens"] : nil) if metered
+          if metered
+            raw = proposal.is_a?(Hash) ? proposal : {}
+            @budget.spend(raw["tokens"], cached: raw["cached"])
+          end
           if candidate.empty?
             dropped.concat(candidate.dropped)
             next
@@ -193,13 +207,14 @@ module Insika
           return entry.with(report: Gate::Report.new(
             candidate_id: entry.candidate.id, passed: false,
             reason: "not gated — the run's token budget (#{@budget.to_h['tokens']}) was spent",
-            cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil, tokens: nil
+            cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil,
+            tokens: nil, cached: nil
           ))
         end
 
         report = @gate.score(agent_id: agent_id, candidate: entry.candidate,
                              run_id: run_id, tolerance: tolerance)
-        @budget.spend(report.tokens)
+        @budget.spend(report.tokens, cached: report.cached)
         entry.with(report: report)
       end
     end
