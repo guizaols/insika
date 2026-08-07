@@ -87,13 +87,12 @@ end
 # The judge PANEL: one entry per model. Flags win over `settings["evals"]["judges"]`,
 # which is where an operator configures them (RFC-0013 §3.9). Nil when there is nobody
 # to ask — rubric'd cases then read as judge_pending instead of silently passing.
+# The construction moved to `Insika::Evals::JudgePanel` when the refinement gate
+# became a second caller (RFC-0013 §3.7): the gate has to grade with the judges the
+# operator configured, and two builders would drift. This is the CLI half — the
+# provider keys and the flag precedence.
 def build_judge(opts, settings)
-  models = if opts[:judge_model]
-             [{ "model" => opts[:judge_model], "provider" => opts[:judge_provider] }]
-           else
-             Array(settings["judges"])
-           end
-  models = models.map { |m| m.transform_keys(&:to_s) }.reject { |m| m["model"].to_s.strip.empty? }
+  models = Insika::Evals::JudgePanel.resolve_models(settings, stringify_judge_opts(opts))
   return nil if models.empty?
 
   require "ruby_llm"
@@ -102,17 +101,12 @@ def build_judge(opts, settings)
     c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
     c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
   end
-  asks = models.map do |m|
-    lambda do |prompt|
-      RubyLLM.chat(model: m["model"], provider: m["provider"], assume_model_exists: true)
-             .with_temperature(0).ask(prompt).content
-    end
-  end
-  [Insika::Evals::Judge.new(asks: asks,
-                            quorum: opts[:quorum] || settings["quorum"] || 1,
-                            aggregate: opts[:aggregate] || settings["aggregate"] || "median",
-                            min_agreement: opts[:min_agreement] || settings["min_agreement"] || 0.5),
-   models.map { |m| m["model"] }]
+  Insika::Evals::JudgePanel.build(settings, overrides: stringify_judge_opts(opts))
+end
+
+def stringify_judge_opts(opts)
+  %i[judge_model judge_provider quorum aggregate min_agreement]
+    .each_with_object({}) { |k, acc| acc[k.to_s] = opts[k] unless opts[k].nil? }
 end
 
 # Cases from the STORE when the deployment has any, else the corpus on disk. `auto`

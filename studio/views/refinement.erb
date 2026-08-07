@@ -39,6 +39,54 @@
     </div>
   <% end %>
 
+  <%# RFC-0013 §3.6 — the review IS the product. A gated proposal shows the exact
+      edit, what it claims to fix, and how it scored against the accepted baseline,
+      because approving is a decision and a decision needs those three things. %>
+  <% if @proposal %>
+    <h2>Proposal<span class="sub">gated · awaiting your approval</span></h2>
+    <div class="card">
+      <% cand = @proposal.candidate || {} %>
+      <div class="skill-desc">
+        <span class="pill ok">gate passed</span>
+        <span class="mono"><%= @proposal.gate["passed_cases"] %>/<%= @proposal.gate["cases"] %> case(s)</span>
+        <span class="muted">no regression against <%= @proposal.gate["baseline_cases"] %> baselined case(s)</span>
+        <span class="muted">· proposed by <span class="mono"><%= cand["proposer"] %></span></span>
+      </div>
+      <% if presence(cand["rationale"]) %>
+        <div class="skill-desc muted"><%= cand["rationale"] %></div>
+      <% end %>
+
+      <% Array(cand["edits"]).each do |e| %>
+        <div class="skill-desc">
+          <span class="pill"><%= e["op"] %></span>
+          <span class="mono"><%= e["file"] %></span>
+          <% if presence(e["anchor"]) %><span class="muted"><%= e["anchor"] %></span><% end %>
+          <% if Array(e["addresses"]).any? %>
+            <span class="muted">· addresses <%= Array(e["addresses"]).join(", ") %></span>
+          <% end %>
+        </div>
+        <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
+<% end %><span class="ins">+ <%= e["after"] %></span></pre>
+      <% end %>
+
+      <form method="post" action="/studio/refinement/resolve" class="actions">
+        <%== csrf_tag %>
+        <input type="hidden" name="agent" value="<%= @agent %>">
+        <input type="hidden" name="run_id" value="<%= @proposal.id %>">
+        <label>
+          Note
+          <input type="text" name="note" placeholder="why (optional)">
+        </label>
+        <button type="submit" class="primary" name="decision" value="approved">Approve &amp; apply</button>
+        <button type="submit" class="ghost" name="decision" value="rejected">Reject</button>
+      </form>
+      <div class="skill-desc muted">
+        Approving writes the edits to the agent's files and versions the previous
+        content — undo it any time from the file's History.
+      </div>
+    </div>
+  <% end %>
+
   <% if @run.nil? %>
     <div class="empty">No run yet for <span class="mono"><%= @agent %></span>. Press Run to read the last conversations.</div>
   <% else %>

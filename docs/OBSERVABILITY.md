@@ -16,7 +16,9 @@ that stream: it translates the events into OTEL **spans** and **metrics**. The c
 It's the same "events observe" principle the SSE surface already uses.
 
 Not every event on the stream is a turn. Operator actions, refinement runs
-(`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md)),
+(`:refinement_started`, `:refinement_report`, `:refinement_proposed`,
+`:refinement_gated`, `:refinement_applied`, `:refinement_rejected` — see
+[Refinement](REFINEMENT.md)),
 authoring writes (`:golden_written`, `:agent_file_written`, …), queue bookkeeping
 (`:turn_coalesced`, `:turn_steered`, `:turn_steer_released`, `:turn_interrupted` — see
 [Agents](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy)) and
