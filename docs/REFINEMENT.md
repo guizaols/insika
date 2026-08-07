@@ -16,11 +16,16 @@ look.
 Refinement is the loop that closes that gap. It reads a window of an agent's own
 traffic and reports **what broke, how often, and in which conversations**.
 
-Today that report is the whole feature. It calls no model and it changes nothing
-about your agent — no prompt is rewritten, no tool is touched. That is deliberate:
-a report you can read in thirty seconds is worth more than an automatic edit you
-cannot verify, and it is the honest way to find out whether the evidence in your
-own deployment is good enough to act on.
+The report is the default and it is the whole feature until you turn on more: it
+calls no model and it changes nothing about your agent — no prompt is rewritten, no
+tool is touched. That is deliberate. A report you can read in thirty seconds is
+worth more than an automatic edit you cannot verify, and it is the honest way to
+find out whether the evidence in your own deployment is good enough to act on.
+
+Opt in (`mode: propose`) and the loop goes one step further: a model proposes a
+small, anchored edit to the instruction files you listed, the edit is scored by
+**running** the agent's test cases with it applied, and a human approves it before
+it reaches anyone. Every part of that is below, including what it cannot catch.
 
 ## Running one
 
@@ -181,6 +186,7 @@ end
 | `exclude_sessions` | none | session-id prefixes to drop |
 | `mode` | `"report"` | `report` reads and writes nothing. `propose` allows a gated, human-approved edit (below). A mode the engine does not know is refused, never silently downgraded |
 | `files` | none | the ONLY files a proposal may edit. Empty means report-only |
+| `proposer` | the platform `utility_model` | which model writes the candidate (`"deepseek/deepseek-chat"` or a bare model name). Neither set means no proposal — the engine never picks a model to spend your budget on |
 | `max_edits` | 3 | edits a single proposal may carry |
 | `max_bytes` | 1200 | size of one edit's replacement text |
 | `max_total_growth` | 0.15 | how much a proposal may grow a file, as a fraction of its current size |
@@ -244,6 +250,51 @@ how a loop like this would otherwise silently overwrite something you wrote.
 An edit that breaks a bound is dropped **with a reason** and the rest of the
 proposal still goes to the gate. A proposal whose every edit dropped is refused
 before anything runs.
+
+### Who writes it
+
+You can hand a candidate to the API yourself. Or press **Propose a fix** on a
+finished report and the model named by `proposer` writes one, from the findings and
+the current text of the allowlisted files.
+
+That model is the weakest link in the loop, and it is built to be. It is shown the
+evidence and the files it may edit; it produces data that is then bounded (allowlist,
+size, growth, an anchor that must still match) and **scored by replaying your golden
+set**. A hallucinated rationale, a misread finding, an invented anchor — the worst
+outcome of each is a candidate that gets dropped or fails to move a score, and never
+reaches a customer. Nothing it says is trusted; it is measured.
+
+Three things follow from that, and they are worth knowing before you press the
+button:
+
+- **It only sees the files on your allowlist.** Not the rest of the prompt, not your
+  guardrails, not your tools. A model that can read a file it cannot edit proposes
+  edits to it, which drop, which spends your attention on rejects.
+- **It only sees findings.** A run with none refuses to propose rather than inventing
+  an improvement to a prompt that is working.
+- **It costs money twice** — once to write the candidate, once for the gate's replay,
+  which is a real conversation per case. So a proposal is a deliberate press, never a
+  timer, and the engine refuses if no `proposer` is configured rather than picking a
+  model for you.
+
+The report and the proposal run in the same place they always did: `insika refine`
+and Studio → Refinement. The proposal is Studio-only, because the gate's replay goes
+through the deployment's own `/v1/responses` — the CLI runs without booting the app,
+which is what makes it safe against a live volume, and it is not going to start a
+server to grade an edit.
+
+**What the proposals actually look like**, from running this against a real
+production-shaped agent (a 22 KB persona, an 11 KB tool guide, seventeen findings
+from its own traffic): most were edits a human would have made — reuse the search
+result you already have instead of searching again, say one honest sentence when a
+tool fails instead of retrying it. One was not, and it is the failure mode to know
+about: **an infrastructure finding invites prose that cannot work.** Shown tool
+errors that were really a blocked destination and a refused connection, the model
+proposed instructing the agent to "always use https" — advice about something the
+agent does not control and cannot obey. Naming that trap in the proposer's own
+instructions removed it, and the model now says out loud which findings it is
+declining to address. It will not catch every case: when you review a proposal, the
+first question worth asking is whether the finding it addresses is behaviour at all.
 
 ### What the gate needs
 
@@ -325,11 +376,12 @@ prompt edits have real leverage, and it is also where they do damage.
 
 ## What this is not
 
-It does not propose the edit for you — a model writing the candidate is the next
-phase, and it has to earn its place against a documented bar before it ships. It
-has no scheduler: a run happens because a person or a cron asked for one. It cannot
-touch your guardrails, tools, policies, model pins or limits, and not because a
-prompt tells it not to — there is no code path (see [Security](SECURITY.md)).
+It does not decide anything on its own. A proposal is written when you ask for one
+and applied when you approve it; there is no mode in which your prompt changes while
+you are not looking. It has no scheduler: a run happens because a person or a cron
+asked for one. And it cannot touch your guardrails, tools, policies, model pins or
+limits, and not because a prompt tells it not to — there is no code path (see
+[Security](SECURITY.md)).
 
 And if the findings turn out to be noise in your deployment, the correct answer is
 to stop at the report. That is a valid steady state, not a half-finished setup.

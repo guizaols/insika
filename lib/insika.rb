@@ -84,6 +84,9 @@ require_relative "insika/refinement/evidence_collector"
 # The candidate format is pure data + validation, so it loads with the collector;
 # the GATE needs the evals module and the stores, so it waits for them below.
 require_relative "insika/refinement/candidate"
+# The proposer only needs the candidate format and an injected `ask` — the provider
+# gem is required lazily, inside the factory, so requiring Insika still loads nothing.
+require_relative "insika/refinement/proposer"
 require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
 require_relative "insika/sandbox"
