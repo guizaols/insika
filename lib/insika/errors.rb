@@ -119,6 +119,13 @@ module Insika
     end
   end
 
+  # A channel could not hand a reply to its recipient (RFC-0011 §6.5). NOT a turn
+  # failure: the turn already completed and its answer is durable in the session —
+  # what failed is the delivery, which lives in the OutboxStore with its own status
+  # and its own bounded retry. Raised by a channel's `deliver` so the dispatcher can
+  # tell "the recipient refused" from "the engine has a bug".
+  class DeliveryError < Error; end
+
   # Strict configuration violation (item 23 / §8.1 — OpenClaw's config discipline:
   # "recusa boot com chave desconhecida, no silent config compat"). Raised by
   # EnvSchema.enforce! at boot ONLY when strictness is on (INSIKA_CONFIG_STRICT) —

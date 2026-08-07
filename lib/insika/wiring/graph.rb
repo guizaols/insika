@@ -38,6 +38,13 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
+        # RFC-0011 §6.4/§6.5: the two durable halves of a Shape B channel — the
+        # replies still owed to a platform, and the retry window that stops a
+        # redelivered webhook from becoming a second turn. Built unconditionally
+        # (they are empty and free when no channel is registered) so a deployment
+        # that turns a channel on later finds its state already durable.
+        outbox_store         = Insika::OutboxStore.new(store: backend)
+        inbound_log          = Insika::InboundLog.new(store: backend)
         # RFC-0013 phase A: refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
@@ -58,9 +65,11 @@ module Insika
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
           memory_store: memory_store, refinement_store: refinement_store,
+          outbox_store: outbox_store, inbound_log: inbound_log,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
-          capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new
+          capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new,
+          channel_registry: Insika::ChannelRegistry.new
         )
       end
 
@@ -89,6 +98,15 @@ module Insika
           policy_registry: spine.policy_registry, event_stream: spine.event_stream
         )
 
+        # RFC-0011 §6.5. Always built: the registry starts empty, so `record` finds no
+        # channel and returns nil on every turn — the cost of wiring it is one nil
+        # check per completed turn, and the alternative is a second wiring path that
+        # only production exercises.
+        channel_delivery = Insika::ChannelDelivery.new(
+          channels: spine.channel_registry, outbox: spine.outbox_store,
+          session_store: spine.session_store, event_stream: spine.event_stream
+        )
+
         executor = Insika::Executor.new(
           context_builder: context_builder, policy_engine: policy_engine,
           middleware: middleware, hooks: spine.hooks,
@@ -100,6 +118,7 @@ module Insika
           memory_store: spine.memory_store,
           content_filter_factory: guardrails.content_filter_factory, # RFC-0009: stream redaction
           delegation_store: spine.delegation_store, # RFC-0010 Fase 2: async delegation durability
+          channel_delivery: channel_delivery, # RFC-0011 §6.5: out-of-band reply delivery
           **executor_extra
         )
 
@@ -111,6 +130,8 @@ module Insika
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
+          outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
+          channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
           code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
           policy_registry: spine.policy_registry, capability_registry: spine.capability_registry,
@@ -137,7 +158,8 @@ module Insika
                                                           executor: executor, event_stream: spine.event_stream))
         bus.register(:send_message,
                      Insika::Commands::SendMessage.new(profiles: profiles, session_store: spine.session_store,
-                                                        task_store: spine.task_store, executor: executor))
+                                                        task_store: spine.task_store, executor: executor,
+                                                        inbound_log: spine.inbound_log))
         bus.register(:resume_task,
                      Insika::Commands::ResumeTask.new(profiles: profiles, task_store: spine.task_store,
                                                        checkpoint_store: spine.checkpoint_store, executor: executor))
@@ -149,8 +171,9 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :code_tool_registry,
-        :workflow_registry, :policy_registry, :capability_registry, :hooks, keyword_init: true
+        :outbox_store, :inbound_log, :code_tool_registry,
+        :workflow_registry, :policy_registry, :capability_registry, :hooks,
+        :channel_registry, keyword_init: true
       )
 
       # Full graph (phase 2 output). `code_tool_registry` is the plain code registry
@@ -159,7 +182,8 @@ module Insika
       Result = Struct.new(
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
-        :memory_store, :refinement_store,
+        :memory_store, :refinement_store, :outbox_store, :inbound_log,
+        :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

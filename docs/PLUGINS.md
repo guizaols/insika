@@ -1,7 +1,7 @@
 ---
 title: Plugins
 parent: Build an agent
-nav_order: 6
+nav_order: 7
 permalink: /plugins/
 ---
 
@@ -57,6 +57,7 @@ contracts:                      # the PUBLIC surface — declared here or ignore
   tools: [get_weather]
   workflows: []
   capabilities: []
+  channels: []
 tool_metadata:
   get_weather:
     optional: false             # optional tools require per-agent opt-in
@@ -97,6 +98,7 @@ side-effecting tools marked so an agent can gate them behind approval).
 | `register_tool(name, klass)` | a tool the model can call | **yes** — `contracts.tools` |
 | `register_workflow(name, callable)` | a named workflow (see [Architecture](ARCHITECTURE.md)) | **yes** — `contracts.workflows` |
 | `register_capability(name, tool:)` | an intent that resolves to a tool | **yes** — `contracts.capabilities` |
+| `register_channel(name, instance)` | a way in and out for people (see [Channels](CHANNELS.md)) | **yes** — `contracts.channels` |
 | `register_policy(name, klass)` | a policy for the resolution stage | no |
 | `register_middleware(instance)` | a wrap around the turn pipeline | no |
 | `register_context_provider(instance)` | a source of prompt context | no |
@@ -104,7 +106,9 @@ side-effecting tools marked so an agent can gate them behind approval).
 
 Anything addressable by name must be declared in `contracts`; registering an
 undeclared name logs a warning and is **ignored**, so a plugin cannot quietly
-widen its own surface between versions.
+widen its own surface between versions. For a channel the name is also a URL
+segment (`/channels/<name>/events`), so the declaration is what stops a plugin
+from mounting a route nobody asked for.
 
 `api.config` returns the manifest's `config` hash, frozen.
 

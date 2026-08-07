@@ -64,6 +64,10 @@ require_relative "insika/task_store"
 require_relative "insika/checkpoint_store"
 require_relative "insika/pending_action_store"
 require_relative "insika/delegation_store"
+# Channels (RFC-0011): the outbound record + the inbound retry window. Both are
+# plain stores; the channel objects themselves come after the HTTP client.
+require_relative "insika/outbox_store"
+require_relative "insika/inbound_log"
 require_relative "insika/memory_store"
 require_relative "insika/config_store"
 require_relative "insika/profile_source"
@@ -81,6 +85,12 @@ require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
 require_relative "insika/sandbox"
 require_relative "insika/http_client"
+# Channels (RFC-0011 §4/§6): the registry, the bundled relay adapter and the
+# out-of-band dispatcher. After http_client and egress_guard — the relay POSTs
+# through both — and after registry.rb, which ChannelRegistry extends.
+require_relative "insika/channel_registry"
+require_relative "insika/channels/relay"
+require_relative "insika/channel_delivery"
 require_relative "insika/overlay_tool_registry"
 require_relative "insika/settings_store"
 require_relative "insika/llm_provider_store"

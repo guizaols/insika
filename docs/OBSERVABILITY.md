@@ -17,14 +17,15 @@ It's the same "events observe" principle the SSE surface already uses.
 
 Not every event on the stream is a turn. Operator actions, refinement runs
 (`:refinement_started`, `:refinement_report` — see [Refinement](REFINEMENT.md)),
-authoring writes (`:golden_written`, `:agent_file_written`, …) and queue bookkeeping
+authoring writes (`:golden_written`, `:agent_file_written`, …), queue bookkeeping
 (`:turn_coalesced`, `:turn_steered`, `:turn_steer_released`, `:turn_interrupted` — see
-[Agents](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy))
+[Agents](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy)) and
+channel delivery (`:channel_delivered` — see [Channels](CHANNELS.md))
 travel the same stream and are **ignored** by the bridge: they open no span and
 touch no instrument, because they are not part of a turn's latency or cost. Any
 other subscriber still sees them.
 
-The three are worth subscribing to even so, because each is the ONLY record of
+They are worth subscribing to even so, because each is the ONLY record of
 something that left no task of its own behind:
 
 | Event | Data | What it answers |
@@ -33,6 +34,12 @@ something that left no task of its own behind:
 | `:turn_steered` | `task_id`, `count`, `total` | a message arrived mid-run and was appended to the turn in flight |
 | `:turn_steer_released` | `task_id`, `released_as`, `count` | the run could not absorb it, so it became the turn `released_as` |
 | `:turn_interrupted` | `task_id`, `replaced_by` | the turn was abandoned mid-run, and which turn replaced it |
+| `:channel_delivered` | `channel`, `outbox_id`, `status`, `attempts`, `error` | the answer reached the platform (or did not) — the turn completing says nothing about that |
+
+`:channel_delivered` is the one worth alerting on: a turn can be `:task_completed`
+and correct while the customer got nothing, because delivery is a separate,
+retried, out-of-band step. `status: "failed"` means the reply is sitting in the
+outbox and the customer is still waiting.
 
 Counts, ids and times only — never message content. The text lives in the
 transcript, which is the surface that is allowed to carry it.

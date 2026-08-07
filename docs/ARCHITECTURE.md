@@ -83,6 +83,12 @@ Two consequences worth knowing before you build on it:
 - A turn that dies mid-message publishes nothing. Half a sentence was never an
   answer; the fragment is still on the stream for whoever is debugging it.
 
+That contract is what makes a channel possible at all. A
+[channel](CHANNELS.md) whose recipient is not on the connection — a WhatsApp
+number, your own callback URL — cannot stream anything: it needs one message it
+can send. `:content` is that message, which is why a channel delivers exactly it
+and nothing else.
+
 The exception is `halt_when`: a tool that ends the turn has already answered the
 customer, so the model's lead-in before that call *is* the turn, and it is
 published as the answer.
@@ -291,6 +297,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Stores | `lib/insika/stores/*`, `lib/insika/*_store.rb` |
 | Recovery | `lib/insika/recovery.rb` |
 | Inbound queue (one turn at a time per session, and what happens to a message that arrives while one is running) | `lib/insika/session_actor.rb`, `lib/insika/queue_policy.rb`, `lib/insika/steer_injector.rb` |
+| Channels (a way in and out for people; the reply that travels after the turn ends) | `lib/insika/channel_registry.rb`, `lib/insika/channels/*`, `lib/insika/channel_delivery.rb`, `lib/insika/outbox_store.rb`, `lib/insika/inbound_log.rb` |
 | Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |
@@ -300,8 +307,8 @@ validator as the after-task hook, so both roots enforce content safety identical
 ## See also
 
 - [Agents](AGENTS.md) · [Tools](TOOLS.md) · [Skills](SKILLS.md) ·
-  [Context](CONTEXT.md) · [Plugins](PLUGINS.md) · [Security](SECURITY.md) — the
-  capability guides.
+  [Context](CONTEXT.md) · [Channels](CHANNELS.md) · [Plugins](PLUGINS.md) ·
+  [Security](SECURITY.md) — the capability guides.
 - [Evals](EVALS.md) — the cases that grade an agent, and the pre-merge gate.
 - [Refinement](REFINEMENT.md) — reading a live agent's own traffic back as a report.
 - [Deploy](DEPLOY.md) — running the engine durably.

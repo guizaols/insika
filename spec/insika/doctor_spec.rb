@@ -193,5 +193,34 @@ RSpec.describe Insika::Doctor do
       expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("prompt-files")
     end
   end
+
+  # A half-configured relay is the silent kind of broken: one half accepts turns it
+  # can never answer, the other mounts nothing at all. Both look fine from outside.
+  describe "relay-channel check" do
+    def relay_finding(env)
+      described_class.new(env: env).run.findings.find { |f| f.check == "relay-channel" }
+    end
+
+    it "says nothing when nobody asked for a relay" do
+      expect(relay_finding({})).to be_nil
+    end
+
+    it "is ok with both halves" do
+      finding = relay_finding("INSIKA_RELAY_TOKEN" => "t", "INSIKA_RELAY_DELIVER_URL" => "https://x.example/h")
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "warns on a token with no callback — turns are accepted and never answered" do
+      finding = relay_finding("INSIKA_RELAY_TOKEN" => "t")
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("no reply can be delivered")
+    end
+
+    it "warns on a callback with no token — the route is not mounted at all" do
+      finding = relay_finding("INSIKA_RELAY_DELIVER_URL" => "https://x.example/h")
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("NOT mounted")
+    end
+  end
 end
 

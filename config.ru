@@ -62,6 +62,7 @@ APP = Insika::Server::App.new(
   provisioner: W::PACK_IMPORTER, # POST/DELETE /v1/agents under the gateway_token
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
   onboarding: ONBOARDING, # nil unless INSIKA_ONBOARDING -> onboarding routes 404
+  channels: W::CHANNEL_REGISTRY, # RFC-0011: /channels/:id/events (empty registry -> 404)
   config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"] }
 )
 

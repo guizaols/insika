@@ -66,11 +66,29 @@ module Insika
           # injection like every other edge — nil when the system declares none,
           # so the routes simply do not exist (404, parity).
           workflow_registry: (@graph.workflow_registry if workflows?),
+          # RFC-0011: the bundled relay, when the env turns it on. Same rule as the
+          # OTEL bridge above — a feature only `config.ru` can reach is a feature the
+          # docs are half-true about.
+          channels: (@graph.channel_registry if channels?),
           config: { gateway_token: @token }
         )
       end
 
       def workflows? = !@graph.workflow_registry.names.empty?
+
+      # Registers the env-configured channels once, and reports whether any exist.
+      def channels?
+        unless defined?(@channels_ready)
+          @channels_ready = true
+          relay = Insika::Channels::Relay.from_env(
+            http: Insika::HttpClient.new,
+            allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
+            allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"])
+          )
+          @graph.channel_registry.register(relay.id, relay) if relay
+        end
+        !@graph.channel_registry.names.empty?
+      end
 
       def build_onboarding
         configs = @rt.packs.map(&:config)
@@ -116,6 +134,7 @@ module Insika
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", #{models})"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
         puts "  #{base}/v1/workflows    → #{@graph.workflow_registry.names.join(', ')}" if workflows?
+        puts "  #{base}/channels/…      → #{@graph.channel_registry.names.join(', ')} (inbound at /events)" if channels?
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
         puts "  Ctrl-C to stop."

@@ -16,6 +16,7 @@ DEEPSEEK_API_KEY=sk-... ruby examples/<name>/<file>.rb
 | [skills/](skills/) | Progressive skill loading (`load_skill`) | `ruby examples/skills/skill_agent.rb` |
 | [memory/](memory/) | Cross-session memory (`remember`) | `ruby examples/memory/memory_agent.rb` |
 | [guardrails/](guardrails/) | Content-safety guardrails, opt-in per agent | `ruby examples/guardrails/guarded_agent.rb` |
+| [relay-channel/](relay-channel/) | Bring your own WhatsApp/Slack stack: the engine runs the turn, you deliver the reply | `ruby examples/relay-channel/support_agent.rb` |
 
 | [agentic-workflows/](agentic-workflows/) | The five composition patterns: sequential, routing, parallel, evaluator, delegation | `ruby examples/agentic-workflows/sequential.rb` |
 

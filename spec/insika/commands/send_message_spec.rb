@@ -220,4 +220,76 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(interrupting_executor.interrupts.first.first).to be_nil
     end
   end
+
+  # RFC-0011 §6.4 — a platform retrying a webhook it already delivered must not buy
+  # a second turn and must not send the customer the same answer twice.
+  describe "event_id dedup" do
+    subject(:handler) do
+      described_class.new(profiles: profiles, session_store: session_store,
+                          task_store: task_store, executor: executor, inbound_log: log)
+    end
+
+    let(:log) { Insika::InboundLog.new(store: backend) }
+
+    def send_event(id: "wamid.1", transport: :"channel:relay", **over)
+      handler.call(Insika::Command.build(:send_message, payload(event_id: id, **over), transport: transport))
+    end
+
+    it "runs the turn the first time and remembers which one it was" do
+      result = send_event
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(log.find("channel:relay:wamid.1")).to eq(result[:task_id])
+    end
+
+    it "answers the retry with the SAME task and runs nothing" do
+      first = send_event
+      retried = send_event
+
+      expect(retried).to eq({ task_id: first[:task_id], duplicate: true })
+      expect(executor.spawned.size).to eq(1)
+      expect(task_store.each_id.to_a.size).to eq(1)
+    end
+
+    # Two channels are two consumers with two id spaces; a Slack event id that
+    # happened to equal a `wamid` must not silence a real message.
+    it "scopes the id by transport" do
+      first = send_event(transport: :"channel:relay")
+      other = send_event(transport: :"channel:slack")
+
+      expect(other[:task_id]).not_to eq(first[:task_id])
+      expect(other).not_to have_key(:duplicate)
+    end
+
+    it "does not dedup a caller that sends no event id (at-least-once, honestly)" do
+      a = handler.call(Insika::Command.build(:send_message, payload, transport: :"channel:relay"))
+      b = handler.call(Insika::Command.build(:send_message, payload, transport: :"channel:relay"))
+
+      expect(a[:task_id]).not_to eq(b[:task_id])
+    end
+
+    it "is inert without an inbound log wired (every surface today)" do
+      plain = described_class.new(profiles: profiles, session_store: session_store,
+                                  task_store: task_store, executor: executor)
+      a = plain.call(Insika::Command.build(:send_message, payload(event_id: "wamid.1")))
+      b = plain.call(Insika::Command.build(:send_message, payload(event_id: "wamid.1")))
+
+      expect(a[:task_id]).not_to eq(b[:task_id])
+    end
+
+    # A duplicate is not a fragment to merge and not a correction to steer with —
+    # it is the same message again. Asked before the queue doors for that reason.
+    it "beats the coalescing doors to the answer" do
+      coalescing = FakeTurnExecutor.new(collect: "t-door")
+      handler = described_class.new(profiles: profiles, session_store: session_store,
+                                    task_store: task_store, executor: coalescing, inbound_log: log)
+      session_store.create(id: "s1")
+      cmd = Insika::Command.build(:send_message, payload(event_id: "wamid.9", session_id: "s1"),
+                                  transport: :"channel:relay")
+
+      first = handler.call(cmd)
+      expect(first).to eq({ task_id: "t-door", merged: true })
+      expect(handler.call(cmd)).to eq({ task_id: "t-door", duplicate: true })
+      expect(coalescing.asked.count { |door, _s, _t| door == :collect }).to eq(1)
+    end
+  end
 end
