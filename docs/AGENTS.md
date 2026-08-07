@@ -119,6 +119,57 @@ Two behaviours change once it is on — see [Tools](TOOLS.md#parallel-tool-calls
 `max_tool_calls` becomes approximate, and the transcript records tool results in
 completion order.
 
+### `queue_mode` — when a message arrives while the agent is busy
+
+A person on WhatsApp rarely writes one message. They write three:
+
+```
+14:02:31  "oi"
+14:02:33  "queria saber do pedido"
+14:02:36  "1234567"
+```
+
+By default each one is a turn, and they run one at a time. So the agent answers
+`"oi"` with a greeting the customer has already moved past, and may go looking for
+an order before the number arrives three seconds later.
+
+`collect` merges the fragments that land **before the turn starts** into a single
+turn:
+
+```ruby
+limit :queue_mode, "collect"   # "followup" (the default) = one turn per message
+limit :debounce_ms, 2_000      # 0 (the default) = no waiting; N = the quiet window
+limit :debounce_max_ms, 10_000 # ceiling on the total wait, so typing forever
+                               # cannot postpone the answer forever
+```
+
+With those settings the three fragments above become one turn carrying
+`"oi\nqueria saber do pedido\n1234567"`, released 2 s after the last one.
+
+These three are **not** in `DEFAULT_LIMITS`, and deliberately so: they resolve
+most-specific-first, **session vars → this agent's limits → the platform default
+(Studio, `queue.*`) → off**, and a key baked into every profile would shadow the
+platform layer for every agent. A key you set explicitly wins even when you set it
+to `nil` or `0` — that means *off for this agent*, never *inherit the platform
+value*.
+
+> ⚠️ **Your caller has to know it was merged.** When the engine coalesces, only
+> one of the three calls owns the reply; the other two answer
+> `200 {"task_id": "…", "merged": true}` and stream nothing. A caller that
+> delivers a `merged` response anyway sends the same answer to the customer three
+> times.
+>
+> Because of that, `collect` works **only on surfaces that can report the
+> verdict**: `POST /v1/messages?stream=false` and channel endpoints. On
+> `/v1/responses` and on any open stream it is refused and the agent falls back to
+> `followup` — the response body there is fixed by someone else's wire format and
+> has nowhere to put the field.
+
+Waiting happens inside the engine, not in your request: the POST is acked
+immediately with its `task_id`. Debouncing costs one thing — a customer who sends
+a *single* message still waits out the window before their turn starts, which is
+why 2 s is a sane value and 10 s is not.
+
 > ⚠️ **`context_budget` defaults to 8000 tokens.** A large system prompt (a rich
 > persona can run tens of thousands of tokens) exceeds it, and a pinned identity
 > that overflows the budget fails the turn rather than truncating the identity.
