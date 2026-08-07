@@ -162,6 +162,7 @@ Which mode you want depends on **when** the message arrives:
 | `followup` (default) | any time | it waits its turn in the queue — today's behavior, named |
 | `collect` | before the turn starts | the fragments merge into ONE turn |
 | `steer` | while the turn is running tools | it is appended to the run in flight |
+| `interrupt` | while a turn is running that is now **wrong** | that turn is abandoned; this message becomes its own turn |
 
 #### `collect` — the fragments become one turn
 
@@ -276,6 +277,38 @@ message right after a tool result); nothing else in the engine puts one there.
 > A steered message also lives **in memory** until a boundary writes it to the
 > transcript. A hard stop inside that window loses it; a merged fragment, by
 > contrast, is persisted before the window opens.
+
+#### `interrupt` — the turn in flight is answering the wrong question
+
+`steer` assumes the run is still worth finishing. Sometimes it is not: the customer
+says "não, esquece isso" while the agent is three tool calls into the wrong order.
+
+```ruby
+limit :queue_mode, "interrupt"   # no other knob: see below
+```
+
+The running turn is abandoned and the new message becomes an **ordinary turn** — its
+own `task_id`, its own reply. That is why `interrupt` needs no verdict field and works
+on **every** surface, `/v1/responses` included: nothing joins anything.
+
+What "abandoned" means, exactly:
+
+- The turn terminates `:cancelled` and **publishes nothing**. The answer to the
+  question the customer already replaced never reaches them, and nothing is written to
+  the transcript — so what they read and what the session holds still agree.
+- **A tool call in flight runs to completion** and its result is recorded on the
+  stream. The batch is one unit of work: cancelling the calls that had not started
+  would leave it half applied, and fabricating failure results would teach the model
+  that tools failed when they did not. The same boundary bounds `turn_timeout`.
+- The next turn starts from the last **committed** state. The abandoned attempt is
+  visible to an *operator* (its `tool_call`/`tool_result` events and the trace), not to
+  the model — a half batch in the history would be an invalid prompt.
+
+> **No grace knob.** RFC-0015 sketched an `interrupt_grace_ms`; it is not
+> implemented, and would buy nothing here. The new turn is queued behind the abandoned
+> one either way (one turn at a time per session is the invariant), and waiting for a
+> boundary inside the request would break the ack-fast rule that put the debounce
+> window on the session's fiber in the first place.
 
 > ⚠️ **`context_budget` defaults to 8000 tokens.** A large system prompt (a rich
 > persona can run tens of thousands of tokens) exceeds it, and a pinned identity
