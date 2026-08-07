@@ -194,7 +194,10 @@ module Insika
       # "false" -> 200 JSON aggregated at the terminal event.
       def handle_send_message(req)
         stream = req.GET["stream"] != "false"
-        message_flow(parse_body(req), stream: stream)
+        # RFC-0015 §5.5: only the aggregated-JSON form has room for `merged`, so
+        # only it is allowed to coalesce. Once the stream is open there is no way
+        # to tell the caller it does not own the reply.
+        message_flow(parse_body(req), stream: stream, transport: stream ? :http : :"http:json")
       end
 
       # GET /docs/:name.md — one public doc as raw markdown (item 20 / §5.6). The
@@ -407,8 +410,8 @@ module Insika
       # transport (TaskFilter). A SYNCHRONOUS handler error (Validation/NotFound)
       # happens here, BEFORE the SSE opens -> closes the subscription and propagates to the
       # #call rescue (becomes an HTTP status).
-      def message_flow(payload, stream:, serialize: nil)
-        command = Insika::Command.build(:send_message, payload, transport: :http)
+      def message_flow(payload, stream:, serialize: nil, transport: :http)
+        command = Insika::Command.build(:send_message, payload, transport: transport)
         subscription = @event_stream.subscribe
         result =
           begin
@@ -417,6 +420,15 @@ module Insika
             subscription.close
             raise
           end
+
+        # RFC-0015 §5.5: the message joined a turn still waiting at the door, so
+        # this call owns no reply — the one holding `task_id` does. Say exactly
+        # that and open no stream; a caller that delivered this response's (empty)
+        # output would duplicate the answer.
+        if result[:merged]
+          subscription.close
+          return json_response(200, { task_id: result[:task_id], merged: true })
+        end
 
         task_id = result[:task_id]
         # Bind the subscription to the task_id now that it exists: the cap now

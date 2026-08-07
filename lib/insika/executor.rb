@@ -50,6 +50,9 @@ module Insika
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
       @model_resolver = ModelResolver.new(settings_store: settings_store)
+      # RFC-0015 §4: the platform layer of the queue policy (nil = per-agent and
+      # defaults only, which is `followup` with no window — today's behavior).
+      @settings_store = settings_store
       # RubyLLM glue (stages 5-7): chat assembly delegated to ChatBuilder. Its
       # optional deps tool_catalog (Tool Search) and memory_store (cross-session
       # memory) matter only to it — nil = parity (deferred
@@ -198,7 +201,38 @@ module Insika
         return spawn(task, profile: profile, resume_from: resume_from)
       end
 
-      session_actor(task.session_id).enqueue(task, profile: profile, resume_from: resume_from)
+      session_actor(task.session_id).enqueue(task, profile: profile, resume_from: resume_from,
+                                                   policy: queue_policy(profile, task.session_id))
+    end
+
+    # RFC-0015 §5.3 — the `collect` door, asked BEFORE a task is created.
+    # -> the task id the fragment joined, or nil (create a task and spawn as usual).
+    #
+    # Asking first is what keeps the store clean: creating a task and then
+    # discarding it would leave an orphan :queued record for every fragment, and
+    # `queued` is what Recovery replays at boot.
+    def collect_into_pending(session_id, text, profile:)
+      return nil unless @supervised && session_id
+
+      policy = queue_policy(profile, session_id)
+      return nil unless policy.collect? && policy.debounce?
+
+      actor = @session_actors[session_id]
+      return nil unless actor&.alive?
+
+      actor.collect(text)
+    end
+
+    # The SessionActor writes the merged fragment through this (it has no store of
+    # its own, by design — it owns scheduling, not persistence).
+    attr_reader :task_store
+
+    # RFC-0015 §8. Emitted by the SessionActor when a window closes having merged
+    # more than one fragment. `arrivals` are the ISO8601 times each fragment landed
+    # — the ONLY record that they were separate messages, since a merged fragment
+    # creates no task of its own. Ids and times, never content.
+    def emit_coalesced(task, merged:, arrivals: [])
+      emit(:turn_coalesced, { task_id: task.id, merged: merged, arrivals: arrivals }, task: task)
     end
 
     # Runs ONE turn serially (called by the SessionActor loop):
@@ -340,6 +374,15 @@ module Insika
     end
 
     private
+
+    # RFC-0015 §4 — resolves session vars > profile.limits > settings["queue"] >
+    # defaults. One session read plus one settings read per message, the same
+    # order of cost the EdgeLimiter already pays per turn. A missing session (or
+    # no session store) simply drops the vars layer.
+    def queue_policy(profile, session_id)
+      vars = session_id && @session_store&.find(session_id)&.vars
+      QueuePolicy.resolve(profile, settings_store: @settings_store, vars: vars)
+    end
 
     # Lazy SessionActor per session, parented in the turn scope:
     # the session loop outlives the connection, like the supervisor. Revalidates

@@ -228,6 +228,44 @@ RSpec.describe Insika::TaskStore do
     end
   end
 
+  describe "#append_message (RFC-0015 collect)" do
+    let(:command) { { type: "send_message", payload: { "message" => "oi" }, meta: {} } }
+
+    it "joins fragments onto a queued task's message" do
+      id = tasks.create(command: command, id: "t").id
+
+      tasks.append_message(id, "queria o pedido")
+      task = tasks.append_message(id, "1234567")
+
+      expect(task.command["payload"]["message"]).to eq("oi\nqueria o pedido\n1234567")
+    end
+
+    it "seeds the message when the task had none" do
+      id = tasks.create(command: { type: "send_message", payload: {}, meta: {} }, id: "t").id
+
+      expect(tasks.append_message(id, "oi").command["payload"]["message"]).to eq("oi")
+    end
+
+    it "REFUSES once the task left :queued — its message is already in flight" do
+      id = tasks.create(command: command, id: "t").id
+      tasks.transition(id, to: :running)
+
+      expect { tasks.append_message(id, "tarde demais") }
+        .to raise_error(ArgumentError, /not queued/)
+      expect(tasks.find(id).command["payload"]["message"]).to eq("oi")
+    end
+
+    it "a blank fragment is a no-op, not a stray separator" do
+      id = tasks.create(command: command, id: "t").id
+
+      expect(tasks.append_message(id, "   ").command["payload"]["message"]).to eq("oi")
+    end
+
+    it "raises NotFoundError for an unknown task" do
+      expect { tasks.append_message("nope", "x") }.to raise_error(Insika::NotFoundError)
+    end
+  end
+
   describe "smoke against Stores::SQLite ':memory:'" do
     it "create->transition->begin->finish flow identical to Memory" do
       require "sqlite3"

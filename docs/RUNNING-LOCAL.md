@@ -32,6 +32,24 @@ Open `http://localhost:9292`:
 | `/v1/agents` | provisioning by definition/pack (Bearer) — `POST` imports, `DELETE /:id` removes |
 | `/v1/messages` | `send_message` sugar (Bearer; SSE when `?stream` is set) |
 
+`POST /v1/messages?stream=false` answers the aggregated turn as JSON. It is also
+the only HTTP surface that can report a **coalesced** message, so it is the only
+one on which an agent configured with `queue_mode: "collect"`
+([Agents](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy))
+actually coalesces:
+
+```jsonc
+// this call owns the reply
+{ "task_id": "9f3c…", "content": "…" }
+
+// this one joined a turn already waiting — deliver NOTHING, no stream is opened
+{ "task_id": "9f3c…", "merged": true }
+```
+
+`/v1/responses` and any open stream never coalesce: their bodies have nowhere to
+put that verdict, and a caller that cannot hear it would send the same answer once
+per fragment. Those requests fall back to one turn per message.
+
 Every `/v1` and `/a2a` route needs the Bearer. The exceptions are `/up` and, when
 `INSIKA_ONBOARDING` is on, `/start.md`, `/models.json` and `/docs*` — a route is closed
 unless it is on the allowlist in `server/app.rb`. With no token configured at all the

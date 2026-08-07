@@ -210,6 +210,36 @@ RSpec.describe Insika::Server::App do
       expect(cmd.type).to eq(:send_message)
       expect(cmd.payload).to eq(agent: "sales", message: "oi")
     end
+
+    # RFC-0015 §5.5: the aggregated form is the one that can report `merged`, so
+    # it is the one that declares itself coalescable. The streaming form cannot —
+    # once the stream is open there is no way to say "you do not own the reply".
+    it "declares the coalescable transport only for stream=false" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      call(app, "POST", "/v1/messages?stream=false", body: '{"agent":"sales","message":"oi"}')
+      expect(bus.dispatched.last.meta[:transport]).to eq(:"http:json")
+
+      call(app, "POST", "/v1/messages", body: '{"agent":"sales","message":"oi"}')
+      expect(bus.dispatched.last.meta[:transport]).to eq(:http)
+    end
+
+    it "a merged message answers 200 {task_id, merged} and opens NO stream" do
+      bus = ServerBusDouble.new { { task_id: "t-open", merged: true } }
+      # Would be delivered if the handler streamed — it must not.
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "a resposta" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, headers, body = call(app, "POST", "/v1/messages?stream=false",
+                                   body: '{"agent":"sales","message":"1234567"}')
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to include("application/json")
+      expect(JSON.parse(body.join)).to eq({ "task_id" => "t-open", "merged" => true })
+      expect(body.join).not_to include("a resposta")
+    end
   end
 
   describe "workflows exposed (item 22 / §4.4)" do
