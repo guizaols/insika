@@ -68,6 +68,15 @@ RSpec.describe Deploy::Wiring do
       expect(w::BUS.registered?(:pause_task)).to be(true)
       expect(w::BUS.registered?(:approve_action)).to be(true)
     end
+
+    # RFC-0013 §3.6 / D2: `mode: auto_apply` writes through the SAME handler a human
+    # approval does, so the staleness re-check, the versioned write and the
+    # `:refinement_applied` event cannot drift into a second, unattended copy.
+    it "gives the refinement gate the very handler that :resolve_refinement dispatches to" do
+      handlers = w::BUS.instance_variable_get(:@handlers)
+      expect(handlers[:resolve_refinement]).to be(w::RESOLVE_REFINEMENT)
+      expect(handlers[:gate_refinement].instance_variable_get(:@resolver)).to be(w::RESOLVE_REFINEMENT)
+    end
   end
 
   describe "agent seed (idempotent)" do

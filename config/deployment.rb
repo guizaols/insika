@@ -292,19 +292,25 @@ module Deploy
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
     )
-    # Who WRITES the candidate (§3.4, PR 3b). Per agent (`refinement.proposer`),
-    # falling back to the platform utility_model — the same "which model does the
-    # cheap side work" setting the judges and the moderator read. Built per call, and
-    # for the same reason the transport is: the operator can change either without a
-    # restart. nil when neither is set, and then the command refuses instead of
-    # guessing a model to spend money on.
+    # Who WRITES the candidates (§3.4/§3.9). Per agent (`refinement.proposers`, a
+    # PANEL — or `refinement.proposer`, one), falling back to the platform
+    # utility_model, the same "which model does the cheap side work" setting the
+    # judges and the moderator read. Built per call, and for the same reason the
+    # transport is: the operator can change either without a restart. Empty when
+    # nothing is set, and then the command refuses instead of guessing a model to
+    # spend money on.
     PROPOSER_FACTORY = lambda { |config|
-      Insika::Refinement::ProposerFactory.build(
+      Insika::Refinement::ProposerFactory.panel(
         config, utility_model: (SETTINGS_STORE.get || {})["utility_model"]
       )
     }
-    BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM, proposer_factory: PROPOSER_FACTORY))
-    BUS.register(:resolve_refinement, Insika::Commands::ResolveRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
+    # `mode: auto_apply` (D2) reuses this handler rather than writing files itself, so
+    # an unattended apply goes through the SAME staleness re-check, versioned write and
+    # `:refinement_applied` event a human approval does. Registered first because the
+    # gate command holds it.
+    RESOLVE_REFINEMENT = Insika::Commands::ResolveRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM)
+    BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM, proposer_factory: PROPOSER_FACTORY, resolver: RESOLVE_REFINEMENT))
+    BUS.register(:resolve_refinement, RESOLVE_REFINEMENT)
 
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))

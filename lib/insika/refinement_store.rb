@@ -48,9 +48,15 @@ module Insika
     # the Studio's "latest report" lookup reads, so getting it wrong hides the report.)
     OPEN = %i[collecting gating awaiting_approval].freeze
 
+    # `candidate`/`gate` are the WINNER — the one proposal a human is asked about, and
+    # the only thing `ResolveRefinement` ever applies. `candidates` is the whole panel
+    # (RFC-0013 §3.9, phase D): every candidate that was built, who wrote it, and how
+    # it scored, including the ones that lost and the ones the budget never gated. A
+    # phase-C run recorded one candidate and no panel; it still reads back correctly,
+    # because a panel of one is the same shape.
     Run = Data.define(:id, :agent_id, :status, :window, :findings, :excluded,
                       :started_at, :finished_at, :error,
-                      :candidate, :gate, :decision) do
+                      :candidate, :candidates, :gate, :cost, :decision) do
       def terminal? = !OPEN.include?(status)
       def findings_count = findings.size
 
@@ -59,6 +65,7 @@ module Insika
       def awaiting_approval? = status == :awaiting_approval
       def gate_passed? = gate.is_a?(Hash) && gate["passed"] == true
       def edits = (candidate || {})["edits"] || []
+      def panel = Array(candidates)
     end
 
     def initialize(store:)
@@ -78,7 +85,8 @@ module Insika
         "id" => id.to_s, "agent_id" => agent, "status" => "collecting",
         "window" => deep_stringify(window || {}), "findings" => [], "excluded" => 0,
         "started_at" => started, "finished_at" => nil, "error" => nil,
-        "candidate" => nil, "gate" => nil, "decision" => nil
+        "candidate" => nil, "candidates" => [], "gate" => nil, "cost" => nil,
+        "decision" => nil
       }
       @store.set(SCOPE, key_for(agent, started, id), record)
       to_run(record)
@@ -112,16 +120,25 @@ module Insika
 
     # -- phase C: the proposal's lifecycle -------------------------------
 
-    # Attaches the candidate under gate and moves the run to :gating. Only a
+    # Attaches the candidate(s) under gate and moves the run to :gating. Only a
     # `completed` run can be gated: a report with no findings has nothing to propose
-    # from, and a failed one never finished looking. -> Run.
-    def gating(id, candidate:)
+    # from, and a failed one never finished looking.
+    #
+    # `candidate:` (one) and `candidates:` (a panel) are the same call — the panel is
+    # recorded before the gate runs so the Studio can show WHAT is being scored while
+    # it is being scored, which is minutes of real replay. No winner is claimed yet:
+    # `candidate` stays nil until `gated` says which one it is. -> Run.
+    def gating(id, candidate: nil, candidates: nil)
+      panel = Array(candidates || [candidate].compact)
+      raise Insika::ValidationError, "a candidate is required to gate" if panel.empty?
+
       update(id) do |record|
         unless record["status"] == "completed"
           raise ArgumentError, "run #{record['id']} is #{record['status']}, expected completed"
         end
 
-        record["candidate"] = deep_stringify(candidate.respond_to?(:to_h) ? candidate.to_h : candidate)
+        record["candidates"] = panel.map { |c| entry_for(c) }
+        record["candidate"] = nil
         record["gate"] = nil
         record["status"] = "gating"
       end
@@ -131,15 +148,23 @@ module Insika
     # human still has to say yes, which is the product and not a formality (D2). A
     # FAIL is terminal as :rejected, with the gate report as the stated reason: the
     # same finding must re-surface with new evidence before anything is proposed
-    # again, so there is no silent retry loop (§3.6). -> Run.
-    def gated(id, report:)
+    # again, so there is no silent retry loop (§3.6).
+    #
+    # `report` is the WINNER's (or, when nothing survived, the most informative
+    # refusal). `panel` is every scored entry — the store attaches it as-is and picks
+    # the winning candidate out of it by id. Which candidate WON is the caller's
+    # ranking decision (§3.5); this store does not rank, it records. -> Run.
+    def gated(id, report:, panel: nil, cost: nil)
       update(id) do |record|
         unless record["status"] == "gating"
           raise ArgumentError, "run #{record['id']} is #{record['status']}, expected gating"
         end
 
         gate = deep_stringify(report.respond_to?(:to_h) ? report.to_h : report)
+        record["candidates"] = panel.map { |e| entry_for(e) } if panel
+        record["candidate"] = winning_candidate(record, gate)
         record["gate"] = gate
+        record["cost"] = deep_stringify(cost.respond_to?(:to_h) ? cost.to_h : cost) if cost
         if gate["passed"]
           record["status"] = "awaiting_approval"
         else
@@ -203,6 +228,27 @@ module Insika
 
     private
 
+    # One panel row: `{ candidate:, proposers: [], gate: }`. A bare Candidate (phase
+    # C, an operator's own payload, an older record) is wrapped into the same shape,
+    # so every reader has ONE thing to read and the two eras of this record do not
+    # each need a branch in the Studio.
+    def entry_for(value)
+      raw = deep_stringify(value.respond_to?(:to_h) ? value.to_h : value)
+      return raw if raw.key?("candidate")
+
+      { "candidate" => raw, "proposers" => [raw["proposer"]].compact, "gate" => nil }
+    end
+
+    # The candidate the winning report belongs to, matched by id. A report whose
+    # candidate is not in the panel (an older record, a hand-built payload) leaves
+    # whatever was already there rather than inventing a winner.
+    def winning_candidate(record, gate)
+      match = Array(record["candidates"]).find do |entry|
+        (entry["candidate"] || {})["id"] == gate["candidate_id"]
+      end
+      match ? match["candidate"] : record["candidate"]
+    end
+
     def key_for(agent, started_at, id) = "#{KEY_PREFIX}#{agent}:#{started_at}:#{id}"
 
     # The id is the key's last segment; scanning is the price of keeping the key
@@ -239,7 +285,8 @@ module Insika
         findings: record["findings"] || [], excluded: record["excluded"] || 0,
         started_at: record["started_at"], finished_at: record["finished_at"],
         error: record["error"],
-        candidate: record["candidate"], gate: record["gate"], decision: record["decision"]
+        candidate: record["candidate"], candidates: record["candidates"] || [],
+        gate: record["gate"], cost: record["cost"], decision: record["decision"]
       )
     end
 

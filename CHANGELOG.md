@@ -49,6 +49,20 @@ Everything below is what the first release will contain.
   rather than passing vacuously (a regression is measured against a case that *was*
   passing, so an all-red baseline would wave everything through). See
   [Refinement](docs/REFINEMENT.md#changing-the-agent-the-gate).
+- **A panel of proposers, a budget, and an optional unattended apply** — `proposers`
+  asks several models the same question and gates every answer independently; the gate
+  arbitrates and you are shown the best survivor with the others listed under it.
+  Convergence only breaks a tie (two models agreeing on wording is weak evidence; a
+  golden case passing is strong evidence), identical candidates are gated once, and a
+  model that answers prose or dies takes only itself out of the panel. `budget.tokens`
+  bounds what one run may spend across every proposal and every replay — checked before
+  each step, never mid-flight, with the candidates it could not afford recorded as such
+  and unmetered legs tallied rather than counted as free. `mode: :auto_apply` lets a
+  gate-passing edit land with nobody watching: off by default, and when on it still
+  needs zero regressions and a diff within `auto_apply_max_edits` (default 1) — a
+  larger one waits for a person instead of being thrown away. It reuses the human
+  approval path, so the staleness re-check, the versioned write and the undo are the
+  same. See [Refinement](docs/REFINEMENT.md#more-than-one-proposer).
 - **The eval baseline is a per-agent record, not only a file** — `evals/baseline.json`
   works from a checkout; the refinement gate runs inside a deployment that has none.
   `insika evals:baseline import|show|export` moves it into the store and back, with

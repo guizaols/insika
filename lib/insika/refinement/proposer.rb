@@ -38,7 +38,14 @@ module Insika
 
       MAX_FINDINGS = 10
 
-      # ask:   ->(prompt) { "<raw model text>" }
+      # The model ref, so a panel can name WHICH proposer failed without guessing.
+      attr_reader :model
+
+      # ask:   ->(prompt) { "<raw model text>" }, or something answering `#content`
+      #        plus `#input_tokens`/`#output_tokens` (a RubyLLM message). The second
+      #        shape is what lets the panel's budget count what a proposal cost; a
+      #        plain String stays valid and simply reports no cost, which is what
+      #        every existing caller and every fake does.
       # model: what to record as the candidate's `proposer` — the ref an operator
       #        reads on the review card and in `:refinement_proposed`.
       def initialize(ask:, model: "unknown")
@@ -55,13 +62,26 @@ module Insika
         raise Unusable, "there is nothing to propose from — the run found no findings" if Array(findings).empty?
         raise Unusable, "no writable file has any content to anchor an edit in" if files.empty?
 
-        raw = @ask.call(build_prompt(agent_id, Array(findings).first(MAX_FINDINGS), files, limits)).to_s
-        parsed = parse(raw)
+        answer = @ask.call(build_prompt(agent_id, Array(findings).first(MAX_FINDINGS), files, limits))
+        parsed = parse(text_of(answer))
         parsed["proposer"] = @model
+        parsed["tokens"] = tokens_of(answer)
         parsed
       end
 
       private
+
+      def text_of(answer) = (answer.respond_to?(:content) ? answer.content : answer).to_s
+
+      # nil when the provider said nothing — never 0. `Budget` distinguishes the two
+      # and an operator reading "0 tokens" for a real model call would be reading a
+      # lie the record cannot correct.
+      def tokens_of(answer)
+        return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
+
+        total = answer.input_tokens.to_i + answer.output_tokens.to_i
+        total.positive? ? total : nil
+      end
 
       # JSON or nothing. ````json` fences are the common wrapper and stripping them is
       # not leniency — the payload inside is still parsed strictly, so a model that
@@ -148,23 +168,55 @@ module Insika
       end
     end
 
-    # Resolves WHICH model writes the candidate, and builds the ask.
+    # Resolves WHICH model(s) write the candidate, and builds the ask.
     #
-    #   refinement.proposer  on the agent  ("deepseek/deepseek-chat" | "deepseek-chat")
+    #   refinement.proposers  on the agent  (phase D: a PANEL, RFC-0013 §3.9)
+    #   -> refinement.proposer  ("deepseek/deepseek-chat" | "deepseek-chat")
     #   -> the platform utility_model
-    #   -> nil, and the caller refuses. There is no default model here on purpose:
+    #   -> nothing, and the caller refuses. There is no default model here on purpose:
     #      guessing one spends an operator's provider budget without being asked.
     module ProposerFactory
       module_function
 
-      # config: the agent's `refinement` hash. -> Proposer | nil.
+      # config: the agent's `refinement` hash. -> Proposer | nil (the FIRST of the
+      # panel — phase C's single-proposer entry point, kept because a deployment that
+      # never configured a panel is a panel of one).
       def build(config, utility_model: nil, ask_factory: nil)
-        ref = Coercion.presence(Coercion.deep_stringify(config || {})["proposer"]) ||
-              Coercion.presence(utility_model)
-        return nil if ref.nil?
+        panel(config, utility_model: utility_model, ask_factory: ask_factory).first
+      end
 
-        provider, model = split_ref(ref)
-        Proposer.new(ask: (ask_factory || method(:ruby_llm_ask)).call(model, provider), model: ref)
+      # -> [Proposer], in configured order, DEDUPED by model ref and capped at the
+      # RFC-0010 fan-out (§3.9 says the panel reuses it). Two entries naming the same
+      # model are one proposer: asking the same model twice at temperature 0 measures
+      # its variance, which is exactly what D6 rejected for the judges.
+      def panel(config, utility_model: nil, ask_factory: nil, max: nil)
+        refs = refs_for(Coercion.deep_stringify(config || {}), utility_model)
+        cap = max || Insika::SubagentGraph.fan_out_cap
+        refs.first(cap).map do |ref|
+          provider, model = split_ref(ref)
+          Proposer.new(ask: (ask_factory || method(:ruby_llm_ask)).call(model, provider), model: ref)
+        end
+      end
+
+      # `proposers` accepts either syntax — a bare ref ("deepseek/deepseek-chat") or
+      # the RFC's `{ "model" =>, "provider"? => }` — because the two already coexist in
+      # this config (`proposer` is a bare ref, `judges` are hashes) and refusing one of
+      # them would only teach operators which page they were reading.
+      def refs_for(config, utility_model)
+        listed = Array(config["proposers"]).filter_map { |entry| normalize_ref(entry) }
+        return listed.uniq unless listed.empty?
+
+        [Coercion.presence(config["proposer"]) || Coercion.presence(utility_model)].compact
+      end
+
+      def normalize_ref(entry)
+        return Coercion.presence(entry) unless entry.is_a?(Hash)
+
+        e = Coercion.deep_stringify(entry)
+        model = Coercion.presence(e["model"])
+        return nil if model.nil?
+
+        (provider = Coercion.presence(e["provider"])) ? "#{provider}/#{model}" : model
       end
 
       # "provider/model" -> [provider, model]; "model" -> [nil, model]. Same reading
@@ -179,11 +231,14 @@ module Insika
       # gate result should be attributable to the edit rather than to a sampling seed.
       # `ruby_llm` is required lazily so nothing loads a provider gem until a proposer
       # is actually configured.
+      #
+      # Returns the MESSAGE, not `.content`: the token counts ride on it and the
+      # budget (§3.9) is what spends them. `Proposer` reads either shape.
       def ruby_llm_ask(model, provider)
         require "ruby_llm"
         lambda do |prompt|
           RubyLLM.chat(model: model, provider: provider, assume_model_exists: true)
-                 .with_temperature(0).ask(prompt).content
+                 .with_temperature(0).ask(prompt)
         end
       end
     end

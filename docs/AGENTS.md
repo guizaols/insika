@@ -433,6 +433,11 @@ absent key still reports. See [Refinement](REFINEMENT.md).
 refine window: { last_sessions: 200 }, max_findings: 20
 ```
 
+Editing the agent from that report is a separate, explicit `mode` — with a write
+allowlist, one or more `proposers`, a token `budget`, and a gate that replays the
+golden set before anything reaches a human. All of it is in
+[Refinement](REFINEMENT.md); none of it is on until you name it.
+
 ## Delegation (subagents)
 
 An agent can delegate to **subagents**: named child agents it may invoke as a
