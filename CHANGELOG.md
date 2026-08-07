@@ -63,6 +63,19 @@ Everything below is what the first release will contain.
   larger one waits for a person instead of being thrown away. It reuses the human
   approval path, so the staleness re-check, the versioned write and the undo are the
   same. See [Refinement](docs/REFINEMENT.md#more-than-one-proposer).
+- **The gate refuses to grade a judged baseline without a judge** — a rubric'd case
+  with no verdict counts as a pass, so replaying without a judge against a baseline
+  recorded with one does not measure less, it measures backwards. Found by running the
+  panel against the real pilot: the gate reported *6/6, no regression* against a
+  baseline the same corpus had just scored *2/6*, and both candidates cleared. With the
+  judge configured, the same two candidates were correctly rejected on judge-score
+  drops. Third member of the same family as the missing and all-red baseline refusals.
+- **The refinement budget counts the prompt cache** — the engine's `total_tokens` is
+  input + output and excludes the cached prefix (a 27 KB pack reports `88` total against
+  `26624` cached), so a ceiling built on it alone let a run send hundreds of times what
+  it said. Cost now bills `total + cached` and records the cached share, which on a real
+  panel run was 95% of the spend. A run that cannot be gated is also refused **before**
+  the proposal is paid for, not after.
 - **The eval baseline is a per-agent record, not only a file** — `evals/baseline.json`
   works from a checkout; the refinement gate runs inside a deployment that has none.
   `insika evals:baseline import|show|export` moves it into the store and back, with

@@ -39,7 +39,7 @@ RSpec.describe "refinement phase C commands" do
         reason: passed ? nil : "1 regression(s): quotes (pass→fail)",
         cases: 1, passed_cases: cases, baseline_cases: 1,
         regressions: passed ? [] : [{ "id" => "quotes", "kind" => "pass→fail" }], report: {},
-        tokens: @tokens.respond_to?(:call) ? @tokens.call(candidate) : @tokens
+        tokens: @tokens.respond_to?(:call) ? @tokens.call(candidate) : @tokens, cached: nil
       )
     end
   end
@@ -158,6 +158,23 @@ RSpec.describe "refinement phase C commands" do
       cmd, = gate_command
       expect { dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } }) }
         .to raise_error(ArgumentError, /is collecting, expected completed/)
+    end
+
+    # The store refuses a non-completed run too, but it is called AFTER the proposal
+    # — so the refusal used to arrive with the provider bill already paid. Found
+    # live: a run_id pointing at an :awaiting_approval run burned a minute and two
+    # model calls to learn the run could not be gated.
+    it "refuses a run it cannot gate BEFORE asking any model" do
+      run = completed_run
+      cmd, gate = gate_command(GateDouble.new, proposer_factory: proposer_factory("{\"edits\":[]}"))
+      dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } }) # -> awaiting_approval
+
+      seen = []
+      cmd2, = gate_command(GateDouble.new, proposer_factory: proposer_factory("{}", seen: seen))
+      expect { dispatch(cmd2, { run_id: run.id, propose: true }) }
+        .to raise_error(ArgumentError, /is awaiting_approval, expected completed/)
+      expect(seen).to be_empty
+      expect(gate.scored.size).to eq(1)
     end
 
     # PR 3b: the model writes the candidate and the SAME bounds and the SAME gate

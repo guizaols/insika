@@ -75,6 +75,7 @@ module Insika
                   (raise Insika::NotFoundError, "agent '#{run.agent_id}' not configured")
         config = refinement_config(profile)
         require_write_mode!(config, run.agent_id)
+        require_completed!(run)
 
         result = run_panel(run, config, p)
         report = (result.winner || Refinement::Panel.best_refusal(result.entries)).report
@@ -133,6 +134,18 @@ module Insika
         raise Insika::ValidationError,
               "agent '#{agent_id}' is in refinement mode '#{mode}' — set `refinement.mode` to " \
               "propose (and list the writable files) before gating a candidate"
+      end
+
+      # `RefinementStore#gating` refuses a run that is not :completed — but it is
+      # called AFTER the proposal, so the refusal used to arrive with the provider
+      # bill already paid. Found live: a run_id pointing at an :awaiting_approval run
+      # burned a minute and two model calls to learn the run could not be gated.
+      # Same rule as mode and allowlist: everything the engine can refuse for free
+      # is refused before a model is asked anything.
+      def require_completed!(run)
+        return if run.status == :completed
+
+        raise ArgumentError, "run #{run.id} is #{run.status}, expected completed"
       end
 
       # The model(s) write the candidates (§3.4/§3.9). Each is shown the run's findings
