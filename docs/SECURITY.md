@@ -309,6 +309,11 @@ properties are worth stating because each one is a way this could have gone wron
   data, and whatever comes back is validated against the candidate schema and the
   file allowlist. The worst an injected instruction can achieve is a proposal that
   gets dropped or fails the gate.
+- **The proposer reads the allowlisted files and nothing else.** Those it gets
+  verbatim and unmasked, which sends a model nothing it was not already sent on every
+  turn — they are the agent's own instructions. Masking them would break anchoring
+  (a `before` copied from a masked view never matches the real file) and protect
+  nothing. Files outside the allowlist are not shown at all.
 
 **Know what the gate does not measure.** It catches an edit that breaks a case you
 wrote; it cannot catch one that breaks something no case covers. Two of its blind

@@ -51,10 +51,22 @@ RSpec.describe "refinement phase C commands" do
        "addresses" => ["tool_error:shipping_quote"] }]
   end
 
-  def gate_command(gate = GateDouble.new)
+  def gate_command(gate = GateDouble.new, proposer_factory: nil)
     [Insika::Commands::GateRefinement.new(profiles: profiles, refinement_store: runs,
                                           agent_file_store: agent_files, gate: gate,
-                                          event_stream: events), gate]
+                                          event_stream: events,
+                                          proposer_factory: proposer_factory), gate]
+  end
+
+  # A proposer whose model answers with `reply`, recording what it was shown.
+  def proposer_factory(reply, model: "deepseek/deepseek-chat", seen: [])
+    lambda { |config|
+      seen << { config: config }
+      Insika::Refinement::Proposer.new(ask: lambda { |prompt|
+        seen.last[:prompt] = prompt
+        reply
+      }, model: model)
+    }
   end
 
   def resolve_command
@@ -135,6 +147,95 @@ RSpec.describe "refinement phase C commands" do
       cmd, = gate_command
       expect { dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } }) }
         .to raise_error(ArgumentError, /is collecting, expected completed/)
+    end
+
+    # PR 3b: the model writes the candidate and the SAME bounds and the SAME gate
+    # apply to it. Nothing about the path changes because a model was involved.
+    describe "propose: true (the model writes the candidate)" do
+      let(:reply) do
+        JSON.generate({ "rationale" => "TOOLS.md never says the CEP is required.",
+                        "edits" => edits })
+      end
+
+      it "proposes from the run's findings, gates it, and parks it on a human" do
+        run = completed_run
+        seen = []
+        cmd, gate = gate_command(GateDouble.new, proposer_factory: proposer_factory(reply, seen: seen))
+        gated = dispatch(cmd, { run_id: run.id, propose: true })
+
+        expect(gated.status).to eq(:awaiting_approval)
+        expect(gated.candidate["proposer"]).to eq("deepseek/deepseek-chat")
+        expect(gate.scored.first[:candidate].edits.first.after).to eq(AFTER)
+        expect(seen.first[:prompt]).to include("tool_error", "TOOLS.md")
+      end
+
+      # Money. A caller who simply forgot the candidate gets an error, never a
+      # proposal AND a gate replay they did not ask for.
+      it "refuses a missing candidate when propose was not asked for" do
+        run = completed_run
+        cmd, gate = gate_command(GateDouble.new, proposer_factory: proposer_factory(reply))
+        expect { dispatch(cmd, { run_id: run.id }) }
+          .to raise_error(Insika::ValidationError, /candidate is required.*propose: true/m)
+        expect(gate.scored).to be_empty
+      end
+
+      it "refuses when no proposer is configured, instead of guessing a model" do
+        run = completed_run
+        cmd, gate = gate_command(GateDouble.new, proposer_factory: ->(_config) { nil })
+        expect { dispatch(cmd, { run_id: run.id, propose: true }) }
+          .to raise_error(Insika::ValidationError, /no proposer is configured/)
+        expect(gate.scored).to be_empty
+      end
+
+      # The order matters: an empty allowlist is `mode: propose` with nothing turned
+      # on, and finding that out AFTER paying for a proposal is the wrong order.
+      it "refuses an empty allowlist before calling the model" do
+        seed(files: [])
+        run = completed_run
+        seen = []
+        cmd, = gate_command(GateDouble.new, proposer_factory: proposer_factory(reply, seen: seen))
+        expect { dispatch(cmd, { run_id: run.id, propose: true }) }
+          .to raise_error(Insika::ValidationError, /empty refinement.files allowlist/)
+        expect(seen.first[:prompt]).to be_nil
+      end
+
+      # The model is upstream of every bound and none of them move for it.
+      it "drops a proposed edit to a file outside the allowlist" do
+        run = completed_run
+        off_list = JSON.generate({ "edits" => edits(file: "SECRETS.md") })
+        cmd, = gate_command(GateDouble.new, proposer_factory: proposer_factory(off_list))
+        expect { dispatch(cmd, { run_id: run.id, propose: true }) }
+          .to raise_error(Insika::ValidationError, /not on the refinement allowlist/)
+      end
+
+      it "drops a proposed edit whose anchor was invented" do
+        run = completed_run
+        invented = JSON.generate({ "edits" => edits(before: "Sempre peça o CEP.") })
+        cmd, = gate_command(GateDouble.new, proposer_factory: proposer_factory(invented))
+        expect { dispatch(cmd, { run_id: run.id, propose: true }) }
+          .to raise_error(Insika::ValidationError, /no longer matches/)
+      end
+
+      it "shows the model only the allowlisted files" do
+        agent_files.write("support", "AGENTS.md", "the persona, not up for editing")
+        run = completed_run
+        seen = []
+        cmd, = gate_command(GateDouble.new, proposer_factory: proposer_factory(reply, seen: seen))
+        dispatch(cmd, { run_id: run.id, propose: true })
+
+        expect(seen.first[:prompt]).to include("TOOLS.md")
+        expect(seen.first[:prompt]).not_to include("the persona, not up for editing")
+      end
+
+      it "refuses to propose in report mode without calling a model" do
+        seed(mode: "report")
+        run = completed_run
+        seen = []
+        cmd, = gate_command(GateDouble.new, proposer_factory: proposer_factory(reply, seen: seen))
+        expect { dispatch(cmd, { run_id: run.id, propose: true }) }
+          .to raise_error(Insika::ValidationError, /mode 'report'/)
+        expect(seen).to be_empty
+      end
     end
 
     it "emits proposed then gated, with counts and no file content" do

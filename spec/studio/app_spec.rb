@@ -1809,6 +1809,59 @@ end
     expect(bus.last(:resolve_refinement).payload[:decision]).to eq("rejected")
   end
 
+  # --- Refinement PR 3b: the model writes the candidate --------------------
+
+  it "offers Propose a fix on a finished report that found something" do
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [{ "kind" => "tool_error", "count" => 4,
+                                                                    "title" => "t" }] }])
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).to include("Propose a fix")
+    expect(body).to include("/studio/refinement/propose")
+  end
+
+  it "does not offer a proposal on a clean window or while one awaits an answer" do
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [] }])
+    expect(login(app).get("/refinement?agent=bia").body).not_to include("Propose a fix")
+
+    app2, = build_app
+    awaiting_run(app2.insika[:refinement_store])
+    expect(login(app2).get("/refinement?agent=bia").body).not_to include("Propose a fix")
+  end
+
+  it "POST /refinement/propose dispatches :gate_refinement with propose: true" do
+    app, bus = build_app(refinement_runs: [{ agent: "bia", findings: [{ "kind" => "tool_error", "count" => 4,
+                                                                        "title" => "t" }] }])
+    client = login(app)
+    body = client.get("/refinement?agent=bia").body
+    run_id = app.insika[:refinement_store].for_agent("bia").first.id
+
+    res = client.post("/refinement/propose",
+                      params: { "agent" => "bia", "run_id" => run_id, "_csrf" => csrf_from(body) })
+
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/refinement?agent=bia")
+    expect(bus.last(:gate_refinement).payload).to eq(run_id: run_id, propose: true)
+  end
+
+  # A gate that refused is the most useful thing on the page: without it, pressing
+  # the button and getting nothing back reads as a bug.
+  it "shows why the gate refused the last proposal" do
+    app, = build_app
+    store = app.insika[:refinement_store]
+    row = store.create(agent_id: "bia", at: "2026-08-05T10:00:00Z")
+    store.complete(row.id, findings: [{ "kind" => "tool_error", "count" => 4, "title" => "t" }])
+    store.gating(row.id, candidate: { "id" => "c1", "edits" => [], "dropped" => [] })
+    store.gated(row.id, report: { "candidate_id" => "c1", "passed" => false,
+                                  "reason" => "1 regression(s): quotes (pass→fail)",
+                                  "cases" => 7, "passed_cases" => 4, "baseline_cases" => 7,
+                                  "regressions" => [{ "id" => "quotes" }], "report" => {} })
+
+    body = login(app).get("/refinement?agent=bia").body
+    expect(body).to include("gate refused")
+    expect(body).to include("1 regression(s): quotes")
+  end
+
   it "POST /refinement dispatches :run_refinement for the chosen agent" do
     app, bus = build_app
     client = login(app)

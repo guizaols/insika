@@ -16,11 +16,17 @@ module Insika
     #
     # Payload:
     #   run_id     (required) a run in :completed — the evidence the candidate answers
-    #   candidate  (required) { proposer?, rationale?, edits: [ {file, op, anchor?,
-    #                          before, after, addresses?} ] }
+    #   candidate  { proposer?, rationale?, edits: [ {file, op, anchor?, before, after,
+    #              addresses?} ] } — or omit it and pass `propose: true` to have the
+    #              configured model write one from the run's findings (§3.4).
+    #   propose    truthy — write the candidate with the agent's proposer.
     #   tolerance  Float — overrides the configured judge-score tolerance for this gate
     #
     # -> the Run, now :awaiting_approval (gate passed) or :rejected (it did not).
+    #
+    # **`propose: true` is required rather than inferred from a missing candidate.**
+    # Both a proposal and a gate cost real provider money, and a caller who simply
+    # forgot the candidate should get an error, not a bill.
     #
     # Two refusals happen BEFORE anything is cloned, because both mean the operator
     # has not actually enabled this: an agent still in `mode: report` (§3.8 — writing
@@ -29,12 +35,17 @@ module Insika
     class GateRefinement
       WRITE_MODES = %w[propose auto_apply].freeze
 
-      def initialize(profiles:, refinement_store:, agent_file_store:, gate:, event_stream:)
+      # proposer_factory: ->(refinement_config) { Refinement::Proposer | nil }. Optional
+      # — a deployment with none can still gate a candidate that arrives from the API,
+      # which is exactly what phase C shipped before the proposer existed.
+      def initialize(profiles:, refinement_store:, agent_file_store:, gate:, event_stream:,
+                     proposer_factory: nil)
         @profiles = ProfileSource.coerce(profiles)
         @runs = refinement_store
         @agent_files = agent_file_store
         @gate = gate
         @event_stream = event_stream
+        @proposer_factory = proposer_factory
       end
 
       def call(command)
@@ -48,7 +59,8 @@ module Insika
         config = refinement_config(profile)
         require_write_mode!(config, run.agent_id)
 
-        candidate = build_candidate(run.agent_id, p[:candidate], config)
+        raw = p[:candidate] || propose(run, config, p)
+        candidate = build_candidate(run.agent_id, raw, config)
         @runs.gating(run.id, candidate: candidate)
         emit(:refinement_proposed, run, proposer: candidate.proposer,
                                         edits: candidate.edits.size, dropped: candidate.dropped.size)
@@ -81,15 +93,55 @@ module Insika
               "propose (and list the writable files) before gating a candidate"
       end
 
-      def build_candidate(agent_id, raw, config)
-        raise Insika::ValidationError, "candidate is required" unless raw.is_a?(Hash)
+      # The model writes the candidate (§3.4, PR 3b). It is shown the run's findings
+      # and the CURRENT content of the allowlisted files only — the same allowlist the
+      # builder then enforces, so a proposal cannot even name a file it may not touch.
+      #
+      # A run with no findings is refused here rather than sent to a model: asking one
+      # to invent an improvement from no evidence is how a refinement loop starts
+      # rewriting a working prompt.
+      def propose(run, config, payload)
+        unless Insika::EnvSchema.truthy?(payload[:propose])
+          raise Insika::ValidationError,
+                "candidate is required (or pass propose: true to have the configured model write one)"
+        end
 
-        allowlist = Array(config["files"]).map(&:to_s)
-        if allowlist.empty?
+        proposer = @proposer_factory&.call(config)
+        if proposer.nil?
+          raise Insika::ValidationError,
+                "no proposer is configured for '#{run.agent_id}' — set `refinement.proposer` " \
+                "(or a platform utility_model) to a model that can write the candidate"
+        end
+
+        proposer.propose(agent_id: run.agent_id, findings: run.findings,
+                         files: writable_files(run.agent_id, config), limits: config)
+      end
+
+      # The allowlist ∩ what the agent actually has. A configured file the agent never
+      # got is not shown and not editable — the builder would drop the edit anyway
+      # ("does not exist for this agent"), and paying a model to write one is waste.
+      def writable_files(agent_id, config)
+        allow = allowlist!(agent_id, config)
+        current_files(agent_id).select { |name, _| allow.include?(name) }
+      end
+
+      # Checked before the proposer runs as well as before the gate: an empty
+      # allowlist is `mode: propose` with nothing switched on, and it is the one
+      # refusal that must land before a provider call, not after it.
+      def allowlist!(agent_id, config)
+        allow = Array(config["files"]).map(&:to_s)
+        if allow.empty?
           raise Insika::ValidationError,
                 "agent '#{agent_id}' has an empty refinement.files allowlist — nothing is writable"
         end
 
+        allow
+      end
+
+      def build_candidate(agent_id, raw, config)
+        raise Insika::ValidationError, "candidate is required" unless raw.is_a?(Hash)
+
+        allowlist = allowlist!(agent_id, config)
         candidate = Refinement::CandidateBuilder.build(
           raw, allowlist: allowlist, contents: current_files(agent_id), limits: config
         )

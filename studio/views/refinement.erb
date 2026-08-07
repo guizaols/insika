@@ -92,6 +92,41 @@
   <% else %>
     <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %><% if @run.excluded.to_i.positive? %> · <%= @run.excluded %> turn(s) excluded<% end %> · <%= @run.finished_at || @run.started_at %></span></h2>
 
+    <%# RFC-0013 §3.4 — the model writes the candidate, the gate scores it. Offered on
+        a finished report and only when nothing is already awaiting an answer: a second
+        proposal while one is pending would ask the operator to review two edits to the
+        same file that were never scored together. %>
+    <% if @proposal.nil? && @run.status == :completed && @run.findings.any? %>
+      <div class="card">
+        <form method="post" action="/studio/refinement/propose" class="actions">
+          <%== csrf_tag %>
+          <input type="hidden" name="agent" value="<%= @agent %>">
+          <input type="hidden" name="run_id" value="<%= @run.id %>">
+          <button type="submit" class="primary">Propose a fix</button>
+        </form>
+        <div class="skill-desc muted">
+          Asks this agent's configured proposer for a small, anchored edit to its
+          allowlisted files, then scores it by replaying the golden set against a
+          throwaway clone. Nothing is written until you approve it. Takes a while and
+          costs provider calls — the replay is a real conversation per case.
+        </div>
+      </div>
+    <% end %>
+
+    <%# A gate that refused is the most useful thing on this page and the easiest to
+        lose: without it, pressing Propose and getting nothing back reads as a bug. %>
+    <% if @run.status == :rejected && @run.gate.is_a?(Hash) && !@run.gate_passed? %>
+      <div class="card">
+        <div class="skill-desc">
+          <span class="pill err">gate refused</span>
+          <span class="mono"><%= @run.gate["reason"] %></span>
+        </div>
+        <% Array((@run.candidate || {})["dropped"]).each do |d| %>
+          <div class="skill-desc muted">dropped <span class="mono"><%= d["file"] %></span> — <%= d["reason"] %></div>
+        <% end %>
+      </div>
+    <% end %>
+
     <% if @run.status == :failed %>
       <div class="empty">This run failed: <span class="mono"><%= @run.error %></span></div>
     <% elsif @run.findings.empty? %>

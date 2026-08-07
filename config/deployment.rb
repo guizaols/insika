@@ -292,7 +292,18 @@ module Deploy
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
     )
-    BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM))
+    # Who WRITES the candidate (§3.4, PR 3b). Per agent (`refinement.proposer`),
+    # falling back to the platform utility_model — the same "which model does the
+    # cheap side work" setting the judges and the moderator read. Built per call, and
+    # for the same reason the transport is: the operator can change either without a
+    # restart. nil when neither is set, and then the command refuses instead of
+    # guessing a model to spend money on.
+    PROPOSER_FACTORY = lambda { |config|
+      Insika::Refinement::ProposerFactory.build(
+        config, utility_model: (SETTINGS_STORE.get || {})["utility_model"]
+      )
+    }
+    BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM, proposer_factory: PROPOSER_FACTORY))
     BUS.register(:resolve_refinement, Insika::Commands::ResolveRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
 
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))

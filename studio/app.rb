@@ -703,13 +703,15 @@ end
 
       # --- Refinement: what broke in real traffic, and what to do about it --
       # `POST /refinement` runs the report (RFC-0013 phase A). `POST
-      # /refinement/resolve` is the phase C half: a human approves or rejects a
-      # proposal the gate already scored. Both go through the bus like every other
-      # Studio write — this page reads stores and dispatches Commands, nothing else.
+      # /refinement/propose` is phase C: the configured model writes a candidate from
+      # the findings and the gate scores it by replaying the golden set. `POST
+      # /refinement/resolve` is a human approving or rejecting what the gate passed.
+      # All three go through the bus like every other Studio write — this page reads
+      # stores and dispatches Commands, nothing else.
       #
-      # There is deliberately no form here to AUTHOR a candidate. Until the proposer
-      # lands, candidates arrive from the API/CLI, and a JSON textarea would be a
-      # feature nobody asked for standing where the real one goes.
+      # There is still no form to hand-AUTHOR a candidate: a JSON textarea would be a
+      # worse way to say what the API already says, and the button below is what an
+      # operator actually wants standing there.
       r.on "refinement" do
         r.is do
           r.get { render_refinement }
@@ -720,6 +722,18 @@ end
             control_action(:run_refinement, payload, ok: "Refinement run finished.")
             r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
           end
+        end
+
+        # Propose + gate in one press, because they are one decision for the operator
+        # ("try to fix this") and splitting them would park a run holding an unscored
+        # candidate — a state nobody can act on. Slow on purpose: the gate replays the
+        # golden set, so this returns when the answer is real.
+        r.post "propose" do
+          check_csrf!
+          agent = presence(r.params["agent"])
+          payload = { run_id: presence(r.params["run_id"]), propose: true }
+          control_action(:gate_refinement, payload, ok: "Proposal gated — see the result below.")
+          r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
         end
 
         r.post "resolve" do
