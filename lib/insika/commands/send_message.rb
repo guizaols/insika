@@ -16,11 +16,16 @@ module Insika
       # Channels declare themselves by `channel:<id>` once RFC-0011 §6 lands.
       COALESCABLE_TRANSPORTS = %i[http:json].freeze
 
-      def initialize(profiles:, session_store:, task_store:, executor:)
+      # RFC-0011 §6.4 — `inbound_log` is the retry window for channel event ids.
+      # nil = no dedup (every surface that does not send an `event_id`, which is all
+      # of them today), and a caller that cannot supply a stable id gets
+      # at-least-once turns rather than a content hash pretending to be dedup.
+      def initialize(profiles:, session_store:, task_store:, executor:, inbound_log: nil)
         @profiles = ProfileSource.coerce(profiles)
         @session_store = session_store
         @task_store = task_store
         @executor = executor
+        @inbound_log = inbound_log
       end
 
       def call(command)
@@ -41,15 +46,36 @@ module Insika
         end
 
         validate_history!(p[:history]) if p[:history]
-# WHO wrote this message (MessageOrigin). Absent = a customer typed it, which
-# is what a turn has always meant. Refused here rather than downstream: a
-# typo'd origin would read as absent, and a marker that silently means
-# "unmarked" is worse than none — it looks like the filtering is on.
-Insika::MessageOrigin.parse!(p[:origin])
+        # WHO wrote this message (MessageOrigin). Absent = a customer typed it, which
+        # is what a turn has always meant. Refused here rather than downstream: a
+        # typo'd origin would read as absent, and a marker that silently means
+        # "unmarked" is worse than none — it looks like the filtering is on.
+        Insika::MessageOrigin.parse!(p[:origin])
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
             (raise Insika::NotFoundError, "session '#{p[:session_id]}' not found")
         end
+
+        # RFC-0011 §6.4 — the platform retried a webhook it already delivered. Answer
+        # with the turn it ALREADY produced and run nothing: without this, one flaky
+        # ack costs a second LLM turn and sends the customer the same answer twice.
+        # Checked before the queue doors on purpose — a duplicate is not a fragment to
+        # merge and not a correction to steer with, it is the same message again.
+        key = dedup_key(command, p)
+        if key && (prior = @inbound_log.find(key))
+          return { task_id: prior, duplicate: true }
+        end
+
+        result = start_turn(command, p, profile)
+        @inbound_log.record(key, result[:task_id]) if key
+        result
+      end
+
+      private
+
+      # The turn (or the verdict that this message joined someone else's).
+      def start_turn(command, p, profile)
+        message = p[:message]
 
         # RFC-0015 §5.3 — a fragment for a session whose turn is still at the door
         # joins it instead of becoming a turn of its own. Asked BEFORE `create` so a
@@ -85,11 +111,19 @@ Insika::MessageOrigin.parse!(p[:origin])
         { task_id: task.id }
       end
 
-      private
-
       def coalescable?(command)
         transport = command.meta[:transport]
         COALESCABLE_TRANSPORTS.include?(transport) || transport.to_s.start_with?("channel:")
+      end
+
+      # Scoped by TRANSPORT, never bare: two channels are two consumers with two id
+      # spaces, and a Slack event id that happened to equal a `wamid` would otherwise
+      # silence a real message. nil (no log wired, or no id sent) = no dedup.
+      def dedup_key(command, payload)
+        return nil unless @inbound_log
+
+        event_id = Coercion.presence(payload[:event_id])
+        event_id && "#{command.meta[:transport]}:#{event_id}"
       end
 
       def normalize(payload)
@@ -98,7 +132,8 @@ Insika::MessageOrigin.parse!(p[:origin])
           message: payload[:message] || payload["message"],
           session_id: payload[:session_id] || payload["session_id"],
           history: payload[:history] || payload["history"],
-origin: payload[:origin] || payload["origin"]
+          origin: payload[:origin] || payload["origin"],
+          event_id: payload[:event_id] || payload["event_id"]
         }
       end
 

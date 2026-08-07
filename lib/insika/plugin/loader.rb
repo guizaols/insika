@@ -12,10 +12,10 @@ module Insika
     # after validation. A plugin failure doesn't bring down boot (rollback + warn).
     class Loader
       Discovered = Data.define(:id, :name, :root, :tool_names, :workflow_names,
-                               :capability_names, :skill_dirs, :prompt_dirs, :config)
+                               :capability_names, :channel_names, :skill_dirs, :prompt_dirs, :config)
 
       MANIFEST_GLOB = "{insika.plugin.yml,plugin.yml}"
-      SUPPORTED_CONTRACTS = %w[tools workflows capabilities].freeze
+      SUPPORTED_CONTRACTS = %w[tools workflows capabilities channels].freeze
 
       # registries: { tools:, workflows:, policies: } (Registry), hooks: (Hooks),
       # middleware:/context_providers: (collections that respond to <<).
@@ -123,6 +123,7 @@ module Insika
           tool_names: Array(manifest.dig("contracts", "tools")).map(&:to_s),
           workflow_names: Array(manifest.dig("contracts", "workflows")).map(&:to_s),
           capability_names: Array(manifest.dig("contracts", "capabilities")).map(&:to_s),
+          channel_names: Array(manifest.dig("contracts", "channels")).map(&:to_s),
           skill_dirs: Array(manifest["skills"]).map { |d| File.join(root, d) },
           prompt_dirs: Array(manifest["prompts"]).map { |d| File.join(root, d) },
           config: config
@@ -139,7 +140,7 @@ module Insika
         api = RegistrationAPI.new(
           registries: @registries, plugin_id: discovered.id,
           tool_names: discovered.tool_names, workflow_names: discovered.workflow_names,
-          capability_names: discovered.capability_names,
+          capability_names: discovered.capability_names, channel_names: discovered.channel_names,
           tool_metadata: manifest["tool_metadata"] || {}, config: discovered.config
         )
         require File.join(discovered.root, entry)
@@ -154,7 +155,7 @@ module Insika
       end
 
       def rollback(id)
-        %i[tools workflows policies capabilities].each { |kind| @registries[kind]&.deregister_plugin(id) }
+        %i[tools workflows policies capabilities channels].each { |kind| @registries[kind]&.deregister_plugin(id) }
       end
 
       def emit_loaded(discovered)
@@ -172,12 +173,13 @@ module Insika
       # without an exception (materializes the rollback guarantee — nothing partial remains).
       class RegistrationAPI
         def initialize(registries:, plugin_id:, tool_names:, workflow_names:,
-                       tool_metadata:, config:, capability_names: [])
+                       tool_metadata:, config:, capability_names: [], channel_names: [])
           @registries = registries
           @plugin_id = plugin_id
           @tool_names = tool_names
           @workflow_names = workflow_names
           @capability_names = capability_names
+          @channel_names = channel_names
           @tool_metadata = tool_metadata
           @config = config.freeze
           @staged_middleware = []
@@ -205,6 +207,20 @@ module Insika
             return
           end
           @registries[:workflows].register(name, callable, plugin: @plugin_id, &block)
+        end
+
+        # RFC-0011 §4.2 — a channel is an INSTANCE (it holds its credentials and its
+        # HTTP client), so unlike a tool there is no factory to defer. Declared-or-
+        # ignored like the others: the id is a URL segment, and a plugin quietly
+        # mounting a route nobody declared is exactly what the contract list prevents.
+        def register_channel(name, instance)
+          name = name.to_s
+          unless @channel_names.include?(name)
+            warn "[plugin #{@plugin_id}] channel '#{name}' not declared in contracts.channels — ignored"
+            return
+          end
+
+          @registries[:channels]&.register(name, instance, plugin: @plugin_id)
         end
 
         def register_policy(name, klass)

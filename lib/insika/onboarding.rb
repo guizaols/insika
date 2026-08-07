@@ -42,6 +42,7 @@ module Insika
       "skills" => "docs/SKILLS.md",
       "context" => "docs/CONTEXT.md",
       "workflows" => "docs/WORKFLOWS.md",
+      "channels" => "docs/CHANNELS.md",
       "plugins" => "docs/PLUGINS.md",
       "security" => "docs/SECURITY.md",
       "architecture" => "docs/ARCHITECTURE.md",
