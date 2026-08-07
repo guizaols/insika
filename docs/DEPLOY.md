@@ -39,6 +39,9 @@ curl localhost:9292/up      # {"status":"ok"}
 | `ACHEI_INTERNAL_URL` | — | base URL for data-tools calling back a consumer's internal API (see below) |
 | `INSIKA_EGRESS_HOSTS` | — | outbound host allowlist (SSRF guard) |
 | `INSIKA_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**) |
+| `INSIKA_RELAY_TOKEN` | — | **mounts the relay channel** at `POST /channels/relay/events`, and is the Bearer it requires. Empty = the route does not exist (`404`). See [Channels](CHANNELS.md) |
+| `INSIKA_RELAY_DELIVER_URL` | — | your callback; the engine POSTs each reply there. Goes through the egress guard |
+| `INSIKA_RELAY_DELIVER_TOKEN` | — | Bearer the engine sends **to** your callback (optional) |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |
 | `LITESTREAM_ENDPOINT` | — | S3-compatible endpoint (R2/MinIO). Empty = AWS S3 |
 | `LITESTREAM_REGION` | — | bucket region (AWS: `us-east-1`; R2: `auto`) |

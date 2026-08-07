@@ -85,6 +85,31 @@ Everything below is what the first release will contain.
   nothing — text delivered, transcript silent about it. There is now a boundary between
   the provider's last word and publishing, so the two never disagree. Applies to every
   cancel, not just `interrupt`.
+- **Channels** — a way in and out for people, registered by id and mounted on one
+  generic route (`POST /channels/<id>/events`). A channel translates and authenticates,
+  and does nothing else: it may refuse a request, never widen one. Plugins register
+  their own through `contracts.channels`, and a deployment that registers none has no
+  such route at all. See [Channels](docs/CHANNELS.md).
+- **The relay channel** — for an adopter who already owns a messaging stack (a WhatsApp
+  BSP, a Zendesk, a legacy app) and wants the engine for the **turn**, not the platform.
+  You POST the customer's message to `/channels/relay/events`; the engine acks
+  immediately and POSTs the answer to your own callback when there is one. Everything
+  platform-shaped — the 24-hour window, templates, media, read receipts, WhatsApp
+  formatting — stays yours, permanently: this is not a migration step toward a native
+  channel. Configured entirely by environment (`INSIKA_RELAY_TOKEN`, which is both the
+  switch and the credential, plus the callback URL and its optional bearer), so there is
+  no way to expose the route without a secret.
+- **At-most-once outbound delivery** — a reply owed to a channel is written durably when
+  the turn commits and **claimed** before the HTTP call, so a crash loses a delivery
+  rather than duplicating it; bounded retry with backoff handles a recipient that is
+  merely down, and boot re-dispatches what was recorded but never claimed. Each attempt
+  reports on `:channel_delivered`, because a turn completing says nothing about whether
+  the customer received it.
+- **Inbound deduplication** — an optional `event_id` on a channel message is remembered
+  for 24 hours, so a platform retrying a webhook it already delivered gets
+  `{"duplicate": true}` and the same `task_id` back instead of a second LLM turn and a
+  second message. No id means at-least-once turns, said out loud rather than papered
+  over with a content hash.
 - **Studio** — a web control UI for agents, prompts, skills, tools, sessions, tasks,
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,

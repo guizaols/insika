@@ -37,7 +37,8 @@ module Insika
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
-                     workflow_registry: nil, onboarding: nil, profiles: nil)
+                     workflow_registry: nil, onboarding: nil, profiles: nil,
+                     channels: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -62,6 +63,10 @@ module Insika
         # constitutional footing as the workflow registry: reading a catalog is a
         # READ. nil = the route 404s (parity).
         @profiles = profiles
+        # RFC-0011 §4.4: ONE generic route family for every channel, opt-in by
+        # injecting the registry (nil ⇒ the routes do not exist, parity with @a2a).
+        # The channel does the translating; this class keeps doing only transport.
+        @channels = channels
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -131,6 +136,8 @@ module Insika
           handle_read_task(id)
         in ["GET", ["v1", "events"]]
           handle_events(req)
+        in ["POST", ["channels", id, "events"]] if @channels
+          handle_channel_event(req, id)
         in ["POST", ["a2a"]] if @a2a
           handle_a2a(req)
         in ["GET", [".well-known", "agent-card.json"]] if @a2a
@@ -161,8 +168,21 @@ module Insika
 
       def public_route?(method, segments)
         return true if PUBLIC_ROUTES.include?([method, segments])
+        return true if channel_route?(method, segments)
 
         method == "GET" && segments.length == 2 && segments.first == "docs"
+      end
+
+      # A channel route skips the GATEWAY bearer because the channel authenticates
+      # it ITSELF — with the platform's own scheme (a relay's shared secret today; a
+      # Slack HMAC signature tomorrow), which is the only credential the caller has.
+      # This is NOT an ungated route: `handle_channel_event` refuses before parsing
+      # anything, and a channel with no credential configured answers :disabled
+      # rather than open. Requiring the gateway token here instead would mean giving
+      # every platform a second secret it has no way to send.
+      def channel_route?(method, segments)
+        method == "POST" && segments.length == 3 &&
+          segments.first == "channels" && segments.last == "events"
       end
 
       # Bearer-gate error (503 disabled / 401 unauthorized), shared by the
@@ -339,15 +359,77 @@ module Insika
         end
       end
 
-      # Session correlated by `user`=chat.id: creates if new (explicit id),
-      # continues if it exists (multi-turn). Via Command (server/ does not write to a store).
+      # POST /channels/:id/events — the Shape B inbound webhook (RFC-0011 §4.4).
+      # ACK FAST and never the reply: the platform (or the relay consumer) is holding
+      # a connection open with a retry timer on it, so this dispatches the turn and
+      # answers with its id. The answer itself leaves later, out of band, through the
+      # channel's own `deliver` (§6.5).
+      #
+      # The channel does ALL the translating — auth, envelope, session correlation —
+      # and this handler stays what `server/` is allowed to be: a route that turns a
+      # request into a Command. Four answers, and each one is a different fact:
+      #   202 {task_id}            a turn is running; its reply will be delivered
+      #   200 {task_id, duplicate} we already ran this event id (§6.4)
+      #   200 {task_id, merged}    it joined a turn at the door (RFC-0015 §5.5)
+      #   200 {task_id, steered}   it was appended to a turn already running
+      # A consumer that treats the last three as 202 delivers the same answer twice.
+      def handle_channel_event(req, id)
+        channel = @channels.find(id)
+        return not_found if channel.nil?
+
+        gate = channel_gate(channel, req)
+        return gate if gate
+
+        parsed = channel.parse(req, body: parse_raw_body(req)) # ValidationError -> 422
+        session_id = channel.session_id_for(parsed[:external_id])
+        ensure_session(session_id, vars: session_vars(id, parsed))
+
+        payload = { agent: parsed[:agent], session_id: session_id,
+                    message: parsed[:message], event_id: parsed[:event_id] }.compact
+        channel_ack(payload, transport: :"channel:#{id}")
+      end
+
+      # The channel's OWN credential check. A channel returns a verdict, not a status
+      # code — HTTP is this file's vocabulary, not lib/'s — and a channel that never
+      # implements one is refused rather than defaulted open: an unauthenticated
+      # public inbound route with an LLM behind it is a money faucet.
+      def channel_gate(channel, req)
+        verdict = channel.respond_to?(:authenticate) ? channel.authenticate(req) : :disabled
+        case verdict
+        when :disabled then auth_error(503, "channel disabled")
+        when :unauthorized then auth_error(401, "unauthorized", "www-authenticate" => "Bearer")
+        end
+      end
+
+      # Dispatch + ack, with NO subscription: nothing about this request waits for the
+      # turn. That is the difference between Shape B and every other surface here.
+      def channel_ack(payload, transport:)
+        result = @command_bus.dispatch(Insika::Command.build(:send_message, payload, transport: transport))
+        verdict = %i[duplicate merged steered].find { |k| result[k] }
+        return json_response(200, { task_id: result[:task_id], verdict => true }) if verdict
+
+        json_response(202, { task_id: result[:task_id] })
+      end
+
+      # RFC-0011 §4.3: `channel` + `external_id` on the session are how a later turn
+      # (and the outbox) know where a reply goes. The consumer's own `vars` ride along
+      # on first contact, but never over those two — a caller must not be able to
+      # rewrite its own conversation's address.
+      def session_vars(channel_id, parsed)
+        (parsed[:vars] || {}).merge("channel" => channel_id.to_s,
+                                    "external_id" => parsed[:external_id].to_s)
+      end
+
+      # Session correlated by an explicit id (`user`=chat.id on /v1/responses, the
+      # namespaced `<channel>:<external_id>` for a channel): creates if new, continues
+      # if it exists (multi-turn). Via Command (server/ does not write to a store).
       # Benign race (two near-simultaneous turns creating) -> ArgumentError from the
       # store, treated as "already exists".
-      def ensure_session(user)
-        return if @session_store.find(user)
+      def ensure_session(id, vars: { channel: "responses" })
+        return if @session_store.find(id)
 
         @command_bus.dispatch(
-          Insika::Command.build(:create_session, { id: user, vars: { channel: "responses" } }, transport: :http)
+          Insika::Command.build(:create_session, { id: id, vars: vars }, transport: :http)
         )
       rescue ArgumentError
         nil

@@ -83,7 +83,7 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_data_tools check_prompt_files]
+                    check_admin_token check_data_tools check_prompt_files check_relay_channel]
 
     def safe(check)
       Array(send(check))
@@ -152,6 +152,26 @@ module Insika
 
       [Finding.new(check: "admin-token", severity: :warn,
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
+    end
+
+    # A half-configured relay is the silent kind of broken (RFC-0011 §6): with only
+    # the deliver URL set, nothing is mounted and every inbound POST 404s; with only
+    # the token, the engine accepts turns it can never answer and the customer waits
+    # forever on a reply that is sitting in the outbox. Both halves or neither.
+    def check_relay_channel
+      token = Insika::Coercion.present?(@env["INSIKA_RELAY_TOKEN"])
+      url   = Insika::Coercion.present?(@env["INSIKA_RELAY_DELIVER_URL"])
+      return [] unless token || url
+
+      if token && url
+        [ok("relay-channel", "relay channel mounted at /channels/relay/events")]
+      elsif token
+        [Finding.new(check: "relay-channel", severity: :warn,
+                     message: "INSIKA_RELAY_TOKEN set without INSIKA_RELAY_DELIVER_URL — inbound is accepted but no reply can be delivered", fix: nil)]
+      else
+        [Finding.new(check: "relay-channel", severity: :warn,
+                     message: "INSIKA_RELAY_DELIVER_URL set without INSIKA_RELAY_TOKEN — the relay channel is NOT mounted (the token is the switch)", fix: nil)]
+      end
     end
 
     # A stored data-tool whose definition no longer builds is INVISIBLE at runtime: the

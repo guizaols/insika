@@ -47,6 +47,36 @@ dispatch **any** registered authoring Command (`write_agent_file`, `write_data_t
 `upsert_llm_provider`, `update_settings`, `delete_agent`). Treat that token as
 operator-grade — it is not a read key, and a leak is agent takeover, not just usage.
 
+## Channels authenticate themselves
+
+`POST /channels/<id>/events` is the one route family that does **not** answer to the
+gateway token — and it is not an exception to the rule above, it is the same rule
+with a different credential. A messaging platform has no way to send your gateway
+token; what it can send is its own scheme (a shared secret for the
+[relay](CHANNELS.md), an HMAC signature for Slack). So the channel does the check,
+and the router refuses before parsing anything:
+
+| The channel says | The route answers |
+|---|---|
+| `:ok` | the turn is dispatched |
+| `:unauthorized` | `401` |
+| `:disabled` — no credential configured | `503` |
+| the channel has no `authenticate` at all | `503` |
+
+There is no path to an open channel route. A relay with no `INSIKA_RELAY_TOKEN` is
+not mounted at all (`404`); one that is mounted always has a secret. That is
+deliberate: a public inbound route with an LLM behind it is a money faucet, and
+[edge limits](#edge-limits) are the second line, not the first.
+
+Two more things a relay operator owns:
+
+- **The callback URL is egress.** The delivery POST goes through the
+  [egress guard](#egress-the-ssrf-boundary) on every call, not once at boot — a
+  hostname that resolved publicly yesterday can resolve to `169.254.169.254`
+  today, and that POST carries a customer's conversation.
+- **`event_id` is a safety property, not an optimization.** Without it a retried
+  webhook is a second turn you pay for and a second message the customer reads.
+
 ## Edge limits
 
 The next gate. The edge limiter wraps a turn **before** the input guardrail,
