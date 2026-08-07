@@ -23,12 +23,16 @@ module Insika
     class Gate
       # The verdict for one candidate. `passed` is the only field the caller acts on;
       # the rest is what an operator reads to decide whether the loop earns its keep.
+      # `tokens` is what the replay cost, as the deployment reported it, or nil when
+      # no turn carried usage. It is what the panel's budget (§3.9) spends and what
+      # the operator reads on the run — a gate is the expensive half of refinement and
+      # a loop whose cost is invisible is one nobody can decide to keep.
       Report = Data.define(:candidate_id, :passed, :reason, :cases, :passed_cases,
-                           :baseline_cases, :regressions, :report) do
+                           :baseline_cases, :regressions, :report, :tokens) do
         def to_h
           { "candidate_id" => candidate_id, "passed" => passed, "reason" => reason,
             "cases" => cases, "passed_cases" => passed_cases, "baseline_cases" => baseline_cases,
-            "regressions" => regressions, "report" => report }
+            "regressions" => regressions, "report" => report, "tokens" => tokens }
         end
       end
 
@@ -92,8 +96,8 @@ module Insika
         clone_id = clone_id_for(agent_id, run_id)
         begin
           build_clone(agent_id, clone_id, candidate)
-          results = replay(cases, clone_id)
-          verdict(candidate, results, baseline, tolerance || @tolerance)
+          ran = replay(cases, clone_id)
+          verdict(candidate, ran, baseline, tolerance || @tolerance)
         rescue StandardError => e
           refusal(candidate, "gate failed to run: #{e.class}: #{e.message}")
         ensure
@@ -140,18 +144,23 @@ module Insika
       # The goldens name the REAL agent; the replay has to address the clone. The
       # case is otherwise untouched — same turns, same rubric, same assertions — so
       # what is measured is the edit and nothing else.
+      #
+      # The RunCases are kept whole (not `.map(&:result)`) because the token counts
+      # ride on them, and the budget is only honest if it sees what the replay spent.
       def replay(cases, clone_id)
         retargeted = cases.map { |g| g.class.new(**g.to_h.merge(agent: clone_id)) }
         runner = Insika::Evals::Runner.new(transport: @transport_factory.call,
                                            judge: @judge_factory&.call,
                                            capabilities: @capabilities_factory&.call)
-        runner.run(retargeted).map(&:result)
+        runner.run(retargeted)
       end
 
-      def verdict(candidate, results, baseline, tolerance)
+      def verdict(candidate, ran, baseline, tolerance)
+        results = ran.map(&:result)
         regressions = Insika::Evals::Baseline.compare(results, baseline, tolerance: tolerance)
         passed = results.count(&:pass?)
         graded = results.reject(&:skipped?).size
+        spent = ran.filter_map(&:tokens)
 
         Report.new(
           candidate_id: candidate.id, passed: regressions.empty?,
@@ -159,7 +168,8 @@ module Insika
           cases: graded, passed_cases: passed,
           baseline_cases: (baseline["cases"] || {}).size,
           regressions: regressions.map { |r| { "id" => r.id, "kind" => r.kind, "detail" => r.detail } },
-          report: Insika::Evals::Report.to_h(results, at: Time.now.utc.iso8601)
+          report: Insika::Evals::Report.to_h(results, at: Time.now.utc.iso8601),
+          tokens: spent.empty? ? nil : spent.sum
         )
       end
 
@@ -170,7 +180,8 @@ module Insika
 
       def refusal(candidate, reason)
         Report.new(candidate_id: candidate.id, passed: false, reason: reason,
-                   cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil)
+                   cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil,
+                   tokens: nil)
       end
 
       # Both halves, both tolerant of a missing one: this runs in an `ensure` after a

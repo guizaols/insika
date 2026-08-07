@@ -9,14 +9,18 @@ RSpec.describe Insika::Evals::Runner do
   class FakeTransport
     attr_reader :seen
 
-    def initialize(&script)
+    # usage: a per-turn hash (or nil), like the deployment reports on
+    # `response.completed`. Only RFC-0013's budget reads it.
+    def initialize(usage: nil, &script)
       @script = script
+      @usage = usage
       @seen = []
     end
 
     def turn(agent:, conv:, message:)
       @seen << { agent: agent, conv: conv, message: message }
-      Insika::Evals::TurnOutcome.new(result: @script.call(message), ttfb: 1.0, total: 2.0)
+      Insika::Evals::TurnOutcome.new(result: @script.call(message), ttfb: 1.0, total: 2.0,
+                                     usage: @usage.respond_to?(:call) ? @usage.call(message) : @usage)
     end
   end
 
@@ -115,5 +119,39 @@ RSpec.describe Insika::Evals::Runner do
          .run_case(golden("expect" => { "rubric" => "x" }))
     expect(judge.calls).to eq(0)
     expect(rc.result.pass?).to be(false)
+  end
+
+  # RFC-0013 §3.9: the refinement gate has to bound what a replay costs, and it can
+  # only do that if the case carries what its turns actually spent. Nothing else
+  # reads this — the report and the exit code are untouched.
+  describe "what a case cost" do
+    let(:multi) { golden("turns" => [{ "user" => "oi" }, { "user" => "e o frete?" }]) }
+
+    it "sums the turns the deployment metered" do
+      t = FakeTransport.new(usage: { "total_tokens" => 400 }) { ok_result }
+      expect(described_class.new(transport: t).run_case(multi).tokens).to eq(800)
+    end
+
+    # "The provider did not say" and "it cost nothing" are different facts, and a
+    # budget that confuses them stops being a budget.
+    it "is nil when no turn reported usage" do
+      t = FakeTransport.new { ok_result }
+      expect(described_class.new(transport: t).run_case(multi).tokens).to be_nil
+    end
+
+    # Low rather than absent: a budget under-counting is a smaller lie than one that
+    # throws the number away because a single leg was silent.
+    it "reports what was measured when only some turns were metered" do
+      t = FakeTransport.new(usage: ->(m) { m.include?("frete") ? { "total_tokens" => 400 } : nil }) { ok_result }
+      expect(described_class.new(transport: t).run_case(multi).tokens).to eq(400)
+    end
+
+    it "is nil for a skipped case, which spent nothing" do
+      skipped = golden("requires" => { "tools" => ["search_orders"] })
+      caps = Struct.new(:answer) { def for(_a) = answer }.new({ "tools" => [], "capabilities" => [] })
+      rc = described_class.new(transport: FakeTransport.new { ok_result }, capabilities: caps).run_case(skipped)
+      expect(rc.result).to be_skipped
+      expect(rc.tokens).to be_nil
+    end
   end
 end

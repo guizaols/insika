@@ -91,4 +91,62 @@ RSpec.describe Insika::RefinementStore do
     expect { store.create(agent_id: "") }.to raise_error(Insika::ValidationError, /required/)
     expect { store.create(agent_id: "a:b") }.to raise_error(Insika::ValidationError, /':'/)
   end
+
+  # RFC-0013 §3.9 (phase D): a run records the whole PANEL, and `candidate`/`gate`
+  # are the winner the caller ranked. The store does not rank — it records.
+  describe "the panel" do
+    def gating_run(candidates)
+      run = store.complete(store.create(agent_id: "bia").id, findings: [{ "kind" => "x" }])
+      store.gating(run.id, candidates: candidates)
+    end
+
+    def report(candidate_id, passed: true)
+      { "candidate_id" => candidate_id, "passed" => passed, "reason" => passed ? nil : "regressed",
+        "cases" => 3, "passed_cases" => passed ? 3 : 0, "baseline_cases" => 3,
+        "regressions" => [], "report" => nil, "tokens" => 120 }
+    end
+
+    it "records every candidate before scoring, and claims no winner yet" do
+      run = gating_run([{ "id" => "c1", "proposer" => "a", "edits" => [] },
+                        { "id" => "c2", "proposer" => "b", "edits" => [] }])
+
+      expect(run.status).to eq(:gating)
+      expect(run.panel.map { |e| e["candidate"]["id"] }).to eq(%w[c1 c2])
+      expect(run.panel.first["proposers"]).to eq(["a"])
+      expect(run.candidate).to be_nil
+    end
+
+    it "promotes the candidate the winning report names, and keeps the losers" do
+      run = gating_run([{ "id" => "c1", "proposer" => "a", "edits" => [] },
+                        { "id" => "c2", "proposer" => "b", "edits" => [] }])
+      panel = [{ "candidate" => { "id" => "c1", "proposer" => "a", "edits" => [] },
+                 "proposers" => ["a"], "gate" => report("c1", passed: false) },
+               { "candidate" => { "id" => "c2", "proposer" => "b", "edits" => [] },
+                 "proposers" => ["b"], "gate" => report("c2") }]
+      gated = store.gated(run.id, report: report("c2"), panel: panel,
+                                  cost: { "tokens" => 1000, "spent" => 240, "unmetered" => 0 })
+
+      expect(gated.status).to eq(:awaiting_approval)
+      expect(gated.candidate["proposer"]).to eq("b")
+      expect(gated.panel.size).to eq(2)
+      expect(gated.cost["spent"]).to eq(240)
+    end
+
+    # A phase-C run recorded ONE candidate and no panel; a panel of one is the same
+    # shape, so nothing has to branch on which era wrote the record.
+    it "wraps a single candidate into the same panel shape" do
+      run = gating_run([{ "id" => "c1", "proposer" => "operator", "edits" => [] }])
+      gated = store.gated(run.id, report: report("c1"))
+
+      expect(gated.panel.size).to eq(1)
+      expect(gated.panel.first["proposers"]).to eq(["operator"])
+      expect(gated.candidate["id"]).to eq("c1")
+    end
+
+    it "refuses to gate nothing" do
+      run = store.complete(store.create(agent_id: "bia").id, findings: [{ "kind" => "x" }])
+      expect { store.gating(run.id, candidates: []) }
+        .to raise_error(Insika::ValidationError, /candidate is required/)
+    end
+  end
 end

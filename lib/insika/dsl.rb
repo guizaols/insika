@@ -191,7 +191,9 @@ module Insika
       # Refinement (RFC-0013) — how the agent's own instruction files may be
       # improved from real traffic. Same config-over-code shape as `guardrails`;
       # omitting it entirely leaves the agent report-only (phase A writes nothing).
-      #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md]
+      #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md],
+      #          proposers: ["deepseek/deepseek-chat", "gpt-5-mini"],
+      #          budget: { tokens: 200_000 }
       def refine(hash) = (@config[:refinement] ||= {}).merge!(hash.transform_keys(&:to_s))
 
       # Facts about THIS deployment that are not tools (RFC-0014 §3.5), so an eval

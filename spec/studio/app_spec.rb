@@ -1862,6 +1862,71 @@ end
     expect(body).to include("1 regression(s): quotes")
   end
 
+  # --- Refinement phase D: the panel and the unattended write (§3.9/§3.6) ---
+
+  # A run whose panel had three members: the winner, a loser and one the budget
+  # never got to.
+  def panel_run(store, agent: "bia")
+    row = store.create(agent_id: agent, at: "2026-08-07T10:00:00Z")
+    store.complete(row.id, findings: [{ "kind" => "tool_error", "count" => 4, "title" => "t" }])
+    winner = { "id" => "c1", "proposer" => "deepseek-chat", "rationale" => "the CEP",
+               "edits" => [{ "file" => "TOOLS.md", "op" => "replace",
+                             "before" => "Use shipping_quote.", "after" => "Ask for the CEP first.",
+                             "addresses" => [] }], "dropped" => [] }
+    loser = { "id" => "c2", "proposer" => "gpt-5-mini", "edits" => [], "dropped" => [] }
+    unfunded = { "id" => "c3", "proposer" => "claude-haiku", "edits" => [], "dropped" => [] }
+    store.gating(row.id, candidates: [winner, loser, unfunded])
+    store.gated(row.id,
+                report: verdict("c1", passed: true, passed_cases: 6),
+                panel: [{ "candidate" => winner, "proposers" => ["deepseek-chat"],
+                          "gate" => verdict("c1", passed: true, passed_cases: 6) },
+                        { "candidate" => loser, "proposers" => ["gpt-5-mini"],
+                          "gate" => verdict("c2", passed: false, passed_cases: 3) },
+                        { "candidate" => unfunded, "proposers" => ["claude-haiku"],
+                          "gate" => verdict("c3", passed: false, passed_cases: 0,
+                                                  reason: "not gated — the run's token budget (900) was spent",
+                                                  cases: 0) }],
+                cost: { "tokens" => 900, "spent" => 912, "unmetered" => 1 })
+  end
+
+  def verdict(id, passed:, passed_cases:, reason: nil, cases: 7)
+    { "candidate_id" => id, "passed" => passed,
+      "reason" => reason || (passed ? nil : "1 regression(s): quotes (pass→fail)"),
+      "cases" => cases, "passed_cases" => passed_cases, "baseline_cases" => 7,
+      "regressions" => [], "report" => {}, "tokens" => 300 }
+  end
+
+  it "shows the winner as best of the panel, with the run's cost and the losers" do
+    app, = build_app
+    panel_run(app.insika[:refinement_store])
+
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).to include("best of 3 candidate(s)")
+    expect(body).to include("912 tokens")
+    expect(body).to include("Also proposed")
+    expect(body).to include("gpt-5-mini")
+    expect(body).to include("claude-haiku")
+    expect(body).to include("token budget (900) was spent")
+  end
+
+  # §3.6: an operator who wakes up to a changed prompt gets what changed, why, and
+  # where to undo it — the write versioned, so History IS the undo.
+  it "shows what auto_apply changed, and where to undo it" do
+    app, = build_app
+    store = app.insika[:refinement_store]
+    run = panel_run(store)
+    store.resolve(run.id, decision: :applied, operator: "auto_apply",
+                          note: "auto_apply: gate passed 6/7 with no regression")
+
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).to include("auto-applied")
+    expect(body).to include("auto_apply: gate passed 6/7")
+    expect(body).to include("Ask for the CEP first.")
+    expect(body).to include("Undo it from the file's History")
+  end
+
   it "POST /refinement dispatches :run_refinement for the chosen agent" do
     app, bus = build_app
     client = login(app)
