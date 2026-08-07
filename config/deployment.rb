@@ -292,6 +292,27 @@ module Deploy
     # It's what the provisioning API (the GatewayClient) triggers.
     PACK_IMPORTER = Insika::PackImporter.new(bus: BUS, profiles: PROFILE_SOURCE)
 
+    # --- Channels (RFC-0011) --------------------------------------
+    # The registry lives on the spine and starts EMPTY, so `/channels/*` 404s until
+    # an operator turns a channel on. The bundled relay is the one for an adopter who
+    # already owns their messaging stack (consumer-app owns WhatsApp permanently, §6.1):
+    # it takes the turn and hands the reply back to the consumer's own callback.
+    #
+    # INSIKA_RELAY_TOKEN is the switch AND the credential — a public inbound route
+    # with an LLM behind it is a money faucet, so there is no way to mount this
+    # without a secret. The deliver side reuses the data-tools' egress posture: same
+    # https-only default, same explicit opt-in for a consumer on a private network.
+    CHANNEL_REGISTRY = SPINE.channel_registry
+    RELAY = Insika::Channels::Relay.from_env(
+      http: Insika::HttpClient.new,
+      allow_http: !!EGRESS_OPTIONS[:allow_http], allow_private: !!EGRESS_OPTIONS[:allow_private]
+    )
+    CHANNEL_REGISTRY.register(RELAY.id, RELAY) if RELAY
+
+    # Boot sweep for replies a previous process committed but never handed over
+    # (§6.5). Duck-typed by Server::Boot, exactly like recover_delegations.
+    def self.recover_channel_deliveries = EXECUTOR.recover_channel_deliveries
+
     # OPT-IN observability (Phase 6): OTEL only turns on with INSIKA_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via
     # Telemetry.attach (serving arm) — consumes the EVENT_STREAM into spans.

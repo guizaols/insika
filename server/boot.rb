@@ -55,6 +55,7 @@ module Insika
       def do_recovery
         summary = @wiring.recovery.run
         recover_delegations
+        recover_channel_deliveries
         summary
       end
 
@@ -64,6 +65,17 @@ module Insika
 
         result = @wiring.recover_delegations
         log("boot: delegations re-delivered — #{Array(result && result[:delivered]).size}")
+      end
+
+      # RFC-0011 §6.5: replies a previous process committed but never handed to the
+      # channel. Runs AFTER the task recovery for the same reason the delegation
+      # sweep does — a resumed turn writes its own outbox record at its terminal, and
+      # sweeping first would miss it.
+      def recover_channel_deliveries
+        return unless @wiring.respond_to?(:recover_channel_deliveries)
+
+        result = @wiring.recover_channel_deliveries
+        log("boot: channel replies re-dispatched — #{Array(result && result[:dispatched]).size}")
       end
 
       # Durability: without a durable backend, nothing is resumed after a

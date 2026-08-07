@@ -19,7 +19,7 @@ module Insika
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
-                   delegation_store: nil)
+                   delegation_store: nil, channel_delivery: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -46,6 +46,11 @@ module Insika
       # present, run_subagent(async: true) dispatches + returns immediately and the
       # child's result is delivered to the parent session as a NEW turn on completion.
       @delegation_store = delegation_store
+      # RFC-0011 §6.5: outbound delivery for Shape B channels. nil = no channel
+      # delivers out of band (parity — every surface today answers on the request's
+      # own connection). When present, a turn that CAME IN through a channel writes
+      # its answer to the outbox at the terminal and the dispatcher POSTs it.
+      @channel_delivery = channel_delivery
       # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -432,6 +437,17 @@ module Insika
         delivered << deleg.id
       end
       { delivered: delivered }
+    end
+
+    # RFC-0011 §6.5 (boot): re-drives the outbound replies a previous process
+    # recorded and never claimed. Records left `delivering` are NOT swept — that
+    # process may have POSTed before it died, and re-sending is the duplicate the
+    # claim exists to prevent. No-op without a channel_delivery.
+    # -> { dispatched: [ids] }
+    def recover_channel_deliveries
+      return { dispatched: [] } unless @channel_delivery
+
+      @channel_delivery.sweep
     end
 
     # Stages 2..9. Runs INSIDE the task's fiber.
@@ -1424,6 +1440,60 @@ module Insika
       # deliver its result to the parent as a NEW turn. No-op for a normal turn
       # (not a delegation child) or without a delegation_store.
       finalize_delegation(task)
+
+      # RFC-0011 §6.5: if this turn CAME IN through a Shape B channel, its answer
+      # has to travel out of band. Same terminal hook, next door to the delegation
+      # one, for the same reason: it fires for a fresh turn and a recovered one.
+      finalize_channel_delivery(task, content)
+    end
+
+    # Records the answer in the outbox and dispatches it. The discriminator is the
+    # turn's TRANSPORT (`channel:<id>` on the persisted command), not the session:
+    # a session belongs to the channel forever, but a message an operator types into
+    # the Studio playground against that same session must not reach the customer.
+    # Human handoff is not a product feature (`FOLLOWUP §14.6`), and it would be a
+    # surprising way to acquire one.
+    #
+    # The consequence, stated rather than discovered later: a turn the ENGINE
+    # spawned on a channel session — an async delegation result delivered as a new
+    # turn — is not delivered either. There is no consumer for that yet; when there
+    # is, the fix is to give those turns the channel transport, not to widen this.
+    #
+    # Best-effort: the turn is already committed and durable, and a delivery problem
+    # must never re-fail it.
+    def finalize_channel_delivery(task, content)
+      return unless @channel_delivery
+
+      channel_id = channel_transport(task)
+      return unless channel_id
+
+      delivery = @channel_delivery.record(task: task, channel_id: channel_id, content: content)
+      return unless delivery
+
+      dispatch_delivery(delivery.id)
+    rescue Insika::Error
+      nil
+    end
+
+    # The POST goes out on the SUPERVISOR, never on the turn's fiber: a bounded
+    # retry against a third party would otherwise hold the session's FIFO — the
+    # customer's next message would wait on their previous answer's delivery.
+    # Non-serving (boot sweep, specs) delivers inline, where waiting is what the
+    # caller wants.
+    def dispatch_delivery(delivery_id)
+      return @channel_delivery.deliver(delivery_id) unless @supervised
+
+      turn_parent.async do |t|
+        t.annotate("outbox:#{delivery_id}")
+        @channel_delivery.deliver(delivery_id)
+      end
+    end
+
+    # `channel:<id>` -> "<id>"; anything else -> nil. The transport is persisted with
+    # the command, so a turn resumed after a crash still knows where it came from.
+    def channel_transport(task)
+      transport = rebuild_command(task).meta["transport"].to_s
+      transport.start_with?("channel:") ? transport.delete_prefix("channel:") : nil
     end
 
     # Truncation cap for a persisted `role: tool` content (§11 R1): the transcript

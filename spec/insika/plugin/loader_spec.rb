@@ -14,6 +14,7 @@ RSpec.describe Insika::Plugin::Loader do
   let(:workflows) { Insika::WorkflowRegistry.new }
   let(:policies) { Insika::PolicyRegistry.new }
   let(:capabilities) { Insika::CapabilityRegistry.new }
+  let(:channels) { Insika::ChannelRegistry.new }
   let(:hooks) { Insika::Hooks.new }
   let(:middleware) { [] }
   let(:context_providers) { [] }
@@ -21,7 +22,7 @@ RSpec.describe Insika::Plugin::Loader do
 
   def registries
     { tools: tools, workflows: workflows, policies: policies, capabilities: capabilities,
-      hooks: hooks, middleware: middleware, context_providers: context_providers }
+      channels: channels, hooks: hooks, middleware: middleware, context_providers: context_providers }
   end
 
   # Writes a plugin (manifest + Ruby PORO entry — no ruby_llm).
@@ -115,6 +116,56 @@ RSpec.describe Insika::Plugin::Loader do
 
     expect { load(enabled: %w[wf2]) }.to output(/not declared in contracts.workflows/).to_stderr
     expect(workflows.names).to eq([])
+  end
+
+  # RFC-0011 §4.2 — item 13's tier 2. A channel is an INSTANCE (it holds its
+  # credentials), so there is no factory to defer; the declared-or-ignored rule is
+  # the same, and it matters more here: the name is a URL segment, so an undeclared
+  # registration is a plugin quietly mounting a route.
+  it "registers a channel declared in contracts.channels" do
+    write_plugin("ch", <<~YAML, poro_entry("ChPlugin", <<~BODY))
+      id: ch
+      module: ChPlugin
+      entry: plugin.rb
+      contracts: { channels: [chat] }
+    YAML
+      def self.register(api) = api.register_channel("chat", Object.new)
+    BODY
+
+    load(enabled: %w[ch])
+    expect(channels.names).to eq(["chat"])
+    expect(channels.entries.first.plugin).to eq("ch")
+  end
+
+  it "ignores a channel outside contracts.channels with a warn" do
+    write_plugin("ch2", <<~YAML, poro_entry("Ch2Plugin", <<~BODY))
+      id: ch2
+      module: Ch2Plugin
+      entry: plugin.rb
+      contracts: { channels: [declared] }
+    YAML
+      def self.register(api) = api.register_channel("undeclared", Object.new)
+    BODY
+
+    expect { load(enabled: %w[ch2]) }.to output(/not declared in contracts.channels/).to_stderr
+    expect(channels.names).to eq([])
+  end
+
+  it "rolls a channel back when the rest of the entry raises" do
+    write_plugin("ch3", <<~YAML, poro_entry("Ch3Plugin", <<~BODY))
+      id: ch3
+      module: Ch3Plugin
+      entry: plugin.rb
+      contracts: { channels: [chat], tools: [t] }
+    YAML
+      def self.register(api)
+        api.register_channel("chat", Object.new)
+        raise "boom"
+      end
+    BODY
+
+    expect { load(enabled: %w[ch3]) }.to output(/failed to load/).to_stderr
+    expect(channels.names).to eq([])
   end
 
   it "middleware/hook/provider/policy without a contract: committed after load" do
