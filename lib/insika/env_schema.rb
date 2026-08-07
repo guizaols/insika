@@ -115,6 +115,8 @@ module Insika
       spec(name: "INSIKA_RELAY_TOKEN", secret: true, description: "Bearer the relay consumer sends us. Unset -> the relay channel is not mounted (RFC-0011 §6)."),
       spec(name: "INSIKA_RELAY_DELIVER_URL", type: :url, description: "Consumer callback the relay POSTs each reply to."),
       spec(name: "INSIKA_RELAY_DELIVER_TOKEN", secret: true, description: "Bearer the relay sends TO the consumer's callback (optional)."),
+      spec(name: "INSIKA_WIDGET_ORIGINS", type: :csv, description: "Exact-match origins allowed to embed the web widget. Unset -> the widget channel is not mounted (RFC-0011 §5)."),
+      spec(name: "INSIKA_WIDGET_AGENTS", type: :csv, description: "Agent ids a widget visitor may address. Unset -> the widget channel is not mounted."),
       spec(name: "OPENCLAW_GATEWAY_TOKEN", secret: true, description: "Bearer for /v1 + /a2a (falls back to ADMIN_TOKEN)."),
       spec(name: "OPENCLAW_AGENTS_DIR", type: :path, description: "Directory of OpenClaw-style agent packs."),
       spec(name: "OPENCLAW_PLUGIN_DIR", type: :path, description: "Directory of plugins to load."),

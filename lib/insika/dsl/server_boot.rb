@@ -86,6 +86,13 @@ module Insika
             allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"])
           )
           @graph.channel_registry.register(relay.id, relay) if relay
+
+          widget = Insika::Channels::Web.from_env(
+            chat_rate_limit: Insika::Channels::Web.limit_resolver(
+              profiles: @graph.profiles, settings_store: @rt.component(:settings_store)
+            )
+          )
+          @graph.channel_registry.register(widget.id, widget) if widget
         end
         !@graph.channel_registry.names.empty?
       end
@@ -134,7 +141,7 @@ module Insika
         puts "  #{base}/v1/responses    → drop-in API (Bearer \"#{@token}\", #{models})"
         puts "  #{base}/start.md        → onboarding for your coding agent (+ /models.json, /docs)"
         puts "  #{base}/v1/workflows    → #{@graph.workflow_registry.names.join(', ')}" if workflows?
-        puts "  #{base}/channels/…      → #{@graph.channel_registry.names.join(', ')} (inbound at /events)" if channels?
+        puts "  #{base}/channels/…      → #{@graph.channel_registry.names.join(', ')}" if channels?
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
         puts "  Ctrl-C to stop."
