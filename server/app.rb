@@ -138,6 +138,14 @@ module Insika
           handle_events(req)
         in ["POST", ["channels", id, "events"]] if @channels
           handle_channel_event(req, id)
+        in ["POST", ["channels", id, "sessions"]] if @channels
+          handle_channel_session(req, id)
+        in ["POST", ["channels", id, "messages"]] if @channels
+          handle_channel_message(req, id)
+        in ["GET", ["channels", id, "asset", file]] if @channels
+          handle_channel_asset(req, id, file)
+        in ["OPTIONS", ["channels", id, *]] if @channels
+          handle_channel_preflight(req, id)
         in ["POST", ["a2a"]] if @a2a
           handle_a2a(req)
         in ["GET", [".well-known", "agent-card.json"]] if @a2a
@@ -174,15 +182,24 @@ module Insika
       end
 
       # A channel route skips the GATEWAY bearer because the channel authenticates
-      # it ITSELF — with the platform's own scheme (a relay's shared secret today; a
-      # Slack HMAC signature tomorrow), which is the only credential the caller has.
-      # This is NOT an ungated route: `handle_channel_event` refuses before parsing
-      # anything, and a channel with no credential configured answers :disabled
-      # rather than open. Requiring the gateway token here instead would mean giving
-      # every platform a second secret it has no way to send.
+      # it ITSELF — with the platform's own scheme (a relay's shared secret, a Slack
+      # HMAC signature, the widget's origin allowlist plus its mandatory rate limit),
+      # which is the only credential the caller has. Requiring the gateway token here
+      # instead would mean handing every platform — and every anonymous browser — a
+      # second secret it has no way to send.
+      #
+      # This is NOT an ungated route family: every handler below calls `channel_gate`
+      # before parsing anything, and a channel that implements no `authenticate`, or
+      # whose credential is unconfigured, answers `:disabled` rather than open.
+      # ENUMERATED rather than prefix-matched, so a route added to this family
+      # tomorrow is gated by default and publishing it is a deliberate edit here.
       def channel_route?(method, segments)
-        method == "POST" && segments.length == 3 &&
-          segments.first == "channels" && segments.last == "events"
+        case [method, segments]
+        in ["POST", ["channels", _, "events" | "sessions" | "messages"]] then true
+        in ["GET", ["channels", _, "asset", _]] then true
+        in ["OPTIONS", ["channels", _, *]] then true # CORS preflight carries no credential, by spec
+        else false
+        end
       end
 
       # Bearer-gate error (503 disabled / 401 unauthorized), shared by the
@@ -387,6 +404,115 @@ module Insika
         payload = { agent: parsed[:agent], session_id: session_id,
                     message: parsed[:message], event_id: parsed[:event_id] }.compact
         channel_ack(payload, transport: :"channel:#{id}")
+      end
+
+      # POST /channels/:id/sessions — mint a conversation for a PUBLIC Shape A
+      # channel (RFC-0011 §4.3). The engine issues the id and the client never
+      # proposes one: an endpoint that created a session from a caller-supplied id
+      # would let anyone read someone else's conversation by guessing.
+      #
+      # Only a channel that mints answers here — the relay's id is the consumer's own
+      # key, so `/sessions` does not exist for it (404, the same parity every other
+      # optional surface has).
+      def handle_channel_session(req, id)
+        channel = @channels.find(id)
+        return not_found if channel.nil? || !channel.respond_to?(:mint_session_id)
+
+        gate = channel_gate(channel, req)
+        return cors(channel, req, gate) if gate
+
+        session_id = channel.mint_session_id
+        ensure_session(session_id, vars: { "channel" => id.to_s })
+        cors(channel, req, json_response(201, { session_id: session_id }))
+      end
+
+      # POST /channels/:id/messages — the Shape A turn: the reply comes back on THIS
+      # connection as SSE, so there is no outbox and nothing to deliver later. It is
+      # `handle_responses` with the hardcoded `Responses` module swapped for the
+      # looked-up channel, which is the whole point of naming the seam.
+      #
+      # The session must already exist AND belong to this channel. Both halves
+      # matter: create-on-write would reopen the enumeration hole `/sessions` closes,
+      # and skipping the ownership check would let a widget visitor stream a
+      # relay customer's conversation by pasting its id.
+      def handle_channel_message(req, id)
+        channel = @channels.find(id)
+        return not_found if channel.nil? || !channel.respond_to?(:frame_for)
+
+        gate = channel_gate(channel, req)
+        return cors(channel, req, gate) if gate
+
+        parsed = channel.parse(req, body: parse_raw_body(req))
+        return cors(channel, req, error_response(404, unknown_session)) unless channel_session?(id, parsed[:session_id])
+
+        payload = { agent: parsed[:agent], session_id: parsed[:session_id], message: parsed[:message] }
+        cors(channel, req, message_flow(payload, stream: true, transport: :"channel:#{id}",
+                                                 serialize: channel.method(:frame_for)))
+      rescue Insika::ValidationError => e
+        # Answered here rather than through #call's rescue so the CORS headers ride
+        # along: without them the browser cannot read the 422 and the visitor sees a
+        # generic network failure instead of what was wrong.
+        cors(channel, req, error_response(422, e))
+      end
+
+      # GET /channels/:id/asset/:f — the channel's static file (the widget's JS).
+      # The name is a KEY of the channel's own closed map, never a path, so there is
+      # no traversal to find. Public and unauthenticated by nature: it is a
+      # `<script src>` on someone else's page.
+      # The cache policy is short and the ETag does the rest: the URL carries no
+      # version (the install snippet an adopter pasted has none), so a long max-age
+      # would strand every browser on the widget it already has, while a revalidation
+      # that answers 304 costs one empty round trip and ships an upgrade in minutes.
+      def handle_channel_asset(req, id, file)
+        channel = @channels.find(id)
+        return not_found if channel.nil? || !channel.respond_to?(:asset)
+
+        asset = channel.asset(file)
+        return not_found if asset.nil?
+
+        headers = { "content-type" => asset[:content_type],
+                    "cache-control" => asset[:cache_control] || "no-cache",
+                    "etag" => asset[:etag] }.compact
+        return [304, headers, []] if asset[:etag] && req.get_header("HTTP_IF_NONE_MATCH") == asset[:etag]
+
+        [200, headers, [asset[:body]]]
+      end
+
+      # OPTIONS /channels/:id/* — the CORS preflight. Answered BEFORE the channel's
+      # own check on purpose: a preflight carries no credentials (the browser strips
+      # them, by spec), so gating it would only mean the real request never happens.
+      # It grants nothing — an origin off the allowlist gets no headers back and the
+      # browser refuses the response itself.
+      def handle_channel_preflight(req, id)
+        channel = @channels.find(id)
+        return not_found if channel.nil?
+
+        cors(channel, req, [204, {}, []])
+      end
+
+      # Does this session exist AND belong to this channel? `vars["channel"]` is
+      # written when the session is minted (§4.3).
+      def channel_session?(id, session_id)
+        session = session_id && @session_store.find(session_id)
+        return false if session.nil?
+
+        vars = session.vars || {}
+        (vars["channel"] || vars[:channel]).to_s == id.to_s
+      end
+
+      def unknown_session = Insika::NotFoundError.new("session not found")
+
+      # Merges the channel's CORS headers into a response it is about to return. A
+      # channel with no opinion (the relay: its consumer is a server, not a browser)
+      # changes nothing.
+      def cors(channel, req, response)
+        return response unless channel.respond_to?(:cors_headers)
+
+        headers = channel.cors_headers(req.get_header("HTTP_ORIGIN"))
+        return response if headers.nil? || headers.empty?
+
+        status, existing, body = response
+        [status, existing.merge(headers), body]
       end
 
       # The channel's OWN credential check. A channel returns a verdict, not a status
