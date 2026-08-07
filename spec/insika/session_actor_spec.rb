@@ -38,7 +38,7 @@ RSpec.describe Insika::SessionActor do
       @coalesced = []
     end
 
-    def emit_coalesced(task, merged:) = @coalesced << [task.id, merged]
+    def emit_coalesced(task, merged:, arrivals: []) = @coalesced << [task.id, merged, arrivals]
   end
 
   class FakeTaskStore
@@ -122,7 +122,14 @@ RSpec.describe Insika::SessionActor do
         top.sleep(0.09)                      # a full slice of silence elapses
         expect(exec.events).to eq([[:start, "t1"]])
         expect(exec.task_store.messages["t1"]).to eq(["queria o pedido", "1234567"])
-        expect(exec.coalesced).to eq([["t1", 3]])
+
+        # One arrival time per fragment INCLUDING the first — the only record that
+        # they were separate messages, since a merge creates no task of its own.
+        task_id, merged, arrivals = exec.coalesced.first
+        expect([task_id, merged]).to eq(["t1", 3])
+        expect(arrivals.size).to eq(3)
+        expect(arrivals).to all(match(/\A\d{4}-\d{2}-\d{2}T/))
+        expect(arrivals).to eq(arrivals.sort) # chronological
         exec.release.enqueue(:go)
         sa.stop
       end

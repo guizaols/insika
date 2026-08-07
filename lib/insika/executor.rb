@@ -228,9 +228,11 @@ module Insika
     attr_reader :task_store
 
     # RFC-0015 §8. Emitted by the SessionActor when a window closes having merged
-    # more than one fragment.
-    def emit_coalesced(task, merged:)
-      emit(:turn_coalesced, { task_id: task.id, merged: merged }, task: task)
+    # more than one fragment. `arrivals` are the ISO8601 times each fragment landed
+    # — the ONLY record that they were separate messages, since a merged fragment
+    # creates no task of its own. Ids and times, never content.
+    def emit_coalesced(task, merged:, arrivals: [])
+      emit(:turn_coalesced, { task_id: task.id, merged: merged, arrivals: arrivals }, task: task)
     end
 
     # Runs ONE turn serially (called by the SessionActor loop):

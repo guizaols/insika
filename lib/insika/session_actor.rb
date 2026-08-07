@@ -2,6 +2,7 @@
 
 require "async"
 require "async/queue"
+require "time" # Time#iso8601 for the arrival record on :turn_coalesced
 
 module Insika
   # Sessions as Actors: one fiber per session with a FIFO queue
@@ -58,6 +59,12 @@ module Insika
 
       @executor.task_store.append_message(pending[:task_id], text)
       pending[:count] += 1
+      # A merged fragment leaves NO task of its own (see #hold_at_the_door), so this
+      # is the only record that it arrived as a separate message. Kept as arrival
+      # times — never the text — and shipped on :turn_coalesced, so "the customer
+      # says they sent the order number" is answerable without the store carrying an
+      # orphan task per fragment.
+      pending[:arrivals] << Time.now.utc.iso8601
       pending[:version] += 1 # tells a sleeping debounce window that more arrived
       pending[:task_id]
     rescue ArgumentError
@@ -108,10 +115,11 @@ module Insika
     def hold_at_the_door(task, policy)
       return task unless policy&.debounce?
 
-      @pending = { task_id: task.id, count: 1, version: 0 }
+      @pending = { task_id: task.id, count: 1, version: 0, arrivals: [Time.now.utc.iso8601] }
       begin
         wait_for_quiet(policy)
         merged = @pending[:count]
+        arrivals = @pending[:arrivals]
       ensure
         # The window is closed BEFORE the turn runs, under every exit path: a
         # `collect` that slipped in here would append to a task about to be read.
@@ -120,7 +128,7 @@ module Insika
 
       return task if merged == 1
 
-      @executor.emit_coalesced(task, merged: merged)
+      @executor.emit_coalesced(task, merged: merged, arrivals: arrivals)
       @executor.task_store.find(task.id) || task
     end
 
