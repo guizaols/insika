@@ -218,6 +218,51 @@ RSpec.describe Insika::Refinement::Gate do
     end
   end
 
+  # RFC-0014 §3.2 again, from inside the gate. Without this the gate and
+  # `evals/run.rb` — the two callers of the ONE evaluator §3.7 insists on — disagree
+  # about what the corpus measures: the CLI skips a case the agent cannot satisfy,
+  # the gate runs it and counts a failure.
+  describe "capability resolution" do
+    let(:caps) do
+      Class.new do
+        def initialize(tools) = @tools = tools
+        def for(_agent) = { "tools" => @tools, "capabilities" => [] }
+      end
+    end
+
+    before do
+      goldens.write({ "id" => "needs-voucher", "agent" => "support",
+                      "turns" => [{ "user" => "tem cupom?" }],
+                      "requires" => { "tools" => ["search_voucher"] },
+                      "expect" => { "tools_called" => ["search_voucher"] } })
+      seed_case
+      baseline!("quotes-freight" => { "pass" => true, "score" => nil })
+    end
+
+    def gate_with(capabilities_factory)
+      transport = GateTransportDouble.new("quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] })
+      described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
+                          baselines: baselines, transport_factory: -> { transport },
+                          capabilities_factory: capabilities_factory)
+    end
+
+    it "skips a case the agent cannot satisfy, instead of scoring it as a failure" do
+      g = gate_with(-> { caps.new(%w[shipping_quote]) })
+      report = g.score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+      skipped = report.report["cases"].find { |c| c["id"] == "needs-voucher" }
+      expect(skipped["skipped"]).to match(/search_voucher/)
+      expect(report.report["skipped"]).to eq(1)
+      expect(report.passed).to be(true)
+    end
+
+    it "runs the case when capabilities cannot be resolved — silence must not shrink a suite" do
+      g = gate_with(-> { nil })
+      report = g.score(agent_id: "support", candidate: candidate, run_id: "r1")
+      expect(report.report["skipped"]).to eq(0)
+    end
+  end
+
   it "names the clone after the run so two gates cannot collide" do
     g, = gate
     expect(g.clone_id_for("support", "9f2c1b40-aaaa")).to eq("support-cand-9f2c1b40")

@@ -93,7 +93,13 @@ module Insika
       private
 
       def route(req)
-        segments = req.path_info.split("/").reject(&:empty?)
+        # UTF-8, not the ASCII-8BIT Rack hands us. A path segment becomes a STORE KEY
+        # (`/v1/agents/:id`, `/v1/sessions/:id`), and the sqlite3 driver binds a
+        # BINARY string as a BLOB — which never matches a TEXT column. So every such
+        # read answered 404 on a durable deployment while passing every spec, because
+        # the in-memory store is a Ruby Hash and a binary string is `eql?` to its
+        # UTF-8 twin. Found by calling `GET /v1/agents/:id` against a real database.
+        segments = req.path_info.split("/").reject(&:empty?).map { |s| Coercion.utf8(s) }
         gate = public_route?(req.request_method, segments) ? nil : gateway_gate(req)
         return gate if gate
 
