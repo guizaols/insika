@@ -21,37 +21,47 @@ prompt, never grants a capability. It may *refuse* a request (a bad signature); 
 may not *widen* one. Everything a channel learns about the caller is data, and it
 enters the prompt at the most cuttable priority, like any other untrusted input.
 
-## Which shape is yours?
+## Which one is yours?
 
-This is the only decision you have to make, and it is about **who owns the
-platform**, not about how big you are.
+Two channels ship with the engine, and the choice between them is **where the
+conversation happens**.
 
-|  | **native** | **relay** |
+| | [**web widget**](#the-web-widget) | [**relay**](#the-relay-contract) |
 |---|---|---|
-| Who talks to WhatsApp/Slack/… | the engine | **you** |
+| Where people talk to you | a panel on your own site | WhatsApp, Slack, your app — wherever you already are |
+| Who talks to that platform | — (there is none) | **you**, with the integration you already have |
 | Who runs the turn | the engine | the engine |
-| You already have a messaging integration | — | **yes** |
-| You have none and want one | **yes** | — |
+| What you have to build | nothing: one `<script>` tag | two HTTP calls |
 
-**Relay** is for the team that already owns its messaging stack — a WhatsApp BSP,
+**The web widget** is for a team with no messaging stack at all. Paste one tag on
+your site and you have an agent — no backend of yours, no build step, no npm.
+
+**The relay** is for a team that already owns its messaging stack — a WhatsApp BSP,
 a Zendesk, a legacy Rails app with years of tuning in it. You keep every bit of
 that. You POST the customer's message to the engine, the engine POSTs the answer
 back to a URL you control, and your existing code does what it already does well.
 Nothing about your platform integration has to move for you to adopt Insika.
 
-**Native** is for the team with no messaging stack, who wants the engine to *be*
-the integration.
+They are not stages of the same path. Plenty of teams run both.
 
-Both are permanent. Relay is not a migration step, and there is no point at which
-you are expected to "graduate" to native.
-
-> **Available today: the web widget and the relay.** Slack and native WhatsApp are
-> specified (RFC-0011) and not built. This page documents what exists.
+> **On Slack and WhatsApp "natively".** The engine does not speak either platform,
+> and that is a decision rather than a gap. If your customers are on WhatsApp or
+> Slack, the relay is the answer: you own the platform integration — the 24-hour
+> window, templates, media, read receipts, formatting — and the engine owns the
+> turn. That boundary is [the promise, not a limitation](#what-the-relay-does-not-do--on-purpose),
+> and it is why the relay is permanent rather than a stepping stone.
+>
+> Adapters that make the engine speak a platform directly are specified and
+> deliberately unbuilt. The seam they would plug into is real and proven — the two
+> channels above are its opposite shapes, and a third would add `deliver` and
+> nothing else — so this is a question of demand, not of design. If you need one,
+> [open an issue](https://github.com/guizaols/insika/issues); you can also
+> [write it yourself](#writing-your-own-channel) as a plugin, without forking.
 
 ## The web widget
 
-The native channel for a team with no messaging stack: **one `<script>` tag on your
-site and you have an agent**. No backend of yours, no build step, no npm.
+For a team with no messaging stack at all: **one `<script>` tag on your site and
+you have an agent**. No backend of yours, no build step, no npm.
 
 ```html
 <script src="https://agents.example.com/channels/web/asset/widget.js"
@@ -85,7 +95,7 @@ Theming is a block of CSS custom properties. Set them anywhere on the page:
 A runnable page lives in
 [`examples/web-widget/`](https://github.com/guizaols/insika/tree/main/examples/web-widget).
 
-### Setting it up
+### Setting up the widget
 
 Two environment variables, and **both are the switch** — with either one missing the
 channel is not mounted and every `/channels/web/*` route answers `404`:
@@ -155,7 +165,7 @@ anonymous endpoint, create-on-write means anyone who guesses an id can read some
 else's chat. The widget keeps the id it was given in `localStorage`, so a returning
 visitor continues the same conversation.
 
-### What the widget does not do in phase 1
+### What the widget does not do
 
 File upload, typing indicators, history across devices, and i18n of its own chrome
 (the four words on the buttons). It also never retries a message POST: that request
@@ -174,9 +184,10 @@ Platform semantics stay with you:
 - how a markdown reply becomes WhatsApp formatting.
 
 The engine sends **text and identity**. That is the promise, not the limitation:
-it is what lets you keep an integration you have already tuned. A relay that
-starts growing template logic has stopped being a relay — if you want the engine
-to own all of that, you want a native channel.
+it is what lets you keep an integration you have already tuned, and it is why
+nothing here expires. A relay that starts growing template logic has stopped being
+a relay; the place for platform semantics is the code that already has them —
+yours — or a [channel of your own](#writing-your-own-channel).
 
 ## The relay contract
 
@@ -276,7 +287,7 @@ tells you the turn's terminal state.
 A turn that **failed** delivers nothing — an error string is not an answer. Watch
 `GET /v1/tasks/:id` or the [event stream](/observability/) for those.
 
-## Setting it up
+## Setting up the relay
 
 Three environment variables on the engine:
 
