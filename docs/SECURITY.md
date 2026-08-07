@@ -53,8 +53,8 @@ operator-grade — it is not a read key, and a leak is agent takeover, not just 
 token — and it is not an exception to the rule above, it is the same rule with a
 different credential. A messaging platform has no way to send your gateway token,
 and neither has a visitor's browser; what they can send is their own scheme (a
-shared secret for the [relay](CHANNELS.md), an HMAC signature for Slack, an origin
-for the widget). So the channel does the check, and the router refuses before
+shared secret for the [relay](CHANNELS.md), an origin for the widget, an HMAC
+signature for a channel you write yourself). So the channel does the check, and the router refuses before
 parsing anything:
 
 | The channel says | The route answers |
