@@ -287,6 +287,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Policy | `lib/insika/policy/*` |
 | Stores | `lib/insika/stores/*`, `lib/insika/*_store.rb` |
 | Recovery | `lib/insika/recovery.rb` |
+| Inbound queue (one turn at a time per session, and what happens to a message that arrives while one is running) | `lib/insika/session_actor.rb`, `lib/insika/queue_policy.rb`, `lib/insika/steer_injector.rb` |
 | Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |

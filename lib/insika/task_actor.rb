@@ -9,12 +9,17 @@ module Insika
   # `await` as the cooperative SUSPENSION primitive. Cancellation/suspension only
   # at stage boundaries — never in the middle of an operation.
   class TaskActor
-    # `user_message` remains reserved (no producer). `pause`/`resume` (operator),
+    # `user_message` is posted by `Executor#steer_into_running` (RFC-0015 §5.1) and
+    # consumed by `SteerInjector` at a tool-batch boundary. `pause`/`resume` (operator),
     # `approval` (human-in-the-loop), `timeout`/`heartbeat`
     # (watchdog/liveness, observation).
     MESSAGES = %i[cancel user_message approval pause resume timeout heartbeat].freeze
 
     attr_reader :task_id, :pending_user_messages, :heartbeats
+    # How many messages this run was ASKED to absorb, ever — including the ones
+    # already injected and cleared. It is what bounds steering (`steer_max_messages`),
+    # so it counts posts and never decreases.
+    attr_reader :user_messages_posted
 
     def initialize(task_id:, parent: Async::Task.current)
       @task_id = task_id
@@ -23,12 +28,14 @@ module Insika
       @pending_user_messages = []
       @pause_requested = false
       @heartbeats = 0
+      @user_messages_posted = 0
     end
 
     # Non-blocking. A message outside the enum is a caller bug.
     def post(message, data = nil)
       raise ArgumentError, "unknown message: #{message}" unless MESSAGES.include?(message)
 
+      @user_messages_posted += 1 if message == :user_message
       @mailbox.enqueue([message, data])
       nil
     end
@@ -53,6 +60,25 @@ module Insika
     # Did the operator request a pause? (consumed by the Executor; `await` clears
     # the flag).
     def pause_requested? = @pause_requested
+
+    # RFC-0015 §5.2 — takes the steered messages and clears the buffer, WITHOUT
+    # observing anything else in the mailbox: whatever is not a `:user_message` is put
+    # back, in the order it arrived.
+    #
+    # Why not `drain!`: this runs INSIDE RubyLLM's tool loop (a `after_message`
+    # callback), and `drain!` raises on `:cancel`. Cancellation is only ever observed
+    # at the Executor's own stage boundaries — that is what keeps a tool batch one
+    # unit of work (RFC-0015 §6.4, and D7 for the same rule under `turn_timeout`).
+    # Injecting a message must not quietly become a new place a turn can die.
+    def take_user_messages!
+      @mailbox.size.times do
+        message, data = @mailbox.dequeue
+        message == :user_message ? @pending_user_messages << data : @mailbox.enqueue([message, data])
+      end
+      taken = @pending_user_messages.dup
+      @pending_user_messages.clear
+      taken
+    end
 
     # BLOCKS the turn's fiber until a RESOLUTION (yields the reactor — no spin).
     # Used by the Executor in :paused (waits for :resume) and by the ToolEnvelope

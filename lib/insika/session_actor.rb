@@ -77,6 +77,13 @@ module Insika
     def running? = @running
     def depth = @queue.size
 
+    # The turn this session is running RIGHT NOW, or nil when idle or still at the
+    # door. `steer` needs the Task itself and not just its id: whether a turn can
+    # absorb a message at all depends on what kind of turn it is (a workflow has no
+    # chat), and reading that off the object avoids a store round-trip on the
+    # request's path.
+    attr_reader :current_task
+
     # Is there a turn at the door that `collect` could still merge into?
     def collecting? = !@pending.nil?
 
@@ -95,6 +102,7 @@ module Insika
         task, profile, resume_from, policy = @queue.dequeue # blocks when empty
         task = hold_at_the_door(task, policy)
         @running = true
+        @current_task = task
         begin
           @executor.run_serial(task, profile: profile, resume_from: resume_from)
         rescue StandardError
@@ -104,6 +112,7 @@ module Insika
           nil
         ensure
           @running = false
+          @current_task = nil
         end
       end
     end

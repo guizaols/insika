@@ -93,9 +93,9 @@ DEFAULT_LIMITS = {
 
 ### Why some limits are missing from that list
 
-`chat_rate_limit`, `agent_token_ceiling`, `queue_mode`, `debounce_ms` and
-`debounce_max_ms` are real limits, and none of them appears above. That is the
-rule, not an oversight:
+`chat_rate_limit`, `agent_token_ceiling`, `queue_mode`, `debounce_ms`,
+`debounce_max_ms`, `steer_max_messages` and `steer_join` are real limits, and none
+of them appears above. That is the rule, not an oversight:
 
 > **A limit that has a platform-wide layer is absent from `DEFAULT_LIMITS`.**
 
@@ -155,6 +155,16 @@ By default each one is a turn, and they run one at a time. So the agent answers
 `"oi"` with a greeting the customer has already moved past, and may go looking for
 an order before the number arrives three seconds later.
 
+Which mode you want depends on **when** the message arrives:
+
+| `queue_mode` | The message arrives… | What happens |
+|---|---|---|
+| `followup` (default) | any time | it waits its turn in the queue — today's behavior, named |
+| `collect` | before the turn starts | the fragments merge into ONE turn |
+| `steer` | while the turn is running tools | it is appended to the run in flight |
+
+#### `collect` — the fragments become one turn
+
 `collect` merges the fragments that land **before the turn starts** into a single
 turn:
 
@@ -201,6 +211,71 @@ separately lives in one event, emitted when the window closes:
 
 Times and counts, never content. That is what answers "the customer says they
 sent the order number" without keeping a throwaway task per fragment.
+
+#### `steer` — the message arrives while the turn is already running
+
+`collect` only ever touches a turn that has **not started**. Once the agent is
+running tools, the customer's next message has nowhere to go but the back of the
+queue — so a correction that arrives three seconds into a fifteen-second run is
+answered after the run that did not know about it.
+
+`steer` appends it to the run in flight instead:
+
+```ruby
+limit :queue_mode, "steer"
+limit :steer_max_messages, 5   # how many one run may absorb; the 6th becomes its own turn
+limit :steer_join, nil         # nil = the raw text; a template frames it (below)
+```
+
+Where it lands is the whole design: **at a tool-batch boundary, appended at the
+tail.** After the last result of a batch and before the model's next step — never
+between two tool results (Anthropic rejects that outright, OpenAI merely tolerates
+it), and never rewriting a message already sent, which is what keeps the prompt
+cache valid. So the model sees the correction on its very next step, with the full
+context of what it has already found.
+
+Reach for `steer` when turns are long **because they call tools**. If your turns
+are one provider round-trip, `collect` is the mode that helps and `steer` has no
+boundary to use.
+
+Four cases where the run cannot absorb the message. In every one it becomes the
+next turn on the session instead — `followup`, arrived at late, reported as
+`turn_steer_released`:
+
+| The run… | Why |
+|---|---|
+| never calls a tool | there is no batch boundary to append at |
+| ends in [`halt_when`](TOOLS.md#halt_when-when-the-answer-is-already-out) | there is no next model step; the message would sit unanswered forever |
+| is a [workflow](WORKFLOWS.md) | a workflow orchestrates the model itself and has no chat to append to |
+| already absorbed `steer_max_messages` | the bound exists so a tail cannot grow without one |
+
+`steer_join` is for an agent that needs the model to *know* the text arrived
+mid-run. It must contain `%{message}`, or the config is refused:
+
+```ruby
+limit :steer_join, "the customer just added: %{message}"
+```
+
+Default `nil` appends exactly what the person typed — and a steered message is a
+first-class transcript message, with no origin, because a person wrote it. The
+Studio marks it `steered` in the transcript, derived from its position (a `user`
+message right after a tool result); nothing else in the engine puts one there.
+
+> ⚠️ **Same verdict rule as `collect`, different word.** The reply comes out of the
+> turn the message joined, so the steered caller is told it does not own it:
+> `200 {"task_id": "<the running turn>", "steered": true}`, no stream opened. Only
+> surfaces that can carry that verdict may steer — `/v1/messages?stream=false` and
+> channel endpoints, never `/v1/responses` or an open stream.
+>
+> One consequence worth knowing before you turn it on: when the run *cannot* absorb
+> the message, the follow-up turn's reply belongs to no caller. It travels the event
+> stream like any engine-initiated turn (an async subagent's delivery has the same
+> shape). `steer` therefore fits a consumer that reads replies off the stream or off
+> a channel delivery — not one that only reads its own POST response.
+>
+> A steered message also lives **in memory** until a boundary writes it to the
+> transcript. A hard stop inside that window loses it; a merged fragment, by
+> contrast, is persisted before the window opens.
 
 > ⚠️ **`context_budget` defaults to 8000 tokens.** A large system prompt (a rich
 > persona can run tens of thousands of tokens) exceeds it, and a pinned identity

@@ -110,6 +110,9 @@ RSpec.describe Insika::Commands::SendMessage do
           @asked << [session_id, text]
           "t-open"
         end
+
+        # Never reached in this group: a turn is either at the door or running.
+        def steer_into_running(_session_id, _text, profile:) = nil
       end.new
     end
 
@@ -161,6 +164,7 @@ RSpec.describe Insika::Commands::SendMessage do
         def initialize = (@spawned = [])
         def spawn_in_session(task, profile:, resume_from: nil) = @spawned << task
         def collect_into_pending(_session_id, _text, profile:) = nil
+        def steer_into_running(_session_id, _text, profile:) = nil
       end.new
       session_store.create(id: "s1")
 
@@ -171,6 +175,54 @@ RSpec.describe Insika::Commands::SendMessage do
 
       expect(result).to match({ task_id: kind_of(String) })
       expect(declining.spawned.size).to eq(1)
+    end
+  end
+
+  describe "RFC-0015 §5.1 — steering a turn that is already running" do
+    # No turn at the door (collect declines), one running (steer accepts).
+    let(:steering_executor) do
+      Class.new do
+        attr_reader :spawned, :asked
+
+        def initialize
+          @spawned = []
+          @asked = []
+        end
+
+        def spawn_in_session(task, profile:, resume_from: nil) = @spawned << [task, profile]
+        def collect_into_pending(_session_id, _text, profile:) = nil
+
+        def steer_into_running(session_id, text, profile:)
+          @asked << [session_id, text]
+          "t-running"
+        end
+      end.new
+    end
+
+    subject(:handler) do
+      described_class.new(profiles: profiles, session_store: session_store,
+                          task_store: task_store, executor: steering_executor)
+    end
+
+    def send_from(transport)
+      session_store.create(id: "s1")
+      handler.call(Insika::Command.build(:send_message, payload(session_id: "s1"), transport: transport))
+    end
+
+    it "answers with the RUNNING turn's id and says the caller does not own the reply" do
+      result = send_from(:"http:json")
+
+      expect(result).to eq({ task_id: "t-running", steered: true })
+      expect(steering_executor.spawned).to be_empty # no turn of its own
+      expect(task_store.each_id.to_a).to be_empty   # and no task at all
+    end
+
+    it "is refused on a surface that cannot carry the verdict, exactly like collect" do
+      result = send_from(:http)
+
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(steering_executor.asked).to be_empty
+      expect(steering_executor.spawned.size).to eq(1)
     end
   end
 end

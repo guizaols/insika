@@ -60,6 +60,18 @@ Everything below is what the first release will contain.
   `{"merged": true}` — a caller that cannot hear that verdict would deliver the same
   answer once per fragment, so `/v1/responses` and open streams are refused rather
   than silently coalesced.
+- **Message steering** — opt-in via `limits[:queue_mode] = "steer"`, so a message that
+  arrives while the agent is *already running tools* is appended to that run instead of
+  waiting for it. It lands at a **tool-batch boundary**, appended at the tail: after the
+  last result of a batch and before the model's next step — never between two tool
+  results (which Anthropic rejects outright), and never rewriting anything already sent,
+  so the prompt cache survives. A steered message is a first-class transcript message
+  with no origin, because a person wrote it. Bounded by `steer_max_messages`, worded by
+  an optional `steer_join` template. Four cases the run cannot absorb — a turn with no
+  tool call, a batch ending in `halt_when`, a workflow run, and overflow past the bound —
+  release the message as the next turn on the session rather than losing it. Same
+  surface rule as coalescing: only a caller that can hear `{"steered": true}` may steer,
+  since the reply belongs to the turn it joined.
 - **Studio** — a web control UI for agents, prompts, skills, tools, sessions, tasks,
   approvals, and settings, with live transcripts over SSE.
 - **LLM-first onboarding** — `GET /start.md`, `GET /models.json`, and `GET /docs/*.md`,

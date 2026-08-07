@@ -184,12 +184,20 @@ module Insika
         end
       end
 
-      # The customer said the same thing twice in a row — the outside view of an
-      # instruction the agent is not following. Heuristic on purpose (token overlap,
+      # The customer said the same thing AGAIN AFTER THE AGENT ANSWERED — the outside view
+      # of an instruction the agent is not following. Heuristic on purpose (token overlap,
       # no model call); the snippet is PII-redacted.
+      #
+      # "After the agent answered" is the load-bearing half, and RFC-0015 is what forced
+      # it to be said out loud. Two customer messages in a row is now ORDINARY: `collect`
+      # merges the fragments a person types into one turn and `steer` appends one into a
+      # run in flight, so a turn legitimately holds two of them. Someone still typing is
+      # not someone repeating themselves — and a steered message cannot be told apart in
+      # the transcript, because it correctly declares no origin (§7). The structure is the
+      # only honest signal: a reply has to sit between the two.
       def repetition_findings(session_ids)
         hits = session_ids.flat_map do |sid|
-          repeated_pairs(user_messages(sid)).map { |text| [sid, text] }
+          repeated_after_a_reply(messages(sid)).map { |text| [sid, text] }
         end
         group(hits) do |_sid, text|
           [:repetition, "repetition", "customer repeated themselves", snippet(text)]
@@ -265,16 +273,6 @@ module Insika
 
       def messages(session_id) = Array(@session_store.find(session_id)&.messages)
 
-      # What the CUSTOMER actually said. A message that DECLARES its origin is taken
-      # at its word; one that declares nothing falls back to the tag heuristic, which
-      # is all a pre-origin transcript offers.
-      def user_messages(session_id)
-        messages(session_id)
-          .select { |m| MessageOrigin.customer?(m) }
-          .map { |m| m["content"].to_s }
-          .reject { |text| INJECTED_FRAGMENT_RE.match?(text.lstrip) }
-      end
-
       # What the AGENT actually replied — not a guardrail's canned safe reply, and not
       # a human operator's typing in an imported transcript. Both are `role: assistant`
       # and neither is the model, so scoring them as the agent's work is wrong in both
@@ -284,11 +282,31 @@ module Insika
         messages(session_id).select { |m| MessageOrigin.agent?(m) }.map { |m| m["content"].to_s }
       end
 
-      # The second element of every consecutive pair that overlaps past the threshold.
-      def repeated_pairs(texts)
-        texts.each_cons(2).filter_map do |a, b|
-          b if similar?(a, b)
+      # Walks a session in order and returns the customer texts that repeat something the
+      # customer had ALREADY said and the agent had already answered. Two consecutive
+      # customer messages with nothing between them are one person typing (see
+      # #repetition_findings), so they never pair.
+      def repeated_after_a_reply(list)
+        previous = nil
+        answered = false
+
+        list.each_with_object([]) do |message, hits|
+          next answered = true if MessageOrigin.agent?(message)
+          next unless customer_text?(message)
+
+          text = message["content"].to_s
+          hits << text if previous && answered && similar?(previous, text)
+          previous = text
+          answered = false
         end
+      end
+
+      # What the CUSTOMER actually said. A message that DECLARES its origin is taken at its
+      # word; one that declares nothing falls back to the tag heuristic, which is all a
+      # pre-origin transcript offers.
+      def customer_text?(message)
+        MessageOrigin.customer?(message) &&
+          !INJECTED_FRAGMENT_RE.match?(message["content"].to_s.lstrip)
       end
 
       def similar?(first, second)

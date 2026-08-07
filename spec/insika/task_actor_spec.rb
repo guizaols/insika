@@ -27,6 +27,66 @@ RSpec.describe Insika::TaskActor do
     end
   end
 
+  # RFC-0015 §5.2 — the selective drain the SteerInjector uses. It runs inside RubyLLM's
+  # tool loop, where `drain!` would turn "a message arrived" into a new place the turn can
+  # die: cancellation is only ever observed at the Executor's own stage boundaries.
+  describe "#take_user_messages!" do
+    it "takes the steered messages, in order, and clears the buffer" do
+      Sync do
+        actor = described_class.new(task_id: "t")
+        actor.post(:user_message, "1234567")
+        actor.post(:user_message, "aliás")
+
+        expect(actor.take_user_messages!).to eq(%w[1234567 aliás])
+        expect(actor.take_user_messages!).to eq([]) # taken once
+      end
+    end
+
+    it "also takes what an earlier drain!/await already buffered" do
+      Sync do
+        actor = described_class.new(task_id: "t")
+        actor.post(:user_message, "antes")
+        actor.drain!
+        actor.post(:user_message, "depois")
+
+        expect(actor.take_user_messages!).to eq(%w[antes depois])
+      end
+    end
+
+    it "does NOT observe a pending :cancel — it puts it back for the next real boundary" do
+      Sync do
+        actor = described_class.new(task_id: "t")
+        actor.post(:cancel)
+        actor.post(:user_message, "1234567")
+
+        expect(actor.take_user_messages!).to eq(["1234567"])
+        expect { actor.drain! }.to raise_error(Insika::CancelledError) # still there
+      end
+    end
+
+    it "leaves an operator's :pause armed for the stage boundary that honors it" do
+      Sync do
+        actor = described_class.new(task_id: "t")
+        actor.post(:pause)
+        actor.take_user_messages!
+
+        expect(actor.pause_requested?).to be(false) # not observed here
+        actor.drain!
+        expect(actor.pause_requested?).to be(true)
+      end
+    end
+
+    it "counts every message the run was ASKED to absorb, so the bound cannot be reset" do
+      Sync do
+        actor = described_class.new(task_id: "t")
+        2.times { actor.post(:user_message, "x") }
+        actor.take_user_messages!
+
+        expect(actor.user_messages_posted).to eq(2)
+      end
+    end
+  end
+
   it "accumulates :user_message (reserved) without raising" do
     Sync do
       actor = described_class.new(task_id: "t")
