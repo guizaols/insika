@@ -23,16 +23,20 @@ module Insika
     class Gate
       # The verdict for one candidate. `passed` is the only field the caller acts on;
       # the rest is what an operator reads to decide whether the loop earns its keep.
-      # `tokens` is what the replay cost, as the deployment reported it, or nil when
-      # no turn carried usage. It is what the panel's budget (§3.9) spends and what
-      # the operator reads on the run — a gate is the expensive half of refinement and
-      # a loop whose cost is invisible is one nobody can decide to keep.
+      # `tokens` is what the replay SENT, cache included, as the deployment reported
+      # it — nil when no turn carried usage. `cached` is how much of that came from
+      # the prompt cache, kept separate because it is what explains one candidate
+      # costing 8× another over the same cases. `tokens` is what the panel's budget
+      # (§3.9) spends and what the operator reads on the run: a gate is the expensive
+      # half of refinement and a loop whose cost is invisible is one nobody can decide
+      # to keep.
       Report = Data.define(:candidate_id, :passed, :reason, :cases, :passed_cases,
-                           :baseline_cases, :regressions, :report, :tokens) do
+                           :baseline_cases, :regressions, :report, :tokens, :cached) do
         def to_h
           { "candidate_id" => candidate_id, "passed" => passed, "reason" => reason,
             "cases" => cases, "passed_cases" => passed_cases, "baseline_cases" => baseline_cases,
-            "regressions" => regressions, "report" => report, "tokens" => tokens }
+            "regressions" => regressions, "report" => report, "tokens" => tokens,
+            "cached" => cached }
         end
       end
 
@@ -93,10 +97,34 @@ module Insika
                                     "then re-record the baseline from a green run")
         end
 
+        # And a baseline JUDGED by a rubric, replayed with no judge, is the third
+        # shape of the same hole — the one this gate actually shipped with.
+        #
+        # `CaseResult#pass?` reads a missing judge verdict as a pass (a rubric'd case
+        # is `judge_pending?`, which nothing consults), so a replay with no judge
+        # scores every rubric case as passing. Compared against a baseline recorded
+        # WITH a judge, that is not a weaker measurement, it is an inverted one:
+        # every candidate reads as an improvement.
+        #
+        # Measured, not reasoned: gating the real pilot agent with `settings["evals"]`
+        # unset reported **6/6, no regression** against a baseline the same corpus had
+        # just scored **2/6** — `produto-sem-cep` was judged 0.0 and "passed". Both
+        # candidates on the panel cleared. That is §3.7's failure exactly: the CLI and
+        # the gate, the two callers of the one evaluator, disagreeing about what the
+        # corpus measures.
+        judge = @judge_factory&.call
+        if judge.nil? && judged?(baseline)
+          return refusal(candidate, "the recorded baseline for '#{agent_id}' carries judge scores but no " \
+                                    "judge is configured — a rubric'd case with no verdict counts as a " \
+                                    "PASS, so every candidate would beat it. Configure the judge panel " \
+                                    "(Studio → Settings → Evals, or `settings[\"evals\"][\"judges\"]`) or " \
+                                    "re-record the baseline without one")
+        end
+
         clone_id = clone_id_for(agent_id, run_id)
         begin
           build_clone(agent_id, clone_id, candidate)
-          ran = replay(cases, clone_id)
+          ran = replay(cases, clone_id, judge)
           verdict(candidate, ran, baseline, tolerance || @tolerance)
         rescue StandardError => e
           refusal(candidate, "gate failed to run: #{e.class}: #{e.message}")
@@ -113,6 +141,14 @@ module Insika
       # strength, and it is worth being able to say out loud.
       def passing_cases(baseline)
         (baseline["cases"] || {}).count { |_id, entry| entry.is_a?(Hash) && entry["pass"] }
+      end
+
+      # Was this baseline recorded with a judge? A single scored case is enough: it
+      # proves the accepted state was measured by a rubric the replay has to match.
+      # A baseline with no scores at all was recorded blind too, so both sides are
+      # equally deterministic and the comparison, while weak, is not inverted.
+      def judged?(baseline)
+        (baseline["cases"] || {}).any? { |_id, entry| entry.is_a?(Hash) && !entry["score"].nil? }
       end
 
       private
@@ -147,10 +183,9 @@ module Insika
       #
       # The RunCases are kept whole (not `.map(&:result)`) because the token counts
       # ride on them, and the budget is only honest if it sees what the replay spent.
-      def replay(cases, clone_id)
+      def replay(cases, clone_id, judge)
         retargeted = cases.map { |g| g.class.new(**g.to_h.merge(agent: clone_id)) }
-        runner = Insika::Evals::Runner.new(transport: @transport_factory.call,
-                                           judge: @judge_factory&.call,
+        runner = Insika::Evals::Runner.new(transport: @transport_factory.call, judge: judge,
                                            capabilities: @capabilities_factory&.call)
         runner.run(retargeted)
       end
@@ -161,6 +196,7 @@ module Insika
         passed = results.count(&:pass?)
         graded = results.reject(&:skipped?).size
         spent = ran.filter_map(&:tokens)
+        cached = ran.filter_map(&:cached)
 
         Report.new(
           candidate_id: candidate.id, passed: regressions.empty?,
@@ -169,7 +205,8 @@ module Insika
           baseline_cases: (baseline["cases"] || {}).size,
           regressions: regressions.map { |r| { "id" => r.id, "kind" => r.kind, "detail" => r.detail } },
           report: Insika::Evals::Report.to_h(results, at: Time.now.utc.iso8601),
-          tokens: spent.empty? ? nil : spent.sum
+          tokens: spent.empty? ? nil : spent.sum,
+          cached: cached.empty? ? nil : cached.sum
         )
       end
 
@@ -181,7 +218,7 @@ module Insika
       def refusal(candidate, reason)
         Report.new(candidate_id: candidate.id, passed: false, reason: reason,
                    cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil,
-                   tokens: nil)
+                   tokens: nil, cached: nil)
       end
 
       # Both halves, both tolerant of a missing one: this runs in an `ensure` after a

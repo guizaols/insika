@@ -132,6 +132,24 @@ RSpec.describe Insika::Evals::Runner do
       expect(described_class.new(transport: t).run_case(multi).tokens).to eq(800)
     end
 
+    # `total_tokens` is input + output and EXCLUDES the cached prefix (see
+    # `Executor#usage_of`), so reading it as the cost of a turn under-reads a cached
+    # identity by an order of magnitude. Measured on the pilot: 88 total against
+    # 26_624 cached, on a 27k-token pack.
+    it "bills the prompt cache too, and carries it separately" do
+      t = FakeTransport.new(usage: { "total_tokens" => 88, "cached_tokens" => 26_624,
+                                     "cache_creation_tokens" => 100 }) { ok_result }
+      rc = described_class.new(transport: t).run_case(multi)
+
+      expect(rc.tokens).to eq((88 + 26_624 + 100) * 2)
+      expect(rc.cached).to eq((26_624 + 100) * 2)
+    end
+
+    it "reports no cache when the provider mentions none" do
+      t = FakeTransport.new(usage: { "total_tokens" => 400 }) { ok_result }
+      expect(described_class.new(transport: t).run_case(multi).cached).to be_nil
+    end
+
     # "The provider did not say" and "it cost nothing" are different facts, and a
     # budget that confuses them stops being a budget.
     it "is nil when no turn reported usage" do

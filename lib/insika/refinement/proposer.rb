@@ -66,6 +66,7 @@ module Insika
         parsed = parse(text_of(answer))
         parsed["proposer"] = @model
         parsed["tokens"] = tokens_of(answer)
+        parsed["cached"] = cached_of(answer)
         parsed
       end
 
@@ -75,12 +76,21 @@ module Insika
 
       # nil when the provider said nothing — never 0. `Budget` distinguishes the two
       # and an operator reading "0 tokens" for a real model call would be reading a
-      # lie the record cannot correct.
+      # lie the record cannot correct. The cached prefix is INCLUDED, for the same
+      # reason `Evals::Runner#billed_tokens` includes it: a ceiling that cannot see
+      # what the cache served is not a ceiling on what was sent.
       def tokens_of(answer)
         return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
 
-        total = answer.input_tokens.to_i + answer.output_tokens.to_i
+        total = answer.input_tokens.to_i + answer.output_tokens.to_i + cached_of(answer).to_i
         total.positive? ? total : nil
+      end
+
+      def cached_of(answer)
+        return nil unless answer.respond_to?(:cached_tokens)
+
+        cached = answer.cached_tokens.to_i
+        cached.positive? ? cached : nil
       end
 
       # JSON or nothing. ````json` fences are the common wrapper and stripping them is

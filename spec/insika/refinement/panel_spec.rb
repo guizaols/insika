@@ -36,7 +36,7 @@ RSpec.describe Insika::Refinement::Budget do
     budget.spend(0)
     budget.spend(10)
 
-    expect(budget.to_h).to eq("tokens" => 100, "spent" => 10, "unmetered" => 2)
+    expect(budget.to_h).to eq("tokens" => 100, "spent" => 10, "cached" => 0, "unmetered" => 2)
     expect(budget).not_to be_exhausted
   end
 end
@@ -82,7 +82,7 @@ RSpec.describe Insika::Refinement::Panel do
       Insika::Refinement::Gate::Report.new(
         candidate_id: candidate.id, passed: passed_cases.positive?, reason: nil,
         cases: 3, passed_cases: passed_cases, baseline_cases: 3, regressions: [],
-        report: {}, tokens: tokens
+        report: {}, tokens: tokens, cached: nil
       )
     end
   end

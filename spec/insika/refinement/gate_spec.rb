@@ -127,6 +127,56 @@ RSpec.describe Insika::Refinement::Gate do
       expect(transport.agents_seen).to be_empty
       expect(profiles.ids).to eq(["support"])
     end
+
+    # The third shape of "a gate that cannot fail", and the one this shipped with.
+    # `CaseResult#pass?` reads a MISSING judge verdict as a pass, so a replay with no
+    # judge scores every rubric case as passing — against a baseline recorded WITH a
+    # judge that is not a weaker measurement, it is an inverted one.
+    #
+    # Measured, not reasoned: gating the real pilot with `settings["evals"]` unset
+    # reported 6/6 with no regression against a baseline the same corpus had just
+    # scored 2/6.
+    describe "a judged baseline with no judge" do
+      before { seed_case }
+
+      def judged_gate(judge_factory)
+        transport = GateTransportDouble.new({ "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] } })
+        described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
+                            baselines: baselines, transport_factory: -> { transport },
+                            judge_factory: judge_factory)
+      end
+
+      it "refuses, naming where to configure the judge" do
+        baseline!("quotes-freight" => { "pass" => true, "score" => 0.9 })
+        report = judged_gate(-> { nil }).score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+        expect(report.passed).to be(false)
+        expect(report.reason).to match(/carries judge scores but no judge is configured/)
+        expect(report.reason).to match(/Settings → Evals/)
+        expect(profiles.ids).to eq(["support"]) # nothing was cloned, nothing was spent
+      end
+
+      it "runs when the judge is there" do
+        baseline!("quotes-freight" => { "pass" => true, "score" => 0.9 })
+        judge = Struct.new(:calls) do
+          def score(golden:, result:) = Insika::Evals::Judge::Verdict.new(score: 0.9, pass: true, reason: "ok")
+        end.new(0)
+        report = judged_gate(-> { judge }).score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+        expect(report.reason).to be_nil
+        expect(report.passed).to be(true)
+      end
+
+      # A baseline with no scores was recorded blind too, so both sides are equally
+      # deterministic: weak, but not inverted. Refusing it would wedge every
+      # deployment that never configured a judge, which is the common case.
+      it "runs against an unjudged baseline with no judge" do
+        baseline!("quotes-freight" => { "pass" => true, "score" => nil })
+        report = judged_gate(nil).score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+        expect(report.reason).to be_nil
+      end
+    end
   end
 
   describe "the clone" do
@@ -283,6 +333,19 @@ RSpec.describe Insika::Refinement::Gate do
                           "asks-cep" => { text: "R$ 20", tools: ["shipping_quote"] } },
                 usage: { "total_tokens" => 300 })
       expect(g.score(agent_id: "support", candidate: candidate, run_id: "r1").tokens).to eq(600)
+    end
+
+    # The engine's `total_tokens` is input + output and EXCLUDES the cached prefix.
+    # Measured on the pilot: a real turn reports 88 total against 26_624 cached, so a
+    # ceiling built on `total_tokens` alone would let a run send ~300× what it said.
+    it "counts what the turn SENT, prompt cache included" do
+      g, = gate(script: { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] },
+                          "asks-cep" => { text: "R$ 20", tools: ["shipping_quote"] } },
+                usage: { "total_tokens" => 88, "cached_tokens" => 26_624 })
+      report = g.score(agent_id: "support", candidate: candidate, run_id: "r1")
+
+      expect(report.tokens).to eq((88 + 26_624) * 2)
+      expect(report.cached).to eq(26_624 * 2)
     end
 
     it "is nil when the provider metered nothing, and nil on a refusal" do
