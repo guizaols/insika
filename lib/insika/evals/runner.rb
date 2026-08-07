@@ -14,7 +14,10 @@ module Insika
     # turn's result. A turn that errors aborts the rest of that conversation (there's
     # nothing to continue from) and fails the case.
     class Runner
-      RunCase = Struct.new(:result, :timings, keyword_init: true)
+      # `tokens` is what the whole case cost, summed over its turns, or nil when no
+      # turn reported usage. Only the refinement gate reads it (RFC-0013 §3.9 records
+      # a run's cost); the report and the exit code are untouched.
+      RunCase = Struct.new(:result, :timings, :tokens, keyword_init: true)
 
       # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
       # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
@@ -49,9 +52,11 @@ module Insika
         conv = @conv_map[golden.id] || "eval-#{golden.id}"
         turns = []
         timings = []
+        spent = []
         golden.user_turns.each do |message|
           outcome = @transport.turn(agent: golden.agent, conv: conv, message: message)
           timings << { ttfb: outcome.ttfb, total: outcome.total }
+          spent << total_tokens(outcome.usage)
           turns << outcome.result
           break if outcome.result.error
         end
@@ -62,10 +67,26 @@ module Insika
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
-        RunCase.new(result: result, timings: timings)
+        RunCase.new(result: result, timings: timings, tokens: sum_tokens(spent))
       end
 
       private
+
+      # nil when NO turn reported usage; otherwise the sum of the ones that did. A
+      # partially-metered case is reported as what was actually measured, low rather
+      # than absent — a budget under-counting is a smaller lie than a budget that
+      # throws the number away because one leg was silent.
+      def sum_tokens(spent)
+        counted = spent.compact
+        counted.empty? ? nil : counted.sum
+      end
+
+      def total_tokens(usage)
+        return nil unless usage.is_a?(Hash)
+
+        value = usage["total_tokens"] || usage[:total_tokens]
+        value&.to_i
+      end
 
       # -> the reason to skip, or nil to run. A case with no `requires` always runs
       # (and never even asks), which keeps the whole existing corpus untouched.

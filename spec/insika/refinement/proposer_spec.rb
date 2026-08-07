@@ -33,6 +33,16 @@ RSpec.describe Insika::Refinement::Proposer do
                 "addresses": ["tool_error:shipping_quote"]}]}
   JSON
 
+  # The panel's budget (§3.9) spends what a proposal cost, so the ask may answer with
+  # the provider's MESSAGE and not only its text. A plain String stays valid and
+  # simply reports no cost — which is what every fake, and every older caller, does.
+  it "records what the proposal cost when the provider says, and nil when it does not" do
+    message = Struct.new(:content, :input_tokens, :output_tokens).new(JSON_REPLY, 900, 100)
+    expect(proposer(message).propose(agent_id: "s", findings: findings, files: files)["tokens"])
+      .to eq(1000)
+    expect(propose(JSON_REPLY)["tokens"]).to be_nil
+  end
+
   it "returns the raw candidate, stamped with the model that wrote it" do
     raw = propose(JSON_REPLY)
 
@@ -158,5 +168,57 @@ RSpec.describe Insika::Refinement::ProposerFactory do
   it "is nil when nothing is configured" do
     proposer, = build({ "mode" => "propose" })
     expect(proposer).to be_nil
+  end
+
+  # RFC-0013 §3.9 (phase D): the same resolution, plural.
+  describe ".panel" do
+    def panel(config, utility_model: nil, max: nil)
+      resolved = []
+      built = described_class.panel(config, utility_model: utility_model, max: max,
+                                            ask_factory: lambda { |model, provider|
+                                              resolved << [model, provider]
+                                              ->(_) { "{}" }
+                                            })
+      [built, resolved]
+    end
+
+    it "builds one proposer per configured model, in order" do
+      built, resolved = panel({ "proposers" => ["deepseek/deepseek-chat", "gpt-5-mini"] })
+      expect(built.size).to eq(2)
+      expect(resolved).to eq([["deepseek-chat", "deepseek"], ["gpt-5-mini", nil]])
+    end
+
+    # Both syntaxes already coexist in this config (`proposer` is a bare ref, `judges`
+    # are hashes); refusing one would only teach operators which page they read.
+    it "accepts the RFC's hash form alongside a bare ref" do
+      _, resolved = panel({ "proposers" => ["deepseek-chat",
+                                            { "model" => "gpt-5-mini", "provider" => "openai" }] })
+      expect(resolved).to eq([["deepseek-chat", nil], ["gpt-5-mini", "openai"]])
+    end
+
+    # D6's reasoning, applied to the proposers: one model sampled twice at temperature
+    # 0 measures its variance, not a second opinion.
+    it "dedupes a model listed twice" do
+      built, = panel({ "proposers" => ["gpt-5-mini", "gpt-5-mini"] })
+      expect(built.size).to eq(1)
+    end
+
+    it "caps the panel at the fan-out limit" do
+      built, = panel({ "proposers" => %w[a b c d] }, max: 2)
+      expect(built.map(&:model)).to eq(%w[a b])
+    end
+
+    it "falls back to the single proposer, then to the utility_model" do
+      single, = panel({ "proposer" => "gpt-5-mini" })
+      expect(single.map(&:model)).to eq(["gpt-5-mini"])
+
+      inherited, = panel({ "mode" => "propose" }, utility_model: "deepseek-chat")
+      expect(inherited.map(&:model)).to eq(["deepseek-chat"])
+    end
+
+    it "is empty when nothing is configured" do
+      built, = panel({ "mode" => "propose" })
+      expect(built).to be_empty
+    end
   end
 end

@@ -23,7 +23,7 @@ RSpec.describe Insika::Refinement::Gate do
   class GateTransportDouble
     attr_reader :agents_seen
 
-    def initialize(script) = (@script = script; @agents_seen = [])
+    def initialize(script, usage: nil) = (@script = script; @usage = usage; @agents_seen = [])
 
     def turn(agent:, conv:, message:)
       @agents_seen << agent
@@ -32,7 +32,7 @@ RSpec.describe Insika::Refinement::Gate do
         result: Insika::Evals::TurnResult.new(output_text: outcome[:text],
                                               tool_calls: Array(outcome[:tools]).map { |t| { "name" => t, "status" => "ok" } },
                                               error: outcome[:error]),
-        ttfb: 1.0, total: 2.0
+        ttfb: 1.0, total: 2.0, usage: @usage
       )
     end
   end
@@ -58,8 +58,8 @@ RSpec.describe Insika::Refinement::Gate do
     )
   end
 
-  def gate(script: { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] } })
-    transport = GateTransportDouble.new(script)
+  def gate(script: { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] } }, usage: nil)
+    transport = GateTransportDouble.new(script, usage: usage)
     [described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
                          baselines: baselines, transport_factory: -> { transport }),
      transport]
@@ -240,7 +240,7 @@ RSpec.describe Insika::Refinement::Gate do
     end
 
     def gate_with(capabilities_factory)
-      transport = GateTransportDouble.new("quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] })
+      transport = GateTransportDouble.new({ "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] } })
       described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
                           baselines: baselines, transport_factory: -> { transport },
                           capabilities_factory: capabilities_factory)
@@ -267,5 +267,32 @@ RSpec.describe Insika::Refinement::Gate do
     g, = gate
     expect(g.clone_id_for("support", "9f2c1b40-aaaa")).to eq("support-cand-9f2c1b40")
     expect(g.clone_id_for("support", "1111-2222")).to eq("support-cand-11112222")
+  end
+
+  # RFC-0013 §3.9: a gate is the expensive half of refinement and a loop whose cost
+  # is invisible is one nobody can decide to keep. The panel's budget spends this.
+  describe "what the replay cost" do
+    before do
+      seed_case
+      seed_case(id: "asks-cep")
+      baseline!("quotes-freight" => { "pass" => true }, "asks-cep" => { "pass" => true })
+    end
+
+    it "sums what the deployment reported across the replayed cases" do
+      g, = gate(script: { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] },
+                          "asks-cep" => { text: "R$ 20", tools: ["shipping_quote"] } },
+                usage: { "total_tokens" => 300 })
+      expect(g.score(agent_id: "support", candidate: candidate, run_id: "r1").tokens).to eq(600)
+    end
+
+    it "is nil when the provider metered nothing, and nil on a refusal" do
+      g, = gate(script: { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] },
+                          "asks-cep" => { text: "R$ 20", tools: ["shipping_quote"] } })
+      expect(g.score(agent_id: "support", candidate: candidate, run_id: "r1").tokens).to be_nil
+
+      baselines.put("nobody", { "cases" => {} })
+      refused = g.score(agent_id: "support", candidate: candidate, run_id: "r1", tolerance: 0)
+      expect(refused.tokens).to be_nil
+    end
   end
 end

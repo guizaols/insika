@@ -184,10 +184,13 @@ end
 | `window.last_sessions` | 200 | conversations read when the run is not incremental |
 | `max_findings` | 20 | cap on the report |
 | `exclude_sessions` | none | session-id prefixes to drop |
-| `mode` | `"report"` | `report` reads and writes nothing. `propose` allows a gated, human-approved edit (below). A mode the engine does not know is refused, never silently downgraded |
+| `mode` | `"report"` | `report` reads and writes nothing. `propose` allows a gated, human-approved edit (below). `auto_apply` lets a gate-passing edit land unattended — off by default, and read [what it costs you](#applying-without-a-human) first. A mode the engine does not know is refused, never silently downgraded |
 | `files` | none | the ONLY files a proposal may edit. Empty means report-only |
 | `proposer` | the platform `utility_model` | which model writes the candidate (`"deepseek/deepseek-chat"` or a bare model name). Neither set means no proposal — the engine never picks a model to spend your budget on |
+| `proposers` | falls back to `proposer` | a **panel**: several models, each writing its own candidate. `["deepseek/deepseek-chat", {model: "gpt-5-mini", provider: "openai"}]` — either syntax |
+| `budget.tokens` | unlimited | what one run may spend across every proposal and every gate replay |
 | `max_edits` | 3 | edits a single proposal may carry |
+| `auto_apply_max_edits` | 1 | edits an **unattended** apply may carry. A bigger diff waits for a person |
 | `max_bytes` | 1200 | size of one edit's replacement text |
 | `max_total_growth` | 0.15 | how much a proposal may grow a file, as a fraction of its current size |
 
@@ -200,10 +203,11 @@ the OpenTelemetry bridge — see [Observability](OBSERVABILITY.md)) can watch it
 |---|---|
 | `:refinement_started` | agent, run id, window |
 | `:refinement_report` | agent, run id, status, findings, sessions, turns |
-| `:refinement_proposed` | agent, run id, proposer, edits, dropped |
-| `:refinement_gated` | agent, run id, passed, reason, cases, passed_cases, regressions |
+| `:refinement_proposed` | agent, run id, candidates, proposers, edits |
+| `:refinement_gated` | agent, run id, passed, reason, cases, passed_cases, regressions, candidates, tokens |
 | `:refinement_applied` | agent, run id, by, files, edits |
 | `:refinement_rejected` | agent, run id, by |
+| `:refinement_auto_apply_skipped` | agent, run id, edits, max_edits |
 
 File **names** appear on the applied event, because an operator needs to know what
 changed. File **contents** never do.
@@ -296,6 +300,48 @@ instructions removed it, and the model now says out loud which findings it is
 declining to address. It will not catch every case: when you review a proposal, the
 first question worth asking is whether the finding it addresses is behaviour at all.
 
+### More than one proposer
+
+`proposers` asks several models the same question and gates every answer:
+
+```ruby
+refine mode: "propose", files: %w[TOOLS.md],
+       proposers: ["deepseek/deepseek-chat", "gpt-5-mini"],
+       budget: { tokens: 200_000 }
+```
+
+They are **independent, not consensus-seeking**. Each is shown the same findings and
+the same files and writes its own candidate; the gate then scores each one and you
+are shown the best survivor, with the others listed under it. Convergence only ever
+breaks a tie: two models agreeing on wording is weak evidence, and a golden case
+passing is strong evidence. Ranking is highest score, then the smaller diff, then how
+many models converged.
+
+Two models that write the *identical* edit are gated once, not twice — the agreement
+is recorded and the replay is not paid for again. A model that answers prose, times
+out or 500s takes itself out of the panel and the rest proceeds; all of them failing
+is an error, not a silent empty result. The panel runs concurrently and is capped at
+the subagent fan-out (8, `INSIKA_SUBAGENT_FANOUT_CAP`).
+
+A panel of one is exactly what `proposer` already did, which is why nothing changes
+for an agent that names a single model.
+
+### What a run may spend
+
+A panel of 3 over a 7-case golden set is 3 model calls plus **21 replayed
+conversations**, each a real turn with real tools. That is the honest objection to
+this whole feature, and `budget.tokens` is the answer to it: a ceiling checked before
+each expensive step, never in the middle of one. A candidate the run could not afford
+is recorded as "not gated — the budget was spent", never dropped in silence, and the
+run's cost is on the record where you can see whether the loop earns its keep.
+
+Two things to know about the number. It counts what the **deployment reported** — the
+proposal's tokens and the replay's, as they came back from the provider. And when a
+provider reports nothing, that leg is tallied as *unmetered* rather than as zero,
+because a budget that quietly reads unmetered spend as free stops being a budget. If
+your provider is silent, the bounds that still hold are structural: the fan-out cap on
+the panel, `max_edits`, and the gate's own refusals.
+
 ### What the gate needs
 
 Two things, and it refuses without either:
@@ -340,6 +386,29 @@ The apply re-checks every `before` against the file as it is now and refuses the
 whole proposal if anything drifted. A partial application would leave a prompt in a
 state nobody reviewed and the gate never scored.
 
+### Applying without a human
+
+`mode: "auto_apply"` is the one setting that lets a prompt change while nobody is
+watching. It is off by default and it is deliberately narrow — it needs **all** of:
+
+- the mode, set explicitly on that agent;
+- a gate **pass** with zero regressions (a refused candidate is never auto-applied);
+- a diff no larger than `auto_apply_max_edits`, which defaults to **1**.
+
+A candidate that passes but is too large is **not rejected** — it waits for a person.
+"Too big to apply unattended" and "wrong" are different verdicts, and collapsing them
+would throw away a proposal the gate already paid to score.
+
+An unattended apply goes through the same code an approval does: the same staleness
+re-check, the same versioned write, the same `:refinement_applied` event. So the undo
+is the same one — Restore in the file's History — and the Refinement page shows what
+changed, why, and the link to get there.
+
+The honest framing: this trades your review for your golden set. It is worth turning
+on when the cases genuinely cover the behaviour you care about, and it is a bad idea
+before that — see [what the gate cannot catch](#what-the-gate-can-and-cannot-catch),
+which is the list of things auto-apply will happily wave through.
+
 ### What the gate can and cannot catch
 
 Worth being precise about, because the gate is easy to trust more than it deserves.
@@ -376,12 +445,12 @@ prompt edits have real leverage, and it is also where they do damage.
 
 ## What this is not
 
-It does not decide anything on its own. A proposal is written when you ask for one
-and applied when you approve it; there is no mode in which your prompt changes while
-you are not looking. It has no scheduler: a run happens because a person or a cron
-asked for one. And it cannot touch your guardrails, tools, policies, model pins or
-limits, and not because a prompt tells it not to — there is no code path (see
-[Security](SECURITY.md)).
+It has no scheduler: a run happens because a person or a cron asked for one, never
+because a timer inside the engine went off. A proposal is written when you ask for
+one, and — unless you turned on [`auto_apply`](#applying-without-a-human), which is
+off until you do and bounded when you do — applied when you approve it. And it cannot
+touch your guardrails, tools, policies, model pins or limits, and not because a prompt
+tells it not to — there is no code path (see [Security](SECURITY.md)).
 
 And if the findings turn out to be noise in your deployment, the correct answer is
 to stop at the report. That is a valid steady state, not a half-finished setup.

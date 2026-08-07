@@ -69,7 +69,8 @@ module Insika
     #                                   itself; the FS boundary + approvals do.
     :refinement,                      # self-improvement config (RFC-0013 §3.8):
     #                                   { mode: "report"|"propose"|"auto_apply", window: {…},
-    #                                   files: [allowlist], max_findings:, … }. nil/absent =
+    #                                   files: [allowlist], proposers: [refs], budget: {tokens:},
+    #                                   auto_apply_max_edits:, max_findings:, … }. nil/absent =
     #                                   REPORT-ONLY (phase A writes nothing to the agent, so
     #                                   reading your own traces needs no opt-in); `propose`
     #                                   and above must be enabled explicitly. It is CONFIG,

@@ -124,6 +124,9 @@ require_relative "insika/baseline_store"
 # RFC-0013 §3.5: scores a candidate by REPLAYING it. After evals (the runner and
 # the baseline comparison) and after the stores it clones an agent through.
 require_relative "insika/refinement/gate"
+# RFC-0013 §3.9 (phase D): the proposer PANEL and the run's token budget. Needs the
+# candidate format and the gate's Report shape, so it loads after both.
+require_relative "insika/refinement/panel"
 require_relative "insika/mcp_store"
 require_relative "insika/mcp_http_client"
 require_relative "insika/mcp_tool_ingestor"

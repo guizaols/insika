@@ -21,15 +21,25 @@ RSpec.describe "refinement phase C commands" do
   class GateDouble
     attr_reader :scored
 
-    def initialize(passed: true) = (@passed = passed; @scored = [])
+    # `passed` may be a boolean (every candidate scores the same) or a lambda over the
+    # candidate, which is what a PANEL spec needs to make one member win.
+    def initialize(passed: true, tokens: nil, passed_cases: nil)
+      @passed = passed
+      @tokens = tokens
+      @passed_cases = passed_cases
+      @scored = []
+    end
 
     def score(agent_id:, candidate:, run_id:, tolerance: nil)
       @scored << { agent_id: agent_id, candidate: candidate, tolerance: tolerance }
+      passed = @passed.respond_to?(:call) ? @passed.call(candidate) : @passed
+      cases = @passed_cases.respond_to?(:call) ? @passed_cases.call(candidate) : (passed ? 1 : 0)
       Insika::Refinement::Gate::Report.new(
-        candidate_id: candidate.id, passed: @passed,
-        reason: @passed ? nil : "1 regression(s): quotes (pass→fail)",
-        cases: 1, passed_cases: @passed ? 1 : 0, baseline_cases: 1,
-        regressions: @passed ? [] : [{ "id" => "quotes", "kind" => "pass→fail" }], report: {}
+        candidate_id: candidate.id, passed: passed,
+        reason: passed ? nil : "1 regression(s): quotes (pass→fail)",
+        cases: 1, passed_cases: cases, baseline_cases: 1,
+        regressions: passed ? [] : [{ "id" => "quotes", "kind" => "pass→fail" }], report: {},
+        tokens: @tokens.respond_to?(:call) ? @tokens.call(candidate) : @tokens
       )
     end
   end
@@ -51,11 +61,12 @@ RSpec.describe "refinement phase C commands" do
        "addresses" => ["tool_error:shipping_quote"] }]
   end
 
-  def gate_command(gate = GateDouble.new, proposer_factory: nil)
+  def gate_command(gate = GateDouble.new, proposer_factory: nil, resolver: nil)
     [Insika::Commands::GateRefinement.new(profiles: profiles, refinement_store: runs,
                                           agent_file_store: agent_files, gate: gate,
                                           event_stream: events,
-                                          proposer_factory: proposer_factory), gate]
+                                          proposer_factory: proposer_factory,
+                                          resolver: resolver), gate]
   end
 
   # A proposer whose model answers with `reply`, recording what it was shown.
@@ -235,6 +246,131 @@ RSpec.describe "refinement phase C commands" do
         expect { dispatch(cmd, { run_id: run.id, propose: true }) }
           .to raise_error(Insika::ValidationError, /mode 'report'/)
         expect(seen).to be_empty
+      end
+    end
+
+    # RFC-0013 §3.9 (phase D). The command's shape does not change: N models write N
+    # candidates, the gate scores each, and the best SURVIVOR is the one proposal a
+    # human is shown. What is new is what the RUN records — the whole panel, and what
+    # it cost.
+    describe "the proposer panel" do
+      def panel_factory(*afters)
+        lambda { |_config|
+          afters.each_with_index.map do |after, i|
+            Insika::Refinement::Proposer.new(
+              model: "model-#{i}",
+              ask: ->(_p) { JSON.generate({ "edits" => edits(after: after) }) }
+            )
+          end
+        }
+      end
+
+      it "records every candidate and promotes the highest-scoring one" do
+        run = completed_run
+        gate = GateDouble.new(passed_cases: ->(c) { c.edits.first.after.include?("CEP") ? 3 : 1 })
+        cmd, = gate_command(gate, proposer_factory: panel_factory("Be warm.", AFTER))
+        gated = dispatch(cmd, { run_id: run.id, propose: true })
+
+        expect(gate.scored.size).to eq(2)
+        expect(gated.status).to eq(:awaiting_approval)
+        expect(gated.candidate["proposer"]).to eq("model-1")
+        expect(gated.panel.size).to eq(2)
+        expect(gated.panel.map { |e| e["gate"]["passed_cases"] }).to eq([1, 3])
+      end
+
+      it "rejects the run when no member of the panel survived" do
+        run = completed_run
+        cmd, = gate_command(GateDouble.new(passed: false),
+                            proposer_factory: panel_factory("Be warm.", AFTER))
+        gated = dispatch(cmd, { run_id: run.id, propose: true })
+
+        expect(gated.status).to eq(:rejected)
+        expect(gated.panel.size).to eq(2)
+        expect(gated.decision["note"]).to match(/pass→fail/)
+      end
+
+      # §3.9's honest objection, answered: a ceiling the operator sets, checked before
+      # each expensive step. The candidates it could not afford are recorded as such,
+      # never dropped in silence.
+      it "stops gating at the configured token budget and records the cost" do
+        profiles.put(Insika::AgentProfile.build(
+                       id: "support", model: "m",
+                       refinement: { "mode" => "propose", "files" => ["TOOLS.md"],
+                                     "budget" => { "tokens" => 100 } }
+                     ))
+        run = completed_run
+        gate = GateDouble.new(tokens: 150)
+        cmd, = gate_command(gate, proposer_factory: panel_factory("Be warm.", AFTER))
+        gated = dispatch(cmd, { run_id: run.id, propose: true })
+
+        expect(gate.scored.size).to eq(1)
+        expect(gated.cost["spent"]).to eq(150)
+        expect(gated.panel.last["gate"]["reason"]).to include("token budget (100) was spent")
+      end
+    end
+
+    # D2: the ONE path where a prompt changes with no human in the loop. Off by
+    # default, and narrow when on.
+    describe "mode: auto_apply" do
+      def auto_seed(max_edits: nil)
+        refinement = { "mode" => "auto_apply", "files" => ["TOOLS.md"] }
+        refinement["auto_apply_max_edits"] = max_edits if max_edits
+        profiles.put(Insika::AgentProfile.build(id: "support", model: "m", refinement: refinement))
+        agent_files.write("support", "TOOLS.md", BODY)
+      end
+
+      it "applies a gate-passing candidate through the same versioned write a human gets" do
+        auto_seed
+        run = completed_run
+        cmd, = gate_command(GateDouble.new, resolver: resolve_command)
+        applied = dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } })
+
+        expect(applied.status).to eq(:applied)
+        expect(applied.decision["by"]).to eq("auto_apply")
+        expect(agent_files.read("support", "TOOLS.md")).to include("Ask for the CEP first.")
+        expect(agent_files.versions("support", "TOOLS.md").first["content"]).to eq(BODY)
+      end
+
+      # "Too big to apply unattended" and "wrong" are different verdicts. Collapsing
+      # them would throw away a proposal the gate already paid to score.
+      it "parks a diff over auto_apply_max_edits on a human instead of rejecting it" do
+        auto_seed(max_edits: 1)
+        run = completed_run
+        two = edits + [{ "file" => "TOOLS.md", "op" => "append", "after" => "Always greet." }]
+        cmd, = gate_command(GateDouble.new, resolver: resolve_command)
+        gated = dispatch(cmd, { run_id: run.id, candidate: { "edits" => two } })
+
+        expect(gated.status).to eq(:awaiting_approval)
+        expect(agent_files.read("support", "TOOLS.md")).to eq(BODY)
+      end
+
+      it "never auto-applies what the gate refused" do
+        auto_seed
+        run = completed_run
+        cmd, = gate_command(GateDouble.new(passed: false), resolver: resolve_command)
+        gated = dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } })
+
+        expect(gated.status).to eq(:rejected)
+        expect(agent_files.read("support", "TOOLS.md")).to eq(BODY)
+      end
+
+      # A deployment that cannot apply must not record that it did.
+      it "leaves the run awaiting approval when no resolver is wired" do
+        auto_seed
+        run = completed_run
+        cmd, = gate_command(GateDouble.new)
+        gated = dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } })
+
+        expect(gated.status).to eq(:awaiting_approval)
+        expect(agent_files.read("support", "TOOLS.md")).to eq(BODY)
+      end
+
+      it "does not auto-apply an agent in mode: propose" do
+        run = completed_run
+        cmd, = gate_command(GateDouble.new, resolver: resolve_command)
+        gated = dispatch(cmd, { run_id: run.id, candidate: { "edits" => edits } })
+
+        expect(gated.status).to eq(:awaiting_approval)
       end
     end
 
