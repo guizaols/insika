@@ -15,9 +15,11 @@ module Insika
     # nothing to continue from) and fails the case.
     class Runner
       # `tokens` is what the whole case cost, summed over its turns, or nil when no
-      # turn reported usage. Only the refinement gate reads it (RFC-0013 §3.9 records
-      # a run's cost); the report and the exit code are untouched.
-      RunCase = Struct.new(:result, :timings, :tokens, keyword_init: true)
+      # turn reported usage. `cached` is how much of that was served from the prompt
+      # cache, carried separately because it is the number that explains a total.
+      # Only the refinement gate reads them (RFC-0013 §3.9 records a run's cost); the
+      # report and the exit code are untouched.
+      RunCase = Struct.new(:result, :timings, :tokens, :cached, keyword_init: true)
 
       # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
       # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
@@ -53,10 +55,12 @@ module Insika
         turns = []
         timings = []
         spent = []
+        cached = []
         golden.user_turns.each do |message|
           outcome = @transport.turn(agent: golden.agent, conv: conv, message: message)
           timings << { ttfb: outcome.ttfb, total: outcome.total }
-          spent << total_tokens(outcome.usage)
+          spent << billed_tokens(outcome.usage)
+          cached << cached_tokens(outcome.usage)
           turns << outcome.result
           break if outcome.result.error
         end
@@ -67,7 +71,8 @@ module Insika
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
-        RunCase.new(result: result, timings: timings, tokens: sum_tokens(spent))
+        RunCase.new(result: result, timings: timings, tokens: sum_tokens(spent),
+                    cached: sum_tokens(cached))
       end
 
       private
@@ -81,10 +86,33 @@ module Insika
         counted.empty? ? nil : counted.sum
       end
 
-      def total_tokens(usage)
+      # What the turn actually SENT, cache included. The engine's `total_tokens` is
+      # input + output and DELIBERATELY excludes the cached prefix (`Executor#usage_of`
+      # reports `cached_tokens` alongside it), so reading it as the cost of a turn
+      # under-reads a cached identity by an order of magnitude.
+      #
+      # Measured on the pilot: one real turn reports `total_tokens: 88` with
+      # `cached_tokens: 26624`. A refinement budget built on the first number would
+      # have let a run send ~300× what its ceiling said. Cached tokens are cheaper
+      # than fresh ones; they are not free, and a ceiling has to see them.
+      def billed_tokens(usage)
         return nil unless usage.is_a?(Hash)
 
-        value = usage["total_tokens"] || usage[:total_tokens]
+        total = read(usage, "total_tokens")
+        return nil if total.nil?
+
+        total + cached_tokens(usage).to_i
+      end
+
+      def cached_tokens(usage)
+        return nil unless usage.is_a?(Hash)
+
+        values = [read(usage, "cached_tokens"), read(usage, "cache_creation_tokens")].compact
+        values.empty? ? nil : values.sum
+      end
+
+      def read(usage, key)
+        value = usage[key] || usage[key.to_sym]
         value&.to_i
       end
 
