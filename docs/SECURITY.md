@@ -276,8 +276,37 @@ second copy of your customers' data:
 - **Provenance is ids.** A run record stores session ids, never their contents, and
   the events it emits carry counts only.
 
-A run also cannot change anything: it calls no model and writes nothing but its own
-report. Editing an agent from its traffic is a later, separately gated feature.
+### Editing an agent from its traffic
+
+A run can also propose a change to the agent's instructions, and that path is opt-in
+per agent (`refinement.mode`), off by default, and bounded by construction rather
+than by instruction:
+
+| Surface | Reachable? | Why |
+|---|---|---|
+| the files listed in `refinement.files` | **yes** | text you already edit by hand, versioned, one-click restore |
+| skill bodies and descriptions | **yes** | same trust level, same history |
+| guardrails, the safety corpus | **no** | a constrained thing does not edit its own constraints |
+| tool definitions and schemas | **no** | tools are authored by a person; a wrong schema is theirs to fix |
+| policies, approvals, denied tools | **no** | authorization is not a prompt concern |
+| model pins, limits, edge config | **no** | cost and latency are the operator's decisions |
+| the system preamble the engine assembles | **no** | the fixed frame of a turn |
+
+There is no code path to the "no" rows — not a rule in a prompt. Three more
+properties are worth stating because each one is a way this could have gone wrong:
+
+- **An edit is verified by running it, not by asking a model.** The candidate is
+  applied to a throwaway clone of the agent and the golden set is replayed against
+  it; any regression disqualifies it. An agent with no cases, or with no recorded
+  baseline, **cannot be edited at all** — the gate refuses instead of passing
+  vacuously.
+- **A human approves.** A gate pass parks the proposal for review; nothing applies
+  itself. Approving writes through the versioned file store, so undo is the Restore
+  button that was already there.
+- **Prompt injection buys nothing.** Evidence reaches a proposer as quoted, masked
+  data, and whatever comes back is validated against the candidate schema and the
+  file allowlist. The worst an injected instruction can achieve is a proposal that
+  gets dropped or fails the gate.
 
 ## Config discipline
 

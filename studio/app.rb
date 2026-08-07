@@ -701,10 +701,15 @@ r.on "evals" do
   end
 end
 
-      # --- Refinement: what broke in real traffic (RFC-0013 phase A) --
-      # Read-only page + one button. The button dispatches :run_refinement, which
-      # scans the agent's own tasks/sessions/traces and records a ranked report.
-      # Phase A never edits the agent, so there is nothing to approve here yet.
+      # --- Refinement: what broke in real traffic, and what to do about it --
+      # `POST /refinement` runs the report (RFC-0013 phase A). `POST
+      # /refinement/resolve` is the phase C half: a human approves or rejects a
+      # proposal the gate already scored. Both go through the bus like every other
+      # Studio write — this page reads stores and dispatches Commands, nothing else.
+      #
+      # There is deliberately no form here to AUTHOR a candidate. Until the proposer
+      # lands, candidates arrive from the API/CLI, and a JSON textarea would be a
+      # feature nobody asked for standing where the real one goes.
       r.on "refinement" do
         r.is do
           r.get { render_refinement }
@@ -715,6 +720,17 @@ end
             control_action(:run_refinement, payload, ok: "Refinement run finished.")
             r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
           end
+        end
+
+        r.post "resolve" do
+          check_csrf!
+          agent = presence(r.params["agent"])
+          decision = presence(r.params["decision"])
+          payload = { run_id: presence(r.params["run_id"]), decision: decision,
+                      operator: "studio", note: presence(r.params["note"]) }.compact
+          ok = decision == "approved" ? "Applied — the agent's files were updated." : "Proposal rejected."
+          control_action(:resolve_refinement, payload, ok: ok)
+          r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
         end
       end
 
@@ -1397,6 +1413,9 @@ end
       store = insika[:refinement_store]
       @runs = @agent && store ? store.for_agent(@agent, limit: 10) : []
       @run = @runs.find(&:terminal?)
+      # The one run that owes this agent a human answer. At most one is possible:
+      # gating requires a `completed` run and there is one lifecycle per record.
+      @proposal = @runs.find(&:awaiting_approval?)
       view("refinement")
     end
 

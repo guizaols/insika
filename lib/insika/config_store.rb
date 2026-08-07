@@ -21,7 +21,12 @@ module Insika
     # goldens: authored eval cases (RFC-0008 §3.1 / RFC-0013 §3.7) — config, like the
     # prompts and skills: the corpus on disk is seed and export, the store is what a
     # deployment runs and what the Studio edits.
-    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools goldens].freeze
+    # baselines: the ACCEPTED state of each agent's golden set (RFC-0013 §3.7.3).
+    # Config for the same reason: it is a curated decision ("this is the bar"), the
+    # file is its export, and the refinement gate reads it from inside a deployment
+    # that has no checkout.
+    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools
+                goldens baselines].freeze
 
     class UnknownScope < Insika::Error; end
 

@@ -148,5 +148,59 @@ module Insika
         sorted.length.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
       end
     end
+
+    # Builds the configured judge panel from `settings["evals"]` (RFC-0013 §3.9).
+    #
+    # It lives HERE and not in `evals/run.rb` because the CLI is no longer the only
+    # caller: the refinement gate scores a candidate with the SAME judges the operator
+    # configured, and §3.7 is explicit that a second copy of the judge would be the
+    # worst possible outcome — the gate would then be grading against a rubric nobody
+    # tuned. One builder, two callers.
+    module JudgePanel
+      module_function
+
+      # settings: the `evals` hash (judges/quorum/aggregate/min_agreement).
+      # overrides: the CLI's flags, which win over the stored config.
+      # -> [Judge, [model names]] | nil when nobody is configured to ask. NIL AND NOT
+      # a no-op judge: a rubric'd case with no judge reads as `judge_pending`, which is
+      # visible, where a judge that always passes would be silent.
+      def build(settings, overrides: {}, chat_factory: nil)
+        settings = Coercion.deep_stringify(settings || {})
+        overrides = overrides.transform_keys(&:to_s)
+        models = resolve_models(settings, overrides)
+        return nil if models.empty?
+
+        factory = chat_factory || method(:ruby_llm_ask)
+        judge = Judge.new(
+          asks: models.map { |m| factory.call(m["model"], m["provider"]) },
+          quorum: overrides["quorum"] || settings["quorum"] || 1,
+          aggregate: overrides["aggregate"] || settings["aggregate"] || "median",
+          min_agreement: overrides["min_agreement"] || settings["min_agreement"] || 0.5
+        )
+        [judge, models.map { |m| m["model"] }]
+      end
+
+      # Sugar for the callers that only want the judge (the gate).
+      def judge(settings, **kw) = build(settings, **kw)&.first
+
+      def resolve_models(settings, overrides)
+        models = if Coercion.present?(overrides["judge_model"])
+                   [{ "model" => overrides["judge_model"], "provider" => overrides["judge_provider"] }]
+                 else
+                   Array(settings["judges"])
+                 end
+        models.map { |m| Coercion.deep_stringify(m) }.reject { |m| m["model"].to_s.strip.empty? }
+      end
+
+      # The default way to reach a model: RubyLLM, temperature 0, required lazily so
+      # nothing here loads a provider gem until a judge is actually configured.
+      def ruby_llm_ask(model, provider)
+        require "ruby_llm"
+        lambda do |prompt|
+          RubyLLM.chat(model: model, provider: provider, assume_model_exists: true)
+                 .with_temperature(0).ask(prompt).content
+        end
+      end
+    end
   end
 end

@@ -32,6 +32,26 @@ Everything below is what the first release will contain.
   writes a second confirmation and the person gets the message twice. Per result, not
   per tool — the same call still lets the model explain a failure. See
   [Tools](docs/TOOLS.md#halt_when-when-the-answer-is-already-out).
+- **Refinement: a gated, reviewable prompt edit** — a refinement run can now carry a
+  *proposal*, and the whole design is one sentence: an edit is scored by **running
+  it**, and a human approves it before it reaches anyone. The candidate is applied to
+  a throwaway clone of the agent, the golden set is replayed against the clone over
+  the ordinary `/v1/responses`, and any regression against the accepted baseline
+  disqualifies it. Nothing asks a model whether an edit looks good.
+  Edits are anchored and bounded (`before` must still match the file, exactly and
+  once) so the diff is a five-second decision, the gate's result is attributable, and
+  a proposal built from a stale snapshot cannot overwrite something you wrote — the
+  apply re-checks every anchor and refuses the whole proposal if anything drifted.
+  Approving writes through the versioned file store, so rollback is the Restore
+  button that was already there. Opt-in per agent (`refine mode: :propose, files:
+  %w[TOOLS.md]`); an agent with no golden cases, or with no recorded baseline,
+  **cannot be edited at all** — the gate refuses rather than passing vacuously. See
+  [Refinement](docs/REFINEMENT.md#changing-the-agent-the-gate).
+- **The eval baseline is a per-agent record, not only a file** — `evals/baseline.json`
+  works from a checkout; the refinement gate runs inside a deployment that has none.
+  `insika evals:baseline import|show|export` moves it into the store and back, with
+  the file staying the export format. A case the golden store does not know is
+  reported rather than guessed at: a silently shrunk baseline is a weaker gate.
 - **Skills** — the `SKILL.md` format with progressive loading, so an agent's context
   grows only when it needs to.
 - **Memory** — cross-session facts and notes, per agent.

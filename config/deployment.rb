@@ -249,6 +249,41 @@ module Deploy
     BUS.register(:write_golden, Insika::Commands::WriteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_golden, Insika::Commands::DeleteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
 
+    # Refinement phase C (RFC-0013 §3.5/§3.6): a candidate is scored by RUNNING it —
+    # clone the agent, apply the edits to the clone, replay the golden set over the
+    # deployment's OWN /v1/responses, compare to the accepted baseline. Then a human
+    # approves and the write lands versioned in the AgentFileStore.
+    #
+    # The transport is built per gate rather than once, because it carries the
+    # deployment's public URL and gateway token and the operator can rotate either.
+    # `INSIKA_PUBLIC_URL` is what the clone is reachable at — the replay is a real HTTP
+    # turn on purpose (§3.5), so the gate measures what a customer would get, tools and
+    # guardrails included, instead of a shortcut into the store.
+    BASELINE_STORE = Insika::BaselineStore.new(config_store: CONFIG_STORE)
+    REFINEMENT_GATE = Insika::Refinement::Gate.new(
+      profiles: PROFILE_SOURCE, agent_files: AGENT_FILE_STORE, goldens: GOLDEN_STORE,
+      baselines: BASELINE_STORE,
+      # Resolved from ENV here rather than closing over `config.ru`'s GATEWAY_TOKEN:
+      # the wiring must not depend on a constant its own caller defines, and the rule
+      # (gateway token, falling back to the admin token) is the same one every surface
+      # applies. Read per call so a rotation takes effect without a restart.
+      transport_factory: lambda {
+        Insika::Evals::HttpTransport.new(
+          base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
+                    "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
+          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+        )
+      },
+      # The judges the OPERATOR configured (`settings["evals"]`), through the one
+      # builder the CLI also uses — §3.7 is explicit that a second copy of the judge
+      # would be the worst outcome, because the gate would grade against a rubric
+      # nobody tuned. nil when nobody is configured: then a rubric'd case reads as
+      # judge_pending, which is visible, instead of silently passing.
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+    )
+    BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM))
+    BUS.register(:resolve_refinement, Insika::Commands::ResolveRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
+
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))

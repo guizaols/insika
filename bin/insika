@@ -29,6 +29,7 @@ module Insika
       when "refine"  then refine(argv)
       when "evals:import" then evals_import(argv)
       when "evals:export" then evals_export(argv)
+      when "evals:baseline" then evals_baseline(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -49,6 +50,7 @@ module Insika
           refine --agent ID [...]   report what broke in an agent's real traffic (RFC-0013)
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
+          evals:baseline <sub>      the accepted state per agent: show | import | export
           version                   print the engine version
           help                      show this help
 
@@ -183,7 +185,85 @@ rescue Insika::ValidationError => e
   exit 2
 end
 
+# insika evals:baseline show|import|export [--file evals/baseline.json]
+#
+# The accepted state of a golden set used to live ONLY in `evals/baseline.json`,
+# which is fine for the CLI (it runs from a checkout) and useless for the refinement
+# gate (RFC-0013 §3.7.3), which runs inside a deployment and has to know what "no
+# regression" means without one. So it became a per-agent record.
+#
+# `import` splits the one file into those records, resolving each case's agent from
+# the golden store — which is why the corpus has to be imported first. A case the
+# store does not know is REPORTED, not guessed at: silently dropping it would shrink
+# the accepted state, and a smaller baseline is a weaker gate.
+def evals_baseline(argv)
+  sub = argv.shift || "show"
+  opts = { file: File.expand_path("../evals/baseline.json", __dir__) }
+  OptionParser.new do |o|
+    o.banner = "Usage: insika evals:baseline show|import|export [--file PATH]"
+    o.on("--file PATH", "the baseline JSON (default evals/baseline.json)") { |v| opts[:file] = v }
+  end.parse!(argv)
+
+  case sub
+  when "show"   then baseline_show
+  when "import" then baseline_import(opts[:file])
+  when "export" then baseline_export(opts[:file])
+  else
+    warn "insika evals:baseline: unknown subcommand '#{sub}' (show|import|export)"
+    exit 2
+  end
+rescue Insika::Error => e
+  warn "insika evals:baseline: #{e.message}"
+  exit 2
+end
+
+def baseline_show
+  store = baseline_store
+  agents = store.agents
+  return puts("no baseline recorded — the refinement gate cannot run (insika evals:baseline import)") if agents.empty?
+
+  agents.sort.each do |agent|
+    record = store.get(agent)
+    puts format("%-24s %3d case(s)   recorded %s", agent, (record["cases"] || {}).size, record["at"])
+  end
+end
+
+def baseline_import(path)
+  raise Insika::ValidationError, "no such file: #{path}" unless File.exist?(path)
+
+  blob = JSON.parse(File.read(path))
+  by_agent = Hash.new { |h, k| h[k] = {} }
+  unknown = []
+  (blob["cases"] || {}).each do |case_id, entry|
+    golden = golden_store.find(case_id)
+    next unknown << case_id if golden.nil?
+
+    by_agent[golden.agent][case_id] = entry
+  end
+
+  by_agent.each { |agent, cases| baseline_store.put(agent, { "at" => blob["at"], "cases" => cases }) }
+  puts "imported #{by_agent.values.sum(&:size)} case(s) into #{by_agent.size} agent baseline(s) from #{path}"
+  by_agent.keys.sort.each { |a| puts "  #{a} (#{by_agent[a].size})" }
+  return if unknown.empty?
+
+  warn "  #{unknown.size} case(s) are not in the golden store and were NOT recorded: #{unknown.sort.join(', ')}"
+  warn "  run `insika evals:import` first, then import the baseline again"
+end
+
+def baseline_export(path)
+  store = baseline_store
+  merged = store.agents.each_with_object({}) { |a, acc| acc.merge!(store.get(a)["cases"] || {}) }
+  at = store.agents.filter_map { |a| store.get(a)["at"] }.max
+  File.write(path, JSON.pretty_generate({ "at" => at, "cases" => merged }))
+  puts "exported #{merged.size} case(s) from #{store.agents.size} agent baseline(s) to #{path}"
+end
+
     # -- helpers -------------------------------------------------------
+
+    def baseline_store
+      backend = Insika::Wiring::Graph.backend_from_env
+      Insika::BaselineStore.new(config_store: Insika::ConfigStore.new(store: backend))
+    end
 
     def golden_store
       backend = Insika::Wiring::Graph.backend_from_env
