@@ -173,6 +173,55 @@ runs a turn, so re-sending it costs a second LLM call and can put a second answe
 front of the customer. A dropped stream shows what arrived and lets the person ask
 again.
 
+## Relay or the drop-in API?
+
+If you already own your messaging platform, you can reach the engine two ways: the
+drop-in [`POST /v1/responses`](/architecture/) — you hold an SSE connection for the
+whole turn and read the answer off it — or the relay, where the engine acks in
+milliseconds and POSTs the answer to you when it exists.
+
+The instinct is that streaming gets the customer their reply sooner, and that the
+relay trades that away. **It does not, and the reason is structural:** the engine
+publishes `:content` as the ANSWER, whole, after the turn's hooks
+([what crosses the edge](/architecture/#what-crosses-the-edge)). During the turn the
+stream carries tool activity; the text arrives in one piece at the end. Measured on
+a real store agent, the text frames span **0 ms** — there is nothing to deliver
+progressively, on either path.
+
+|  | drop-in `/v1/responses` | relay |
+|---|---|---|
+| What the customer receives | one message, at the end | one message, at the end |
+| Your app's request | held open for the whole turn (seconds) | acked in **milliseconds** |
+| A turn that outlives your HTTP timeout | your problem | already handled — the answer arrives later |
+| Retry on a failed handover | yours to build | the engine's outbox, bounded, at-most-once |
+| Three fragments typed in a row | three turns, three replies | **one turn, one reply** (with `queue_mode`) |
+| Your platform code | unchanged | unchanged |
+
+That last row is the one that cannot be had the other way. `/v1/responses` answers
+the request it was given, so a message that arrives while a turn is running is a
+second turn — the engine has no way to tell you "this joined the previous one". The
+relay's `merged` / `steered` acks exist precisely to say that, which is why
+[the inbound queue](/agents/#queue_mode--when-a-message-arrives-while-the-agent-is-busy)
+is only reachable from here.
+
+**Measured, so you can judge it rather than take our word:** same agent, same
+conversations, one local deployment.
+
+```
+                       drop-in            relay
+greeting               2.3s               2.9s   (ack 11ms)
+catalog (4 tool calls) 6.8–12.3s          9.4s   (ack  2ms)
+3 fragments            3 turns/3 replies  1 turn/1 reply, with queue_mode
+```
+
+The spread on the catalog turn is the tool retrying, not the transport — the relay
+adds one HTTP POST, not seconds. Your numbers will differ; the *shapes* are what
+transfer.
+
+**Pick the drop-in** if you already have it working and none of the rows above bite.
+**Pick the relay** if you want the queue, or if holding a connection for the length
+of a turn is awkward where your app runs.
+
 ## What the relay does not do — on purpose
 
 Platform semantics stay with you:

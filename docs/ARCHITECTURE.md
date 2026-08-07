@@ -79,7 +79,10 @@ Two consequences worth knowing before you build on it:
 
 - The customer-visible stream is per **message**, not per token. A consumer that
   accumulates deltas gets the same text; one that renders them live gets it in one
-  piece. Watch `:intermediate` if you want the keystrokes.
+  piece. Watch `:intermediate` if you want the keystrokes. Measured on a real agent,
+  the answer's frames span 0 ms — which is why a
+  [relay costs the customer nothing](CHANNELS.md#relay-or-the-drop-in-api) next to
+  holding an SSE connection for the whole turn.
 - A turn that dies mid-message publishes nothing. Half a sentence was never an
   answer; the fragment is still on the stream for whoever is debugging it.
 
