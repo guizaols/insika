@@ -263,6 +263,12 @@ Two things, and it refuses without either:
   Without one, "did anything regress?" has no answer, and a gate that answered
   "nothing regressed" would be reporting that it did not look. So it refuses.
 
+  It also refuses a baseline in which **nothing passes**. A regression is measured
+  against a case that *was* passing, so an all-red baseline cannot produce one and
+  every candidate — including a harmful one — sails through. If that is where you
+  are, the agent needs fixing before it needs refining: get to a green run, record
+  it, then gate.
+
 The clone is a throwaway agent (`<agent>-cand-<run>`) with the same profile, tools
 and guardrails, and it is deleted afterwards — including when the replay fails.
 **Any** regression disqualifies the candidate. A case that was already failing does
