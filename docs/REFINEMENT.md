@@ -289,6 +289,40 @@ The apply re-checks every `before` against the file as it is now and refuses the
 whole proposal if anything drifted. A partial application would leave a prompt in a
 state nobody reviewed and the gate never scored.
 
+### What the gate can and cannot catch
+
+Worth being precise about, because the gate is easy to trust more than it deserves.
+Everything below was measured by running it against a real production-shaped agent,
+not reasoned about.
+
+**The gate is only as strong as your golden set.** This is the whole caveat and the
+rest is detail. A regression is "a case that was passing now fails" — so an edit
+that breaks something no case covers passes cleanly. Two shallow cases wave almost
+anything through. If you want the loop to protect a behaviour, there has to be a
+case for that behaviour; that is the price [D4](#what-the-gate-needs) is charging,
+and it is charged in curation work, not in configuration.
+
+Three things it will **not** catch, and two of them are the engine working correctly:
+
+- **An edit cannot remove a tool, so the gate will never see one disappear.** Tool
+  availability comes from the agent's `tools_allow`, not from prose. An instruction
+  like "never call `search_products`" is advice the model routinely overrides; the
+  tool is still attached and still gets called. If you want a tool gone, remove it
+  from the agent — which refinement cannot do, by design.
+- **PII in a reply is redacted before the gate could grade it.** The output
+  guardrail runs on the turn, so a `must_not: [cpf]` case cannot fail because of an
+  edit that tells the agent to leak one. The protection is real; it just means this
+  is not the layer that measures it.
+- **A small edit in a large prompt may change nothing at all.** A paragraph appended
+  to the end of an 11 KB instruction set routinely loses to the rest of it. A gate
+  pass on such an edit is honest — nothing changed — but it is not evidence that the
+  edit *worked*, and approving it adds prompt with no effect.
+
+What it does catch reliably is the class that matters most in practice: an edit that
+changes **what the agent says** in a way one of your cases checks. Formatting,
+tone, how much it asks before acting, whether it follows a policy. That is where
+prompt edits have real leverage, and it is also where they do damage.
+
 ## What this is not
 
 It does not propose the edit for you — a model writing the candidate is the next
