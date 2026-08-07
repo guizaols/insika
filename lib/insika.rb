@@ -81,6 +81,9 @@ require_relative "insika/tool_trace_store"
 # the PII redaction of the snippets it puts in a report.
 require_relative "insika/refinement_store"
 require_relative "insika/refinement/evidence_collector"
+# The candidate format is pure data + validation, so it loads with the collector;
+# the GATE needs the evals module and the stores, so it waits for them below.
+require_relative "insika/refinement/candidate"
 require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
 require_relative "insika/sandbox"
@@ -114,6 +117,10 @@ require_relative "insika/evals/transport"
 # Authored eval cases (RFC-0013 §3.7): the corpus becomes editable without a
 # checkout. Requires the loader above (it is the one validator).
 require_relative "insika/golden_store"
+require_relative "insika/baseline_store"
+# RFC-0013 §3.5: scores a candidate by REPLAYING it. After evals (the runner and
+# the baseline comparison) and after the stores it clones an agent through.
+require_relative "insika/refinement/gate"
 require_relative "insika/mcp_store"
 require_relative "insika/mcp_http_client"
 require_relative "insika/mcp_tool_ingestor"
@@ -141,6 +148,8 @@ require_relative "insika/commands/memory_put_fact"
 require_relative "insika/commands/memory_forget_fact"
 require_relative "insika/commands/memory_add_note"
 require_relative "insika/commands/run_refinement"
+require_relative "insika/commands/gate_refinement"
+require_relative "insika/commands/resolve_refinement"
 require_relative "insika/commands/write_golden"
 require_relative "insika/commands/update_settings"
 require_relative "insika/commands/upsert_llm_provider"

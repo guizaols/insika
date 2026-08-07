@@ -1742,6 +1742,73 @@ end
     expect(login(app).get("/refinement?agent=bia").body).to include("Nothing found in this window")
   end
 
+  # --- Refinement phase C: the review IS the product (RFC-0013 §3.6) -------
+
+  # Seeds a run parked on a human, the state the proposal card renders.
+  def awaiting_run(store, agent: "bia")
+    row = store.create(agent_id: agent, at: "2026-08-05T10:00:00Z")
+    store.complete(row.id, findings: [{ "kind" => "tool_error", "count" => 4, "title" => "t" }])
+    store.gating(row.id, candidate: {
+                   "id" => "cand-1", "proposer" => "deepseek/deepseek-v4-flash",
+                   "rationale" => "TOOLS.md never says the CEP is required.",
+                   "edits" => [{ "file" => "TOOLS.md", "op" => "replace", "anchor" => "## shipping_quote",
+                                 "before" => "Use shipping_quote to quote freight.",
+                                 "after" => "Use shipping_quote. Ask for the CEP first.",
+                                 "addresses" => ["tool_error:shipping_quote"] }],
+                   "dropped" => []
+                 })
+    store.gated(row.id, report: { "candidate_id" => "cand-1", "passed" => true, "reason" => nil,
+                                  "cases" => 7, "passed_cases" => 5, "baseline_cases" => 7,
+                                  "regressions" => [], "report" => {} })
+  end
+
+  it "renders a gated proposal: the diff, what it addresses, and how it scored" do
+    app, = build_app
+    awaiting_run(app.insika[:refinement_store])
+
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).to include("Ask for the CEP first.")            # the + side
+    expect(body).to include("Use shipping_quote to quote freight.") # the - side
+    expect(body).to include("5/7 case(s)")
+    expect(body).to include("deepseek/deepseek-v4-flash")
+    expect(body).to include("tool_error:shipping_quote")
+    expect(body).to include("Approve &amp; apply")
+  end
+
+  it "shows no proposal card when nothing is awaiting a human" do
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [{ "kind" => "x", "count" => 1, "title" => "t" }] }])
+    expect(login(app).get("/refinement?agent=bia").body).not_to include("awaiting your approval")
+  end
+
+  it "POST /refinement/resolve dispatches :resolve_refinement with the operator's answer" do
+    app, bus = build_app
+    run = awaiting_run(app.insika[:refinement_store])
+    client = login(app)
+    csrf = csrf_from(client.get("/refinement?agent=bia").body)
+
+    res = client.post("/refinement/resolve",
+                      params: { "agent" => "bia", "run_id" => run.id, "decision" => "approved",
+                                "note" => "makes sense", "_csrf" => csrf })
+
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/refinement?agent=bia")
+    expect(bus.last(:resolve_refinement).payload)
+      .to eq(run_id: run.id, decision: "approved", operator: "studio", note: "makes sense")
+  end
+
+  it "POST /refinement/resolve carries a rejection through the same route" do
+    app, bus = build_app
+    run = awaiting_run(app.insika[:refinement_store])
+    client = login(app)
+    csrf = csrf_from(client.get("/refinement?agent=bia").body)
+
+    client.post("/refinement/resolve",
+                params: { "agent" => "bia", "run_id" => run.id, "decision" => "rejected", "_csrf" => csrf })
+
+    expect(bus.last(:resolve_refinement).payload[:decision]).to eq("rejected")
+  end
+
   it "POST /refinement dispatches :run_refinement for the chosen agent" do
     app, bus = build_app
     client = login(app)
