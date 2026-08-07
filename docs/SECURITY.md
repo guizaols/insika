@@ -310,6 +310,15 @@ properties are worth stating because each one is a way this could have gone wron
   file allowlist. The worst an injected instruction can achieve is a proposal that
   gets dropped or fails the gate.
 
+**Know what the gate does not measure.** It catches an edit that breaks a case you
+wrote; it cannot catch one that breaks something no case covers. Two of its blind
+spots are this engine working correctly rather than gaps — an edit cannot remove a
+tool (availability is `tools_allow`, not prose) and it cannot make a reply leak PII
+(the output guardrail redacts first) — but the general point stands, and it is
+[stated plainly in Refinement](REFINEMENT.md#what-the-gate-can-and-cannot-catch).
+The structural limits above hold regardless; the gate is the layer that has to be
+earned with cases.
+
 ## Config discipline
 
 Configuration is validated against a schema of known keys at boot. An unknown key
