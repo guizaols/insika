@@ -47,6 +47,15 @@ dispatch **any** registered authoring Command (`write_agent_file`, `write_data_t
 `upsert_llm_provider`, `update_settings`, `delete_agent`). Treat that token as
 operator-grade — it is not a read key, and a leak is agent takeover, not just usage.
 
+## The `/v1` contract is versioned by date
+
+Every `/v1` route reads an optional `Insika-Version: YYYY-MM-DD` header, checked
+before the Bearer gate above. Absent header means today's (only) behaviour; an
+unknown value is a `400`, not a silent fallback — a caller that pins a version
+finds out immediately that it does not exist, rather than being served whatever
+happens to be current. `/a2a` and `/channels/<id>/…` are versioned by their own
+contracts (JSON-RPC, the platform's own shape) and never read this header.
+
 ## Channels authenticate themselves
 
 `/channels/<id>/…` is the one route family that does **not** answer to the gateway
