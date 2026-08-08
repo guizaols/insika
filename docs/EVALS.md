@@ -246,6 +246,23 @@ not a regression.
   about two conversations. Read a batch of them by hand before quoting the number in a
   decision — if `better` tracks length or politeness rather than whether the customer
   got served, the comparison is measuring the wrong thing and should be dropped.
+- **A pair the deployment's DATA cannot satisfy is not a loss.** `requires` resolves
+  tools and capabilities; it says nothing about catalogue content. If the reference
+  conversation found a product that does not exist where you are replaying, no query
+  could have returned it, and the pair is unrunnable — exactly like a case needing a
+  tool the agent does not have. Exclude it by hand and say so; counting it is the same
+  lie `requires` exists to end.
+- **A tool that delivers out of band scores as silence.** When a backend sends the card,
+  the button or the support contact straight to the channel, the right behaviour is to
+  publish nothing ([`halt_when`](TOOLS.md#halt_when-when-the-answer-is-already-out)) —
+  and a comparison that only observes what *you* publish cannot tell that from an agent
+  that said nothing. Compare conversations whose tools deliver the same way, or read
+  those pairs by hand.
+- **Reuse a conversation and you are judging the wrong transcript.** A replay continues
+  whatever the conversation already holds, so a pair replayed into a conversation an
+  earlier run touched carries both runs' turns. It shows up as a judge that flips when
+  the transcripts are swapped — which is the swap-check earning its keep, but the run
+  is spent. Mint fresh conversation ids for every pairwise run.
 
 ## Where it lives
 
