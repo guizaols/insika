@@ -55,9 +55,17 @@ per-worker. The contract:
    mid-generation skips too — sweeping then would steal its siblings' live
    turns; its own orphans wait for the next generation (the next deploy).
    Without `INSIKA_BOOT_ID` (single-process runs) every boot sweeps.
-4. **Shutdown is a drain, not a kill.** On SIGTERM a worker stops accepting new
-   turns, lets in-flight turns finish up to a deadline, and only then exits.
-   Whatever the deadline abandons, item 3 picks up at the next boot.
+4. **Shutdown is a drain, not a kill.** On SIGTERM (or SIGINT) a worker stops
+   accepting new turns — a turn that arrives mid-drain stays `:queued` and the
+   next boot's recovery replays it — and waits up to `INSIKA_DRAIN_TIMEOUT`
+   (default **20s**) for the in-flight ones. A second signal skips the wait.
+   Whatever the deadline abandons dies `:running`, and item 3 picks it up at the
+   next boot. The layers above must grant the time: `deploy/entrypoint.sh`
+   passes Falcon `--graceful-stop` = drain + 5 (Falcon's own default is 1s),
+   and the platform's SIGTERM→SIGKILL buffer must be ≥ drain + 10. **On Railway
+   that buffer defaults to 0** — SIGKILL right after SIGTERM, which cancels the
+   whole drain — so set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` on the
+   service.
 
 `deploy/entrypoint.sh` sets `WEB_CONCURRENCY` next to a pointer to this section;
 this section is the single source of truth for what changing it means.
@@ -70,6 +78,7 @@ this section is the single source of truth for what changing it means.
 | `PORT` | `9292` | HTTP bind port |
 | `WEB_CONCURRENCY` | `2` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
 | `INSIKA_BOOT_ID` | set by `deploy/entrypoint.sh` | boot generation id; the recovery **task sweep** runs once per id (process model, item 3). Unset = every boot sweeps (single-process default) |
+| `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |

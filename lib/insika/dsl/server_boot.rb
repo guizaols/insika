@@ -40,6 +40,9 @@ module Insika
         telemetry = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))
 
         banner(telemetry)
+        # RFC-0016 A3: first Ctrl-C/SIGTERM closes the intake and drains in-flight
+        # turns (INSIKA_DRAIN_TIMEOUT, default 20s); a second signal skips the wait.
+        Insika::Shutdown.install(executor: @graph.executor)
         Async do
           @graph.executor.supervised = true # serving mode: turns survive disconnects
           Insika::Telemetry.attach(event_stream: @graph.event_stream, recorder: telemetry)
@@ -144,7 +147,7 @@ module Insika
         puts "  #{base}/channels/…      → #{@graph.channel_registry.names.join(', ')}" if channels?
         # Only when on: an off-by-default line in the OSS front door is noise.
         puts "  OTEL              → #{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP" if telemetry
-        puts "  Ctrl-C to stop."
+        puts "  Ctrl-C to stop (drains in-flight turns; press twice to skip the wait)."
       end
     end
   end

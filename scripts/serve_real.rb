@@ -123,9 +123,14 @@ puts "\e[1mInsika — serving for real (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
 puts "  #{BIND}/studio        → Insika Studio (login: token \"#{ADMIN_TOKEN}\")"
 puts "  #{BIND}/studio/chats  → chat with Bia (agent: bia · session_id: web)"
 puts "  #{BIND}/studio/tasks  → tasks / approvals console"
-puts "  Ctrl-C to stop."
+puts "  Ctrl-C to stop (drains in-flight turns; press twice to skip the wait)."
 
 puts "  OTEL          → #{W::TELEMETRY ? "on (#{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP)" : "off (INSIKA_OTEL to enable)"}"
+
+# RFC-0016 A3: first Ctrl-C/SIGTERM closes the intake and drains in-flight turns
+# (INSIKA_DRAIN_TIMEOUT, default 20s) before the reactor comes down; a second
+# signal skips the wait.
+Insika::Shutdown.install(executor: W::EXECUTOR)
 
 Async do
   W::EXECUTOR.supervised = true # serving mode: turns survive the disconnect
