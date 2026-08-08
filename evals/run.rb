@@ -65,6 +65,7 @@ OptionParser.new do |o|
   o.on("--aggregate KIND", %w[median mean min], "how a judge PANEL's scores combine") { |v| opts[:aggregate] = v }
   o.on("--min-agreement F", Float, "fraction of judges that must pass (default 0.5)") { |v| opts[:min_agreement] = v }
   o.on("--no-judge", "disable the LLM-judge (rubric cases stay judge_pending)") { opts[:judge_model] = nil }
+  o.on("--pairwise", "compare cases with a `reference:` against the incumbent (2 calls/judge/case)") { opts[:pairwise] = true }
   o.on("--baseline FILE", "gate against this baseline (blocks on regressions only)") { |v| opts[:baseline] = v }
   o.on("--tolerance F", Float, "max judge-score drop before it's a regression (default 0.05)") { |v| opts[:tolerance] = v }
   o.on("--update-baseline", "write the current run as the baseline and don't gate") { opts[:update_baseline] = true }
@@ -95,13 +96,20 @@ def build_judge(opts, settings)
   models = Insika::Evals::JudgePanel.resolve_models(settings, stringify_judge_opts(opts))
   return nil if models.empty?
 
+  configure_ruby_llm
+  Insika::Evals::JudgePanel.build(settings, overrides: stringify_judge_opts(opts))
+end
+
+# The provider keys the panel needs. Called by both panels (rubric and pairwise) —
+# the pairwise one can be asked for with `--no-judge`, and an unconfigured provider
+# would surface as every comparison coming back `unknown`.
+def configure_ruby_llm
   require "ruby_llm"
   RubyLLM.configure do |c|
     c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
     c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
     c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
   end
-  Insika::Evals::JudgePanel.build(settings, overrides: stringify_judge_opts(opts))
 end
 
 def stringify_judge_opts(opts)
@@ -135,6 +143,22 @@ conv_map = opts[:conv_map] ? JSON.parse(File.read(opts[:conv_map])) : {}
 transport = Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
 judge, judge_models = build_judge(opts, settings)
 judge_note = judge ? "judges=#{judge_models.join('+')}" : "judge=off"
+
+# Against the incumbent (RFC-0014 §3.4) — opt-in, because it is 2 provider calls per
+# judge per case and it answers a different question from the suite's own verdict.
+# Asked for with no panel configured, it says so instead of running a silent no-op.
+pairwise = nil
+if opts[:pairwise]
+  pairwise, = Insika::Evals::JudgePanel.pairwise(settings, overrides: stringify_judge_opts(opts))
+  abort "eval: --pairwise needs a judge model (flag or settings['evals']['judges'])" if pairwise.nil?
+
+  configure_ruby_llm
+
+  with_reference = goldens.count(&:reference?)
+  abort "eval: --pairwise, but no case in this run carries a `reference:`" if with_reference.zero?
+
+  judge_note += " | pairwise=#{with_reference} case(s)"
+end
 puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
 
 # What the deployment HAS, per agent — what a case's `requires` resolves against
@@ -142,7 +166,7 @@ puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode
 # deployment answers nil and the case RUNS, warned about below.
 capabilities = Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
 runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map,
-                                     capabilities: capabilities).run(goldens)
+                                     capabilities: capabilities, pairwise: pairwise).run(goldens)
 results = runcases.map(&:result)
 
 # A case that declared requirements, was not skipped, and was not resolved either:

@@ -11,7 +11,7 @@ module Insika
   module Evals
     # A curated behavior case, loaded from a data file (evals/golden/<agent>/*.yml).
     # Data, not code — same spirit as tools-as-data. See evals/README.md for the format.
-    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :source, keyword_init: true) do
+    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, keyword_init: true) do
       # The user messages to replay, in order.
       def user_turns = turns.map { |t| t["user"] }
 
@@ -37,6 +37,22 @@ module Insika
       def required_tools = Array(requires["tools"]).map(&:to_s)
       def required_capabilities = Array(requires["capabilities"]).map(&:to_s)
       def requirements? = !(required_tools + required_capabilities).empty?
+
+      # THE INCUMBENT'S CONVERSATION for the same opening (RFC-0014 §3.4) — the other
+      # half of a pairwise comparison. Data in the case, not a store read: the eval is
+      # a client, and a pair that lives in one reviewable file cannot go stale against
+      # a database nobody looked at.
+      def reference_messages = Array(reference["messages"])
+      def reference_source = GoldenLoader.presence(reference["source"])
+      def reference? = !reference_messages.empty?
+
+      # Did a PERSON type part of the reference half? After a handoff the operator's
+      # words are stored as `role: assistant` (P23a), and comparing a model to a human
+      # and calling it a win is a lie in both directions — so the pair is LABELLED and
+      # the report never prints the outcome without it.
+      def human_assisted?
+        reference_messages.any? { |m| MessageOrigin.origin_of(m) == MessageOrigin::OPERATOR }
+      end
 
       # LLM-judge rubric + threshold (consumed in Fase B — deferred here).
       def rubric = expect["rubric"]
@@ -79,8 +95,46 @@ module Insika
           raise InvalidGolden, "#{source}: 'requires' must be a mapping (case '#{id}')"
         end
 
+        reference = normalize_reference(raw["reference"], id: id, source: source)
+
         Golden.new(id: id, agent: agent, turns: turns, expect: expect,
-                   requires: requires, source: source)
+                   requires: requires, reference: reference, source: source)
+      end
+
+      # reference: { "source" => String?, "messages" => [{ "role" =>, "text" =>,
+      # "origin" => }] }. Absent -> {}, and the case simply has nothing to compare
+      # against. Malformed is REFUSED: a reference that half-loads would produce a
+      # pairwise verdict about a transcript nobody wrote.
+      def normalize_reference(raw, id:, source:)
+        return {} if raw.nil?
+        raise InvalidGolden, "#{source}: 'reference' must be a mapping (case '#{id}')" unless raw.is_a?(Hash)
+
+        messages = raw["messages"]
+        unless messages.is_a?(Array) && !messages.empty?
+          raise InvalidGolden, "#{source}: reference needs a non-empty 'messages' array (case '#{id}')"
+        end
+
+        { "source" => presence(raw["source"]),
+          "messages" => messages.each_with_index.map { |m, i| reference_message(m, i, id: id, source: source) } }.compact
+      end
+
+      def reference_message(raw, index, id:, source:)
+        where = "#{source}: reference.messages[#{index}] (case '#{id}')"
+        raise InvalidGolden, "#{where} must be a mapping" unless raw.is_a?(Hash)
+
+        role = presence(raw["role"])
+        raise InvalidGolden, "#{where} needs a 'role' of user or assistant" unless %w[user assistant].include?(role)
+
+        text = presence(raw["text"]) || (raise InvalidGolden, "#{where} needs a non-empty 'text'")
+        # The SAME closed vocabulary the engine stamps (P23a). A typo'd marker would
+        # read as "absent" downstream, which is how a human turn gets scored as the
+        # incumbent's model.
+        origin = begin
+          MessageOrigin.parse!(raw["origin"])
+        rescue Insika::ValidationError => e
+          raise InvalidGolden, "#{where}: #{e.message}"
+        end
+        { "role" => role, "text" => text }.merge(origin ? { "origin" => origin } : {})
       end
 
       # A typo'd policy must not silently mean "no policy" — the case would go on

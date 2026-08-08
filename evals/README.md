@@ -128,6 +128,14 @@ expect:
   rubric: |                  # LLM-judge criterion (Fase B)
     Com o CEP em mãos, busca no catálogo e apresenta opções coerentes…
   min_score: 0.7             # judge threshold
+reference:                   # the INCUMBENT's real conversation, same opening (optional)
+  source: "helpdesk chat 3440…"
+  messages:
+    - role: user
+      text: "meu CEP é 01310-100…"
+    - role: assistant
+      text: "temos sim, segue…"
+      origin: operator       #   a HUMAN typed this one ⇒ the pair is `vs: human-assisted`
 ```
 
 ### `requires` — the third outcome
@@ -163,6 +171,29 @@ prompt: *"é pra você ou tá pensando em presentear alguém? E qual seu tamanho
 
 Unlike `tools_called` and `must_not`, the policy is checked on **every** turn, not
 only the last: "one question per reply" is a rule about each reply.
+
+### `reference` — pairwise against the incumbent
+
+`--pairwise` compares the replayed conversation against the reference one: same
+opening, two transcripts, one question — *which served the customer better?*
+`better` / `comparable` / `worse`, plus `split` (judges disagree) and `unknown`
+(nobody answered readably). It **never** changes pass/fail and never enters the gate:
+that verdict answers "can we replace it", not "did something regress".
+
+Three rules, each of them the difference between a number worth quoting and one that
+is not: the judge sees "A" and "B" and is never told which is ours; every judge is
+asked **twice with the sides swapped** and a verdict that flips is reported as
+`comparable` + `order-dependent`; and any reference message carrying
+`origin: operator` labels the pair `vs: human-assisted`, counted separately in the
+summary. The judge is not told a human typed it — it grades the conversation as the
+customer received it — the READER is, which is where the fact changes a decision.
+
+**Nothing in this corpus declares a `reference` yet, on purpose.** A real pair is a
+real customer's transcript; the ones we have belong to a production store and are not
+committable. They are authored where the import runs. Same discipline as `policy`:
+the format is here, an invented example would not be evidence of anything.
+
+Cost: 2 provider calls per judge per case.
 
 ### The committed set
 
