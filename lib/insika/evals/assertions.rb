@@ -38,7 +38,13 @@ module Insika
     # assert. It is never a pass and never a failure — a suite of 40 cases where 12
     # are skipped says something true, where 40 cases with 12 failures on capability
     # grounds says nothing and gets ignored.
-    CaseResult = Struct.new(:id, :agent, :checks, :error, :rubric, :judge, :skipped, keyword_init: true) do
+    # `pairwise` (a Pairwise::Verdict, RFC-0014 §3.4) is attached when the case
+    # carries a `reference:` and a panel is configured. It DELIBERATELY does not enter
+    # `pass?`: "worse than the incumbent" is a judgement about a replacement decision,
+    # not a regression in the suite, and letting it fail a case would put an opinion
+    # about two conversations in the pre-merge gate.
+    CaseResult = Struct.new(:id, :agent, :checks, :error, :rubric, :judge, :skipped, :pairwise,
+                            keyword_init: true) do
       def skipped? = !skipped.nil?
       def pass? = !skipped? && error.nil? && checks.all?(&:pass) && (judge.nil? || judge.pass)
       def failures = checks.reject(&:pass)

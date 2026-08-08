@@ -183,6 +183,20 @@ module Insika
       # Sugar for the callers that only want the judge (the gate).
       def judge(settings, **kw) = build(settings, **kw)&.first
 
+      # The SAME configured models, asked a different question (RFC-0014 §3.4). One
+      # builder because "who judges here" is one operator decision: a pairwise panel
+      # configured apart from the rubric panel would let a run be graded by judges
+      # nobody chose. -> [Pairwise, [model names]] | nil when nobody is configured.
+      def pairwise(settings, overrides: {}, chat_factory: nil)
+        settings = Coercion.deep_stringify(settings || {})
+        models = resolve_models(settings, overrides.transform_keys(&:to_s))
+        return nil if models.empty?
+
+        factory = chat_factory || method(:ruby_llm_ask)
+        [Pairwise.new(asks: models.map { |m| factory.call(m["model"], m["provider"]) }),
+         models.map { |m| m["model"] }]
+      end
+
       def resolve_models(settings, overrides)
         models = if Coercion.present?(overrides["judge_model"])
                    [{ "model" => overrides["judge_model"], "provider" => overrides["judge_provider"] }]

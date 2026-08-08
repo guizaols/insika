@@ -133,6 +133,10 @@ module Insika
     def case_hash(golden)
       h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
       h["requires"] = golden.requires unless golden.requires.empty?
+      # Same rule for `reference` (RFC-0014 §3.4): omitted when absent, never dropped
+      # when present. A case that lost its reference in a round-trip would stop being
+      # compared against the incumbent and the report would look identical.
+      h["reference"] = golden.reference unless golden.reference.empty?
       h.merge("expect" => golden.expect)
     end
 

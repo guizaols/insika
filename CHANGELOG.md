@@ -180,7 +180,13 @@ Everything below is what the first release will contain.
   well as in the repo, and the graders are a **panel of distinct models** with
   configurable aggregation and agreement — sampling one model N times measures its
   variance, not its bias. A baseline turns a run into a pre-merge gate that blocks only
-  on regressions. See [Evals](docs/EVALS.md).
+  on regressions. A case can also carry the **incumbent's real conversation** for the
+  same opening (`reference:`), and `--pairwise` asks the panel which one served the
+  customer better — the question an absolute score cannot answer when you are replacing
+  a system that already works. The judge never learns which transcript is Insika's, and
+  every judge is asked twice with the sides swapped, so a preference that depends on
+  presentation order is reported as such instead of counted. See
+  [Evals](docs/EVALS.md).
 - **Refinement** — an agent's own traffic read back as a ranked report of what broke:
   repeated tool errors grouped by their normalized signature, failed turns, customers
   repeating themselves, canned safe replies served instead of answers, and granted tools

@@ -1413,6 +1413,7 @@ end
 def golden_yaml(golden)
   h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
   h["requires"] = golden.requires unless golden.requires.empty? # dropping it would un-skip the case
+  h["reference"] = golden.reference unless golden.reference.empty? # …and this would un-compare it
   YAML.dump(h.merge("expect" => golden.expect))
 end
 
