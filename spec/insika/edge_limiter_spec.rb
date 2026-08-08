@@ -102,6 +102,20 @@ RSpec.describe Insika::EdgeLimiter do
       expect(ledger.count("tokens", "bia", window: 3_600)).to eq(400)
     end
 
+    it "records the cached prefix too — the ceiling sees the real spend (RFC-0016 A4)" do
+      mw = limiter({ "agent_token_ceiling" => 1_000_000, "agent_token_window" => 3_600 })
+      # The measured pilot shape: total_tokens 88 with a 26_624-token cached prefix.
+      run(mw, state, usage: { total_tokens: 88, input_tokens: 60, output_tokens: 28,
+                              cached_tokens: 26_624 })
+      expect(ledger.count("tokens", "bia", window: 3_600)).to eq(26_712)
+    end
+
+    it "records cache-creation (write) tokens as spend as well" do
+      mw = limiter({ "agent_token_ceiling" => 1_000_000, "agent_token_window" => 3_600 })
+      run(mw, state, usage: { total_tokens: 100, cached_tokens: 200, cache_creation_tokens: 300 })
+      expect(ledger.count("tokens", "bia", window: 3_600)).to eq(600)
+    end
+
     it "blocks the turn once the accumulated spend reaches the ceiling" do
       mw = limiter({ "agent_token_ceiling" => 500, "agent_token_window" => 3_600 })
       expect(run(mw, state, usage: { total_tokens: 600 })).to be(true) # 1st passes, records 600
