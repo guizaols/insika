@@ -25,13 +25,42 @@ docker run -p 9292:9292 -v insika-data:/data \
 curl localhost:9292/up      # {"status":"ok"}
 ```
 
+## The process model
+
+The image boots **N Falcon worker processes over one SQLite file**
+(`WEB_CONCURRENCY`, default 2). That number is a **contract input, not a tuning
+knob**: it decides which engine semantics hold cluster-wide and which are
+per-worker. The contract:
+
+1. **N workers share one SQLite store.** Everything durable — sessions, tasks,
+   checkpoints, outbox, delegations — is cross-process state. Any status
+   transition that hands work to "whoever gets there first" goes through a
+   transactional claim (`Store#transaction`); a bare read-check-write on a
+   shared status field is a bug by definition.
+2. **A session's live semantics are per-worker.** Per-session FIFO ordering,
+   `steer`, `interrupt`, `pause`/`cancel` and the SSE watch operate on the
+   worker that holds the session's actor. The engine does **not** promise them
+   across workers. A deploy that needs those semantics for a session must route
+   that session's traffic to one worker (sticky routing) — or accept per-worker
+   best-effort.
+3. **Recovery is part of boot, in every wiring.** Each worker, at boot, sweeps
+   for orphaned `:running` turns and undelivered outbox records and claims them
+   transactionally — which is why item 1 is what makes N workers booting at
+   once safe (no double-resume).
+4. **Shutdown is a drain, not a kill.** On SIGTERM a worker stops accepting new
+   turns, lets in-flight turns finish up to a deadline, and only then exits.
+   Whatever the deadline abandons, item 3 picks up at the next boot.
+
+`deploy/entrypoint.sh` sets `WEB_CONCURRENCY` next to a pointer to this section;
+this section is the single source of truth for what changing it means.
+
 ## Environment variables
 
 | Env | Default | Effect |
 |-----|---------|--------|
 | `INSIKA_DB` | `/data/insika.db` (in the image) | durable SQLite path (**mount a volume!**) |
 | `PORT` | `9292` | HTTP bind port |
-| `WEB_CONCURRENCY` | `2` | number of Falcon worker processes |
+| `WEB_CONCURRENCY` | `2` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |

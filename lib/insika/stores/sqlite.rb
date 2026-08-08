@@ -42,12 +42,19 @@ module Insika
 
         # Multi-process boot (N Falcon workers opening the SAME file at the
         # same time): `PRAGMA journal_mode = WAL` on a new file needs an
-        # EXCLUSIVE lock and may return SQLITE_BUSY right then — `busy_timeout`
-        # alone does NOT cover the journal-mode switch. Hence: timeout FIRST
-        # (covers the DDL and the hot path) + retry with backoff around the
-        # initialization (covers the WAL-switch race). Idempotent: reopening
-        # already-in-WAL is a no-op.
-        @db.busy_timeout = 5_000
+        # EXCLUSIVE lock and may return SQLITE_BUSY right then — the busy
+        # timeout alone does NOT cover the journal-mode switch. Hence: timeout
+        # FIRST (covers the DDL and the hot path) + retry with backoff around
+        # the initialization (covers the WAL-switch race). Idempotent:
+        # reopening already-in-WAL is a no-op.
+        #
+        # `busy_handler_timeout=`, NOT `busy_timeout=`: the C-level handler
+        # sleeps holding the GVL, so a worker waiting on another PROCESS's
+        # write lock would stall every fiber it is running for up to the full
+        # timeout (measured: a waiter blocks the winner's own commit). The
+        # Ruby-level handler sleeps in Ruby — the scheduler keeps the rest of
+        # the worker breathing while this handle waits its turn.
+        @db.busy_handler_timeout = 5_000
         with_busy_retry do
           @db.execute("PRAGMA journal_mode = WAL")
           @db.execute("PRAGMA synchronous = NORMAL")
