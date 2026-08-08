@@ -96,10 +96,17 @@ module Insika
       { category: :rate_limit, detail: "chat #{chat_id}: #{taken}/#{limit} turns per #{window}s" }
     end
 
-    # The turn's real spend, accumulated on the agent's ledger. nil usage
-    # (workflow turn / provider without counts) records nothing.
+    # The turn's real spend, accumulated on the agent's ledger. The engine's
+    # `total_tokens` is input + output and DELIBERATELY excludes the cached
+    # prefix (`Executor#usage_of` reports `cached_tokens`/`cache_creation_tokens`
+    # alongside it) — on a cached identity that prefix is ~95% of what the
+    # provider actually processed, so a ceiling reading only `total_tokens` is
+    # blind (RFC-0016 A4). Same billed-spend rule as `Evals::Runner#billed_tokens`.
+    # nil usage (workflow turn / provider without counts) records nothing.
     def record_usage(state, window)
-      tokens = state.usage&.dig(:total_tokens).to_i
+      usage = state.usage || {}
+      tokens = usage[:total_tokens].to_i + usage[:cached_tokens].to_i +
+               usage[:cache_creation_tokens].to_i
       return if tokens.zero?
 
       @ledger.add(TOKENS_KIND, state.profile.id.to_s, window: window, by: tokens)
