@@ -33,6 +33,11 @@ module Insika
       SystemBuilder.new.build(&block)
     end
 
+    # Insika.embed(backend:) { … } → System (see #embed below on the module).
+    def embed(backend:, &block)
+      SystemBuilder.new.build(backend: backend, &block)
+    end
+
     # Collects several agents into ONE runtime. A single agent is a Definition;
     # more than one needs a container, because delegation (`subagents`) and any
     # multi-agent pattern only mean something when the children live in the same
@@ -45,11 +50,11 @@ module Insika
         @runtime = {}
       end
 
-      def build(&block)
+      def build(backend: nil, &block)
         instance_eval(&block) if block
         raise ArgumentError, "Insika.system needs at least one agent" if @definitions.empty?
 
-        System.new(definitions: @definitions, workflows: @workflows, runtime: @runtime)
+        System.new(definitions: @definitions, workflows: @workflows, runtime: @runtime, backend: backend)
       end
 
       # Declares one agent — the SAME block the standalone `Insika.agent` takes.
@@ -274,6 +279,27 @@ module Insika
   # (delegation, fan-out/fan-in, routing). Returns a Insika::DSL::System.
   def system(&block)
     DSL.system(&block)
+  end
+
+  # RFC-0017 A1 — the front door for MOUNTING Insika into an app you already
+  # have. Same block as `Insika.system`, one added obligation: the caller names
+  # the store, so the graph stops discovering it from `INSIKA_DB` and two graphs
+  # in one process can no longer read each other's sessions.
+  #
+  #   INSIKA = Insika.embed(backend: Insika::Stores::SQLite.new(path: "storage/insika.sqlite3")) do
+  #     agent "support" do
+  #       model "deepseek-chat"
+  #       instructions "…"
+  #     end
+  #   end
+  #   # config/routes.rb — mount the /v1 transport as a value:
+  #   mount Insika::Server.rack_app(INSIKA, token: ENV.fetch("INSIKA_TOKEN")), at: "/ai"
+  #
+  # It is a thin front door over the SAME assembly `Insika.system` uses — there is
+  # one pipeline (RFC-0001), and the parity spec holds it to that. What an embedded
+  # graph owns, and what it still shares with the process, is docs/EMBEDDING.md.
+  def embed(backend:, &block)
+    DSL.embed(backend: backend, &block)
   end
 end
 

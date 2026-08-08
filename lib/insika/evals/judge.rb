@@ -164,13 +164,17 @@ module Insika
       # -> [Judge, [model names]] | nil when nobody is configured to ask. NIL AND NOT
       # a no-op judge: a rubric'd case with no judge reads as `judge_pending`, which is
       # visible, where a judge that always passes would be silent.
-      def build(settings, overrides: {}, chat_factory: nil)
+      # `llm` (RFC-0017 A2): the graph's own RubyLLM context; nil = the global
+      # constant. Only the deployment root and the CLI build judges today, and both
+      # are one graph per process — the seam keeps the default honest for the day
+      # an embedded graph gates a candidate on its own credentials.
+      def build(settings, overrides: {}, chat_factory: nil, llm: nil)
         settings = Coercion.deep_stringify(settings || {})
         overrides = overrides.transform_keys(&:to_s)
         models = resolve_models(settings, overrides)
         return nil if models.empty?
 
-        factory = chat_factory || method(:ruby_llm_ask)
+        factory = chat_factory || ->(model, provider) { ruby_llm_ask(model, provider, llm: llm) }
         judge = Judge.new(
           asks: models.map { |m| factory.call(m["model"], m["provider"]) },
           quorum: overrides["quorum"] || settings["quorum"] || 1,
@@ -187,12 +191,12 @@ module Insika
       # builder because "who judges here" is one operator decision: a pairwise panel
       # configured apart from the rubric panel would let a run be graded by judges
       # nobody chose. -> [Pairwise, [model names]] | nil when nobody is configured.
-      def pairwise(settings, overrides: {}, chat_factory: nil)
+      def pairwise(settings, overrides: {}, chat_factory: nil, llm: nil)
         settings = Coercion.deep_stringify(settings || {})
         models = resolve_models(settings, overrides.transform_keys(&:to_s))
         return nil if models.empty?
 
-        factory = chat_factory || method(:ruby_llm_ask)
+        factory = chat_factory || ->(model, provider) { ruby_llm_ask(model, provider, llm: llm) }
         [Pairwise.new(asks: models.map { |m| factory.call(m["model"], m["provider"]) }),
          models.map { |m| m["model"] }]
       end
@@ -208,11 +212,12 @@ module Insika
 
       # The default way to reach a model: RubyLLM, temperature 0, required lazily so
       # nothing here loads a provider gem until a judge is actually configured.
-      def ruby_llm_ask(model, provider)
+      def ruby_llm_ask(model, provider, llm: nil)
         require "ruby_llm"
+        llm ||= RubyLLM
         lambda do |prompt|
-          RubyLLM.chat(model: model, provider: provider, assume_model_exists: true)
-                 .with_temperature(0).ask(prompt).content
+          llm.chat(model: model, provider: provider, assume_model_exists: true)
+             .with_temperature(0).ask(prompt).content
         end
       end
     end

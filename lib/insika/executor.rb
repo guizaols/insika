@@ -19,7 +19,7 @@ module Insika
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
-                   delegation_store: nil, channel_delivery: nil)
+                   delegation_store: nil, channel_delivery: nil, llm: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -51,6 +51,11 @@ module Insika
       # own connection). When present, a turn that CAME IN through a channel writes
       # its answer to the outbox at the terminal and the dispatcher POSTs it.
       @channel_delivery = channel_delivery
+      # RFC-0017 A2: the chat FACTORY this executor asks — a RubyLLM::Context (an
+      # isolated config dup) when the graph owns its credentials, nil = the
+      # process-wide RubyLLM constant (the historic single-graph deployment).
+      # Duck-typed: Context#chat and RubyLLM.chat take the same keywords.
+      @llm = llm
       # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -1652,7 +1657,7 @@ module Insika
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
       state.model_selection = selection
-      chat = RubyLLM.chat(
+      chat = (@llm || RubyLLM).chat(
         model: selection.model,
         provider: selection.provider,
         assume_model_exists: selection.assume_model_exists?

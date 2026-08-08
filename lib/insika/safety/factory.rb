@@ -21,8 +21,13 @@ module Insika
     class Factory
       # `settings_store` (optional): source of the platform `utility_model` fallback.
       # nil = no fallback (moderator only when the agent pins its own model ref).
-      def initialize(settings_store: nil)
+      # `llm` (optional, RFC-0017 A2): the graph's own RubyLLM context. nil = the
+      # process-wide RubyLLM constant. A guardrail asking on the global while the
+      # turn asks on the graph's key is a leak with a false sense of isolation, so
+      # this seam is part of A2 and not a follow-up.
+      def initialize(settings_store: nil, llm: nil)
         @settings_store = settings_store
+        @llm = llm
       end
 
       # The single input-side Middleware for the global MiddlewareStack.
@@ -86,9 +91,10 @@ module Insika
 
       def build_ask(model, provider)
         require "ruby_llm"
+        llm = @llm || RubyLLM
         lambda do |prompt|
-          RubyLLM.chat(model: model, provider: provider, assume_model_exists: true)
-                 .with_temperature(0).ask(prompt).content
+          llm.chat(model: model, provider: provider, assume_model_exists: true)
+             .with_temperature(0).ask(prompt).content
         end
       end
     end
