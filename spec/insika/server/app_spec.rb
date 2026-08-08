@@ -30,11 +30,12 @@ RSpec.describe Insika::Server::App do
   # a wrong one.
   TOKEN = "sekret"
 
-  def call(app, method, path, body: nil, auth: TOKEN)
+  def call(app, method, path, body: nil, auth: TOKEN, version: nil)
     opts = { method: method }
     opts[:input] = body if body
     env = Rack::MockRequest.env_for(path, opts)
     env["HTTP_AUTHORIZATION"] = "Bearer #{auth}" if auth
+    env["HTTP_INSIKA_VERSION"] = version if version
     app.call(env)
   end
 
@@ -93,6 +94,36 @@ RSpec.describe Insika::Server::App do
 
     it "an unknown route answers the gate first (no route enumeration)" do
       expect(call(build_app, "GET", "/v1/whatever", auth: nil).first).to eq(401)
+    end
+  end
+
+  # RFC-0016 A5: the `/v1` contract is versioned by date. Runs before the
+  # gateway gate on purpose — see version_gate's comment.
+  describe "the /v1 version gate (RFC-0016 A5)" do
+    it "no header -> current (only) behaviour, request proceeds" do
+      bus = ServerBusDouble.new { { task_id: "t" } }
+      status, = call(build_app(bus: bus), "POST", "/v1/commands/cancel_task", body: "{}")
+      expect(status).to eq(202)
+    end
+
+    it "the known version -> request proceeds" do
+      bus = ServerBusDouble.new { { task_id: "t" } }
+      status, = call(build_app(bus: bus), "POST", "/v1/commands/cancel_task",
+                      body: "{}", version: "2026-08-08")
+      expect(status).to eq(202)
+    end
+
+    it "an unknown version -> 400, before auth is even checked" do
+      status, _h, resp = call(build_app, "POST", "/v1/commands/cancel_task",
+                               body: "{}", auth: nil, version: "1999-01-01")
+      expect(status).to eq(400)
+      expect(json_body(resp)["error"]["message"]).to include("1999-01-01")
+    end
+
+    it "does not gate /a2a or /channels — only the /v1 segment" do
+      status, = call(build_app, "GET", "/.well-known/agent-card.json",
+                      auth: nil, version: "1999-01-01")
+      expect(status).to eq(404) # no @a2a injected here — parity, not the version gate
     end
   end
 

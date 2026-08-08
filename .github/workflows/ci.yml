@@ -1,0 +1,21 @@
+# RFC-0016 A6: a public repo runs its own tests on every PR. Deliberately
+# minimal — no lint, no matrix, no coverage (those are separate decisions).
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  rspec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ".ruby-version"
+          bundler-cache: true
+
+      # No API key, no network (AGENTS.md) — the suite fakes every provider call.
+      - name: Run rspec
+        run: bundle exec rspec

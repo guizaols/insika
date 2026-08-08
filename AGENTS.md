@@ -70,9 +70,12 @@ the surrounding style instead of running a formatter.
 ## Gotchas
 
 - `docs/internal/`, `docs/FOLLOWUP.md`, `docs/README.md`, `docs/techspec/` and
-  `spec/scripts/` are **gitignored** working material. Edits there are local by design
-  and will not show in `git status` — do not try to commit them, and do not assume a
-  reader of the public repo can see them.
+  `scripts/internal/` are **gitignored** working material. Edits there are local by
+  design and will not show in `git status` — do not try to commit them, and do not
+  assume a reader of the public repo can see them. `spec/scripts/` is a narrower case:
+  the directory is ignored by default, but `insika_cli_spec.rb` and `bench_spec.rb`
+  are tracked exceptions (they guard public scripts and CI runs them); a new spec
+  added there stays untracked unless it earns its own `!` line.
 - `studio/assets/dist/` **is** committed so `serve` runs without Node. If you touch
   `assets/src/`, rebuild and commit the bundle.
 - A `docs/*.md` file is simultaneously a Jekyll page, so it starts with a frontmatter
