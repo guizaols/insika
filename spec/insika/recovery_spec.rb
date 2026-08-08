@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Insika::Recovery do
   # REAL stores (tasks 06/07) over Memory + DOUBLE command_bus (doc 02 §7).
@@ -326,6 +327,52 @@ RSpec.describe Insika::Recovery do
       seed_task("f", status: :running) # no checkpoint
 
       expect(recovery.run).to eq({ resumed: ["r"], failed: ["f"] })
+    end
+  end
+
+  # RFC-0016 E2: the task sweep runs once per boot generation. The sweep's
+  # "orphaned :running" test is per-process, so N workers sweeping at once (or
+  # a worker respawned while siblings hold live turns) would double-resume;
+  # the claim makes the first worker per boot_id the only sweeper.
+  describe ".claim_sweep" do
+    it "grants the first claim of a generation and refuses the second" do
+      expect(described_class.claim_sweep(store: backend, boot_id: "gen-1")).to be(true)
+      expect(described_class.claim_sweep(store: backend, boot_id: "gen-1")).to be(false)
+    end
+
+    it "a new generation claims independently of the previous one" do
+      described_class.claim_sweep(store: backend, boot_id: "gen-1")
+
+      expect(described_class.claim_sweep(store: backend, boot_id: "gen-2")).to be(true)
+    end
+
+    it "blank boot_id -> always true (single-process arms sweep every boot)" do
+      expect(described_class.claim_sweep(store: backend, boot_id: nil)).to be(true)
+      expect(described_class.claim_sweep(store: backend, boot_id: "")).to be(true)
+      expect(described_class.claim_sweep(store: backend, boot_id: nil)).to be(true)
+    end
+
+    it "exactly one of two SQLite handles wins the same generation (cross-process claim)" do
+      Dir.mktmpdir do |dir|
+        db_path = File.join(dir, "claims.db")
+        handle_a = Insika::Stores::SQLite.new(path: db_path)
+        handle_b = Insika::Stores::SQLite.new(path: db_path)
+        barrier = Queue.new
+        results = Array.new(2)
+        threads = [handle_a, handle_b].each_with_index.map do |handle, i|
+          Thread.new do
+            barrier.pop
+            results[i] = described_class.claim_sweep(store: handle, boot_id: "boot-77")
+          end
+        end
+        2.times { barrier << :go }
+        threads.each(&:join)
+
+        expect(results.count(true)).to eq(1), "both workers claimed the sweep: #{results.inspect}"
+      ensure
+        handle_a&.close
+        handle_b&.close
+      end
     end
   end
 end

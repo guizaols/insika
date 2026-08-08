@@ -43,10 +43,18 @@ per-worker. The contract:
    across workers. A deploy that needs those semantics for a session must route
    that session's traffic to one worker (sticky routing) — or accept per-worker
    best-effort.
-3. **Recovery is part of boot, in every wiring.** Each worker, at boot, sweeps
-   for orphaned `:running` turns and undelivered outbox records and claims them
-   transactionally — which is why item 1 is what makes N workers booting at
-   once safe (no double-resume).
+3. **Recovery is part of boot, in every wiring.** Every worker boots through
+   `Server::Boot`, which runs recovery **before the listen**. The per-record
+   sweeps (undelivered outbox records, undelivered delegation results) run in
+   every worker — each record carries its own transactional claim (item 1), so
+   at-most-once holds however many workers sweep. The **task sweep** runs
+   **once per boot generation**: the sweep's "orphaned `:running`" test cannot
+   see a fiber living in a *sibling* process, so the first worker to claim
+   `INSIKA_BOOT_ID` (one id per container start, exported by
+   `deploy/entrypoint.sh`) sweeps and the rest skip. A worker respawned
+   mid-generation skips too — sweeping then would steal its siblings' live
+   turns; its own orphans wait for the next generation (the next deploy).
+   Without `INSIKA_BOOT_ID` (single-process runs) every boot sweeps.
 4. **Shutdown is a drain, not a kill.** On SIGTERM a worker stops accepting new
    turns, lets in-flight turns finish up to a deadline, and only then exits.
    Whatever the deadline abandons, item 3 picks up at the next boot.
@@ -61,6 +69,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_DB` | `/data/insika.db` (in the image) | durable SQLite path (**mount a volume!**) |
 | `PORT` | `9292` | HTTP bind port |
 | `WEB_CONCURRENCY` | `2` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
+| `INSIKA_BOOT_ID` | set by `deploy/entrypoint.sh` | boot generation id; the recovery **task sweep** runs once per id (process model, item 3). Unset = every boot sweeps (single-process default) |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |

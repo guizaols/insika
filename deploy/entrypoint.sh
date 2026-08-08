@@ -37,6 +37,13 @@ fi
 # ("The process model") — that section is the single source of truth.
 APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-2}"
 
+# Boot generation for the recovery task sweep (RFC-0016 A2/E2): one id per
+# container start, inherited by every Falcon worker. The first worker to claim
+# it runs the sweep; the others (and any worker respawned mid-generation) skip,
+# so a rebooting worker never "recovers" a sibling's live turn. See
+# docs/DEPLOY.md "The process model".
+export INSIKA_BOOT_ID="${INSIKA_BOOT_ID:-$(date +%s)-$$}"
+
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
   echo "[entrypoint] Litestream disabled (LITESTREAM_REPLICA_URL unset) — booting app directly."
   exec sh -c "${APP_CMD}"

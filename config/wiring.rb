@@ -183,6 +183,12 @@ module Insika
     def self.load_plugins = nil
     def self.build_stores = nil
     def self.recovery = RECOVERY
+
+    # RFC-0016 E2: the task sweep runs ONCE per boot generation (INSIKA_BOOT_ID,
+    # exported by deploy/entrypoint.sh). Unset (single process) -> always sweep.
+    def self.claim_recovery_sweep
+      Insika::Recovery.claim_sweep(store: BACKEND, boot_id: ENV["INSIKA_BOOT_ID"])
+    end
     # RFC-0010 Fase 2: re-deliver async delegations whose child finished but whose
     # result was not delivered before a crash. Boot calls it after task recovery.
     def self.recover_delegations = EXECUTOR.recover_delegations
