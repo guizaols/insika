@@ -328,9 +328,28 @@ module Insika
       values = Array(h[:equals]).map(&:to_s)
       raise Insika::ValidationError, "halt_when requires a non-empty equals list" if values.empty?
 
-      { json_path: path, equals: values }
+      { json_path: path, equals: values, say: normalize_halt_say(h[:say]) }.compact
     end
     private_class_method :normalize_halt_when
+
+    # `say` is EITHER a literal or a path, never both — two answers to "what does the
+    # customer get" is a configuration nobody can read. Refused at load rather than
+    # resolved by precedence: a silently ignored half would publish the wrong one.
+    def self.normalize_halt_say(say)
+      return nil if say.nil?
+
+      s = deep_symbolize(say)
+      text = s[:text].nil? ? nil : s[:text].to_s
+      path = s[:json_path].nil? ? nil : s[:json_path].to_s
+      given = [text, path].compact.reject(&:empty?)
+      if given.length != 1
+        raise Insika::ValidationError,
+              "halt_when.say takes exactly one of 'text' or 'json_path' (got #{given.length})"
+      end
+
+      text.nil? || text.empty? ? { json_path: path } : { text: text }
+    end
+    private_class_method :normalize_halt_say
 
     def self.normalize_response(response)
       r = deep_symbolize(response || {})
@@ -405,15 +424,78 @@ module Insika
       return false if halt_when.nil?
 
       parsed = JSON.parse(body.to_s)
-      value = halt_when[:json_path].split(".").reduce(parsed) do |cur, seg|
-        return false unless cur.is_a?(Hash) && cur.key?(seg)
+      value = dig_path(parsed, halt_when[:json_path])
+      return false if value == PATH_MISS
 
-        cur[seg]
-      end
       halt_when[:equals].include?(value.to_s)
     rescue JSON::ParserError
       false
     end
+
+    # WHAT THE CUSTOMER GETS WHEN THE MODEL SAID NOTHING FIRST (`halt_when.say`).
+    #
+    # A halt is worth the model's lead-in ("vou te conectar agora") and nothing
+    # after — but the model does not always write one, and then the turn published
+    # an EMPTY answer. Measured on a real store: two escalation turns in a row
+    # delivered silence, where the same agent without the halt at least said "o time
+    # de suporte já está cuidando do seu caso".
+    #
+    # The value cannot be guessed. `json_path` + `equals` cannot supply it either:
+    # the matched value is by definition one of the `equals` tokens, so publishing
+    # it would ship "SUBSCRIBED" to a person as often as it ships a sentence. So the
+    # operator names it, in one of two shapes:
+    #
+    #   "say" => { "json_path" => "tool_result" }   # the sentence the backend returned
+    #   "say" => { "text" => "CALL_SUPPORT" }       # a literal the CHANNEL resolves
+    #
+    # The literal form is the one that replaces the usual workaround — forcing the
+    # prompt to emit a control token and parsing it downstream. The token then comes
+    # from the tool's own contract, deterministically, instead of depending on the
+    # model complying with an instruction.
+    #
+    # -> String | nil. nil means "publish nothing", which is the pre-existing
+    # behaviour and stays the default for every tool that declares no `say`.
+    def halt_say(body)
+      say = halt_when && halt_when[:say]
+      return nil if say.nil?
+      return Coercion.presence(say[:text]) if say[:text]
+
+      parsed = JSON.parse(body.to_s)
+      value = dig_path(parsed, say[:json_path])
+      # Only a String is publishable: a hash or a number reaching a customer as the
+      # answer is never what someone meant.
+      value.is_a?(String) ? Coercion.presence(value) : nil
+    rescue JSON::ParserError
+      nil
+    end
+
+    # HOW `say` REACHES THE EXECUTOR. RubyLLM's `Tool::Halt` carries one value, and
+    # that value is the tool's payload (the trace records it, and the model never
+    # sees it — the halt ends the loop). So a halt that has something to publish
+    # carries BOTH, under keys distinctive enough that a trace reader knows what
+    # they are on sight. Unwrapped tools are untouched: no `say`, no wrapper.
+    SAY_KEY = "__insika_halt_say"
+    PAYLOAD_KEY = "__insika_halt_payload"
+
+    def self.wrap_halt(payload, say) = { SAY_KEY => say, PAYLOAD_KEY => payload }
+
+    # -> the text to publish, or nil when this halt carries none.
+    def self.halt_say_of(content)
+      content.is_a?(Hash) ? Coercion.presence(content[SAY_KEY]) : nil
+    end
+
+    # Walks a dotted path. Returns PATH_MISS (not nil) when a segment is absent, so a
+    # key whose stored value IS nil stays distinguishable from a missing key.
+    PATH_MISS = Object.new.freeze
+
+    def dig_path(parsed, path)
+      path.to_s.split(".").reduce(parsed) do |cur, seg|
+        return PATH_MISS unless cur.is_a?(Hash) && cur.key?(seg)
+
+        cur[seg]
+      end
+    end
+    private :dig_path
 
     # Names of the required top-level parameters (DataDefinedTool validates presence
     # before the call). Derived from the JSON Schema's `required`.
