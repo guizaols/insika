@@ -31,11 +31,16 @@ module Insika
       # RUNS and says so in the report: "could not rule it out" is not a reason to
       # stop testing something, and a suite that shrinks in silence is the failure
       # this feature exists to avoid.
-      def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil)
+      #
+      # pairwise: an Evals::Pairwise (optional, RFC-0014 §3.4). Only cases carrying a
+      # `reference:` are compared, and the verdict never touches pass/fail — it is the
+      # answer to "can we replace it", reported beside the suite's own verdict.
+      def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil, pairwise: nil)
         @transport = transport
         @judge = judge
         @conv_map = conv_map || {}
         @capabilities = capabilities
+        @pairwise = pairwise
       end
 
       # [Golden] -> [RunCase]. Each RunCase carries the CaseResult (for the report) +
@@ -71,6 +76,10 @@ module Insika
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
+        # Against the incumbent (RFC-0014 §3.4). Same rule as the judge: nothing to
+        # compare on a turn that errored — half a conversation would lose the
+        # comparison for a reason that has nothing to do with the agent.
+        result.pairwise = @pairwise.compare(golden: golden, turns: turns) if @pairwise && result.error.nil?
         RunCase.new(result: result, timings: timings, tokens: sum_tokens(spent),
                     cached: sum_tokens(cached))
       end

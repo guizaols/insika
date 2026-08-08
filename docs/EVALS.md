@@ -108,6 +108,55 @@ so a tracking link's query string is not read as the agent asking something. It 
 policy signal, not grammar — and crude was enough to catch an agent breaking a rule
 written in its own prompt, twice, with no model in the loop.
 
+### `reference` — compared against the system you want to replace
+
+`min_score: 0.7` says a reply cleared a bar you invented. It says nothing about
+whether the system already answering your customers would have done better. If you are
+replacing something, that is the only question that matters — and you have its
+transcripts.
+
+Give a case the incumbent's real conversation for the same opening, and a run with
+`--pairwise` asks one judge one question: **which one served the customer better?**
+
+```yaml
+reference:
+  source: "helpdesk chat 34403117"   # free text, so a reader can find the original
+  messages:
+    - role: user
+      text: "tem creatina?"
+    - role: assistant
+      text: "temos sim! qual seu objetivo?"
+    - role: assistant
+      text: "segue o link do produto"
+      origin: operator               # a HUMAN typed this one
+```
+
+```bash
+ruby evals/run.rb --agent demo-store --pairwise
+```
+
+Three outcomes — `better`, `comparable`, `worse` — and two more the panel can produce
+and the report will not hide: `split` when the judges disagree, `unknown` when none of
+them answered readably. **It never changes pass/fail.** "Worse than the incumbent" is
+an answer about a replacement decision, not a regression in your suite, and it stays
+out of the gate.
+
+Three rules make the number worth quoting:
+
+- **The judge is not told which one is yours.** It sees "A" and "B". Told, it would
+  have an opinion about the new system instead of about the conversations.
+- **Every judge is asked twice, with the transcripts swapped.** Preferring whatever was
+  printed first is the classic failure of pairwise grading, so a verdict that flips is
+  reported as `comparable`, marked `order-dependent`.
+- **A person is not the incumbent's model.** `origin: operator` on any reference
+  message labels the whole pair `vs: human-assisted`, and the summary counts those
+  separately — comparing a model to a person and calling it a win is a lie in both
+  directions. The judge is not told; the reader is, which is where it changes a
+  decision.
+
+Cost: **two provider calls per judge per case**, which is why it is opt-in and never
+part of the gate.
+
 Cases live in two places, and it is the same YAML in both:
 
 - **`evals/golden/**`** in the repo — the curated corpus, reviewable in a pull request,
@@ -193,6 +242,10 @@ not a regression.
   traffic back to find the ones worth adding.
 - **The corpus is small on purpose.** Twenty cases covering the hot flows beat two
   hundred nobody curates.
+- **A pairwise verdict is a judgement, not a measurement.** It is one model's opinion
+  about two conversations. Read a batch of them by hand before quoting the number in a
+  decision — if `better` tracks length or politeness rather than whether the customer
+  got served, the comparison is measuring the wrong thing and should be dropped.
 
 ## Where it lives
 
