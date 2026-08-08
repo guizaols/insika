@@ -32,6 +32,15 @@ module Insika
       TERMINAL_EVENTS = %i[task_completed task_failed task_cancelled].freeze
       private_constant :TERMINAL_EVENTS
 
+      # RFC-0016 A5: the `/v1` contract, versioned by date. A caller PINS behaviour
+      # with `Insika-Version: YYYY-MM-DD` so a future breaking change does not move
+      # silently underneath it; absent header = today's (only) version. Only one
+      # entry exists so far — the day a second one is added, the routes that
+      # changed branch on this value instead of being served whichever behaviour
+      # happened to be current.
+      KNOWN_VERSIONS = ["2026-08-08"].freeze
+      private_constant :KNOWN_VERSIONS
+
       # The operator control UI now lives in the Studio (§12 G5); server/ is a
       # pure transport surface (/v1, /a2a). The constitutional rule holds: server/
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
@@ -100,6 +109,11 @@ module Insika
         # the in-memory store is a Ruby Hash and a binary string is `eql?` to its
         # UTF-8 twin. Found by calling `GET /v1/agents/:id` against a real database.
         segments = req.path_info.split("/").reject(&:empty?).map { |s| Coercion.utf8(s) }
+        if segments.first == "v1"
+          version_error = version_gate(req)
+          return version_error if version_error
+        end
+
         gate = public_route?(req.request_method, segments) ? nil : gateway_gate(req)
         return gate if gate
 
@@ -371,6 +385,18 @@ module Insika
                         tools: allow.nil? ? nil : (Array(allow).map(&:to_s) - deny),
                         capabilities: Array(profile.capabilities_declared).map(&:to_s)
                       })
+      end
+
+      # `/v1` only — `/a2a` is versioned by its own JSON-RPC spec and a channel's
+      # shape is the platform's, so neither reads this header. Runs BEFORE the
+      # gateway gate: which version the caller asked for is a contract question,
+      # answerable regardless of whether the request is authorized. Absent header
+      # -> nil (current behaviour); an unknown value -> 400, not a silent fallback.
+      def version_gate(req)
+        version = req.get_header("HTTP_INSIKA_VERSION")
+        return nil if Coercion.blank?(version) || KNOWN_VERSIONS.include?(version)
+
+        error_response(400, Insika::ValidationError.new("unknown Insika-Version: #{version.inspect}"))
       end
 
       # Gateway Bearer (fail-closed). -> error response (503/401) OR nil when
