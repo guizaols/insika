@@ -323,6 +323,55 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       body = '{"tool_result":{"status":"SUBSCRIBED"}}'
       expect(tool(plain, result: { status: 200, body: body }).execute(id: 6)).to eq(body)
     end
+
+    # `say`: what the customer gets when the model called the tool without writing a
+    # lead-in. Before this, that turn published NOTHING — measured on a real store,
+    # two escalation turns in a row delivered silence.
+    describe "say" do
+      def halting(say)
+        subscribe_def.merge(halt_when: { json_path: "tool_result.status", equals: ["SUBSCRIBED"], say: say })
+      end
+
+      let(:body) { '{"tool_result":{"status":"SUBSCRIBED","message":"Já te inscrevi, chega em instantes."}}' }
+
+      it "carries a literal the CHANNEL resolves — the control token, without forcing the prompt" do
+        result = tool(halting({ text: "CALL_SUPPORT" }), result: { status: 200, body: body }).execute(id: 6)
+        expect(Insika::ToolDefinition.halt_say_of(result.content)).to eq("CALL_SUPPORT")
+      end
+
+      it "carries a field of the backend's own answer" do
+        result = tool(halting({ json_path: "tool_result.message" }), result: { status: 200, body: body }).execute(id: 6)
+        expect(Insika::ToolDefinition.halt_say_of(result.content)).to eq("Já te inscrevi, chega em instantes.")
+      end
+
+      it "keeps the payload reachable for the trace" do
+        result = tool(halting({ text: "CALL_SUPPORT" }), result: { status: 200, body: body }).execute(id: 6)
+        expect(result.content[Insika::ToolDefinition::PAYLOAD_KEY]).to eq(body)
+      end
+
+      # Publishing a hash (or a number) to a person as the answer is never what
+      # someone meant, so an unpublishable path reads as "no say".
+      it "ignores a path that does not resolve to a string" do
+        result = tool(halting({ json_path: "tool_result" }), result: { status: 200, body: body }).execute(id: 6)
+        expect(Insika::ToolDefinition.halt_say_of(result.content)).to be_nil
+      end
+
+      it "leaves a halt with no say exactly as it was" do
+        result = tool(subscribe_def, result: { status: 200, body: body }).execute(id: 6)
+        expect(result.content).to eq(body)
+      end
+
+      # Two answers to "what does the customer get" is a config nobody can read.
+      it "refuses both forms at load" do
+        expect { tool(halting({ text: "X", json_path: "tool_result.message" }), result: { status: 200, body: body }) }
+          .to raise_error(Insika::ValidationError, /exactly one of/)
+      end
+
+      it "refuses an empty say" do
+        expect { tool(halting({}), result: { status: 200, body: body }) }
+          .to raise_error(Insika::ValidationError, /exactly one of/)
+      end
+    end
   end
 
   it "emits :data_tool_call with status, without leaking body/secret" do
