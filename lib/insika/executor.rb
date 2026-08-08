@@ -83,6 +83,7 @@ module Insika
       @supervised = false      # serving mode? — see #turn_parent
       @supervisor = nil        # lazy long-lived supervisor (created when serving)
       @session_actors = {}     # session_id => SessionActor (FIFO queue)
+      @draining = false        # shutdown drain (RFC-0016 A3) — see #begin_drain!
     end
 
     # Turns on SERVING mode: the composition root's serving arm (serve.rb /
@@ -95,6 +96,20 @@ module Insika
     # and in tests the owner WANTS to wait for the turn to finish (structured
     # concurrency).
     attr_accessor :supervised
+
+    # RFC-0016 A3: closes the TURN intake for shutdown. Armed by Insika::Shutdown
+    # when the process is asked to stop: from here on a new top-level turn is left
+    # `:queued` (durable — the next boot's recovery replays it) instead of
+    # spawning, while the in-flight turns run to their natural end. One-way by
+    # design: a draining process never takes work again.
+    def begin_drain!
+      @draining = true
+    end
+
+    def draining? = @draining
+
+    # The turns still running in THIS process — what a drain waits on.
+    def in_flight = @running.keys
 
     # In-process registry of live fibers (ResumeTask's criterion).
     def running?(task_id) = @running.key?(task_id)
@@ -197,6 +212,13 @@ module Insika
     # time); without a session_id (one-shot/history) it goes straight to spawn
     # (standalone).
     def spawn_in_session(task, profile:, resume_from: nil)
+      # RFC-0016 A3: the intake is closed. The task is already durable (:queued);
+      # answering with its id and spawning NOTHING is what "stops accepting new
+      # turns" means — the next boot's recovery replays it. Subagent turns are NOT
+      # gated (they spawn directly): a child of an in-flight parent is part of the
+      # work the drain is waiting FOR, and refusing it would wedge the parent.
+      return defer_turn(task) if @draining
+
       # SessionActor only in SERVING mode (@supervised): serializes concurrent
       # REQUESTS. At boot/recovery (non-supervised) the replay is sequential and
       # the long-lived loop would hang the Boot's Sync — use direct spawn (the
@@ -356,6 +378,11 @@ module Insika
     # turn error is already mapped to a terminal state inside its own fiber (single
     # capture); here we only ensure the session loop does not die.
     def run_serial(task, profile:, resume_from: nil)
+      # RFC-0016 A3: a drain that started with turns already queued behind this
+      # session's current one must not keep feeding the loop — without this gate
+      # the drain would only converge when the whole backlog ran out.
+      return defer_turn(task) if @draining
+
       spawn(task, profile: profile, resume_from: resume_from)
       @running[task.id]&.wait
     rescue Async::Stop
@@ -526,6 +553,15 @@ module Insika
         SessionActor.new(session_id: session_id, executor: self, parent: turn_parent)
     end
 
+    # RFC-0016 A3 — a turn that arrived while the process is draining: left
+    # `:queued` on purpose (recovery replays :queued at the next boot). The event
+    # is the deferral's only trace — without it, "why was my message answered
+    # only after the deploy" is unanswerable.
+    def defer_turn(task)
+      emit(:turn_deferred, { task_id: task.id }, task: task)
+      task.id
+    end
+
     # Marks :failed a task whose turn FAILED at spawn (before the fiber).
     # Idempotent against a terminal state; StoreError re-raises (the session loop
     # handles it).
@@ -554,7 +590,10 @@ module Insika
       node = node.parent while node.parent && node.parent != reactor
       # Idle with no spin nor deprecated API (Async::Task#sleep is deprecated in
       # 2.42): blocks on a dequeue that never arrives. Ends only when the scope is
-      # stopped (server shutdown) — then the child turns go with it (acceptable).
+      # stopped (server shutdown) — then any child turns still running go with it.
+      # In a deployment that is the LAST resort, not the plan: Insika::Shutdown
+      # drains first (RFC-0016 A3), so only what outlives the drain deadline dies
+      # here, `:running`, for the next boot's recovery to replay.
       @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
     end
 

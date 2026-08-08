@@ -109,4 +109,11 @@ BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 # on the worker's reactor at the 1st turn) and survive the client disconnect.
 W::EXECUTOR.supervised = true
 
+# RFC-0016 A3: shutdown is a drain, not a kill. This replaces async-container's
+# SIGINT/SIGTERM trap in THIS worker (config.ru loads per worker): the intake
+# closes, in-flight turns get up to INSIKA_DRAIN_TIMEOUT (default 20s), and only
+# then the ordinary Falcon teardown proceeds. entrypoint.sh sizes Falcon's
+# --graceful-stop above this deadline so the controller does not cut it short.
+Insika::Shutdown.install(executor: W::EXECUTOR)
+
 run BOOTED_APP
