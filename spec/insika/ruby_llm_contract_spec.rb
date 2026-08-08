@@ -107,6 +107,41 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
+  # The PER-GRAPH CREDENTIAL boundary (RFC-0017 A2). `Executor#create_chat` asks
+  # an injected `llm` — a RubyLLM::Context — instead of the RubyLLM constant, on
+  # the strength of two gem facts: a Context answers #chat with the SAME keywords,
+  # and its config is a dup that neither reads nor writes the process-wide one. If
+  # either stopped holding, two embedded graphs would go back to swapping keys with
+  # no error at all, which is exactly the failure A2 exists to make impossible.
+  describe "the per-graph credential boundary (what makes A2 safe)" do
+    it "RubyLLM.context returns something that answers #chat like RubyLLM does" do
+      expect(RubyLLM).to respond_to(:context)
+      expect(RubyLLM.context).to respond_to(:chat)
+    end
+
+    it "a context's config is an isolated dup — writing it never reaches the global" do
+      previous = RubyLLM.config.deepseek_api_key
+      RubyLLM.configure { |c| c.deepseek_api_key = "global-only" }
+
+      context = RubyLLM.context { |c| c.deepseek_api_key = "graph-only" }
+
+      expect(context.config.deepseek_api_key).to eq("graph-only")
+      expect(RubyLLM.config.deepseek_api_key).to eq("global-only")
+    ensure
+      RubyLLM.configure { |c| c.deepseek_api_key = previous }
+    end
+
+    # The Studio's "edit a provider key, no restart" path (LLMConfigurator) writes
+    # the config AFTER the context exists. A dup taken at build time would leave the
+    # graph on its old key with the UI reporting success.
+    it "a chat built from a context carries that context's key to the provider" do
+      context = RubyLLM.context { |c| c.deepseek_api_key = "rotated-later" }
+      chat = context.chat(model: "deepseek-chat", provider: :deepseek, assume_model_exists: true)
+
+      expect(chat.instance_variable_get(:@provider).headers["Authorization"]).to eq("Bearer rotated-later")
+    end
+  end
+
   # The TOOL-BATCH boundary (RFC-0015 `steer`). SteerInjector appends a `user` message
   # after the LAST tool result of a batch, and every step of that is a gem fact: a
   # `user` message landing one result too early is rejected outright by Anthropic and

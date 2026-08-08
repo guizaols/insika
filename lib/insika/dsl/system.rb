@@ -17,9 +17,12 @@ module Insika
     class System
       attr_reader :definitions, :workflows, :runtime_options
 
-      def initialize(definitions:, workflows: [], runtime: {})
+      # `backend`: the store this system's graph owns (RFC-0017 A1). nil = the
+      # historic path (INSIKA_DB, or memory when unset). Set by `Insika.embed`.
+      def initialize(definitions:, workflows: [], runtime: {}, backend: nil)
         @definitions = definitions.freeze
         @workflows = workflows.freeze
+        @backend = backend
         # Agent-level runtime knobs merged in declaration order, then the
         # system-level ones on top (an explicit `provider`/`api_key` in the
         # system block is the shared default and wins the tie).
@@ -82,7 +85,7 @@ module Insika
       def runtime
         @runtime ||= begin
           require_relative "runtime"
-          Runtime.new(self)
+          Runtime.new(self, backend: @backend)
         end
       end
     end

@@ -98,6 +98,88 @@ RSpec.describe Insika::Shutdown do
     end
   end
 
+  # RFC-0017 A4 / E3.4 — a process can host N graphs (docs/EMBEDDING.md). Signals
+  # are a process concern and `Signal.trap` keeps only the LAST handler, so one
+  # shutdown installed per graph would drain the last one and let the others die
+  # mid-turn. The host installs once, naming every graph it embedded.
+  describe "N executors (embedded graphs)" do
+    # A second graph is a second BACKEND: its own sessions, tasks, checkpoints.
+    # -> { executor:, session_store:, task_store: }
+    def isolated_graph(context_builder: FakeContextBuilder.new)
+      store = Insika::Stores::Memory.new
+      sessions = Insika::SessionStore.new(store: store)
+      tasks = Insika::TaskStore.new(store: store)
+      executor = Insika::Executor.new(
+        context_builder: context_builder, policy_engine: NullPolicyEngine.new,
+        middleware: Insika::MiddlewareStack.new([]), hooks: Insika::Hooks.new,
+        tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
+        profiles: {}, session_store: sessions, task_store: tasks,
+        checkpoint_store: Insika::CheckpointStore.new(store: store), event_stream: SpyEventStream.new
+      )
+      allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+      { executor: executor, session_store: sessions, task_store: tasks }
+    end
+
+    def turn_in(graph, id:)
+      graph[:session_store].create(id: "s1") unless graph[:session_store].find("s1")
+      command = Insika::Command.build(:send_message, { agent: "sales", message: "oi" })
+      graph[:task_store].create(command: command.to_h, session_id: "s1", id: id)
+    end
+
+    def drainer_for(*graphs, timeout:)
+      described_class.new(executors: graphs.map { |g| g[:executor] }, timeout: timeout,
+                          logger: nil, interrupt: -> {})
+    end
+
+    it "closes every graph's intake FIRST, then waits for all of them" do
+      gate = Async::Condition.new
+      a = isolated_graph(context_builder: ShutdownGatingContextBuilder.new(gate))
+      b = isolated_graph(context_builder: ShutdownGatingContextBuilder.new(gate))
+
+      Sync do |top|
+        a[:executor].spawn(turn_in(a, id: "ta"), profile: profile)
+        b[:executor].spawn(turn_in(b, id: "tb"), profile: profile)
+        drain = top.async { drainer_for(a, b, timeout: 2).drain }
+        top.sleep(0.02)
+
+        # Both, before anything is waited on: draining them in sequence would let
+        # graph B keep accepting turns while graph A spends the deadline.
+        expect(a[:executor].draining?).to be true
+        expect(b[:executor].draining?).to be true
+
+        gate.signal # both turns finish while the drain is waiting
+        expect(drain.wait).to eq(drained: true, abandoned: [])
+        expect(a[:task_store].find("ta").status).to eq(:completed)
+        expect(b[:task_store].find("tb").status).to eq(:completed)
+      end
+    end
+
+    it "abandons the union — a slow graph does not hide behind a fast one" do
+      gate = Async::Condition.new
+      quick = isolated_graph
+      slow = isolated_graph(context_builder: ShutdownGatingContextBuilder.new(gate))
+
+      Sync do |top|
+        quick[:executor].spawn(turn_in(quick, id: "fast"), profile: profile)
+        slow[:executor].spawn(turn_in(slow, id: "stuck"), profile: profile)
+
+        result = top.async { drainer_for(quick, slow, timeout: 0.15).drain }.wait
+        expect(result).to eq(drained: false, abandoned: ["stuck"])
+        expect(quick[:task_store].find("fast").status).to eq(:completed)
+        expect(slow[:task_store].find("stuck").status).to eq(:running) # for the next boot's recovery
+
+        gate.signal # unwind
+        slow[:executor].instance_variable_get(:@running)["stuck"]&.wait
+      end
+    end
+
+    it "the single-executor form is sugar for a list of one (every serving arm still uses it)" do
+      graph = isolated_graph
+      described_class.new(executor: graph[:executor], timeout: 0.1, logger: nil, interrupt: -> {}).drain
+      expect(graph[:executor].draining?).to be true
+    end
+  end
+
   describe "a draining executor (the intake)" do
     it "leaves a new turn :queued, answers its id, and emits :turn_deferred" do
       executor = build_executor

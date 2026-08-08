@@ -12,7 +12,7 @@ require "protocol/rack"
 require "rack/urlmap"
 
 root = File.expand_path("../../..", __dir__)
-require File.join(root, "server", "app")
+require File.join(root, "server", "rack_app")
 require File.join(root, "studio", "app")
 
 module Insika
@@ -26,12 +26,14 @@ module Insika
         # Fixed local token: logs into the Studio (cookie) and gates /v1 (Bearer).
         # Never a real secret — override with `token:` or ADMIN_TOKEN.
         @token = token || ENV.fetch("ADMIN_TOKEN", "local-demo")
+        # RFC-0017 A3: the /v1 app is a value now — the same one a host mounts.
+        # This boot adds the Studio and a reactor around it, nothing else.
+        @builder = Insika::Server::AppBuilder.new(runtime, token: @token)
       end
 
       def run
-        app = build_server_app
         configure_studio
-        dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => app)
+        dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => @builder.app)
         endpoint = Async::HTTP::Endpoint.parse("http://#{@host}:#{@port}")
         middleware = Protocol::Rack::Adapter.new(dispatch)
         # Item 16 / P4: the OTEL bridge is opt-in but must be reachable from the DSL
@@ -52,66 +54,8 @@ module Insika
 
       private
 
-      def build_server_app
-        Insika::Server::App.new(
-          command_bus: @graph.bus, event_stream: @graph.event_stream,
-          session_store: @graph.session_store, task_store: @graph.task_store,
-          pending_action_store: @graph.pending_action_store,
-          provisioner: Insika::PackImporter.new(bus: @graph.bus, profiles: @graph.profiles),
-          # GET /v1/agents/:id — the read-only capability view a case's `requires`
-          # resolves against (RFC-0014 §3.2).
-          profiles: @graph.profiles,
-          # Item 20 / §5.6: the OSS onboarding surface (start.md + models.json + docs).
-          # This is the primary "build my first agent" target — models.json reports the
-          # DSL's stores + the single agent this process serves (its id IS the `model`).
-          onboarding: build_onboarding,
-          # Item 22: GET /v1/workflows + POST /v1/workflows/:name, opt-in by
-          # injection like every other edge — nil when the system declares none,
-          # so the routes simply do not exist (404, parity).
-          workflow_registry: (@graph.workflow_registry if workflows?),
-          # RFC-0011: the bundled relay, when the env turns it on. Same rule as the
-          # OTEL bridge above — a feature only `config.ru` can reach is a feature the
-          # docs are half-true about.
-          channels: (@graph.channel_registry if channels?),
-          config: { gateway_token: @token }
-        )
-      end
-
-      def workflows? = !@graph.workflow_registry.names.empty?
-
-      # Registers the env-configured channels once, and reports whether any exist.
-      def channels?
-        unless defined?(@channels_ready)
-          @channels_ready = true
-          relay = Insika::Channels::Relay.from_env(
-            http: Insika::HttpClient.new,
-            allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
-            allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"])
-          )
-          @graph.channel_registry.register(relay.id, relay) if relay
-
-          widget = Insika::Channels::Web.from_env(
-            chat_rate_limit: Insika::Channels::Web.limit_resolver(
-              profiles: @graph.profiles, settings_store: @rt.component(:settings_store)
-            )
-          )
-          @graph.channel_registry.register(widget.id, widget) if widget
-        end
-        !@graph.channel_registry.names.empty?
-      end
-
-      def build_onboarding
-        configs = @rt.packs.map(&:config)
-        Insika::Onboarding.standard(
-          root: File.expand_path("../../..", __dir__),
-          settings_store: @rt.component(:settings_store),
-          provider_store: @rt.component(:provider_store),
-          # EVERY agent this process serves — each id IS a `model` on
-          # /v1/responses, so a coding agent reading models.json sees the whole
-          # system, not just the first one.
-          agents: -> { configs.map { |c| { id: c[:id], model: c[:model], provider: c[:provider] } } }
-        )
-      end
+      def workflows? = @builder.workflows?
+      def channels? = @builder.channels?
 
       def configure_studio
         Studio::App.configure(

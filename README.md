@@ -97,6 +97,7 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Security](docs/SECURITY.md) — guardrails, egress, approvals, edge limits, secrets.
 - [Sandbox](docs/SANDBOX.md) — the confined-execution primitive.
 - [Deploy](docs/DEPLOY.md) — Falcon, a durable SQLite volume, tokens.
+- [Embedding](docs/EMBEDDING.md) — mount Insika into the Ruby app you already have: `Insika.embed(backend:)` and a Rack app for your router.
 
 **Operate & prove it**
 

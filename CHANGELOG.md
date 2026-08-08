@@ -24,6 +24,11 @@ Everything below is what the first release will contain.
   hot; an in-flight turn keeps the profile it started with.
 - **`Insika.agent { … }` DSL** — thin sugar that *generates* the same provisioning pack
   the API and UI produce. `reply` for one in-process turn, `serve` for the server.
+- **Embedding** — `Insika.embed(backend:) { … }` builds a graph that owns its store and
+  its LLM credentials, and `Insika::Server.rack_app(graph, token:)` hands you the `/v1`
+  transport as a value to mount in your own router. Two graphs in one process no longer
+  share a provider key or a database. What the process still owns — signals, the
+  reactor, the Studio — is written down in [Embedding](docs/EMBEDDING.md).
 - **Tools** — code tools, tools defined as data (declarative HTTP manifests), and MCP
   import, all behind a tool envelope with timeouts and optional human approval.
 - **`halt_when`** — a data-tool can end the turn from its own **response**

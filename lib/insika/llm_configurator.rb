@@ -12,16 +12,20 @@ module Insika
   # matching accessor) does NOT blow up: it goes into `skipped` (degrades to "restart
   # recommended", like OpenClaw), the rest applies.
   #
-  # ⚠️ GOTCHA — global singleton mutation (RubyLLM research, §10). `RubyLLM.configure`
-  # mutates the PROCESS-WIDE singleton config (`RubyLLM.config`). `apply`/`unapply`
-  # here are therefore admin operations (rare, operator-driven: a provider key/base
-  # edit in the Studio), NOT a per-request/per-turn path — a concurrent turn reading
-  # the config mid-mutation would observe a torn key/base. This is tolerable ONLY
-  # because reconfiguration is infrequent and single-writer (one reactor). Do NOT
-  # call this per turn, and do NOT reach for it to vary the MODEL per turn — the
-  # model is chosen at chat build time (ModelResolver -> RubyLLM.chat(model:)), never
-  # by mutating the global. Per-TENANT credentials/endpoints (should they ever be
-  # needed) belong in a cached `RubyLLM.context` (an isolated config dup), not here.
+  # ⚠️ GOTCHA — the DEFAULT target is a global singleton (RubyLLM research, §10).
+  # With no `configure:`, `apply`/`unapply` mutate the PROCESS-WIDE config
+  # (`RubyLLM.config`). They are therefore admin operations (rare, operator-driven:
+  # a provider key/base edit in the Studio), NOT a per-request/per-turn path — a
+  # concurrent turn reading the config mid-mutation would observe a torn key/base.
+  # This is tolerable ONLY because reconfiguration is infrequent and single-writer
+  # (one reactor). Do NOT call this per turn, and do NOT reach for it to vary the
+  # MODEL per turn — the model is chosen at chat build time (ModelResolver ->
+  # chat(model:)), never by mutating the global.
+  #
+  # PER-GRAPH credentials are no longer hypothetical (RFC-0017 A2): the DSL runtime
+  # passes `configure:` targeting its own `RubyLLM.context` — an isolated config dup
+  # — so an operator's key edit in an EMBEDDED graph applies to that graph and stops
+  # there. See `DSL::Runtime#llm_configure` and docs/EMBEDDING.md.
   class LLMConfigurator
     def initialize(provider_store:, configure: nil)
       @provider_store = provider_store

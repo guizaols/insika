@@ -69,6 +69,13 @@ tasks, checkpoints, outbox, delegations — behind transactional claims on the
 shared store. The deploy-side consequences (and the sticky-routing escape
 hatch) are written in [Deploy → The process model](DEPLOY.md#the-process-model).
 
+The mirror image of that question — not N workers of one deployment, but N
+**graphs** inside one process, which is what happens when you mount Insika into
+an app you already have — is the [embed contract](EMBEDDING.md). Short version: a
+graph owns its store and its LLM credentials, so two graphs no longer swap keys
+or read each other's sessions; the process keeps owning signals, the reactor and
+the Studio, which is why the host installs the drain itself.
+
 ### What crosses the edge
 
 A turn is not one assistant message. Between the user's message and the answer the

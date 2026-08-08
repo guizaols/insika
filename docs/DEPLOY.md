@@ -32,6 +32,11 @@ The image boots **N Falcon worker processes over one SQLite file**
 knob**: it decides which engine semantics hold cluster-wide and which are
 per-worker. The contract:
 
+> Everything here describes N workers of **one** deployment — one graph, replicated.
+> N *graphs* inside one process is a different contract, and it is
+> [Embedding](EMBEDDING.md): there each graph owns its own store and credentials,
+> and the host — not the engine — installs the drain.
+
 1. **N workers share one SQLite store.** Everything durable — sessions, tasks,
    checkpoints, outbox, delegations — is cross-process state. Any status
    transition that hands work to "whoever gets there first" goes through a
