@@ -31,6 +31,10 @@ if [ ! -f "${DB}" ] && [ -f "${LEGACY_DB}" ]; then
     [ -f "${LEGACY_DB}${suffix}" ] && mv "${LEGACY_DB}${suffix}" "${DB}${suffix}"
   done
 fi
+# WEB_CONCURRENCY is a contract input, not a tuning knob: N workers share one
+# SQLite store, but a session's live semantics (FIFO, steer, interrupt, pause,
+# SSE watch) are per-worker. What changing N means is written in docs/DEPLOY.md
+# ("The process model") — that section is the single source of truth.
 APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-2}"
 
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then

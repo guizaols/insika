@@ -79,17 +79,22 @@ module Insika
       scan.select { |d| d.status == :pending }
     end
 
-    # pending -> delivering, ATOMICALLY. Returns true only for the caller that won
-    # the transition; that caller (and only it) makes the HTTP call, so delivery is
-    # at-most-once even if the terminal hook and the boot sweep both fire.
+    # pending -> delivering, ATOMICALLY — across processes, not just fibers: the
+    # read-check-write rides Store#transaction, so two workers claiming the same
+    # record serialize on the backend's lock and only one sees :pending. Returns
+    # true only for the caller that won the transition; that caller (and only it)
+    # makes the HTTP call, so delivery is at-most-once even if the terminal hook
+    # and the boot sweep both fire.
     def claim(id)
-      record = @store.get(SCOPE, key_for(id))
-      return false unless record && record["status"] == "pending"
+      @store.transaction do
+        record = @store.get(SCOPE, key_for(id))
+        next false unless record && record["status"] == "pending"
 
-      record["status"] = "delivering"
-      record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
-      true
+        record["status"] = "delivering"
+        record["updated_at"] = timestamp
+        @store.set(SCOPE, key_for(id), record)
+        true
+      end
     end
 
     # One attempt happened and did not succeed. Keeps the record :delivering (the

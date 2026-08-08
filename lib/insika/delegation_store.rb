@@ -94,18 +94,23 @@ module Insika
       touch(id, record)
     end
 
-    # completed -> delivered, ATOMICALLY (the claim). Returns true only for the
-    # caller that won the transition — that caller (and only it) spawns the delivery
-    # turn, so delivery is at-most-once even if the hook and recovery both fire.
-    # A record not in :completed (already delivered, or still dispatched) -> false.
+    # completed -> delivered, ATOMICALLY (the claim) — across processes, not just
+    # fibers: the read-check-write rides Store#transaction, so two workers racing
+    # the same record serialize on the backend's lock and only one sees
+    # :completed. Returns true only for the caller that won the transition — that
+    # caller (and only it) spawns the delivery turn, so delivery is at-most-once
+    # even if the hook and recovery both fire. A record not in :completed
+    # (already delivered, or still dispatched) -> false.
     def claim_delivery(id)
-      record = @store.get(SCOPE, key_for(id))
-      return false unless record && record["status"] == "completed"
+      @store.transaction do
+        record = @store.get(SCOPE, key_for(id))
+        next false unless record && record["status"] == "completed"
 
-      record["status"] = "delivered"
-      record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
-      true
+        record["status"] = "delivered"
+        record["updated_at"] = timestamp
+        @store.set(SCOPE, key_for(id), record)
+        true
+      end
     end
 
     private

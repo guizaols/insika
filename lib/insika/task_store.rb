@@ -75,21 +75,28 @@ module Insika
     # ArgumentError for a status outside the enum or an invalid transition.
     # If `error:` is provided AND there is an open Execution, it closes it in the same write
     # (Recovery path).
+    #
+    # The read-check-write rides Store#transaction because this is also the
+    # dispatch CLAIM: two workers racing queued -> running serialize on the
+    # backend's lock, the loser re-reads :running and gets the loud
+    # ArgumentError instead of a second silent owner.
     def transition(id, to:, error: nil)
-      record = fetch!(id)
       target = to.to_sym
       raise ArgumentError, "invalid status: #{to}" unless STATUSES.include?(target)
 
-      from = record["status"].to_sym
-      unless TRANSITIONS.fetch(from).include?(target)
-        raise ArgumentError, "invalid transition: #{from} -> #{target}"
-      end
+      @store.transaction do
+        record = fetch!(id)
+        from = record["status"].to_sym
+        unless TRANSITIONS.fetch(from).include?(target)
+          raise ArgumentError, "invalid transition: #{from} -> #{target}"
+        end
 
-      close_open_execution(record, outcome: target.to_s, error: error) if error
-      record["status"] = target.to_s
-      record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
-      to_task(record)
+        close_open_execution(record, outcome: target.to_s, error: error) if error
+        record["status"] = target.to_s
+        record["updated_at"] = timestamp
+        @store.set(SCOPE, key_for(id), record)
+        to_task(record)
+      end
     end
 
     # -> Task; opens an Execution (attempt N+1). ArgumentError if one is already
