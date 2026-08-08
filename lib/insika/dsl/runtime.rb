@@ -25,15 +25,30 @@ module Insika
       # answer #pack/#id; a System also answers #packs. Duck-typed on purpose:
       # the runtime does not care how many agents it hosts, only that each one
       # arrives as an ordinary Pack.
-      def initialize(definition)
+      #
+      # `backend`: the store this graph owns (RFC-0017 A1). nil = the historic
+      # path, `INSIKA_DB` or memory — ENV is a default, never a requirement (the
+      # embed contract, item 5). An injected backend wins and is never widened
+      # back to the environment.
+      def initialize(definition, backend: nil)
         @definition = definition
+        @injected_backend = backend
         @packs = (definition.respond_to?(:packs) ? Array(definition.packs) : [definition.pack]).freeze
         @pack = @packs.first
+        # RFC-0017 A2: the graph's OWN RubyLLM config, built before the graph so
+        # every collaborator that talks to a provider is handed it at wiring time
+        # rather than reading a process-wide singleton at call time.
+        @llm = build_llm_context
         @graph = build_graph
-        configure_llm
         seed_default_model
         import_packs
       end
+
+      # The graph's RubyLLM context (RFC-0017 A2) — an isolated config dup that
+      # answers #chat. nil only under the test stub, where the fallback is the
+      # RubyLLM constant itself. Read by the specs and by anything a host wires
+      # alongside this graph.
+      attr_reader :llm
 
       # An imported profile, read back from the store (config-over-code
       # round-trip). Defaults to the primary agent.
@@ -145,7 +160,7 @@ module Insika
       # --- graph assembly (mirrors config/deployment.rb, generically) ------
 
       def build_graph
-        backend = Insika::Wiring::Graph.backend_from_env
+        backend = @injected_backend || Insika::Wiring::Graph.backend_from_env
         # :workflow_allowlist joins the builtins here for the same reason the
         # minimal wiring registers it: this root CAN expose workflows. An agent
         # that never names one keeps `workflows_allow` nil = all (parity).
@@ -162,7 +177,8 @@ module Insika
           skill_catalog: c[:skill_catalog], prompt_catalog: c[:prompt_catalog],
           guardrails: c[:guardrails], context_providers: context_providers(spine, c),
           edge_limiter: c[:edge_limiter],
-          executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store] }
+          executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store],
+                            llm: @llm }
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
@@ -206,7 +222,7 @@ module Insika
         {
           backend: backend, config_store: config_store,
           settings_store: settings_store, provider_store: provider_store,
-          configurator: Insika::LLMConfigurator.new(provider_store: provider_store),
+          configurator: Insika::LLMConfigurator.new(provider_store: provider_store, configure: llm_configure),
           agent_file_store: Insika::AgentFileStore.new(config_store: config_store),
           skill_store: skill_store, tool_store: tool_store,
           system_file_store: Insika::SystemFileStore.new(config_store: config_store),
@@ -217,7 +233,10 @@ module Insika
           skill_catalog: Insika::SkillCatalog.new([], store: skill_store),
           prompt_catalog: Insika::PromptCatalog.new([]),
           profile_source: Insika::StoredProfileSource.new(config_store: config_store),
-          guardrails: Insika::Safety::Factory.new(settings_store: settings_store),
+          # A2: the moderator/validator tiers ask a model too. A graph reading its
+          # own key for the turn but the global one for a guardrail would be a
+          # credential leak wearing the look of isolation.
+          guardrails: Insika::Safety::Factory.new(settings_store: settings_store, llm: @llm),
           edge_limiter: Insika::EdgeLimiter.new(
             ledger: Insika::UsageLedger.new(store: backend), settings_store: settings_store
           )
@@ -284,11 +303,19 @@ module Insika
         ([provider_name] + @packs.filter_map { |p| Insika::Coercion.presence(p.config[:provider])&.to_s }).uniq
       end
 
-      def configure_llm
-        return unless RubyLLM.respond_to?(:configure) # absent under the test stub
+      # RFC-0017 A2 — the graph's credentials belong to the graph. `RubyLLM.context`
+      # is an isolated dup of the config that answers #chat, so two graphs in one
+      # process no longer overwrite each other's keys: the global
+      # `RubyLLM.configure` is a single slot PER PROVIDER, and the loser of that
+      # race got no error, just the other tenant's key.
+      #
+      # Returns nil under the test stub (no #context) — every consumer falls back
+      # to the RubyLLM constant, which is exactly the old behavior.
+      def build_llm_context
+        return nil unless RubyLLM.respond_to?(:context)
 
         primary = provider_name
-        RubyLLM.configure do |cfg|
+        RubyLLM.context do |cfg|
           provider_names.each do |provider|
             # The explicit api_key/api_base belong to the PRIMARY provider; the
             # others resolve from the conventional <PROVIDER>_API_KEY.
@@ -301,6 +328,18 @@ module Insika
           cfg.request_timeout = 120
           cfg.max_retries = 2
         end
+      end
+
+      # The LLMConfigurator's target (Studio: edit a provider key, no restart).
+      # Scoped to THIS graph's context — a `RubyLLM.configure` here would reach
+      # into every other graph in the process, which is the leak A2 exists to
+      # close. nil = no context (test stub) -> the configurator's own global
+      # default, unchanged.
+      def llm_configure
+        return nil if @llm.nil?
+
+        context = @llm
+        ->(&blk) { blk.call(context.config) }
       end
 
       def apply_llm(cfg, setter, value)
