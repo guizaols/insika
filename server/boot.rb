@@ -12,10 +12,14 @@ module Insika
     class Boot
       # wiring: object with the named steps (load_plugins/build_stores/
       # recovery/app) — the config/wiring.rb. logger: simple IO (default $stdout;
-      # nil silences).
-      def initialize(wiring, logger: $stdout)
+      # nil silences). app: overrides the wiring's `app` step — for a serving arm
+      # (config.ru) that assembles its own Rack app around the wiring; the
+      # "recovery before the listen" guarantee is unchanged (#call still only
+      # returns after recovery).
+      def initialize(wiring, logger: $stdout, app: nil)
         @wiring = wiring
         @logger = logger
+        @app = app
       end
 
       # -> Rack app ready for the `run`. A store failure at boot (corrupted
@@ -29,7 +33,7 @@ module Insika
         summary = run_recovery
         log("boot: recovery complete — #{summary[:resumed].size} resumed, " \
             "#{summary[:failed].size} failed")
-        @wiring.app
+        @app || @wiring.app
       end
 
       private
@@ -52,11 +56,29 @@ module Insika
       # sweep re-delivers completed-but-undelivered async delegations, and depends
       # on the task sweep having re-dispatched any in-flight children first. Both
       # create task fibers, so both must run inside the reactor scope of run_recovery.
+      #
+      # The TASK sweep is additionally gated per boot generation (RFC-0016 E2):
+      # its "orphaned :running" test cannot see a sibling worker's live fiber, so
+      # only the worker that claims the generation sweeps — the others would steal
+      # in-flight turns. The delegation and channel sweeps stay ungated: each of
+      # their records carries its own transactional claim (at-most-once holds
+      # however many workers sweep). Duck-typed: a wiring without the claim (test
+      # doubles, single-process arms) sweeps unconditionally.
       def do_recovery
-        summary = @wiring.recovery.run
+        summary =
+          if skip_task_sweep?
+            log("boot: task sweep skipped — another worker claimed this boot generation")
+            { resumed: [], failed: [] }
+          else
+            @wiring.recovery.run
+          end
         recover_delegations
         recover_channel_deliveries
         summary
+      end
+
+      def skip_task_sweep?
+        @wiring.respond_to?(:claim_recovery_sweep) && !@wiring.claim_recovery_sweep
       end
 
       # Duck-typed (like durable?): a wiring without async delegation just omits it.
