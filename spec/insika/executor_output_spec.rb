@@ -159,6 +159,46 @@ RSpec.describe "Insika::Executor turn output (P19)" do
 
       expect(terminal_content).not_to include("SUBSCRIBED")
     end
+
+    # The hole this closed: a model that calls the tool with NO lead-in published an
+    # empty answer. Measured on a real store — two escalation turns in a row
+    # delivered silence to the customer.
+    describe "when the model wrote no lead-in" do
+      def halt_carrying(say) = Insika::ToolDefinition.wrap_halt({ "tool_result" => "x" }, say)
+
+      it "publishes what the tool declared it wants said" do
+        chat = FakeChat.new
+        chat.script = proc {} # o modelo chamou a tool sem escrever nada antes
+        chat.halt_with!(halt_carrying("CALL_SUPPORT"))
+
+        run_turn(build_executor, chat)
+
+        expect(deltas(:content)).to eq(["CALL_SUPPORT"])
+        expect(terminal_content).to eq("CALL_SUPPORT")
+      end
+
+      it "still publishes nothing when the tool declared no `say`" do
+        chat = FakeChat.new
+        chat.script = proc {}
+        chat.halt_with!('{"tool_result":{"status":"SUBSCRIBED"}}')
+
+        run_turn(build_executor, chat)
+
+        expect(deltas(:content)).to be_empty
+      end
+    end
+
+    # Two messages for one escalation is exactly what `halt_when` exists to prevent.
+    it "keeps the lead-in when there is one — `say` fills a void, it does not add" do
+      chat = FakeChat.new
+      chat.script = proc { emit_chunk("vou te conectar agora") }
+      chat.halt_with!(Insika::ToolDefinition.wrap_halt({ "tool_result" => "x" }, "CALL_SUPPORT"))
+
+      run_turn(build_executor, chat)
+
+      expect(terminal_content).to eq("vou te conectar agora")
+      expect(terminal_content).not_to include("CALL_SUPPORT")
+    end
   end
 
   describe "an :agent after-hook that replaces the response" do

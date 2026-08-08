@@ -137,8 +137,45 @@ endings, decided by what the backend actually returned.
 - A non-JSON body or a missing path simply does not match: a turn never ends on a guess.
 
 A halted turn keeps whatever the model had already streamed *before* the call (usually a
-"let me get that for you") and adds nothing after it. Streamed nothing → the turn
-completes empty, which is exactly what a channel consumer drops.
+"let me get that for you") and adds nothing after it.
+
+#### `say`: what the customer gets when the model wrote nothing first
+
+The model does not always introduce the call. Then the lead-in is empty, and the turn
+used to publish **nothing** — measured on a real store, two escalation turns in a row
+delivered silence to the customer. `say` is the answer for that turn, and only that
+turn: when there **is** a lead-in it still wins, because two messages for one
+escalation is what `halt_when` exists to prevent.
+
+It cannot be inferred. `json_path` + `equals` cannot supply it either — the matched
+value is by definition one of the `equals` tokens, so publishing it would ship
+`SUBSCRIBED` to a person as often as it ships a sentence. So you name it, in one of two
+shapes:
+
+```jsonc
+// the sentence the backend itself returned
+"halt_when": { "json_path": "tool_result.status", "equals": ["SUBSCRIBED"],
+               "say": { "json_path": "tool_result.message" } }
+
+// a literal the CHANNEL knows how to resolve
+"halt_when": { "json_path": "tool_result", "equals": ["…"],
+               "say": { "text": "CALL_SUPPORT" } }
+```
+
+The literal form replaces the usual workaround: instructing the model to emit a control
+token and parsing it downstream. The token now comes from the **tool's contract**,
+deterministically, instead of depending on the model complying with a sentence in a
+prompt.
+
+- Exactly one of `text` or `json_path` — two answers to "what does the customer get" is
+  a configuration nobody can read, so both (or neither) is refused at load.
+- A `json_path` that does not resolve to a **string** publishes nothing: a hash or a
+  number reaching a customer as the answer is never what someone meant.
+- Omit `say` and the behaviour is unchanged — a halt with no lead-in completes empty,
+  which is what a channel consumer drops.
+
+`say` is declared on the **tool**, because what a backend answers is a property of that
+backend, not of whoever calls it. Every agent sharing the tool gets the same value.
 
 > The Studio's tool editor does not render this field (nor `group`/`tags`), but a save
 > there **preserves** it — the form carries the stored values through instead of

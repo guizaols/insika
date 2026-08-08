@@ -80,7 +80,13 @@ module Insika
         # provider call, and the decision is the engine's, not a request in a prompt.
         # Only on a 2xx: an error body that happens to carry the value is a failure,
         # and a failure must reach the model.
-        return RubyLLM::Tool::Halt.new(payload) if http_ok?(result) && @definition.halt?(result[:body])
+        if http_ok?(result) && @definition.halt?(result[:body])
+          # `say` (optional) travels WITH the halt so the Executor can publish it when
+          # the model wrote no lead-in. Wrapped only when there is one, so every tool
+          # that declares no `say` keeps producing exactly the payload it always did.
+          say = @definition.halt_say(result[:body])
+          return RubyLLM::Tool::Halt.new(say ? Insika::ToolDefinition.wrap_halt(payload, say) : payload)
+        end
 
         payload
       rescue StandardError => e

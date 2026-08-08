@@ -859,8 +859,12 @@ module Insika
       # would ship the envelope to the customer as the answer. The turn is worth
       # exactly the lead-in of the message that called the tool (the model's "vou te
       # inscrever agora"), and nothing after: the backend already said the rest.
-      # Nothing streamed -> empty turn, which is what the consumer suppresses.
-      return output.halt_text if halted?(response)
+      # Nothing streamed -> the tool's `halt_when.say`, when it declared one; else an
+      # empty turn, which is what the consumer suppresses. The lead-in still WINS —
+      # a model that introduced the escalation already said the right thing, and
+      # publishing both would deliver the message twice, which is the whole reason
+      # `halt_when` exists.
+      return halt_answer(response, output) if halted?(response)
       # An :agent after-hook REPLACED the response. An explicit override outranks
       # what the model streamed (the OutputValidator still sees the result).
       return content_of(response) unless response.equal?(asked)
@@ -872,6 +876,15 @@ module Insika
       # `after_message`. Fall back to the whole turn's redacted text, else the raw
       # response: the pre-boundary behaviour, kept as the floor.
       filter ? filter.output : content_of(response)
+    end
+
+    # The lead-in when there is one; otherwise whatever the halting tool declared it
+    # wants the customer to get (`halt_when.say`). Never both.
+    def halt_answer(response, output)
+      lead = output.halt_text.to_s
+      return lead unless lead.strip.empty?
+
+      Insika::ToolDefinition.halt_say_of(content_of(response)).to_s
     end
 
     def halted?(response) = response.is_a?(RubyLLM::Tool::Halt)
