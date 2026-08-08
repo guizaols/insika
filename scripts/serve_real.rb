@@ -20,6 +20,7 @@ require "async/http/endpoint"
 require "protocol/rack"
 require "rack/urlmap"
 require File.join(Dir.pwd, "server", "app")
+require File.join(Dir.pwd, "server", "boot")
 require File.join(Dir.pwd, "server", "a2a", "app") # inbound federation (opt-in)
 require_relative "../studio/app" # management UI (Roda), under /studio
 
@@ -110,9 +111,13 @@ DISPATCH = Rack::URLMap.new(
   "/" => APP
 )
 
+# RFC-0016 A2: recovery BEFORE the listen, same as config.ru. Runs while the
+# executor is still non-supervised (sequential replay inside Boot's Sync).
+BOOTED_APP = Insika::Server::Boot.new(W, app: DISPATCH).call
+
 BIND = ENV.fetch("BIND", "http://localhost:9292")
 endpoint = Async::HTTP::Endpoint.parse(BIND)
-middleware = Protocol::Rack::Adapter.new(DISPATCH)
+middleware = Protocol::Rack::Adapter.new(BOOTED_APP)
 
 puts "\e[1mInsika — serving for real (Bia · DeepSeek #{Deploy::MODEL})\e[0m"
 puts "  #{BIND}/studio        → Insika Studio (login: token \"#{ADMIN_TOKEN}\")"

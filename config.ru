@@ -14,12 +14,14 @@
 # Requires DEEPSEEK_API_KEY (the deployment fails fast without the key). The durable
 # SQLite volume goes in INSIKA_DB (see Dockerfile/docs/DEPLOY.md).
 #
-# FOLLOW-UP: auto-recovery of turns interrupted at restart (Server::Boot)
-# only exists in the minimal wiring; here (as in serve_real) state is durable in
-# SQLite but IN-FLIGHT turns at shutdown are not resumed automatically.
+# Recovery (RFC-0016 A2): each worker boots through Server::Boot, which sweeps
+# orphaned turns, undelivered delegations and channel replies BEFORE the listen.
+# The task sweep runs once per boot generation (INSIKA_BOOT_ID) — see
+# docs/DEPLOY.md "The process model".
 
 require_relative "config/deployment"
 require "rack/urlmap"
+require_relative "server/boot"
 require_relative "server/app"
 require_relative "server/a2a/app" # inbound federation (opt-in)
 require_relative "studio/app"     # management UI (Roda), under /studio
@@ -86,15 +88,25 @@ Studio::App.configure(
   golden_store: W::GOLDEN_STORE
 )
 
+# OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.
+# Attached BEFORE Boot so the turns recovery resumes are observed too.
+Insika::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY) if W::TELEMETRY
+
+# /studio -> Studio (Roda, cookie-auth); rest -> Server::App (transport: /v1, /a2a).
+RACK_APP = Rack::URLMap.new(
+  "/studio" => Studio::App,
+  "/" => APP
+)
+
+# RFC-0016 A2: recovery BEFORE the listen, per worker. Boot's Sync only returns
+# after the resumed turns finish, and Falcon only listens after `run`. Order
+# matters: the executor is still non-supervised here, so recovery replays
+# sequentially in Boot's transient reactor — `supervised = true` only after,
+# so the long-lived turn supervisor binds to Falcon's serving reactor.
+BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
+
 # Serving mode: turns are born as children of a long-lived supervisor (created lazily
 # on the worker's reactor at the 1st turn) and survive the client disconnect.
 W::EXECUTOR.supervised = true
 
-# OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.
-Insika::Telemetry.attach(event_stream: W::EVENT_STREAM, recorder: W::TELEMETRY) if W::TELEMETRY
-
-# /studio -> Studio (Roda, cookie-auth); rest -> Server::App (transport: /v1, /a2a).
-run Rack::URLMap.new(
-  "/studio" => Studio::App,
-  "/" => APP
-)
+run BOOTED_APP

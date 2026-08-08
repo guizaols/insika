@@ -129,4 +129,40 @@ RSpec.describe Deploy::Wiring do
       expect(w::PACK_IMPORTER).to be_a(Insika::PackImporter)
     end
   end
+
+  # RFC-0016 A2: the production wiring finally instantiates Recovery and speaks
+  # Server::Boot's step contract — config.ru boots through Boot, so "recovery
+  # before the listen" holds in the deployment, not only in the minimal wiring.
+  describe "boot recovery (RFC-0016 A2)" do
+    it "instantiates Recovery over the deployment's own task/checkpoint stores and bus" do
+      expect(w::RECOVERY).to be_a(Insika::Recovery)
+      expect(w::RECOVERY.instance_variable_get(:@task_store)).to be(w::TASK_STORE)
+      expect(w::RECOVERY.instance_variable_get(:@checkpoint_store)).to be(w::CHECKPOINT_STORE)
+      expect(w::RECOVERY.instance_variable_get(:@command_bus)).to be(w::BUS)
+    end
+
+    # No `app` step here: config.ru assembles the Rack app (URLMap with the
+    # Studio) and injects it via Boot's `app:` override.
+    it "exposes every named step Server::Boot consumes" do
+      %i[load_plugins build_stores recovery recover_delegations
+         recover_channel_deliveries claim_recovery_sweep durable?].each do |step|
+        expect(w).to respond_to(step), "missing Boot step #{step}"
+      end
+    end
+
+    it "the sweep claim rides the shared BACKEND: one winner per boot generation" do
+      generation = "spec-#{SecureRandom.hex(4)}"
+      claims = [
+        Insika::Recovery.claim_sweep(store: w::BACKEND, boot_id: generation),
+        Insika::Recovery.claim_sweep(store: w::BACKEND, boot_id: generation)
+      ]
+      expect(claims).to eq([true, false])
+    end
+
+    it "without INSIKA_BOOT_ID every boot sweeps (single-process default)" do
+      skip "INSIKA_BOOT_ID is set in this environment" unless ENV["INSIKA_BOOT_ID"].to_s.empty?
+      expect(w.claim_recovery_sweep).to be(true)
+      expect(w.claim_recovery_sweep).to be(true) # not a one-shot without a generation
+    end
+  end
 end

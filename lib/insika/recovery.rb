@@ -15,6 +15,31 @@ module Insika
   #
   # `command_bus` is consumed only through the `dispatch(command)` contract.
   class Recovery
+    SWEEP_SCOPE = "recovery"
+
+    # The per-boot-generation sweep claim (RFC-0016 E2). N workers share one
+    # store, and the sweep's "orphaned :running" test is per-process: a worker
+    # booting while a sibling holds a live turn would see it as an orphan and
+    # re-run it. So the TASK sweep runs once per boot generation — the first
+    # worker to claim `boot_id` sweeps, the rest skip; a worker respawned
+    # mid-generation skips too (its own orphans wait for the next generation).
+    # Rides Store#transaction like every claim. nil/empty boot_id (single
+    # process: DSL serve, scripts, tests) -> always true, every boot sweeps.
+    def self.claim_sweep(store:, boot_id:)
+      id = boot_id.to_s
+      return true if id.empty?
+
+      store.transaction do
+        key = "sweep:#{id}"
+        if store.get(SWEEP_SCOPE, key).nil?
+          store.set(SWEEP_SCOPE, key, { "claimed_at" => Time.now.utc.iso8601 })
+          true
+        else
+          false
+        end
+      end
+    end
+
     # checkpoint_store: needed to query `latest`. logger optional
     # (default nil -> silent in tests).
     def initialize(task_store:, checkpoint_store:, command_bus:, logger: nil)

@@ -383,9 +383,39 @@ module Deploy
     )
     CHANNEL_REGISTRY.register(WEB_WIDGET.id, WEB_WIDGET) if WEB_WIDGET
 
+    # --- Boot (RFC-0016 A2) ---------------------------------------
+    # The tested Recovery, finally instantiated in the PRODUCTION wiring: at boot
+    # each worker discovers interrupted tasks and resumes them through the SAME
+    # path as ResumeTask. Server::Boot runs it before the listen (config.ru).
+    RECOVERY = Insika::Recovery.new(
+      task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, command_bus: BUS
+    )
+
+    # Named steps consumed by Server::Boot, same contract as config/wiring.rb.
+    # The graph above is built EAGERLY at require -> plugins/stores are no-ops.
+    def self.load_plugins = nil
+    def self.build_stores = nil
+    def self.recovery = RECOVERY
+
+    # RFC-0016 E2: the task sweep runs ONCE per boot generation. INSIKA_BOOT_ID
+    # is exported by deploy/entrypoint.sh (one id per container start, shared by
+    # every Falcon worker); the first worker to claim it sweeps, the rest skip —
+    # see docs/DEPLOY.md "The process model". Unset (single process) -> always sweep.
+    def self.claim_recovery_sweep
+      Insika::Recovery.claim_sweep(store: BACKEND, boot_id: ENV["INSIKA_BOOT_ID"])
+    end
+
+    # RFC-0010 Fase 2: re-deliver async delegations whose child finished but whose
+    # result was not delivered before a crash. Boot calls it after task recovery.
+    def self.recover_delegations = EXECUTOR.recover_delegations
+
     # Boot sweep for replies a previous process committed but never handed over
     # (§6.5). Duck-typed by Server::Boot, exactly like recover_delegations.
     def self.recover_channel_deliveries = EXECUTOR.recover_channel_deliveries
+
+    # Backend durability: Boot warns loudly when nothing will be resumed after a
+    # restart (INSIKA_DB not set), instead of coming up "without a net" silently.
+    def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
 
     # OPT-IN observability (Phase 6): OTEL only turns on with INSIKA_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via
