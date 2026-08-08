@@ -191,20 +191,25 @@ module Insika
       # config: the agent's `refinement` hash. -> Proposer | nil (the FIRST of the
       # panel — phase C's single-proposer entry point, kept because a deployment that
       # never configured a panel is a panel of one).
-      def build(config, utility_model: nil, ask_factory: nil)
-        panel(config, utility_model: utility_model, ask_factory: ask_factory).first
+      def build(config, utility_model: nil, ask_factory: nil, llm: nil)
+        panel(config, utility_model: utility_model, ask_factory: ask_factory, llm: llm).first
       end
 
       # -> [Proposer], in configured order, DEDUPED by model ref and capped at the
       # RFC-0010 fan-out (§3.9 says the panel reuses it). Two entries naming the same
       # model are one proposer: asking the same model twice at temperature 0 measures
       # its variance, which is exactly what D6 rejected for the judges.
-      def panel(config, utility_model: nil, ask_factory: nil, max: nil)
+      # `llm` (RFC-0017 A2): the graph's own RubyLLM context; nil = the global
+      # constant. Today only the deployment root builds a panel, and a deployment
+      # is one graph per process — the seam exists so an embedded graph that ever
+      # gains the refinement commands proposes on its own credentials.
+      def panel(config, utility_model: nil, ask_factory: nil, max: nil, llm: nil)
         refs = refs_for(Coercion.deep_stringify(config || {}), utility_model)
         cap = max || Insika::SubagentGraph.fan_out_cap
+        factory = ask_factory || ->(model, provider) { ruby_llm_ask(model, provider, llm: llm) }
         refs.first(cap).map do |ref|
           provider, model = split_ref(ref)
-          Proposer.new(ask: (ask_factory || method(:ruby_llm_ask)).call(model, provider), model: ref)
+          Proposer.new(ask: factory.call(model, provider), model: ref)
         end
       end
 
@@ -244,11 +249,12 @@ module Insika
       #
       # Returns the MESSAGE, not `.content`: the token counts ride on it and the
       # budget (§3.9) is what spends them. `Proposer` reads either shape.
-      def ruby_llm_ask(model, provider)
+      def ruby_llm_ask(model, provider, llm: nil)
         require "ruby_llm"
+        llm ||= RubyLLM
         lambda do |prompt|
-          RubyLLM.chat(model: model, provider: provider, assume_model_exists: true)
-                 .with_temperature(0).ask(prompt)
+          llm.chat(model: model, provider: provider, assume_model_exists: true)
+             .with_temperature(0).ask(prompt)
         end
       end
     end

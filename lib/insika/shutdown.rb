@@ -26,8 +26,15 @@ module Insika
     # The one-call form the serving arms use: resolves the deadline, sets the
     # traps, parks the watcher. The CALLING thread is captured as the stop target
     # — install from the thread that runs the server.
-    def self.install(executor:, timeout: nil, logger: $stdout, signals: %w[INT TERM])
-      new(executor: executor, timeout: timeout || default_timeout, logger: logger).install!(signals)
+    #
+    # `executors:` (RFC-0017 A4) drains N graphs on one signal. Signals are a
+    # PROCESS concern, and `Signal.trap` keeps only the last handler — so a second
+    # `install` per graph would silently leave the earlier graphs dying mid-turn.
+    # The host installs ONCE, naming every graph it embedded. `executor:` is the
+    # single-graph sugar every serving arm still uses.
+    def self.install(executor: nil, executors: nil, timeout: nil, logger: $stdout, signals: %w[INT TERM])
+      new(executors: executors || executor, timeout: timeout || default_timeout,
+          logger: logger).install!(signals)
     end
 
     # INSIKA_DRAIN_TIMEOUT (validated by EnvSchema); absent/garbage -> the default.
@@ -39,8 +46,9 @@ module Insika
 
     # `interrupt` is the injectable stop delivery (specs); the default raises
     # Interrupt in `target`, the thread that installed the traps.
-    def initialize(executor:, timeout:, logger: $stdout, target: Thread.current, interrupt: nil)
-      @executor = executor
+    def initialize(executor: nil, executors: nil, timeout:, logger: $stdout,
+                   target: Thread.current, interrupt: nil)
+      @executors = Array(executors || executor)
       @timeout = timeout
       @logger = logger
       @target = target
@@ -81,14 +89,16 @@ module Insika
     end
 
     # Closes the intake and waits for the in-flight turns, bounded by the
-    # deadline. -> { drained: bool, abandoned: [task ids] }
+    # deadline. With N executors the intake of EVERY one closes first, before any
+    # waiting: draining them in sequence would let graph B keep taking turns while
+    # graph A spends the deadline. -> { drained: bool, abandoned: [task ids] }
     def drain
-      @executor.begin_drain!
-      log("shutdown: draining — #{@executor.in_flight.size} turn(s) in flight, deadline #{@timeout}s")
+      @executors.each(&:begin_drain!)
+      log("shutdown: draining — #{in_flight.size} turn(s) in flight, deadline #{@timeout}s")
       deadline = monotonic + @timeout
-      sleep(POLL) until @executor.in_flight.empty? || monotonic >= deadline
+      sleep(POLL) until in_flight.empty? || monotonic >= deadline
 
-      abandoned = @executor.in_flight
+      abandoned = in_flight
       if abandoned.empty?
         log("shutdown: drained clean")
       else
@@ -99,6 +109,9 @@ module Insika
     end
 
     private
+
+    # The turns still running across every graph this shutdown owns.
+    def in_flight = @executors.flat_map(&:in_flight)
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
