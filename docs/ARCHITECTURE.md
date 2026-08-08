@@ -61,6 +61,14 @@ flowchart TD
   monotonic `seq`, so one stream multiplexes many turns and replays reliably. Not
   every event is for the end user — see the edge contract below.
 
+*In-process* is a real boundary, not a detail: per-session FIFO ordering,
+`steer`, `interrupt`, `pause`/`cancel` and the SSE watch all act on the worker
+that holds the session's actor, and the engine does **not** promise them across
+worker processes. What *is* cross-process is everything durable — sessions,
+tasks, checkpoints, outbox, delegations — behind transactional claims on the
+shared store. The deploy-side consequences (and the sticky-routing escape
+hatch) are written in [Deploy → The process model](DEPLOY.md#the-process-model).
+
 ### What crosses the edge
 
 A turn is not one assistant message. Between the user's message and the answer the
