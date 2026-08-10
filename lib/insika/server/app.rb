@@ -3,6 +3,7 @@
 require "json"
 require "rack"
 require "async"
+require "securerandom"
 require_relative "sse_body"
 require_relative "admin_auth" # Bearer checker shared by the gateway edge (fail-closed)
 require_relative "a2a/app" # A2A edge adapter (pulls protocol/errors/message/projection/card)
@@ -41,13 +42,20 @@ module Insika
       KNOWN_VERSIONS = ["2026-08-08"].freeze
       private_constant :KNOWN_VERSIONS
 
+      # B7: the 500 envelope. A 500 is by definition unexpected — the client
+      # cannot fix the request, so the contract is "you may retry, wait this
+      # long, and quote this ref when you report it". The ref only means
+      # anything because the same line goes to the server log (see #internal_error_response).
+      RETRY_AFTER_SECONDS = 1
+      private_constant :RETRY_AFTER_SECONDS
+
       # The operator control UI now lives in the Studio (§12 G5); server/ is a
       # pure transport surface (/v1, /a2a). The constitutional rule holds: server/
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
-                     channels: nil)
+                     channels: nil, logger: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -76,6 +84,10 @@ module Insika
         # injecting the registry (nil ⇒ the routes do not exist, parity with @a2a).
         # The channel does the translating; this class keeps doing only transport.
         @channels = channels
+        # B7: where a 500's error_ref goes to be FOUND. nil = silent (parity for
+        # embedders); the serving wirings pass $stdout. Class+message+backtrace
+        # only — the ref never travels with request payloads (secrets stay out).
+        @logger = logger
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -96,7 +108,7 @@ module Insika
       rescue Async::TimeoutError => e
         error_response(504, e) # synchronous control request exceeded the ceiling
       rescue StandardError => e
-        error_response(500, e)
+        internal_error_response(e)
       end
 
       private
@@ -810,6 +822,26 @@ module Insika
 
       def error_response(status, error)
         json_response(status, { error: { class: error.class.name, message: error.message } })
+      end
+
+      # B7: the 500 is the ONE status whose body carries the retry envelope —
+      # retryable/retry_after tell the client what to do, error_ref is what it
+      # quotes when the retry keeps failing. The SAME ref is logged here, or the
+      # field is decoration. 4xx stay bare: a client error is fixed by editing
+      # the request, not by waiting.
+      def internal_error_response(error)
+        ref = "err_#{SecureRandom.hex(8)}"
+        # Observability only (shutdown.rb's rule): a logger failure must never
+        # mask the 500 the client is owed.
+        begin
+          @logger&.puts("[server] #{ref} #{error.class}: #{error.message}\n" \
+                        "#{Array(error.backtrace).first(5).join("\n")}")
+        rescue StandardError
+          nil
+        end
+        json_response(500, { error: { class: error.class.name, message: error.message,
+                                      retryable: true, retry_after: RETRY_AFTER_SECONDS,
+                                      error_ref: ref } })
       end
 
       def not_found
