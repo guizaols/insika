@@ -18,7 +18,7 @@
 require "yaml"
 require_relative "../../lib/insika"
 require "ruby_llm"
-require_relative "../../server/app"
+require_relative "../../lib/insika/server/app"
 
 module InsikaCodeApp
   REPO_ROOT = File.expand_path("../..", __dir__)

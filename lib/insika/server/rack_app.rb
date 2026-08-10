@@ -96,7 +96,7 @@ module Insika
       def build_onboarding
         configs = @rt.packs.map(&:config)
         Insika::Onboarding.standard(
-          root: File.expand_path("..", __dir__),
+          root: File.expand_path("../../..", __dir__),
           settings_store: @rt.component(:settings_store),
           provider_store: @rt.component(:provider_store),
           # EVERY agent this process serves — each id IS a `model` on

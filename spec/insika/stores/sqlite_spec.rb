@@ -3,7 +3,7 @@
 require "tmpdir"
 require "fileutils"
 require "sqlite3" # the spec may require the gem; only the CORE has the lazy require rule
-require_relative "../store_contract"
+require_relative "../../../lib/insika/testing/store_contract"
 
 RSpec.describe Insika::Stores::SQLite do
   context "with :memory: database" do
@@ -26,6 +26,14 @@ RSpec.describe Insika::Stores::SQLite do
     end
 
     it_behaves_like "an Insika store"
+
+    # Multi-worker safety (RFC-0018 §4 item 4): separate connections on the
+    # SAME file, which is exactly how N Falcon workers reach one database.
+    # The :memory: context cannot include this — two handles on :memory: are
+    # two databases.
+    it_behaves_like "an Insika store safe for N workers" do
+      let(:store_factory) { -> { described_class.new(path: db_path) } }
+    end
 
     # The only backend-specific tests allowed (doc 01 §7).
 

@@ -19,10 +19,10 @@ require "async/http/server"
 require "async/http/endpoint"
 require "protocol/rack"
 require "rack/urlmap"
-require File.join(Dir.pwd, "server", "app")
-require File.join(Dir.pwd, "server", "boot")
-require File.join(Dir.pwd, "server", "a2a", "app") # inbound federation (opt-in)
-require_relative "../studio/app" # management UI (Roda), under /studio
+require_relative "../lib/insika/server/app"
+require_relative "../lib/insika/server/boot"
+require_relative "../lib/insika/server/a2a/app" # inbound federation (opt-in)
+require_relative "../lib/insika/studio/app" # management UI (Roda), under /studio
 
 W = Deploy::Wiring
 

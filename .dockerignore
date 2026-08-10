@@ -5,7 +5,8 @@
 .ruby-lsp
 node_modules
 **/node_modules
-studio/assets/src
+lib/insika/studio/assets/src
+lib/insika/studio/test
 spec
 docs
 tmp

@@ -345,4 +345,7 @@ end
   end
 end
 
-Insika::CLI.main(ARGV) if $PROGRAM_NAME == __FILE__
+# No `if $PROGRAM_NAME == __FILE__` guard: the RubyGems wrapper `load`s this file
+# (Gem.activate_bin_path), so under `gem install` the guard is false and the CLI
+# would silently do nothing. This file is only ever an entrypoint.
+Insika::CLI.main(ARGV)

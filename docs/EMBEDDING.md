@@ -33,7 +33,9 @@ INSIKA.runtime.graph.executor.supervised = true
 ```
 
 ```ruby
-# config/routes.rb
+# config/routes.rb — the transport is lazy: `require "insika"` never loads it
+require "insika/server/rack_app"
+
 mount Insika::Server.rack_app(INSIKA, token: ENV.fetch("INSIKA_TOKEN")), at: "/ai"
 ```
 
@@ -134,9 +136,9 @@ the turn when the connection drops.
 `rack_app` returns the `/v1` transport and nothing else. `Studio::App.configure`
 freezes its collaborators on the **class**, which makes it one operator UI per
 process: a second graph configuring the Studio replaces the first's wiring, for
-both. So a host that wants the UI requires `studio/app` from the checkout, calls
-`Studio::App.configure` with exactly one graph's collaborators, and mounts the
-class — accepting that the UI shows that graph and no other.
+both. So a host that wants the UI does a plain `require "insika/studio/app"`,
+calls `Studio::App.configure` with exactly one graph's collaborators, and mounts
+the class — accepting that the UI shows that graph and no other.
 
 This is a stated limitation, not an oversight. Making the Studio instantiable is
 its own change, and it needs its own reason.
@@ -166,9 +168,10 @@ was given a backend never looks at it.
 Two graphs stop corrupting each other. That is all this contract says. **Who is
 allowed to talk to which graph** is authorization, and it is not here: `token:` is
 a single Bearer gating the whole mounted app, exactly as it does for the
-standalone server. If your app has users, put the mounted app behind your own
-authentication and pass `session:` yourself — do not hand the mount point to the
-browser.
+standalone server — the written decision is [one deployment, one token;
+multi-tenancy belongs to the host](SECURITY.md#the-bearer-gate). If your app has
+users, put the mounted app behind your own authentication and pass `session:`
+yourself — do not hand the mount point to the browser.
 
 ---
 
