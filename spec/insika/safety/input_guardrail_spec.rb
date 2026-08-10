@@ -89,10 +89,20 @@ RSpec.describe Insika::Safety::InputGuardrail do
       expect(st.halt_response).to include("atendente humano")
     end
 
-    it "allow verdict passes through" do
+    it "allow verdict passes through and flags nothing" do
       st = state("meu pedido está atrasado", guardrails: { "moderator" => "on" })
       mw = described_class.new(moderator_factory: moderator_factory('{"category":"safe","action":"allow"}'))
       expect(run(mw, st)).to be(true)
+      expect(st.guardrail_flags).to be_nil
+    end
+
+    it "unavailable verdict fails open AND flags the degradation (RFC-0022: silence ≠ negative)" do
+      st = state("meu pedido está atrasado", guardrails: { "moderator" => "on" })
+      mw = described_class.new(moderator_factory: moderator_factory("not json at all"))
+      expect(run(mw, st)).to be(true) # fail-open: never blocks on a degraded tier
+      expect(st.halt_response).to be_nil
+      expect(st.guardrail_flags).to eq([{ category: "moderator_unavailable", source: "moderator",
+                                          detail: "unparseable (fail-open)" }])
     end
 
     it "does not call the moderator when the deterministic tier already blocked" do

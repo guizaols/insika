@@ -172,7 +172,10 @@ moderator off. See [`examples/guardrails/`](https://github.com/guizaols/insika/t
 - **Input** — deterministic detectors (prompt-injection, abuse) run *before* the
   model. A flagged input gets a **safe refusal without burning a model turn** — an
   injection or a flood never reaches the provider. An LLM moderator can be layered
-  on top.
+  on top. The moderator is **fail-open**: an error or an unparseable reply never
+  blocks a legitimate customer — but silence is not a negative. That third state
+  surfaces as a `:guardrail_flagged` event with category `moderator_unavailable`,
+  so a degraded tier is distinguishable from a healthy one in the audit stream.
 - **Output** — moderation plus PII/secret redaction on the streamed response, and
   a post-turn validator.
 
