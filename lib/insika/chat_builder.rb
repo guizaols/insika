@@ -216,6 +216,14 @@ module Insika
       tool_calls = 0
       max_tool_calls = state.profile.limits[:max_tool_calls] || 50
 
+      # RFC-0020: the loop detector. Needs #after_message + #add_message for the
+      # batch-boundary intervention; a chat without them (smoke shim, minimal
+      # double) stays bounded by max_tool_calls alone — never half-wired.
+      detector = if %i[after_message add_message].all? { |m| chat.respond_to?(m) }
+                   repeat = state.profile.limits[:max_tool_repeat] || Insika::AgentProfile::DEFAULT_LIMITS[:max_tool_repeat]
+                   Insika::LoopDetector.new(chat: chat, limit: repeat, emit: emit) if repeat >= 2
+                 end
+
       chat.before_tool_call do |tool_call|
         # call<->decorator correlation (side-effects/skip) — 1st line.
         state.current_tool_call = tool_call
@@ -224,8 +232,12 @@ module Insika
         tool_calls += 1
         if tool_calls > max_tool_calls
           raise Insika::TimeoutError.new("tool call limit exceeded (#{max_tool_calls})",
-                                          stage: :tool_limit)
+                                           stage: :tool_limit)
         end
+
+        # RFC-0020: AFTER the count, BEFORE the call runs — a post-warning
+        # repeat raises here, so the stubborn loop pays for no extra call.
+        detector&.tool_call(tool_call.name, tool_call.arguments)
 
         # :tool pair: RubyLLM's callbacks are additive — the altered subject
         # feeds later hooks and the events, but does not rewrite the call the
@@ -246,9 +258,16 @@ module Insika
       end
 
       chat.after_tool_result do |result|
+        # RFC-0020: the RAW result — the only place a Tool::Halt (halt_when) is
+        # still recognizable, and a halted batch must receive no intervention.
+        detector&.tool_result(result)
         result = @hooks.run_after(:tool, result)
         emit.call(:tool_result, { name: state.current_tool_name, result: result.to_s })
       end
+
+      # RFC-0020: the intervention appends at the batch boundary (the Nth tool
+      # result closing) — never between two tool results of one batch.
+      chat.after_message { |message| detector.message_ended(message) } if detector
     end
   end
 end

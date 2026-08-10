@@ -116,6 +116,9 @@ module Insika
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
       context_budget: 8_000, max_tool_calls: 50,
+      # RFC-0020: consecutive identical (tool, args) calls that trigger the ONE
+      # loop warning; a repeat after it aborts like max_tool_calls. < 2 = off.
+      max_tool_repeat: 3,
       approval_timeout: 3_600, # cap on the wait for human approval (~1h)
       # Item 30: parallel tool calls. ONE number is both the switch and the cap
       # (nil/0/1 = serial, the default; N > 1 = at most N tool calls in flight).

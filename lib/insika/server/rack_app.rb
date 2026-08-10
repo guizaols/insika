@@ -64,7 +64,9 @@ module Insika
           # OTEL bridge — a feature only `config.ru` can reach is a feature the
           # docs are half-true about.
           channels: (@graph.channel_registry if channels?),
-          config: { gateway_token: @token }.merge(@config)
+          config: { gateway_token: @token }.merge(@config),
+          # B7: a 500's error_ref must be findable in the process log.
+          logger: $stdout
         )
       end
 
