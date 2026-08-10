@@ -8,8 +8,9 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
-Nothing has been released yet — `Insika::VERSION` is `0.1.0` and no version is tagged.
-Everything below is what the first release will contain.
+## [0.1.0] - 2026-08-10
+
+The first release: `gem install insika`.
 
 ### Added
 
