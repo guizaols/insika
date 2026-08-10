@@ -68,6 +68,7 @@ module Insika
           settings_store: @rt.component(:settings_store), llm_provider_store: @rt.component(:provider_store),
           mcp_store: @rt.component(:mcp_store), system_file_store: @rt.component(:system_file_store),
           tool_trace_store: @rt.component(:tool_trace_store),
+          context_trace_store: @rt.component(:context_trace_store),
           task_store: @graph.task_store, checkpoint_store: @graph.checkpoint_store,
           pending_action_store: @graph.pending_action_store
         )

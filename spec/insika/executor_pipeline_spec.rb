@@ -755,4 +755,81 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(event_stream.types).not_to include(:thinking)
     end
   end
+
+  # RFC-0023: one entry per turn in the ContextTraceStore — tokens by category,
+  # the tools estimate and the budget verdict. nil store / a builder without the
+  # full package = off, and the turn is untouched either way.
+  describe "context breakdown trace (RFC-0023)" do
+    # A builder that returns the REAL package (the FakeContextBuilder in
+    # spec/support is a 3-field Struct that predates fragments/budget).
+    class BreakdownContextBuilder
+      def call(_request)
+        fragments = [
+          Insika::ContextFragment.build(content: "identity", placement: :system, tokens: 400,
+                                        source: "Insika::Context::Providers::Prompt", pinned: true),
+          Insika::ContextFragment.build(content: [{ role: "user", content: "oi" }],
+                                        placement: :history, tokens: 200,
+                                        source: "Insika::Context::Providers::Session")
+        ]
+        Insika::ContextPackage.new(system: "identity", history: [], tool_context: nil,
+                                   fragments: fragments,
+                                   budget: { cap: 8_000, used: 600, evicted: [] })
+      end
+    end
+
+    let(:fake_tool) do
+      Class.new do
+        def name = "search_products"
+        def description = "Search the catalog"
+        def parameters = { "query" => "string" }
+      end.new
+    end
+
+    it "records one entry with the categories, tools and budget of the turn" do
+      session_store.create(id: "s1")
+      store = Insika::ContextTraceStore.new(store: backend)
+      executor = build_executor(context_builder: BreakdownContextBuilder.new,
+                                policy_engine: NullPolicyEngine.new(allowed_tools: [fake_tool]),
+                                context_trace_store: store)
+
+      run_turn(executor, make_task)
+
+      got = store.for_session("s1")
+      expect(got.size).to eq(1)
+      entry = got.first
+      expect(entry).to include("task_id" => "t", "turn" => 1, "cap" => 8_000, "used" => 600)
+      expect(entry["categories"]).to eq(
+        "prompt" => { "tokens" => 400, "fragments" => 1, "pinned" => 400 },
+        "session" => { "tokens" => 200, "fragments" => 1, "pinned" => 0 }
+      )
+      expect(entry["tools"]["count"]).to eq(1)
+      expect(entry["tools"]["tokens"]).to be > 0
+    end
+
+    it "one-shot turn (no session) records nothing" do
+      store = Insika::ContextTraceStore.new(store: backend)
+      executor = build_executor(context_builder: BreakdownContextBuilder.new,
+                                context_trace_store: store)
+
+      run_turn(executor, make_task(session_id: nil))
+
+      expect(store.for_session("")).to eq([])
+    end
+
+    it "a builder without the full package records nothing and the turn is untouched" do
+      session_store.create(id: "s1")
+      store = Insika::ContextTraceStore.new(store: backend)
+      # Struct package (no fragments/budget) + store wired: no record, no error.
+      executor = build_executor(context_trace_store: store)
+      run_turn(executor, make_task)
+      expect(event_stream.events.find { |e| e.type == :task_completed }).not_to be_nil
+      expect(store.for_session("s1")).to eq([])
+    end
+
+    it "no store at all: the default path every other spec already runs" do
+      session_store.create(id: "s1")
+      run_turn(build_executor, make_task)
+      expect(event_stream.events.find { |e| e.type == :task_completed }).not_to be_nil
+    end
+  end
 end

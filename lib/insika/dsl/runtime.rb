@@ -178,7 +178,7 @@ module Insika
           guardrails: c[:guardrails], context_providers: context_providers(spine, c),
           edge_limiter: c[:edge_limiter],
           executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store],
-                            llm: @llm }
+                            context_trace_store: c[:context_trace_store], llm: @llm }
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
@@ -228,6 +228,7 @@ module Insika
           system_file_store: Insika::SystemFileStore.new(config_store: config_store),
           mcp_store: Insika::McpStore.new(config_store: config_store),
           tool_trace_store: Insika::ToolTraceStore.new(store: backend),
+          context_trace_store: Insika::ContextTraceStore.new(store: backend),
           tool_registry: tool_registry,
           tool_catalog: Insika::ToolCatalog.new(tool_registry: tool_registry),
           skill_catalog: Insika::SkillCatalog.new([], store: skill_store),

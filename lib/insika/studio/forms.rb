@@ -166,18 +166,13 @@ module Studio
 
     def settings_patch(r)
       patch = {
-        "streaming" => r.params["streaming"] == "1",
-        "compaction" => {
-          "enabled" => r.params["compaction_enabled"] == "1"
-        }
+        "streaming" => r.params["streaming"] == "1"
       }
       { "request_timeout" => "request_timeout", "max_retries" => "max_retries",
         "turn_timeout" => "turn_timeout", "tool_timeout" => "tool_timeout" }.each_key do |f|
         v = presence(r.params[f])
         patch[f] = Integer(v) if v
       end
-      kl = presence(r.params["keep_last"])
-      patch["compaction"]["keep_last"] = Integer(kl) if kl
       patch
     end
 
