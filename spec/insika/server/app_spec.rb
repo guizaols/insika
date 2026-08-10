@@ -15,12 +15,12 @@ RSpec.describe Insika::Server::App do
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
                 config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
-                profiles: nil)
+                profiles: nil, logger: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
-      onboarding: onboarding, profiles: profiles,
+      onboarding: onboarding, profiles: profiles, logger: logger,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -433,12 +433,33 @@ RSpec.describe Insika::Server::App do
       expect(status).to eq(404)
     end
 
-    it "generic StandardError -> 500" do
-      app = build_app(bus: ServerBusDouble.new { raise "boom" })
+    it "generic StandardError -> 500 with the B7 envelope, and the ref reaches the log" do
+      logged = []
+      logger = Object.new.tap { |l| l.define_singleton_method(:puts) { |msg| logged << msg } }
+      app = build_app(bus: ServerBusDouble.new { raise "boom" }, logger: logger)
 
-      status, = call(app, "POST", "/v1/commands/x", body: "{}")
+      status, _h, resp = call(app, "POST", "/v1/commands/x", body: "{}")
 
       expect(status).to eq(500)
+      error = json_body(resp)["error"]
+      expect(error["class"]).to eq("RuntimeError")
+      expect(error["message"]).to eq("boom")
+      expect(error["retryable"]).to be(true)
+      expect(error["retry_after"]).to eq(1)
+      expect(error["error_ref"]).to match(/\Aerr_[0-9a-f]{16}\z/)
+      # The ref is only real if the SAME one is in the process log.
+      expect(logged.size).to eq(1)
+      expect(logged.first).to include(error["error_ref"], "RuntimeError", "boom")
+    end
+
+    it "4xx bodies stay bare — no retry envelope on a client error (B7)" do
+      app = build_app(bus: ServerBusDouble.new { raise Insika::NotFoundError, "sumiu" })
+
+      status, _h, resp = call(app, "POST", "/v1/commands/x", body: "{}")
+
+      expect(status).to eq(404)
+      error = json_body(resp)["error"]
+      expect(error.keys).to contain_exactly("class", "message")
     end
 
     it "synchronous dispatch timeout -> 504" do

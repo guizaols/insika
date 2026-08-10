@@ -164,7 +164,9 @@ module Insika
       # GET /v1/agents/:id — read-only capability view (evals). Coerced because the
       # base wiring keeps a plain Hash of profiles, and the route needs the source API.
       profiles: Insika::ProfileSource.coerce(PROFILES),
-      config: CONFIG
+      config: CONFIG,
+      # B7: a 500's error_ref must be findable in the process log.
+      logger: $stdout
     )
 
     # Boot recovery: discovers interrupted tasks and resumes them through the SAME

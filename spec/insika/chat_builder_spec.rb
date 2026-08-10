@@ -314,5 +314,36 @@ RSpec.describe Insika::ChatBuilder do
       50.times { |i| chat.fire_tool_call(name: "t#{i}") }
       expect { chat.fire_tool_call(name: "t50") }.to raise_error(Insika::TimeoutError)
     end
+
+    # RFC-0020 — the detector is unit-tested in loop_detector_spec; here only the
+    # wiring: wire_callbacks must deliver the gem's three callbacks to it.
+    it "intervenes once, then aborts the stubborn repeat as :tool_limit" do
+      sink = []
+      builder.wire_callbacks(chat, state(limits: { max_tool_repeat: 2 }), recording_emit(sink))
+
+      2.times do
+        chat.fire_tool_call(name: "lookup", arguments: { "q" => "x" })
+        chat.fire_tool_result_message("same")
+      end
+
+      warnings = chat.messages.select { |m| m[:role] == :user }
+      expect(warnings.size).to eq(1)
+      expect(warnings.first[:content]).to include("lookup")
+      expect(sink.map { |e| e[:type] }).to include(:tool_loop_intervened)
+
+      expect { chat.fire_tool_call(name: "lookup", arguments: { "q" => "x" }) }
+        .to raise_error(Insika::TimeoutError) { |e| expect(e.stage).to eq(:tool_limit) }
+    end
+
+    it "max_tool_repeat < 2 turns the detector off (max_tool_calls still bounds)" do
+      builder.wire_callbacks(chat, state(limits: { max_tool_repeat: 0 }), recording_emit([]))
+
+      4.times do
+        chat.fire_tool_call(name: "lookup", arguments: { "q" => "x" })
+        chat.fire_tool_result_message("same")
+      end
+
+      expect(chat.messages.select { |m| m[:role] == :user }).to be_empty
+    end
   end
 end

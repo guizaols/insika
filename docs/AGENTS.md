@@ -84,12 +84,18 @@ lookups.
 ```ruby
 DEFAULT_LIMITS = {
   turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
-  context_budget: 8_000, max_tool_calls: 50, approval_timeout: 3_600,
-  tool_concurrency: 1
+  context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
+  approval_timeout: 3_600, tool_concurrency: 1
 }
 ```
 
 `build` merges your overrides over these — you set only the deltas.
+
+`max_tool_repeat` is the loop guard: the same tool called with **identical
+arguments** that many times in a row gets ONE in-turn warning (a user message at
+the next tool-batch boundary: "you already ran this, answer with what you
+have"). A repeat after the warning aborts the turn like `max_tool_calls` does.
+Set it below 2 to switch it off.
 
 ### Why some limits are missing from that list
 
