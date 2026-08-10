@@ -158,4 +158,29 @@ RSpec.describe "Insika::Executor + hooks (:task/:agent/:tool)" do
     expect(task.status).to eq(:failed)
     expect(task.executions.last.error["stage"]).to eq("tool_limit")
   end
+
+  # RFC-0020 E3: the loop abort dies exactly the way the 50-cap already dies —
+  # same stage, same :failed — with ONE :tool_loop_intervened on the stream.
+  it "loop detection: identical call after the warning -> :failed, stage :tool_limit" do
+    profile = Insika::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_repeat: 2 })
+    chat = FakeChat.new
+    chat.script = proc do
+      loop do
+        fire_tool_call(name: "lookup", arguments: { "q" => "x" })
+        fire_tool_result_message("same")
+      end
+    end
+    executor = build_executor
+
+    allow(executor).to receive(:create_chat).and_return(chat)
+    Sync do
+      executor.spawn(make_task, profile: profile)
+      executor.instance_variable_get(:@running)["t"]&.wait
+    end
+
+    task = task_store.find("t")
+    expect(task.status).to eq(:failed)
+    expect(task.executions.last.error["stage"]).to eq("tool_limit")
+    expect(event_stream.types.count(:tool_loop_intervened)).to eq(1)
+  end
 end
