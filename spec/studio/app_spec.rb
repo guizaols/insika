@@ -92,7 +92,7 @@ RSpec.describe Studio::App do
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
-                mcp_instances: [], system_files: {}, tool_traces: {},
+                mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                 tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
@@ -133,6 +133,9 @@ RSpec.describe Studio::App do
     # REAL ToolTraceStore (debug §3.1): the session view reads from it.
     trace_store = Insika::ToolTraceStore.new(store: Insika::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
+    # REAL ContextTraceStore (RFC-0023): the session view's breakdown card.
+    ctx_trace_store = Insika::ContextTraceStore.new(store: Insika::Stores::Memory.new)
+    context_traces.each { |sid, entries| entries.each { |e| ctx_trace_store.record(session_id: sid, entry: e) } }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: event_stream, config: { admin_token: admin_token },
@@ -145,7 +148,7 @@ RSpec.describe Studio::App do
       session_store: SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
-      tool_trace_store: trace_store,
+      tool_trace_store: trace_store, context_trace_store: ctx_trace_store,
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
@@ -1014,6 +1017,30 @@ RSpec.describe Studio::App do
     expect(login(app).get("/sessions/nope").status).to eq(404)
   end
 
+  it "session viewer shows the context breakdown by category (RFC-0023)" do
+    sess = StoredSession.new(id: "sess-c", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    ctx = { "sess-c" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
+                           cap: 8_000, used: 6_120, evicted: ["session"],
+                           categories: { "prompt" => { tokens: 4_100, fragments: 2, pinned: 4_100 },
+                                         "session" => { tokens: 1_900, fragments: 1, pinned: 0 } },
+                           tools: { count: 9, tokens: 1_200 } }] }
+    app, = build_app(sessions: { "sess-c" => sess }, context_traces: ctx)
+    body = login(app).get("/sessions/sess-c").body
+    expect(body).to include("Context")
+    expect(body).to include("6120 / 8000")              # the budget line
+    expect(body).to include("prompt")                   # a category row
+    expect(body).to include("4100 tokens · 2 fragment(s)") # tokens + fragment count
+    expect(body).to include("evicted: session")         # the budget cut something
+    expect(body).to include("9 tool schema(s)")         # the tools estimate
+  end
+
+  it "session viewer without a context trace omits the card (nil store = off)" do
+    sess = StoredSession.new(id: "sess-nc", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-nc" => sess })
+    body = login(app).get("/sessions/sess-nc").body
+    expect(body).not_to include("tokens by category")
+  end
+
   it "session viewer shows the tool-calls trace (name + args + response)" do
     sess = StoredSession.new(id: "sess-t", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     traces = { "sess-t" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
@@ -1079,15 +1106,16 @@ RSpec.describe Studio::App do
     res = client.get("/settings")
     expect(res.status).to eq(200)
     expect(res.body).to include('name="turn_timeout"')
+    # RFC-0023: the compaction form is gone while nothing consumes the key.
+    expect(res.body).not_to include("compaction")
     csrf = csrf_from(res.body)
     client.post("/settings", params: {
-                  "streaming" => "1", "turn_timeout" => "300", "keep_last" => "40",
-                  "compaction_enabled" => "1", "_csrf" => csrf
+                  "streaming" => "1", "turn_timeout" => "300", "_csrf" => csrf
                 })
     patch = bus.last(:update_settings).payload[:patch]
     expect(patch["streaming"]).to be(true)
     expect(patch["turn_timeout"]).to eq(300)
-    expect(patch["compaction"]).to eq({ "enabled" => true, "keep_last" => 40 })
+    expect(patch).not_to have_key("compaction")
   end
 
   it "settings without the streaming checkbox sends streaming=false" do

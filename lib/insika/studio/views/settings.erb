@@ -1,7 +1,7 @@
 <%# Settings — drill-down (T2): section list | selected section's form(s).
    @section (general|models|llm) comes from ?s= and drives the detail. %>
 <% sections = [
-     ["general", "General", "streaming, timeouts, compaction"],
+     ["general", "General", "streaming, timeouts"],
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
      ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
      ["evals",   "Evals", "who grades a rubric, and how a panel agrees"],
@@ -27,7 +27,7 @@
         <button type="submit" form="set-general" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
       </div>
       <div class="drill-pane-body">
-        <p class="muted">Streaming, timeouts and compaction — saved via <code>update_settings</code> (durable, applies next turn).</p>
+        <p class="muted">Streaming and timeouts — saved via <code>update_settings</code> (durable, applies next turn).</p>
         <form id="set-general" method="post" action="/studio/settings">
           <%== csrf_tag %>
           <label class="check">
@@ -40,11 +40,6 @@
             <label>turn_timeout (s)<input type="text" name="turn_timeout" value="<%= @settings["turn_timeout"] %>" inputmode="numeric"></label>
             <label>tool_timeout (s)<input type="text" name="tool_timeout" value="<%= @settings["tool_timeout"] %>" inputmode="numeric"></label>
           </div>
-          <label class="check">
-            <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
-            context compaction
-          </label>
-          <label>compaction.keep_last (messages)<input type="text" name="keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric"></label>
         </form>
       </div>
 

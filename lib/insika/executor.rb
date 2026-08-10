@@ -19,7 +19,8 @@ module Insika
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
-                    delegation_store: nil, channel_delivery: nil, llm: nil)
+                    delegation_store: nil, channel_delivery: nil, llm: nil,
+                    context_trace_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -36,6 +37,9 @@ module Insika
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
+      # RFC-0023: per-turn context breakdown (tokens by category + budget) for the
+      # Studio session card. nil = off (no record, zero overhead — parity).
+      @context_trace_store = context_trace_store
       # Guardrails output filter (RFC-0009 §3.2): ->(state) { OutputFilter | nil }.
       # Injected by the Safety::Factory; nil = off (parity — the stream is untouched).
       # The INPUT guardrail is a Middleware (in the stack, not here); this is the seam
@@ -775,7 +779,48 @@ module Insika
       state.requires_approval = resolution.requires_approval
       state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
       state.allowed_skills = resolution.allowed_skills
+      record_context_trace(task, state)
       drain_and_maybe_suspend(task, actor)
+    end
+
+    # RFC-0023: one entry per turn in the ContextTraceStore — tokens per
+    # category (the demodulized provider id), the tools-schema estimate and the
+    # budget verdict. Counts and ids ONLY, never content. nil store = off; the
+    # store itself rescues everything (the trace never breaks the turn).
+    def record_context_trace(task, state)
+      return unless @context_trace_store && task.session_id
+
+      package = state.context
+      # A custom builder that does not produce the full package (fragments +
+      # budget) simply has no breakdown to record — never an error.
+      return unless package.respond_to?(:fragments) && package.respond_to?(:budget)
+
+      categories = package.fragments.each_with_object({}) do |f, acc|
+        c = (acc[context_category(f.source)] ||= { tokens: 0, fragments: 0, pinned: 0 })
+        c[:tokens] += f.tokens || 0
+        c[:fragments] += 1
+        c[:pinned] += (f.tokens || 0) if f.pinned
+      end
+      @context_trace_store.record(
+        session_id: task.session_id,
+        entry: { task_id: task.id, turn: state.turn, at: Time.now.utc.iso8601,
+                 cap: package.budget[:cap], used: package.budget[:used],
+                 evicted: package.budget[:evicted], categories: categories,
+                 tools: { count: state.allowed_tools.size,
+                          tokens: estimate_tools_tokens(state.allowed_tools) } }
+      )
+    end
+
+    # "Insika::Context::Providers::Prompt" -> "prompt" (a plugin provider keeps
+    # its own demodulized name — still content-free).
+    def context_category(source) = source.to_s.split("::").last.to_s.downcase
+
+    # Same yardstick as the fragments (TokenEstimator), so the categories are
+    # comparable. `parameters` is not guaranteed JSON-safe — inspect it.
+    def estimate_tools_tokens(tools)
+      TokenEstimator.estimate(tools.map { |t| "#{t.name} #{t.description} #{t.parameters.inspect}" }.join(" "))
+    rescue StandardError
+      0
     end
 
     # Stages 5-9 (inside the Middleware wrap): assemble chat, the single agent

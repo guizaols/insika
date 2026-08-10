@@ -12,6 +12,39 @@
   <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
 </header>
 
+<% ctx_traces = @context_traces || [] %>
+<% unless ctx_traces.empty? %>
+  <div class="card tooltrace">
+    <div class="trace-head">
+      <h2>Context</h2>
+      <span class="muted">tokens by category per turn (estimated) — no content stored</span>
+    </div>
+    <% ctx_traces.each do |c| %>
+      <div class="trace-turn">
+        <div class="turn-label">turn <%= c["turn"] %> · <%= c["at"] %></div>
+        <details class="trace-item ok">
+          <summary>
+            <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
+            <strong>context</strong>
+            <% unless Array(c["evicted"]).empty? %>
+              <span class="lat">evicted: <%= Array(c["evicted"]).join(", ") %></span>
+            <% end %>
+          </summary>
+          <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
+            <div class="kv"><span><%= name %></span>
+              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %></div>
+            </div>
+          <% end %>
+          <% tools = c["tools"] || {} %>
+          <div class="kv"><span>tools</span>
+            <div><%= tools["tokens"] %> tokens · <%= tools["count"] %> tool schema(s)</div>
+          </div>
+        </details>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
 <% traces = @tool_traces || {} %>
 <% unless traces.empty? %>
   <div class="card tooltrace">

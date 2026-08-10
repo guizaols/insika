@@ -77,6 +77,7 @@ require_relative "insika/skill_store"
 require_relative "insika/secret_masking"
 require_relative "insika/tool_store"
 require_relative "insika/tool_trace_store"
+require_relative "insika/context_trace_store"
 # Refinement (RFC-0013 phase A): the run record + the evidence half of the loop.
 # Reads sessions/tasks/traces above; requires Safety::Detectors (loaded earlier) for
 # the PII redaction of the snippets it puts in a report.
