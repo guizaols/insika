@@ -43,6 +43,11 @@ module Insika
             return block(state, config, category: category, source: :moderator,
                                         detail: verdict.reason, action: verdict.action)
           end
+          # RFC-0022 (B4): an UNAVAILABLE moderator fails open — the turn proceeds —
+          # but silence is not a negative: record the degradation on the state so the
+          # Executor (single emitter) emits :guardrail_flagged and a degraded tier
+          # never looks identical to a healthy one in the audit stream.
+          flag_unavailable(state, verdict) if verdict.unavailable?
         end
 
         nxt.call(state)
@@ -52,6 +57,16 @@ module Insika
 
       def build_moderator(config)
         @moderator_factory&.call(config)
+      end
+
+      # Appends the audit flag for a degraded moderator tier (RFC-0022). Same
+      # state-carried channel the OutputValidator uses; detail is the moderator's
+      # own reason string ("moderator error (fail-open)" / "unparseable
+      # (fail-open)"), never message content.
+      def flag_unavailable(state, verdict)
+        state.guardrail_flags = Array(state.guardrail_flags) + [{
+          category: "moderator_unavailable", source: "moderator", detail: verdict.reason.to_s[0, 200]
+        }]
       end
 
       # The block category. `escalate` (an ACTION) becomes the `escalate` category so
