@@ -51,10 +51,16 @@ prefix cache below).
 ### Compaction is not wired
 
 There is a settings stub for LLM-summarization compaction (`enabled: false`,
-`keep_last`, a reserved utility-model slot), and the Studio exposes it, but
-**nothing consumes it today** — size is managed purely by hard budget eviction.
+`keep_last`, a reserved utility-model slot), but **nothing consumes it today**
+— and the Studio no longer shows a form for it, so the setting cannot be
+switched on by accident. Size is managed purely by hard budget eviction.
 Do not rely on compaction to shrink a bloated agent: tune `context_budget` and
-keep the identity lean. Turning the setting on does nothing yet.
+keep the identity lean.
+
+> The **Studio session screen** shows what the builder assembled per turn —
+> tokens per category (identity, history, memory, …), the tools-schema estimate
+> and the budget verdict (`used / cap`, evicted sources). Counts only, never
+> fragment content.
 
 ## Memory
 

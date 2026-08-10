@@ -91,6 +91,9 @@ module Deploy
     # Per-session tool-call trace (debug in the Studio; FOLLOWUP §3.1). Durable in the
     # same backend; masking/truncation in the store itself.
     TOOL_TRACE_STORE = Insika::ToolTraceStore.new(store: BACKEND)
+    # Per-session context breakdown (tokens by category + budget; RFC-0023) for the
+    # Studio session card. Counts and provider ids only — no content, no masking.
+    CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: BACKEND)
     # Egress of the data-tools (SSRF guard). Default = strict (public https only).
     # For the engine to CALL BACK the consumer's internal API (consumer-app
     # /api/internal/*), which is http/loopback locally, enable via env — preferably
@@ -199,7 +202,8 @@ module Deploy
       edge_limiter: EDGE_LIMITER,
       executor_extra: {
         settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks (§10)
-        tool_trace_store: TOOL_TRACE_STORE
+        tool_trace_store: TOOL_TRACE_STORE,
+        context_trace_store: CONTEXT_TRACE_STORE
       }
     )
 

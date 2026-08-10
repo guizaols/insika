@@ -82,7 +82,7 @@ module Studio
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
-                    system_file_store: nil, tool_trace_store: nil,
+                    system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil)
         @insika = {
@@ -101,6 +101,9 @@ module Studio
           # per-session tool-call trace (debug): args + result + status per
           # turn, rendered in the session viewer (FOLLOWUP §3.1).
           tool_trace_store: tool_trace_store,
+          # per-session context breakdown (RFC-0023): tokens by category +
+          # budget per turn, on the same viewer. Counts only, no content.
+          context_trace_store: context_trace_store,
           # operate: tasks + human-in-the-loop approvals (§12 G5). Reads the
           # task/checkpoint/pending stores to render; controls (pause/resume/
           # cancel/approve) dispatch on the bus — parity with server/admin.
@@ -619,6 +622,8 @@ module Studio
             # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
+            # Context breakdown per turn (RFC-0023): chronological entries.
+            @context_traces = insika[:context_trace_store]&.for_session(sid) || []
             view("session")
           end
         end
@@ -1333,9 +1338,9 @@ end
       view("settings")
     end
 
-    # Settings patch from the form. streaming/compaction are bool
-    # (checkbox); the timeouts are integers; compaction.keep_last integer. Only what
-    # came in the form enters the patch (the rest and the defaults are preserved in the store).
+    # Settings patch from the form. streaming is a bool (checkbox); the timeouts
+    # are integers. Only what came in the form enters the patch (the rest and
+    # the defaults are preserved in the store).
     # settings_patch/model_defaults_patch/provider_patch moved to Studio::Forms (§11 B6).
 
     # --- MCP -------------------------------------------------------
