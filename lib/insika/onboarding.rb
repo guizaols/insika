@@ -54,7 +54,8 @@ module Insika
       "observability" => "docs/OBSERVABILITY.md",
       "evals" => "docs/EVALS.md",
       "refinement" => "docs/REFINEMENT.md",
-      "loadtest" => "docs/LOADTEST.md"
+      "loadtest" => "docs/LOADTEST.md",
+      "releasing" => "docs/RELEASING.md"
     }.freeze
 
     # Repo-relative path to the start.md template.

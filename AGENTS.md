@@ -26,7 +26,7 @@ bin/insika env                        # the registered environment schema
 
 DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb --serve   # :9292 → /studio
 
-cd studio && npm install && npm run build && npm test          # front-end only
+cd lib/insika/studio && npm install && npm run build && npm test # front-end only
 ```
 
 There is no linter configured — no `.rubocop.yml`, no rubocop in the `Gemfile`. Match
@@ -38,8 +38,10 @@ the surrounding style instead of running a formatter.
 |------|------|
 | `lib/insika/` | the engine (executor, stores, policy, context, tools, safety, sandbox, telemetry, DSL) |
 | `lib/insika/wiring/graph.rb` | the composition root — where objects get assembled |
-| `server/` | HTTP/SSE transport only (`/v1`, `/a2a`); no business logic |
-| `studio/` | the control UI (Roda + ERB, Stimulus/Turbo); `assets/dist/` is **checked in** |
+| `lib/insika/server/` | HTTP/SSE transport only (`/v1`, `/a2a`); no business logic |
+| `lib/insika/studio/` | the control UI (Roda + ERB, Stimulus/Turbo); `assets/dist/` is **checked in** |
+| `lib/insika/testing/` | the exported store contract — what a third-party backend (`insika-pg`) specs against |
+| `insika.gemspec` | the one gem (`gem install insika`); runtime deps live here, the `Gemfile` consumes them via `gemspec` |
 | `config/` | `deployment.rb`, `wiring.rb` — the real deployment's wiring |
 | `plugins/`, `examples/`, `scripts/`, `evals/` | plugins (manifest + entry — see `docs/PLUGINS.md`), runnable examples, operator scripts, the eval CORPUS + `run.rb` CLI (the harness itself is `lib/insika/evals/*`) |
 | `spec/` | mirrors `lib/`; 170+ spec files |
@@ -49,8 +51,9 @@ the surrounding style instead of running a formatter.
 
 - **Specs are not optional.** New behaviour ships with a spec in the mirrored path.
   The suite must be green before you claim done.
-- **No new dependency** without a strong reason; every gem in the `Gemfile` has a
-  comment naming the future package that owns it.
+- **No new dependency** without a strong reason; runtime deps live in
+  `insika.gemspec` (the `Gemfile` pulls them in via `gemspec`), each with a comment
+  naming what needs it.
 - **The core must load without `ruby_llm` or OpenTelemetry.** Both are required lazily;
   `spec/insika/load_guard_spec.rb` enforces it. A top-level `require` of either will
   fail that spec.
@@ -76,8 +79,11 @@ the surrounding style instead of running a formatter.
   the directory is ignored by default, but `insika_cli_spec.rb` and `bench_spec.rb`
   are tracked exceptions (they guard public scripts and CI runs them); a new spec
   added there stays untracked unless it earns its own `!` line.
-- `studio/assets/dist/` **is** committed so `serve` runs without Node. If you touch
-  `assets/src/`, rebuild and commit the bundle.
+- `lib/insika/studio/assets/dist/` **is** committed so `serve` runs without Node. If
+  you touch `assets/src/`, rebuild and commit the bundle.
+- The gemspec's `files` come from `git ls-files` — **a new `lib/` file that is not
+  staged does not ship**, and `gem build` will not warn you. The E1 install proof in
+  `docs/RELEASING.md` is the gate that catches it.
 - A `docs/*.md` file is simultaneously a Jekyll page, so it starts with a frontmatter
   block. `Insika::Onboarding#doc` strips it — keep that true. Links between docs must
   stay relative; a link to anything outside `docs/` needs an absolute GitHub URL.

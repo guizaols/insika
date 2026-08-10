@@ -320,7 +320,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |
 | Evals (cases, judges, gate) | `lib/insika/evals/*`, `lib/insika/golden_store.rb`; `evals/run.rb` is the CLI |
-| HTTP/SSE surface | `server/*` |
+| HTTP/SSE surface | `lib/insika/server/*` |
 
 ## See also
 

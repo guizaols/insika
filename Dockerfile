@@ -38,7 +38,11 @@ RUN wget -q "https://github.com/benbjohnson/litestream/releases/download/v${LITE
     /usr/local/bin/litestream version
 
 WORKDIR /app
-COPY Gemfile Gemfile.lock ./
+# The Gemfile consumes the gemspec (gemspec directive), which requires
+# lib/insika/version.rb — copy both before bundle install. The gemspec's `files`
+# glob-fallback covers the .git-less build context.
+COPY Gemfile Gemfile.lock insika.gemspec ./
+COPY lib/insika/version.rb lib/insika/version.rb
 RUN bundle install && \
     rm -rf "${BUNDLE_PATH}"/cache/*.gem && \
     (find "${BUNDLE_PATH}"/gems \( -name "*.c" -o -name "*.o" \) -delete || true)
