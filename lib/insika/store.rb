@@ -4,7 +4,8 @@ module Insika
   # Minimal persistence contract.
   # Namespace-scoped KV, transactional when the backend supports it.
   # Every implementation passes the SAME contract suite
-  # (spec/insika/store_contract.rb). Values must be JSON-serializable.
+  # (lib/insika/testing/store_contract.rb — requirable from outside the repo,
+  # RFC-0018 A4). Values must be JSON-serializable.
   #
   # scope: String — separates domains/tenants (e.g. "sessions", "tasks:tenant_x")
   # key:   Hierarchical String (e.g. "task:123", "checkpoint:123:turn:4")

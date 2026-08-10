@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../server/app"
+require_relative "../../../lib/insika/server/app"
 
 # RFC-0011 §4.4 — ONE generic route family, and the transport does no translating.
 # The cases that matter are the ones where a wrong answer costs the customer a

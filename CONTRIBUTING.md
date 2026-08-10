@@ -22,12 +22,15 @@ and one provider key:
 DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb --serve   # :9292 → /studio
 ```
 
-See [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md). Front-end work on the Studio
-additionally needs Node — `assets/dist/` is checked in precisely so that running the
-server does not:
+See [docs/RUNNING-LOCAL.md](docs/RUNNING-LOCAL.md). Writing a **store backend** (an
+`insika-pg` of your own) starts at `lib/insika/testing/store_contract.rb`: require it
+from your gem's suite and pass both shared-example groups — the universal one, and the
+multi-worker one if the backend is meant to sit under `WEB_CONCURRENCY > 1`. Front-end
+work on the Studio additionally needs Node — `assets/dist/` is checked in precisely so
+that running the server does not:
 
 ```bash
-cd studio && npm install && npm run build && npm test
+cd lib/insika/studio && npm install && npm run build && npm test
 ```
 
 ## What a good pull request looks like
@@ -36,7 +39,7 @@ cd studio && npm install && npm run build && npm test
 - **Specs alongside the code.** `spec/` mirrors `lib/`; 170+ spec files already show
   the shape. New behaviour without a spec will be asked for one.
 - **Green suite.** `bundle exec rspec` before you push; `npm test` too if you touched
-  `studio/assets/src/`.
+  `lib/insika/studio/assets/src/`.
 - **A conventional commit**, matching the history: `feat(scope): …`, `fix(scope): …`,
   `refactor(scope): …`, `docs(scope): …`.
 - **Rebased on `main`.** Branch off `main`, PRs are squash-merged.
@@ -51,9 +54,10 @@ These are not style preferences — they are how the engine stays small.
   `AgentProfile` field, a manifest) before it is expressible as a subclass. The DSL
   is sugar that generates that data; it is never a second code path.
 - **Don't add a dependency** to solve something the standard library or the existing
-  primitives already cover. Every gem in the `Gemfile` carries a comment saying which
-  future package owns it — keep that boundary true. Front-end additions are held to
-  the same bar (the Studio's test layer is plain `node --test`, zero new deps).
+  primitives already cover. Runtime dependencies live in `insika.gemspec` (the
+  `Gemfile` consumes them via `gemspec`), each with a comment saying what needs it —
+  keep that boundary true. Front-end additions are held to the same bar (the Studio's
+  test layer is plain `node --test`, zero new deps).
 - **The core does not require `ruby_llm` at load time.** It is required lazily, and
   `spec/insika/load_guard_spec.rb` proves it. Same for OpenTelemetry.
 - **String keys at the persistence boundary.** Stores hold JSON, which has no Symbols.

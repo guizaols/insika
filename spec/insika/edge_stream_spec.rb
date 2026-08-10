@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../server/responses"
+require_relative "../../lib/insika/server/responses"
 
 # `edge_stream` — which internal channels an agent lets cross to the CUSTOMER.
 #

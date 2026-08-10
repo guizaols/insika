@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../../server/sse_body"
+require_relative "../../../lib/insika/server/sse_body"
 
 RSpec.describe Insika::Server::SSEBody do
   # Spy subscription: delivers events and records close/cancel. `cancel` must

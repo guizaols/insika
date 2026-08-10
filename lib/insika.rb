@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "insika/version"
 require_relative "insika/errors"
 require_relative "insika/coercion"
 require_relative "insika/message_origin"
@@ -203,7 +204,3 @@ require_relative "insika/dsl"
 # Do NOT require "insika/tools/load_skill" here: it does `require "ruby_llm"` at
 # the top (inherits from RubyLLM::Tool) and would pull the gem in at load-time. The
 # Executor loads it lazily inside create_chat (D9).
-
-module Insika
-  VERSION = "0.1.0"
-end

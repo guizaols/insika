@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/errors"
+require_relative "../../../../lib/insika/server/a2a/errors"
 
 RSpec.describe Insika::Server::A2A::Errors do
   it "ValidationError -> INVALID_PARAMS" do

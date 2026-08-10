@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../server/boot"
+require_relative "../../../lib/insika/server/boot"
 
 # doc 07 §7: order plugins→stores→recovery→(app). App is only returned AFTER
 # recovery. Corrupted store at boot -> aborts (does not return app).

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/message"
+require_relative "../../../../lib/insika/server/a2a/message"
 
 RSpec.describe Insika::Server::A2A::Message do
   describe ".text_from" do

@@ -10,6 +10,11 @@ permalink: /deploy/
 How to run the engine in a container (Railway today, Kubernetes later) and how to
 measure performance and load.
 
+> **This page deploys the repo, not the gem.** The reference deployment is a
+> checkout of this same repository — `config/` is its composition root, and the
+> `Gemfile` consumes the engine through the gemspec. An adopter deploys
+> `gem install insika` (or a `Gemfile` line) instead.
+
 ## Image (Docker)
 
 The `Dockerfile` (multi-stage, YJIT on) serves `config.ru` under Falcon. The Studio

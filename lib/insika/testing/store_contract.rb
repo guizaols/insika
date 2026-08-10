@@ -1,17 +1,30 @@
 # frozen_string_literal: true
 
-# Contract suite for Insika::Store (doc 01 §7).
-# Every backend passes EXACTLY this suite (L2: the suite is honest —
-# a test that passes on Memory passes on SQLite).
-# The including group must define `store` (empty, ready backend), e.g.:
+# Contract suite for Insika::Store (doc 01 §7), exported for third-party
+# backends (RFC-0018 A4) — a gem like `insika-pg` writes its spec against THIS
+# file, not against a read of stores/sqlite.rb:
 #
-#   RSpec.describe Insika::Stores::Memory do
-#     subject(:store) { described_class.new }
+#   require "insika/testing/store_contract"
+#
+#   RSpec.describe Insika::Stores::PG do
+#     subject(:store) { described_class.new(url:) }
 #     it_behaves_like "an Insika store"
 #   end
 #
-# Do not include backend-specific cases here (file durability,
-# WAL, concurrency) — those belong to task 4.
+# Two groups, on purpose (RFC-0018 §4 item 4):
+#
+# - "an Insika store" — universal; every backend passes EXACTLY it (L2: the
+#   suite is honest — a test that passes on Memory passes on SQLite). The
+#   including group defines `store` (an empty, ready backend).
+# - "an Insika store safe for N workers" — OPT-IN; the multi-worker half. The
+#   including group ALSO defines `store_factory`, a callable returning ANOTHER
+#   connection to the SAME underlying backend. A backend that cannot serialize
+#   transactions across connections must not include it — Memory is the
+#   canonical example, and a single-connection backend has nothing to prove.
+#   Anything that wants to sit under `WEB_CONCURRENCY > 1` has to.
+#
+# Do not include backend-specific cases here (file durability, WAL, boot
+# races) — those belong to the backend's own spec.
 RSpec.shared_examples "an Insika store" do
   describe "#get / #set (round-trip)" do
     it "C1 preserves Hash with string keys" do # C1
@@ -178,5 +191,80 @@ RSpec.shared_examples "an Insika store" do
       end.to raise_error(Insika::StoreError)
       expect(store.get("s", "k")).to be_nil
     end
+  end
+end
+
+# Multi-worker safety (RFC-0018 A3). Every RFC-0016 A1 claim (outbox, delegation
+# sweep, recovery) is a read-check-write inside `transaction` — on SQLite that is
+# atomic because the backend opens BEGIN IMMEDIATE; a backend whose transaction
+# only yields passes all 22 cases above and still double-claims under two
+# workers, silently. These cases close that hole, across REAL concurrent
+# connections (threads, each on its own handle from `store_factory`).
+#
+# The `sleep` inside each transaction is deliberate: it holds the read state
+# open long enough that a backend without isolation ALWAYS lets a second
+# connection through, while a correct backend serializes the writers. Without
+# it a wrong backend could pass by scheduling luck — the failure E2 relies on.
+RSpec.shared_examples "an Insika store safe for N workers" do
+  # Starts N threads, each holding its OWN connection to the same backend,
+  # releases them together, and returns each block's value. Connections are
+  # closed on the way out when the backend has a #close.
+  def with_concurrent_connections(n, &blk)
+    ready = Queue.new
+    go = Queue.new
+    threads = n.times.map do
+      Thread.new do
+        conn = store_factory.call
+        ready << true
+        go.pop # hold every connection at the line, then release them together
+        blk.call(conn)
+      ensure
+        conn.close if conn.respond_to?(:close)
+      end
+    end
+    n.times { ready.pop }
+    go.close # a closed queue pops nil immediately: the starting gun
+    threads.map(&:value)
+  end
+
+  # The outbox/delegation claim, verbatim in shape: read the status, and only
+  # the connection that still sees "pending" may flip it. A correct backend
+  # serializes the transactions, so exactly ONE of the 8 observes "pending".
+  it "claims a pending key exactly once across concurrent connections" do
+    store.set("jobs", "job:1", "pending")
+
+    claims = with_concurrent_connections(8) do |conn|
+      conn.transaction do
+        next unless conn.get("jobs", "job:1") == "pending"
+
+        sleep 0.01 # hold the read open: a wrong backend lets everyone through
+        conn.set("jobs", "job:1", "claimed")
+        true
+      end
+    end.count(true)
+
+    expect(claims).to eq(1)
+    expect(store.get("jobs", "job:1")).to eq("claimed")
+  end
+
+  # The lost-update shape the claim generalizes from: read-modify-write of a
+  # counter. A backend whose transaction yields without isolation drops
+  # increments whenever two connections overlap.
+  it "does not lose updates across concurrent connections" do
+    store.set("meters", "hits", 0)
+    connections = 4
+    increments = 10
+
+    with_concurrent_connections(connections) do |conn|
+      increments.times do
+        conn.transaction do
+          current = conn.get("meters", "hits")
+          sleep 0.001 # widen the window a wrong backend loses updates through
+          conn.set("meters", "hits", current + 1)
+        end
+      end
+    end
+
+    expect(store.get("meters", "hits")).to eq(connections * increments)
   end
 end

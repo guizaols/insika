@@ -14,12 +14,12 @@
 # SHORTCUT, but nothing depends on them for testing (the classes accept injection).
 
 require_relative "../lib/insika"
-require_relative "../server/app"
+require_relative "../lib/insika/server/app"
 # A2A outbound: client/http/remotes do NOT pull ruby_llm at load (only the remote
 # tool's registration block pulls it). The tool itself (a2a_remote.rb) is lazy.
-require_relative "../server/a2a/client"
-require_relative "../server/a2a/http"
-require_relative "../server/a2a/remotes"
+require_relative "../lib/insika/server/a2a/client"
+require_relative "../lib/insika/server/a2a/http"
+require_relative "../lib/insika/server/a2a/remotes"
 
 # Env rename (pass 2): backfill INSIKA_* from any legacy HARNESS_* alias before this
 # root reads the process ENV below.

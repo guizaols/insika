@@ -27,6 +27,10 @@ deployment.
 
 Ruby `>= 3.3` and a provider key (the demo uses DeepSeek). The whole program:
 
+```bash
+gem install insika
+```
+
 ```ruby
 require "insika"
 
@@ -43,8 +47,7 @@ Swap `reply` for `serve` and the same agent is a server — the control UI at `/
 plus the drop-in API, on `:9292`:
 
 ```bash
-bundle install
-DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb --serve
+DEEPSEEK_API_KEY=sk-... ruby quickstart.rb
 
 curl -N http://localhost:9292/v1/responses \
   -H "Authorization: Bearer local-demo" -H "Content-Type: application/json" \

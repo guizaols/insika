@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../server/responses"
+require_relative "../../lib/insika/server/responses"
 
 # SSE reduction (RFC-0008 runner). Pure over the /v1/responses stream — the frames
 # are built with the REAL producer (server/responses.rb) so the eval can't silently

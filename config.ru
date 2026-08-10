@@ -21,10 +21,10 @@
 
 require_relative "config/deployment"
 require "rack/urlmap"
-require_relative "server/boot"
-require_relative "server/app"
-require_relative "server/a2a/app" # inbound federation (opt-in)
-require_relative "studio/app"     # management UI (Roda), under /studio
+require_relative "lib/insika/server/boot"
+require_relative "lib/insika/server/app"
+require_relative "lib/insika/server/a2a/app" # inbound federation (opt-in)
+require_relative "lib/insika/studio/app"     # management UI (Roda), under /studio
 
 W = Deploy::Wiring
 

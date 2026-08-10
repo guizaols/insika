@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/client"
+require_relative "../../../../lib/insika/server/a2a/client"
 
 RSpec.describe Insika::Server::A2A::Client do
   # http fake: a queue of responses (JSON-RPC envelopes), records the requests.

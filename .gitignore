@@ -1,13 +1,13 @@
 .DS_Store
 *.db
 *.sqlite3
+*.gem
 tmp/
 .bundle/
 vendor/bundle/
 # Studio (Phase 4): node_modules NOT checked in; assets/dist/ IS (D8 — `ruby
 # serve` runs without Node; only front-end editors need npm install + build).
 node_modules/
-studio/node_modules/
 *.db-shm
 *.db-wal
 *.db-journal

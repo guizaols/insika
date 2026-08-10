@@ -2,7 +2,7 @@
 
 # Loads the contract suite to ensure the file parses clean
 # (the first real run against a backend is task 3).
-require_relative "store_contract"
+require_relative "../../lib/insika/testing/store_contract"
 
 RSpec.describe Insika::Store do
   # Incomplete backend: only includes the module, overrides nothing.

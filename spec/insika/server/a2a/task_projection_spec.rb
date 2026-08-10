@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/task_projection"
+require_relative "../../../../lib/insika/server/a2a/task_projection"
 
 RSpec.describe Insika::Server::A2A::TaskProjection do
   FakeTask = Struct.new(:id, :status, :session_id)

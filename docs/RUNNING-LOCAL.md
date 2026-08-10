@@ -52,7 +52,7 @@ per fragment. Those requests fall back to one turn per message.
 
 Every `/v1` and `/a2a` route needs the Bearer. The exceptions are `/up` and, when
 `INSIKA_ONBOARDING` is on, `/start.md`, `/models.json` and `/docs*` — a route is closed
-unless it is on the allowlist in `server/app.rb`. With no token configured at all the
+unless it is on the allowlist in `lib/insika/server/app.rb`. With no token configured at all the
 whole surface answers `503`, never open by omission.
 
 ## Variables (all optional)

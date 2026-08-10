@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../server/admin_auth"
+require_relative "../../../lib/insika/server/admin_auth"
 
 # doc 07 §7: no token -> 503 (disabled), wrong/absent -> 401, correct -> 200.
 RSpec.describe Insika::Server::AdminAuth do

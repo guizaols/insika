@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/agent_card"
+require_relative "../../../../lib/insika/server/a2a/agent_card"
 
 RSpec.describe Insika::Server::A2A::AgentCard do
   CardSkill = Struct.new(:name, :description)

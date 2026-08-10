@@ -2,8 +2,8 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../../server/responses"
-require_relative "../../../server/sse_body"
+require_relative "../../../lib/insika/server/responses"
+require_relative "../../../lib/insika/server/sse_body"
 
 # Phase 6 Stage A: OpenAI Responses adapter (/v1/responses) — drop-in for the
 # OpenClaw gateway. Tests request parsing and the Event->SSE frame map (fidelity

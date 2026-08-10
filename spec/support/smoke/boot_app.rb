@@ -8,8 +8,8 @@
 # test's single-process server).
 root = File.expand_path("../../..", __dir__)
 require File.join(root, "lib", "insika")
-require File.join(root, "server", "app")
-require File.join(root, "server", "boot")
+require File.join(root, "lib", "insika", "server", "app")
+require File.join(root, "lib", "insika", "server", "boot")
 
 backend              = Insika::Stores::SQLite.new(path: ENV.fetch("SMOKE_DB"))
 session_store        = Insika::SessionStore.new(store: backend)

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/protocol"
+require_relative "../../../../lib/insika/server/a2a/protocol"
 
 RSpec.describe Insika::Server::A2A::Protocol do
   E = Insika::Server::A2A::Errors

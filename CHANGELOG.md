@@ -13,6 +13,12 @@ Everything below is what the first release will contain.
 
 ### Added
 
+- **A publishable core (RFC-0018)** — `gem install insika` gives every shape: `reply`
+  in-process, `serve`, `Insika::Server.rack_app` mounted, and `embed(backend:)`. The
+  server and the Studio moved under `lib/insika/` and ship in the gem; the exported
+  store contract (`lib/insika/testing/store_contract.rb`) is what a third-party
+  backend specs against, now with an opt-in multi-worker group that fails a backend
+  whose `transaction` yields without isolation.
 - **Turn pipeline** — a durable, resumable turn: command bus → context builder → policy
   engine → middleware → executor tool-loop → event stream. Every turn checkpoints, so a
   crash resumes without repeating side-effects.
