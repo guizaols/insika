@@ -330,6 +330,108 @@ RSpec.describe Insika::Recovery do
     end
   end
 
+  # RFC-0019: tick mode. Boot's premise ("nothing is alive") is false on a
+  # timer, so candidates are only :queued/:running tasks untouched past the
+  # threshold, and a ValidationError from the dispatch (ResumeTask's local
+  # liveness check) SKIPS the task instead of failing it.
+  describe "stale_after: (tick mode)" do
+    # updated_at is the liveness signal; specs age a task by rewriting it.
+    def backdate(id, seconds)
+      key = "task:#{id}"
+      record = backend.get("tasks", key)
+      record["updated_at"] = (Time.now.utc - seconds).iso8601
+      backend.set("tasks", key, record)
+    end
+
+    it "resumes a stale :running task with a checkpoint" do
+      seed_task("t", status: :running)
+      seed_checkpoint("t")
+      backdate("t", 1_000)
+
+      result = recovery.run(stale_after: 900)
+
+      expect(result[:resumed]).to eq(["t"])
+      expect(bus.dispatched.map { |c| c.payload[:task_id] }).to eq(["t"])
+    end
+
+    it "leaves a FRESH :running task completely untouched (not resumed, not failed)" do
+      seed_task("t", status: :running)
+      seed_checkpoint("t")
+
+      result = recovery.run(stale_after: 900)
+
+      expect(result).to eq({ resumed: [], failed: [] })
+      expect(bus.dispatched).to be_empty
+      expect(task_store.find("t").status).to eq(:running)
+    end
+
+    it "sweeps a stale :queued task but not a fresh one (a live queue drains in seconds)" do
+      task_store.create(command: command, id: "old")
+      task_store.create(command: command, id: "new")
+      backdate("old", 1_000)
+
+      result = recovery.run(stale_after: 900)
+
+      expect(result[:resumed]).to eq(["old"])
+      expect(task_store.find("new").status).to eq(:queued)
+    end
+
+    it "never touches :waiting/:paused — idle by nature, staleness cannot judge them" do
+      seed_task("w", status: :waiting)
+      seed_checkpoint("w")
+      backdate("w", 10_000)
+      seed_task("p", status: :paused)
+      seed_checkpoint("p")
+      backdate("p", 10_000)
+
+      result = recovery.run(stale_after: 900)
+
+      expect(result).to eq({ resumed: [], failed: [] })
+      expect(bus.dispatched).to be_empty
+    end
+
+    it "an unreadable updated_at is not proof of life — treated as stale" do
+      seed_task("t", status: :running)
+      seed_checkpoint("t")
+      key = "task:t"
+      record = backend.get("tasks", key)
+      record["updated_at"] = "not-a-timestamp"
+      backend.set("tasks", key, record)
+
+      result = recovery.run(stale_after: 900)
+
+      expect(result[:resumed]).to eq(["t"])
+    end
+
+    describe "ValidationError from the dispatch (the E2 trap, defused)" do
+      subject(:recovery) do
+        described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                            command_bus: RecordingBus.new(raise_on: Insika::ValidationError.new("task 't' is running")))
+      end
+
+      it "tick mode SKIPS the task: not resumed, not failed, status untouched" do
+        seed_task("t", status: :running)
+        seed_checkpoint("t")
+        backdate("t", 1_000)
+
+        result = nil
+        expect { result = recovery.run(stale_after: 900) }.not_to raise_error
+        expect(result).to eq({ resumed: [], failed: [] })
+        expect(task_store.find("t").status).to eq(:running)
+      end
+
+      it "boot mode keeps the old contract: corruption -> :failed" do
+        seed_task("t", status: :running)
+        seed_checkpoint("t")
+
+        result = recovery.run
+
+        expect(result[:failed]).to eq(["t"])
+        expect(task_store.find("t").status).to eq(:failed)
+      end
+    end
+  end
+
   # RFC-0016 E2: the task sweep runs once per boot generation. The sweep's
   # "orphaned :running" test is per-process, so N workers sweeping at once (or
   # a worker respawned while siblings hold live turns) would double-resume;

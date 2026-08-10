@@ -8,6 +8,17 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Added
+
+- **The periodic tick (RFC-0019)** — durability no longer waits for a reboot.
+  Serving workers run a tick every `INSIKA_TICK_INTERVAL` (default 60s, `0`
+  disables) as a child of the turn supervisor: it re-drives outbox records left
+  `:pending` and sweeps orphaned `:queued`/`:running` tasks untouched past
+  `INSIKA_TICK_STALE_AFTER` (default 900s) — so the orphans of a worker
+  respawned mid-generation are recovered without a deploy. One worker per
+  window sweeps (a single transactional claim), and a task someone alive owns
+  is skipped, never failed. `:waiting`/`:paused` stay boot recovery's.
+
 ## [0.1.0] - 2026-08-10
 
 The first release: `gem install insika`.
