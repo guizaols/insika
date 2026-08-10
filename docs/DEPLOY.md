@@ -76,6 +76,18 @@ per-worker. The contract:
    that buffer defaults to 0** — SIGKILL right after SIGTERM, which cancels the
    whole drain — so set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` on the
    service.
+5. **A periodic tick closes the gap between boots.** Serving workers run a tick
+   every `INSIKA_TICK_INTERVAL` (default **60s**, `0` disables) as a child of
+   the turn supervisor: it re-drives any outbox record left `:pending` (each
+   carries its own claim — every worker may drain), and sweeps orphaned tasks
+   **without waiting for a deploy** — which is what recovers the orphans of a
+   worker respawned mid-generation (item 3's hole). One worker per window
+   sweeps (a single transactional claim), and only `:queued`/`:running` tasks
+   untouched for `INSIKA_TICK_STALE_AFTER` (default **900s**) are candidates:
+   a live turn is bounded by `turn_timeout`, so anything older cannot be alive.
+   **If you raise `turn_timeout` past it, raise `INSIKA_TICK_STALE_AFTER` too** —
+   the threshold must exceed the largest `turn_timeout` of the deployment.
+   `:waiting`/`:paused` tasks are idle by nature and stay boot recovery's.
 
 `deploy/entrypoint.sh` sets `WEB_CONCURRENCY` next to a pointer to this section;
 this section is the single source of truth for what changing it means.
@@ -89,6 +101,8 @@ this section is the single source of truth for what changing it means.
 | `WEB_CONCURRENCY` | `2` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
 | `INSIKA_BOOT_ID` | set by `deploy/entrypoint.sh` | boot generation id; the recovery **task sweep** runs once per id (process model, item 3). Unset = every boot sweeps (single-process default) |
 | `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
+| `INSIKA_TICK_INTERVAL` | `60` | seconds between tick passes — outbox drain + stale recovery sweep (process model, item 5). `0` disables |
+| `INSIKA_TICK_STALE_AFTER` | `900` | seconds a `:queued`/`:running` task must sit untouched before the tick sweeps it. Must exceed the largest `turn_timeout` of the deployment |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |
