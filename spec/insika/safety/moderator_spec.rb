@@ -27,20 +27,28 @@ RSpec.describe Insika::Safety::Moderator do
     expect(v.action).to eq("refuse")
   end
 
-  it "fails OPEN on unparseable output (never blocks a legit customer on a bad reply)" do
+  it "fails OPEN on unparseable output — unavailable, never a fake allow (RFC-0022)" do
     v = moderator("not json at all").classify("x")
-    expect(v.action).to eq("allow")
+    expect(v.action).to eq("unavailable")
+    expect(v).to be_unavailable
     expect(v.block?).to be(false)
   end
 
-  it "fails OPEN when the ask raises" do
+  it "fails OPEN when the ask raises — unavailable, not a clean negative" do
     v = described_class.new(ask: ->(_p) { raise "provider down" }).classify("x")
-    expect(v.action).to eq("allow")
+    expect(v.action).to eq("unavailable")
+    expect(v.block?).to be(false)
   end
 
-  it "coerces an unknown action/category to allow/safe (defensive)" do
+  it "normalizes an out-of-enum action to unavailable (not an invented allow)" do
     v = moderator('{"category":"weird","action":"nuke"}').classify("x")
-    expect(v.action).to eq("allow")
+    expect(v.action).to eq("unavailable")
     expect(v.category).to eq("safe")
+  end
+
+  it "honors a literal unavailable action from the model" do
+    v = moderator('{"category":"safe","action":"unavailable"}').classify("x")
+    expect(v.action).to eq("unavailable")
+    expect(v.block?).to be(false)
   end
 end
