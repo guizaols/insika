@@ -11,9 +11,8 @@ require "async/http/endpoint"
 require "protocol/rack"
 require "rack/urlmap"
 
-root = File.expand_path("../../..", __dir__)
-require File.join(root, "server", "rack_app")
-require File.join(root, "studio", "app")
+require_relative "../server/rack_app"
+require_relative "../studio/app"
 
 module Insika
   module DSL

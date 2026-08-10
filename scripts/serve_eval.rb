@@ -31,7 +31,7 @@
 
 $stdout.sync = true
 require_relative "../config/deployment"
-require_relative "../server/app"
+require_relative "../lib/insika/server/app"
 require "async"
 require "async/http/server"
 require "async/http/endpoint"

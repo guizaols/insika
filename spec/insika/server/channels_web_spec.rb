@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../server/app"
+require_relative "../../../lib/insika/server/app"
 
 # RFC-0011 §4.4 / §5 — the Shape A half of the channel mount: mint, turn, asset,
 # preflight. The cases worth writing are the ones where being wrong is a security

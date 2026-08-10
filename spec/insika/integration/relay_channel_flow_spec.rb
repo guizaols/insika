@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../../server/app"
+require_relative "../../../lib/insika/server/app"
 
 # The whole loop, with real wiring: HTTP inbound -> Command -> Executor -> the turn's
 # terminal -> outbox -> the consumer's callback. Only two things are doubles — the
