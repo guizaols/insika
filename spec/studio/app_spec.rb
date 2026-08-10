@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "rack/mock"
-require_relative "../../studio/app"
+require_relative "../../lib/insika/studio/app"
 
 # Studio (Phase 4, Stage E) — Roda app mounted under /studio. Exercises cookie auth
 # (D7, fail-closed), CSRF on POSTs, strict CSP (D8), serving of versioned assets and

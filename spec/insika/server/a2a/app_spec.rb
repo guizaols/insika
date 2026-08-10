@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/app"
+require_relative "../../../../lib/insika/server/a2a/app"
 
 RSpec.describe Insika::Server::A2A::App do
   let(:backend) { Insika::Stores::Memory.new }

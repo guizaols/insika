@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../server/a2a/app"
+require_relative "../../lib/insika/server/a2a/app"
 
 # E2E smoke for Phase 3 slice A (P3A): drives the REAL Server::A2A::App#rpc/#agent_card
 # over a CommandBus + handlers (create_session/send_message/cancel_task) + REAL

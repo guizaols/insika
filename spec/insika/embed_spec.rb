@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require "rack/urlmap"
 require "rack/mock"
-require_relative "../../server/rack_app"
+require_relative "../../lib/insika/server/rack_app"
 
 # RFC-0017 — Embeddability. The engine was one PROGRAM, not one process: two
 # graphs in the same Ruby process silently shared the LLM credentials and could

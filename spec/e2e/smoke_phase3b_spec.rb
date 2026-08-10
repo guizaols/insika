@@ -2,8 +2,8 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../server/a2a/app"
-require_relative "../../server/a2a/client"
+require_relative "../../lib/insika/server/a2a/app"
+require_relative "../../lib/insika/server/a2a/client"
 require "insika/tools/a2a_remote"
 
 # E2E smoke for Phase 3 slice B (P3B): LOOPBACK FEDERATION outbound→inbound

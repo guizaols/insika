@@ -42,6 +42,7 @@ Every link below is raw markdown — the same files the human-facing site render
 - [Observability](https://raw.githubusercontent.com/guizaols/insika/main/docs/OBSERVABILITY.md): the event stream, plus opt-in OpenTelemetry — turns as traces and metrics, attribute conventions, dashboard recipes.
 - [Evals](https://raw.githubusercontent.com/guizaols/insika/main/docs/EVALS.md): the quality harness — a case as YAML data (deterministic assertions plus a rubric a judge scores), cases in the store or the corpus, a panel of distinct judge models with aggregate/min_agreement, and the baseline gate.
 - [Refinement](https://raw.githubusercontent.com/guizaols/insika/main/docs/REFINEMENT.md): reading an agent's own production traffic back as a ranked failure report — the findings, the window, the privacy rules, and why there is no scheduler.
+- [Releasing](https://raw.githubusercontent.com/guizaols/insika/main/docs/RELEASING.md): how the `insika` gem is cut and how the install is proven from outside the repo before publishing.
 
 ## Proof
 

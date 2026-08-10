@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/remotes"
+require_relative "../../../../lib/insika/server/a2a/remotes"
 
 RSpec.describe Insika::Server::A2A::Remotes do
   it "parses id=url,id2=url2" do

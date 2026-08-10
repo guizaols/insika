@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "async"
-require_relative "../../../server/app"
+require_relative "../../../lib/insika/server/app"
 
 # Route contract from doc 07 §2-§6 with Rack::MockRequest + DOUBLE bus/stores
 # (doc 07 §7, doubles in spec/support/server_doubles.rb). No real Executor/RubyLLM
@@ -452,7 +452,7 @@ RSpec.describe Insika::Server::App do
     end
 
     it "no App path produces a 403 status" do
-      source = File.read(File.expand_path("../../../server/app.rb", __dir__))
+      source = File.read(File.expand_path("../../../lib/insika/server/app.rb", __dir__))
       expect(source).not_to match(/\b403\b/)
     end
   end

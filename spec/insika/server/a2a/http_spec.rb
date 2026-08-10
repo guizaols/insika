@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require_relative "../../../../server/a2a/http"
+require_relative "../../../../lib/insika/server/a2a/http"
 
 RSpec.describe Insika::Server::A2A::Http do
   # internet fake: grava (url, headers, body) e devolve uma resposta com #read.

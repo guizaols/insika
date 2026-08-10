@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../store_contract"
+require_relative "../../../lib/insika/testing/store_contract"
 
 RSpec.describe Insika::Stores::Memory do
   subject(:store) { described_class.new }
