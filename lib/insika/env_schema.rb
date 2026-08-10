@@ -113,6 +113,8 @@ module Insika
       spec(name: "INSIKA_CONFIG_STRICT", type: :boolean, description: "Refuse boot on any config finding instead of warning (item 23)."),
       spec(name: "INSIKA_BOOT_ID", description: "Boot generation id shared by all workers of one container start; the recovery task sweep runs once per id (RFC-0016). Unset -> every boot sweeps."),
       spec(name: "INSIKA_DRAIN_TIMEOUT", type: :integer, description: "Seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (default 20, RFC-0016 A3)."),
+      spec(name: "INSIKA_TICK_INTERVAL", type: :integer, description: "Seconds between tick passes (outbox drain + stale recovery sweep, RFC-0019). Default 60; 0 disables."),
+      spec(name: "INSIKA_TICK_STALE_AFTER", type: :integer, description: "Seconds a :queued/:running task must sit untouched before the tick sweeps it (default 900, RFC-0019). Must exceed the largest turn_timeout of the deployment."),
       spec(name: "INSIKA_ONBOARDING", type: :boolean, description: "Expose the public onboarding surface (/start.md, /models.json, /docs) in production (opt-in, item 20)."),
       spec(name: "INSIKA_RELAY_TOKEN", secret: true, description: "Bearer the relay consumer sends us. Unset -> the relay channel is not mounted (RFC-0011 §6)."),
       spec(name: "INSIKA_RELAY_DELIVER_URL", type: :url, description: "Consumer callback the relay POSTs each reply to."),

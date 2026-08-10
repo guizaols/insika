@@ -19,7 +19,7 @@ module Insika
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
-                   delegation_store: nil, channel_delivery: nil, llm: nil)
+                    delegation_store: nil, channel_delivery: nil, llm: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -101,6 +101,13 @@ module Insika
     # and in tests the owner WANTS to wait for the turn to finish (structured
     # concurrency).
     attr_accessor :supervised
+
+    # RFC-0019: the periodic tick (outbox drain + stale recovery sweep), wired
+    # by the graph AFTER the bus exists (the tick's recovery half dispatches
+    # through it). nil = no tick (parity — recovery stays boot-only). When
+    # present and serving, it starts as a child of the turn supervisor (see
+    # #turn_parent).
+    attr_accessor :tick
 
     # RFC-0016 A3: closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
@@ -600,6 +607,11 @@ module Insika
       # drains first (RFC-0016 A3), so only what outlives the drain deadline dies
       # here, `:running`, for the next boot's recovery to replay.
       @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
+      # RFC-0019: the periodic tick is a child of the supervisor — it binds to
+      # the serving reactor in every arm with no arm edits, and dies with the
+      # supervisor at shutdown (after Shutdown's drain, like any turn).
+      @tick&.start(parent: @supervisor)
+      @supervisor
     end
 
     # Deterministic PendingAction id: correlation by task+turn+tool.

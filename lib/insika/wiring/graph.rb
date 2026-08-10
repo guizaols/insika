@@ -28,6 +28,13 @@ module Insika
         db && !db.empty? ? Insika::Stores::SQLite.new(path: db) : Insika::Stores::Memory.new
       end
 
+      # RFC-0019: an integer tick knob from the env, nil when unset (the caller's
+      # default wins). Dual-read honors the deprecated HARNESS_* alias.
+      def tick_env(name, env = ENV)
+        value = Insika::EnvSchema.read(name, env)
+        value&.to_i
+      end
+
       # Phase 1 — the infra spine that is IDENTICAL across roots. `extra_policy_
       # builtins` covers the one real divergence (the minimal wiring also registers
       # :workflow_allowlist; the deployment does not expose workflows).
@@ -123,6 +130,19 @@ module Insika
         )
 
         bus = build_core_bus(spine: spine, profiles: profiles, executor: executor)
+
+        # RFC-0019: the periodic tick (outbox drain + stale recovery sweep). Built
+        # here, after the bus, because its recovery half dispatches resume_task
+        # through it; handed to the Executor, which starts it as a child of the
+        # turn supervisor in serving mode. `INSIKA_TICK_INTERVAL=0` disables.
+        executor.tick = Insika::Tick.new(
+          store: spine.backend, channel_delivery: channel_delivery,
+          recovery: Insika::Recovery.new(
+            task_store: spine.task_store, checkpoint_store: spine.checkpoint_store, command_bus: bus
+          ),
+          interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
+          stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
+        )
 
         Graph::Result.new(
           backend: spine.backend, event_stream: spine.event_stream,
