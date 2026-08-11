@@ -18,10 +18,10 @@ module Insika
     # agent_files/skills: the CONTENT of per-agent prompts
     # and shared skills lives in the Store (single source of truth,
     # a SQLite backup), not on disk — disk becomes only seed/import.
-    # goldens: authored eval cases (RFC-0008 §3.1 / RFC-0013 §3.7) — config, like the
+    # goldens: authored eval cases — config, like the
     # prompts and skills: the corpus on disk is seed and export, the store is what a
     # deployment runs and what the Studio edits.
-    # baselines: the ACCEPTED state of each agent's golden set (RFC-0013 §3.7.3).
+    # baselines: the ACCEPTED state of each agent's golden set.
     # Config for the same reason: it is a curated decision ("this is the bar"), the
     # file is its export, and the refinement gate reads it from inside a deployment
     # that has no checkout.

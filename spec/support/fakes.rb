@@ -2,7 +2,7 @@
 
 # Honest stubs for stages D/E (interfaces from docs 04/05), minimal and
 # deterministic behavior. They live in spec/support on purpose: the real components
-# arrive in tasks 14-18; the production wiring closes in task 26.
+# arrive in tasks 14-18; the production wiring closes in.
 
 # Poor mirror of the Context Builder. #call(request) -> ContextPackage with system
 # (from profile.base_prompt) and history in precedence: checkpoint.messages ->
@@ -54,7 +54,7 @@ class PassthroughMiddleware
   end
 end
 
-# Short-circuits: sets halt_reason and does NOT call the block (doc 05 §3).
+# Short-circuits: sets halt_reason and does NOT call the block.
 class HaltingMiddleware
   def call(state)
     state.halt_reason = "rate limit"
@@ -112,7 +112,7 @@ class SSEStreamDouble
   def closed? = @closed
 end
 
-# Fake registry with the side_effect?(name) predicate (seam from doc 06).
+# Fake registry with the side_effect?(name) predicate (seam from).
 class FakeToolRegistry
   def initialize(side_effect_names: [])
     @side_effect_names = Array(side_effect_names).map(&:to_s)

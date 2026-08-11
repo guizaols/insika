@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Characterization of TurnState (FOLLOWUP §11 R0). It is MUTABLE on purpose (the
+# Characterization of TurnState (R0). It is MUTABLE on purpose (the
 # only exception to the Data types): the Middleware and the tool decorators write
 # into it. This spec pins the initializer contract, the defaults, and the mutable
 # fields R1 (tool-call baseline) and R4 (per-call correlation) will lean on.
@@ -64,7 +64,7 @@ RSpec.describe Insika::TurnState do
     end
   end
 
-  # Item 30 / P11a: the per-call correlation is the ONE pair of fields that is not
+  # the per-call correlation is the ONE pair of fields that is not
   # an ivar. `before_tool_call` → `tool.call` → `after_tool_result` run in the same
   # fiber, and tool concurrency gives each call its own — so a shared slot would let
   # calls overwrite each other's identity. Serial behaviour is unchanged.

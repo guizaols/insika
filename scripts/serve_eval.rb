@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SERVE FOR EVALS: boots the real deployment wiring (WITH the RFC-0009 guardrail
+# SERVE FOR EVALS: boots the real deployment wiring (WITH the guardrail
 # middleware) as a single-process HTTP server, seeded with the eval target agents,
 # guardrails ON.
 #
@@ -8,7 +8,7 @@
 #     (the OSS default guardrail net, bilingual EN+pt-BR). Neutral prompt, no brand.
 #   · loja-cosmeticos — the pt-BR retail REFERENCE (evals/golden/loja-cosmeticos/,
 #     anonymized real corpus), moderator ON + a `responses` override showing
-#     per-agent voice (config over convention, §7).
+#     per-agent voice (config over convention).
 #
 # It exists so `ruby evals/run.rb` has targets with the guardrail fully wired, without
 # the full OpenClaw pack. The DETERMINISTIC attack cases (exfil, sexual, verbal abuse)
@@ -66,7 +66,7 @@ end
 
 # The pt-BR retail REFERENCE target (evals/golden/loja-cosmeticos/ — anonymized real
 # corpus). Guardrails ON, moderator ON, + a `responses` override showing per-agent
-# voice (config over convention, §7). Idempotent seed.
+# voice (config over convention). Idempotent seed.
 unless W::PROFILE_SOURCE.fetch("loja-cosmeticos")
   W::PROFILE_SOURCE.put(Insika::AgentProfile.build(
                           id: "loja-cosmeticos", model: Deploy::MODEL, provider: :deepseek,
@@ -81,7 +81,7 @@ unless W::PROFILE_SOURCE.fetch("loja-cosmeticos")
                           guardrails: {
                             "input" => true, "output" => true,
                             "moderator" => "on", "strictness" => "medium",
-                            # config over convention (§7): this agent's OWN safe replies.
+                            # config over convention: this agent's OWN safe replies.
                             "responses" => {
                               "default" => "Não consigo confirmar isso por aqui. Posso verificar " \
                                            "os cupons e condições disponíveis pra você, ou te " \

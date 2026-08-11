@@ -12,7 +12,7 @@ module Insika
     # insika.data_tool), correlated by task_id. Latency is the span duration; the
     # agent/tenant/model/tokens/cost ride as ATTRIBUTES.
     #
-    # METRICS (item 16 / P4): the SAME events also feed counters and histograms, so
+    # METRICS: the SAME events also feed counters and histograms, so
     # volume/latency/tokens/cost are chartable WITHOUT span aggregation (which not
     # every backend does, and none does cheaply at retention). Metric attributes are
     # a deliberate LOW-CARDINALITY subset of the span attributes — never task_id or

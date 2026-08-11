@@ -85,7 +85,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "token usage in the terminal event (Phase 6, observability)" do
+  describe "token usage in the terminal event (observability)" do
     TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
 
     it "captures input/output/total/model from the response -> :task_completed" do
@@ -108,7 +108,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(event_stream.events.find { |e| e.type == :task_completed }.data[:usage]).to be_nil
     end
 
-    it "surfaces prompt-cache read + write tokens when the provider reports them (§11 R3)" do
+    it "surfaces prompt-cache read + write tokens when the provider reports them (R3)" do
       executor = build_executor
       resp = Struct.new(:input_tokens, :output_tokens, :model_id, :cached_tokens, :cache_creation_tokens)
                    .new(100, 20, "claude", 80, 4096)
@@ -136,7 +136,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
 
       run_turn(executor, make_task)
 
-      # 1st :checkpoint = turn's initial one (doc 02 §3, crash resumability);
+      # 1st:checkpoint = turn's initial one (crash resumability);
       # then stage 8's order: checkpoint -> session -> finish -> transition
       expect(order).to eq([[:transition, :running], :checkpoint, :checkpoint, :session, :finish,
                            [:transition, :completed]])
@@ -160,7 +160,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "§11 R1 — persistence of tool calls/results (fidelity across turns)" do
+  describe " R1 — persistence of tool calls/results (fidelity across turns)" do
     # Mimics RubyLLM: #ask appends the turn's REAL exchange to #messages (the shared
     # FakeChat does not — that is what the {user, assistant} fallback covers).
     let(:recording_chat) do
@@ -188,7 +188,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(msgs[2]).to include("role" => "tool", "tool_call_id" => "c1", "content" => "resultado da tool")
     end
 
-    it "the final assistant bubble carries the REDACTED text (D3), not the gem's raw" do
+    it "the final assistant bubble carries the REDACTED text, not the gem's raw" do
       session_store.create(id: "s1")
       recording_chat.final_content = "resposta final"
 
@@ -224,7 +224,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "§11 B2 — typed command (single source string||symbol)" do
+  describe "typed command (single source string||symbol)" do
     def task_with(command)
       Struct.new(:command, :session_id).new(command, nil)
     end
@@ -242,7 +242,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "run_serial (session serialization, P2-03)" do
+  describe "run_serial (session serialization,-03)" do
     it "spawn error marks the task :failed (does not orphan :queued without a terminal state)" do
       executor = build_executor
       task = make_task # status :queued
@@ -318,7 +318,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "real MiddlewareStack (task 18)" do
+  describe "real MiddlewareStack" do
     it "link that short-circuits with halt_reason -> task :failed, chat never built" do
       session_store.create(id: "s1")
       halting = Class.new(Insika::Middleware) do
@@ -400,7 +400,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "turn timeout (D4, via with_timeout)" do
+  describe "turn timeout (via with_timeout)" do
     it "expires -> :failed with stage :turn" do
       session_store.create(id: "s1")
       fast = Insika::AgentProfile.build(id: "sales", model: "gpt", limits: { turn_timeout: 0.05 })
@@ -538,7 +538,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(stored.executions.size).to eq(2) # attempt 1 (interrupted) preserved + attempt 2
       expect(stored.executions.first.outcome).to eq("interrupted")
       expect(checkpoint_store.latest("t").turn).to eq(4) # turn 3 + 1
-      # checkpoint history (precedence doc 04) was seeded into the chat
+      # checkpoint history (precedence) was seeded into the chat
       expect(fake.messages.map { |m| m[:content] }).to eq(["anterior"])
     end
 
@@ -605,7 +605,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  # L4 (RFC-0001 principle: execution belongs to the RUNTIME, not the connection). Under
+  # L4 (principle: execution belongs to the RUNTIME, not the connection). Under
   # HTTP the spawn runs in the request's fiber; the injected supervisor decouples the
   # turn from it to survive a disconnect.
   describe "ownership of the turn's fiber (supervisor)" do
@@ -671,7 +671,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  describe "per-turn timing breakdown (item 34; opt-in via INSIKA_TURN_TIMING)" do
+  describe "per-turn timing breakdown (opt-in via INSIKA_TURN_TIMING)" do
     it "omits :timing from the terminal event when disabled (default)" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
       session_store.create(id: "s1")
@@ -756,10 +756,10 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
-  # RFC-0023: one entry per turn in the ContextTraceStore — tokens by category,
+  # one entry per turn in the ContextTraceStore — tokens by category,
   # the tools estimate and the budget verdict. nil store / a builder without the
   # full package = off, and the turn is untouched either way.
-  describe "context breakdown trace (RFC-0023)" do
+  describe "context breakdown trace" do
     # A builder that returns the REAL package (the FakeContextBuilder in
     # spec/support is a 3-field Struct that predates fragments/budget).
     class BreakdownContextBuilder

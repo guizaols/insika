@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0011 §5 — the widget is the first PUBLIC channel, so the cases that matter
+# the widget is the first PUBLIC channel, so the cases that matter
 # are the ones where being wrong costs money (an open route with an LLM behind it)
 # or costs a customer their privacy (a session id someone else can use).
 RSpec.describe Insika::Channels::Web do
@@ -39,7 +39,7 @@ RSpec.describe Insika::Channels::Web do
     end
   end
 
-  # §5.4: "a public channel with an LLM behind it is a money faucet". The limit is a
+  # "a public channel with an LLM behind it is a money faucet". The limit is a
   # requirement, not a suggestion, and the fail-closed direction is the whole point.
   describe "the mandatory rate limit" do
     it "is :ok once every published agent has a positive limit" do
@@ -108,7 +108,7 @@ RSpec.describe Insika::Channels::Web do
     end
   end
 
-  # §5.3: CORS is a browser courtesy, not a security control. Refusing a request
+  # CORS is a browser courtesy, not a security control. Refusing a request
   # with no Origin would be theatre (curl sets any origin it likes) — and the rate
   # limit above is what actually defends the route.
   describe "the origin allowlist" do
@@ -168,7 +168,7 @@ RSpec.describe Insika::Channels::Web do
     end
   end
 
-  # §4.3's hard rule: the ENGINE issues the id. A visitor-proposed id on an
+  #'s hard rule: the ENGINE issues the id. A visitor-proposed id on an
   # anonymous endpoint is session hijacking by enumeration.
   describe "mint_session_id" do
     it "is namespaced and unguessable" do
@@ -195,7 +195,7 @@ RSpec.describe Insika::Channels::Web do
       expect(channel.frame_for(ev(:task_cancelled))).to include("event: error")
     end
 
-    # P19: `:content` is the ANSWER. The narration on the way there is internal, and
+    # `:content` is the ANSWER. The narration on the way there is internal, and
     # a widget that rendered it would show the customer the engine thinking aloud.
     it "publishes neither the model's reasoning nor its intermediate prose" do
       expect(channel.frame_for(ev(:thinking, { delta: "hmm", public: true }))).to be_nil

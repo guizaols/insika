@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# RFC-0015 §5.1/§5.2 — the `steer` door as the Executor exposes it, and what happens to a
+# — the `steer` door as the Executor exposes it, and what happens to a
 # message the run could not absorb. Every guard here exists so a wiring that did NOT ask
 # for steering behaves exactly as it did before the feature.
-RSpec.describe "Insika::Executor + the steer door (RFC-0015)" do
+RSpec.describe "Insika::Executor + the steer door" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
@@ -109,7 +109,7 @@ RSpec.describe "Insika::Executor + the steer door (RFC-0015)" do
     end
   end
 
-  # §5.2 — a message nothing read is a message a PERSON typed. It becomes the next turn
+  # a message nothing read is a message a PERSON typed. It becomes the next turn
   # rather than evaporating, which is `followup` arrived at late.
   it "releases a message the run never absorbed as a follow-up turn" do
     executor = build_executor(profiles: { "a" => steering })
@@ -153,7 +153,7 @@ RSpec.describe "Insika::Executor + the steer door (RFC-0015)" do
       expect(event_stream.types).to include(:turn_steered)
       expect(event_stream.types).not_to include(:turn_steer_released)
 
-      # §7 — it persists as what it is, with NO new persistence code and no origin:
+      # it persists as what it is, with NO new persistence code and no origin:
       # `recorded_turn_messages` slices everything the chat gained past the baseline, and
       # an absent origin on a `user` message already means "a person typed it".
       steered = session_store.find("s1").messages.find { |m| m["content"] == "1234567" }

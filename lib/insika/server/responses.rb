@@ -4,9 +4,8 @@ require "json"
 
 module Insika
   module Server
-    # OpenAI Responses edge adapter (`/v1/responses`) — the contract that the
-    # OpenClaw gateway consumers already speak (see consumer-app
-    # `CoreServices::OpenclawDispatcher`). Phase 6, Step A.
+    # OpenAI Responses edge adapter (`/v1/responses`) — the contract that
+    # OpenClaw gateway consumers already speak.
     #
     # PURE module (no state, no framework): (a) translates the OpenAI
     # Responses request → `:send_message` payload; (b) maps each turn Event →
@@ -26,7 +25,7 @@ module Insika
       # `origin` is the consumer declaring WHO wrote the input it is sending. It
       # matters here more than anywhere: this adapter's `input` is a STRING the
       # consumer already composed out of context blocks plus the customer's text
-      # (`<memoria> …`, `<store_cep_obrigatorio> …`), so a transcript reader cannot
+      # (`<memoria> …`, `<store_cep_required> …`), so a transcript reader cannot
       # tell the two apart — the first refinement run over real traffic reported 219
       # "the customer repeated themselves" that were the engine reading its own
       # fragment back. A consumer that sends `origin: "engine"` on a composed turn
@@ -84,8 +83,8 @@ module Insika
           # The provider's reasoning. Internal unless the AGENT opted in
           # (`edge_stream thinking: true`), which tags the event. Even then it does
           # NOT become answer text: it gets the Responses reasoning frame, so a
-          # consumer that only accumulates `output_text` deltas — consumer-app's
-          # dispatcher, which turns them into one WhatsApp message — is unaffected,
+          # consumer that only accumulates `output_text` deltas — a dispatcher
+          # that turns them into one WhatsApp message — is unaffected,
           # and one that renders reasoning has something to render.
           if public_delta(event)
             sse("response.reasoning_summary_text.delta",
@@ -108,7 +107,7 @@ module Insika
                 { type: "insika.intermediate.delta", delta: event.data[:delta].to_s })
           end
         when :guardrail_blocked, :guardrail_flagged
-          # RFC-0009: audit events with no OpenAI Responses counterpart. On a BLOCK
+          # audit events with no OpenAI Responses counterpart. On a BLOCK
           # the safe reply still reaches the consumer through the normal :content
           # deltas + :task_completed path (the turn completes gracefully), so there
           # is nothing extra to translate here — the events live in /v1/events + the
@@ -133,7 +132,7 @@ module Insika
           response[:usage] = usage.reject { |k, _| k.to_s == "model" }
           response[:model] = model if model
         end
-        # Opt-in per-turn latency breakdown (INSIKA_TURN_TIMING; item 34). Absent
+        # Opt-in per-turn latency breakdown (INSIKA_TURN_TIMING). Absent
         # by default — a non-standard sibling used only for TTFB diagnostics.
         (timing = event.data[:timing]) && (response[:timing] = timing)
         sse("response.completed", { type: "response.completed", response: response })

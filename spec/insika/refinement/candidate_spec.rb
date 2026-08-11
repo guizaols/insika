@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 §3.4 — the candidate format is the trust boundary made checkable. Every
+# the candidate format is the trust boundary made checkable. Every
 # case here is one way a proposal could quietly damage an agent's prompt, and the
 # assertion is that it is dropped WITH a reason instead.
 RSpec.describe Insika::Refinement::CandidateBuilder do
@@ -59,7 +59,7 @@ RSpec.describe Insika::Refinement::CandidateBuilder do
     expect(candidate.edits.first.addresses).to eq(["tool_error:shipping_quote"])
   end
 
-  # §3.1: the allowlist is the write surface, and an EMPTY one means report-only —
+  # the allowlist is the write surface, and an EMPTY one means report-only —
   # not "unrestricted". A missing config must never be the most permissive setting.
   describe "the write allowlist" do
     it "drops a file nobody allowlisted" do

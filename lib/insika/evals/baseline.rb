@@ -4,7 +4,7 @@ require "json"
 
 module Insika
   module Evals
-    # Fase C gating (RFC-0008 §3.4). A baseline is the accepted state of the golden
+    # gating. A baseline is the accepted state of the golden
     # set — `{ cases: { id => { pass, score } } }`. A gated run compares against it and
     # blocks only on a REGRESSION, so known-failing cases don't wedge the gate while a
     # real drop (a passing case that now fails, or a judge score that fell past the
@@ -16,7 +16,7 @@ module Insika
 
       # [CaseResult] -> baseline hash. `at` is stamped by the caller (kept out of here
       # so the module stays deterministic/testable).
-      # A SKIPPED case is left out entirely (RFC-0014 §3.2): writing it as `pass:
+      # A SKIPPED case is left out entirely: writing it as `pass:
       # false` would accept "this deployment cannot run it" as the accepted state,
       # and the case would never block anywhere again.
       def snapshot(results, at:)
@@ -38,7 +38,7 @@ module Insika
       # in BOTH are compared: a new case (no baseline entry) never blocks the gate (it
       # shows in the report as ❌ but is not a "regression"); document this in README.
       #   • pass→fail   : baseline pass, now failing (hard regression).
-      #   • pass→skipped: baseline pass, now unrunnable HERE. RFC-0014 §3.2 says the
+      #   • pass→skipped: baseline pass, now unrunnable HERE. says the
       #                   gate never blocks ON a skip, and it does not: a case that was
       #                   already skipped or unknown stays silent. But a case that used
       #                   to run on this deployment and no longer can means the agent

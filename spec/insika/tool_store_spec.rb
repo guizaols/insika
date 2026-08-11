@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 5 Stage A: versioned + masked store for data-defined tools.
+# versioned + masked store for data-defined tools.
 RSpec.describe Insika::ToolStore do
   subject(:store) { described_class.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
 

@@ -3,7 +3,7 @@
 require "json"
 
 module Insika
-  # Per-session TOOL-CALL trace, for debugging in the Studio (FOLLOWUP §3.1). One
+  # Per-session TOOL-CALL trace, for debugging in the Studio. One
   # record per session in the raw backend (scope "tool_traces") — RUNTIME data, next
   # to sessions/tasks, NOT config (hence the raw `store:`, like SessionStore,
   # not the ConfigStore). A capped LIST of entries; ToolEnvelope writes one

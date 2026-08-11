@@ -17,7 +17,7 @@ module Insika
   class Recovery
     SWEEP_SCOPE = "recovery"
 
-    # The per-boot-generation sweep claim (RFC-0016 E2). N workers share one
+    # The per-boot-generation sweep claim. N workers share one
     # store, and the sweep's "orphaned :running" test is per-process: a worker
     # booting while a sibling holds a live turn would see it as an orphan and
     # re-run it. So the TASK sweep runs once per boot generation — the first
@@ -53,7 +53,7 @@ module Insika
     # The initial sweep runs OUTSIDE the per-task rescue: a StoreError here
     # aborts the boot.
     #
-    # stale_after (seconds, RFC-0019): the periodic tick's semantics instead of
+    # stale_after (seconds): the periodic tick's semantics instead of
     # boot's. Only :queued/:running tasks untouched for longer than that are
     # candidates — :waiting/:paused are idle by nature (a human wait), so
     # staleness cannot tell a live one from a dead one, and they stay boot
@@ -79,7 +79,7 @@ module Insika
     private
 
     # Boot mode (stale_after nil) takes the candidate list as-is; tick mode keeps
-    # only tasks untouched past the threshold — the liveness gate of §4 item 3.
+    # only tasks untouched past the threshold — the liveness gate of.
     def sweep(tasks, stale_after)
       tasks = tasks.sort_by(&:created_at)
       return tasks unless stale_after
@@ -98,11 +98,11 @@ module Insika
     # dispatch/latest error -> mark :failed and continue. StoreError -> propagate
     # (aborts the boot).
     #
-    # tick: true (RFC-0019) flips ONE rescue: a ValidationError from the dispatch
+    # tick: true flips ONE rescue: a ValidationError from the dispatch
     # is ResumeTask's local liveness check ("task is running") — someone alive
     # owns it, the normal case on a timer, so the task is SKIPPED for the next
     # tick. At boot a ValidationError means corruption (nothing may be alive),
-    # so it still fails the task there. This is the E2 trap defused in-process:
+    # so it still fails the task there. This is the trap defused in-process:
     # the tick must never murder a live turn with its own recovery.
     def process(task, resumed, failed, tick: false)
       # :queued never started (no checkpoint) but IS recoverable — ResumeTask

@@ -11,11 +11,11 @@ module Insika
                   :allowed_skills,
                   :chat,               # the turn's RubyLLM::Chat instance
                   :session,            # the turn's SessionStore::Session | nil (set at stage 2;
-                  #                      read by create_chat for the per-chat model pin, §10)
-                  :model_selection,    # resolved ModelSelection (v2, §10): model/provider/source/
+                  #                      read by create_chat for the per-chat model pin)
+                  :model_selection,    # resolved ModelSelection: model/provider/source/
                   #                      pinned/params/fallbacks. Set at stage 5; surfaced in usage.
                   :halt_reason,        # set by Middleware when short-circuiting (halt-as-FAILURE)
-                  :halt_response,      # set by a Middleware for the GRACEFUL halt (RFC-0009 §3.1):
+                  :halt_response,      # set by a Middleware for the GRACEFUL halt:
                   #                      the safe reply the turn completes with, WITHOUT touching the
                   #                      LLM. Distinct from halt_reason — a completion, not a failure.
                   :guardrail_block,    # audit metadata the guardrail sets alongside halt_response
@@ -34,7 +34,7 @@ module Insika
     #
     # They live in FIBER STORAGE, not in ivars, and that is the whole point:
     # `before_tool_call` → `tool.call` → `after_tool_result` all run in the SAME
-    # fiber, and with `ToolConcurrency` (item 30) there is one fiber PER CALL. A
+    # fiber, and with `ToolConcurrency` there is one fiber PER CALL. A
     # single slot on this shared object would let one in-flight call overwrite
     # another's — a side-effect recorded under the wrong id (so a resume skips the
     # wrong tool, or re-runs a non-idempotent one) and a mislabelled event. Both
@@ -56,7 +56,7 @@ module Insika
       Fiber[NAME_KEY] = name
     end
 
-    # Internal (§11 R1): the chat's message count RIGHT AFTER `assemble` (seeded
+    # Internal (R1): the chat's message count RIGHT AFTER `assemble` (seeded
     # history) and BEFORE `ask`. persist_turn slices `chat.messages.drop(baseline)`
     # to serialize the turn's real exchange — user + assistant(tool_calls) + tool
     # results + final assistant — into the transcript. nil = no chat recorded
@@ -70,13 +70,13 @@ module Insika
     # capability_registry or empty profile.capabilities (parity).
     attr_accessor :capability_names
 
-    # Internal (RFC-0015): the turn's resolved QueuePolicy. Read at stage 6 to decide
+    # Internal: the turn's resolved QueuePolicy. Read at stage 6 to decide
     # whether this run accepts steered messages, and how they are worded. Resolved once
     # per turn, in build_turn_state — an edit to the agent mid-run does not change the
     # rules the run started under.
     attr_accessor :queue_policy
 
-    # Internal (item 33): true when this turn re-enters the pipeline via
+    # Internal: true when this turn re-enters the pipeline via
     # resume_task/recovery. The EdgeLimiter reads it to NEVER re-count or block a
     # turn that was already admitted — a crash/pause under a saturated window must
     # not swallow a legitimate message with the rate-limit reply.
@@ -86,13 +86,13 @@ module Insika
     # (`remember` tool). Set in run_pipeline; nil = DEFAULT_TENANT in the MemoryStore.
     attr_accessor :tenant
 
-    # Internal (Phase 6/D2/G4): turn context deposited into the data-tools to
+    # Internal: turn context deposited into the data-tools to
     # resolve {{ctx.*}} (chat_id/agent_id/tenant/store_id) and emit
     # X-Chat-Id/X-Store-Id/X-Agent-Id. A Hash of symbols, set in run_pipeline.
     # Comes from the TURN, never from the model's args (R2). Distinct from `tenant` (memory).
     attr_accessor :turn_context
 
-    # Internal (Phase 6, observability): the turn's token usage (input/output/
+    # Internal (observability): the turn's token usage (input/output/
     # total/cached + model), captured from the provider's response at stage 6. Goes
     # to the terminal event (:task_completed) — feeds the usage of
     # /v1/responses and the Telemetry (OTEL). nil = turn with no model response
@@ -111,19 +111,19 @@ module Insika
     # by the coordinator for await(:approval)).
     attr_accessor :requires_approval, :approval_coordinator, :actor
 
-    # Internal (item 30 / D4): the turn's shared in-flight cap for tool calls —
+    # Internal: the turn's shared in-flight cap for tool calls —
     # ONE Async::Semaphore(tool_concurrency), installed by ToolAssembly#wrap_tools
     # and acquired by every ToolEnvelope, INCLUDING the ones tool_search promotes
     # mid-turn (they read it off the state, so the cap survives promotion).
     # nil = concurrency off: no gate, no overhead, serial execution unchanged.
     attr_accessor :tool_gate
 
-    # Item 30: parallel tool calls, resolved PER TURN and read by ChatBuilder
+    # parallel tool calls, resolved PER TURN and read by ChatBuilder
     # (whether to hand the gem `concurrency:`) and ToolAssembly (the gate's size).
     #
     # `requested_tool_concurrency` is what the operator configured;
     # `tool_concurrency` is what this turn actually gets. They differ for exactly
-    # one reason — D3: `Executor#request_approval` blocks on `actor.await(:approval)`,
+    # one reason —: `Executor#request_approval` blocks on `actor.await(approval)`,
     # and the mailbox is one queue per TASK. Two fibers waiting there share it,
     # `dequeue` wakes exactly one, the message is consumed, and the other fiber
     # hangs until `approval_timeout` (~1h). So a turn that can suspend for a human

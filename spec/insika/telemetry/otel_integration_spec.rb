@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 6 — smoke test of the real OTEL BOUNDARY (OTelTracer/OTelSpan): drains the
+# smoke test of the real OTEL BOUNDARY (OTelTracer/OTelSpan): drains the
 # Recorder against the real OTEL SDK, with an in-memory exporter, and checks that the
 # exported spans have the right name/attributes/hierarchy. This is what the unit (fake
 # tracer) does not cover: that the adapters call the gem correctly
@@ -70,7 +70,7 @@ RSpec.describe "Insika::Telemetry — real OTEL boundary", if: OTEL_AVAILABLE do
   end
 end
 
-# Item 16 / P4 — the METRICS boundary. Same idea as above: the Recorder talks to the
+# — the METRICS boundary. Same idea as above: the Recorder talks to the
 # real metrics SDK (in-memory pull exporter) so the instrument names/units/attributes
 # of the documented convention are pinned against the gem, not only against a fake.
 RSpec.describe "Insika::Telemetry — real OTEL metrics boundary", if: OTEL_METRICS_AVAILABLE do

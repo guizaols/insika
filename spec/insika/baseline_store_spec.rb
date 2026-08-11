@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 §3.7.3 — the accepted state stopped being a file because the refinement
+# the accepted state stopped being a file because the refinement
 # gate runs where there is no checkout. The one property that matters is that a
 # MISSING baseline is distinguishable from an empty one: the gate treats the first
 # as "cannot look" and only the second as "nothing to compare".

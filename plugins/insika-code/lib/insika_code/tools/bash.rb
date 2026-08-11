@@ -4,7 +4,7 @@ require_relative "base"
 
 module InsikaCode
   module Tools
-    # Run a shell command via the sandbox's exec provider (item 35). HIGHEST-RISK
+    # Run a shell command via the sandbox's exec provider. HIGHEST-RISK
     # tool of the set: with the `local` provider a shell cannot be fully sandboxed
     # by path-resolution alone (it can `cd ..` or read absolute paths), so its
     # safety rests on TWO controls — the ENGINE's human-approval gate (it is listed

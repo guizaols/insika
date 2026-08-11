@@ -22,7 +22,7 @@ RSpec.describe Insika::Safety::SafeResponses do
     expect(described_class.for("abuse")).to eq(described_class::DEFAULTS[:abuse])
   end
 
-  describe "configuration over convention (§7): per-agent overrides" do
+  describe "configuration over convention: per-agent overrides" do
     it "an agent per-category override wins over the built-in default" do
       ov = { "injection" => "We can't share internal config. How else can I help?" }
       expect(described_class.for(:injection, overrides: ov)).to eq(ov["injection"])

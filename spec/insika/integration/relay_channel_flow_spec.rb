@@ -8,7 +8,7 @@ require_relative "../../../lib/insika/server/app"
 # terminal -> outbox -> the consumer's callback. Only two things are doubles — the
 # provider (FakeChat, like every turn spec) and the consumer's HTTP endpoint.
 #
-# This is the spec that would catch the seam being wrong, because every piece PR 1
+# This is the spec that would catch the seam being wrong, because every piece
 # added has to agree for the last assertion to hold.
 RSpec.describe "Integration: a relay message, answered and delivered" do
   # Stands in for the consumer's server. Records what it received, exactly as it

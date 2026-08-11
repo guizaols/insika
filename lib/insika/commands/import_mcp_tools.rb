@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # Control command: LIVE MCP ingestion (Phase 7, Step E). Receives the NAME of
+    # Control command: LIVE MCP ingestion. Receives the NAME of
     # an MCP instance, delegates to McpToolIngestor (discovers via an injectable client
     # -> builds the manifest -> reuses :import_tools: batch upsert + hot reload)
     # and returns the per-tool report in the shape of :import_tools, plus

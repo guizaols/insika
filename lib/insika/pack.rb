@@ -3,11 +3,11 @@
 require "json"
 
 module Insika
-  # Provisioning pack (Phase 6/D4/F6): the PORTABLE form of an agent — a
+  # Provisioning pack: the PORTABLE form of an agent — a
   # manifest + the prompt files + the skills + the data-tool defs. It's what
   # `docs/prompt-base/06` describes as a workspace, here in a value object
   # consumable by the PackImporter (which emits the authoring Commands). GENERIC
-  # per project (NF1): the engine doesn't know consumer-app — the pack is the contract.
+  # per project: the engine doesn't know any consumer — the pack is the contract.
   #
   #   config: Hash — manifest (AgentProfile.build attrs: id/model/provider/
   #           limits/metadata/tools_deferred/…). `id`/`model` required there.
@@ -16,7 +16,7 @@ module Insika
   #   skills: { "escalation-to-human" => "<SKILL.md>", ... } — 1 per skill.
   #   tools:  [ { ToolDefinition hash }, ... ] — the pack's data-tool defs.
   #
-  # Two sources: `from_h` (GatewayClient JSON — provisioning API, task 8) and
+  # Two sources: `from_h` (GatewayClient JSON — provisioning API) and
   # `from_dir` (a folder on disk per docs/prompt-base/06 — authoring/CLI).
   Pack = Data.define(:config, :files, :skills, :tools) do
     # Raw Hash (string|symbol keys) -> Pack. Tolerates both key conventions

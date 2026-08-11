@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Phase 4 Stage C: authoring commands for shared skills.
-RSpec.describe "Skill authoring commands (Phase 4 Stage C)" do
+# authoring commands for shared skills.
+RSpec.describe "Skill authoring commands" do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:source) { Insika::StoredProfileSource.new(config_store: config_store) }
   let(:skill_store) { Insika::SkillStore.new(config_store: config_store) }

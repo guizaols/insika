@@ -3,13 +3,13 @@
 require "spec_helper"
 require "async"
 
-# Phase 6/D5/NF3/R4 — trust boundary. Locks the invariant: identity/
+# R4 — trust boundary. Locks the invariant: identity/
 # guardrails (pinned, top of the Priority ladder) ALWAYS above the turn injections
 # (<request_context> — consumer tenant/vars, the bottom of the ladder). Under
 # budget, the turn injection is sacrificed FIRST; the identity (pinned)
 # is NEVER truncated. A prompt-injection that comes in via turn data is DATA, not
 # authority — it does not override IDENTITY/SOUL.
-RSpec.describe "Context — trust boundary (D5/NF3)" do
+RSpec.describe "Context — trust boundary" do
   let(:event_stream) { SpyEventStream.new }
 
   def build(providers, vars:, budget:)

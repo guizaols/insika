@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   # Short-lived memory of inbound event ids, so a platform's retry does not become
-  # a second LLM turn and a second reply (RFC-0011 §6.4).
+  # a second LLM turn and a second reply.
   #
   # Every messaging platform retries a webhook it did not see acked in time, and a
   # relay consumer that hands us its own queue does the same. Without this, the

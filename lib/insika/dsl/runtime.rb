@@ -26,16 +26,16 @@ module Insika
       # the runtime does not care how many agents it hosts, only that each one
       # arrives as an ordinary Pack.
       #
-      # `backend`: the store this graph owns (RFC-0017 A1). nil = the historic
+      # `backend`: the store this graph owns. nil = the historic
       # path, `INSIKA_DB` or memory — ENV is a default, never a requirement (the
-      # embed contract, item 5). An injected backend wins and is never widened
+      # embed contract). An injected backend wins and is never widened
       # back to the environment.
       def initialize(definition, backend: nil)
         @definition = definition
         @injected_backend = backend
         @packs = (definition.respond_to?(:packs) ? Array(definition.packs) : [definition.pack]).freeze
         @pack = @packs.first
-        # RFC-0017 A2: the graph's OWN RubyLLM config, built before the graph so
+        # the graph's OWN RubyLLM config, built before the graph so
         # every collaborator that talks to a provider is handed it at wiring time
         # rather than reading a process-wide singleton at call time.
         @llm = build_llm_context
@@ -44,7 +44,7 @@ module Insika
         import_packs
       end
 
-      # The graph's RubyLLM context (RFC-0017 A2) — an isolated config dup that
+      # The graph's RubyLLM context — an isolated config dup that
       # answers #chat. nil only under the test stub, where the fallback is the
       # RubyLLM constant itself. Read by the specs and by anything a host wires
       # alongside this graph.
@@ -234,7 +234,7 @@ module Insika
           skill_catalog: Insika::SkillCatalog.new([], store: skill_store),
           prompt_catalog: Insika::PromptCatalog.new([]),
           profile_source: Insika::StoredProfileSource.new(config_store: config_store),
-          # A2: the moderator/validator tiers ask a model too. A graph reading its
+          # the moderator/validator tiers ask a model too. A graph reading its
           # own key for the turn but the global one for a guardrail would be a
           # credential leak wearing the look of isolation.
           guardrails: Insika::Safety::Factory.new(settings_store: settings_store, llm: @llm),
@@ -304,7 +304,7 @@ module Insika
         ([provider_name] + @packs.filter_map { |p| Insika::Coercion.presence(p.config[:provider])&.to_s }).uniq
       end
 
-      # RFC-0017 A2 — the graph's credentials belong to the graph. `RubyLLM.context`
+      # the graph's credentials belong to the graph. `RubyLLM.context`
       # is an isolated dup of the config that answers #chat, so two graphs in one
       # process no longer overwrite each other's keys: the global
       # `RubyLLM.configure` is a single slot PER PROVIDER, and the loser of that
@@ -333,7 +333,7 @@ module Insika
 
       # The LLMConfigurator's target (Studio: edit a provider key, no restart).
       # Scoped to THIS graph's context — a `RubyLLM.configure` here would reach
-      # into every other graph in the process, which is the leak A2 exists to
+      # into every other graph in the process, which is the leak exists to
       # close. nil = no context (test stub) -> the configurator's own global
       # default, unchanged.
       def llm_configure

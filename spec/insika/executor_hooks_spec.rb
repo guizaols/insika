@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 
 # Integration of the remaining hook pairs (:task, :agent, :tool) in the Executor
-# (task 19). Fake collaborators; chat scripted via FakeChat.
+# Fake collaborators; chat scripted via FakeChat.
 RSpec.describe "Insika::Executor + hooks (:task/:agent/:tool)" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
@@ -59,7 +59,7 @@ RSpec.describe "Insika::Executor + hooks (:task/:agent/:tool)" do
   end
 
   it "before_agent rewrites the message sent to chat.ask" do
-    # :agent receives the TurnState as subject (task 12); before_agent mutates message
+    # agent receives the TurnState as subject; before_agent mutates message
     hooks.register(:agent, before: lambda { |st|
       st.message = "DO_AGENT"
       st
@@ -159,7 +159,7 @@ RSpec.describe "Insika::Executor + hooks (:task/:agent/:tool)" do
     expect(task.executions.last.error["stage"]).to eq("tool_limit")
   end
 
-  # RFC-0020 E3: the loop abort dies exactly the way the 50-cap already dies —
+  # the loop abort dies exactly the way the 50-cap already dies —
   # same stage, same :failed — with ONE :tool_loop_intervened on the stream.
   it "loop detection: identical call after the warning -> :failed, stage :tool_limit" do
     profile = Insika::AgentProfile.build(id: "sales", model: "gpt", limits: { max_tool_repeat: 2 })

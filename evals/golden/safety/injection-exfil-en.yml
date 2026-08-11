@@ -1,4 +1,4 @@
-# Generic, brand-free guardrail case (RFC-0009). Domain-neutral — a SaaS support
+# Generic, brand-free guardrail case. Domain-neutral — a SaaS support
 # assistant. Blocked by the DETERMINISTIC input guardrail, so it runs with NO
 # provider key (the rubric still needs a judge, and stays judge-pending without one).
 id: safety-injection-exfil-en

@@ -6,7 +6,7 @@ require "securerandom"
 
 module Insika
   module Channels
-    # The web widget (RFC-0011 §5) — the FIRST Shape A channel, and the adoption
+    # The web widget — the FIRST Shape A channel, and the adoption
     # claim behind the whole RFC: an adopter pastes one tag into their site and has
     # a working agent, with no backend of their own and no build step.
     #
@@ -17,7 +17,7 @@ module Insika
     # no outbox, no claim and no `deliver` here — the three routes and a static
     # asset are the entire surface:
     #
-    #   POST /channels/web/sessions      mint an opaque session id (the engine's, §4.3)
+    #   POST /channels/web/sessions      mint an opaque session id (the engine's)
     #   POST /channels/web/messages      the turn, answered as SSE on this connection
     #   GET  /channels/web/asset/widget.js
     #
@@ -29,7 +29,7 @@ module Insika
     #   · an AGENT allowlist — a visitor addresses the agents the operator published
     #     to the widget, not every agent in the deployment;
     #   · an ORIGIN allowlist — exact match, no wildcards, and no "allow all" value;
-    #   · a mandatory chat RATE LIMIT (§5.4) — the channel answers `:disabled`
+    #   · a mandatory chat RATE LIMIT — the channel answers `:disabled`
     #     until one is configured, because a public endpoint with an LLM behind it
     #     and no ceiling is an unmetered bill waiting to happen.
     #
@@ -49,7 +49,7 @@ module Insika
       # An unversioned URL cannot be cached for a year — the next release would
       # never reach a browser that already has it. Short max-age + an ETag instead:
       # the common case is a 304 with no body, and an upgrade lands within minutes.
-      # (A deliberate narrowing of §5.2's "long-cache versioned URL": the install
+      # (A deliberate narrowing of's "long-cache versioned URL": the install
       # snippet in the RFC has no version in it, so there is nothing to bust.)
       ASSET_CACHE_CONTROL = "public, max-age=300"
 
@@ -67,7 +67,7 @@ module Insika
         new(origins: origins, agents: agents, id: id, chat_rate_limit: chat_rate_limit)
       end
 
-      # The probe §5.4's gate needs, asked exactly the way `EdgeLimiter` asks it at
+      # The probe's gate needs, asked exactly the way `EdgeLimiter` asks it at
       # turn time: the per-agent override first, the platform default second. Built
       # here so both composition roots wire the gate identically, and returned as a
       # lambda so the channel itself stays store-free.
@@ -149,7 +149,7 @@ module Insika
         { agent: agent, session_id: session_id, message: message }
       end
 
-      # §4.3's hard rule for a public channel: the ENGINE issues the id and the
+      #'s hard rule for a public channel: the ENGINE issues the id and the
       # client never proposes one. A visitor-supplied session id on an anonymous
       # endpoint is session hijacking by enumeration, so there is no create-on-write
       # path — `POST /messages` with an unknown id is a 404, not a new conversation.
@@ -159,7 +159,7 @@ module Insika
       # protocol: what to type, what to say while a tool runs, and how it ended.
       #
       # `:intermediate` and `:thinking` are deliberately absent. `:content` is the
-      # ANSWER (P19) — the model's narration on the way there is internal, and a
+      # ANSWER — the model's narration on the way there is internal, and a
       # widget that rendered it would show the customer the engine thinking out loud.
       def frame_for(event)
         case event.type

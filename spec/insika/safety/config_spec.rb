@@ -47,7 +47,7 @@ RSpec.describe Insika::Safety::Config do
     expect(described_class.from_hash("strictness" => "paranoid").strictness).to eq(:medium)
   end
 
-  describe "responses (config-over-convention overrides, §7)" do
+  describe "responses (config-over-convention overrides)" do
     it "defaults to an empty override map" do
       expect(described_class.from_hash({}).responses).to eq({})
     end

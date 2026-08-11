@@ -76,7 +76,7 @@ RSpec.describe Insika::Commands::TriggerWorkflow do
     expect(task_store.find(result[:task_id]).status).to eq(:queued)
   end
 
-  describe "I/O by schema (item 22 / §4.4)" do
+  describe "I/O by schema" do
     before do
       workflow_registry.register(
         "schemad", ->(i, **) { i },

@@ -6,7 +6,7 @@ module Insika
   module Commands
     # Control command: removes an LLM provider from the
     # LLMProviderStore. Idempotent (`existed: false` if there was none). UNDOES the
-    # config in RubyLLM at runtime (§9.5): when the provider existed, calls
+    # config in RubyLLM at runtime: when the provider existed, calls
     # `configurator.unapply(api)` clearing the global key/base — without a restart. A provider
     # that RubyLLM does not recognize degrades gracefully (unapply: false, nothing to
     # undo). -> { existed: bool }.

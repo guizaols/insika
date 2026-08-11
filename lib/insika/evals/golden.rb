@@ -2,8 +2,8 @@
 
 require "yaml"
 
-# Evals — the quality harness (RFC-0008). It lives in `lib/` so the engine itself can
-# call it (the refinement gate of RFC-0013 needs to score a candidate agent, and a
+# Evals — the quality harness. It lives in `lib/` so the engine itself can
+# call it (the refinement gate of needs to score a candidate agent, and a
 # second copy of the judge would be the worst possible outcome), but it stays a
 # CLIENT: it reaches a running deployment over HTTP through `HttpTransport` and never
 # reads a store directly. `evals/run.rb` is a thin CLI over this module.
@@ -28,17 +28,17 @@ module Insika
       # Names of the negative assertions to run (e.g. "pii_leak", "tool_error").
       def must_not = Array(expect["must_not"]).map(&:to_s)
 
-      # How much the agent should ask before acting (RFC-0014 §3.3). nil = the store
+      # How much the agent should ask before acting. nil = the store
       # has no opinion and only the rubric decides.
       def policy = GoldenLoader.presence(expect["policy"])
 
-      # What the DEPLOYMENT must have for this case to mean anything (RFC-0014 §3.2).
+      # What the DEPLOYMENT must have for this case to mean anything.
       # Empty = runs everywhere.
       def required_tools = Array(requires["tools"]).map(&:to_s)
       def required_capabilities = Array(requires["capabilities"]).map(&:to_s)
       def requirements? = !(required_tools + required_capabilities).empty?
 
-      # THE INCUMBENT'S CONVERSATION for the same opening (RFC-0014 §3.4) — the other
+      # THE INCUMBENT'S CONVERSATION for the same opening — the other
       # half of a pairwise comparison. Data in the case, not a store read: the eval is
       # a client, and a pair that lives in one reviewable file cannot go stale against
       # a database nobody looked at.
@@ -47,14 +47,14 @@ module Insika
       def reference? = !reference_messages.empty?
 
       # Did a PERSON type part of the reference half? After a handoff the operator's
-      # words are stored as `role: assistant` (P23a), and comparing a model to a human
+      # words are stored as `role: assistant`, and comparing a model to a human
       # and calling it a win is a lie in both directions — so the pair is LABELLED and
       # the report never prints the outcome without it.
       def human_assisted?
         reference_messages.any? { |m| MessageOrigin.origin_of(m) == MessageOrigin::OPERATOR }
       end
 
-      # LLM-judge rubric + threshold (consumed in Fase B — deferred here).
+      # LLM-judge rubric + threshold (consumed in — deferred here).
       def rubric = expect["rubric"]
       def min_score = expect["min_score"]
     end
@@ -126,7 +126,7 @@ module Insika
         raise InvalidGolden, "#{where} needs a 'role' of user or assistant" unless %w[user assistant].include?(role)
 
         text = presence(raw["text"]) || (raise InvalidGolden, "#{where} needs a non-empty 'text'")
-        # The SAME closed vocabulary the engine stamps (P23a). A typo'd marker would
+        # The SAME closed vocabulary the engine stamps. A typo'd marker would
         # read as "absent" downstream, which is how a human turn gets scored as the
         # incumbent's model.
         origin = begin

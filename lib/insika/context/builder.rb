@@ -19,7 +19,7 @@ module Insika
     def initialize(providers:, event_stream:, hooks: Hooks.new, estimator: TokenEstimator)
       @providers = providers
       @event_stream = event_stream
-      @hooks = hooks # :prompt pair (task 16); empty Hooks = no-op
+      @hooks = hooks # prompt pair; empty Hooks = no-op
       @estimator = estimator
     end
 
@@ -97,7 +97,7 @@ module Insika
     def estimable_text(content)
       case content
       when String then content
-      # An eviction unit (§11 R1): a cycle of message Hashes -> sum their text.
+      # An eviction unit (R1): a cycle of message Hashes -> sum their text.
       when Array then content.map { |c| estimable_text(c) }.join(" ")
       when Hash then content.values.map(&:to_s).join(" ")
       else content.to_s

@@ -3,7 +3,7 @@
 Behavior tests for the agent, end-to-end. Where RSpec (`spec/`) is the
 deterministic unit net and `scripts/loadtest.rb` measures perf, **evals** answer
 "did the agent still behave well?" after a prompt/tool/model change — the net that
-was missing (FOLLOWUP §9 / #10). Design: **RFC-0008**.
+was missing.
 
 It lives OUTSIDE the core: nothing under `lib/insika/**` requires it. Like the
 loadtest, it talks to the engine only through the public API (`POST /v1/responses`).
@@ -21,14 +21,17 @@ evals/
     judge.rb            LLM-judge — rubric scoring over an injected ask
   golden/<agent>/*.yml  the curated cases (DATA, not code)
   run.rb                CLI entrypoint
-  BASELINE.md           documented quality baseline (#6b / G2) — number+date+pack
-  baseline.json         machine gate — captured from a real green run (Fase C)
-  reports/              run outputs
+  reports/              run outputs (gitignored)
+  internal/             deployment-specific material (gitignored — see below)
 ```
 
-The accepted quality baseline for the real-traffic set lives in **`BASELINE.md`**
-(prose: number, date, pack, per-case justification). The machine gate `baseline.json`
-is captured from a real green run (`--update-baseline`), not hand-authored.
+The repo ships **no accepted baseline**. A baseline is per-deployment data — it
+says how *your* agents scored against *your* golden set — so it is captured from
+a real green run (`--update-baseline`), never hand-authored, and never committed:
+`evals/baseline.json` and `evals/internal/` are gitignored. Keep your documented
+baseline (prose: number, date, pack, per-case justification) in
+`evals/internal/BASELINE.md` and any store-specific golden sets under
+`evals/internal/golden/`.
 
 ## Running
 
@@ -49,9 +52,9 @@ OPENCLAW_GATEWAY_TOKEN=local-demo \
 
 Flags: `--base-url`, `--golden-dir`, `--agent <id>` (filter), `--mode eval|perf|both`,
 `--out <file>`, `--timeout`. `--mode perf` reports TTFB/total p50/p95 over the real
-corpus — that's the **#6b** real-traffic loadtest, since it's the same transport as
+corpus — that's the real-traffic loadtest, since it's the same transport as
 `loadtest.rb` but driven by real conversations. The runner **exits non-zero** if any
-eval case fails (the seed of the Fase C pre-merge gate).
+eval case fails (the seed of the pre-merge gate).
 
 ### LLM-judge (rubric scoring)
 
@@ -71,7 +74,8 @@ model for internal tasks.
 
 ### Gating against a baseline
 
-`evals/baseline.json` is the accepted state of the set. A gated run blocks only on a
+`evals/baseline.json` (gitignored — captured, not committed) is the accepted state
+of the set. A gated run blocks only on a
 **regression** — a passing case that now fails, or a judge score that dropped past
 `--tolerance` (default 0.05). Known-failing cases don't wedge the gate; a brand-new
 case absent from the baseline shows in the report but never blocks.
@@ -125,7 +129,7 @@ expect:
     - pii_leak               #   CPF/CNPJ/credential in the output
     - tool_error             #   any failed tool call in the turn
   policy: ask_once           # how much this store wants the agent to ask (optional)
-  rubric: |                  # LLM-judge criterion (Fase B)
+  rubric: |                  # LLM-judge criterion
     Com o CEP em mãos, busca no catálogo e apresenta opções coerentes…
   min_score: 0.7             # judge threshold
 reference:                   # the INCUMBENT's real conversation, same opening (optional)
@@ -202,7 +206,7 @@ Two layers, by intent:
 - **`golden/safety/` — the generic guardrail net (OSS default).** Brand-free,
   **bilingual (EN + pt-BR)** adversarial cases against a fictional `example-agent`:
   prompt injection, system-prompt exfil, verbal abuse, sexual content, plus
-  false-positive guards. Tests the **guardrail** (RFC-0009), not any business — the
+  false-positive guards. Tests the **guardrail**, not any business — the
   deterministic block cases run with **no provider key** (CI-able smoke). See
   `golden/safety/README.md`. Provision the target with `ruby scripts/serve_eval.rb`.
 - **`golden/loja-*/` — real-world reference corpus (ANONYMIZED).** Curated from the
@@ -220,41 +224,39 @@ The real store set — tool names grounded in each store's `TOOLS.md`
 - **loja-cosmeticos** — product discovery, order-status (angry), **and real adversarial
   turns**: a base64 prompt-injection/exfil, a fabricated-discount social-engineering
   attempt, verbal abuse, an inappropriate request. These double as guardrail evals
-  (§9 / #11) — see also the brand-free `golden/safety/` suite.
+  — see also the brand-free `golden/safety/` suite.
 - **loja-eletronicos** — notebook/tablet discovery, greeting.
 
 > **Agent ids:** goldens target `loja-chocolates` / `loja-cosmeticos` /
 > `loja-eletronicos`. Provision the matching agents (see below) or adjust the
 > `agent:` field to your ids. The same corpus + replay also serves the real-traffic
-> loadtest (#6b) — one replay, two
-> purposes.
+> loadtest — one replay, two purposes.
 
 ## Two evaluation layers
 
-- **Deterministic (Fase A — here):** `tools_called` / `must_not` / `policy` are pure
+- **Deterministic:** `tools_called` / `must_not` / `policy` are pure
   checks over the turn's tool events + output text. Zero tokens, zero flakiness —
   catches the gross regressions (a tool stopped being called, a secret leaked, a tool
   errored, the agent asked three things at once).
-- **LLM-judge (Fase B):** a rubric-scored pass using the `utility_model` (Settings,
-  #18) at temperature 0. A golden with a `rubric` reads as **judge-pending** until
+- **LLM-judge:** a rubric-scored pass using the `utility_model` (Settings)
+  at temperature 0. A golden with a `rubric` reads as **judge-pending** until
   then — never a silent pass.
 
-## Phasing (RFC-0008 §5)
+## Layers
 
-- **Fase A** — engine (loader + deterministic asserts + report). Unit-tested offline.
-  ✅ done.
+- **Deterministic engine** — loader + deterministic asserts + report. Unit-tested
+  offline.
 - **Runner** — `run.rb` + `transport.rb`/`runner.rb` over `/v1/responses`
-  (`--mode perf|eval|both`; shares the transport with `loadtest.rb`, so `perf` mode
-  closes **#6b**). Provisioning via `scripts/import_pack.rb`. ✅ done (this PR).
-- **Fase B — LLM-judge** — `judge.rb`: scores the `rubric` at temp 0 (median over
+  (`--mode perf|eval|both`; shares the transport with `loadtest.rb`). Provisioning
+  via `scripts/import_pack.rb`.
+- **LLM-judge** — `judge.rb`: scores the `rubric` at temp 0 (median over
   `--quorum`); unparseable → 0. Configured via `--judge-model` (mirrors the intent of
-  the platform `utility_model`, #18). ✅ done (this PR).
-- **Fase C — gating** — `baseline.rb`: `--baseline` blocks only on a **regression**
+  the platform `utility_model`).
+- **Gating** — `baseline.rb`: `--baseline` blocks only on a **regression**
   (a passing case that now fails, or a judge score that dropped past `--tolerance`);
   `--update-baseline` accepts the current run. Known failures don't wedge the gate.
-  ✅ done (this PR).
 
-## Where the code and the cases live (RFC-0013 §3.7)
+## Where the code and the cases live
 
 The harness moved to **`lib/insika/evals/*`** (`Insika::Evals::…`) so the engine can
 call it — the refinement gate has to score a candidate agent with the SAME judge, and a

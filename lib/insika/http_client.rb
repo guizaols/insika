@@ -5,11 +5,11 @@ require "uri"
 require_relative "coercion"
 
 module Insika
-  # Default HTTP client for data-tools. Net::HTTP (stdlib, zero-dep — spec §10)
+  # Default HTTP client for data-tools. Net::HTTP (stdlib, zero-dep — spec)
   # with its own socket timeouts (mitigates reactor blocking even if the
-  # envelope timer doesn't fire) and a response-size CAP via streaming (NF2,
+  # envelope timer doesn't fire) and a response-size CAP via streaming (
   # avoids OOM). It is INJECTABLE: tests pass a double (none hit the network);
-  # Stage C can swap in async-http without touching DataDefinedTool.
+  # can swap in async-http without touching DataDefinedTool.
   #
   # Contract: request(method:, url:, headers:, body:, timeout:) -> { status:, body: }
   # (+ `location:` on a 3xx). It does NOT follow redirects: the destination is

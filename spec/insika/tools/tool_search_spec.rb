@@ -113,7 +113,7 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(result[:matched].first[:parameters]).to eq({}) # describe fell into the rescue
   end
 
-  describe "mid-loop propagation (D6) with FakeChat" do
+  describe "mid-loop propagation with FakeChat" do
     it "chat.with_tools inside execute is visible in chat.tools immediately" do
       chat = FakeChat.new
       search = build_search(chat)

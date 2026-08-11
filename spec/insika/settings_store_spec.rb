@@ -16,7 +16,7 @@ RSpec.describe Insika::SettingsStore do
     end
   end
 
-  describe "schema versioning (item 23 / §8.1 — no silent config compat)" do
+  describe "schema versioning (— no silent config compat)" do
     it "reports nil version when nothing is persisted (fresh deploy, nothing to migrate)" do
       expect(store.stored_schema_version).to be_nil
       expect(store.pending_migrations).to be_empty

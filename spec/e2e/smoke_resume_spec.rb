@@ -7,7 +7,7 @@ require "socket"
 require "fileutils"
 require "tmpdir"
 
-# E2E smoke (task 26 §7, phase completion criterion — doc 00 §6): boots Falcon
+# E2E smoke (phase completion criterion): boots Falcon
 # + mocked RubyLLM (shim), POST send_message with session_id, kills the process in
 # the MIDDLE of the turn (kill -9), boots again and checks the task RESUMED from the
 # checkpoint. Runs WITHOUT an API key. Tag :smoke.
@@ -123,7 +123,7 @@ RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
           t if t["status"] == "completed"
         end
 
-        # attempt 1 (interrupted) + attempt 2 (completed) — doc 02 §3
+        # attempt 1 (interrupted) + attempt 2 (completed) —
         expect(task["executions"].length).to eq(2)
 
         # persisted transcript: user message + assistant reply
@@ -164,11 +164,11 @@ RSpec.describe "smoke E2E: kill -9 mid-turn + reboot + resume", :smoke do
     end
   end
 
-  # Slice A criterion (P2, 00-overview): the `approval` tool suspends the turn in
+  # Slice A criterion (00-overview): the `approval` tool suspends the turn in
   # :waiting; the operator sees the pending action and approves via HTTP -> the tool
   # executes and the turn completes. (The CRASH-SAFE path — post-kill re-execution
   # using the durable PendingAction — is covered by
-  # spec/insika/tool_envelope_approval_spec at the integration level. See task 14's
+  # spec/insika/tool_envelope_approval_spec at the integration level. See's
   # Notes about the :waiting-turn recovery limitation at boot.)
   it "approval: tool suspends in :waiting; operator approves via HTTP -> turn completes", :smoke do
     Dir.mktmpdir("harness-smoke-appr") do |dir|

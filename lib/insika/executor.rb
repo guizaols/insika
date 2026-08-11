@@ -37,34 +37,34 @@ module Insika
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
-      # RFC-0023: per-turn context breakdown (tokens by category + budget) for the
+      # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
       @context_trace_store = context_trace_store
-      # Guardrails output filter (RFC-0009 §3.2): ->(state) { OutputFilter | nil }.
+      # Guardrails output filter: ->(state) { OutputFilter | nil }.
       # Injected by the Safety::Factory; nil = off (parity — the stream is untouched).
       # The INPUT guardrail is a Middleware (in the stack, not here); this is the seam
       # for the stream-side redaction the Executor owns.
       @content_filter_factory = content_filter_factory
-      # RFC-0010 Fase 2: durable record of ASYNC delegations. nil = async
+      # durable record of ASYNC delegations. nil = async
       # delegation OFF (only the synchronous spawn_subagent works — parity). When
       # present, run_subagent(async: true) dispatches + returns immediately and the
       # child's result is delivered to the parent session as a NEW turn on completion.
       @delegation_store = delegation_store
-      # RFC-0011 §6.5: outbound delivery for Shape B channels. nil = no channel
+      # outbound delivery for Shape B channels. nil = no channel
       # delivers out of band (parity — every surface today answers on the request's
       # own connection). When present, a turn that CAME IN through a channel writes
       # its answer to the outbox at the terminal and the dispatcher POSTs it.
       @channel_delivery = channel_delivery
-      # RFC-0017 A2: the chat FACTORY this executor asks — a RubyLLM::Context (an
+      # the chat FACTORY this executor asks — a RubyLLM::Context (an
       # isolated config dup) when the graph owns its credentials, nil = the
       # process-wide RubyLLM constant (the historic single-graph deployment).
       # Duck-typed: Context#chat and RubyLLM.chat take the same keywords.
       @llm = llm
-      # LLM config v2 (§10): resolves the model at turn start (Chat > Agent >
+      # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
       @model_resolver = ModelResolver.new(settings_store: settings_store)
-      # RFC-0015 §4: the platform layer of the queue policy (nil = per-agent and
+      # the platform layer of the queue policy (nil = per-agent and
       # defaults only, which is `followup` with no window — today's behavior).
       @settings_store = settings_store
       # RubyLLM glue (stages 5-7): chat assembly delegated to ChatBuilder. Its
@@ -75,13 +75,13 @@ module Insika
         tool_registry: tool_registry, skill_catalog: skill_catalog,
         checkpoint_store: checkpoint_store, event_stream: event_stream, hooks: hooks,
         tool_catalog: tool_catalog, memory_store: memory_store,
-        # RFC-0010: the ChatBuilder wires the spawn_subagent system tool (gated by
+        # the ChatBuilder wires the spawn_subagent system tool (gated by
         # profile.subagents) and hands it this Executor as the runner. `self` is not
         # yet fully built here, but the ChatBuilder only STORES it (used per-turn).
         subagent_runner: self
       )
-      # Stage-3-tail tool assembly (capability resolution, instantiation, D2
-      # injection, dedup join, ToolEnvelope wrap) — extracted collaborator (§11 B5).
+      # Stage-3-tail tool assembly (capability resolution, instantiation,
+      # injection, dedup join, ToolEnvelope wrap) — extracted collaborator.
       @tool_assembly = ToolAssembly.new(
         tool_registry: tool_registry, capability_registry: capability_registry,
         event_stream: event_stream, checkpoint_store: checkpoint_store,
@@ -92,7 +92,7 @@ module Insika
       @supervised = false      # serving mode? — see #turn_parent
       @supervisor = nil        # lazy long-lived supervisor (created when serving)
       @session_actors = {}     # session_id => SessionActor (FIFO queue)
-      @draining = false        # shutdown drain (RFC-0016 A3) — see #begin_drain!
+      @draining = false        # shutdown drain — see #begin_drain!
     end
 
     # Turns on SERVING mode: the composition root's serving arm (serve.rb /
@@ -106,14 +106,14 @@ module Insika
     # concurrency).
     attr_accessor :supervised
 
-    # RFC-0019: the periodic tick (outbox drain + stale recovery sweep), wired
+    # the periodic tick (outbox drain + stale recovery sweep), wired
     # by the graph AFTER the bus exists (the tick's recovery half dispatches
     # through it). nil = no tick (parity — recovery stays boot-only). When
     # present and serving, it starts as a child of the turn supervisor (see
     # #turn_parent).
     attr_accessor :tick
 
-    # RFC-0016 A3: closes the TURN intake for shutdown. Armed by Insika::Shutdown
+    # closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
     # `:queued` (durable — the next boot's recovery replays it) instead of
     # spawning, while the in-flight turns run to their natural end. One-way by
@@ -228,7 +228,7 @@ module Insika
     # time); without a session_id (one-shot/history) it goes straight to spawn
     # (standalone).
     def spawn_in_session(task, profile:, resume_from: nil)
-      # RFC-0016 A3: the intake is closed. The task is already durable (:queued);
+      # the intake is closed. The task is already durable (queued);
       # answering with its id and spawning NOTHING is what "stops accepting new
       # turns" means — the next boot's recovery replays it. Subagent turns are NOT
       # gated (they spawn directly): a child of an in-flight parent is part of the
@@ -248,7 +248,7 @@ module Insika
                                                    policy: queue_policy(profile, task.session_id))
     end
 
-    # RFC-0015 §5.3 — the `collect` door, asked BEFORE a task is created.
+    # the `collect` door, asked BEFORE a task is created.
     # -> the task id the fragment joined, or nil (create a task and spawn as usual).
     #
     # Asking first is what keeps the store clean: creating a task and then
@@ -266,7 +266,7 @@ module Insika
       actor.collect(text)
     end
 
-    # RFC-0015 §5.1 — the `steer` door: a message for a session whose turn is ALREADY
+    # the `steer` door: a message for a session whose turn is ALREADY
     # running is appended to that run instead of becoming a turn of its own.
     # -> the RUNNING task's id (the turn that will answer it), or nil (create a task and
     # spawn as usual, which is `followup`).
@@ -304,7 +304,7 @@ module Insika
       task.id
     end
 
-    # RFC-0015 §6.4 — the `interrupt` door: the turn in flight is answering a question
+    # the `interrupt` door: the turn in flight is answering a question
     # the customer has already replaced, so it is abandoned and the new message becomes an
     # ordinary turn. -> the abandoned task's id, or nil (nothing was running).
     #
@@ -316,7 +316,7 @@ module Insika
     # `:cancel` is observed only at a stage boundary, so a tool call in flight runs to
     # completion and is recorded. Cancelling the not-yet-started calls of a batch would
     # leave it half applied, and fabricating failure results would teach the model that
-    # tools failed when they did not (D7 records the same boundary for `turn_timeout`).
+    # tools failed when they did not (records the same boundary for `turn_timeout`).
     def interrupt_running(session_id, profile:, replaced_by: nil)
       return nil unless @supervised && session_id
 
@@ -340,7 +340,7 @@ module Insika
     # its own, by design — it owns scheduling, not persistence).
     attr_reader :task_store
 
-    # RFC-0015 §8. Emitted by the SessionActor when a window closes having merged
+    # Emitted by the SessionActor when a window closes having merged
     # more than one fragment. `arrivals` are the ISO8601 times each fragment landed
     # — the ONLY record that they were separate messages, since a merged fragment
     # creates no task of its own. Ids and times, never content.
@@ -348,7 +348,7 @@ module Insika
       emit(:turn_coalesced, { task_id: task.id, merged: merged, arrivals: arrivals }, task: task)
     end
 
-    # RFC-0015 §5.2 — a steered message the run could NOT absorb: no tool batch ever
+    # a steered message the run could NOT absorb: no tool batch ever
     # closed (a text-only turn), the batch ended in `halt_when`, the turn failed, or it
     # was cancelled. The message is a person's and must not evaporate, so it is released
     # as the next turn on this session — which is `followup`, arrived at late.
@@ -394,7 +394,7 @@ module Insika
     # turn error is already mapped to a terminal state inside its own fiber (single
     # capture); here we only ensure the session loop does not die.
     def run_serial(task, profile:, resume_from: nil)
-      # RFC-0016 A3: a drain that started with turns already queued behind this
+      # a drain that started with turns already queued behind this
       # session's current one must not keep feeding the loop — without this gate
       # the drain would only converge when the whole backlog ran out.
       return defer_turn(task) if @draining
@@ -419,15 +419,15 @@ module Insika
       nil
     end
 
-    # RFC-0010 (item 21): runs a CHILD agent turn (called by Tools::Subagent during
+    # runs a CHILD agent turn (called by Tools::Subagent during
     # stage 6). Isolated context (fresh child session), capability NON-inheritance
     # (child profile resolved fresh), environment inheritance (model/thinking seeded
     # from the parent). NEVER raises: a bad agent/depth/child failure is a message
     # to the model, not a turn-killer.
     #
-    # async:false (default, Fase 1) — SYNCHRONOUS: runs the child inside the parent's
+    # async:false (default) — SYNCHRONOUS: runs the child inside the parent's
     #   fiber and returns { text:, session_id: } (the child result is the tool result).
-    # async:true (Fase 2) — DURABLE dispatch: spawns the child NON-blocking, persists
+    # async:true — DURABLE dispatch: spawns the child NON-blocking, persists
     #   a Delegation, returns { dispatched:, agent:, session_id: } immediately; the
     #   parent turn ends and the child's result is later delivered as a NEW turn on
     #   the parent session (needs a delegation_store — else falls back to sync).
@@ -442,7 +442,7 @@ module Insika
       end
     end
 
-    # RFC-0010 §A (fan-out): runs SEVERAL child turns IN PARALLEL and returns all
+    # (fan-out): runs SEVERAL child turns IN PARALLEL and returns all
     # results together, in the requested order. This is the real latency win — the
     # children overlap their provider waits on the reactor, so wall-clock ≈ the
     # slowest child, not the sum. Always sync-join (a combined result in the parent's
@@ -460,7 +460,7 @@ module Insika
       { results: spawn_all_and_project(plans, parent_state) }
     end
 
-    # RFC-0010 Fase 2 (boot): reconciles ASYNC delegations after a crash so a
+    # (boot): reconciles ASYNC delegations after a crash so a
     # completed child's result is never lost. For each undelivered Delegation:
     #   · child TERMINAL, not captured -> capture + deliver.
     #   · child TERMINAL, captured (completed) -> deliver (crash before delivery).
@@ -482,7 +482,7 @@ module Insika
       { delivered: delivered }
     end
 
-    # RFC-0011 §6.5 (boot): re-drives the outbound replies a previous process
+    # (boot): re-drives the outbound replies a previous process
     # recorded and never claimed. Records left `delivering` are NOT swept — that
     # process may have POSTed before it died, and re-sending is the duplicate the
     # claim exists to prevent. No-op without a channel_delivery.
@@ -522,7 +522,7 @@ module Insika
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
       fail_task(task, e, stage: :policy)
     rescue Insika::WorkflowSchemaError => e
-      # Item 22 / §4.4: a workflow OUTPUT that violates its output_schema. Distinct
+      # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
       # is validated synchronously in TriggerWorkflow -> 422, never reaches here.)
       fail_task(task, e, stage: :workflow_schema)
@@ -548,7 +548,7 @@ module Insika
 
     private
 
-    # RFC-0015 §4 — resolves session vars > profile.limits > settings["queue"] >
+    # resolves session vars > profile.limits > settings["queue"] >
     # defaults. One session read plus one settings read per message, the same
     # order of cost the EdgeLimiter already pays per turn. A missing session (or
     # no session store) simply drops the vars layer.
@@ -569,7 +569,7 @@ module Insika
         SessionActor.new(session_id: session_id, executor: self, parent: turn_parent)
     end
 
-    # RFC-0016 A3 — a turn that arrived while the process is draining: left
+    # a turn that arrived while the process is draining: left
     # `:queued` on purpose (recovery replays :queued at the next boot). The event
     # is the deferral's only trace — without it, "why was my message answered
     # only after the deploy" is unanswerable.
@@ -608,10 +608,10 @@ module Insika
       # 2.42): blocks on a dequeue that never arrives. Ends only when the scope is
       # stopped (server shutdown) — then any child turns still running go with it.
       # In a deployment that is the LAST resort, not the plan: Insika::Shutdown
-      # drains first (RFC-0016 A3), so only what outlives the drain deadline dies
+      # drains first, so only what outlives the drain deadline dies
       # here, `:running`, for the next boot's recovery to replay.
       @supervisor = node.async { |t| t.annotate("harness-turn-supervisor"); Async::Queue.new.dequeue }
-      # RFC-0019: the periodic tick is a child of the supervisor — it binds to
+      # the periodic tick is a child of the supervisor — it binds to
       # the serving reactor in every arm with no arm edits, and dies with the
       # supervisor at shutdown (after Shutdown's drain, like any turn).
       @tick&.start(parent: @supervisor)
@@ -624,7 +624,7 @@ module Insika
     # checkpointing is a future slice. One call per tool is safe.
     def pending_id(task_id, turn, tool) = "#{task_id}:#{turn}:#{tool}"
 
-    # §11 B2: all readings of the persisted command go through rebuild_command
+    # all readings of the persisted command go through rebuild_command
     # (the single normalizer). command_type stays a STRING (the :task_started
     # event and the Telemetry attribute are string-typed).
     def command_type(task)
@@ -660,7 +660,7 @@ module Insika
       @task_store.transition(task.id, to: :failed,
                                       error: { class: error.class.name, message: error.message, stage: stage })
       emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
-      # RFC-0010 Fase 2: a FAILED delegation child still delivers — the parent
+      # a FAILED delegation child still delivers — the parent
       # receives an error note as a new turn (never left hanging).
       finalize_delegation(task)
       nil
@@ -698,7 +698,7 @@ module Insika
         end
 
         # A Middleware short-circuited (did not call the terminal). Three cases:
-        #   · halt_response set -> GRACEFUL halt (RFC-0009 §3.1): the turn COMPLETES
+        #   · halt_response set -> GRACEFUL halt: the turn COMPLETES
         #     with a safe reply, reusing stages 8-9, without ever touching the LLM.
         #   · halt_reason set    -> halt-as-FAILURE (the pre-existing contract).
         #   · neither            -> contract violation (short-circuit with no signal).
@@ -717,16 +717,16 @@ module Insika
       raise Insika::TimeoutError.new("turn exceeded #{turn_timeout}s", stage: :turn)
     end
 
-    # Builds the turn's mutable state (turn number, message, memory tenant, D2
+    # Builds the turn's mutable state (turn number, message, memory tenant,
     # turn context). before_task (hooks.around) may still rewrite it before stage 2.
     def build_turn_state(task, profile, resume_from)
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
-      state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat (D3)
-      state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.* (D2/G4)
+      state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
+      state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
-      # RFC-0015: resolved for the RUN, not per message, so what the turn accepts cannot
+      # resolved for the RUN, not per message, so what the turn accepts cannot
       # change under it. Same cost as the EdgeLimiter's per-turn resolution. Only for a
       # SESSION turn: steering needs a session to arrive through, and resolving here for a
       # one-shot would make an unrelated turn fail on a queue key it can never use.
@@ -783,7 +783,7 @@ module Insika
       drain_and_maybe_suspend(task, actor)
     end
 
-    # RFC-0023: one entry per turn in the ContextTraceStore — tokens per
+    # one entry per turn in the ContextTraceStore — tokens per
     # category (the demodulized provider id), the tools-schema estimate and the
     # budget verdict. Counts and ids ONLY, never content. nil store = off; the
     # store itself rescues everything (the trace never breaks the turn).
@@ -832,11 +832,11 @@ module Insika
       unless workflow_turn?(task)
         st.chat = create_chat(profile, st)
         @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
-        # §11 R1: baseline = seeded-history size, before `ask` appends the turn.
+        # R1: baseline = seeded-history size, before `ask` appends the turn.
         st.chat_baseline = Array(st.chat.messages).size if st.chat.respond_to?(:messages)
       end
 
-      # guardrails (RFC-0009 §3.2): per-turn stream redactor (nil = off).
+      # guardrails: per-turn stream redactor (nil = off).
       st.output_filter = @content_filter_factory&.call(st)
 
       # stage 6: the turn's single agent interaction (send_message -> chat.ask;
@@ -868,7 +868,7 @@ module Insika
         # workflow = a Ruby callable that orchestrates RubyLLM internally (RubyLLM
         # First). tools: are the SAME instances filtered by the Resolution and
         # enveloped (stage 7) — the workflow inherits timeout/side-effect/skip.
-        # Item 22 / §4.4: the EXPOSED surface — the run (== task.id) is announced on
+        # the EXPOSED surface — the run (== task.id) is announced on
         # the stream (:workflow_started), the RETURN is validated against the
         # output_schema (WorkflowSchemaError -> :workflow_schema stage), and the
         # typed output is published (:workflow_completed).
@@ -883,7 +883,7 @@ module Insika
         emit(:workflow_completed, { run_id: task.id, workflow: definition.name, output: output }, task: task)
         output
       else
-        filter = state.output_filter # RFC-0009 §3.2: nil = off (stream untouched)
+        filter = state.output_filter # nil = off (stream untouched)
         timing&.mark(:ask)
         # TurnOutput owns what the customer is allowed to read: chunks ride
         # :intermediate live and only the message that ENDS the turn is published as
@@ -891,7 +891,7 @@ module Insika
         output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
                                 public_intermediate: state.profile.stream_public?(:intermediate))
         state.chat.after_message { |message| output.message_ended(message) } if state.chat.respond_to?(:after_message)
-        # RFC-0015 §5.2: `steer` only. Registered AFTER TurnOutput so the publishing
+        # `steer` only. Registered AFTER TurnOutput so the publishing
         # decision for a message is made before anything is appended after it — the
         # gem's callbacks are additive and run in registration order.
         install_steer_injector(task, state)
@@ -919,7 +919,7 @@ module Insika
         # was working used to be observed at stage 8 — AFTER `:content` had already been
         # published — so the customer read the answer of a turn that then terminated
         # `:cancelled` and persisted nothing: text delivered, transcript silent about it.
-        # Honoring it here is what makes `interrupt` (RFC-0015 §6.4) mean anything, and it
+        # Honoring it here is what makes `interrupt` mean anything, and it
         # is a safe boundary: the tool batch is finished and nothing is half applied.
         # A `:pause` is deliberately NOT honored here (drain!, not the suspending form):
         # holding a completed answer for an operator would strand it unpublished.
@@ -929,7 +929,7 @@ module Insika
       end
     end
 
-    # RFC-0015 §5.2 — wires the tool-batch boundary that lets a message which arrived
+    # wires the tool-batch boundary that lets a message which arrived
     # mid-run enter the conversation. No-op unless the agent asked for `steer`: an
     # unregistered callback is the difference between a feature that is off and one that
     # is on and finds nothing.
@@ -1005,9 +1005,9 @@ module Insika
     #
     # Three deliberate omissions:
     # · the guardrail filter is NOT applied — it accumulates the PERSISTED content
-    #   (D3), and pushing reasoning through it would corrupt the turn's answer;
+    # and pushing reasoning through it would corrupt the turn's answer;
     # · `timing.mark(:first_token)` stays on the content chunks — ttft is the
-    #   PROVIDER's first token (item 34's baselines measure that, not the first
+    #   PROVIDER's first token ('s baselines measure that, not the first
     #   thought, and not when TurnOutput publishes the answer);
     # · nothing is persisted — the reasoning is not part of the conversation.
     #
@@ -1024,7 +1024,7 @@ module Insika
       emit(:thinking, data, task: task)
     end
 
-    # Annotates the usage with the RESOLVED model-selection source (v2, §10):
+    # Annotates the usage with the RESOLVED model-selection source:
     # where the model came from (:chat/:agent/:platform_default) travels alongside
     # the resolved model id (from the provider) into the terminal event/Telemetry,
     # so billing/telemetry can attribute the turn to a config layer. nil usage
@@ -1051,7 +1051,7 @@ module Insika
       if response.respond_to?(:cached_tokens) && response.cached_tokens
         usage[:cached_tokens] = response.cached_tokens.to_i # cache_read_input_tokens
       end
-      # §11 R3: prompt-cache WRITE tokens (Anthropic cache_creation_input_tokens),
+      # R3: prompt-cache WRITE tokens (Anthropic cache_creation_input_tokens),
       # billed at ~1.25x. Reported so the first (write) turn vs later (read) turns
       # are distinguishable in telemetry/usage.
       if response.respond_to?(:cache_creation_tokens) && response.cache_creation_tokens
@@ -1079,7 +1079,7 @@ module Insika
 
     def build_context_request(task, profile, state, resume_from)
       session = task.session_id ? @session_store.find(task.session_id) : nil
-      state.session = session # create_chat reads it for the per-chat model pin (§10)
+      state.session = session # create_chat reads it for the per-chat model pin
       hist = command_history(task)
       # `vars` reconciles the seam (the Request/Session provider already
       # called request.vars): session metadata + the explicit `history` in the
@@ -1093,7 +1093,7 @@ module Insika
                          checkpoint: resume_from, tenant: command_tenant(task), vars: vars)
     end
 
-    # :task_started payload. Carries the EXPLICIT command tenant (item 16 / P4) so
+    # task_started payload. Carries the EXPLICIT command tenant so
     # the observability convention can group by it — the one operator-set label that
     # is not derivable from the task itself. Omitted when absent: the terminal
     # events keep their shape and no consumer sees a null it never saw before. NOT
@@ -1119,7 +1119,7 @@ module Insika
       Coercion.presence(rebuild_command(task).payload["origin"])
     end
 
-    # Engine memory scope (D3): the Command's EXPLICIT tenant wins (multi-merchant
+    # Engine memory scope: the Command's EXPLICIT tenant wins (multi-merchant
     # override); otherwise the SESSION (=chat) — engine-owner memory is per-chat.
     # Symmetric to the READ path (Memory provider). One-shot with no tenant -> nil
     # (_default). It is NOT the <request_context> tenant (that follows
@@ -1128,35 +1128,35 @@ module Insika
       command_tenant(task) || task.session_id
     end
 
-    # Turn context (Phase 6/D2/G4): the ids the data-tools resolve via
+    # Turn context: the ids the data-tools resolve via
     # {{ctx.*}} to emit X-Chat-Id/X-Store-Id/X-Agent-Id to /api/internal/*. They
     # come from the TURN, never from the model args (R2). chat_id = the session
     # (the /v1/responses adapter creates the session with id = user = chat.id);
     # tenant = the Command tenant (memory) OR chat_id (drop-in default); agent_id =
     # profile; store_id = the profile metadata (stable per store, from the pack).
     # Absent fields -> nil (the data-tool emits an empty header; in the pilot the
-    # profile carries store_id). Generic: nothing here mentions consumer-app (NF1).
+    # profile carries store_id). Generic: nothing here mentions a consumer.
     def build_turn_context(task, profile, state)
       {
         chat_id: task.session_id,
         agent_id: profile.id,
         tenant: state.tenant, # already = command_tenant || session_id (memory_tenant)
         store_id: profile.store_id,
-        # RFC-0010: current delegation depth (0 for a top-level turn). Carried in
+        # current delegation depth (0 for a top-level turn). Carried in
         # the child command's payload by run_subagent; read here so the child's OWN
         # spawn_subagent tool sees depth+1 and the runtime cap holds down the chain.
         delegation_depth: delegation_depth(task)
       }
     end
 
-    # Delegation depth of THIS turn (RFC-0010): the value run_subagent stamped in
+    # Delegation depth of THIS turn: the value run_subagent stamped in
     # the child command, or 0 for a top-level turn. Integer-coerced (JSON round-trip
     # of the persisted command may deliver a String).
     def delegation_depth(task)
       rebuild_command(task).payload["delegation_depth"].to_i
     end
 
-    # RFC-0010 R2: environment (model/thinking) inherits as DEFAULT — the child's
+    # R2: environment (model/thinking) inherits as DEFAULT — the child's
     # explicit value wins; when absent, seed from the parent's RESOLVED selection.
     # Capacity fields are untouched (R1: the child profile is used as-is). Returns
     # the child profile unchanged when there is nothing to inherit.
@@ -1177,7 +1177,7 @@ module Insika
       child_profile.with(model: model, provider: provider, params: params)
     end
 
-    # Single validation path for a delegation (RFC-0010) — shared by run_subagent
+    # Single validation path for a delegation — shared by run_subagent
     # and the fan-out run_subagents. `task` is {agent, message} (string OR symbol
     # keys — the model's args arrive string-keyed). Returns a resolved plan
     # { agent:, profile:, message:, depth: } or { agent:, error: } (the agent name is
@@ -1250,7 +1250,7 @@ module Insika
       [child_session_id, child_task]
     end
 
-    # SYNC (Fase 1): spawns the child and AWAITS it on the parent's fiber, then
+    # SYNC: spawns the child and AWAITS it on the parent's fiber, then
     # projects the terminal content. Direct `spawn` (not spawn_in_session): the
     # child session is brand-new, so there is no SessionActor contention — the child
     # is parented at turn_parent and the parent yields cooperatively on `wait`.
@@ -1261,7 +1261,7 @@ module Insika
       project_child_result(child_task.id, child_session_id, child_profile.id, parent_state)
     end
 
-    # ASYNC (Fase 2): persists a Delegation, spawns the child NON-blocking, and
+    # ASYNC: persists a Delegation, spawns the child NON-blocking, and
     # returns a dispatch ack immediately — the parent turn ends without waiting. The
     # child's terminal hook (finalize_delegation) delivers the result later, as a
     # NEW turn on the parent session.
@@ -1310,7 +1310,7 @@ module Insika
       exec.error && (exec.error["message"] || exec.error[:message])
     end
 
-    # RFC-0010 Fase 2 — terminal hook: when a turn ends (success OR failure), if the
+    # terminal hook: when a turn ends (success OR failure), if the
     # task is the child of an ASYNC delegation, capture its result and deliver it to
     # the parent. Fires for both a normal completion and a resumed one (recovery),
     # so it needs no live watcher fiber. No-op without a delegation_store or when the
@@ -1399,7 +1399,7 @@ module Insika
     end
 
     # The Task persists the Command as a Hash; the WorkflowAllowlist needs
-    # a Command with #type (Symbol) and #payload. §11 B2: the SINGLE point that
+    # a Command with #type (Symbol) and #payload.: the SINGLE point that
     # reconciles the string||symbol keys of the persisted command — payload/meta
     # keys are stringified ONCE here, so every reader (command_type/workflow_name/
     # extract_message/command_history/command_tenant) works with string keys.
@@ -1419,7 +1419,7 @@ module Insika
       (hash || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v }
     end
 
-    # Stage-3-tail tool assembly — delegated to ToolAssembly (§11 B5). Kept as
+    # Stage-3-tail tool assembly — delegated to ToolAssembly. Kept as
     # thin private methods so the existing spec contract (executor.send(:...))
     # stays intact and run_pipeline reads unchanged.
     def resolve_capabilities(profile, context) = @tool_assembly.resolve_capabilities(profile, context)
@@ -1460,7 +1460,7 @@ module Insika
                              ))
     end
 
-    # GRACEFUL halt (RFC-0009 §3.1): a Middleware short-circuited with a safe reply.
+    # GRACEFUL halt: a Middleware short-circuited with a safe reply.
     # The turn COMPLETES — same stages 8-9 as a normal turn — but the "assistant
     # content" is the guardrail's safe response, produced with ZERO LLM calls. The
     # order mirrors a real turn so both the /v1/responses consumer (which reads the
@@ -1477,11 +1477,11 @@ module Insika
              }, task: task)
       end
       emit(:content, { delta: content }, task: task) unless content.empty?
-      # An EDGE-blocked turn (rate limit / token ceiling, item 33) completes but
+      # An EDGE-blocked turn (rate limit / token ceiling) completes but
       # stays OUT of the session history: a flood at the wall must not bloat the
       # session nor evict real conversation from the context budget — the
       # :guardrail_blocked event is the audit trail. Content-guardrail blocks
-      # keep persisting (RFC-0009: the refusal is part of the conversation).
+      # keep persisting (the refusal is part of the conversation).
       # The reply is the guardrail's, produced with zero LLM calls — so it is NOT the
       # agent talking, and a report that counts it as the agent repeating itself is
       # reading the engine's own canned text (the `safe_reply` finding exists exactly
@@ -1509,7 +1509,7 @@ module Insika
     # Recovery re-executes the already-saved turn (safe thanks to the side-effect
     # recording).
     #
-    # CHECKPOINT vs SESSION — the two stores DIVERGE by design (§11 R2c):
+    # CHECKPOINT vs SESSION — the two stores DIVERGE by design (R2c):
     #   · Checkpoint.messages = flatten_history(context.history) + new_messages,
     #     i.e. "what the model actually SAW this turn" AFTER budget eviction
     #     (context.history is the post-budget assembly). It is the deterministic
@@ -1550,12 +1550,12 @@ module Insika
 
       emit(:checkpoint_created, { task_id: task.id, turn: state.turn + 1 }, task: task)
 
-      # RFC-0010 Fase 2: if this completed turn is an ASYNC delegation child,
+      # if this completed turn is an ASYNC delegation child,
       # deliver its result to the parent as a NEW turn. No-op for a normal turn
       # (not a delegation child) or without a delegation_store.
       finalize_delegation(task)
 
-      # RFC-0011 §6.5: if this turn CAME IN through a Shape B channel, its answer
+      # if this turn CAME IN through a Shape B channel, its answer
       # has to travel out of band. Same terminal hook, next door to the delegation
       # one, for the same reason: it fires for a fresh turn and a recovered one.
       finalize_channel_delivery(task, content)
@@ -1565,7 +1565,7 @@ module Insika
     # turn's TRANSPORT (`channel:<id>` on the persisted command), not the session:
     # a session belongs to the channel forever, but a message an operator types into
     # the Studio playground against that same session must not reach the customer.
-    # Human handoff is not a product feature (`FOLLOWUP §14.6`), and it would be a
+    # Human handoff is not a product feature (``), and it would be a
     # surprising way to acquire one.
     #
     # The consequence, stated rather than discovered later: a turn the ENGINE
@@ -1610,15 +1610,15 @@ module Insika
       transport.start_with?("channel:") ? transport.delete_prefix("channel:") : nil
     end
 
-    # Truncation cap for a persisted `role: tool` content (§11 R1): the transcript
+    # Truncation cap for a persisted `role: tool` content (R1): the transcript
     # keeps the loop coherent; the FULL result lives in the ToolTraceStore (viewer).
     TOOL_CONTENT_CAP = 4_000
 
-    # The turn's messages in the ADDITIVE string-keyed format (§11 R1). Prefers the
+    # The turn's messages in the ADDITIVE string-keyed format (R1). Prefers the
     # real chat transcript (`chat.messages.drop(baseline)`) so tool calls/results
     # survive between turns; falls back to the {user, assistant} pair when the chat
     # did not record the turn (workflow, graceful halt, or the specs' FakeChat).
-    # The final assistant text is the REDACTED `content` (output_filter, RFC-0009 D3),
+    # The final assistant text is the REDACTED `content` (output_filter),
     # never the raw text the gem stored.
     # `origin` (MessageOrigin) travels on the turn's Command and is stamped on the
     # message it describes: the INCOMING one. It is absent for an ordinary turn, and
@@ -1694,7 +1694,7 @@ module Insika
     end
 
     # context.history may carry "eviction units" (an assistant+tool_results cycle
-    # grouped as one Array by the Session provider, §11 R1). Checkpoints store a
+    # grouped as one Array by the Session provider, R1). Checkpoints store a
     # FLAT list — the provider regroups on read. Flatten one level; message Hashes
     # are untouched.
     def flatten_history(history) = Array(history).flatten(1)
@@ -1710,7 +1710,7 @@ module Insika
       require_relative "tools/remember"
       require_relative "tools/subagent"
       require_relative "tools/subagents"
-      # v2 resolution (§10): Chat pin > Agent model > platform default, model_policy
+      # v2 resolution: Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
       state.model_selection = selection
@@ -1719,7 +1719,7 @@ module Insika
         provider: selection.provider,
         assume_model_exists: selection.assume_model_exists?
       )
-      selection.apply_params(chat) # temperature/max_tokens/thinking (per-agent, §10)
+      selection.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
       chat
     end
 

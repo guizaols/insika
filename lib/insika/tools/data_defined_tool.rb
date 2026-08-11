@@ -10,7 +10,6 @@ module Insika
     # ToolDefinition (the same pattern as A2ARemote). It makes an HTTP call described
     # in config — no Ruby code per tool. Since it inherits RubyLLM::Tool (pulls in the gem),
     # it is NOT required in lib/insika.rb; the overlay loads it lazily at registration
-    # (Step B). Phase 5, Step A.
     #
     # Contract preserved by duck-typing: it overrides name/description/parameters/
     # execute; RubyLLM's params_schema derives from #parameters automatically.
@@ -28,7 +27,7 @@ module Insika
         super()
       end
 
-      # Turn context (Phase 6/D2/G3): the registry tool does NOT receive TurnState,
+      # Turn context: the registry tool does NOT receive TurnState,
       # so the Executor DEPOSITS the turn ids here, per-turn
       # (chat/agent/tenant/store). They resolve {{ctx.*}} — SEPARATE from the model's
       # {{param}} — to emit X-Chat-Id/X-Store-Id/X-Agent-Id. They come from the TURN, never from
@@ -46,8 +45,8 @@ module Insika
 
       # FULL (nested) JSON Schema straight into RubyLLM's params_schema — it is what
       # the providers serialize (OpenAI/Anthropic/Gemini/Bedrock prefer
-      # params_schema; parameters is just a fallback). Provider-agnostic (Phase 7/F6) and
-      # the only form that expresses nesting (object/array/enum). Phase 7, Step A.
+      # params_schema; parameters is just a fallback). Provider-agnostic and
+      # the only form that expresses nesting (object/array/enum).,.
       def params_schema = @definition.parameters
 
       # FLAT top-level view for discovery (tool_search calls #parameters on the resolved
@@ -121,7 +120,7 @@ module Insika
       end
 
       # ctx.* -> TURN context (deposited by the Executor); the rest -> MODEL args
-      # (kwargs). The split is the D2/R2 trust boundary: the model does
+      # (kwargs). The split is the/R2 trust boundary: the model does
       # not choose which chat/store the tool accesses.
       def resolve(name, kwargs)
         prefix = Insika::ToolDefinition::CTX_PREFIX

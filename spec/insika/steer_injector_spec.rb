@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# RFC-0015 §5.2 — the tool-batch boundary. Every case here is about WHERE the message
+# the tool-batch boundary. Every case here is about WHERE the message
 # lands, because the wrong place is not a cosmetic problem: a `user` message between two
 # tool results is rejected outright by Anthropic and tolerated by OpenAI, so a boundary
 # that is off by one fails on one provider and silently corrupts the other.

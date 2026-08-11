@@ -47,7 +47,7 @@ module Insika
       # Absorbs ToolRegistry#resolve as a policy: optional without
       # opt-in -> deny; tools_deny -> deny ("deny always wins"); tools_allow
       # with the semantics (nil = all; [] = ∅; [names] = final set).
-      # Phase 7/D4/F5 (Step C): `tools_allow_groups` UNIONS in the groups' tools
+      # `tools_allow_groups` UNIONS in the groups' tools
       # (the group is GIVEN in the Entry metadata). Both allowlists nil = all.
       class ToolAllowlist < Base
         def decide(request)

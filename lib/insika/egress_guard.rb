@@ -8,14 +8,14 @@ module Insika
   # EGRESS guard for data-tools (SSRF). A data-tool makes a server-side HTTP
   # request with a URL coming from UI-editable config — without a guard, it's an
   # SSRF vector (hitting cloud metadata, internal services, localhost). Rules
-  # (spec NF2):
+  # (spec):
   #   - https only by default (http requires explicit opt-in);
   #   - host required;
   #   - optional host allowlist (when present, only it passes);
   #   - resolves the host and BLOCKS if ANY address falls into a private/
   #     loopback/link-local/metadata network (defense against DNS rebinding);
   #   - `allow_private:` (opt-in) ALLOWS the private target — to reach a trusted
-  #     INTERNAL API (NF4: the consumer's /api/internal/* comes in via an
+  #     INTERNAL API (the consumer's /api/internal/* comes in via an
   #     allowlist). Dangerous without `host_allowlist`: PIN it to a known host.
   #     Default false = strict guard.
   #
@@ -48,7 +48,7 @@ module Insika
       addrs = resolve(host)
       return "host did not resolve" if addrs.empty?
       # allow_private skips the private-network block (trusted internal API,
-      # NF4). Without it, a private/loopback/metadata target is always blocked.
+      # Without it, a private/loopback/metadata target is always blocked.
       return "private-network destination blocked" if !allow_private && addrs.any? { |ip| blocked?(ip) }
 
       nil

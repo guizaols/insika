@@ -2,7 +2,7 @@
 
 # Micro-bench of the CPU-BOUND hot path of a turn, WITHOUT a provider or I/O.
 # Companion to `bench_store.rb` (which measures the SQLite write ceiling, an
-# I/O-bound signal). This isolates the *interpreter* signal that FOLLOWUP §1.1
+# I/O-bound signal). This isolates the *interpreter* signal that
 # says the Ruby-version bump / YJIT actually moves: JSON (de)serialization of the
 # request/response envelope, SSE frame assembly (string building), and per-turn
 # context/prompt assembly (hash/array churn). No sockets, no disk, no gems beyond
@@ -106,7 +106,7 @@ end
 
 # 4) Context/prompt assembly: merge system + memory + skills + history into the
 #    final message array (hash merge, array concat, string join) — the per-turn
-#    "montagem de contexto/prompt" §1.1 calls out.
+#    "montagem de contexto/prompt" calls out.
 SYSTEM = "You are a helpful assistant for a store. Follow the policy. " * 6
 MEMORY = Array.new(5) { |i| "fact #{i}: the customer prefers option #{i}" }
 def bench_context

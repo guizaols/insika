@@ -310,7 +310,7 @@ What "abandoned" means, exactly:
   visible to an *operator* (its `tool_call`/`tool_result` events and the trace), not to
   the model — a half batch in the history would be an invalid prompt.
 
-> **No grace knob.** RFC-0015 sketched an `interrupt_grace_ms`; it is not
+> **No grace knob.** An `interrupt_grace_ms` was sketched; it is not
 > implemented, and would buy nothing here. The new turn is queued behind the abandoned
 > one either way (one turn at a time per session is the invariant), and waiting for a
 > boundary inside the request would break the ack-fast rule that put the debounce

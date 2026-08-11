@@ -3,11 +3,11 @@
 require "spec_helper"
 require "async"
 
-# P2-03 (Stage C criterion): two concurrent send_message on the SAME session
+# 03 (criterion): two concurrent send_message on the SAME session
 # are SERIALIZED by the SessionActor — the transcript stays consistent (FIFO, without
 # the read-modify-write clobber that would occur with two fibers on the same
 # session_id). Distinct sessions remain concurrent.
-RSpec.describe "Integration: per-session turn serialization (P2-03)" do
+RSpec.describe "Integration: per-session turn serialization (03)" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

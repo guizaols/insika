@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# LLM config v2 (§10): Chat > Agent > platform default + model_policy + fallbacks.
+# LLM config v2: Chat > Agent > platform default + model_policy + fallbacks.
 RSpec.describe Insika::ModelResolver do
   # Minimal settings_store: only #get is consumed by the resolver.
   def settings(overrides = {})
@@ -117,7 +117,7 @@ RSpec.describe Insika::ModelResolver do
     end
   end
 
-  # §10 4-layer reasoning control: thinking resolved Chat > Agent > Model > Global.
+  # 4-layer reasoning control: thinking resolved Chat > Agent > Model > Global.
   describe "reasoning (thinking) resolution across layers" do
     def resolve_thinking(agent: nil, chat: nil, global: nil, model_params: nil, model: "m", provider: :deepseek)
       overrides = {}

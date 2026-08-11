@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# RFC-0010 (item 21): Executor#run_subagent spawns an ISOLATED child turn inside
+# Executor#run_subagent spawns an ISOLATED child turn inside
 # the parent's fiber and returns its result. These are integration specs — a real
 # Executor drives a real child turn through the pipeline with a FakeChat.
-RSpec.describe "Insika::Executor#run_subagent (RFC-0010)" do
+RSpec.describe "Insika::Executor#run_subagent" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
@@ -160,7 +160,7 @@ RSpec.describe "Insika::Executor#run_subagent (RFC-0010)" do
     end
   end
 
-  describe "#run_subagents — parallel fan-out (RFC-0010 §A)" do
+  describe "#run_subagents — parallel fan-out" do
     it "runs N children and returns all results in the requested order" do
       writer = Insika::AgentProfile.build(id: "writer", model: "gpt")
       executor = build_executor(profiles: { "researcher" => child_profile, "writer" => writer })

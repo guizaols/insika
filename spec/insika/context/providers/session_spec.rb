@@ -82,7 +82,7 @@ RSpec.describe Insika::Context::Providers::Session do
     expect(frag.content).to eq({ role: "assistant", content: "oi" })
   end
 
-  describe "eviction units (§11 R1)" do
+  describe "eviction units (R1)" do
     let(:cycle) do
       [{ "role" => "user", "content" => "pergunta" },
        { "role" => "assistant", "content" => "",
@@ -119,7 +119,7 @@ RSpec.describe Insika::Context::Providers::Session do
       expect(provider.call(request(vars: { history: cycle })).map(&:priority)).to eq([60, 61, 62])
     end
 
-    # D6 (item 30): with parallel tool calls the `role: tool` messages are appended
+    # with parallel tool calls the `role: tool` messages are appended
     # in COMPLETION order, so a transcript can carry the results of c1/c2/c3 in any
     # order. The grouping is POSITIONAL — consecutive tool messages after an
     # assistant that has tool_calls — so it does not care, and this pins that: one

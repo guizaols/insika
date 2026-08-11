@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Studio
-  # Form → command-payload parsing for the Studio App (§11 B6). A mixin, NOT a
+  # Form → command-payload parsing for the Studio App. A mixin, NOT a
   # standalone object: `include`d into App so every method keeps `self` == the
   # App instance and reaches its request helpers (`presence`, `split_list`) and
   # per-request state (`@agent`) exactly as before. Pure extraction — the bodies
@@ -15,7 +15,7 @@ module Studio
         v = presence(r.params[field])
         limits[field.to_sym] = Integer(v) if v
       end
-      # Per-agent edge overrides (item 33). Unlike the timeouts (always present via
+      # Per-agent edge overrides. Unlike the timeouts (always present via
       # DEFAULT_LIMITS), these are OPT-IN keys: blank DELETES the override (inherit
       # the platform edge settings); 0 explicitly disables for this agent.
       %w[chat_rate_limit agent_token_ceiling].each do |field|
@@ -38,7 +38,7 @@ module Studio
       }
     end
 
-    # Guardrails config from the form (RFC-0009). The config form OWNS these fields,
+    # Guardrails config from the form. The config form OWNS these fields,
     # so the patch reflects the whole guardrails state. String values round-trip
     # cleanly through the JSON store; Safety::Config normalizes on read. A blank
     # moderator drops the key (deterministic only).
@@ -54,7 +54,7 @@ module Studio
       out
     end
 
-    # Per-category safe-reply overrides (RFC-0009 §7, config over convention). Only
+    # Per-category safe-reply overrides (config over convention). Only
     # the non-blank fields are persisted; Safety::Config normalizes on read.
     def guardrail_responses_patch(r)
       %w[default injection sexual abuse escalate].each_with_object({}) do |cat, acc|
@@ -62,7 +62,7 @@ module Studio
       end
     end
 
-    # Per-agent generation params (v2, §10). The config form OWNS these fields, so
+    # Per-agent generation params. The config form OWNS these fields, so
     # the patch reflects the whole form state: a blank field drops the key (and an
     # all-blank form clears params to {}). temperature/max_tokens MUST be Numeric —
     # ModelSelection#apply_params guards on `numeric?` and silently skips a String —
@@ -79,7 +79,7 @@ module Studio
       out
     end
 
-    # Per-agent model fence (v2, §10): { "allow" => [refs] } where a ref is
+    # Per-agent model fence: { "allow" => [refs] } where a ref is
     # "provider/model", "provider/*" or "model". Blank textarea -> nil (NO fence,
     # all models — parity). Enforced on the RESOLVED model by the ModelResolver,
     # so a per-chat pin can never escape it.
@@ -101,7 +101,7 @@ module Studio
 
     # Fields a tool CAN carry that this form does not render. The store REPLACES the
     # record on write, so anything missing here is erased — a save that only fixed a
-    # typo in the description would silently drop them (the class of bug §12 already
+    # typo in the description would silently drop them (the class of bug already
     # paid for once). `stored` carries them through untouched.
     UNEDITED_TOOL_FIELDS = %w[group tags halt_when].freeze
 
@@ -176,7 +176,7 @@ module Studio
       patch
     end
 
-    # Edge limits (item 33 / §12 G7) — the platform rate-limit/cost layer, saved
+    # Edge limits — the platform rate-limit/cost layer, saved
     # from its OWN form (a sub-resource, like models). The limit fields write nil
     # when blank (off — the EdgeLimiter reads nil/0 as off); the windows fall back
     # to the built-in defaults when cleared (the limiter guards non-positive).
@@ -204,7 +204,7 @@ module Studio
       { case: parsed }
     end
 
-    # Evals graders (RFC-0013 §3.9). `judges` is one `provider/model` per LINE — a
+    # Evals graders. `judges` is one `provider/model` per LINE — a
     # textarea, because the SIZE of the panel is the point and a fixed pair of fields
     # would cap it at two. A bare `model` (no slash) is valid: the provider is then
     # inferred by RubyLLM, same as everywhere else.
@@ -253,7 +253,7 @@ module Studio
       raise Insika::ValidationError, "#{field} must be an integer (got #{raw.inspect})"
     end
 
-    # LLM config v2 (§10) — the platform model layer, saved from its OWN form (a
+    # LLM config v2 — the platform model layer, saved from its OWN form (a
     # sub-resource, like providers) so the general-settings save never touches it and
     # vice-versa. The scalar refs are always present (blank -> nil, which the
     # deep-merge writes and the ModelResolver reads as "no platform default");
@@ -265,12 +265,12 @@ module Studio
         "default_provider" => presence(r.params["default_provider"]),
         "utility_model" => presence(r.params["utility_model"]),
         "fallback_models" => split_list(r.params["fallback_models"]),
-        # GLOBAL reasoning default (§10, 4-layer). Blank -> nil = provider default.
+        # GLOBAL reasoning default (4-layer). Blank -> nil = provider default.
         "thinking" => presence(r.params["thinking"])
       }
     end
 
-    # Per-model reasoning defaults (§10, the per-model layer). One line per model:
+    # Per-model reasoning defaults (the per-model layer). One line per model:
     #   <provider/model | model> | <off|on|low|medium|high>
     # CSP forbids JS for dynamic rows, so a textarea of lines is the honest path
     # (same idiom as the MCP env / tool params). A blank effort -> {} for that ref

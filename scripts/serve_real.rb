@@ -31,13 +31,13 @@ W = Deploy::Wiring
 ADMIN_TOKEN = ENV.fetch("ADMIN_TOKEN", "local-demo")
 
 # pause_task/approve_action come from the shared graph core (Insika::Wiring::Graph,
-# §12 G4) — no longer patched in here.
+# — no longer patched in here.
 
 # Session ready for multi-turn in the browser: pick session_id "web" (agent "bia")
 # in the Studio chat so Bia REMEMBERS the previous turns.
 W::SESSION_STORE.create(id: "web", vars: { "canal" => "navegador" }) unless W::SESSION_STORE.find("web")
 
-# Inbound A2A (§9.6): OPT-IN via INSIKA_A2A_AGENT, gated by PROFILE_SOURCE —
+# Inbound A2A: OPT-IN via INSIKA_A2A_AGENT, gated by PROFILE_SOURCE —
 # reads the SAME dynamic ProfileSource as the deployment, so the AgentCard/inbound
 # see agents created in the Studio (no longer a static PROFILES). Without the env /
 # a missing agent -> nil -> Server::App does not expose the A2A routes.
@@ -56,12 +56,12 @@ APP = Insika::Server::App.new(
   session_store: W::SESSION_STORE, task_store: W::TASK_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
   a2a: A2A_APP, # nil without opt-in -> A2A routes respond 404
-  # provisioner: pack importer (Phase 6/D4) under the SAME Bearer as
+  # provisioner: pack importer under the SAME Bearer as
   # /v1/responses — the GatewayClient provisions stores at runtime via POST/DELETE
   # /v1/agents. Always exposed in serve real (the gateway needs it).
   provisioner: W::PACK_IMPORTER,
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
-  # Onboarding surface (item 20 / §5.6): start.md + models.json + docs. Always on in
+  # Onboarding surface: start.md + models.json + docs. Always on in
   # the full local demo — it's the "build my first agent" front door. Reports the
   # platform models AND the demo's served agents (their ids ARE the /v1/responses
   # `model`), all from masked/read-only sources.
@@ -94,10 +94,10 @@ Studio::App.configure(
   # settings/LLM/MCP + global system files.
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
-  # §12 G5: tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
+  # tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
-  # RFC-0013 phase A: the Refinement page reads the runs; the button dispatches
+  # the Refinement page reads the runs; the button dispatches
   # :run_refinement on the bus (the Studio never writes a store directly).
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
@@ -111,7 +111,7 @@ DISPATCH = Rack::URLMap.new(
   "/" => APP
 )
 
-# RFC-0016 A2: recovery BEFORE the listen, same as config.ru. Runs while the
+# recovery BEFORE the listen, same as config.ru. Runs while the
 # executor is still non-supervised (sequential replay inside Boot's Sync).
 BOOTED_APP = Insika::Server::Boot.new(W, app: DISPATCH).call
 
@@ -127,7 +127,7 @@ puts "  Ctrl-C to stop (drains in-flight turns; press twice to skip the wait)."
 
 puts "  OTEL          → #{W::TELEMETRY ? "on (#{Insika::Telemetry.metrics? ? "traces + metrics" : "traces"} to OTLP)" : "off (INSIKA_OTEL to enable)"}"
 
-# RFC-0016 A3: first Ctrl-C/SIGTERM closes the intake and drains in-flight turns
+# first Ctrl-C/SIGTERM closes the intake and drains in-flight turns
 # (INSIKA_DRAIN_TIMEOUT, default 20s) before the reactor comes down; a second
 # signal skips the wait.
 Insika::Shutdown.install(executor: W::EXECUTOR)

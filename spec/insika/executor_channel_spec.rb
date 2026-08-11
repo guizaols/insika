@@ -3,11 +3,11 @@
 require "spec_helper"
 require "async"
 
-# RFC-0011 §6.5 — the terminal hook. A turn that came in through a Shape B channel
+# the terminal hook. A turn that came in through a Shape B channel
 # writes its answer to the outbox and hands it over; every other turn does nothing,
 # and "every other turn" includes ones on the SAME session, which is the part worth
 # a test rather than a comment.
-RSpec.describe "Insika::Executor channel delivery (RFC-0011)" do
+RSpec.describe "Insika::Executor channel delivery" do
   # Shape B channel: remembers what it was asked to send.
   class SpyChannel
     attr_reader :sent

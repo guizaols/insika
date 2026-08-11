@@ -38,7 +38,7 @@ RSpec.describe Insika::ContextBuilder do
     Sync { builder.call(request) }
   end
 
-  describe "selection (allowlist D6)" do
+  describe "selection (allowlist)" do
     let(:pa) { provider(id: "A", fragments: [frag("a", source: "A")]) }
     let(:pb) { provider(id: "B", fragments: [frag("b", source: "B")]) }
 
@@ -134,7 +134,7 @@ RSpec.describe Insika::ContextBuilder do
     end
   end
 
-  describe "budget (D8, L1)" do
+  describe "budget (L1)" do
     it "evicts the lowest priority first and stops exactly when it fits" do
       p = provider(id: "P", fragments: [
                      frag("lo", priority: 10, source: "LO", tokens: 40),
@@ -216,7 +216,7 @@ RSpec.describe Insika::ContextBuilder do
     end
   end
 
-  describe "integration of the :prompt pair (task 16)" do
+  describe "integration of the:prompt pair" do
     it "before_prompt rewrites the request: providers receive the altered one" do
       # provider that echoes the request message into a fragment
       echo = Class.new(Insika::ContextProvider) do
@@ -262,7 +262,7 @@ RSpec.describe Insika::ContextBuilder do
     end
   end
 
-  describe "provider errors and degradation (doc 04 §6)" do
+  describe "provider errors and degradation" do
     it "optional one that fails -> :provider_warning + rest assembled" do
       bad = provider(id: "BAD", raises: RuntimeError.new("caiu"))
       good = provider(id: "GOOD", fragments: [frag("ok", source: "GOOD")])

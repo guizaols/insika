@@ -4,8 +4,8 @@ require "spec_helper"
 require "rack/mock"
 require_relative "../../lib/insika/studio/app"
 
-# Studio (Phase 4, Stage E) — Roda app mounted under /studio. Exercises cookie auth
-# (D7, fail-closed), CSRF on POSTs, strict CSP (D8), serving of versioned assets and
+# Studio — Roda app mounted under /studio. Exercises cookie auth
+# (fail-closed), CSRF on POSTs, strict CSP, serving of versioned assets and
 # the login/agents/playground pages. Doubles in place of the runtime: the Studio only
 # READS the ProfileSource and dispatches Commands on the bus (never writes to a store
 # directly) — the same surface as Server::App.
@@ -36,7 +36,7 @@ RSpec.describe Studio::App do
     def fetch(id) = profiles.find { |p| p.id == id }
   end
 
-  # Stage F read stores (only what the pages consume).
+  # read stores (only what the pages consume).
   SkillEntry = Struct.new(:name, :description, :body, keyword_init: true) # body: real catalog skills expose it (drill editor reads it)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
@@ -62,7 +62,7 @@ RSpec.describe Studio::App do
     def find(id) = sessions[id]
   end
 
-  # §12 G5 — tasks/approvals read stores. Only the surface the pages consume.
+  # tasks/approvals read stores. Only the surface the pages consume.
   TaskDouble = Struct.new(:id, :status, :command, :session_id, :executions, :updated_at, keyword_init: true)
   ExecDouble = Struct.new(:attempt, :started_at, :finished_at, :outcome, :error, keyword_init: true)
   TaskStoreDouble = Struct.new(:tasks) do # tasks: { id => TaskDouble }
@@ -96,7 +96,7 @@ RSpec.describe Studio::App do
                 tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
-    # Stage G config stores: REAL over an in-memory ConfigStore (the Studio reads
+    # config stores: REAL over an in-memory ConfigStore (the Studio reads
     # from them when rendering; writes via the bus Commands). Seeded from the params
     # to exercise the settings/LLM/MCP/system-files read-path.
     cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
@@ -108,7 +108,7 @@ RSpec.describe Studio::App do
     mcp_instances.each { |m| mcp_store.upsert(m) }
     system_file_store = Insika::SystemFileStore.new(config_store: cfg)
     system_files.each { |name, content| system_file_store.write(name, content) }
-    # REAL ToolStore (Phase 5): the authoring page reads from it; writes via the bus.
+    # REAL ToolStore: the authoring page reads from it; writes via the bus.
     tool_store = Insika::ToolStore.new(config_store: cfg)
     data_tools.each { |d| tool_store.write(d) }
     # Records written straight to the ConfigStore, BYPASSING validation — the only way to
@@ -117,11 +117,11 @@ RSpec.describe Studio::App do
     raw_data_tools.each do |name, definition|
       cfg.put("tools", name, { "definition" => definition, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
     end
-    # Eval cases (RFC-0008 §3.1): the REAL store, seeded through its own validating
+    # Eval cases: the REAL store, seeded through its own validating
     # write — the page must be exercised against what the loader accepts.
     golden_store = Insika::GoldenStore.new(config_store: cfg)
     goldens.each { |g| golden_store.write(g) }
-    # RFC-0013 phase A: refinement runs, seeded through the REAL store's own API
+    # refinement runs, seeded through the REAL store's own API
     # (create + complete) so the page is exercised against the record shape the
     # collector actually writes. refinement_runs: [{ agent:, findings: [...] }, …].
     refinement_store = Insika::RefinementStore.new(store: Insika::Stores::Memory.new)
@@ -130,10 +130,10 @@ RSpec.describe Studio::App do
                                     at: format("2026-08-0%dT10:00:00Z", i + 1))
       refinement_store.complete(row.id, findings: run[:findings] || [])
     end
-    # REAL ToolTraceStore (debug §3.1): the session view reads from it.
+    # REAL ToolTraceStore (debug): the session view reads from it.
     trace_store = Insika::ToolTraceStore.new(store: Insika::Stores::Memory.new)
     tool_traces.each { |sid, entries| entries.each { |e| trace_store.record(session_id: sid, entry: e) } }
-    # REAL ContextTraceStore (RFC-0023): the session view's breakdown card.
+    # REAL ContextTraceStore: the session view's breakdown card.
     ctx_trace_store = Insika::ContextTraceStore.new(store: Insika::Stores::Memory.new)
     context_traces.each { |sid, entries| entries.each { |e| ctx_trace_store.record(session_id: sid, entry: e) } }
     app.configure(
@@ -374,7 +374,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:send_message).meta[:tenant]).to eq("chef")
   end
 
-  it "playground pins the model on a NEW conversation via create_session (v2 §10)" do
+  it "playground pins the model on a NEW conversation via create_session" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
@@ -409,7 +409,7 @@ RSpec.describe Studio::App do
     expect(bus.types).not_to include(:create_session)
   end
 
-  it "playground echoes the just-sent message as a user bubble on the next GET (§11 A1)" do
+  it "playground echoes the just-sent message as a user bubble on the next GET" do
     app, = build_app
     client = login(app)
     csrf = csrf_from(client.get("/playground").body)
@@ -420,7 +420,7 @@ RSpec.describe Studio::App do
     expect(body).to include('class="msg user"')
   end
 
-  it "playground GET renders the session's persisted transcript as bubbles (§11 A1)" do
+  it "playground GET renders the session's persisted transcript as bubbles" do
     sess = StoredSession.new(id: "s1", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "pergunta-persistida" },
                                         { "role" => "assistant", "content" => "resposta-persistida" }])
@@ -431,14 +431,14 @@ RSpec.describe Studio::App do
     expect(body).to include('data-controller="markdown"') # assistant bubble renders Markdown
   end
 
-  it "the app-bar has the skills and tools links (Stage F)" do
+  it "the app-bar has the skills and tools links" do
     app, = build_app
     body = login(app).get("/agents").body
     expect(body).to include('href="/studio/skills"')
     expect(body).to include('href="/studio/tools"')
   end
 
-  # --- Agents (detail) — task 15/17 ----------------------------------------
+  # Agents (detail) —/17 ----------------------------------------
 
   it "renders the agent detail with config, prompts, skills, memory and history" do
     app, = build_app
@@ -495,7 +495,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:limits][:turn_timeout]).to eq(90)
   end
 
-  # Item 30: the third tool-execution bound sits in the same form as the two
+  # the third tool-execution bound sits in the same form as the two
   # timeouts, so an operator can turn parallel tool calls on without the DSL.
   it "config writes tool_concurrency, and a blank field keeps what is stored" do
     app, bus = build_app
@@ -533,7 +533,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:limits]).not_to have_key(:chat_rate_limit)
   end
 
-  # --- config v2 (§10) surfacing -------------------------------------------
+  # config v2 surfacing -------------------------------------------
 
   it "config with a blank model clears it (inherit the platform default)" do
     app, bus = build_app
@@ -651,7 +651,7 @@ RSpec.describe Studio::App do
     expect(body).to include("Ana")
   end
 
-  # --- Skills (index + editor) — task 16 -----------------------------------
+  # Skills (index + editor) — -----------------------------------
 
   it "lists the skills and the agents matrix" do
     app, = build_app
@@ -692,7 +692,7 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:agent_ids]).to eq(%w[bia chef])
   end
 
-  # --- Tools (matriz) — task 16 --------------------------------------------
+  # Tools (matriz) — --------------------------------------------
 
   it "lists the tools-by-agent matrix" do
     app, = build_app
@@ -701,7 +701,7 @@ RSpec.describe Studio::App do
     expect(body).to include('name="all_tools"')
   end
 
-  it "renders the §3.2 matrix affordances: filter box, live counter, switch toggle" do
+  it "renders the matrix affordances: filter box, live counter, switch toggle" do
     app, = build_app
     body = login(app).get("/tools").body
     expect(body).to include('data-controller="list-filter"')
@@ -777,7 +777,7 @@ RSpec.describe Studio::App do
     end
   end
 
-  # --- Data-driven tools (authoring) — Phase 5 Stage C ---------------------
+  # Data-driven tools (authoring) — ---------------------
 
   def data_tool(name: "cep", **over)
     { name: name, description: "Consulta #{name}",
@@ -1000,7 +1000,7 @@ RSpec.describe Studio::App do
       .to eq([{ "name" => "products", "type" => "array:string", "required" => true, "description" => "os UUIDs" }])
   end
 
-  # --- History (read-only viewer) — task 17 --------------------------------
+  # History (read-only viewer) — --------------------------------
 
   it "session viewer renders the read-only transcript" do
     sess = StoredSession.new(id: "sess-xyz", updated_at: "t",
@@ -1017,7 +1017,7 @@ RSpec.describe Studio::App do
     expect(login(app).get("/sessions/nope").status).to eq(404)
   end
 
-  it "session viewer shows the context breakdown by category (RFC-0023)" do
+  it "session viewer shows the context breakdown by category" do
     sess = StoredSession.new(id: "sess-c", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     ctx = { "sess-c" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
                            cap: 8_000, used: 6_120, evicted: ["session"],
@@ -1054,7 +1054,7 @@ RSpec.describe Studio::App do
     expect(body).to include("found")   # rendered response
   end
 
-  it "session viewer renders structured content as pretty JSON, not Ruby #inspect (§11 A2)" do
+  it "session viewer renders structured content as pretty JSON, not Ruby #inspect" do
     sess = StoredSession.new(id: "sess-j", updated_at: "t",
                              messages: [{ "role" => "assistant", "content" => { "text" => "hi" } }])
     app, = build_app(sessions: { "sess-j" => sess })
@@ -1063,7 +1063,7 @@ RSpec.describe Studio::App do
     expect(body).not_to include("=&gt;")         # NOT a Ruby hashrocket (#inspect)
   end
 
-  it "session viewer renders a tool message as a collapsible card (§11 A2)" do
+  it "session viewer renders a tool message as a collapsible card" do
     sess = StoredSession.new(id: "sess-tool", updated_at: "t",
                              messages: [{ "role" => "tool", "content" => "resultado-da-tool" }])
     app, = build_app(sessions: { "sess-tool" => sess })
@@ -1072,7 +1072,7 @@ RSpec.describe Studio::App do
     expect(body).to include('class="toolcard result"')
   end
 
-  it "session viewer renders an assistant's tool_calls as cards (§11 R1)" do
+  it "session viewer renders an assistant's tool_calls as cards (R1)" do
     sess = StoredSession.new(id: "sess-tc", updated_at: "t",
                              messages: [{ "role" => "assistant", "content" => "",
                                           "tool_calls" => [{ "id" => "c1", "name" => "search_products",
@@ -1090,9 +1090,9 @@ RSpec.describe Studio::App do
     expect(body).to include("/studio/sessions/sess-abc123456789")
   end
 
-  # --- Settings (task 18) --------------------------------------------------
+  # Settings --------------------------------------------------
 
-  it "the app-bar has the Stage G links (mcp/system/chats/settings)" do
+  it "the app-bar has the links (mcp/system/chats/settings)" do
     app, = build_app
     body = login(app).get("/agents").body
     %w[/studio/mcp /studio/system-files /studio/chats /studio/settings].each do |href|
@@ -1106,7 +1106,7 @@ RSpec.describe Studio::App do
     res = client.get("/settings")
     expect(res.status).to eq(200)
     expect(res.body).to include('name="turn_timeout"')
-    # RFC-0023: the compaction form is gone while nothing consumes the key.
+    # the compaction form is gone while nothing consumes the key.
     expect(res.body).not_to include("compaction")
     csrf = csrf_from(res.body)
     client.post("/settings", params: {
@@ -1145,7 +1145,7 @@ RSpec.describe Studio::App do
     expect(patch["utility_model"]).to eq("deepseek-chat")
   end
 
-  it "the edge-limits form dispatches update_settings with the edge layer only (item 33)" do
+  it "the edge-limits form dispatches update_settings with the edge layer only" do
     app, bus = build_app
     client = login(app)
     body = client.get("/settings?s=edge").body # drill: edge limits section
@@ -1244,7 +1244,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:delete_llm_provider).payload).to include(api: "openai")
   end
 
-  # --- MCP (task 18) -------------------------------------------------------
+  # MCP -------------------------------------------------------
 
   it "mcp lists instances with env MASKED and dispatches upsert_mcp (env by lines)" do
     app, bus = build_app(mcp_instances: [{ "name" => "tavily", "env" => { "TAVILY_KEY" => "tvly-real" } }])
@@ -1274,7 +1274,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:delete_mcp).payload).to include(name: "tavily")
   end
 
-  # --- System-files (task 19) ----------------------------------------------
+  # System-files ----------------------------------------------
 
   it "system-files lists the global files and uses the code-editor island" do
     app, = build_app(system_files: { "HOUSE.md" => "regras da casa" })
@@ -1302,7 +1302,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:restore_system_file).payload).to include(file: "H.md", version: "0")
   end
 
-  # --- Chats (task 19) -----------------------------------------------------
+  # Chats -----------------------------------------------------
 
   it "chats lists the conversations and links to the viewer" do
     sess = StoredSession.new(id: "sess-chat-000001", updated_at: "t",
@@ -1346,7 +1346,7 @@ RSpec.describe Studio::App do
     expect(body).to match(%r{href="/studio/home"[^>]*aria-current="page"})
   end
 
-  # --- Polish & parity (Stage H / task 20) ---------------------------------
+  # Polish & parity ---------------------------------
 
   it "the app-bar has a health chip and theme switch; the html loads the theme (auto default)" do
     app, = build_app
@@ -1395,9 +1395,9 @@ RSpec.describe Studio::App do
     expect(client.get("/skills/new").body).to include('data-controller="dirty-guard"')
   end
 
-  # --- G3: UI robustness — A3 (loading states) + A4 (confirm + copy) -----------
+  # UI robustness — (loading states) + (confirm + copy) -----------
 
-  it "destructive forms carry a data-turbo-confirm prompt (A4)" do
+  it "destructive forms carry a data-turbo-confirm prompt" do
     fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
     app, = build_app(agents: [profile("bia", prompt_files: %w[SOUL.md])],
                      data_tools: [data_tool(name: "cep")],
@@ -1415,14 +1415,14 @@ RSpec.describe Studio::App do
     expect(detail).to include('/memory/forget" data-turbo-confirm=')
   end
 
-  it "action buttons declare a data-turbo-submits-with loading label (A3)" do
+  it "action buttons declare a data-turbo-submits-with loading label" do
     app, = build_app
     client = login(app)
     expect(client.get("/playground?agent=chef").body).to include('data-turbo-submits-with="Sending…"')
     expect(client.get("/agents/bia").body).to include("data-turbo-submits-with=")
   end
 
-  it "the session id and tool-trace payloads load the clipboard island with a copy button (A4)" do
+  it "the session id and tool-trace payloads load the clipboard island with a copy button" do
     sess = StoredSession.new(id: "sess-copy", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     traces = { "sess-copy" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
                                  "args" => { "query" => "trufa" }, "result" => { "found" => 3 },
@@ -1435,7 +1435,7 @@ RSpec.describe Studio::App do
     expect(body).to include('data-clipboard-target="source"')        # trace <pre> is the copy source
   end
 
-  it "the bundle registers the clipboard controller (A4)" do
+  it "the bundle registers the clipboard controller" do
     app, = build_app
     js = Client.new(app).get("/assets/dist/application.js").body
     expect(js).to include("clipboard")
@@ -1503,7 +1503,7 @@ RSpec.describe Studio::App do
     expect(res.headers["location"]).to eq("/studio/agents")
   end
 
-  # --- Tasks & Approvals (§12 G5) ------------------------------------------
+  # Tasks & Approvals ------------------------------------------
 
   def task(id: "t1", status: :running, session_id: "s1", executions: [])
     TaskDouble.new(id: id, status: status, command: { "type" => "send_message" },
@@ -1624,7 +1624,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:approve_action).payload[:decision]).to eq("approved")
   end
 
-# --- Evals: cases authored without a checkout (RFC-0008 §3.1) -------------
+# Evals: cases authored without a checkout -------------
 # The rubric is the part of an eval a domain owner can write, so it has to be
 # editable where they already are. Writes go through :write_golden like everything
 # else — the Studio never touches a store directly.
@@ -1740,7 +1740,7 @@ it "a non-numeric min_agreement is refused instead of quietly becoming 'off'" do
   expect(client.get("/settings?s=evals").body).to include("min_agreement must be a number")
 end
 
-  # --- Refinement (RFC-0013 phase A) ---------------------------------------
+  # Refinement ---------------------------------------
   # Read-only page + one button. There is no scheduler in the engine, so the button
   # (and the CLI) are how a run starts.
 
@@ -1770,7 +1770,7 @@ end
     expect(login(app).get("/refinement?agent=bia").body).to include("Nothing found in this window")
   end
 
-  # --- Refinement phase C: the review IS the product (RFC-0013 §3.6) -------
+  # Refinement: the review IS the product -------
 
   # Seeds a run parked on a human, the state the proposal card renders.
   def awaiting_run(store, agent: "bia")
@@ -1837,7 +1837,7 @@ end
     expect(bus.last(:resolve_refinement).payload[:decision]).to eq("rejected")
   end
 
-  # --- Refinement PR 3b: the model writes the candidate --------------------
+  # Refinement: the model writes the candidate --------------------
 
   it "offers Propose a fix on a finished report that found something" do
     app, = build_app(refinement_runs: [{ agent: "bia", findings: [{ "kind" => "tool_error", "count" => 4,
@@ -1890,7 +1890,7 @@ end
     expect(body).to include("1 regression(s): quotes")
   end
 
-  # --- Refinement phase D: the panel and the unattended write (§3.9/§3.6) ---
+  # Refinement: the panel and the unattended write ---
 
   # A run whose panel had three members: the winner, a loser and one the budget
   # never got to.
@@ -1938,7 +1938,7 @@ end
     expect(body).to include("token budget (900) was spent")
   end
 
-  # §3.6: an operator who wakes up to a changed prompt gets what changed, why, and
+  # an operator who wakes up to a changed prompt gets what changed, why, and
   # where to undo it — the write versioned, so History IS the undo.
   it "shows what auto_apply changed, and where to undo it" do
     app, = build_app

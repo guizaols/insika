@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Micro-bench of the CONTEXT-BUILD cost per turn (item 34 / §13.1, action 1:
+# Micro-bench of the CONTEXT-BUILD cost per turn (
 # "profile the assembly before caching — know WHERE the ms are").
 #
 # It isolates the LOCAL prefix-assembly cost (what the insika pays BEFORE the
@@ -13,7 +13,7 @@
 #   · full build     — ContextBuilder#call (select -> produce -> estimate ->
 #                      budget -> assemble), the real stage-2 cost
 #   · cached build    — same, but with the static-prefix fragments memoized
-#                      (the OPTIMISTIC target: what item 34's cache would buy)
+#                      (the OPTIMISTIC target: what's cache would buy)
 #
 # Reports p50/p95/mean per phase and the projected TTFB delta.
 #

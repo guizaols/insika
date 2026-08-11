@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 5 Step A: data-driven tool definition (value object + validation).
+# data-driven tool definition (value object + validation).
 RSpec.describe Insika::ToolDefinition do
   def valid_attrs(**over)
     {
@@ -21,7 +21,7 @@ RSpec.describe Insika::ToolDefinition do
     expect(d.request[:query]).to eq({})
     expect(d.response).to eq({ extract: "body_raw", path: nil })
     expect(d.side_effect).to be(false)          # GET is idempotent
-    # empty parameters -> empty JSON Schema object (Phase 7/D1)
+    # empty parameters -> empty JSON Schema object
     expect(d.parameters).to eq({ "type" => "object", "properties" => {}, "required" => [] })
   end
 
@@ -38,7 +38,7 @@ RSpec.describe Insika::ToolDefinition do
     expect(again).to eq(d)
   end
 
-  # Phase 7/D4/F5 (Step C): group/tags as DATA.
+  # group/tags as DATA.
   describe "group/tags" do
     it "default: group nil, tags []" do
       d = described_class.build(**valid_attrs)
@@ -115,7 +115,7 @@ RSpec.describe Insika::ToolDefinition do
       expect { described_class.build(**attrs) }.not_to raise_error
     end
 
-    # Phase 6/D2: namespace {{ctx.*}} = TURN context (not a model param).
+    # namespace {{ctx.*}} = TURN context (not a model param).
     describe "turn context {{ctx.*}}" do
       it "accepts ctx.chat_id/store_id/agent_id/tenant without declaring them as params" do
         attrs = valid_attrs(
@@ -156,8 +156,8 @@ RSpec.describe Insika::ToolDefinition do
     expect(d.required_params).to eq(["a"])
   end
 
-  # Phase 7/D1: parameters are JSON Schema; the flat array is sugar that "lifts".
-  describe "JSON Schema (Phase 7)" do
+  # parameters are JSON Schema; the flat array is sugar that "lifts".
+  describe "JSON Schema" do
     it "lifts the legacy flat array to JSON Schema (lift), without regression" do
       d = described_class.build(**valid_attrs)
       expect(d.parameters).to eq(

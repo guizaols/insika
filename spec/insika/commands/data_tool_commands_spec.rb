@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 5 Stage B: data-defined tool authoring commands (write/delete/restore).
+# data-defined tool authoring commands (write/delete/restore).
 RSpec.describe "data-tool commands" do
   CodeToolStub = Struct.new(:name, :description)
 

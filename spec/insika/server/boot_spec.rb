@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../../lib/insika/server/boot"
 
-# doc 07 §7: order plugins→stores→recovery→(app). App is only returned AFTER
+# order plugins→stores→recovery→(app). App is only returned AFTER
 # recovery. Corrupted store at boot -> aborts (does not return app).
 RSpec.describe Insika::Server::Boot do
   # Double wiring: records the call order in a shared array.
@@ -73,7 +73,7 @@ RSpec.describe Insika::Server::Boot do
     expect(calls).to include(:recovery)
   end
 
-  # RFC-0016 A2: a serving arm that assembles its own Rack app around the wiring
+  # a serving arm that assembles its own Rack app around the wiring
   # (config.ru's URLMap with the Studio) injects it; recovery still runs first.
   it "app: override returns the injected app after recovery, without asking the wiring" do
     calls = []
@@ -85,7 +85,7 @@ RSpec.describe Insika::Server::Boot do
     expect(calls).to eq(%i[plugins stores recovery]) # wiring.app never consulted
   end
 
-  # RFC-0016 E2: the TASK sweep runs once per boot generation; a worker whose
+  # the TASK sweep runs once per boot generation; a worker whose
   # claim lost skips it — but the delegation/channel sweeps still run (each of
   # their records claims for itself).
   describe "the sweep claim (claim_recovery_sweep)" do

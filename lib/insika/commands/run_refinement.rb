@@ -4,11 +4,11 @@ require "time"
 
 module Insika
   module Commands
-    # Control command (RFC-0013 phase A): reads a window of the agent's real traffic
+    # Control command: reads a window of the agent's real traffic
     # and records a ranked failure REPORT. Synchronous — it only scans durable stores
     # (no provider call, no fiber), so it answers with the Run and does not create a
     # Task. It is the ONLY way a refinement run starts: the CLI, the Studio button
-    # and any external cron all dispatch this one command (§3.10 — there is no
+    # and any external cron all dispatch this one command (there is no
     # scheduler in the engine).
     #
     # Payload:
@@ -23,8 +23,8 @@ module Insika
     # the previous run for this agent, unless `full`) -> the agent's configured
     # `refinement.window` -> the collector's default.
     #
-    # Phase A writes NOTHING to the agent, so it needs no opt-in: an absent
-    # `refinement` config reads as report-only. Only `propose`/`auto_apply` (phase C)
+    # writes NOTHING to the agent, so it needs no opt-in: an absent
+    # `refinement` config reads as report-only. Only `propose`/`auto_apply`
     # require the operator to enable them explicitly.
     class RunRefinement
       READ_ONLY_MODES = %w[report propose auto_apply].freeze
@@ -77,7 +77,7 @@ module Insika
 
       # An unknown mode is a config typo, and a typo that silently degrades to
       # "report" would be the kind of quiet wrong the strict-config rule exists to
-      # prevent (item 23).
+      # prevent.
       def validate_mode!(config)
         mode = AgentPayload.presence(config["mode"]) || "report"
         return if READ_ONLY_MODES.include?(mode)

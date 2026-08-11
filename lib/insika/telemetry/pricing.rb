@@ -4,7 +4,7 @@ require "json"
 
 module Insika
   module Telemetry
-    # Estimated cost of a turn, from a rates table given as DATA (item 16 / P4).
+    # Estimated cost of a turn, from a rates table given as DATA.
     #
     # Insika never ships prices: they change weekly, differ per contract and per
     # region, and a stale table in the engine would be worse than no number at all.

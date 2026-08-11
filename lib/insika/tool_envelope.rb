@@ -69,7 +69,7 @@ module Insika
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-    # D4 (item 30): with parallel tool calls on, the turn's shared semaphore
+    # with parallel tool calls on, the turn's shared semaphore
     # (TurnState#tool_gate, sized by `limits[:tool_concurrency]`) caps how many run
     # at once. Wraps the REAL call ONLY — the approval wait and the skip check are
     # outside it, so a call blocked on a human never holds a slot, and the per-call

@@ -17,7 +17,7 @@ module Insika
     class System
       attr_reader :definitions, :workflows, :runtime_options
 
-      # `backend`: the store this system's graph owns (RFC-0017 A1). nil = the
+      # `backend`: the store this system's graph owns. nil = the
       # historic path (INSIKA_DB, or memory when unset). Set by `Insika.embed`.
       def initialize(definitions:, workflows: [], runtime: {}, backend: nil)
         @definitions = definitions.freeze

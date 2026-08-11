@@ -20,12 +20,12 @@ require_relative "insika/checkpoint"
 require_relative "insika/command"
 require_relative "insika/hooks"
 require_relative "insika/middleware"
-# Production edge (item 33 / §12 G7): windowed counters + the rate-limit/cost
+# Production edge: windowed counters + the rate-limit/cost
 # Middleware. Both inert until configured (nil/0 = off).
 require_relative "insika/usage_ledger"
 require_relative "insika/edge_limiter"
-# Content safety / guardrails (RFC-0009). detectors.rb is self-contained (the eval
-# requires it directly, D4); the rest hang off Middleware/hooks seams. No ruby_llm
+# Content safety / guardrails. detectors.rb is self-contained (the eval
+# requires it directly); the rest hang off Middleware/hooks seams. No ruby_llm
 # at load-time — Factory requires the gem lazily, like the Executor's create_chat.
 require_relative "insika/safety/detectors"
 require_relative "insika/safety/safe_responses"
@@ -65,7 +65,7 @@ require_relative "insika/task_store"
 require_relative "insika/checkpoint_store"
 require_relative "insika/pending_action_store"
 require_relative "insika/delegation_store"
-# Channels (RFC-0011): the outbound record + the inbound retry window. Both are
+# Channels: the outbound record + the inbound retry window. Both are
 # plain stores; the channel objects themselves come after the HTTP client.
 require_relative "insika/outbox_store"
 require_relative "insika/inbound_log"
@@ -78,7 +78,7 @@ require_relative "insika/secret_masking"
 require_relative "insika/tool_store"
 require_relative "insika/tool_trace_store"
 require_relative "insika/context_trace_store"
-# Refinement (RFC-0013 phase A): the run record + the evidence half of the loop.
+# Refinement: the run record + the evidence half of the loop.
 # Reads sessions/tasks/traces above; requires Safety::Detectors (loaded earlier) for
 # the PII redaction of the snippets it puts in a report.
 require_relative "insika/refinement_store"
@@ -93,7 +93,7 @@ require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
 require_relative "insika/sandbox"
 require_relative "insika/http_client"
-# Channels (RFC-0011 §4/§6): the registry, the bundled relay adapter and the
+# Channels: the registry, the bundled relay adapter and the
 # out-of-band dispatcher. After http_client and egress_guard — the relay POSTs
 # through both — and after registry.rb, which ChannelRegistry extends.
 require_relative "insika/channel_registry"
@@ -104,11 +104,11 @@ require_relative "insika/overlay_tool_registry"
 require_relative "insika/settings_store"
 require_relative "insika/llm_provider_store"
 require_relative "insika/llm_configurator"
-# LLM-first onboarding surface (item 20 / §5.6): serves start.md + models.json + the
+# LLM-first onboarding surface: serves start.md + models.json + the
 # public docs. Reads the settings/provider stores above at call-time (order is free).
 require_relative "insika/onboarding"
-# Evals (RFC-0008) — the quality harness, moved under lib/ so the engine can call it
-# (the RFC-0013 refinement gate scores a candidate agent with the SAME judge the CLI
+# Evals — the quality harness, moved under lib/ so the engine can call it
+# (the refinement gate scores a candidate agent with the SAME judge the CLI
 # uses; a second copy would be the worst outcome). It stays a CLIENT of the engine:
 # HttpTransport talks to a running deployment, nothing here reads a store. Pure Ruby +
 # stdlib; the judge's provider call is injected, so no ruby_llm at load time.
@@ -120,14 +120,14 @@ require_relative "insika/evals/runner"
 require_relative "insika/evals/report"
 require_relative "insika/evals/baseline"
 require_relative "insika/evals/transport"
-# Authored eval cases (RFC-0013 §3.7): the corpus becomes editable without a
+# Authored eval cases: the corpus becomes editable without a
 # checkout. Requires the loader above (it is the one validator).
 require_relative "insika/golden_store"
 require_relative "insika/baseline_store"
-# RFC-0013 §3.5: scores a candidate by REPLAYING it. After evals (the runner and
+# scores a candidate by REPLAYING it. After evals (the runner and
 # the baseline comparison) and after the stores it clones an agent through.
 require_relative "insika/refinement/gate"
-# RFC-0013 §3.9 (phase D): the proposer PANEL and the run's token budget. Needs the
+# the proposer PANEL and the run's token budget. Needs the
 # candidate format and the gate's Report shape, so it loads after both.
 require_relative "insika/refinement/panel"
 require_relative "insika/mcp_store"
@@ -194,16 +194,16 @@ require_relative "insika/tick"
 require_relative "insika/pack"
 require_relative "insika/pack_importer"
 require_relative "insika/telemetry"
-# Strict config + diagnosis (item 23 / §8.1). Doctor reads the config stores above;
+# Strict config + diagnosis. Doctor reads the config stores above;
 # EnvSchema (required at the top) is its env layer.
 require_relative "insika/doctor"
 # Shared composition core for both roots (config/wiring.rb + config/deployment.rb).
 # Only references the classes above at call-time, so require order is unconstrained.
 require_relative "insika/wiring/graph"
-# Public Ruby DSL (item 36): Insika.agent { … }. The Builder is gem-free (it only
+# Public Ruby DSL: Insika.agent { … }. The Builder is gem-free (it only
 # generates a Pack); the runtime (chat/serve) is required lazily by Definition, so
 # `require "insika"` stays free of ruby_llm and the HTTP server.
 require_relative "insika/dsl"
 # Do NOT require "insika/tools/load_skill" here: it does `require "ruby_llm"` at
 # the top (inherits from RubyLLM::Tool) and would pull the gem in at load-time. The
-# Executor loads it lazily inside create_chat (D9).
+# Executor loads it lazily inside create_chat.

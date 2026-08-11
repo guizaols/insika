@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # Control command (RFC-0013 §3.6): the human's answer to a gated proposal.
+    # Control command: the human's answer to a gated proposal.
     #
     #   approve -> each edit is written through `AgentFileStore#write`, which pushes
     #              the previous content into `history`. Rollback is therefore already

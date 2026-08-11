@@ -7,7 +7,7 @@
 # only touches the gem lazily at stage 6.
 #
 # The shared spine + Executor + core Command Bus come from Insika::Wiring::Graph
-# (§12 G4); this file only layers on the base-only pieces: workflow triggering, the
+# this file only layers on the base-only pieces: workflow triggering, the
 # A2A edges, the APP, and Boot's named steps.
 #
 # The global constants (REGISTRY, CATALOG, PROFILES, ...) are kept as a read
@@ -60,13 +60,13 @@ module Insika
     CATALOG        = Insika::SkillCatalog.new([File.join(ROOT, "skills")])
     PROMPT_CATALOG = Insika::PromptCatalog.new([File.join(ROOT, "prompts")])
 
-    # Guardrails / content safety (RFC-0009). No SettingsStore in the minimal wiring,
+    # Guardrails / content safety. No SettingsStore in the minimal wiring,
     # so the LLM moderator only runs for an agent that pins its own `guardrails.
     # moderator` model ref; the deterministic net (input scan + output redaction) is
     # always on for agents that opt in. See config/deployment.rb for the full graph.
     GUARDRAILS = Insika::Safety::Factory.new
 
-    # Production edge (item 33). No SettingsStore at the base, so only an agent
+    # Production edge. No SettingsStore at the base, so only an agent
     # that carries its own limits (chat_rate_limit / agent_token_ceiling) is
     # limited; without them the link is pass-through (parity).
     EDGE_LIMITER = Insika::EdgeLimiter.new(ledger: Insika::UsageLedger.new(store: BACKEND))
@@ -146,7 +146,7 @@ module Insika
       end
     end
 
-    # Onboarding surface (item 20 / §5.6): start.md + models.json + public docs. The
+    # Onboarding surface: start.md + models.json + public docs. The
     # base has no SettingsStore/LLMProviderStore and empty PROFILES, so models.json
     # here carries only the thinking levels (still a coherent document); the DSL serve
     # and the deployment pass their real stores/agents.
@@ -158,14 +158,14 @@ module Insika
       pending_action_store: PENDING_ACTION_STORE, # read for GET /v1/tasks/:id
       a2a: A2A_APP, # nil at the base (opt-in) -> A2A routes respond 404
       # Base-only: workflows are exposed here (the deployment does not). Enables
-      # GET /v1/workflows (discovery) + POST /v1/workflows/:name (item 22 / §4.4).
+      # GET /v1/workflows (discovery) + POST /v1/workflows/:name.
       workflow_registry: WORKFLOW_REGISTRY,
       onboarding: ONBOARDING, # GET /start.md + /models.json + /docs (public)
       # GET /v1/agents/:id — read-only capability view (evals). Coerced because the
       # base wiring keeps a plain Hash of profiles, and the route needs the source API.
       profiles: Insika::ProfileSource.coerce(PROFILES),
       config: CONFIG,
-      # B7: a 500's error_ref must be findable in the process log.
+      # a 500's error_ref must be findable in the process log.
       logger: $stdout
     )
 
@@ -186,12 +186,12 @@ module Insika
     def self.build_stores = nil
     def self.recovery = RECOVERY
 
-    # RFC-0016 E2: the task sweep runs ONCE per boot generation (INSIKA_BOOT_ID,
+    # the task sweep runs ONCE per boot generation (INSIKA_BOOT_ID,
     # exported by deploy/entrypoint.sh). Unset (single process) -> always sweep.
     def self.claim_recovery_sweep
       Insika::Recovery.claim_sweep(store: BACKEND, boot_id: ENV["INSIKA_BOOT_ID"])
     end
-    # RFC-0010 Fase 2: re-deliver async delegations whose child finished but whose
+    # re-deliver async delegations whose child finished but whose
     # result was not delivered before a crash. Boot calls it after task recovery.
     def self.recover_delegations = EXECUTOR.recover_delegations
     def self.app = APP

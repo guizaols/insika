@@ -75,7 +75,7 @@ module Insika
     end
   end
 
-  # Subagent graph integrity (RFC-0010 §4.4). Raised at DEFINITION-time
+  # Subagent graph integrity. Raised at DEFINITION-time
   # (CreateAgent/UpdateAgent/boot) by SubagentGraph.validate! — a subagents
   # allowlist that forms a cycle or exceeds the depth cap is a configuration
   # error, never a runtime surprise. A ValidationError so the authoring Command
@@ -101,7 +101,7 @@ module Insika
     end
   end
 
-  # Workflow I/O contract violation (item 22 / §4.4). A workflow may declare an
+  # Workflow I/O contract violation. A workflow may declare an
   # `input_schema` / `output_schema`; a value that does not conform is rejected.
   # INPUT is validated SYNCHRONOUSLY (TriggerWorkflow) so it is a ValidationError
   # -> HTTP 422, no run created. OUTPUT is validated inside the fiber after the
@@ -119,14 +119,14 @@ module Insika
     end
   end
 
-  # A channel could not hand a reply to its recipient (RFC-0011 §6.5). NOT a turn
+  # A channel could not hand a reply to its recipient. NOT a turn
   # failure: the turn already completed and its answer is durable in the session —
   # what failed is the delivery, which lives in the OutboxStore with its own status
   # and its own bounded retry. Raised by a channel's `deliver` so the dispatcher can
   # tell "the recipient refused" from "the engine has a bug".
   class DeliveryError < Error; end
 
-  # Strict configuration violation (item 23 / §8.1 — OpenClaw's config discipline:
+  # Strict configuration violation (— OpenClaw's config discipline:
   # "recusa boot com chave desconhecida, no silent config compat"). Raised by
   # EnvSchema.enforce! at boot ONLY when strictness is on (INSIKA_CONFIG_STRICT) —
   # by default a bad key WARNS and the engine still boots (last-known-good: a rotated

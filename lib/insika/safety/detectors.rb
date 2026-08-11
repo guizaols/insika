@@ -2,10 +2,10 @@
 
 module Insika
   module Safety
-    # SINGLE SOURCE of truth for content-safety pattern matching (RFC-0009 D4).
+    # SINGLE SOURCE of truth for content-safety pattern matching.
     #
     # Two families live here on purpose — the same lists back BOTH the runtime
-    # guardrail (§3.1/§3.2) AND the eval's `must_not` detectors (RFC-0008): the eval
+    # guardrail AND the eval's `must_not` detectors: the eval
     # is a CLIENT of the runtime by design, so `evals/lib/evals/assertions.rb`
     # requires THIS file rather than keeping a divergent copy. The runtime must never
     # depend on `evals/`, so the file is deliberately self-contained (pure Ruby +
@@ -16,10 +16,10 @@ module Insika
     #   · INPUT side (injection/abuse/sexual) — high-confidence heuristics that
     #     short-circuit the turn with a safe refusal BEFORE the LLM runs.
     #
-    # Everything here is CONSERVATIVE by design (RFC §6: a false positive blocks a
+    # Everything here is CONSERVATIVE by design (RFC: a false positive blocks a
     # legitimate customer). The deterministic layer catches only the gross,
     # unambiguous cases; the subtler judgment (social engineering, tone) is the LLM
-    # moderator's job (Fase C), not regex.
+    # moderator's job, not regex.
     #
     # LANGUAGE: the input heuristics are inherently language-specific. We ship pt-BR
     # + EN (the pilot + the OSS lingua franca) as a BEST-EFFORT net; other languages
@@ -40,7 +40,7 @@ module Insika
       # A run of the output stream that MIGHT still be growing into a PII/secret
       # match if more chunks arrive — anchored at the buffer tail. The OutputFilter
       # holds back from the start of such a run so a value split across chunk
-      # boundaries is never emitted in the clear (RFC §3.2 / D3). Covers the
+      # boundaries is never emitted in the clear (RFC). Covers the
       # unbounded `sk-…`/`Bearer …` case that a fixed window cannot.
       #
       # Crucially it also matches a PARTIAL literal PREFIX at the tail — a lone "s"

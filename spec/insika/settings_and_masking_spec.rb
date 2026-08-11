@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Phase 4 Step D (task 10 / D6): durable general settings + masking sentinel.
-RSpec.describe "Settings + masking (Phase 4 Step D)" do
+# durable general settings + masking sentinel.
+RSpec.describe "Settings + masking" do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(sink) = (@sink = sink); def emit(ev) = @sink << ev }.new(events) }
@@ -32,7 +32,7 @@ RSpec.describe "Settings + masking (Phase 4 Step D)" do
       expect(settings.get["compaction"]["keep_last"]).to eq(20)
     end
 
-    it "edge limits default OFF with the windows pre-filled (item 33)" do
+    it "edge limits default OFF with the windows pre-filled" do
       edge = settings.get["edge"]
       expect(edge["chat_rate_limit"]).to be_nil
       expect(edge["agent_token_ceiling"]).to be_nil

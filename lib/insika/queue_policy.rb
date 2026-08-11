@@ -3,7 +3,7 @@
 require_relative "coercion"
 
 module Insika
-  # RFC-0015 §4 — what happens to an inbound message for a session that is ALREADY
+  # what happens to an inbound message for a session that is ALREADY
   # busy. Today the engine has exactly one answer, "it waits in line"; this names
   # that answer `followup` and adds three others:
   #
@@ -32,7 +32,7 @@ module Insika
   # `turn_timeout` because they are bounds on the same thing — how much work one
   # turn is allowed to absorb.
   class QueuePolicy
-    # All four of RFC-0015 are delivered, so there is no "specified but unshipped"
+    # All four of are delivered, so there is no "specified but unshipped"
     # tier any more — a mode outside this set is a typo, and it is refused rather than
     # approximated. Treating an unknown mode as `followup` would look exactly like a
     # mode that never fires.

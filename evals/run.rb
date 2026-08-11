@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Eval runner CLI (RFC-0008). Replays the golden set against a RUNNING insika over
+# Eval runner CLI. Replays the golden set against a RUNNING insika over
 # POST /v1/responses and reports the verdict. On-demand (not CI): it needs a live
 # provider key + the target agents provisioned (see evals/README.md).
 #
@@ -15,13 +15,13 @@
 # The JUDGES come from `settings["evals"]` unless a flag overrides them: a panel of
 # distinct models is configuration, not a thing to remember on the command line.
 #
-# Exit code: non-zero if any eval case failed (the seed of the Fase C pre-merge gate).
+# Exit code: non-zero if any eval case failed (the seed of the pre-merge gate).
 
 require "optparse"
 require "time"
 require "json"
 require "fileutils"
-# The harness itself lives in the engine now (`Insika::Evals`, RFC-0013 §3.7) — one
+# The harness itself lives in the engine now (`Insika::Evals`) — one
 # evaluator, three callers: this CLI, the refinement gate, and the Studio. This file
 # is the CLI: flags, wiring, exit code.
 require_relative "../lib/insika"
@@ -35,15 +35,15 @@ opts = {
   out: nil,
   timeout: 120,
   # Optional golden.id -> conversation-id map (JSON). Needed when the target
-  # backend resolves state from a pre-existing conversation record (e.g. consumer-app
-  # requires a real Chat UUID as X-Chat-Id). Absent -> conv defaults to "eval-<id>".
+  # backend resolves state from a pre-existing conversation record (e.g. a
+  # consumer requiring a real Chat UUID as X-Chat-Id). Absent -> conv defaults to "eval-<id>".
   conv_map: nil,
-  # Judge (Fase B): the model that scores rubrics. Off unless a model is given
+  # Judge: the model that scores rubrics. Off unless a model is given
   # (via flag or EVAL_JUDGE_MODEL) — without it, rubric'd cases stay judge_pending.
   judge_model: ENV["EVAL_JUDGE_MODEL"],
   judge_provider: ENV["EVAL_JUDGE_PROVIDER"],
   quorum: 1,
-  # Fase C gating.
+  # gating.
   baseline: nil,
   tolerance: 0.05,
   update_baseline: false
@@ -86,10 +86,10 @@ rescue StandardError => e
 end
 
 # The judge PANEL: one entry per model. Flags win over `settings["evals"]["judges"]`,
-# which is where an operator configures them (RFC-0013 §3.9). Nil when there is nobody
+# which is where an operator configures them. Nil when there is nobody
 # to ask — rubric'd cases then read as judge_pending instead of silently passing.
 # The construction moved to `Insika::Evals::JudgePanel` when the refinement gate
-# became a second caller (RFC-0013 §3.7): the gate has to grade with the judges the
+# became a second caller: the gate has to grade with the judges the
 # operator configured, and two builders would drift. This is the CLI half — the
 # provider keys and the flag precedence.
 def build_judge(opts, settings)
@@ -144,7 +144,7 @@ transport = Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: o
 judge, judge_models = build_judge(opts, settings)
 judge_note = judge ? "judges=#{judge_models.join('+')}" : "judge=off"
 
-# Against the incumbent (RFC-0014 §3.4) — opt-in, because it is 2 provider calls per
+# Against the incumbent — opt-in, because it is 2 provider calls per
 # judge per case and it answers a different question from the suite's own verdict.
 # Asked for with no panel configured, it says so instead of running a silent no-op.
 pairwise = nil
@@ -162,7 +162,7 @@ end
 puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
 
 # What the deployment HAS, per agent — what a case's `requires` resolves against
-# (RFC-0014 §3.2). Same base_url and token as the replay; an unreachable or older
+# Same base_url and token as the replay; an unreachable or older
 # deployment answers nil and the case RUNS, warned about below.
 capabilities = Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
 runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map,
@@ -208,7 +208,7 @@ if %w[perf both].include?(opts[:mode])
   puts "  total p50/p95: #{pct(totals, 50)} / #{pct(totals, 95)} ms"
 end
 
-# --- gating (Fase C) ------------------------------------------------------------
+# gating ------------------------------------------------------------
 # With a baseline: block only on REGRESSIONS (a passing case that now fails, or a
 # judge score that dropped past --tolerance) — known failures don't wedge the gate.
 # --update-baseline accepts the current run as the new baseline. With no baseline at

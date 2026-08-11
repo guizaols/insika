@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # `insika doctor` (item 23 / §8.1 — OpenClaw's "strict config + doctor --fix",
+  # `insika doctor` (— OpenClaw's "strict config + doctor --fix",
   # "the repo's best productization discipline"). A read-only diagnosis of a
   # deployment's configuration that turns the scattered, silent boot warnings into
   # ONE structured report — and, with `--fix`, applies the safe autofixes.
@@ -155,7 +155,7 @@ module Insika
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
     end
 
-    # A half-configured relay is the silent kind of broken (RFC-0011 §6): with only
+    # A half-configured relay is the silent kind of broken: with only
     # the deliver URL set, nothing is mounted and every inbound POST 404s; with only
     # the token, the engine accepts turns it can never answer and the customer waits
     # forever on a reply that is sitting in the outbox. Both halves or neither.
@@ -176,7 +176,7 @@ module Insika
     end
 
     # The widget is the one PUBLIC channel, so its misconfigurations are the ones that
-    # cost money rather than just failing (RFC-0011 §5.3/§5.4). Three of them, in the
+    # cost money rather than just failing. Three of them, in the
     # order they bite: half the switch set (mounted nowhere, or mounted addressing
     # nothing), and a mount with no chat rate limit anywhere — which the channel
     # refuses with a 503 rather than opening, but which reads to an operator as "the

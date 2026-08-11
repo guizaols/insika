@@ -2,7 +2,7 @@
 
 module Insika
   module Wiring
-    # SHARED composition core for both roots (§12 G4 / §11.2 B4): the minimal wiring
+    # SHARED composition core for both roots: the minimal wiring
     # (config/wiring.rb) and the concrete deployment (config/deployment.rb) were two
     # near-identical composition roots. The duplication — backend→stores, event
     # stream, registries + policy builtins, capability registry, hooks, the Executor,
@@ -28,14 +28,14 @@ module Insika
         db && !db.empty? ? Insika::Stores::SQLite.new(path: db) : Insika::Stores::Memory.new
       end
 
-      # RFC-0019: an integer tick knob from the env, nil when unset (the caller's
+      # an integer tick knob from the env, nil when unset (the caller's
       # default wins). Dual-read honors the deprecated HARNESS_* alias.
       def tick_env(name, env = ENV)
         value = Insika::EnvSchema.read(name, env)
         value&.to_i
       end
 
-      # Phase 1 — the infra spine that is IDENTICAL across roots. `extra_policy_
+      # the infra spine that is IDENTICAL across roots. `extra_policy_
       # builtins` covers the one real divergence (the minimal wiring also registers
       # :workflow_allowlist; the deployment does not expose workflows).
       def spine(backend:, extra_policy_builtins: {})
@@ -45,14 +45,14 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
-        # RFC-0011 §6.4/§6.5: the two durable halves of a Shape B channel — the
+        # the two durable halves of a Shape B channel — the
         # replies still owed to a platform, and the retry window that stops a
         # redelivered webhook from becoming a second turn. Built unconditionally
         # (they are empty and free when no channel is registered) so a deployment
         # that turns a channel on later finds its state already durable.
         outbox_store         = Insika::OutboxStore.new(store: backend)
         inbound_log          = Insika::InboundLog.new(store: backend)
-        # RFC-0013 phase A: refinement RUNS (reports over real traffic). Runtime data,
+        # refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
         refinement_store     = Insika::RefinementStore.new(store: backend)
@@ -80,16 +80,16 @@ module Insika
         )
       end
 
-      # Phase 2 — assemble the graph on top of a spine.
+      # assemble the graph on top of a spine.
       #
       # tool_registry:     effective registry the Executor uses (plain REGISTRY at the
       #                    base; OverlayToolRegistry in the deployment).
       # guardrails:        a Safety::Factory — its input_guardrail becomes the single
       #                    middleware and its output_validator the after-task hook, so
-      #                    both wirings compose RFC-0009 identically.
+      #                    both wirings compose identically.
       # executor_extra:    optional Executor kwargs a root adds (deployment passes
       #                    settings_store + tool_trace_store; the base passes none).
-      # edge_limiter:      optional EdgeLimiter (item 33 / §12 G7). It goes BEFORE
+      # edge_limiter:      optional EdgeLimiter. It goes BEFORE
       #                    the InputGuardrail so a flood can't spend the LLM
       #                    moderator; nil = no edge (parity).
       def build(spine:, profiles:, tool_registry:, tool_catalog:, skill_catalog:,
@@ -105,7 +105,7 @@ module Insika
           policy_registry: spine.policy_registry, event_stream: spine.event_stream
         )
 
-        # RFC-0011 §6.5. Always built: the registry starts empty, so `record` finds no
+        # Always built: the registry starts empty, so `record` finds no
         # channel and returns nil on every turn — the cost of wiring it is one nil
         # check per completed turn, and the alternative is a second wiring path that
         # only production exercises.
@@ -123,15 +123,15 @@ module Insika
           workflow_registry: spine.workflow_registry, pending_action_store: spine.pending_action_store,
           capability_registry: spine.capability_registry, tool_catalog: tool_catalog,
           memory_store: spine.memory_store,
-          content_filter_factory: guardrails.content_filter_factory, # RFC-0009: stream redaction
-          delegation_store: spine.delegation_store, # RFC-0010 Fase 2: async delegation durability
-          channel_delivery: channel_delivery, # RFC-0011 §6.5: out-of-band reply delivery
+          content_filter_factory: guardrails.content_filter_factory, # stream redaction
+          delegation_store: spine.delegation_store, # async delegation durability
+          channel_delivery: channel_delivery, # out-of-band reply delivery
           **executor_extra
         )
 
         bus = build_core_bus(spine: spine, profiles: profiles, executor: executor)
 
-        # RFC-0019: the periodic tick (outbox drain + stale recovery sweep). Built
+        # the periodic tick (outbox drain + stale recovery sweep). Built
         # here, after the bus, because its recovery half dispatches resume_task
         # through it; handed to the Executor, which starts it as a child of the
         # turn supervisor in serving mode. `INSIKA_TICK_INTERVAL=0` disables.
@@ -164,7 +164,7 @@ module Insika
 
       # The CORE command surface every root needs — turn essentials + the operator
       # controls (pause/approve) the Studio dispatches. Registering pause_task/
-      # approve_action HERE is the crux of B4: it retires the config.ru:28-34 patch.
+      # approve_action HERE is the crux of: it retires the config.ru:28-34 patch.
       def build_core_bus(spine:, profiles:, executor:)
         bus = Insika::CommandBus.new
         bus.register(:create_session,

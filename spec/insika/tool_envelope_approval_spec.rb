@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# Approval gate (P2 task 7): the ToolEnvelope suspends via the coordinator
+# Approval gate: the ToolEnvelope suspends via the coordinator
 # when the tool is in requires_approval; Executor#request_approval is the
 # real coordinator (creates PendingAction, :waiting, await, store decision).
 RSpec.describe "ToolEnvelope — approval gate" do
@@ -80,7 +80,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
     expect(coord.requested).to be_empty
   end
 
-  describe "tool-call trace (FOLLOWUP §3.1)" do
+  describe "tool-call trace" do
     def traced_state(session_id:)
       profile = Insika::AgentProfile.build(id: "a", model: "m")
       task = Struct.new(:id, :session_id).new("t", session_id)
@@ -159,7 +159,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
         expect(task_store.find("t").status).to eq(:waiting)
         expect(event_stream.types).to include(:approval_requested)
 
-        # simulates the ApproveAction (task 8): resolves the store + posts :approval
+        # simulates the ApproveAction: resolves the store + posts:approval
         pending_store.resolve("t:1:charge", decision: :approved, operator: "op")
         actor.post(:approval)
         waiter.wait

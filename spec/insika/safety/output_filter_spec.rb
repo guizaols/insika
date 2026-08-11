@@ -30,7 +30,7 @@ RSpec.describe Insika::Safety::OutputFilter do
     end
   end
 
-  # THE critical guarantee (RFC §6): a value split across a chunk boundary at ANY
+  # THE critical guarantee (RFC): a value split across a chunk boundary at ANY
   # offset must NEVER be emitted in the clear.
   describe "split across a chunk boundary at every offset" do
     samples = {

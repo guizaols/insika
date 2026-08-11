@@ -1,7 +1,7 @@
-// Fixture HERMÉTICO (espelha o formato do plugin OpenClaw consumer-tools-dev):
-// registra 3 tools representativas p/ o spec do conversor. NÃO depende da fonte
-// externa. `search-faq` também existe como arquivo mas NÃO é registrado aqui —
-// prova que o conversor só emite as tools de api.registerTool(...).
+// HERMETIC fixture (mirrors the format of an OpenClaw tools plugin):
+// registers representative tools for the converter spec. It does NOT depend on
+// the external source. `search-faq` also exists as a file but is NOT registered
+// here — proving the converter only emits tools from api.registerTool(...).
 import { createSearchProductsTool } from "./tools/search-products.js";
 import { createSearchFaqTool } from "./tools/search-faq.js";
 import { createSendFinalizeButtonTool } from "./tools/send-finalize-button.js";

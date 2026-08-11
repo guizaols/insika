@@ -4,21 +4,21 @@ require "time"
 
 module Insika
   module Commands
-    # Control command (RFC-0013 phase C): takes a CANDIDATE for a completed
+    # Control command: takes a CANDIDATE for a completed
     # refinement run, validates it against the agent's write allowlist, and scores it
     # by actually running it — clone the agent, apply the edits to the clone, replay
-    # the golden set, compare to the accepted baseline (§3.5).
+    # the golden set, compare to the accepted baseline.
     #
     # Synchronous like `run_refinement`, and for the same reason: it is operator-paced
     # work with a human waiting on the answer. It is NOT cheap — the replay is a real
     # conversation per golden case — so it is fired deliberately, never on a timer
-    # (D8: the engine has no scheduler and this RFC does not add one).
+    # (the engine has no scheduler and this RFC does not add one).
     #
     # Payload:
     #   run_id     (required) a run in :completed — the evidence the candidate answers
     #   candidate  { proposer?, rationale?, edits: [ {file, op, anchor?, before, after,
     #              addresses?} ] } — or omit it and pass `propose: true` to have the
-    #              configured model(s) write one from the run's findings (§3.4).
+    #              configured model(s) write one from the run's findings.
     #   propose    truthy — write the candidate with the agent's proposer PANEL.
     #   tolerance  Float — overrides the configured judge-score tolerance for this gate
     #
@@ -30,14 +30,14 @@ module Insika
     # forgot the candidate should get an error, not a bill.
     #
     # Two refusals happen BEFORE anything is cloned, because both mean the operator
-    # has not actually enabled this: an agent still in `mode: report` (§3.8 — writing
+    # has not actually enabled this: an agent still in `mode: report` (writing
     # is opt-in and an absent config is report-only), and a candidate whose every edit
     # was dropped (stale, off-allowlist, over budget). Neither is worth a provider bill.
     #
-    # Phase D (§3.9) makes the proposal a PANEL and the run's spend a BUDGET. The
+    # makes the proposal a PANEL and the run's spend a BUDGET. The
     # command's shape does not change: N models write N candidates, the gate scores
     # each, and the best survivor is the one proposal a human is shown. A deployment
-    # with one proposer and no budget behaves exactly as phase C did.
+    # with one proposer and no budget behaves exactly as did.
     class GateRefinement
       WRITE_MODES = %w[propose auto_apply].freeze
 
@@ -49,7 +49,7 @@ module Insika
 
       # proposer_factory: ->(refinement_config) { [Refinement::Proposer] | Proposer | nil }.
       # Optional — a deployment with none can still gate a candidate that arrives from
-      # the API, which is exactly what phase C shipped before the proposer existed.
+      # the API, which is exactly what shipped before the proposer existed.
       # resolver: the :resolve_refinement handler, used ONLY for `mode: auto_apply`.
       # Reusing it rather than writing files here is what keeps auto-apply honest: it
       # goes through the same staleness re-check, the same versioned write and the
@@ -125,7 +125,7 @@ module Insika
       end
 
       # Editing an agent's instructions is opt-in, explicitly, per agent — the whole
-      # point of §3.1 is that the reachable surface is small and declared. An absent
+      # point of is that the reachable surface is small and declared. An absent
       # or `report` config is not "not configured yet", it is a NO.
       def require_write_mode!(config, agent_id)
         mode = Coercion.presence(config["mode"]) || "report"
@@ -148,7 +148,7 @@ module Insika
         raise ArgumentError, "run #{run.id} is #{run.status}, expected completed"
       end
 
-      # The model(s) write the candidates (§3.4/§3.9). Each is shown the run's findings
+      # The model(s) write the candidates. Each is shown the run's findings
       # and the CURRENT content of the allowlisted files only — the same allowlist the
       # builder then enforces, so a proposal cannot even name a file it may not touch.
       #
@@ -194,7 +194,7 @@ module Insika
         allow
       end
 
-      # `mode: auto_apply` (§3.6, D2) — the ONE path where a prompt changes with no
+      # `mode: auto_apply` — the ONE path where a prompt changes with no
       # human in the loop. Off by default and deliberately narrow: it needs the mode,
       # a gate PASS with zero regressions, and a diff under `auto_apply_max_edits`.
       # Everything else parks at :awaiting_approval, which is the product.
@@ -232,7 +232,7 @@ module Insika
       end
 
       # Counts and ids only, never file content: these events reach the operator
-      # stream and the same rule the findings follow applies here (§5).
+      # stream and the same rule the findings follow applies here.
       def emit(type, run, **data)
         @event_stream.emit(Insika::Event.new(
                              type: type,

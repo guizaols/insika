@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0020 — loop detection by (tool, args) hash, with a ONE-SHOT intervention.
+  # loop detection by (tool, args) hash, with a ONE-SHOT intervention.
   #
   # `max_tool_calls` bounds how MANY tool calls a turn makes, not how useful they
   # are: a model retrying the exact same call — same tool, identical arguments —
@@ -13,7 +13,7 @@ module Insika
   # long turn is not the pathology being caught, and semantic ("nearly the same")
   # matching is how a guard-rail starts eating legitimate retries.
   #
-  # Two invariants, both borrowed from SteerInjector (RFC-0015 §5.2), because the
+  # Two invariants, both borrowed from SteerInjector, because the
   # intervention is a `user` message appended mid-loop:
   #
   # · **Batch boundary only.** The append happens after the LAST tool result of a
@@ -24,12 +24,12 @@ module Insika
   #   model step; a warning appended there would sit unanswered forever.
   #
   # The repeated call itself STILL RUNS — fabricating a synthetic result would
-  # teach the model that tools lie (the failure RFC-0015 §6.4 refuses). The
+  # teach the model that tools lie (the failure refuses). The
   # warning rides after the truth; only a repeat that arrives AFTER the warning
   # was spent aborts, through the existing TimeoutError(stage: :tool_limit) path.
   class LoopDetector
     # The one intervention text, verbatim — a fixed engine sentence, so a report
-    # can identify it without an origin stamp (chat messages carry none; §4.4).
+    # can identify it without an origin stamp (chat messages carry none).
     def self.intervention(name, streak)
       "You have called `#{name}` with identical arguments #{streak} times in a row and " \
       "received the same result every time. Repeating it will not produce new information. " \

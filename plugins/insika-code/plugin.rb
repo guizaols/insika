@@ -8,12 +8,12 @@ require_relative "lib/insika_code/tools/write_file"
 require_relative "lib/insika_code/tools/edit_file"
 require_relative "lib/insika_code/tools/bash"
 
-# Autodiscoverable plugin (RFC-0003): the same shape as plugins/weather. The
+# Autodiscoverable plugin: the same shape as plugins/weather. The
 # module responds to `.register(api)`; the Loader requires this file and calls
 # it once at boot. Each tool is registered with a BLOCK factory (like the A2A
 # remote tools in config/wiring.rb) so the Executor gets a fresh instance per
 # turn — every instance shares one stateless, immutable core Sandbox
-# (`Insika::Sandbox::Env`, item 35).
+# (`Insika::Sandbox::Env`).
 #
 # The Sandbox is assembled from declarative config: `HARNESS_CODE_SANDBOX`
 # selects the provider (local [default] / docker) and `HARNESS_CODE_ROOT` the

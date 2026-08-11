@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# RFC-0017 A3 — the /v1 transport as a VALUE the host app mounts, instead of a
+# the /v1 transport as a VALUE the host app mounts, instead of a
 # server the engine starts.
 #
 #   mount Insika::Server.rack_app(INSIKA, token: ENV.fetch("INSIKA_TOKEN")), at: "/ai"
@@ -11,7 +11,7 @@
 # server boot now calls this instead of inlining it, which is what keeps the two
 # from drifting.
 #
-# The Studio is deliberately NOT part of this (the embed contract, item 4): it is
+# The Studio is deliberately NOT part of this (the embed contract): it is
 # a class-level singleton, so it is one per process, and a host that wants the
 # operator UI mounts `Studio::App` itself and accepts that limitation.
 
@@ -50,22 +50,22 @@ module Insika
           pending_action_store: @graph.pending_action_store,
           provisioner: Insika::PackImporter.new(bus: @graph.bus, profiles: @graph.profiles),
           # GET /v1/agents/:id — the read-only capability view a case's `requires`
-          # resolves against (RFC-0014 §3.2).
+          # resolves against.
           profiles: @graph.profiles,
-          # Item 20 / §5.6: the OSS onboarding surface (start.md + models.json + docs).
+          # the OSS onboarding surface (start.md + models.json + docs).
           # This is the primary "build my first agent" target — models.json reports the
           # DSL's stores + the agents this process serves (each id IS the `model`).
           onboarding: build_onboarding,
-          # Item 22: GET /v1/workflows + POST /v1/workflows/:name, opt-in by
+          # GET /v1/workflows + POST /v1/workflows/:name, opt-in by
           # injection like every other edge — nil when the system declares none,
           # so the routes simply do not exist (404, parity).
           workflow_registry: (@graph.workflow_registry if workflows?),
-          # RFC-0011: the bundled relay, when the env turns it on. Same rule as the
+          # the bundled relay, when the env turns it on. Same rule as the
           # OTEL bridge — a feature only `config.ru` can reach is a feature the
           # docs are half-true about.
           channels: (@graph.channel_registry if channels?),
           config: { gateway_token: @token }.merge(@config),
-          # B7: a 500's error_ref must be findable in the process log.
+          # a 500's error_ref must be findable in the process log.
           logger: $stdout
         )
       end

@@ -19,7 +19,7 @@ RSpec.describe Insika::SkillCatalog do
     File.write(File.join(path, "SKILL.md"), "---\n#{frontmatter}\n---\n#{body}\n")
   end
 
-  describe "#effective (Phase 0 allowlist)" do
+  describe "#effective (allowlist)" do
     before do
       write_skill(@root, "cardapio", name: "cardapio")
       write_skill(@root, "pedido", name: "pedido")
@@ -66,7 +66,7 @@ RSpec.describe Insika::SkillCatalog do
     end
   end
 
-  describe "Store overlay + reload (Step C)" do
+  describe "Store overlay + reload" do
     let(:store) { Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
     def skill_md(name, body) = "---\nname: #{name}\ndescription: d\n---\n#{body}\n"
 

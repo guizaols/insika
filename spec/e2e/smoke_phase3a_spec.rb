@@ -4,11 +4,11 @@ require "spec_helper"
 require "async"
 require_relative "../../lib/insika/server/a2a/app"
 
-# E2E smoke for Phase 3 slice A (P3A): drives the REAL Server::A2A::App#rpc/#agent_card
+# E2E smoke for: drives the REAL Server::A2A::App#rpc/#agent_card
 # over a CommandBus + handlers (create_session/send_message/cancel_task) + REAL
 # Executor, only the chat mocked (FakeChat via create_chat stub). Proves inbound
 # A2A federation end to end, without an API key.
-RSpec.describe "smoke E2E: A2A inbound adapter (slice A)", :smoke do
+RSpec.describe "smoke E2E: A2A inbound adapter",:smoke do
   let(:backend)          { Insika::Stores::Memory.new }
   let(:session_store)    { Insika::SessionStore.new(store: backend) }
   let(:task_store)       { Insika::TaskStore.new(store: backend) }

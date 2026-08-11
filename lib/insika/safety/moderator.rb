@@ -4,7 +4,7 @@ require "json"
 
 module Insika
   module Safety
-    # LLM content moderator (RFC-0009 Fase C / D2). The subtle tier the regex can't
+    # LLM content moderator. The subtle tier the regex can't
     # reach: social engineering (a fabricated prior promise), veiled hostility, tone.
     #
     # Pure over an injected `ask` callable (prompt -> raw model text), exactly like
@@ -13,9 +13,9 @@ module Insika
     #
     # FAIL-OPEN by construction: the deterministic layer already ran and caught the
     # gross cases, so an unparseable/failed moderator reply must NOT block a
-    # legitimate customer. Blocking is the high-stakes direction (RFC §6: a false
+    # legitimate customer. Blocking is the high-stakes direction (RFC: a false
     # positive turns away a real buyer). But fail-open is not a fake negative
-    # (RFC-0022 / B4): a moderator that could not answer returns the third state
+    # a moderator that could not answer returns the third state
     # `unavailable` — it does not block, and it is NOT recorded as a clean `allow`,
     # so a degraded tier is distinguishable from a healthy one in the audit stream.
     class Moderator
@@ -34,7 +34,7 @@ module Insika
 
       # Classifies a user message. Returns a Verdict; on ANY failure -> unavailable
       # (fail-open: never blocks, but never masquerades as a real `allow` either —
-      # RFC-0022). `context` is optional free text (e.g. the agent's domain) woven
+      # `context` is optional free text (e.g. the agent's domain) woven
       # into the prompt.
       def classify(message, context: nil)
         raw = @ask.call(build_prompt(message.to_s, context)).to_s
@@ -53,7 +53,7 @@ module Insika
         action = data["action"].to_s.strip.downcase
         # An out-of-enum action is a reply we cannot honor — normalize to
         # unavailable, not allow: inventing a negative the model never gave is the
-        # same ambiguity B4 removes.
+        # same ambiguity removes.
         action = "unavailable" unless ACTIONS.include?(action)
         category = data["category"].to_s.strip.downcase
         category = "safe" unless CATEGORIES.include?(category)

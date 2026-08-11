@@ -5,7 +5,7 @@ require "json"
 module Insika
   module Evals
     # Renders a run's [CaseResult] as a machine-readable JSON blob (for the baseline
-    # + gating in Fase C) and a human-readable markdown summary.
+    # gating in) and a human-readable markdown summary.
     # Pure over the results — takes a clock value in, never reads it (so callers stay
     # deterministic/testable).
     module Report
@@ -90,7 +90,7 @@ module Insika
         lines = ["# Eval report — #{at}", "",
                  "**#{h['passed']}/#{h['total'] - h['skipped']} passed** · #{h['failed']} failed" \
                  "#{" · #{h['skipped']} skipped" if h['skipped'].positive?}" \
-                 "#{" · #{h['judge_pending']} awaiting judge (Fase B)" if h['judge_pending'].positive?}", ""]
+                 "#{" · #{h['judge_pending']} awaiting judge" if h['judge_pending'].positive?}", ""]
         results.each do |r|
           if r.skipped?
             # WITH the reason, always: "12 skipped" alone is indistinguishable from a

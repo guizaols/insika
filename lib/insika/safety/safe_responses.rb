@@ -2,7 +2,7 @@
 
 module Insika
   module Safety
-    # Safe reply for a blocked turn (RFC-0009 D5/§7). A blocked turn NEVER returns a
+    # Safe reply for a blocked turn. A blocked turn NEVER returns a
     # raw error nor silence — it completes gracefully with one of these.
     #
     # CONFIGURATION OVER CONVENTION: this is OSS across arbitrary businesses and

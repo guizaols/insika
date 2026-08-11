@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Insika::Event do
-  describe "Phase 0 compatibility" do
+  describe " compatibility" do
     it "builds without meta (defaults to {})" do
       event = described_class.new(type: :content, data: { delta: "oi" })
       expect(event.meta).to eq({})
@@ -12,7 +12,7 @@ RSpec.describe Insika::Event do
       expect(event.to_h).to eq(type: :done, content: "oi", meta: {})
     end
 
-    it "reproduces the Phase 0 shape for all legacy types" do
+    it "reproduces the shape for all legacy types" do
       legados = {
         skill_activated: { name: "s" },
         tool_call: { name: "t", arguments: { q: 1 } },
@@ -23,7 +23,7 @@ RSpec.describe Insika::Event do
       }
       legados.each do |type, data|
         to_h = described_class.new(type: type, data: data).to_h
-        # Phase 0 shape: { type: type }.merge(data) — flat at the top
+        # shape: { type: type }.merge(data) — flat at the top
         expect(to_h).to eq({ type: type }.merge(data).merge(meta: {}))
       end
     end

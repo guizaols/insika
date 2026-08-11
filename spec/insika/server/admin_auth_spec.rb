@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../../lib/insika/server/admin_auth"
 
-# doc 07 §7: no token -> 503 (disabled), wrong/absent -> 401, correct -> 200.
+# no token -> 503 (disabled), wrong/absent -> 401, correct -> 200.
 RSpec.describe Insika::Server::AdminAuth do
   describe ".check (fail-closed)" do
     it "no token configured -> :disabled" do

@@ -5,7 +5,7 @@ module Insika
   # Namespace-scoped KV, transactional when the backend supports it.
   # Every implementation passes the SAME contract suite
   # (lib/insika/testing/store_contract.rb — requirable from outside the repo,
-  # RFC-0018 A4). Values must be JSON-serializable.
+  # Values must be JSON-serializable.
   #
   # scope: String — separates domains/tenants (e.g. "sessions", "tasks:tenant_x")
   # key:   Hierarchical String (e.g. "task:123", "checkpoint:123:turn:4")

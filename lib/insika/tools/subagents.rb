@@ -5,7 +5,7 @@ require_relative "agent_enum"
 
 module Insika
   module Tools
-    # PARALLEL fan-out of child agents (RFC-0010 §A): delegate N self-contained
+    # PARALLEL fan-out of child agents: delegate N self-contained
     # tasks at once and get all answers back together, in ONE parent turn. Sibling
     # of `spawn_subagent` (single); this one always sync-joins — the children run
     # concurrently (their provider waits overlap on the reactor) and the combined

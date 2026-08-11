@@ -4,7 +4,7 @@ require "securerandom"
 require "time"
 
 module Insika
-  # REFINEMENT DOMAIN store (RFC-0013, phase A). One record per refinement RUN:
+  # REFINEMENT DOMAIN store. One record per refinement RUN:
   # the window that was read, the ranked findings the EvidenceCollector produced,
   # and the run's outcome. RUNTIME data (it is derived from sessions/tasks/traces),
   # so it takes the raw `store:` like SessionStore/TaskStore — not the ConfigStore.
@@ -15,8 +15,8 @@ module Insika
   # Store contract orders lexicographically) and `latest_for` is its last element.
   # An agent id containing ":" would break that split, so it is rejected on write.
   #
-  # Phase A wrote no edits anywhere — a Run was a REPORT and every non-collecting
-  # status was terminal. Phase C (RFC-0013 §3.2) adds the rest of the lifecycle on
+  # wrote no edits anywhere — a Run was a REPORT and every non-collecting
+  # status was terminal. adds the rest of the lifecycle on
   # the SAME record, additively: a gated candidate and the operator's decision.
   #
   #   collecting ─▶ completed ─▶ gating ─▶ awaiting_approval ─▶ applied
@@ -24,13 +24,13 @@ module Insika
   #             ╰─▶ failed                    or the operator did)
   #
   # **The approval lives here, not in `PendingActionStore`** — a deliberate deviation
-  # from §3.6. That store is coupled to a suspended TURN: `ApproveAction` resolves
+  # from That store is coupled to a suspended TURN: `ApproveAction` resolves
   # the record and then calls `executor.approve(task_id)` to wake a fiber. A
   # refinement proposal has no turn and no fiber, so reusing it would mean inventing
   # a task id, a fake `tool` name, and a wake-up that must never do anything — and
   # the operator's approvals inbox would fill with rows that are not tool calls. The
-  # property §3.6 actually wanted is durability across a `kill -9`, and this store
-  # has had it since phase A.
+  # property actually wanted is durability across a `kill -9`, and this store
+  # has had it since.
   class RefinementStore
     include Coercion
 
@@ -42,7 +42,7 @@ module Insika
 
     # OPEN means "this run will change without anyone asking": work is in flight
     # (`collecting`, `gating`) or a human owes it an answer (`awaiting_approval`).
-    # Everything else is terminal — INCLUDING `completed`, which phase A already
+    # Everything else is terminal — INCLUDING `completed`, which already
     # treated that way and which stays true: a report is finished, and gating one is
     # a new deliberate action, not a continuation. (Widening `terminal?` here is what
     # the Studio's "latest report" lookup reads, so getting it wrong hides the report.)
@@ -50,7 +50,7 @@ module Insika
 
     # `candidate`/`gate` are the WINNER — the one proposal a human is asked about, and
     # the only thing `ResolveRefinement` ever applies. `candidates` is the whole panel
-    # (RFC-0013 §3.9, phase D): every candidate that was built, who wrote it, and how
+    # every candidate that was built, who wrote it, and how
     # it scored, including the ones that lost and the ones the budget never gated. A
     # phase-C run recorded one candidate and no panel; it still reads back correctly,
     # because a panel of one is the same shape.
@@ -118,7 +118,7 @@ module Insika
       end
     end
 
-    # -- phase C: the proposal's lifecycle -------------------------------
+    # the proposal's lifecycle -------------------------------
 
     # Attaches the candidate(s) under gate and moves the run to :gating. Only a
     # `completed` run can be gated: a report with no findings has nothing to propose
@@ -145,15 +145,15 @@ module Insika
     end
 
     # Records the gate's verdict. A PASS parks the run at :awaiting_approval — a
-    # human still has to say yes, which is the product and not a formality (D2). A
+    # human still has to say yes, which is the product and not a formality. A
     # FAIL is terminal as :rejected, with the gate report as the stated reason: the
     # same finding must re-surface with new evidence before anything is proposed
-    # again, so there is no silent retry loop (§3.6).
+    # again, so there is no silent retry loop.
     #
     # `report` is the WINNER's (or, when nothing survived, the most informative
     # refusal). `panel` is every scored entry — the store attaches it as-is and picks
     # the winning candidate out of it by id. Which candidate WON is the caller's
-    # ranking decision (§3.5); this store does not rank, it records. -> Run.
+    # ranking decision; this store does not rank, it records. -> Run.
     def gated(id, report:, panel: nil, cost: nil)
       update(id) do |record|
         unless record["status"] == "gating"

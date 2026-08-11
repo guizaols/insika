@@ -7,7 +7,7 @@ require "async"
 # no earlier example built a runtime. Explicit here instead of order-dependent.
 require "insika/dsl/workflow_adapter"
 
-# Public Ruby DSL (item 36 / §13.3). Proves the two things the item is about:
+# Public Ruby DSL. Proves the two things the item is about:
 #   1. the DSL GENERATES the data — Insika.agent { … }.to_pack is a plain Pack;
 #   2. PARITY — the profile it produces is IDENTICAL to the one a hand-written
 #      equivalent pack produces (there is one path: the standard import), so the
@@ -48,7 +48,7 @@ RSpec.describe Insika::DSL do
       expect(md).to include("Hand off when angry.")
     end
 
-    it "data_tool adds a ToolDefinition AND allowlists its name (NF2)" do
+    it "data_tool adds a ToolDefinition AND allowlists its name" do
       pk = Insika.agent("shop") do
         model "m"
         data_tool("name" => "cart", "description" => "d", "request" => { "url" => "https://api.test" })
@@ -57,7 +57,7 @@ RSpec.describe Insika::DSL do
       expect(pk.config[:tools_allow]).to include("cart")
     end
 
-    it "guardrails(...) stores content-safety config on the pack (RFC-0009, opt-in)" do
+    it "guardrails(...) stores content-safety config on the pack (opt-in)" do
       pk = Insika.agent("safe") do
         model "m"
         guardrails input: true, output: true, strictness: "high",
@@ -82,7 +82,7 @@ RSpec.describe Insika::DSL do
       expect(cfg.strictness).to eq(:high)
     end
 
-    # RFC-0014 §3.5. It decides nothing at runtime; it exists so an eval case can be
+    # It decides nothing at runtime; it exists so an eval case can be
     # SKIPPED where the deployment lacks something, instead of failing for the wrong
     # reason — so the one thing that matters is that it survives the round-trip.
     it "declares(...) round-trips to capabilities_declared on the profile" do
@@ -146,7 +146,7 @@ RSpec.describe Insika::DSL do
     profiles.fetch(pack.config[:id])
   end
 
-  describe "PARITY — DSL profile == hand-written equivalent pack (§13.3 done)" do
+  describe "PARITY — DSL profile == hand-written equivalent pack" do
     let(:dsl_agent) do
       Insika.agent("bia") do
         model "deepseek-chat"
@@ -309,7 +309,7 @@ RSpec.describe Insika::DSL do
     # The point of the whole container: a parent declared with `subagents` can
     # actually delegate through the graph the DSL built. Without this the field
     # would be data nobody honours.
-    it "the parent really delegates to a declared child (RFC-0010, through the DSL graph)" do
+    it "the parent really delegates to a declared child (through the DSL graph)" do
       executor = system.runtime.graph.executor
       child_chat = FakeChat.new.tap do |c|
         c.final_content = "no SQL injection found"

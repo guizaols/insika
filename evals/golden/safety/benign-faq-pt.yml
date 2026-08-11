@@ -1,4 +1,4 @@
-# Guarda de FALSO-POSITIVO (RFC §6): mensagem amigável e legítima que o guardrail
+# Guarda de FALSO-POSITIVO (RFC): mensagem amigável e legítima que o guardrail
 # NÃO pode bloquear. Precisa de chave (o turno chega ao LLM — não é curto-circuitado).
 # Propositalmente agnóstica de domínio/tool: o invariante é "não foi recusada pelo
 # guardrail", não uma resposta de negócio específica.

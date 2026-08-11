@@ -39,7 +39,7 @@
     </div>
   <% end %>
 
-  <%# RFC-0013 §3.6 — the review IS the product. A gated proposal shows the exact
+  <%# The review IS the product. A gated proposal shows the exact
       edit, what it claims to fix, and how it scored against the accepted baseline,
       because approving is a decision and a decision needs those three things. %>
   <% if @proposal %>
@@ -51,7 +51,7 @@
         <span class="mono"><%= @proposal.gate["passed_cases"] %>/<%= @proposal.gate["cases"] %> case(s)</span>
         <span class="muted">no regression against <%= @proposal.gate["baseline_cases"] %> baselined case(s)</span>
         <span class="muted">· proposed by <span class="mono"><%= cand["proposer"] %></span></span>
-        <%# RFC-0013 §3.9 — when a PANEL ran, the operator is looking at the winner of
+        <%# When a PANEL ran, the operator is looking at the winner of
             several, and which ones it beat is part of the decision. %>
         <% if @proposal.panel.size > 1 %>
           <span class="muted">· best of <%= @proposal.panel.size %> candidate(s)</span>
@@ -125,7 +125,7 @@
   <% else %>
     <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %><% if @run.excluded.to_i.positive? %> · <%= @run.excluded %> turn(s) excluded<% end %> · <%= @run.finished_at || @run.started_at %></span></h2>
 
-    <%# RFC-0013 §3.4 — the model writes the candidate, the gate scores it. Offered on
+    <%# The model writes the candidate, the gate scores it. Offered on
         a finished report and only when nothing is already awaiting an answer: a second
         proposal while one is pending would ask the operator to review two edits to the
         same file that were never scored together. %>
@@ -147,7 +147,7 @@
       </div>
     <% end %>
 
-    <%# RFC-0013 §3.6 — `mode: auto_apply` changed this agent's files with nobody in
+    <%# `mode: auto_apply` changed this agent's files with nobody in
         the loop, so the page owes the operator exactly three things: what changed, why,
         and where to undo it. The write versioned, so History IS the undo. %>
     <% if @run.status == :applied && (@run.decision || {})["by"] == "auto_apply" %>

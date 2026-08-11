@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # LLM-first onboarding surface (item 20 / §5.6). The "Flue trick": the insika
+  # LLM-first onboarding surface. The "Flue trick": the insika
   # serves, from itself, a `start.md` addressed to the DEVELOPER'S OWN coding agent
   # ("Read <base>/start.md then help me build my first agent") plus a machine-readable
   # `/models.json` and the public docs mirrored as raw markdown. It is `rails new`
@@ -31,7 +31,7 @@ module Insika
     MODELS_SCHEMA_VERSION = 1
 
     # The PUBLIC docs allowlist, repo-relative: slug => path. Explicit on purpose —
-    # the gitignored internal docs (FOLLOWUP / techspec / TRANSLATION-TRACKER / …)
+    # the gitignored internal docs (/ TRANSLATION-TRACKER / …)
     # are NEVER here, so /docs can only ever serve OSS material. Kept in sync with the
     # tracked `.md` prose (README + docs/*.md).
     PUBLIC_DOCS = {

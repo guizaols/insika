@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 7, Stage E: Command :import_mcp_tools — takes the MCP instance name,
+# Command:import_mcp_tools — takes the MCP instance name,
 # delegates to the ingestor (discover -> ingest) and emits :mcp_tools_imported with
 # counts only. Per-tool report in the same shape as :import_tools + `instance:`.
 RSpec.describe Insika::Commands::ImportMcpTools do

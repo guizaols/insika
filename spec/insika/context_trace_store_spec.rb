@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Per-session context breakdown (RFC-0023): tokens by category + budget per
+# Per-session context breakdown: tokens by category + budget per
 # turn, for the Studio session card. Counts and provider ids only — no content.
 RSpec.describe Insika::ContextTraceStore do
   subject(:store) { described_class.new(store: Insika::Stores::Memory.new) }

@@ -7,7 +7,7 @@ module Insika
   # The convention is YAML, but real packs carry PROSE in `description` — with `: `
   # (colon + space), quotes, parentheses — which STRICT YAML rejects
   # ("mapping values are not allowed in this context"). The OpenClaw gateway
-  # tolerates it; the insika has to tolerate it too (NF2: the same pack must hold).
+  # tolerates it; the insika has to tolerate it too (the same pack must hold).
   #
   # Strategy: try YAML (respects quoted / multi-line / lists); if the YAML
   # fails OR doesn't yield a Hash, fall back to a LINE-BY-LINE parse that splits on

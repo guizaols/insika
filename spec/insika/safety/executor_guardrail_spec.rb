@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# End-to-end guardrail behavior through the real Executor pipeline (RFC-0009):
+# End-to-end guardrail behavior through the real Executor pipeline:
 # graceful halt on the input side, stream redaction on the output side, and post-turn
 # flagging — with the real MiddlewareStack, Hooks and Safety::Factory wired in.
-RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
+RSpec.describe "Insika::Executor guardrails" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
@@ -45,7 +45,7 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
     end
   end
 
-  describe "input guardrail — graceful halt (§3.1)" do
+  describe "input guardrail — graceful halt" do
     before { session_store.create(id: "s1") }
 
     it "blocks an injection turn WITHOUT calling the LLM and completes with a safe reply" do
@@ -93,7 +93,7 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
     end
   end
 
-  describe "output filter — stream redaction (§3.2)" do
+  describe "output filter — stream redaction" do
     before { session_store.create(id: "s1") }
 
     it "redacts a CPF split across stream chunks, in the deltas AND the persisted content" do
@@ -113,7 +113,7 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
       expect(completed.data[:content]).to eq("aqui está: [REDACTED:cpf] pronto")
     end
 
-    # P19 moved the live stream to :intermediate, which the Studio renders. The
+    # moved the live stream to:intermediate, which the Studio renders. The
     # filter sits BEFORE the split, so the redaction covers both — a CPF must not
     # reach an operator's screen just because it is not the answer yet.
     it "redacts the live :intermediate deltas too, not only the published answer" do
@@ -151,7 +151,7 @@ RSpec.describe "Insika::Executor guardrails (RFC-0009)" do
     end
   end
 
-  describe "output validator — post-turn flag (§3.2)" do
+  describe "output validator — post-turn flag" do
     before { session_store.create(id: "s1") }
 
     it "emits guardrail_flagged for every flag the after_task hook appends, AFTER the terminal event" do

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Pairwise against the incumbent (RFC-0014 §3.4). Pure over injected `asks`, so the
+# Pairwise against the incumbent. Pure over injected `asks`, so the
 # whole protocol — anonymity, both orders, the panel tally — is testable with no LLM.
 RSpec.describe Insika::Evals::Pairwise do
   # A judge that answers by ORDER of the calls it receives. Records every prompt.
@@ -91,7 +91,7 @@ RSpec.describe Insika::Evals::Pairwise do
       expect(v.judges).to eq(%w[better better worse])
     end
 
-    # RFC-0014 §3.4: a split panel is reported as split, never averaged into a fake
+    # a split panel is reported as split, never averaged into a fake
     # verdict — "better" and "worse" do not average to "comparable".
     it "reports a tied panel as split instead of inventing agreement" do
       v = panel_of([json("A"), json("B")], [json("B"), json("A")])

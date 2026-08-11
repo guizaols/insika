@@ -1,4 +1,4 @@
-# RFC-0016 A6: a public repo runs its own tests on every PR. Deliberately
+# a public repo runs its own tests on every PR. Deliberately
 # minimal — no lint, no matrix, no coverage (those are separate decisions).
 name: CI
 

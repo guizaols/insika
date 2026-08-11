@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# Capability assembly sub-step in the Executor (P2B task 5). Tests the private
+# Capability assembly sub-step in the Executor. Tests the private
 # assembly methods (pure — no ruby_llm) + the ToolEnvelope consulting
-# impl_name. Full-pipeline integration is covered by the E2E smoke test (task 12).
-RSpec.describe "Insika::Executor — capability assembly (P2B)" do
+# impl_name. Full-pipeline integration is covered by the E2E smoke test.
+RSpec.describe "Insika::Executor — capability assembly" do
   # Instantiable "raw" tool with a stable name. Registered by BLOCK
   # (`register(name) { fake_tool(name) }`), as the smoke convention.
   def fake_tool(impl_name)
@@ -36,7 +36,7 @@ RSpec.describe "Insika::Executor — capability assembly (P2B)" do
   StateStub = Struct.new(:capability_names)
 
   describe "#resolve_capabilities" do
-    it "without capability_registry -> {} (Phase 1 parity)" do
+    it "without capability_registry -> {} (parity)" do
       exec = build_executor(cap_registry: nil)
       expect(exec.send(:resolve_capabilities, profile(capabilities: [:browse]), nil)).to eq({})
     end
