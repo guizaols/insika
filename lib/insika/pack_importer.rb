@@ -58,11 +58,13 @@ module Insika
     # its OWN pack (per-store isolation) and re-provisioning removes what left.
     #   - prompt_files = the pack's .md files (write_agent_file also registers;
     #     union is a no-op). Setting here makes the list authoritative (removes the ones that left).
-    #   - skills = the pack's skills/ dirs (explicit allowlist; [] if none in the
-    #     pack and config didn't declare any — never nil=all, which would leak
-    #     skills from other stores).
+    #   - skills = the pack's skills/ dirs (explicit allowlist; [] when the pack
+    #     has none — never nil=all, which would leak skills from other stores).
     #   - tools_allow = (config.tools_allow) ∪ (the pack's tool names) — guarantees
-    #     the agent can call its own data-tools (NF2).
+    #     the agent can call its own data-tools (NF2). [] when neither exists —
+    #     never nil=all: the ToolStore is GLOBAL, so a tool-less pack would
+    #     otherwise see every other store's tools (a Demo pack calling
+    #     store_set_location is exactly that leak).
     #   - tools_allow_groups = groups enabled by FLAG in the pack (see
     #     #enabled_groups) — the per-flag schema CUT (Phase 7, Stage E / D5): only
     #     the tools of the enabled groups (union with tools_allow) go to the model;
@@ -72,11 +74,11 @@ module Insika
       attrs = pack.config.dup
       attrs[:id] = id
       attrs[:prompt_files] = pack.files.keys unless pack.files.empty?
-      attrs[:skills] = pack.skills.keys if pack.skills.any? || pack.config.key?(:skills)
+      attrs[:skills] = pack.skills.keys
 
       pack_tools = pack.tools.map { |t| tool_name(t) }
       allow = Array(pack.config[:tools_allow]).map(&:to_s) | pack_tools
-      attrs[:tools_allow] = allow unless allow.empty? && !pack.config.key?(:tools_allow)
+      attrs[:tools_allow] = allow
 
       groups = enabled_groups(pack.config)
       attrs[:tools_allow_groups] = groups unless groups.nil?
