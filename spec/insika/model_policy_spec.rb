@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# LLM config v2 (§10): the per-agent model fence.
+# LLM config v2: the per-agent model fence.
 RSpec.describe Insika::ModelPolicy do
   describe ".allowed?" do
     it "nil policy = NO fence (every model allowed — parity)" do

@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 
 # Stage 6 variant integration (workflow) — fake PORO workflow, fake
-# collaborators from the task 12 suite. No ruby_llm.
+# collaborators from the suite. No ruby_llm.
 RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
@@ -28,8 +28,8 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
   end
 
   # The Engine emits :policy_denied on ITS OWN stream; the Executor is the
-  # correlated source (with seq) on the pipeline stream (doc 03 L3). Separate
-  # streams avoid a duplicate event — wiring decision (task 26).
+  # correlated source (with seq) on the pipeline stream (L3). Separate
+  # streams avoid a duplicate event — wiring decision.
   let(:engine_stream) { SpyEventStream.new }
 
   def build_executor(allowed_tools: [])
@@ -164,7 +164,7 @@ RSpec.describe "Executor: trigger_workflow (stage 6 variant)" do
     expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
   end
 
-  it "emits :workflow_started and :workflow_completed carrying run_id + typed I/O (item 22 / §4.4)" do
+  it "emits:workflow_started and:workflow_completed carrying run_id + typed I/O" do
     workflow_registry.register("flow", ->(input, **) { { "echo" => input } })
     executor = build_executor
 

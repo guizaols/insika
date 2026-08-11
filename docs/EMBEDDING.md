@@ -57,7 +57,7 @@ Rails' `mount` (and `Rack::URLMap`, and anything else that moves the prefix into
 
 ## Why the store is an argument
 
-Until RFC-0017 the engine was not one process — it was one *program*. Two graphs
+The engine was not always one process — it was one *program*. Two graphs
 built in the same Ruby process shared things they never declared:
 
 | What | What actually happened |

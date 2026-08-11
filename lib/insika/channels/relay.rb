@@ -8,7 +8,7 @@ require "uri"
 module Insika
   module Channels
     # The channel for an adopter who ALREADY owns a messaging integration
-    # (RFC-0011 §6). A WhatsApp BSP, a Zendesk, a legacy Rails app: they want the
+    # A WhatsApp BSP, a Zendesk, a legacy Rails app: they want the
     # engine for the TURN, not for the platform. Two routes and an envelope —
     #
     #   consumer --POST /channels/relay/events--> engine   acked now, never the reply
@@ -16,7 +16,7 @@ module Insika
     #
     # — and everything platform-shaped stays theirs: the 24-hour window, template
     # approval, media, read receipts, and how markdown becomes WhatsApp formatting
-    # (§6.3). That is the promise, not the limitation: an integration someone has
+    # That is the promise, not the limitation: an integration someone has
     # already tuned for years does not have to move for them to adopt the engine.
     # A relay that starts growing template logic has stopped being a relay.
     #
@@ -106,7 +106,7 @@ module Insika
           event_id: presence(body["event_id"]), vars: vars }
       end
 
-      # RFC-0011 §4.3 — the engine namespaces the platform's conversation key, so a
+      # the engine namespaces the platform's conversation key, so a
       # Slack channel id and a phone number can never collide, an operator can see
       # where a conversation came from, and an id minted for one channel cannot be
       # used to read another's session.

@@ -4,7 +4,7 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Insika::Recovery do
-  # REAL stores (tasks 06/07) over Memory + DOUBLE command_bus (doc 02 §7).
+  # REAL stores (tasks 06/07) over Memory + DOUBLE command_bus.
   let(:backend) { Insika::Stores::Memory.new }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
@@ -15,7 +15,7 @@ RSpec.describe Insika::Recovery do
                         command_bus: bus)
   end
 
-  # Minimal double — the real bus integration is task 13.
+  # Minimal double — the real bus integration is.
   class RecordingBus
     attr_reader :dispatched
 
@@ -255,7 +255,7 @@ RSpec.describe Insika::Recovery do
     end
   end
 
-  describe "integration with real CommandBus + ResumeTask handler (task 13)" do
+  describe "integration with real CommandBus + ResumeTask handler" do
     let(:profile) { Insika::AgentProfile.build(id: "a", model: "m") }
     let(:spawn_executor) do
       Class.new do
@@ -291,7 +291,7 @@ RSpec.describe Insika::Recovery do
       expect(spawn_executor.spawned).to eq(["t"])
     end
 
-    it "re-enqueues :queued task (turn queued at crash, P2-03) — not lost on kill -9" do
+    it "re-enqueues:queued task (turn queued at crash,-03) — not lost on kill -9" do
       # :queued = created but never started (no checkpoint). Before the fix,
       # running_or_interrupted ignored it and it was lost.
       task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "a" } }, id: "q")
@@ -302,7 +302,7 @@ RSpec.describe Insika::Recovery do
       expect(spawn_executor.spawned).to include("q") # re-run from scratch
     end
 
-    it "isolated failure: removed agent does not bring down the boot (doc 02 §6)" do
+    it "isolated failure: removed agent does not bring down the boot" do
       seed_task("ok", status: :running)
       seed_checkpoint("ok") # agent_id "a" -> ok
       seed_task("bad", status: :running)
@@ -330,7 +330,7 @@ RSpec.describe Insika::Recovery do
     end
   end
 
-  # RFC-0019: tick mode. Boot's premise ("nothing is alive") is false on a
+  # tick mode. Boot's premise ("nothing is alive") is false on a
   # timer, so candidates are only :queued/:running tasks untouched past the
   # threshold, and a ValidationError from the dispatch (ResumeTask's local
   # liveness check) SKIPS the task instead of failing it.
@@ -403,7 +403,7 @@ RSpec.describe Insika::Recovery do
       expect(result[:resumed]).to eq(["t"])
     end
 
-    describe "ValidationError from the dispatch (the E2 trap, defused)" do
+    describe "ValidationError from the dispatch (the trap, defused)" do
       subject(:recovery) do
         described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
                             command_bus: RecordingBus.new(raise_on: Insika::ValidationError.new("task 't' is running")))
@@ -432,7 +432,7 @@ RSpec.describe Insika::Recovery do
     end
   end
 
-  # RFC-0016 E2: the task sweep runs once per boot generation. The sweep's
+  # the task sweep runs once per boot generation. The sweep's
   # "orphaned :running" test is per-process, so N workers sweeping at once (or
   # a worker respawned while siblings hold live turns) would double-resume;
   # the claim makes the first worker per boot_id the only sweeper.

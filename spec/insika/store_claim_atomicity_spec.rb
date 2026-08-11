@@ -3,7 +3,7 @@
 require "tmpdir"
 require "fileutils"
 
-# E1 (RFC-0016 §6): a claim must be atomic ACROSS PROCESSES. Two SQLite handles
+# a claim must be atomic ACROSS PROCESSES. Two SQLite handles
 # on the same file — the honest stand-in for two Falcon workers — race the same
 # claim; exactly one may win. In-process serialization (the store's semaphore)
 # proves nothing here: each handle has its own; only SQLite's file locking can
@@ -19,7 +19,7 @@ require "fileutils"
 #     blocks at the lock and never reaches its read; the rendezvous times out,
 #     the winner proceeds alone, and the loser then reads the claimed status.
 # The timeout only weakens the magnification — it can never fake a pass.
-RSpec.describe "claim atomicity across SQLite handles (RFC-0016 E1)" do
+RSpec.describe "claim atomicity across SQLite handles" do
   # Two-party latch: each arrival waits (up to timeout) for the other.
   class ClaimRendezvous
     def initialize(timeout: 0.2)

@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../../lib/insika/server/app"
 
-# RFC-0011 §4.4 / §5 — the Shape A half of the channel mount: mint, turn, asset,
+# — the Shape A half of the channel mount: mint, turn, asset,
 # preflight. The cases worth writing are the ones where being wrong is a security
 # hole (a session someone else can use, a route that answers without the channel's
 # own check) rather than a cosmetic bug.
@@ -95,7 +95,7 @@ RSpec.describe "Insika::Server::App channels (Shape A)" do
       expect(sent.payload).to include(agent: "support", session_id: "web:abc", message: "oi")
     end
 
-    # §4.3: never create-on-write for a public channel — that is the enumeration
+    # never create-on-write for a public channel — that is the enumeration
     # hole `/sessions` exists to close, reopened.
     it "404s an unknown session and creates nothing" do
       app = build_app(channels: registry_with(web_channel), session: nil)

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0011 §6. The relay translates and authenticates, and does nothing else —
+# The relay translates and authenticates, and does nothing else —
 # every case here is one of those two, or the egress guard that stands between the
 # engine and a URL an operator typed.
 RSpec.describe Insika::Channels::Relay do
@@ -109,7 +109,7 @@ RSpec.describe Insika::Channels::Relay do
     end
   end
 
-  # §4.3: the engine namespaces the platform's key so a Slack channel id and a phone
+  # the engine namespaces the platform's key so a Slack channel id and a phone
   # number can never collide, and an id minted for one channel cannot read another's.
   describe "session correlation" do
     it "namespaces the external id and reads it back" do

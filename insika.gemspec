@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
     "rubygems_mfa_required" => "true"
   }
 
-  # ONE gem (RFC-0018 §4 item 1): lib/ — engine + server + Studio (assets/dist
+  # ONE gem: lib/ — engine + server + Studio (assets/dist
   # ships, the JS toolchain does not) — plus the public docs the onboarding
   # surface serves (/docs, start.md). config/, deploy/, Dockerfile and the
   # examples stay checkout-only: the reference deployment is not the gem.
@@ -55,7 +55,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["insika"]
   spec.require_paths = ["lib"]
 
-  # Runtime = what a turn and `serve` need (RFC-0018 A2). OpenTelemetry stays
+  # Runtime = what a turn and `serve` need. OpenTelemetry stays
   # OUT of this set: Telemetry requires it lazily, only when INSIKA_OTEL is on —
   # an adopter who wants it adds the gems (the reference deployment's Gemfile
   # does exactly that). The load guard (spec/insika/load_guard_spec.rb) is the

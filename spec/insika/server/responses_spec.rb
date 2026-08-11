@@ -5,7 +5,7 @@ require "async"
 require_relative "../../../lib/insika/server/responses"
 require_relative "../../../lib/insika/server/sse_body"
 
-# Phase 6 Stage A: OpenAI Responses adapter (/v1/responses) — drop-in for the
+# OpenAI Responses adapter (v1/responses) — drop-in for the
 # OpenClaw gateway. Tests request parsing and the Event->SSE frame map (fidelity
 # to the OpenclawDispatcher parser, R1).
 RSpec.describe Insika::Server::Responses do
@@ -65,7 +65,7 @@ RSpec.describe Insika::Server::Responses do
       expect(f).to end_with("data: [DONE]\n\n")
     end
 
-    it ":task_completed with usage -> response.completed carries usage (tokens) + model (Phase 6)" do
+    it "task_completed with usage -> response.completed carries usage (tokens) + model" do
       f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 12, output_tokens: 8,
                                                                    total_tokens: 20, model: "deepseek-chat" } }))
       expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
@@ -91,7 +91,7 @@ RSpec.describe Insika::Server::Responses do
       expect(described_class.frame_for(ev(:thinking, { delta: "deixa eu pensar" }))).to be_nil
     end
 
-    # P19. This consumer accumulates every delta into ONE WhatsApp message, so a
+    # This consumer accumulates every delta into ONE WhatsApp message, so a
     # frame here is a message a customer reads. Model text that did not turn out to
     # be the answer — the narration before a tool call, the reasoning-in-prose a
     # model emits when it has no tool to call — must not produce one.

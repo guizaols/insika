@@ -14,7 +14,7 @@
 # Requires DEEPSEEK_API_KEY (the deployment fails fast without the key). The durable
 # SQLite volume goes in INSIKA_DB (see Dockerfile/docs/DEPLOY.md).
 #
-# Recovery (RFC-0016 A2): each worker boots through Server::Boot, which sweeps
+# Recovery: each worker boots through Server::Boot, which sweeps
 # orphaned turns, undelivered delegations and channel replies BEFORE the listen.
 # The task sweep runs once per boot generation (INSIKA_BOOT_ID) — see
 # docs/DEPLOY.md "The process model".
@@ -29,7 +29,7 @@ require_relative "lib/insika/studio/app"     # management UI (Roda), under /stud
 W = Deploy::Wiring
 
 # pause_task/approve_action come from the shared graph core (Insika::Wiring::Graph,
-# §12 G4) — no longer patched in here.
+# — no longer patched in here.
 
 # fail-closed: without ADMIN_TOKEN, /studio denies login. The gateway falls back to
 # ADMIN_TOKEN when OPENCLAW_GATEWAY_TOKEN is not set (serve_real parity).
@@ -46,7 +46,7 @@ A2A_APP =
     )
   end
 
-# Onboarding surface (item 20 / §5.6) — OPT-IN in production via INSIKA_ONBOARDING.
+# Onboarding surface — OPT-IN in production via INSIKA_ONBOARDING.
 # Off by default: this deployment serves a private tenant, and start.md/docs/models
 # are OSS DX aimed at self-hosters. When enabled it reports the platform models
 # (masked — slugs + model ids only, no keys/urls), NOT the tenant's agent ids.
@@ -64,7 +64,7 @@ APP = Insika::Server::App.new(
   provisioner: W::PACK_IMPORTER, # POST/DELETE /v1/agents under the gateway_token
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
   onboarding: ONBOARDING, # nil unless INSIKA_ONBOARDING -> onboarding routes 404
-  channels: W::CHANNEL_REGISTRY, # RFC-0011: /channels/:id/events (empty registry -> 404)
+  channels: W::CHANNEL_REGISTRY, # /channels/:id/events (empty registry -> 404)
   config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"] }
 )
 
@@ -78,11 +78,11 @@ Studio::App.configure(
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
-  context_trace_store: W::CONTEXT_TRACE_STORE, # RFC-0023: context breakdown card
-  # §12 G5: tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
+  context_trace_store: W::CONTEXT_TRACE_STORE, # context breakdown card
+  # tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
-  # RFC-0013 phase A: the Refinement page reads the runs; the button dispatches
+  # the Refinement page reads the runs; the button dispatches
   # :run_refinement on the bus (the Studio never writes a store directly).
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
@@ -99,7 +99,7 @@ RACK_APP = Rack::URLMap.new(
   "/" => APP
 )
 
-# RFC-0016 A2: recovery BEFORE the listen, per worker. Boot's Sync only returns
+# recovery BEFORE the listen, per worker. Boot's Sync only returns
 # after the resumed turns finish, and Falcon only listens after `run`. Order
 # matters: the executor is still non-supervised here, so recovery replays
 # sequentially in Boot's transient reactor — `supervised = true` only after,
@@ -110,7 +110,7 @@ BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 # on the worker's reactor at the 1st turn) and survive the client disconnect.
 W::EXECUTOR.supervised = true
 
-# RFC-0016 A3: shutdown is a drain, not a kill. This replaces async-container's
+# shutdown is a drain, not a kill. This replaces async-container's
 # SIGINT/SIGTERM trap in THIS worker (config.ru loads per worker): the intake
 # closes, in-flight turns get up to INSIKA_DRAIN_TIMEOUT (default 20s), and only
 # then the ordinary Falcon teardown proceeds. entrypoint.sh sizes Falcon's

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# The `reference:` half of a pair (RFC-0014 §3.4), from the file to the report. The
+# The `reference:` half of a pair, from the file to the report. The
 # comparison itself is `pairwise_spec.rb`; this is the plumbing that has to keep the
 # incumbent's transcript intact — a case that silently loses its reference stops being
 # compared and the report looks exactly the same.
@@ -51,9 +51,9 @@ RSpec.describe "Insika::Evals reference" do
 
   describe "loading" do
     it "reads source + messages and reports the case as comparable" do
-      g = build(case_raw("source" => "consumer-app chat 42", "messages" => messages))
+      g = build(case_raw("source" => "consumer chat 42", "messages" => messages))
       expect(g.reference?).to be(true)
-      expect(g.reference_source).to eq("consumer-app chat 42")
+      expect(g.reference_source).to eq("consumer chat 42")
       expect(g.reference_messages.length).to eq(2)
       expect(g.human_assisted?).to be(false)
     end
@@ -86,7 +86,7 @@ RSpec.describe "Insika::Evals reference" do
         .to raise_error(Insika::Evals::GoldenLoader::InvalidGolden, /user or assistant/)
     end
 
-    # The same closed vocabulary the engine stamps (P23a): a typo'd marker reads as
+    # The same closed vocabulary the engine stamps: a typo'd marker reads as
     # "absent" downstream, which is how a human turn gets scored as the incumbent's.
     it "refuses an unknown origin instead of storing it" do
       expect { build(case_raw("messages" => [{ "role" => "assistant", "text" => "x", "origin" => "humano" }])) }

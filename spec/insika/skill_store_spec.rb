@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 4 Step C: shared authored skills (SKILL.md in the durable Store).
+# shared authored skills (SKILL.md in the durable Store).
 RSpec.describe Insika::SkillStore do
   subject(:store) { described_class.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
 

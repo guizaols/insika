@@ -36,7 +36,7 @@ The image boots **N Falcon worker processes over one SQLite file**
 (`WEB_CONCURRENCY`, default 1). That number is a **contract input, not a tuning
 knob**: it decides which engine semantics hold cluster-wide and which are
 per-worker. The default is 1 because the per-worker semantics are the product
-— the RFC-0015 queue modes (`collect`/`steer`) and FIFO ordering need one
+— the queue modes (`collect`/`steer`) and FIFO ordering need one
 session actor; raise N only with sticky routing per session in front. The
 contract:
 

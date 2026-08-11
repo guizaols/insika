@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Insika::CheckpointStore do
-  # Against Memory (real rollback, task 03) + SQLite ":memory:" smoke (doc 02 §7).
+  # Against Memory (real rollback) + SQLite ":memory:" smoke.
   subject(:checkpoints) { described_class.new(store: backend) }
 
   let(:backend) { Insika::Stores::Memory.new }
@@ -129,10 +129,10 @@ RSpec.describe Insika::CheckpointStore do
     end
   end
 
-  describe "crash-consistency (D4, doc 02 §7)" do
+  describe "crash-consistency" do
     # Backend that delegates to Memory but whose `delete` raises — the exception occurs
     # INSIDE the save transaction, AFTER the new checkpoint has already been
-    # written (set). The real rollback (task 03) must undo the set and preserve the
+    # written (set). The real rollback must undo the set and preserve the
     # standalone key.
     let(:faulty) do
       Class.new do

@@ -3,17 +3,17 @@
 require "spec_helper"
 
 RSpec.describe Insika::TaskStore do
-  # Against Memory; parity with SQLite guaranteed by the task 2 contract
-  # suite (doc 02 §7) + a SQLite ":memory:" smoke test.
+  # Against Memory; parity with SQLite guaranteed by the contract
+  # suite + a SQLite ":memory:" smoke test.
   subject(:tasks) { described_class.new(store: backend) }
 
   let(:backend) { Insika::Stores::Memory.new }
   let(:command) { { type: "send_message", payload: {}, meta: {} } }
 
-  describe "full transition matrix (doc 02 §7)" do
-    # Valid set transcribed from the table in doc 02 §2 (12 pairs ✓).
+  describe "full transition matrix" do
+    # Valid set transcribed from the table in (12 pairs ✓).
     valid = {
-      queued: %i[running cancelled failed], # +failed: P2-03 (failure starting while queued)
+      queued: %i[running cancelled failed], # failed:-03 (failure starting while queued)
       running: %i[waiting paused completed failed cancelled],
       waiting: %i[running cancelled failed],
       paused: %i[running cancelled]
@@ -52,7 +52,7 @@ RSpec.describe Insika::TaskStore do
 
     it "covers the 49 pairs (13 valid, 36 invalid)" do
       valid_count = described_class::STATUSES.sum { |s| valid[s].size }
-      expect(valid_count).to eq(13) # +1: queued->failed (P2-03)
+      expect(valid_count).to eq(13) # 1: queued->failed (03)
       expect(described_class::STATUSES.size**2).to eq(49)
     end
   end
@@ -219,16 +219,16 @@ RSpec.describe Insika::TaskStore do
     end
   end
 
-  describe "backend error propagation (doc 02 §6)" do
+  describe "backend error propagation" do
     it "lets StoreError propagate without re-wrapping" do
-      # non-JSONable command forces StoreError on write (C22); the TaskStore does not
-      # capture/re-wrap (doc 02 §6).
+      # non-JSONable command forces StoreError on write; the TaskStore does not
+      # capture/re-wrap.
       expect { tasks.create(command: { obj: Object.new }) }
         .to raise_error(Insika::StoreError)
     end
   end
 
-  describe "#append_message (RFC-0015 collect)" do
+  describe "#append_message (collect)" do
     let(:command) { { type: "send_message", payload: { "message" => "oi" }, meta: {} } }
 
     it "joins fragments onto a queued task's message" do

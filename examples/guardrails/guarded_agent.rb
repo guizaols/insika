@@ -13,7 +13,7 @@ guarded = Insika.agent("guarded") do
   provider :deepseek
   instructions "You are a helpful assistant."
 
-  # Declarative content safety (RFC-0009). `responses` overrides the safe reply
+  # Declarative content safety. `responses` overrides the safe reply
   # per category — this is config-over-convention, so tone/language is yours.
   guardrails input: true,
              output: true,

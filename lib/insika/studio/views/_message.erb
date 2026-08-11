@@ -1,4 +1,4 @@
-<%# Shared transcript bubble/tool-card (§11 A1/A2) — one visual language for the
+<%# Shared transcript bubble/tool-card — one visual language for the
     playground history, the optimistic echo and the read-only session viewer.
     Locals: m = stored message hash {"role","content","at"}; prev = the message before
     it in the thread, or nil (used only to spot a steered message). `content` may be a
@@ -22,7 +22,7 @@
           when it is NOT the natural producer for the role — otherwise every bubble
           would carry a label that says nothing. %>
       <% origin = Insika::MessageOrigin.origin_of(m) unless Insika::MessageOrigin.customer?(m) || Insika::MessageOrigin.agent?(m) %>
-      <%# STEERED (RFC-0015): a customer message sitting right after a tool result arrived
+      <%# STEERED: a customer message sitting right after a tool result arrived
           while the turn was running and was appended at a tool-batch boundary. Derived
           from position, not from a field — a steered message declares no origin, and it
           is right not to: a person typed it. Nothing else in the engine ever puts a user

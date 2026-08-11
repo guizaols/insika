@@ -4,11 +4,11 @@ require "securerandom"
 require "time"
 
 module Insika
-  # Durable record of one pending OUTBOUND reply (RFC-0011 §6.5). A Shape B
+  # Durable record of one pending OUTBOUND reply. A Shape B
   # channel answers out of band — the turn ends and the reply is POSTed to the
   # platform (or, for a relay, to the consumer's own callback) afterwards — so
   # "the answer exists but the recipient is not on this connection" is exactly
-  # the problem RFC-0010 Phase 2 already solved for async delegation. This store
+  # the problem already solved for async delegation. This store
   # is DelegationStore's shape with a different recipient, deliberately: a second
   # invention here would be a second thing to get wrong.
   #

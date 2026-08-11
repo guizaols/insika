@@ -7,12 +7,12 @@ require "insika/tools/load_skill"
 require "insika/tools/tool_search"
 require "insika/tools/remember"
 
-# E2E smoke for slice C (P2C): CommandBus + SendMessage + Executor + MemoryStore +
+# E2E smoke for: CommandBus + SendMessage + Executor + MemoryStore +
 # ContextBuilder REAL, only the chat mocked. Uses the real ContextBuilder (with the
 # Memory provider) — FakeContextBuilder does NOT run providers, so it would give a
 # false green on the cross-session read criterion. Tenant comes from the Command
-# (proves the D6 threading).
-RSpec.describe "smoke E2E: cross-session memory (slice C)", :smoke do
+# (proves the threading).
+RSpec.describe "smoke E2E: cross-session memory",:smoke do
   let(:backend)          { Insika::Stores::Memory.new }
   let(:session_store)    { Insika::SessionStore.new(store: backend) }
   let(:task_store)       { Insika::TaskStore.new(store: backend) }

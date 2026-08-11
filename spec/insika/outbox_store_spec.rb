@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0011 §6.5. The lifecycle is the whole contract: what the boot sweep may
+# The lifecycle is the whole contract: what the boot sweep may
 # re-drive, and what it must never touch.
 RSpec.describe Insika::OutboxStore do
   let(:store) { described_class.new(store: Insika::Stores::Memory.new) }

@@ -7,8 +7,8 @@ module Insika
   # Definition of a DATA-DEFINED TOOL (no Ruby code): name, description, parameters
   # and an HTTP call. Immutable value object, persisted by ToolStore and
   # materialized at runtime by Tools::DataDefinedTool (one class, N instances —
-  # the same pattern as A2ARemote). Phase 5, Step A; parameters migrated to JSON
-  # Schema in Phase 7, Step A.
+  # the same pattern as A2ARemote).,; parameters migrated to JSON
+  # Schema in,.
   #
   # Persisted form (JSON-serializable Hash; ConfigStore stringifies the keys):
   #   { "name", "description",
@@ -17,9 +17,9 @@ module Insika
   #     "response"   => { "extract","path" },
   #     "secret_headers" => [ "Authorization", ... ],
   #     "side_effect" => bool, "timeout" => int|nil,
-  #     "group" => string|nil, "tags" => [ "b2b", ... ] }  # Phase 7/D4/F5 (Step C)
+  #     "group" => string|nil, "tags" => ["b2b",...] }  #//
   #
-  # `parameters` is **JSON Schema** (the interlingua of OpenAI/Anthropic/MCP; Phase 7/D1):
+  # `parameters` is **JSON Schema** (the interlingua of OpenAI/Anthropic/MCP):
   # a nestable object, fed straight into RubyLLM's `params_schema` (provider-
   # agnostic). The **flat array** (`[{name,type,required}]`) is SUGAR for the simple
   # case: it is lifted to JSON Schema at build time. The sugar covers scalars and
@@ -30,7 +30,7 @@ module Insika
   # Validation lives HERE (single source): `build`/`from_h` raise ValidationError
   # on malformed input. Name uniqueness and collision with a code tool are NOT
   # validated here (the value object does not know the registry) — that belongs to the
-  # overlay (Step B). Secrets (credential headers) are the ToolStore's responsibility
+  # overlay. Secrets (credential headers) are the ToolStore's responsibility
   # (masks/reconciles); the definition itself is agnostic to masking.
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
@@ -49,7 +49,7 @@ module Insika
     EXTRACTS = %w[body_raw status json_path].freeze
     NAME_RE = /\A[a-z][a-z0-9_]*\z/               # identifier for the model
     # A `.` in the placeholder enables the turn-context namespace `{{ctx.*}}`
-    # (Phase 6/D2), separate from the model's `{{param}}`. Params follow NAME_RE (no
+    # separate from the model's `{{param}}`. Params follow NAME_RE (no
     # dot) -> a placeholder with a dot can only be a ctx ref.
     PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/
     # Turn-context namespace: values coming from the TURN (not the model),
@@ -108,7 +108,7 @@ module Insika
       )
     end
 
-    # Group (Phase 7/D4/F5): enablement label by DATA (not name convention),
+    # Group: enablement label by DATA (not name convention),
     # target of AgentProfile's `tools_allow_groups`. Trimmed; empty/nil -> nil.
     def self.normalize_group(group)
       g = group.to_s.strip
@@ -145,7 +145,7 @@ module Insika
     def self.empty_schema = { "type" => "object", "properties" => {}, "required" => [] }
     private_class_method :empty_schema
 
-    # Flat sugar -> JSON Schema. Preserves Phase 5 validation (NAME_RE, duplicates,
+    # Flat sugar -> JSON Schema. Preserves validation (NAME_RE, duplicates,
     # PARAM_TYPES) and lifts `array:<scalar>` into proper `items`.
     #
     # A bare `array` is REFUSED. It used to lift to `items: {type:"string"}` — the

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 phase A: turning real traffic into a ranked failure report, from the
+# turning real traffic into a ranked failure report, from the
 # durable data the engine ALREADY records (tasks + sessions + tool traces). No model
 # runs here and nothing is written to the agent.
 RSpec.describe Insika::Refinement::EvidenceCollector do
@@ -93,7 +93,7 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
     expect(finding.count).to eq(1)
     expect(finding.sessions).to eq(%w[s1])
     # The snippet goes through the SAME redaction as a customer-facing turn
-    # (RFC-0009's table: CPF/CNPJ/secrets). The raw value never reaches a report.
+    # ('s table: CPF/CNPJ/secrets). The raw value never reaches a report.
     expect(finding.detail).to include("[REDACTED:cpf]")
     expect(finding.detail).not_to include("123.456.789-00")
   end
@@ -103,7 +103,7 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
   # counting it produced 219 "the customer repeated themselves" on one agent.
   it "never counts an engine-injected context fragment as the customer speaking" do
     turn(session: "s1")
-    fragment = "<store_cep_obrigatorio> Ainda NÃO sei o CEP do cliente. A busca depende da loja."
+    fragment = "<store_cep_required> I still do NOT have the customer's postal code. The search depends on the store."
     conversation(id: "s1", messages: [
                    { "role" => "user", "content" => fragment },
                    { "role" => "assistant", "content" => "qual seu CEP?" },
@@ -125,7 +125,7 @@ RSpec.describe Insika::Refinement::EvidenceCollector do
     expect(collector.collect(agent_id: "bia").findings.map(&:kind)).to include(:repetition)
   end
 
-  # RFC-0015. `collect` merges the fragments a person types into one turn and `steer`
+  # `collect` merges the fragments a person types into one turn and `steer`
   # appends one into a run in flight, so a turn holding two customer messages is now
   # ordinary. Someone still typing is not someone repeating themselves, and a steered
   # message correctly declares no origin — so the reply between them is the only signal

@@ -16,7 +16,7 @@ module Insika
     :id, :model, :provider,
     :base_prompt, :prompt_files,
     :tools_allow, :tools_deny,
-    :tools_allow_groups,              # per-GROUP allowlist (Phase 7/D4/F5, Stage C):
+    :tools_allow_groups,              # per-GROUP allowlist:
     #                                   union with tools_allow; deny wins; both
     #                                   nil = all (parity). Expands to the group's
     #                                   tools in the ToolAllowlist policy.
@@ -30,7 +30,7 @@ module Insika
     :capabilities,                    # intents the agent can trigger.
     #                                   nil = NONE (opt-in, see above).
     :subagents,                       # allowlist of child agent ids this agent MAY spawn
-    #                                   (RFC-0010, item 21). CAPACITY field — NEVER inherits;
+    # CAPACITY field — NEVER inherits;
     #                                   opt-in like `capabilities`: nil/absent = NONE (do NOT
     #                                   "fix" to nil = all). Present => the `spawn_subagent`
     #                                   system tool is wired (ChatBuilder), gated by this set.
@@ -40,7 +40,7 @@ module Insika
     :memory,                          # cross-session memory.
     #                                   nil/false = OFF (parity: provider []; the `remember`
     #                                   tool not wired); true = ON. Same opt-in as capabilities.
-    :prompt_caching,                  # Anthropic prompt caching (§11 R3): nil/false = OFF
+    :prompt_caching,                  # Anthropic prompt caching (R3): nil/false = OFF
     #                                   (parity); true = ON. Same opt-in as `memory`. When ON
     #                                   AND the resolved provider is Anthropic, ChatBuilder sets
     #                                   ONE cache breakpoint at the end of the system block
@@ -50,34 +50,34 @@ module Insika
     #                                   a context provider injecting volatile content into
     #                                   :system turns every turn into a paid cache WRITE with
     #                                   no read hit. Enable only for stable-system agents.
-    :params,                          # LLM generation params (v2, §10): a Hash with
+    :params,                          # LLM generation params: a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
     #                                   stage 5. {} = provider defaults (parity).
-    :model_policy,                    # governance of WHICH models the agent may use (v2, §10):
+    :model_policy,                    # governance of WHICH models the agent may use:
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
-    :guardrails,                      # content-safety config (RFC-0009 §3.3): { input:, output:,
+    :guardrails,                      # content-safety config: { input:, output:,
     #                                   moderator:, strictness: }. OPT-IN like capabilities —
     #                                   nil/absent = the conservative default (Safety::Config:
     #                                   deterministic on, moderator off). Parsed, never a policy.
-    :sandbox,                         # confined-execution config (item 35, §4.6):
+    :sandbox,                         # confined-execution config:
     #                                   { provider: "local"|"docker", root:, timeout:, ...+provider
     #                                   keys }. Declarative provider selection (config-over-code) —
     #                                   consumed by Insika::Sandbox.build. {} = absent (a
     #                                   deployment builds a `local` sandbox by default). It is
     #                                   CONFIG, never a policy — it does not decide security by
     #                                   itself; the FS boundary + approvals do.
-    :refinement,                      # self-improvement config (RFC-0013 §3.8):
+    :refinement,                      # self-improvement config:
     #                                   { mode: "report"|"propose"|"auto_apply", window: {…},
     #                                   files: [allowlist], proposers: [refs], budget: {tokens:},
     #                                   auto_apply_max_edits:, max_findings:, … }. nil/absent =
-    #                                   REPORT-ONLY (phase A writes nothing to the agent, so
+    #                                   REPORT-ONLY (writes nothing to the agent, so
     #                                   reading your own traces needs no opt-in); `propose`
     #                                   and above must be enabled explicitly. It is CONFIG,
     #                                   never a policy — the write allowlist it carries is
     #                                   enforced by the applier, not by this field.
     :capabilities_declared,           # FACTS ABOUT THIS DEPLOYMENT that are not tools
-    #                                   (RFC-0014 §3.5): %w[promotions human_handoff
+    # %w[promotions human_handoff
     #                                   b2b_pricing]. An eval case declares what it
     #                                   `requires` and is SKIPPED — never failed — where
     #                                   the deployment lacks it, which is what makes one
@@ -106,7 +106,7 @@ module Insika
     #                                   default to inherit.
     :metadata                         # free-form agent metadata, stable per agent
     #                                   (from the pack `agent.config.json`). Home of the `store_id`
-    #                                   that becomes turn context (ctx.store_id, Phase 6/D2).
+    #                                   that becomes turn context (ctx.store_id).
     #                                   It is NOT a policy — never decides security. {} = absent.
   )
 
@@ -116,19 +116,19 @@ module Insika
     DEFAULT_LIMITS = {
       turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
       context_budget: 8_000, max_tool_calls: 50,
-      # RFC-0020: consecutive identical (tool, args) calls that trigger the ONE
+      # consecutive identical (tool, args) calls that trigger the ONE
       # loop warning; a repeat after it aborts like max_tool_calls. < 2 = off.
       max_tool_repeat: 3,
       approval_timeout: 3_600, # cap on the wait for human approval (~1h)
-      # Item 30: parallel tool calls. ONE number is both the switch and the cap
+      # parallel tool calls. ONE number is both the switch and the cap
       # (nil/0/1 = serial, the default; N > 1 = at most N tool calls in flight).
       # It sits next to tool_timeout/max_tool_calls because it is the third bound
       # on tool execution. Read through TurnState#tool_concurrency, which also
-      # applies the approval gate (D3).
+      # applies the approval gate.
       tool_concurrency: 1
     }.freeze
 
-    # `model` is OPTIONAL as of v2 (§10): an agent without one resolves the
+    # `model` is OPTIONAL as of v2: an agent without one resolves the
     # platform `default_model` (Settings) at turn start via the ModelResolver.
     def self.build(id:, model: nil, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
@@ -177,7 +177,7 @@ module Insika
     # per store, comes from the pack). `build` string-keys metadata, so a plain
     # string lookup is enough. nil = absent (the data-tool emits an empty header).
     # It is NOT consumer-specific: `store_id` is a field of the turn-context contract
-    # (§5), generic per project.
+    # generic per project.
     def store_id = (metadata || {})["store_id"]
 
     # May this channel (:thinking / :intermediate) cross to the customer? Tolerant

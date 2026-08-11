@@ -79,7 +79,7 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
-  # The MESSAGE BOUNDARY (P19). TurnOutput publishes `:content` only for the message
+  # The MESSAGE BOUNDARY. TurnOutput publishes `:content` only for the message
   # that ends the turn, and it learns which one that is from `after_message`. Three
   # gem facts hold that up; if any changes, intermediate text starts reaching the
   # customer again — the exact failure the mechanism exists to prevent, and one a
@@ -107,13 +107,13 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
-  # The PER-GRAPH CREDENTIAL boundary (RFC-0017 A2). `Executor#create_chat` asks
+  # The PER-GRAPH CREDENTIAL boundary. `Executor#create_chat` asks
   # an injected `llm` — a RubyLLM::Context — instead of the RubyLLM constant, on
   # the strength of two gem facts: a Context answers #chat with the SAME keywords,
   # and its config is a dup that neither reads nor writes the process-wide one. If
   # either stopped holding, two embedded graphs would go back to swapping keys with
-  # no error at all, which is exactly the failure A2 exists to make impossible.
-  describe "the per-graph credential boundary (what makes A2 safe)" do
+  # no error at all, which is exactly the failure exists to make impossible.
+  describe "the per-graph credential boundary (what makes safe)" do
     it "RubyLLM.context returns something that answers #chat like RubyLLM does" do
       expect(RubyLLM).to respond_to(:context)
       expect(RubyLLM.context).to respond_to(:chat)
@@ -142,7 +142,7 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
-  # The TOOL-BATCH boundary (RFC-0015 `steer`). SteerInjector appends a `user` message
+  # The TOOL-BATCH boundary (`steer`). SteerInjector appends a `user` message
   # after the LAST tool result of a batch, and every step of that is a gem fact: a
   # `user` message landing one result too early is rejected outright by Anthropic and
   # merely tolerated by OpenAI, so the failure would be per-provider and invisible here.
@@ -195,11 +195,11 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
-  # Item 30. Insika passes `concurrency:` to with_tools and nothing else — the cap
+  # Insika passes `concurrency:` to with_tools and nothing else — the cap
   # is ours (ToolAssembly#install_tool_gate), the mode selection is not exposed.
   # Everything below is a GEM fact our docs promise; if a version changes any of
   # them, the promise is wrong and this fails instead of production.
-  describe "parallel tool calls (item 30)" do
+  describe "parallel tool calls" do
     it "with_tools takes the concurrency: keyword ChatBuilder passes" do
       keywords = RubyLLM::Chat.instance_method(:with_tools).parameters.select { |k, _| k == :key }.map(&:last)
       expect(keywords).to include(:concurrency)
@@ -227,9 +227,9 @@ RSpec.describe "RubyLLM boundary contract" do
       RubyLLM.configure { |c| c.openai_api_key = previous }
     end
 
-    # F1: before_tool_call -> tool.call -> after_tool_result run in the SAME child
+    # before_tool_call -> tool.call -> after_tool_result run in the SAME child
     # fiber. This is what makes TurnState's fiber-storage correlation correct and a
-    # single mutable slot wrong (P11a).
+    # single mutable slot wrong.
     it "one fiber per call, spanning the whole callback/call/result cycle" do
       fibers = {}
       RubyLLM::ToolConcurrency.run(:fibers, { "a" => "a", "b" => "b" }) do |id|
@@ -242,7 +242,7 @@ RSpec.describe "RubyLLM boundary contract" do
       expect(fibers["a"].first).not_to eq(fibers["b"].first) # and a different one per call
     end
 
-    # F3 / D5: an exception in one call does NOT stop its siblings — every tool in
+    # an exception in one call does NOT stop its siblings — every tool in
     # the batch runs, and the raise surfaces after collection. That is why
     # `max_tool_calls` stops being exact under concurrency (up to N-1 extra tools
     # execute), which docs/TOOLS.md states rather than pretending otherwise.
@@ -260,7 +260,7 @@ RSpec.describe "RubyLLM boundary contract" do
       expect(ran.sort).to eq(%w[a b c])
     end
 
-    # F2 / D6: on_result fires in COMPLETION order, so the `role: tool` transcript
+    # on_result fires in COMPLETION order, so the `role: tool` transcript
     # messages are appended as results arrive, not in call order. Providers key
     # results by tool_call_id so the wire stays valid — see the Session provider
     # spec for the eviction-unit grouping that has to tolerate it.
@@ -275,7 +275,7 @@ RSpec.describe "RubyLLM boundary contract" do
       expect(order).to eq(%w[fast slow])
     end
 
-    # D7. The map assumed the turn timeout would CANCEL tool calls in flight,
+    # The map assumed the turn timeout would CANCEL tool calls in flight,
     # because the gem nests `Async{}` under our task. It does not, and this is the
     # spec that says so: `with_timeout` raises in the fiber blocked on `.wait`, and
     # an Async task does not finish before its children do — so the turn timeout
@@ -310,7 +310,7 @@ RSpec.describe "RubyLLM boundary contract" do
     expect(keywords).to include(:effort)
   end
 
-  # §11 R1 rehydration: the seeded history must SURVIVE as tool calls/results, or
+  # R1 rehydration: the seeded history must SURVIVE as tool calls/results, or
   # the model stops seeing the tools it already called.
   it "a seeded message keeps the tool_calls/tool_call_id ChatBuilder rehydrates" do
     call = RubyLLM::ToolCall.new(id: "call_1", name: "search", arguments: { "q" => "x" })
@@ -328,7 +328,7 @@ RSpec.describe "RubyLLM boundary contract" do
     expect(RubyLLM::Thinking.public_instance_methods).to include(:text) # emit_thinking reads chunk.thinking.text
   end
 
-  # §11 R3 prompt caching: no double reaches this path (a fake chat has no model,
+  # R3 prompt caching: no double reaches this path (a fake chat has no model,
   # so anthropic_provider? is false and caching stays off) — assert the shape here.
   it "Anthropic's Content takes cache: true (the prompt-cache breakpoint)" do
     content = RubyLLM::Providers::Anthropic::Content.new("system text", cache: true)

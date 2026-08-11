@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Insika public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE (item 37).
+# Insika public benchmark — NEUTRAL, REPRODUCIBLE, PROVIDER-FREE.
 #
 # Measures the ENGINE OVERHEAD of a turn: everything the insika does around the
 # model — context build, policy, guardrail detectors, chat assembly, the tool

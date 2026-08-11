@@ -84,7 +84,7 @@ footer_content: >-
   Insika is MIT-licensed. Reading this as an agent? <a href="/insika/llms.txt">llms.txt</a>
   indexes these docs as raw markdown.
 
-# Everything that is NOT public docs. The internal material (FOLLOWUP, techspec,
+# Everything that is NOT public docs. The internal material (design docs,
 # internal/, the handoff bundle) is gitignored and therefore absent from a CI
 # checkout — it is listed anyway so a LOCAL preview can never publish it either.
 exclude:

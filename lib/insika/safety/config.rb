@@ -2,7 +2,7 @@
 
 module Insika
   module Safety
-    # Per-agent guardrail configuration (RFC-0009 §3.3 / D6), read from
+    # Per-agent guardrail configuration, read from
     # `profile.guardrails`. OPT-IN like `capabilities`: an agent that says nothing
     # gets the CONSERVATIVE default — deterministic detectors ON, LLM moderator OFF.
     #
@@ -18,7 +18,7 @@ module Insika
     #     responses:  { <category> => "<safe reply>", ... }  # per-agent override, see below
     #   }
     #
-    # `responses` is the CONFIGURATION-OVER-CONVENTION knob (RFC-0009 §7). The engine
+    # `responses` is the CONFIGURATION-OVER-CONVENTION knob. The engine
     # ships neutral built-in refusals (Safety::SafeResponses::DEFAULTS), but this is
     # OSS across arbitrary businesses/languages, so we never hard-bake tone: an agent
     # overrides the safe reply per category (`injection`/`sexual`/`abuse`/`escalate`/

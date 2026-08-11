@@ -1,4 +1,4 @@
-# FALSE-POSITIVE guard (RFC §6): a friendly, legitimate message the guardrail must
+# FALSE-POSITIVE guard (RFC): a friendly, legitimate message the guardrail must
 # NOT block. Needs a provider key (the turn reaches the LLM — it is not
 # short-circuited). Deliberately domain/tool-agnostic: the invariant is "not refused
 # by the guardrail", not any specific business answer.

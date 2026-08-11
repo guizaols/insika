@@ -17,7 +17,7 @@ module Insika
           messages = transcript_for(request)
           return [] if messages.nil? || messages.empty?
 
-          # 1 fragment per EVICTION UNIT (§11 R1): a plain message, OR an
+          # 1 fragment per EVICTION UNIT (R1): a plain message, OR an
           # assistant-with-tool_calls together with its tool results. Grouping at
           # the fragment level means the budget cut (apply_budget) drops a whole
           # tool cycle atomically — a tool_use is NEVER seeded without its result

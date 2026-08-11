@@ -30,8 +30,8 @@ module Studio
   # Same-origin assets: versioned esbuild bundle in `assets/dist/*`, served
   # by `/studio/assets/dist/*`. Strict `'self'` CSP (no `unsafe-inline`).
   class App < Roda
-    include Forms     # form -> command-payload parsing (§11 B6)
-    include NavIcons  # nav SVG helper (§11 B6)
+    include Forms     # form -> command-payload parsing
+    include NavIcons  # nav SVG helper
 
     # The session cookie lives N days. 7 days = parity with the OpenClaw default.
     SESSION_MAX_AGE = 7 * 24 * 3600
@@ -90,7 +90,7 @@ module Studio
           event_stream: event_stream, config: config,
           agent_file_store: agent_file_store, skill_store: skill_store,
           skill_catalog: skill_catalog, tool_catalog: tool_catalog,
-          # tool_store: DATA-DEFINED tool definitions (Phase 5). The catalog already
+          # tool_store: DATA-DEFINED tool definitions. The catalog already
           # shows the data-tools in the matrix; the store feeds the authoring page.
           tool_store: tool_store,
           memory_store: memory_store, session_store: session_store,
@@ -99,20 +99,20 @@ module Studio
           settings_store: settings_store, llm_provider_store: llm_provider_store,
           mcp_store: mcp_store, system_file_store: system_file_store,
           # per-session tool-call trace (debug): args + result + status per
-          # turn, rendered in the session viewer (FOLLOWUP §3.1).
+          # turn, rendered in the session viewer.
           tool_trace_store: tool_trace_store,
-          # per-session context breakdown (RFC-0023): tokens by category +
+          # per-session context breakdown: tokens by category +
           # budget per turn, on the same viewer. Counts only, no content.
           context_trace_store: context_trace_store,
-          # operate: tasks + human-in-the-loop approvals (§12 G5). Reads the
+          # operate: tasks + human-in-the-loop approvals. Reads the
           # task/checkpoint/pending stores to render; controls (pause/resume/
           # cancel/approve) dispatch on the bus — parity with server/admin.
           task_store: task_store, checkpoint_store: checkpoint_store,
           pending_action_store: pending_action_store,
-          # refinement runs (RFC-0013 phase A): the ranked failure report per agent.
+          # refinement runs: the ranked failure report per agent.
           # Read-only here; the "Run" button dispatches :run_refinement on the bus.
           refinement_store: refinement_store,
-          # eval cases (RFC-0008 §3.1): read to render; writes go through :write_golden.
+          # eval cases: read to render; writes go through:write_golden.
           golden_store: golden_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
@@ -402,7 +402,7 @@ module Studio
 
       # --- Tools: tool × agent matrix + DATA-DEFINED tool authoring -----------
       r.on "tools" do
-        # Data-defined tool authoring (Phase 5). Under /tools/def/* — BEFORE the
+        # Data-defined tool authoring. Under /tools/def/* — BEFORE the
         # generic `r.post String` matcher (which is the allow/deny matrix per agent :id).
         r.on "def" do
           # /studio/tools/def/new — empty editor.
@@ -487,7 +487,7 @@ module Studio
           end
         end
 
-        # Platform model defaults (sub-resource, v2 §10): its own form/route so a
+        # Platform model defaults (sub-resource, v2): its own form/route so a
         # general-settings save never clobbers the model layer.
         r.post "models" do
           check_csrf!
@@ -497,7 +497,7 @@ module Studio
           r.redirect("/studio/settings?s=models")
         end
 
-        # Per-model reasoning defaults (§10, the per-model layer): its own form so a
+        # Per-model reasoning defaults (the per-model layer): its own form so a
         # model-defaults save never clobbers the per-model map, and vice-versa.
         r.post "model-params" do
           check_csrf!
@@ -507,7 +507,7 @@ module Studio
           r.redirect("/studio/settings?s=models")
         end
 
-        # Edge limits (item 33 / §12 G7): the platform rate-limit/cost layer.
+        # Edge limits: the platform rate-limit/cost layer.
         # Its own form for the same reason as models — saves never cross-clobber.
         r.post "edge" do
           check_csrf!
@@ -517,7 +517,7 @@ module Studio
           r.redirect("/studio/settings?s=edge")
         end
 
-        # Evals (RFC-0008 / RFC-0013 §3.9): the judge PANEL and how it agrees. Its own
+        # Evals: the judge PANEL and how it agrees. Its own
         # form, like models and edge — a save here must not clobber those.
         r.post "evals" do
           check_csrf!
@@ -622,14 +622,14 @@ module Studio
             # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
-            # Context breakdown per turn (RFC-0023): chronological entries.
+            # Context breakdown per turn: chronological entries.
             @context_traces = insika[:context_trace_store]&.for_session(sid) || []
             view("session")
           end
         end
       end
 
-      # --- Tasks: list + detail + operator controls (§12 G5) -------
+      # Tasks: list + detail + operator controls -------
       # Parity with server/admin: READS the task/checkpoint/pending stores to
       # render; pause/resume/cancel dispatch Commands on the bus (never a direct
       # store write). Every control audits the ATTEMPT to the EventStream first.
@@ -663,7 +663,7 @@ module Studio
         end
       end
 
-      # --- Approvals: human-in-the-loop inbox (§12 G5) -------------
+      # Approvals: human-in-the-loop inbox -------------
       # Lists every :pending action across tasks; resolving one dispatches
       # :approve_action, which resolves the store AND wakes the suspended turn.
       r.on "approvals" do
@@ -682,7 +682,7 @@ module Studio
         end
       end
 
-# --- Evals: the cases that grade an agent (RFC-0008 §3.1) -------
+# Evals: the cases that grade an agent -------
 # A case is DATA in the same YAML shape the corpus files use, so what an operator
 # edits here is what a pull request would review. The one loader validates it, on
 # the way in — a malformed case is a red flash, never a silently skipped test.
@@ -707,8 +707,8 @@ r.on "evals" do
 end
 
       # --- Refinement: what broke in real traffic, and what to do about it --
-      # `POST /refinement` runs the report (RFC-0013 phase A). `POST
-      # /refinement/propose` is phase C: the configured model writes a candidate from
+      # `POST /refinement` runs the report. `POST
+      # refinement/propose` is: the configured model writes a candidate from
       # the findings and the gate scores it by replaying the golden set. `POST
       # /refinement/resolve` is a human approving or rejecting what the gate passed.
       # All three go through the bus like every other Studio write — this page reads
@@ -760,7 +760,7 @@ end
           @agent = presence(r.params["agent"]) || default_agent
           @session_id = presence(r.params["session_id"])
           @agents = insika[:profile_source].ids.sort
-          # Server-side echo + continuity (§11 A1): render the session's persisted
+          # Server-side echo + continuity: render the session's persisted
           # transcript as bubbles. The user's message is only persisted at the END
           # of the turn, so the just-sent message rides a one-shot flash bubble
           # (@sent_message) until it lands in history — an optimistic JS echo can't
@@ -777,7 +777,7 @@ end
           # Blank session = new conversation: created via Command (create_session
           # generates the id — the Studio doesn't write to the store directly). A typed id
           # continues an existing conversation (send_message requires it to exist).
-          # The per-chat model pin (v2, §10) is set at creation and rides the whole
+          # The per-chat model pin is set at creation and rides the whole
           # conversation, so it only applies to a NEW session — an existing one keeps
           # whatever it was pinned to.
           session_id = typed_session ||
@@ -785,7 +785,7 @@ end
                                       provider: presence(r.params["provider"]),
                                       thinking: presence(r.params["thinking"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
-          # Optimistic echo of the just-sent message (§11 A1): survives the redirect
+          # Optimistic echo of the just-sent message: survives the redirect
           # as a one-shot flash, rendered as a user bubble on the next GET.
           flash["sent_message"] = message unless message.empty?
           r.redirect(playground_path(agent, session_id))
@@ -835,7 +835,7 @@ end
       ]
     end
 
-    # NAV_ICONS + nav_icon moved to Studio::NavIcons (§11 B6).
+    # NAV_ICONS + nav_icon moved to Studio::NavIcons.
 
     def authenticated? = session["auth"] == true
 
@@ -919,7 +919,7 @@ end
 
     # A stored message's content for display: strings as-is; structured payloads
     # as pretty JSON. NEVER Ruby #inspect (session.erb:45 leaked hashrockets to the
-    # operator). §11 A2.
+    # operator)..
     def message_content(content)
       return content.to_s if content.is_a?(String)
 
@@ -986,11 +986,11 @@ end
       end
       @all_skills = insika[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
-      # v2 (§10) config surfaces: generation params + model fence. AgentProfile.build
+      # v2 config surfaces: generation params + model fence. AgentProfile.build
       # string-keys these hashes, so the form helpers read plain string keys.
       @params = @agent.params
       @model_policy_allow = model_policy_allow(@agent)
-      # guardrails config (RFC-0009); nil when the agent never configured any.
+      # guardrails config; nil when the agent never configured any.
       @guardrails = @agent.guardrails || {}
       mem = insika[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
@@ -1008,7 +1008,7 @@ end
     end
 
     # Renders the reasoning <select> shared by the agent config, settings and
-    # playground (§10, 4-layer). `blank_label` names the empty option — the
+    # playground (4-layer). `blank_label` names the empty option — the
     # "inherit the broader layer" / provider-default choice. Values come from a
     # fixed constant (safe to emit); `current` is only compared, never output.
     def thinking_select(name, current, blank_label)
@@ -1052,11 +1052,11 @@ end
 
     # Config patch from the form (native types: memory bool, limits int).
     # Preserves the existing limits, overwriting only the form's fields.
-    # `model` is OPTIONAL as of v2 (§10): blank clears it, so the agent inherits
+    # `model` is OPTIONAL as of v2: blank clears it, so the agent inherits
     # the platform `default_model` via the ModelResolver — the config form is the
     # place that surfaces that layering. params/model_policy: see the helpers below.
     # config_patch/guardrails_patch/guardrail_responses_patch/params_patch/
-    # model_policy_patch/coerce moved to Studio::Forms (§11 B6).
+    # model_policy_patch/coerce moved to Studio::Forms.
 
     # --- Skills index --------------------------------------------------------
 
@@ -1142,7 +1142,7 @@ end
       tools.count { |t| allow.include?(t.name.to_s) && !tool_denied_for?(profile, t.name) }
     end
 
-    # --- Data-defined tool authoring (Phase 5) -------------------------------
+    # Data-defined tool authoring -------------------------------
 
     def render_tool_edit(name:, tool:)
       @tool_name = name
@@ -1169,7 +1169,7 @@ end
       }
     end
 
-    # tool_patch/parse_parameters moved to Studio::Forms (§11 B6).
+    # tool_patch/parse_parameters moved to Studio::Forms.
 
     # Inverse of parse_parameters: the stored params -> text for the textarea. A schema
     # the flat sugar can express round-trips as pipe lines (the friendly form); anything
@@ -1341,7 +1341,7 @@ end
     # Settings patch from the form. streaming is a bool (checkbox); the timeouts
     # are integers. Only what came in the form enters the patch (the rest and
     # the defaults are preserved in the store).
-    # settings_patch/model_defaults_patch/provider_patch moved to Studio::Forms (§11 B6).
+    # settings_patch/model_defaults_patch/provider_patch moved to Studio::Forms.
 
     # --- MCP -------------------------------------------------------
 
@@ -1350,7 +1350,7 @@ end
       view("mcp")
     end
 
-    # mcp_patch moved to Studio::Forms (§11 B6).
+    # mcp_patch moved to Studio::Forms.
 
     # --- System-files ----------------------------------------------
 
@@ -1370,7 +1370,7 @@ end
       view("chats")
     end
 
-    # --- Tasks & Approvals (§12 G5) --------------------------------
+    # Tasks & Approvals --------------------------------
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     def render_tasks
@@ -1397,7 +1397,7 @@ end
       view("approvals")
     end
 
-# --- Evals (RFC-0008 §3.1) -------------------------------------
+# Evals -------------------------------------
 
 # The stored cases, grouped by agent, plus the one being edited (?id=). Cases whose
 # stored mapping no longer validates are listed separately: a broken case must be
@@ -1422,7 +1422,7 @@ def golden_yaml(golden)
   YAML.dump(h.merge("expect" => golden.expect))
 end
 
-    # --- Refinement (RFC-0013 phase A) -----------------------------
+    # Refinement -----------------------------
 
     # The agent's latest failure report + its run history. Empty-state when no store
     # was injected or the agent has never been run — the page is the invitation to
@@ -1489,7 +1489,7 @@ end
 
     def task_path(id) = "/studio/tasks/#{Rack::Utils.escape(id.to_s)}"
 
-    # parse_kv_lines moved to Studio::Forms (§11 B6).
+    # parse_kv_lines moved to Studio::Forms.
 
     # CSV/whitespace -> [String], blanks dropped.
     def split_list(str)

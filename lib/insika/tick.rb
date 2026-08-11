@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # The periodic tick (RFC-0019): durability stops waiting for a reboot. One
+  # The periodic tick: durability stops waiting for a reboot. One
   # pass does two things, in this order:
   #
   #   1. DRAIN the outbox (`ChannelDelivery#sweep`) — replies a previous pass
@@ -16,7 +16,7 @@ module Insika
   #      anything untouched past it cannot be alive.
   #
   # It is NOT a job queue: no schedules, no priorities, no fan-out. The
-  # refinement hook RFC-0016 §7 once pictured here is dropped by merit —
+  # refinement hook once pictured here is dropped by merit —
   # docs/REFINEMENT.md's "no scheduler in the engine" stands.
   class Tick
     # 60s: a customer waiting on WhatsApp is the deadline. 900s = 3x the
@@ -55,7 +55,7 @@ module Insika
       summary.merge(resumed: result[:resumed], failed: result[:failed])
     end
 
-    # The loop, spawned as a child of the turn supervisor (RFC-0016 §8: the
+    # The loop, spawned as a child of the turn supervisor (the
     # tick lives on the supervisor fiber — every serving arm gets it the moment
     # `supervised = true` matters, with no arm edits). A failing pass logs and
     # the loop continues: a sweeper that dies silently is the outage it exists
@@ -79,10 +79,10 @@ module Insika
 
     private
 
-    # One sweeper per window across N workers (RFC-0019 §4). Unlike the boot
+    # One sweeper per window across N workers. Unlike the boot
     # claim (one key per generation), the tick reuses a SINGLE key with a
     # timestamp — a key per minute would be a slow leak in the store. The
-    # read-check-write rides Store#transaction like every claim (RFC-0016 A1):
+    # read-check-write rides Store#transaction like every claim:
     # two workers racing the window serialize on the backend's lock and exactly
     # one sweeps.
     def claim_window

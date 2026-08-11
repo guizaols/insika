@@ -4,7 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 
-# The FS boundary is the always-on half of the sandbox primitive (item 35). This
+# The FS boundary is the always-on half of the sandbox primitive. This
 # is the insika-code prototype's Workspace spec, ported verbatim to the core
 # `Insika::Sandbox::Boundary` — the exact same escape guarantees must hold now
 # that the boundary is a core primitive shared by every provider.

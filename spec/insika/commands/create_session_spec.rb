@@ -11,7 +11,7 @@ RSpec.describe Insika::Commands::CreateSession do
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:event_stream) { RecordingStream.new }
 
-  # Minimal spy — the real event_stream class lands in task 10.
+  # Minimal spy — the real event_stream class lands in.
   class RecordingStream
     attr_reader :events
 
@@ -54,7 +54,7 @@ RSpec.describe Insika::Commands::CreateSession do
     expect(session.vars).to eq({ "b" => 2 })
   end
 
-  describe "per-chat model pin (v2, §10)" do
+  describe "per-chat model pin" do
     let(:slot) { Insika::ModelResolver::SESSION_SLOT }
 
     it "stashes model/provider into the reserved vars slot" do

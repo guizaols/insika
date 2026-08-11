@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 # Load-test for the insika — hits POST /v1/responses DIRECTLY (the production
-# path: consumer-app/WhatsApp -> engine). Ruby equivalent of OpenClaw's
+# path: a consumer app, e.g. WhatsApp, -> engine). Ruby equivalent of OpenClaw's
 # loadtest-gateway.mjs; since the SSE contract is the SAME, it enables an
 # apples-to-apples comparison of insika vs gateway.
 #
 # Per turn it measures: TTFB (time to first SSE byte), total time, and the
 # `usage` (tokens + cache hit) from the last frame that carries usage. Fires N
-# concurrent turns spread across the given agents. Output: P50/P95 of TTFB and
+# concurrent turns spread across the given agents. Output:/ of TTFB and
 # total, mean tokens, cache-hit rate and error rate. Standard library only.
 #
 # Usage:
@@ -159,7 +159,7 @@ def run_turn(base_url, agent, idx)
   t0 = mono
   ttfb = nil
   usage = nil
-  timing = nil # server-side breakdown (INSIKA_TURN_TIMING; item 34)
+  timing = nil # server-side breakdown (INSIKA_TURN_TIMING)
   http = Net::HTTP.new(uri.host, uri.port)
   http.use_ssl = uri.scheme == "https"
   http.read_timeout = TIMEOUT
@@ -267,7 +267,7 @@ puts "total p50/p95:  #{pct(totals, 50)} / #{pct(totals, 95)} ms"
 puts "mean tokens:    #{toks.empty? ? '-' : (toks.sum.to_f / toks.length).round(0)}"
 puts "mean cache hit: #{cache_hits.empty? ? '-' : (cache_hits.sum.to_f / cache_hits.length).round(0)} tokens"
 
-# Server-side latency split (INSIKA_TURN_TIMING; item 34). Only when the server
+# Server-side latency split (INSIKA_TURN_TIMING). Only when the server
 # reported it — a run without the flag prints nothing extra.
 timings = ok.map { |r| r[:timing] }.compact
 unless timings.empty?

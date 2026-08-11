@@ -209,7 +209,7 @@ module Insika
           @registries[:workflows].register(name, callable, plugin: @plugin_id, &block)
         end
 
-        # RFC-0011 §4.2 — a channel is an INSTANCE (it holds its credentials and its
+        # a channel is an INSTANCE (it holds its credentials and its
         # HTTP client), so unlike a tool there is no factory to defer. Declared-or-
         # ignored like the others: the id is a URL segment, and a plugin quietly
         # mounting a route nobody declared is exactly what the contract list prevents.
@@ -254,7 +254,7 @@ module Insika
 
           if kind == :workflow
             warn "[plugin #{@plugin_id}] capability '#{name}' (kind: workflow) registered without a consumer " \
-                 "in this slice — agent exposure is follow-up (P2B-01 L5)"
+                 "in this slice — agent exposure is follow-up"
           end
 
           @staged_capabilities << { capability: name, impl_name: impl_name, kind: kind,

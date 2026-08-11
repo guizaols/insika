@@ -5,7 +5,7 @@ require "async"
 
 # REAL wiring: CommandBus + SendMessage handler + Executor + domain stores
 # over Memory + real EventStream. Scripted chat (FakeChat) via a create_chat
-# stub — runs WITHOUT the gem (doc 03 §7).
+# stub — runs WITHOUT the gem.
 RSpec.describe "Integration: SendMessage Command->Response flow" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
@@ -51,7 +51,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
 
   TERMINAL = %w[completed failed cancelled].freeze
 
-  # A turn with a session_id is SERIALIZED by the SessionActor (P2-03): the turn is
+  # A turn with a session_id is SERIALIZED by the SessionActor (03): the turn is
   # spawned ASYNCHRONOUSLY by the session loop, so you cannot wait on
   # @running right after the dispatch. Polls until the terminal state and stops the
   # SessionActors (the loop blocks forever) so the Sync can exit.
@@ -79,11 +79,11 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
     end
   end
 
-  it "emits the canonical sequence of events (doc 03 §7)" do
+  it "emits the canonical sequence of events" do
     session_store.create(id: "s1")
     _result, events = dispatch_and_wait(agent: "sales", message: "oi", session_id: "s1")
 
-    # P19: "Oi"/" tudo bem" were said on the message that then called the tool, so
+    # "Oi"/" tudo bem" were said on the message that then called the tool, so
     # they are narration — they ride :intermediate and stop there. Only the message
     # that ENDS the turn ("resposta final") is published as :content, which is the
     # single frame /v1/responses translates.
@@ -117,7 +117,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
 
   it "responds {task_id:} immediately (before :task_completed)" do
     session_store.create(id: "s1")
-    # the response is synchronous even with the turn queued in the SessionActor (P2-03).
+    # the response is synchronous even with the turn queued in the SessionActor (03).
     Sync do
       result = bus.dispatch(Insika::Command.build(:send_message,
                                                    { agent: "sales", message: "oi", session_id: "s1" }))

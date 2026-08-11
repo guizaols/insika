@@ -59,9 +59,9 @@ RSpec.describe Insika::Context::Providers::Memory do
     expect(f.priority).to eq(Insika::Context::Priority::MEMORY)
   end
 
-  # D3: without an explicit tenant in the Command, the engine memory is PER-CHAT — scope =
+  # without an explicit tenant in the Command, the engine memory is PER-CHAT — scope =
   # session id. Symmetric to the write path (state.tenant in the Executor).
-  describe "per-chat scope (D3)" do
+  describe "per-chat scope" do
     def request_session(session_id:, tenant: nil)
       profile = Insika::AgentProfile.build(id: "a", model: "m", memory: true)
       session = Struct.new(:id, :messages).new(session_id, [])

@@ -97,27 +97,27 @@ module Insika
         limits: symbolize_limits(h[:limits]),
         approvals_required: h[:approvals_required],
         capabilities: h[:capabilities],
-        # subagents (RFC-0010): allowlist of child ids; build re-normalizes to
+        # subagents: allowlist of child ids; build re-normalizes to
         # [String]. nil round-trips as nil (opt-in: NONE).
         subagents: h[:subagents],
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
         prompt_caching: h[:prompt_caching],
-        # params/model_policy (v2, §10): the resolver tolerates string keys from
+        # params/model_policy: the resolver tolerates string keys from
         # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no
         # re-symbolization needed here.
         params: h[:params] || {},
         model_policy: h[:model_policy],
-        # guardrails (RFC-0009): a plain Hash; Safety::Config tolerates the JSON
+        # guardrails: a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.
         guardrails: h[:guardrails],
-        # sandbox (item 35): a plain config Hash; Sandbox.build tolerates the JSON
+        # sandbox: a plain config Hash; Sandbox.build tolerates the JSON
         # round-trip (string keys), so no re-symbolization here. nil = absent.
         sandbox: h[:sandbox],
-        # refinement (RFC-0013): a plain config Hash read with string keys by the
+        # refinement: a plain config Hash read with string keys by the
         # RunRefinement handler; nil round-trips as nil (= report-only).
         refinement: h[:refinement],
-        # capabilities_declared (RFC-0014 §3.5): flat [String]; build re-normalizes.
+        # capabilities_declared: flat [String]; build re-normalizes.
         capabilities_declared: h[:capabilities_declared],
         # edge_stream: which internal channels may cross to the customer. {} = neither.
         edge_stream: h[:edge_stream],

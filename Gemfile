@@ -8,13 +8,13 @@ source "https://rubygems.org"
 # See docs/BENCHMARKS.md for the Ruby-version × YJIT matrix behind the default.
 ruby ">= 3.3"
 
-# The runtime dependencies are the gemspec's (RFC-0018 A2): the gem and the
-# reference deployment share ONE dependency list. The D9 rule still holds —
+# The runtime dependencies are the gemspec's: the gem and the
+# reference deployment share ONE dependency list. The rule still holds —
 # `require "insika"` loads neither ruby_llm nor the HTTP surface; both are
 # required lazily (spec/insika/load_guard_spec.rb is the guard).
 gemspec
 
-# OPT-IN observability (Phase 6, Telemetry): OTEL is only REQUIRED lazily in
+# OPT-IN observability (Telemetry): OTEL is only REQUIRED lazily in
 # Insika::Telemetry.setup when enabled (INSIKA_OTEL / OTEL_EXPORTER_OTLP_*).
 # These four are NOT gem dependencies — an adopter who wants OTel adds them,
 # exactly like this deployment does. Off -> gems in the bundle but never loaded

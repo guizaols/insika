@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0015 §5.2 — WHERE a message that arrived mid-run is allowed to enter the
+  # WHERE a message that arrived mid-run is allowed to enter the
   # conversation.
   #
   # A customer who corrects themselves while the agent is calling tools ("1234567",

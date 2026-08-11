@@ -100,7 +100,7 @@ RSpec.describe Insika::QueuePolicy do
     end
   end
 
-  describe "#interrupt? (RFC-0015 §6.4)" do
+  describe "#interrupt?" do
     it "is true only for the interrupt mode, and takes no knob of its own" do
       policy = described_class.resolve(profile({ queue_mode: "interrupt" }))
 
@@ -111,7 +111,7 @@ RSpec.describe Insika::QueuePolicy do
     end
   end
 
-  describe "steer (RFC-0015 §6.3)" do
+  describe "steer" do
     it "is off unless the mode asks for it, and carries the documented bound" do
       expect(described_class.resolve(profile({})).steer?).to be(false)
       policy = described_class.resolve(profile({ queue_mode: "steer" }))

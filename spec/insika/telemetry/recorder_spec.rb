@@ -3,7 +3,7 @@
 require "spec_helper"
 require "time"
 
-# Phase 6 — the Recorder translates Events -> OTEL spans. Tested with a FAKE tracer
+# the Recorder translates Events -> OTEL spans. Tested with a FAKE tracer
 # (the real OTEL adapter is a boundary, like create_chat). Proves: 1 span per turn,
 # correlated tool child spans, attributes (agent/model/tokens/status),
 # meta.at timestamps, robustness (never raises; orphans ignored).
@@ -109,7 +109,7 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(turn_span.error).to eq("estourou")
     end
 
-    # Item 16 / P4: the tenant is the one operator-set grouping label; it rides the
+    # the tenant is the one operator-set grouping label; it rides the
     # :task_started payload (Executor#started_data) and is absent when unset.
     it "carries insika.tenant when the command declared one" do
       recorder.record(ev(:task_started, { agent: "bia", tenant: "loja-42" }))
@@ -132,7 +132,7 @@ RSpec.describe Insika::Telemetry::Recorder do
     end
   end
 
-  # Item 16 / P4 — estimated cost. The Recorder does no arithmetic of its own: it
+  # — estimated cost. The Recorder does no arithmetic of its own: it
   # asks the injected Pricing, and reports nothing when there is no price.
   describe "estimated cost" do
     let(:pricing) { Insika::Telemetry::Pricing.new({ "m" => { "input" => 1.0, "output" => 2.0 } }) }
@@ -197,7 +197,7 @@ RSpec.describe Insika::Telemetry::Recorder do
     end
   end
 
-  # Item 16 / P4 — metrics beside traces: the SAME events feed counters/histograms,
+  # — metrics beside traces: the SAME events feed counters/histograms,
   # so a backend charts volume/latency/tokens/cost without aggregating spans. The
   # metric attribute set is a deliberate LOW-CARDINALITY subset (no task/session id).
   describe "metrics" do

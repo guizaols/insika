@@ -131,7 +131,7 @@ module Insika
       to_task(record)
     end
 
-    # RFC-0015 §5.3 (`collect`): appends a fragment to a task's message while it is
+    # (`collect`): appends a fragment to a task's message while it is
     # still waiting at the door. -> Task.
     #
     # ONLY on :queued, and that guard is the whole safety of the feature: once a

@@ -3,19 +3,19 @@
 require "json"
 
 module Insika
-  # MINIMAL MCP client over HTTP JSON-RPC (Phase 7, Stage E). Discovers the tools
+  # MINIMAL MCP client over HTTP JSON-RPC. Discovers the tools
   # of an MCP instance with HTTP transport by making a JSON-RPC 2.0 `tools/list`
   # POST to the instance endpoint, behind the EgressGuard (SSRF — the url comes
-  # from editable config, NF4). It is the DEFAULT client injected into the
+  # from editable config). It is the DEFAULT client injected into the
   # McpToolIngestor; tests pass a Fake (duck-typed) in its place.
   #
   # Contract (MCP client duck-type): `#list_tools -> [{name, description,
   # inputSchema}]` — the same MCP envelope that the ToolManifest adapter normalizes.
   #
-  # SCOPE (bounded, D8): only the minimal handshake of ONE stateless `tools/list`
+  # SCOPE (bounded): only the minimal handshake of ONE stateless `tools/list`
   # POST. Does NOT implement the full MCP session lifecycle (initialize/protocol
   # negotiation/session-id/notifications) nor the stdio transport — that is the
-  # "real MCP transport", later work (out-of-scope, see spec §4 D8). It serves
+  # "real MCP transport", later work (out-of-scope, see spec). It serves
   # simple HTTP MCP servers (direct JSON-RPC) and proves the ingestion seam.
   class McpHttpClient
     JSONRPC_VERSION = "2.0"

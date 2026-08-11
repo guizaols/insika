@@ -44,7 +44,7 @@ RSpec.describe Insika::ChatBuilder do
       expect(chat.instructions).to be_nil
     end
 
-    context "prompt caching (§11 R3)" do
+    context "prompt caching (R3)" do
       before { require "ruby_llm" }
 
       def anthropic_chat
@@ -213,7 +213,7 @@ RSpec.describe Insika::ChatBuilder do
                                   ])
     end
 
-    # §11 R1: fidelity between turns.
+    # R1: fidelity between turns.
     it "rehydrates tool_calls (assistant) and tool_call_id (tool) only when present" do
       builder.seed_history(chat, [
                              { "role" => "assistant", "content" => "",
@@ -259,7 +259,7 @@ RSpec.describe Insika::ChatBuilder do
       expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado" })
     end
 
-    # Item 30 / P11a. The :tool_result label used to be a closure local shared by
+    # The:tool_result label used to be a closure local shared by
     # the whole TURN, so with `ToolConcurrency` (one fiber per call, callbacks
     # included) `after_tool_result` labelled every result with whichever call
     # STARTED last. Mislabelled events poison the Studio trace, /v1/events and the
@@ -315,7 +315,7 @@ RSpec.describe Insika::ChatBuilder do
       expect { chat.fire_tool_call(name: "t50") }.to raise_error(Insika::TimeoutError)
     end
 
-    # RFC-0020 — the detector is unit-tested in loop_detector_spec; here only the
+    # the detector is unit-tested in loop_detector_spec; here only the
     # wiring: wire_callbacks must deliver the gem's three callbacks to it.
     it "intervenes once, then aborts the stubborn repeat as :tool_limit" do
       sink = []

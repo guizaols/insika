@@ -31,7 +31,7 @@ RSpec.describe Insika::Server::SSEBody do
   # SSEBody is a Rack 3 STREAMING body: driven by `#call(stream)`, where
   # `stream` responds to #write/#close (the SSEStreamDouble collects the frames). This
   # mirrors the Protocol::HTTP::Body::Stream that protocol-rack passes in production.
-  it "formats the wire as Event#to_h in JSON (D5)" do
+  it "formats the wire as Event#to_h in JSON" do
     stream = Insika::EventStream.new
     sub = stream.subscribe
     event = ev(:content, { delta: "x" })
@@ -129,7 +129,7 @@ RSpec.describe Insika::Server::SSEBody do
     expect(fs.closed?).to be(true)     # the body always closes the stream
   end
 
-  describe "cap of 1000 events per Subscription (doc 07 §5)" do
+  describe "cap of 1000 events per Subscription" do
     it "closes with a local :error when exceeding the cap; emit never blocks" do
       stream = Insika::EventStream.new
       sub = stream.subscribe

@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module Insika
-  # Pack importer (Phase 6/D4/F6, task 7): reads a Pack and emits the ALREADY
+  # Pack importer: reads a Pack and emits the ALREADY
   # existing authoring Commands — create_agent/update_agent + write_agent_file +
   # write_skill + write_data_tool — making an agent provisionable at runtime from
-  # a standardized pack. It's the piece that consumer-app's `GatewayClient`/
-  # `ProvisionStore` triggers (via the provisioning API, task 8).
+  # a standardized pack. It's the piece a consumer's provisioning client
+  # triggers (via the provisioning API).
   #
-  # GENERIC (NF1): nothing here mentions consumer-app — the pack is the contract. Tool
+  # GENERIC: nothing here mentions a consumer — the pack is the contract. Tool
   # names come from the PACK, so prompts<->tools stay consistent by construction
-  # (NF2). It doesn't write to the store directly: it only dispatches Commands on
+  # It doesn't write to the store directly: it only dispatches Commands on
   # the bus (the same transport discipline) + READS the ProfileSource to decide
   # create vs update.
   #
@@ -61,12 +61,12 @@ module Insika
     #   - skills = the pack's skills/ dirs (explicit allowlist; [] when the pack
     #     has none — never nil=all, which would leak skills from other stores).
     #   - tools_allow = (config.tools_allow) ∪ (the pack's tool names) — guarantees
-    #     the agent can call its own data-tools (NF2). [] when neither exists —
+    #     the agent can call its own data-tools. [] when neither exists —
     #     never nil=all: the ToolStore is GLOBAL, so a tool-less pack would
-    #     otherwise see every other store's tools (a Demo pack calling
-    #     store_set_location is exactly that leak).
+    #     otherwise see every other store's tools (store A's pack calling
+    #     store B's set_location is exactly that leak).
     #   - tools_allow_groups = groups enabled by FLAG in the pack (see
-    #     #enabled_groups) — the per-flag schema CUT (Phase 7, Stage E / D5): only
+    #     #enabled_groups) — the per-flag schema CUT: only
     #     the tools of the enabled groups (union with tools_allow) go to the model;
     #     those of disabled groups are cut BEFORE the turn (resolves the OpenClaw
     #     tool-call waste, where the flag only exists in Rails).
@@ -85,13 +85,13 @@ module Insika
       attrs
     end
 
-    # PER-FLAG CUT (Phase 7, Stage E / D5, STATIC pilot): derives the agent's
+    # PER-FLAG CUT (/, STATIC pilot): derives the agent's
     # per-group allowlist from FLAGS declared in the pack config — DATA, never a
-    # core convention (NF1). The engine doesn't know "groceries_v2"/"b2b": the pack
+    # core convention. The engine doesn't know "groceries_v2"/"b2b": the pack
     # declares which GROUPS are enabled; the flag->group mapping is the
     # responsibility of provisioning/the pack, not the insika. Two forms (union):
     #   - `enabled_groups: ["default", "b2b"]`  — explicit list of ON groups.
-    #   - `flags: { "b2b" => true, "demo" => false }` — the flag key IS the group
+    #   - `flags: { "wholesale" => true, "outlet" => false }` — the flag key IS the group
     #     name; only the truthy ones enter (the false ones CUT the group).
     # Neither declared -> nil (no per-group cut; old behavior).
     # Explicit `[]` (empty enabled_groups, or all flags false) -> no group.

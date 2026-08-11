@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# The publishing rule in isolation (P19). The Executor specs prove the behaviour
+# The publishing rule in isolation. The Executor specs prove the behaviour
 # end to end; this file pins the decisions the pipeline hides — which messages a
 # boundary is even about, and how the redactor's retained tail is accounted for.
 RSpec.describe Insika::TurnOutput do
@@ -63,7 +63,7 @@ RSpec.describe Insika::TurnOutput do
     end
   end
 
-  describe "with the guardrail filter (RFC-0009 §3.2)" do
+  describe "with the guardrail filter" do
     let(:filter) { Insika::Safety::OutputFilter.new }
 
     it "publishes the redacted text, and the retained tail lands in the right message" do

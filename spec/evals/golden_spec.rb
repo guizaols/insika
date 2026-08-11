@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Evals golden loader (RFC-0008, Fase A). Data-file validation: a malformed golden
+# Evals golden loader. Data-file validation: a malformed golden
 # must fail LOUD at load, never silently drop (a dropped case = a hole in the net).
 RSpec.describe Insika::Evals::GoldenLoader do
   def build(overrides = {})

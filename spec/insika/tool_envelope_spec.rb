@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# Characterization of the ToolEnvelope hot path (FOLLOWUP §11 R0): the branches
+# Characterization of the ToolEnvelope hot path (R0): the branches
 # the approval spec does NOT exercise — per-call timeout serialization, skip-on-resume,
 # side-effect recording, and call correlation. LOCKS current behavior BEFORE R1
 # (persisting tool calls/results) and the future R4 (parallel tools) touch it.
@@ -178,7 +178,7 @@ RSpec.describe Insika::ToolEnvelope do
     end
   end
 
-  # Item 30 / P11a. The correlation the envelope reads (`state.current_tool_call`)
+  # The correlation the envelope reads (`state.current_tool_call`)
   # used to be ONE slot on the shared TurnState. RubyLLM 1.16 runs each tool call
   # of a batch in its own fiber — `before_tool_call` → `tool.call` →
   # `after_tool_result` all inside it — so with a single slot the second call's id

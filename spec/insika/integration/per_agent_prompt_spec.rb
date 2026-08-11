@@ -3,11 +3,11 @@
 require "spec_helper"
 require "tmpdir"
 
-# Phase 4 Stage C (criterion): resolves the known limitation — a new agent NO
+# (criterion): resolves the known limitation — a new agent NO
 # longer inherits Bia's prompt. Each BIA has its own identity, authored at
 # runtime (create_agent + write_agent_file), read by the Prompt provider from
 # profile.prompt_files → AgentFileStore. All through the same Store, no restart.
-RSpec.describe "Integration: per-agent prompt identity (Phase 4 Stage C)" do
+RSpec.describe "Integration: per-agent prompt identity" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }
   let(:source) { Insika::StoredProfileSource.new(config_store: config_store) }
@@ -43,7 +43,7 @@ RSpec.describe "Integration: per-agent prompt identity (Phase 4 Stage C)" do
   end
 
   it "an agent with its own identity does NOT inherit the default; an agent without prompt_files inherits" do
-    # Bia: without prompt_files -> inherits the deployment default (Phase 0 parity).
+    # Bia: without prompt_files -> inherits the deployment default (parity).
     create_agent({ "id" => "bia", "model" => "m" })
 
     # Chef: created with its own prompt_files + content authored at runtime.

@@ -9,7 +9,7 @@ module Insika
   # McpStore masks the env): headers whose name is in `secret_headers` never
   # leave in plaintext to the UI — they become the sentinel `__OCULTO__`. Only `get_raw`/
   # `all_raw` (consumed by DataDefinedTool/overlay, never the screen) return the
-  # real values. Phase 5, Step A.
+  # real values.,.
   #
   # Record in the ConfigStore:
   #   { "definition" => { ...ToolDefinition#to_h... },

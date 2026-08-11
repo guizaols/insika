@@ -8,7 +8,7 @@ permalink: /releasing/
 # Releasing
 
 How an `insika` gem release is cut, and how the install is **proven** before the
-push. The rule that matters (RFC-0018 §8): a green suite is not a green gem —
+push. The rule that matters: a green suite is not a green gem —
 the suite resolves everything by path, so the entire class of packaging failure
 is invisible to it. Do not publish on rspec alone.
 
@@ -18,7 +18,7 @@ is invisible to it. Do not publish on rspec alone.
 2. `lib/insika/version.rb` carries the version being published.
 3. Every new `lib/` file is **tracked in git**. The gemspec's `files` come from
    `git ls-files`: an untracked file builds without a warning and the installed
-   gem fails at `require` — this is exactly the failure E1 exists to catch.
+   gem fails at `require` — this is exactly the failure this proof exists to catch.
 
 ## Cut the gem
 
@@ -26,7 +26,7 @@ is invisible to it. Do not publish on rspec alone.
 gem build insika.gemspec    # -> insika-<version>.gem
 ```
 
-## Prove the install (E1/E3) — from OUTSIDE the repo
+## Prove the install — from OUTSIDE the repo
 
 Install into a clean gem home and run the four shapes from a directory that is
 not the checkout, with the repo's `lib/` nowhere on the load path:
@@ -50,7 +50,7 @@ GEM_HOME="$T/gemhome" GEM_PATH="$T/gemhome" ruby -e '
 Shapes 2–4 are the ones that fail when a file is missing from the gem (the
 Studio's `views/`, `assets/dist/`, the onboarding docs); run all four.
 
-Then the load guard, from the **installed** gem (E3) — no test double:
+Then the load guard, from the **installed** gem — no test double:
 
 ```bash
 GEM_HOME="$T/gemhome" GEM_PATH="$T/gemhome" ruby -e '
@@ -66,5 +66,5 @@ gem push insika-<version>.gem
 ```
 
 Publishing is irreversible in practice — a yanked 0.1.0 is a bad first
-impression. The version number is cheap; the name is not. E1 before push, and
-nothing else.
+impression. The version number is cheap; the name is not. The install proof before
+push, and nothing else.

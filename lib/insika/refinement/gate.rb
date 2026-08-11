@@ -2,8 +2,8 @@
 
 module Insika
   module Refinement
-    # Scores a candidate by RUNNING it (RFC-0013 §3.5). Not by asking a model whether
-    # the edit looks good — that measures nothing, and D3 says so in one line.
+    # Scores a candidate by RUNNING it. Not by asking a model whether
+    # the edit looks good — that measures nothing, and says so in one line.
     #
     #   1. clone the agent into a throwaway id (`<agent>-cand-<run8>`)
     #   2. copy its instruction files, apply the candidate's edits to the COPY
@@ -27,7 +27,7 @@ module Insika
       # it — nil when no turn carried usage. `cached` is how much of that came from
       # the prompt cache, kept separate because it is what explains one candidate
       # costing 8× another over the same cases. `tokens` is what the panel's budget
-      # (§3.9) spends and what the operator reads on the run: a gate is the expensive
+      # spends and what the operator reads on the run: a gate is the expensive
       # half of refinement and a loop whose cost is invisible is one nobody can decide
       # to keep.
       Report = Data.define(:candidate_id, :passed, :reason, :cases, :passed_cases,
@@ -48,9 +48,9 @@ module Insika
       # credential the operator can rotate.
       # capabilities_factory: -> an `Evals::HttpCapabilities` for the clone, or nil.
       # Without it a case whose `requires` the agent cannot satisfy RUNS and fails
-      # (RFC-0014 §3.2 says it must skip) — and then the gate and `evals/run.rb`, the
+      # (says it must skip) — and then the gate and `evals/run.rb`, the
       # two callers of the one evaluator, disagree about what the corpus even
-      # measures. §3.7 exists to prevent exactly that.
+      # measures. exists to prevent exactly that.
       def initialize(profiles:, agent_files:, goldens:, baselines:, transport_factory:,
                      capabilities_factory: nil, judge_factory: nil, tolerance: DEFAULT_TOLERANCE)
         @profiles = profiles
@@ -68,7 +68,7 @@ module Insika
       # not gate is more useful than an exception in a log.
       def score(agent_id:, candidate:, run_id:, tolerance: nil)
         cases = @goldens.for_agent(agent_id)
-        return refusal(candidate, "the agent has no golden cases — nothing to gate against (RFC-0013 D4)") if cases.empty?
+        return refusal(candidate, "the agent has no golden cases — nothing to gate against") if cases.empty?
 
         baseline = @baselines.get(agent_id)
         # Without an accepted state, `Baseline.compare` compares nothing and reports
@@ -109,7 +109,7 @@ module Insika
         # Measured, not reasoned: gating the real pilot agent with `settings["evals"]`
         # unset reported **6/6, no regression** against a baseline the same corpus had
         # just scored **2/6** — `produto-sem-cep` was judged 0.0 and "passed". Both
-        # candidates on the panel cleared. That is §3.7's failure exactly: the CLI and
+        # candidates on the panel cleared. That is's failure exactly: the CLI and
         # the gate, the two callers of the one evaluator, disagreeing about what the
         # corpus measures.
         judge = @judge_factory&.call

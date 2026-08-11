@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# LLM-judge (RFC-0008 §3.3, Fase B). Pure over an injected `ask` — no real LLM.
+# LLM-judge. Pure over an injected `ask` — no real LLM.
 RSpec.describe Insika::Evals::Judge do
   def golden(expect)
     Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia",
@@ -62,7 +62,7 @@ RSpec.describe Insika::Evals::Judge do
     expect(j.score(golden: golden("rubric" => "x"), result: result).pass).to be(true)
   end
 
-  # RFC-0014 §3.3, the judge's half of `policy`. How much a store wants its agent to
+  # the judge's half of `policy`. How much a store wants its agent to
   # ask before acting is a per-store decision; a judge that is not TOLD it guesses,
   # and would be wrong for half the stores.
   describe "the store's policy in the prompt" do
@@ -87,7 +87,7 @@ RSpec.describe Insika::Evals::Judge do
     end
   end
 
-  # RFC-0013 §3.9: `quorum` samples ONE model N times (its variance); a PANEL asks
+  # `quorum` samples ONE model N times (its variance); a PANEL asks
   # different models (their disagreement), which is the signal worth having.
   describe "a panel of distinct judges" do
     def judge_of(*scores, **opts)

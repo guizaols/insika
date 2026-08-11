@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # Control command: writes an eval case (RFC-0008 §3.1) into the GoldenStore. This
+    # Control command: writes an eval case into the GoldenStore. This
     # is what lets a domain owner add a case — above all its RUBRIC, the part of an eval
     # that is plain language — without a checkout and a text editor.
     #

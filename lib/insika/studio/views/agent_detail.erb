@@ -69,7 +69,7 @@
     </label>
 
     <fieldset class="subgroup">
-      <legend>guardrails <span class="muted">— content safety (RFC-0009)</span></legend>
+      <legend>guardrails <span class="muted">— content safety</span></legend>
       <label class="check">
         <input type="checkbox" name="guardrail_input" value="1"<%== " checked" if guardrail_field(@guardrails, :input, true) %>>
         input guardrail <span class="muted">— block injection / abuse / inappropriate before the LLM</span>

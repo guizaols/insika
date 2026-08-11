@@ -3,9 +3,9 @@
 require "spec_helper"
 require "json"
 
-# Phase 7, Step E: MINIMAL MCP client over HTTP JSON-RPC. Discovers tools via POST
+# MINIMAL MCP client over HTTP JSON-RPC. Discovers tools via POST
 # `tools/list` behind the egress guard. Bounded scope: a single stateless POST (no
-# real MCP session lifecycle — D8/out-of-scope).
+# real MCP session lifecycle —/out-of-scope).
 RSpec.describe Insika::McpHttpClient do
   # fake http: records the request, returns the configured result.
   class FakeRpcHttp
@@ -42,7 +42,7 @@ RSpec.describe Insika::McpHttpClient do
     expect(cli.list_tools).to eq([])
   end
 
-  it "egress blocked -> Insika::Error (SSRF, NF4)" do
+  it "egress blocked -> Insika::Error (SSRF)" do
     cli, = client(result: { status: 200, body: "{}" }, egress: BlockEgress)
     expect { cli.list_tools }.to raise_error(Insika::Error, /blocked/)
   end

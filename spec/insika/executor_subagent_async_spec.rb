@@ -6,11 +6,11 @@ require "insika/tools/subagent" # the delivery turn (parent has subagents) wires
 #                                  the Executor requires it lazily in create_chat, which
 #                                  these specs stub — so load it explicitly here.
 
-# RFC-0010 Fase 2 (item 21): async/durable delegation. run_subagent(async:true)
+# async/durable delegation. run_subagent(async:true)
 # dispatches a child NON-blocking and returns immediately; when the child finishes,
 # its result is delivered to the parent session as a NEW turn (never spliced
 # mid-turn). Durable: DelegationStore + terminal hook + boot recovery.
-RSpec.describe "Insika::Executor async delegation (RFC-0010 Fase 2)" do
+RSpec.describe "Insika::Executor async delegation" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

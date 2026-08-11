@@ -11,7 +11,7 @@ RSpec.describe Insika::Server::A2A::App do
   let(:profiles) { { "assistant" => Insika::AgentProfile.build(id: "assistant", model: "m", base_prompt: "SOUL") } }
 
   # FAKE bus (unit): reproduces the minimum of the handlers deterministically. The
-  # integration with the REAL handlers/Executor is the E2E smoke (task 8).
+  # integration with the REAL handlers/Executor is the E2E smoke.
   let(:command_bus) do
     Class.new do
       attr_reader :dispatched
@@ -128,10 +128,10 @@ RSpec.describe Insika::Server::A2A::App do
     end
   end
 
-  # §9.6: A2A::App already does ProfileSource.coerce — passing a StoredProfileSource
+  # A2A::App already does ProfileSource.coerce — passing a StoredProfileSource
   # (the deployment's dynamic source) makes the AgentCard/inbound see agents
   # created in Studio, without a static PROFILES.
-  describe "profiles via StoredProfileSource (§9.6)" do
+  describe "profiles via StoredProfileSource" do
     it "resolves the agent_card of an agent created in the store (Studio)" do
       cs = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
       src = Insika::StoredProfileSource.new(config_store: cs)

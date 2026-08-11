@@ -10,7 +10,7 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
-- **The periodic tick (RFC-0019)** — durability no longer waits for a reboot.
+- **The periodic tick** — durability no longer waits for a reboot.
   Serving workers run a tick every `INSIKA_TICK_INTERVAL` (default 60s, `0`
   disables) as a child of the turn supervisor: it re-drives outbox records left
   `:pending` and sweeps orphaned `:queued`/`:running` tasks untouched past
@@ -25,7 +25,7 @@ The first release: `gem install insika`.
 
 ### Added
 
-- **A publishable core (RFC-0018)** — `gem install insika` gives every shape: `reply`
+- **A publishable core** — `gem install insika` gives every shape: `reply`
   in-process, `serve`, `Insika::Server.rack_app` mounted, and `embed(backend:)`. The
   server and the Studio moved under `lib/insika/` and ship in the gem; the exported
   store contract (`lib/insika/testing/store_contract.rb`) is what a third-party

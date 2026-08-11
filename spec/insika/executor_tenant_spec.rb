@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# Tenant threading (P2C task 3, D6): the Executor::ContextRequest (the Struct the
+# Tenant threading: the Executor::ContextRequest (the Struct the
 # providers ACTUALLY receive) now carries the tenant, extracted from the Command.
-RSpec.describe "Insika::Executor — tenant threading (P2C)" do
+RSpec.describe "Insika::Executor — tenant threading" do
   let(:inert) { Object.new }
   let(:session_store) { Class.new { def find(_id) = nil }.new }
 
@@ -44,7 +44,7 @@ RSpec.describe "Insika::Executor — tenant threading (P2C)" do
       task = task_with(meta: { "tenant" => "acme" })
       req = executor.send(:build_context_request, task, profile, state, nil)
       expect(req.tenant).to eq("acme")
-      expect(req.respond_to?(:tenant)).to be(true) # the Phase 1 seam reconciled
+      expect(req.respond_to?(:tenant)).to be(true) # the seam reconciled
     end
   end
 

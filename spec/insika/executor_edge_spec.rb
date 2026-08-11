@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# End-to-end EdgeLimiter behavior through the real Executor pipeline (item 33 /
-# §12 G7): the blocked turn completes gracefully with ZERO LLM calls AND stays out
+# End-to-end EdgeLimiter behavior through the real Executor pipeline (
+# the blocked turn completes gracefully with ZERO LLM calls AND stays out
 # of the session history (a flood must not bloat the session / poison the context).
-RSpec.describe "Insika::Executor + EdgeLimiter (item 33)" do
+RSpec.describe "Insika::Executor + EdgeLimiter" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

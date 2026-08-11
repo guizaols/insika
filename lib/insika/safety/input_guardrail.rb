@@ -7,14 +7,14 @@ require_relative "config"
 
 module Insika
   module Safety
-    # Input guardrail as a Middleware (RFC-0009 §3.1). It sits on the ONE seam that
+    # Input guardrail as a Middleware. It sits on the ONE seam that
     # already short-circuits structurally (stage 4: a link that does not call `nxt`),
     # and uses the NEW graceful-halt contract: instead of `halt_reason` (which the
     # Executor maps to a turn FAILURE), it sets `halt_response` (a safe reply) +
     # `guardrail_block` (audit metadata) and returns without calling `nxt`. The
     # Executor completes the turn with that safe reply, never touching the LLM.
     #
-    # Two tiers (D2):
+    # Two tiers:
     #   1. deterministic scan (always, cheap, zero-token) — Detectors#scan_input;
     #   2. LLM moderator (opt-in per agent) — only when the deterministic tier let
     #      the message through, so the cheap layer short-circuits the expensive one.
@@ -23,7 +23,7 @@ module Insika
     # link lives ONCE in the global MiddlewareStack — there is no per-agent stack.
     #
     # `moderator_factory` (optional): ->(config) { Moderator | nil }, built by the
-    # Safety::Factory. nil = deterministic only (Fase A/B parity).
+    # Safety::Factory. nil = deterministic only (B parity).
     class InputGuardrail < Insika::Middleware
       def initialize(moderator_factory: nil)
         @moderator_factory = moderator_factory
@@ -43,7 +43,7 @@ module Insika
             return block(state, config, category: category, source: :moderator,
                                         detail: verdict.reason, action: verdict.action)
           end
-          # RFC-0022 (B4): an UNAVAILABLE moderator fails open — the turn proceeds —
+          # an UNAVAILABLE moderator fails open — the turn proceeds —
           # but silence is not a negative: record the degradation on the state so the
           # Executor (single emitter) emits :guardrail_flagged and a degraded tier
           # never looks identical to a healthy one in the audit stream.
@@ -59,7 +59,7 @@ module Insika
         @moderator_factory&.call(config)
       end
 
-      # Appends the audit flag for a degraded moderator tier (RFC-0022). Same
+      # Appends the audit flag for a degraded moderator tier. Same
       # state-carried channel the OutputValidator uses; detail is the moderator's
       # own reason string ("moderator error (fail-open)" / "unparseable
       # (fail-open)"), never message content.
@@ -73,7 +73,7 @@ module Insika
       # the agent can address it; otherwise the moderator's own category flows
       # through UNCOLLAPSED — the safe-reply lookup (SafeResponses.for) resolves an
       # unknown one to the agent's `default` / the neutral built-in, so we don't need
-      # to force it into a fixed bucket here (configuration over convention, §7).
+      # to force it into a fixed bucket here (configuration over convention).
       def moderator_category(verdict)
         return :escalate if verdict.action.to_s == "escalate"
 

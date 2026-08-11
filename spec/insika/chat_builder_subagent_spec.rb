@@ -5,9 +5,9 @@ require "ruby_llm"
 require "insika/tools/subagent"  # the Executor loads these lazily in create_chat;
 require "insika/tools/subagents" # explicit here
 
-# RFC-0010: the spawn_subagent system tool is wired by the ChatBuilder, gated by
+# the spawn_subagent system tool is wired by the ChatBuilder, gated by
 # a runner + a non-empty profile.subagents (the double gate, like `remember`).
-RSpec.describe "Insika::ChatBuilder subagent wiring (RFC-0010)" do
+RSpec.describe "Insika::ChatBuilder subagent wiring" do
   Ctx2 = Struct.new(:system)
   St = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
                   :current_tool_call, :current_tool_name, keyword_init: true)

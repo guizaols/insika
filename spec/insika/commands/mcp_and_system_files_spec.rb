@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# Phase 4 Stage G (tasks 18-19): MCP instances (durable config, masked
+# (tasks 18-19): MCP instances (durable config, masked
 # credentials) + global system files (injected into every agent by the
 # Prompt provider). Runs WITHOUT a key/gem — pure stores over the Memory backend.
-RSpec.describe "MCP + system-files (Phase 4 Stage G)" do
+RSpec.describe "MCP + system-files" do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(sink) = (@sink = sink); def emit(ev) = @sink << ev }.new(events) }

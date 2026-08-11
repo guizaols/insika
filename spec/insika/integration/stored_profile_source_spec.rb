@@ -2,17 +2,17 @@
 
 require "spec_helper"
 
-# Phase 4 D2 (Stage A criterion): the runtime consumes DYNAMIC profiles.
+# (criterion): the runtime consumes DYNAMIC profiles.
 # A profile created at runtime in the ConfigStore is resolved by a turn
 # Command via StoredProfileSource — no frozen Hash, no restart.
-RSpec.describe "Integration: turn with StoredProfileSource (Phase 4 D2)" do
+RSpec.describe "Integration: turn with StoredProfileSource" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }
   let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
 
-  # Records the spawn and declines the RFC-0015 doors — what matters here is the PROFILE
+  # Records the spawn and declines the doors — what matters here is the PROFILE
   # the Command resolved and handed over.
   let(:executor) { FakeTurnExecutor.new }
 

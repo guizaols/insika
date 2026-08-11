@@ -47,7 +47,7 @@ dispatch **any** registered authoring Command (`write_agent_file`, `write_data_t
 `upsert_llm_provider`, `update_settings`, `delete_agent`). Treat that token as
 operator-grade — it is not a read key, and a leak is agent takeover, not just usage.
 
-> **The auth decision (RFC-0018, decided for 0.1.0): one deployment, one token;
+> **The auth decision (decided for 0.1.0): one deployment, one token;
 > multi-tenancy belongs to the host.** There is exactly one credential per
 > surface — `OPENCLAW_GATEWAY_TOKEN` for `/v1`, `ADMIN_TOKEN` for the Studio —
 > and no per-caller scoping inside the engine. That is what the code has always

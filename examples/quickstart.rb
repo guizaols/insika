@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The ≤10-line quickstart (item 36). One command:
+# The ≤10-line quickstart. One command:
 #   DEEPSEEK_API_KEY=sk-... ruby examples/quickstart.rb "hi, what can you do?"
 #
 # `serve` instead of `reply` boots the control UI (/studio) + drop-in API (/v1):

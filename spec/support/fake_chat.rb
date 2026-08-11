@@ -3,7 +3,7 @@
 # Double of the RubyLLM chat with the EXACT surface the Executor uses (stages 5-7).
 # Records what it received and lets you drive the registered callbacks, simulating
 # RubyLLM's sequential tool-use loop — without reimplementing any of it. Reused by
-# task 12's integration.
+#'s integration.
 class FakeChat
   ToolCall = Struct.new(:name, :arguments, :id)
   Response = Struct.new(:content) # content-only chunk: does NOT respond to #thinking
@@ -21,13 +21,13 @@ class FakeChat
   ThinkingChunk = Struct.new(:content, :thinking)
 
   attr_reader :instructions, :tools, :messages, :asked
-  # Item 30: whatever the LAST with_tools passed as `concurrency:` (nil = the
+  # whatever the LAST with_tools passed as `concurrency:` (nil = the
   # serial default). The real Chat exposes it as #concurrency; the contract spec
   # pins that the keyword exists there too.
   attr_reader :concurrency
   # script: proc run in the chat's context during #ask (may call
   # emit_chunk/fire_tool_call/fire_tool_result). final_content: content of the final
-  # response. model: optional stub read by ChatBuilder's provider check (§11 R3);
+  # response. model: optional stub read by ChatBuilder's provider check (R3);
   # nil by default (provider check -> false, caching stays off).
   attr_accessor :script, :final_content, :model
 
@@ -38,7 +38,7 @@ class FakeChat
     @after_tool_result = []
     # ADDITIVE, like the gem's: `@callbacks[name] << block`. A single slot here made the
     # double silently drop every registration but the last — and stage 6 registers two
-    # (TurnOutput's publishing boundary and the RFC-0015 steer injector), so the one
+    # (TurnOutput's publishing boundary and the steer injector), so the one
     # that lost would have looked like a feature that never fires.
     @after_message = []
     @streamed = +""
@@ -58,7 +58,7 @@ class FakeChat
     self
   end
 
-  # tool_calls/tool_call_id are optional (§11 R1 rehydration): recorded only when
+  # tool_calls/tool_call_id are optional (R1 rehydration): recorded only when
   # present, so existing callers that seed plain {role, content} are unaffected.
   def add_message(role:, content:, tool_calls: nil, tool_call_id: nil)
     msg = { role: role, content: content }
@@ -113,7 +113,7 @@ class FakeChat
 
   # The gem's `add_tool_result_message`: the result becomes a `role: tool` message AND
   # closes it through `after_message`. That boundary — the LAST result of a batch — is
-  # where RFC-0015 appends a steered message, so a double that only fired
+  # where appends a steered message, so a double that only fired
   # `after_tool_result` could not exercise it at all.
   def fire_tool_result_message(result, id: "call_1")
     add_message(role: :tool, content: result.to_s, tool_call_id: id)

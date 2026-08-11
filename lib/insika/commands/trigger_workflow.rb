@@ -45,7 +45,7 @@ module Insika
           raise Insika::NotFoundError, "workflow '#{workflow}' not registered"
         end
 
-        # I/O by schema (item 22 / §4.4): the INPUT is validated SYNCHRONOUSLY —
+        # I/O by schema: the INPUT is validated SYNCHRONOUSLY —
         # a non-conforming input is a WorkflowSchemaError (< ValidationError -> 422)
         # with NO run created. `definition` reads the schema metadata without
         # resolving the factory (stays out of the fiber). No-op without an input_schema.

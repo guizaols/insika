@@ -25,7 +25,7 @@ module Insika
         # Fixed local token: logs into the Studio (cookie) and gates /v1 (Bearer).
         # Never a real secret — override with `token:` or ADMIN_TOKEN.
         @token = token || ENV.fetch("ADMIN_TOKEN", "local-demo")
-        # RFC-0017 A3: the /v1 app is a value now — the same one a host mounts.
+        # the /v1 app is a value now — the same one a host mounts.
         # This boot adds the Studio and a reactor around it, nothing else.
         @builder = Insika::Server::AppBuilder.new(runtime, token: @token)
       end
@@ -35,13 +35,13 @@ module Insika
         dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => @builder.app)
         endpoint = Async::HTTP::Endpoint.parse("http://#{@host}:#{@port}")
         middleware = Protocol::Rack::Adapter.new(dispatch)
-        # Item 16 / P4: the OTEL bridge is opt-in but must be reachable from the DSL
+        # the OTEL bridge is opt-in but must be reachable from the DSL
         # front door too — the convention is worthless if only config.ru can export.
         # nil (the default) -> attach is a no-op and no gem is loaded.
         telemetry = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))
 
         banner(telemetry)
-        # RFC-0016 A3: first Ctrl-C/SIGTERM closes the intake and drains in-flight
+        # first Ctrl-C/SIGTERM closes the intake and drains in-flight
         # turns (INSIKA_DRAIN_TIMEOUT, default 20s); a second signal skips the wait.
         Insika::Shutdown.install(executor: @graph.executor)
         Async do

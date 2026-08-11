@@ -4,22 +4,22 @@ require "spec_helper"
 require "async"
 require "insika/tools/load_skill"
 
-# Item 30, D3 + D4: the switch for parallel tool calls, and the two safety
+# +: the switch for parallel tool calls, and the two safety
 # properties that had to exist before it could be turned on at all.
 #
-#   · D3 — approvals and concurrency deadlock. `Executor#request_approval` blocks
+#   · — approvals and concurrency deadlock. `Executor#request_approval` blocks
 #     on `actor.await(:approval)`, and that mailbox is ONE queue per task: two
 #     fibers waiting there share it, `dequeue` wakes exactly one, the message is
 #     consumed, and the other fiber hangs until `approval_timeout` (~1h). So a turn
 #     with any approval-required tool runs serially, and says so once.
-#   · D4 — the MODEL decides the fan-out. Without a cap, a batch of 15 data-tools
+#   · — the MODEL decides the fan-out. Without a cap, a batch of 15 data-tools
 #     is 15 simultaneous requests to one upstream. The cap is a semaphore shared by
 #     every ToolEnvelope of the turn.
 #
 # The gem-side facts these lean on (fiber-per-call, completion-order results, a
 # failing sibling not stopping the batch) are pinned against the REAL gem in
 # ruby_llm_contract_spec.rb; here we pin OUR decisions.
-RSpec.describe "tool concurrency (item 30, D3/D4)" do
+RSpec.describe "tool concurrency" do
   def profile(concurrency: nil, **limits)
     limits[:tool_concurrency] = concurrency unless concurrency.nil?
     Insika::AgentProfile.build(id: "a", model: "m", limits: limits)
@@ -52,7 +52,7 @@ RSpec.describe "tool concurrency (item 30, D3/D4)" do
     end
   end
 
-  describe "D3 — a turn with approvals runs serially" do
+  describe "a turn with approvals runs serially" do
     it "requested stays 4, effective becomes nil when the Resolution requires approval" do
       st = state(concurrency: 4, requires_approval: ["refund"])
       expect(st.requested_tool_concurrency).to eq(4)
@@ -95,7 +95,7 @@ RSpec.describe "tool concurrency (item 30, D3/D4)" do
       expect(configure(state(concurrency: 8)).concurrency).to eq(:fibers)
     end
 
-    it "D3: warns ONCE when the profile asked for it and the turn cannot have it" do
+    it "warns ONCE when the profile asked for it and the turn cannot have it" do
       configure(state(concurrency: 4, requires_approval: %w[refund wire]))
 
       warning = event_stream.events.find { |e| e.type == :provider_warning }
@@ -110,7 +110,7 @@ RSpec.describe "tool concurrency (item 30, D3/D4)" do
     end
   end
 
-  describe "D4 — the cap on in-flight calls" do
+  describe "the cap on in-flight calls" do
     let(:assembly) do
       Insika::ToolAssembly.new(tool_registry: Object.new, capability_registry: nil,
                                event_stream: SpyEventStream.new, checkpoint_store: Object.new,
@@ -130,7 +130,7 @@ RSpec.describe "tool concurrency (item 30, D3/D4)" do
       expect(st.tool_gate).to be_nil
     end
 
-    it "installs no gate for a turn D3 downgraded" do
+    it "installs no gate for a turn downgraded" do
       st = state(concurrency: 3, requires_approval: ["refund"])
       assembly.wrap_tools([], st)
       expect(st.tool_gate).to be_nil

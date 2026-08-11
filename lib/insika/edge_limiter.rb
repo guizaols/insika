@@ -4,7 +4,7 @@ require_relative "middleware"
 require_relative "coercion"
 
 module Insika
-  # The production edge (item 33 / §12 G7): THE named place where volume/cost
+  # The production edge: THE named place where volume/cost
   # abuse is cut. A Middleware with two independent limits, both OPT-IN
   # (nil/0 = off — a bare wiring behaves exactly as before):
   #
@@ -19,7 +19,7 @@ module Insika
   #   settings["edge"]                                          — platform default
   # A per-agent 0 explicitly disables a platform default for that agent.
   #
-  # On breach it uses the graceful-halt contract (RFC-0009 §3.1): halt_response
+  # On breach it uses the graceful-halt contract: halt_response
   # (the safe reply) + guardrail_block (audit -> :guardrail_blocked) and does NOT
   # call `nxt` — the turn completes with ZERO LLM calls. It sits BEFORE the
   # InputGuardrail in the stack so a flood can't spend the LLM moderator either.
@@ -101,7 +101,7 @@ module Insika
     # prefix (`Executor#usage_of` reports `cached_tokens`/`cache_creation_tokens`
     # alongside it) — on a cached identity that prefix is ~95% of what the
     # provider actually processed, so a ceiling reading only `total_tokens` is
-    # blind (RFC-0016 A4). Same billed-spend rule as `Evals::Runner#billed_tokens`.
+    # blind. Same billed-spend rule as `Evals::Runner#billed_tokens`.
     # nil usage (workflow turn / provider without counts) records nothing.
     def record_usage(state, window)
       usage = state.usage || {}

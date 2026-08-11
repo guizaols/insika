@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # The channels this deployment speaks, by id (RFC-0011 §4.2). A `Registry` like
+  # The channels this deployment speaks, by id. A `Registry` like
   # tools and workflows — same plugin bookkeeping, so `deregister_plugin` rolls a
   # half-registered plugin back exactly as it does for a tool.
   #

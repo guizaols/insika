@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe Insika::CapabilityRegistry do
   subject(:registry) { described_class.new }
 
-  # Minimal profile: `resolve` only reads `tools_deny` (deny-only, D3/L3). `tools_allow`
+  # Minimal profile: `resolve` only reads `tools_deny` (deny-only,/L3). `tools_allow`
   # exists to prove it is IGNORED during resolution.
   ProfileDouble = Struct.new(:tools_deny, :tools_allow) do
     def self.with(deny: [], allow: nil) = new(deny, allow)
@@ -66,7 +66,7 @@ RSpec.describe Insika::CapabilityRegistry do
       end.to raise_error(Insika::CapabilityUnavailable)
     end
 
-    it "tools_allow does NOT filter candidates (deny-only, D3/L3)" do
+    it "tools_allow does NOT filter candidates (deny-only,/L3)" do
       registry.register(:browse, impl_name: "hi", kind: :tool, priority: 100)
       registry.register(:browse, impl_name: "lo", kind: :tool, priority: 50)
       # allow lists only "lo"; still resolves to "hi" (allow is ignored)

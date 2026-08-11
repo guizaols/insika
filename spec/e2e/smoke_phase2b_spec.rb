@@ -7,12 +7,12 @@ require "async"
 require "insika/tools/load_skill"
 require "insika/tools/tool_search"
 
-# E2E smoke for slice B (P2B): CommandBus + SendMessage + Executor + mocked
+# E2E smoke for: CommandBus + SendMessage + Executor + mocked
 # RubyLLM (FakeChat via create_chat stub). REAL components: CapabilityRegistry,
 # ToolRegistry, Policy::Engine+ToolAllowlist, ToolCatalog, AgentProfile — only the
-# `chat` is a double. No crash/reboot dimension (slice B doesn't have one), so
-# in-process, no subprocess (unlike slice A's smoke_resume).
-RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smoke do
+# `chat` is a double. No crash/reboot dimension (doesn't have one), so
+# in-process, no subprocess (unlike's smoke_resume).
+RSpec.describe "smoke E2E: capability resolution + tool search",:smoke do
   # A tool raw enough for Registry/ToolEnvelope/ResolvedTool (respond_to? only).
   class FakeCapTool
     def initialize(name) = (@name = name)
@@ -123,7 +123,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
     expect(resolved.data[:candidates].map { |c| c[:impl_name] }).to contain_exactly("browser_a", "browser_b")
 
     tool = chat.tools.find { |t| t.respond_to?(:name) && t.name.to_s == "browse" }
-    expect(tool).not_to be_nil                 # STABLE name exposed to the model (D4)
+    expect(tool).not_to be_nil                 # STABLE name exposed to the model
     expect(tool.impl_name).to eq("browser_b")  # real impl behind it (Envelope delegates)
   end
 
@@ -161,14 +161,14 @@ RSpec.describe "smoke E2E: capability resolution + tool search (slice B)", :smok
 
     expect(initial_names).to include("eager_tool", "tool_search")
     expect(initial_names).not_to include("send_email") # deferred: out of the initial prompt
-    expect(promoted_result).to eq("executed:send_email") # promoted + callable IN THE SAME turn (D6)
+    expect(promoted_result).to eq("executed:send_email") # promoted + callable IN THE SAME turn
 
     ev = event_stream.events.find { |e| e.type == :tool_search }
     expect(ev.data[:query]).to eq("send email")
     expect(ev.data[:matched]).to include("send_email")
   end
 
-  it "tools_deferred nil -> Phase 1 parity (all eager, no system tool_search)" do
+  it "tools_deferred nil -> parity (all eager, no system tool_search)" do
     seen_names = nil
     chat = FakeChat.new
     chat.script = proc { seen_names = tools.map { |t| t.name.to_s } }

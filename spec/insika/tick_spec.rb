@@ -5,7 +5,7 @@ require "async"
 require "async/queue"
 require "tmpdir"
 
-# RFC-0019 — the periodic tick. Properties under test: the outbox drain runs
+# the periodic tick. Properties under test: the outbox drain runs
 # for every worker on every pass (per-record claims make that safe); the
 # recovery half runs for exactly ONE worker per window (the single-key claim);
 # a failing pass is logged and the loop keeps ticking; interval 0 disables.
@@ -106,8 +106,8 @@ RSpec.describe Insika::Tick do
       expect { tick.run_once }.to raise_error(Insika::StoreError)
     end
 
-    # RFC-0019 E1: the single-key window claim across real concurrent handles —
-    # the same property RFC-0016 E1 proved for the boot claim.
+    # the single-key window claim across real concurrent handles —
+    # the same property proved for the boot claim.
     it "exactly one of two SQLite handles sweeps the same window (cross-process claim)" do
       Dir.mktmpdir do |dir|
         db_path = File.join(dir, "tick.db")
@@ -220,7 +220,7 @@ RSpec.describe Insika::Tick do
     end
   end
 
-  describe "integration with the real Recovery (the A2 hole, closed)" do
+  describe "integration with the real Recovery (the hole, closed)" do
     let(:task_store) { Insika::TaskStore.new(store: backend) }
     let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
     let(:bus) do

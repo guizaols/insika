@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# LLM config v2 (§10): the resolved model decision + its application to the chat.
+# LLM config v2: the resolved model decision + its application to the chat.
 RSpec.describe Insika::ModelSelection do
   # Records the fluent with_* calls the way a RubyLLM chat exposes them. Named
   # uniquely to avoid clobbering the shared spec/support/fake_chat.rb constant.
@@ -88,7 +88,7 @@ RSpec.describe Insika::ModelSelection do
     end
   end
 
-  # §10 4-layer reasoning control: the resolved `thinking` maps to the provider wire.
+  # 4-layer reasoning control: the resolved `thinking` maps to the provider wire.
   describe "the reasoning toggle" do
     def sel(thinking, provider: :deepseek)
       described_class.new(model: "m", provider: provider, params: { thinking: thinking })

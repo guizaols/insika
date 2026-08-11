@@ -41,7 +41,7 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(t.params_schema["required"]).to include("cep")
   end
 
-  # Phase 7, Stage A — PROOF: a NESTED parameter (search_products) is exposed to the
+  # — PROOF: a NESTED parameter (search_products) is exposed to the
   # model via params_schema (what the providers serialize) AND interpolated into the body.
   describe "nested param (JSON Schema)" do
     let(:search_def) do
@@ -216,8 +216,8 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(req[:body]).to eq('{"q":"a\"b"}')            # quotes escaped for valid JSON
   end
 
-  # Phase 6/D2/G3: the TURN ids (not the model's) become X-Chat-Id/X-Store-Id/
-  # X-Agent-Id — the PROOF of Stage B (without them every /api/internal/* tool 403s).
+  # the TURN ids (not the model's) become X-Chat-Id/X-Store-Id/
+  # X-Agent-Id — the PROOF of (without them every /api/internal/* tool 403s).
   describe "turn context {{ctx.*}}" do
     let(:internal_def) do
       { name: "cart", description: "carrinho da loja",

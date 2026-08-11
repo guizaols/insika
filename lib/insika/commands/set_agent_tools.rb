@@ -6,7 +6,7 @@ module Insika
   module Commands
     # Control command: adjusts an agent's tools allow/denylist.
     # `allow` nil = all (AgentProfile rule); `deny` always
-    # wins. `allow_groups` (Phase 7/D4/F5, Step C): per-group allowlist, only
+    # wins. `allow_groups`: per-group allowlist, only
     # overwritten if the key comes in the payload (otherwise preserved). Takes effect on the next
     # dispatch (hot). -> AgentProfile.
     class SetAgentTools

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Doubles shared by the insika-server specs (task 24). They live in spec/support so
+# Doubles shared by the insika-server specs. They live in spec/support so
 # as not to depend on constant leakage between files (the suite runs in random
 # order).
 
@@ -33,7 +33,7 @@ class ServerFakeSubscription
     @events.each { |e| yield e }
   end
 
-  # Parity with the real Subscription (task 24): the transport binds the task_id
+  # Parity with the real Subscription: the transport binds the task_id
   # after the dispatch. In the double it's a no-op (the events already come scripted).
   def bind(task_id:) = self
 
