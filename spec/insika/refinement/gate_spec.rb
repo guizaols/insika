@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 §3.5 — the gate is the entire safety story of refinement. Everything
+# the gate is the entire safety story of refinement. Everything
 # upstream is allowed to be wrong; what must hold here is that a candidate is
 # measured by RUNNING it, that the live agent is never touched, that the clone
 # always goes away, and that a missing accepted state is a refusal rather than a
@@ -70,7 +70,7 @@ RSpec.describe Insika::Refinement::Gate do
   before { seed_agent }
 
   describe "the refusals that happen before anything is cloned" do
-    # D4: declaring the cases is the price of admission to automated editing.
+    # declaring the cases is the price of admission to automated editing.
     it "refuses an agent with no golden cases" do
       baseline!({})
       report, = gate.first.then { |g| [g.score(agent_id: "support", candidate: candidate, run_id: "r1")] }
@@ -268,8 +268,8 @@ RSpec.describe Insika::Refinement::Gate do
     end
   end
 
-  # RFC-0014 §3.2 again, from inside the gate. Without this the gate and
-  # `evals/run.rb` — the two callers of the ONE evaluator §3.7 insists on — disagree
+  # again, from inside the gate. Without this the gate and
+  # `evals/run.rb` — the two callers of the ONE evaluator insists on — disagree
   # about what the corpus measures: the CLI skips a case the agent cannot satisfy,
   # the gate runs it and counts a failure.
   describe "capability resolution" do
@@ -319,7 +319,7 @@ RSpec.describe Insika::Refinement::Gate do
     expect(g.clone_id_for("support", "1111-2222")).to eq("support-cand-11112222")
   end
 
-  # RFC-0013 §3.9: a gate is the expensive half of refinement and a loop whose cost
+  # a gate is the expensive half of refinement and a loop whose cost
   # is invisible is one nobody can decide to keep. The panel's budget spends this.
   describe "what the replay cost" do
     before do

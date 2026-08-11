@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# Phase 4 Stage D (task 9 / D5): the agent's memory becomes editable via Command
+# the agent's memory becomes editable via Command
 # (HTTP), not only through the `remember` tool within the turn.
-RSpec.describe "Memory commands (Phase 4 Stage D)" do
+RSpec.describe "Memory commands" do
   let(:store) { Insika::MemoryStore.new(store: Insika::Stores::Memory.new) }
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(sink) = (@sink = sink); def emit(ev) = @sink << ev }.new(events) }

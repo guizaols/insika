@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require "async/condition"
 
-# RFC-0016 A3 — shutdown is a drain, not a kill. Three properties under test:
+# shutdown is a drain, not a kill. Three properties under test:
 # the drain WAITS for in-flight turns and abandons only what outlives the
 # deadline; a draining executor closes the TURN intake (tasks stay :queued for
 # the next boot's recovery) without gating subagent spawns; and the signal path
@@ -98,7 +98,7 @@ RSpec.describe Insika::Shutdown do
     end
   end
 
-  # RFC-0017 A4 / E3.4 — a process can host N graphs (docs/EMBEDDING.md). Signals
+  # 4 — a process can host N graphs (docs/EMBEDDING.md). Signals
   # are a process concern and `Signal.trap` keeps only the LAST handler, so one
   # shutdown installed per graph would drain the last one and let the others die
   # mid-turn. The host installs once, naming every graph it embedded.

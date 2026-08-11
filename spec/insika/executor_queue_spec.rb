@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# RFC-0015 §5.3 — the `collect` door as the Executor exposes it. Every guard here
+# the `collect` door as the Executor exposes it. Every guard here
 # exists so that a wiring which did NOT ask for coalescing gets exactly the
 # behavior it had before the feature: a task of its own, per message.
-RSpec.describe "Insika::Executor + the collect door (RFC-0015)" do
+RSpec.describe "Insika::Executor + the collect door" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

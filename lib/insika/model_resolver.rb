@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # LLM config v2 resolution (FOLLOWUP §10). Turns the three config layers into a
+  # LLM config v2 resolution. Turns the three config layers into a
   # single ModelSelection at turn start:
   #
   #   Chat (per-session pin) > Agent (profile.model) > Platform default (Settings)

@@ -27,7 +27,7 @@ RSpec.describe Insika::SessionActor do
 
   def task(id) = Struct.new(:id, :session_id).new(id, "s")
 
-  # RFC-0015 §5.3: the actor writes merges through the executor's task_store and
+  # the actor writes merges through the executor's task_store and
   # announces a closed window through #emit_coalesced.
   class CollectExec < FakeExec
     attr_reader :task_store, :coalesced
@@ -103,7 +103,7 @@ RSpec.describe Insika::SessionActor do
     end
   end
 
-  describe "RFC-0015 collect + debounce" do
+  describe " collect + debounce" do
     it "holds the turn at the door and merges the fragments that arrive in the window" do
       Sync do |top|
         exec = CollectExec.new

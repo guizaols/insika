@@ -33,7 +33,7 @@ module Insika
 
         private
 
-        # Engine memory scope (D3): an EXPLICIT tenant from the Command wins
+        # Engine memory scope: an EXPLICIT tenant from the Command wins
         # (multi-merchant override); otherwise the SESSION (=chat) — engine-owner
         # memory is per-chat. No session (one-shot) and no tenant -> nil (MemoryStore
         # applies _default). Symmetric to the write path (`state.tenant` in the Executor).

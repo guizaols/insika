@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# WHAT REACHES THE CUSTOMER (P19). Every chunk the model streams used to become a
+# WHAT REACHES THE CUSTOMER. Every chunk the model streams used to become a
 # `:content` delta, and `/v1/responses` translates every one of those straight to
 # the end customer. Running a real store's 28 KB prompt proved the cost: when the
 # model had no tool to call it reasoned in prose, and 132 deltas of an English
@@ -13,7 +13,7 @@ require "async"
 # The rule these specs pin: `:content` carries the ANSWER — the text of the assistant
 # message that ENDS the turn. Everything else rides `:intermediate`, which the Studio
 # and the trace show and the edge drops (see server/responses_spec).
-RSpec.describe "Insika::Executor turn output (P19)" do
+RSpec.describe "Insika::Executor turn output" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
@@ -217,7 +217,7 @@ RSpec.describe "Insika::Executor turn output (P19)" do
 
   # The floor: a transport that never reports a message boundary must still deliver
   # an answer. Everything above depends on `after_message`; this is what happens
-  # without it, and it is the pre-P19 behaviour.
+  # without it, and it is the pre- behaviour.
   describe "a chat that does not report message boundaries" do
     it "publishes the response content at the end of the turn" do
       chat = FakeChat.new

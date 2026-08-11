@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# Phase 6/D4/F6 (task 7) — the importer emits the authoring Commands from
+# — the importer emits the authoring Commands from
 # a Pack. Proves: create vs update (upsert), 1 write_agent_file per file, 1
 # write_skill per skill, 1 write_data_tool per tool, and AUTHORITATIVE allowlists
-# derived from the pack (per-store isolation + NF2).
+# derived from the pack (per-store isolation +).
 RSpec.describe Insika::PackImporter do
   # bus double: records (type, payload) of each dispatch.
   class BusSpy
@@ -47,7 +47,7 @@ RSpec.describe Insika::PackImporter do
       expect(create.first.payload).to include(id: "loja-7", model: "deepseek-chat", metadata: { store_id: "7" })
     end
 
-    it "derives AUTHORITATIVE allowlists from the pack (isolation + NF2)" do
+    it "derives AUTHORITATIVE allowlists from the pack (isolation +)" do
       result
       attrs = bus.of(:create_agent).first.payload
       expect(attrs[:prompt_files]).to contain_exactly("IDENTITY.md", "SOUL.md")
@@ -101,14 +101,14 @@ RSpec.describe Insika::PackImporter do
   end
 
   describe "allowlist with tools_allow in the config" do
-    it "merges config tools with the pack's tools (NF2)" do
+    it "merges config tools with the pack's tools" do
       p = pack(config: { id: "loja-7", model: "m", tools_allow: %w[send_finalize] })
       described_class.new(bus: bus, profiles: profiles).import(p)
       expect(bus.of(:create_agent).first.payload[:tools_allow]).to contain_exactly("send_finalize", "cart", "search")
     end
   end
 
-  describe "schema pruning by flag (Phase 7, Step E / D5 — allowlist by group)" do
+  describe "schema pruning by flag (/ — allowlist by group)" do
     def attrs_for(config)
       p = pack(config: config)
       described_class.new(bus: bus, profiles: profiles).import(p)

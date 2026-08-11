@@ -35,7 +35,7 @@ RSpec.describe Insika::Context::Providers::Request do
     expect(described_class.new.required?).to be(false)
   end
 
-  it "never renders '__'-prefixed internal vars (e.g. the model pin __llm__, §10)" do
+  it "never renders '__'-prefixed internal vars (e.g. the model pin __llm__)" do
     vars = { "plan" => "pro", Insika::ModelResolver::SESSION_SLOT => { "model" => "secret-m" } }
     content = described_class.new.call(request(tenant: "acme", vars: vars)).first.content
     expect(content).to include("plan: pro")

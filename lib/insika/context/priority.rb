@@ -3,12 +3,12 @@
 module Insika
   module Context
     # Precedence ladder for context fragments — SINGLE SOURCE of the order
-    # (Phase 6/D5, trust boundary). Higher = more authority: appears earlier
+    # (trust boundary). Higher = more authority: appears earlier
     # in the system prompt and survives budget cuts. Providers reference these
     # constants instead of loose numbers, so the boundary is an auditable
     # contract in a single place (trust_boundary_spec locks the order).
     #
-    # Contract (NF3/D5): identity and guardrails go PINNED at the top; TURN
+    # Contract: identity and guardrails go PINNED at the top; TURN
     # injections (request_context — the consumer's tenant/vars) sit at the
     # BOTTOM and are sacrificed FIRST under budget. Identity (pinned) is NEVER
     # truncated. A prompt injection riding in via turn data is DATA, not

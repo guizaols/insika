@@ -18,6 +18,10 @@ node_modules/
 .env.*.local
 # Eval run artifacts (evals/run.rb --out); keep the dir, not the outputs
 evals/reports/*.json
+# Deployment-specific eval material (real-store baselines/goldens) — never shipped
+evals/internal/
+# A captured baseline is per-deployment data (evals/run.rb --update-baseline)
+evals/baseline.json
 
 # Docs site (docs/ is the Jekyll site root). `docs/llms.txt` is a build-time COPY of
 # the repo-root llms.txt, staged by .github/workflows/pages.yml — never commit it.
@@ -26,7 +30,7 @@ docs/.jekyll-cache/
 docs/llms.txt
 
 # Internal working material — kept locally, NOT tracked/shipped in the OSS repo
-# (RFCs, techspec, handoff bundle, planning docs, pilot benchmarks/scripts).
+# (internal RFCs, design docs, handoff bundle, planning docs, pilot benchmarks/scripts).
 docs/README.md
 docs/FOLLOWUP.md
 docs/TRANSLATION-TRACKER.md
@@ -37,7 +41,7 @@ docs/internal/
 docs/harness-handoff.zip
 scripts/internal/
 
-# RFC-0016 A6: spec/scripts/ was a blanket ignore, which hid specs for PUBLIC
+# spec/scripts/ was a blanket ignore, which hid specs for PUBLIC
 # scripts (bin/insika, scripts/bench.rb) from CI along with the one spec that
 # is genuinely internal — openclaw_to_manifest_spec.rb requires_relative a file
 # under scripts/internal/, which does not exist in this checkout. Ignore the

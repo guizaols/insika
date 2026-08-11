@@ -9,7 +9,7 @@ require_relative "output_validator"
 
 module Insika
   module Safety
-    # Composition helper for the guardrail subsystem (RFC-0009). Keeps the wiring
+    # Composition helper for the guardrail subsystem. Keeps the wiring
     # (config.ru / deployment.rb) a one-liner and the Executor decoupled from Safety:
     # the Executor only ever sees a duck-typed `content_filter_factory` callable and
     # reads plain Hash fields (`guardrail_block`/`guardrail_flags`) off the state.
@@ -21,10 +21,10 @@ module Insika
     class Factory
       # `settings_store` (optional): source of the platform `utility_model` fallback.
       # nil = no fallback (moderator only when the agent pins its own model ref).
-      # `llm` (optional, RFC-0017 A2): the graph's own RubyLLM context. nil = the
+      # `llm` (optional): the graph's own RubyLLM context. nil = the
       # process-wide RubyLLM constant. A guardrail asking on the global while the
       # turn asks on the graph's key is a leak with a false sense of isolation, so
-      # this seam is part of A2 and not a follow-up.
+      # this seam is part of and not a follow-up.
       def initialize(settings_store: nil, llm: nil)
         @settings_store = settings_store
         @llm = llm

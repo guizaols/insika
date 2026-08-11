@@ -14,7 +14,7 @@ RSpec.describe Insika::Commands::SendMessage do
   let(:profile) { Insika::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
 
-  # Records the spawn and declines every RFC-0015 door (the real fiber is the
+  # Records the spawn and declines every door (the real fiber is the
   # integration). See spec/support/fake_turn_executor.rb.
   let(:executor) { FakeTurnExecutor.new }
 
@@ -35,7 +35,7 @@ RSpec.describe Insika::Commands::SendMessage do
     expect(executor.spawned.first.last).to be(profile)
   end
 
-  it "XOR D2: session_id + history -> ValidationError, no Task created" do
+  it "XOR: session_id + history -> ValidationError, no Task created" do
     session_store.create(id: "s1")
 
     expect do
@@ -82,7 +82,7 @@ RSpec.describe Insika::Commands::SendMessage do
     expect(executor.spawned.size).to eq(1)
   end
 
-  describe "RFC-0015 §5.5 — coalescing is offered only where `merged` can be reported" do
+  describe "coalescing is offered only where `merged` can be reported" do
     subject(:handler) do
       described_class.new(profiles: profiles, session_store: session_store,
                           task_store: task_store, executor: collecting_executor)
@@ -106,7 +106,7 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(task_store.each_id.to_a).to be_empty       # and NO orphan :queued task
     end
 
-    it "a channel surface coalesces too (RFC-0011 §6.2 defines the field)" do
+    it "a channel surface coalesces too (defines the field)" do
       expect(send_from(:"channel:relay")).to eq({ task_id: "t-open", merged: true })
     end
 
@@ -147,7 +147,7 @@ RSpec.describe Insika::Commands::SendMessage do
     end
   end
 
-  describe "RFC-0015 §5.1 — steering a turn that is already running" do
+  describe "steering a turn that is already running" do
     # No turn at the door (collect declines), one running (steer accepts).
     let(:steering_executor) { FakeTurnExecutor.new(steer: "t-running") }
 
@@ -178,9 +178,9 @@ RSpec.describe Insika::Commands::SendMessage do
     end
   end
 
-  # §6.4 — interrupt JOINS nothing: this message keeps its own task and its own reply, so
+  # interrupt JOINS nothing: this message keeps its own task and its own reply, so
   # there is no verdict to report and therefore no surface to gate.
-  describe "RFC-0015 §6.4 — interrupting the turn in flight" do
+  describe "interrupting the turn in flight" do
     let(:interrupting_executor) { FakeTurnExecutor.new(interrupt: "t-abandoned") }
 
     subject(:handler) do
@@ -221,7 +221,7 @@ RSpec.describe Insika::Commands::SendMessage do
     end
   end
 
-  # RFC-0011 §6.4 — a platform retrying a webhook it already delivered must not buy
+  # a platform retrying a webhook it already delivered must not buy
   # a second turn and must not send the customer the same answer twice.
   describe "event_id dedup" do
     subject(:handler) do

@@ -16,7 +16,7 @@ module InsikaCode
     # escapes and IO errors into a `{ error: ... }` hash returned to the MODEL, so
     # a bad path is a recoverable tool result — never a crashed turn.
     #
-    # As of item 35 the injected object is the core `Insika::Sandbox::Env`
+    # As of the injected object is the core `Insika::Sandbox::Env`
     # (FS boundary + exec provider), replacing the plugin-local Workspace.
     class Base < RubyLLM::Tool
       def initialize(sandbox:)

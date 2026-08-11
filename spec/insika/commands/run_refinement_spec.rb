@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# RFC-0013 phase A: the ONE way a refinement run starts (CLI, Studio button and any
-# external cron all dispatch this command — the engine has no scheduler, §3.10).
+# the ONE way a refinement run starts (CLI, Studio button and any
+# external cron all dispatch this command — the engine has no scheduler).
 RSpec.describe Insika::Commands::RunRefinement do
   subject(:handler) do
     described_class.new(profiles: profiles, refinement_store: runs,

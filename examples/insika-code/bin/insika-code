@@ -3,7 +3,7 @@
 
 # Minimal terminal client for the engine-code prototype. A REPL that talks to
 # the engine over its HTTP API (stdlib only — net/http + json), exactly like the
-# production path (consumer-app / WhatsApp -> POST /v1/responses):
+# production path (a consumer app / WhatsApp -> POST /v1/responses):
 #
 #   * each user line is sent to POST /v1/responses (streaming SSE); assistant
 #     text deltas and tool-call notices are rendered as they arrive;

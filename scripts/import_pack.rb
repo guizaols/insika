@@ -9,7 +9,7 @@
 # Usage:
 #   INSIKA_URL=http://localhost:9292 \
 #   OPENCLAW_GATEWAY_TOKEN=local-demo \
-#   BIA_INTERNAL_API_TOKEN=<consumer-app internal token> \
+#   BIA_INTERNAL_API_TOKEN=<the consumer's internal token> \
 #   bundle exec ruby scripts/import_pack.rb /path/to/pack
 #
 # BIA_INTERNAL_API_TOKEN replaces the __BIA_INTERNAL_API_TOKEN__ placeholder in the

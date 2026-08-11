@@ -4,18 +4,18 @@ require "time"
 
 module Insika
   module Commands
-    # BATCH ingestion of data-tools from a manifest (Phase 7, Step B).
+    # BATCH ingestion of data-tools from a manifest.
     # Normalizes each tool (defaults + envelope adapter + endpoint→url + secret/
     # env) via ToolManifest, UPSERTs it into the ToolStore, and RELOADS the overlay +
-    # catalog ONCE at the end — takes effect without a restart (NF3). Idempotent
+    # catalog ONCE at the end — takes effect without a restart. Idempotent
     # (re-importing reconciles). Injects the deployment's `{{secret.*}}`/`{{env.*}}`
-    # resolvers (D6/open-q2): the secret NEVER comes in the manifest.
+    # resolvers: the secret NEVER comes in the manifest.
     #
     # ISOLATED PARTIAL FAILURE (R4): a malformed tool (invalid envelope, missing
     # endpoint, unconfigured secret, collision with a code tool, invalid url)
     # does NOT bring down the batch — it becomes an entry in `errors[]`. Only a STRUCTURAL error in the
     # manifest (defaults/tools of the wrong type) raises (transport -> 422).
-    # Per-tool report in the shape of the Phase 6 pack importer.
+    # Per-tool report in the shape of the pack importer.
     #   -> { version, created: [names], updated: [names], errors: [{tool,error}] }
     class ImportTools
       def initialize(tool_store:, registry:, tool_catalog:, event_stream:, secrets: ENV, env: ENV)

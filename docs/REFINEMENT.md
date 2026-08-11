@@ -149,7 +149,7 @@ it did before, so no transcript needs migrating.
 
 `repetition` counts only what a customer said and `safe_reply` reads only what the
 engine said, both from this field. A message that declares nothing falls back to the
-old guess (an injected fragment opens with its own tag, `<store_cep_obrigatorio> …`,
+old guess (an injected fragment opens with its own tag, `<store_cep_required> …`,
 which no customer types) — that heuristic now runs only on messages that made no
 claim about themselves.
 
@@ -440,7 +440,7 @@ not reasoned about.
 rest is detail. A regression is "a case that was passing now fails" — so an edit
 that breaks something no case covers passes cleanly. Two shallow cases wave almost
 anything through. If you want the loop to protect a behaviour, there has to be a
-case for that behaviour; that is the price [D4](#what-the-gate-needs) is charging,
+case for that behaviour; that is the price [the gate](#what-the-gate-needs) is charging,
 and it is charged in curation work, not in configuration.
 
 Three things it will **not** catch, and two of them are the engine working correctly:

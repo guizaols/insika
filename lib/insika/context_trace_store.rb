@@ -2,7 +2,7 @@
 
 module Insika
   # Per-session CONTEXT trace, for the Studio's breakdown-by-category card
-  # (RFC-0023). One record per session in the raw backend (scope
+  # One record per session in the raw backend (scope
   # "context_traces") — RUNTIME data, next to sessions/tasks, like the
   # ToolTraceStore it mirrors. A capped LIST of entries, ONE PER TURN, written
   # by the Executor after tool assembly.

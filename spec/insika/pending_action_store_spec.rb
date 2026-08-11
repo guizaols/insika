@@ -44,7 +44,7 @@ RSpec.describe Insika::PendingActionStore do
     expect(open.map(&:id)).to eq([a.id]) # only the :pending one from t1
   end
 
-  it "all_open returns every :pending across tasks (approvals inbox, §12 G5)" do
+  it "all_open returns every:pending across tasks (approvals inbox)" do
     a = create(task_id: "t1")
     b = create(task_id: "t2")
     resolved = create(task_id: "t1")

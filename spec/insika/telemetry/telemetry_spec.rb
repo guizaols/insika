@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# Phase 6 — the Telemetry facade: opt-in (enabled?), no-op setup when disabled,
+# the Telemetry facade: opt-in (enabled?), no-op setup when disabled,
 # and attach wiring the Event Stream to the Recorder. The real OTEL boundary (setup on)
 # is not covered by unit (pulls in the gem); here we prove the edge logic.
 RSpec.describe Insika::Telemetry do

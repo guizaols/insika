@@ -88,7 +88,7 @@
   <% else %>
     <div class="thread">
       <%# `prev` is what makes a STEERED message visible: a customer message that lands
-          right after a tool result arrived mid-run (RFC-0015). See _message.erb. %>
+          right after a tool result arrived mid-run. See _message.erb. %>
       <% Array(@session.messages).each_with_index do |m, i| %><%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %><% end %>
     </div>
   <% end %>

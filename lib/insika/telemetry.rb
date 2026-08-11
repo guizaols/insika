@@ -5,7 +5,7 @@ require_relative "telemetry/pricing"
 require_relative "telemetry/recorder"
 
 module Insika
-  # OPT-IN observability (Phase 6): OTEL mounted at the edge, core untouched. Rides
+  # OPT-IN observability: OTEL mounted at the edge, core untouched. Rides
   # the Event Stream — the Recorder consumes the events and emits spans and metrics.
   # Off (the default) -> `setup` returns nil and nothing is loaded or instrumented
   # (parity, zero overhead). The OTEL gems are only REQUIRED lazily in `setup`
@@ -17,7 +17,7 @@ module Insika
   # OTEL_* keys are the OpenTelemetry SDK's own env and stay verbatim; only our opt-in
   # toggle is renamed (INSIKA_OTEL, with the HARNESS_OTEL alias still read).
   #
-  # Metrics (item 16 / P4) ride the same switch and the SAME standard env: the SDK
+  # Metrics ride the same switch and the SAME standard env: the SDK
   # registers a periodic metric reader when the OTLP metrics exporter is loadable,
   # and `OTEL_METRICS_EXPORTER=none` turns metrics off while traces stay on. No
   # Insika-specific toggle is invented for it.

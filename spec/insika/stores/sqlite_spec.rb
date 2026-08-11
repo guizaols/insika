@@ -27,7 +27,7 @@ RSpec.describe Insika::Stores::SQLite do
 
     it_behaves_like "an Insika store"
 
-    # Multi-worker safety (RFC-0018 §4 item 4): separate connections on the
+    # Multi-worker safety: separate connections on the
     # SAME file, which is exactly how N Falcon workers reach one database.
     # The :memory: context cannot include this — two handles on :memory: are
     # two databases.
@@ -35,7 +35,7 @@ RSpec.describe Insika::Stores::SQLite do
       let(:store_factory) { -> { described_class.new(path: db_path) } }
     end
 
-    # The only backend-specific tests allowed (doc 01 §7).
+    # The only backend-specific tests allowed.
 
     it "is durable: data survives close + reopen on the same file" do
       store.set("s", "k", { "a" => 1 })
@@ -117,7 +117,7 @@ RSpec.describe Insika::Stores::SQLite do
     end
   end
 
-  describe "lazy require of the sqlite3 gem (doc 01 §8)" do
+  describe "lazy require of the sqlite3 gem" do
     it "require \"insika\" does not load the sqlite3 gem before the first new" do
       # Clean subprocess: within the suite the gem was already required by other
       # specs (random order), so we test in an isolated ruby. bundler/setup

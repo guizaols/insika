@@ -12,7 +12,7 @@ module Insika
   # matching accessor) does NOT blow up: it goes into `skipped` (degrades to "restart
   # recommended", like OpenClaw), the rest applies.
   #
-  # ⚠️ GOTCHA — the DEFAULT target is a global singleton (RubyLLM research, §10).
+  # ⚠️ GOTCHA — the DEFAULT target is a global singleton (RubyLLM research).
   # With no `configure:`, `apply`/`unapply` mutate the PROCESS-WIDE config
   # (`RubyLLM.config`). They are therefore admin operations (rare, operator-driven:
   # a provider key/base edit in the Studio), NOT a per-request/per-turn path — a
@@ -22,7 +22,7 @@ module Insika
   # MODEL per turn — the model is chosen at chat build time (ModelResolver ->
   # chat(model:)), never by mutating the global.
   #
-  # PER-GRAPH credentials are no longer hypothetical (RFC-0017 A2): the DSL runtime
+  # PER-GRAPH credentials are no longer hypothetical: the DSL runtime
   # passes `configure:` targeting its own `RubyLLM.context` — an isolated config dup
   # — so an operator's key edit in an EMBEDDED graph applies to that graph and stops
   # there. See `DSL::Runtime#llm_configure` and docs/EMBEDDING.md.
@@ -62,7 +62,7 @@ module Insika
     end
 
     # UNDOES a provider's config in RubyLLM at runtime (delete without a restart,
-    # §9.5): clears `<api>_api_key`/`<api>_api_base`. A provider that RubyLLM
+    # clears `<api>_api_key`/`<api>_api_base`. A provider that RubyLLM
     # doesn't recognize (no accessor) -> unapplied: false (nothing applied, nothing to undo).
     # -> { unapplied: bool }.
     def unapply(api)

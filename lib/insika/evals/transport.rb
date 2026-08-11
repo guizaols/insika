@@ -16,7 +16,7 @@ module Insika
     #
     # `usage` is the turn's token counts as the deployment reported them
     # (`response.completed`), or nil when the provider sent none. It is carried, never
-    # asserted on: the consumer is RFC-0013's refinement budget, which has to bound the
+    # asserted on: the consumer is's refinement budget, which has to bound the
     # cost of a gate replay and cannot invent the number. nil is preserved as nil
     # rather than zeroed — "the provider did not say" and "it cost nothing" are
     # different facts, and a budget that confuses them stops being a budget.
@@ -72,7 +72,7 @@ module Insika
       end
     end
 
-    # What the deployment HAS, per agent (RFC-0014 §3.2), read over the same gated
+    # What the deployment HAS, per agent, read over the same gated
     # `/v1` the replay uses. The eval stays a client: it asks the engine instead of
     # keeping its own idea of which tools exist.
     #

@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Phase 4 Stage B: runtime agent CRUD (the "everyone creates their own BIA").
-RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
+# runtime agent CRUD (the "everyone creates their own BIA").
+RSpec.describe "Agent authoring commands" do
   let(:source) { Insika::StoredProfileSource.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(sink) = (@sink = sink); def emit(ev) = @sink << ev }.new(events) }
@@ -31,7 +31,7 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
       expect { handler.call(cmd(:create_agent, { "model" => "m" })) }.to raise_error(Insika::ValidationError, /id/)
     end
 
-    it "model is OPTIONAL (v2, §10): a modelless agent resolves the platform default at turn start" do
+    it "model is OPTIONAL: a modelless agent resolves the platform default at turn start" do
       profile = handler.call(cmd(:create_agent, { "id" => "x" }))
       expect(profile.id).to eq("x")
       expect(profile.model).to be_nil
@@ -44,7 +44,7 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
         .to raise_error(Insika::ValidationError, /already exists/)
     end
 
-    # RFC-0010 §4.4: definition-time cycle/depth check.
+    # definition-time cycle/depth check.
     it "persists a valid subagents allowlist" do
       source.put(Insika::AgentProfile.build(id: "child", model: "m"))
       profile = handler.call(cmd(:create_agent, { "id" => "parent", "model" => "m", "subagents" => %w[child] }))
@@ -76,7 +76,7 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
         .to raise_error(Insika::NotFoundError)
     end
 
-    # RFC-0010 §4.4: an update that ADDS subagents is validated too.
+    # an update that ADDS subagents is validated too.
     it "rejects an update that introduces a self-cycle (keeps the old profile)" do
       expect { handler.call(cmd(:update_agent, { "id" => "bia", "subagents" => %w[bia] })) }
         .to raise_error(Insika::SubagentCycleError)
@@ -101,7 +101,7 @@ RSpec.describe "Agent authoring commands (Phase 4 Stage B)" do
         .to raise_error(Insika::ValidationError)
     end
 
-    # Phase 7/D4/F5 (Stage C): allow_groups only overwrites when the key is present.
+    # allow_groups only overwrites when the key is present.
     it "sets allow_groups when present; preserves when absent" do
       p = handler.call(cmd(:set_agent_tools, { "id" => "bia", "allow_groups" => %w[b2b] }))
       expect(p.tools_allow_groups).to eq(%w[b2b])

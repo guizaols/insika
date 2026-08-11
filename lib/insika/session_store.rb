@@ -61,7 +61,7 @@ module Insika
     # fiber, without a lock. Each message gets an "at" (ISO8601 UTC) if not
     # provided. NotFoundError if the session does not exist.
     #
-    # CONCURRENCY LIMITATION (§11 R2c): the RMW (read record -> += -> set) is
+    # CONCURRENCY LIMITATION (R2c): the RMW (read record -> += -> set) is
     # atomic ONLY because the SessionActor serializes turns of the same session
     # (one owner at a time). That serialization exists solely in SUPERVISED mode
     # (the actor loop lives on the supervisor). Two concurrent send_message on the

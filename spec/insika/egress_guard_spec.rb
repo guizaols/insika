@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 5 Step A: egress guard (SSRF) for the data-driven tools.
+# egress guard (SSRF) for the data-driven tools.
 # Uses LITERAL IPs (no DNS lookup) except where the test requires it.
 RSpec.describe Insika::EgressGuard do
   it "allows https to a public destination" do
@@ -40,7 +40,7 @@ RSpec.describe Insika::EgressGuard do
     expect(described_class.violation("https://1.1.1.1/x", host_allowlist: ["8.8.8.8"])).to match(/allowlist/)
   end
 
-  describe "allow_private (trusted internal API, NF4)" do
+  describe "allow_private (trusted internal API)" do
     it "blocks loopback/private by default" do
       expect(described_class.violation("http://127.0.0.1:3000/api/internal/x", allow_http: true))
         .to match(/private-network/)

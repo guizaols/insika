@@ -132,7 +132,7 @@ reference:
 ```
 
 ```bash
-ruby evals/run.rb --agent demo-store --pairwise
+ruby evals/run.rb --agent loja-chocolates --pairwise
 ```
 
 Three outcomes — `better`, `comparable`, `worse` — and two more the panel can produce

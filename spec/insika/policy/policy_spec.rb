@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe "Insika::Policy builtins" do
-  # Entry like ToolRegistry::Entry (metadata-based, doc 06 §2).
+  # Entry like ToolRegistry::Entry (metadata-based).
   Entry = Struct.new(:name, :metadata)
   def entry(name, optional: false, group: nil) = Entry.new(name, { optional: optional, group: group })
   Cmd = Struct.new(:type, :payload)
@@ -49,7 +49,7 @@ RSpec.describe "Insika::Policy builtins" do
       expect(d.deny_tools).to include("a")
     end
 
-    it "allow [] -> empty set (D6, intentional divergence from Phase 0)" do
+    it "allow [] -> empty set (intentional divergence from)" do
       d = policy.decide(request(profile: profile(tools_allow: []), tools: [entry("a")]))
       expect(d.allow_tools).to eq([])
     end
@@ -59,7 +59,7 @@ RSpec.describe "Insika::Policy builtins" do
       expect(policy.decide(req)).to eq(policy.decide(req))
     end
 
-    # Phase 7/D4/F5 (Stage C): tools_allow_groups expands to the group's tools.
+    # tools_allow_groups expands to the group's tools.
     describe "allowlist by group (tools_allow_groups)" do
       let(:tools) do
         [entry("search", group: "b2b"), entry("finalize", group: "b2b"),

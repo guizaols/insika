@@ -5,8 +5,8 @@ require "async"
 require "tmpdir"
 require "fileutils"
 
-# Real providers integration (task 15) + Builder (task 14): proves assembly
-# parity with Phase 0 (doc 04 §3) and the sacrifice order under budget (L7).
+# Real providers integration + Builder: proves assembly
+# parity with and the sacrifice order under budget (L7).
 RSpec.describe "ContextBuilder + real providers" do
   let(:event_stream) { SpyEventStream.new }
 
@@ -32,7 +32,7 @@ RSpec.describe "ContextBuilder + real providers" do
     File.write(File.join(path, "SKILL.md"), "---\nname: #{name}\ndescription: d\n---\nbody\n")
   end
 
-  it "assembles system as Prompt(100) -> Skill(80), joined by \\n\\n (Phase 0 parity)" do
+  it "assembles system as Prompt(100) -> Skill(80), joined by \\n\\n (parity)" do
     soul = File.join(@dir, "SOUL.md")
     File.write(soul, "Você é o assistente.")
     write_skill("cardapio")

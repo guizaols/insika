@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 phase A: the run record of a refinement (a REPORT — phase A writes no
+# the run record of a refinement (a REPORT — writes no
 # edits anywhere).
 RSpec.describe Insika::RefinementStore do
   subject(:store) { described_class.new(store: Insika::Stores::Memory.new) }
@@ -92,7 +92,7 @@ RSpec.describe Insika::RefinementStore do
     expect { store.create(agent_id: "a:b") }.to raise_error(Insika::ValidationError, /':'/)
   end
 
-  # RFC-0013 §3.9 (phase D): a run records the whole PANEL, and `candidate`/`gate`
+  # a run records the whole PANEL, and `candidate`/`gate`
   # are the winner the caller ranked. The store does not rank — it records.
   describe "the panel" do
     def gating_run(candidates)

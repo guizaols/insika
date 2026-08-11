@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Litestream restore drill (FOLLOWUP §12 G1 "done" gate).
+# Litestream restore drill ("done" gate).
 #
 # Proves the opt-in Litestream mechanism end-to-end using the REAL image
 # (its litestream binary + deploy/litestream.yml + deploy/entrypoint.sh) against

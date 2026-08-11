@@ -68,7 +68,7 @@ RSpec.describe Insika::Executor do
       expect(started.data[:command]).to eq("send_message")
     end
 
-    # Item 16 / P4: the observability convention groups by the operator-set tenant,
+    # the observability convention groups by the operator-set tenant,
     # so :task_started must carry it — and must NOT invent a null when it is absent.
     it ":task_started carries the command's tenant, and omits the key when unset" do
       allow(executor).to receive(:run_pipeline)
@@ -196,7 +196,7 @@ RSpec.describe Insika::Executor do
     end
   end
 
-  describe "CancelTask control e2e (task 9 handler + real executor)" do
+  describe "CancelTask control e2e (handler + real executor)" do
     it "posts cancel and the task ends :cancelled" do
       gate = Async::Condition.new
       allow(executor).to receive(:run_pipeline) do |_task, _p, actor, _r|

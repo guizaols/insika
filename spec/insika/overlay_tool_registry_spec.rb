@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 5 Step B: overlay that composes code tools + data-driven tools.
+# overlay that composes code tools + data-driven tools.
 RSpec.describe Insika::OverlayToolRegistry do
   # fake code tool (the overlay only needs name/description via factory).
   FakeCodeTool = Struct.new(:name, :description)
@@ -25,7 +25,7 @@ RSpec.describe Insika::OverlayToolRegistry do
       request: { method: method, url: "https://a.test/{{x}}" } }.merge(over)
   end
 
-  describe "parity (NF1): empty store ⇒ identical to the base" do
+  describe "parity: empty store ⇒ identical to the base" do
     it "entries/names/resolve/side_effect match the pure base" do
       expect(overlay.names).to eq(base.names)
       expect(overlay.entries.map(&:name)).to eq(base.entries.map(&:name))
@@ -62,7 +62,7 @@ RSpec.describe Insika::OverlayToolRegistry do
       expect(overlay.code_tool?("cep")).to be(false)
     end
 
-    # Phase 7/D4/F5 (Step C): the ToolAllowlist policy expands the group via the metadata.
+    # the ToolAllowlist policy expands the group via the metadata.
     it "exposes group/tags of the data-tool in the Entry's metadata" do
       store.write(def_attrs(name: "b2b_tool", group: "b2b", tags: ["catalog"]))
       overlay.reload
@@ -86,7 +86,7 @@ RSpec.describe Insika::OverlayToolRegistry do
     end
   end
 
-  describe "reload is hot (F5)" do
+  describe "reload is hot" do
     it "a new data-tool only appears after reload (memoized index)" do
       overlay.names # forces the initial snapshot (memoizes the dynamic index)
       store.write(def_attrs(name: "novo"))

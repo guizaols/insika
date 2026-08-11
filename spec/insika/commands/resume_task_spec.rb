@@ -61,7 +61,7 @@ RSpec.describe Insika::Commands::ResumeTask do
     expect(executor.resumed_live).to be_empty
   end
 
-  it "paused WITH a live fiber (P2): resumes IN-PROCESS (posts :resume, does NOT re-dispatch)" do
+  it "paused WITH a live fiber: resumes IN-PROCESS (posts:resume, does NOT re-dispatch)" do
     seed("t", status: :paused)
     executor.running = true
     expect(resume("t")).to eq({ task_id: "t" })
@@ -91,7 +91,7 @@ RSpec.describe Insika::Commands::ResumeTask do
 
   it "queued (never started): re-runs from scratch via spawn_in_session (resume_from nil)" do
     # a turn that was in the SessionActor queue at crash time — no checkpoint; recovers
-    # by running from the original Command (P2-03). The profile comes from the Command's agent.
+    # by running from the original Command (03). The profile comes from the Command's agent.
     task_store.create(command: { "type" => "send_message", "payload" => { "agent" => "sales" } }, id: "q")
 
     expect(resume("q")).to eq({ task_id: "q" })

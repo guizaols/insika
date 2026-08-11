@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0011 §6.5 — record, claim, retry. The claim is the load-bearing one: it is
+# record, claim, retry. The claim is the load-bearing one: it is
 # what makes delivery at-most-once across a crash, and it is why the boot sweep
 # leaves a half-delivered record alone.
 RSpec.describe Insika::ChannelDelivery do
@@ -67,7 +67,7 @@ RSpec.describe Insika::ChannelDelivery do
       expect(dispatcher.record(task: task, channel_id: "slack", content: "hi")).to be_nil
     end
 
-    # P19: a turn that died mid-message published nothing, and half a sentence was
+    # a turn that died mid-message published nothing, and half a sentence was
     # never an answer. Delivering an empty body would be worse than delivering late.
     it "records nothing when there is no answer to send" do
       channels.register("relay", DeliveryChannelDouble.new(200))
@@ -82,7 +82,7 @@ RSpec.describe Insika::ChannelDelivery do
     end
 
     # A session created before the channel wrote its vars still has its address in
-    # the id itself, which is what the namespacing of §4.3 is for.
+    # the id itself, which is what the namespacing of is for.
     it "falls back to the channel's own id parsing when vars are missing" do
       channels.register("relay", Insika::Channels::Relay.new(inbound_token: "t", deliver_url: "https://8.8.8.8/h"))
       varless = described_class.new(channels: channels, outbox: outbox, event_stream: events,

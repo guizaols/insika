@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require "insika/tools/concurrency"
 
-# RFC-0010 §B1: the aggregator-tool helper — fan out N I/O calls inside one tool
+# §: the aggregator-tool helper — fan out N I/O calls inside one tool
 # and gather the results in order.
 RSpec.describe Insika::Tools::Concurrency do
   describe ".gather" do

@@ -2,12 +2,12 @@
 
 require "spec_helper"
 
-# RFC-0013 §3.9 (phase D) — N models propose, the gate arbitrates. The cases that
+# N models propose, the gate arbitrates. The cases that
 # matter are the ones where the panel has to DECIDE something: which candidate won,
 # what happens when one model is useless, and what stops the run from spending
 # without a ceiling.
 RSpec.describe Insika::Refinement::Budget do
-  it "is unlimited when no ceiling is configured, so phase C behaviour is unchanged" do
+  it "is unlimited when no ceiling is configured, so behaviour is unchanged" do
     budget = described_class.new
     budget.spend(10_000_000)
 
@@ -104,7 +104,7 @@ RSpec.describe Insika::Refinement::Panel do
     expect(result.winner.proposers).to eq(["a"])
   end
 
-  # D7: convergence is a TIE-BREAK, never a substitute for the score. Two models
+  # convergence is a TIE-BREAK, never a substitute for the score. Two models
   # agreeing on wording is weak evidence; a golden case passing is strong evidence.
   it "prefers the better score over the wording two proposers agreed on" do
     agreed = edit("Quote freight, warmly.")

@@ -4,7 +4,7 @@ require "spec_helper"
 require "open3"
 require "json"
 
-# Integration proof of the public benchmark (item 37 / §13.4). Shells out to the
+# Integration proof of the public benchmark. Shells out to the
 # real script with tiny params so the internal seams it depends on stay honest:
 # the DSL data_tool shape, the single `Executor#create_chat` override, and the
 # INSIKA_TURN_TIMING split attached to the terminal event. HERMETIC: a clean env

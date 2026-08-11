@@ -21,7 +21,7 @@ module Insika
       @hooks = hooks
       @tool_catalog = tool_catalog
       @memory_store = memory_store
-      # RFC-0010: the object exposing #run_subagent (the Executor). nil = the
+      # the object exposing #run_subagent (the Executor). nil = the
       # spawn_subagent system tool is never wired (parity for a builder used
       # without delegation, e.g. some unit stubs).
       @subagent_runner = subagent_runner
@@ -80,24 +80,24 @@ module Insika
                                      event_stream: @event_stream, state: state)
       end
 
-      # spawn_subagent is the delegation system tool (RFC-0010) — wired only with a
+      # spawn_subagent is the delegation system tool — wired only with a
       # runner present AND profile.subagents non-empty (a double gate, like
       # remember). Never enveloped: in the synchronous mode the child lives in the
       # parent's envelope. The runtime gate on WHICH agent is spawnable is the
       # parent's subagents allowlist, enforced in Executor#run_subagent.
       if @subagent_runner && !Array(state.profile.subagents).empty?
         tools << Tools::Subagent.new(runner: @subagent_runner, state: state)
-        # ...and its parallel sibling (RFC-0010 §A): fan-out N children at once.
+        # and its parallel sibling: fan-out N children at once.
         tools << Tools::Subagents.new(runner: @subagent_runner, state: state)
       end
 
       unless tools.empty?
-        # Item 30: the ONLY place the gem is told to run tool calls in parallel.
+        # the ONLY place the gem is told to run tool calls in parallel.
         # `:fibers` is not a preference but the only admissible mode — `:threads`
         # breaks ToolEnvelope's `Async::Task.current.with_timeout`, the SQLite
         # store's fiber semaphore, and the turn's own durability (mailbox,
         # approvals, cancellation are all expressed in fiber terms). The number
-        # the operator configured is OUR cap (D4, ToolAssembly#install_tool_gate);
+        # the operator configured is OUR cap (ToolAssembly#install_tool_gate);
         # the gem has none.
         if tool_concurrency_for(state)
           chat.with_tools(*tools, concurrency: :fibers)
@@ -111,7 +111,7 @@ module Insika
 
     # The turn's effective tool concurrency (nil = serial), plus the ONE thing the
     # gate owes the operator: when the profile asked for parallel tool calls and
-    # this turn silently cannot have them (D3 — an approval-required tool would
+    # this turn silently cannot have them (an approval-required tool would
     # deadlock two fibers on the single per-task mailbox), say so once. Otherwise
     # the speedup just vanishes with no reason given. The rule itself lives in
     # TurnState; a state predating those readers (a unit stub) means off.
@@ -137,7 +137,7 @@ module Insika
                          ))
     end
 
-    # §11 R3: opt-in Anthropic prompt caching. When the agent enables
+    # R3: opt-in Anthropic prompt caching. When the agent enables
     # prompt_caching AND the resolved provider is Anthropic, wrap the system in
     # the provider's native Content helper with cache: true — ONE breakpoint at
     # the END of the system block. By Anthropic's prefix order
@@ -176,7 +176,7 @@ module Insika
     # History comes from the context/checkpoint. The {role:, content:} shape
     # tolerates string keys (JSON from the stores). `flatten(1)` dissolves the
     # Session provider's "eviction units" (an assistant+tool_results cycle grouped
-    # as one Array, §11 R1) back into a flat message stream.
+    # as one Array, R1) back into a flat message stream.
     #
     # tool_calls / tool_call_id are rehydrated ONLY when present, so a message
     # without them keeps the 2-arg shape the specs' FakeChat expects (no unknown
@@ -216,7 +216,7 @@ module Insika
       tool_calls = 0
       max_tool_calls = state.profile.limits[:max_tool_calls] || 50
 
-      # RFC-0020: the loop detector. Needs #after_message + #add_message for the
+      # the loop detector. Needs #after_message + #add_message for the
       # batch-boundary intervention; a chat without them (smoke shim, minimal
       # double) stays bounded by max_tool_calls alone — never half-wired.
       detector = if %i[after_message add_message].all? { |m| chat.respond_to?(m) }
@@ -235,7 +235,7 @@ module Insika
                                            stage: :tool_limit)
         end
 
-        # RFC-0020: AFTER the count, BEFORE the call runs — a post-warning
+        # AFTER the count, BEFORE the call runs — a post-warning
         # repeat raises here, so the stubborn loop pays for no extra call.
         detector&.tool_call(tool_call.name, tool_call.arguments)
 
@@ -258,14 +258,14 @@ module Insika
       end
 
       chat.after_tool_result do |result|
-        # RFC-0020: the RAW result — the only place a Tool::Halt (halt_when) is
+        # the RAW result — the only place a Tool::Halt (halt_when) is
         # still recognizable, and a halted batch must receive no intervention.
         detector&.tool_result(result)
         result = @hooks.run_after(:tool, result)
         emit.call(:tool_result, { name: state.current_tool_name, result: result.to_s })
       end
 
-      # RFC-0020: the intervention appends at the batch boundary (the Nth tool
+      # the intervention appends at the batch boundary (the Nth tool
       # result closing) — never between two tool results of one batch.
       chat.after_message { |message| detector.message_ended(message) } if detector
     end

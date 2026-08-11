@@ -6,7 +6,7 @@
 # executor, command bus, HTTP app) but with:
 #
 #   * the FS/shell toolset from plugins/insika-code, loaded through the real
-#     Plugin::Loader (RFC-0003 autodiscovery);
+#     Plugin::Loader (autodiscovery);
 #   * one agent profile ("insika-code") that allows those tools and lists the
 #     write/shell ones in `approvals_required` — so the engine's existing
 #     human-approval gate protects them;
@@ -31,7 +31,7 @@ module InsikaCodeApp
   )
   ENV["HARNESS_CODE_ROOT"] = WORKSPACE_ROOT
 
-  # Declarative sandbox policy (item 35, config-over-code): `local` (in-process,
+  # Declarative sandbox policy (config-over-code): `local` (in-process,
   # default) or `docker` (isolated container, `HARNESS_CODE_SANDBOX=docker`). The
   # SAME hash is stored on the agent profile below AND read by the plugin to build
   # the tools' Sandbox, so profile and runtime never drift. Docker knobs
@@ -204,7 +204,7 @@ module InsikaCodeApp
                  Insika::Commands::ApproveAction.new(pending_action_store: PENDING_ACTION_STORE,
                                                       executor: EXECUTOR, event_stream: EVENT_STREAM))
 
-    # G6/B7 (#93) slimmed Server::App to a pure /v1+/a2a transport: it no longer
+    # (#93) slimmed Server::App to a pure /v1+/a2a transport: it no longer
     # takes checkpoint_store/catalogs/registries (skills/tools/workflows are the
     # Executor's concern, resolved per turn, not the HTTP edge's). Wire only what
     # the transport reads: the bus, the event stream, the two stores it reads for

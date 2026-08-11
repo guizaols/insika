@@ -6,7 +6,7 @@ require "open3"
 # Regression guard for the insika-code EXAMPLE wiring. `examples/insika-code/
 # boot.rb` builds the full object graph (engine + plugin + profile + Server::App)
 # by consuming the core as a library — but nothing else exercises it, so when the
-# core's constructors change (e.g. G6/#93 slimming Server::App to a pure /v1+/a2a
+# core's constructors change (e.g./#93 slimming Server::App to a pure /v1+/a2a
 # transport, dropping checkpoint_store/catalogs/registries) the example silently
 # rots into an ArgumentError at boot.
 #

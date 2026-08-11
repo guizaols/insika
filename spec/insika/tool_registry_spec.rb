@@ -13,7 +13,7 @@ RSpec.describe Insika::ToolRegistry do
     Insika::AgentProfile.build(**{ id: "a", model: "m" }.merge(over))
   end
 
-  describe "metadata (doc 06 §2)" do
+  describe "metadata" do
     it "defaults optional/side_effect false" do
       registry.register("t", tool_class(:t))
       expect(registry.entries.first.metadata).to eq({ optional: false, side_effect: false })
@@ -25,7 +25,7 @@ RSpec.describe Insika::ToolRegistry do
       expect(registry.side_effect?("t")).to be(true)
     end
 
-    it "Phase 0 compat: optional/plugin preserved" do
+    it " compat: optional/plugin preserved" do
       registry.register("t", tool_class(:t), optional: true, plugin: "p")
       entry = registry.entries.first
       expect(entry.metadata[:optional]).to be(true)

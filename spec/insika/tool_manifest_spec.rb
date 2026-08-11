@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 7, Stage B (task 3+4): manifest -> ToolDefinition Hashes. Envelope
+# (+4): manifest -> ToolDefinition Hashes. Envelope
 # adapters (raw/OpenAI/MCP), defaults inheritance, endpoint->url (R6) and resolution
 # of {{secret.*}}/{{env.*}} at ingestion with the leak guard (R3).
 RSpec.describe Insika::ToolManifest do
@@ -42,7 +42,7 @@ RSpec.describe Insika::ToolManifest do
     end
   end
 
-  describe "envelope adapters (D3)" do
+  describe "envelope adapters" do
     let(:params) { { "type" => "object", "properties" => { "q" => { "type" => "string" } }, "required" => ["q"] } }
 
     it "raw: parameters is a JSON Schema" do
@@ -106,7 +106,7 @@ RSpec.describe Insika::ToolManifest do
     end
   end
 
-  describe "resolution of {{env.*}} / {{secret.*}} (task 4)" do
+  describe "resolution of {{env.*}} / {{secret.*}}" do
     it "resolves env in the url and secret in the header (with the 'Bearer ' prefix)" do
       m = manifest(defaults: consumer_defaults,
                    tools: [{ "name" => "t", "endpoint" => "t" }])
@@ -132,7 +132,7 @@ RSpec.describe Insika::ToolManifest do
     end
   end
 
-  describe "group/tags (Stage C: D4/F5)" do
+  describe "group/tags" do
     it "propagates the tool's group/tags" do
       m = manifest(tools: [{ "name" => "t", "url" => "https://api.test/x", "group" => "b2b", "tags" => ["catalog"] }])
       d = defn(m).first

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 4 Stage C: per-agent workspace (prompt content in the durable Store).
+# per-agent workspace (prompt content in the durable Store).
 RSpec.describe Insika::AgentFileStore do
   subject(:store) { described_class.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
 

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The Executor surface `SendMessage` drives: the spawn, plus RFC-0015's three doors for a
+# The Executor surface `SendMessage` drives: the spawn, plus's three doors for a
 # session that is already busy.
 #
 # Every door DECLINES by default, which is `followup` — what every agent gets unless it

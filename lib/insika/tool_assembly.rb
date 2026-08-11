@@ -6,10 +6,10 @@ require "async/semaphore"
 module Insika
   # Turn-scoped assembly of the agent's tool instances (pipeline stage 3 tail):
   # capability resolution, instantiation (Entry#factory | ready instance),
-  # turn-context (D2) injection, the capability<->direct dedup join, and the
+  # turn-context injection, the capability<->direct dedup join, and the
   # ToolEnvelope wrap (stage 7 seam: per-call timeout + side-effect recording).
   #
-  # Extracted from the Executor (§11 B5) to keep the hot-path file smaller. It is
+  # Extracted from the Executor to keep the hot-path file smaller. It is
   # a pure collaborator — it holds only the injected registries/stores and no
   # per-turn state; everything turn-specific arrives via `state`/`turn_context`.
   # The Executor keeps thin delegators (resolve_capabilities/assemble_tool_instances/
@@ -84,7 +84,7 @@ module Insika
 
     private
 
-    # D4 (item 30): the model decides the fan-out, so without a cap a batch of 15
+    # the model decides the fan-out, so without a cap a batch of 15
     # data-tools is 15 simultaneous requests to the same upstream — which is how
     # one turn earns a 429 for every other turn in the process. Note the contrast
     # with the primitives that already shipped: `spawn_subagents` caps at 8
@@ -103,7 +103,7 @@ module Insika
     end
 
     # Real Engine -> Entries (respond to factory); fakes -> ready instances.
-    # `turn_context` (D2) is deposited into the instances that expose it
+    # `turn_context` is deposited into the instances that expose it
     # (data-tools); the rest ignore it (parity).
     def instantiate_tools(allowed, turn_context = nil)
       Array(allowed).map do |t|
@@ -113,7 +113,7 @@ module Insika
       end
     end
 
-    # D2/G3 seam: deposits the turn context into the freshly created instance
+    # seam: deposits the turn context into the freshly created instance
     # (same idea as `remember`, which receives tenant/state) BEFORE the
     # ToolEnvelope. Duck-typed: only what exposes `turn_context=` (DataDefinedTool)
     # receives it. nil (a state with no turn_context, e.g. a test stub) -> no-op.

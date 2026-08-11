@@ -6,11 +6,11 @@ require_relative "config"
 
 module Insika
   module Safety
-    # Post-turn output validator (RFC-0009 §3.2 / D3). Runs as an `after_task` hook:
+    # Post-turn output validator. Runs as an `after_task` hook:
     # with the FINAL assistant text assembled, it does a richer check than the
     # stream filter can — an unverified discount/price promise, a tone slip — and
     # FLAGS it (audit) rather than blocking. It is honest about the streaming limit
-    # (D3): for a streaming agent the text is already out the door, so this is
+    # for a streaming agent the text is already out the door, so this is
     # detection, not prevention; true pre-emission blocking needs `streaming:false`
     # (a per-profile override left for a later slice).
     #

@@ -4,7 +4,7 @@ require "json"
 
 module Insika
   module Evals
-    # The LLM-judge (RFC-0008 §3.3, Fase B). Scores a golden's `rubric` against the
+    # The LLM-judge. Scores a golden's `rubric` against the
     # actual assistant reply — the subjective layer on top of the deterministic
     # asserts. Pure over an injected `ask` callable (prompt -> raw model text), so it's
     # unit-testable without an LLM; the real ask (RubyLLM on the utility_model, temp 0)
@@ -13,7 +13,7 @@ module Insika
     # Conservative by construction: an unparseable judge reply scores 0 (fails) rather
     # than silently passing.
     #
-    # A PANEL, not a single voice (RFC-0013 §3.9). `quorum: N` samples ONE model N
+    # A PANEL, not a single voice. `quorum: N` samples ONE model N
     # times, which measures that model's variance and little else — at temperature 0 it
     # mostly returns the same answer, including the same blind spot. Two DIFFERENT
     # models disagreeing about a rubric is the signal worth having, so `asks:` takes one
@@ -95,7 +95,7 @@ module Insika
         end
       end
 
-      # The `policy` is the one thing a rubric cannot carry alone (RFC-0014 §3.3): how
+      # The `policy` is the one thing a rubric cannot carry alone: how
       # much this store wants the agent to ask before acting is a per-store decision,
       # and a judge that is not TOLD it will guess — half the time wrongly. The
       # deterministic half is `Assertions.policy_checks`; this is the other half.
@@ -149,11 +149,11 @@ module Insika
       end
     end
 
-    # Builds the configured judge panel from `settings["evals"]` (RFC-0013 §3.9).
+    # Builds the configured judge panel from `settings["evals"]`.
     #
     # It lives HERE and not in `evals/run.rb` because the CLI is no longer the only
     # caller: the refinement gate scores a candidate with the SAME judges the operator
-    # configured, and §3.7 is explicit that a second copy of the judge would be the
+    # configured, and is explicit that a second copy of the judge would be the
     # worst possible outcome — the gate would then be grading against a rubric nobody
     # tuned. One builder, two callers.
     module JudgePanel
@@ -164,7 +164,7 @@ module Insika
       # -> [Judge, [model names]] | nil when nobody is configured to ask. NIL AND NOT
       # a no-op judge: a rubric'd case with no judge reads as `judge_pending`, which is
       # visible, where a judge that always passes would be silent.
-      # `llm` (RFC-0017 A2): the graph's own RubyLLM context; nil = the global
+      # `llm`: the graph's own RubyLLM context; nil = the global
       # constant. Only the deployment root and the CLI build judges today, and both
       # are one graph per process — the seam keeps the default honest for the day
       # an embedded graph gates a candidate on its own credentials.
@@ -187,7 +187,7 @@ module Insika
       # Sugar for the callers that only want the judge (the gate).
       def judge(settings, **kw) = build(settings, **kw)&.first
 
-      # The SAME configured models, asked a different question (RFC-0014 §3.4). One
+      # The SAME configured models, asked a different question. One
       # builder because "who judges here" is one operator decision: a pairwise panel
       # configured apart from the rubric panel would let a run be graded by judges
       # nobody chose. -> [Pairwise, [model names]] | nil when nobody is configured.

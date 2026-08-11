@@ -4,8 +4,8 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Insika::Context::Providers::Prompt do
-  # SystemPrompt#build algorithm from Phase 0 (ported as reference, WITHOUT
-  # skills_block) — target of the byte-for-byte characterization (doc 04 §7/§8).
+  # SystemPrompt#build algorithm from (ported as reference, WITHOUT
+  # skills_block) — target of the byte-for-byte characterization.
   def phase0_build(base, files)
     parts = [base]
     files.each { |f| parts << File.read(f, encoding: "UTF-8") if File.exist?(f) }
@@ -25,7 +25,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
     Dir.mktmpdir { |d| @dir = d; example.run }
   end
 
-  it "characterization vs Phase 0: content byte-for-byte equal (base + files, one missing)" do
+  it "characterization vs: content byte-for-byte equal (base + files, one missing)" do
     soul = File.join(@dir, "SOUL.md")
     File.write(soul, "Você é o assistente.")
     missing = File.join(@dir, "missing.md")
@@ -87,14 +87,14 @@ RSpec.describe Insika::Context::Providers::Prompt do
     end
   end
 
-  # Stage C (Phase 4): PER-AGENT identity. profile.prompt_files wins over the
+  # PER-AGENT identity. profile.prompt_files wins over the
   # wiring files; the content comes from the AgentFileStore (or from disk, compat).
-  describe "per-agent identity (Stage C)" do
+  describe "per-agent identity" do
     let(:agent_files) do
       Insika::AgentFileStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
     end
 
-    it "without prompt_files: uses the wiring files (Phase 0 parity — no regression)" do
+    it "without prompt_files: uses the wiring files (parity — no regression)" do
       soul = File.join(@dir, "SOUL.md")
       File.write(soul, "Identidade default do deployment.")
       provider = described_class.new(base: "base", files: [soul], agent_files: agent_files)

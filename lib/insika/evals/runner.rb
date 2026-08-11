@@ -17,7 +17,7 @@ module Insika
       # `tokens` is what the whole case cost, summed over its turns, or nil when no
       # turn reported usage. `cached` is how much of that was served from the prompt
       # cache, carried separately because it is the number that explains a total.
-      # Only the refinement gate reads them (RFC-0013 §3.9 records a run's cost); the
+      # Only the refinement gate reads them (records a run's cost); the
       # report and the exit code are untouched.
       RunCase = Struct.new(:result, :timings, :tokens, :cached, keyword_init: true)
 
@@ -26,13 +26,13 @@ module Insika
       #
       # capabilities: what the DEPLOYMENT has, per agent — anything answering
       # `#for(agent_id)` with { "tools" =>, "capabilities" => } or nil. Used to skip a
-      # case the deployment cannot satisfy (RFC-0014 §3.2), BEFORE spending a turn on
+      # case the deployment cannot satisfy, BEFORE spending a turn on
       # it. nil (or an unknown agent) = no resolution, and then a case with `requires`
       # RUNS and says so in the report: "could not rule it out" is not a reason to
       # stop testing something, and a suite that shrinks in silence is the failure
       # this feature exists to avoid.
       #
-      # pairwise: an Evals::Pairwise (optional, RFC-0014 §3.4). Only cases carrying a
+      # pairwise: an Evals::Pairwise (optional). Only cases carrying a
       # `reference:` are compared, and the verdict never touches pass/fail — it is the
       # answer to "can we replace it", reported beside the suite's own verdict.
       def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil, pairwise: nil)
@@ -53,8 +53,8 @@ module Insika
         skip = skip_reason(golden)
         return RunCase.new(result: Assertions.skip(golden, skip), timings: []) if skip
 
-        # A backend that resolves state from a pre-existing conversation (e.g. consumer-app
-        # needs a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
+        # A backend that resolves state from a pre-existing conversation (e.g. a
+        # consumer needing a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
         # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
         conv = @conv_map[golden.id] || "eval-#{golden.id}"
         turns = []
@@ -76,7 +76,7 @@ module Insika
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
-        # Against the incumbent (RFC-0014 §3.4). Same rule as the judge: nothing to
+        # Against the incumbent. Same rule as the judge: nothing to
         # compare on a turn that errored — half a conversation would lose the
         # comparison for a reason that has nothing to do with the agent.
         result.pairwise = @pairwise.compare(golden: golden, turns: turns) if @pairwise && result.error.nil?

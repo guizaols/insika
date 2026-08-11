@@ -3,7 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 
-# Item 20 / §5.6 — the LLM-first onboarding surface (start.md + models.json + docs).
+# — the LLM-first onboarding surface (start.md + models.json + docs).
 RSpec.describe Insika::Onboarding do
   # Minimal store doubles: the class only ever READS `get` / `all`.
   def settings_double(get)
@@ -118,7 +118,7 @@ RSpec.describe Insika::Onboarding do
       expect(build.doc("../README")).to be_nil
     end
 
-    # P7: the docs/*.md files ARE the Jekyll site's pages, so they carry a frontmatter
+    # the docs/*.md files ARE the Jekyll site's pages, so they carry a frontmatter
     # block. The raw-markdown API must not grow sidebar metadata because of that.
     context "when a doc carries the docs-site frontmatter" do
       before do

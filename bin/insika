@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# `insika` CLI (item 23 / §8.1 — "config estrito + doctor --fix"). The operator's
+# `insika` CLI — strict config + doctor --fix. The operator's
 # DX front door to the strict-config discipline:
 #
 #   insika doctor [--fix] [--json]   diagnose the deployment config; --fix applies
@@ -45,9 +45,9 @@ module Insika
         Usage: insika <command> [options]
 
         Commands:
-          doctor [--fix] [--json]   diagnose the deployment configuration (item 23)
+          doctor [--fix] [--json]   diagnose the deployment configuration
           env    [--json]           list known config keys + current (masked) values
-          refine --agent ID [...]   report what broke in an agent's real traffic (RFC-0013)
+          refine --agent ID [...]   report what broke in an agent's real traffic
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
           evals:baseline <sub>      the accepted state per agent: show | import | export
@@ -108,9 +108,9 @@ module Insika
 
     # insika refine --agent ID [--last-sessions N] [--since ISO8601] [--full] [--json]
     #
-    # RFC-0013 phase A: reads the agent's own traffic and records a ranked failure
+    # reads the agent's own traffic and records a ranked failure
     # report. Read-only with respect to the agent — it writes only the run record.
-    # There is no scheduler in the engine (§3.10): this command and the Studio button
+    # There is no scheduler in the engine: this command and the Studio button
     # are how a run starts, and a cron that wants one calls this.
     def refine(argv)
       opts = { json: false, full: false }
@@ -149,7 +149,7 @@ module Insika
 # insika evals:import [--dir evals/golden] [--keep-existing]
 #
 # The corpus on disk is the SEED and the export format; the store is what a
-# deployment runs and what the Studio edits (RFC-0013 §3.7). Importing is how a
+# deployment runs and what the Studio edits. Importing is how a
 # fresh deploy gets the cases, and how a broken edit is undone.
 def evals_import(argv)
   opts = { dir: File.expand_path("../evals/golden", __dir__), overwrite: true }
@@ -189,7 +189,7 @@ end
 #
 # The accepted state of a golden set used to live ONLY in `evals/baseline.json`,
 # which is fine for the CLI (it runs from a checkout) and useless for the refinement
-# gate (RFC-0013 §3.7.3), which runs inside a deployment and has to know what "no
+# gate, which runs inside a deployment and has to know what "no
 # regression" means without one. So it became a per-agent record.
 #
 # `import` splits the one file into those records, resolving each case's agent from

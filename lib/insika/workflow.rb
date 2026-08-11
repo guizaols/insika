@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # Workflow surface (item 22 / COMPETITIVE-ANALYSIS §4.4). A workflow is a Ruby
+  # Workflow surface (COMPETITIVE-ANALYSIS). A workflow is a Ruby
   # callable orchestrating RubyLLM Agents/Workflows FROM WITHIN (RubyLLM First);
   # its durable RUN is a Task (checkpointed, recoverable — stronger than Flue's
   # at-most-once run record). This module adds the EXPOSED surface the consumer

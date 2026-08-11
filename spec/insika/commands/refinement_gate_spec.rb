@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# RFC-0013 phase C, the two commands that move a run from "here is a report" to
+# the two commands that move a run from "here is a report" to
 # "the prompt changed". The cases that matter are the refusals: writing to an
 # agent's instructions is opt-in, bounded, and never applied from a stale snapshot.
-RSpec.describe "refinement phase C commands" do
+RSpec.describe "refinement commands" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }
   let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
@@ -114,7 +114,7 @@ RSpec.describe "refinement phase C commands" do
       expect(gated.decision["note"]).to match(/pass→fail/)
     end
 
-    # §3.8: `propose` and above are opt-in, explicitly. An absent config is a NO,
+    # `propose` and above are opt-in, explicitly. An absent config is a NO,
     # not "not configured yet".
     it "refuses an agent still in report mode" do
       seed(mode: "report")
@@ -125,7 +125,7 @@ RSpec.describe "refinement phase C commands" do
       expect(gate.scored).to be_empty
     end
 
-    # An ABSENT refinement block reads as report-only (§3.8) — which is permission to
+    # An ABSENT refinement block reads as report-only — which is permission to
     # read your own traffic, never permission to edit a prompt.
     it "refuses an agent with no refinement config at all" do
       profiles.put(Insika::AgentProfile.build(id: "support", model: "m"))
@@ -177,7 +177,7 @@ RSpec.describe "refinement phase C commands" do
       expect(gate.scored.size).to eq(1)
     end
 
-    # PR 3b: the model writes the candidate and the SAME bounds and the SAME gate
+    # the model writes the candidate and the SAME bounds and the SAME gate
     # apply to it. Nothing about the path changes because a model was involved.
     describe "propose: true (the model writes the candidate)" do
       let(:reply) do
@@ -266,7 +266,7 @@ RSpec.describe "refinement phase C commands" do
       end
     end
 
-    # RFC-0013 §3.9 (phase D). The command's shape does not change: N models write N
+    # The command's shape does not change: N models write N
     # candidates, the gate scores each, and the best SURVIVOR is the one proposal a
     # human is shown. What is new is what the RUN records — the whole panel, and what
     # it cost.
@@ -306,7 +306,7 @@ RSpec.describe "refinement phase C commands" do
         expect(gated.decision["note"]).to match(/pass→fail/)
       end
 
-      # §3.9's honest objection, answered: a ceiling the operator sets, checked before
+      #'s honest objection, answered: a ceiling the operator sets, checked before
       # each expensive step. The candidates it could not afford are recorded as such,
       # never dropped in silence.
       it "stops gating at the configured token budget and records the cost" do
@@ -326,7 +326,7 @@ RSpec.describe "refinement phase C commands" do
       end
     end
 
-    # D2: the ONE path where a prompt changes with no human in the loop. Off by
+    # the ONE path where a prompt changes with no human in the loop. Off by
     # default, and narrow when on.
     describe "mode: auto_apply" do
       def auto_seed(max_edits: nil)

@@ -2,8 +2,8 @@
 
 require "spec_helper"
 
-# Phase 4 Stage C: per-agent prompt file commands (workspace).
-RSpec.describe "Agent workspace commands (Phase 4 Stage C)" do
+# per-agent prompt file commands (workspace).
+RSpec.describe "Agent workspace commands" do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:source) { Insika::StoredProfileSource.new(config_store: config_store) }
   let(:files) { Insika::AgentFileStore.new(config_store: config_store) }

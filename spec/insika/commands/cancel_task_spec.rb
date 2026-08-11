@@ -9,7 +9,7 @@ RSpec.describe Insika::Commands::CancelTask do
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:executor) { RecordingExecutor.new }
 
-  # Executor double (contract: #cancel(task_id)); the real one lands in task 10.
+  # Executor double (contract: #cancel(task_id)); the real one lands in.
   class RecordingExecutor
     attr_reader :cancelled
 

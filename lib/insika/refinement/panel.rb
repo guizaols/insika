@@ -2,7 +2,7 @@
 
 module Insika
   module Refinement
-    # What a refinement run is allowed to SPEND (RFC-0013 §3.9, phase D).
+    # What a refinement run is allowed to SPEND.
     #
     # A panel of 3 proposers over a 7-case golden set is 3 model calls plus 21
     # replayed conversations, each a real turn with real tools. That is the honest
@@ -52,15 +52,15 @@ module Insika
                    "unmetered" => @unmetered }
     end
 
-    # The proposer PANEL (RFC-0013 §3.9 / §3.5): N models write N independent
+    # The proposer PANEL: N models write N independent
     # candidates, the gate scores each one by replaying the golden set, and the best
     # SURVIVOR becomes the proposal a human is asked about.
     #
     # Independent, not consensus-seeking. Two models agreeing on wording is weak
-    # evidence and a golden case passing is strong evidence (D7), so convergence only
+    # evidence and a golden case passing is strong evidence, so convergence only
     # ever breaks a tie between candidates the gate already ranked equal.
     #
-    # A panel of one is phase C unchanged, which is why there is no second code path:
+    # A panel of one is unchanged, which is why there is no second code path:
     # `refinement.proposer` (a single ref) resolves to a one-element panel.
     class Panel
       # One member of the panel: the candidate, WHO wrote it (more than one model when
@@ -80,7 +80,7 @@ module Insika
       # gate:      a Refinement::Gate (anything answering #score).
       # proposers: [Refinement::Proposer], already resolved by ProposerFactory.panel.
       # budget:    a Budget. The default is unlimited — a deployment that configured
-      #            none gets phase C's behaviour, which had no ceiling either.
+      #            none gets behaviour, which had no ceiling either.
       def initialize(gate:, proposers: [], budget: Budget.new, fan_out: nil)
         @gate = gate
         @proposers = Array(proposers)
@@ -112,7 +112,7 @@ module Insika
       # -> the best SURVIVOR, or nil when none passed.
       #
       # Highest graded score first; ties broken by the fewest edits (a smaller diff is
-      # a smaller bet), then by how many proposers converged on it (§3.5). `min_by`
+      # a smaller bet), then by how many proposers converged on it. `min_by`
       # over a negated tuple keeps the comparison in one place and stays stable, so
       # two genuinely indistinguishable candidates resolve to the first proposer the
       # operator listed rather than to whichever fiber finished first.
@@ -131,7 +131,7 @@ module Insika
 
       private
 
-      # All proposers at once, bounded by the RFC-0010 fan-out cap (§3.9 says the
+      # All proposers at once, bounded by the fan-out cap (says the
       # panel reuses it). Each is one blocking HTTP call to a provider, so the
       # wall-clock is the slowest model rather than their sum.
       #

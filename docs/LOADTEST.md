@@ -23,7 +23,7 @@ There are three scripts, each answering a different question:
 | `scripts/bench_store.rb` | Does SQLite (WAL) hold up N processes writing the same file? | No |
 | `scripts/loadtest.rb` | End-to-end: TTFB/total/tokens/cache/error against `/v1/responses` | Yes |
 | `scripts/loadtest-local.sh` | Single-proc baseline vs N-worker multi-proc on one box | Yes |
-| `scripts/loadtest_session.rb` | A full multi-message session (CEP, searches, FAQ) under C concurrent sessions — direct to the engine (`--surface engine`, stream vs steer) or through the consumer's real ingress (`--surface web`, the consumer-app widget API) | Yes |
+| `scripts/loadtest_session.rb` | A full multi-message session (CEP, searches, FAQ) under C concurrent sessions — direct to the engine (`--surface engine`, stream vs steer) or through the consumer's real ingress (`--surface web`, the consumer's widget API) | Yes |
 
 All three take `--help` / `-h`.
 
@@ -55,7 +55,7 @@ sits ~100× below this ceiling. See DEPLOY.md for the measured numbers.
 ## 2. `loadtest.rb` — end-to-end against `/v1/responses` (with provider)
 
 Hits `POST /v1/responses` (SSE) directly — the production path
-(consumer-app/WhatsApp → engine). Standard library only. Fires `agents × concurrency ×
+(a consumer app, e.g. WhatsApp, → engine). Standard library only. Fires `agents × concurrency ×
 iterations` turns in waves of `concurrency`, and per turn records TTFB (time to
 first SSE byte), total time, and the `usage` block (tokens + cache hit) of the last
 frame that carries it.
@@ -110,7 +110,7 @@ and TTFB drop. Run both to bracket cold vs hot behaviour.
 
 ---
 
-## 3. `loadtest-local.sh` — baseline vs multi-worker on one box (§1.3 proof)
+## 3. `loadtest-local.sh` — baseline vs multi-worker on one box
 
 Boots Falcon with `--count 1` (single-process baseline), runs the sweep, then boots
 `--count N` (multi-process) over the **same** SQLite file (WAL), runs the sweep

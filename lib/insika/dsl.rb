@@ -3,7 +3,7 @@
 require_relative "pack"
 
 module Insika
-  # Public Ruby DSL (item 36 / §13.3) — the OSS "business card":
+  # Public Ruby DSL — the OSS "business card":
   #
   #   agent = Insika.agent("assistant") do
   #     model "deepseek-chat"
@@ -13,7 +13,7 @@ module Insika
   #   agent.serve                                # control UI + /v1 on :9292
   #
   # It is THIN SUGAR that GENERATES the data (a Insika::Pack), never a bypass of
-  # config-over-code (COMPETITIVE-ANALYSIS §4.1). `Insika.agent { … }.to_pack`
+  # config-over-code (COMPETITIVE-ANALYSIS). `Insika.agent { … }.to_pack`
   # is the same portable artifact the PackImporter consumes at runtime — the DSL
   # and a hand-written pack produce the SAME profile (the parity spec proves it),
   # because BOTH go through the standard import → StoredProfileSource round-trip.
@@ -153,7 +153,7 @@ module Insika
 
       # A DATA-DEFINED (declarative HTTP) tool — pure config-over-code. `defn` is a
       # ToolDefinition hash (name/description/parameters/binding…). Its name is
-      # auto-added to the allowlist so the agent can call its own tool (NF2).
+      # auto-added to the allowlist so the agent can call its own tool.
       def data_tool(defn)
         h = defn.transform_keys(&:to_s)
         @tools << h
@@ -175,7 +175,7 @@ module Insika
 
       # --- delegation ------------------------------------------------------
       # subagents "security", "performance" → the child agents this one MAY
-      # spawn (RFC-0010). CAPACITY field: opt-in, never inherited, and the ids
+      # spawn. CAPACITY field: opt-in, never inherited, and the ids
       # must be agents of the same system (`Insika.system { … }`) or already in
       # the store. Present ⇒ the engine wires `spawn_subagent`/`spawn_subagents`.
       def subagents(*ids)
@@ -185,7 +185,7 @@ module Insika
       # --- knobs -----------------------------------------------------------
       def memory(on = true) = @config[:memory] = on
 
-      # Content-safety guardrails (RFC-0009) — opt-in and configurable per agent.
+      # Content-safety guardrails — opt-in and configurable per agent.
       # Pure config-over-code: the hash is stored on the profile and consumed by
       # Safety::Config.from_profile. Merges, so repeated calls accumulate.
       #   guardrails input: true, output: true, strictness: "medium",
@@ -193,15 +193,15 @@ module Insika
       #              responses: { "injection" => "I can't help with that." }
       def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # Refinement (RFC-0013) — how the agent's own instruction files may be
+      # Refinement — how the agent's own instruction files may be
       # improved from real traffic. Same config-over-code shape as `guardrails`;
-      # omitting it entirely leaves the agent report-only (phase A writes nothing).
+      # omitting it entirely leaves the agent report-only (writes nothing).
       #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md],
       #          proposers: ["deepseek/deepseek-chat", "gpt-5-mini"],
       #          budget: { tokens: 200_000 }
       def refine(hash) = (@config[:refinement] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # Facts about THIS deployment that are not tools (RFC-0014 §3.5), so an eval
+      # Facts about THIS deployment that are not tools, so an eval
       # case can declare what it needs and be skipped where it is absent instead of
       # failing for the wrong reason.
       #   declares "promotions", "human_handoff"
@@ -217,7 +217,7 @@ module Insika
       #   edge_stream thinking: true, intermediate: false
       def edge_stream(hash) = (@config[:edge_stream] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # LLM generation params (v2, §10). `param :temperature, 0.2` or `params(...)`.
+      # LLM generation params. `param:temperature, 0.2` or `params(...)`.
       def param(key, value) = (@config[:params] ||= {})[key.to_sym] = value
       def params(hash) = (@config[:params] ||= {}).merge!(hash.transform_keys(&:to_sym))
       def temperature(value) = param(:temperature, value)
@@ -281,7 +281,7 @@ module Insika
     DSL.system(&block)
   end
 
-  # RFC-0017 A1 — the front door for MOUNTING Insika into an app you already
+  # the front door for MOUNTING Insika into an app you already
   # have. Same block as `Insika.system`, one added obligation: the caller names
   # the store, so the graph stops discovering it from `INSIKA_DB` and two graphs
   # in one process can no longer read each other's sessions.
@@ -296,7 +296,7 @@ module Insika
   #   mount Insika::Server.rack_app(INSIKA, token: ENV.fetch("INSIKA_TOKEN")), at: "/ai"
   #
   # It is a thin front door over the SAME assembly `Insika.system` uses — there is
-  # one pipeline (RFC-0001), and the parity spec holds it to that. What an embedded
+  # one pipeline, and the parity spec holds it to that. What an embedded
   # graph owns, and what it still shares with the process, is docs/EMBEDDING.md.
   def embed(backend:, &block)
     DSL.embed(backend: backend, &block)

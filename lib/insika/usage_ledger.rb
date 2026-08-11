@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # Fixed-window counters on the KV Store (item 33 / §12 G7): the durable side of
+  # Fixed-window counters on the KV Store: the durable side of
   # the edge limits. One scope, keys shaped "kind:id:window_start" — the window
   # start bucketed on the epoch keeps every process/worker on the SAME bucket
   # without coordination (the Store's transaction serializes the read-modify-write,

@@ -9,7 +9,7 @@ RSpec.describe Insika::Plugin::Loader do
     Dir.mktmpdir { |d| @root = d; example.run }
   end
 
-  # Real registries (task 20) + real hooks + collections + event spy.
+  # Real registries + real hooks + collections + event spy.
   let(:tools) { Insika::ToolRegistry.new }
   let(:workflows) { Insika::WorkflowRegistry.new }
   let(:policies) { Insika::PolicyRegistry.new }
@@ -118,7 +118,7 @@ RSpec.describe Insika::Plugin::Loader do
     expect(workflows.names).to eq([])
   end
 
-  # RFC-0011 §4.2 — item 13's tier 2. A channel is an INSTANCE (it holds its
+  # 's tier 2. A channel is an INSTANCE (it holds its
   # credentials), so there is no factory to defer; the declared-or-ignored rule is
   # the same, and it matters more here: the name is a URL segment, so an undeclared
   # registration is a plugin quietly mounting a route.
@@ -306,7 +306,7 @@ RSpec.describe Insika::Plugin::Loader do
     expect(tools.names).to eq(["ta"]) # root_a won
   end
 
-  it "ignores a tool outside contracts.tools with a warn (Phase 0 rule)" do
+  it "ignores a tool outside contracts.tools with a warn (rule)" do
     write_plugin("toolless", <<~YAML, poro_entry("ToollessPlugin", <<~BODY))
       id: toolless
       module: ToollessPlugin
@@ -320,7 +320,7 @@ RSpec.describe Insika::Plugin::Loader do
     expect(tools.names).to eq([])
   end
 
-  describe "contracts.capabilities (P2B task 4)" do
+  describe "contracts.capabilities" do
     it "declared in contracts but without register_capability: loads WITHOUT a reserved warn" do
       write_plugin("cap", <<~YAML, poro_entry("CapPlugin", "def self.register(api) = api.register_tool('t', Class.new)"))
         id: cap
@@ -476,7 +476,7 @@ RSpec.describe Insika::Plugin::Loader do
     expect(ev.data).to include(id: "ev", tools: ["t"])
   end
 
-  describe "enablement by root class (task 22)" do
+  describe "enablement by root class" do
     # Helper: writes a plugin with a tool in an arbitrary root tree.
     def write_in(root, id, mod, tool)
       dir = File.join(root, id)
@@ -507,7 +507,7 @@ RSpec.describe Insika::Plugin::Loader do
       expect(result[:plugins]).to eq([])
     end
 
-    it "bundled/non-announced still requires enabled: (Phase 0 rule)" do
+    it "bundled/non-announced still requires enabled: (rule)" do
       b_root = File.join(@root, "bundled")
       write_in(b_root, "b", "BmodC", "bt")
       # without announce and without enabled -> not loaded
@@ -559,7 +559,7 @@ RSpec.describe Insika::Plugin::Loader do
         .not_to raise_error
     end
 
-    it "backcompat: without announced_roots:/disabled: behaves like task 21" do
+    it "backcompat: without announced_roots:/disabled: behaves like" do
       b_root = File.join(@root, "bundled")
       write_in(b_root, "b", "BmodE", "bt")
       result = described_class.new(roots: [b_root], registries: registries,

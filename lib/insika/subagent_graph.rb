@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Insika
-  # Definition-time integrity of the subagent delegation graph (RFC-0010 §4.4,
-  # item 21). A pure function over `{id => [child_ids]}`: detects CYCLES and
+  # Definition-time integrity of the subagent delegation graph (
+  # A pure function over `{id => [child_ids]}`: detects CYCLES and
   # computes the max delegation DEPTH, raising a typed SubagentError so the
   # authoring Command (CreateAgent/UpdateAgent) fails cleanly and boot refuses a
   # bad static set. Cycle + bounded depth are exactly Flue's definition-time
@@ -21,7 +21,7 @@ module Insika
 
     # Max children a single `spawn_subagents` fan-out may run — also the concurrency
     # bound (N concurrent LLM calls hit the provider rate limit + the per-agent token
-    # ceiling of item 33). Override with INSIKA_SUBAGENT_FANOUT_CAP.
+    # ceiling of). Override with INSIKA_SUBAGENT_FANOUT_CAP.
     DEFAULT_FANOUT_CAP = 8
 
     module_function

@@ -3,8 +3,8 @@
 require "time"
 
 module Insika
-  # The ACCEPTED state of an agent's golden set (RFC-0008 §3.4, promoted to a store
-  # by RFC-0013 §3.7.3). One record per agent in the ConfigStore (scope "baselines"):
+  # The ACCEPTED state of an agent's golden set (promoted to a store
+  # by). One record per agent in the ConfigStore (scope "baselines"):
   #
   #   { "at" => iso8601, "cases" => { "<case id>" => { "pass" => bool, "score" => n } } }
   #

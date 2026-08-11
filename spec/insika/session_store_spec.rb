@@ -3,8 +3,8 @@
 require "spec_helper"
 
 RSpec.describe Insika::SessionStore do
-  # Runs against Memory; parity with SQLite is guaranteed by the task 2
-  # contract suite (doc 02 §7). A smoke test with SQLite ":memory:" closes the loop.
+  # Runs against Memory; parity with SQLite is guaranteed by the
+  # contract suite. A smoke test with SQLite ":memory:" closes the loop.
   subject(:sessions) { described_class.new(store: backend) }
 
   let(:backend) { Insika::Stores::Memory.new }
@@ -148,10 +148,10 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
-  describe "backend error propagation (doc 02 §6)" do
+  describe "backend error propagation" do
     it "lets StoreError propagate without re-wrapping" do
-      # non-JSONable value forces the StoreError on the backend write (C22);
-      # the SessionStore must not capture/re-wrap (doc 02 §6).
+      # non-JSONable value forces the StoreError on the backend write;
+      # the SessionStore must not capture/re-wrap.
       sessions.create(id: "s")
 
       expect { sessions.update_vars("s", { obj: Object.new }) }

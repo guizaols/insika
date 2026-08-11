@@ -84,7 +84,7 @@ RSpec.describe Insika::Hooks do
     expect(seen).to eq("012")
   end
 
-  describe "run_before / run_after halves (task 19)" do
+  describe "run_before / run_after halves" do
     it "run_before chains in registration order" do
       hooks.register(:tool, before: ->(s) { "#{s}-1" })
       hooks.register(:tool, before: ->(s) { "#{s}-2" })

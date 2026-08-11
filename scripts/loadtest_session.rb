@@ -6,13 +6,13 @@
 #
 #   stream  one message at a time on POST /v1/responses (SSE): consume the whole
 #           reply, then send the next message. The classic request/response
-#           consumer — and exactly how consumer-app drives the engine today.
+#           consumer — and how a typical chat consumer drives the engine.
 #   steer   the fast-typing WhatsApp user: message 1 opens its SSE stream on
 #           /v1/responses while messages 2..7 are fired --gap ms apart WITHOUT
 #           waiting, on POST /v1/messages?stream=false — the ONLY JSON surface
 #           that carries the verdict (/v1/responses is frozen SSE and never
 #           joins). Each answers 200 {steered:true} / {merged:true} when the
-#           engine absorbs it into the running turn (RFC-0015), or an aggregated
+#           engine absorbs it into the running turn, or an aggregated
 #           reply when it started/queued its own turn. The verdict mix is
 #           counted, so the report shows how the agent's queue policy actually
 #           behaved under load.
@@ -32,24 +32,24 @@
 #   7 faq_pagamento   "Posso pagar no boleto?"
 #
 # Usage:
-#   # local — engine serving the consumer-app deployment on :9292 (the default URL):
+#   # local — engine serving a deployment on :9292 (the default URL):
 #   bundle exec ruby scripts/loadtest_session.rb --mode stream --levels 1,10
 #   # Railway — point the SAME script at the deployed service:
 #   INSIKA_URL=https://<service>.up.railway.app OPENCLAW_GATEWAY_TOKEN=... \
 #     bundle exec ruby scripts/loadtest_session.rb --mode both
-#   # web — the real production ingress (consumer-app on :3000, engine on :9292):
+#   # web — the real production ingress (a consumer app on :3000, engine on :9292):
 #   bundle exec ruby scripts/loadtest_session.rb --surface web \
-#     --widget-id w-0000-... --mode stream --levels 1,10
+#     --widget-id <widget-id> --mode stream --levels 1,10
 #
 # Flags:
 #   --agent ID          agent id (sent as model: "openclaw:<id>")  (default: demo)
 #   --surface S         engine | web                               (default: engine)
 #                         engine = hits the insika directly (POST /v1/responses +
 #                                  /v1/messages?stream=false)
-#                         web    = the REAL production path: the consumer-app widget
-#                                  API (POST /api/widget/sessions, then
-#                                  .../messages → ChatPipeline → dispatcher →
-#                                  engine → tools). Needs the consumer-app app.
+#                         web    = the production path through a consumer's
+#                                  widget API (POST /api/widget/sessions, then
+#                                  .../messages → the consumer's pipeline →
+#                                  engine → tools). Needs the consumer app.
 #   --widget-id ID      the store's StoreConfig.widget_id (required with --surface web)
 #   --mode M            stream | steer | both                      (default: both)
 #   --levels a,b,c      concurrent-session sweep                   (default: 1,10,50,100,300,500,1000)
@@ -74,7 +74,7 @@
 #     thread per session). Level 1000 therefore means 1000–2000 local threads —
 #     fine for I/O-bound Net::HTTP, but watch RAM on small machines.
 #   · Steer mode measures until every REQUEST returned. Messages the engine
-#     could not absorb are released as a follow-up turn AFTER (RFC-0015 §5.2)
+#     could not absorb are released as a follow-up turn AFTER
 #     that no request observes — that tail is server-side by design.
 #   · Real turns call the LLM provider: the full sweep is (1+10+...+1000)×7
 #     turns per mode. Narrow --levels for a quick check.
@@ -206,7 +206,7 @@ if args.key?("dry-run")
   FLOW.each_with_index { |(label, msg), idx| puts "  #{idx + 1}. #{label.ljust(15)} #{msg.inspect}" }
   puts "-" * 60
   if SURFACE == "web"
-    puts "sample requests (consumer-app widget API — the real production ingress):"
+    puts "sample requests (the consumer's widget API — the production ingress):"
     puts "  POST #{URI.join(BASE + '/', 'api/widget/sessions')}"
     puts "  body: #{JSON.generate(widget_id: WIDGET_ID, visitor_id: "ltss-w-#{RUN_ID}-0-0")}"
     puts "  then per step: POST /api/widget/sessions/<token>/messages " \
@@ -357,11 +357,11 @@ def steer_session(_user)
   { ok: steps.values.all? { |r| r[:ok] }, wall: (mono - started) * 1000.0, steps: steps }
 end
 
-# --- web surface: the REAL production ingress (consumer-app widget API) -------------
-# POST /api/widget/sessions creates the WidgetSession (and the web Chat on first
-# message); POST .../messages runs the whole pipeline (ChatPipeline → dispatcher →
-# engine → tools) and answers 201 with the assistant message, synchronously. No
-# verdict exists on this surface — steer here measures what a fast-typing visitor
+# --- web surface: the production ingress through a consumer's widget API -------
+# POST /api/widget/sessions creates the widget session (and the conversation on
+# first message); POST .../messages runs the consumer's whole pipeline (→ engine
+# → tools) and answers 201 with the assistant message, synchronously. No verdict
+# exists on this surface — steer here measures what a fast-typing visitor
 # actually gets today (each burst message is a full pipeline run of its own).
 
 # -> [token, nil] or [nil, reason]

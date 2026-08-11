@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# `policy` — how much a store wants its agent to ask before acting (RFC-0014 §3.3).
+# `policy` — how much a store wants its agent to ask before acting.
 # Two halves: a deterministic check that needs no model (here) and an instruction the
 # judge is told (judge_spec). Pure over (Golden, [TurnResult]) — no server, no tokens.
 #

@@ -22,7 +22,7 @@ RSpec.describe Insika::WorkflowRegistry do
     expect { registry.resolve("nope") }.to raise_error(Insika::NotFoundError)
   end
 
-  describe "#definition (item 22 / §4.4)" do
+  describe "#definition" do
     it "bundles the factory with the schema/description metadata WITHOUT resolving it" do
       resolved = false
       registry.register("w", input_schema: { "type" => "object" }, description: "d") do

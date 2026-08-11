@@ -4,12 +4,12 @@ require_relative "detectors"
 
 module Insika
   module Safety
-    # Deterministic output redaction on the STREAM (RFC-0009 §3.2 / D3). The turn
+    # Deterministic output redaction on the STREAM. The turn
     # streams `content` deltas, so we cannot "unsay" text already sent — the filter
     # sits between the provider chunks and the `:content` event and only ever emits
     # text it has PROVEN clean.
     #
-    # The hard part (RFC §6, "fronteira de chunk"): a CPF/secret can arrive split
+    # The hard part (RFC, "fronteira de chunk"): a CPF/secret can arrive split
     # across two chunks and neither half matches on its own. A naive delta-by-delta
     # regex leaks "by construction". So the filter keeps a SLIDING BUFFER: it retains
     # the tail that might still be growing into a match (Detectors::OPEN_TAIL, which

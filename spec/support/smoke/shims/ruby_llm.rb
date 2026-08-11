@@ -57,9 +57,9 @@ module RubyLLM
     def ask(message, &on_chunk)
       on_chunk&.call(Response.new("processando... "))
 
-      # APPROVAL mode (P2-02): calls the `charge` tool — the ToolEnvelope trips the
+      # APPROVAL mode (02): calls the `charge` tool — the ToolEnvelope trips the
       # gate and SUSPENDS the turn in :waiting until the operator approves (the call
-      # blocks in here; on approval it executes and returns). Covers slice A's smoke
+      # blocks in here; on approval it executes and returns). Covers's smoke
       # (suspend -> kill -9 -> reboot -> approve -> complete).
       if ENV["SMOKE_APPROVAL"] && (tool = @tools.find { |t| t.name.to_s == "charge" })
         return Response.new("resultado: #{tool.call("amount" => 10)}")

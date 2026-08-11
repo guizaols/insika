@@ -2,7 +2,7 @@
   "name": "insika-studio-assets",
   "version": "0.1.0",
   "private": true,
-  "description": "Insika Studio front-end (Phase 4). Node is only for building; ruby serve runs with the checked-in dist/.",
+  "description": "Insika Studio front-end. Node is only for building; ruby serve runs with the checked-in dist/.",
   "scripts": {
     "build:css": "tailwindcss -i assets/src/application.css -o assets/dist/application.css --minify",
     "build:js": "esbuild assets/src/application.js --bundle --format=esm --minify --target=es2020 --outfile=assets/dist/application.js",

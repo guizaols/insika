@@ -1,4 +1,4 @@
-# Safety suite — the generic, brand-free guardrail net (RFC-0009)
+# Safety suite — the generic, brand-free guardrail net
 
 Domain-neutral, **bilingual (EN + pt-BR)** guardrail regression cases against a
 fictional `example-agent`. Unlike the store corpora (`loja-cosmeticos/`,
@@ -18,7 +18,7 @@ frame different domains (SaaS support, banking, generic shop).
   judge — never a silent pass). This is the guardrail smoke that can run in CI.
 - **False-positive guards** — `benign-faq-*` are legitimate questions the guardrail
   must NOT block. These DO reach the LLM (need a provider key); a safe-refusal here
-  would be a false positive (RFC §6).
+  would be a false positive.
 
 ## Running
 
@@ -44,9 +44,9 @@ The corpus is just data — the engine is a generic `/v1/responses` client:
 - **New attack / language:** drop a `*.yml` here. If it's a language the deterministic
   detectors don't cover, enable the LLM moderator on the agent (`guardrails.moderator`)
   — it's language-agnostic. To harden the deterministic tier for a language, add
-  patterns to `Insika::Safety::Detectors` (single source, D4).
+  patterns to `Insika::Safety::Detectors` (single source).
 - **Tool scenarios:** point `--golden-dir` at your own corpus and provision an agent
   that has those tools; `tools_called` checks match tool *names* from the stream, so
   any toolset works.
-- **Your business voice:** the safe replies are per-agent (`guardrails.responses`,
-  RFC §7) — nothing here bakes in tone.
+- **Your business voice:** the safe replies are per-agent (`guardrails.responses`)
+  — nothing here bakes in tone.

@@ -2,8 +2,8 @@
 
 # CONCRETE demo deployment — "run for real" (no mocks): real DeepSeek +
 # 1 agent (Bia) with OpenClaw-style prompts + real tools/skills + memory.
-# Builds on the SAME shared graph as config/wiring.rb (Insika::Wiring::Graph, §12
-# G4), then layers on the real PROFILES/tools + the full runtime-authoring surface.
+# Builds on the SAME shared graph as config/wiring.rb (Insika::Wiring::Graph),
+# then layers on the real PROFILES/tools + the full runtime-authoring surface.
 #
 # Usage: DEEPSEEK_API_KEY=... ruby -r ./config/deployment (or via scripts/run_real.rb).
 
@@ -12,7 +12,7 @@ require "ruby_llm"
 require_relative "../deploy/tools"
 
 module Deploy
-  # STRICT config gate (item 23 / §8.1). Validates the environment against the engine
+  # STRICT config gate. Validates the environment against the engine
   # schema PLUS this deployment's own keys. Default = WARN (last-known-good: a rotated
   # key or a typo must never take the whole service down — same reasoning as the
   # resilient DEEPSEEK boot below); set INSIKA_CONFIG_STRICT=1 to refuse boot instead.
@@ -32,7 +32,7 @@ module Deploy
   ].freeze
   Insika::EnvSchema.enforce!(extra: ENV_SPECS)
 
-  # Cloud resilience (FOLLOWUP): without the key, does NOT bring down the process — the engine
+  # Cloud resilience: without the key, does NOT bring down the process — the engine
   # comes up (/up green) and turns fail with a clear error until the key exists (via env
   # OR via Studio > LLM providers, which reconfigures RubyLLM at runtime). A
   # `raise` here would take the whole service down over a missing/rotating env.
@@ -84,20 +84,20 @@ module Deploy
     AGENT_FILE_STORE  = Insika::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Insika::SkillStore.new(config_store: CONFIG_STORE)
 
-    # DATA-DEFINED tools (Phase 5): definitions in the ToolStore; the overlay composes the
+    # DATA-DEFINED tools: definitions in the ToolStore; the overlay composes the
     # CODE tools (REGISTRY) with the data-defined ones. It is the Executor's and the
     # ToolCatalog's `tool_registry` (drop-in) — new data-tools take effect without a restart via reload.
     TOOL_STORE    = Insika::ToolStore.new(config_store: CONFIG_STORE)
-    # Per-session tool-call trace (debug in the Studio; FOLLOWUP §3.1). Durable in the
+    # Per-session tool-call trace (debug in the Studio). Durable in the
     # same backend; masking/truncation in the store itself.
     TOOL_TRACE_STORE = Insika::ToolTraceStore.new(store: BACKEND)
-    # Per-session context breakdown (tokens by category + budget; RFC-0023) for the
+    # Per-session context breakdown (tokens by category + budget) for the
     # Studio session card. Counts and provider ids only — no content, no masking.
     CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: BACKEND)
     # Egress of the data-tools (SSRF guard). Default = strict (public https only).
-    # For the engine to CALL BACK the consumer's internal API (consumer-app
+    # For the engine to CALL BACK the consumer's internal API (its
     # /api/internal/*), which is http/loopback locally, enable via env — preferably
-    # STOPPING at a known host (NF4):
+    # STOPPING at a known host:
     #   INSIKA_EGRESS_ALLOW_HTTP=1  INSIKA_EGRESS_ALLOW_PRIVATE=1
     #   INSIKA_EGRESS_HOSTS=localhost,127.0.0.1
     #
@@ -126,7 +126,7 @@ module Deploy
     LLM_PROVIDER_STORE = Insika::LLMProviderStore.new(config_store: CONFIG_STORE)
     LLM_CONFIGURATOR  = Insika::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
 
-    # LLM config v2 (§10): seed the PLATFORM default so a modelless agent works out of
+    # LLM config v2: seed the PLATFORM default so a modelless agent works out of
     # the box (Chat > Agent > platform default). Idempotent — only seeds when the
     # operator hasn't set one; mirrors the boot provider (DeepSeek). The Bia seed below
     # still pins its own model, so this only kicks in for agents created WITHOUT one.
@@ -145,14 +145,14 @@ module Deploy
     CATALOG        = Insika::SkillCatalog.new([File.join(Deploy::ROOT, "deploy", "skills")], store: SKILL_STORE)
     PROMPT_CATALOG = Insika::PromptCatalog.new([])
 
-    # Guardrails / content safety (RFC-0009). One Factory composes the three seams:
+    # Guardrails / content safety. One Factory composes the three seams:
     # the InputGuardrail Middleware, the OutputValidator after_task hook, and the
     # per-turn OutputFilter (stream redaction) injected into the Executor. Per-agent
     # `guardrails:` config auto-enables/disables each turn; the moderator resolves the
     # platform utility_model (SettingsStore, #18) as its fallback model.
     GUARDRAILS = Insika::Safety::Factory.new(settings_store: SETTINGS_STORE)
 
-    # Production edge (item 33 / §12 G7): rate-limit per chat + token ceiling per
+    # Production edge: rate-limit per chat + token ceiling per
     # agent, both opt-in (Studio > Settings > Edge limits; per-agent overrides in
     # the agent config). Counters durable in the SAME backend as everything else.
     EDGE_LIMITER = Insika::EdgeLimiter.new(
@@ -193,7 +193,7 @@ module Deploy
 
     # --- Assemble the graph (Executor + core Command Bus) ---------
     # The core bus already carries pause_task/approve_action — no more config.ru /
-    # serve_real.rb patch (§12 G4). executor_extra adds the deployment-only stores.
+    # serve_real.rb patch. executor_extra adds the deployment-only stores.
     GRAPH = Insika::Wiring::Graph.build(
       spine: SPINE, profiles: PROFILE_SOURCE,
       tool_registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG,
@@ -201,7 +201,7 @@ module Deploy
       guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS,
       edge_limiter: EDGE_LIMITER,
       executor_extra: {
-        settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks (§10)
+        settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks
         tool_trace_store: TOOL_TRACE_STORE,
         context_trace_store: CONTEXT_TRACE_STORE
       }
@@ -234,10 +234,10 @@ module Deploy
     BUS.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     BUS.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     BUS.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
-    # Refinement (RFC-0013 phase A): reads the agent's OWN traffic (tasks + sessions +
+    # Refinement: reads the agent's OWN traffic (tasks + sessions +
     # tool traces) and records a ranked failure report. Read-only — no model call and
     # no edit to the agent — so it needs no per-agent opt-in; `propose`/`auto_apply`
-    # (phase C) will. Settings are injected so the collector recognizes the edge
+    # will. Settings are injected so the collector recognizes the edge
     # limiter's canned reply as evidence.
     REFINEMENT_COLLECTOR = Insika::Refinement::EvidenceCollector.new(
       task_store: TASK_STORE, session_store: SESSION_STORE,
@@ -246,14 +246,14 @@ module Deploy
     )
     BUS.register(:run_refinement, Insika::Commands::RunRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, collector: REFINEMENT_COLLECTOR, event_stream: EVENT_STREAM))
 
-    # Eval cases as data (RFC-0008 §3.1 / RFC-0013 §3.7): authored in the Studio and
+    # Eval cases as data: authored in the Studio and
     # validated by the same loader the corpus files go through. The corpus on disk stays
     # the seed (`insika evals:import`) and the export format.
     GOLDEN_STORE = Insika::GoldenStore.new(config_store: CONFIG_STORE)
     BUS.register(:write_golden, Insika::Commands::WriteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_golden, Insika::Commands::DeleteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
 
-    # Refinement phase C (RFC-0013 §3.5/§3.6): a candidate is scored by RUNNING it —
+    # Refinement: a candidate is scored by RUNNING it —
     # clone the agent, apply the edits to the clone, replay the golden set over the
     # deployment's OWN /v1/responses, compare to the accepted baseline. Then a human
     # approves and the write lands versioned in the AgentFileStore.
@@ -261,7 +261,7 @@ module Deploy
     # The transport is built per gate rather than once, because it carries the
     # deployment's public URL and gateway token and the operator can rotate either.
     # `INSIKA_PUBLIC_URL` is what the clone is reachable at — the replay is a real HTTP
-    # turn on purpose (§3.5), so the gate measures what a customer would get, tools and
+    # turn on purpose, so the gate measures what a customer would get, tools and
     # guardrails included, instead of a shortcut into the store.
     BASELINE_STORE = Insika::BaselineStore.new(config_store: CONFIG_STORE)
     REFINEMENT_GATE = Insika::Refinement::Gate.new(
@@ -279,11 +279,11 @@ module Deploy
         )
       },
       # The judges the OPERATOR configured (`settings["evals"]`), through the one
-      # builder the CLI also uses — §3.7 is explicit that a second copy of the judge
+      # builder the CLI also uses — is explicit that a second copy of the judge
       # would be the worst outcome, because the gate would grade against a rubric
       # nobody tuned. nil when nobody is configured: then a rubric'd case reads as
       # judge_pending, which is visible, instead of silently passing.
-      # RFC-0014 §3.2: a case the deployment cannot satisfy is SKIPPED, not failed.
+      # a case the deployment cannot satisfy is SKIPPED, not failed.
       # The eval CLI already resolves that over the same gated `/v1/agents/:id`; the
       # gate has to resolve it the same way or the two disagree about what the corpus
       # measures.
@@ -296,7 +296,7 @@ module Deploy
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
     )
-    # Who WRITES the candidates (§3.4/§3.9). Per agent (`refinement.proposers`, a
+    # Who WRITES the candidates. Per agent (`refinement.proposers`, a
     # PANEL — or `refinement.proposer`, one), falling back to the platform
     # utility_model, the same "which model does the cheap side work" setting the
     # judges and the moderator read. Built per call, and for the same reason the
@@ -308,7 +308,7 @@ module Deploy
         config, utility_model: (SETTINGS_STORE.get || {})["utility_model"]
       )
     }
-    # `mode: auto_apply` (D2) reuses this handler rather than writing files itself, so
+    # `mode: auto_apply` reuses this handler rather than writing files itself, so
     # an unattended apply goes through the SAME staleness re-check, versioned write and
     # `:refinement_applied` event a human approval does. Registered first because the
     # gate command holds it.
@@ -328,25 +328,25 @@ module Deploy
     BUS.register(:delete_system_file, Insika::Commands::DeleteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:restore_system_file, Insika::Commands::RestoreSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
 
-    # Data-defined tools (Phase 5): authoring without code. registry = overlay (hot
+    # Data-defined tools: authoring without code. registry = overlay (hot
     # reload); tool_catalog reloads level-1/tool_search. Secrets masked in the store.
     BUS.register(:write_data_tool, Insika::Commands::WriteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:delete_data_tool, Insika::Commands::DeleteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:restore_data_tool, Insika::Commands::RestoreDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
 
-    # BATCH ingestion via manifest (Phase 7, Step B): upsert of the data-tools in a
+    # BATCH ingestion via manifest: upsert of the data-tools in a
     # standard format (JSON Schema) + declarative binding, hot (no restart). The
     # manifest's `{{secret.*}}`/`{{env.*}}` resolve from the DEPLOYMENT's ENV (the
-    # secret never comes in the manifest — D6/R3); the placeholder key is the name of
+    # secret never comes in the manifest —/R3); the placeholder key is the name of
     # the env var (e.g.: {{secret.BIA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
     IMPORT_TOOLS = Insika::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
     BUS.register(:import_tools, IMPORT_TOOLS)
 
-    # LIVE MCP ingestion (Phase 7, Step E / D8): discovers the tools of an MCP
+    # LIVE MCP ingestion: discovers the tools of an MCP
     # instance at runtime (no manifest) and REUSES :import_tools (upsert + hot reload).
     # The MCP client is INJECTABLE (client_factory): default = a minimal HTTP JSON-RPC
     # client behind the egress guard (same EGRESS_OPTIONS as the data-tools). The tools
-    # get group `mcp:<instance>` for Step C's group gating. The REAL MCP transport
+    # get group `mcp:<instance>` for's group gating. The REAL MCP transport
     # (stdio, session/initialize, tools/call unwrap) is later work.
     MCP_TOOL_INGESTOR = Insika::McpToolIngestor.new(
       mcp_store: MCP_STORE, import_tools: IMPORT_TOOLS,
@@ -354,15 +354,15 @@ module Deploy
     )
     BUS.register(:import_mcp_tools, Insika::Commands::ImportMcpTools.new(ingestor: MCP_TOOL_INGESTOR, event_stream: EVENT_STREAM))
 
-    # Pack provisioning (Phase 6/D4): imports an agent from a standardized pack by
+    # Pack provisioning: imports an agent from a standardized pack by
     # emitting the Commands above. Consumes the bus + READS the ProfileSource (upsert).
     # It's what the provisioning API (the GatewayClient) triggers.
     PACK_IMPORTER = Insika::PackImporter.new(bus: BUS, profiles: PROFILE_SOURCE)
 
-    # --- Channels (RFC-0011) --------------------------------------
+    # Channels --------------------------------------
     # The registry lives on the spine and starts EMPTY, so `/channels/*` 404s until
     # an operator turns a channel on. The bundled relay is the one for an adopter who
-    # already owns their messaging stack (consumer-app owns WhatsApp permanently, §6.1):
+    # already owns their messaging stack (a consumer that owns WhatsApp permanently):
     # it takes the turn and hands the reply back to the consumer's own callback.
     #
     # INSIKA_RELAY_TOKEN is the switch AND the credential — a public inbound route
@@ -376,7 +376,7 @@ module Deploy
     )
     CHANNEL_REGISTRY.register(RELAY.id, RELAY) if RELAY
 
-    # The web widget (§5) — the other half of the same seam, for an adopter with no
+    # The web widget — the other half of the same seam, for an adopter with no
     # messaging stack at all. Its switch is the two allowlists (which sites may embed
     # it, which agents it may address), and its credential is the chat rate limit:
     # the channel answers 503 until one is configured, because a public endpoint with
@@ -387,7 +387,7 @@ module Deploy
     )
     CHANNEL_REGISTRY.register(WEB_WIDGET.id, WEB_WIDGET) if WEB_WIDGET
 
-    # --- Boot (RFC-0016 A2) ---------------------------------------
+    # Boot ---------------------------------------
     # The tested Recovery, finally instantiated in the PRODUCTION wiring: at boot
     # each worker discovers interrupted tasks and resumes them through the SAME
     # path as ResumeTask. Server::Boot runs it before the listen (config.ru).
@@ -401,7 +401,7 @@ module Deploy
     def self.build_stores = nil
     def self.recovery = RECOVERY
 
-    # RFC-0016 E2: the task sweep runs ONCE per boot generation. INSIKA_BOOT_ID
+    # the task sweep runs ONCE per boot generation. INSIKA_BOOT_ID
     # is exported by deploy/entrypoint.sh (one id per container start, shared by
     # every Falcon worker); the first worker to claim it sweeps, the rest skip —
     # see docs/DEPLOY.md "The process model". Unset (single process) -> always sweep.
@@ -409,19 +409,19 @@ module Deploy
       Insika::Recovery.claim_sweep(store: BACKEND, boot_id: ENV["INSIKA_BOOT_ID"])
     end
 
-    # RFC-0010 Fase 2: re-deliver async delegations whose child finished but whose
+    # re-deliver async delegations whose child finished but whose
     # result was not delivered before a crash. Boot calls it after task recovery.
     def self.recover_delegations = EXECUTOR.recover_delegations
 
     # Boot sweep for replies a previous process committed but never handed over
-    # (§6.5). Duck-typed by Server::Boot, exactly like recover_delegations.
+    # Duck-typed by Server::Boot, exactly like recover_delegations.
     def self.recover_channel_deliveries = EXECUTOR.recover_channel_deliveries
 
     # Backend durability: Boot warns loudly when nothing will be resumed after a
     # restart (INSIKA_DB not set), instead of coming up "without a net" silently.
     def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
 
-    # OPT-IN observability (Phase 6): OTEL only turns on with INSIKA_OTEL / OTEL envs.
+    # OPT-IN observability: OTEL only turns on with INSIKA_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via
     # Telemetry.attach (serving arm) — consumes the EVENT_STREAM into spans.
     TELEMETRY = Insika::Telemetry.setup(service_name: ENV.fetch("OTEL_SERVICE_NAME", "insika"))

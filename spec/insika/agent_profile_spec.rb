@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe Insika::AgentProfile do
-  describe "compatibility with Phase 0" do
-    it "accepts the minimal Phase 0 signature" do
+  describe "compatibility with" do
+    it "accepts the minimal signature" do
       profile = described_class.build(id: "a", model: "m")
       expect(profile.id).to eq("a")
       expect(profile.model).to eq("m")
@@ -28,7 +28,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "new fields (D6)" do
+  describe "new fields" do
     let(:profile) { described_class.build(id: "a", model: "m") }
 
     it "has correct defaults" do
@@ -37,10 +37,10 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.policies).to eq([])
       expect(profile.prompt_refs).to eq([])
       expect(profile.limits).to eq(described_class::DEFAULT_LIMITS)
-      expect(profile.prompt_caching).to be_nil # §11 R3: opt-in, off by default
+      expect(profile.prompt_caching).to be_nil # R3: opt-in, off by default
     end
 
-    it "DEFAULT_LIMITS matches D6 (+ approval_timeout from Phase 2, tool_concurrency from item 30)" do
+    it "DEFAULT_LIMITS matches (+ approval_timeout from, tool_concurrency from)" do
       expect(described_class::DEFAULT_LIMITS).to eq(
         turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
         context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
@@ -67,7 +67,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "capabilities (P2B, RFC-0004 §6) — opt-in asymmetry" do
+  describe "capabilities — opt-in asymmetry" do
     it "default nil = NO capability (not 'all', unlike tools_allow)" do
       expect(described_class.build(id: "a", model: "m").capabilities).to be_nil
     end
@@ -77,13 +77,13 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.capabilities).to eq([:browse, :search])
     end
 
-    it "Phase 1 profile (without the kwarg) is still buildable" do
+    it " profile (without the kwarg) is still buildable" do
       expect { described_class.build(id: "a", model: "m") }.not_to raise_error
     end
   end
 
-  describe "tools_deferred (P2B, Tool Search)" do
-    it "default nil = no deferred (all eager — Phase 1 parity)" do
+  describe "tools_deferred (Tool Search)" do
+    it "default nil = no deferred (all eager — parity)" do
       expect(described_class.build(id: "a", model: "m").tools_deferred).to be_nil
     end
 
@@ -93,8 +93,8 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "memory (P2C, cross-session memory) — opt-in" do
-    it "default nil = OFF (Phase 1 parity)" do
+  describe "memory (cross-session memory) — opt-in" do
+    it "default nil = OFF (parity)" do
       expect(described_class.build(id: "a", model: "m").memory).to be_nil
     end
 
@@ -103,7 +103,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "subagents (RFC-0010, capacity field — never inherits)" do
+  describe "subagents (capacity field — never inherits)" do
     it "defaults to nil (opt-in: NONE, like capabilities)" do
       expect(described_class.build(id: "a", model: "m").subagents).to be_nil
     end
@@ -123,7 +123,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "metadata + store_id (Phase 6, turn context)" do
+  describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")
       expect(profile.metadata).to eq({})

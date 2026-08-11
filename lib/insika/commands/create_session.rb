@@ -21,7 +21,7 @@ module Insika
         vars = command.payload[:vars] || command.payload["vars"] || {}
         raise Insika::ValidationError, "vars must be a Hash" unless vars.is_a?(Hash)
 
-        # Per-chat model pin (v2, §10): `model`/`provider` on the payload become a
+        # Per-chat model pin: `model`/`provider` on the payload become a
         # reserved, collision-safe slot in vars (never rendered in the prompt — the
         # Request provider skips "__"-prefixed vars). The ModelResolver reads it as
         # the highest-precedence layer (Chat > Agent > platform default).

@@ -25,7 +25,7 @@ module Insika
   # deliberate:
   #
   # · The customer-visible stream is per MESSAGE, not per token. `ttft_ms` still
-  #   measures the provider's first token, so item 34's baselines stay comparable;
+  #   measures the provider's first token, so's baselines stay comparable;
   #   what moved is when the customer can read it. For the WhatsApp edge this
   #   changes nothing — the dispatcher accumulated the deltas into one message
   #   anyway — and the Studio keeps its live typing off `:intermediate`.
@@ -44,7 +44,7 @@ module Insika
     # decides and publishes once, at the end of the stage.
     attr_reader :candidate
 
-    # filter: Safety::OutputFilter | nil (RFC-0009 §3.2 — nil = stream untouched).
+    # filter: Safety::OutputFilter | nil (nil = stream untouched).
     # emit:   ->(type, data) — the Executor's emitter, already bound to the task.
     # public_intermediate: the agent opted this channel in (`edge_stream`), so the
     #   narration is TAGGED and `/v1/responses` gives it its own frame. Default false:

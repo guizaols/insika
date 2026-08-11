@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # Hands a finished turn's answer to a Shape B channel (RFC-0011 §6.5). The turn
+  # Hands a finished turn's answer to a Shape B channel. The turn
   # ended; the recipient is not on any connection; the reply has to travel out of
   # band and survive a crash on the way. Three moves, in this order, and the order
   # is the whole design:
@@ -41,7 +41,7 @@ module Insika
     #   · the turn did not come in through a channel,
     #   · the channel is Shape A (answers on its own stream — no `deliver`),
     #   · the answer is empty (a turn that died mid-message published nothing, and
-    #     half a sentence was never an answer — P19),
+    #     half a sentence was never an answer),
     #   · or we do not know who to send it to.
     def record(task:, channel_id:, content:)
       return nil if content.to_s.strip.empty?
@@ -111,7 +111,7 @@ module Insika
     end
 
     # The consumer's own key for this conversation. Written into the session's vars
-    # when the channel minted it (§4.3); the channel's own id parser is the fallback
+    # when the channel minted it; the channel's own id parser is the fallback
     # for a session created before those vars existed.
     def recipient(channel, session_id)
       session = session_id && @session_store.find(session_id)

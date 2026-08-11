@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Item 22 / §4.4 — the workflow I/O contract: the built-in JSON Schema instance
+# — the workflow I/O contract: the built-in JSON Schema instance
 # validator (Schema) and the Definition that enforces it at the edges.
 RSpec.describe Insika::Workflow do
   describe Insika::Workflow::Schema do

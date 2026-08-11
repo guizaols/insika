@@ -4,8 +4,8 @@ require "spec_helper"
 require "async"
 require_relative "../../../lib/insika/server/app"
 
-# Route contract from doc 07 §2-§6 with Rack::MockRequest + DOUBLE bus/stores
-# (doc 07 §7, doubles in spec/support/server_doubles.rb). No real Executor/RubyLLM
+# Route contract from- with Rack::MockRequest + DOUBLE bus/stores
+# (doubles in spec/support/server_doubles.rb). No real Executor/RubyLLM
 # component is touched.
 RSpec.describe Insika::Server::App do
   def event(type, data = {}, task_id: "t-1")
@@ -97,9 +97,9 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  # RFC-0016 A5: the `/v1` contract is versioned by date. Runs before the
+  # the `/v1` contract is versioned by date. Runs before the
   # gateway gate on purpose — see version_gate's comment.
-  describe "the /v1 version gate (RFC-0016 A5)" do
+  describe "the /v1 version gate" do
     it "no header -> current (only) behaviour, request proceeds" do
       bus = ServerBusDouble.new { { task_id: "t" } }
       status, = call(build_app(bus: bus), "POST", "/v1/commands/cancel_task", body: "{}")
@@ -163,7 +163,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "A2A edge (P3A)" do
+  describe "A2A edge" do
     let(:a2a) do
       Class.new do
         attr_reader :received
@@ -242,7 +242,7 @@ RSpec.describe Insika::Server::App do
       expect(cmd.payload).to eq(agent: "sales", message: "oi")
     end
 
-    # RFC-0015 §5.5: the aggregated form is the one that can report `merged`, so
+    # the aggregated form is the one that can report `merged`, so
     # it is the one that declares itself coalescable. The streaming form cannot —
     # once the stream is open there is no way to say "you do not own the reply".
     it "declares the coalescable transport only for stream=false" do
@@ -286,7 +286,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "workflows exposed (item 22 / §4.4)" do
+  describe "workflows exposed" do
     # Read-only registry double: exposes a discovery catalog.
     def registry_double(catalog = [])
       Class.new do
@@ -341,7 +341,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "reads (never Commands — D3)" do
+  describe "reads (never Commands)" do
     it "GET /v1/sessions/:id calls the store and does NOT dispatch" do
       session = Insika::SessionStore::Session.new(
         id: "s-1", messages: [], vars: {}, memory_refs: [],
@@ -433,7 +433,7 @@ RSpec.describe Insika::Server::App do
       expect(status).to eq(404)
     end
 
-    it "generic StandardError -> 500 with the B7 envelope, and the ref reaches the log" do
+    it "generic StandardError -> 500 with the envelope, and the ref reaches the log" do
       logged = []
       logger = Object.new.tap { |l| l.define_singleton_method(:puts) { |msg| logged << msg } }
       app = build_app(bus: ServerBusDouble.new { raise "boom" }, logger: logger)
@@ -452,7 +452,7 @@ RSpec.describe Insika::Server::App do
       expect(logged.first).to include(error["error_ref"], "RuntimeError", "boom")
     end
 
-    it "4xx bodies stay bare — no retry envelope on a client error (B7)" do
+    it "4xx bodies stay bare — no retry envelope on a client error" do
       app = build_app(bus: ServerBusDouble.new { raise Insika::NotFoundError, "sumiu" })
 
       status, _h, resp = call(app, "POST", "/v1/commands/x", body: "{}")
@@ -558,7 +558,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "POST /v1/responses (OpenAI Responses adapter — Phase 6)" do
+  describe "POST /v1/responses (OpenAI Responses adapter)" do
     def responses_body(agent: "openclaw:bia", user: "chat-1", input: "oi")
       JSON.generate(model: agent, user: user, stream: true, input: input)
     end
@@ -617,7 +617,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  # RFC-0014 §3.2. The eval is a CLIENT — it never reads a store — so it needs one
+  # The eval is a CLIENT — it never reads a store — so it needs one
   # gated read to tell "this case cannot run here" from "this case failed".
   describe "GET /v1/agents/:id (capability view)" do
     def profiles_with(profile)
@@ -697,7 +697,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "provisioning POST/DELETE /v1/agents (Phase 6/D4/F7)" do
+  describe "provisioning POST/DELETE /v1/agents" do
     # double provisioner: records the imported pack / the deleted id.
     class ProvisionerDouble
       attr_reader :imported, :deleted
@@ -770,7 +770,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "manifest ingestion POST /v1/tools/manifest (Phase 7, Stage B)" do
+  describe "manifest ingestion POST /v1/tools/manifest" do
     def manifest_body
       JSON.generate(version: 1,
                     defaults: { "base_url" => "https://api.test", "path_template" => "/{endpoint}" },
@@ -820,7 +820,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "live MCP ingestion POST /v1/mcp/:name/import (Phase 7, Stage E)" do
+  describe "live MCP ingestion POST /v1/mcp/:name/import" do
     it "no gateway_token configured -> 503 fail-closed" do
       status, = call(build_app(config: { gateway_token: nil }), "POST", "/v1/mcp/tavily/import")
       expect(status).to eq(503)
@@ -869,7 +869,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "onboarding surface (item 20 / §5.6)" do
+  describe "onboarding surface" do
     # Duck-typed double: the app only calls these four reads.
     let(:onboarding) do
       Class.new do

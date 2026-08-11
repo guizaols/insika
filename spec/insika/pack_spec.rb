@@ -5,7 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "json"
 
-# Phase 6/D4/F6 — the Pack value object: portable form of an agent (manifest +
+# — the Pack value object: portable form of an agent (manifest +
 # files + skills + tools). from_h (wire JSON) and from_dir (disk, docs/prompt-base/06).
 RSpec.describe Insika::Pack do
   describe ".from_h" do

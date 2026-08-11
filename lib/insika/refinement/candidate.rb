@@ -4,7 +4,7 @@ require "securerandom"
 
 module Insika
   module Refinement
-    # ONE proposed change to an agent's instruction files (RFC-0013 §3.4). Data, not
+    # ONE proposed change to an agent's instruction files. Data, not
     # a diff of free text, and that is the load-bearing decision of the whole phase:
     #
     #   · an ANCHORED edit is reviewable — the operator reads three lines, not a
@@ -40,7 +40,7 @@ module Insika
 
     # A dropped edit and why. Kept ON the candidate rather than logged: "the model
     # proposed four things and one was stale" is exactly what an operator reviewing
-    # the loop's usefulness needs, and §10 asks them to judge precisely that.
+    # the loop's usefulness needs, and asks them to judge precisely that.
     Dropped = Data.define(:file, :op, :reason) do
       def to_h = { "file" => file, "op" => op, "reason" => reason }
     end
@@ -63,7 +63,7 @@ module Insika
                    "edits" => edits.map(&:to_h), "dropped" => dropped.map(&:to_h) }
     end
 
-    # The bounds, all config (§3.4). Defaults are deliberately small: what makes a
+    # The bounds, all config. Defaults are deliberately small: what makes a
     # diff reviewable is that it is short, and what keeps the gate's signal readable
     # is that a run changed few things.
     DEFAULT_LIMITS = { "max_edits" => 3, "max_bytes" => 1200, "max_total_growth" => 0.15 }.freeze
@@ -75,7 +75,7 @@ module Insika
 
       # raw:       { "proposer" =>, "rationale" =>, "edits" => [ … ] } (string keys)
       # allowlist: the agent's `refinement.files`. EMPTY MEANS NOTHING IS WRITABLE —
-      #            report-only (§3.1/§3.8), so every edit drops. Not "no restriction":
+      #            report-only, so every edit drops. Not "no restriction":
       #            an unset allowlist that meant "anything" would turn a missing
       #            config into the most permissive setting there is.
       # contents:  name => current content, for staleness and growth.

@@ -5,7 +5,7 @@ require "time"
 require "yaml"
 
 module Insika
-  # AUTHORED eval cases (RFC-0008 §3.1, promoted to a store by RFC-0013 §3.7).
+  # AUTHORED eval cases (promoted to a store by).
   #
   # A golden case used to be a YAML file in `evals/golden/`, which means only someone
   # with a checkout and a text editor could add one. The rubric is the part of an eval
@@ -133,7 +133,7 @@ module Insika
     def case_hash(golden)
       h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
       h["requires"] = golden.requires unless golden.requires.empty?
-      # Same rule for `reference` (RFC-0014 §3.4): omitted when absent, never dropped
+      # Same rule for `reference`: omitted when absent, never dropped
       # when present. A case that lost its reference in a round-trip would stop being
       # compared against the incumbent and the report would look identical.
       h["reference"] = golden.reference unless golden.reference.empty?

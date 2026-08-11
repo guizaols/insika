@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0008 §3.1 / RFC-0013 §3.7: an eval case becomes authorable at runtime, through
+# an eval case becomes authorable at runtime, through
 # the bus like every other write. The rubric is plain language, which is exactly why a
 # domain owner has to be able to write one without a checkout.
 RSpec.describe "Golden commands" do

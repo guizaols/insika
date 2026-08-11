@@ -5,7 +5,7 @@ require "time"
 module Insika
   module Commands
     # Writes (upserts) a DATA-defined tool into the ToolStore and RELOADS the overlay +
-    # catalog — takes effect without a restart (F5). Rejects a name that collides with a
+    # catalog — takes effect without a restart. Rejects a name that collides with a
     # code tool (R3). Validating the definition (format, method/url, types,
     # placeholders) is the ToolStore/ToolDefinition's job. Secrets (headers) reconcile
     # in the store; the event carries only the name (0 leakage). -> { name, definition }.

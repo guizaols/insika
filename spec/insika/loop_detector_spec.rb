@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0020 — the detector is driven directly with the gem's message shapes
+# the detector is driven directly with the gem's message shapes
 # (FakeChat::Message mirrors them), so the batch-boundary arithmetic is exercised
 # without a provider. The ChatBuilder wiring around it lives in
 # chat_builder_spec; the full-turn death in executor_hooks_spec.

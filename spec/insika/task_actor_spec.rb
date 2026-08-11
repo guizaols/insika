@@ -10,7 +10,7 @@ RSpec.describe Insika::TaskActor do
     end
   end
 
-  it "accepts the Phase 2 messages (approval/pause/resume/timeout/heartbeat)" do
+  it "accepts the messages (approval/pause/resume/timeout/heartbeat)" do
     Sync do
       actor = described_class.new(task_id: "t")
       %i[approval pause resume timeout heartbeat].each do |m|
@@ -27,7 +27,7 @@ RSpec.describe Insika::TaskActor do
     end
   end
 
-  # RFC-0015 §5.2 — the selective drain the SteerInjector uses. It runs inside RubyLLM's
+  # the selective drain the SteerInjector uses. It runs inside RubyLLM's
   # tool loop, where `drain!` would turn "a message arrived" into a new place the turn can
   # die: cancellation is only ever observed at the Executor's own stage boundaries.
   describe "#take_user_messages!" do
@@ -124,7 +124,7 @@ RSpec.describe Insika::TaskActor do
     end
   end
 
-  # --- Phase 2: full mailbox + suspension ---------------------------------
+  # full mailbox + suspension ---------------------------------
 
   it "drain! sets pause_requested? on :pause and counts :heartbeat" do
     Sync do

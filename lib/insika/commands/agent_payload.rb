@@ -25,7 +25,7 @@ module Insika
         out[:provider] = presence(out[:provider])&.to_sym if out.key?(:provider)
         out[:policies] = Array(out[:policies]).map(&:to_sym) if out.key?(:policies)
         out[:limits] = out[:limits].transform_keys(&:to_sym) if out[:limits].is_a?(Hash)
-        # generation params (v2, §10) consumed by symbol key (temperature/max_tokens/thinking).
+        # generation params consumed by symbol key (temperature/max_tokens/thinking).
         out[:params] = out[:params].transform_keys(&:to_sym) if out[:params].is_a?(Hash)
         out
       end

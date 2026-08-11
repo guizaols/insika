@@ -2,7 +2,7 @@
 
 require_relative "../lib/insika"
 
-# Real RubyLLM if installed; otherwise the requireable stub (doc 03 §7). Done early
+# Real RubyLLM if installed; otherwise the requireable stub. Done early
 # so tools/load_skill.rb's `require "ruby_llm"` (lazy in production) resolves in the
 # tests. The stub NEVER shadows the real gem: it only joins the load path when absent.
 begin

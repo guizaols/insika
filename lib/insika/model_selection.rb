@@ -70,7 +70,7 @@ module Insika
       chat.with_params(**payload) unless payload.empty?
     end
 
-    # The resolved reasoning control (§10, 4-layer). Two axes folded into one field:
+    # The resolved reasoning control (4-layer). Two axes folded into one field:
     #   off              -> reasoning DISABLED (thinking:{type:disabled})
     #   on               -> reasoning ENABLED, provider-default effort
     #   low|medium|high  -> reasoning enabled at that effort (reasoning_effort)
@@ -105,7 +105,7 @@ module Insika
     def present?(v) = Insika::Coercion.present?(v)
   end
 
-  # The selectable reasoning values (§10, 4-layer). Blank/absent = inherit the
+  # The selectable reasoning values (4-layer). Blank/absent = inherit the
   # broader layer; these are the explicit choices. Shared with the Studio forms.
   # Defined on the class OUTSIDE the Data.define block on purpose: a constant
   # assigned inside the block would land in the enclosing lexical scope (Insika),

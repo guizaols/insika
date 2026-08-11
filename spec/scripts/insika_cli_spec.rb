@@ -5,7 +5,7 @@ require "open3"
 require "tmpdir"
 require "json"
 
-# Integration proof of the `insika` CLI (item 23 / §8.1 — "config estrito +
+# Integration proof of the `insika` CLI (— "config estrito +
 # doctor --fix"). Shells out to the real binary so the exit codes and the
 # store-backed --fix path are exercised end to end. HERMETIC: a clean, minimal env
 # (no inherited HARNESS_*) + a throwaway SQLite file, never a shared deployment.

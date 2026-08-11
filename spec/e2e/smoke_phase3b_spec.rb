@@ -6,11 +6,11 @@ require_relative "../../lib/insika/server/a2a/app"
 require_relative "../../lib/insika/server/a2a/client"
 require "insika/tools/a2a_remote"
 
-# E2E smoke for Phase 3 slice B (P3B): LOOPBACK FEDERATION outbound→inbound
-# in-process. The "remote" is our own inbound A2A::App (slice A). A loopback http
+# E2E smoke for: LOOPBACK FEDERATION outbound→inbound
+# in-process. The "remote" is our own inbound A2A::App. A loopback http
 # routes post_json -> worker_inbound.rpc. Proves federation end to end in BOTH
 # directions, without network or API key.
-RSpec.describe "smoke E2E: A2A loopback federation (slice B)", :smoke do
+RSpec.describe "smoke E2E: A2A loopback federation",:smoke do
   # Loopback Http: instead of network, calls the worker's inbound A2A::App. The
   # JSON round-trip is FAITHFUL to the wire — it converts the inbound's symbol-keyed
   # envelope into string keys, as a real HTTP POST would.

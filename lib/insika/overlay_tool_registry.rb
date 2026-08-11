@@ -3,17 +3,16 @@
 module Insika
   # DYNAMIC tool registry: composes the CODE registry (base, built at boot,
   # immutable) with the DATA-DEFINED tools from the ToolStore. Drop-in for ToolRegistry —
-  # the Executor/ToolCatalog/ToolEnvelope only use entries/resolve/side_effect?. Phase 5,
-  # Step B / D2.
+  # the Executor/ToolCatalog/ToolEnvelope only use entries/resolve/side_effect?.,
   #
   # Rules:
   #   - COLLISION: the base (code) ALWAYS wins — a data-tool cannot hijack
   #     the name of a code tool (security, R3). The authoring Command also
   #     refuses to create with a colliding name (code_tool?), but the defense stays here.
   #   - HOT: `reload` re-reads the store and swaps the dynamic index atomically — a
-  #     new/edited data-tool takes effect on the next turn without a restart (F5), mirroring
+  #     new/edited data-tool takes effect on the next turn without a restart, mirroring
   #     SkillCatalog.reload. An in-flight turn has already captured the index.
-  #   - PARITY (NF1): empty ToolStore ⇒ entries/resolve/side_effect? identical to the
+  # PARITY: empty ToolStore ⇒ entries/resolve/side_effect? identical to the
   #     pure base. The base (config/wiring.rb) does not even use the overlay — zero regression.
   #
   # The data-tools enter as NORMAL Registry::Entry (optional: false) — they obey

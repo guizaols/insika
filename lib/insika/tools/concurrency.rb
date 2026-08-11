@@ -5,7 +5,7 @@ require "async/semaphore"
 
 module Insika
   module Tools
-    # Fan-out INSIDE a single tool (RFC-0010 §B1): when a tool must gather N
+    # Fan-out INSIDE a single tool (§): when a tool must gather N
     # independent I/O calls (stock + price + promo + delivery) into ONE result,
     # `gather` runs them CONCURRENTLY on the turn's reactor and returns their values
     # IN ORDER. Because a data-tool spends its time on the HTTP wait, those waits
@@ -13,7 +13,7 @@ module Insika
     #
     # This is the "aggregator tool" pattern: the model makes ONE tool call and the
     # concurrency is an implementation detail of that tool — no change to the agent
-    # loop, no dependency on parallel tool execution (item 30). Use it in a custom
+    # loop, no dependency on parallel tool execution. Use it in a custom
     # Ruby tool's #execute:
     #
     #   def execute(store_id:)

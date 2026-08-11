@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../config/deployment" # concrete deployment root (builds the graph eager)
 
-# Characterization of the CONCRETE deployment composition root (§12 G4 / §11.2 B4,
+# Characterization of the CONCRETE deployment composition root (
 # commit 1). config/deployment.rb had NO spec — consolidating the two roots into a
 # shared builder requires locking the observable graph FIRST, so the extraction is
 # provably behavior-preserving. These are graph assertions (handlers on the BUS,
@@ -60,16 +60,16 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # B4 (commit 2): pause_task/approve_action now come from the SHARED graph core
+    # (commit 2): pause_task/approve_action now come from the SHARED graph core
     # (Insika::Wiring::Graph#build_core_bus), so the deployment BUS carries them out
     # of the box — the config.ru:28-34 / serve_real.rb patch is gone. Consumed by the
-    # Studio Tasks/Approvals pages (§12 G5).
+    # Studio Tasks/Approvals pages.
     it "registers the operator control commands from the shared core (no entrypoint patch)" do
       expect(w::BUS.registered?(:pause_task)).to be(true)
       expect(w::BUS.registered?(:approve_action)).to be(true)
     end
 
-    # RFC-0013 §3.6 / D2: `mode: auto_apply` writes through the SAME handler a human
+    # `mode: auto_apply` writes through the SAME handler a human
     # approval does, so the staleness re-check, the versioned write and the
     # `:refinement_applied` event cannot drift into a second, unattended copy.
     it "gives the refinement gate the very handler that :resolve_refinement dispatches to" do
@@ -95,7 +95,7 @@ RSpec.describe Deploy::Wiring do
       expect(w::PROFILE_SOURCE.ids.count("bia")).to eq(before)
     end
 
-    it "seeds the platform default_model (v2 model resolution, §10)" do
+    it "seeds the platform default_model (v2 model resolution)" do
       expect(w::SETTINGS_STORE.get["default_model"]).to eq(Deploy::MODEL)
       expect(w::SETTINGS_STORE.get["default_provider"]).to eq("deepseek")
     end
@@ -120,7 +120,7 @@ RSpec.describe Deploy::Wiring do
       expect(w::POLICY_REGISTRY.fetch(:approval_required)).to be_a(Insika::Policy::Builtin::ApprovalRequired)
     end
 
-    it "composes the guardrail seams (RFC-0009) onto the graph" do
+    it "composes the guardrail seams onto the graph" do
       expect(w::GUARDRAILS).to be_a(Insika::Safety::Factory)
       expect(w::MIDDLEWARE).to be_a(Insika::MiddlewareStack)
     end
@@ -130,10 +130,10 @@ RSpec.describe Deploy::Wiring do
     end
   end
 
-  # RFC-0016 A2: the production wiring finally instantiates Recovery and speaks
+  # the production wiring finally instantiates Recovery and speaks
   # Server::Boot's step contract — config.ru boots through Boot, so "recovery
   # before the listen" holds in the deployment, not only in the minimal wiring.
-  describe "boot recovery (RFC-0016 A2)" do
+  describe "boot recovery" do
     it "instantiates Recovery over the deployment's own task/checkpoint stores and bus" do
       expect(w::RECOVERY).to be_a(Insika::Recovery)
       expect(w::RECOVERY.instance_variable_get(:@task_store)).to be(w::TASK_STORE)

@@ -3,16 +3,16 @@
 require "json"
 
 module Insika
-  # LIVE MCP ingestion (Phase 7, Stage E / spec §4 D8): discovers the tools of an
+  # LIVE MCP ingestion (/ spec): discovers the tools of an
   # MCP instance at RUNTIME (no hand-written manifest) and ingests them as
   # data-tools. Given an McpStore instance + an INJECTABLE MCP client
   # (duck-typed: `#list_tools -> [{name, description, inputSchema}]`), it builds a
-  # ToolManifest and REUSES the Stage B ingestion path (the :import_tools Command:
+  # ToolManifest and REUSES the ingestion path (the:import_tools Command:
   # batch upsert into the ToolStore + hot reload + per-tool report + partial-
   # failure isolation R4). The ToolManifest MCP adapter (`inputSchema`) is reused
   # — no schema parsing here.
   #
-  # GENERIC (NF1): nothing here mentions consumer/openclaw. The MCP instance is DATA in the store.
+  # GENERIC: nothing here mentions a consumer/gateway. The MCP instance is DATA in the store.
   #
   # BINDING STRATEGY (this stage's choice, bounded):
   #   Each discovered tool becomes an HTTP data-tool that makes a JSON-RPC 2.0
@@ -23,10 +23,10 @@ module Insika
   #   runs through the SAME HTTP path as the other data-tools (egress guard, secret
   #   headers, hot reload) — no new execution code.
   #
-  #   Each tool gets `group: "mcp:<instance>"` so the Stage C per-group gating
+  #   Each tool gets `group: "mcp:<instance>"` so the per-group gating
   #   (tools_allow_groups) works for free.
   #
-  # DEFERRED / OUT-OF-SCOPE (documented — spec §4 D8):
+  # DEFERRED / OUT-OF-SCOPE (documented — spec):
   #   - Real MCP transport: only instances with a `url` (http transport) are ingestible;
   #     stdio has no HTTP endpoint -> raises a clear error (later work).
   #   - MCP session lifecycle (initialize/negotiation/session-id/notifications) and the
@@ -65,7 +65,7 @@ module Insika
       if url.nil?
         raise Insika::ValidationError,
               "MCP instance '#{name}' has no url: live ingestion requires HTTP transport " \
-              "(stdio is later work — D8)"
+              "(stdio is later work)"
       end
 
       tools = Array((client || @client_factory.call(record)).list_tools)

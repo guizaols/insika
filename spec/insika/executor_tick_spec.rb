@@ -3,10 +3,10 @@
 require "spec_helper"
 require "async"
 
-# RFC-0019 — the tick's home is the turn supervisor: it starts when the serving
+# the tick's home is the turn supervisor: it starts when the serving
 # supervisor is (re)created, binds to the serving reactor in every arm with no
 # arm edits, and dies with the supervisor at shutdown.
-RSpec.describe "Insika::Executor + the tick (RFC-0019)" do
+RSpec.describe "Insika::Executor + the tick" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

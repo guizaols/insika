@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# `requires` + the third outcome (RFC-0014 §3.2). Deployments differ: some stores have
+# `requires` + the third outcome. Deployments differ: some stores have
 # order tracking wired, some do not; some run promotions, some do not. A case asserting
 # `search_orders` is not a failure for a store without it — it is a case that should
 # never have run. Today it would simply fail, and a red suite nobody trusts is worse

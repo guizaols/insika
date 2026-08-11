@@ -3,7 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 
-# Fase C gating (RFC-0008 §3.4). Regression = a passing case that now fails, or a
+# gating. Regression = a passing case that now fails, or a
 # judge score that dropped past the tolerance. Known failures never block.
 RSpec.describe Insika::Evals::Baseline do
   def case_result(id, pass:, score: nil)

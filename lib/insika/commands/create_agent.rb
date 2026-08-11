@@ -17,13 +17,13 @@ module Insika
         attrs = AgentPayload.attrs(command.payload)
         id = AgentPayload.presence(attrs[:id])
         raise Insika::ValidationError, "id is required" if id.nil?
-        # model is OPTIONAL as of v2 (§10): omitted -> resolves the platform
+        # model is OPTIONAL as of v2: omitted -> resolves the platform
         # default_model (Settings) at turn start. An agent with neither its own
         # model nor a platform default fails clearly at the first turn.
         raise Insika::ValidationError, "agent '#{id}' already exists" if @profile_source.fetch(id)
 
         profile = Insika::AgentProfile.build(**attrs)
-        # RFC-0010 §4.4: definition-time cycle + depth check. Only a profile that
+        # definition-time cycle + depth check. Only a profile that
         # introduces edges (non-empty subagents) can create a violation — a
         # childless agent is always a safe leaf. Raises SubagentError (a
         # ValidationError) BEFORE persisting, so a bad graph never lands.

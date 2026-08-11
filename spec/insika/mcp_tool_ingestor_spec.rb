@@ -4,9 +4,9 @@ require "spec_helper"
 require "json"
 require "insika/tools/data_defined_tool" # the overlay loads lazily; explicit in the test
 
-# Phase 7, Step E: LIVE MCP ingestion. The ingestor discovers the tools of an MCP
+# LIVE MCP ingestion. The ingestor discovers the tools of an MCP
 # instance via an INJECTABLE client (Fake), builds a ToolManifest reusing the MCP
-# adapter (inputSchema) and ingests through the Step B path (:import_tools: upsert
+# adapter (inputSchema) and ingests through the path (import_tools: upsert
 # + hot reload). Proof: group mcp:<instance>, JSON-RPC tools/call binding, invalid
 # name cutoff (R4), and that the binding RUNS on the data-tools HTTP path.
 RSpec.describe Insika::McpToolIngestor do
@@ -66,7 +66,7 @@ RSpec.describe Insika::McpToolIngestor do
       expect(catalog.all.map(&:name)).to include("search")
     end
 
-    it "marks each tool with group mcp:<instance> (group gating from Step C)" do
+    it "marks each tool with group mcp:<instance> (group gating from)" do
       ingestor.ingest("tavily")
       expect(tool_store.get_raw("search")["group"]).to eq("mcp:tavily")
       expect(tool_store.get_raw("extract")["group"]).to eq("mcp:tavily")
@@ -156,7 +156,7 @@ RSpec.describe Insika::McpToolIngestor do
       expect { ingestor.ingest("tavily") }.to raise_error(Insika::ValidationError, /disabled/)
     end
 
-    it "instance with no url (stdio) -> ValidationError (real transport comes later — D8)" do
+    it "instance with no url (stdio) -> ValidationError (real transport comes later)" do
       seed_instance(url: nil, transport: "stdio", command: "npx foo")
       expect { ingestor.ingest("tavily") }.to raise_error(Insika::ValidationError, /no url.*stdio/m)
     end

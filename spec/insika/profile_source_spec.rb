@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe "Insika ProfileSource (Phase 4 D2)" do
+RSpec.describe "Insika ProfileSource" do
   let(:profile) do
     Insika::AgentProfile.build(
       id: "bia", model: "deepseek-chat", provider: :deepseek,
@@ -35,7 +35,7 @@ RSpec.describe "Insika ProfileSource (Phase 4 D2)" do
       src.put(profile)
       got = src.fetch("bia")
 
-      # the critical point of D2: JSON round-trip becomes string; we re-symbolize.
+      # the critical point of: JSON round-trip becomes string; we re-symbolize.
       expect(got.provider).to eq(:deepseek)                       # symbol, not "deepseek"
       expect(got.policies).to eq(%i[tool_allowlist skill_allowlist]) # symbols
       expect(got.limits[:tool_timeout]).to eq(30)                 # symbol key + Integer
@@ -66,18 +66,18 @@ RSpec.describe "Insika ProfileSource (Phase 4 D2)" do
       expect(src.fetch("bia").model).to eq("novo-modelo")
     end
 
-    it "round-trip of metadata (store_id from the turn context, Phase 6)" do
+    it "round-trip of metadata (store_id from the turn context)" do
       src.put(Insika::AgentProfile.build(id: "loja", model: "m", metadata: { store_id: "loja-7" }))
       got = src.fetch("loja")
       expect(got.store_id).to eq("loja-7") # survives the JSON round-trip (key becomes string)
     end
 
-    it "round-trip of tools_allow_groups (Phase 7/D4/F5, Step C)" do
+    it "round-trip of tools_allow_groups" do
       src.put(Insika::AgentProfile.build(id: "loja", model: "m", tools_allow_groups: %w[b2b beauty]))
       expect(src.fetch("loja").tools_allow_groups).to eq(%w[b2b beauty])
     end
 
-    it "round-trip of params/model_policy (LLM config v2, §10)" do
+    it "round-trip of params/model_policy (LLM config v2)" do
       src.put(Insika::AgentProfile.build(
                 id: "loja", model: "m",
                 params: { temperature: 0.2, max_tokens: 300 },
@@ -90,12 +90,12 @@ RSpec.describe "Insika ProfileSource (Phase 4 D2)" do
       expect(Insika::ModelPolicy.allowed?(got.model_policy, model: "deepseek-chat", provider: :deepseek)).to be(true)
     end
 
-    it "round-trip of a modelless agent (model optional, §10)" do
+    it "round-trip of a modelless agent (model optional)" do
       src.put(Insika::AgentProfile.build(id: "loja")) # no model
       expect(src.fetch("loja").model).to be_nil
     end
 
-    it "round-trip of guardrails config (RFC-0009), consumed via Safety::Config" do
+    it "round-trip of guardrails config, consumed via Safety::Config" do
       src.put(Insika::AgentProfile.build(
                 id: "loja", model: "m",
                 guardrails: { input: true, output: false, moderator: "on", strictness: "high" }
@@ -114,7 +114,7 @@ RSpec.describe "Insika ProfileSource (Phase 4 D2)" do
       expect(src.fetch("loja").guardrails).to be_nil
     end
 
-    it "round-trip of sandbox config (item 35), consumed via Sandbox.build" do
+    it "round-trip of sandbox config, consumed via Sandbox.build" do
       src.put(Insika::AgentProfile.build(
                 id: "loja", model: "m",
                 sandbox: { provider: "docker", image: "ruby:3.3", network: "none" }

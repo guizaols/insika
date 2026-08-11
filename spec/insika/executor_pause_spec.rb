@@ -4,7 +4,7 @@ require "spec_helper"
 require "async"
 require "async/condition"
 
-# :paused suspension in the Executor (P2 task 2). Pausing requires catching :pause at a
+# paused suspension in the Executor. Pausing requires catching:pause at a
 # boundary BEFORE stage 6 — a gated context builder suspends the turn at
 # stage 2, allowing :pause to be posted before the boundary that consumes it.
 RSpec.describe "Insika::Executor — :paused suspension" do
@@ -91,7 +91,7 @@ RSpec.describe "Insika::Executor — :paused suspension" do
     end
   end
 
-  it "without :pause the flow is identical to Phase 1 (no :task_paused)" do
+  it "without:pause the flow is identical to (no:task_paused)" do
     gate = Async::Condition.new
     executor = build_executor(context_builder: GatingContextBuilder.new(gate))
     allow(executor).to receive(:create_chat).and_return(FakeChat.new)

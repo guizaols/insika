@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Evals deterministic assertion engine (RFC-0008, Fase A). Pure over (Golden,
+# Evals deterministic assertion engine. Pure over (Golden,
 # TurnResult) — no server, no tokens.
 RSpec.describe Insika::Evals::Assertions do
   def golden(expect)
@@ -85,7 +85,7 @@ RSpec.describe Insika::Evals::Assertions do
 
   it "raises on an unknown must_not detector (a typo must not pass silently)" do
     expect { described_class.evaluate(golden("must_not" => ["nope"]), result) }
-      .to raise_error(ArgumentError, /unknown detector/) # runtime is the single source (D4)
+      .to raise_error(ArgumentError, /unknown detector/) # runtime is the single source
   end
 
   describe Insika::Evals::Report do

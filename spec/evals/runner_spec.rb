@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Runner orchestration (RFC-0008). Pure over the Transport — a fake makes the
+# Runner orchestration. Pure over the Transport — a fake makes the
 # replay/evaluate loop testable offline, no server or LLM.
 RSpec.describe Insika::Evals::Runner do
   # Returns a scripted TurnResult per message; records the messages it saw.
@@ -10,7 +10,7 @@ RSpec.describe Insika::Evals::Runner do
     attr_reader :seen
 
     # usage: a per-turn hash (or nil), like the deployment reports on
-    # `response.completed`. Only RFC-0013's budget reads it.
+    # `response.completed`. Only's budget reads it.
     def initialize(usage: nil, &script)
       @script = script
       @usage = usage
@@ -121,7 +121,7 @@ RSpec.describe Insika::Evals::Runner do
     expect(rc.result.pass?).to be(false)
   end
 
-  # RFC-0013 §3.9: the refinement gate has to bound what a replay costs, and it can
+  # the refinement gate has to bound what a replay costs, and it can
   # only do that if the case carries what its turns actually spent. Nothing else
   # reads this — the report and the exit code are untouched.
   describe "what a case cost" do

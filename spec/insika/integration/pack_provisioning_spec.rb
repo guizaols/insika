@@ -2,12 +2,12 @@
 
 require "spec_helper"
 
-# Phase 6/D4 (tasks 7-8) — end-to-end provisioning: the PackImporter emits the
+# (tasks 7-8) — end-to-end provisioning: the PackImporter emits the
 # REAL authoring Commands over REAL stores. Proves that "provision 1 store"
 # actually works (the payloads the importer builds are accepted by the Commands)
 # and produces a USABLE agent: profile with correct allowlists, files in the
 # AgentFileStore, skills in the catalog and data-tools in the registry.
-RSpec.describe "Integration: pack provisioning (Phase 6/D4)" do
+RSpec.describe "Integration: pack provisioning" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }
   let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }

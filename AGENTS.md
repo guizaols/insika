@@ -72,17 +72,19 @@ the surrounding style instead of running a formatter.
 
 ## Gotchas
 
-- `docs/internal/`, `docs/FOLLOWUP.md`, `docs/README.md`, `docs/techspec/` and
-  `scripts/internal/` are **gitignored** working material. Edits there are local by
+- `docs/internal/`, `docs/FOLLOWUP.md`, `docs/README.md`, `docs/techspec/`,
+  `scripts/internal/`, `evals/internal/` and `evals/baseline.json` are **gitignored**
+  working material. Edits there are local by
   design and will not show in `git status` — do not try to commit them, and do not
   assume a reader of the public repo can see them. `spec/scripts/` is a narrower case:
-  the directory is ignored by default, but `insika_cli_spec.rb` and `bench_spec.rb`
-  are tracked exceptions (they guard public scripts and CI runs them); a new spec
+  the directory is ignored by default, but `insika_cli_spec.rb`, `bench_spec.rb` and
+  `loadtest_session_spec.rb` are tracked exceptions (they guard public scripts and CI
+  runs them); a new spec
   added there stays untracked unless it earns its own `!` line.
 - `lib/insika/studio/assets/dist/` **is** committed so `serve` runs without Node. If
   you touch `assets/src/`, rebuild and commit the bundle.
 - The gemspec's `files` come from `git ls-files` — **a new `lib/` file that is not
-  staged does not ship**, and `gem build` will not warn you. The E1 install proof in
+  staged does not ship**, and `gem build` will not warn you. The install proof in
   `docs/RELEASING.md` is the gate that catches it.
 - A `docs/*.md` file is simultaneously a Jekyll page, so it starts with a frontmatter
   block. `Insika::Onboarding#doc` strips it — keep that true. Links between docs must

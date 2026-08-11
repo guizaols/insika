@@ -8,8 +8,8 @@
 # has nothing to resume after a restart.
 
 # ---- builder: compiles the native gems (sqlite3) --------------------------
-# Ruby 4.0.x is the recommended/tested runtime (see .ruby-version and
-# docs/BENCHMARKS.md — Ruby × YJIT matrix, FOLLOWUP §1.1). Keep this tag in sync
+# Ruby 4.0.x is the recommended/tested runtime (see .ruby-version and the
+# Ruby × YJIT benchmark matrix). Keep this tag in sync
 # with .ruby-version and with RUBY VERSION in Gemfile.lock.
 FROM ruby:4.0.6-slim AS builder
 

@@ -9,7 +9,7 @@ module Insika
   # `await` as the cooperative SUSPENSION primitive. Cancellation/suspension only
   # at stage boundaries — never in the middle of an operation.
   class TaskActor
-    # `user_message` is posted by `Executor#steer_into_running` (RFC-0015 §5.1) and
+    # `user_message` is posted by `Executor#steer_into_running` and
     # consumed by `SteerInjector` at a tool-batch boundary. `pause`/`resume` (operator),
     # `approval` (human-in-the-loop), `timeout`/`heartbeat`
     # (watchdog/liveness, observation).
@@ -61,14 +61,14 @@ module Insika
     # the flag).
     def pause_requested? = @pause_requested
 
-    # RFC-0015 §5.2 — takes the steered messages and clears the buffer, WITHOUT
+    # takes the steered messages and clears the buffer, WITHOUT
     # observing anything else in the mailbox: whatever is not a `:user_message` is put
     # back, in the order it arrived.
     #
     # Why not `drain!`: this runs INSIDE RubyLLM's tool loop (a `after_message`
     # callback), and `drain!` raises on `:cancel`. Cancellation is only ever observed
     # at the Executor's own stage boundaries — that is what keeps a tool batch one
-    # unit of work (RFC-0015 §6.4, and D7 for the same rule under `turn_timeout`).
+    # unit of work (and for the same rule under `turn_timeout`).
     # Injecting a message must not quietly become a new place a turn can die.
     def take_user_messages!
       @mailbox.size.times do

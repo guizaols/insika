@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Per-session tool-call trace (debug in Studio; FOLLOWUP §3.1).
+# Per-session tool-call trace (debug in Studio).
 RSpec.describe Insika::ToolTraceStore do
   subject(:store) { described_class.new(store: Insika::Stores::Memory.new) }
 

@@ -27,7 +27,7 @@ RSpec.describe Insika::Safety::Moderator do
     expect(v.action).to eq("refuse")
   end
 
-  it "fails OPEN on unparseable output — unavailable, never a fake allow (RFC-0022)" do
+  it "fails OPEN on unparseable output — unavailable, never a fake allow" do
     v = moderator("not json at all").classify("x")
     expect(v.action).to eq("unavailable")
     expect(v).to be_unavailable

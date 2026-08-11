@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Studio
-  # Nav SVG icons for the Studio App (§11 B6). A mixin included into App: the
+  # Nav SVG icons for the Studio App. A mixin included into App: the
   # `nav_icon` view helper and its icon table, moved verbatim out of app.rb.
   # Inline SVG is CSP-safe (an HTML element, not an external resource).
   module NavIcons

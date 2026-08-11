@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Loads the contract suite to ensure the file parses clean
-# (the first real run against a backend is task 3).
+# (the first real run against a backend is).
 require_relative "../../lib/insika/testing/store_contract"
 
 RSpec.describe Insika::Store do

@@ -1,4 +1,4 @@
-# Insika Studio (Phase 4)
+# Insika Studio
 
 Server-rendered management UI (Roda + Hotwire), mounted under `/studio`. Replaces
 OpenClaw's agent-studio — **one process, one deploy, one language**. It talks to the
@@ -11,17 +11,17 @@ The front-end bundle (`assets/dist/*`) is **checked in**. `ruby scripts/serve_re
 serves the Studio directly — no Node required:
 
 ```bash
-export DEEPSEEK_API_KEY=...        # the agent's key (openclaw/.env.local)
-export ADMIN_TOKEN=change-me       # Studio login token (D7)
+export DEEPSEEK_API_KEY=...        # the agent's key
+export ADMIN_TOKEN=change-me       # Studio login token
 ruby scripts/serve_real.rb         # → http://localhost:9292/studio
 ```
 
-Log in at `/studio/login` with the `ADMIN_TOKEN`. Session cookie is httpOnly/SameSite=Lax
-(D7); the session secret is derived from the admin token (stable across restarts).
+Log in at `/studio/login` with the `ADMIN_TOKEN`. Session cookie is httpOnly/SameSite=Lax;
+the session secret is derived from the admin token (stable across restarts).
 
 ## Edit the front-end (needs Node)
 
-Only people touching the CSS/JS need Node. The pipeline is **esbuild + Tailwind** (D8):
+Only people touching the CSS/JS need Node. The pipeline is **esbuild + Tailwind**:
 
 ```bash
 cd studio
@@ -31,8 +31,8 @@ npm run watch        # continuous rebuild in dev
 ```
 
 - `assets/src/application.js` — entry: Stimulus + Turbo + controllers.
-- `assets/src/controllers/` — islands (D9): `live-transcript` (SSE from /studio/events),
-  `code-editor` (CodeMirror 6; used for authoring prompts/skills — Stage F).
+- `assets/src/controllers/` — islands: `live-transcript` (SSE from /studio/events),
+  `code-editor` (CodeMirror 6; used for authoring prompts/skills).
 - `assets/src/application.css` — Tailwind (`base`/preflight) + design system in
   `@layer components`.
 

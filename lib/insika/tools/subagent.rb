@@ -5,18 +5,18 @@ require_relative "agent_enum"
 
 module Insika
   module Tools
-    # In-process delegation to a CHILD agent (RFC-0010, item 21) — the Flue
+    # In-process delegation to a CHILD agent — the Flue
     # `session.task()` primitive. A system tool (like remember/load_skill): wired
     # by the ChatBuilder ONLY when `profile.subagents` is present, so `require
     # "ruby_llm"` stays in this file (loaded lazily in create_chat). NOT enveloped
     # (system tool) — in the synchronous mode the child lives in the parent's
-    # envelope and re-runs on the parent's resume (RFC-0010 §6).
+    # envelope and re-runs on the parent's resume.
     #
     # It holds no delegation logic itself: `execute` reads the parent TurnState
     # (the subagents allowlist + resolved model for inheritance + depth) and hands
     # off to `Executor#run_subagent`, which spawns the isolated child turn and
     # returns its result. The child result = its text + the linked child session
-    # id (§4.3 R3).
+    # id (R3).
     class Subagent < RubyLLM::Tool
       description "Delegates a self-contained task to a specialized child agent. " \
                   "The child runs in an ISOLATED context (it does not see this " \
@@ -67,7 +67,7 @@ module Insika
         return { dispatched: true, agent: result[:agent], session_id: result[:session_id] } if result[:dispatched]
 
         # sync: link the child session id alongside the text so a multi-step parent
-        # can reference it and the transcript stays auditable (§4.3 R3 / §7).
+        # can reference it and the transcript stays auditable (R3).
         { text: result[:text], session_id: result[:session_id] }
       end
     end

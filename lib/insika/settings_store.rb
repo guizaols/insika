@@ -13,7 +13,7 @@ module Insika
     SCOPE = "settings"
     KEY   = "general"
 
-    # STRICT config, settings layer (item 23 / §8.1 — "no silent config compat: every
+    # STRICT config, settings layer (— "no silent config compat: every
     # schema migration explicit"). The settings record carries a `schema_version`;
     # every shape change is a numbered migration here, applied ONLY by the explicit
     # `migrate!` (Studio settings saves never silently reinterpret old-shaped data).
@@ -31,7 +31,7 @@ module Insika
       "turn_timeout" => 120,
       "tool_timeout" => 30,
       "compaction" => { "enabled" => false, "keep_last" => 20 },
-      # LLM config v2 (§10). Platform-wide model layer, resolved by the
+      # LLM config v2. Platform-wide model layer, resolved by the
       # ModelResolver under an agent that pins no model of its own:
       #   default_model/default_provider -> the platform default (Chat > Agent > HERE)
       #   fallback_models -> ordered chain ["provider/model" | "model", ...] tried
@@ -42,13 +42,13 @@ module Insika
       "default_provider" => nil,
       "fallback_models" => [],
       "utility_model" => nil,
-      # Reasoning control (§10, 4-layer: Chat > Agent > Model > Global). `thinking`
+      # Reasoning control (4-layer: Chat > Agent > Model > Global). `thinking`
       # is the GLOBAL default (off/on/low/medium/high; nil = provider default);
       # `model_params` is the PER-MODEL layer, a map "<provider/model>"|"<model>" ->
       # { "thinking" => ... }. Both resolved by the ModelResolver.
       "thinking" => nil,
       "model_params" => {},
-      # Evals (RFC-0008, panel by RFC-0013 §3.9). The GRADERS are platform config, so
+      # Evals (panel by). The GRADERS are platform config, so
       # the operator picks them in the Studio instead of remembering a CLI flag:
       #   judges        -> [{ "model" =>, "provider" => }, …]. [] = deterministic
       #                    asserts only (rubric'd cases read as judge_pending).
@@ -66,7 +66,7 @@ module Insika
         "quorum" => 1,
         "tolerance" => 0.05
       },
-      # Edge limits (item 33 / §12 G7) — the platform layer of the EdgeLimiter.
+      # Edge limits — the platform layer of the EdgeLimiter.
       # nil/0 = off (opt-in). chat_rate_limit = turn attempts per chat per
       # chat_rate_window (s); agent_token_ceiling = total tokens per agent per
       # agent_token_window (s). limit_response overrides the safe reply.

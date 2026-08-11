@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # STRICT config, environment layer (item 23 / §8.1). OpenClaw's config discipline
+  # STRICT config, environment layer. OpenClaw's config discipline
   # — "recusa boot com chave desconhecida, no silent config compat" — applied to the
   # env vars the engine reads at boot. A declarative registry of the keys the engine
   # OWNS (config over convention: the schema IS data), used two ways:
@@ -107,19 +107,19 @@ module Insika
       spec(name: "INSIKA_EGRESS_HOSTS", type: :csv, description: "Comma-separated host allowlist for data-tool egress."),
       spec(name: "INSIKA_OTEL", type: :boolean, description: "Turn on OpenTelemetry export (opt-in)."),
       spec(name: "INSIKA_MODEL_PRICING", description: "JSON rates table (USD per million tokens) for the estimated-cost attribute; unset -> no cost reported."),
-      spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in, item 34)."),
+      spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in)."),
       spec(name: "INSIKA_SUBAGENT_DEPTH_CAP", type: :integer, description: "Max delegation depth in the subagent graph (default 5)."),
       spec(name: "INSIKA_SUBAGENT_FANOUT_CAP", type: :integer, description: "Max parallel children in spawn_subagents (default 8)."),
-      spec(name: "INSIKA_CONFIG_STRICT", type: :boolean, description: "Refuse boot on any config finding instead of warning (item 23)."),
-      spec(name: "INSIKA_BOOT_ID", description: "Boot generation id shared by all workers of one container start; the recovery task sweep runs once per id (RFC-0016). Unset -> every boot sweeps."),
-      spec(name: "INSIKA_DRAIN_TIMEOUT", type: :integer, description: "Seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (default 20, RFC-0016 A3)."),
-      spec(name: "INSIKA_TICK_INTERVAL", type: :integer, description: "Seconds between tick passes (outbox drain + stale recovery sweep, RFC-0019). Default 60; 0 disables."),
-      spec(name: "INSIKA_TICK_STALE_AFTER", type: :integer, description: "Seconds a :queued/:running task must sit untouched before the tick sweeps it (default 900, RFC-0019). Must exceed the largest turn_timeout of the deployment."),
-      spec(name: "INSIKA_ONBOARDING", type: :boolean, description: "Expose the public onboarding surface (/start.md, /models.json, /docs) in production (opt-in, item 20)."),
-      spec(name: "INSIKA_RELAY_TOKEN", secret: true, description: "Bearer the relay consumer sends us. Unset -> the relay channel is not mounted (RFC-0011 §6)."),
+      spec(name: "INSIKA_CONFIG_STRICT", type: :boolean, description: "Refuse boot on any config finding instead of warning."),
+      spec(name: "INSIKA_BOOT_ID", description: "Boot generation id shared by all workers of one container start; the recovery task sweep runs once per id. Unset -> every boot sweeps."),
+      spec(name: "INSIKA_DRAIN_TIMEOUT", type: :integer, description: "Seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (default 20)."),
+      spec(name: "INSIKA_TICK_INTERVAL", type: :integer, description: "Seconds between tick passes (outbox drain + stale recovery sweep). Default 60; 0 disables."),
+      spec(name: "INSIKA_TICK_STALE_AFTER", type: :integer, description: "Seconds a :queued/:running task must sit untouched before the tick sweeps it (default 900). Must exceed the largest turn_timeout of the deployment."),
+      spec(name: "INSIKA_ONBOARDING", type: :boolean, description: "Expose the public onboarding surface (/start.md, /models.json, /docs) in production (opt-in)."),
+      spec(name: "INSIKA_RELAY_TOKEN", secret: true, description: "Bearer the relay consumer sends us. Unset -> the relay channel is not mounted."),
       spec(name: "INSIKA_RELAY_DELIVER_URL", type: :url, description: "Consumer callback the relay POSTs each reply to."),
       spec(name: "INSIKA_RELAY_DELIVER_TOKEN", secret: true, description: "Bearer the relay sends TO the consumer's callback (optional)."),
-      spec(name: "INSIKA_WIDGET_ORIGINS", type: :csv, description: "Exact-match origins allowed to embed the web widget. Unset -> the widget channel is not mounted (RFC-0011 §5)."),
+      spec(name: "INSIKA_WIDGET_ORIGINS", type: :csv, description: "Exact-match origins allowed to embed the web widget. Unset -> the widget channel is not mounted."),
       spec(name: "INSIKA_WIDGET_AGENTS", type: :csv, description: "Agent ids a widget visitor may address. Unset -> the widget channel is not mounted."),
       spec(name: "OPENCLAW_GATEWAY_TOKEN", secret: true, description: "Bearer for /v1 + /a2a (falls back to ADMIN_TOKEN)."),
       spec(name: "OPENCLAW_AGENTS_DIR", type: :path, description: "Directory of OpenClaw-style agent packs."),

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Phase 7, Stage B (task 5): Command :import_tools — BATCH upsert of data-tools
+# Command:import_tools — BATCH upsert of data-tools
 # by manifest, hot reload, per-tool report and isolated partial failure (R4).
 RSpec.describe Insika::Commands::ImportTools do
   CodeToolStub2 = Struct.new(:name, :description)

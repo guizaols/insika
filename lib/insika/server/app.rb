@@ -33,7 +33,7 @@ module Insika
       TERMINAL_EVENTS = %i[task_completed task_failed task_cancelled].freeze
       private_constant :TERMINAL_EVENTS
 
-      # RFC-0016 A5: the `/v1` contract, versioned by date. A caller PINS behaviour
+      # the `/v1` contract, versioned by date. A caller PINS behaviour
       # with `Insika-Version: YYYY-MM-DD` so a future breaking change does not move
       # silently underneath it; absent header = today's (only) version. Only one
       # entry exists so far — the day a second one is added, the routes that
@@ -42,14 +42,14 @@ module Insika
       KNOWN_VERSIONS = ["2026-08-08"].freeze
       private_constant :KNOWN_VERSIONS
 
-      # B7: the 500 envelope. A 500 is by definition unexpected — the client
+      # the 500 envelope. A 500 is by definition unexpected — the client
       # cannot fix the request, so the contract is "you may retry, wait this
       # long, and quote this ref when you report it". The ref only means
       # anything because the same line goes to the server log (see #internal_error_response).
       RETRY_AFTER_SECONDS = 1
       private_constant :RETRY_AFTER_SECONDS
 
-      # The operator control UI now lives in the Studio (§12 G5); server/ is a
+      # The operator control UI now lives in the Studio; server/ is a
       # pure transport surface (/v1, /a2a). The constitutional rule holds: server/
       # only READS stores and never imports the Executor, store writes, or RubyLLM.
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
@@ -64,27 +64,27 @@ module Insika
         @pending_action_store = pending_action_store # read for GET /v1/tasks/:id
         @a2a = a2a # A2A edge. nil = server does not expose A2A (parity).
         @provisioner = provisioner # PackImporter. nil = provisioning not exposed.
-        # Item 22 / §4.4: READ-ONLY registry, injected only where workflows are
+        # READ-ONLY registry, injected only where workflows are
         # exposed (the minimal wiring). nil = no /v1/workflows routes (parity — the
         # deployment does not expose workflows). Reading a catalog is a READ, like a
         # store read: the constitutional rule (no Executor/store-writes/RubyLLM) holds.
         @workflow_registry = workflow_registry
-        # Item 20 / §5.6: LLM-first onboarding surface (start.md + models.json +
+        # LLM-first onboarding surface (start.md + models.json +
         # docs). PUBLIC (no auth — the whole point of the "read <base>/start.md" trick
         # is that the developer's coding agent can fetch it), and READ-ONLY, so the
         # constitutional rule holds. nil = routes not exposed (parity — the production
         # deployment opts in). Reading files/masked stores is a READ, like a store read.
         @onboarding = onboarding
-        # RFC-0014 §3.2: READ-ONLY ProfileSource, so `GET /v1/agents/:id` can answer
+        # READ-ONLY ProfileSource, so `GET /v1/agents/:id` can answer
         # what an agent has — the eval is a client and cannot read a store. Same
         # constitutional footing as the workflow registry: reading a catalog is a
         # READ. nil = the route 404s (parity).
         @profiles = profiles
-        # RFC-0011 §4.4: ONE generic route family for every channel, opt-in by
+        # ONE generic route family for every channel, opt-in by
         # injecting the registry (nil ⇒ the routes do not exist, parity with @a2a).
         # The channel does the translating; this class keeps doing only transport.
         @channels = channels
-        # B7: where a 500's error_ref goes to be FOUND. nil = silent (parity for
+        # where a 500's error_ref goes to be FOUND. nil = silent (parity for
         # embedders); the serving wirings pass $stdout. Class+message+backtrace
         # only — the ref never travels with request payloads (secrets stay out).
         @logger = logger
@@ -263,13 +263,13 @@ module Insika
       # "false" -> 200 JSON aggregated at the terminal event.
       def handle_send_message(req)
         stream = req.GET["stream"] != "false"
-        # RFC-0015 §5.5: only the aggregated-JSON form has room for the `merged`/`steered`
+        # only the aggregated-JSON form has room for the `merged`/`steered`
         # verdict, so only it may join a message to another turn. Once the stream is open
         # there is no way to tell the caller it does not own the reply.
         message_flow(parse_body(req), stream: stream, transport: stream ? :http : :"http:json")
       end
 
-      # GET /docs/:name.md — one public doc as raw markdown (item 20 / §5.6). The
+      # GET /docs/:name.md — one public doc as raw markdown. The
       # slug is a KEY of the onboarding allowlist, so no filesystem traversal is
       # possible; an unknown slug -> 404. `file` still carries the ".md" suffix.
       def handle_doc(file)
@@ -286,7 +286,7 @@ module Insika
         Insika::Coercion.presence(@config[:public_url]) || req.base_url
       end
 
-      # GET /v1/workflows — discovery (item 22 / §4.4). Direct read of the
+      # GET /v1/workflows — discovery. Direct read of the
       # registry catalog (name + description + the I/O schema contract). Not a
       # Command; opt-in via the injected registry.
       def handle_list_workflows
@@ -324,7 +324,7 @@ module Insika
       end
 
       # POST /v1/agents — provisions (upserts) an agent from a standardized
-      # PACK (Phase 6/D4/F7). Same Bearer as /v1/responses (gateway_token,
+      # PACK. Same Bearer as /v1/responses (gateway_token,
       # fail-closed). The consumer (GatewayClient/ProvisionStore) sends the pack as
       # JSON; the PackImporter emits the authoring Commands. -> 200 { summary }.
       # Raw body (string keys): the pack's file/skill names are data keys,
@@ -338,7 +338,7 @@ module Insika
       end
 
       # POST /v1/tools/manifest — BATCH ingestion of data-tools via manifest
-      # (Phase 7, Step B). Same Bearer as provisioning (gateway_token, fail-
+      # Same Bearer as provisioning (gateway_token, fail-
       # closed): it's an authoring/provisioning surface and resolves the
       # deployment's secrets. RAW body (string keys): the JSON Schema property names and
       # the headers are DATA, not symbols. Dispatches :import_tools -> 200 { per-tool
@@ -353,7 +353,7 @@ module Insika
         json_response(200, dispatch_with_timeout(command))
       end
 
-      # POST /v1/mcp/:name/import — LIVE MCP ingestion (Phase 7, Step E). Same
+      # POST /v1/mcp/:name/import — LIVE MCP ingestion. Same
       # Bearer as provisioning (gateway_token, fail-closed): it's an authoring
       # surface. Discovers the tools of the MCP instance `:name` (via a client injectable
       # at the composition root) and ingests them as data-tools (reuses :import_tools:
@@ -379,7 +379,7 @@ module Insika
 
       # GET /v1/agents/:id — what this deployment HAS for that agent, so an eval
       # (a client: it never reads a store) can tell "this case cannot run here" from
-      # "this case failed" (RFC-0014 §3.2). Deliberately NOT the profile: the prompt,
+      # "this case failed". Deliberately NOT the profile: the prompt,
       # the model and the guardrail config are none of the caller's business. Just the
       # two facts a case declares `requires` against.
       #
@@ -420,18 +420,18 @@ module Insika
         end
       end
 
-      # POST /channels/:id/events — the Shape B inbound webhook (RFC-0011 §4.4).
+      # POST /channels/:id/events — the Shape B inbound webhook.
       # ACK FAST and never the reply: the platform (or the relay consumer) is holding
       # a connection open with a retry timer on it, so this dispatches the turn and
       # answers with its id. The answer itself leaves later, out of band, through the
-      # channel's own `deliver` (§6.5).
+      # channel's own `deliver`.
       #
       # The channel does ALL the translating — auth, envelope, session correlation —
       # and this handler stays what `server/` is allowed to be: a route that turns a
       # request into a Command. Four answers, and each one is a different fact:
       #   202 {task_id}            a turn is running; its reply will be delivered
-      #   200 {task_id, duplicate} we already ran this event id (§6.4)
-      #   200 {task_id, merged}    it joined a turn at the door (RFC-0015 §5.5)
+      #   200 {task_id, duplicate} we already ran this event id
+      #   200 {task_id, merged}    it joined a turn at the door
       #   200 {task_id, steered}   it was appended to a turn already running
       # A consumer that treats the last three as 202 delivers the same answer twice.
       def handle_channel_event(req, id)
@@ -451,7 +451,7 @@ module Insika
       end
 
       # POST /channels/:id/sessions — mint a conversation for a PUBLIC Shape A
-      # channel (RFC-0011 §4.3). The engine issues the id and the client never
+      # channel. The engine issues the id and the client never
       # proposes one: an endpoint that created a session from a caller-supplied id
       # would let anyone read someone else's conversation by guessing.
       #
@@ -535,7 +535,7 @@ module Insika
       end
 
       # Does this session exist AND belong to this channel? `vars["channel"]` is
-      # written when the session is minted (§4.3).
+      # written when the session is minted.
       def channel_session?(id, session_id)
         session = session_id && @session_store.find(session_id)
         return false if session.nil?
@@ -581,7 +581,7 @@ module Insika
         json_response(202, { task_id: result[:task_id] })
       end
 
-      # RFC-0011 §4.3: `channel` + `external_id` on the session are how a later turn
+      # `channel` + `external_id` on the session are how a later turn
       # (and the outbox) know where a reply goes. The consumer's own `vars` ride along
       # on first contact, but never over those two — a caller must not be able to
       # rewrite its own conversation's address.
@@ -673,7 +673,7 @@ module Insika
             raise
           end
 
-        # RFC-0015 §5.5: the message joined another turn — one still waiting at the
+        # the message joined another turn — one still waiting at the
         # door (`merged`) or one already running (`steered`). Either way this call
         # owns no reply; the one holding `task_id` does. Say exactly that and open no
         # stream: a caller that delivered this response's (empty) output would
@@ -694,7 +694,7 @@ module Insika
         stream ? sse_response(filtered, serialize: serialize) : aggregate_response(filtered, task_id)
       end
 
-      # Workflow trigger flow (item 22). Async by default (the honest workflow
+      # Workflow trigger flow. Async by default (the honest workflow
       # contract: fire the run, return the runId); ?stream=true streams the run's
       # events like a turn. Same subscribe-before-dispatch discipline as
       # message_flow so no eager event is lost when streaming. A synchronous handler
@@ -824,7 +824,7 @@ module Insika
         json_response(status, { error: { class: error.class.name, message: error.message } })
       end
 
-      # B7: the 500 is the ONE status whose body carries the retry envelope —
+      # the 500 is the ONE status whose body carries the retry envelope —
       # retryable/retry_after tell the client what to do, error_ref is what it
       # quotes when the retry keeps failing. The SAME ref is logged here, or the
       # field is decoration. 4xx stay bare: a client error is fixed by editing
@@ -849,7 +849,7 @@ module Insika
       end
 
       # Liveness/readiness. Fixed 200: if the process accepts the connection and recovery
-      # has already run (Boot only returns the app afterward — doc 07 §4), it's ready. Does NOT
+      # has already run (Boot only returns the app afterward), it's ready. Does NOT
       # touch a store (health cannot fail on IO nor require auth).
       def health = json_response(200, { status: "ok" })
 

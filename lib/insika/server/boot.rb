@@ -52,12 +52,12 @@ module Insika
         Sync { do_recovery }
       end
 
-      # Task recovery THEN delegation recovery (RFC-0010 Fase 2): the delegation
+      # Task recovery THEN delegation recovery: the delegation
       # sweep re-delivers completed-but-undelivered async delegations, and depends
       # on the task sweep having re-dispatched any in-flight children first. Both
       # create task fibers, so both must run inside the reactor scope of run_recovery.
       #
-      # The TASK sweep is additionally gated per boot generation (RFC-0016 E2):
+      # The TASK sweep is additionally gated per boot generation:
       # its "orphaned :running" test cannot see a sibling worker's live fiber, so
       # only the worker that claims the generation sweeps — the others would steal
       # in-flight turns. The delegation and channel sweeps stay ungated: each of
@@ -89,7 +89,7 @@ module Insika
         log("boot: delegations re-delivered — #{Array(result && result[:delivered]).size}")
       end
 
-      # RFC-0011 §6.5: replies a previous process committed but never handed to the
+      # replies a previous process committed but never handed to the
       # channel. Runs AFTER the task recovery for the same reason the delegation
       # sweep does — a resumed turn writes its own outbox record at its terminal, and
       # sweeping first would miss it.
@@ -108,7 +108,7 @@ module Insika
         return if @wiring.durable?
 
         log("boot: WARNING — EPHEMERAL backend (no INSIKA_DB): recovery will " \
-            "not resume anything after a restart (doc 02 §6).")
+            "not resume anything after a restart.")
       end
 
       def log(message)

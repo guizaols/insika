@@ -35,7 +35,7 @@ RSpec.describe Insika::Context::Providers::ToolSearch do
     expect(frag.content).not_to include("create_invoice")
   end
 
-  it "tools_deferred nil -> no fragment (Phase 1 parity)" do
+  it "tools_deferred nil -> no fragment (parity)" do
     expect(described_class.new(catalog: catalog).call(request(tools_deferred: nil))).to eq([])
   end
 

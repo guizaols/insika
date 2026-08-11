@@ -25,7 +25,7 @@ module Insika
         # what was sent. id never changes (rename = create+delete, out of scope).
         merged = existing.to_h.merge(patch).merge(id: id)
         profile = Insika::AgentProfile.build(**merged)
-        # RFC-0010 §4.4: definition-time cycle + depth check (an update may ADD
+        # definition-time cycle + depth check (an update may ADD
         # subagents to an existing agent). Raises SubagentError before persisting.
         validate_subagent_graph!(profile)
         @profile_source.put(profile)

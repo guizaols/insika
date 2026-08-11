@@ -3,13 +3,13 @@
 require "spec_helper"
 require "async"
 
-# RFC-0015 §6.4 — the `interrupt` door, and the boundary that makes it mean something.
+# the `interrupt` door, and the boundary that makes it mean something.
 #
 # "Abandon" here is Insika's existing cancellation semantics, unchanged: `:cancel` is
 # observed only at a stage boundary, so a tool call in flight finishes. What this PR adds
 # is one boundary BEFORE the answer is published — without it the customer read the answer
 # of a turn that then terminated `:cancelled` and persisted nothing.
-RSpec.describe "Insika::Executor + the interrupt door (RFC-0015)" do
+RSpec.describe "Insika::Executor + the interrupt door" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

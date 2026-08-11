@@ -7,11 +7,11 @@ module Insika
   # two come apart constantly:
   #
   # · The engine delivers an async subagent's result to the parent as a NEW turn
-  #   (RFC-0010) — a `user` message the engine wrote.
+  # a `user` message the engine wrote.
   # · A guardrail short-circuits with a safe reply — an `assistant` message produced
   #   with zero LLM calls.
   # · A consumer composes context blocks into the input it sends (`<memoria> …`,
-  #   `<store_cep_obrigatorio> …`) — a `user` message the customer never typed.
+  #   `<store_cep_required> …`) — a `user` message the customer never typed.
   # · In an imported transcript, a human operator types after a handoff — an
   #   `assistant` message no model produced.
   #

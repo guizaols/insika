@@ -64,7 +64,7 @@ module Insika
     end
 
     # -> [PendingAction] every :pending across all tasks — the approvals inbox
-    # (§12 G5, Studio). Single O(n) scan (vs. open_for per task = O(n·m)); the
+    # (Studio). Single O(n) scan (vs. open_for per task = O(n·m)); the
     # UI resolves task context afterwards via TaskStore#find.
     def all_open
       @store.list(SCOPE, KEY_PREFIX).filter_map do |key|

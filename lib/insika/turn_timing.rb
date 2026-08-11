@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # Opt-in per-turn latency breakdown (item 34 / §13.1, action 1: locate the
+  # Opt-in per-turn latency breakdown (locate the
   # TTFB cost with real-turn data). OFF unless INSIKA_TURN_TIMING is set — when
   # off the Executor never allocates one and the hot path pays only `nil&.mark`.
   #
@@ -16,7 +16,7 @@ module Insika
   #
   # `ttft_ms` is the PROVIDER's first token, not the first byte the customer can
   # read: TurnOutput publishes a message once it ends, so the customer-visible
-  # answer lands inside `gen_ms`. Measuring the provider is the point — item 34's
+  # answer lands inside `gen_ms`. Measuring the provider is the point —'s
   # baselines (~720 ms, provider-bound) stay comparable across that change.
   class TurnTiming
     # EnvSchema owns "is this flag on?" (1/true/yes/on) — the same predicate that

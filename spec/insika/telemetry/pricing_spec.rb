@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Item 16 / P4 — estimated cost. Pricing is PURE: an operator-declared rates table
+# — estimated cost. Pricing is PURE: an operator-declared rates table
 # (USD per million tokens) times the turn's usage. Proves the token accounting
 # (cached is a subset of input, cache-creation is not), the "unknown model -> nil"
 # rule (a missing price is not a zero cost) and that a malformed table can never

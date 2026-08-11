@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# D4 (RFC-0009): the PII/secret patterns live in the RUNTIME (single source of
+# the PII/secret patterns live in the RUNTIME (single source of
 # truth) — the eval consumes them rather than keeping a divergent copy. Since the
 # module moved under `lib/`, `Safety::Detectors` is loaded by `insika.rb` before this
 # file; the explicit climb out of `evals/` that used to be here is gone.
@@ -33,12 +33,12 @@ module Insika
     # evaluated", never a silent pass. A case passes only if the deterministic checks
     # pass AND (there's no judge verdict OR it passed).
     #
-    # `skipped` (a reason, nil = it ran) is the THIRD outcome (RFC-0014 §3.2): the
+    # `skipped` (a reason, nil = it ran) is the THIRD outcome: the
     # deployment lacks something the case declared it needs, so there was nothing to
     # assert. It is never a pass and never a failure — a suite of 40 cases where 12
     # are skipped says something true, where 40 cases with 12 failures on capability
     # grounds says nothing and gets ignored.
-    # `pairwise` (a Pairwise::Verdict, RFC-0014 §3.4) is attached when the case
+    # `pairwise` (a Pairwise::Verdict) is attached when the case
     # carries a `reference:` and a panel is configured. It DELIBERATELY does not enter
     # `pass?`: "worse than the incumbent" is a judgement about a replacement decision,
     # not a regression in the suite, and letting it fail a case would put an opinion
@@ -53,25 +53,25 @@ module Insika
       def judge_pending? = !skipped? && !rubric.to_s.strip.empty? && judge.nil?
     end
 
-    # Deterministic (Fase A) evaluation — cheap, zero-token, zero-flakiness. It's the
+    # Deterministic evaluation — cheap, zero-token, zero-flakiness. It's the
     # layer that catches the gross regressions (a tool stopped being called, a secret
-    # leaked, the turn errored). Subjective scoring is the LLM-judge in Fase B.
+    # leaked, the turn errored). Subjective scoring is the LLM-judge in.
     module Assertions
-      # Named negative detectors for `must_not` now live in the runtime (D4). Kept as
+      # Named negative detectors for `must_not` now live in the runtime. Kept as
       # an alias so any external reference to Evals::Assertions::PII_DETECTORS still
       # resolves; the values ARE the runtime's, never a fork.
       PII_DETECTORS = Insika::Safety::Detectors::PII
 
-      # HOW MUCH THE AGENT SHOULD ASK BEFORE ACTING (RFC-0014 §3.3). Declared per
+      # HOW MUCH THE AGENT SHOULD ASK BEFORE ACTING. Declared per
       # case because it is a per-STORE decision, not a universal rule: sometimes the
       # agent should establish the objective before searching ("energia, treino ou
-      # sono?" — Acme does this well), and sometimes asking again is the
+      # sono?" — a good store agent does this well), and sometimes asking again is the
       # failure and it should just search. A global assertion would be wrong half
       # the time; the judge is TOLD the policy (Judge#build_prompt) and this layer
       # checks the half that needs no reader.
       #
-      # Each rule is stated as the CUSTOMER-VISIBLE fact it checks. RFC-0014 phrased
-      # this as "questions before the first tool call", written before P19: text a
+      # Each rule is stated as the CUSTOMER-VISIBLE fact it checks. phrased
+      # this as "questions before the first tool call", written before: text a
       # model emits before calling a tool never reaches the customer now (it rides
       # `:intermediate`), and the eval is a client of `/v1/responses`, so what it can
       # observe per turn is the published answer plus the tools that turn called.
@@ -87,7 +87,7 @@ module Insika
 
       module_function
 
-      # WHAT THIS DEPLOYMENT LACKS for the case to be worth running (RFC-0014 §3.2).
+      # WHAT THIS DEPLOYMENT LACKS for the case to be worth running.
       # -> [reason]; empty = run it.
       #
       # `available` is the deployment's answer for this agent:
@@ -237,7 +237,7 @@ module Insika
 
       # Runs a named detector over the text. "pii_leak" = union of all PII detectors;
       # otherwise a single named pattern. Delegates to the runtime's single source
-      # (D4) — which itself fails loud on an unknown name (a typo'd assertion must not
+      # which itself fails loud on an unknown name (a typo'd assertion must not
       # silently pass).
       def detect(name, text)
         Insika::Safety::Detectors.detect(name, text)

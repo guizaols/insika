@@ -8,7 +8,7 @@ module Insika
   # checkpoint at the end. Nothing is validated at registration (the callable may come
   # via a factory block). Consumed by the TriggerWorkflow handler.
   #
-  # Item 22 / §4.4 — the EXPOSED surface: a registration may carry `input_schema:` /
+  # — the EXPOSED surface: a registration may carry `input_schema:` /
   # `output_schema:` (a JSON Schema Hash or any dry-schema-compatible validator) and a
   # `description:` in its metadata. `definition` bundles them with the factory into a
   # Workflow::Definition (schemas resolved, factory left lazy); `catalog` is the

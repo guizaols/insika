@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# Phase 4 Stage D (task 11 / D6): authorable LLM providers + runtime reconfigure
+# authorable LLM providers + runtime reconfigure
 # + key masking. Runs WITHOUT ruby_llm/a key: the configurator receives a fake
-# config target (`configure:` injection), so nothing touches the real gem (D9).
-RSpec.describe "LLM providers (Phase 4 Stage D)" do
+# config target (`configure:` injection), so nothing touches the real gem.
+RSpec.describe "LLM providers" do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:store) { Insika::LLMProviderStore.new(config_store: config_store) }
   let(:events) { [] }
@@ -67,7 +67,7 @@ RSpec.describe "LLM providers (Phase 4 Stage D)" do
       expect(result[:skipped].first[:reason]).to match(/sem api_key/)
     end
 
-    it "unapply zeroes the provider's key/base in the config (delete without restart, §9.5)" do
+    it "unapply zeroes the provider's key/base in the config (delete without restart)" do
       store.upsert("api" => "deepseek", "api_key" => "sk-secret", "base_url" => "https://x")
       configurator.apply
       expect(configurator.unapply("deepseek")).to eq({ unapplied: true })
@@ -102,7 +102,7 @@ RSpec.describe "LLM providers (Phase 4 Stage D)" do
       expect(events.map(&:type)).to eq([:llm_provider_deleted, :llm_provider_deleted])
     end
 
-    it "undoes the runtime config when it existed (§9.5)" do
+    it "undoes the runtime config when it existed" do
       store.upsert("api" => "deepseek", "api_key" => "sk-1")
       configurator.apply
       handler.call(cmd("api" => "deepseek"))

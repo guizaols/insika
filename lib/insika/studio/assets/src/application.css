@@ -221,7 +221,7 @@
   button.danger, .btn.danger { color:var(--err); background:transparent; border-color:transparent; }
   button.danger:hover, .btn.danger:hover { background:color-mix(in srgb,var(--err) 12%,transparent); color:var(--err); }
   .btn.mono { font-family:var(--mono); font-size:.8rem; }
-  /* Loading / disabled state (§12 A3) — Turbo disables the submit button and swaps
+  /* Loading / disabled state — Turbo disables the submit button and swaps
      its label (data-turbo-submits-with) while the form is in flight; dim it and
      drop the hover affordance so the pending action reads as busy, not clickable. */
   button[disabled], .btn[disabled], button[aria-disabled="true"] { opacity:.55; cursor:not-allowed; filter:none; }
@@ -407,7 +407,7 @@
   label.check input { width:auto; margin:0; accent-color:var(--accent-bg); }
   .check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.15rem 1rem; margin:.6rem 0; }
 
-  /* Tool matrix cells (§3.2 refit) — each tool is a self-contained chip: a mini
+  /* Tool matrix cells (refit) — each tool is a self-contained chip: a mini
      toggle, the name (truncates), then its badges. Bordered + min-width:0 so a
      wide name/badge can never bleed into the neighbour (the old collision). */
   .tool-grid.check-grid { grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:.5rem .6rem; margin:.9rem 0 0; }
@@ -470,7 +470,7 @@
   .matrix-hint { margin:0 0 1.25rem; font-size:.88rem; }
   .deny { font-size:.82rem; margin:.5rem 0 0; }
 
-  /* Refinement proposal diff (RFC-0013 §5). Deliberately not a full diff view: an
+  /* Refinement proposal diff. Deliberately not a full diff view: an
      anchored edit is two lines, and rendering it as two lines is what makes the
      approval a five-second decision instead of a code review. */
   pre.diff { font-family:var(--mono); font-size:.82rem; line-height:1.55; margin:.4rem 0 .9rem;
@@ -545,10 +545,10 @@
   .toolcard .h .arrow { color:var(--dim); }
   .toolcard pre, pre { background:var(--panel-3); border:1px solid var(--line); border-radius:8px; padding:.65rem .75rem; overflow-x:auto; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:.8rem; margin:.45rem 0 0; line-height:1.5; }
 
-  /* Turn usage chip (§11 A5) — compact tokens/model summary at the end of a turn. */
+  /* Turn usage chip — compact tokens/model summary at the end of a turn. */
   .usage-chip { display:inline-flex; align-items:center; gap:.4rem; font-family:var(--mono); font-size:.72rem; color:var(--dim); background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:.2rem .6rem; margin:.25rem 0; white-space:nowrap; }
 
-  /* Copy-to-clipboard affordance (§12 A4) — a small button overlaid on a <pre>
+  /* Copy-to-clipboard affordance — a small button overlaid on a <pre>
      (tool cards, trace payloads) or sitting inline next to a copied value
      (session id). Fades in on hover; flashes "copied!" via the clipboard island. */
   .copy-btn { font-family:var(--mono); font-size:.66rem; font-weight:600; line-height:1;
@@ -563,7 +563,7 @@
   .copywrap:hover > .copy-btn, .copywrap > .copy-btn:focus-visible, .copywrap > .copy-btn.copied { opacity:1; }
   .copywrap > pre { padding-right:3.2rem; }
 
-  /* Collapsible tool card (§11 A2) — <details> summary is a one-line header;
+  /* Collapsible tool card — <details> summary is a one-line header;
      body (<pre>) reveals on expand. Applies to live cards and the session viewer. */
   details.toolcard { padding:0; }
   details.toolcard > summary { cursor:pointer; display:flex; align-items:center; gap:.5rem; padding:.6rem .8rem; list-style:none; font-family:var(--mono); font-size:.82rem; }
@@ -629,7 +629,7 @@
   .cm-editor.cm-focused { outline:none; box-shadow:0 0 0 3px var(--ring); border-color:var(--accent-bg); }
   .cm-scroller { font-family:var(--mono); font-size:.82rem; }
 
-  /* ── List filter bar (§3.2) ─────────────────────────────────────────── */
+  /* ── List filter bar ─────────────────────────────────────────── */
   .filter-bar { display:flex; align-items:center; gap:.75rem; margin:0 0 1.1rem; }
   input[type=search].filter-input {
     display:block; flex:1; margin:0; font:inherit; font-size:.88rem; padding:.5rem .8rem .5rem 2.1rem;
@@ -643,7 +643,7 @@
   .filter-count { flex:0 0 auto; font-size:.78rem; }
   [data-list-filter-target="item"][hidden] { display:none; }
 
-  /* ── Config subgroup: generation params (§10 surfacing) ─────────────── */
+  /* ── Config subgroup: generation params (surfacing) ─────────────── */
   fieldset.subgroup { border:1px solid var(--line); border-radius:var(--radius-sm); padding:.4rem 1rem 1rem; margin:1.1rem 0 .3rem; background:var(--panel-2); }
   fieldset.subgroup legend { padding:0 .5rem; font-size:.72rem; text-transform:uppercase; letter-spacing:.09em; color:var(--faint); font-weight:600; font-family:var(--mono); }
   .grid-3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0 1.25rem; }
@@ -652,7 +652,7 @@
   details.pin > summary:hover { color:var(--fg); }
   details.pin .row { margin-top:.5rem; }
 
-  /* ── Tool matrix: switch toggle + N/N counter + locked (§3.2) ───────── */
+  /* ── Tool matrix: switch toggle + N/N counter + locked ───────── */
   .tool-card-meta { display:flex; align-items:center; gap:.9rem; }
   .count-badge { font-size:.74rem; font-weight:600; color:var(--dim); padding:.16rem .5rem; border:1px solid var(--line); border-radius:999px; background:var(--panel-2); white-space:nowrap; }
   .switch { display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; margin:0; font-weight:500; color:var(--fg); font-size:.86rem; }
@@ -668,7 +668,7 @@
   .pill.locked { color:var(--err); background:color-mix(in srgb,var(--err) 12%,transparent); border-color:color-mix(in srgb,var(--err) 26%,transparent); }
   .pill.locked::before { display:none; }
 
-  /* ── Markdown editor: toolbar + preview pane (§3.2) ─────────────────── */
+  /* ── Markdown editor: toolbar + preview pane ─────────────────── */
   .editor-toolbar { display:flex; justify-content:flex-end; margin-bottom:.4rem; }
   .editor-toggle { font-size:.78rem; padding:.3rem .8rem; }
   .editor-toggle.is-active { border-color:var(--accent-bg); color:var(--accent); }

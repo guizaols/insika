@@ -3,7 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 
-# RFC-0013 §3.7: eval cases move from files-only to a store, so the rubric — the part
+# eval cases move from files-only to a store, so the rubric — the part
 # of an eval a domain owner can actually write — is authorable without a checkout. The
 # corpus on disk stays the seed and the export format.
 RSpec.describe Insika::GoldenStore do

@@ -6,7 +6,7 @@ require "tmpdir"
 require "fileutils"
 require "sqlite3"
 
-# Stage C completion criterion (doc 00 §6) at integration level: a turn
+# completion criterion at integration level: a turn
 # interrupted by a "crash" survives in a SQLite file, and a "reboot" (new
 # objects, SAME file) resumes from the checkpoint via Recovery -> ResumeTask,
 # completing without re-executing the non-idempotent tool that already ran.
@@ -14,7 +14,7 @@ require "sqlite3"
 # kill -9 does not run rescue: the post-crash state is assembled DIRECTLY in the
 # stores (task :running, open Execution, turn checkpoint, side-effect on the
 # standalone key, no live fiber) — simulating via an exception would go through the
-# single capture and mark :failed, which is not the scenario. The real-process E2E is task 26.
+# single capture and mark:failed, which is not the scenario. The real-process E2E is.
 RSpec.describe "Integration: kill -> restart -> resume" do
   around do |example|
     Dir.mktmpdir do |dir|
@@ -99,7 +99,7 @@ RSpec.describe "Integration: kill -> restart -> resume" do
       summary = Insika::Recovery.new(task_store: b[:task_store],
                                       checkpoint_store: b[:checkpoint_store],
                                       command_bus: bus).run
-      # the task has a session_id -> the resume is SERIALIZED in the SessionActor (P2-03),
+      # the task has a session_id -> the resume is SERIALIZED in the SessionActor (03),
       # spawned async; poll until terminal and stop the session loop.
       100.times do
         t = b[:task_store].find("t")

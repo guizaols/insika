@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0013 §3.4 (PR 3b) — the one place a model is asked for anything in the whole
+# the one place a model is asked for anything in the whole
 # refinement loop. What matters here is what it REFUSES to produce: this class is
 # upstream of every bound, so anything it invents silently would reach the gate
 # looking like evidence.
@@ -33,7 +33,7 @@ RSpec.describe Insika::Refinement::Proposer do
                 "addresses": ["tool_error:shipping_quote"]}]}
   JSON
 
-  # The panel's budget (§3.9) spends what a proposal cost, so the ask may answer with
+  # The panel's budget spends what a proposal cost, so the ask may answer with
   # the provider's MESSAGE and not only its text. A plain String stays valid and
   # simply reports no cost — which is what every fake, and every older caller, does.
   it "records what the proposal cost when the provider says, and nil when it does not" do
@@ -170,7 +170,7 @@ RSpec.describe Insika::Refinement::ProposerFactory do
     expect(proposer).to be_nil
   end
 
-  # RFC-0013 §3.9 (phase D): the same resolution, plural.
+  # the same resolution, plural.
   describe ".panel" do
     def panel(config, utility_model: nil, max: nil)
       resolved = []
@@ -196,7 +196,7 @@ RSpec.describe Insika::Refinement::ProposerFactory do
       expect(resolved).to eq([["deepseek-chat", nil], ["gpt-5-mini", "openai"]])
     end
 
-    # D6's reasoning, applied to the proposers: one model sampled twice at temperature
+    #'s reasoning, applied to the proposers: one model sampled twice at temperature
     # 0 measures its variance, not a second opinion.
     it "dedupes a model listed twice" do
       built, = panel({ "proposers" => ["gpt-5-mini", "gpt-5-mini"] })

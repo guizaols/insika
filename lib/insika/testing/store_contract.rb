@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Contract suite for Insika::Store (doc 01 §7), exported for third-party
-# backends (RFC-0018 A4) — a gem like `insika-pg` writes its spec against THIS
+# Contract suite for Insika::Store, exported for third-party
+# backends — a gem like `insika-pg` writes its spec against THIS
 # file, not against a read of stores/sqlite.rb:
 #
 #   require "insika/testing/store_contract"
@@ -11,7 +11,7 @@
 #     it_behaves_like "an Insika store"
 #   end
 #
-# Two groups, on purpose (RFC-0018 §4 item 4):
+# Two groups, on purpose:
 #
 # - "an Insika store" — universal; every backend passes EXACTLY it (L2: the
 #   suite is honest — a test that passes on Memory passes on SQLite). The
@@ -27,89 +27,89 @@
 # races) — those belong to the backend's own spec.
 RSpec.shared_examples "an Insika store" do
   describe "#get / #set (round-trip)" do
-    it "C1 preserves Hash with string keys" do # C1
+    it " preserves Hash with string keys" do #
       store.set("s", "k", { "a" => 1, "b" => [1, 2] })
       expect(store.get("s", "k")).to eq({ "a" => 1, "b" => [1, 2] })
     end
 
-    it "C2 preserves Array" do # C2
+    it " preserves Array" do #
       store.set("s", "k", [1, "x", true, nil])
       expect(store.get("s", "k")).to eq([1, "x", true, nil])
     end
 
-    it "C3 preserves String" do # C3
+    it " preserves String" do #
       store.set("s", "k", "texto")
       expect(store.get("s", "k")).to eq("texto")
     end
 
-    it "C4 preserves Integer" do # C4
+    it " preserves Integer" do #
       store.set("s", "k", 42)
       value = store.get("s", "k")
       expect(value).to eq(42)
       expect(value).to be_a(Integer)
     end
 
-    it "C5 preserves Float" do # C5
+    it " preserves Float" do #
       store.set("s", "k", 3.14)
       value = store.get("s", "k")
       expect(value).to eq(3.14)
       expect(value).to be_a(Float)
     end
 
-    it "C6 preserves booleans" do # C6
+    it " preserves booleans" do #
       store.set("s", "t", true)
       store.set("s", "f", false)
       expect(store.get("s", "t")).to be(true)
       expect(store.get("s", "f")).to be(false)
     end
 
-    it "C7 preserves nil written without exception" do # C7
+    it " preserves nil written without exception" do #
       store.set("s", "k", nil)
       expect(store.get("s", "k")).to be_nil
     end
 
-    it "C8 converts Symbols (keys and values) to Strings" do # C8
+    it " converts Symbols (keys and values) to Strings" do #
       store.set("s", "k", { chave: :valor })
       expect(store.get("s", "k")).to eq({ "chave" => "valor" })
     end
 
-    it "C9 returns nil for an absent key, never an exception" do # C9
+    it " returns nil for an absent key, never an exception" do #
       expect(store.get("s", "nao-existe")).to be_nil
     end
 
-    it "C10 overwrites silently (last-write-wins)" do # C10
+    it " overwrites silently (last-write-wins)" do #
       store.set("s", "k", "primeiro")
       store.set("s", "k", "segundo")
       expect(store.get("s", "k")).to eq("segundo")
     end
 
-    it "C11 set returns the same object passed in (not the round-trip)" do # C11
+    it " set returns the same object passed in (not the round-trip)" do #
       obj = { "a" => 1 }
       expect(store.set("s", "k", obj)).to equal(obj)
     end
   end
 
   describe "#delete" do
-    it "C12 removes existing and returns true" do # C12
+    it " removes existing and returns true" do #
       store.set("s", "k", 1)
       expect(store.delete("s", "k")).to be(true)
       expect(store.get("s", "k")).to be_nil
     end
 
-    it "C13 returns false for a nonexistent key" do # C13
+    it " returns false for a nonexistent key" do #
       expect(store.delete("s", "k")).to be(false)
     end
   end
 
   describe "#list" do
-    it "C14 returns scope keys sorted lexicographically" do # C14
+    it " returns scope keys sorted lexicographically" do #
       store.set("s", "b", 1)
       store.set("s", "a", 1)
       store.set("s", "c", 1)
       expect(store.list("s")).to eq(%w[a b c])
     end
 
-    it "C15 filters by prefix with start_with? (not include?)" do # C15
+    it " filters by prefix with start_with? (not include?)" do #
       store.set("s", "task:1", 1)
       store.set("s", "task:2", 1)
       store.set("s", "checkpoint:1", 1)
@@ -117,7 +117,7 @@ RSpec.shared_examples "an Insika store" do
       expect(store.list("s", "task:")).to eq(%w[task:1 task:2])
     end
 
-    it "C16 returns [] for an empty scope" do # C16
+    it " returns [] for an empty scope" do #
       expect(store.list("s")).to eq([])
     end
 
@@ -129,7 +129,7 @@ RSpec.shared_examples "an Insika store" do
   end
 
   describe "scope isolation" do
-    it "C17 keeps scopes independent in get/list/delete" do # C17
+    it " keeps scopes independent in get/list/delete" do #
       store.set("s1", "k", 1)
       store.set("s2", "k", 2)
 
@@ -143,16 +143,16 @@ RSpec.shared_examples "an Insika store" do
   end
 
   describe "#transaction" do
-    it "C18 returns the block's value" do # C18
+    it " returns the block's value" do #
       expect(store.transaction { 42 }).to eq(42)
     end
 
-    it "C19 commits the block's writes" do # C19
+    it " commits the block's writes" do #
       store.transaction { store.set("s", "k", "commitado") }
       expect(store.get("s", "k")).to eq("commitado")
     end
 
-    it "C20 does a real rollback of set AND delete when the block raises" do # C20
+    it " does a real rollback of set AND delete when the block raises" do #
       store.set("s", "manter", "antigo")
       store.set("s", "apagar", "existe")
 
@@ -169,7 +169,7 @@ RSpec.shared_examples "an Insika store" do
       expect(store.get("s", "apagar")).to eq("existe")
     end
 
-    it "C21 reuses the outer transaction when nested" do # C21
+    it " reuses the outer transaction when nested" do #
       store.set("s", "k", "antigo")
 
       expect do
@@ -185,7 +185,7 @@ RSpec.shared_examples "an Insika store" do
   end
 
   describe "serialization errors" do
-    it "C22 raises StoreError and does not write a non-serializable value" do # C22
+    it " raises StoreError and does not write a non-serializable value" do #
       expect do
         store.set("s", "k", Object.new)
       end.to raise_error(Insika::StoreError)
@@ -194,7 +194,7 @@ RSpec.shared_examples "an Insika store" do
   end
 end
 
-# Multi-worker safety (RFC-0018 A3). Every RFC-0016 A1 claim (outbox, delegation
+# Multi-worker safety. Every claim (outbox, delegation
 # sweep, recovery) is a read-check-write inside `transaction` — on SQLite that is
 # atomic because the backend opens BEGIN IMMEDIATE; a backend whose transaction
 # only yields passes all 22 cases above and still double-claims under two
@@ -204,7 +204,7 @@ end
 # The `sleep` inside each transaction is deliberate: it holds the read state
 # open long enough that a backend without isolation ALWAYS lets a second
 # connection through, while a correct backend serializes the writers. Without
-# it a wrong backend could pass by scheduling luck — the failure E2 relies on.
+# it a wrong backend could pass by scheduling luck — the failure relies on.
 RSpec.shared_examples "an Insika store safe for N workers" do
   # Starts N threads, each holding its OWN connection to the same backend,
   # releases them together, and returns each block's value. Connections are

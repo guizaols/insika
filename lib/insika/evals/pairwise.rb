@@ -4,7 +4,7 @@ require "json"
 
 module Insika
   module Evals
-    # PAIRWISE AGAINST THE INCUMBENT (RFC-0014 §3.4) — the number that answers "can we
+    # PAIRWISE AGAINST THE INCUMBENT — the number that answers "can we
     # replace it". An absolute 0.72 says a reply cleared a bar we invented; it says
     # nothing about whether the system already answering 403,231 chats would have done
     # better with the same customer.
@@ -29,7 +29,7 @@ module Insika
     # 3. **A split panel stays split.** Averaging "better" and "worse" into
     #    "comparable" invents agreement that nobody expressed.
     #
-    # Cost: 2 provider calls per judge per case (§5). This is why it never runs as
+    # Cost: 2 provider calls per judge per case. This is why it never runs as
     # part of the gate and is opt-in on the CLI.
     class Pairwise
       BETTER = "better"
@@ -39,7 +39,7 @@ module Insika
       UNKNOWN = "unknown"
 
       # `vs` names WHO the reference half actually is: `agent` (model against model)
-      # or `human-assisted` (a person typed part of it, P23a's `origin: operator`).
+      # or `human-assisted` (a person typed part of it,'s `origin: operator`).
       # It rides on the verdict rather than beside it so a report cannot print the
       # outcome without the label.
       Verdict = Struct.new(:outcome, :reason, :vs, :judges, :order_dependent, keyword_init: true) do

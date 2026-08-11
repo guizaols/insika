@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../../lib/insika/server/app"
 
-# RFC-0011 §4.4 — ONE generic route family, and the transport does no translating.
+# ONE generic route family, and the transport does no translating.
 # The cases that matter are the ones where a wrong answer costs the customer a
 # duplicated message, and the ones where an open route costs money.
 RSpec.describe "Insika::Server::App channels" do
@@ -150,7 +150,7 @@ RSpec.describe "Insika::Server::App channels" do
       expect(body_of(body)).to eq("task_id" => "t-1")
     end
 
-    # RFC-0015 §5.5 + §6.4. Three different facts, and a consumer that reads any of
+    # Three different facts, and a consumer that reads any of
     # them as a 202 delivers the same answer twice.
     {
       merged: "it joined a turn still at the door",

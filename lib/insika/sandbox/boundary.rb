@@ -10,8 +10,8 @@ module Insika
     # sandbox primitive — always on, independent of the exec provider (local or
     # docker) and of the engine's approval layer.
     #
-    # Extracted VERBATIM from the insika-code prototype's `Workspace` (item 5)
-    # and promoted to a core primitive (item 35). The two layers of defense:
+    # Extracted VERBATIM from the insika-code prototype's `Workspace`
+    # and promoted to a core primitive. The two layers of defense:
     #   1. `File.expand_path` normalizes `..` traversal; the expanded path must be
     #      the root itself or a descendant of it (string containment on a
     #      separator boundary, so `/ws-evil` does not pass for root `/ws`).

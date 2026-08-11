@@ -5,7 +5,7 @@ require "time"
 
 module Insika
   module Refinement
-    # RFC-0013 phase A. Reads a window of an agent's real traffic and emits RANKED
+    # Reads a window of an agent's real traffic and emits RANKED
     # FINDINGS — "here is what broke, how often, and in which conversations". No
     # model runs here and nothing is written to the agent: this is the evidence half
     # of the loop, and it is deliberately useful on its own.
@@ -17,7 +17,7 @@ module Insika
     #   ToolTraceStore  — per-session tool calls with ok/args/result (already masked
     #                     and clipped by the store itself)
     #
-    # Two signals of RFC-0013 §3.3 are NOT computed here, and that is a finding about
+    # Two signals of are NOT computed here, and that is a finding about
     # the engine rather than about an agent: guardrail decisions and edge-limit hits
     # are emitted as EVENTS and never persisted, so the only durable footprint they
     # leave is the canned safe reply in the transcript — which is exactly what the
@@ -42,7 +42,7 @@ module Insika
       # result delivered as a new turn — is persisted with `role: user` like any
       # other, because it is what the model saw. Counting those as the customer
       # repeating themselves turned the first production run into 219 false positives,
-      # every one of them the engine reading its own `<store_cep_obrigatorio>` back.
+      # every one of them the engine reading its own `<store_cep_required>` back.
       #
       # `MessageOrigin` is the structural answer and is preferred whenever a message
       # carries it. This regex stays for everything written before that field existed
@@ -188,12 +188,12 @@ module Insika
       # of an instruction the agent is not following. Heuristic on purpose (token overlap,
       # no model call); the snippet is PII-redacted.
       #
-      # "After the agent answered" is the load-bearing half, and RFC-0015 is what forced
+      # "After the agent answered" is the load-bearing half, and is what forced
       # it to be said out loud. Two customer messages in a row is now ORDINARY: `collect`
       # merges the fragments a person types into one turn and `steer` appends one into a
       # run in flight, so a turn legitimately holds two of them. Someone still typing is
       # not someone repeating themselves — and a steered message cannot be told apart in
-      # the transcript, because it correctly declares no origin (§7). The structure is the
+      # the transcript, because it correctly declares no origin. The structure is the
       # only honest signal: a reply has to sit between the two.
       def repetition_findings(session_ids)
         hits = session_ids.flat_map do |sid|
@@ -320,7 +320,7 @@ module Insika
 
       def words(text) = text.to_s.downcase.scan(/[[:alnum:]]+/).uniq
 
-      # Every reply the deployment may emit INSTEAD of a real answer: the RFC-0009
+      # Every reply the deployment may emit INSTEAD of a real answer: the
       # defaults, the agent's own overrides, and the edge limiter's reply (per-agent
       # first, then the platform setting).
       def canned_replies(profile)

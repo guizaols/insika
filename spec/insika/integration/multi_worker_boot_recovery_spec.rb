@@ -6,18 +6,18 @@ require "tmpdir"
 require "fileutils"
 require "sqlite3"
 
-# E2 (RFC-0016 §6): recovery under multi-worker. Two "workers" — two full
+# recovery under multi-worker. Two "workers" — two full
 # stacks over two SQLite handles on the SAME file, the honest stand-in for two
 # Falcon workers — boot after a kill -9, both reach for the sweep, and the turn
 # interrupted mid-flight must be resumed EXACTLY ONCE, with the already-executed
-# side-effect skipped (RFC-0006's property is what is under test).
+# side-effect skipped ('s property is what is under test).
 #
 # The mechanism is the per-generation sweep claim, not a per-task claim: the
 # sweep's "orphaned :running" test cannot see another process's live fiber, so
 # without the pin the second worker re-runs the first worker's resume (double
 # provider call, doubled session messages, a third Execution). Verified red:
 # with both sweeps ungated this spec fails exactly that way.
-RSpec.describe "Integration: two workers boot, one sweeps (RFC-0016 E2)" do
+RSpec.describe "Integration: two workers boot, one sweeps" do
   around do |example|
     Dir.mktmpdir do |dir|
       @dir = dir

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Shared builder for the E2E smoke (task 26 §7): OWN wiring with a Stores::SQLite
+# Shared builder for the E2E smoke: OWN wiring with a Stores::SQLite
 # backend (ENV SMOKE_DB — real durability is what the kill -9 tests) + a "smoke"
 # profile pointing at the fake model (the ruby_llm shim comes in via RUBYOPT=-I).
 # No external plugins. Exposes SMOKE_APP already run through Boot (which runs
@@ -24,7 +24,7 @@ policy_registry   = Insika::PolicyRegistry.new
 policy_registry.register(:tool_allowlist, Insika::Policy::Builtin::ToolAllowlist)
 policy_registry.register(:approval_required, Insika::Policy::Builtin::ApprovalRequired)
 
-# Tool that requires approval (P2-02) — used by slice A's smoke. The block factory
+# Tool that requires approval (02) — used by's smoke. The block factory
 # returns an INSTANCE (the Executor does factory.call -> instance).
 class SmokeChargeTool
   def name = "charge"
@@ -45,7 +45,7 @@ providers = [
 context_builder = Insika::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: hooks)
 policy_engine   = Insika::Policy::Engine.new(policy_registry: policy_registry, event_stream: event_stream)
 
-# "smoke": pure chat. "approver": requires approval of the `charge` tool (P2-02).
+# "smoke": pure chat. "approver": requires approval of the `charge` tool (02).
 profiles = {
   "smoke" => Insika::AgentProfile.build(id: "smoke", model: "fake", policies: [], skills: []),
   "approver" => Insika::AgentProfile.build(
@@ -94,7 +94,7 @@ recovery = Insika::Recovery.new(task_store: task_store, checkpoint_store: checkp
 
 # Test instrumentation: writes a marker at the END of Recovery.run. Since the Boot
 # runs recovery before releasing the app (and serve.rb only serves afterwards), the
-# first HTTP response proves recovery already finished (doc 07 §7).
+# first HTTP response proves recovery already finished.
 if (recovery_marker = ENV["SMOKE_RECOVERY_DONE"])
   real_recovery = recovery
   recovery = Object.new
@@ -112,5 +112,5 @@ wiring.define_singleton_method(:build_stores) { nil }
 wiring.define_singleton_method(:recovery) { recovery }
 wiring.define_singleton_method(:app) { app }
 
-# The Boot runs plugins → stores → recovery BEFORE releasing the app (doc 07 §4).
+# The Boot runs plugins → stores → recovery BEFORE releasing the app.
 SMOKE_APP = Insika::Server::Boot.new(wiring, logger: $stderr).call

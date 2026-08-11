@@ -16,7 +16,7 @@ Insika engine (no core changes). It combines:
 Two independent controls protect the highest-risk tools:
 
 1. **Sandbox (always on, enforced by the tools).** Every path a tool touches is
-   resolved through the core **`Insika::Sandbox`** primitive (item 35), which
+   resolved through the core **`Insika::Sandbox`** primitive, which
    confines all operations to a single **root** (`HARNESS_CODE_ROOT`, default:
    cwd). `..` traversal, absolute paths outside the root, and symlinks are
    rejected *before any IO* — the final path component may never be a symlink (a
@@ -103,13 +103,13 @@ Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
 ## Layout
 
 ```
-plugins/insika-code/         # the toolset (autodiscoverable plugin, RFC-0003)
+plugins/insika-code/         # the toolset (autodiscoverable plugin)
   insika.plugin.yml          # manifest: tool names + side_effect flags
   plugin.rb                   # register(api): block factories, shared core Sandbox
   lib/insika_code/
     tools/{read_file,list_dir,grep,write_file,edit_file,bash}.rb
 
-lib/insika/sandbox/          # the core Sandbox primitive (item 35)
+lib/insika/sandbox/          # the core Sandbox primitive
   boundary.rb                 # FS confinement (always on)
   local.rb / docker.rb        # exec providers
   runner.rb                   # shared hard-kill spawn

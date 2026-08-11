@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0011 §6.4 — the retry window. Without it, one flaky ack costs a second LLM
+# the retry window. Without it, one flaky ack costs a second LLM
 # turn and sends the customer the same answer twice.
 RSpec.describe Insika::InboundLog do
   let(:backend) { Insika::Stores::Memory.new }

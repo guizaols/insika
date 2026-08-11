@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0016 A3 — shutdown is a drain, not a kill (docs/DEPLOY.md, process model
-  # item 4). The serving arms install this around the Executor. On the first
+  # shutdown is a drain, not a kill (docs/DEPLOY.md, process model
+  # The serving arms install this around the Executor. On the first
   # SIGTERM/SIGINT the process stops accepting new turns (`Executor#begin_drain!`
   # — a turn arriving mid-drain is left `:queued` for the next boot's recovery)
   # and waits up to `timeout` seconds for the in-flight ones; only then does the
   # ordinary stop proceed. A second signal skips the wait — the operator insisting
   # means now. Whatever the deadline abandons dies `:running` with the process and
   # the next boot generation's task sweep replays it from its checkpoint
-  # (side-effect skip on resume is what makes that replay safe, RFC-0006).
+  # (side-effect skip on resume is what makes that replay safe).
   #
   # Mechanics, because trap context is narrow: the handler writes ONE byte into a
   # self-pipe and returns. A plain watcher THREAD — not a fiber: at install time
@@ -27,7 +27,7 @@ module Insika
     # traps, parks the watcher. The CALLING thread is captured as the stop target
     # — install from the thread that runs the server.
     #
-    # `executors:` (RFC-0017 A4) drains N graphs on one signal. Signals are a
+    # `executors:` drains N graphs on one signal. Signals are a
     # PROCESS concern, and `Signal.trap` keeps only the last handler — so a second
     # `install` per graph would silently leave the earlier graphs dying mid-turn.
     # The host installs ONCE, naming every graph it embedded. `executor:` is the

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 module Insika
-  # Tool manifest (Phase 7, Step B): the BATCH, DATA-driven, industry-STANDARD
+  # Tool manifest: the BATCH, DATA-driven, industry-STANDARD
   # (JSON Schema) form of the data-tools. A `defaults` (common binding:
   # base_url/path_template/method/headers/secret_headers/response) + a list of
   # `tools`. Each tool is normalized — inheriting the defaults, applying the envelope
   # adapter (OpenAI/MCP/raw) and resolving `endpoint`→url + `{{secret.*}}`/
   # `{{env.*}}` — into a ToolDefinition Hash consumable by the ToolStore.
   #
-  # GENERIC (NF1): nothing here mentions consumer/openclaw — the manifest IS the contract. It
+  # GENERIC: nothing here mentions a consumer/gateway — the manifest IS the contract. It
   # only NORMALIZES/RESOLVES; the final validation (method/url/types, model placeholders
   # `{{param}}`/turn `{{ctx.*}}`, safe subset of JSON Schema) belongs to
   # ToolDefinition (single source). The batch upsert + hot reload belongs to the
@@ -18,12 +18,12 @@ module Insika
   #   - `{{param}}`/`{{ctx.*}}` : resolved AT THE TURN (by DataDefinedTool) —
   #     they stay INTACT here; ToolDefinition validates them.
   #   - `{{secret.*}}`/`{{env.*}}` : resolved AT INGESTION (here) — from the deployment,
-  #     never from the manifest (D6/R3). `{{env.*}}` is non-secret config (any
+  #     never from the manifest (R3). `{{env.*}}` is non-secret config (any
   #     template); `{{secret.*}}` is a credential and is ONLY allowed in a header
   #     declared in `secret_headers`, with value === `{{secret.X}}` (nothing literal,
   #     nothing outside a header — otherwise the secret would leak without masking).
   #
-  # Interface envelope (what the model sees), by adapter (D3):
+  # Interface envelope (what the model sees), by adapter:
   #   - `parameters` (raw JSON Schema), OR
   #   - `{ "function": { name, description, parameters } }` (OpenAI/Anthropic), OR
   #   - `{ "inputSchema": {...} }` (MCP).
@@ -73,7 +73,7 @@ module Insika
         "response" => binding[:response],
         "secret_headers" => binding[:secret_headers],
         "side_effect" => t["side_effect"],
-        "group" => t["group"] || defaults["group"],       # Phase 7/D4/F5 (Step C):
+        "group" => t["group"] || defaults["group"],       # per-group allowlist:
         "tags" => (Array(defaults["tags"]) | Array(t["tags"])), # inherited default; tags unioned
         # Per-tool only: "this result ends the turn" is a property of THIS backend's
         # response, never something a manifest default should hand to its siblings.
@@ -83,7 +83,7 @@ module Insika
 
     private
 
-    # Envelope adapter (D3): extracts the INTERFACE (name/description/parameters) from
+    # Envelope adapter: extracts the INTERFACE (name/description/parameters) from
     # any standard form. name/description fall back to the tool's top level when the
     # envelope does not carry them.
     def extract_interface(t)

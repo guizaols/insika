@@ -17,7 +17,7 @@ module Insika
   # Executor) is also born on the supervisor; the SessionActor only AWAITS it to
   # serialize.
   #
-  # RFC-0015: it is also where an inbound message for a BUSY session is routed.
+  # it is also where an inbound message for a BUSY session is routed.
   # That decision belongs here and nowhere else — this is already the object that
   # owns "one turn at a time for this session". Putting it in the HTTP handler
   # would duplicate the invariant; putting it in the Executor would mix turn
@@ -45,7 +45,7 @@ module Insika
       task.id
     end
 
-    # RFC-0015 §5.3 — merge a fragment into the turn waiting at the door.
+    # merge a fragment into the turn waiting at the door.
     # -> the task id it joined, or nil when there is nothing to merge into (no
     # pending turn, the window has closed, or the turn already started). nil is
     # the caller's signal to create a task of its own.
@@ -117,7 +117,7 @@ module Insika
       end
     end
 
-    # RFC-0015 §5.3 — the debounce window. Sleeps on the LOOP's fiber, never on the
+    # the debounce window. Sleeps on the LOOP's fiber, never on the
     # request's, so the POST is acked immediately and the platform does not retry.
     # Returns the task to run (re-read from the store when fragments merged into it,
     # since the in-memory Task is a frozen snapshot of an older message).
