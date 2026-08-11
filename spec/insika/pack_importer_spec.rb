@@ -55,6 +55,13 @@ RSpec.describe Insika::PackImporter do
       expect(attrs[:tools_allow]).to contain_exactly("cart", "search")
     end
 
+    it "a pack with no skills/tools gets EXPLICIT empty allowlists — nil would leak the global stores" do
+      described_class.new(bus: bus, profiles: profiles).import(pack(skills: {}, tools: []))
+      attrs = bus.of(:create_agent).first.payload
+      expect(attrs[:skills]).to eq([])
+      expect(attrs[:tools_allow]).to eq([])
+    end
+
     it "1 write_agent_file per file, with agent_id and content" do
       result
       files = bus.of(:write_agent_file)
