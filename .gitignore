@@ -41,7 +41,8 @@ scripts/internal/
 # scripts (bin/insika, scripts/bench.rb) from CI along with the one spec that
 # is genuinely internal — openclaw_to_manifest_spec.rb requires_relative a file
 # under scripts/internal/, which does not exist in this checkout. Ignore the
-# directory's contents by default, track the two that guard public surface.
+# directory's contents by default, track the ones that guard public surface.
 spec/scripts/*
 !spec/scripts/insika_cli_spec.rb
 !spec/scripts/bench_spec.rb
+!spec/scripts/loadtest_session_spec.rb
