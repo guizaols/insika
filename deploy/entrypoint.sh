@@ -33,8 +33,11 @@ if [ ! -f "${DB}" ] && [ -f "${LEGACY_DB}" ]; then
 fi
 # WEB_CONCURRENCY is a contract input, not a tuning knob: N workers share one
 # SQLite store, but a session's live semantics (FIFO, steer, interrupt, pause,
-# SSE watch) are per-worker. What changing N means is written in docs/DEPLOY.md
-# ("The process model") — that section is the single source of truth.
+# SSE watch) are per-worker. The default is 1 because those semantics are the
+# product (RFC-0015 queue modes need one actor per session); raise it only with
+# sticky routing per session in front. What changing N means is written in
+# docs/DEPLOY.md ("The process model") — that section is the single source of
+# truth.
 #
 # Shutdown is a drain (RFC-0016 A3): each worker traps the stop signal, closes
 # its turn intake and finishes in-flight turns within INSIKA_DRAIN_TIMEOUT
@@ -44,7 +47,7 @@ fi
 # RAILWAY_DEPLOYMENT_DRAINING_SECONDS >= drain + 10 (its default is 0: SIGKILL
 # right after SIGTERM, which cancels the whole drain). See docs/DEPLOY.md.
 DRAIN="${INSIKA_DRAIN_TIMEOUT:-20}"
-APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-2} --graceful-stop $((DRAIN + 5))"
+APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-1} --graceful-stop $((DRAIN + 5))"
 
 # Boot generation for the recovery task sweep (RFC-0016 A2/E2): one id per
 # container start, inherited by every Falcon worker. The first worker to claim
