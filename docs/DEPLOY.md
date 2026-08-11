@@ -33,9 +33,12 @@ curl localhost:9292/up      # {"status":"ok"}
 ## The process model
 
 The image boots **N Falcon worker processes over one SQLite file**
-(`WEB_CONCURRENCY`, default 2). That number is a **contract input, not a tuning
+(`WEB_CONCURRENCY`, default 1). That number is a **contract input, not a tuning
 knob**: it decides which engine semantics hold cluster-wide and which are
-per-worker. The contract:
+per-worker. The default is 1 because the per-worker semantics are the product
+— the RFC-0015 queue modes (`collect`/`steer`) and FIFO ordering need one
+session actor; raise N only with sticky routing per session in front. The
+contract:
 
 > Everything here describes N workers of **one** deployment — one graph, replicated.
 > N *graphs* inside one process is a different contract, and it is
@@ -98,7 +101,7 @@ this section is the single source of truth for what changing it means.
 |-----|---------|--------|
 | `INSIKA_DB` | `/data/insika.db` (in the image) | durable SQLite path (**mount a volume!**) |
 | `PORT` | `9292` | HTTP bind port |
-| `WEB_CONCURRENCY` | `2` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
+| `WEB_CONCURRENCY` | `1` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
 | `INSIKA_BOOT_ID` | set by `deploy/entrypoint.sh` | boot generation id; the recovery **task sweep** runs once per id (process model, item 3). Unset = every boot sweeps (single-process default) |
 | `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
 | `INSIKA_TICK_INTERVAL` | `60` | seconds between tick passes — outbox drain + stale recovery sweep (process model, item 5). `0` disables |
