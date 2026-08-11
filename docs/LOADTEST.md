@@ -23,6 +23,7 @@ There are three scripts, each answering a different question:
 | `scripts/bench_store.rb` | Does SQLite (WAL) hold up N processes writing the same file? | No |
 | `scripts/loadtest.rb` | End-to-end: TTFB/total/tokens/cache/error against `/v1/responses` | Yes |
 | `scripts/loadtest-local.sh` | Single-proc baseline vs N-worker multi-proc on one box | Yes |
+| `scripts/loadtest_session.rb` | A full multi-message session (CEP, searches, FAQ) under C concurrent sessions — direct to the engine (`--surface engine`, stream vs steer) or through the consumer's real ingress (`--surface web`, the consumer-app widget API) | Yes |
 
 All three take `--help` / `-h`.
 

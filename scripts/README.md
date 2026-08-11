@@ -17,6 +17,13 @@ and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
   `loadtest-gateway.mjs`. `--help` / `--dry-run` supported.
 - **`loadtest-local.sh`** — boots Falcon single-proc (baseline) vs N workers over
   one shared SQLite (WAL) and counts `database is locked`.
+- **`loadtest_session.rb`** — session-level benchmark: a full multi-message
+  session (greeting → set CEP → product searches → FAQ) per lane, at rising
+  concurrent-session levels, in `stream` (one message at a time) or `steer`
+  (burst, RFC-0015 verdicts counted) mode. Two surfaces: `engine` (direct to
+  `/v1/responses`) or `web` (the real production path through the consumer-app
+  widget API — needs `--widget-id`). Local or Railway via `INSIKA_URL`.
+  `--help` / `--dry-run` / `--json` supported.
 - **`bench_store.rb`** — micro-bench of the SQLite write ceiling under N processes
   (no provider needed); reports writes/s, p50/p95/max, `locked`.
 
