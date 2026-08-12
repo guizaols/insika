@@ -199,7 +199,7 @@ module Insika
     # of anything else being absent: the safe reading is the default one.
     def stream_public?(channel)
       v = (edge_stream || {})[channel.to_s]
-      [true, "true", "1", "yes", "on"].include?(v)
+      Coercion.truthy?(v)
     end
   end
 end

@@ -37,7 +37,9 @@ RSpec.describe Studio::App do
   end
 
   # read stores (only what the pages consume).
-  SkillEntry = Struct.new(:name, :description, :body, keyword_init: true) # body: real catalog skills expose it (drill editor reads it)
+  # body/triggers/companions: real catalog skills expose them (the drill editor and
+  # skill_source's frontmatter reconstruction read them).
+  SkillEntry = Struct.new(:name, :description, :body, :triggers, :companions, keyword_init: true)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
     def versions(_agent, _name) = []
@@ -742,6 +744,21 @@ RSpec.describe Studio::App do
     expect(cmd.payload).to include(name: "pedido", agent: "chef")
     expect(cmd.payload[:content]).to include("shared body") # seeded, not blank
     expect(res.headers["location"]).to eq("/studio/agents/chef/skills/pedido")
+  end
+
+  # A DISK skill has no store record, so the seed is RECONSTRUCTED — and it must carry
+  # the whole frontmatter: an override that silently drops `triggers:` turns the
+  # agent's deterministic activation off on day one.
+  it "specialize preserves triggers and companions when seeding from a disk skill" do
+    app, bus = build_app(skills: [SkillEntry.new(name: "pedido", description: "faz pedido", body: "corpo",
+                                                 triggers: ["devolucao"], companions: ["query"])])
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/pedido").body)
+
+    client.post("/skills/pedido/specialize", params: { "agent_id" => "chef", "_csrf" => csrf })
+
+    content = bus.last(:write_skill).payload[:content]
+    expect(content).to include("triggers: devolucao", "companions: query", "corpo")
   end
 
   describe "an agent's own version of a skill" do

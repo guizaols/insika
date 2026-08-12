@@ -29,8 +29,6 @@ module Insika
     # there is an empty set that can simply be added to, and only the BLANKET `true`
     # has the same "cannot remove one name from all" problem (-> skipped_eager_all).
     class SetSkillAgents
-      BLANKET = [true, "true", "1", "yes", "on"].freeze
-
       def initialize(profile_source:, event_stream:)
         @profile_source = profile_source
         @event_stream = event_stream
@@ -101,7 +99,7 @@ module Insika
         # Blanket `true` already includes every skill; removing ONE name from it would
         # mean materializing the whole catalog as a list, the same destructive surprise
         # `skipped_all` exists for.
-        if BLANKET.include?(current)
+        if Coercion.truthy?(current)
           result[:skipped_eager_all] << profile.id unless want
           return current
         end

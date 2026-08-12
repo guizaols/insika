@@ -19,6 +19,14 @@ module Insika
     # Inverse of blank? — a usable, non-empty value.
     def present?(value) = !blank?(value)
 
+    # The operator-facing truthy: what a form checkbox ("1"), a JSON round-trip
+    # ("true") or the DSL (true) produce for an opt-in. One list, one reading —
+    # AgentProfile#stream_public?, SkillCatalog#blanket? and the Studio all consult
+    # it, so a value that opts in on one surface cannot opt out on another.
+    TRUTHY = [true, "true", "1", "yes", "on"].freeze
+
+    def truthy?(value) = TRUTHY.include?(value)
+
     # Bytes that come from outside the engine (sockets, pipes, subprocesses)
     # arrive tagged BINARY, or as UTF-8 carrying invalid sequences. Both break
     # `JSON.generate` the moment the text has an accent or an emoji — today a

@@ -1174,7 +1174,13 @@ end
       skill = insika[:skill_catalog]&.find(name, agent: agent)
       return new_skill_template(name) unless skill
 
-      "---\nname: #{skill.name}\ndescription: #{skill.description}\n---\n\n#{skill.body}\n"
+      # The WHOLE frontmatter, not just name/description: this text seeds the
+      # specialize action and any first edit of a disk skill, and an override that
+      # silently drops `triggers:` turns the agent's deterministic activation off.
+      fm = ["name: #{skill.name}", "description: #{skill.description}"]
+      fm << "triggers: #{skill.triggers.join(', ')}" if Array(skill.triggers).any?
+      fm << "companions: #{skill.companions.join(', ')}" if Array(skill.companions).any?
+      "---\n#{fm.join("\n")}\n---\n\n#{skill.body}\n"
     end
 
     def new_skill_template(name = "my-skill")
@@ -1192,7 +1198,7 @@ end
     # (blanket) or a list — NOT allowlist semantics, so nil must read as false here.
     def skill_eager_for?(profile, skill_name)
       spec = profile.skills_eager
-      return true if [true, "true", "1", "yes", "on"].include?(spec)
+      return true if Insika::Coercion.truthy?(spec)
       return false if spec.nil? || spec == false
 
       Array(spec).map(&:to_s).include?(skill_name.to_s)

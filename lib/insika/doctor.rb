@@ -58,14 +58,15 @@ module Insika
     end
 
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
-                   agent_file_store: nil, skill_store: nil, profile_source: nil,
-                   backend: nil, extra_env_specs: [])
+                   agent_file_store: nil, skill_store: nil, skill_catalog: nil,
+                   profile_source: nil, backend: nil, extra_env_specs: [])
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
       @tool_store = tool_store
       @agent_file_store = agent_file_store
       @skill_store = skill_store
+      @skill_catalog = skill_catalog
       @profile_source = profile_source
       @backend = backend
       @extra_env_specs = extra_env_specs
@@ -215,15 +216,13 @@ module Insika
     def check_skill_eager
       findings = stale_eager_frontmatter + unreachable_eager_names
       return findings if findings.any?
-      return [] unless @skill_store || @profile_source
+      return [] unless @skill_store || @skill_catalog || @profile_source
 
       [ok("skill-eager", "skill eagerness: per-agent (profile.skills_eager), no stale frontmatter")]
     end
 
     def stale_eager_frontmatter
-      return [] unless @skill_store
-
-      @skill_store.all.filter_map do |name, content|
+      skill_sources.filter_map do |name, content|
         next unless frontmatter_of(content).key?("eager")
 
         Finding.new(check: "skill-eager", severity: :warn, fix: nil,
@@ -250,6 +249,23 @@ module Insika
       end
     end
 
+    # { name => raw SKILL.md } across BOTH sources the runtime reads: the disk roots
+    # (seed, via the catalog) and the authored store (wins — same precedence as
+    # SkillCatalog). The checks parse frontmatter the catalog deliberately drops
+    # (`eager:`), so they need the raw text; for a disk skill that is the file itself,
+    # and a store-overlaid skill carries a sentinel path that is not a file.
+    def skill_sources
+      @skill_sources ||= disk_skill_sources.merge(@skill_store ? @skill_store.all : {})
+    end
+
+    def disk_skill_sources
+      return {} unless @skill_catalog
+
+      @skill_catalog.all.each_with_object({}) do |skill, acc|
+        acc[skill.name] = File.read(skill.path, encoding: "UTF-8") if File.file?(skill.path.to_s)
+      end
+    end
+
     # The frontmatter block only; a `eager:` line in the BODY is prose, not config.
     def frontmatter_of(content)
       match = content.to_s.match(/\A---\s*\n(.*?)\n---\s*\n/m)
@@ -264,7 +280,7 @@ module Insika
     # six") false-positives on the first real pack and takes the doctor's credibility
     # with it, which costs more than the drift it caught.
     def check_skill_drift
-      return [] unless @skill_store && @profile_source
+      return [] unless (@skill_store || @skill_catalog) && @profile_source
 
       findings = prompt_files_naming_unallowed_skills + shared_skills_naming_a_holder + broken_companions
       return findings if findings.any?
@@ -279,7 +295,7 @@ module Insika
     def prompt_files_naming_unallowed_skills
       return [] unless @agent_file_store
 
-      catalog = @skill_store.names
+      catalog = skill_sources.keys
       @profile_source.all.flat_map do |profile|
         next [] if profile.skills.nil? # nil = everything allowed, nothing to be outside of
 
@@ -309,19 +325,25 @@ module Insika
     def shared_skills_naming_a_holder
       holders = skill_holders
       specialized = specialized_by
-      @skill_store.all.flat_map do |name, content|
-        # Holders that still READ this body. One that already has its own version is
-        # not being served anybody else's text, so the finding shrinks as the operator
-        # fixes it and disappears when nobody is left sharing a store-specific body.
-        owners = holders[name].to_a - specialized[name].to_a
+      skill_sources.flat_map do |name, content|
+        owners = holders[name].to_a
         next [] if owners.length < 2
 
+        # Who still READS this shared body: a holder with its own version reads that
+        # instead, so it stops being a victim — but its identity in the shared text
+        # keeps poisoning whoever is left. Identity comes from ALL holders; only the
+        # readers shrink as specializations land, so the finding clears when the last
+        # victim stops reading, never merely because the named holder moved out.
+        readers = owners - specialized[name].to_a
         owners.flat_map do |owner|
+          victims = (readers - [owner]).sort
+          next [] if victims.empty?
+
           identity_terms(owner).select { |term| mentions?(content, term) }.map do |term|
             Finding.new(check: "skill-drift", severity: :warn, fix: nil,
-                        message: "shared skill '#{name}' (held by #{owners.sort.join(', ')}) names '#{term}', the " \
-                                 "identity of '#{owner}' — the other holders are served #{owner}'s text as their own. " \
-                                 "Specialize it: write_skill with agent: '#{owner}'.")
+                        message: "shared skill '#{name}' names '#{term}', the identity of '#{owner}' — " \
+                                 "#{victims.join(', ')} read(s) #{owner}'s text as their own. Specialize " \
+                                 "'#{owner}' if it needs that text, and remove it from the shared body.")
           end
         end
       end
@@ -332,8 +354,8 @@ module Insika
     # declared companion an agent is not allowed to load (so the pair breaks for THAT
     # agent, silently, since the engine will not widen an allowlist on its own).
     def broken_companions
-      names = @skill_store.names
-      undeclared = @skill_store.all.flat_map do |name, content|
+      names = skill_sources.keys
+      undeclared = skill_sources.flat_map do |name, content|
         declared = declared_companions(content)
         (names - [name] - declared).select { |other| mentions?(body_of(content), other) }.map do |other|
           Finding.new(check: "skill-drift", severity: :warn, fix: nil,
@@ -353,7 +375,7 @@ module Insika
     end
 
     def companions_outside_allowlists
-      declared = @skill_store.all.each_with_object({}) do |(name, content), acc|
+      declared = skill_sources.each_with_object({}) do |(name, content), acc|
         list = declared_companions(content)
         acc[name] = list unless list.empty?
       end
