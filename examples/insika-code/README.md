@@ -93,7 +93,7 @@ Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
 | `HARNESS_CODE_SANDBOX_IMAGE` | `alpine:3.20` | docker image for the `docker` provider |
 | `HARNESS_CODE_SANDBOX_NETWORK` | `none` | docker `--network` for the `docker` provider |
 | `HARNESS_CODE_TOKEN` | `local-code` | bearer for `/v1/responses` |
-| `HARNESS_CODE_MODEL` | `deepseek-chat` | model id |
+| `HARNESS_CODE_MODEL` | `deepseek-v4-flash` | model id |
 | `HARNESS_CODE_PROVIDER` | `deepseek` | RubyLLM provider |
 | `HARNESS_DB` | (unset → memory) | SQLite path for durable state |
 | `BIND` | `http://localhost:9292` | server bind URL (server.rb) |

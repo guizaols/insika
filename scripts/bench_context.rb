@@ -79,7 +79,7 @@ Dir.mktmpdir do |dir|
   identity = identity_text(IDENTITY_TOKENS)
   agent_files.write(AGENT_ID, "IDENTITY.md", identity)
   profiles.put(Insika::AgentProfile.build(
-                 id: AGENT_ID, model: "deepseek-chat", provider: :deepseek,
+                 id: AGENT_ID, model: "deepseek-v4-flash", provider: :deepseek,
                  prompt_files: ["IDENTITY.md"], limits: { context_budget: 40_000 }
                ))
 

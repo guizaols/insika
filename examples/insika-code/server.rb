@@ -13,7 +13,7 @@
 # Env:
 #   HARNESS_CODE_ROOT      workspace root the tools are sandboxed to (default: cwd)
 #   HARNESS_CODE_TOKEN     bearer for /v1/responses (default: "local-code")
-#   HARNESS_CODE_MODEL     model id (default: "deepseek-chat")
+#   HARNESS_CODE_MODEL     model id (default: "deepseek-v4-flash")
 #   HARNESS_CODE_PROVIDER  provider (default: "deepseek")
 #   BIND                   bind URL (default: http://localhost:9292)
 #   HARNESS_DB             SQLite path for durable state (default: in-memory)

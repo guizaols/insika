@@ -13,17 +13,17 @@ newsroom = Insika.system do
   provider :deepseek
 
   agent "writer" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "Write ONE paragraph on the topic. Plain prose, no headings, no preamble."
   end
 
   agent "editor" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "Rewrite the text as ONE sentence under 25 words. Output ONLY that sentence."
   end
 
   agent "translator" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "Translate to Brazilian Portuguese. Output ONLY the translation."
   end
 

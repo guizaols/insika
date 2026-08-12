@@ -9,7 +9,7 @@
 require_relative "../../lib/insika"
 
 guarded = Insika.agent("guarded") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions "You are a helpful assistant."
 

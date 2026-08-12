@@ -8,7 +8,7 @@
 require_relative "../../lib/insika"
 
 support = Insika.agent("support") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions <<~PROMPT
     You are a customer-support agent. When a situation matches one of your

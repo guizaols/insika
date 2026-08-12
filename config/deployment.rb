@@ -24,7 +24,7 @@ module Deploy
   Insika::EnvSchema.reconcile_legacy!
   ENV_SPECS = [
     Insika::EnvSchema.spec(name: "DEEPSEEK_API_KEY", secret: true, description: "DeepSeek API key (turns fail until set — env or Studio)."),
-    Insika::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-chat)."),
+    Insika::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-v4-flash)."),
     Insika::EnvSchema.spec(name: "TOOL_TIMEOUT", type: :integer, description: "Per-tool-call timeout (s)."),
     Insika::EnvSchema.spec(name: "TURN_TIMEOUT", type: :integer, description: "Per-turn timeout (s)."),
     Insika::EnvSchema.spec(name: "CONSUMER_INTERNAL_URL", type: :url, description: "Consumer internal API base (data-tool callbacks)."),
@@ -47,7 +47,7 @@ module Deploy
     c.max_retries = 2
   end
 
-  MODEL = ENV.fetch("DEEPSEEK_MODEL", "deepseek-chat") # v4-flash = "deepseek-chat" in the API
+  MODEL = ENV.fetch("DEEPSEEK_MODEL", "deepseek-v4-flash") # the old "deepseek-chat" alias is retired
   ROOT  = File.expand_path("..", __dir__)
   AGENT_DIR = File.join(ROOT, "deploy", "agents", "bia")
 

@@ -39,7 +39,7 @@ cd "$T"
 # 1. reply in-process
 GEM_HOME="$T/gemhome" GEM_PATH="$T/gemhome" ruby -e '
   require "insika"
-  agent = Insika.agent("assistant") { model "deepseek-chat"; provider :deepseek }
+  agent = Insika.agent("assistant") { model "deepseek-v4-flash"; provider :deepseek }
   puts agent.reply("hi")'                                   # needs DEEPSEEK_API_KEY
 
 # 2. serve  — /studio login 200, /v1/responses streams, /start.md 200

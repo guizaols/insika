@@ -14,7 +14,7 @@
 require_relative "../../lib/insika"
 
 support = Insika.agent("support") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions <<~PROMPT
     Você atende clientes de uma loja pelo WhatsApp. Responda em português, em uma

@@ -32,7 +32,7 @@ the same speed-to-first-agent story Python teams tell, without leaving Ruby:
 require "insika"
 
 agent = Insika.agent("assistant") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions "You are a concise, friendly assistant."
 end

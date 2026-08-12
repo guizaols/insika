@@ -13,7 +13,7 @@
 require_relative "../../lib/insika"
 
 support = Insika.agent("support") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions <<~PROMPT
     You answer customers of an online shop, on a chat widget on its website.

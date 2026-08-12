@@ -53,11 +53,11 @@
         <form id="set-models" method="post" action="/studio/settings/models">
           <%== csrf_tag %>
           <div class="grid-2">
-            <label>default_model <span class="muted">(agents without their own model)</span><input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-chat"></label>
+            <label>default_model <span class="muted">(agents without their own model)</span><input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-v4-flash"></label>
             <label>default_provider <span class="muted">(optional)</span><input type="text" name="default_provider" value="<%= @settings["default_provider"] %>" placeholder="deepseek"></label>
           </div>
-          <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-chat, openai/gpt-4o-mini"></label>
-          <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-chat"></label>
+          <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-v4-flash, openai/gpt-4o-mini"></label>
+          <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-v4-flash"></label>
           <label>reasoning <span class="muted">(global default — off/on/effort; blank = provider default)</span>
             <%== thinking_select("thinking", @settings["thinking"], "provider default") %>
           </label>
@@ -102,7 +102,7 @@
     <p class="muted">Who grades a <a href="/studio/evals">case</a>'s rubric. <strong>One model per line</strong> as <code>provider/model</code> — several lines make a PANEL, and two different models disagreeing is the signal worth having (sampling one model N times mostly measures its own variance). Empty = deterministic assertions only, and rubric'd cases read as <code>judge_pending</code>.</p>
     <form id="set-evals" method="post" action="/studio/settings/evals">
       <%== csrf_tag %>
-      <label>judges<textarea name="judges" rows="4" spellcheck="false" placeholder="deepseek/deepseek-chat&#10;openai/gpt-5-mini"><%= Array(@settings.dig("evals", "judges")).map { |j| [j["provider"], j["model"]].compact.reject(&:empty?).join("/") }.join("\n") %></textarea></label>
+      <label>judges<textarea name="judges" rows="4" spellcheck="false" placeholder="deepseek/deepseek-v4-flash&#10;openai/gpt-5-mini"><%= Array(@settings.dig("evals", "judges")).map { |j| [j["provider"], j["model"]].compact.reject(&:empty?).join("/") }.join("\n") %></textarea></label>
       <div class="grid-2">
         <label>aggregate <span class="muted">(how the panel's scores combine)</span>
           <select name="aggregate">
@@ -142,7 +142,7 @@
                 <label>auth_header<input type="text" name="auth_header" value="<%= p["auth_header"] %>" placeholder="Authorization"></label>
               </div>
               <label>api_key<input type="password" name="api_key" value="<%= p["api_key"] %>" autocomplete="off"></label>
-              <label>models <span class="muted">(comma or newline)</span><input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-chat, deepseek-reasoner"></label>
+              <label>models <span class="muted">(comma or newline)</span><input type="text" name="models" value="<%= Array(p["models"]).join(", ") %>" placeholder="deepseek-v4-flash, deepseek-reasoner"></label>
               <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save provider</button></div>
             </form>
           </div>

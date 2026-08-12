@@ -16,12 +16,12 @@ studio = Insika.system do
   provider :deepseek
 
   agent "copywriter" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "Write a product tagline. Output ONLY the tagline, no quotes, no commentary."
   end
 
   agent "critic" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     # A judge must answer in a form code can branch on.
     instructions <<~P
       Judge the tagline against the brief. Reply in EXACTLY this shape:

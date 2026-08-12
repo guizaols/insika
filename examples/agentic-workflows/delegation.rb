@@ -26,11 +26,11 @@ RUBY
 desk = Insika.system do
   provider :deepseek
 
-  agent("security")    { model "deepseek-chat"; instructions "Security reviewer. ONE sentence." }
-  agent("performance") { model "deepseek-chat"; instructions "Performance reviewer. ONE sentence." }
+  agent("security")    { model "deepseek-v4-flash"; instructions "Security reviewer. ONE sentence." }
+  agent("performance") { model "deepseek-v4-flash"; instructions "Performance reviewer. ONE sentence." }
 
   agent "lead" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     # The parent is told it has no expertise of its own. Without that, a capable
     # model happily answers alone and the delegation never happens.
     instructions <<~P

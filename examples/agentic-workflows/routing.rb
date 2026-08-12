@@ -13,23 +13,23 @@ support = Insika.system do
   provider :deepseek
 
   agent "router" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     # A classifier is not a chat: constrain the output to the label set.
     instructions "Classify the message. Reply with EXACTLY one word: billing, technical, or other."
   end
 
   agent "billing" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "You handle billing issues. Answer in at most 3 sentences, warm and concrete."
   end
 
   agent "technical" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "You handle technical issues. Answer in at most 3 sentences, concrete steps only."
   end
 
   agent "generalist" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     instructions "You are a helpful support agent. Answer in at most 3 sentences."
   end
 

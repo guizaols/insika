@@ -44,7 +44,7 @@ module InsikaCodeApp
     "network"    => ENV["HARNESS_CODE_SANDBOX_NETWORK"]
   }.reject { |_k, v| v.to_s.empty? }.freeze
 
-  MODEL         = ENV.fetch("HARNESS_CODE_MODEL", "deepseek-chat")
+  MODEL         = ENV.fetch("HARNESS_CODE_MODEL", "deepseek-v4-flash")
   PROVIDER      = ENV.fetch("HARNESS_CODE_PROVIDER", "deepseek").to_sym
   GATEWAY_TOKEN = ENV.fetch("HARNESS_CODE_TOKEN", "local-code")
 

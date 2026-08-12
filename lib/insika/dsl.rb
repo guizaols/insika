@@ -6,7 +6,7 @@ module Insika
   # Public Ruby DSL — the OSS "business card":
   #
   #   agent = Insika.agent("assistant") do
-  #     model "deepseek-chat"
+  #     model "deepseek-v4-flash"
   #     instructions "You are a concise, friendly assistant."
   #   end
   #   puts agent.reply("hi, what can you do?")   # one turn, in-process
@@ -189,7 +189,7 @@ module Insika
       # Pure config-over-code: the hash is stored on the profile and consumed by
       # Safety::Config.from_profile. Merges, so repeated calls accumulate.
       #   guardrails input: true, output: true, strictness: "medium",
-      #              moderator: "deepseek/deepseek-chat",
+      #              moderator: "deepseek/deepseek-v4-flash",
       #              responses: { "injection" => "I can't help with that." }
       def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
 
@@ -197,7 +197,7 @@ module Insika
       # improved from real traffic. Same config-over-code shape as `guardrails`;
       # omitting it entirely leaves the agent report-only (writes nothing).
       #   refine mode: "propose", window: { last_sessions: 200 }, files: %w[TOOLS.md],
-      #          proposers: ["deepseek/deepseek-chat", "gpt-5-mini"],
+      #          proposers: ["deepseek/deepseek-v4-flash", "gpt-5-mini"],
       #          budget: { tokens: 200_000 }
       def refine(hash) = (@config[:refinement] ||= {}).merge!(hash.transform_keys(&:to_s))
 
@@ -288,7 +288,7 @@ module Insika
   #
   #   INSIKA = Insika.embed(backend: Insika::Stores::SQLite.new(path: "storage/insika.sqlite3")) do
   #     agent "support" do
-  #       model "deepseek-chat"
+  #       model "deepseek-v4-flash"
   #       instructions "…"
   #     end
   #   end

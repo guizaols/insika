@@ -13,11 +13,11 @@ module Insika
     #
     # Rates are **USD per million tokens** (the unit every provider publishes):
     #
-    #   { "deepseek-chat" => { "input" => 0.27, "output" => 1.10,
+    #   { "deepseek-v4-flash" => { "input" => 0.27, "output" => 1.10,
     #                          "cached_input" => 0.07, "cache_write" => 0.34 } }
     #
     # A key matches the model id the provider reports, with or without the
-    # `provider/` prefix (`deepseek/deepseek-chat` and `deepseek-chat` both hit the
+    # `provider/` prefix (`deepseek/deepseek-v4-flash` and `deepseek-v4-flash` both hit the
     # entry above). An UNKNOWN model -> nil: a missing price is not a zero cost, so
     # nothing is emitted and the dashboard shows a gap instead of a lie.
     #
