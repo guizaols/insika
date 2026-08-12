@@ -137,7 +137,7 @@ module Insika
     # The blanket switch, tolerant of the strings a form / JSON round-trip produces
     # ("1" from a checkbox, "true" from a pack) — same reading as
     # AgentProfile#stream_public?. Anything else (a list, nil, false) is not blanket.
-    def blanket?(spec) = [true, "true", "1", "yes", "on"].include?(spec)
+    def blanket?(spec) = Coercion.truthy?(spec)
 
     # An agent's override index; {} for a nil agent or one that specialized nothing.
     def agent_scope(agent) = agent.nil? ? {} : (@agent_skills[agent.to_s] || {})

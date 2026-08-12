@@ -334,11 +334,22 @@ end
         # agent answers) — the sweep is the only thing that names it.
         agent_file_store: Insika::AgentFileStore.new(config_store: config_store),
         # Skills + profiles: the eagerness/drift checks are about the RELATION between
-        # a skill and the agents holding it, so neither half alone is enough.
+        # a skill and the agents holding it, so neither half alone is enough. The
+        # catalog brings the DISK seeds into the sweep (deploy/skills in a deployment,
+        # skills/ in the minimal wiring — whichever exists here); without it a stale
+        # `eager:` or a Natura-in-shared-body sitting in a seed pack is invisible.
         skill_store: Insika::SkillStore.new(config_store: config_store),
+        skill_catalog: Insika::SkillCatalog.new(skill_roots),
         profile_source: Insika::StoredProfileSource.new(config_store: config_store),
         backend: backend
       )
+    end
+
+    # The conventional seed roots, relative to where the operator runs the CLI —
+    # same "no app boot" rule as the rest of `doctor`, so the composition root that
+    # actually declares them is never loaded.
+    def skill_roots
+      %w[deploy/skills skills].map { |p| File.join(Dir.pwd, p) }.select { |p| Dir.exist?(p) }
     end
 
     def display_value(spec, raw)

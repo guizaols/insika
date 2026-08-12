@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe Insika::Doctor do
   let(:backend) { Insika::Stores::Memory.new }
@@ -248,6 +250,20 @@ RSpec.describe Insika::Doctor do
     it "is skipped without either collaborator" do
       expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("skill-eager")
     end
+
+    # The sweep covers DISK seeds too (via the catalog), not only authored store
+    # skills — a stale `eager:` shipped inside a seed pack fails just as quietly.
+    it "flags a stale eager: sitting in a disk seed, through the catalog" do
+      Dir.mktmpdir do |root|
+        FileUtils.mkdir_p(File.join(root, "formato"))
+        File.write(File.join(root, "formato", "SKILL.md"), skill_md("formato", "eager: true\n"))
+
+        f = finding(skill_catalog: Insika::SkillCatalog.new([root]))
+
+        expect(f.severity).to eq(:warn)
+        expect(f.message).to include("skill 'formato'", "IGNORED")
+      end
+    end
   end
 
   # Drift between a pack's prose and the catalog. Every input is MECHANICAL — names,
@@ -301,11 +317,11 @@ RSpec.describe Insika::Doctor do
       f = findings.find { |x| x.message.include?("shared skill") }
 
       expect(f.severity).to eq(:warn)
-      expect(f.message).to include("shared skill 'escalation'", "'natura'", "Specialize it")
+      expect(f.message).to include("shared skill 'escalation'", "'natura'", "Specialize")
     end
 
-    # The finding shrinks as the operator fixes it: a holder with its own version is
-    # no longer served anybody else's text.
+    # The finding shrinks as the VICTIMS stop reading: a holder with its own version
+    # is no longer served anybody else's text.
     it "clears once the affected holders have specialized" do
       skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
       skills.write("escalation", skill_md("escalation", "na Cacau Show"), agent: "cacau")
@@ -313,6 +329,22 @@ RSpec.describe Insika::Doctor do
       profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
 
       expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    # The direction that must NOT clear: specializing the NAMED holder moves natura
+    # onto its own copy, but the shared body still says "na Natura" and cacau still
+    # reads it — the exact harm the check exists for. Identity comes from all
+    # holders; only the readers shrink.
+    it "keeps flagging while another holder still reads the body naming the specialized one" do
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"), agent: "natura")
+      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+      f = findings.find { |x| x.message.include?("shared skill") }
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("'natura'", "cacau")
     end
 
     it "says nothing when only ONE agent holds the skill (it is not shared)" do
@@ -370,6 +402,24 @@ RSpec.describe Insika::Doctor do
       f = findings.find { |x| x.message.include?("companion") && x.message.include?("agent 'loja'") }
 
       expect(f.message).to include("allows skill 'mapa' but not its companion 'query'")
+    end
+
+    # The drift checks read DISK seeds too (via the catalog): a Natura-in-shared-body
+    # sitting in a seed pack drifts exactly like an authored one.
+    it "flags a shared DISK seed naming a holder, with no store record at all" do
+      Dir.mktmpdir do |root|
+        FileUtils.mkdir_p(File.join(root, "escalation"))
+        File.write(File.join(root, "escalation", "SKILL.md"), skill_md("escalation", "na Natura, 7 dias"))
+        profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+        profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+        drift = described_class.new(env: {}, skill_catalog: Insika::SkillCatalog.new([root]),
+                                    profile_source: profiles, agent_file_store: files).run
+                               .findings.select { |f| f.check == "skill-drift" }
+
+        expect(drift.first.severity).to eq(:warn)
+        expect(drift.first.message).to include("shared skill 'escalation'", "'natura'")
+      end
     end
   end
 
