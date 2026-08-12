@@ -79,7 +79,8 @@ module Insika
       skill_names = lazy_skill_names(state)
       unless skill_names.empty?
         tools << Tools::LoadSkill.new(@skill_catalog, skill_names,
-                                      trace_recorder: @tool_trace_store, state: state)
+                                      trace_recorder: @tool_trace_store, state: state,
+                                      agent: state.profile.id)
       end
 
       # remember is the memory-write system tool — wired only with

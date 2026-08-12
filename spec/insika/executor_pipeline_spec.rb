@@ -816,7 +816,8 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
           fragments = [
             Insika::ContextFragment.build(content: "bodies", placement: :system, tokens: 900,
                                           source: "Insika::Context::Providers::SkillTrigger",
-                                          labels: %w[gift-concierge natura-line-expert]),
+                                          labels: [{ "name" => "gift-concierge", "reason" => "eager" },
+                                                   { "name" => "natura-line-expert", "reason" => "trigger:linha" }]),
             Insika::ContextFragment.build(content: "identity", placement: :system, tokens: 100,
                                           source: "Insika::Context::Providers::Prompt", pinned: true)
           ]
@@ -828,7 +829,10 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       run_turn(build_executor(context_builder: labelled, context_trace_store: store), make_task)
 
       cats = store.for_session("s1").first["categories"]
-      expect(cats["skilltrigger"]["labels"]).to eq(%w[gift-concierge natura-line-expert])
+      expect(cats["skilltrigger"]["labels"]).to eq(
+        [{ "name" => "gift-concierge", "reason" => "eager" },
+         { "name" => "natura-line-expert", "reason" => "trigger:linha" }]
+      )
       expect(cats["prompt"]).not_to have_key("labels")   # nothing to name -> no noise
     end
 
@@ -851,15 +855,20 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
         end.new(labels)
       end
 
-      it "emits :skill_activated with the names and full task/session correlation" do
+      it "emits :skill_activated with the names, THE REASONS and full task/session correlation" do
         session_store.create(id: "s1")
-        executor = build_executor(context_builder: labelled_builder(%w[gift-concierge mapa]))
+        executor = build_executor(context_builder: labelled_builder(
+          [{ "name" => "gift-concierge", "reason" => "trigger:presente" },
+           { "name" => "mapa", "reason" => "eager" }]
+        ))
 
         run_turn(executor, make_task)
 
         ev = event_stream.events.find { |e| e.type == :skill_activated }
         expect(ev).not_to be_nil
-        expect(ev.data[:names]).to eq(%w[gift-concierge mapa])
+        expect(ev.data[:skills]).to eq(
+          [{ name: "gift-concierge", reason: "trigger:presente" }, { name: "mapa", reason: "eager" }]
+        )
         expect(ev.data[:source]).to eq("context")
         # without these the Studio filters the event out and nothing renders
         expect(ev.meta[:task_id]).to eq("t")
@@ -870,6 +879,39 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       it "does not emit when no skill body was injected" do
         session_store.create(id: "s1")
         run_turn(build_executor(context_builder: BreakdownContextBuilder.new), make_task)
+
+        expect(event_stream.events.find { |e| e.type == :skill_activated }).to be_nil
+      end
+
+      # A plugin can supply a body through its own provider and has no reason to give.
+      # Naming it `pack` beats printing a bare name: the operator still learns that
+      # this one is neither theirs to trigger nor theirs to un-eager.
+      it "a label with no reason is announced as `pack`" do
+        session_store.create(id: "s1")
+        executor = build_executor(context_builder: labelled_builder([{ "name" => "vendor-skill" }]))
+
+        run_turn(executor, make_task)
+
+        ev = event_stream.events.find { |e| e.type == :skill_activated }
+        expect(ev.data[:skills]).to eq([{ name: "vendor-skill", reason: "pack" }])
+      end
+
+      # The one surface built to tell the truth must not be the one that lies. The
+      # announcement is computed from the POST-BUDGET fragments, so a 2.6k-token body
+      # the cut evicted is absent from the prompt AND absent from the card. Eviction is
+      # the trace's `evicted` list to report, never an activation.
+      it "never announces a body the budget evicted" do
+        session_store.create(id: "s1")
+        cut = Class.new do
+          def call(_request)
+            Insika::ContextPackage.new(
+              system: "identity", history: [], tool_context: nil, fragments: [],
+              budget: { cap: 100, used: 0, evicted: ["Insika::Context::Providers::SkillTrigger"] }
+            )
+          end
+        end.new
+
+        run_turn(build_executor(context_builder: cut), make_task)
 
         expect(event_stream.events.find { |e| e.type == :skill_activated }).to be_nil
       end

@@ -42,11 +42,13 @@
           <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
             <div class="kv"><span><%= name %></span>
               <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %>
-                <%# WHICH skills the turn injected — the only after-the-fact record %>
-                <%# of activation once the bodies arrive by context instead of a tool call. %>
+                <%# WHICH skills the turn injected AND WHY — the only after-the-fact %>
+                <%# record of activation once the bodies arrive by context instead of a %>
+                <%# tool call. The reason is the half the operator was missing: a name %>
+                <%# alone does not say whether they triggered it or the agent always has it. %>
                 <% labels = Array(cat["labels"]).uniq %>
                 <% unless labels.empty? %>
-                  <br><span class="lat"><%= labels.join(", ") %></span>
+                  <br><span class="lat"><%= labels.map { |l| skill_label(l) }.join(", ") %></span>
                 <% end %>
               </div>
             </div>
@@ -120,10 +122,10 @@
       <% Array(@session.messages).each_with_index do |m, i| %>
         <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
           <% pending.shift %>
-          <% names = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
+          <% labels = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
           <details class="toolcard skill">
-            <summary><span class="arrow">↑</span><strong>skills · context (<%= names.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
-            <pre><%= names.join("\n") %></pre>
+            <summary><span class="arrow">↑</span><strong>skills · <%= skill_mode(labels) %> (<%= labels.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
+            <pre><%= labels.map { |l| skill_label(l) }.join("\n") %></pre>
           </details>
         <% end %>
         <%# `prev` is what makes a STEERED message visible: a customer message that lands

@@ -21,14 +21,19 @@ module Insika
     #                                   nil = all (parity). Expands to the group's
     #                                   tools in the ToolAllowlist policy.
     :skills,
-    :skills_eager,                    # progressive disclosure OFF: nil/false = level 1 +
-    #                                   load_skill (parity); true = every allowed skill's BODY
-    #                                   enters the prompt each turn, the <available_skills>
-    #                                   catalog is suppressed and load_skill is not wired.
+    :skills_eager,                    # progressive disclosure OFF, wholly or in part:
+    #                                   nil/false = level 1 + load_skill (parity); true = every
+    #                                   allowed skill; [names] = exactly these. An eager skill's
+    #                                   BODY enters the prompt each turn, it leaves the
+    #                                   <available_skills> catalog and load_skill refuses it.
     #                                   Removes the activation DECISION (no miss rate) at the
     #                                   cost of the bodies' tokens — measure them against
     #                                   context_budget before turning it on. Same opt-in as
-    #                                   `memory`.
+    #                                   `memory`. It lives HERE and not in the SKILL.md
+    #                                   frontmatter because skills are shared between agents:
+    #                                   a per-skill flag forced one decision onto every
+    #                                   allowlist holding the skill. NOT `Allowlist`
+    #                                   semantics — nil means NONE here (SkillCatalog#eager_for).
     :context_providers,               # provider allowlist
     :workflows_allow,                 # applied by WorkflowAllowlist
     :policies,                        # names in the Policy Registry

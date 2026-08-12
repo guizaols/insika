@@ -8,7 +8,7 @@ require "insika/tools/remember"
 RSpec.describe Insika::ChatBuilder do
   Ctx = Struct.new(:system)
   TaskStub = Struct.new(:id, :session_id)
-  ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching, :skills_eager)
+  ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching, :skills_eager, :id)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
                      :current_tool_call, :current_tool_name, keyword_init: true)
 
@@ -29,7 +29,8 @@ RSpec.describe Insika::ChatBuilder do
   def state(system: "SOUL", allowed_tools: [], allowed_skills: [], limits: {}, prompt_caching: nil)
     State.new(context: Ctx.new(system), allowed_tools: allowed_tools,
               allowed_skills: allowed_skills,
-              profile: ProfileStub.new("gpt", nil, limits, prompt_caching),
+              # `id` matters: load_skill resolves a specialized body per agent.
+              profile: ProfileStub.new("gpt", nil, limits, prompt_caching, nil, "a"),
               task: task)
   end
 

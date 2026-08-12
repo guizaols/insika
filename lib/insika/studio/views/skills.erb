@@ -1,6 +1,9 @@
 <%# Skills — drill-down (T2): master list | detail editor + availability.
    Every skill route renders THIS view (index / new / :name); @selected drives
-   which skill is open (nil = none, "" = new). %>
+   which skill is open (nil = none, "" = new). @scope_agent set = editing THAT
+   agent's own version of the skill, not the shared one. %>
+<% scope = @scope_agent %>
+<% form_action = scope ? "/studio/agents/#{Rack::Utils.escape(scope)}/skills/#{Rack::Utils.escape(@selected.to_s)}" : "/studio/skills" %>
 <div class="drill" data-controller="list-filter">
   <aside class="drill-pane drill-master">
     <div class="drill-pane-head">
@@ -36,15 +39,30 @@
       <% new = @selected == "" %>
       <div class="drill-pane-head">
         <div class="title">
-          <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= new ? "new" : @selected %></span></nav>
-          <strong class="mono"><%= new ? "New skill" : @selected %></strong>
+          <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= new ? "new" : @selected %></span><% if scope %> / <span>for <%= scope %></span><% end %></nav>
+          <strong class="mono"><%= new ? "New skill" : @selected %><% if scope %> <span class="pill warn">specialized for <%= scope %></span><% end %></strong>
         </div>
         <button type="submit" form="skill-form" class="btn primary" data-turbo-submits-with="Saving…">Save skill</button>
       </div>
       <div class="drill-pane-body">
-        <form id="skill-form" method="post" action="/studio/skills" data-controller="dirty-guard">
+        <%# The specialization is one MORE record, not a fork: the name stays the bare
+            shared name everywhere the model and the operator see it, and deleting the
+            override falls back to the shared body. %>
+        <% if scope %>
+          <div class="drill-section">
+            <p class="muted">This is <strong><%= scope %></strong>'s own version of <code><%= @selected %></code>. Every
+              other agent keeps the <a href="/studio/skills/<%= Rack::Utils.escape(@selected.to_s) %>">shared skill</a>,
+              and the name does not change — the allowlist, <code>&lt;available_skills&gt;</code> and
+              <code>load_skill</code> all still say <code><%= @selected %></code>.</p>
+            <form method="post" action="/studio/agents/<%= Rack::Utils.escape(scope) %>/skills/<%= Rack::Utils.escape(@selected.to_s) %>/delete">
+              <%== csrf_tag %>
+              <div class="actions"><button type="submit" data-turbo-confirm="Remove this specialization? <%= scope %> falls back to the shared skill.">Stop specializing</button></div>
+            </form>
+          </div>
+        <% end %>
+        <form id="skill-form" method="post" action="<%= form_action %>" data-controller="dirty-guard">
           <%== csrf_tag %>
-          <% unless new %><input type="hidden" name="name" value="<%= @selected %>"><% end %>
+          <% if !new && !scope %><input type="hidden" name="name" value="<%= @selected %>"><% end %>
           <% if new %>
             <label>name <span class="muted">(canonical — same as <code>name:</code> in the frontmatter)</span>
               <input type="text" name="name" placeholder="my-skill" required>
@@ -56,29 +74,66 @@
           </div>
         </form>
 
-        <% unless new %>
+        <% if !new && !scope %>
           <div class="drill-section">
             <div class="drill-section-head">
               <h3>Availability</h3>
-              <span class="muted">which agents can <code>load_skill</code> this — an "all" allowlist is left untouched</span>
+              <span class="muted">per agent: <strong>allowed</strong> = can <code>load_skill</code> it; <strong>always on</strong> = the body
+                is in the prompt every turn. Both are the AGENT's decision, so one shared skill can be
+                always-on for one and discretionary for another. An "all" allowlist is left untouched.</span>
             </div>
             <form method="post" action="/studio/skills/<%= Rack::Utils.escape(@selected) %>/agents">
               <%== csrf_tag %>
               <% if @agents.empty? %>
                 <p class="muted">No agents configured.</p>
               <% else %>
-                <div class="check-grid">
+                <div class="check-grid agent-grid">
                   <% @agents.each do |a| %>
-                    <label class="check">
-                      <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, @selected) %>>
-                      <span class="mono"><%= a.id %></span>
-                    </label>
+                    <% own = Array((@specialized || {})[@selected]).include?(a.id) %>
+                    <div class="agent-check">
+                      <div class="agent-check-name">
+                        <span class="mono"><%= a.id %></span>
+                        <% if own %>
+                          <a class="pill warn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>/skills/<%= Rack::Utils.escape(@selected) %>">own version</a>
+                        <% end %>
+                      </div>
+                      <label class="check tool-check">
+                        <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, @selected) %>>
+                        <span class="mono">allowed</span>
+                      </label>
+                      <label class="check tool-check">
+                        <input type="checkbox" name="eager_ids[]" value="<%= a.id %>"<%== " checked" if skill_eager_for?(a, @selected) %>>
+                        <span class="mono">always on</span>
+                      </label>
+                    </div>
                   <% end %>
                 </div>
                 <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Applying…">Apply to agents</button></div>
               <% end %>
             </form>
           </div>
+
+          <%# Specializing is what keeps a shared skill shared: without it the only way
+              to give one agent a different version was to fork it under a new name and
+              edit the allowlist, which throws the sharing away. %>
+          <% others = @agents.reject { |a| Array((@specialized || {})[@selected]).include?(a.id) } %>
+          <% if others.any? %>
+            <div class="drill-section">
+              <div class="drill-section-head">
+                <h3>Specialize</h3>
+                <span class="muted">give ONE agent its own version of this skill, seeded from the body above — same name, no fork</span>
+              </div>
+              <form method="post" action="/studio/skills/<%= Rack::Utils.escape(@selected) %>/specialize">
+                <%== csrf_tag %>
+                <label>agent
+                  <select name="agent_id" required>
+                    <% others.each do |a| %><option value="<%= a.id %>"><%= a.id %></option><% end %>
+                  </select>
+                </label>
+                <div class="actions"><button type="submit" data-turbo-submits-with="Creating…">Specialize for this agent</button></div>
+              </form>
+            </div>
+          <% end %>
         <% end %>
       </div>
     <% end %>

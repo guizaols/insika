@@ -58,12 +58,15 @@ module Insika
     end
 
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
-                   agent_file_store: nil, backend: nil, extra_env_specs: [])
+                   agent_file_store: nil, skill_store: nil, profile_source: nil,
+                   backend: nil, extra_env_specs: [])
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
       @tool_store = tool_store
       @agent_file_store = agent_file_store
+      @skill_store = skill_store
+      @profile_source = profile_source
       @backend = backend
       @extra_env_specs = extra_env_specs
     end
@@ -84,7 +87,7 @@ module Insika
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
-                    check_web_widget]
+                    check_web_widget check_skill_eager check_skill_drift]
 
     def safe(check)
       Array(send(check))
@@ -201,6 +204,226 @@ module Insika
                    message: "no platform edge.chat_rate_limit — the widget answers 503 unless EVERY agent in " \
                             "INSIKA_WIDGET_AGENTS sets limits.chat_rate_limit (a public channel with no ceiling is not served)", fix: nil)]
     end
+
+    # Eagerness moved from the SKILL.md frontmatter to `profile.skills_eager`, because
+    # skills are SHARED and a flag on the skill forced one decision onto every agent
+    # holding it. The parser now ignores `eager:` — which is the quiet kind of upgrade:
+    # nothing crashes, the body simply stops being in the prompt. This check is the
+    # only thing that says so. Its sibling half is the opposite mistake: a name in
+    # `skills_eager` that the agent's `skills` allowlist does not contain is
+    # intersected away at runtime, so the operator's intent evaporates in silence.
+    def check_skill_eager
+      findings = stale_eager_frontmatter + unreachable_eager_names
+      return findings if findings.any?
+      return [] unless @skill_store || @profile_source
+
+      [ok("skill-eager", "skill eagerness: per-agent (profile.skills_eager), no stale frontmatter")]
+    end
+
+    def stale_eager_frontmatter
+      return [] unless @skill_store
+
+      @skill_store.all.filter_map do |name, content|
+        next unless frontmatter_of(content).key?("eager")
+
+        Finding.new(check: "skill-eager", severity: :warn, fix: nil,
+                    message: "skill '#{name}' still declares `eager:` in its frontmatter — the key is IGNORED. " \
+                             "Eagerness is per-agent now: put the name in that agent's `skills_eager` " \
+                             "(Studio > Skills, or `skills_eager \"#{name}\"` in the DSL).")
+      end
+    end
+
+    def unreachable_eager_names
+      return [] unless @profile_source
+
+      @profile_source.all.flat_map do |profile|
+        eager = profile.skills_eager
+        next [] unless eager.is_a?(Array)
+        next [] if profile.skills.nil? # nil = every skill allowed, so nothing is unreachable
+
+        allowed = Array(profile.skills).map(&:to_s)
+        (eager.map(&:to_s) - allowed).map do |name|
+          Finding.new(check: "skill-eager", severity: :warn, fix: nil,
+                      message: "agent '#{profile.id}' marks skill '#{name}' eager but does not allow it — " \
+                               "the name is a no-op. Add it to the agent's skills, or drop it from skills_eager.")
+        end
+      end
+    end
+
+    # The frontmatter block only; a `eager:` line in the BODY is prose, not config.
+    def frontmatter_of(content)
+      match = content.to_s.match(/\A---\s*\n(.*?)\n---\s*\n/m)
+      match ? Insika::Frontmatter.parse(match[1]) : {}
+    end
+
+    # Drift between a pack's PROSE and the catalog. Three ways it happened on the
+    # pilot, all silent, all found by reading a customer conversation afterwards.
+    #
+    # Every check here takes MECHANICAL inputs only — skill names, allowlists, agent
+    # identities. A check that has to parse prose ("this paragraph declares a count of
+    # six") false-positives on the first real pack and takes the doctor's credibility
+    # with it, which costs more than the drift it caught.
+    def check_skill_drift
+      return [] unless @skill_store && @profile_source
+
+      findings = prompt_files_naming_unallowed_skills + shared_skills_naming_a_holder + broken_companions
+      return findings if findings.any?
+
+      [ok("skill-drift", "skill references: prompt files, shared bodies and companions all consistent")]
+    end
+
+    # D1 residue. The routing table is GENERATED now (SkillCatalog#format_for_prompt
+    # renders each skill with its triggers), so the hand-written companion has no
+    # reason to exist — but a pack that still carries one keeps instructing the model
+    # about skills the agent cannot load. Skill names are known ids, so this is a grep.
+    def prompt_files_naming_unallowed_skills
+      return [] unless @agent_file_store
+
+      catalog = @skill_store.names
+      @profile_source.all.flat_map do |profile|
+        next [] if profile.skills.nil? # nil = everything allowed, nothing to be outside of
+
+        allowed = Array(profile.skills).map(&:to_s)
+        orphans = catalog - allowed
+        next [] if orphans.empty?
+
+        @agent_file_store.list(profile.id).flat_map do |file|
+          body = @agent_file_store.read(profile.id, file).to_s
+          orphans.select { |name| mentions?(body, name) }.map do |name|
+            Finding.new(check: "skill-drift", severity: :warn, fix: nil,
+                        message: "agent '#{profile.id}' file '#{file}' names skill '#{name}', which is NOT in its " \
+                                 "skills allowlist — the model is being told to use something it cannot load. " \
+                                 "Allow the skill, or drop the reference (the skill table is generated).")
+          end
+        end
+      end
+    end
+
+    # D2. A skill in more than one allowlist that names one of its OWN holders in its
+    # text is specialized text in shared clothing — the pilot served the Cacau Show
+    # agent three shared skills that each said "na Natura". Specialize it per agent
+    # (write_skill with `agent:`) instead of leaving one store's policy in a shared body.
+    #
+    # Merchant vocabulary beyond the holders' identities is deliberately out of scope:
+    # there is no mechanical source for it.
+    def shared_skills_naming_a_holder
+      holders = skill_holders
+      specialized = specialized_by
+      @skill_store.all.flat_map do |name, content|
+        # Holders that still READ this body. One that already has its own version is
+        # not being served anybody else's text, so the finding shrinks as the operator
+        # fixes it and disappears when nobody is left sharing a store-specific body.
+        owners = holders[name].to_a - specialized[name].to_a
+        next [] if owners.length < 2
+
+        owners.flat_map do |owner|
+          identity_terms(owner).select { |term| mentions?(content, term) }.map do |term|
+            Finding.new(check: "skill-drift", severity: :warn, fix: nil,
+                        message: "shared skill '#{name}' (held by #{owners.sort.join(', ')}) names '#{term}', the " \
+                                 "identity of '#{owner}' — the other holders are served #{owner}'s text as their own. " \
+                                 "Specialize it: write_skill with agent: '#{owner}'.")
+          end
+        end
+      end
+    end
+
+    # D3 residue, the half `companions:` cannot prevent: a body that points at another
+    # catalog skill without declaring it (so the pair can still break apart), and a
+    # declared companion an agent is not allowed to load (so the pair breaks for THAT
+    # agent, silently, since the engine will not widen an allowlist on its own).
+    def broken_companions
+      names = @skill_store.names
+      undeclared = @skill_store.all.flat_map do |name, content|
+        declared = declared_companions(content)
+        (names - [name] - declared).select { |other| mentions?(body_of(content), other) }.map do |other|
+          Finding.new(check: "skill-drift", severity: :warn, fix: nil,
+                      message: "skill '#{name}' references skill '#{other}' in its body without declaring it a " \
+                               "companion — the two can arrive apart, and half a recipe is worse than none. " \
+                               "Add `companions: [#{other}]` to '#{name}'.")
+        end
+      end
+      undeclared + companions_outside_allowlists
+    end
+
+    # Same lenient reading as SkillCatalog#parse_list: a YAML list, or the whole value
+    # as one comma-separated String when the tolerant parser had to fall back.
+    def declared_companions(content)
+      raw = frontmatter_of(content)["companions"]
+      Array(raw).flat_map { |c| c.to_s.split(",") }.map(&:strip).reject(&:empty?)
+    end
+
+    def companions_outside_allowlists
+      declared = @skill_store.all.each_with_object({}) do |(name, content), acc|
+        list = declared_companions(content)
+        acc[name] = list unless list.empty?
+      end
+      return [] if declared.empty?
+
+      @profile_source.all.flat_map do |profile|
+        next [] if profile.skills.nil?
+
+        allowed = Array(profile.skills).map(&:to_s)
+        declared.flat_map do |name, companions|
+          next [] unless allowed.include?(name)
+
+          (companions - allowed).map do |missing|
+            Finding.new(check: "skill-drift", severity: :warn, fix: nil,
+                        message: "agent '#{profile.id}' allows skill '#{name}' but not its companion '#{missing}' — " \
+                                 "the pair cannot travel together for this agent. Allow '#{missing}' too.")
+          end
+        end
+      end
+    end
+
+    # { skill name => [agent ids that have their OWN version] }.
+    def specialized_by
+      return {} unless @skill_store.respond_to?(:agents)
+
+      @skill_store.agents.each_with_object({}) do |agent, acc|
+        @skill_store.names(agent: agent).each { |name| (acc[name] ||= []) << agent }
+      end
+    end
+
+    # { skill name => Set(agent ids that allow it explicitly) }. An agent with
+    # skills=nil allows everything and is not a "holder": it says nothing about which
+    # skills were meant to be shared.
+    def skill_holders
+      @profile_source.all.each_with_object({}) do |profile, acc|
+        next if profile.skills.nil?
+
+        Array(profile.skills).each { |name| (acc[name.to_s] ||= []) << profile.id }
+      end
+    end
+
+    # An agent's identity as WORDS: the distinctive tokens of its id plus whatever it
+    # calls itself in metadata. Structural tokens (agent/store/bot/…) are dropped and
+    # short ones ignored — "store" appears in every retail skill ever written, and one
+    # false positive is enough for an operator to stop reading the doctor.
+    IDENTITY_STOPWORDS = %w[agent agente store shop loja bot assistant assistente atendimento
+                            prod staging demo test main default].freeze
+
+    def identity_terms(agent_id)
+      profile = @profile_source.fetch(agent_id)
+      meta = profile ? (profile.metadata || {}) : {}
+      raw = [agent_id.to_s.split(/[-_.\s]+/), meta["name"], meta["display_name"], meta["store_name"]]
+      raw.flatten.compact.map { |t| t.to_s.strip }
+         .reject { |t| t.length < 4 || IDENTITY_STOPWORDS.include?(t.downcase) }
+         .uniq
+    end
+
+    # Whole-word, case- and accent-insensitive — the same reading the trigger matcher
+    # uses, for the same reason: a substring hit inside a longer word is a false
+    # positive, and one of those is enough to lose the operator.
+    def mentions?(text, term)
+      needle = fold(term)
+      return false if needle.empty?
+
+      /(?<![[:alnum:]])#{Regexp.escape(needle)}(?![[:alnum:]])/.match?(fold(text))
+    end
+
+    def fold(text) = text.to_s.unicode_normalize(:nfd).gsub(/\p{Mn}/, "").downcase
+
+    def body_of(content) = content.to_s.sub(/\A---\s*\n.*?\n---\s*\n/m, "")
 
     def platform_chat_rate_limit
       value = ((@settings_store&.get || {})["edge"] || {})["chat_rate_limit"]

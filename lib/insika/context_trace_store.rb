@@ -63,16 +63,28 @@ module Insika
           cat = { "tokens" => int(c[:tokens] || c["tokens"]),
                   "fragments" => int(c[:fragments] || c["fragments"]),
                   "pinned" => int(c[:pinned] || c["pinned"]) }
-          # ids of WHAT the category carried (skill names) — still content-free, so
+          # WHAT the category carried and WHY ({name, reason}) — still ids only, so
           # the no-masking-needed contract above holds. Omitted when empty: most
           # categories have nothing to name and an empty key is just noise.
-          labels = Array(c[:labels] || c["labels"]).map(&:to_s)
+          labels = normalize_labels(c[:labels] || c["labels"])
           cat["labels"] = labels unless labels.empty?
           acc[name.to_s] = cat
         end,
         "tools" => { "count" => int(tools[:count] || tools["count"]),
                      "tokens" => int(tools[:tokens] || tools["tokens"]) }
       }
+    end
+
+    # Labels are {name, reason} in string keys (ContextFragment.label). A bare string
+    # still reads as a nameless-reason label: an entry recorded before reasons existed,
+    # or a caller that only has the id, degrades the card instead of poisoning it.
+    def normalize_labels(raw)
+      Array(raw).filter_map do |label|
+        name, reason = label.is_a?(Hash) ? [label[:name] || label["name"], label[:reason] || label["reason"]] : [label, nil]
+        next if name.to_s.empty?
+
+        { "name" => name.to_s, "reason" => reason&.to_s }.compact
+      end.uniq
     end
 
     def int(value) = Integer(value || 0)

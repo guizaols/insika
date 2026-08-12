@@ -433,6 +433,18 @@
   .tool-check input[type=checkbox]:checked { background:var(--accent-bg); }
   .tool-check input[type=checkbox]:checked::after { transform:translateX(.8rem); }
   .tool-check input[type=checkbox]:disabled { opacity:.45; cursor:not-allowed; }
+
+  /* Skill availability — one card per agent, holding the TWO per-agent decisions
+     about the same shared skill: may it load this, and does it always have it. Same
+     chip language as the tool matrix; they are the same kind of screen. */
+  .agent-grid.check-grid { grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:.7rem; margin:.9rem 0 0; }
+  .agent-check {
+    display:flex; flex-direction:column; gap:.4rem; min-width:0;
+    padding:.6rem .7rem; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--panel-2);
+  }
+  .agent-check-name { display:flex; align-items:center; gap:.5rem; min-width:0; }
+  .agent-check-name > .mono { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.85rem; }
+  .agent-check-name .pill { flex:0 0 auto; text-decoration:none; }
   .actions { display:flex; align-items:center; gap:.6rem; margin-top:1rem; flex-wrap:wrap; }
   .inline-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.75rem; }
   .inline-form input[type=text] { width:auto; flex:1; min-width:150px; margin-top:0; }
