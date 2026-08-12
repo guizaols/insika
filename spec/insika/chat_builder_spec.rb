@@ -8,7 +8,7 @@ require "insika/tools/remember"
 RSpec.describe Insika::ChatBuilder do
   Ctx = Struct.new(:system)
   TaskStub = Struct.new(:id, :session_id)
-  ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching)
+  ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching, :skills_eager)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
                      :current_tool_call, :current_tool_name, keyword_init: true)
 
@@ -95,6 +95,33 @@ RSpec.describe Insika::ChatBuilder do
     it "doesn't add LoadSkill without skills" do
       builder.configure_chat(chat, state(allowed_tools: [Object.new], allowed_skills: []))
       expect(chat.tools.none? { |t| t.is_a?(Insika::Tools::LoadSkill) }).to be(true)
+    end
+
+    # An eager skill is already in the prompt in full: there is no level 2 to fetch,
+    # so it leaves the tool's allowlist. The catalog owns that verdict — the builder
+    # asks, it does not re-derive it.
+    describe "eager skills leave load_skill" do
+      let(:eager_skill) { Struct.new(:name).new("formato") }
+
+      it "serves only the lazy skills" do
+        st = state(allowed_tools: [Object.new], allowed_skills: %w[formato cardapio])
+        allow(skill_catalog).to receive(:eager_for).with(st.profile).and_return([eager_skill])
+
+        builder.configure_chat(chat, st)
+
+        tool = chat.tools.find { |t| t.is_a?(Insika::Tools::LoadSkill) }
+        expect(tool).not_to be_nil
+        expect(tool.execute(name: "formato")).to eq({ error: "skill 'formato' not available for this agent" })
+      end
+
+      it "is not wired at all when every allowed skill is eager" do
+        st = state(allowed_tools: [Object.new], allowed_skills: ["formato"])
+        allow(skill_catalog).to receive(:eager_for).with(st.profile).and_return([eager_skill])
+
+        builder.configure_chat(chat, st)
+
+        expect(chat.tools.none? { |t| t.is_a?(Insika::Tools::LoadSkill) }).to be(true)
+      end
     end
   end
 

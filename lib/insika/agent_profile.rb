@@ -21,6 +21,14 @@ module Insika
     #                                   nil = all (parity). Expands to the group's
     #                                   tools in the ToolAllowlist policy.
     :skills,
+    :skills_eager,                    # progressive disclosure OFF: nil/false = level 1 +
+    #                                   load_skill (parity); true = every allowed skill's BODY
+    #                                   enters the prompt each turn, the <available_skills>
+    #                                   catalog is suppressed and load_skill is not wired.
+    #                                   Removes the activation DECISION (no miss rate) at the
+    #                                   cost of the bodies' tokens — measure them against
+    #                                   context_budget before turning it on. Same opt-in as
+    #                                   `memory`.
     :context_providers,               # provider allowlist
     :workflows_allow,                 # applied by WorkflowAllowlist
     :policies,                        # names in the Policy Registry
@@ -132,7 +140,7 @@ module Insika
     # platform `default_model` (Settings) at turn start via the ModelResolver.
     def self.build(id:, model: nil, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
-                   context_providers: nil, workflows_allow: nil,
+                   skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil,
@@ -142,6 +150,7 @@ module Insika
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
         tools_deny: Array(tools_deny), tools_allow_groups: tools_allow_groups, skills: skills,
+        skills_eager: skills_eager,
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: Array(policies), prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,

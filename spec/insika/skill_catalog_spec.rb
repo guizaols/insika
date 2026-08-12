@@ -42,6 +42,70 @@ RSpec.describe Insika::SkillCatalog do
     end
   end
 
+  describe "eager frontmatter + the eager/lazy split" do
+    def write_raw(name, frontmatter)
+      path = File.join(@root, name)
+      FileUtils.mkdir_p(path)
+      File.write(File.join(path, "SKILL.md"), "---\nname: #{name}\n#{frontmatter}\n---\nbody\n")
+    end
+
+    let(:profile) { Insika::AgentProfile.build(id: "a", model: "m") }
+
+    it "reads eager: true, and defaults to false" do
+      write_raw("formato", "description: d\neager: true")
+      write_skill(@root, "cardapio", name: "cardapio")
+
+      cat = described_class.new(@root)
+
+      expect(cat.find("formato").eager).to be(true)
+      expect(cat.find("cardapio").eager).to be(false)
+    end
+
+    it "accepts the spellings an operator actually writes" do
+      %w[yes 1 on TRUE].each_with_index do |v, i|
+        write_raw("s#{i}", "description: d\neager: #{v}")
+      end
+      write_raw("sem-eager", "description: d\neager: false")
+
+      cat = described_class.new(@root)
+
+      expect((0..3).map { |i| cat.find("s#{i}").eager }).to all(be(true))
+      expect(cat.find("sem-eager").eager).to be(false)
+    end
+
+    it "splits the allowed set into eager (always) and lazy (load_skill)" do
+      write_raw("formato", "description: d\neager: true")
+      write_skill(@root, "cardapio", name: "cardapio")
+
+      cat = described_class.new(@root)
+
+      expect(cat.eager_for(profile).map(&:name)).to eq(["formato"])
+      expect(cat.lazy_for(profile).map(&:name)).to eq(["cardapio"])
+    end
+
+    it "skills_eager on the profile makes every allowed skill eager, leaving nothing lazy" do
+      write_skill(@root, "cardapio", name: "cardapio")
+      write_skill(@root, "pedido", name: "pedido")
+      blanket = Insika::AgentProfile.build(id: "a", model: "m", skills_eager: true)
+
+      cat = described_class.new(@root)
+
+      expect(cat.eager_for(blanket).map(&:name)).to contain_exactly("cardapio", "pedido")
+      expect(cat.lazy_for(blanket)).to eq([])
+    end
+
+    it "the split respects the agent allowlist" do
+      write_raw("formato", "description: d\neager: true")
+      write_skill(@root, "cardapio", name: "cardapio")
+      only_cardapio = Insika::AgentProfile.build(id: "a", model: "m", skills: ["cardapio"])
+
+      cat = described_class.new(@root)
+
+      expect(cat.eager_for(only_cardapio)).to eq([])
+      expect(cat.lazy_for(only_cardapio).map(&:name)).to eq(["cardapio"])
+    end
+  end
+
   describe "#effective (allowlist)" do
     before do
       write_skill(@root, "cardapio", name: "cardapio")

@@ -75,6 +75,8 @@ module Insika
         tool_registry: tool_registry, skill_catalog: skill_catalog,
         checkpoint_store: checkpoint_store, event_stream: event_stream, hooks: hooks,
         tool_catalog: tool_catalog, memory_store: memory_store,
+        # load_skill is not enveloped, so it records its own trace entry.
+        tool_trace_store: tool_trace_store,
         # the ChatBuilder wires the spawn_subagent system tool (gated by
         # profile.subagents) and hands it this Executor as the runner. `self` is not
         # yet fully built here, but the ChatBuilder only STORES it (used per-turn).
@@ -780,6 +782,7 @@ module Insika
       state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
       state.allowed_skills = resolution.allowed_skills
       record_context_trace(task, state)
+      announce_context_skills(task, state)
       drain_and_maybe_suspend(task, actor)
     end
 
@@ -800,6 +803,11 @@ module Insika
         c[:tokens] += f.tokens || 0
         c[:fragments] += 1
         c[:pinned] += (f.tokens || 0) if f.pinned
+        # WHICH skills/tools the fragment carried — ids only, still content-free.
+        # Without this the trace proves a turn injected N tokens of skill but not
+        # which ones, and eager activation is unauditable after the fact.
+        labels = Array(f.labels)
+        (c[:labels] ||= []).concat(labels) unless labels.empty?
       end
       @context_trace_store.record(
         session_id: task.session_id,
@@ -809,6 +817,32 @@ module Insika
                  tools: { count: state.allowed_tools.size,
                           tokens: estimate_tools_tokens(state.allowed_tools) } }
       )
+    end
+
+    # Skill bodies that reached the prompt WITHOUT a tool call (`triggers:` or
+    # skills_eager) leave no trace in the transcript: there is no load_skill to
+    # render, so an active skill looked exactly like an absent one.
+    #
+    # Emitted HERE rather than in the provider because only the Executor holds the
+    # correlation the Studio's SSE filters on — an event whose meta lacks `task_id`
+    # never reaches a task-scoped subscriber (EventStream::Subscription#matches?).
+    # `names` (plural) marks the CONTEXT path; the load_skill tool emits the same
+    # type with a singular `name`, and the Studio must not conflate them.
+    SKILL_BODY_CATEGORY = "skilltrigger"
+
+    def announce_context_skills(task, state)
+      package = state.context
+      return unless package.respond_to?(:fragments)
+
+      names = Array(package.fragments)
+              .select { |f| context_category(f.source) == SKILL_BODY_CATEGORY }
+              .flat_map { |f| Array(f.labels) }.uniq
+      return if names.empty?
+
+      emit(:skill_activated,
+           { names: names, mode: state.profile.skills_eager ? "eager" : "trigger",
+             source: "context" },
+           task: task)
     end
 
     # "Insika::Context::Providers::Prompt" -> "prompt" (a plugin provider keeps

@@ -11,7 +11,13 @@ module Insika
   # Consumed by the Executor (skill_catalog:) and by stage 3
   # (effective/format_for_prompt).
   class SkillCatalog
-    Skill = Data.define(:name, :description, :path, :body, :triggers)
+    # eager: `eager: true` in the frontmatter — this skill's body is in the prompt on
+    # EVERY turn, so it is not a decision and cannot be missed. It also leaves the
+    # level-1 catalog and the load_skill allowlist: a skill already present in full
+    # has no level 2 to fetch. Reserve it for what every turn needs (output format,
+    # markers); leave the discretionary ones model-loaded, because THERE the
+    # load_skill call is the only record of which skill the model actually reached for.
+    Skill = Data.define(:name, :description, :path, :body, :triggers, :eager)
 
     # roots ordered by PRECEDENCE (highest first): workspace, managed,
     # bundled. Same name in more than one root: the first wins.
@@ -45,6 +51,22 @@ module Insika
     def effective(skills_policy)
       Allowlist.filter(all, skills_policy) { |s| s.name }
     end
+
+    # THE single definition of "always in the prompt", consulted by all three
+    # surfaces that must agree: the body provider (injects these), the level-1
+    # catalog (hides them) and load_skill (refuses them). Split the rule across three
+    # files and they drift — which is the failure this whole feature came from.
+    #
+    # `profile.skills_eager` is the blanket switch (every allowed skill, for a corpus
+    # that fits the budget); the frontmatter `eager:` is the per-skill one.
+    def eager_for(profile)
+      allowed = effective(profile.skills)
+      profile.skills_eager ? allowed : allowed.select(&:eager)
+    end
+
+    # The complement: what the model still has to ASK for — and therefore what the
+    # level-1 list advertises and load_skill will serve.
+    def lazy_for(profile) = effective(profile.skills) - eager_for(profile)
 
     # Level 1: compact list injected into the system prompt. Metadata only.
     # Receives the set already filtered by the agent.
@@ -109,9 +131,14 @@ module Insika
         description: meta["description"].to_s,
         path: path,
         body: match[2].strip,
-        triggers: parse_triggers(meta["triggers"])
+        triggers: parse_triggers(meta["triggers"]),
+        eager: truthy?(meta["eager"])
       )
     end
+
+    # The lenient frontmatter parser yields strings, so "true"/"yes"/"1" all have to
+    # read as true — an operator who writes `eager: yes` means yes.
+    def truthy?(raw) = %w[true yes 1 on].include?(raw.to_s.strip.downcase)
 
     # `triggers:` frontmatter — deterministic activation (SkillTrigger
     # provider): when the user message matches one, the body is injected

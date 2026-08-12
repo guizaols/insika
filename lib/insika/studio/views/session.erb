@@ -22,17 +22,33 @@
     <% ctx_traces.each do |c| %>
       <div class="trace-turn">
         <div class="turn-label">turn <%= c["turn"] %> · <%= c["at"] %></div>
+        <%# Skills injected by context (triggers/skills_eager) leave NO tool call in
+            the transcript, so this card is the only record that they were active.
+            The names live in the body, but the count belongs in the SUMMARY: the
+            card is collapsed, and "was the skill on?" is the question an operator
+            asks on every single turn. %>
+        <% skills = Array((c["categories"] || {}).dig("skilltrigger", "labels")).uniq %>
         <details class="trace-item ok">
           <summary>
             <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
             <strong>context</strong>
+            <% unless skills.empty? %>
+              <span class="badge">skills <%= skills.length %></span>
+            <% end %>
             <% unless Array(c["evicted"]).empty? %>
               <span class="lat">evicted: <%= Array(c["evicted"]).join(", ") %></span>
             <% end %>
           </summary>
           <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
             <div class="kv"><span><%= name %></span>
-              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %></div>
+              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %>
+                <%# WHICH skills the turn injected — the only after-the-fact record %>
+                <%# of activation once the bodies arrive by context instead of a tool call. %>
+                <% labels = Array(cat["labels"]).uniq %>
+                <% unless labels.empty? %>
+                  <br><span class="lat"><%= labels.join(", ") %></span>
+                <% end %>
+              </div>
             </div>
           <% end %>
           <% tools = c["tools"] || {} %>
@@ -87,9 +103,33 @@
     <div class="empty">This session has no messages.</div>
   <% else %>
     <div class="thread">
-      <%# `prev` is what makes a STEERED message visible: a customer message that lands
-          right after a tool result arrived mid-run. See _message.erb. %>
-      <% Array(@session.messages).each_with_index do |m, i| %><%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %><% end %>
+      <%# A skill loaded by the model shows up here on its own: load_skill is a tool,
+          so its body is a persisted `role: tool` message. A skill injected by CONTEXT
+          (triggers/skills_eager) is part of the system prompt — never a message — so
+          the thread had no trace of it at all. Synthesized from the context trace so
+          both activation paths read the same way in the transcript.
+
+          Placed by TIME, not by counting turns: every message of a turn is persisted
+          together at the end of it, and the context stage always runs before that, so
+          each entry lands at the top of its own turn. Ordinal counting would drift on
+          a steered message (one that joins a turn already running). A message with no
+          `at` (older sessions) simply flushes nothing. %>
+      <% pending = (@context_traces || [])
+                   .select { |c| Array((c["categories"] || {}).dig("skilltrigger", "labels")).any? }
+                   .sort_by { |c| c["at"].to_s } %>
+      <% Array(@session.messages).each_with_index do |m, i| %>
+        <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
+          <% pending.shift %>
+          <% names = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
+          <details class="toolcard skill">
+            <summary><span class="arrow">↑</span><strong>skills · context (<%= names.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
+            <pre><%= names.join("\n") %></pre>
+          </details>
+        <% end %>
+        <%# `prev` is what makes a STEERED message visible: a customer message that lands
+            right after a tool result arrived mid-run. See _message.erb. %>
+        <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+      <% end %>
     </div>
   <% end %>
 </div>
