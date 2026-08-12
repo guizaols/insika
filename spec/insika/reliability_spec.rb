@@ -13,7 +13,7 @@ RSpec.describe Insika::Reliability do
 
   let(:backend) { Insika::Stores::Memory.new }
   let(:circuit_store) { Insika::CircuitState.new(store: backend) }
-  let(:event_stream) { Insika::EventStream.new }
+  let(:event_stream) { SpyEventStream.new }
   let(:selection) { Insika::ModelSelection.new(model: "deepseek-v4-flash", provider: :deepseek, source: :agent) }
   let(:policy) do
     { "retries" => 1, "backoff" => "exponential",
@@ -24,8 +24,9 @@ RSpec.describe Insika::Reliability do
   # Chain nodes yielded to the attempt block, in order.
   let(:chain) { [{ model: "gpt-4o-mini", provider: :openai }] }
 
-  def run(attempts, policy: self.policy, selection: self.selection, chain: self.chain)
-    reliability.call(policy: policy, tenant: nil, selection: selection, chain: chain, &attempts)
+  def run(attempts, policy: self.policy, selection: self.selection, chain: self.chain, agent: nil)
+    reliability.call(policy: policy, tenant: nil, agent: agent, selection: selection,
+                     chain: chain, &attempts)
   end
 
   def raise_retryable(klass = RubyLLM::ServerError)
@@ -116,5 +117,18 @@ RSpec.describe Insika::Reliability do
     result = run(->(_s, _n) { calls += 1; calls == 2 ? "ok" : raise(RubyLLM::ServerError.new("x")) },
                  policy: plain)
     expect(result).to eq("ok")
+  end
+
+  it "the failure that TRIPS the breaker emits :breaker_open with the agent (WS6)" do
+    trip_policy = policy.merge("circuit_breaker" => { "after" => 2, "within" => 60, "cooldown" => 300 })
+    run(->(_s, _n) { raise RubyLLM::ServerError.new("down") }, policy: trip_policy, agent: "bia")
+  rescue RubyLLM::ServerError
+    nil
+  ensure
+    opened = event_stream.events.find { |e| e.type == :breaker_open }
+    expect(opened).not_to be_nil
+    expect(opened.data).to include(ref: "deepseek/deepseek-v4-flash", agent: "bia")
+    # both nodes trip here (primary and then the fallback) — each cell opens once
+    expect(event_stream.events.count { |e| e.type == :breaker_open }).to eq(2)
   end
 end

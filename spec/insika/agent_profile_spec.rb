@@ -41,6 +41,13 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.tool_output_compression).to be_nil # A3/C3: opt-in, off by default
       expect(profile.budget).to be_nil # WS2: no budget (parity)
       expect(profile.reliability).to be_nil # WS3: plain single ask (parity)
+      expect(profile.alerts).to be_nil # WS6: no webhook (parity)
+    end
+
+    it "alerts is normalized to string keys (the shape the AlertDispatcher reads)" do
+      profile = described_class.build(id: "a", model: "m",
+                                      alerts: { webhook: "https://ops.example.com/alerts" })
+      expect(profile.alerts).to eq("webhook" => "https://ops.example.com/alerts")
     end
 
     it "reliability is normalized to string keys (the data shape the edge reads)" do

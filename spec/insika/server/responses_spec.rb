@@ -77,8 +77,14 @@ RSpec.describe Insika::Server::Responses do
     it ":task_failed -> response.failed + [DONE]" do
       f = described_class.frame_for(ev(:task_failed, { message: "boom" }))
       expect(f).to include('"type":"response.failed"')
-      expect(f).to include('"message":"boom"')
-      expect(f).to include("data: [DONE]")
+      expect(f).to end_with("data: [DONE]\n\n")
+    end
+
+    it ":ttft -> insika.ttft carrying ttft_ms (live TTFB, WS6 — additive)" do
+      f = described_class.frame_for(ev(:ttft, { ttft_ms: 712 }))
+      expect(f).to include("event: insika.ttft")
+      expect(f).to include('"type":"insika.ttft"')
+      expect(f).to include('"ttft_ms":712')
     end
 
     it "events with no match -> nil (skipped)" do

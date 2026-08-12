@@ -152,6 +152,14 @@ module Insika
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
         )
+        # WS6 operator alerts: answers budget_warning / breaker_open /
+        # delivery_failed per agent (`alerts.webhook`) via the outbox+claim
+        # pipeline. Always wired — the per-agent data gates it (parity).
+        executor.alert_dispatcher = Insika::AlertDispatcher.new(
+          event_stream: spine.event_stream, outbox: spine.outbox_store,
+          channels: spine.channel_registry, profiles: profiles,
+          task_store: spine.task_store, http: Insika::HttpClient.new
+        )
 
         Graph::Result.new(
           backend: spine.backend, event_stream: spine.event_stream,

@@ -146,4 +146,18 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     expect(task_store.find("r3").status).to eq(:completed)
     expect(chat.asked).to eq("oi") # EXACTLY one ask, no coordinator in the path
   end
+
+  it "with INSIKA_TURN_TIMING the first content chunk emits the live :ttft (WS6)" do
+    ENV["INSIKA_TURN_TIMING"] = "1"
+    executor = build_executor
+    chat = FakeChat.new
+
+    run_turn(executor, make_task("oi", id: "r4"), chat)
+
+    ttft = event_stream.events.find { |e| e.type == :ttft }
+    expect(ttft).not_to be_nil
+    expect(ttft.data[:ttft_ms]).to be >= 0
+  ensure
+    ENV.delete("INSIKA_TURN_TIMING")
+  end
 end
