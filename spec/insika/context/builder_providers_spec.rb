@@ -92,7 +92,7 @@ RSpec.describe "ContextBuilder + real providers" do
 
     # budget that keeps identity (pinned) + skills (80) + SOME histories
     # (the most recent), cutting the oldest. Chosen so that >0 and <6 survive.
-    pkg = build(providers, profile, session: session_store.find("s1"), budget: 90)
+    pkg = build(providers, profile, session: session_store.find("s1"), budget: 125)
 
     survived = pkg.history.map { |m| m[:content] }
     # identity (pinned) and skills (80 > history) always survive

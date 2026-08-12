@@ -22,6 +22,7 @@ See [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/s
 ---
 name: refunds                       # must equal the directory name
 description: When and how to process a refund   # the Level-1 trigger text
+triggers: [refund, money back]      # optional: deterministic activation (below)
 ---
 
 <the full playbook body — loaded only on demand>
@@ -39,6 +40,11 @@ which the `name:` field must match.
 - **Level 2 — the full body.** A built-in `load_skill` tool returns the skill body
   on demand. It enforces the agent's skill allowlist and is wired **automatically**
   whenever the agent has any allowed skills — you do not add it to `tools_allow`.
+- **Deterministic activation — `triggers:`.** When the user message contains one
+  of the skill's `triggers` (substring, case-insensitive), the body is injected
+  for that turn — no model decision, no `load_skill` call. Only matched skills,
+  only that turn. Use it for skills that MUST fire on known phrases; model
+  loading stays as the fallback for everything else.
 
 The Level-1 list is budgeted like any other context fragment
 (see [Context](CONTEXT.md)); the Level-2 body only costs tokens on the turns that
