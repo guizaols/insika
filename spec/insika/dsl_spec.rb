@@ -48,6 +48,37 @@ RSpec.describe Insika::DSL do
       expect(md).to include("Hand off when angry.")
     end
 
+    # Eagerness is the agent's, and a LIST: a shared skill sits in several
+    # allowlists, so a per-skill flag forced one decision onto all of them.
+    describe "skills_eager" do
+      def eager_in(&block) = Insika.agent("a", &block).to_pack.config[:skills_eager]
+
+      it "bare -> true (every allowed skill)" do
+        expect(eager_in { model "m"; skills_eager }).to be(true)
+      end
+
+      it "names -> the list, as strings" do
+        expect(eager_in { model "m"; skills_eager "formato", :markers }).to eq(%w[formato markers])
+      end
+
+      it "false -> off, and absent -> nothing set" do
+        expect(eager_in { model "m"; skills_eager false }).to be(false)
+        expect(eager_in { model "m" }).to be_nil
+      end
+
+      it "survives the store round-trip as a list (the runtime reads it back)" do
+        profile = import_and_read(
+          Insika.agent("a") do
+            model "m"
+            skill "formato", description: "d", instructions: "i"
+            skills_eager "formato"
+          end.to_pack
+        )
+
+        expect(profile.skills_eager).to eq(["formato"])
+      end
+    end
+
     it "data_tool adds a ToolDefinition AND allowlists its name" do
       pk = Insika.agent("shop") do
         model "m"

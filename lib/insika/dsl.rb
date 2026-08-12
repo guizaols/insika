@@ -173,11 +173,27 @@ module Insika
         n
       end
 
-      # skills_eager — turns progressive disclosure OFF: every allowed skill's body
-      # is in the prompt on every turn, so activation is not a decision and cannot
-      # be missed. Check the bodies against `context_budget` first; they are paid
-      # for on every turn (though a stable position makes them cacheable prefix).
-      def skills_eager(on = true) = @config[:skills_eager] = on
+      # skills_eager — turns progressive disclosure off for THIS agent, wholly or in
+      # part. The body of an eager skill is in the prompt on every turn, so its
+      # activation is not a decision and cannot be missed; it is paid for on every
+      # turn, so measure the bodies against `context_budget` first (a stable position
+      # makes them a cacheable prefix).
+      #
+      #   skills_eager                       # every allowed skill
+      #   skills_eager "formato", "markers"  # exactly these
+      #   skills_eager false                 # none (the default)
+      #
+      # A LIST and not a per-skill flag because skills are shared: `escalation-to-human`
+      # sits in several allowlists, and one flag on the skill would force one decision
+      # onto every agent holding it.
+      def skills_eager(*names)
+        flat = names.flatten
+        @config[:skills_eager] =
+          if flat.empty? then true
+          elsif flat == [true] || flat == [false] then flat.first
+          else flat.map(&:to_s)
+          end
+      end
 
       # --- delegation ------------------------------------------------------
       # subagents "security", "performance" → the child agents this one MAY

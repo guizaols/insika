@@ -21,6 +21,34 @@ RSpec.describe Insika::ContextFragment do
     expect([f.priority, f.tokens, f.pinned]).to eq([79, 10, true])
   end
 
+  # Labels are {name, reason} in STRING keys, because they are written straight into
+  # the context trace and into events as JSON — one shape, no reader defending
+  # against two.
+  describe "labels" do
+    def labels_for(raw) = described_class.build(content: "x", placement: :system, source: "s", labels: raw).labels
+
+    it "defaults to []" do
+      expect(labels_for(nil)).to eq([])
+    end
+
+    it "normalizes symbol keys to string keys" do
+      expect(labels_for([{ name: "presente", reason: "trigger:presente" }]))
+        .to eq([{ "name" => "presente", "reason" => "trigger:presente" }])
+    end
+
+    it "accepts a bare string as a reason-less label" do
+      expect(labels_for(["mapa"])).to eq([{ "name" => "mapa" }])
+    end
+
+    it "omits an absent reason rather than storing a nil" do
+      expect(labels_for([{ "name" => "mapa", "reason" => nil }])).to eq([{ "name" => "mapa" }])
+    end
+
+    it "freezes each label (a Data field that a caller could still mutate is not immutable)" do
+      expect(labels_for([{ name: "mapa", reason: "eager" }]).first).to be_frozen
+    end
+  end
+
   it "is immutable (Data); with returns a copy" do
     f = described_class.build(content: "x", placement: :system, source: "s")
 

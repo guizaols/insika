@@ -333,6 +333,10 @@ end
         # Prompt-file corruption is invisible from the outside (the file is there, the
         # agent answers) — the sweep is the only thing that names it.
         agent_file_store: Insika::AgentFileStore.new(config_store: config_store),
+        # Skills + profiles: the eagerness/drift checks are about the RELATION between
+        # a skill and the agents holding it, so neither half alone is enough.
+        skill_store: Insika::SkillStore.new(config_store: config_store),
+        profile_source: Insika::StoredProfileSource.new(config_store: config_store),
         backend: backend
       )
     end

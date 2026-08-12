@@ -307,15 +307,53 @@ module Studio
             end
           end
 
-          # Agent skills → :update_agent with the `skills` allowlist.
-          # "all" = nil; otherwise the checked subset (possibly []).
-          r.post "skills" do
-            check_csrf!
-            skills = r.params["all_skills"] == "1" ? nil : Array(r.params["skills"]).map(&:to_s)
-            with_flash("Skills updated.") do
-              dispatch(:update_agent, { id: id, skills: skills })
+          r.on "skills" do
+            # POST /studio/agents/:id/skills → :update_agent with the `skills`
+            # allowlist. "all" = nil; otherwise the checked subset (possibly []).
+            r.is do
+              r.post do
+                check_csrf!
+                skills = r.params["all_skills"] == "1" ? nil : Array(r.params["skills"]).map(&:to_s)
+                with_flash("Skills updated.") do
+                  dispatch(:update_agent, { id: id, skills: skills })
+                end
+                r.redirect(agent_path(id))
+              end
             end
-            r.redirect(agent_path(id))
+
+            # /studio/agents/:id/skills/:name — this agent's OWN version of a skill.
+            # TWO path segments, which is exactly why the store takes the agent as a
+            # second argument: a composite "agent/name" key would put a `/` inside
+            # what this route serves as one segment.
+            r.on String do |name|
+              name = utf8(name)
+              r.is do
+                r.get do
+                  load_skills_master(agent: id)
+                  @selected = name
+                  @scope_agent = id
+                  @skill_content = skill_source(name, agent: id)
+                  view("skills")
+                end
+                # Saving the specialization: same command, `agent:` set.
+                r.post do
+                  check_csrf!
+                  with_flash("Specialization saved.") do
+                    dispatch(:write_skill, { name: name, agent: id, content: r.params["content"].to_s })
+                  end
+                  r.redirect("#{agent_path(id)}/skills/#{Rack::Utils.escape(name)}")
+                end
+              end
+
+              # Un-specialize: the shared skill stays, and the agent falls back to it.
+              r.post "delete" do
+                check_csrf!
+                with_flash("Specialization removed — the agent falls back to the shared skill.") do
+                  dispatch(:delete_skill, { name: name, agent: id })
+                end
+                r.redirect("/studio/skills/#{Rack::Utils.escape(name)}")
+              end
+            end
           end
 
           # Agent memory. Scoped by tenant = agent id — the
@@ -384,18 +422,30 @@ module Studio
               view("skills")
             end
           end
-          # Enables/disables the skill on N agents at once.
+          # Enables/disables the skill on N agents at once, and marks it always-on for
+          # the ones that checked `eager`. Both are per-agent decisions about the same
+          # skill, so they are the same form and the same dispatch.
           r.post "agents" do
             check_csrf!
             agent_ids = Array(r.params["agent_ids"]).map(&:to_s)
+            eager_ids = Array(r.params["eager_ids"]).map(&:to_s)
             result = with_flash("Skill's agents updated.") do
-              dispatch(:set_skill_agents, { name: name, agent_ids: agent_ids })
+              dispatch(:set_skill_agents, { name: name, agent_ids: agent_ids, eager_ids: eager_ids })
             end
-            skipped = Array(result && result[:skipped_all])
-            if skipped.any?
-              flash["notice"] = "#{flash['notice']} — #{skipped.size} agent(s) with 'all' skills were left intact."
-            end
+            note_skipped(result)
             r.redirect("/studio/skills")
+          end
+
+          # Seeds a per-agent override from the SHARED body and opens it for editing.
+          # Seeded and not blank: specializing means "this, but for me" — starting from
+          # an empty editor is how the two versions drift apart on day one.
+          r.post "specialize" do
+            check_csrf!
+            agent_id = presence(r.params["agent_id"])
+            with_flash("Specialized for #{agent_id}.") do
+              dispatch(:write_skill, { name: name, agent: agent_id, content: skill_source(name) })
+            end
+            r.redirect("/studio/agents/#{Rack::Utils.escape(agent_id.to_s)}/skills/#{Rack::Utils.escape(name)}")
           end
         end
       end
@@ -928,6 +978,29 @@ end
       content.to_s
     end
 
+    # An activation label from the context trace, as the operator reads it:
+    # "gift-concierge · trigger:presente". The REASON is the point of the card — a
+    # bare list of names answers "was something injected", never "which one did I
+    # trigger". A label with no reason (a plugin-supplied body) shows just the name.
+    def skill_label(label)
+      return label.to_s unless label.is_a?(Hash)
+
+      name = label["name"].to_s
+      reason = label["reason"].to_s
+      reason.empty? ? name : "#{name} · #{reason}"
+    end
+
+    # One word for the whole turn, for the collapsed summary: the shared reason when
+    # every body arrived the same way, "mixed" when they did not. A turn CAN mix (the
+    # agent's eager set plus what this message triggered), which is exactly why the
+    # single per-turn `mode` this replaced was a lie waiting to happen.
+    def skill_mode(labels)
+      kinds = Array(labels).map { |l| (l.is_a?(Hash) ? l["reason"].to_s : "").split(":").first }.uniq
+      return "context" if kinds.empty? || kinds.any?(&:nil?) || kinds.include?("")
+
+      kinds.length == 1 ? kinds.first : "mixed"
+    end
+
     # ISO8601 → "HH:MM" for a transcript timestamp; "" when unparseable/absent.
     def short_time(iso)
       Time.parse(iso.to_s).strftime("%H:%M")
@@ -1063,10 +1136,23 @@ end
     # Master data for the Skills drill-down (list + authored badges + agents),
     # shared by every skill route so the master pane always renders. @selected
     # drives the detail pane (nil = none, "" = new, name = edit).
-    def load_skills_master
-      @skills = (insika[:skill_catalog]&.all || []).sort_by(&:name)
-      @stored = insika[:skill_store] ? insika[:skill_store].names : []
+    # `agent` renders the AGENT's view of the catalog: its own version of each shared
+    # skill, plus whatever is private to it. Absent = the shared catalog.
+    def load_skills_master(agent: nil)
+      catalog = insika[:skill_catalog]
+      @skills = (catalog ? catalog.all(agent: agent) : []).sort_by(&:name)
+      @stored = insika[:skill_store] ? insika[:skill_store].names(agent: agent) : []
       @agents = insika[:profile_source].all.sort_by(&:id)
+      # Which agents specialized THIS skill — the availability grid shows it, so an
+      # override is discoverable from the shared skill it overrides.
+      @specialized = insika[:skill_store] ? specialized_by : {}
+    end
+
+    # { skill name => [agent ids] } across every agent scope in the store.
+    def specialized_by
+      insika[:skill_store].agents.each_with_object({}) do |agent, acc|
+        insika[:skill_store].names(agent: agent).each { |name| (acc[name] ||= []) << agent }
+      end
     end
 
     def render_skills_index
@@ -1081,11 +1167,11 @@ end
     # Raw content for the editor: prefer the store (real SKILL.md), otherwise
     # reconstruct from what the catalog parsed (editing a disk skill
     # creates an override in the store — Store wins).
-    def skill_source(name)
-      raw = insika[:skill_store]&.get(name)
+    def skill_source(name, agent: nil)
+      raw = insika[:skill_store]&.get(name, agent: agent)
       return raw if raw
 
-      skill = insika[:skill_catalog]&.find(name)
+      skill = insika[:skill_catalog]&.find(name, agent: agent)
       return new_skill_template(name) unless skill
 
       "---\nname: #{skill.name}\ndescription: #{skill.description}\n---\n\n#{skill.body}\n"
@@ -1100,6 +1186,31 @@ end
     # list includes the name. Used to pre-check the matrix checkboxes.
     def skill_enabled_for?(profile, skill_name)
       profile.skills.nil? || Array(profile.skills).map(&:to_s).include?(skill_name.to_s)
+    end
+
+    # Is this skill always-on for this agent? `skills_eager` is nil/false (none), true
+    # (blanket) or a list — NOT allowlist semantics, so nil must read as false here.
+    def skill_eager_for?(profile, skill_name)
+      spec = profile.skills_eager
+      return true if [true, "true", "1", "yes", "on"].include?(spec)
+      return false if spec.nil? || spec == false
+
+      Array(spec).map(&:to_s).include?(skill_name.to_s)
+    end
+
+    # The two "left intact" outcomes of :set_skill_agents: an agent whose allowlist (or
+    # eager set) is "all" cannot have ONE name removed from it without materializing an
+    # explicit list, which would be a destructive surprise. Say so instead of silently
+    # doing nothing.
+    def note_skipped(result)
+      return unless result
+
+      parts = []
+      skipped = Array(result[:skipped_all])
+      eager = Array(result[:skipped_eager_all])
+      parts << "#{skipped.size} agent(s) with 'all' skills were left intact" if skipped.any?
+      parts << "#{eager.size} agent(s) with blanket eager were left intact" if eager.any?
+      flash["notice"] = "#{flash['notice']} — #{parts.join(', ')}." if parts.any?
     end
 
     # --- Tools matrix --------------------------------------------------------
