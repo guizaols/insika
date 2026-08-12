@@ -523,6 +523,10 @@ module Insika
     rescue PolicyDenied => e
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
       fail_task(task, e, stage: :policy)
+    rescue BudgetExceeded => e
+      # WS2 hard budget: a typed, retryable failure — the envelope reads
+      # budget_exceeded + retry_after (window roll), never a silent drop.
+      fail_task(task, e, stage: :budget)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT

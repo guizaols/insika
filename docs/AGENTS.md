@@ -395,6 +395,34 @@ per agent (blank inherits the platform value, `0` explicitly disables it).
 > *present but nil* reads as OFF for that agent — leave the key **absent** to
 > inherit. See [Security](SECURITY.md#edge-limits).
 
+#### Calendar budgets — the daily/monthly cost wall
+
+A third, opt-in ceiling for the *billing* shape the windows above cannot express:
+a spend cap over a CALENDAR day or month, per `(tenant, agent)` when
+multi-tenant. Data on the profile (DSL `budget` or the pack's `budget` key):
+
+```ruby
+budget daily: 100_000, monthly: 2_000_000, soft: false   # or soft: true
+```
+
+- Tokens count the **billed** spend — `input + output + cached + cache_creation`
+  (the cached prefix is the bulk of the bill, not an afterthought).
+- **Hard** (the default, `soft` absent/false): a turn that arrives with the
+  window's spend already at/over the cap **fails** with the typed
+  `Insika::BudgetExceeded` — the envelope reads `budget_exceeded` +
+  `retry_after` (seconds until the window rolls). It is NOT a customer reply; it
+  is an operator signal.
+- **Soft** (`soft: true`): the same turn RUNS — crossing the cap emits one
+  `budget_warning` event per window and injects a note into the context (the
+  model sees it, the transcript does not).
+- Either way, crossing `alert_at` (default `0.8` of the cap) fires the same
+  warning **before** the wall, once per window.
+
+> ⚠️ Unlike the ceilings above, the cap that counts is per **calendar** window —
+> a `daily` budget rolls at UTC midnight, a `monthly` one on the 1st, whatever
+> the sun. `agent_token_window` is a fixed seconds window and cannot express
+> "the day resets at midnight".
+
 ### Layer 5: Reasoning (thinking)
 
 Controls the model's thinking budget, resolved by precedence

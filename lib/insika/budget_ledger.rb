@@ -22,6 +22,7 @@ module Insika
   # idle one converges to 2.
   class BudgetLedger
     SCOPE = "budget_counters"
+    ALERT_SCOPE = "budget_alerts"
     DAY = 86_400
 
     def initialize(store:)
@@ -47,6 +48,34 @@ module Insika
       id = cell_id(tenant, agent)
       { daily: @store.get(SCOPE, key(id, daily_bucket(now))).to_i,
         monthly: @store.get(SCOPE, key(id, month_bucket(now))).to_i }
+    end
+
+    # Seconds until the window's bucket rolls over (the retry_after the
+    # enforcement quotes when a hard budget refuses a turn).
+    def reset_in(window, now: Time.now)
+      case window
+      when :daily then DAY - (now.to_i % DAY)
+      when :monthly then (Time.utc(now.year, now.month + 1, 1) - now).to_i
+      end
+    end
+
+    # "1× per window" alert markers (the soft enforcement's event): a flag per
+    # (id, window, bucket) so a budget that stays over the threshold cannot
+    # spam one event per turn. Marked/read in the same transaction discipline.
+    # -> bool: had the window already been marked?
+    def mark_alert(tenant:, agent:, window:, now: Time.now)
+      id = cell_id(tenant, agent)
+      flag = alert_key(id, window, now)
+      @store.transaction do
+        return true unless @store.get(ALERT_SCOPE, flag).nil?
+
+        @store.set(ALERT_SCOPE, flag, 1)
+        false
+      end
+    end
+
+    def alerted?(tenant:, agent:, window:, now: Time.now)
+      !@store.get(ALERT_SCOPE, alert_key(cell_id(tenant, agent), window, now)).nil?
     end
 
     private
@@ -75,6 +104,13 @@ module Insika
 
     def key(id, bucket)
       "#{id}:#{bucket}"
+    end
+
+    # One alert flag per (id, window, calendar bucket): daily cells are keyed
+    # by day, monthly by (year*12+month) — a flag dies with its window.
+    def alert_key(id, window, now)
+      bucket = window == :monthly ? month_bucket(now) : daily_bucket(now)
+      "#{id}:#{window}:#{bucket}"
     end
   end
 end

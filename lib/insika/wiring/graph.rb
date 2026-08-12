@@ -46,6 +46,7 @@ module Insika
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
         token_store          = Insika::TokenStore.new(store: backend)
+        budget_ledger        = Insika::BudgetLedger.new(store: backend)
         # the two durable halves of a Shape B channel — the
         # replies still owed to a platform, and the retry window that stops a
         # redelivered webhook from becoming a second turn. Built unconditionally
@@ -73,7 +74,7 @@ module Insika
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
           memory_store: memory_store, refinement_store: refinement_store,
-          token_store: token_store,
+          token_store: token_store, budget_ledger: budget_ledger,
           outbox_store: outbox_store, inbound_log: inbound_log,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -153,7 +154,7 @@ module Insika
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
           outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
-          token_store: spine.token_store,
+          token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
           code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
@@ -206,7 +207,7 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :token_store, :outbox_store, :inbound_log, :code_tool_registry,
+        :token_store, :budget_ledger, :outbox_store, :inbound_log, :code_tool_registry,
         :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -218,7 +219,7 @@ module Insika
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
         :memory_store, :refinement_store, :outbox_store, :inbound_log, :token_store,
-        :channel_registry, :channel_delivery,
+        :budget_ledger, :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

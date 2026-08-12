@@ -68,8 +68,13 @@ module Insika
 
     # Production edge. No SettingsStore at the base, so only an agent
     # that carries its own limits (chat_rate_limit / agent_token_ceiling) is
-    # limited; without them the link is pass-through (parity).
-    EDGE_LIMITER = Insika::EdgeLimiter.new(ledger: Insika::UsageLedger.new(store: BACKEND))
+    # limited; without them the link is pass-through (parity). WS2 calendar
+    # budgets (AgentProfile#budget) ride the BudgetLedger + the event stream
+    # (budget_warning).
+    EDGE_LIMITER = Insika::EdgeLimiter.new(
+      ledger: Insika::UsageLedger.new(store: BACKEND),
+      budget_ledger: SPINE.budget_ledger, event_stream: SPINE.event_stream
+    )
 
     # Agent profiles (data-driven). EMPTY at the base — a concrete deployment (or the
     # smoke wiring) registers the profiles.

@@ -239,7 +239,8 @@ module Insika
           # credential leak wearing the look of isolation.
           guardrails: Insika::Safety::Factory.new(settings_store: settings_store, llm: @llm),
           edge_limiter: Insika::EdgeLimiter.new(
-            ledger: Insika::UsageLedger.new(store: backend), settings_store: settings_store
+            ledger: Insika::UsageLedger.new(store: backend), settings_store: settings_store,
+            budget_ledger: spine.budget_ledger, event_stream: spine.event_stream
           )
         }
       end

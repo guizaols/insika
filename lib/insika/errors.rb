@@ -30,7 +30,7 @@ module Insika
     end
   end
 
-  # A provider/transport failure, wrapped by ProviderErrorClassifier with an
+    # A provider/transport failure, wrapped by ProviderErrorClassifier with an
   # ACTION classification (B9). The fields ride in the task's error record and
   # the :task_failed event so the client envelope can tell fatal from
   # retryable and quote the provider's own retry_after (A8). A bare
@@ -49,6 +49,24 @@ module Insika
     # the additive envelope fields, compacted — nil retry_after stays absent.
     def classification
       { kind: kind, retryable: retryable, retry_after: retry_after }.compact
+    end
+  end
+
+  # The hard budget refused the turn (WS2): the (tenant, agent) spend in the
+  # window already met its cap BEFORE the turn ran. A typed, retryable failure —
+  # the envelope reads `budget_exceeded` + `retry_after` (seconds until the
+  # window rolls) — never a silent drop. `window` is :daily | :monthly.
+  class BudgetExceeded < Error
+    attr_reader :window, :retry_after
+
+    def initialize(message = nil, window: nil, retry_after: nil)
+      @window = window
+      @retry_after = retry_after
+      super(message || "budget exceeded (#{window})")
+    end
+
+    def classification
+      { kind: :budget_exceeded, retryable: true, retry_after: retry_after }.compact
     end
   end
   class StoreError     < Error; end  # persistence backend failed -> task :failed

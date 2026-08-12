@@ -75,6 +75,16 @@ module Insika
     :params,                          # LLM generation params: a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
     #                                   stage 5. {} = provider defaults (parity).
+    :budget,                          # spend caps per (tenant, agent) over
+    #                                   CALENDAR windows (WS2): { "daily" => int,
+    #                                   "monthly" => int, "soft" => bool, "alert_at" => 0.8 }.
+    #                                   "soft": true (default) crosses the cap and still runs
+    #                                   (one budget_warning event per window + a note in the
+    #                                   context); "soft": false makes the cap a hard wall —
+    #                                   the turn fails with Insika::BudgetExceeded and the
+    #                                   envelope quotes `budget_exceeded` + retry_after.
+    #                                   Tokens count the billed spend (input+output+cached+
+    #                                   cache_creation). nil/absent = no budget (parity).
     :model_policy,                    # governance of WHICH models the agent may use:
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
@@ -159,7 +169,8 @@ module Insika
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
-                   refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {})
+                   refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
+                   budget: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -187,7 +198,8 @@ module Insika
         # symbol/string mix there would be a silent miss.
         capabilities_declared: Array(capabilities_declared).map(&:to_s),
         edge_stream: Coercion.deep_stringify(edge_stream || {}),
-        metadata: Coercion.deep_stringify(metadata || {})
+        metadata: Coercion.deep_stringify(metadata || {}),
+        budget: Coercion.deep_stringify(budget)
       )
     end
 
