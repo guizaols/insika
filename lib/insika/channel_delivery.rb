@@ -130,14 +130,17 @@ module Insika
     def emit(delivery)
       return unless @event_stream
 
-      @event_stream.emit(Insika::Event.new(
-                           type: :channel_delivered,
-                           data: { channel: delivery.channel, outbox_id: delivery.id,
-                                   status: delivery.status.to_s, attempts: delivery.attempts,
-                                   error: delivery.last_error },
-                           meta: { task_id: delivery.task_id, session_id: delivery.session_id,
-                                   at: Time.now.utc.iso8601 }
-                         ))
+      data = { channel: delivery.channel, outbox_id: delivery.id,
+               status: delivery.status.to_s, attempts: delivery.attempts,
+               error: delivery.last_error }
+      meta = { task_id: delivery.task_id, session_id: delivery.session_id,
+               at: Time.now.utc.iso8601 }
+      # :delivery_failed is the ALERT face of a failed delivery (WS6) — emitted
+      # alongside :channel_delivered so the delivery audit stream is unchanged.
+      @event_stream.emit(Insika::Event.new(type: :channel_delivered, data: data, meta: meta))
+      if delivery.status == :failed
+        @event_stream.emit(Insika::Event.new(type: :delivery_failed, data: data, meta: meta))
+      end
     end
 
     # Async when there is a reactor (production: the retry must not block the

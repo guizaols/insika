@@ -33,6 +33,7 @@ module Insika
     # policy:   the profile's reliability data (string keys) — the caller skips
     #           this coordinator entirely when nil (parity).
     # tenant:   the command tenant (breaker scoping; nil = platform).
+    # agent:    the agent id (event attribution — WS6 alerts read it).
     # selection: the resolved primary ModelSelection.
     # chain:    [{ model:, provider: }] fallback candidates (profile's first,
     #           then the platform's resolved fallbacks).
@@ -41,19 +42,21 @@ module Insika
     #
     # -> the successful response. Raises CircuitOpenError (primary open),
     # or the last retryable error when every node exhausted its retries.
-    def call(policy:, tenant:, selection:, chain:, &attempt)
+    def call(policy:, tenant:, agent: nil, selection:, chain:, &attempt)
+      @agent = agent # event attribution (WF6 alerts) for THIS run
       nodes = ([selection] + Array(chain)).map { |node| { selection: node, tries: 0 } }
       retries = [policy["retries"].to_i, 0].max
       breaker = breaker_config(policy)
       timeout = [policy["timeout"].to_i, 1].max
+      # declaraed HERE (not inside a block) so the post-loop `raise` sees the
+      # method-local binding — a first assignment inside a block would not leak.
+      last_error = nil
 
       # Fail-fast BEFORE any provider call: the PRIMARY's circuit open means
       # this provider family is known-dead — the turn dies in ms.
       if breaker && breaker_open?(tenant, selection, breaker)
         raise circuit_open(tenant, selection, breaker)
       end
-
-      last_error = nil
       nodes.each do |node|
         selection = node[:selection]
         next if breaker && breaker_open?(tenant, selection, breaker)
@@ -61,7 +64,6 @@ module Insika
         attempts = retries + 1
         attempts.times do |index|
           node[:tries] += 1
-          last_error = nil
           begin
             response = with_attempt_timeout(timeout) { yield selection, node[:tries] }
             @circuit_store.record_success(tenant: tenant, ref: ref_of(selection)) if breaker
@@ -118,12 +120,14 @@ module Insika
     def record_failure(tenant, selection, breaker, error)
       return unless breaker
 
-      @circuit_store.record_failure(
+      tripped = @circuit_store.record_failure(
         tenant: tenant, ref: ref_of(selection),
         after: breaker[:after], within: breaker[:within]
       )
       emit(:provider_failure,
-           { ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
+           { agent: @agent, ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
+      # the failure that TRIPPED the circuit is itself an alert (WS6).
+      emit(:breaker_open, { agent: @agent, ref: ref_of(selection), tenant: tenant }) if tripped == :open
     end
 
     def kind_of(error) = ProviderErrorClassifier.classify(error).kind

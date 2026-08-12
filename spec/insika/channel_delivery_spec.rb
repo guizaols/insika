@@ -166,6 +166,19 @@ RSpec.describe Insika::ChannelDelivery do
       expect(event.meta[:task_id]).to eq("t-1")
     end
 
+    it "a FAILED delivery also emits :delivery_failed (the WS6 alert face)" do
+      failing = DeliveryChannelDouble.new(500)
+      registry = Insika::ChannelRegistry.new
+      registry.register("relay", failing)
+      d = dispatcher(channels: registry).record(task: task, channel_id: "relay", content: "pronto")
+      dispatcher(channels: registry).deliver(d.id)
+
+      types = events.emitted.map(&:type)
+      expect(types).to include(:channel_delivered, :delivery_failed)
+      alert = events.emitted.find { |e| e.type == :delivery_failed }
+      expect(alert.data).to include(channel: "relay", status: "failed")
+    end
+
     # Records and delivers through a registry holding just this channel, so each
     # example scripts its own sequence of statuses.
     def deliver_through(channel)

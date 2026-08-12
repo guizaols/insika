@@ -226,6 +226,11 @@ module Insika
         (@config[:reliability] ||= {}).merge!(hash.transform_keys(&:to_s))
       end
 
+      # Operator alert delivery (WS6): POST this agent's budget_warning /
+      # breaker_open / delivery_failed events to the webhook, as JSON.
+      #   alerts webhook: "https://ops.example.com/insika-alerts"
+      def alerts(hash) = (@config[:alerts] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Mechanical tool-result dedupe in the replayed history
       # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
       # SEES: repeated identical tool results collapse to a back-reference.

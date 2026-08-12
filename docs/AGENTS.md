@@ -455,6 +455,26 @@ reliability retries: 2, backoff: "exponential",
 Absent `reliability` = the plain single attempt, byte-for-byte today's
 behavior.
 
+#### Operator alerts — the webhook (WS6)
+
+Three operational events — `budget_warning`, `breaker_open`, `delivery_failed` —
+can be answered per agent with a webhook:
+
+```ruby
+alerts webhook: "https://ops.example.com/insika-alerts"
+```
+
+When present, each such event is POSTed to the URL as JSON (the event's
+type/data/meta, plus the agent). Delivery rides the same outbox + claim +
+bounded-retry pipeline as channel answers — at-most-once, crashed deliveries
+recovered at boot. The engine transports the event and does not interpret it: a
+Slack/CRM adapter is the consumer's. Absent `alerts` = nothing is sent.
+
+Separately, with `INSIKA_TURN_TIMING`, the provider's **live TTFB** is carried in
+the streaming envelope: the first content chunk emits an `insika.ttft` frame
+(`ttft_ms`) on `/v1/responses`, alongside the per-turn `timing` breakdown on the
+final `response.completed`. Additive and opt-in — absent by default.
+
 ### Layer 5: Reasoning (thinking)
 
 Controls the model's thinking budget, resolved by precedence

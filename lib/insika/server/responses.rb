@@ -114,6 +114,12 @@ module Insika
           # Studio + the trace. Explicit (not a fall-through) to keep the closed
           # catalog honest.
           nil
+        when :ttft
+          # the live TTFB signal (WS6, INSIKA_TURN_TIMING opt-in): the provider's
+          # ms-to-first-token, emitted when the first content chunk arrives.
+          # Namespaced insika.* — no OpenAI Responses counterpart; unknown types
+          # are ignored, the safe failure.
+          sse("insika.ttft", { type: "insika.ttft", ttft_ms: event.data[:ttft_ms].to_i })
         end
       end
 

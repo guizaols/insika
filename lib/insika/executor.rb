@@ -119,6 +119,11 @@ module Insika
     # #turn_parent).
     attr_accessor :tick
 
+    # The WS6 alert dispatcher: answers budget_warning / breaker_open /
+    # delivery_failed with a durable webhook delivery. Started as a child of
+    # the turn supervisor in serving mode (like the tick); nil = no alerts.
+    attr_accessor :alert_dispatcher
+
     # closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
     # `:queued` (durable — the next boot's recovery replays it) instead of
@@ -638,6 +643,9 @@ module Insika
       # the serving reactor in every arm with no arm edits, and dies with the
       # supervisor at shutdown (after Shutdown's drain, like any turn).
       @tick&.start(parent: @supervisor)
+      # the alert dispatcher (WS6) lives on the same supervisor: its consumer
+      # answers every alert event for as long as the process serves.
+      @alert_dispatcher&.start(parent: @supervisor)
       @supervisor
     end
 
@@ -1008,7 +1016,7 @@ module Insika
       attempt_asked = nil
       primary = state.model_selection
       response = @reliability.call(
-        policy: policy, tenant: task_tenant(task),
+        policy: policy, tenant: task_tenant(task), agent: state.profile.id.to_s,
         selection: primary, chain: reliability_chain(state)
       ) do |selection, tries|
         first_attempt = state.chat && selection == primary && tries == 1
@@ -1101,6 +1109,8 @@ module Insika
     end
 
     # The ask itself, chunk-by-chunk (WS3 attempts and the plain path share it).
+    # With INSIKA_TURN_TIMING the FIRST content chunk also emits the live
+    # :ttft event — the streaming envelope's TTFB signal (WS6), additive.
     def ask_on(task, state, chat, output, timing)
       public_thinking = state.profile.stream_public?(:thinking)
       chat.ask(state.message) do |chunk|
@@ -1108,8 +1118,24 @@ module Insika
         next unless chunk.content
 
         timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
+        emit_ttft(task, timing) if timing
         output.push(chunk.content)
       end
+    end
+
+    # The provider's TTFB as a live event (data: ttft_ms) — only under
+    # INSIKA_TURN_TIMING, so absent by default (parity).
+    def emit_ttft(task, timing)
+      ttft = timing.to_h[:ttft_ms]
+      return if ttft.nil?
+
+      @event_stream.emit(Insika::Event.new(
+                           type: :ttft, data: { ttft_ms: ttft },
+                           meta: { task_id: task.id, session_id: task.session_id,
+                                   at: Time.now.utc.iso8601 }
+                         ))
+    rescue StandardError
+      nil
     end
 
     # wires the tool-batch boundary that lets a message which arrived
