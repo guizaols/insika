@@ -423,6 +423,38 @@ budget daily: 100_000, monthly: 2_000_000, soft: false   # or soft: true
 > the sun. `agent_token_window` is a fixed seconds window and cannot express
 > "the day resets at midnight".
 
+#### Reliability — retries, fallback, circuit breaker (WS3)
+
+The provider interaction is a single attempt by default (RubyLLM's own 2
+transport retries aside). For a store that cannot have a dead model take the
+chat down, the reliability policy is DATA on the profile:
+
+```ruby
+reliability retries: 2, backoff: "exponential",
+            fallback: ["openai/gpt-4o-mini"],
+            circuit_breaker: { after: 10, within: 60, cooldown: 300 }
+```
+
+- **Retries** — transient failures (`:retryable` / `:rate_limited_*` per the
+  error classification) retry with exponential backoff, up to `retries`.
+  A `:fatal` (auth, billing, bad request) is NEVER retried or rotated. Each
+  attempt runs on a fresh chat — the customer-visible answer comes only from
+  the attempt that returns.
+- **Fallback** — after a node's retries, the turn ROTATES to the next model in
+  the chain: the profile's `fallback` refs first, then the platform
+  `fallback_models`. The turn's usage is attributed to the model that actually
+  spoke (`model_source: "fallback"`).
+- **Circuit breaker** — per `(tenant, provider/model)`: `after` failures within
+  `within` seconds open the circuit; while open, the turn fail-fasts with the
+  typed `circuit_open` + `retry_after` (remaining cooldown) and the provider is
+  never touched. After `cooldown` a half-open trial closes the circuit on
+  success or reopens it on failure.
+- **`timeout`** — per-attempt ceiling (default 30s), counted as a retryable
+  failure.
+
+Absent `reliability` = the plain single attempt, byte-for-byte today's
+behavior.
+
 ### Layer 5: Reasoning (thinking)
 
 Controls the model's thinking budget, resolved by precedence

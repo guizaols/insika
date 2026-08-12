@@ -243,6 +243,28 @@ RSpec.describe Insika::DSL do
       expect(import_and_read(dsl.to_pack).budget).to eq("daily" => 100_000, "soft" => false)
       expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
     end
+
+    it "the reliability knobs are DATA on the pack (WS3)" do
+      dsl = Insika.agent("bia4") do
+        model "deepseek-chat"
+        reliability retries: 2, fallback: ["openai/gpt-4o-mini"]
+        reliability circuit_breaker: { after: 10, within: 60, cooldown: 300 }
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia4", model: "deepseek-chat",
+                  reliability: { "retries" => 2, "fallback" => ["openai/gpt-4o-mini"],
+                                 "circuit_breaker" => { "after" => 10, "within" => 60,
+                                                        "cooldown" => 300 } },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.reliability).to eq(
+        "retries" => 2, "fallback" => ["openai/gpt-4o-mini"],
+        "circuit_breaker" => { "after" => 10, "within" => 60, "cooldown" => 300 }
+      )
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

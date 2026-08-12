@@ -111,6 +111,7 @@ module Insika
         params: h[:params] || {},
         model_policy: h[:model_policy],
         budget: h[:budget],
+        reliability: h[:reliability],
         # guardrails: a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.
         guardrails: h[:guardrails],

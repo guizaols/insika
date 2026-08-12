@@ -40,6 +40,21 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.prompt_caching).to be_nil # R3: opt-in, off by default
       expect(profile.tool_output_compression).to be_nil # A3/C3: opt-in, off by default
       expect(profile.budget).to be_nil # WS2: no budget (parity)
+      expect(profile.reliability).to be_nil # WS3: plain single ask (parity)
+    end
+
+    it "reliability is normalized to string keys (the data shape the edge reads)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        reliability: { retries: 3, backoff: "exponential",
+                       fallback: ["openai/gpt-4o-mini"],
+                       circuit_breaker: { after: 10, within: 60, cooldown: 300 } }
+      )
+      expect(profile.reliability).to eq(
+        "retries" => 3, "backoff" => "exponential",
+        "fallback" => ["openai/gpt-4o-mini"],
+        "circuit_breaker" => { "after" => 10, "within" => 60, "cooldown" => 300 }
+      )
     end
 
     it "budget is normalized to string keys (the data shape the edge reads)" do

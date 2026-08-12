@@ -85,6 +85,18 @@ module Insika
     #                                   envelope quotes `budget_exceeded` + retry_after.
     #                                   Tokens count the billed spend (input+output+cached+
     #                                   cache_creation). nil/absent = no budget (parity).
+    :reliability,                     # the provider-interaction reliability policy (WS3):
+    #                                   { "retries" => 3, "backoff" => "exponential",
+    #                                   "fallback" => ["gpt-4o-mini", ...],
+    #                                   "circuit_breaker" => { "after" => 10, "within" => 60,
+    #                                   "cooldown" => 300 }, "timeout" => 30 }. Data, never
+    #                                   DSL: retries + exponential backoff on :retryable /
+    #                                   :rate_limited_* failures (never :fatal), mid-turn
+    #                                   rotation across the fallback chain (profile's first,
+    #                                   then the platform's resolved fallbacks), and a circuit
+    #                                   breaker per (tenant, provider/model) that fail-fasts
+    #                                   with circuit_open + retry_after once the window count
+    #                                   trips. nil/absent = the plain single attempt (parity).
     :model_policy,                    # governance of WHICH models the agent may use:
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
@@ -170,7 +182,7 @@ module Insika
                    prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
-                   budget: nil)
+                   budget: nil, reliability: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -199,7 +211,8 @@ module Insika
         capabilities_declared: Array(capabilities_declared).map(&:to_s),
         edge_stream: Coercion.deep_stringify(edge_stream || {}),
         metadata: Coercion.deep_stringify(metadata || {}),
-        budget: Coercion.deep_stringify(budget)
+        budget: Coercion.deep_stringify(budget),
+        reliability: Coercion.deep_stringify(reliability)
       )
     end
 
