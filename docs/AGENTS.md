@@ -336,7 +336,10 @@ For tools, a paired deny list (`tools_deny`) **always wins**, and
 
 Three capabilities invert the default — `nil`/absent means **OFF**, not "all":
 `subagents`, `memory`, and `guardrails` (each defaults to off or a conservative
-setting, never "everything on").
+setting, never "everything on"). `tool_output_compression` is a fourth: opt-in
+mechanical dedupe of repeated tool results in the history (see
+[Context](CONTEXT.md#compaction-is-not-wired--except-the-mechanical-dedupe)),
+off by default because it changes what the model sees.
 
 ### Declaring what this deployment has
 

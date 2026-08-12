@@ -158,6 +158,55 @@ RSpec.describe Insika::Executor do
     end
   end
 
+  describe "provider error classification (B9)" do
+    def rate_limit_error(retry_after:)
+      response = Object.new
+      response.define_singleton_method(:status) { 429 }
+      response.define_singleton_method(:headers) { { "retry-after" => retry_after } }
+      response.define_singleton_method(:body) { "rate limited" }
+      RubyLLM::RateLimitError.new(response, "rate limited")
+    end
+
+    it "wraps a provider-family error to :ruby_llm carrying kind/retryable/retry_after" do
+      allow(executor).to receive(:run_pipeline).and_raise(rate_limit_error(retry_after: "120"))
+      task = create_task
+      collected = []
+
+      Sync do |parent|
+        sub = event_stream.subscribe(task_id: "t")
+        consumer = parent.async { sub.each { |e| collected << e } }
+        expect { executor.spawn(task, profile: nil); live_actor("t")&.wait }.not_to raise_error
+        sub.close
+        consumer.wait
+      end
+
+      stored = task_store.find("t")
+      expect(stored.status).to eq(:failed)
+      expect(stored.executions.last.error).to include(
+        "class" => "Insika::ProviderError",
+        "message" => "rate limited",
+        "kind" => "rate_limited_long",
+        "retryable" => true,
+        "retry_after" => 120
+      )
+      failed = collected.find { |e| e.type == :task_failed }
+      expect(failed.data).to include(error: "Insika::ProviderError", message: "rate limited",
+                                     kind: :rate_limited_long, retryable: true, retry_after: 120)
+    end
+
+    it "a non-provider error stays :unknown with no classification fields" do
+      allow(executor).to receive(:run_pipeline).and_raise(RuntimeError.new("boom"))
+      task = create_task
+
+      Sync { executor.spawn(task, profile: nil); live_actor("t")&.wait }
+
+      stored = task_store.find("t")
+      expect(stored.executions.last.error).to include("class" => "RuntimeError")
+      expect(stored.executions.last.error).not_to have_key("kind")
+      expect(stored.executions.last.error).not_to have_key("retryable")
+    end
+  end
+
   describe "duplicate spawn" do
     it "raises ValidationError if the task is already running" do
       gate = Async::Condition.new

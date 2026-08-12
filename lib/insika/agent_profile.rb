@@ -63,6 +63,15 @@ module Insika
     #                                   a context provider injecting volatile content into
     #                                   :system turns every turn into a paid cache WRITE with
     #                                   no read hit. Enable only for stable-system agents.
+    :tool_output_compression,          # MECHANICAL tool-result dedupe in the replayed
+    #                                   history (A3/C3): nil/false = OFF (parity); true = ON.
+    #                                   Same opt-in as `memory`. When ON, the history the
+    #                                   Session provider seeds replaces byte-identical repeated
+    #                                   tool results with a compact back-reference (first
+    #                                   occurrence stays full) — no LLM involved. CHANGES WHAT
+    #                                   THE MODEL SEES: an older full result is only the first
+    #                                   occurrence; a model that wants an older detail re-calls
+    #                                   the tool. Cheap half of compaction for bloated histories.
     :params,                          # LLM generation params: a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
     #                                   stage 5. {} = provider defaults (parity).
@@ -148,7 +157,7 @@ module Insika
                    skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
-                   prompt_caching: nil,
+                   prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {})
       new(
@@ -164,7 +173,7 @@ module Insika
         # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
         subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
         tools_deferred: tools_deferred, memory: memory,
-        prompt_caching: prompt_caching,
+        prompt_caching: prompt_caching, tool_output_compression: tool_output_compression,
         # The free-form hashes arrive with symbol keys (internal build) OR string
         # keys (StoredProfileSource JSON round-trip). Normalize to string keys ONCE
         # here — the single front door every profile passes through — so no reader

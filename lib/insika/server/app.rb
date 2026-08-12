@@ -736,7 +736,11 @@ module Insika
           events << event.to_h
           case event.type
           when :content        then content << event.data[:delta].to_s
-          when :task_failed    then error = { class: event.data[:error], message: event.data[:message] }
+          when :task_failed
+            error = { class: event.data[:error], message: event.data[:message] }
+            # A8: the classification rides through when the executor wrapped
+            # the failure (ProviderError) — additive for every other terminal.
+            error = error.merge(event.data.slice(:kind, :retryable, :retry_after))
           when :task_cancelled then error = { class: "Insika::CancelledError", message: "task cancelled" }
           when :error          then error ||= { class: nil, message: event.data[:message] }
           end
@@ -839,9 +843,15 @@ module Insika
         rescue StandardError
           nil
         end
-        json_response(500, { error: { class: error.class.name, message: error.message,
-                                      retryable: true, retry_after: RETRY_AFTER_SECONDS,
-                                      error_ref: ref } })
+        # B9/A8: a classified ProviderError quotes its own retry guidance;
+        # everything else keeps the blanket retry (the caller may have died mid
+        # request — a bounded wait is the safe default).
+        retryable = error.respond_to?(:retryable) && !error.retryable.nil? ? error.retryable : true
+        retry_after = error.respond_to?(:retry_after) && error.retry_after ? error.retry_after : RETRY_AFTER_SECONDS
+        body = { error: { class: error.class.name, message: error.message,
+                           retryable: retryable, retry_after: retry_after, error_ref: ref } }
+        body[:error][:kind] = error.kind if error.respond_to?(:kind) && error.kind
+        json_response(500, body)
       end
 
       def not_found

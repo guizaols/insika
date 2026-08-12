@@ -104,6 +104,7 @@ module Insika
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
         prompt_caching: h[:prompt_caching],
+        tool_output_compression: h[:tool_output_compression],
         # params/model_policy: the resolver tolerates string keys from
         # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no
         # re-symbolization needed here.

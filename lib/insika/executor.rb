@@ -539,7 +539,15 @@ module Insika
     rescue TimeoutError => e
       fail_task(task, e, stage: e.stage)
     rescue StandardError => e
-      fail_task(task, e, stage: :unknown)
+      # A provider/transport failure is NOT an :unknown bug: wrap it with its
+      # action classification (B9) so the envelope can quote retryable and the
+      # provider's own retry_after (A8). The classifier is class-name based —
+      # the :ruby_llm stage stays reachable even under the smoke-shim's fake.
+      if ProviderErrorClassifier.provider_error?(e)
+        fail_task(task, ProviderErrorClassifier.wrap(e), stage: :ruby_llm)
+      else
+        fail_task(task, e, stage: :unknown)
+      end
     ensure
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
       # Deregistered FIRST on purpose: from here on the `steer` door finds no actor for
@@ -659,9 +667,16 @@ module Insika
         return nil
       end
 
-      @task_store.transition(task.id, to: :failed,
-                                      error: { class: error.class.name, message: error.message, stage: stage })
-      emit(:task_failed, { task_id: task.id, error: error.class.name, message: error.message }, task: task)
+      # The task's error record and the :task_failed event both carry the
+      # classification when the failure is a wrapped ProviderError (B9/A8):
+      # additive fields, absent for every other error.
+      classification = error.respond_to?(:classification) ? error.classification : {}
+      spec = { class: error.class.name, message: error.message, stage: stage }
+      spec = spec.merge(classification) unless classification.empty?
+      @task_store.transition(task.id, to: :failed, error: spec)
+      data = { task_id: task.id, error: error.class.name, message: error.message }
+      data = data.merge(classification) unless classification.empty?
+      emit(:task_failed, data, task: task)
       # a FAILED delegation child still delivers — the parent
       # receives an error note as a new turn (never left hanging).
       finalize_delegation(task)

@@ -49,7 +49,7 @@ prefix cache below).
 > returns empty turns, raise `context_budget` (e.g. to `60000`) before looking
 > anywhere else. See [Agents](AGENTS.md#default-limits).
 
-### Compaction is not wired
+### Compaction is not wired — except the mechanical dedupe
 
 There is a settings stub for LLM-summarization compaction (`enabled: false`,
 `keep_last`, a reserved utility-model slot), but **nothing consumes it today**
@@ -57,6 +57,16 @@ There is a settings stub for LLM-summarization compaction (`enabled: false`,
 switched on by accident. Size is managed purely by hard budget eviction.
 Do not rely on compaction to shrink a bloated agent: tune `context_budget` and
 keep the identity lean.
+
+One cheap half **is** wired, opt-in per agent: `tool_output_compression` (DSL
+`tool_output_compression`, or `"tool_output_compression": true` in the pack).
+When on, byte-identical repeated **tool results** in the replayed history
+collapse to a compact back-reference (the first occurrence stays full, with a
+one-line summary) — no LLM involved. It changes what the model sees, so it is
+never a default: an older detail is only in the first occurrence, and a model
+that wants it re-calls the tool. Reach for it when a tool keeps returning the
+same body (a catalog page, a status) and history is the fragment blowing the
+budget first.
 
 > The **Studio session screen** shows what the builder assembled per turn —
 > tokens per category (identity, history, memory, …), the tools-schema estimate

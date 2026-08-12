@@ -8,6 +8,7 @@ RSpec.describe "Insika ProfileSource" do
       id: "bia", model: "deepseek-chat", provider: :deepseek,
       tools_allow: %w[menu calc], skills: %w[pedido],
       policies: %i[tool_allowlist skill_allowlist], memory: true,
+      tool_output_compression: true,
       limits: { tool_timeout: 30, turn_timeout: 120 }
     )
   end
@@ -43,6 +44,7 @@ RSpec.describe "Insika ProfileSource" do
       expect(got.tools_allow).to eq(%w[menu calc])
       expect(got.skills).to eq(%w[pedido])
       expect(got.memory).to be(true)
+      expect(got.tool_output_compression).to be(true) # survives the JSON round-trip
       # limits gets the defaults on build (merge)
       expect(got.limits[:max_tool_calls]).to eq(Insika::AgentProfile::DEFAULT_LIMITS[:max_tool_calls])
     end

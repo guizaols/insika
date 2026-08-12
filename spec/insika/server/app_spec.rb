@@ -472,6 +472,30 @@ RSpec.describe Insika::Server::App do
       expect(status).to eq(504)
     end
 
+    it "A8: a classified ProviderError quotes its own retry guidance on the 500 envelope" do
+      error = Insika::ProviderError.new("quota", kind: :rate_limited_long,
+                                                 retryable: true, retry_after: 300)
+      app = build_app(bus: ServerBusDouble.new { raise error })
+
+      status, _h, resp = call(app, "POST", "/v1/commands/x", body: "{}")
+
+      expect(status).to eq(500)
+      envelope = json_body(resp)["error"]
+      expect(envelope["kind"]).to eq("rate_limited_long")
+      expect(envelope["retryable"]).to be(true)
+      expect(envelope["retry_after"]).to eq(300)
+    end
+
+    it "B9: a fatal ProviderError is not retryable (no blanket retry guidance)" do
+      error = Insika::ProviderError.new("auth", kind: :fatal, retryable: false)
+      app = build_app(bus: ServerBusDouble.new { raise error })
+
+      status, _h, resp = call(app, "POST", "/v1/commands/x", body: "{}")
+
+      expect(status).to eq(500)
+      expect(json_body(resp)["error"]["retryable"]).to be(false)
+    end
+
     it "no App path produces a 403 status" do
       source = File.read(File.expand_path("../../../lib/insika/server/app.rb", __dir__))
       expect(source).not_to match(/\b403\b/)
@@ -504,6 +528,32 @@ RSpec.describe Insika::Server::App do
       body = json_body(resp)
       expect(status).to eq(200)
       expect(body["error"]).to eq("class" => "Insika::ProviderError", "message" => "x")
+    end
+
+    it "A8: a classified :task_failed carries kind/retryable/retry_after in the envelope" do
+      events = [event(:task_failed, { error: "Insika::ProviderError", message: "x",
+                                      kind: :rate_limited_long, retryable: true, retry_after: 120 })]
+      app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
+                      event_stream: ServerEventStreamDouble.new(events))
+
+      _status, _h, resp = call(app, "POST", "/v1/messages?stream=false", body: "{}")
+
+      body = json_body(resp)
+      expect(body["error"]).to include(
+        "class" => "Insika::ProviderError", "message" => "x",
+        "kind" => "rate_limited_long", "retryable" => true, "retry_after" => 120
+      )
+    end
+
+    it "A8: an unclassified failure stays a bare class+message (no invented guidance)" do
+      events = [event(:task_failed, { error: "Insika::ProviderError", message: "x" })]
+      app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },
+                      event_stream: ServerEventStreamDouble.new(events))
+
+      _status, _h, resp = call(app, "POST", "/v1/messages?stream=false", body: "{}")
+
+      body = json_body(resp)
+      expect(body["error"].keys).to contain_exactly("class", "message")
     end
 
     it "reports :task_cancelled as error (never success)" do

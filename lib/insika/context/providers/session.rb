@@ -17,6 +17,12 @@ module Insika
           messages = transcript_for(request)
           return [] if messages.nil? || messages.empty?
 
+          # A3/C3 opt-in: identical tool results in the transcript collapse to a
+          # back-reference (the cheap half of compaction). CHANGES WHAT THE MODEL
+          # SEES — hence the profile flag, never a default. Applied BEFORE the
+          # eviction-unit grouping so a cycle's results are already slim.
+          messages = compress_history(messages, request)
+
           # 1 fragment per EVICTION UNIT (R1): a plain message, OR an
           # assistant-with-tool_calls together with its tool results. Grouping at
           # the fragment level means the budget cut (apply_budget) drops a whole
@@ -72,7 +78,16 @@ module Insika
           h
         end
 
-        def tool_calls?(msg) = msg[:tool_calls] && !Array(msg[:tool_calls]).empty?
+                def tool_calls?(msg) = msg[:tool_calls] && !Array(msg[:tool_calls]).empty?
+
+        # The compression is opt-in per agent (profile data, config-over-code):
+        # absent/off -> the transcript passes through byte-identical (parity).
+        def compress_history(messages, request)
+          profile = request.respond_to?(:profile) ? request.profile : nil
+          return messages unless profile&.tool_output_compression
+
+          ToolOutputCompressor.compress_transcript(messages)
+        end
 
         # Precedence: checkpoint -> explicit history -> store.
         # The first present source wins; no merge.

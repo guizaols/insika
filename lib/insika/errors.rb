@@ -30,7 +30,27 @@ module Insika
     end
   end
 
-  class ProviderError  < Error; end  # RubyLLM exhausted retries -> task :failed
+  # A provider/transport failure, wrapped by ProviderErrorClassifier with an
+  # ACTION classification (B9). The fields ride in the task's error record and
+  # the :task_failed event so the client envelope can tell fatal from
+  # retryable and quote the provider's own retry_after (A8). A bare
+  # `ProviderError.new("boom")` has an empty classification and adds nothing
+  # to the contract.
+  class ProviderError < Error
+    attr_reader :kind, :retryable, :retry_after
+
+    def initialize(message = nil, kind: nil, retryable: nil, retry_after: nil)
+      @kind = kind
+      @retryable = retryable
+      @retry_after = retry_after
+      super(message)
+    end
+
+    # the additive envelope fields, compacted — nil retry_after stays absent.
+    def classification
+      { kind: kind, retryable: retryable, retry_after: retry_after }.compact
+    end
+  end
   class StoreError     < Error; end  # persistence backend failed -> task :failed
   class CancelledError < Error; end  # cooperative cancellation -> task :cancelled
 
