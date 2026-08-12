@@ -228,6 +228,7 @@ module Deploy
     BUS.register(:delete_agent_file, Insika::Commands::DeleteAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:restore_agent_file, Insika::Commands::RestoreAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:write_skill, Insika::Commands::WriteSkill.new(skill_store: SKILL_STORE, skill_catalog: CATALOG, event_stream: EVENT_STREAM))
+    BUS.register(:delete_skill, Insika::Commands::DeleteSkill.new(skill_store: SKILL_STORE, skill_catalog: CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:set_skill_agents, Insika::Commands::SetSkillAgents.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
     # Memory + settings + LLM — memory becomes editable over HTTP (not only via the

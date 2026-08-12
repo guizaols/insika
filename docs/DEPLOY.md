@@ -182,10 +182,13 @@ insika env               # lists known keys + current values (secrets masked)
 Checks: env (the schema above), settings schema version (a pending migration →
 `--fix` applies it), a missing platform `default_model` (`--fix` seeds it from
 `DEEPSEEK_MODEL`), durable vs ephemeral backend, LLM provider configured,
-`ADMIN_TOKEN` set, data-tool definitions still valid, and **prompt files that hold
+`ADMIN_TOKEN` set, data-tool definitions still valid, **prompt files that hold
 text rather than a serialized object** (a file whose content is a stringified Hash
 serves a mangled prompt on every turn while looking perfectly healthy — present,
-non-empty, and the agent still answers). Settings-schema migrations are **explicit**
+non-empty, and the agent still answers), and **skill drift** — a shared skill whose
+body names one store, a prompt file routing to a skill the agent cannot load, a broken
+companion pair, a stale `eager:` key (see
+[Skills](SKILLS.md#drift-guards)). Settings-schema migrations are **explicit**
 — no Studio save silently reinterprets old-shape data.
 
 ### Data-tool callbacks to a backend — via a tunnel

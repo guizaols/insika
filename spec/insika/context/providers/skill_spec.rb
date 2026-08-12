@@ -17,8 +17,8 @@ RSpec.describe Insika::Context::Providers::Skill do
 
   let(:catalog) { Insika::SkillCatalog.new(@dir) }
 
-  def request(skills:)
-    profile = Insika::AgentProfile.build(id: "a", model: "m", skills: skills)
+  def request(skills:, eager: nil)
+    profile = Insika::AgentProfile.build(id: "a", model: "m", skills: skills, skills_eager: eager)
     Insika::ContextRequest.new(session: nil, message: "oi", profile: profile,
                                 tenant: nil, vars: {}, checkpoint: nil)
   end
@@ -55,36 +55,26 @@ RSpec.describe Insika::Context::Providers::Skill do
   # prompt in full (SkillTrigger injects it), so listing it here would invite a
   # load_skill call that buys a duplicate.
   describe "eager skills are not advertised" do
-    def write_eager(name)
-      path = File.join(@dir, name)
-      FileUtils.mkdir_p(path)
-      File.write(File.join(path, "SKILL.md"),
-                 "---\nname: #{name}\ndescription: sempre\neager: true\n---\nbody\n")
-    end
-
     it "lists only the lazy skills" do
       write_skill("cardapio")
-      write_eager("formato")
+      write_skill("formato")
 
-      frag = described_class.new(catalog: catalog).call(request(skills: nil)).first
+      frag = described_class.new(catalog: catalog).call(request(skills: nil, eager: ["formato"])).first
 
       expect(frag.content).to include("cardapio")
       expect(frag.content).not_to include("formato")
     end
 
     it "every allowed skill eager -> no fragment (nothing left to advertise)" do
-      write_eager("formato")
+      write_skill("formato")
 
-      expect(described_class.new(catalog: catalog).call(request(skills: nil))).to eq([])
+      expect(described_class.new(catalog: catalog).call(request(skills: nil, eager: ["formato"]))).to eq([])
     end
 
-    it "skills_eager on the profile makes the whole catalog eager" do
+    it "skills_eager true makes the whole catalog eager" do
       write_skill("cardapio")
-      eager_profile = Insika::AgentProfile.build(id: "a", model: "m", skills_eager: true)
-      req = Insika::ContextRequest.new(session: nil, message: "oi", profile: eager_profile,
-                                       tenant: nil, vars: {}, checkpoint: nil)
 
-      expect(described_class.new(catalog: catalog).call(req)).to eq([])
+      expect(described_class.new(catalog: catalog).call(request(skills: nil, eager: true))).to eq([])
     end
   end
 end

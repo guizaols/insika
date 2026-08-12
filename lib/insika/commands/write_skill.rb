@@ -5,10 +5,15 @@ require "yaml"
 
 module Insika
   module Commands
-    # Control command: writes a shared skill
-    # (complete SKILL.md) into the SkillStore and RELOADS the catalog — takes effect
-    # without a restart (hot). Validates the frontmatter (name required) before writing.
-    # -> { name, updated_at }.
+    # Control command: writes a skill (complete SKILL.md) into
+    # the SkillStore and RELOADS the catalog — takes effect without a restart (hot).
+    # Validates the frontmatter (name required) before writing. -> { name, agent, updated_at }.
+    #
+    # `agent` (optional) writes into that agent's scope instead of the shared one: the
+    # SPECIALIZATION of a shared skill, or a skill private to one agent. Same `name`
+    # either way — the store position is the identity, so the frontmatter inside an
+    # override keeps saying the bare shared name and the level-1 catalog, load_skill,
+    # the labels and the events all keep displaying it.
     class WriteSkill
       def initialize(skill_store:, skill_catalog:, event_stream:)
         @skill_store = skill_store
@@ -19,20 +24,25 @@ module Insika
       def call(command)
         p = AgentPayload.symbolize(command.payload)
         name = AgentPayload.presence(p[:name])
+        agent = AgentPayload.presence(p[:agent])
         content = p[:content].to_s
         raise Insika::ValidationError, "name is required" if name.nil?
         validate_frontmatter!(content)
 
-        rec = @skill_store.write(name, content, create_only: !!p[:create_only])
+        rec = @skill_store.write(name, content, agent: agent, create_only: !!p[:create_only])
         @skill_catalog.reload
-        @event_stream.emit(Insika::Event.new(
-                             type: :skill_written, data: { name: name },
-                             meta: { at: Time.now.utc.iso8601 }
-                           ))
-        { name: name, updated_at: rec["updated_at"] }
+        emit(:skill_written, name, agent)
+        { name: name, agent: agent, updated_at: rec["updated_at"] }
       end
 
       private
+
+      def emit(type, name, agent)
+        @event_stream.emit(Insika::Event.new(
+                             type: type, data: { name: name, agent: agent }.compact,
+                             meta: { at: Time.now.utc.iso8601 }
+                           ))
+      end
 
       # Mirrors the SkillCatalog parse: without YAML frontmatter with `name`, the skill
       # would be silently ignored on reload — fail early, in the Command.
