@@ -3,11 +3,21 @@
 require "spec_helper"
 require "json"
 
-# Shared coercions at the boundary. Only `utf8` is covered here — the one with a
-# contract the rest of the engine leans on (everything that crosses into an
-# event/transcript/SSE frame must be JSON-serializable); `presence`/`blank?`/
-# `deep_stringify` are exercised through the stores that use them.
+# Shared coercions at the boundary. `utf8` and `truthy?` are covered here — the two
+# with a contract the rest of the engine leans on (JSON-serializability, and one
+# reading of "opted in" across every surface); `presence`/`blank?`/`deep_stringify`
+# are exercised through the stores that use them.
 RSpec.describe Insika::Coercion do
+  describe ".truthy?" do
+    it "reads what a checkbox, a JSON round-trip or the DSL produce as true" do
+      [true, "true", "1", "yes", "on"].each { |v| expect(described_class.truthy?(v)).to be(true) }
+    end
+
+    it "everything else is not an opt-in — including a LIST, which is a real value here" do
+      [nil, false, "false", "0", "", ["formato"], 1].each { |v| expect(described_class.truthy?(v)).to be(false) }
+    end
+  end
+
   describe ".utf8" do
     it "re-tags BINARY bytes that are really UTF-8" do
       result = described_class.utf8("ação 🚀".b)

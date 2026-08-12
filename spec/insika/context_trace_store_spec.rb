@@ -28,6 +28,43 @@ RSpec.describe Insika::ContextTraceStore do
     expect(got.first["tools"]).to eq({ "count" => 9, "tokens" => 1_200 })
   end
 
+  # {name, reason}: the reason is what makes the card answer "which one did I
+  # trigger", and it has to survive the JSON round-trip through the store.
+  describe "activation labels" do
+    def labels_of(cats)
+      store.record(session_id: "s", entry: entry(categories: cats))
+      store.for_session("s").first["categories"]["skilltrigger"]["labels"]
+    end
+
+    it "keeps name and reason, symbol or string keys in" do
+      got = labels_of("skilltrigger" => { tokens: 1, fragments: 1, pinned: 0,
+                                          labels: [{ name: "presente", reason: "trigger:presente" },
+                                                   { "name" => "formato", "reason" => "eager" }] })
+
+      expect(got).to eq([{ "name" => "presente", "reason" => "trigger:presente" },
+                         { "name" => "formato", "reason" => "eager" }])
+    end
+
+    it "a bare string still reads as a label (a reason-less caller degrades the card, never poisons it)" do
+      got = labels_of("skilltrigger" => { tokens: 1, fragments: 1, pinned: 0, labels: ["mapa"] })
+
+      expect(got).to eq([{ "name" => "mapa" }])
+    end
+
+    it "drops a nameless label and de-duplicates the rest" do
+      got = labels_of("skilltrigger" => { tokens: 1, fragments: 1, pinned: 0,
+                                          labels: [{ "reason" => "eager" }, "mapa", "mapa"] })
+
+      expect(got).to eq([{ "name" => "mapa" }])
+    end
+
+    it "a category with nothing to name carries no labels key (no noise)" do
+      store.record(session_id: "s", entry: entry)
+
+      expect(store.for_session("s").first["categories"]["prompt"]).not_to have_key("labels")
+    end
+  end
+
   it "upserts by (task_id, turn): a resumed turn re-records, never duplicates" do
     store.record(session_id: "s1", entry: entry(used: 100))
     store.record(session_id: "s1", entry: entry(used: 200))

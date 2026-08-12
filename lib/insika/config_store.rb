@@ -25,8 +25,12 @@ module Insika
     # Config for the same reason: it is a curated decision ("this is the bar"), the
     # file is its export, and the refinement gate reads it from inside a deployment
     # that has no checkout.
-    SCOPES = %w[agents settings llm_providers mcp agent_files skills system_files tools
-                goldens baselines].freeze
+    # agent_skills: the per-agent SPECIALIZATIONS of a shared skill (and
+    # agent-private skills). A second scope rather than a composite key in `skills`,
+    # so the shared records are untouched by the agent dimension arriving — no
+    # migration, and a live deployment keeps serving exactly what it served.
+    SCOPES = %w[agents settings llm_providers mcp agent_files skills agent_skills
+                system_files tools goldens baselines].freeze
 
     class UnknownScope < Insika::Error; end
 

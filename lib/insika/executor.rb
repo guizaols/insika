@@ -803,9 +803,10 @@ module Insika
         c[:tokens] += f.tokens || 0
         c[:fragments] += 1
         c[:pinned] += (f.tokens || 0) if f.pinned
-        # WHICH skills/tools the fragment carried — ids only, still content-free.
-        # Without this the trace proves a turn injected N tokens of skill but not
-        # which ones, and eager activation is unauditable after the fact.
+        # WHICH skills/tools the fragment carried and WHY — ids only, still
+        # content-free. Without this the trace proves a turn injected N tokens of
+        # skill but not which ones, and deterministic activation is unauditable
+        # after the fact.
         labels = Array(f.labels)
         (c[:labels] ||= []).concat(labels) unless labels.empty?
       end
@@ -820,29 +821,33 @@ module Insika
     end
 
     # Skill bodies that reached the prompt WITHOUT a tool call (`triggers:` or
-    # skills_eager) leave no trace in the transcript: there is no load_skill to
+    # `skills_eager`) leave no trace in the transcript: there is no load_skill to
     # render, so an active skill looked exactly like an absent one.
     #
     # Emitted HERE rather than in the provider because only the Executor holds the
     # correlation the Studio's SSE filters on — an event whose meta lacks `task_id`
     # never reaches a task-scoped subscriber (EventStream::Subscription#matches?).
-    # `names` (plural) marks the CONTEXT path; the load_skill tool emits the same
-    # type with a singular `name`, and the Studio must not conflate them.
+    # `skills` (plural, with reasons) marks the CONTEXT path; the load_skill tool
+    # emits the same type with a singular `name`, and the Studio must not conflate them.
+    #
+    # Read from `package.fragments`, which is POST-BUDGET: a body the cut evicted is
+    # not in the prompt, and announcing it as active would make the one surface built
+    # to tell the truth the one that lies. Eviction is reported by the trace's own
+    # `evicted` list, never as an activation.
     SKILL_BODY_CATEGORY = "skilltrigger"
 
     def announce_context_skills(task, state)
       package = state.context
       return unless package.respond_to?(:fragments)
 
-      names = Array(package.fragments)
-              .select { |f| context_category(f.source) == SKILL_BODY_CATEGORY }
-              .flat_map { |f| Array(f.labels) }.uniq
-      return if names.empty?
+      skills = Array(package.fragments)
+               .select { |f| context_category(f.source) == SKILL_BODY_CATEGORY }
+               .flat_map { |f| Array(f.labels) }
+               .map { |l| { name: l["name"], reason: l["reason"] || "pack" } }
+               .uniq
+      return if skills.empty?
 
-      emit(:skill_activated,
-           { names: names, mode: state.profile.skills_eager ? "eager" : "trigger",
-             source: "context" },
-           task: task)
+      emit(:skill_activated, { skills: skills, source: "context" }, task: task)
     end
 
     # "Insika::Context::Providers::Prompt" -> "prompt" (a plugin provider keeps
@@ -1428,7 +1433,9 @@ module Insika
         command: rebuild_command(task),
         context: state.context,
         candidate_tools: @tool_registry.entries,
-        candidate_skills: @skill_catalog.effective(profile.skills)
+        # agent: so a specialized skill reaches the policy as the agent's own version
+        # (same name, its body) instead of the shared one it overrides.
+        candidate_skills: @skill_catalog.effective(profile.skills, agent: profile.id)
       )
     end
 

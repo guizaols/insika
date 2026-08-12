@@ -28,11 +28,15 @@ module Insika
       # what records the tool trace — so without recording HERE, the one call an
       # operator most needs to audit is the only one missing from the Studio's
       # trace. Same shape as ToolSearch, which also emits its own event.
-      def initialize(catalog, allowed_names, trace_recorder: nil, state: nil)
+      # `agent` selects WHICH body a name resolves to: an agent that specialized a
+      # shared skill must be served its own version, under the same bare name. nil =
+      # the shared scope only (parity).
+      def initialize(catalog, allowed_names, trace_recorder: nil, state: nil, agent: nil)
         @catalog = catalog
         @allowed = Array(allowed_names).map(&:to_s)
         @trace_recorder = trace_recorder
         @state = state
+        @agent = agent
         super()
       end
 
@@ -48,10 +52,30 @@ module Insika
       def load(name)
         return { error: "skill '#{name}' not available for this agent" } unless @allowed.include?(name.to_s)
 
-        skill = @catalog.find(name)
+        skill = @catalog.find(name, agent: @agent)
         return { error: "skill '#{name}' not found" } unless skill
 
-        skill.body
+        with_companions(skill)
+      end
+
+      # A skill's declared `companions:` come back in the SAME call, so the model
+      # cannot end up holding half a recipe (the reference table without the procedure
+      # that reads it — measured on a real pack, and the searches came out malformed).
+      #
+      # A lone skill returns its bare body, byte for byte as before: only a skill that
+      # actually declares companions pays the wrapper. Restricted to `@allowed`, which
+      # is the LAZY allowed set — a companion that is eager is already in the prompt in
+      # full, so fetching it again would only buy a duplicate.
+      def with_companions(skill)
+        extras = Array(skill.companions).filter_map do |name|
+          next unless @allowed.include?(name.to_s) && name.to_s != skill.name
+
+          @catalog.find(name, agent: @agent)
+        end
+        return skill.body if extras.empty?
+
+        ([skill] + extras).uniq(&:name)
+                          .map { |s| %(<skill name="#{s.name}">\n#{s.body}\n</skill>) }.join("\n\n")
       end
 
       # Mirrors ToolEnvelope#trace (same entry shape, so the Studio renders it

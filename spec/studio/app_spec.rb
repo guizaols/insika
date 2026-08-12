@@ -37,18 +37,25 @@ RSpec.describe Studio::App do
   end
 
   # read stores (only what the pages consume).
-  SkillEntry = Struct.new(:name, :description, :body, keyword_init: true) # body: real catalog skills expose it (drill editor reads it)
+  # body/triggers/companions: real catalog skills expose them (the drill editor and
+  # skill_source's frontmatter reconstruction read them).
+  SkillEntry = Struct.new(:name, :description, :body, :triggers, :companions, keyword_init: true)
   AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
     def read(agent, name) = files[[agent, name.to_s]]
     def versions(_agent, _name) = []
   end
-  SkillCatalogDouble = Struct.new(:skills) do
-    def all = skills
-    def find(name) = skills.find { |s| s.name == name.to_s }
+  # agent: — a skill resolves per agent (an override wins for its holder). The
+  # doubles carry the agent scope as { [agent, name] => … }, mirroring the store's
+  # two-argument shape.
+  SkillCatalogDouble = Struct.new(:skills, :own) do # own: { [agent, name] => SkillEntry }
+    def all(agent: nil) = agent.nil? ? skills : skills.map { |s| scoped(agent, s.name) || s }
+    def find(name, agent: nil) = scoped(agent, name) || skills.find { |s| s.name == name.to_s }
+    def scoped(agent, name) = agent && (own || {})[[agent, name.to_s]]
   end
-  SkillStoreDouble = Struct.new(:store) do # store: { name => content }
-    def names = store.keys
-    def get(name) = store[name.to_s]
+  SkillStoreDouble = Struct.new(:store, :own) do # store: { name => content }; own: { [agent, name] => content }
+    def names(agent: nil) = agent.nil? ? store.keys : (own || {}).keys.select { |a, _| a == agent }.map(&:last)
+    def get(name, agent: nil) = agent.nil? ? store[name.to_s] : (own || {})[[agent, name.to_s]]
+    def agents = (own || {}).keys.map(&:first).uniq.sort
   end
   ToolCatalogDouble = Struct.new(:tools) do
     def all = tools
@@ -82,15 +89,15 @@ RSpec.describe Studio::App do
   end
 
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
-              tools_allow: %w[menu calc], skills: %w[pedido], prompt_files: [])
+              tools_allow: %w[menu calc], skills: %w[pedido], skills_eager: nil, prompt_files: [])
     Insika::AgentProfile.build(id: id, model: model, provider: provider,
                                 memory: memory, tools_allow: tools_allow,
-                                skills: skills, prompt_files: prompt_files)
+                                skills: skills, skills_eager: skills_eager, prompt_files: prompt_files)
   end
 
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
-                stored_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
+                stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                 tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil)
@@ -140,8 +147,14 @@ RSpec.describe Studio::App do
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: event_stream, config: { admin_token: admin_token },
       agent_file_store: AgentFileStoreDouble.new(agent_files),
-      skill_store: SkillStoreDouble.new(stored_skills),
-      skill_catalog: SkillCatalogDouble.new(skills),
+      # own_skills: { [agent, name] => "<SKILL.md>" } — the per-agent specializations.
+      skill_store: SkillStoreDouble.new(stored_skills, own_skills),
+      skill_catalog: SkillCatalogDouble.new(
+        skills,
+        # The catalog resolves the same NAME to the agent's own body: the store position
+        # is the identity, so the entry keeps the bare shared name.
+        own_skills.each_with_object({}) { |((a, n), c), acc| acc[[a, n]] = SkillEntry.new(name: n, description: "d", body: c) }
+      ),
       tool_catalog: ToolCatalogDouble.new(tools),
       tool_store: tool_store,
       memory_store: MemoryStoreDouble.new(memory),
@@ -692,6 +705,109 @@ RSpec.describe Studio::App do
     expect(cmd.payload[:agent_ids]).to eq(%w[bia chef])
   end
 
+  # Eagerness is operational config, so it has to be editable without a script — and
+  # it belongs on the SAME screen as the allowlist, because both are per-agent
+  # decisions about one shared skill.
+  it "the availability grid offers allowed AND always-on per agent" do
+    app, = build_app(agents: [profile("bia", skills: ["pedido"], skills_eager: ["pedido"]),
+                              profile("chef", skills: ["pedido"])])
+
+    body = login(app).get("/skills/pedido").body
+
+    expect(body).to include('name="agent_ids[]"', 'name="eager_ids[]"')
+    grid = body[body.index("agent-grid")..]
+    # bia has it always-on, chef only allowed: two checked allow boxes, ONE checked eager
+    expect(grid.scan(/name="eager_ids\[\]" value="(\w+)" checked/).flatten).to eq(["bia"])
+  end
+
+  it "applying carries the eager list through" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/skills").body)
+
+    client.post("/skills/pedido/agents",
+                params: { "agent_ids" => %w[bia chef], "eager_ids" => %w[bia], "_csrf" => csrf })
+
+    expect(bus.last(:set_skill_agents).payload[:eager_ids]).to eq(%w[bia])
+  end
+
+  # Specializing keeps a shared skill shared: the alternative was forking it under a
+  # new name and editing the allowlist, which throws the sharing away.
+  it "specialize seeds the agent's own version from the shared body and opens it" do
+    app, bus = build_app(stored_skills: { "pedido" => "---\nname: pedido\n---\nshared body" })
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/pedido").body)
+
+    res = client.post("/skills/pedido/specialize", params: { "agent_id" => "chef", "_csrf" => csrf })
+
+    cmd = bus.last(:write_skill)
+    expect(cmd.payload).to include(name: "pedido", agent: "chef")
+    expect(cmd.payload[:content]).to include("shared body") # seeded, not blank
+    expect(res.headers["location"]).to eq("/studio/agents/chef/skills/pedido")
+  end
+
+  # A DISK skill has no store record, so the seed is RECONSTRUCTED — and it must carry
+  # the whole frontmatter: an override that silently drops `triggers:` turns the
+  # agent's deterministic activation off on day one.
+  it "specialize preserves triggers and companions when seeding from a disk skill" do
+    app, bus = build_app(skills: [SkillEntry.new(name: "pedido", description: "faz pedido", body: "corpo",
+                                                 triggers: ["devolucao"], companions: ["query"])])
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/pedido").body)
+
+    client.post("/skills/pedido/specialize", params: { "agent_id" => "chef", "_csrf" => csrf })
+
+    content = bus.last(:write_skill).payload[:content]
+    expect(content).to include("triggers: devolucao", "companions: query", "corpo")
+  end
+
+  describe "an agent's own version of a skill" do
+    let(:own) { { %w[chef pedido] => "---\nname: pedido\n---\nbody just for chef" } }
+
+    # TWO path segments — which is why the store takes the agent as a second argument
+    # and not as an "agent/name" key.
+    it "opens at /agents/:id/skills/:name with that agent's body" do
+      app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\n---\nshared body" }, own_skills: own)
+
+      body = login(app).get("/agents/chef/skills/pedido").body
+
+      expect(body).to include("body just for chef")
+      expect(body).not_to include("shared body")
+      expect(body).to include("specialized for chef")
+    end
+
+    it "saving it writes into the agent scope, not the shared one" do
+      app, bus = build_app(own_skills: own)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/chef/skills/pedido").body)
+
+      client.post("/agents/chef/skills/pedido", params: { "content" => "---\nname: pedido\n---\nv2", "_csrf" => csrf })
+
+      expect(bus.last(:write_skill).payload).to include(name: "pedido", agent: "chef")
+    end
+
+    it "stop specializing deletes only the override, and returns to the shared skill" do
+      app, bus = build_app(own_skills: own)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/chef/skills/pedido").body)
+
+      res = client.post("/agents/chef/skills/pedido/delete", params: { "_csrf" => csrf })
+
+      expect(bus.last(:delete_skill).payload).to include(name: "pedido", agent: "chef")
+      expect(res.headers["location"]).to eq("/studio/skills/pedido")
+    end
+
+    # Discoverability: an override that only exists in the store is an override nobody
+    # finds. The shared skill's own grid links to it.
+    it "the shared skill's grid links to an agent that has its own version" do
+      app, = build_app(own_skills: own)
+
+      body = login(app).get("/skills/pedido").body
+
+      expect(body).to include("/studio/agents/chef/skills/pedido", "own version")
+    end
+  end
+
   # Tools (matriz) — --------------------------------------------
 
   it "lists the tools-by-agent matrix" do
@@ -1042,7 +1158,8 @@ RSpec.describe Studio::App do
                             cap: 60_000, used: 20_000, evicted: [],
                             categories: {
                               "skilltrigger" => { tokens: 14_371, fragments: 1, pinned: 0,
-                                                  labels: %w[gift-concierge natura-line-expert] },
+                                                  labels: [{ "name" => "gift-concierge", "reason" => "trigger:presente" },
+                                                           { "name" => "natura-line-expert", "reason" => "eager" }] },
                               "prompt" => { tokens: 5_600, fragments: 1, pinned: 5_600 }
                             },
                             tools: { count: 17, tokens: 3_430 } }] }
@@ -1051,7 +1168,9 @@ RSpec.describe Studio::App do
     body = login(app).get("/sessions/sess-sk").body
 
     expect(body).to include("skilltrigger")
-    expect(body).to include("gift-concierge, natura-line-expert")
+    # the name AND the reason: a bare name does not say whether the operator triggered
+    # it or the agent always carries it, which is the question the card exists for
+    expect(body).to include("gift-concierge · trigger:presente, natura-line-expert · eager")
     # the card is collapsed, so the count has to be readable WITHOUT expanding it
     expect(body).to include("skills 2")
   end
@@ -1072,19 +1191,23 @@ RSpec.describe Studio::App do
         categories: { "skilltrigger" => { tokens: 500, fragments: 1, pinned: 0, labels: labels } },
         tools: { count: 0, tokens: 0 } }
     end
-    ctx = { "sess-inline" => [entry.call("2026-08-12T10:00:01Z", ["gift-concierge"]),
-                              entry.call("2026-08-12T10:00:15Z", %w[mapa query])] }
+    ctx = { "sess-inline" => [
+      entry.call("2026-08-12T10:00:01Z", [{ "name" => "gift-concierge", "reason" => "trigger:presente" }]),
+      entry.call("2026-08-12T10:00:15Z", [{ "name" => "mapa", "reason" => "eager" },
+                                          { "name" => "query", "reason" => "eager" }])
+    ] }
     app, = build_app(sessions: { "sess-inline" => sess }, context_traces: ctx)
 
     body = login(app).get("/sessions/sess-inline").body
     thread = body[body.index('class="thread"')..]
 
-    expect(thread).to include("skills · context (1)")
-    expect(thread).to include("skills · context (2)")
+    # the summary names the SHARED reason of the turn — one trigger, then two eager
+    expect(thread).to include("skills · trigger (1)")
+    expect(thread).to include("skills · eager (2)")
     # each card sits BEFORE the turn it belongs to
-    expect(thread.index("skills · context (1)")).to be < thread.index("ola")
-    expect(thread.index("skills · context (2)")).to be < thread.index("pronto")
-    expect(thread.index("ola")).to be < thread.index("skills · context (2)")
+    expect(thread.index("skills · trigger (1)")).to be < thread.index("ola")
+    expect(thread.index("skills · eager (2)")).to be < thread.index("pronto")
+    expect(thread.index("ola")).to be < thread.index("skills · eager (2)")
   end
 
   it "a message without a timestamp flushes no inline card (older sessions degrade quietly)" do

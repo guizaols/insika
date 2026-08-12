@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe Insika::Doctor do
   let(:backend) { Insika::Stores::Memory.new }
@@ -191,6 +193,233 @@ RSpec.describe Insika::Doctor do
 
     it "is skipped without the store" do
       expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("prompt-files")
+    end
+  end
+
+  # Eagerness moved from the frontmatter to the agent. Both halves of that move fail
+  # QUIETLY: a stale `eager:` key stops being honored without anything crashing, and
+  # an eager name outside the allowlist is intersected away. This check is the report.
+  describe "skill-eager check" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:skills) { Insika::SkillStore.new(config_store: cs) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+
+    def skill_md(name, extra = "") = "---\nname: #{name}\ndescription: d\n#{extra}---\n\nbody\n"
+
+    def finding(**over)
+      described_class.new(env: {}, **over).run.findings.find { |f| f.check == "skill-eager" }
+    end
+
+    it "warns about a skill still declaring eager: in its frontmatter, naming the replacement" do
+      skills.write("formato", skill_md("formato", "eager: true\n"))
+
+      f = finding(skill_store: skills)
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("skill 'formato'", "IGNORED", "skills_eager")
+    end
+
+    it "does not confuse the word eager in the BODY with the frontmatter key" do
+      skills.write("prosa", "---\nname: prosa\ndescription: d\n---\n\nBe eager: help fast.\n")
+
+      expect(finding(skill_store: skills).severity).to eq(:ok)
+    end
+
+    it "warns when an agent marks a skill eager that it does not allow" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: ["cardapio"],
+                                              skills_eager: %w[cardapio formato]))
+
+      f = finding(profile_source: profiles)
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("agent 'loja'", "skill 'formato'", "no-op")
+    end
+
+    it "says nothing about an agent whose skills allowlist is nil (everything is allowed)" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills_eager: ["formato"]))
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "the blanket switch names nothing, so it can name nothing unreachable" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: [], skills_eager: true))
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "is skipped without either collaborator" do
+      expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("skill-eager")
+    end
+
+    # The sweep covers DISK seeds too (via the catalog), not only authored store
+    # skills — a stale `eager:` shipped inside a seed pack fails just as quietly.
+    it "flags a stale eager: sitting in a disk seed, through the catalog" do
+      Dir.mktmpdir do |root|
+        FileUtils.mkdir_p(File.join(root, "formato"))
+        File.write(File.join(root, "formato", "SKILL.md"), skill_md("formato", "eager: true\n"))
+
+        f = finding(skill_catalog: Insika::SkillCatalog.new([root]))
+
+        expect(f.severity).to eq(:warn)
+        expect(f.message).to include("skill 'formato'", "IGNORED")
+      end
+    end
+  end
+
+  # Drift between a pack's prose and the catalog. Every input is MECHANICAL — names,
+  # allowlists, agent identities — because a check that parses prose false-positives on
+  # the first real pack and takes the doctor's credibility with it.
+  describe "skill-drift check" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:skills) { Insika::SkillStore.new(config_store: cs) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+    let(:files) { Insika::AgentFileStore.new(config_store: cs) }
+
+    def skill_md(name, body, extra = "") = "---\nname: #{name}\ndescription: d\n#{extra}---\n\n#{body}\n"
+
+    def findings
+      described_class.new(env: {}, skill_store: skills, profile_source: profiles,
+                          agent_file_store: files).run.findings.select { |f| f.check == "skill-drift" }
+    end
+
+    it "is skipped without both the skills and the profiles" do
+      expect(described_class.new(env: {}, skill_store: skills).run.findings.map(&:check)).not_to include("skill-drift")
+    end
+
+    # D1 residue. The routing table is generated now, so a hand-written one is pure
+    # drift: it instructs the model about a skill the agent cannot load.
+    it "flags a prompt file naming a skill outside that agent's allowlist" do
+      skills.write("gift-concierge", skill_md("gift-concierge", "b"))
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: []))
+      files.write("loja", "SKILLS.md", "| gift-concierge | quando o cliente quer um presente |")
+
+      f = findings.first
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("agent 'loja'", "file 'SKILLS.md'", "skill 'gift-concierge'")
+    end
+
+    it "says nothing when the prompt file only names skills the agent allows" do
+      skills.write("gift-concierge", skill_md("gift-concierge", "b"))
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: ["gift-concierge"]))
+      files.write("loja", "SKILLS.md", "| gift-concierge | presente |")
+
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    # D2. Three shared skills on the pilot each said "na Natura", and the Cacau Show
+    # agent was served all three as its own policy.
+    it "flags a shared skill whose body names one of its holders" do
+      skills.write("escalation", skill_md("escalation", "na Natura a devolucao e em 7 dias"))
+      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+      f = findings.find { |x| x.message.include?("shared skill") }
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("shared skill 'escalation'", "'natura'", "Specialize")
+    end
+
+    # The finding shrinks as the VICTIMS stop reading: a holder with its own version
+    # is no longer served anybody else's text.
+    it "clears once the affected holders have specialized" do
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
+      skills.write("escalation", skill_md("escalation", "na Cacau Show"), agent: "cacau")
+      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    # The direction that must NOT clear: specializing the NAMED holder moves natura
+    # onto its own copy, but the shared body still says "na Natura" and cacau still
+    # reads it — the exact harm the check exists for. Identity comes from all
+    # holders; only the readers shrink.
+    it "keeps flagging while another holder still reads the body naming the specialized one" do
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"), agent: "natura")
+      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+      f = findings.find { |x| x.message.include?("shared skill") }
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("'natura'", "cacau")
+    end
+
+    it "says nothing when only ONE agent holds the skill (it is not shared)" do
+      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
+      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    # The credibility rule: structural and short tokens are not identity. "store"
+    # appears in every retail skill ever written.
+    it "does not treat structural tokens of an agent id as identity" do
+      skills.write("esc", skill_md("esc", "consulte a politica da store antes de escalar"))
+      profiles.put(Insika::AgentProfile.build(id: "store-a", model: "m", skills: ["esc"]))
+      profiles.put(Insika::AgentProfile.build(id: "store-b", model: "m", skills: ["esc"]))
+
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "reads the display name from metadata, accents folded" do
+      skills.write("esc", skill_md("esc", "na Cacau Show a troca e na loja"))
+      profiles.put(Insika::AgentProfile.build(id: "a1", model: "m", skills: ["esc"],
+                                              metadata: { "name" => "Cacau" }))
+      profiles.put(Insika::AgentProfile.build(id: "a2", model: "m", skills: ["esc"]))
+
+      expect(findings.first.message).to include("names 'Cacau'")
+    end
+
+    # D3 residue: `companions:` prevents the pair breaking apart, but only where it is
+    # declared, and only where the agent can load both halves.
+    it "flags a body referencing another catalog skill without declaring it a companion" do
+      skills.write("natura-line-expert", skill_md("natura-line-expert", "consulte query-construction antes de buscar"))
+      skills.write("query-construction", skill_md("query-construction", "b"))
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: nil))
+
+      f = findings.find { |x| x.message.include?("without declaring") }
+
+      expect(f.message).to include("skill 'natura-line-expert' references skill 'query-construction'",
+                                   "companions: [query-construction]")
+    end
+
+    it "says nothing once the companion is declared" do
+      skills.write("mapa", skill_md("mapa", "consulte query antes de buscar", "companions: [query]\n"))
+      skills.write("query", skill_md("query", "b"))
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: nil))
+
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "flags a declared companion the agent is not allowed to load" do
+      skills.write("mapa", skill_md("mapa", "b", "companions: [query]\n"))
+      skills.write("query", skill_md("query", "b"))
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: ["mapa"]))
+
+      f = findings.find { |x| x.message.include?("companion") && x.message.include?("agent 'loja'") }
+
+      expect(f.message).to include("allows skill 'mapa' but not its companion 'query'")
+    end
+
+    # The drift checks read DISK seeds too (via the catalog): a Natura-in-shared-body
+    # sitting in a seed pack drifts exactly like an authored one.
+    it "flags a shared DISK seed naming a holder, with no store record at all" do
+      Dir.mktmpdir do |root|
+        FileUtils.mkdir_p(File.join(root, "escalation"))
+        File.write(File.join(root, "escalation", "SKILL.md"), skill_md("escalation", "na Natura, 7 dias"))
+        profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+        profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+
+        drift = described_class.new(env: {}, skill_catalog: Insika::SkillCatalog.new([root]),
+                                    profile_source: profiles, agent_file_store: files).run
+                               .findings.select { |f| f.check == "skill-drift" }
+
+        expect(drift.first.severity).to eq(:warn)
+        expect(drift.first.message).to include("shared skill 'escalation'", "'natura'")
+      end
     end
   end
 
