@@ -496,9 +496,11 @@ RSpec.describe Insika::Server::App do
       expect(json_body(resp)["error"]["retryable"]).to be(false)
     end
 
-    it "no App path produces a 403 status" do
+    it "the ONLY 403 is the WS1 operator-surface gate (tenant principal on an operator route)" do
       source = File.read(File.expand_path("../../../lib/insika/server/app.rb", __dir__))
-      expect(source).not_to match(/\b403\b/)
+      # exactly one deliberate 403: the tenant-vs-operator surface boundary.
+      expect(source.scan(/\b403\b/).size).to eq(1)
+      expect(source).to include('auth_error(403, "operator surface")')
     end
   end
 
@@ -603,7 +605,7 @@ RSpec.describe Insika::Server::App do
 
       expect(status).to eq(200)
       expect(body).to be_a(Insika::Server::SSEBody)
-      expect(stream.subscribes.last).to eq(task_id: "t-1", session_id: "s-2")
+      expect(stream.subscribes.last).to eq(task_id: "t-1", session_id: "s-2", tenant: nil) # single_tenant: no tenant scope
       expect(bus.dispatched).to be_empty
     end
   end

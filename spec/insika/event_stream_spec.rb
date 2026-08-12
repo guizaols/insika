@@ -77,6 +77,34 @@ RSpec.describe Insika::EventStream do
     end
   end
 
+  describe "tenant-scoped subscription (WS1)" do
+    it "delivers only events whose meta carries the SAME tenant" do
+      sub = stream.subscribe(tenant: "loja-a")
+      got = Sync { |task| collect(task, sub) do
+        stream.emit(evt(meta: { task_id: "t1", tenant: "loja-a" }))
+        stream.emit(evt(meta: { task_id: "t2", tenant: "loja-b" }))
+      end }
+      expect(got.map { |e| e.meta[:task_id] }).to eq(["t1"])
+    end
+
+    it "FAIL-CLOSED: an event without a tenant in meta matches NO tenant subscription" do
+      sub = stream.subscribe(tenant: "loja-a")
+      got = Sync { |task| collect(task, sub) do
+        stream.emit(evt(meta: { task_id: "t1" })) # control/operator event, no tenant
+      end }
+      expect(got).to be_empty
+    end
+
+    it "an operator subscription (no tenant filter) still sees everything" do
+      sub = stream.subscribe
+      got = Sync { |task| collect(task, sub) do
+        stream.emit(evt(meta: { task_id: "t1", tenant: "loja-a" }))
+        stream.emit(evt(meta: { task_id: "t2" }))
+      end }
+      expect(got.size).to eq(2)
+    end
+  end
+
   it "iterates exactly until close" do
     Sync do |task|
       sub = stream.subscribe

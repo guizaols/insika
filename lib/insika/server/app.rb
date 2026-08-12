@@ -5,7 +5,7 @@ require "rack"
 require "async"
 require "securerandom"
 require_relative "sse_body"
-require_relative "admin_auth" # Bearer checker shared by the gateway edge (fail-closed)
+require_relative "tenant_auth" # WS1: Bearer -> { role:, tenant_id: } (single/multi-tenant)
 require_relative "a2a/app" # A2A edge adapter (pulls protocol/errors/message/projection/card)
 require_relative "responses" # OpenAI Responses adapter (/v1/responses) — drop-in for the OpenClaw gateway
 
@@ -55,7 +55,7 @@ module Insika
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
-                     channels: nil, logger: nil)
+                     channels: nil, logger: nil, token_store: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -64,6 +64,13 @@ module Insika
         @pending_action_store = pending_action_store # read for GET /v1/tasks/:id
         @a2a = a2a # A2A edge. nil = server does not expose A2A (parity).
         @provisioner = provisioner # PackImporter. nil = provisioning not exposed.
+        # WS1 multi-tenant credentials. nil = single_tenant mode (the classic
+        # single operator credential, gateway_token). Present = tokens resolve
+        # from the store (per-tenant + operator), gateway_token still resolves
+        # as operator (an existing deployment switching modes keeps its token).
+        @token_store = token_store
+        # "single_tenant" (default, parity) | "multi_tenant".
+        @tenancy = config.fetch(:tenancy, "single_tenant")
         # READ-ONLY registry, injected only where workflows are
         # exposed (the minimal wiring). nil = no /v1/workflows routes (parity — the
         # deployment does not expose workflows). Reading a catalog is a READ, like a
@@ -126,8 +133,15 @@ module Insika
           return version_error if version_error
         end
 
-        gate = public_route?(req.request_method, segments) ? nil : gateway_gate(req)
+                gate = public_route?(req.request_method, segments) ? nil : gateway_gate(req)
         return gate if gate
+        # WS1: a TENANT principal is confined to its own runtime surfaces (chat
+        # + its own reads). Every authoring/provisioning surface stays
+        # operator-only — a tenant can never mint tokens, author tools or
+        # change platform config. single_tenant (no principal) is untouched.
+        if tenant_principal?(req) && !tenant_surface?(req.request_method, segments)
+          return auth_error(403, "operator surface")
+        end
 
         case [req.request_method, segments]
         in ["GET", ["up"]]
@@ -163,9 +177,9 @@ module Insika
         in ["GET", ["v1", "agents", id]] if @profiles
           handle_read_agent(id)
         in ["GET", ["v1", "sessions", id]]
-          handle_read_session(id)
+          handle_read_session(req, id)
         in ["GET", ["v1", "tasks", id]]
-          handle_read_task(id)
+          handle_read_task(req, id)
         in ["GET", ["v1", "events"]]
           handle_events(req)
         in ["POST", ["channels", id, "events"]] if @channels
@@ -254,7 +268,7 @@ module Insika
       def handle_create_session(req)
         body = parse_body(req)
         command = Insika::Command.build(:create_session, { vars: body[:vars] || {} },
-                                         transport: :http)
+                                         transport: :http, tenant: req_tenant(req))
         session = dispatch_with_timeout(command)
         json_response(201, { session: session.to_h })
       end
@@ -266,7 +280,8 @@ module Insika
         # only the aggregated-JSON form has room for the `merged`/`steered`
         # verdict, so only it may join a message to another turn. Once the stream is open
         # there is no way to tell the caller it does not own the reply.
-        message_flow(parse_body(req), stream: stream, transport: stream ? :http : :"http:json")
+        message_flow(parse_body(req), stream: stream, transport: stream ? :http : :"http:json",
+                                      tenant: req_tenant(req))
       end
 
       # GET /docs/:name.md — one public doc as raw markdown. The
@@ -305,7 +320,8 @@ module Insika
         body = parse_body(req)
         payload = { workflow: name, agent: body[:agent],
                     input: body[:input], session_id: body[:session_id] }.compact
-        workflow_flow(payload, stream: req.GET["stream"] == "true")
+        workflow_flow(payload, stream: req.GET["stream"] == "true",
+                               tenant: req_tenant(req))
       end
 
       # POST /v1/responses — OpenAI Responses adapter (drop-in for the OpenClaw
@@ -317,10 +333,12 @@ module Insika
         return gate if gate
 
         parsed = Responses.parse_request(parse_body(req), req) # ValidationError -> 422
-        ensure_session(parsed[:user])
+        tenant = req_tenant(req)
+        ensure_session(parsed[:user], tenant: tenant)
         payload = { agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] }
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
-        message_flow(payload, stream: true, serialize: Responses.method(:frame_for))
+        message_flow(payload, stream: true, serialize: Responses.method(:frame_for),
+                              tenant: tenant)
       end
 
       # POST /v1/agents — provisions (upserts) an agent from a standardized
@@ -412,12 +430,69 @@ module Insika
       end
 
       # Gateway Bearer (fail-closed). -> error response (503/401) OR nil when
-      # ok (the handler proceeds).
+      # ok (the handler proceeds). In multi_tenant mode the resolved principal
+      # is stashed on the request env: `tenant_principal?`/`req_tenant` read it
+      # back for the surface gate and the command stamping.
       def gateway_gate(req)
-        case Insika::Server::AdminAuth.check(@config[:gateway_token], req.get_header("HTTP_AUTHORIZATION"))
+        result = Insika::Server::TenantAuth.check(@config[:gateway_token], @token_store,
+                                                  req.get_header("HTTP_AUTHORIZATION"))
+        case result
         when :disabled then auth_error(503, "gateway disabled")
         when :unauthorized then auth_error(401, "unauthorized", "www-authenticate" => "Bearer")
+        else
+          req.set_header("insika.principal", result)
+          nil
         end
+      end
+
+      # -> bool: is the requester a TENANT principal (multi_tenant mode only)?
+      # The surface gate and the session/task read gates consume it; an operator
+      # principal is NOT a tenant (it has the run of the deployment, exactly as
+      # in single_tenant mode).
+      def tenant_principal?(req)
+        p = req.get_header("insika.principal")
+        p && p[:role] == "tenant"
+      end
+
+      # The tenant the request operates AS: nil for an operator/classic request.
+      def req_tenant(req)
+        p = req.get_header("insika.principal")
+        p && p[:role] == "tenant" ? p[:tenant_id] : nil
+      end
+
+      # A tenant may reach ONLY its own runtime surfaces. Everything else
+      # (commands, provisioning, authoring, config) is the operator's. An
+      # unknown route is NOT here -> a tenant is refused (the surface exists —
+      # just not for them), not told it is missing.
+TENANT_SURFACES = [
+        ["POST", ["v1", "sessions"]],
+        ["POST", ["v1", "messages"]],
+        ["POST", ["v1", "responses"]],
+        ["POST", ["v1", "workflows", nil]],
+        ["GET", ["v1", "workflows"]],
+        ["GET", ["v1", "sessions", nil]],
+        ["GET", ["v1", "tasks", nil]],
+        ["GET", ["v1", "events"]]
+      ].freeze
+      private_constant :TENANT_SURFACES
+
+      def tenant_surface?(method, segments)
+        TENANT_SURFACES.any? do |m, s|
+          m == method && s.zip(segments).all? { |pattern, got| pattern.nil? || pattern == got }
+        end
+      end
+
+      # Session id namespacing (WS1): a tenant's session lives under
+      # "<tenant>:<id>", so two tenants using the SAME chat id never share a
+      # session — the key itself is the isolation, not a convention. ":"
+      # (never "/") so the id stays one URL path segment; the same delimiter
+      # convention as the channels' "<channel>:<external_id>". Idempotent (a
+      # caller passing its own namespaced id back is not double-prefixed).
+      def scoped_session_id(tenant, id)
+        return id if tenant.nil? || id.nil? || id.to_s.empty?
+        return id if id.to_s.start_with?("#{tenant}:")
+
+        "#{tenant}:#{id}"
       end
 
       # POST /channels/:id/events — the Shape B inbound webhook.
@@ -594,19 +669,29 @@ module Insika
       # namespaced `<channel>:<external_id>` for a channel): creates if new, continues
       # if it exists (multi-turn). Via Command (server/ does not write to a store).
       # Benign race (two near-simultaneous turns creating) -> ArgumentError from the
-      # store, treated as "already exists".
-      def ensure_session(id, vars: { channel: "responses" })
+      # store, treated as "already exists". A TENANT's id is namespaced (WS1), so
+      # two tenants with the same chat id get two isolated sessions.
+      def ensure_session(id, vars: { channel: "responses" }, tenant: nil)
+        id = scoped_session_id(tenant, id)
         return if @session_store.find(id)
 
         @command_bus.dispatch(
-          Insika::Command.build(:create_session, { id: id, vars: vars }, transport: :http)
+          Insika::Command.build(:create_session, { id: id, vars: vars }, transport: :http,
+                                tenant: tenant)
         )
       rescue ArgumentError
         nil
       end
 
-      # GET /v1/sessions/:id — direct read (not a Command).
-      def handle_read_session(id)
+      # GET /v1/sessions/:id — direct read (not a Command). A tenant may only
+      # read its OWN sessions: the ownership is the id namespace itself (its
+      # sessions live under "<tenant>:…"), anything else reads as a 404.
+      def handle_read_session(req, id)
+        tenant = req_tenant(req)
+        if tenant && !id.to_s.start_with?("#{tenant}:")
+          raise Insika::NotFoundError, "session not found: #{id}"
+        end
+
         session = @session_store.find(id)
         raise Insika::NotFoundError, "session not found: #{id}" if session.nil?
 
@@ -615,10 +700,17 @@ module Insika
 
       # GET /v1/tasks/:id — direct read. This is where the consumer observes
       # PolicyDenied/post-202 failures: the terminal state lives in the Task
-      # Store; nothing is lost if the client disconnected.
-      def handle_read_task(id)
+      # Store; nothing is lost if the client disconnected. A tenant may only
+      # read a task its own command stamped (the task record carries the
+      # command with its meta.tenant) — someone else's reads as a 404.
+      def handle_read_task(req, id)
         task = @task_store.find(id)
         raise Insika::NotFoundError, "task not found: #{id}" if task.nil?
+
+        tenant = req_tenant(req)
+        if tenant && task_tenant(task) != tenant
+          raise Insika::NotFoundError, "task not found: #{id}"
+        end
 
         body = { task: task_to_h(task) }
         # pending approvals: this is where the consumer/operator sees
@@ -629,12 +721,24 @@ module Insika
         json_response(200, body)
       end
 
+      # The tenant stamped on the task's persisted command (WS1): string or
+      # symbol keys, whichever the store round-trip produced.
+      def task_tenant(task)
+        command = task.respond_to?(:command) ? task.command : nil
+        return nil unless command.is_a?(Hash)
+
+        meta = command["meta"] || command[:meta] || {}
+        meta["tenant"] || meta[:tenant]
+      end
+
       # GET /v1/events?task_id=&session_id= — here the filters ARE known.
       # CONTINUOUS stream (post-crash reconnection route): does not close on a
-      # terminal event — ends on client disconnect or cap.
+      # terminal event — ends on client disconnect or cap. A tenant's stream is
+      # scoped to its own events (fail-closed on the event's meta.tenant).
       def handle_events(req)
         subscription = @event_stream.subscribe(task_id: req.GET["task_id"],
-                                                session_id: req.GET["session_id"])
+                                                session_id: req.GET["session_id"],
+                                                tenant: req_tenant(req))
         sse_response(subscription)
       end
 
@@ -662,8 +766,15 @@ module Insika
       # transport (TaskFilter). A SYNCHRONOUS handler error (Validation/NotFound)
       # happens here, BEFORE the SSE opens -> closes the subscription and propagates to the
       # #call rescue (becomes an HTTP status).
-      def message_flow(payload, stream:, serialize: nil, transport: :http)
-        command = Insika::Command.build(:send_message, payload, transport: transport)
+      def message_flow(payload, stream:, serialize: nil, transport: :http, tenant: nil)
+        # WS1: a tenant's session_id is NAMESPACED before the command is built,
+        # so the turn lands on the tenant's OWN session even when another tenant
+        # uses the same chat id. The payload the caller sent is untouched.
+        if tenant
+          payload = payload.dup
+          payload[:session_id] = scoped_session_id(tenant, payload[:session_id]) if payload[:session_id]
+        end
+        command = Insika::Command.build(:send_message, payload, transport: transport, tenant: tenant)
         subscription = @event_stream.subscribe
         result =
           begin
@@ -700,8 +811,14 @@ module Insika
       # message_flow so no eager event is lost when streaming. A synchronous handler
       # error (bad input / unknown workflow) closes the subscription and propagates
       # to #call (HTTP status).
-      def workflow_flow(payload, stream:)
-        command = Insika::Command.build(:trigger_workflow, payload, transport: :http)
+      def workflow_flow(payload, stream:, tenant: nil)
+        # WS1: same session-id namespacing as message_flow — the workflow's run
+        # session is the tenant's own.
+        if tenant
+          payload = payload.dup
+          payload[:session_id] = scoped_session_id(tenant, payload[:session_id]) if payload[:session_id]
+        end
+        command = Insika::Command.build(:trigger_workflow, payload, transport: :http, tenant: tenant)
 
         unless stream
           result = dispatch_with_timeout(command)

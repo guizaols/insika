@@ -44,6 +44,11 @@ module Insika
       attr_reader :token
 
       def app
+        tenancy = @config[:tenancy] || ENV["INSIKA_TENANCY"] || "single_tenant"
+        # WS1: the token store is handed over ONLY in multi_tenant mode — in
+        # single_tenant the classic gateway token is the only credential
+        # (passing the store would silently widen the surface).
+        store = tenancy == "multi_tenant" ? @graph.token_store : nil
         @app ||= Insika::Server::App.new(
           command_bus: @graph.bus, event_stream: @graph.event_stream,
           session_store: @graph.session_store, task_store: @graph.task_store,
@@ -64,7 +69,8 @@ module Insika
           # OTEL bridge — a feature only `config.ru` can reach is a feature the
           # docs are half-true about.
           channels: (@graph.channel_registry if channels?),
-          config: { gateway_token: @token }.merge(@config),
+          config: { gateway_token: @token, tenancy: tenancy }.merge(@config),
+          token_store: store,
           # a 500's error_ref must be findable in the process log.
           logger: $stdout
         )

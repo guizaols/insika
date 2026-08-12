@@ -51,8 +51,8 @@ class ServerEventStreamDouble
     @emitted = []
   end
 
-  def subscribe(task_id: nil, session_id: nil)
-    @subscribes << { task_id: task_id, session_id: session_id }
+  def subscribe(task_id: nil, session_id: nil, tenant: nil)
+    @subscribes << { task_id: task_id, session_id: session_id, tenant: tenant }
     ServerFakeSubscription.new(@events)
   end
 
