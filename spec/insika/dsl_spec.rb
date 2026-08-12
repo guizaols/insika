@@ -214,6 +214,20 @@ RSpec.describe Insika::DSL do
     it "Definition#profile (its own runtime import) matches that profile too" do
       expect(dsl_agent.profile).to eq(import_and_read(hand_pack))
     end
+
+    it "the tool_output_compression knob is DATA on the pack, not a code path" do
+      dsl = Insika.agent("bia2") do
+        model "deepseek-chat"
+        tool_output_compression true
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia2", model: "deepseek-chat", tool_output_compression: true,
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      expect(import_and_read(dsl.to_pack).tool_output_compression).to be(true)
+      expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

@@ -38,6 +38,15 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.prompt_refs).to eq([])
       expect(profile.limits).to eq(described_class::DEFAULT_LIMITS)
       expect(profile.prompt_caching).to be_nil # R3: opt-in, off by default
+      expect(profile.tool_output_compression).to be_nil # A3/C3: opt-in, off by default
+    end
+
+    it "tool_output_compression round-trips on/off" do
+      off = described_class.build(id: "a", model: "m")
+      on = described_class.build(id: "a", model: "m", tool_output_compression: true)
+
+      expect(off.tool_output_compression).to be_nil # absent -> off (parity)
+      expect(on.tool_output_compression).to be(true)
     end
 
     it "DEFAULT_LIMITS matches (+ approval_timeout from, tool_concurrency from)" do

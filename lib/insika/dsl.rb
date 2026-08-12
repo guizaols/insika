@@ -207,6 +207,11 @@ module Insika
       # --- knobs -----------------------------------------------------------
       def memory(on = true) = @config[:memory] = on
 
+      # Mechanical tool-result dedupe in the replayed history
+      # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
+      # SEES: repeated identical tool results collapse to a back-reference.
+      def tool_output_compression(on = true) = @config[:tool_output_compression] = on
+
       # Content-safety guardrails — opt-in and configurable per agent.
       # Pure config-over-code: the hash is stored on the profile and consumed by
       # Safety::Config.from_profile. Merges, so repeated calls accumulate.

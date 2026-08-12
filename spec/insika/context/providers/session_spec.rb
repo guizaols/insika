@@ -7,10 +7,16 @@ RSpec.describe Insika::Context::Providers::Session do
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   subject(:provider) { described_class.new(session_store: session_store) }
 
-  def request(session: nil, checkpoint: nil, vars: {})
-    profile = Insika::AgentProfile.build(id: "a", model: "m")
+  def request(session: nil, checkpoint: nil, vars: {}, profile: nil)
+    profile ||= Insika::AgentProfile.build(id: "a", model: "m")
     Insika::ContextRequest.new(session: session, message: "oi", profile: profile,
                                 tenant: nil, vars: vars, checkpoint: checkpoint)
+  end
+
+  def compression_request(vars = {})
+    request(vars: vars,
+            profile: Insika::AgentProfile.build(id: "a", model: "m",
+                                                tool_output_compression: true))
   end
 
   def checkpoint(messages)
@@ -142,6 +148,43 @@ RSpec.describe Insika::Context::Providers::Session do
       unit = frags.first.content
       expect(unit.map { |m| m[:role].to_s }).to eq(%w[assistant tool tool tool])
       expect(unit.drop(1).map { |m| m[:tool_call_id] }).to eq(%w[c2 c3 c1])
+    end
+  end
+
+  describe "mechanical tool-result compression (A3/C3)" do
+    let(:big) { "catalog page with many product rows and long descriptions " * 20 }
+    def tool_messages(frags) = frags.flat_map { |f| f.content.is_a?(Array) ? f.content : [f.content] }
+
+    let(:transcript) do
+      [{ role: :user, content: "p1" },
+       { role: :assistant, content: "", tool_calls: [{ "id" => "c1", "name" => "search", "arguments" => {} }] },
+       { role: :tool, tool_call_id: "c1", content: big },
+       { role: :assistant, content: "", tool_calls: [{ "id" => "c2", "name" => "search", "arguments" => {} }] },
+       { role: :tool, tool_call_id: "c2", content: big },
+       { role: :assistant, content: "final" }]
+    end
+
+    it "OFF (default): byte-identical passthrough — nothing is ever rewritten" do
+      frags = provider.call(request(vars: { history: transcript }))
+
+      results = tool_messages(frags).select { |m| m[:role].to_s == "tool" }
+      expect(results.map { |m| m[:content] }).to eq([big, big])
+    end
+
+    it "ON: the second identical tool result becomes a back-reference" do
+      frags = provider.call(compression_request(history: transcript))
+
+      results = tool_messages(frags).select { |m| m[:role].to_s == "tool" }
+      expect(results[0][:content]).to eq(big)
+      expect(results[1][:content]).to match(/\A\[repeated tool output/)
+      expect(results[1][:tool_call_id]).to eq("c2")
+    end
+
+    it "ON: user/assistant content is never touched" do
+      frags = provider.call(compression_request(history: transcript))
+
+      non_tool = tool_messages(frags).reject { |m| m[:role].to_s == "tool" }
+      expect(non_tool.map { |m| m[:content] }).to eq(["p1", "", "", "final"])
     end
   end
 

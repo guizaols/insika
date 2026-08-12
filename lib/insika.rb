@@ -2,6 +2,7 @@
 
 require_relative "insika/version"
 require_relative "insika/errors"
+require_relative "insika/provider_error_classifier"
 require_relative "insika/coercion"
 require_relative "insika/message_origin"
 require_relative "insika/env_schema"
@@ -23,7 +24,9 @@ require_relative "insika/middleware"
 # Production edge: windowed counters + the rate-limit/cost
 # Middleware. Both inert until configured (nil/0 = off).
 require_relative "insika/usage_ledger"
+require_relative "insika/budget_ledger"
 require_relative "insika/edge_limiter"
+require_relative "insika/tool_output_compressor"
 # Content safety / guardrails. detectors.rb is self-contained (the eval
 # requires it directly); the rest hang off Middleware/hooks seams. No ruby_llm
 # at load-time — Factory requires the gem lazily, like the Executor's create_chat.
