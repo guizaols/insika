@@ -115,8 +115,12 @@ module Insika
     # --- Transport --------------------------------------------------
     CONFIG = {
       bind: ENV.fetch("INSIKA_BIND", "http://0.0.0.0"),
-      port: Integer(ENV.fetch("INSIKA_PORT", "9292"))
+      port: Integer(ENV.fetch("INSIKA_PORT", "9292")),
+      # WS1: "single_tenant" (default — the classic operator credential) or
+      # "multi_tenant" (per-tenant + operator tokens resolved from the store).
+      tenancy: ENV.fetch("INSIKA_TENANCY", "single_tenant")
     }.freeze
+    MULTI_TENANT = CONFIG[:tenancy] == "multi_tenant"
 
     # --- A2A edge — inbound federation, OPT-IN -------------
     # Exposed only when INSIKA_A2A_AGENT points to an existing profile (PROFILES is
@@ -168,6 +172,9 @@ module Insika
       # base wiring keeps a plain Hash of profiles, and the route needs the source API.
       profiles: Insika::ProfileSource.coerce(PROFILES),
       config: CONFIG,
+      # WS1: only multi_tenant hands the token store to the edge (in
+      # single_tenant the gateway credential is the only one).
+      token_store: (SPINE.token_store if MULTI_TENANT),
       # a 500's error_ref must be findable in the process log.
       logger: $stdout
     )

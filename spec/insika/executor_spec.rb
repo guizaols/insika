@@ -207,6 +207,30 @@ RSpec.describe Insika::Executor do
     end
   end
 
+  describe "WS1 tenant event tagging" do
+    it "events of a TENANT task carry meta[:tenant]" do
+      allow(executor).to receive(:run_pipeline) do |task, _p, _a, _r|
+        executor.send(:emit, :content, { delta: "x" }, task: task)
+      end
+      tenant_task = task_store.create(
+        command: { type: "send_message", payload: {}, meta: { tenant: "loja-a" } },
+        session_id: "s", id: "t8"
+      )
+      collected = collect_events(tenant_task)
+
+      expect(collected.find { |e| e.type == :content }.meta[:tenant]).to eq("loja-a")
+    end
+
+    it "operator/unsigned tasks emit NO tenant (meta byte-identical to before)" do
+      allow(executor).to receive(:run_pipeline) do |task, _p, _a, _r|
+        executor.send(:emit, :content, { delta: "x" }, task: task)
+      end
+      collected = collect_events(create_task(id: "t9"))
+
+      expect(collected.find { |e| e.type == :content }.meta).not_to have_key(:tenant)
+    end
+  end
+
   describe "duplicate spawn" do
     it "raises ValidationError if the task is already running" do
       gate = Async::Condition.new

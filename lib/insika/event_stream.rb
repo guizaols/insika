@@ -20,9 +20,10 @@ module Insika
       # local :error event — the turn never waits on transport.
       MAX_QUEUED = 1000
 
-      def initialize(task_id: nil, session_id: nil, on_close: nil)
+      def initialize(task_id: nil, session_id: nil, tenant: nil, on_close: nil)
         @task_id = task_id
         @session_id = session_id
+        @tenant = tenant
         @on_close = on_close
         @queue = Async::Queue.new
       end
@@ -39,9 +40,16 @@ module Insika
 
       # Meta filter: nil = matches any value. Events with no task_id in
       # meta (e.g. :session_created) reach only subscribers with no task filter.
+      #
+      # A TENANT-scoped subscription is FAIL-CLOSED on the meta's tenant (WS1):
+      # an event that does not carry the tenant (control events, ignored turns)
+      # matches NO tenant subscription. The tenant only ever sees its own.
       def matches?(event)
         meta = event.meta || {}
-        (@task_id.nil? || meta[:task_id] == @task_id) &&
+        owned = @tenant.nil? || meta[:tenant] == @tenant
+
+        owned &&
+          (@task_id.nil? || meta[:task_id] == @task_id) &&
           (@session_id.nil? || meta[:session_id] == @session_id)
       end
 
@@ -103,9 +111,10 @@ module Insika
     end
 
     # nil/nil = all events. Returns the Subscription (the caller iterates with
-    # `#each` on its own fiber).
-    def subscribe(task_id: nil, session_id: nil)
-      sub = Subscription.new(task_id: task_id, session_id: session_id,
+    # `#each` on its own fiber). `tenant:` scopes the stream to one tenant's
+    # events (WS1) — fail-closed, see Subscription#matches?.
+    def subscribe(task_id: nil, session_id: nil, tenant: nil)
+      sub = Subscription.new(task_id: task_id, session_id: session_id, tenant: tenant,
                              on_close: ->(s) { @subscriptions.delete(s) })
       @subscriptions << sub
       sub

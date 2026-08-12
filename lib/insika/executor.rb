@@ -1781,13 +1781,26 @@ module Insika
 
     # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
     # cleared at the end of the task — the resume (new Execution) continues the
-    # numbering (reliable replay).
+    # numbering (reliable replay). A task WITH a tenant (WS1) tags every event it
+    # emits — the tenant-scoped /v1/events subscription filters on it (a control
+    # event without a task has no tenant and never matches a tenant stream);
+    # absent tenant -> the meta is byte-identical to before.
     def emit(type, data, task:)
-      @event_stream.emit(Insika::Event.new(
-                           type: type, data: data,
-                           meta: { task_id: task.id, session_id: task.session_id,
-                                   seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601 }
-                         ))
+      meta = { task_id: task.id, session_id: task.session_id,
+               seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601 }
+      tenant = task_tenant(task)
+      meta[:tenant] = tenant unless tenant.nil?
+      @event_stream.emit(Insika::Event.new(type: type, data: data, meta: meta))
+    end
+
+    # The tenant stamped on the task's command (WS1), nil when the request was
+    # operator-made. Cheap read on the persisted command hash — never rebuilds.
+    def task_tenant(task)
+      command = task.respond_to?(:command) ? task.command : nil
+      return nil unless command.is_a?(Hash)
+
+      meta = command["meta"] || command[:meta] || {}
+      meta["tenant"] || meta[:tenant]
     end
   end
 end

@@ -36,6 +36,11 @@ W = Deploy::Wiring
 ADMIN_TOKEN   = ENV["ADMIN_TOKEN"].to_s
 GATEWAY_TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN)
 
+# WS1: "single_tenant" (default) keeps the gateway token as the only
+# credential; "multi_tenant" resolves per-tenant + operator tokens from the
+# store (INSIKA_TENANCY).
+TENANCY       = ENV.fetch("INSIKA_TENANCY", "single_tenant")
+
 # Inbound A2A OPT-IN via INSIKA_A2A_AGENT (gated by the dynamic ProfileSource).
 A2A_APP =
   if (a2a_agent = ENV["INSIKA_A2A_AGENT"]) && W::PROFILE_SOURCE.fetch(a2a_agent)
@@ -65,7 +70,10 @@ APP = Insika::Server::App.new(
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
   onboarding: ONBOARDING, # nil unless INSIKA_ONBOARDING -> onboarding routes 404
   channels: W::CHANNEL_REGISTRY, # /channels/:id/events (empty registry -> 404)
-  config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"] }
+  config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"],
+            tenancy: TENANCY },
+  # WS1: only multi_tenant hands the token store to the edge.
+  token_store: (W::SPINE.token_store if TENANCY == "multi_tenant")
 )
 
 PERSISTENCE = ENV["INSIKA_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"

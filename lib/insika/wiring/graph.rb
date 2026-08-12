@@ -45,6 +45,7 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
+        token_store          = Insika::TokenStore.new(store: backend)
         # the two durable halves of a Shape B channel — the
         # replies still owed to a platform, and the retry window that stops a
         # redelivered webhook from becoming a second turn. Built unconditionally
@@ -72,6 +73,7 @@ module Insika
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
           memory_store: memory_store, refinement_store: refinement_store,
+          token_store: token_store,
           outbox_store: outbox_store, inbound_log: inbound_log,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -151,6 +153,7 @@ module Insika
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
           outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
+          token_store: spine.token_store,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
           code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
@@ -183,6 +186,18 @@ module Insika
         bus.register(:resume_task,
                      Insika::Commands::ResumeTask.new(profiles: profiles, task_store: spine.task_store,
                                                        checkpoint_store: spine.checkpoint_store, executor: executor))
+        # WS1 multi-tenant credentials: per-tenant + operator tokens, stored as
+        # hashes. Operator-only BY CONSTRUCTION — the edge refuses a tenant
+        # principal on POST /v1/commands, and the handlers re-check meta.
+        bus.register(:issue_tenant_token,
+                     Insika::Commands::IssueTenantToken.new(token_store: spine.token_store,
+                                                            event_stream: spine.event_stream))
+        bus.register(:revoke_token,
+                     Insika::Commands::RevokeToken.new(token_store: spine.token_store,
+                                                       event_stream: spine.event_stream))
+        bus.register(:rotate_tenant_token,
+                     Insika::Commands::RotateTenantToken.new(token_store: spine.token_store,
+                                                             event_stream: spine.event_stream))
         bus
       end
 
@@ -191,7 +206,7 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :outbox_store, :inbound_log, :code_tool_registry,
+        :token_store, :outbox_store, :inbound_log, :code_tool_registry,
         :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -202,7 +217,7 @@ module Insika
       Result = Struct.new(
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
-        :memory_store, :refinement_store, :outbox_store, :inbound_log,
+        :memory_store, :refinement_store, :outbox_store, :inbound_log, :token_store,
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

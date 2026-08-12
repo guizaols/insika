@@ -47,16 +47,26 @@ dispatch **any** registered authoring Command (`write_agent_file`, `write_data_t
 `upsert_llm_provider`, `update_settings`, `delete_agent`). Treat that token as
 operator-grade — it is not a read key, and a leak is agent takeover, not just usage.
 
-> **The auth decision (decided for 0.1.0): one deployment, one token;
-> multi-tenancy belongs to the host.** There is exactly one credential per
-> surface — `OPENCLAW_GATEWAY_TOKEN` for `/v1`, `ADMIN_TOKEN` for the Studio —
-> and no per-caller scoping inside the engine. That is what the code has always
-> done; this paragraph is the decision written down so nothing built on top
-> inherits an assumption nobody stated. Serving two tenants from one mount means
-> putting the app behind your own authentication (see
-> [Embedding](EMBEDDING.md#embedding-is-not-multi-tenancy)), and scoped auth —
-> one mount, several tokens with different powers — is a real RFC the day an
-> adopter needs it, not a someday.
+### Multi-tenant mode (`INSIKA_TENANCY=multi_tenant`)
+
+A single operator-grade token cannot host N stores. With `INSIKA_TENANCY=multi_tenant`
+the Bearer is resolved to a **principal** before the routes:
+
+- **Per-tenant tokens** (`POST /v1/commands/issue_tenant_token`) scope a caller to
+  one tenant; **operator** tokens (and the legacy gateway token — an existing
+  deployment switching modes keeps its credential) have the run of the deployment.
+- Tokens are stored **only as SHA-256 hashes**; the plaintext is shown exactly once,
+  at issue time. Rotation (`rotate_tenant_token`) and revocation (`revoke_token`)
+  are operator commands — revoking one tenant's token never touches another's.
+- A tenant principal reaches only its **own runtime surfaces** (`/v1/sessions`,
+  `/v1/messages`, `/v1/responses`, workflow runs, and its own session/task/event
+  reads). Every authoring/provisioning/config surface answers `403` to a tenant.
+- Isolation is the key, not a convention: a tenant's sessions live under
+  `<tenant>:<session-id>`, its commands carry `meta.tenant` (memory scoping,
+  event tagging), and reading another tenant's session/task reads as `404`.
+
+`single_tenant` (the default) is exactly the classic behavior above — one
+operator credential, no principal, no stamping.
 
 ## The `/v1` contract is versioned by date
 
