@@ -65,4 +65,130 @@ RSpec.describe "Insika::Executor + EdgeLimiter" do
     # the flood exchange did NOT enter the session history (audit = the event)
     expect(session_store.find("s1").messages.size).to eq(after_first)
   end
+
+  describe "WS2 calendar budgets" do
+    let(:budget_ledger) { Insika::BudgetLedger.new(store: Insika::Stores::Memory.new) }
+
+    def budget_profile(budget)
+      Insika::AgentProfile.build(id: "example-agent", model: "gpt", base_prompt: "SOUL",
+                                  budget: budget)
+    end
+
+    def budget_executor(prof)
+      edge = Insika::EdgeLimiter.new(ledger: ledger, budget_ledger: budget_ledger,
+                                     event_stream: event_stream)
+      Insika::Executor.new(
+        context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
+        middleware: Insika::MiddlewareStack.new([edge, guardrails.input_guardrail]),
+        hooks: Insika::Hooks.new,
+        tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
+        profiles: {}, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, event_stream: event_stream,
+        content_filter_factory: guardrails.content_filter_factory
+      )
+    end
+
+    def make_tenant_task(message, id:, tenant: nil)
+      command = Insika::Command.build(:send_message,
+                                      { agent: "example-agent", message: message }, tenant: tenant)
+      task_store.create(command: command.to_h, session_id: "s1", id: id)
+    end
+
+    def run_with(executor, task, prof, chat: FakeChat.new)
+      allow(executor).to receive(:create_chat).and_return(chat)
+      Sync do
+        executor.spawn(task, profile: prof)
+        executor.instance_variable_get(:@running)[task.id]&.wait
+      end
+    end
+
+    def warnings = event_stream.events.count { |e| e.type == :budget_warning }
+
+    it "HARD: exhausting the daily budget mid-day -> typed BudgetExceeded, zero LLM, ONE alert" do
+      executor = budget_executor(budget_profile("daily" => 1_000, "soft" => false))
+
+      # the day accumulates to the alert_at crossing (80%) -> the ONE event
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 800)
+      chat = FakeChat.new
+      run_with(executor, make_tenant_task("oi", id: "b1"), budget_profile("daily" => 1_000, "soft" => false),
+               chat: chat)
+      expect(chat.asked).not_to be_nil # 800 < 1000: the turn runs
+      expect(warnings).to eq(1)
+
+      # later the same day the cap is reached
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 200)
+      run_with(executor, make_tenant_task("oi", id: "b2"), budget_profile("daily" => 1_000, "soft" => false),
+               chat: FakeChat.new)
+
+      stored = task_store.find("b2")
+      expect(stored.status).to eq(:failed)
+      error = stored.executions.last.error
+      expect(error).to include("class" => "Insika::BudgetExceeded",
+                               "stage" => "budget", # the executor's single capture classifies it
+                               "kind" => "budget_exceeded", "retryable" => true)
+      expect(error["retry_after"]).to be_between(0, 86_400) # seconds until the window rolls
+      expect(task_store.find("b1").status).to eq(:completed) # earlier turns are untouched
+      expect(warnings).to eq(1) # hard breach never re-emits: exactly one alert along the way
+    end
+
+    it "SOFT: over the cap the turn runs, warns once per window and injects the context note" do
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 1_000)
+      executor = budget_executor(budget_profile("daily" => 1_000, "soft" => true))
+
+      chat = FakeChat.new
+      run_with(executor, make_tenant_task("oi", id: "c1"), budget_profile("daily" => 1_000, "soft" => true),
+               chat: chat)
+
+      expect(task_store.find("c1").status).to eq(:completed) # ran, with zero LLM refusal
+      expect(chat.asked).not_to be_nil
+      expect(warnings).to eq(1)
+      expect(chat.instructions).to include("[budget: agent 'example-agent'")
+
+      # a second past-cap turn keeps running but does NOT re-emit the event
+      chat2 = FakeChat.new
+      run_with(executor, make_tenant_task("oi", id: "c2"), budget_profile("daily" => 1_000, "soft" => true),
+               chat: chat2)
+      expect(task_store.find("c2").status).to eq(:completed)
+      expect(warnings).to eq(1)
+    end
+
+    it "records the BILLED spend (cached tokens included — the A4 rule) on both windows" do
+      executor = budget_executor(budget_profile("daily" => 5_000))
+      token_chat = FakeChat.new
+      token_chat.define_singleton_method(:ask) do |message, &on_chunk|
+        @asked = message
+        on_chunk&.call(FakeChat::Response.new("final"))
+        resp = Object.new.tap do |o|
+          o.define_singleton_method(:input_tokens) { 300 }
+          o.define_singleton_method(:output_tokens) { 200 }
+          o.define_singleton_method(:cached_tokens) { 500 }
+          o.define_singleton_method(:cache_creation_tokens) { 0 }
+        end
+        resp
+      end
+
+      run_with(executor, make_tenant_task("oi", id: "e1"), budget_profile("daily" => 5_000),
+               chat: token_chat)
+
+      expect(budget_ledger.current(tenant: nil, agent: "example-agent"))
+        .to eq(daily: 1_000, monthly: 1_000) # 300+200 total + 500 cached
+    end
+
+    it "the window is per (tenant, agent): one tenant's exhaustion does not touch the other" do
+      budget_ledger.add(tenant: "loja-a", agent: "example-agent", by: 1_000) # A's cell spent
+      prof = budget_profile("daily" => 1_000) # soft absent = HARD
+      executor = budget_executor(prof)
+
+      # tenant B runs freely...
+      chat = FakeChat.new
+      run_with(executor, make_tenant_task("oi", id: "d1", tenant: "loja-b"), prof, chat: chat)
+      expect(task_store.find("d1").status).to eq(:completed)
+      expect(chat.asked).not_to be_nil
+
+      # ...while tenant A is at the wall
+      run_with(executor, make_tenant_task("oi", id: "d2", tenant: "loja-a"), prof)
+      expect(task_store.find("d2").status).to eq(:failed)
+      expect(task_store.find("d2").executions.last.error["class"]).to eq("Insika::BudgetExceeded")
+    end
+  end
 end

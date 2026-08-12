@@ -228,6 +228,21 @@ RSpec.describe Insika::DSL do
       expect(import_and_read(dsl.to_pack).tool_output_compression).to be(true)
       expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
     end
+
+    it "the budget knob is DATA on the pack (daily cap, soft wall)" do
+      dsl = Insika.agent("bia3") do
+        model "deepseek-chat"
+        budget daily: 100_000, soft: false
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia3", model: "deepseek-chat",
+                  budget: { "daily" => 100_000, "soft" => false },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      expect(import_and_read(dsl.to_pack).budget).to eq("daily" => 100_000, "soft" => false)
+      expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

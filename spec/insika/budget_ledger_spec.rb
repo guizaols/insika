@@ -56,6 +56,26 @@ RSpec.describe Insika::BudgetLedger do
     expect(keys.first).to include("t:a:")
   end
 
+  it "alert markers are per (tenant, agent, window, bucket): once per window, dying with it" do
+    expect(ledger.alerted?(tenant: "t", agent: "a", window: :daily, now: now)).to be(false)
+
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, now: now)).to be(false) # 1st
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, now: now + 3_600)).to be(true) # already
+    expect(ledger.alerted?(tenant: "t", agent: "a", window: :daily, now: now)).to be(true)
+
+    # the next day the marker is gone (the window rolled): a fresh warn is allowed
+    expect(ledger.alerted?(tenant: "t", agent: "a", window: :daily, now: now + described_class::DAY)).to be(false)
+    # other scopes are independent
+    expect(ledger.alerted?(tenant: "t", agent: "b", window: :daily, now: now)).to be(false)
+    expect(ledger.alerted?(tenant: "t", agent: "a", window: :monthly, now: now)).to be(false)
+  end
+
+  it "reset_in counts down to the window roll (retry_after for a hard budget)" do
+    expect(ledger.reset_in(:daily, now: Time.utc(2026, 8, 11, 12, 0, 0))).to eq(43_200) # 12h left
+    expect(ledger.reset_in(:daily, now: Time.utc(2026, 8, 11, 0, 0, 0))).to eq(86_400) # a full day
+    expect(ledger.reset_in(:monthly, now: Time.utc(2026, 8, 11, 0, 0, 0))).to eq(21 * described_class::DAY) # Aug 11 -> Sep 1
+  end
+
   it "two SQLite handles racing the same cell lose nothing (exactly one increment per call)" do
     dir = Dir.mktmpdir
     path = File.join(dir, "budget.db")

@@ -155,8 +155,11 @@ module Deploy
     # Production edge: rate-limit per chat + token ceiling per
     # agent, both opt-in (Studio > Settings > Edge limits; per-agent overrides in
     # the agent config). Counters durable in the SAME backend as everything else.
+    # WS2 calendar budgets (AgentProfile#budget) ride the BudgetLedger +
+    # the event stream (budget_warning).
     EDGE_LIMITER = Insika::EdgeLimiter.new(
-      ledger: Insika::UsageLedger.new(store: BACKEND), settings_store: SETTINGS_STORE
+      ledger: Insika::UsageLedger.new(store: BACKEND), settings_store: SETTINGS_STORE,
+      budget_ledger: SPINE.budget_ledger, event_stream: EVENT_STREAM
     )
 
     # OpenClaw-style prompts become the IDENTITY (pinned) via the Prompt provider.

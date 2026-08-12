@@ -39,6 +39,15 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.limits).to eq(described_class::DEFAULT_LIMITS)
       expect(profile.prompt_caching).to be_nil # R3: opt-in, off by default
       expect(profile.tool_output_compression).to be_nil # A3/C3: opt-in, off by default
+      expect(profile.budget).to be_nil # WS2: no budget (parity)
+    end
+
+    it "budget is normalized to string keys (the data shape the edge reads)" do
+      profile = described_class.build(id: "a", model: "m",
+                                      budget: { daily: 100_000, monthly: 2_000_000,
+                                                soft: true, alert_at: 0.8 })
+      expect(profile.budget).to eq("daily" => 100_000, "monthly" => 2_000_000,
+                                   "soft" => true, "alert_at" => 0.8)
     end
 
     it "tool_output_compression round-trips on/off" do
