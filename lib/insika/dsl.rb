@@ -173,6 +173,12 @@ module Insika
         n
       end
 
+      # skills_eager — turns progressive disclosure OFF: every allowed skill's body
+      # is in the prompt on every turn, so activation is not a decision and cannot
+      # be missed. Check the bodies against `context_budget` first; they are paid
+      # for on every turn (though a stable position makes them cacheable prefix).
+      def skills_eager(on = true) = @config[:skills_eager] = on
+
       # --- delegation ------------------------------------------------------
       # subagents "security", "performance" → the child agents this one MAY
       # spawn. CAPACITY field: opt-in, never inherited, and the ids

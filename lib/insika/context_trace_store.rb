@@ -60,9 +60,15 @@ module Insika
         "evicted" => Array(e[:evicted] || e["evicted"]).map(&:to_s),
         "categories" => categories.each_with_object({}) do |(name, c), acc|
           c = {} unless c.is_a?(Hash)
-          acc[name.to_s] = { "tokens" => int(c[:tokens] || c["tokens"]),
-                             "fragments" => int(c[:fragments] || c["fragments"]),
-                             "pinned" => int(c[:pinned] || c["pinned"]) }
+          cat = { "tokens" => int(c[:tokens] || c["tokens"]),
+                  "fragments" => int(c[:fragments] || c["fragments"]),
+                  "pinned" => int(c[:pinned] || c["pinned"]) }
+          # ids of WHAT the category carried (skill names) — still content-free, so
+          # the no-masking-needed contract above holds. Omitted when empty: most
+          # categories have nothing to name and an empty key is just noise.
+          labels = Array(c[:labels] || c["labels"]).map(&:to_s)
+          cat["labels"] = labels unless labels.empty?
+          acc[name.to_s] = cat
         end,
         "tools" => { "count" => int(tools[:count] || tools["count"]),
                      "tokens" => int(tools[:tokens] || tools["tokens"]) }

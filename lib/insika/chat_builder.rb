@@ -13,7 +13,8 @@ module Insika
   # Executor, injected as the `emit` callable.
   class ChatBuilder
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
-                   hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil)
+                   hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil,
+                   tool_trace_store: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -21,6 +22,8 @@ module Insika
       @hooks = hooks
       @tool_catalog = tool_catalog
       @memory_store = memory_store
+      # only to trace load_skill, which is not enveloped — nil = no trace (parity).
+      @tool_trace_store = tool_trace_store
       # the object exposing #run_subagent (the Executor). nil = the
       # spawn_subagent system tool is never wired (parity for a builder used
       # without delegation, e.g. some unit stubs).
@@ -69,9 +72,15 @@ module Insika
 
       # load_skill is a system default (outside the allowlist), otherwise
       # progressive disclosure breaks. allowed_skills comes from the Resolution
-      # (policy).
-      skill_names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
-      tools << Tools::LoadSkill.new(@skill_catalog, skill_names) unless skill_names.empty?
+      # (policy), minus the EAGER ones: their bodies are already in the prompt, so a
+      # call could only pay for a duplicate. Nothing lazy left -> the tool is not
+      # wired at all. Keeping it for the discretionary skills is deliberate: that
+      # call is the only record of which skill the model actually reached for.
+      skill_names = lazy_skill_names(state)
+      unless skill_names.empty?
+        tools << Tools::LoadSkill.new(@skill_catalog, skill_names,
+                                      trace_recorder: @tool_trace_store, state: state)
+      end
 
       # remember is the memory-write system tool — wired only with
       # @memory_store present AND profile.memory (a double gate). Never enveloped.
@@ -107,6 +116,18 @@ module Insika
       end
 
       chat
+    end
+
+    # The skills the model still has to ask for: the Resolution's set minus the eager
+    # ones. Intersected by NAME against the catalog's own verdict (SkillCatalog#eager_for)
+    # so the tool and the level-1 list can never disagree about who is eager. A catalog
+    # without the reader (a unit stub) falls back to the whole set — parity.
+    def lazy_skill_names(state)
+      names = Array(state.allowed_skills).map { |s| s.respond_to?(:name) ? s.name : s.to_s }
+      return names unless @skill_catalog.respond_to?(:eager_for)
+
+      eager = @skill_catalog.eager_for(state.profile).map(&:name)
+      names - eager
     end
 
     # The turn's effective tool concurrency (nil = serial), plus the ONE thing the

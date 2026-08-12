@@ -806,6 +806,75 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(entry["tools"]["tokens"]).to be > 0
     end
 
+    # Once bodies arrive by context instead of a load_skill call, the trace is the
+    # only after-the-fact record of WHICH skills a turn was given.
+    it "records the fragment labels per category (which skills were injected)" do
+      session_store.create(id: "s1")
+      store = Insika::ContextTraceStore.new(store: backend)
+      labelled = Class.new do
+        def call(_request)
+          fragments = [
+            Insika::ContextFragment.build(content: "bodies", placement: :system, tokens: 900,
+                                          source: "Insika::Context::Providers::SkillTrigger",
+                                          labels: %w[gift-concierge natura-line-expert]),
+            Insika::ContextFragment.build(content: "identity", placement: :system, tokens: 100,
+                                          source: "Insika::Context::Providers::Prompt", pinned: true)
+          ]
+          Insika::ContextPackage.new(system: "x", history: [], tool_context: nil, fragments: fragments,
+                                     budget: { cap: 8_000, used: 1_000, evicted: [] })
+        end
+      end.new
+
+      run_turn(build_executor(context_builder: labelled, context_trace_store: store), make_task)
+
+      cats = store.for_session("s1").first["categories"]
+      expect(cats["skilltrigger"]["labels"]).to eq(%w[gift-concierge natura-line-expert])
+      expect(cats["prompt"]).not_to have_key("labels")   # nothing to name -> no noise
+    end
+
+    # Correlation is the whole point of emitting here instead of in the provider:
+    # the Studio's SSE drops an event whose meta lacks task_id when the subscriber
+    # is task-scoped, so a provider-emitted event was correct and never arrived.
+    describe "announcing skills injected by context (no load_skill call)" do
+      def labelled_builder(labels)
+        Class.new do
+          define_method(:initialize) { |l| @l = l }
+          def call(_request)
+            frag = Insika::ContextFragment.build(
+              content: "bodies", placement: :system, tokens: 900,
+              source: "Insika::Context::Providers::SkillTrigger", labels: @l
+            )
+            Insika::ContextPackage.new(system: "x", history: [], tool_context: nil,
+                                       fragments: [frag],
+                                       budget: { cap: 8_000, used: 900, evicted: [] })
+          end
+        end.new(labels)
+      end
+
+      it "emits :skill_activated with the names and full task/session correlation" do
+        session_store.create(id: "s1")
+        executor = build_executor(context_builder: labelled_builder(%w[gift-concierge mapa]))
+
+        run_turn(executor, make_task)
+
+        ev = event_stream.events.find { |e| e.type == :skill_activated }
+        expect(ev).not_to be_nil
+        expect(ev.data[:names]).to eq(%w[gift-concierge mapa])
+        expect(ev.data[:source]).to eq("context")
+        # without these the Studio filters the event out and nothing renders
+        expect(ev.meta[:task_id]).to eq("t")
+        expect(ev.meta[:session_id]).to eq("s1")
+        expect(ev.meta[:seq]).to be_a(Integer)
+      end
+
+      it "does not emit when no skill body was injected" do
+        session_store.create(id: "s1")
+        run_turn(build_executor(context_builder: BreakdownContextBuilder.new), make_task)
+
+        expect(event_stream.events.find { |e| e.type == :skill_activated }).to be_nil
+      end
+    end
+
     it "one-shot turn (no session) records nothing" do
       store = Insika::ContextTraceStore.new(store: backend)
       executor = build_executor(context_builder: BreakdownContextBuilder.new,

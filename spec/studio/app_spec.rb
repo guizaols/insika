@@ -1034,6 +1034,85 @@ RSpec.describe Studio::App do
     expect(body).to include("9 tool schema(s)")         # the tools estimate
   end
 
+  # Once bodies arrive by context instead of a load_skill call, this list is the
+  # only after-the-fact answer to "which skills did the turn get?".
+  it "session viewer names the skills injected into the turn" do
+    sess = StoredSession.new(id: "sess-sk", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    ctx = { "sess-sk" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
+                            cap: 60_000, used: 20_000, evicted: [],
+                            categories: {
+                              "skilltrigger" => { tokens: 14_371, fragments: 1, pinned: 0,
+                                                  labels: %w[gift-concierge natura-line-expert] },
+                              "prompt" => { tokens: 5_600, fragments: 1, pinned: 5_600 }
+                            },
+                            tools: { count: 17, tokens: 3_430 } }] }
+    app, = build_app(sessions: { "sess-sk" => sess }, context_traces: ctx)
+
+    body = login(app).get("/sessions/sess-sk").body
+
+    expect(body).to include("skilltrigger")
+    expect(body).to include("gift-concierge, natura-line-expert")
+    # the card is collapsed, so the count has to be readable WITHOUT expanding it
+    expect(body).to include("skills 2")
+  end
+
+  # A context-injected skill is not a message, so the thread showed nothing — while a
+  # model-loaded one shows up on its own (load_skill is a tool). Synthesized into the
+  # transcript, placed by time so it lands at the top of its own turn.
+  it "transcript shows a context-injected skill card, in turn order" do
+    sess = StoredSession.new(
+      id: "sess-inline", updated_at: "t",
+      messages: [{ "role" => "user", "content" => "oi", "at" => "2026-08-12T10:00:05Z" },
+                 { "role" => "assistant", "content" => "ola", "at" => "2026-08-12T10:00:05Z" },
+                 { "role" => "user", "content" => "e agora", "at" => "2026-08-12T10:00:20Z" },
+                 { "role" => "assistant", "content" => "pronto", "at" => "2026-08-12T10:00:20Z" }]
+    )
+    entry = lambda do |at, labels|
+      { task_id: "t#{at}", turn: 1, at: at, cap: 60_000, used: 900, evicted: [],
+        categories: { "skilltrigger" => { tokens: 500, fragments: 1, pinned: 0, labels: labels } },
+        tools: { count: 0, tokens: 0 } }
+    end
+    ctx = { "sess-inline" => [entry.call("2026-08-12T10:00:01Z", ["gift-concierge"]),
+                              entry.call("2026-08-12T10:00:15Z", %w[mapa query])] }
+    app, = build_app(sessions: { "sess-inline" => sess }, context_traces: ctx)
+
+    body = login(app).get("/sessions/sess-inline").body
+    thread = body[body.index('class="thread"')..]
+
+    expect(thread).to include("skills · context (1)")
+    expect(thread).to include("skills · context (2)")
+    # each card sits BEFORE the turn it belongs to
+    expect(thread.index("skills · context (1)")).to be < thread.index("ola")
+    expect(thread.index("skills · context (2)")).to be < thread.index("pronto")
+    expect(thread.index("ola")).to be < thread.index("skills · context (2)")
+  end
+
+  it "a message without a timestamp flushes no inline card (older sessions degrade quietly)" do
+    sess = StoredSession.new(id: "sess-nots", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "oi" }])
+    ctx = { "sess-nots" => [{ task_id: "t1", turn: 1, at: "2026-08-12T10:00:01Z", cap: 60_000,
+                              used: 900, evicted: [],
+                              categories: { "skilltrigger" => { tokens: 500, fragments: 1,
+                                                                pinned: 0, labels: ["mapa"] } },
+                              tools: { count: 0, tokens: 0 } }] }
+    app, = build_app(sessions: { "sess-nots" => sess }, context_traces: ctx)
+
+    body = login(app).get("/sessions/sess-nots").body
+
+    expect(body[body.index('class="thread"')..]).not_to include("skills · context")
+    expect(body).to include("skills 1") # the Context card still reports it
+  end
+
+  it "no skills injected -> no skills badge (an empty one reads as zero, not as absent)" do
+    sess = StoredSession.new(id: "sess-ns", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    ctx = { "sess-ns" => [{ task_id: "t1", turn: 1, at: "t", cap: 8_000, used: 900, evicted: [],
+                            categories: { "prompt" => { tokens: 900, fragments: 1, pinned: 900 } },
+                            tools: { count: 0, tokens: 0 } }] }
+    app, = build_app(sessions: { "sess-ns" => sess }, context_traces: ctx)
+
+    expect(login(app).get("/sessions/sess-ns").body).not_to include("skills ")
+  end
+
   it "session viewer without a context trace omits the card (nil store = off)" do
     sess = StoredSession.new(id: "sess-nc", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-nc" => sess })

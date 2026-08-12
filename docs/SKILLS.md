@@ -50,6 +50,68 @@ The Level-1 list is budgeted like any other context fragment
 (see [Context](CONTEXT.md)); the Level-2 body only costs tokens on the turns that
 open it.
 
+### Only trigger a skill that can finish the turn alone
+
+A `triggers:` match is not a hint — the body lands in the prompt with the
+authority of an instruction. So put triggers only on a skill that is
+**self-sufficient** for the turn it fires on.
+
+The failure mode is counter-intuitive: injecting a skill that is only *part* of
+the answer is **worse than injecting nothing**. Give the model a reference table
+whose procedure lives in a companion skill, and it now holds a plausible
+half-recipe — so it never calls `load_skill` for the other half, and improvises
+the missing part. A precise trigger on the wrong kind of skill still breaks the
+turn.
+
+Reference tables, vocabularies and lookup maps are the skills to leave on
+level 1. Whole procedures ("run this journey", "recover from this error") are the
+ones worth triggering.
+
+## Always-on skills: `eager`
+
+A skill that every turn needs — output format, the marker vocabulary, how to
+recover from a failed tool — should not depend on the model choosing to load it.
+Mark it in the frontmatter and its body is in the prompt on every turn:
+
+```yaml
+---
+name: recommendation-formatting
+description: How to present products after a search…
+eager: true
+---
+```
+
+An eager skill also **leaves level 1**: it is absent from `<available_skills>` and
+`load_skill` refuses to serve it. There is no level 2 left to fetch, and a catalog
+pointing at a body already in the prompt only invites a call that pays for a
+duplicate.
+
+For the blanket case — a corpus small enough that every body fits — the agent can
+opt in to all of them at once:
+
+```ruby
+Insika.agent("consultant") do
+  skills_eager             # every allowed skill's body, every turn
+end
+```
+
+### Keep the discretionary skills on the load path
+
+Making everything eager is a trap, and the reason is not the tokens: **it costs you
+the signal**. When every body is present on every turn, "which skills were active"
+is always "all of them", and you can no longer tell which one the model reached for.
+The `load_skill` call is the only record of that choice — it is a persisted tool
+message, so it shows up in the transcript on its own.
+
+So the split is: **eager for what the turn always needs, `load_skill` for what the
+turn might need.** The second group is where you want the model's choice on the
+record, because that is the group where a wrong choice is worth seeing.
+
+The token trade is real but smaller than it looks: eager bodies sit at a fixed
+position ahead of the history, so they belong to the **cacheable prefix**, and they
+are still evictable under budget pressure, unlike the pinned identity. Conditional
+injection is what breaks that prefix, on exactly the turns it fires.
+
 ## Where skills live: the store, over a disk seed
 
 - Skills live as **rows in SQLite** — one row per skill, holding the entire

@@ -30,4 +30,66 @@ RSpec.describe Insika::Tools::LoadSkill do
 
     expect(tool.execute(name: "fantasma")).to eq({ error: "skill 'fantasma' not found" })
   end
+
+  # This tool is NOT enveloped, and the envelope is what writes the tool trace —
+  # so activation was the one call missing from the Studio's trace.
+  describe "trace (it is not enveloped, so it records itself)" do
+    let(:recorder) { [] }
+    let(:trace_recorder) do
+      Class.new do
+        def initialize(sink) = @sink = sink
+        def record(session_id:, entry:) = @sink << { session_id: session_id, entry: entry }
+      end.new(recorder)
+    end
+    let(:state) do
+      task = Struct.new(:id, :session_id).new("t1", "s1")
+      Struct.new(:task, :turn).new(task, 3)
+    end
+
+    it "records the activation keyed by session, in the envelope's shape" do
+      tool = described_class.new(catalog, ["cardapio"], trace_recorder: trace_recorder, state: state)
+
+      expect(tool.execute(name: "cardapio")).to eq("CORPO")
+
+      expect(recorder.length).to eq(1)
+      expect(recorder.first[:session_id]).to eq("s1")
+      entry = recorder.first[:entry]
+      expect(entry["tool"]).to eq("load_skill")
+      expect(entry["turn"]).to eq(3)
+      expect(entry["args"]).to eq({ "name" => "cardapio" })
+      expect(entry["result"]).to eq("CORPO")
+      expect(entry["ms"]).to be_a(Integer)
+    end
+
+    it "records a refusal too — the result carries the error the store reads as not-ok" do
+      tool = described_class.new(catalog, ["pedido"], trace_recorder: trace_recorder, state: state)
+
+      tool.execute(name: "cardapio")
+
+      expect(recorder.first[:entry]["result"]).to eq({ error: "skill 'cardapio' not available for this agent" })
+    end
+
+    it "no recorder -> no trace, and the body still returns (parity)" do
+      tool = described_class.new(catalog, ["cardapio"])
+
+      expect(tool.execute(name: "cardapio")).to eq("CORPO")
+      expect(recorder).to be_empty
+    end
+
+    it "a session-less state does not trace and never breaks the call" do
+      task = Struct.new(:id, :session_id).new("t1", nil)
+      stateless = Struct.new(:task, :turn).new(task, 1)
+      tool = described_class.new(catalog, ["cardapio"], trace_recorder: trace_recorder, state: stateless)
+
+      expect(tool.execute(name: "cardapio")).to eq("CORPO")
+      expect(recorder).to be_empty
+    end
+
+    it "a recorder that raises never breaks the turn" do
+      exploding = Class.new { def record(session_id:, entry:) = raise("trace down") }.new
+      tool = described_class.new(catalog, ["cardapio"], trace_recorder: exploding, state: state)
+
+      expect(tool.execute(name: "cardapio")).to eq("CORPO")
+    end
+  end
 end
