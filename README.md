@@ -35,7 +35,7 @@ gem install insika
 require "insika"
 
 assistant = Insika.agent("assistant") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions "You are Bia, a concise and friendly assistant. Answer briefly."
 end

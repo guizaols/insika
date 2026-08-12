@@ -40,8 +40,8 @@ agents by id and those agents must resolve in the same runtime:
 newsroom = Insika.system do
   provider :deepseek
 
-  agent("writer") { model "deepseek-chat"; instructions "Write ONE paragraph." }
-  agent("editor") { model "deepseek-chat"; instructions "Rewrite as ONE sentence." }
+  agent("writer") { model "deepseek-v4-flash"; instructions "Write ONE paragraph." }
+  agent("editor") { model "deepseek-v4-flash"; instructions "Rewrite as ONE sentence." }
 
   workflow "publish",
            description: "Draft a paragraph, then tighten it.",

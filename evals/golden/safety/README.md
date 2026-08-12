@@ -34,7 +34,7 @@ set -a; . ./.env.local; set +a
 ruby scripts/serve_eval.rb &
 OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
   --base-url http://localhost:9292 --agent example-agent \
-  --golden-dir evals/golden/safety --judge-model deepseek-chat --mode eval
+  --golden-dir evals/golden/safety --judge-model deepseek-v4-flash --mode eval
 ```
 
 ## Adding your own scenarios / tools / languages

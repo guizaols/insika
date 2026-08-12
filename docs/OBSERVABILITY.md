@@ -181,13 +181,13 @@ million tokens**:
 
 ```bash
 INSIKA_MODEL_PRICING='{
-  "deepseek-chat":       {"input": 0.27, "output": 1.10, "cached_input": 0.07},
+  "deepseek-v4-flash":       {"input": 0.27, "output": 1.10, "cached_input": 0.07},
   "claude-sonnet-4-5":   {"input": 3.00, "output": 15.00, "cached_input": 0.30, "cache_write": 3.75}
 }'
 ```
 
 - A key matches the model id the provider reports, **with or without** the
-  `provider/` prefix — `deepseek/deepseek-chat` and `deepseek-chat` both hit the
+  `provider/` prefix — `deepseek/deepseek-v4-flash` and `deepseek-v4-flash` both hit the
   same entry.
 - `input` / `output` are required (one of them is enough for the entry to load).
 - `cached_input`, when given, bills cache **reads** at that rate and subtracts them

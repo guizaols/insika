@@ -63,7 +63,7 @@ whole surface answers `503`, never open by omission.
 | `BIND` | `http://localhost:9292` | host:port |
 | `ADMIN_TOKEN` | `local-demo` | token for `/studio` |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for the whole `/v1` + `/a2a` surface |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | model |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
 
 With persistence:
 

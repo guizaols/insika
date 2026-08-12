@@ -109,7 +109,7 @@ this section is the single source of truth for what changing it means.
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | model |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
 | `CONSUMER_INTERNAL_URL` | — | base URL for data-tools calling back a consumer's internal API (see below) |
 | `INSIKA_EGRESS_HOSTS` | — | outbound host allowlist (SSRF guard) |
 | `INSIKA_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**) |

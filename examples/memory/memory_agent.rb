@@ -9,7 +9,7 @@
 require_relative "../../lib/insika"
 
 concierge = Insika.agent("concierge") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   memory true
   instructions <<~PROMPT

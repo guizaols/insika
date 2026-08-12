@@ -18,7 +18,7 @@ keeps the profile it captured when it started; the next turn sees the new one.
 >
 > ```ruby
 > agent = Insika.agent("assistant") do
->   model "deepseek-chat"
+>   model "deepseek-v4-flash"
 >   provider :deepseek
 >   instructions "You are a concise, friendly assistant."
 > end

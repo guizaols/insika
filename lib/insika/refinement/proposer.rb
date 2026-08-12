@@ -181,7 +181,7 @@ module Insika
     # Resolves WHICH model(s) write the candidate, and builds the ask.
     #
     #   refinement.proposers  on the agent  (a PANEL)
-    #   -> refinement.proposer  ("deepseek/deepseek-chat" | "deepseek-chat")
+    #   -> refinement.proposer  ("deepseek/deepseek-v4-flash" | "deepseek-v4-flash")
     #   -> the platform utility_model
     #   -> nothing, and the caller refuses. There is no default model here on purpose:
     #      guessing one spends an operator's provider budget without being asked.
@@ -213,7 +213,7 @@ module Insika
         end
       end
 
-      # `proposers` accepts either syntax — a bare ref ("deepseek/deepseek-chat") or
+      # `proposers` accepts either syntax — a bare ref ("deepseek/deepseek-v4-flash") or
       # the RFC's `{ "model" =>, "provider"? => }` — because the two already coexist in
       # this config (`proposer` is a bare ref, `judges` are hashes) and refusing one of
       # them would only teach operators which page they were reading.

@@ -30,7 +30,7 @@ I can't help with that request.
 ```ruby
 guardrails input: true, output: true,
            strictness: "medium",             # low | medium | high
-           moderator: "deepseek/deepseek-chat",  # optional LLM moderator; omit for detectors only
+           moderator: "deepseek/deepseek-v4-flash",  # optional LLM moderator; omit for detectors only
            responses: { "injection" => "…", "default" => "…" }
 ```
 

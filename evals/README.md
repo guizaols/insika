@@ -65,7 +65,7 @@ samples. An unparseable judge reply scores 0 (fails) — never a silent pass.
 
 ```bash
 DEEPSEEK_API_KEY=… OPENCLAW_GATEWAY_TOKEN=local-demo \
-  ruby evals/run.rb --judge-model deepseek-chat --quorum 3 --mode eval
+  ruby evals/run.rb --judge-model deepseek-v4-flash --quorum 3 --mode eval
 ```
 
 Judge flags: `--judge-model` (or `EVAL_JUDGE_MODEL`), `--judge-provider`, `--quorum`,

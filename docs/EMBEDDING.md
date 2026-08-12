@@ -21,7 +21,7 @@ makes your responsibility.
 # config/initializers/insika.rb
 INSIKA = Insika.embed(backend: Insika::Stores::SQLite.new(path: Rails.root.join("storage/insika.sqlite3").to_s)) do
   agent "support" do
-    model "deepseek-chat"
+    model "deepseek-v4-flash"
     provider :deepseek
     api_key ENV.fetch("DEEPSEEK_API_KEY")
     instructions "You answer questions about orders. Be brief."

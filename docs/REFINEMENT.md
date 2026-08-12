@@ -174,7 +174,7 @@ sets the defaults:
 
 ```ruby
 Insika.agent "bia" do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   refine window: { last_sessions: 200 }, max_findings: 20
 end
 ```
@@ -186,8 +186,8 @@ end
 | `exclude_sessions` | none | session-id prefixes to drop |
 | `mode` | `"report"` | `report` reads and writes nothing. `propose` allows a gated, human-approved edit (below). `auto_apply` lets a gate-passing edit land unattended — off by default, and read [what it costs you](#applying-without-a-human) first. A mode the engine does not know is refused, never silently downgraded |
 | `files` | none | the ONLY files a proposal may edit. Empty means report-only |
-| `proposer` | the platform `utility_model` | which model writes the candidate (`"deepseek/deepseek-chat"` or a bare model name). Neither set means no proposal — the engine never picks a model to spend your budget on |
-| `proposers` | falls back to `proposer` | a **panel**: several models, each writing its own candidate. `["deepseek/deepseek-chat", {model: "gpt-5-mini", provider: "openai"}]` — either syntax |
+| `proposer` | the platform `utility_model` | which model writes the candidate (`"deepseek/deepseek-v4-flash"` or a bare model name). Neither set means no proposal — the engine never picks a model to spend your budget on |
+| `proposers` | falls back to `proposer` | a **panel**: several models, each writing its own candidate. `["deepseek/deepseek-v4-flash", {model: "gpt-5-mini", provider: "openai"}]` — either syntax |
 | `budget.tokens` | unlimited | what one run may spend across every proposal and every gate replay |
 | `max_edits` | 3 | edits a single proposal may carry |
 | `auto_apply_max_edits` | 1 | edits an **unattended** apply may carry. A bigger diff waits for a person |
@@ -306,7 +306,7 @@ first question worth asking is whether the finding it addresses is behaviour at 
 
 ```ruby
 refine mode: "propose", files: %w[TOOLS.md],
-       proposers: ["deepseek/deepseek-chat", "gpt-5-mini"],
+       proposers: ["deepseek/deepseek-v4-flash", "gpt-5-mini"],
        budget: { tokens: 200_000 }
 ```
 

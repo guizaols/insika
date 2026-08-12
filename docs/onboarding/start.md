@@ -51,7 +51,7 @@ require "insika"
 
 assistant = Insika.agent("assistant") do
   provider :deepseek            # ← the provider slug from {{MODELS_URL}}
-  model "deepseek-chat"         # ← a model id from {{MODELS_URL}}
+  model "deepseek-v4-flash"         # ← a model id from {{MODELS_URL}}
   instructions "You are a concise, friendly assistant. Answer briefly."
 end
 

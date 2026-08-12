@@ -25,7 +25,7 @@
 # …or the pt-BR store reference with the judge:
 #   OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
 #     --base-url http://localhost:9292 --agent loja-cosmeticos \
-#     --judge-model deepseek-chat --quorum 3 --mode eval
+#     --judge-model deepseek-v4-flash --quorum 3 --mode eval
 #
 # Single-process (Async::HTTP::Server, not `falcon serve`): kill -9 frees the port.
 

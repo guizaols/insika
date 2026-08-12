@@ -8,7 +8,7 @@
 require_relative "../../lib/insika"
 
 fx = Insika.agent("fx") do
-  model "deepseek-chat"
+  model "deepseek-v4-flash"
   provider :deepseek
   instructions <<~PROMPT
     You convert currencies. When the user asks about an exchange rate, call
