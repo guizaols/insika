@@ -11,7 +11,7 @@ module Insika
   # Consumed by the Executor (skill_catalog:) and by stage 3
   # (effective/format_for_prompt).
   class SkillCatalog
-    Skill = Data.define(:name, :description, :path, :body)
+    Skill = Data.define(:name, :description, :path, :body, :triggers)
 
     # roots ordered by PRECEDENCE (highest first): workspace, managed,
     # bundled. Same name in more than one root: the first wins.
@@ -60,8 +60,10 @@ module Insika
         #{entries}
         </available_skills>
 
-        Before acting on a task that matches a skill above, call the
-        `load_skill` tool with its name to load the complete instructions.
+        Before ANY reply or tool call: scan the skills above. If one matches
+        or is even partially relevant to the task, you MUST call
+        `load_skill("name")` FIRST and follow what it returns. Err on the
+        side of loading. Only skip when genuinely none apply.
       PROMPT
     end
 
@@ -106,8 +108,18 @@ module Insika
         name: name.to_s,
         description: meta["description"].to_s,
         path: path,
-        body: match[2].strip
+        body: match[2].strip,
+        triggers: parse_triggers(meta["triggers"])
       )
+    end
+
+    # `triggers:` frontmatter — deterministic activation (SkillTrigger
+    # provider): when the user message matches one, the body is injected
+    # this turn without a load_skill call. YAML list, or comma-separated
+    # string under the lenient parse.
+    def parse_triggers(raw)
+      list = raw.is_a?(String) ? raw.split(",") : Array(raw)
+      list.map { |t| t.to_s.strip }.reject(&:empty?)
     end
   end
 end

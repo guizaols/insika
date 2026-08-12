@@ -252,6 +252,7 @@ module Insika
             agent_files: c[:agent_file_store], system_files: c[:system_file_store]
           ),
           Insika::Context::Providers::Skill.new(catalog: c[:skill_catalog]),
+          Insika::Context::Providers::SkillTrigger.new(catalog: c[:skill_catalog]),
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),
           Insika::Context::Providers::Memory.new(store: spine.memory_store),
           Insika::Context::Providers::Session.new(session_store: spine.session_store)

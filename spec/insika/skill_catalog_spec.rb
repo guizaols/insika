@@ -19,6 +19,29 @@ RSpec.describe Insika::SkillCatalog do
     File.write(File.join(path, "SKILL.md"), "---\n#{frontmatter}\n---\n#{body}\n")
   end
 
+  describe "triggers frontmatter" do
+    it "parses a YAML list" do
+      path = File.join(@root, "perfume")
+      FileUtils.mkdir_p(path)
+      File.write(File.join(path, "SKILL.md"),
+                 "---\nname: perfume\ndescription: d\ntriggers:\n  - perfume dia a dia\n  - cor do frasco\n---\nbody\n")
+
+      expect(described_class.new(@root).find("perfume").triggers).to eq(["perfume dia a dia", "cor do frasco"])
+    end
+
+    it "parses a comma-separated string (lenient path) and defaults to []" do
+      path = File.join(@root, "perfume")
+      FileUtils.mkdir_p(path)
+      File.write(File.join(path, "SKILL.md"),
+                 "---\nname: perfume\ndescription: d\ntriggers: perfume dia a dia, cor do frasco\n---\nbody\n")
+
+      expect(described_class.new(@root).find("perfume").triggers).to eq(["perfume dia a dia", "cor do frasco"])
+
+      write_skill(@root, "sem", name: "sem")
+      expect(described_class.new(@root).find("sem").triggers).to eq([])
+    end
+  end
+
   describe "#effective (allowlist)" do
     before do
       write_skill(@root, "cardapio", name: "cardapio")

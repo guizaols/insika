@@ -23,6 +23,7 @@ into a deterministic prompt:
 | Provider | Block | Priority | Notes |
 |----------|-------|:--------:|-------|
 | **Identity** | system | **100 — pinned** | The agent's prompt files (global system files first). Never cut. |
+| **Skill trigger** | `<active_skill>` | 85 | Level-2 body of a skill whose `triggers:` match the message — see [Skills](SKILLS.md). |
 | **Skills** | `<available_skills>` | 80 | Level-1 skill list — see [Skills](SKILLS.md). |
 | **Memory** | `<memory>` | 75 | Durable facts + recent notes, only if `memory` is on. Cuttable. |
 | **Tool search** | `<available_tools>` | 70 | Level-1 list of deferred tools — see [Tools](TOOLS.md). |

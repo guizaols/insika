@@ -18,6 +18,7 @@ module Insika
     module Priority
       IDENTITY     = 100 # IDENTITY/SOUL (Prompt) — pinned
       PROMPT_REF   = 90  # Prompt Catalog guardrails/refs (Prompt) — pinned
+      SKILL_BODY   = 85  # <active_skill> trigger-matched body (SkillTrigger)
       SKILL        = 80  # <available_skills> level 1 (Skill)
       MEMORY       = 75  # <memory> read path (Memory)
       TOOL_SEARCH  = 70  # <available_tools> level 1 (ToolSearch)
