@@ -47,6 +47,7 @@ module Insika
         memory_store         = Insika::MemoryStore.new(store: backend)
         token_store          = Insika::TokenStore.new(store: backend)
         budget_ledger        = Insika::BudgetLedger.new(store: backend)
+        circuit_state        = Insika::CircuitState.new(store: backend)
         # the two durable halves of a Shape B channel — the
         # replies still owed to a platform, and the retry window that stops a
         # redelivered webhook from becoming a second turn. Built unconditionally
@@ -74,7 +75,7 @@ module Insika
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
           memory_store: memory_store, refinement_store: refinement_store,
-          token_store: token_store, budget_ledger: budget_ledger,
+          token_store: token_store, budget_ledger: budget_ledger, circuit_state: circuit_state,
           outbox_store: outbox_store, inbound_log: inbound_log,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -117,20 +118,25 @@ module Insika
           session_store: spine.session_store, event_stream: spine.event_stream
         )
 
-        executor = Insika::Executor.new(
-          context_builder: context_builder, policy_engine: policy_engine,
-          middleware: middleware, hooks: spine.hooks,
-          tool_registry: tool_registry, skill_catalog: skill_catalog, profiles: profiles,
-          session_store: spine.session_store, task_store: spine.task_store,
-          checkpoint_store: spine.checkpoint_store, event_stream: spine.event_stream,
-          workflow_registry: spine.workflow_registry, pending_action_store: spine.pending_action_store,
-          capability_registry: spine.capability_registry, tool_catalog: tool_catalog,
-          memory_store: spine.memory_store,
-          content_filter_factory: guardrails.content_filter_factory, # stream redaction
-          delegation_store: spine.delegation_store, # async delegation durability
-          channel_delivery: channel_delivery, # out-of-band reply delivery
-          **executor_extra
-        )
+# WS3 provider reliability (retries/backoff/fallback/breaker) is ALWAYS wired —
+      # the profile's `reliability` data gates it, so the bare wiring is unchanged.
+      reliability = Insika::Reliability.new(circuit_store: spine.circuit_state,
+                                            event_stream: spine.event_stream)
+      executor = Insika::Executor.new(
+        context_builder: context_builder, policy_engine: policy_engine,
+        middleware: middleware, hooks: spine.hooks,
+        tool_registry: tool_registry, skill_catalog: skill_catalog, profiles: profiles,
+        session_store: spine.session_store, task_store: spine.task_store,
+        checkpoint_store: spine.checkpoint_store, event_stream: spine.event_stream,
+        workflow_registry: spine.workflow_registry, pending_action_store: spine.pending_action_store,
+        capability_registry: spine.capability_registry, tool_catalog: tool_catalog,
+        memory_store: spine.memory_store,
+        content_filter_factory: guardrails.content_filter_factory, # stream redaction
+        delegation_store: spine.delegation_store, # async delegation durability
+        channel_delivery: channel_delivery, # out-of-band reply delivery
+        reliability: reliability, # WS3: retries/fallback/breaker (data-gated)
+        **executor_extra
+      )
 
         bus = build_core_bus(spine: spine, profiles: profiles, executor: executor)
 
@@ -155,6 +161,7 @@ module Insika
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
           outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
+          circuit_state: spine.circuit_state,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
           code_tool_registry: spine.code_tool_registry,
           tool_registry: tool_registry, workflow_registry: spine.workflow_registry,
@@ -207,7 +214,7 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :token_store, :budget_ledger, :outbox_store, :inbound_log, :code_tool_registry,
+        :token_store, :budget_ledger, :circuit_state, :outbox_store, :inbound_log, :code_tool_registry,
         :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -219,7 +226,7 @@ module Insika
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
         :memory_store, :refinement_store, :outbox_store, :inbound_log, :token_store,
-        :budget_ledger, :channel_registry, :channel_delivery,
+        :budget_ledger, :circuit_state, :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

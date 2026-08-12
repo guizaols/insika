@@ -14,8 +14,9 @@ module Insika
   #                model / platform default is NOT pinned -> fallbacks apply.
   #   params    -> generation params (Hash of symbols: temperature/max_tokens/thinking)
   #   fallbacks -> ordered [{ model:, provider: }] to try when NOT pinned. The
-  #                mid-turn ROTATION across this chain is a follow-up; today the
-  #                chain is resolved + surfaced (source/pinned) for telemetry.
+  #                mid-turn ROTATION across this chain (plus the profile's own
+  #                reliability["fallback"] refs) is WS3's Reliability coordinator;
+  #                here the chain is resolved + surfaced (source/pinned) for it.
   ModelSelection = Data.define(:model, :provider, :source, :pinned, :params, :fallbacks) do
     def initialize(model:, provider: nil, source: :platform_default, pinned: false,
                    params: {}, fallbacks: [])

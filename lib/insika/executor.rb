@@ -20,7 +20,7 @@ module Insika
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
-                    context_trace_store: nil)
+                    context_trace_store: nil, reliability: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -60,6 +60,10 @@ module Insika
       # process-wide RubyLLM constant (the historic single-graph deployment).
       # Duck-typed: Context#chat and RubyLLM.chat take the same keywords.
       @llm = llm
+      # stability for the turn's single agent interaction (WS3): retries /
+      # fallback / circuit breaker, all DATA on AgentProfile#reliability.
+      # nil = the plain single ask (parity).
+      @reliability = reliability
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -527,6 +531,11 @@ module Insika
       # WS2 hard budget: a typed, retryable failure — the envelope reads
       # budget_exceeded + retry_after (window roll), never a silent drop.
       fail_task(task, e, stage: :budget)
+    rescue CircuitOpenError => e
+      # WS3 breaker: the turn died BEFORE the provider call — the envelope
+      # reads circuit_open + retry_after (cooldown remaining). Worth its own
+      # stage: an open breaker is a reliability decision, not an error bug.
+      fail_task(task, e, stage: :reliability)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
@@ -945,28 +954,16 @@ module Insika
         timing&.mark(:ask)
         # TurnOutput owns what the customer is allowed to read: chunks ride
         # :intermediate live and only the message that ENDS the turn is published as
-        # :content. Registered on the chat (fresh per turn, so no callback leaks).
-        output = TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
-                                public_intermediate: state.profile.stream_public?(:intermediate))
-        state.chat.after_message { |message| output.message_ended(message) } if state.chat.respond_to?(:after_message)
-        # `steer` only. Registered AFTER TurnOutput so the publishing
-        # decision for a message is made before anything is appended after it — the
-        # gem's callbacks are additive and run in registration order.
-        install_steer_injector(task, state)
-
-        # `asked` is what the provider returned, BEFORE the :agent after-hook had a
-        # chance to replace it — the only way to tell an explicit substitution from
-        # the ordinary "the hook returned what it received".
+        # :content. Registered on the chat (fresh per turn/attempt, no leak).
+        # With WS3 reliability the attempts build their own chats + outputs.
+        output = nil
         asked = nil
         response = @hooks.around(:agent, state) do |s|
-          public_thinking = state.profile.stream_public?(:thinking)
-          asked = s.chat.ask(s.message) do |chunk|
-            emit_thinking(chunk, task, public: public_thinking)
-            next unless chunk.content
-
-            timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
-            output.push(chunk.content)
-          end
+          result = @reliability ? run_reliable_ask(task, s, filter, timing)
+                                : run_single_ask(task, s, filter, timing)
+          output = result[:output]
+          asked = result[:asked]
+          result[:response]
         end
         # release the redactor's retained tail (a value that never completed into a
         # match is emitted redacted-if-needed, not lost) before reading anything back.
@@ -984,6 +981,134 @@ module Insika
         state.actor&.drain!
 
         output.publish(turn_answer(response, asked, output, filter))
+      end
+    end
+
+    # stage 6, plain path: the single ask on the assembled chat. Fresh TurnOutput
+    # + steer wiring per interaction (registered on state.chat, which the solve
+    # already assembled). -> { response:, asked:, output: }.
+    def run_single_ask(task, state, filter, timing)
+      output = new_turn_output(task, state, filter)
+      wire_chat_output(task, state, output)
+      asked = ask_on(task, state, state.chat, output, timing)
+      { response: asked, asked: asked, output: output }
+    end
+
+    # stage 6, WS3 path: the Reliability coordinator drives retries, backoff,
+    # circuit breaker and the fallback rotation. Each ATTEMPT gets a fresh chat
+    # + output (a failed `ask` leaves its message in the chat, so re-asking the
+    # same one would double the input) and, on a fallback, state.model_selection
+    # follows — the turn's usage is attributed to the model that actually spoke
+    # ("contabilizado no trace"). -> { response:, asked:, output: }.
+    def run_reliable_ask(task, state, filter, timing)
+      policy = state.profile.respond_to?(:reliability) ? state.profile.reliability : nil
+      return run_single_ask(task, state, filter, timing) if policy.nil? || @reliability.nil?
+
+      attempt_output = nil
+      attempt_asked = nil
+      primary = state.model_selection
+      response = @reliability.call(
+        policy: policy, tenant: task_tenant(task),
+        selection: primary, chain: reliability_chain(state)
+      ) do |selection, tries|
+        first_attempt = state.chat && selection == primary && tries == 1
+        if selection != primary
+          state.model_selection = selection # attribution follows the fallback
+        end
+        unless first_attempt
+          chat = build_attempt_chat(state, selection)
+          state.chat = chat
+        end
+        attempt_output = new_turn_output(task, state, filter)
+        wire_chat_output(task, state, attempt_output)
+        attempt_asked = ask_on(task, state, state.chat, attempt_output, timing)
+        attempt_asked
+      end
+      { response: response, asked: attempt_asked, output: attempt_output }
+    end
+
+    # The fallback chain for WS3: profile's `reliability["fallback"]` refs first,
+    # then the platform-resolved fallbacks (ModelSelection). Each node is a
+    # ModelSelection (the SAME duck the primary is — usage attribution and
+    # apply_params just work), source: :fallback, params inherited from the
+    # primary. Deduped by ref, primary excluded.
+    def reliability_chain(state)
+      primary = state.model_selection
+      refs = Array((state.profile.reliability || {})["fallback"]).map(&:to_s)
+      nodes = refs.filter_map { |r| parse_model_ref(r) }.reject { |n| n[:model].to_s.empty? }
+      nodes.concat(Array(primary.fallbacks).map { |f| { model: f[:model], provider: f[:provider] } })
+      seen = { ref_of(primary) => true }
+      nodes.filter_map do |node|
+        ref = model_ref(node)
+        next if seen[ref]
+
+        seen[ref] = true
+        Insika::ModelSelection.new(model: node[:model], provider: node[:provider],
+                                   source: :fallback, params: primary.params, fallbacks: [])
+      end
+    end
+
+    def ref_of(selection) = model_ref(selection)
+
+    # "provider/model" for any selection duck (ModelSelection | { model:, provider: }).
+    def model_ref(selection)
+      model = selection.respond_to?(:model) ? selection.model.to_s : selection[:model].to_s
+      provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
+      provider ? "#{provider}/#{model}" : model
+    end
+
+    # "provider/model" -> { model:, provider: }; "model" -> { model:, provider: nil }.
+    def parse_model_ref(entry)
+      s = entry.to_s.strip
+      return nil if s.empty?
+
+      if s.include?("/")
+        provider, model = s.split("/", 2)
+        { model: model, provider: presence_or_nil(provider)&.to_sym }
+      else
+        { model: s, provider: nil }
+      end
+    end
+
+    def presence_or_nil(value)
+      v = value.to_s.strip
+      v.empty? ? nil : v
+    end
+
+    # A fresh chat for a retry/fallback attempt: REASSEMBLED from the same turn
+    # state (the seed history is identical), baseline reset -> the transcript
+    # recorded from than point is the attempt that spoke.
+    def build_attempt_chat(state, selection)
+      chat = build_chat(selection, state.model_selection)
+      @chat_builder.assemble(chat, state, emit: ->(type, data) { emit(type, data, task: state.task) })
+      state.chat_baseline = Array(chat.messages).size if chat.respond_to?(:messages)
+      chat
+    end
+
+    def new_turn_output(task, state, filter)
+      TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
+                     public_intermediate: state.profile.stream_public?(:intermediate))
+    end
+
+    # The message-boundary + steer wiring ON the current chat. Registered
+    # AFTER TurnOutput so the publishing decision for a message is made before
+    # anything is appended after it — the gem's callbacks are additive and run
+    # in registration order.
+    def wire_chat_output(task, state, output)
+      chat = state.chat
+      chat.after_message { |message| output.message_ended(message) } if chat.respond_to?(:after_message)
+      install_steer_injector(task, state)
+    end
+
+    # The ask itself, chunk-by-chunk (WS3 attempts and the plain path share it).
+    def ask_on(task, state, chat, output, timing)
+      public_thinking = state.profile.stream_public?(:thinking)
+      chat.ask(state.message) do |chunk|
+        emit_thinking(chunk, task, public: public_thinking)
+        next unless chunk.content
+
+        timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
+        output.push(chunk.content)
       end
     end
 
@@ -1774,12 +1899,21 @@ module Insika
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
       state.model_selection = selection
+      build_chat(selection, selection)
+    end
+
+    # The gem boundary: one chat for a model selection (the resolved primary or
+    # a WS3 fallback node). The primary's generation params apply to the whole
+    # chain (params_source: ModelSelection#apply_params).
+    def build_chat(selection, params_source)
+      model = selection.respond_to?(:model) ? selection.model : selection[:model]
+      provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
       chat = (@llm || RubyLLM).chat(
-        model: selection.model,
-        provider: selection.provider,
-        assume_model_exists: selection.assume_model_exists?
+        model: model,
+        provider: provider,
+        assume_model_exists: !provider.nil?
       )
-      selection.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
+      params_source.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
       chat
     end
 

@@ -69,6 +69,24 @@ module Insika
       { kind: :budget_exceeded, retryable: true, retry_after: retry_after }.compact
     end
   end
+
+  # The circuit breaker refused the turn WITHOUT touching the provider (WS3):
+  # the (tenant, provider/model) saw `after` failures within `within` seconds.
+  # Typed + retryable — the envelope reads `circuit_open` + `retry_after`
+  # (seconds until the cooldown lets a half-open trial through).
+  class CircuitOpenError < Error
+    attr_reader :ref, :retry_after
+
+    def initialize(message = nil, ref: nil, retry_after: nil)
+      @ref = ref
+      @retry_after = retry_after
+      super(message || "circuit open for #{ref}")
+    end
+
+    def classification
+      { kind: :circuit_open, retryable: true, retry_after: retry_after }.compact
+    end
+  end
   class StoreError     < Error; end  # persistence backend failed -> task :failed
   class CancelledError < Error; end  # cooperative cancellation -> task :cancelled
 

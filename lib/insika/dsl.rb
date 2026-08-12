@@ -215,6 +215,17 @@ module Insika
       #   budget daily: 100_000, monthly: 2_000_000, soft: false
       def budget(hash) = (@config[:budget] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # Provider-interaction reliability, as DATA (WS3): retries + exponential
+      # backoff on transient failures, a fallback model chain (mid-turn
+      # rotation), and a circuit breaker per (tenant, provider/model) that
+      # fail-fasts once the window trips. `fallback`/`circuit_breaker` entries
+      # are "provider/model" refs or plain model ids.
+      #   reliability retries: 3, backoff: "exponential",
+      #               fallback: ["gpt-4o-mini"], circuit_breaker: { after: 10, within: 60, cooldown: 300 }
+      def reliability(hash)
+        (@config[:reliability] ||= {}).merge!(hash.transform_keys(&:to_s))
+      end
+
       # Mechanical tool-result dedupe in the replayed history
       # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
       # SEES: repeated identical tool results collapse to a back-reference.
