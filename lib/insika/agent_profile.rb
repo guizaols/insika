@@ -78,11 +78,12 @@ module Insika
     :budget,                          # spend caps per (tenant, agent) over
     #                                   CALENDAR windows (WS2): { "daily" => int,
     #                                   "monthly" => int, "soft" => bool, "alert_at" => 0.8 }.
-    #                                   "soft": true (default) crosses the cap and still runs
+    #                                   HARD is the default: absent/"soft": false, a turn
+    #                                   arriving at/over the cap fails with Insika::BudgetExceeded
+    #                                   and the envelope quotes `budget_exceeded` + retry_after.
+    #                                   "soft": true crosses the cap and still runs
     #                                   (one budget_warning event per window + a note in the
-    #                                   context); "soft": false makes the cap a hard wall —
-    #                                   the turn fails with Insika::BudgetExceeded and the
-    #                                   envelope quotes `budget_exceeded` + retry_after.
+    #                                   context).
     #                                   Tokens count the billed spend (input+output+cached+
     #                                   cache_creation). nil/absent = no budget (parity).
     :reliability,                     # the provider-interaction reliability policy (WS3):

@@ -178,4 +178,44 @@ RSpec.describe Insika::EdgeLimiter do
       expect(run(mw, state(limits: { chat_rate_limit: 1 }))).to be(false)
     end
   end
+
+  describe "WS2 calendar budgets" do
+    def budget_mw(budget_ledger)
+      described_class.new(ledger: ledger, budget_ledger: budget_ledger, event_stream: nil)
+    end
+
+    it "a turn that FAILS after burning tokens still counts against the budget (WS2)" do
+      budget_ledger = Insika::BudgetLedger.new(store: Insika::Stores::Memory.new)
+      prof = Insika::AgentProfile.build(id: "bia", budget: { "daily" => 10_000 })
+      st = Insika::TurnState.new(task: nil, profile: prof, turn: 1, message: "oi")
+      st.turn_context = { chat_id: "chat-1", agent_id: "bia", tenant: nil, store_id: nil }
+
+      # the ask consumed tokens, then a LATER stage failed the turn
+      expect do
+        budget_mw(budget_ledger).call(st) do |s|
+          s.usage = { total_tokens: 400, cached_tokens: 100 }
+          raise Insika::Error, "tool crashed after the ask"
+        end
+      end.to raise_error(Insika::Error)
+
+      expect(budget_ledger.current(tenant: nil, agent: "bia")).to eq(daily: 500, monthly: 500)
+    end
+
+    it "the soft CAP crossing still warns when the alert_at marker already fired" do
+      budget_ledger = Insika::BudgetLedger.new(store: Insika::Stores::Memory.new)
+      mw = budget_mw(budget_ledger)
+      prof = Insika::AgentProfile.build(id: "bia", budget: { "daily" => 1_000, "soft" => true })
+      st = Insika::TurnState.new(task: nil, profile: prof, turn: 1, message: "oi")
+      st.turn_context = { chat_id: "chat-1", agent_id: "bia", tenant: nil, store_id: nil }
+
+      # simulate a spent cell at the alert_at crossing, then at/over the cap
+      expect { mw.call(st) { nil } }.not_to raise_error
+      expect(budget_ledger.mark_alert(tenant: nil, agent: "bia", window: :daily,
+                                      level: "alert_at")).to be(false)
+      budget_ledger.add(tenant: nil, agent: "bia", by: 1_000)
+      expect { mw.call(st) { nil } }.not_to raise_error
+      expect(budget_ledger.alerted?(tenant: nil, agent: "bia", window: :daily,
+                                    level: "cap")).to be(true) # warned "cap" despite the alert_at marker
+    end
+  end
 end

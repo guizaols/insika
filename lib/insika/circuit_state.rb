@@ -33,8 +33,11 @@ module Insika
 
     # Records ONE failure for (tenant, ref). If this failure makes the window
     # reach `after` and the circuit is not already open, it stamps opened_at
-    # (the instant the breaker trips). -> :closed (still closed) | :open (just
-    # tripped).
+    # (the instant the breaker trips). -> :closed (still closed) | :open (JUST
+    # tripped — closed->open, the ONLY transition that alerts) | :reopened (an
+    # already-tripped cell re-stamped: a half-open trial failed; the circuit is
+    # open again but the node already told the operator it is sick — no NEW
+    # alert (WS3)).
     def record_failure(tenant:, ref:, after: 10, within: 60, now: Time.now)
       key = key_for(tenant, ref)
       @store.transaction do
@@ -43,18 +46,22 @@ module Insika
         retained = record.failures.select { |t| t > cutoff }.last(COUNT_LIMIT)
         failures = (retained + [now.to_i]).last(COUNT_LIMIT)
         opened_at = record.opened_at
+        tripped = :closed
         if opened_at.nil?
-          # first trip: the `after`-th failure within the window stamps the instant.
-          opened_at = now.to_i if failures.size >= after
+          if failures.size >= after
+            opened_at = now.to_i
+            tripped = :open
+          end
         else
           # the circuit was tripped before; a failure here can only be a HALF-OPEN
           # trial that failed. Re-stamp opened_at so it RE-OPENS — a breaker that
           # never restamps is one-shot: after the first cooldown every later turn
           # is an unlocked half-open trial (WS3).
           opened_at = now.to_i
+          tripped = :reopened
         end
         @store.set(SCOPE, key, { "failures" => failures, "opened_at" => opened_at })
-        opened_at.nil? ? :closed : :open
+        tripped
       end
     end
 

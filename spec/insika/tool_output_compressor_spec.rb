@@ -57,6 +57,30 @@ RSpec.describe Insika::ToolOutputCompressor do
       expect(out.map { |m| m[:content] }).to eq([short, short])
     end
 
+    # In the 200–~260-char band the old code replaced a repeat with a LONGER
+    # back-reference (boilerplate + up to 161-char summary) — the transcript
+    # grew. The repeat must only be replaced when the ref is actually shorter.
+    it "a repeat is replaced only when the back-reference is strictly SHORTER than the content (C3)" do
+      mid = "x" * 240 # >= MIN_LENGTH, but shorter than any full back-reference
+      out = described_class.compress_transcript([tool_msg(mid), tool_msg(mid)])
+      expect(out[1][:content]).to eq(mid) # kept full: replacing would grow the transcript
+
+      long = "y" * 600
+      out2 = described_class.compress_transcript([tool_msg(long), tool_msg(long)])
+      expect(out2[1][:content]).to match(/\A\[repeated tool output/)
+    end
+
+    # The eviction unit cut drops the OLDEST unit first — the original this
+    # back-reference points at. A positional pointer ("see above") that
+    # survives its target is a dangle in the model's context (C3): the
+    # summary is the content and stands alone.
+    it "a back-reference carries NO positional pointer — eviction cannot orphan it (C3)" do
+      out = described_class.compress_transcript([tool_msg(big_output), tool_msg(big_output)])
+
+      expect(out[1][:content]).not_to include("see above")
+      expect(out[1][:content]).to include("One-line summary") # self-sufficient
+    end
+
     it "user/assistant messages are never touched, even with identical content" do
       msgs = [{ role: :user, content: big_output }, { role: :assistant, content: big_output }]
       out = described_class.compress_transcript(msgs + msgs)
@@ -81,13 +105,13 @@ RSpec.describe Insika::ToolOutputCompressor do
     end
 
     it "the one-line summary is the first line, capped at SUMMARY_LIMIT" do
-      multi = "SUMMARY LINE ONE " + ("filler " * 30) + "\nsecond line\nthird"
+      multi = "SUMMARY LINE ONE " + ("filler " * 60) + "\nsecond line\nthird"
       out = described_class.compress_transcript([tool_msg(multi), tool_msg(multi)])
 
       expect(out[1][:content]).to include("SUMMARY LINE ONE")
       expect(out[1][:content]).not_to include("second line")
 
-      long_first_line = "x" * (described_class::SUMMARY_LIMIT + 50)
+      long_first_line = "x" * (described_class::SUMMARY_LIMIT * 3 + 50)
       out2 = described_class.compress_transcript([tool_msg(long_first_line), tool_msg(long_first_line)])
       summary = out2[1][:content].match(/One-line summary: (.+)\]/)[1]
       expect(summary.length).to be <= described_class::SUMMARY_LIMIT + 1 # + ellipsis

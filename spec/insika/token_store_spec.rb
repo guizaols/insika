@@ -92,7 +92,22 @@ RSpec.describe Insika::TokenStore do
     expect(durable.resolve(issue.token).tenant_id).to eq("t")
     durable.revoke(issue.id)
     expect(durable.resolve(issue.token)).to be_nil
+    # the no-op revoke (already revoked) must not leak an open transaction:
+    # a non-local `return false` inside the block would skip COMMIT and the
+    # next transaction would die on "cannot start a transaction within a
+    # transaction" (the budget-ledger trap, WS2).
+    expect(durable.revoke(issue.id)).to be(false)
+    expect(durable.issue(tenant_id: "t").token.length).to eq(64)
   ensure
     sqlite&.close
+  end
+
+  it "refuses a tenant_id containing ':' — it IS the session namespace delimiter (WS1)" do
+    # T1="loja" + session id "adma:x" lands on "loja:adma:x", the exact cell
+    # T2="loja:adma" would claim with id "x": two tenants, one session.
+    expect { store.issue(tenant_id: "loja:adma") }.to raise_error(Insika::ValidationError, /must not contain ':'/)
+    expect { store.issue(tenant_id: "") }.to raise_error(Insika::ValidationError, /required/)
+    # the operator path (nil tenant) is untouched
+    expect(store.issue).to be_a(described_class::Issue)
   end
 end

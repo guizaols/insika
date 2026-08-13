@@ -42,6 +42,7 @@ module Insika
     # Issues a token for tenant_id (nil = an OPERATOR token). -> Issue. The
     # token is shown exactly once; there is no `get_token` — lost = rotate.
     def issue(tenant_id: nil, label: "default")
+      validate_tenant_id!(tenant_id)
       token = SecureRandom.hex(32)
       hash = digest(token)
       id = SecureRandom.uuid
@@ -80,14 +81,19 @@ module Insika
     end
 
     # -> bool: true only for an ACTIVE record (revoking an already-revoked/unknown
-    # id is false — a no-op, never an error).
+    # id is false — a no-op, never an error). The read-modify-write rides
+    # `@store.transaction` (the repo's rule — WS1): `next false`, NOT `return
+    # false`, or the non-local return would skip the COMMIT and leak the open
+    # transaction (the same trap as the budget ledger's mark_alert).
     def revoke(id)
-      record = find(id)
-      return false unless record&.active?
+      @store.transaction do
+        record = find(id)
+        next false unless record&.active?
 
-      flipped = record.to_h.merge(status: "revoked", revoked_at: Time.now.utc.iso8601)
-      @store.set(SCOPE, record_key(id), stringify(flipped))
-      true
+        flipped = record.to_h.merge(status: "revoked", revoked_at: Time.now.utc.iso8601)
+        @store.set(SCOPE, record_key(id), stringify(flipped))
+        true
+      end
     end
 
     # Revokes every ACTIVE token of a tenant; the hash-index cells stay (they
@@ -121,6 +127,18 @@ module Insika
     end
 
     private
+
+    # The tenant id IS the session/task namespace prefix ("<tenant>:<id>" — WS1).
+    # A ":" lets a second tenant forge an id that lands on the FIRST tenant's
+    # namespace: T1="loja" + session id "adma:x" => "loja:adma:x", which is the
+    # cell T2="loja:adma" would claim with id "x" (WS1). Guarded at the single
+    # chokepoint both issue and rotate flow through.
+    def validate_tenant_id!(tenant_id)
+      return if tenant_id.nil?
+
+      raise Insika::ValidationError, "tenant_id is required" if Insika::Coercion.blank?(tenant_id)
+      raise Insika::ValidationError, "tenant_id must not contain ':'" if tenant_id.to_s.include?(":")
+    end
 
     def digest(token)
       Digest::SHA256.hexdigest(token)

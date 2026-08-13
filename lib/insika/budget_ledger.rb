@@ -63,12 +63,15 @@ module Insika
     end
 
     # "1× per window" alert markers (the soft enforcement's event): a flag per
-    # (id, window, bucket) so a budget that stays over the threshold cannot
-    # spam one event per turn. Marked/read in the same transaction discipline.
-    # -> bool: had the window already been marked?
-    def mark_alert(tenant:, agent:, window:, now: Time.now)
+    # (id, window, level, bucket) so a budget that stays over the threshold
+    # cannot spam one event per turn. `level:` separates DISTINCT triggers in
+    # the same window (WS2): the `alert_at` crossing and the real soft-cap
+    # crossing each warn once — the cap event must not be swallowed by the
+    # 80% marker having fired earlier. Marked/read in the same transaction
+    # discipline. -> bool: had the window already been marked?
+    def mark_alert(tenant:, agent:, window:, level: nil, now: Time.now)
       id = cell_id(tenant, agent)
-      flag = alert_key(id, window, now)
+      flag = alert_key(id, window, now, level)
       @store.transaction do
         # `next`, NOT `return`: a non-local return from inside the block skips
         # the store's COMMIT and leaks the BEGIN IMMEDIATE open — the 2nd turn
@@ -80,8 +83,8 @@ module Insika
       end
     end
 
-    def alerted?(tenant:, agent:, window:, now: Time.now)
-      !@store.get(ALERT_SCOPE, alert_key(cell_id(tenant, agent), window, now)).nil?
+    def alerted?(tenant:, agent:, window:, level: nil, now: Time.now)
+      !@store.get(ALERT_SCOPE, alert_key(cell_id(tenant, agent), window, now, level)).nil?
     end
 
     private
@@ -122,11 +125,11 @@ module Insika
       "#{id}:#{bucket}"
     end
 
-    # One alert flag per (id, window, calendar bucket): daily cells are keyed
-    # by day, monthly by (year*12+month) — a flag dies with its window.
-    def alert_key(id, window, now)
+    # One alert flag per (id, window, level, calendar bucket): daily cells are
+    # keyed by day, monthly by (year*12+month) — a flag dies with its window.
+    def alert_key(id, window, now, level = nil)
       bucket = window == :monthly ? month_bucket(now) : daily_bucket(now)
-      "#{id}:#{window}:#{bucket}"
+      level ? "#{id}:#{window}:#{level}:#{bucket}" : "#{id}:#{window}:#{bucket}"
     end
   end
 end

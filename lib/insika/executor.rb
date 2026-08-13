@@ -1057,7 +1057,15 @@ module Insika
       seen = { ref_of(primary) => true }
       nodes.filter_map do |node|
         ref = model_ref(node)
-        next if seen[ref]
+        # normalize "model" vs "provider/model": a provider-less ref IS the same
+        # physical model as any known "provider/model" spelling of it — the same
+        # model must never be tried twice just because one spelling omits the
+        # provider (WS3: fallback ["deepseek-v4-flash"] under primary
+        # deepseek/deepseek-v4-flash used to re-ask the dropped primary). A
+        # qualified ref still matches exactly.
+        duplicate = ref.include?("/") ? seen[ref]
+                                      : seen.keys.any? { |known| known.split("/").last == ref }
+        next if duplicate
 
         seen[ref] = true
         Insika::ModelSelection.new(model: node[:model], provider: node[:provider],

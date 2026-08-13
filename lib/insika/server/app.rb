@@ -267,8 +267,21 @@ module Insika
       # POST /v1/sessions — sugar for create_session; 201 {session}.
       def handle_create_session(req)
         body = parse_body(req)
-        command = Insika::Command.build(:create_session, { vars: body[:vars] || {} },
-                                         transport: :http, tenant: req_tenant(req))
+        tenant = req_tenant(req)
+        # WS1: a tenant's session must be born under its OWN "<tenant>:" namespace
+        # — the read path (GET /v1/sessions/:id) refuses anything else. Scope the
+        # caller's id the same way message_flow scopes a session_id; a tenant that
+        # passed none gets a namespaced uuid instead of an unprefixed one it could
+        # never read back.
+        if tenant
+          id = body[:id] || body["id"]
+          id = Insika::Coercion.blank?(id) ? scoped_session_id(tenant, SecureRandom.uuid)
+                                           : scoped_session_id(tenant, id)
+          body = body.merge(id: id)
+        end
+        command = Insika::Command.build(:create_session,
+                                         { vars: body[:vars] || {}, id: body[:id] }.compact,
+                                         transport: :http, tenant: tenant)
         session = dispatch_with_timeout(command)
         json_response(201, { session: session.to_h })
       end

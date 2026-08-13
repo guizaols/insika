@@ -152,6 +152,29 @@ RSpec.describe "Insika::Executor + EdgeLimiter" do
       expect(warnings).to eq(1)
     end
 
+    it "SOFT: the 80% alert and the REAL cap crossing are two events — the cap is never swallowed by alert_at (WS2)" do
+      executor = budget_executor(budget_profile("daily" => 1_000, "soft" => true))
+
+      # the 80% crossing warns once, level "alert_at"
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 800)
+      run_with(executor, make_tenant_task("oi", id: "f1"), budget_profile("daily" => 1_000, "soft" => true))
+      expect(warnings).to eq(1)
+      first = event_stream.events.find { |e| e.type == :budget_warning }
+      expect(first.data).to include(level: "alert_at", spent: 800)
+
+      # the cap crossing is a DISTINCT event (its own marker), even though the
+      # alert_at one already fired this window
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 500) # now 1300 > 1000
+      run_with(executor, make_tenant_task("oi", id: "f2"), budget_profile("daily" => 1_000, "soft" => true))
+      expect(warnings).to eq(2)
+      second = event_stream.events.select { |e| e.type == :budget_warning }.last
+      expect(second.data).to include(level: "cap", spent: 1300)
+
+      # a third past-cap turn stays silent (the cap marker is set)
+      run_with(executor, make_tenant_task("oi", id: "f3"), budget_profile("daily" => 1_000, "soft" => true))
+      expect(warnings).to eq(2)
+    end
+
     it "records the BILLED spend (cached tokens included — the A4 rule) on both windows" do
       executor = budget_executor(budget_profile("daily" => 5_000))
       token_chat = FakeChat.new
