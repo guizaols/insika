@@ -511,6 +511,41 @@ and each opted-in channel gets its own frame type, never the answer's. See
 > reads. That is the operator's call, which is why it is neither a default nor a
 > global.
 
+## The stuck signal — "I cannot proceed" (WS5)
+
+The engine doesn't decide what "I can't help you" means — the consumer does. What
+the engine provides is the deterministic signal, so that a product wanting
+**human escalation** can act on it instead of regexing the answer text:
+
+```ruby
+stuck_signal true
+```
+
+With `stuck_signal` on, the model may call `signal_stuck(reason:, message:)` when it
+determines it cannot proceed (out of scope, missing data, a case a human must take
+over). The turn then **ends** — a final message is published (the model's lead-in,
+or the tool's `message` when it wrote none) — and the contract carries the signal
+twice:
+
+- the terminal event `task_completed` gains an additive sibling
+  `"outcome": "stuck"` (and the OpenAI `response.completed` frame too), so a
+  consumer that only reads the response can react;
+- a dedicated `:turn_stuck` event is published with the `agent`, the `reason`, and
+  the final `message` — the subscription point for an operator inbox.
+
+```jsonc
+{ "type": "turn_stuck",
+  "data": { "agent": "store-support", "reason": "order outside my scope",
+            "message": "I'll transfer you to our human team." } }
+```
+
+Nothing about handing off, pausing, or resuming is in scope here — escalation is a
+consumer concern. How a human joins the conversation is exactly what
+`MessageOrigin.operator` ([Refinement](REFINEMENT.md#who-wrote-a-message)) stamps
+an imported transcript with; this workstream provides the point at which that
+handoff is *triggered*. Off by default (parity): without `stuck_signal`, the tool
+is not wired and the outcome never appears.
+
 ## Refinement
 
 `refinement` configures how an agent's own traffic is read back as a report — what

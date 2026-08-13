@@ -265,6 +265,21 @@ RSpec.describe Insika::DSL do
       )
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the stuck_signal knob is DATA on the pack (WS5)" do
+      dsl = Insika.agent("bia5") do
+        model "deepseek-chat"
+        stuck_signal true
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia5", model: "deepseek-chat", stuck_signal: true,
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.stuck_signal).to be(true)
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

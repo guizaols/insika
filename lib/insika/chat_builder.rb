@@ -90,6 +90,14 @@ module Insika
                                      event_stream: @event_stream, state: state)
       end
 
+      # signal_stuck is the "I cannot proceed" system tool (WS5) — wired only
+      # when the agent opted in (`profile.stuck_signal`), never enveloped. It is a
+      # deterministic signal; the consumer decides what "stuck" means. Defensive
+      # read: a minimal profile double without the reader means off (nil = parity).
+      if state.profile.respond_to?(:stuck_signal) && state.profile.stuck_signal
+        tools << Tools::StuckSignal.new(state: state)
+      end
+
       # spawn_subagent is the delegation system tool — wired only with a
       # runner present AND profile.subagents non-empty (a double gate, like
       # remember). Never enveloped: in the synchronous mode the child lives in the

@@ -36,6 +36,7 @@ something that left no task of its own behind:
 | `:turn_steered` | `task_id`, `count`, `total` | a message arrived mid-run and was appended to the turn in flight |
 | `:turn_steer_released` | `task_id`, `released_as`, `count` | the run could not absorb it, so it became the turn `released_as` |
 | `:turn_interrupted` | `task_id`, `replaced_by` | the turn was abandoned mid-run, and which turn replaced it |
+| `:turn_stuck` | `task_id`, `agent`, `reason`, `message` | the agent declared it could not proceed (`signal_stuck`, WS5) — the deterministic signal a consumer escalates on |
 | `:channel_delivered` | `channel`, `outbox_id`, `status`, `attempts`, `error` | the answer reached the platform (or did not) — the turn completing says nothing about that |
 
 `:channel_delivered` is the one worth alerting on: a turn can be `:task_completed`

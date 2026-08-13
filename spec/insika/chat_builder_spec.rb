@@ -4,6 +4,7 @@ require "spec_helper"
 require "insika/tools/load_skill" # the Executor loads them lazily in create_chat; explicit here in the test
 require "insika/tools/tool_search"
 require "insika/tools/remember"
+require "insika/tools/stuck_signal"
 
 RSpec.describe Insika::ChatBuilder do
   Ctx = Struct.new(:system)
@@ -225,6 +226,33 @@ RSpec.describe Insika::ChatBuilder do
     it "without @memory_store: no remember even with memory:true (parity)" do
       builder.configure_chat(chat, mem_state(memory: true)) # builder without memory_store
       expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::Remember) }).to be(false)
+    end
+  end
+
+  describe "#configure_chat — system signal_stuck (WS5)" do
+    def stuck_state(on:)
+      profile = Insika::AgentProfile.build(id: "a", model: "gpt", stuck_signal: on)
+      st = Insika::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st
+    end
+
+    it "wires signal_stuck when profile.stuck_signal" do
+      builder.configure_chat(chat, stuck_state(on: true))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::StuckSignal) }).to be(true)
+    end
+
+    it "signal_stuck is never wrapped (direct instance)" do
+      builder.configure_chat(chat, stuck_state(on: true))
+      st = chat.tools.find { |t| t.is_a?(Insika::Tools::StuckSignal) }
+      expect(st).not_to be_a(Insika::ToolEnvelope)
+    end
+
+    it "profile.stuck_signal nil: no signal_stuck (parity)" do
+      builder.configure_chat(chat, stuck_state(on: nil))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::StuckSignal) }).to be(false)
     end
   end
 

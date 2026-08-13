@@ -141,6 +141,11 @@ module Insika
         # Opt-in per-turn latency breakdown (INSIKA_TURN_TIMING). Absent
         # by default — a non-standard sibling used only for TTFB diagnostics.
         (timing = event.data[:timing]) && (response[:timing] = timing)
+        # WS5 stuck signal: an additive sibling the terminal frame carries when the
+        # agent ended the turn declaring it cannot proceed. Consumers that only read
+        # the OpenAI-shaped response.use it to run their escalation ("stuck" means
+        # what they decide it means, never the engine's business).
+        (outcome = event.data[:outcome]) && (response[:outcome] = outcome.to_s)
         sse("response.completed", { type: "response.completed", response: response })
       end
 

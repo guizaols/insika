@@ -67,12 +67,23 @@ RSpec.describe Insika::Server::Responses do
 
     it "task_completed with usage -> response.completed carries usage (tokens) + model" do
       f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 12, output_tokens: 8,
-                                                                   total_tokens: 20, model: "deepseek-chat" } }))
+                                                                    total_tokens: 20, model: "deepseek-chat" } }))
       expect(f).to include('"usage"', '"input_tokens":12', '"output_tokens":8', '"total_tokens":20')
       expect(f).to include('"model":"deepseek-chat"')
       # model is a sibling of usage in the OpenAI shape, not INSIDE usage
       expect(f).not_to match(/"usage":\{[^}]*"model"/)
     end
+
+    it "task_completed with outcome -> response.completed carries it (WS5 stuck, additive)" do
+      f = described_class.frame_for(ev(:task_completed, { outcome: :stuck }))
+      expect(f).to include('"outcome":"stuck"')
+    end
+
+    it "task_completed WITHOUT outcome -> no outcome sibling (parity)" do
+      f = described_class.frame_for(ev(:task_completed, {}))
+      expect(f).not_to include("outcome")
+    end
+
 
     it ":task_failed -> response.failed + [DONE]" do
       f = described_class.frame_for(ev(:task_failed, { message: "boom" }))

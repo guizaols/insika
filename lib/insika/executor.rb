@@ -930,6 +930,15 @@ module Insika
       timing&.mark(:done)
       data = { task_id: task.id, content: content, usage: st.usage }
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
+      # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
+      # COMPLETES (its final message was published) — but the consumer must be able
+      # to act on that, so the contract carries it twice: a dedicated :turn_stuck
+      # event (subscribable) and an additive `outcome` sibling on the terminal event.
+      if (stuck = st.stuck_outcome)
+        emit(:turn_stuck, { task_id: task.id, agent: profile.id.to_s,
+                            reason: stuck[:reason], message: content }, task: task)
+        data[:outcome] = :stuck
+      end
       emit(:task_completed, data, task: task)
     end
 
@@ -1921,6 +1930,7 @@ module Insika
       require_relative "tools/remember"
       require_relative "tools/subagent"
       require_relative "tools/subagents"
+      require_relative "tools/stuck_signal"
       # v2 resolution: Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
