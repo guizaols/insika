@@ -32,6 +32,14 @@ it is released. Entries land with the pull request that makes the change.
   optimistic CAS write (`replace_if_revision`, microsecond revisions).
   `POST /v1/commands/forget_customer` (phase 2, LGPD) purges one customer's
   memory cell, their sessions and per-session traces — nothing else's.
+- **Media in the message contract (WS9, input half)** — messages accept
+  additive content parts (`text`/`image`/`audio` with a URL). Audio is
+  transcribed via RubyLLM STT (model/language via `INSIKA_STT_MODEL`/
+  `INSIKA_STT_LANGUAGE`) and the text enters the turn marked
+  `source: "voice"` on the terminal event; images attach to the model's ask
+  (provider-billed, usage flows); media URLs pass the egress guard. The
+  OpenAI multimodal `input` array shape works on `/v1/responses`. TTS/image
+  generation as turn outputs remain the documented follow-up half.
 
 ## [0.2.0] - 2026-08-13
 

@@ -20,7 +20,7 @@ module Insika
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
-                    context_trace_store: nil, reliability: nil)
+                    context_trace_store: nil, reliability: nil, media: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -64,6 +64,8 @@ module Insika
       # fallback / circuit breaker, all DATA on AgentProfile#reliability.
       # nil = the plain single ask (parity).
       @reliability = reliability
+      # WS9 media seam (nil = default built on first audio turn): ->(url) { text }.
+      @media = media
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -545,6 +547,10 @@ module Insika
       # WS4: a route's delegate is missing or its turn failed — an operator
       # config error, staged so the envelope names routing, never :unknown.
       fail_task(task, e, stage: :routing)
+    rescue Insika::MediaError => e
+      # WS9: a voice message that could not be fetched/transcribed (or a media
+      # URL the egress guard refused) — heard-loud, never a silent drop.
+      fail_task(task, e, stage: :media)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
@@ -791,6 +797,11 @@ module Insika
     # -> tool assembly, each followed by a mailbox drain at the boundary. Mutates
     # `state` in place (the TurnState possibly rewritten by before_task).
     def prepare_turn(task, profile, state, actor, resume_from)
+      # WS9: content parts -> turn. Runs BEFORE stage 2's context build so the
+      # transcribed voice text feeds the prompt; a resumed turn was already
+      # transcribed (never re-pay the STT call).
+      run_media_stage(task, state) unless state.resumed
+
       # stage 2: Context. The :prompt hook pair is wrapped INSIDE the
       # ContextBuilder#call — do NOT wrap here (a double-wrap would fire the hooks
       # twice). Hooks is the SAME instance injected into the Builder and here.
@@ -944,6 +955,9 @@ module Insika
       # WS4: the intent route rides the terminal additively (like outcome) — a
       # consumer aggregating by route does not need the stream.
       data[:route] = st.route.to_s if st.route
+      # WS9: a turn whose message came from a VOICE note is marked — the
+      # consumer's signal the person spoke (text was transcribed).
+      data[:source] = :voice if st.message_source == :voice
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
@@ -1096,6 +1110,50 @@ module Insika
 
     def ref_of(selection) = model_ref(selection)
 
+    # --- WS9 media ------------------------------------------------------
+    #
+    # Content parts on the command -> a turn: audio parts are transcribed (the
+    # text enters the message marked `source: :voice` — the consumer's signal
+    # the person SPOKE), image parts become the ask's attachments (the model
+    # sees them; the provider bills them — usage flows). The engine transports
+    # media, never meaning: no speech/vision logic beyond the call itself.
+    def run_media_stage(task, state)
+      # a consumer that pre-transcribed voice text labels it `source: voice`;
+      # the marker rides the turn even when there are no audio PARTS left.
+      state.message_source = :voice if rebuild_command(task).payload["source"].to_s == "voice"
+
+      parts = Insika::Media.parts(rebuild_command(task).payload["parts"])
+      return if parts.empty?
+
+      voice = Insika::Media.audio_parts(parts)
+      if voice.any?
+        text = voice.map { |p| media_transcribe(p.url) }.reject(&:empty?).join(" ")
+        state.message = [state.message.to_s, text].reject(&:empty?).join("\n")
+        state.message_source = :voice
+      end
+
+      images = Insika::Media.image_parts(parts)
+      state.media_attachments = images.map { |p| media_attachment(p.url) } if images.any?
+    end
+
+    # The STT seam: the injected transcriber (specs), else the default
+    # (fetch + RubyLLM::Transcription — lazy require). A failed transcription
+    # fails the turn loudly (MediaError -> :media): a voice message that was
+    # not heard must not become a hallucinated one.
+    def media_transcribe(url)
+      transcriber = @media || Insika::Media.default_transcriber(
+        stt_model: Insika::EnvSchema.read("INSIKA_STT_MODEL"),
+        stt_language: Insika::EnvSchema.read("INSIKA_STT_LANGUAGE")
+      )
+      transcriber.call(url)
+    end
+
+    # An image part -> the ask's attachment. RubyLLM required lazily (load-guard).
+    def media_attachment(url)
+      require "ruby_llm"
+      RubyLLM::Attachment.new(url)
+    end
+
     # --- WS4 intent routing --------------------------------------------
     #
     # The turn's message is classified into one of the profile's routes with a
@@ -1116,7 +1174,10 @@ module Insika
 
       route = classification[:route]
       state.route = route
-      state.usage = with_model_source(usage_of(classification[:response]), selection)
+      # MERGED, not assigned: a WS9 transcription may already have banked its
+      # tokens in state.usage (the classifier call must not erase them).
+      state.usage = merge_usage(with_model_source(usage_of(classification[:response]), selection),
+                                state.usage)
       emit(:route_classified,
            { task_id: task.id, agent: profile.id.to_s, route: route.to_s,
              model: selection.model, usage: state.usage },
@@ -1274,7 +1335,7 @@ module Insika
     def ask_on(task, state, chat, output, timing)
       public_thinking = state.profile.stream_public?(:thinking)
       ttft_sent = false
-      chat.ask(state.message) do |chunk|
+      each_chunk = lambda do |chunk|
         emit_thinking(chunk, task, public: public_thinking)
         next unless chunk.content
 
@@ -1284,6 +1345,13 @@ module Insika
           ttft_sent = true
         end
         output.push(chunk.content)
+      end
+      # WS9: image parts ride the ask as attachments (only then — a chat whose
+      # ask has no `with:` keeps working, and the plain path is byte-identical).
+      if state.media_attachments
+        chat.ask(state.message, with: state.media_attachments, &each_chunk)
+      else
+        chat.ask(state.message, &each_chunk)
       end
     end
 

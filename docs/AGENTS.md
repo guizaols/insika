@@ -643,6 +643,35 @@ next turn with no restart. See [Deploy](DEPLOY.md) for the durable-volume setup 
 [Context](CONTEXT.md#the-volume) for why editing a committed file does *not* change
 a running agent.
 
+## Media in the message contract (WS9)
+
+The engine transports media, it never means it. The message accepts additive
+**content parts** alongside the text — voice notes and photos travel, and any
+skill (a fitting room, an image QA) stays a consumer layer on top:
+
+```bash
+curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
+  -d '{ "agent": "store-support", "session_id": "chat-7",
+        "message": "", "parts": [
+          { "type": "audio", "url": "https://cdn.example.com/voz.ogg" },
+          { "type": "image", "url": "https://cdn.example.com/sofa.jpg" }
+        ] }'
+```
+
+- **Audio** is transcribed (RubyLLM STT; model via `INSIKA_STT_MODEL`) and the
+  text enters the turn marked `source: "voice"` on the terminal event — the
+  consumer's signal the person spoke. A consumer that transcribes itself can
+  send the text with `"source": "voice"` directly.
+- **Images** attach to the model's ask as-is (vision); the provider bills
+  them and the usage flows like any ask. Media URLs pass the same egress guard
+  (a private/metadata target is refused — SSRF).
+- `/v1/responses` accepts the OpenAI multimodal shape: `input` as an array of
+  text/image/audio parts.
+- **Not here:** TTS and image *generation* as turn outputs (the channel
+  declares capability, the envelope carries the media) are the documented
+  follow-up half — the engine's input contract is what the fitting-room skill
+  builds on.
+
 ## Customer-scoped memory and the right to be forgotten (WS8)
 
 Memory is naturally **per customer, not per tenant**. A message that carries a

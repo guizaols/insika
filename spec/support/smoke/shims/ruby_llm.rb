@@ -54,7 +54,7 @@ module RubyLLM
 
     def with_tools(*tools) = (@tools.concat(tools); self)
 
-    def ask(message, &on_chunk)
+    def ask(message, with: nil, &on_chunk)
       on_chunk&.call(Response.new("processando... "))
 
       # APPROVAL mode (02): calls the `charge` tool — the ToolEnvelope trips the

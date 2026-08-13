@@ -46,6 +46,21 @@ module Insika
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
         # WS8: the optional customer_key — per-customer memory scope + purge handle
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
+        # WS9: the multimodal OPENAI shape — `input` as an array of content parts
+        # ({type: text/image/audio}) is preserved additively alongside the
+        # joined text; a string input stays byte-identical to before.
+        raw = body[:input]
+        if raw.is_a?(Array)
+          normalized = Insika::Media.parts(raw).map do |p|
+            { "type" => p.type, "text" => p.text, "url" => p.url }.compact
+          end
+          out[:parts] = normalized unless normalized.empty?
+        end
+        # WS9: `source` marks pre-transcribed voice text; anything else is refused.
+        unless body[:source].nil? || body[:source].to_s == "voice"
+          raise Insika::ValidationError, 'source must be "voice"'
+        end
+        out[:source] = body[:source].to_s if Insika::Coercion.presence(body[:source])
         out
       end
 

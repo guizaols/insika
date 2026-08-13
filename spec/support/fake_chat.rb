@@ -120,8 +120,9 @@ class FakeChat
     fire_end_message(role: "tool", content: result.to_s)
   end
 
-  def ask(message, &on_chunk)
+  def ask(message, with: nil, &on_chunk)
     @asked = message
+    @attachments = with
     @on_chunk = on_chunk
     @streamed = +""
     if @script
