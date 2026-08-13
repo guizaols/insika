@@ -73,6 +73,12 @@ module Insika
       Array(channel[:capabilities] || channel["capabilities"]).map(&:to_s)
     end
 
+    # The ceilings on INBOUND media (a URL a consumer sent us). Both fetches
+    # stream into the cap and refuse past it: the bytes land in THIS process,
+    # so an uncapped one is a hostile URL away from growing it until it dies.
+    MAX_AUDIO_BYTES = 1_000_000 # a voice note, not a warehouse
+    MAX_IMAGE_BYTES = 5_000_000 # a photo, not a poster
+
     def self.audio_parts(parts) = parts.select(&:audio?)
     def self.image_parts(parts) = parts.select(&:image?)
 
@@ -99,9 +105,9 @@ module Insika
 
     # Egress-guarded binary fetch of a media URL. Blocked like the webhook: the
     # url is consumer config/input, so a private/loopback/metadata target is
-    # refused (SSRF) unless the deployment opts out. Size-capped (1 MB — a voice
-    # note, not a warehouse).
-    def self.fetch_binary(url, max_bytes: 1_000_000)
+    # refused (SSRF) unless the deployment opts out. Size-capped (the caller
+    # picks the ceiling; the default is the audio one).
+    def self.fetch_binary(url, max_bytes: MAX_AUDIO_BYTES)
       violation = Insika::EgressGuard.violation(url)
       raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
 

@@ -161,4 +161,29 @@ RSpec.describe Insika::Reliability do
     # both nodes trip here (primary and then the fallback) — each cell opens once
     expect(event_stream.events.count { |e| e.type == :breaker_open }).to eq(2)
   end
+
+  # ONE instance serves every concurrent turn and `ask` is a suspension point:
+  # a run that parked its agent on the instance had it overwritten by whoever
+  # ran next, so the alert named the wrong agent — and, through it, somebody
+  # else's tenant. The run's identity must ride the stack.
+  it "attributes each failure to ITS OWN agent when two turns interleave" do
+    require "async"
+    # `after` high enough that nothing trips: this is about attribution only.
+    quiet = policy.merge("circuit_breaker" => { "after" => 100, "within" => 60, "cooldown" => 300 })
+    slow = lambda do |_sel, _n|
+      Async::Task.current.sleep(0.005) # the provider wait: the other turn runs here
+      raise RubyLLM::ServerError.new("down")
+    end
+    fast = ->(_sel, _n) { raise RubyLLM::ServerError.new("down") }
+
+    Sync do
+      [Async { run(slow, policy: quiet, agent: "alfa") rescue nil },
+       Async { run(fast, policy: quiet, agent: "beta") rescue nil }].each(&:wait)
+    end
+
+    agents = event_stream.events.select { |e| e.type == :provider_failure }.map { |e| e.data[:agent] }
+    # 2 nodes x (retries: 1 + 1) attempts = 4 failures per run, each its own
+    expect(agents.count("alfa")).to eq(4)
+    expect(agents.count("beta")).to eq(4)
+  end
 end

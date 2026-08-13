@@ -91,6 +91,60 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     expect(chat.instance_variable_get(:@attachments).size).to eq(1)
   end
 
+  # RubyLLM's Attachment fetches a URL with `fetch_content`, which reads the
+  # whole response with no ceiling: a hostile URL grows THIS process until it
+  # dies. The bytes come through our capped, egress-guarded fetch instead.
+  it "an image is fetched through the CAPPED fetch — the gem never holds the URL" do
+    require "ruby_llm"
+    png = "\x89PNG\r\n\x1a\n".b + ("x" * 64)
+    expect(Insika::Media).to receive(:fetch_binary)
+      .with("https://cdn.example.com/foto.png", max_bytes: Insika::Media::MAX_IMAGE_BYTES)
+      .and_return(png)
+
+    attachment = build_executor.send(:media_attachment, "https://cdn.example.com/foto.png")
+
+    expect(attachment.url?).to be(false) # nothing left for the gem to fetch
+    expect(attachment.content).to eq(png)
+    expect(attachment.mime_type).to eq("image/png")
+  end
+
+  it "an image PAST the cap fails the turn at :media (the process is not the buffer)" do
+    executor = build_executor
+    allow(Insika::Media).to receive(:fetch_binary)
+      .and_raise(Insika::MediaError, "media exceeds #{Insika::Media::MAX_IMAGE_BYTES} bytes")
+    run(executor, task("olha isso", parts: [{ "type" => "image", "url" => "https://cdn.example.com/huge.png" }]),
+        FakeChat.new)
+
+    failed = task_store.find("t-1")
+    expect(failed.status).to eq(:failed)
+    expect(failed.executions.last.error["stage"]).to eq("media")
+  end
+
+  # An image with no caption asks with NIL, not "": nil is how RubyLLM says
+  # "attachments only", and an empty text part is a thing providers refuse.
+  it "an IMAGE with no caption asks with the attachment and no text" do
+    executor = build_executor
+    allow(executor).to receive(:media_attachment).and_return(Object.new)
+    chat = FakeChat.new
+    run(executor, task("", parts: [{ "type" => "image", "url" => "https://cdn.example.com/foto.png" }]), chat)
+
+    expect(chat.asked).to be_nil
+    expect(chat.instance_variable_get(:@attachments).size).to eq(1)
+    expect(task_store.find("t-1").status).to eq(:completed)
+  end
+
+  # A voice note we could not hear must not become an empty turn sent to the
+  # provider — the customer would get an answer to nothing.
+  it "a media-only turn whose transcription comes back EMPTY fails at :media" do
+    executor = build_executor(media: ->(_url) { "" })
+    run(executor, task("", parts: [{ "type" => "audio", "url" => "https://cdn.example.com/voz.ogg" }]),
+        FakeChat.new)
+
+    failed = task_store.find("t-1")
+    expect(failed.status).to eq(:failed)
+    expect(failed.executions.last.error["stage"]).to eq("media")
+  end
+
   it "source: voice WITHOUT parts marks the turn (a consumer's own transcription)" do
     executor = build_executor
     chat = FakeChat.new

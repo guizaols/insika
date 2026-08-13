@@ -37,8 +37,15 @@ module Insika
         profile = @profiles[agent] ||
                   (raise Insika::NotFoundError, "agent '#{agent}' not configured")
 
+        # A turn is text OR media. The media half (WS9) is what a voice note
+        # with no caption looks like on the wire — `{ parts: [{type: "audio",
+        # url: …}] }` and nothing else — and demanding a message here made the
+        # anchor use case unreachable end to end: the audio becomes the message
+        # at the :media stage, one step later.
         message = p[:message]
-        raise Insika::ValidationError, "message is required and non-empty" if message.to_s.strip.empty?
+        if message.to_s.strip.empty? && !media?(p[:parts])
+          raise Insika::ValidationError, "message is required and non-empty (or a media part)"
+        end
 
         # session_id XOR history (both -> error; neither -> one-shot).
         if p[:session_id] && p[:history]
@@ -83,7 +90,10 @@ module Insika
         # boot). Only offered on a surface that can report the verdict back —
         # coalescing a caller that cannot hear `merged` makes it deliver the
         # same answer twice.
-        if coalescable?(command)
+        # A message carrying MEDIA never joins another turn: `collect`/`steer`
+        # move TEXT into a task that is already at the door, and its parts would
+        # be left behind — the customer's photo would silently not exist.
+        if coalescable?(command) && !media?(p[:parts])
           if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
             return { task_id: joined, merged: true }
           end
@@ -111,6 +121,13 @@ module Insika
         { task_id: task.id }
       end
 
+      # Does the payload carry a part the engine will turn into the turn's
+      # substance — audio (transcribed into the message) or an image (attached
+      # to the ask)? A text part is not media: it is the message, spelled long.
+      def media?(parts)
+        Insika::Media.parts(parts).any? { |p| p.audio? || p.image? }
+      end
+
       def coalescable?(command)
         transport = command.meta[:transport]
         COALESCABLE_TRANSPORTS.include?(transport) || transport.to_s.start_with?("channel:")
@@ -133,7 +150,8 @@ module Insika
           session_id: payload[:session_id] || payload["session_id"],
           history: payload[:history] || payload["history"],
           origin: payload[:origin] || payload["origin"],
-          event_id: payload[:event_id] || payload["event_id"]
+          event_id: payload[:event_id] || payload["event_id"],
+          parts: payload[:parts] || payload["parts"]
         }
       end
 

@@ -42,8 +42,12 @@ module Insika
     #
     # -> the successful response. Raises CircuitOpenError (primary open),
     # or the last retryable error when every node exhausted its retries.
+    # NOTHING about a run is stored on `self`: one Reliability instance serves
+    # every concurrent turn, and `ask` is a suspension point — an ivar written
+    # here would be read back after another fiber's turn overwrote it, and the
+    # WS6 alert would name the wrong agent (and, through it, the wrong tenant).
+    # The run's identity rides the stack.
     def call(policy:, tenant:, agent: nil, selection:, chain:, &attempt)
-      @agent = agent # event attribution (WF6 alerts) for THIS run
       nodes = ([selection] + Array(chain)).map { |node| { selection: node, tries: 0 } }
       retries = [policy["retries"].to_i, 0].max
       breaker = breaker_config(policy)
@@ -87,7 +91,7 @@ module Insika
             raise unless retryable
             raise if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
 
-            record_failure(tenant, selection, breaker, e)
+            record_failure(tenant, selection, breaker, e, agent)
             # the last attempt of the last node re-raises; otherwise back off
             # and give the next attempt/node a turn.
             if index < attempts - 1 || node != nodes.last
@@ -127,7 +131,7 @@ module Insika
       )
     end
 
-    def record_failure(tenant, selection, breaker, error)
+    def record_failure(tenant, selection, breaker, error, agent)
       return unless breaker
 
       tripped = @circuit_store.record_failure(
@@ -135,9 +139,9 @@ module Insika
         after: breaker[:after], within: breaker[:within]
       )
       emit(:provider_failure,
-           { agent: @agent, ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
+           { agent: agent, ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
       # the failure that TRIPPED the circuit is itself an alert (WS6).
-      emit(:breaker_open, { agent: @agent, ref: ref_of(selection), tenant: tenant }) if tripped == :open
+      emit(:breaker_open, { agent: agent, ref: ref_of(selection), tenant: tenant }) if tripped == :open
     end
 
     def kind_of(error) = ProviderErrorClassifier.classify(error).kind

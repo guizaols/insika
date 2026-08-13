@@ -11,15 +11,21 @@ RSpec.describe Insika::Commands::ForgetCustomer do
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
+  let(:task_store) { Insika::TaskStore.new(store: backend) }
+  let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
+  let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
   let(:event_stream) { Insika::EventStream.new }
   subject(:command) do
     described_class.new(memory_store: memory_store, session_store: session_store,
                         tool_trace_store: tool_trace, context_trace_store: context_trace,
-                        event_stream: event_stream)
+                        task_store: task_store, checkpoint_store: checkpoint_store,
+                        outbox_store: outbox_store, event_stream: event_stream)
   end
 
-  def run(customer:, tenant: nil)
-    command.call(Insika::Command.build(:forget_customer, { customer: customer }, tenant: tenant))
+  def run(customer:, tenant: nil, payload_tenant: nil)
+    payload = { customer: customer }
+    payload[:tenant] = payload_tenant if payload_tenant
+    command.call(Insika::Command.build(:forget_customer, payload, tenant: tenant))
   end
 
   it "purges the customer's memory, sessions and traces; the other customer survives" do
@@ -57,6 +63,67 @@ RSpec.describe Insika::Commands::ForgetCustomer do
 
     expect(result[:sessions]).to eq(["loja-a:chat-1"])
     expect(session_store.find("loja-b:chat-1")).not_to be_nil
+  end
+
+  # The transport (POST /v1/commands/forget_customer) is operator-grade, and an
+  # operator principal carries NO tenant — so without a payload tenant the purge
+  # zeroed "memory:<customer>" (a cell nobody writes) and deleted that customer's
+  # sessions in EVERY tenant. Both halves of that are wrong; the tenant is named
+  # in the payload.
+  it "the tenant may come from the PAYLOAD (the operator naming it over HTTP)" do
+    memory_store.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+    session_store.create(id: "acme:chat-1", vars: { "customer" => "123" })
+    session_store.create(id: "loja-b:chat-1", vars: { "customer" => "123" })
+
+    result = run(customer: "123", payload_tenant: "acme")
+
+    expect(result[:tenant]).to eq("acme")
+    expect(result[:memory_records]).to eq(1)
+    expect(memory_store.facts(tenant: "acme:123")).to be_empty
+    expect(session_store.find("acme:chat-1")).to be_nil
+    expect(session_store.find("loja-b:chat-1")).not_to be_nil # another tenant's, untouched
+  end
+
+  it "the command meta's tenant WINS over the payload's (an internal caller acting as a tenant)" do
+    memory_store.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+
+    result = run(customer: "123", tenant: "acme", payload_tenant: "loja-b")
+
+    expect(result[:tenant]).to eq("acme")
+    expect(memory_store.facts(tenant: "acme:123")).to be_empty
+  end
+
+  # The message the customer typed lives in the task's persisted command; the
+  # transcript lives in the checkpoints; the answer as delivered lives in the
+  # outbox payload. Deleting the session alone left all three readable.
+  it "purges the CONTENT too: the customer's tasks, checkpoints and outbox deliveries" do
+    session_store.create(id: "acme:chat-1", vars: { "customer" => "123" })
+    task = task_store.create(
+      command: Insika::Command.build(:send_message,
+                                     { agent: "bia", message: "meu CPF é 123.456.789-00" }).to_h,
+      session_id: "acme:chat-1", id: "t-1"
+    )
+    checkpoint_store.save(Insika::Checkpoint.new(task_id: task.id, turn: 1, session_id: "acme:chat-1",
+                                                 agent_id: "bia", messages: [{ "role" => "user" }],
+                                                 completed_side_effects: [], created_at: nil))
+    outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: task.id,
+                        session_id: "acme:chat-1", payload: { "text" => "seu pedido chega amanhã" })
+
+    # a neighbouring session's footprint must survive
+    session_store.create(id: "acme:chat-2", vars: { "customer" => "456" })
+    task_store.create(command: { agent: "bia" }, session_id: "acme:chat-2", id: "t-2")
+    outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: "t-2",
+                        session_id: "acme:chat-2", payload: { "text" => "outra pessoa" })
+
+    result = run(customer: "123", tenant: "acme")
+
+    expect(result[:tasks]).to eq(1)
+    expect(result[:checkpoints]).to eq(1)
+    expect(result[:deliveries]).to eq(1)
+    expect(task_store.find("t-1")).to be_nil
+    expect(checkpoint_store.latest("t-1")).to be_nil
+    expect(outbox_store.pending.map(&:session_id)).to eq(["acme:chat-2"])
+    expect(task_store.find("t-2")).not_to be_nil
   end
 
   it "customer is required; an unknown customer is a clean no-op" do

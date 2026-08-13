@@ -23,8 +23,8 @@ module Insika
 
     def initialize(session_store:, task_store:, checkpoint_store:,
                    memory_store:, outcome_store:, tool_trace_store: nil,
-                   context_trace_store: nil, settings_store: nil, store:,
-                   window: WINDOW, now: nil)
+                   context_trace_store: nil, outbox_store: nil, settings_store: nil,
+                   store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -32,13 +32,15 @@ module Insika
       @outcome_store = outcome_store
       @tool_trace_store = tool_trace_store
       @context_trace_store = context_trace_store
+      @outbox_store = outbox_store
       @settings_store = settings_store
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
     end
 
-    # -> { claimed: false } | { claimed: true, sessions:, tasks:, outcomes:, memory: }.
+    # -> { claimed: false } |
+    #    { claimed: true, sessions:, tasks:, outcomes:, memory:, deliveries: }.
     def run
       days = retention_days
       return { claimed: false } unless days.to_i.positive? && claim_window
@@ -46,7 +48,8 @@ module Insika
       cutoff = now - (days.to_i * 86_400)
       summary = { claimed: true, sessions: sweep_sessions(cutoff),
                   tasks: sweep_tasks(cutoff), outcomes: sweep_outcomes(cutoff),
-                  memory: @memory_store.prune_older_than(cutoff) }
+                  memory: @memory_store.prune_older_than(cutoff),
+                  deliveries: sweep_outbox(cutoff) }
       summary
     end
 
@@ -95,6 +98,13 @@ module Insika
 
     def sweep_outcomes(cutoff)
       @outcome_store ? @outcome_store.delete_older_than(cutoff) : 0
+    end
+
+    # The delivered/failed outbox records past the cutoff. Their `payload` is
+    # the answer the customer received — conversation content, so it ages out
+    # with the rest of the footprint instead of living in the store forever.
+    def sweep_outbox(cutoff)
+      @outbox_store ? @outbox_store.delete_older_than(cutoff) : 0
     end
 
     # The daily claim: one key, a timestamp, a 24 h window — the tick's

@@ -486,7 +486,9 @@ routes "shopping" => "the customer wants to browse products",
   answer becomes the parent's; `stuck: true` ends the turn with the [stuck
   outcome](#the-stuck-signal--i-cannot-proceed-ws5) and the route's `message`
   (or description) as the lead-in — the consumer interprets it. A route with
-  neither is just a label.
+  neither is just a label. A delegation counts against the same delegation
+  depth cap as a subagent (`INSIKA_SUBAGENT_DEPTH_CAP`, default 5), so a pair
+  of agents routing to each other stops instead of looping.
 
 Absent `routes` = no classification, no extra call, byte-identical turn.
 
@@ -662,11 +664,17 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   text enters the turn marked `source: "voice"` on the terminal event — the
   consumer's signal the person spoke. A consumer that transcribes itself can
   send the text with `"source": "voice"` directly.
-- **Images** attach to the model's ask as-is (vision); the provider bills
-  them and the usage flows like any ask. Media URLs (audio fetch AND image
-  attachments) pass the same egress guard (a private/metadata target is
-  refused — SSRF), and a refused or unreadable part fails the turn loudly at
-  the `:media` stage, never a silent drop.
+- **Images** attach to the model's ask (vision); the provider bills them and
+  the usage flows like any ask. Media URLs (audio AND image) are fetched by
+  the engine through the same egress guard (a private/metadata target is
+  refused — SSRF) and the same size ceiling (1 MB audio, 5 MB image: the bytes
+  land in this process). A refused, oversized or unreadable part fails the turn
+  loudly at the `:media` stage, never a silent drop.
+- **Media alone is a turn.** A voice note with no caption is `parts` and an
+  empty `message` — the transcription becomes the message at the `:media`
+  stage. A media message never joins another turn (`collect`/`steer` move text
+  only, and the parts would be left behind), and a transcription that comes
+  back empty fails the turn instead of asking the model about nothing.
 - **Parts are contract at the edge** — a malformed part (unknown type, an
   image/audio without `url`, a text without `text`) is a 422 before dispatch
   on `/v1/messages` and `/v1/responses`.
@@ -734,24 +742,32 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   merchant) is untouched. Absent `customer` = today's per-tenant/per-chat
   behavior.
 - **Right to be forgotten** — `POST /v1/commands/forget_customer` (operator)
-  purges the customer's memory cell, their sessions and the per-session traces
-  from the engine, nothing else's:
-  `{ "customer": "c-123", "tenant": "acme" }`. Facts also support an optimistic
-  CAS write (`replace_if_revision`) for an integration that must not clobber a
-  concurrent edit.
+  purges the customer's memory cell, their sessions and everything those
+  sessions left behind — per-session traces, the tasks (the message text lives
+  in the persisted command), their checkpoints (the transcript) and the outbox
+  deliveries (the answer as it was handed to the channel) — and nothing else's:
+  `{ "customer": "c-123", "tenant": "acme" }`. **Name the tenant**: the
+  operator credential carries none, and without one the purge means the whole
+  deployment (the untagged memory cell, plus that customer's sessions in every
+  tenant) — right for a single-tenant deployment, never what a multi-tenant
+  operator means. Facts also support an optimistic CAS write
+  (`replace_if_revision`) for an integration that must not clobber a concurrent
+  edit.
 - **Tenant deletion** — `POST /v1/commands/delete_tenant_data` (operator)
-  purges EVERYTHING the engine holds about one tenant: its sessions, their
-  traces, every memory cell under the tenant (its own + the customer cells —
-  enumerated from the store, so even a cell whose session was already deleted
-  goes) and its outcome records: `{ "tenant": "acme" }`. The tenant string is
-  the isolation boundary; a neighbour is untouched.
+  purges EVERYTHING the engine holds about one tenant: its sessions and their
+  whole footprint (traces, tasks, checkpoints, outbox deliveries), every memory
+  cell under the tenant (its own + the customer cells — enumerated from the
+  store, so even a cell whose session was already deleted goes) and its outcome
+  records: `{ "tenant": "acme" }`. The tenant string is the isolation boundary;
+  a neighbour is untouched.
 - **Retention** — the age-based counterpart, as data: the settings key
   `retention_days` (Integer days; absent/0 = OFF, the engine never sweeps by
   default). The tick's daily sweep (at most once per 24 h, behind the same
   single-key claim the stale-task sweep uses) purges sessions (+traces),
-  terminal tasks (+checkpoints), memory facts/notes and outcomes older than
-  the window. A non-terminal task is never touched — the Recovery sweep owns
-  those lives.
+  terminal tasks (+checkpoints), delivered/failed outbox records, memory
+  facts/notes and outcomes older than the window. A non-terminal task is never
+  touched — the Recovery sweep owns those lives — and neither is a delivery
+  still owed to somebody.
 
 ## Outcomes — business results over real traffic (WS7)
 

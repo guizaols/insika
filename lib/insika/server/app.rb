@@ -267,8 +267,15 @@ module Insika
       # POST /v1/commands/:type — generic: every new Command is born with a
       # transport. The control vs turn distinction is BY THE SHAPE of the result (the
       # transport knows no semantics).
+      #
+      # The principal's tenant is stamped like on every other surface. It is
+      # nil for an operator (this route is operator-only — see TENANT_SURFACES),
+      # which is exactly why a tenant-scoped command such as `forget_customer`
+      # ALSO reads a `tenant` from its payload: over HTTP the operator names the
+      # tenant, because the credential does not carry one.
       def handle_command(req, type)
-        command = Insika::Command.build(type.to_sym, parse_body(req), transport: :http)
+        command = Insika::Command.build(type.to_sym, parse_body(req), transport: :http,
+                                                                      tenant: req_tenant(req))
         command_response(dispatch_with_timeout(command))
       end
 

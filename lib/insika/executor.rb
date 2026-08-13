@@ -1184,6 +1184,15 @@ module Insika
 
       images = Insika::Media.image_parts(parts)
       state.media_attachments = images.map { |p| media_attachment(p.url) } if images.any?
+
+      # A media-only turn (a voice note with no caption) is legitimate — the
+      # surfaces admit it — but it must leave this stage with something to ask
+      # about. Empty text AND no attachment means the parts carried nothing the
+      # engine could use (a transcription that came back blank): fail loudly at
+      # :media rather than ask the provider about nothing.
+      return unless state.message.to_s.strip.empty? && state.media_attachments.nil?
+
+      raise Insika::MediaError, "the message parts produced no text and no attachment"
     end
 
     # The STT seam: the injected transcriber (specs), else the default
@@ -1199,15 +1208,31 @@ module Insika
     end
 
     # An image part -> the ask's attachment. RubyLLM required lazily (load-guard).
-    # The URL is CONSUMER input, so it passes the egress guard like the audio
-    # fetch (SSRF): a private/metadata target fails the turn loudly at :media,
-    # never a silent local fetch.
+    #
+    # The bytes come through OUR fetch (`Media.fetch_binary`), which is
+    # egress-guarded — the URL is CONSUMER input, so a private/metadata target
+    # fails the turn loudly at :media — and SIZE-CAPPED. Handing the raw URL to
+    # `RubyLLM::Attachment` instead left the fetch to the gem, whose
+    # `fetch_content` reads the whole response with no ceiling: a hostile URL
+    # answering an endless body grows this process until it dies. An io-like
+    # source (StringIO) is the branch of Attachment that takes bytes we already
+    # hold; the provider then gets base64 rather than the URL, which every
+    # vision provider accepts.
     def media_attachment(url)
-      violation = Insika::EgressGuard.violation(url)
-      raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
-
       require "ruby_llm"
-      RubyLLM::Attachment.new(url)
+      require "stringio"
+
+      bytes = Insika::Media.fetch_binary(url, max_bytes: Insika::Media::MAX_IMAGE_BYTES)
+      RubyLLM::Attachment.new(StringIO.new(bytes), filename: media_filename(url))
+    end
+
+    # The URL's basename, for the attachment's mime sniff (".png" -> image/png;
+    # a URL with no filename falls back to the content sniff RubyLLM does).
+    def media_filename(url)
+      name = File.basename(URI.parse(url).path.to_s)
+      name.empty? ? nil : name
+    rescue URI::InvalidURIError
+      nil
     end
 
     # --- WS4 intent routing --------------------------------------------
@@ -1306,11 +1331,24 @@ module Insika
     # handed to it (the sync subagent machinery) and the child's answer IS the
     # parent's answer. A missing agent or a failed child fails the turn: never
     # fabricate the customer's reply.
+    #
+    # The depth comes from the PARENT's turn context, +1, and is capped here —
+    # this path does not go through `plan_subagent` (a route has no subagents
+    # allowlist to check against), so a hardcoded depth of 1 made an A -> B -> A
+    # route pair a loop with no floor: every hop reclassifies (a paid ask) and
+    # spawns another child, forever.
     def delegate_route(profile, state, agent_id)
       child = @profiles[agent_id.to_s]
       raise Insika::RoutingError, "route delegate agent '#{agent_id}' not configured" if child.nil?
 
-      result = spawn_and_await_child(child, state.message, 1, state)
+      depth = (state.turn_context&.dig(:delegation_depth) || 0) + 1
+      cap = SubagentGraph.depth_cap
+      if depth > cap
+        raise Insika::RoutingError,
+              "routed delegate '#{agent_id}' at depth #{depth} exceeds cap #{cap}"
+      end
+
+      result = spawn_and_await_child(child, state.message, depth, state)
       if result[:error]
         raise Insika::RoutingError, "routed delegate '#{agent_id}' failed: #{result[:error]}"
       end
@@ -1404,8 +1442,12 @@ module Insika
       end
       # WS9: image parts ride the ask as attachments (only then — a chat whose
       # ask has no `with:` keeps working, and the plain path is byte-identical).
+      # An image with no caption asks with NIL, not "": an empty text part is a
+      # thing some providers refuse, and nil is how RubyLLM says "attachments
+      # only".
       if state.media_attachments
-        chat.ask(state.message, with: state.media_attachments, &each_chunk)
+        text = state.message.to_s.empty? ? nil : state.message
+        chat.ask(text, with: state.media_attachments, &each_chunk)
       else
         chat.ask(state.message, &each_chunk)
       end
