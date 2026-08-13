@@ -57,6 +57,31 @@ RSpec.describe Insika::Commands::SendMessage do
     end
   end
 
+  # WS9's anchor case: a WhatsApp voice note with no caption arrives as parts
+  # and nothing else. Demanding a message here made it a 422 at the door — the
+  # audio only becomes the message one stage later, inside the turn.
+  it "a MEDIA-only message (a voice note, no text) is a turn" do
+    session_store.create(id: "s1")
+    result = handler.call(Insika::Command.build(
+                            :send_message,
+                            payload(message: "", session_id: "s1",
+                                    parts: [{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }])
+                          ))
+
+    task = task_store.find(result[:task_id])
+    expect(task.status).to eq(:queued)
+    expect(task.command["payload"]["parts"].first["type"]).to eq("audio")
+  end
+
+  it "empty text with only a TEXT part is still empty (a part is not a loophole)" do
+    session_store.create(id: "s1")
+    expect do
+      handler.call(Insika::Command.build(:send_message,
+                                          payload(message: "", session_id: "s1",
+                                                  parts: [{ "type" => "text", "text" => "" }])))
+    end.to raise_error(Insika::ValidationError)
+  end
+
   it "nonexistent session -> NotFoundError, no Task" do
     expect { handler.call(Insika::Command.build(:send_message, payload(session_id: "ghost"))) }
       .to raise_error(Insika::NotFoundError)
@@ -121,6 +146,17 @@ RSpec.describe Insika::Commands::SendMessage do
     it "an internal caller (subagent delivery, tests) does not coalesce" do
       expect(send_from(:internal)).to match({ task_id: kind_of(String) })
       expect(collecting_executor.asked).to be_empty
+    end
+
+    # `collect`/`steer` move TEXT into a task already at the door; the parts
+    # would stay behind, and the customer's photo would silently not exist.
+    it "a message carrying MEDIA never joins another turn — it gets its own" do
+      result = send_from(:"http:json",
+                         parts: [{ "type" => "image", "url" => "https://cdn.example.com/f.png" }])
+
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(collecting_executor.asked).to be_empty
+      expect(collecting_executor.spawned.size).to eq(1)
     end
 
     it "validation still runs BEFORE the door: a bad message never reaches collect" do

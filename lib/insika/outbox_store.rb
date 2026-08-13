@@ -127,7 +127,37 @@ module Insika
       touch(id, record)
     end
 
+    # WS8 (LGPD): drops every delivery of these sessions, whatever its status.
+    # `payload` is the ANSWER as it was handed to the channel, so a purge that
+    # stops at the session record leaves the conversation readable here forever.
+    # -> count removed.
+    def purge_sessions(session_ids)
+      wanted = Array(session_ids).map(&:to_s)
+      return 0 if wanted.empty?
+
+      delete_where { |d| wanted.include?(d.session_id.to_s) }
+    end
+
+    # WS8 retention: deliveries created before the cutoff. TERMINAL ones only —
+    # a `pending`/`delivering` record older than the window is still somebody's
+    # undelivered answer, and the sweep is not the place to decide it is lost.
+    # -> count removed.
+    def delete_older_than(time)
+      cutoff = time.utc.iso8601
+      delete_where do |d|
+        %i[delivered failed].include?(d.status) && d.created_at.to_s < cutoff
+      end
+    end
+
     private
+
+    # The id list is SNAPSHOTTED before the deletes: `scan` enumerates the
+    # backend's keys lazily and deleting under it would skip records.
+    def delete_where(&match)
+      doomed = scan.select(&match)
+      doomed.each { |d| @store.delete(SCOPE, key_for(d.id)) }
+      doomed.size
+    end
 
     def scan
       return enum_for(:scan) unless block_given?

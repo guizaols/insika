@@ -164,6 +164,7 @@ module Insika
             memory_store: spine.memory_store, outcome_store: spine.outcome_store,
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
+            outbox_store: spine.outbox_store,
             settings_store: executor_extra[:settings_store]
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
@@ -236,23 +237,28 @@ module Insika
         bus.register(:record_outcome,
                      Insika::Commands::RecordOutcome.new(outcome_store: spine.outcome_store,
                                                          event_stream: spine.event_stream))
-        # WS8 (LGPD): purge one customer's memory/sessions/traces. The trace
-        # stores are deployment components (nil at the base — skipped).
+        # WS8 (LGPD): purge one customer's memory + the whole footprint of their
+        # sessions (traces, tasks, checkpoints, outbox). The trace stores are
+        # deployment components (nil at the base — skipped).
         bus.register(:forget_customer,
                      Insika::Commands::ForgetCustomer.new(
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
+                       task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
+                       outbox_store: spine.outbox_store,
                        event_stream: spine.event_stream
                      ))
-        # WS8 (LGPD): purge ONE TENANT's data — sessions, traces, memory cells
-        # and outcomes. Operator-only by construction (command ingress).
+        # WS8 (LGPD): purge ONE TENANT's data — sessions and their footprint,
+        # memory cells and outcomes. Operator-only by construction (ingress).
         bus.register(:delete_tenant_data,
                      Insika::Commands::DeleteTenantData.new(
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
                        outcome_store: spine.outcome_store,
+                       task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
+                       outbox_store: spine.outbox_store,
                        event_stream: spine.event_stream
                      ))
         bus

@@ -140,6 +140,19 @@ RSpec.describe Insika::Server::App do
       expect(cmd.meta[:transport]).to eq(:http)
     end
 
+    # Stamped like on every other surface. It is nil for an operator (this
+    # route is operator-only), which is exactly why a tenant-scoped command
+    # such as forget_customer ALSO reads a `tenant` from its payload.
+    it "carries the principal's tenant in meta (nil for an operator)" do
+      bus = ServerBusDouble.new { |_c| { task_id: "t" } }
+      call(build_app(bus: bus), "POST", "/v1/commands/forget_customer",
+           body: '{"customer":"123","tenant":"acme"}')
+
+      cmd = bus.dispatched.last
+      expect(cmd.meta[:tenant]).to be_nil
+      expect(cmd.payload).to eq(customer: "123", tenant: "acme")
+    end
+
     it "control result (Data) -> 200 with to_h" do
       session = Insika::SessionStore::Session.new(
         id: "s-1", messages: [], vars: {}, memory_refs: [],

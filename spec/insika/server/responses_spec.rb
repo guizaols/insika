@@ -50,6 +50,24 @@ RSpec.describe Insika::Server::Responses do
         .to raise_error(Insika::ValidationError, /input/)
     end
 
+    # The anchor case of WS9: a WhatsApp voice note has no caption, so the
+    # input array carries ONE audio part and no text at all. Joining only the
+    # text parts made that "input empty" — a 422 before the turn existed.
+    it "input with ONLY a media part (a voice note) is accepted, message empty" do
+      body = { model: "openclaw:a", user: "c",
+               input: [{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }] }
+      out = described_class.parse_request(body, req)
+
+      expect(out[:message]).to eq("")
+      expect(out[:parts]).to eq([{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }])
+    end
+
+    it "input with only EMPTY text parts is still empty (a part is not a loophole)" do
+      body = { model: "openclaw:a", user: "c", input: [{ "type" => "text", "text" => "   " }] }
+      expect { described_class.parse_request(body, req) }
+        .to raise_error(Insika::ValidationError, /input empty/)
+    end
+
     it "forwards the channel's declared capabilities (WS9, saída — additive)" do
       out = described_class.parse_request(
         { model: "openclaw:a", user: "c", input: "oi",

@@ -40,7 +40,6 @@ module Insika
         raise Insika::ValidationError, "user missing" if user.strip.empty?
 
         message = extract_input(body[:input])
-        raise Insika::ValidationError, "input empty" if message.strip.empty?
 
         out = { agent: agent.strip, user: user, message: message }
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
@@ -61,6 +60,14 @@ module Insika
             { "type" => p.type, "text" => p.text, "url" => p.url }.compact
           end
           out[:parts] = normalized unless normalized.empty?
+        end
+        # The turn needs SOMETHING to be about — text, or media the engine will
+        # turn into text (a voice note) or show the model (a photo). Checked
+        # after the parts are known, because the anchor use case (a WhatsApp
+        # voice note, no caption) carries no text at all and joining only the
+        # text parts made it a 422 at the door.
+        if message.strip.empty? && Array(out[:parts]).none? { |p| p["type"] != "text" }
+          raise Insika::ValidationError, "input empty"
         end
         # WS9: `source` marks pre-transcribed voice text; anything else is refused.
         unless body[:source].nil? || body[:source].to_s == "voice"

@@ -149,6 +149,38 @@ RSpec.describe "Insika::Executor + routing (WS4)" do
     expect(stuck.data).to include(reason: "route:human", message: "A person will help you.")
   end
 
+  # A -> B -> A: each turn reclassifies (a paid ask) and spawns another child.
+  # The delegate path does NOT go through plan_subagent (a route has no
+  # subagents allowlist), so the hardcoded depth of 1 meant the chain had no
+  # floor at all. The depth now comes from the parent's turn context, +1.
+  it "a route delegation cycle stops at the depth cap instead of looping forever" do
+    ping = Insika::AgentProfile.build(
+      id: "ping", model: "gpt",
+      routes: { "hop" => { "description" => "hand it over", "delegate" => "pong" },
+                "default" => "hop", "model" => "deepseek-v4-flash" }
+    )
+    pong = Insika::AgentProfile.build(
+      id: "pong", model: "gpt",
+      routes: { "hop" => { "description" => "hand it back", "delegate" => "ping" },
+                "default" => "hop", "model" => "deepseek-v4-flash" }
+    )
+    llm = RoutingLLMDouble.new("hop")
+    executor = build_executor(llm, profiles: { "ping" => ping, "pong" => pong })
+    task = task_store.create(
+      command: Insika::Command.build(:send_message, { agent: "ping", message: "oi" }).to_h,
+      session_id: "s1", id: "loop-1"
+    )
+    run_turn(executor, task, FakeChat.new, profile: ping)
+
+    stored = task_store.find("loop-1")
+    expect(stored.status).to eq(:failed)
+    expect(stored.executions.last.error).to include("class" => "Insika::RoutingError",
+                                                    "message" => /exceeds cap #{Insika::SubagentGraph.depth_cap}/)
+    # one spawn per level, and the cap is the ceiling — not one turn more
+    spawned = event_stream.events.count { |e| e.type == :subagent_started }
+    expect(spawned).to eq(Insika::SubagentGraph.depth_cap)
+  end
+
   it "a missing delegate agent fails the turn configurally (never fabricates the reply)" do
     llm = RoutingLLMDouble.new("order")
     executor = build_executor(llm, profiles: {}) # order-agent NOT configured

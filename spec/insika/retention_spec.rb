@@ -16,6 +16,7 @@ RSpec.describe Insika::Retention do
   let(:outcome_store) { Insika::OutcomeStore.new(store: backend) }
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
+  let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
   let(:settings) { Struct.new(:get).new({ "retention_days" => days }) }
   let(:days) { 30 }
   let(:now) { Time.utc(2026, 8, 13, 12, 0, 0) }
@@ -25,8 +26,14 @@ RSpec.describe Insika::Retention do
       store: backend, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, memory_store: memory_store,
       outcome_store: outcome_store, tool_trace_store: tool_trace,
-      context_trace_store: context_trace, settings_store: settings, now: now
+      context_trace_store: context_trace, outbox_store: outbox_store,
+      settings_store: settings, now: now
     )
+  end
+
+  def backdate_delivery(id, iso)
+    record = backend.get("outbox", "outbox:#{id}").merge("created_at" => iso)
+    backend.set("outbox", "outbox:#{id}", record)
   end
 
   def backdate_session(id, iso)
@@ -106,6 +113,32 @@ RSpec.describe Insika::Retention do
     expect(outcome_store.all.size).to eq(1)
     expect(memory_store.get_fact(tenant: "acme:123", key: "pedido")).to be_nil
     expect(memory_store.get_fact(tenant: "acme:123", key: "prefer")).not_to be_nil
+  end
+
+  # The delivery's payload IS the answer the customer got — conversation
+  # content, which used to live in the store forever because nothing swept it.
+  it "sweeps DELIVERED/FAILED outbox records older than the cutoff, never a pending one" do
+    old = outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: "t-1",
+                              session_id: "s1", payload: { "text" => "chega amanhã" })
+    outbox_store.claim(old.id)
+    outbox_store.mark_delivered(old.id)
+    backdate_delivery(old.id, (now - 40 * 86_400).iso8601)
+
+    stuck = outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: "t-2",
+                                session_id: "s2", payload: { "text" => "ainda não entregue" })
+    backdate_delivery(stuck.id, (now - 40 * 86_400).iso8601)
+
+    fresh = outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: "t-3",
+                                session_id: "s3", payload: { "text" => "de hoje" })
+    outbox_store.claim(fresh.id)
+    outbox_store.mark_delivered(fresh.id)
+
+    summary = retention.run
+
+    expect(summary[:deliveries]).to eq(1)
+    expect(outbox_store.find(old.id)).to be_nil
+    expect(outbox_store.find(stuck.id)).not_to be_nil # still owed to somebody
+    expect(outbox_store.find(fresh.id)).not_to be_nil
   end
 
   it "the daily claim: a second run inside the window sweeps nothing" do

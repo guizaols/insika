@@ -12,11 +12,16 @@ RSpec.describe Insika::Commands::DeleteTenantData do
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
   let(:outcome_store) { Insika::OutcomeStore.new(store: backend) }
+  let(:task_store) { Insika::TaskStore.new(store: backend) }
+  let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
+  let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
   let(:event_stream) { Insika::EventStream.new }
   subject(:command) do
     described_class.new(memory_store: memory_store, session_store: session_store,
                         tool_trace_store: tool_trace, context_trace_store: context_trace,
-                        outcome_store: outcome_store, event_stream: event_stream)
+                        outcome_store: outcome_store, task_store: task_store,
+                        checkpoint_store: checkpoint_store, outbox_store: outbox_store,
+                        event_stream: event_stream)
   end
 
   def run(tenant:)
@@ -64,6 +69,34 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     run(tenant: "acme")
 
     expect(memory_store.facts(tenant: "acme:orphan")).to be_empty
+  end
+
+  # "Zera o escopo" was false for exactly the data LGPD is about: the message
+  # text (task command payload), the transcript (checkpoints) and the delivered
+  # answer (outbox payload) all outlived the command.
+  it "purges the CONTENT of the tenant's sessions: tasks, checkpoints and outbox deliveries" do
+    session_store.create(id: "acme:chat-1")
+    task_store.create(command: Insika::Command.build(:send_message,
+                                                     { agent: "bia", message: "meu endereço é…" }).to_h,
+                      session_id: "acme:chat-1", id: "t-1")
+    checkpoint_store.save(Insika::Checkpoint.new(task_id: "t-1", turn: 1, session_id: "acme:chat-1",
+                                                 agent_id: "bia", messages: [], completed_side_effects: [],
+                                                 created_at: nil))
+    outbox_store.create(channel: "relay", to: "https://x.test/cb", task_id: "t-1",
+                        session_id: "acme:chat-1", payload: { "text" => "ok!" })
+
+    session_store.create(id: "loja-b:chat-1")
+    task_store.create(command: { agent: "bia" }, session_id: "loja-b:chat-1", id: "t-b")
+
+    result = run(tenant: "acme")
+
+    expect(result[:tasks]).to eq(1)
+    expect(result[:checkpoints]).to eq(1)
+    expect(result[:deliveries]).to eq(1)
+    expect(task_store.find("t-1")).to be_nil
+    expect(checkpoint_store.latest("t-1")).to be_nil
+    expect(outbox_store.pending).to be_empty
+    expect(task_store.find("t-b")).not_to be_nil # the neighbour's, untouched
   end
 
   it "tenant is required" do
