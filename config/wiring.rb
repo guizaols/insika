@@ -48,6 +48,7 @@ module Insika
     CHECKPOINT_STORE     = SPINE.checkpoint_store
     PENDING_ACTION_STORE = SPINE.pending_action_store
     MEMORY_STORE         = SPINE.memory_store
+    OUTCOME_STORE        = SPINE.outcome_store
     REGISTRY             = SPINE.code_tool_registry
     WORKFLOW_REGISTRY    = SPINE.workflow_registry
     POLICY_REGISTRY      = SPINE.policy_registry
@@ -180,6 +181,8 @@ module Insika
       # WS1: only multi_tenant hands the token store to the edge (in
       # single_tenant the gateway credential is the only one).
       token_store: (SPINE.token_store if MULTI_TENANT),
+      # WS7: business outcomes per conversation (POST/GET /v1/outcomes).
+      outcome_store: OUTCOME_STORE,
       # a 500's error_ref must be findable in the process log.
       logger: $stdout
     )

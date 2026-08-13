@@ -22,6 +22,10 @@
             <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
           </div>
           <% if a.memory %><span class="pill info">memory</span><% end %>
+          <% if (latest = @latest_outcomes&.dig(a.id)) %>
+            <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
+                  title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
+          <% end %>
         </a>
         <dl class="agent-meta">
           <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "all" : a.tools_allow.size %></dd></div>

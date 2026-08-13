@@ -18,6 +18,13 @@ it is released. Entries land with the pull request that makes the change.
   existing agent (its answer becomes the parent's) or end the turn with the
   WS5 stuck outcome (`stuck: true`). Deterministic `default` fallback;
   classifier failure leaves the turn unrouted (additive).
+- **Outcomes (WS7)** — `POST /v1/outcomes` records a conversation's business
+  outcome (`conversion`/`escalation`/`deflected`/…, optional monetary value)
+  from the operator or the integration — additive, outside the response
+  contract, tenant-stamped (WS1). `GET /v1/outcomes` serves the last outcome
+  per agent + per-day series; the Studio's agent grid shows the scorecard
+  card. `evals/run.rb` already runs the corpus against a real deployment
+  (`--base-url`).
 
 ## [0.2.0] - 2026-08-13
 

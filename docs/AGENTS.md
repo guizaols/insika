@@ -643,6 +643,25 @@ next turn with no restart. See [Deploy](DEPLOY.md) for the durable-volume setup 
 [Context](CONTEXT.md#the-volume) for why editing a committed file does *not* change
 a running agent.
 
+## Outcomes — business results over real traffic (WS7)
+
+The engine measures what it is told to measure. The operator or the integration
+records a conversation's business outcome after the fact — `conversion`,
+`escalation`, `deflected`, anything, optionally with a monetary `value`:
+
+```bash
+curl -X POST /v1/outcomes -H "Authorization: Bearer $TOKEN" \
+  -d '{ "agent": "store-support", "session_id": "chat-7",
+        "outcome": "conversion", "value": 129.9 }'
+```
+
+The endpoint is **additive and outside the response contract** — the turn never
+knows or cares; the engine transports the outcome and never interprets it (what
+"conversion" means is yours). Records are tenant-stamped (a tenant principal
+writes and reads only its own), and `GET /v1/outcomes?agent=` serves the last
+outcome per agent plus the per-day series — the data behind the scorecard card
+on the Studio's agent grid.
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.

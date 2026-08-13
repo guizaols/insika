@@ -70,7 +70,9 @@ module Insika
           tool_trace_store: @rt.component(:tool_trace_store),
           context_trace_store: @rt.component(:context_trace_store),
           task_store: @graph.task_store, checkpoint_store: @graph.checkpoint_store,
-          pending_action_store: @graph.pending_action_store
+          pending_action_store: @graph.pending_action_store,
+          # WS7: the agents-grid scorecard reads the outcome store.
+          outcome_store: @graph.outcome_store
         )
       end
 
