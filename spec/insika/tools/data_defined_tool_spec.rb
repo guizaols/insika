@@ -244,6 +244,21 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       expect(body).to eq('{"sku":"ABC","tenant":"chat-42"}')
     end
 
+    it "emits the first image URL as {{ctx.image_url}} (photo analysis outside the prompt)" do
+      photo_def = {
+        name: "analyse_photo", description: "d",
+        parameters: [],
+        request: { method: "POST", url: "https://api.internal/vision",
+                   headers: {}, body: '{"url":"{{ctx.image_url}}"}' },
+        response: { extract: "status" }
+      }
+      t = tool(photo_def, result: { status: 200, body: "" })
+      t.turn_context = { image_url: "https://cdn.example.com/foto.png" }
+      t.execute
+      expect(t.instance_variable_get(:@http).last[:body])
+        .to eq('{"url":"https://cdn.example.com/foto.png"}')
+    end
+
     it "accepts string keys in the turn context (JSON round-trip)" do
       t = tool(internal_def, result: { status: 200, body: "" })
       t.turn_context = { "chat_id" => "c1", "store_id" => "s1", "agent_id" => "a1", "tenant" => "c1" }

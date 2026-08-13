@@ -22,8 +22,8 @@ it is released. Entries land with the pull request that makes the change.
   outcome (`conversion`/`escalation`/`deflected`/…, optional monetary value)
   from the operator or the integration — additive, outside the response
   contract, tenant-stamped (WS1). `GET /v1/outcomes` serves the last outcome
-  per agent + per-day series; the Studio's agent grid shows the scorecard
-  card. `evals/run.rb` already runs the corpus against a real deployment
+  per agent + per-day series; the Studio's agent grid shows the last-outcome
+  pill and the agent detail shows the per-day series. `evals/run.rb` already runs the corpus against a real deployment
   (`--base-url`).
 - **Customer-scoped memory + right to be forgotten (WS8)** — a message
   carrying a `customer` key moves the memory scope to the `[tenant:]customer`
@@ -44,7 +44,8 @@ it is released. Entries land with the pull request that makes the change.
   transcribed via RubyLLM STT (model/language via `INSIKA_STT_MODEL`/
   `INSIKA_STT_LANGUAGE`) and the text enters the turn marked
   `source: "voice"` on the terminal event; images attach to the model's ask
-  (provider-billed, usage flows); media URLs pass the egress guard. The
+  (provider-billed, usage flows) and the first image URL is
+  `{{ctx.image_url}}` for data/HTTP tools; media URLs pass the egress guard. The
   OpenAI multimodal `input` array shape works on `/v1/responses`.
 - **Generated media as outputs (WS9, saída)** — the turn can produce an
   image or a voice clip when BOTH gates agree: the agent opts in

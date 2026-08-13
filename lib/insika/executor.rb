@@ -1165,7 +1165,8 @@ module Insika
     # Content parts on the command -> a turn: audio parts are transcribed (the
     # text enters the message marked `source: :voice` — the consumer's signal
     # the person SPOKE), image parts become the ask's attachments (the model
-    # sees them; the provider bills them — usage flows). The engine transports
+    # sees them; the provider bills them — usage flows) and the first URL is
+    # deposited as `ctx.image_url` for data/HTTP tools. The engine transports
     # media, never meaning: no speech/vision logic beyond the call itself.
     def run_media_stage(task, state)
       # a consumer that pre-transcribed voice text labels it `source: voice`;
@@ -1183,7 +1184,13 @@ module Insika
       end
 
       images = Insika::Media.image_parts(parts)
-      state.media_attachments = images.map { |p| media_attachment(p.url) } if images.any?
+      if images.any?
+        state.media_attachments = images.map { |p| media_attachment(p.url) }
+        # First image URL for data tools (`{{ctx.image_url}}`) — photo analysis
+        # outside the prompt. The model still sees the attachment; the tool
+        # gets the original URL (its own egress applies when it fetches).
+        state.turn_context = (state.turn_context || {}).merge(image_url: images.first.url)
+      end
 
       # A media-only turn (a voice note with no caption) is legitimate — the
       # surfaces admit it — but it must leave this stage with something to ask

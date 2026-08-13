@@ -100,7 +100,8 @@ RSpec.describe Studio::App do
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
-                tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil)
+                 tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
+                 outcomes: [])
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -165,11 +166,18 @@ RSpec.describe Studio::App do
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
-      refinement_store: refinement_store, golden_store: golden_store,
-      session_secret: "x" * 64
+       refinement_store: refinement_store, golden_store: golden_store,
+       outcome_store: seed_outcomes(outcomes),
+       session_secret: "x" * 64
     )
-    [app, bus]
-  end
+     [app, bus]
+   end
+
+   def seed_outcomes(rows)
+     store = Insika::OutcomeStore.new(store: Insika::Stores::Memory.new)
+     rows.each { |row| store.create(**row) }
+     store
+   end
 
   # Client that carries cookies between requests (session + CSRF live in the cookie).
   class Client
@@ -453,16 +461,43 @@ RSpec.describe Studio::App do
 
   # Agents (detail) —/17 ----------------------------------------
 
-  it "renders the agent detail with config, prompts, skills, memory and history" do
-    app, = build_app
-    res = login(app).get("/agents/bia")
-    expect(res.status).to eq(200)
-    %w[config prompts skills memory history].each { |a| expect(res.body).to include("id=\"#{a}\"") }
+   it "renders the agent detail with config, prompts, skills, memory, outcomes and history" do
+     app, = build_app
+     res = login(app).get("/agents/bia")
+     expect(res.status).to eq(200)
+     %w[config prompts skills memory outcomes history].each { |a| expect(res.body).to include("id=\"#{a}\"") }
     expect(res.body).to include('name="model"')
     expect(res.body).to include('data-controller="code-editor"')
   end
 
-  it "404 on the detail of a nonexistent agent" do
+   it "the agents grid shows the last outcome per agent" do
+     app, = build_app(outcomes: [
+                        { tenant: "platform", agent: "bia", outcome: "conversion", value: 129.9 }
+                      ])
+     body = login(app).get("/agents").body
+     expect(body).to include("conversion")
+     expect(body).to include("R$ 129.90")
+   end
+
+   it "the agent detail shows the per-day outcome series for that agent only" do
+     app, = build_app(outcomes: [
+                        { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
+                          at: Time.utc(2026, 8, 12) },
+                        { tenant: "platform", agent: "bia", outcome: "deflected",
+                          at: Time.utc(2026, 8, 12) },
+                        { tenant: "platform", agent: "chef", outcome: "escalation",
+                          at: Time.utc(2026, 8, 11) }
+                      ])
+     body = login(app).get("/agents/bia").body
+     expect(body).to include("id=\"outcomes\"")
+     expect(body).to include("2026-08-12")
+     expect(body).to include("conversion ×1")
+     expect(body).to include("deflected ×1")
+     expect(body).to include("R$ 100.00")
+     expect(body).not_to include("escalation")
+   end
+
+   it "404 on the detail of a nonexistent agent" do
     app, = build_app
     expect(login(app).get("/agents/nao-existe").status).to eq(404)
   end

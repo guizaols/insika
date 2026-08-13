@@ -91,8 +91,10 @@ retries against. Structure is strict; a scalar may arrive in its lossless string
 
 - `{{param}}` — a declared top-level parameter, filled from the model's call.
 - `{{ctx.*}}` — turn context set **server-side, never by the model**: a closed set
-  of `chat_id`, `store_id`, `agent_id`, `tenant`. This is how a tool knows *which*
-  session/agent it is acting for without trusting the model.
+  of `chat_id`, `store_id`, `agent_id`, `tenant`, `image_url`. This is how a tool knows *which*
+  session/agent it is acting for without trusting the model. `image_url` is the
+  first image part on the message (a photo for analysis outside the prompt);
+  absent when the turn carried none.
 - `{{secret.*}}` — allowed **only** inside a header named in `secret_headers`.
   A secret placeholder anywhere else is rejected (it would leak unmasked). The
   real secret value is injected at provision time and never lives on disk.

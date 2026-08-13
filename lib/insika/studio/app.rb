@@ -115,8 +115,9 @@ module Studio
           refinement_store: refinement_store,
           # eval cases: read to render; writes go through:write_golden.
           golden_store: golden_store,
-          # WS7: business outcomes — the agents grid's scorecard (state +
-          # series). Reads only; recording goes through POST /v1/outcomes.
+          # WS7: business outcomes — the agents grid's last-outcome pill; the
+          # agent detail shows the per-day series. Reads only; recording goes
+          # through POST /v1/outcomes.
           outcome_store: outcome_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
@@ -238,7 +239,8 @@ module Studio
           r.get do
             @agents = insika[:profile_source].all.sort_by(&:id)
             # WS7 scorecard: the LAST outcome per agent, computed once for the
-            # whole grid (a store scan per card would be n scans).
+            # whole grid (a store scan per card would be n scans). Series live
+            # on the agent detail — one agent's periods, not n charts here.
             @latest_outcomes = insika[:outcome_store]&.latest_per_agent
             view("agents")
           end
@@ -1076,6 +1078,11 @@ end
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
       @recent_sessions = recent_sessions
+      # WS7: last outcome + per-day series for THIS agent. The grid already
+      # shows the last-outcome pill; the series is the period view.
+      outcomes = insika[:outcome_store]
+      @latest_outcome = outcomes&.latest_per_agent&.[](id)
+      @outcome_series = outcomes ? outcomes.series(agent: id) : {}
       view("agent_detail")
     end
 

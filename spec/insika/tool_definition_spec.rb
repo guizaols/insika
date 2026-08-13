@@ -117,13 +117,13 @@ RSpec.describe Insika::ToolDefinition do
 
     # namespace {{ctx.*}} = TURN context (not a model param).
     describe "turn context {{ctx.*}}" do
-      it "accepts ctx.chat_id/store_id/agent_id/tenant without declaring them as params" do
+      it "accepts ctx.chat_id/store_id/agent_id/tenant/image_url without declaring them as params" do
         attrs = valid_attrs(
           parameters: [{ name: "cep" }],
           request: { method: "POST", url: "https://a.test/{{cep}}",
                      headers: { "X-Chat-Id" => "{{ctx.chat_id}}", "X-Store-Id" => "{{ctx.store_id}}",
                                 "X-Agent-Id" => "{{ ctx.agent_id }}" },
-                     body: '{"t":"{{ctx.tenant}}"}' },
+                     body: '{"t":"{{ctx.tenant}}","photo":"{{ctx.image_url}}"}' },
           response: { extract: "body_raw" }
         )
         expect { described_class.build(**attrs) }.not_to raise_error

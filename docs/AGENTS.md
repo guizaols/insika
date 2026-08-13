@@ -665,7 +665,9 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   consumer's signal the person spoke. A consumer that transcribes itself can
   send the text with `"source": "voice"` directly.
 - **Images** attach to the model's ask (vision); the provider bills them and
-  the usage flows like any ask. Media URLs (audio AND image) are fetched by
+  the usage flows like any ask. The first image URL is also
+  `{{ctx.image_url}}` for data tools — photo analysis outside the prompt, the
+  tool's own egress applying when it fetches. Media URLs (audio AND image) are fetched by
   the engine through the same egress guard (a private/metadata target is
   refused — SSRF) and the same size ceiling (1 MB audio, 5 MB image: the bytes
   land in this process). A refused, oversized or unreadable part fails the turn
@@ -790,8 +792,8 @@ The endpoint is **additive and outside the response contract** — the turn neve
 knows or cares; the engine transports the outcome and never interprets it (what
 "conversion" means is yours). Records are tenant-stamped (a tenant principal
 writes and reads only its own), and `GET /v1/outcomes?agent=` serves the last
-outcome per agent plus the per-day series — the data behind the scorecard card
-on the Studio's agent grid.
+outcome per agent plus the per-day series — the last-outcome pill on the Studio
+agent grid, and the per-day series on the agent detail.
 
 ## See also
 

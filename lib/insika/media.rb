@@ -5,7 +5,8 @@ module Insika
   # message contract — `{ "type": "text", "text": … }`, `{ "type": "image",
   # "url": … }`, `{ "type": "audio", "url": … }` — and the Executor turns them
   # into a turn: audio is transcribed (text marked `source: :voice`), images
-  # attach to the model ask. This class owns the PURE parts (normalization) and
+  # attach to the model ask and the first URL is `{{ctx.image_url}}` for
+  # data/HTTP tools. This class owns the PURE parts (normalization) and
   # the STT SEAM (injectable — specs stub it; the default fetches the audio and
   # transcribes via RubyLLM behind a lazy require, so the core stays gem-free
   # at load). `Media::Output` is the generated-media half (WS9, saída): the
