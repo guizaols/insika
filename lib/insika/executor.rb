@@ -1191,15 +1191,21 @@ module Insika
     # fails the turn loudly (MediaError -> :media): a voice message that was
     # not heard must not become a hallucinated one.
     def media_transcribe(url)
-      transcriber = @media || Insika::Media.default_transcriber(
+      transcriber = @media || (@default_transcriber ||= Insika::Media.default_transcriber(
         stt_model: Insika::EnvSchema.read("INSIKA_STT_MODEL"),
         stt_language: Insika::EnvSchema.read("INSIKA_STT_LANGUAGE")
-      )
+      ))
       transcriber.call(url)
     end
 
     # An image part -> the ask's attachment. RubyLLM required lazily (load-guard).
+    # The URL is CONSUMER input, so it passes the egress guard like the audio
+    # fetch (SSRF): a private/metadata target fails the turn loudly at :media,
+    # never a silent local fetch.
     def media_attachment(url)
+      violation = Insika::EgressGuard.violation(url)
+      raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
+
       require "ruby_llm"
       RubyLLM::Attachment.new(url)
     end

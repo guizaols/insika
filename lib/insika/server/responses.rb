@@ -48,9 +48,15 @@ module Insika
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
         # WS9: the multimodal OPENAI shape — `input` as an array of content parts
         # ({type: text/image/audio}) is preserved additively alongside the
-        # joined text; a string input stays byte-identical to before.
+        # joined text; a string input stays byte-identical to before. The
+        # CONTRACT is enforced here (422) — the engine stays lenient.
         raw = body[:input]
         if raw.is_a?(Array)
+          unless Insika::Media.well_formed?(raw)
+            raise Insika::ValidationError,
+                  "malformed content part — each part must be {type: text|image|audio} with text/url"
+          end
+
           normalized = Insika::Media.parts(raw).map do |p|
             { "type" => p.type, "text" => p.text, "url" => p.url }.compact
           end

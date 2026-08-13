@@ -163,9 +163,11 @@ module Insika
       return [] unless state.respond_to?(:channel_capabilities)
 
       caps = Array(state.channel_capabilities).map(&:to_s)
+      image_cfg = outputs["image"]
+      tts_cfg = outputs["tts"]
       [
-        (Tools::GenerateImage.new(runner: @media_runner, config: outputs["image"], state: state) if outputs["image"] && caps.include?("image_output")),
-        (Tools::Tts.new(runner: @media_runner, config: outputs["tts"], state: state) if outputs["tts"] && caps.include?("audio_output"))
+        (Tools::GenerateImage.new(runner: @media_runner, config: image_cfg, state: state) if image_cfg.is_a?(Hash) && caps.include?("image_output")),
+        (Tools::Tts.new(runner: @media_runner, config: tts_cfg, state: state) if tts_cfg.is_a?(Hash) && caps.include?("audio_output"))
       ].compact
     end
 

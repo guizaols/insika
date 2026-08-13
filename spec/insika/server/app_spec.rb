@@ -311,6 +311,19 @@ RSpec.describe Insika::Server::App do
       )
       expect(bus.dispatched).to be_empty
     end
+
+    it "a MALFORMED content part is refused BEFORE dispatch (422)" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, _headers, body = call(app, "POST", "/v1/messages?stream=false",
+                                    body: '{"agent":"sales","message":"oi","parts":[{"type":"video","url":"x"}]}')
+
+      expect(status).to eq(422)
+      expect(JSON.parse(body.join).dig("error", "message")).to include("malformed content part")
+      expect(bus.dispatched).to be_empty
+    end
   end
 
   describe "workflows exposed" do

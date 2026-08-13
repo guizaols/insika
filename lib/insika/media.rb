@@ -22,8 +22,8 @@ module Insika
 
     # -> [Part]: normalize the raw parts (string|symbol keys), skipping anything
     # that is not a well-formed text/image/audio part. Lenient on purpose — the
-    # SURFACE validates the contract (a malformed part is a 422 before dispatch);
-    # here a stray entry must not break the turn.
+    # SURFACE validates the contract with `well_formed?` (a malformed part is a
+    # 422 before dispatch); here a stray entry must not break the turn.
     def self.parts(raw)
       Array(raw).filter_map do |p|
         next unless p.is_a?(Hash)
@@ -35,6 +35,26 @@ module Insika
         when "text" then text.empty? ? nil : Part.new("text", text, nil)
         when "image", "audio" then url.empty? ? nil : Part.new(type, nil, url)
         else nil
+        end
+      end
+    end
+
+    # The SURFACE's contract check (server edge): true when EVERY entry is a
+    # well-formed content part — a Hash whose type is text (with text), image
+    # or audio (with url). The edge raises a 422 on the first offender; the
+    # engine itself stays lenient (`parts` skips strays so a non-HTTP transport
+    # that bypassed the edge cannot break a turn).
+    def self.well_formed?(raw)
+      Array(raw).all? do |p|
+        next false unless p.is_a?(Hash)
+
+        case (p[:type] || p["type"]).to_s
+        when "text" then !(p[:text] || p["text"]).to_s.empty?
+        when "image", "audio" then !(p[:url] || p["url"]).to_s.empty?
+        # a part WITHOUT a type is admitted only as a bare text part (the
+        # shape the input joiner already tolerates) — anything else is refused.
+        when "" then !(p[:text] || p["text"]).to_s.empty?
+        else false
         end
       end
     end
@@ -196,7 +216,14 @@ module Insika
             resp = http.request(req)
             raise Insika::MediaError, "TTS HTTP #{resp.code}" unless resp.is_a?(Net::HTTPSuccess)
 
-            resp.body.to_s.b
+            # stream into the cap — a rogue/broken endpoint must not grow the
+            # process past MAX_EMBEDDED_BYTES before the refusal.
+            buf = +"".b
+            resp.read_body do |chunk|
+              buf << chunk
+              break if buf.bytesize > MAX_EMBEDDED_BYTES
+            end
+            buf
           end
           enforce_embedded_size!(bytes, "synthesized speech")
           part = { "type" => "audio", "mime_type" => mime_for(format), "base64" => Base64.strict_encode64(bytes), "model" => model }

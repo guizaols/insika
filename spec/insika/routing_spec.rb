@@ -63,6 +63,11 @@ RSpec.describe Insika::Routing do
       expect { described_class.normalize({ "default" => "x" }) }
         .to raise_error(Insika::ValidationError, /at least one route/)
     end
+
+    it "refuses a default naming a route that does not exist (determinism must be real)" do
+      expect { described_class.normalize({ "shopping" => "desc", "default" => "order" }) }
+        .to raise_error(Insika::ValidationError, /default route 'order'/)
+    end
   end
 
   describe ".classifier_prompt" do

@@ -820,6 +820,14 @@ TENANT_SURFACES = [
       # happens here, BEFORE the SSE opens -> closes the subscription and propagates to the
       # #call rescue (becomes an HTTP status).
       def message_flow(payload, stream:, serialize: nil, transport: :http, tenant: nil)
+        # WS9: content parts are CONTRACT at the edge — the closed shape is
+        # validated here (422) before the command is built; the engine stays
+        # lenient for transports that bypass this surface.
+        parts = payload[:parts] || payload["parts"]
+        if parts && !Insika::Media.well_formed?(parts)
+          raise Insika::ValidationError,
+                "malformed content part — each part must be {type: text|image|audio} with text/url"
+        end
         # WS9: the only declared message source is "voice" (pre-transcribed
         # audio) — a consumer that writes prose here is told so, not silently.
         source = payload[:source] || payload["source"]
