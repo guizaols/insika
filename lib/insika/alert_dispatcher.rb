@@ -26,18 +26,28 @@ module Insika
       @task_store = task_store
       @http = http
       @webhook_ids = {} # url -> registered channel id (one webhook per URL)
-      @subscription = nil
+      # WS6 (boot recovery): webhook channels are derived from PROFILE config,
+      # not from events. Registering lazily (on the first alert) means a pending
+      # outbox row a crashed process left is swept at boot against an EMPTY
+      # registry and marked failed terminal. Pre-registering every configured
+      # URL at wiring time lets the boot sweep find the channel and deliver.
+      register_all_webhooks
     end
 
     # Serving: a long-lived consumer that answers every alert event. Drains on
     # the supervisor fiber (blocks on the queue — no spin), exactly like the tick.
+    # It subscribes TYPED (only the alert events enter its queue — it answers
+    # payloads a full-traffic stream would otherwise overflow away) and, on an
+    # overflow close, RE-SUBSCRIBES: a consumer that never re-binds is how alerts
+    # stop in silence (WS6).
     def start(parent:)
-      return true if @subscription # one consumer per dispatcher
-
-      @subscription = @event_stream.subscribe
       parent.async do |t|
         t.annotate("insika-alerts")
-        @subscription.each { |event| handle(event) }
+        loop do
+          subscription = @event_stream.subscribe(types: ALERT_TYPES)
+          subscription.each { |event| handle(event) }
+          # the subscription closed (its overflow path) — alerts must not die here
+        end
       end
       true
     end
@@ -110,6 +120,19 @@ module Insika
         id = "webhook:#{Digest::SHA1.hexdigest(url)[0, 8]}"
         @channels.register(id, Channels::Webhook.new(url, http: @http))
         id
+      end
+    end
+
+    # Boot face of `webhook_id`: register every configured URL up front (at
+    # wiring time, before the boot recovery's channel sweep runs). The url is
+    # PROFILE data, so it is known before any alert ever fires.
+    def register_all_webhooks
+      profiles = @profiles.respond_to?(:all) ? @profiles.all : []
+      profiles.each do |profile|
+        next unless profile&.respond_to?(:alerts)
+
+        url = profile.alerts&.dig("webhook")
+        webhook_id(url.to_s) unless Coercion.blank?(url)
       end
     end
   end

@@ -48,6 +48,24 @@ RSpec.describe Insika::CircuitState do
                                cooldown: BREAKER_COOLDOWN, now: t0 + BREAKER_COOLDOWN)).to be_nil
   end
 
+  # The breaker is NOT one-shot: a half-open trial that fails must re-stamp
+  # opened_at and reopen — otherwise, after the first cooldown, every later turn
+  # is an unlocked half-open trial (the cell is disarmed forever, WS3).
+  it "a FAILED half-open trial REOPENS the circuit (fresh cooldown owed), instead of staying half-open" do
+    fail!(BREAKER_AFTER, now: t0) # opens at t0
+    expect(state(now: t0 + BREAKER_COOLDOWN)).to eq(:half_open)
+
+    circuit.record_failure(tenant: nil, ref: "deepseek/deepseek-v4-flash",
+                           after: BREAKER_AFTER, within: BREAKER_WITHIN,
+                           now: t0 + BREAKER_COOLDOWN)
+
+    # back to :open with a full new cooldown, immediately (not after another 60s amortization)
+    expect(state(now: t0 + BREAKER_COOLDOWN + 1)).to eq(:open)
+    expect(circuit.retry_after(tenant: nil, ref: "deepseek/deepseek-v4-flash",
+                               cooldown: BREAKER_COOLDOWN, now: t0 + BREAKER_COOLDOWN + 1))
+      .to eq(BREAKER_COOLDOWN - 1)
+  end
+
   it "a success CLOSES the circuit (half-open trial success); a failure reopens it" do
     fail!(BREAKER_AFTER, now: t0)
     circuit.record_success(tenant: nil, ref: "deepseek/deepseek-v4-flash")

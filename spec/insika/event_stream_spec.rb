@@ -59,6 +59,31 @@ RSpec.describe Insika::EventStream do
     end
   end
 
+  it "filters by event type (WS6): only the subscribed types enter the queue" do
+    Sync do |task|
+      sub = stream.subscribe(types: %i[alert_a alert_b])
+      got = collect(task, sub) do
+        stream.emit(evt(type: :alert_a, meta: { task_id: "t1" }))
+        stream.emit(evt(type: :content, meta: { task_id: "t2" })) # full-traffic noise
+        stream.emit(evt(type: :alert_b, meta: { task_id: "t3" }))
+      end
+      expect(got.map(&:type)).to eq(%i[alert_a alert_b])
+    end
+  end
+
+  it "a typed subscription never accumulates the events it filters out (no overflow)" do
+    Sync do |task|
+      typed = stream.subscribe(types: %i[alert])
+      unfiltered = stream.subscribe # control: a full-traffic subscriber DOES get overflow-closed
+      1005.times { stream.emit(evt(type: :content, meta: {})) } # would blow the 1000 cap
+      expect(stream.instance_variable_get(:@subscriptions)).to include(typed)
+      expect(stream.instance_variable_get(:@subscriptions)).not_to include(unfiltered)
+
+      got = collect(task, typed) { stream.emit(evt(type: :alert, meta: {})) }
+      expect(got.map(&:type)).to eq([:alert])
+    end
+  end
+
   it "does not deliver an event without task in meta to a subscriber with a task filter; without a filter it receives" do
     Sync do |task|
       filtered = stream.subscribe(task_id: "a")

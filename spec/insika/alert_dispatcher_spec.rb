@@ -59,6 +59,36 @@ RSpec.describe Insika::AlertDispatcher do
     expect(outbox.pending).to be_empty
   end
 
+  it "registers every profile-configured webhook at construction (no alert event needed)" do
+    described_class.new(event_stream: event_stream, outbox: outbox, channels: channels,
+                        profiles: profiles, task_store: task_store, http: http)
+    channel_id = "webhook:#{Digest::SHA1.hexdigest('https://ops.example.com/alerts')[0, 8]}"
+    expect(channels.find(channel_id)).to be_a(Insika::Channels::Webhook)
+  end
+
+  it "so the boot sweep delivers a crashed process's pending webhook alert (not mark-failed terminal)" do
+    url = "https://8.8.8.8/alerts" # egress-clean, so the delivery actually POSTs
+    webhook_profile = Insika::AgentProfile.build(id: "bia", model: "m", alerts: { "webhook" => url })
+    sources = Insika::StaticProfileSource.new({ "bia" => webhook_profile })
+
+    # a RESTART: the fresh dispatcher re-registers the webhook from profile
+    # config BEFORE the boot recovery's channel sweep looks for its outbox rows.
+    described_class.new(event_stream: event_stream, outbox: outbox, channels: channels,
+                        profiles: sources, task_store: task_store, http: http)
+    channel_id = "webhook:#{Digest::SHA1.hexdigest(url)[0, 8]}"
+    expect(channels.find(channel_id)).to be_a(Insika::Channels::Webhook)
+
+    # what the crashed process left, sitting pending in the outbox
+    delivery = outbox.create(channel: channel_id, to: url, task_id: "t-1", session_id: "s-1",
+                             payload: { "type" => "budget_warning", "agent" => "bia" })
+    allow(http).to receive(:request).and_return(status: 200, body: "ok")
+
+    delivery_service = Insika::ChannelDelivery.new(channels: channels, outbox: outbox,
+                                                   session_store: nil, sleeper: ->(_s) {})
+    expect(delivery_service.sweep[:dispatched]).to eq([delivery.id])
+    expect(outbox.find(delivery.id).status).to eq(:delivered)
+  end
+
   it "an agent without alerts config answers nothing" do
     plain = Insika::AgentProfile.build(id: "silent", model: "m")
     profiles = Insika::StaticProfileSource.new({ "silent" => plain })

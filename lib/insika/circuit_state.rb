@@ -43,7 +43,14 @@ module Insika
         retained = record.failures.select { |t| t > cutoff }.last(COUNT_LIMIT)
         failures = (retained + [now.to_i]).last(COUNT_LIMIT)
         opened_at = record.opened_at
-        if opened_at.nil? && failures.size >= after
+        if opened_at.nil?
+          # first trip: the `after`-th failure within the window stamps the instant.
+          opened_at = now.to_i if failures.size >= after
+        else
+          # the circuit was tripped before; a failure here can only be a HALF-OPEN
+          # trial that failed. Re-stamp opened_at so it RE-OPENS — a breaker that
+          # never restamps is one-shot: after the first cooldown every later turn
+          # is an unlocked half-open trial (WS3).
           opened_at = now.to_i
         end
         @store.set(SCOPE, key, { "failures" => failures, "opened_at" => opened_at })
@@ -60,9 +67,14 @@ module Insika
     # -> :closed | :open | :half_open
     def state(tenant:, ref:, after: 10, within: 60, cooldown: 300, now: Time.now)
       record = load(key_for(tenant, ref))
-      return :closed if record.failures.size < after
-
       opened = record.opened_at.to_i
+      # :closed needs BOTH doors shut: the window count is under `after` AND the
+      # circuit never tripped. A surviving opened_at tombstone keeps the circuit
+      # governed by the cooldown (open, then half-open) even after its original
+      # failures age out of the rolling window — only a SUCCESS clears it (WS3:
+      # a failed half-open trial must reopen, not silently close).
+      return :closed if record.failures.size < after && opened.zero?
+
       return :open if opened.zero? || (now.to_i - opened) < cooldown
 
       :half_open

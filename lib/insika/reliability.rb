@@ -47,7 +47,11 @@ module Insika
       nodes = ([selection] + Array(chain)).map { |node| { selection: node, tries: 0 } }
       retries = [policy["retries"].to_i, 0].max
       breaker = breaker_config(policy)
-      timeout = [policy["timeout"].to_i, 1].max
+      # The per-attempt ceiling. A policy WITHOUT a timeout is DEFAULT_TIMEOUT —
+      # nothing config overrides here (the old [.., 1].max silently made every
+      # unset profile die in ~1s, WS3).
+      configured_timeout = policy["timeout"].to_i
+      timeout = configured_timeout.positive? ? configured_timeout : DEFAULT_TIMEOUT
       # declaraed HERE (not inside a block) so the post-loop `raise` sees the
       # method-local binding — a first assignment inside a block would not leak.
       last_error = nil
@@ -74,8 +78,14 @@ module Insika
             # failure at all (a bug, a domain error, a guardrail raise) — is
             # never retried, never rotated (B9's structural rule). Only
             # retryable/rate-limited (and the per-attempt timeout we raised)
-            # spend the retry budget.
-            raise if kind_of(e) == :fatal || !retryable_failure?(e)
+            # spend the retry budget. The B9 classifier is class-name based, so
+            # OUR TimeoutError reads as :fatal — the retryable_failure? check
+            # (which owns the reliability-stage timeout) must decide FIRST, or
+            # the :fatal guard would swallow it (WS3: a timeout never retried,
+            # never rotated).
+            retryable = retryable_failure?(e)
+            raise unless retryable
+            raise if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
 
             record_failure(tenant, selection, breaker, e)
             # the last attempt of the last node re-raises; otherwise back off

@@ -1119,15 +1119,22 @@ module Insika
 
     # The ask itself, chunk-by-chunk (WS3 attempts and the plain path share it).
     # With INSIKA_TURN_TIMING the FIRST content chunk also emits the live
-    # :ttft event — the streaming envelope's TTFB signal (WS6), additive.
+    # :ttft event — the streaming envelope's TTFB signal (WS6), additive. The
+    # emit is gated to that first chunk: a probe proved the old code re-emitted
+    # :ttft on EVERY content chunk (3 chunks = 3 insika.ttft frames); the spec
+    # passed because FakeChat emits a single chunk.
     def ask_on(task, state, chat, output, timing)
       public_thinking = state.profile.stream_public?(:thinking)
+      ttft_sent = false
       chat.ask(state.message) do |chunk|
         emit_thinking(chunk, task, public: public_thinking)
         next unless chunk.content
 
         timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
-        emit_ttft(task, timing) if timing
+        unless ttft_sent
+          emit_ttft(task, timing) if timing
+          ttft_sent = true
+        end
         output.push(chunk.content)
       end
     end

@@ -76,6 +76,40 @@ RSpec.describe Insika::BudgetLedger do
     expect(ledger.reset_in(:monthly, now: Time.utc(2026, 8, 11, 0, 0, 0))).to eq(21 * described_class::DAY) # Aug 11 -> Sep 1
   end
 
+  it "reset_in(:monthly) is December-safe (no Time.utc(y, 13, 1) crash)" do
+    dec_mid = Time.utc(2026, 12, 15, 0, 0, 0)
+    expect(ledger.reset_in(:monthly, now: dec_mid)).to eq(17 * described_class::DAY) # Dec 15 -> Jan 1
+  end
+
+  it "the monthly bucket and reset are UTC-aligned, so a local hour at month end never goes negative" do
+    # 2026-08-31 23:30 UTC-3 == 2026-09-01 02:30 UTC: local month is still August,
+    # but the UTC month is already September. The old code computed
+    # Time.utc(y, 9, 1) - now -> NEGATIVE reset (the monthly cap would refuse a
+    # turn with a time-travelling retry_after) and keyed the cell on the LOCAL month.
+    local_late = Time.new(2026, 8, 31, 23, 30, 0, "-03:00")
+
+    expect(ledger.reset_in(:monthly, now: local_late)).to eq((Time.utc(2026, 10, 1) - local_late).to_i)
+    expect(ledger.reset_in(:monthly, now: local_late)).to be > 0
+
+    # and the cell written at that instant belongs to the SAME (September) bucket
+    # as its UTC twin — one cap per calendar month, whichever zone reads it.
+    ledger.add(tenant: "t", agent: "a", by: 10, now: local_late)
+    expect(ledger.current(tenant: "t", agent: "a", now: Time.utc(2026, 9, 1, 2, 30))).to eq(daily: 10, monthly: 10)
+    expect(ledger.current(tenant: "t", agent: "a", now: local_late)).to eq(daily: 10, monthly: 10)
+  end
+
+  it "mark_alert does not leak an open transaction on SQLite (the 2nd call's block return)" do
+    sqlite = Insika::Stores::SQLite.new(path: ":memory:")
+    durable = described_class.new(store: sqlite)
+    expect(durable.mark_alert(tenant: "t", agent: "a", window: :daily, now: now)).to be(false)
+    # the already-marked path (`return true` in the old code) fired INSIDE the
+    # transaction block and skipped COMMIT; the next transaction must still work.
+    expect(durable.mark_alert(tenant: "t", agent: "a", window: :daily, now: now)).to be(true)
+    expect(durable.add(tenant: "t", agent: "a", by: 10, now: now)).to eq(daily: 10, monthly: 10)
+  ensure
+    sqlite&.close
+  end
+
   it "two SQLite handles racing the same cell lose nothing (exactly one increment per call)" do
     dir = Dir.mktmpdir
     path = File.join(dir, "budget.db")

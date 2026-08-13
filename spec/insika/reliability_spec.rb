@@ -58,6 +58,36 @@ RSpec.describe Insika::Reliability do
     expect(calls).to eq(1)
   end
 
+  # The B9 classifier (class-name based) reads our TimeoutError as :fatal. The
+  # coordinator must NOT let that guard swallow the per-attempt timeout — it is
+  # explicitly retryable and must rotate to the fallback (WS3).
+  it "a per-attempt timeout is retried and rotates to the fallback (not fatal)" do
+    seen = []
+    attempts = lambda do |sel, _n|
+      seen << (sel.respond_to?(:model) ? sel.model : sel[:model])
+      raise Insika::TimeoutError.new("provider attempt exceeded 30s", stage: :reliability)
+    end
+    expect { run(attempts) }.to raise_error(Insika::TimeoutError)
+    # retries: 1 = 2 primary shots, then the fallback also exhausts its 2 shots
+    expect(seen).to eq(%w[deepseek-v4-flash deepseek-v4-flash gpt-4o-mini gpt-4o-mini])
+  end
+
+  # The old [policy["timeout"].to_i, 1].max made an UNSET timeout 1s and the
+  # classification bug turned that into an immediate fatal — a profile with
+  # reliability but no explicit timeout killed real turns in ~1s. With
+  # DEFAULT_TIMEOUT (30s) a slow-but-ok attempt survives a 1.5s window.
+  it "a policy WITHOUT a timeout uses DEFAULT_TIMEOUT, not 1s" do
+    require "async"
+    no_timeout = policy.merge("timeout" => nil)
+    task = Async do
+      reliability.call(policy: no_timeout, tenant: nil, selection: selection, chain: []) do |_sel, _n|
+        Async::Task.current.sleep(1.5)
+        "slow but ok"
+      end
+    end
+    expect(task.wait).to eq("slow but ok")
+  end
+
   it "after the primary's retries, the FALLBACK model is tried (mid-turn rotation)" do
     seen = []
     attempts = lambda do |sel, _n|
