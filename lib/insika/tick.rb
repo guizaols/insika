@@ -31,7 +31,7 @@ module Insika
 
     def initialize(store:, recovery:, channel_delivery:, logger: nil,
                    interval: DEFAULT_INTERVAL, stale_after: DEFAULT_STALE_AFTER,
-                   sleeper: nil)
+                   sleeper: nil, retention: nil)
       @store = store
       @recovery = recovery
       @channel_delivery = channel_delivery
@@ -39,6 +39,7 @@ module Insika
       @interval = interval.to_i
       @stale_after = stale_after.to_i
       @sleeper = sleeper || method(:default_sleep)
+      @retention = retention # WS8: the daily age-based sweep; nil = none
     end
 
     def enabled? = @interval.positive?
@@ -49,6 +50,10 @@ module Insika
     def run_once
       drained = @channel_delivery ? @channel_delivery.sweep : { dispatched: [] }
       summary = { dispatched: drained[:dispatched], resumed: [], failed: [] }
+      # WS8 retention: cheap when not claimed (its own daily window) — the
+      # O(n) scans never ride the 60 s loop.
+      retention_summary = @retention&.run
+      summary[:retention] = retention_summary if retention_summary
       return summary unless claim_window
 
       result = @recovery.run(stale_after: @stale_after)

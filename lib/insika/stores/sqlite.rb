@@ -128,6 +128,14 @@ module Insika
         raise Insika::StoreError, e.message
       end
 
+      def scopes(prefix = nil)
+        names = @db.execute("SELECT DISTINCT scope FROM kv ORDER BY scope").map(&:first)
+        names = names.select { |s| s.start_with?(prefix) } if prefix
+        names
+      rescue ::SQLite3::Exception => e
+        raise Insika::StoreError, e.message
+      end
+
       # BEGIN IMMEDIATE ... COMMIT/ROLLBACK, serialized by the semaphore.
       # A nested one reuses the outer transaction.
       def transaction(&blk)

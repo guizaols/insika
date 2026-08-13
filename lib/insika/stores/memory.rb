@@ -39,6 +39,12 @@ module Insika
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
       end
 
+      def scopes(prefix = nil)
+        names = @data.keys
+        names = names.select { |s| s.start_with?(prefix) } if prefix
+        names.sort
+      end
+
       # Snapshot at the start of the outermost transaction; an exception at any
       # level -> restore the snapshot and re-propagate (a REAL rollback).
       # A nested one reuses the outer (no SAVEPOINT).

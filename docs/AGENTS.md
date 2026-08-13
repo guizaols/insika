@@ -739,6 +739,19 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   `{ "customer": "c-123", "tenant": "acme" }`. Facts also support an optimistic
   CAS write (`replace_if_revision`) for an integration that must not clobber a
   concurrent edit.
+- **Tenant deletion** — `POST /v1/commands/delete_tenant_data` (operator)
+  purges EVERYTHING the engine holds about one tenant: its sessions, their
+  traces, every memory cell under the tenant (its own + the customer cells —
+  enumerated from the store, so even a cell whose session was already deleted
+  goes) and its outcome records: `{ "tenant": "acme" }`. The tenant string is
+  the isolation boundary; a neighbour is untouched.
+- **Retention** — the age-based counterpart, as data: the settings key
+  `retention_days` (Integer days; absent/0 = OFF, the engine never sweeps by
+  default). The tick's daily sweep (at most once per 24 h, behind the same
+  single-key claim the stale-task sweep uses) purges sessions (+traces),
+  terminal tasks (+checkpoints), memory facts/notes and outcomes older than
+  the window. A non-terminal task is never touched — the Recovery sweep owns
+  those lives.
 
 ## Outcomes — business results over real traffic (WS7)
 

@@ -143,16 +143,28 @@ module Insika
         **executor_extra
       )
 
-        bus = build_core_bus(spine: spine, profiles: profiles, executor: executor)
+        bus = build_core_bus(spine: spine, profiles: profiles, executor: executor,
+                             executor_extra: executor_extra)
 
         # the periodic tick (outbox drain + stale recovery sweep). Built
         # here, after the bus, because its recovery half dispatches resume_task
         # through it; handed to the Executor, which starts it as a child of the
         # turn supervisor in serving mode. `INSIKA_TICK_INTERVAL=0` disables.
+        # WS8 retention rides the tick: always built, the settings knob
+        # (`retention_days`) gates it — the base graph (no settings_store)
+        # reads as OFF.
         executor.tick = Insika::Tick.new(
           store: spine.backend, channel_delivery: channel_delivery,
           recovery: Insika::Recovery.new(
             task_store: spine.task_store, checkpoint_store: spine.checkpoint_store, command_bus: bus
+          ),
+          retention: Insika::Retention.new(
+            store: spine.backend, session_store: spine.session_store,
+            task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
+            memory_store: spine.memory_store, outcome_store: spine.outcome_store,
+            tool_trace_store: executor_extra[:tool_trace_store],
+            context_trace_store: executor_extra[:context_trace_store],
+            settings_store: executor_extra[:settings_store]
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
@@ -190,7 +202,7 @@ module Insika
       # The CORE command surface every root needs — turn essentials + the operator
       # controls (pause/approve) the Studio dispatches. Registering pause_task/
       # approve_action HERE is the crux of: it retires the config.ru:28-34 patch.
-      def build_core_bus(spine:, profiles:, executor:)
+      def build_core_bus(spine:, profiles:, executor:, executor_extra: {})
         bus = Insika::CommandBus.new
         bus.register(:create_session,
                      Insika::Commands::CreateSession.new(session_store: spine.session_store, event_stream: spine.event_stream))
@@ -229,6 +241,18 @@ module Insika
         bus.register(:forget_customer,
                      Insika::Commands::ForgetCustomer.new(
                        memory_store: spine.memory_store, session_store: spine.session_store,
+                       tool_trace_store: executor_extra[:tool_trace_store],
+                       context_trace_store: executor_extra[:context_trace_store],
+                       event_stream: spine.event_stream
+                     ))
+        # WS8 (LGPD): purge ONE TENANT's data — sessions, traces, memory cells
+        # and outcomes. Operator-only by construction (command ingress).
+        bus.register(:delete_tenant_data,
+                     Insika::Commands::DeleteTenantData.new(
+                       memory_store: spine.memory_store, session_store: spine.session_store,
+                       tool_trace_store: executor_extra[:tool_trace_store],
+                       context_trace_store: executor_extra[:context_trace_store],
+                       outcome_store: spine.outcome_store,
                        event_stream: spine.event_stream
                      ))
         bus
