@@ -113,6 +113,7 @@ module Insika
         budget: h[:budget],
         reliability: h[:reliability],
         alerts: h[:alerts],
+        routes: h[:routes],
         stuck_signal: h[:stuck_signal],
         # guardrails: a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.

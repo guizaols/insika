@@ -182,6 +182,11 @@ module Insika
   # tell "the recipient refused" from "the engine has a bug".
   class DeliveryError < Error; end
 
+  # WS4 routing failed: a route's delegate agent is not configured, or its turn
+  # failed. An operator/config error — the envelope names the :routing stage
+  # instead of swallowing it as :unknown.
+  class RoutingError < Error; end
+
   # Strict configuration violation (— OpenClaw's config discipline:
   # "recusa boot com chave desconhecida, no silent config compat"). Raised by
   # EnvSchema.enforce! at boot ONLY when strictness is on (INSIKA_CONFIG_STRICT) —

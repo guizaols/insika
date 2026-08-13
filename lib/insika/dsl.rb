@@ -226,10 +226,22 @@ module Insika
         (@config[:reliability] ||= {}).merge!(hash.transform_keys(&:to_s))
       end
 
-      # Operator alert delivery (WS6): POST this agent's budget_warning /
-      # breaker_open / delivery_failed events to the webhook, as JSON.
-      #   alerts webhook: "https://ops.example.com/insika-alerts"
+# Operator alert delivery (WS6): POST this agent's budget_warning /
+      # breaker_open / delivery_failed events to the webhook as JSON.
       def alerts(hash) = (@config[:alerts] ||= {}).merge!(hash.transform_keys(&:to_s))
+
+      # Intent routing (WS4): classify each turn's message into one route with a
+      # cheap model BEFORE the ask. A Hash: route name -> description (or a Hash
+      # with description/delegate/stuck/message), plus the reserved keys
+      # "default" (the deterministic fallback) and "model"/"provider" (the cheap
+      # classifier). The classifier prompt is generated — data only.
+      #   routes "shopping" => "the customer wants to browse products",
+      #          "order"    => { "description" => "asks about an existing order",
+      #                          "delegate" => "order-agent" },
+      #          "human"    => { "description" => "the customer asks for a person",
+      #                          "stuck" => true },
+      #          "default"  => "shopping", "model" => "deepseek-v4-flash"
+      def routes(hash) = (@config[:routes] ||= {}).merge!(hash.transform_keys(&:to_s))
 
       # The agent may signal it cannot proceed (WS5): when on, the model
       # can call `signal_stuck`, which ends the turn with `outcome: :stuck` + a final
