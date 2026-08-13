@@ -52,6 +52,32 @@ module Insika
       @store.delete(scope_for(tenant), FACT_PREFIX + key.to_s)
     end
 
+    # CAS write (WS8): only writes when the STORED fact's updated_at still
+    # equals the caller's revision — a fact a concurrent writer already moved
+    # is refused instead of clobbered (last-write-wins is the default; this is
+    # the opt-in optimistic path). -> Fact (written) | nil (lost the race — the
+    # caller must re-read and retry). The read-compare-write rides
+    # `@store.transaction` (the repo rule) — `next`, never `return`, inside.
+    def replace_if_revision(tenant:, key:, value:, expected_revision:)
+      @store.transaction do
+        current = @store.get(scope_for(tenant), FACT_PREFIX + key.to_s)
+        next nil if current.nil? || current["updated_at"] != expected_revision
+
+        put_fact(tenant: tenant, key: key, value: value)
+      end
+    end
+
+    # Purges the WHOLE scope (WS8 — forget_customer / delete_tenant_data). The
+    # scope string is the isolation boundary: one cell per
+    # (tenant-or-customer), so zeroing the cell cannot touch another's.
+    # -> count of records purged.
+    def purge(tenant:)
+      scope = scope_for(tenant)
+      keys = @store.list(scope)
+      keys.each { |k| @store.delete(scope, k) }
+      keys.size
+    end
+
     # Append. `at` (ISO8601) goes at the START of the key so `list` returns the notes in
     # chronological order; `id`/`at` injectable for deterministic tests. -> Note
     def add_note(tenant:, text:, id: SecureRandom.uuid, at: nil)
@@ -79,7 +105,10 @@ module Insika
     def to_fact(record) = Fact.new(key: record["key"], value: record["value"], updated_at: record["updated_at"])
     def to_note(record) = Note.new(id: record["id"], text: record["text"], created_at: record["created_at"])
 
-    def timestamp = Time.now.utc.iso8601
+    # Microsecond precision ON PURPOSE: updated_at is the CAS revision
+    # (replace_if_revision) — second-precision collides for two writes in the
+    # same second (WS8).
+    def timestamp = Time.now.utc.iso8601(6)
 
     def stringify(obj)
       case obj

@@ -224,6 +224,13 @@ module Insika
         bus.register(:record_outcome,
                      Insika::Commands::RecordOutcome.new(outcome_store: spine.outcome_store,
                                                          event_stream: spine.event_stream))
+        # WS8 (LGPD): purge one customer's memory/sessions/traces. The trace
+        # stores are deployment components (nil at the base — skipped).
+        bus.register(:forget_customer,
+                     Insika::Commands::ForgetCustomer.new(
+                       memory_store: spine.memory_store, session_store: spine.session_store,
+                       event_stream: spine.event_stream
+                     ))
         bus
       end
 

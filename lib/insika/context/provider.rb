@@ -12,8 +12,17 @@ module Insika
   end
 
   # Input for the provider contract.
-  #   session:    SessionStore::Session | nil
-  #   checkpoint: Checkpoint | nil (present on ResumeTask — history comes from it)
+  #   session:      SessionStore::Session | nil
+  #   checkpoint:   Checkpoint | nil (present on ResumeTask — history comes from it)
+  #   memory_scope: the CUSTOMER-scoped memory cell (WS8): "[tenant:]customer"
+  #                 when the request carries a customer, else nil (the providers
+  #                 fall back to tenant || session). Kept separate from `tenant`
+  #                 (the <request_context> merchant label) on purpose.
   ContextRequest = Data.define(:session, :message, :profile, :tenant, :vars,
-                               :checkpoint)
+                               :checkpoint, :memory_scope) do
+    def initialize(session: nil, message: nil, profile: nil, tenant: nil, vars: {},
+                   checkpoint: nil, memory_scope: nil)
+      super
+    end
+  end
 end

@@ -25,6 +25,13 @@ it is released. Entries land with the pull request that makes the change.
   per agent + per-day series; the Studio's agent grid shows the scorecard
   card. `evals/run.rb` already runs the corpus against a real deployment
   (`--base-url`).
+- **Customer-scoped memory + right to be forgotten (WS8)** — a message
+  carrying a `customer` key moves the memory scope to the `[tenant:]customer`
+  cell: two customers under one tenant never read each other (phase 1), and
+  the `<request_context>` merchant label stays untouched. Facts gained an
+  optimistic CAS write (`replace_if_revision`, microsecond revisions).
+  `POST /v1/commands/forget_customer` (phase 2, LGPD) purges one customer's
+  memory cell, their sessions and per-session traces — nothing else's.
 
 ## [0.2.0] - 2026-08-13
 

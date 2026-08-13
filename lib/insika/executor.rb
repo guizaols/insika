@@ -766,6 +766,7 @@ module Insika
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
+      stamp_customer_session(task)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
       # resolved for the RUN, not per message, so what the turn accepts cannot
@@ -1460,9 +1461,11 @@ module Insika
       vars["history"] = hist if hist
       # The single type is Insika::ContextRequest (Data); the explicit `history`
       # travels in vars["history"] (Session provider convention), not in a field
-      # of its own.
+      # of its own. `memory_scope` is the WS8 customer cell (nil = the providers
+      # fall back to tenant || session, today's behavior).
       ContextRequest.new(profile: profile, message: state.message, session: session,
-                         checkpoint: resume_from, tenant: command_tenant(task), vars: vars)
+                         checkpoint: resume_from, tenant: command_tenant(task), vars: vars,
+                         memory_scope: memory_tenant(task))
     end
 
     # task_started payload. Carries the EXPLICIT command tenant so
@@ -1496,8 +1499,40 @@ module Insika
     # Symmetric to the READ path (Memory provider). One-shot with no tenant -> nil
     # (_default). It is NOT the <request_context> tenant (that follows
     # command_tenant, prompt parity) — only the memory read/write scope.
+    #
+    # WS8: a request carrying a CUSTOMER moves the scope to the customer cell —
+    # "[tenant:]customer" when a tenant is present, the bare customer otherwise
+    # (never _default — a tagged customer must never land in the shared cell).
+    # Per-customer memory is the 360 view; per-tenant was the leak.
     def memory_tenant(task)
-      command_tenant(task) || task.session_id
+      customer = command_customer(task)
+      return command_tenant(task) || task.session_id if customer.nil?
+
+      [command_tenant(task), customer].compact.join(":")
+    end
+
+    # WS8: stamp the customer on the session ONCE (idempotent) — the
+    # `forget_customer` purge finds the customer's sessions through this var.
+    # A session that does not exist yet (no session_id on the turn) is skipped;
+    # a look-up failure never breaks the turn.
+    def stamp_customer_session(task)
+      customer = command_customer(task)
+      return if customer.nil? || task.session_id.nil?
+
+      session = @session_store&.find(task.session_id)
+      return if session.nil? || !Coercion.presence(session.vars["customer"]).nil?
+
+      @session_store.update_vars(task.session_id, "customer" => customer)
+    rescue Insika::NotFoundError, ArgumentError
+      nil
+    end
+
+    # The optional customer_key on the command payload (WS8): a String identifying
+    # the person the conversation belongs to — the memory scope's customer half
+    # and the handle `forget_customer` purges by. nil = untagged conversation
+    # (memory stays per-tenant/per-chat, byte-identical to before).
+    def command_customer(task)
+      Coercion.presence(rebuild_command(task).payload["customer"])
     end
 
     # Turn context: the ids the data-tools resolve via
@@ -1512,7 +1547,10 @@ module Insika
       {
         chat_id: task.session_id,
         agent_id: profile.id,
-        tenant: state.tenant, # already = command_tenant || session_id (memory_tenant)
+        # the DATA-TOOL header tenant stays the merchant (or the chat), even when
+        # the memory scope carries a customer — the backend identifies the store,
+        # not the shopper (WS8 keeps the two scopes separate).
+        tenant: command_tenant(task) || task.session_id,
         store_id: profile.store_id,
         # current delegation depth (0 for a top-level turn). Carried in
         # the child command's payload by run_subagent; read here so the child's OWN

@@ -42,8 +42,17 @@ RSpec.describe "Insika::Executor — turn context" do
                         store_id: "loja-7", delegation_depth: 0)
     end
 
-    it "tenant reflects state.tenant (explicit multi-merchant override)" do
-      ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "acme"))
+    it "tenant reflects the multi-merchant override (the COMMAND tenant), not the chat" do
+      # WS8: ctx.tenant is the data-tool header — the merchant, never the
+      # customer. It is derived from the command tenant (or the chat when no
+      # tenant), NOT from state.tenant: the memory scope may carry a customer
+      # ("acme:123") and must never leak into the merchant's header.
+      task = Struct.new(:id, :session_id, :command).new(
+        "t", "chat-42",
+        { "type" => "send_message", "payload" => { "message" => "oi" },
+          "meta" => { "tenant" => "acme" } }
+      )
+      ctx = executor.send(:build_turn_context, task, profile, state_with(tenant: "acme:123"))
       expect(ctx[:tenant]).to eq("acme")
       expect(ctx[:chat_id]).to eq("chat-42")
     end

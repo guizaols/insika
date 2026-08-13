@@ -80,4 +80,56 @@ RSpec.describe Insika::MemoryStore do
       expect(store.get_fact(tenant: "acme", key: "k")).to be_nil
     end
   end
+
+  describe "replace_if_revision (WS8 CAS)" do
+    it "writes only when the stored revision matches; else nil (lost the race)" do
+      first = store.put_fact(tenant: "acme", key: "k", value: "v1")
+      second = store.put_fact(tenant: "acme", key: "k", value: "v2") # LWW moved the revision
+
+      # a stale writer is refused, not clobbered
+      expect(store.replace_if_revision(tenant: "acme", key: "k", value: "stale",
+                                       expected_revision: first.updated_at)).to be_nil
+      expect(store.get_fact(tenant: "acme", key: "k").value).to eq("v2")
+
+      # a writer holding the CURRENT revision wins
+      written = store.replace_if_revision(tenant: "acme", key: "k", value: "v3",
+                                          expected_revision: second.updated_at)
+      expect(written.value).to eq("v3")
+      expect(store.get_fact(tenant: "acme", key: "k").value).to eq("v3")
+    end
+
+    it "a fact that does not exist is refused (the CAS is not an upsert)" do
+      expect(store.replace_if_revision(tenant: "acme", key: "ghost", value: "x",
+                                       expected_revision: "anything")).to be_nil
+    end
+
+    it "works on SQLite without leaking the transaction (the WS2 trap)" do
+      sqlite = Insika::Stores::SQLite.new(path: ":memory:")
+      durable = described_class.new(store: sqlite)
+      fact = durable.put_fact(tenant: "acme", key: "k", value: "v1")
+      expect(durable.replace_if_revision(tenant: "acme", key: "k", value: "v2",
+                                         expected_revision: "stale")).to be_nil
+      expect(durable.put_fact(tenant: "acme", key: "k", value: "v2")).to be_a(described_class::Fact)
+    ensure
+      sqlite&.close
+    end
+  end
+
+  describe "purge (WS8 — forget_customer)" do
+    it "zeroes the WHOLE scope and reports the count; neighbours are untouched" do
+      store.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+      store.add_note(tenant: "acme:123", text: "prefere email")
+      store.put_fact(tenant: "acme:456", key: "pedido", value: "delivered")
+
+      expect(store.purge(tenant: "acme:123")).to eq(2)
+      expect(store.facts(tenant: "acme:123")).to be_empty
+      expect(store.notes(tenant: "acme:123")).to be_empty
+      # the OTHER customer's cell is untouched
+      expect(store.get_fact(tenant: "acme:456", key: "pedido").value).to eq("delivered")
+    end
+
+    it "purge on an empty scope is 0, never an error" do
+      expect(store.purge(tenant: "acme:999")).to eq(0)
+    end
+  end
 end

@@ -384,6 +384,7 @@ module Insika
         ensure_session(parsed[:user], tenant: tenant)
         payload = { agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] }
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
+        payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
         message_flow(payload, stream: true, serialize: Responses.method(:frame_for),
                               tenant: tenant)
       end

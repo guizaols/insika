@@ -643,6 +643,29 @@ next turn with no restart. See [Deploy](DEPLOY.md) for the durable-volume setup 
 [Context](CONTEXT.md#the-volume) for why editing a committed file does *not* change
 a running agent.
 
+## Customer-scoped memory and the right to be forgotten (WS8)
+
+Memory is naturally **per customer, not per tenant**. A message that carries a
+`customer` key moves the engine's memory scope to that person:
+
+```bash
+curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
+  -d '{ "agent": "store-support", "session_id": "chat-7",
+        "customer": "c-123", "message": "cadê meu pedido" }'
+```
+
+- **Scope** — with `customer` present, the `remember` tool and the `<memory>`
+  block read/write the `[tenant:]customer` cell: two customers under the same
+  tenant never see each other, and the `<request_context>` tenant label (the
+  merchant) is untouched. Absent `customer` = today's per-tenant/per-chat
+  behavior.
+- **Right to be forgotten** — `POST /v1/commands/forget_customer` (operator)
+  purges the customer's memory cell, their sessions and the per-session traces
+  from the engine, nothing else's:
+  `{ "customer": "c-123", "tenant": "acme" }`. Facts also support an optimistic
+  CAS write (`replace_if_revision`) for an integration that must not clobber a
+  concurrent edit.
+
 ## Outcomes — business results over real traffic (WS7)
 
 The engine measures what it is told to measure. The operator or the integration
