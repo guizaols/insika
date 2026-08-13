@@ -38,8 +38,20 @@ it is released. Entries land with the pull request that makes the change.
   `INSIKA_STT_LANGUAGE`) and the text enters the turn marked
   `source: "voice"` on the terminal event; images attach to the model's ask
   (provider-billed, usage flows); media URLs pass the egress guard. The
-  OpenAI multimodal `input` array shape works on `/v1/responses`. TTS/image
-  generation as turn outputs remain the documented follow-up half.
+  OpenAI multimodal `input` array shape works on `/v1/responses`.
+- **Generated media as outputs (WS9, saída)** — the turn can produce an
+  image or a voice clip when BOTH gates agree: the agent opts in
+  (`AgentProfile#outputs` — per-kind model/voice/size config) and the request
+  declares the channel can receive it (`channel.capabilities`, one of
+  `image_output`/`audio_output`; unknown values are a 422 — the abstraction
+  admits only what leaks). The `generate_image`/`tts` system tools are wired
+  only then, the media rides the envelope additively (`output_parts` on the
+  terminal event and the `/v1/responses` completed frame — base64 parts, never
+  the answer text), image tokens merge into the turn's usage and every call
+  adds an honest `usage.media` counter (the speech API reports no tokens; the
+  part carries the model for consumer-side pricing). Generators are injectable
+  seams; the defaults are lazy (RubyLLM paint; a thin POST to the
+  OpenAI-compatible `/audio/speech` using the same provider config).
 
 ## [0.2.0] - 2026-08-13
 

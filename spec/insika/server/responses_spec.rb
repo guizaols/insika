@@ -42,6 +42,19 @@ RSpec.describe Insika::Server::Responses do
       expect { described_class.parse_request({ model: "openclaw:a", user: "c", input: "  " }, req) }
         .to raise_error(Insika::ValidationError, /input/)
     end
+
+    it "forwards the channel's declared capabilities (WS9, saída — additive)" do
+      out = described_class.parse_request(
+        { model: "openclaw:a", user: "c", input: "oi",
+          channel: { capabilities: %w[image_output audio_output] } }, req
+      )
+      expect(out[:channel]).to eq(capabilities: %w[image_output audio_output])
+    end
+
+    it "channel absent -> no channel key (parity)" do
+      out = described_class.parse_request({ model: "openclaw:a", user: "c", input: "oi" }, req)
+      expect(out).not_to have_key(:channel)
+    end
   end
 
   describe ".frame_for" do
@@ -82,6 +95,19 @@ RSpec.describe Insika::Server::Responses do
     it "task_completed WITHOUT outcome -> no outcome sibling (parity)" do
       f = described_class.frame_for(ev(:task_completed, {}))
       expect(f).not_to include("outcome")
+    end
+
+    it "task_completed with output_parts -> response.completed carries them (WS9, saída)" do
+      f = described_class.frame_for(ev(:task_completed,
+        { output_parts: [{ "type" => "image", "mime_type" => "image/png",
+                           "base64" => "QUJD", "model" => "gpt-image-1" }] }))
+      expect(f).to include('"type":"response.completed"')
+      expect(f).to include('"output_parts"', '"type":"image"', '"base64":"QUJD"')
+    end
+
+    it "task_completed WITHOUT output_parts -> no output_parts sibling (parity)" do
+      f = described_class.frame_for(ev(:task_completed, {}))
+      expect(f).not_to include("output_parts")
     end
 
 

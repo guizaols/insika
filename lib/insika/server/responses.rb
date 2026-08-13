@@ -61,6 +61,11 @@ module Insika
           raise Insika::ValidationError, 'source must be "voice"'
         end
         out[:source] = body[:source].to_s if Insika::Coercion.presence(body[:source])
+        # WS9 (saída): the channel declares which generated media it can
+        # RECEIVE ({ capabilities: ["image_output", "audio_output"] }). Additive
+        # + additive sibling on the completed frame; the exact capabilities are
+        # validated at the boundary (message_flow), not here.
+        (channel = body[:channel]) && (out[:channel] = channel)
         out
       end
 
@@ -163,6 +168,10 @@ module Insika
         # the OpenAI-shaped response.use it to run their escalation ("stuck" means
         # what they decide it means, never the engine's business).
         (outcome = event.data[:outcome]) && (response[:outcome] = outcome.to_s)
+        # WS9 (saída): generated media parts (image/audio clips) ride the
+        # completed frame additively next to the text — absent when none were
+        # generated. The base64 bytes are the consumer's to render/upload.
+        (parts = event.data[:output_parts]) && (response[:output_parts] = parts)
         sse("response.completed", { type: "response.completed", response: response })
       end
 

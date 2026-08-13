@@ -45,4 +45,29 @@ RSpec.describe Insika::Media do
       expect(described_class.image_parts(parts).map(&:url)).to eq(["i"])
     end
   end
+
+  describe ".channel_capabilities" do
+    it "reads the declared output media kinds from string OR symbol keys" do
+      expect(described_class.channel_capabilities({ "capabilities" => %w[image_output] }))
+        .to eq(%w[image_output])
+      expect(described_class.channel_capabilities({ capabilities: %w[image_output audio_output] }))
+        .to eq(%w[image_output audio_output])
+    end
+
+    it "a channel without capabilities (or absent) declares nothing" do
+      expect(described_class.channel_capabilities({})).to be_empty
+      expect(described_class.channel_capabilities(nil)).to be_empty
+    end
+
+    it "the closed capability list is the edges' allowlist" do
+      expect(described_class::OUTPUT_CAPABILITIES).to eq(%w[image_output audio_output])
+    end
+  end
+
+  describe Insika::Media::Output do
+    it "the default seams return [part, usage] pairs keyed by media kind" do
+      seams = described_class.defaults(context: nil)
+      expect(seams.keys).to eq(%i[image tts])
+    end
+  end
 end

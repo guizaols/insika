@@ -14,7 +14,7 @@ module Insika
   class ChatBuilder
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
                    hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil,
-                   tool_trace_store: nil)
+                   tool_trace_store: nil, media_runner: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -28,6 +28,9 @@ module Insika
       # spawn_subagent system tool is never wired (parity for a builder used
       # without delegation, e.g. some unit stubs).
       @subagent_runner = subagent_runner
+      # the Executor as the generate_image/tts runner (seams + usage
+      # accounting). nil = the media tools are never wired (parity for stubs).
+      @media_runner = media_runner
     end
 
     # Configures an already-created chat with the context (stage 2) and the
@@ -98,6 +101,17 @@ module Insika
         tools << Tools::StuckSignal.new(state: state)
       end
 
+      # generate_image / tts are the generated-media system tools (WS9, saída)
+      # — wired only when BOTH gates pass, never enveloped: the AGENT opted in
+      # (`profile.outputs` — the per-kind generator config) AND the CHANNEL
+      # declared it can receive the media (state.channel_capabilities, from the
+      # request's `channel.capabilities`). The "abstraction admits only what
+      # leaks" rule, C4: a channel that never declared image_output cannot get
+      # a generated image; a profile without `outputs` never generates. The
+      # runner is the Executor (seams + usage accounting); nil = no media
+      # output at all (parity for a stub builder).
+      output_media_tools(state).each { |tool| tools << tool } if @media_runner
+
       # spawn_subagent is the delegation system tool — wired only with a
       # runner present AND profile.subagents non-empty (a double gate, like
       # remember). Never enveloped: in the synchronous mode the child lives in the
@@ -137,6 +151,22 @@ module Insika
 
       eager = @skill_catalog.eager_for(state.profile).map(&:name)
       names - eager
+    end
+
+    # WS9 (saída): the media-output tools this turn may carry, per the double
+    # gate (profile outputs ∩ channel capabilities). [] = none. Defensive reads
+    # throughout — a minimal profile/state stub is "off", which is the safe
+    # parity reading.
+    def output_media_tools(state)
+      outputs = state.profile.respond_to?(:outputs) ? state.profile.outputs : nil
+      return [] unless outputs.is_a?(Hash)
+      return [] unless state.respond_to?(:channel_capabilities)
+
+      caps = Array(state.channel_capabilities).map(&:to_s)
+      [
+        (Tools::GenerateImage.new(runner: @media_runner, config: outputs["image"], state: state) if outputs["image"] && caps.include?("image_output")),
+        (Tools::Tts.new(runner: @media_runner, config: outputs["tts"], state: state) if outputs["tts"] && caps.include?("audio_output"))
+      ].compact
     end
 
     # The turn's effective tool concurrency (nil = serial), plus the ONE thing the

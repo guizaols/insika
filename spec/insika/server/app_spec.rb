@@ -284,6 +284,33 @@ RSpec.describe Insika::Server::App do
       expect(JSON.parse(body.join)).to eq({ "task_id" => "t-running", "steered" => true })
       expect(body.join).not_to include("a resposta")
     end
+
+    it "forwards the declared channel capabilities to the command (WS9, saída)" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      call(app, "POST", "/v1/messages?stream=false",
+           body: '{"agent":"sales","message":"oi","channel":{"capabilities":["image_output"]}}')
+
+      expect(bus.dispatched.last.payload[:channel]).to eq(capabilities: %w[image_output])
+    end
+
+    it "an UNKNOWN channel capability is refused BEFORE dispatch (422)" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, _headers, body = call(app, "POST", "/v1/messages?stream=false",
+                                    body: '{"agent":"sales","message":"oi","channel":{"capabilities":["video_output"]}}')
+
+      expect(status).to eq(422)
+      expect(JSON.parse(body.join)).to eq(
+        "error" => { "class" => "Insika::ValidationError",
+                     "message" => "unknown channel capability: video_output" }
+      )
+      expect(bus.dispatched).to be_empty
+    end
   end
 
   describe "workflows exposed" do
