@@ -187,6 +187,12 @@ module Insika
   # instead of swallowing it as :unknown.
   class RoutingError < Error; end
 
+  # WS9 media failed: an audio part could not be fetched or transcribed, an
+  # image attachment could not be built, or a media URL was egress-blocked. A
+  # customer's voice message that never entered the turn must not be silently
+  # dropped — the :media stage names it.
+  class MediaError < Error; end
+
   # Strict configuration violation (— OpenClaw's config discipline:
   # "recusa boot com chave desconhecida, no silent config compat"). Raised by
   # EnvSchema.enforce! at boot ONLY when strictness is on (INSIKA_CONFIG_STRICT) —

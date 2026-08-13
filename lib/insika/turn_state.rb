@@ -28,6 +28,11 @@ module Insika
                   :route,              # WS4: the intent route the classifier chose (Symbol | nil).
                   #                      Set before the ask; rides the :route_classified event and the
                   #                      terminal event additively. nil = no routing on this turn.
+                  :message_source,     # WS9: how the turn's message entered (:voice when it came
+                  #                      from a transcribed audio part; nil = typed). Rides the
+                  #                      terminal event additively.
+                  :media_attachments,  # WS9: the ask's attachments (image parts); nil = none.
+                  #                      The provider bills them; usage flows like any ask.
                   :output_filter,      # per-turn Safety::OutputFilter (nil = off); redacts the stream.
                   :stuck_outcome       # set by the signal_stuck system tool (WS5):
                   #                      { reason:, message: } when the agent declared it cannot

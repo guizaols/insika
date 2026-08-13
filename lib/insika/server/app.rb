@@ -385,6 +385,8 @@ module Insika
         payload = { agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] }
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
         payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
+        payload[:parts] = parsed[:parts] if parsed[:parts] # WS9: multimodal content parts
+        payload[:source] = parsed[:source] if parsed[:source] # WS9: voice-marked text
         message_flow(payload, stream: true, serialize: Responses.method(:frame_for),
                               tenant: tenant)
       end
@@ -817,6 +819,12 @@ TENANT_SURFACES = [
       # happens here, BEFORE the SSE opens -> closes the subscription and propagates to the
       # #call rescue (becomes an HTTP status).
       def message_flow(payload, stream:, serialize: nil, transport: :http, tenant: nil)
+        # WS9: the only declared message source is "voice" (pre-transcribed
+        # audio) — a consumer that writes prose here is told so, not silently.
+        source = payload[:source] || payload["source"]
+        if source && source.to_s != "voice"
+          raise Insika::ValidationError, 'source must be "voice"'
+        end
         # WS1: a tenant's session_id is NAMESPACED before the command is built,
         # so the turn lands on the tenant's OWN session even when another tenant
         # uses the same chat id. The payload the caller sent is untouched.
