@@ -70,12 +70,17 @@ module Insika
     # Purges the WHOLE scope (WS8 — forget_customer / delete_tenant_data). The
     # scope string is the isolation boundary: one cell per
     # (tenant-or-customer), so zeroing the cell cannot touch another's.
+    # The list-then-delete rides `@store.transaction` (the repo rule): an erasure
+    # that is half-applied is the LGPD defect, and a fact written between the
+    # list and the deletes would survive a purge that reported success.
     # -> count of records purged.
     def purge(tenant:)
       scope = scope_for(tenant)
-      keys = @store.list(scope)
-      keys.each { |k| @store.delete(scope, k) }
-      keys.size
+      @store.transaction do
+        keys = @store.list(scope)
+        keys.each { |k| @store.delete(scope, k) }
+        keys.size
+      end
     end
 
     # Purges a TENANT and every customer cell under it (WS8 phase 2 —
@@ -83,14 +88,19 @@ module Insika
     # cell whose scope starts with "memory:<tenant>:" (the customer cells).
     # The scope enumeration is the Store's — no session-derived list, so a
     # customer cell whose session was already deleted is still purged.
+    # ONE transaction for the whole tenant (the repo rule): the scope
+    # enumeration and every delete see the same snapshot, so a customer cell
+    # born mid-purge cannot slip through a deletion that reported success.
     # -> count of records purged.
     def purge_tenant(tenant)
       cell = scope_for(tenant)
-      scopes = [cell] + @store.scopes("#{cell}:")
-      scopes.sum do |scope|
-        keys = @store.list(scope)
-        keys.each { |k| @store.delete(scope, k) }
-        keys.size
+      @store.transaction do
+        scopes = [cell] + @store.scopes("#{cell}:")
+        scopes.sum do |scope|
+          keys = @store.list(scope)
+          keys.each { |k| @store.delete(scope, k) }
+          keys.size
+        end
       end
     end
 

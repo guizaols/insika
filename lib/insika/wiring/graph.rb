@@ -165,7 +165,8 @@ module Insika
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
             outbox_store: spine.outbox_store,
-            settings_store: executor_extra[:settings_store]
+            settings_store: executor_extra[:settings_store],
+            budget_ledger: spine.budget_ledger # WS2 counter GC (retention-independent)
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
@@ -259,6 +260,7 @@ module Insika
                        outcome_store: spine.outcome_store,
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
+                       token_store: spine.token_store, # revoked BEFORE the sweep
                        event_stream: spine.event_stream
                      ))
         bus

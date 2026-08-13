@@ -197,6 +197,33 @@ RSpec.describe "Insika::Executor + EdgeLimiter" do
         .to eq(daily: 1_000, monthly: 1_000) # 300+200 total + 500 cached
     end
 
+    # A tenant-scoped /v1/events subscription is fail-closed on meta[:tenant]:
+    # a warning that carries the tenant only in its PAYLOAD is invisible to the
+    # very tenant whose budget it is about.
+    it "budget_warning carries the tenant on the META (the tenant's own stream sees it)" do
+      prof = budget_profile("daily" => 1_000, "soft" => true)
+      executor = budget_executor(prof)
+      budget_ledger.add(tenant: "loja-a", agent: "example-agent", by: 900)
+
+      run_with(executor, make_tenant_task("oi", id: "g1", tenant: "loja-a"), prof)
+
+      warning = event_stream.events.find { |e| e.type == :budget_warning }
+      expect(warning.meta).to include(tenant: "loja-a")
+      expect(Insika::EventStream::Subscription.new(tenant: "loja-a").matches?(warning)).to be(true)
+      expect(Insika::EventStream::Subscription.new(tenant: "loja-b").matches?(warning)).to be(false)
+    end
+
+    it "a platform turn (no tenant) leaves the meta byte-identical to before" do
+      prof = budget_profile("daily" => 1_000, "soft" => true)
+      executor = budget_executor(prof)
+      budget_ledger.add(tenant: nil, agent: "example-agent", by: 900)
+
+      run_with(executor, make_tenant_task("oi", id: "g2"), prof)
+
+      warning = event_stream.events.find { |e| e.type == :budget_warning }
+      expect(warning.meta.key?(:tenant)).to be(false)
+    end
+
     it "the window is per (tenant, agent): one tenant's exhaustion does not touch the other" do
       budget_ledger.add(tenant: "loja-a", agent: "example-agent", by: 1_000) # A's cell spent
       prof = budget_profile("daily" => 1_000) # soft absent = HARD

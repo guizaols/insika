@@ -141,6 +141,54 @@ RSpec.describe Insika::Retention do
     expect(outbox_store.find(fresh.id)).not_to be_nil
   end
 
+  # WS2 counter GC: those cells are engine bookkeeping whose window already
+  # rolled over, not customer content — so they are swept even with retention
+  # OFF (the default), which is exactly where they used to leak forever.
+  describe "budget counter GC" do
+    let(:budget_ledger) { Insika::BudgetLedger.new(store: backend) }
+    subject(:retention) do
+      described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, outbox_store: outbox_store,
+        settings_store: settings, budget_ledger: budget_ledger, now: now
+      )
+    end
+
+    def stale_cells
+      budget_ledger.add(tenant: "loja-42", agent: "bia", by: 100, now: now - (3 * 86_400))
+      budget_ledger.mark_alert(tenant: "loja-42", agent: "bia", window: :daily,
+                               level: "cap", now: now - (3 * 86_400))
+    end
+
+    it "sweeps the expired cells even with retention_days OFF" do
+      settings.get["retention_days"] = nil
+      stale_cells
+      session_store.create(id: "chat-1")
+
+      expect(retention.run).to eq({ claimed: false, budget_cells: 2 })
+      expect(session_store.find("chat-1")).not_to be_nil # retention is still OFF
+      expect(backend.list(Insika::BudgetLedger::ALERT_SCOPE)).to be_empty
+    end
+
+    it "rides the age-based summary when retention IS on, on its own daily claim" do
+      stale_cells
+
+      expect(retention.run).to include(claimed: true, budget_cells: 2)
+      # second pass inside the window: neither sweep runs again
+      expect(retention.run).to eq({ claimed: false })
+    end
+
+    it "no ledger wired -> the summary is byte-identical to before (parity)" do
+      settings.get["retention_days"] = nil
+      expect(described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, settings_store: settings, now: now
+      ).run).to eq({ claimed: false })
+    end
+  end
+
   it "the daily claim: a second run inside the window sweeps nothing" do
     session_store.create(id: "chat-old")
     backdate_session("chat-old", (now - 40 * 86_400).iso8601)

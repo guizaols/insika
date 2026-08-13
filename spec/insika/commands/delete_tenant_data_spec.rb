@@ -99,6 +99,41 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     expect(task_store.find("t-b")).not_to be_nil # the neighbour's, untouched
   end
 
+  # The purge used to leave the tenant's credentials resolving: an offboarded
+  # tenant kept authenticating and could open a brand-new session over the
+  # erasure that had just reported success.
+  describe "credentials (WS1 + WS8)" do
+    let(:token_store) { Insika::TokenStore.new(store: backend) }
+    subject(:command) do
+      described_class.new(memory_store: memory_store, session_store: session_store,
+                          outcome_store: outcome_store, task_store: task_store,
+                          checkpoint_store: checkpoint_store, outbox_store: outbox_store,
+                          token_store: token_store, event_stream: event_stream)
+    end
+
+    it "revokes every active token of the tenant; the neighbour's and the operator's resolve" do
+      gone = token_store.issue(tenant_id: "acme", label: "prod")
+      also_gone = token_store.issue(tenant_id: "acme", label: "staging")
+      neighbour = token_store.issue(tenant_id: "loja-b")
+      operator = token_store.issue
+
+      result = run(tenant: "acme")
+
+      expect(result[:tokens_revoked]).to eq(2)
+      expect(token_store.resolve(gone.token)).to be_nil
+      expect(token_store.resolve(also_gone.token)).to be_nil
+      expect(token_store.resolve(neighbour.token).tenant_id).to eq("loja-b")
+      expect(token_store.resolve(operator.token).role).to eq("operator")
+    end
+
+    it "no token store (single_tenant) -> 0, never an error" do
+      expect(described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream).call(
+                                  Insika::Command.build(:delete_tenant_data, { tenant: "acme" })
+                                )[:tokens_revoked]).to eq(0)
+    end
+  end
+
   it "tenant is required" do
     expect { command.call(Insika::Command.build(:delete_tenant_data, {})) }
       .to raise_error(Insika::ValidationError, /tenant is required/)

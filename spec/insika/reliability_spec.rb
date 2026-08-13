@@ -149,6 +149,55 @@ RSpec.describe Insika::Reliability do
     expect(result).to eq("ok")
   end
 
+  # The ROTATION was documented and never emitted: the trace could only INFER a
+  # fallback from the usage attribution.
+  it "rotating to the next node emits :provider_fallback (from -> to, with the error)" do
+    calls = 0
+    # retries: 1 -> the primary burns 2 attempts, then the chain's node answers.
+    result = run(->(_s, _n) { calls += 1; calls > 2 ? "ok" : raise(RubyLLM::ServerError.new("down")) },
+                 agent: "bia")
+    expect(result).to eq("ok")
+
+    rotations = event_stream.events.select { |e| e.type == :provider_fallback }
+    expect(rotations.size).to eq(1)
+    expect(rotations.first.data).to include(
+      agent: "bia", from: "deepseek/deepseek-v4-flash", to: "openai/gpt-4o-mini",
+      error: "RubyLLM::ServerError", kind: :retryable
+    )
+  end
+
+  it "the primary answering emits NO rotation (nothing to see in the trace)" do
+    expect(run(->(_s, _n) { "ok" })).to eq("ok")
+    expect(event_stream.events.map(&:type)).not_to include(:provider_fallback)
+  end
+
+  # A policy with a fallback and NO breaker used to run in complete silence:
+  # record_failure returned early when there was no breaker to bump.
+  it "a breaker-less policy still emits its failures AND its rotation" do
+    plain = policy.merge("circuit_breaker" => nil)
+    expect { run(raise_retryable, policy: plain, agent: "bia") }.to raise_error(RubyLLM::ServerError)
+
+    types = event_stream.events.map(&:type)
+    expect(types.count(:provider_failure)).to eq(4) # 2 nodes x 2 attempts
+    expect(types.count(:provider_fallback)).to eq(1)
+    expect(types).not_to include(:breaker_open) # no breaker -> no circuit event
+  end
+
+  it "a node the breaker SKIPPED is never the `from` of the rotation (it was never asked)" do
+    third = { model: "claude-sonnet-5", provider: :anthropic }
+    circuit_store.record_failure(tenant: nil, ref: "openai/gpt-4o-mini", after: 1, within: 60)
+    seen = []
+    attempts = lambda do |sel, _n|
+      seen << (sel.respond_to?(:model) ? sel.model : sel[:model])
+      raise RubyLLM::ServerError.new("down")
+    end
+    expect { run(attempts, chain: chain + [third]) }.to raise_error(RubyLLM::ServerError)
+
+    expect(seen.uniq).to eq(%w[deepseek-v4-flash claude-sonnet-5]) # the open node skipped
+    rotation = event_stream.events.find { |e| e.type == :provider_fallback }
+    expect(rotation.data).to include(from: "deepseek/deepseek-v4-flash", to: "anthropic/claude-sonnet-5")
+  end
+
   it "the failure that TRIPS the breaker emits :breaker_open with the agent (WS6)" do
     trip_policy = policy.merge("circuit_breaker" => { "after" => 2, "within" => 60, "cooldown" => 300 })
     run(->(_s, _n) { raise RubyLLM::ServerError.new("down") }, policy: trip_policy, agent: "bia")

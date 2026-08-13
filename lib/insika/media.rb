@@ -108,7 +108,7 @@ module Insika
     # refused (SSRF) unless the deployment opts out. Size-capped (the caller
     # picks the ceiling; the default is the audio one).
     def self.fetch_binary(url, max_bytes: MAX_AUDIO_BYTES)
-      violation = Insika::EgressGuard.violation(url)
+      violation = Insika::EgressGuard.violation(url, **egress_opt_out)
       raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
 
       uri = URI.parse(url)
@@ -125,6 +125,18 @@ module Insika
       end
     rescue URI::InvalidURIError
       raise Insika::MediaError, "invalid media URL"
+    end
+
+    # The opt-out the comment above promises, read from the SAME env the
+    # data-tool guard reads (INSIKA_EGRESS_ALLOW_HTTP / _ALLOW_PRIVATE): without
+    # this, a local run serving media over http:// ALWAYS failed, however the
+    # deployment was configured. INSIKA_EGRESS_HOSTS is deliberately NOT applied:
+    # that allowlist pins the handful of hosts a tool may call, while media URLs
+    # come from the channel's CDN — honouring it here would break every real
+    # deployment that narrows its tools.
+    def self.egress_opt_out
+      { allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
+        allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"]) }
     end
 
     # WS9 (saída): generated media. The OUTPUT shape is an additive part —

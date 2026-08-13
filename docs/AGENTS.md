@@ -758,8 +758,10 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   whole footprint (traces, tasks, checkpoints, outbox deliveries), every memory
   cell under the tenant (its own + the customer cells — enumerated from the
   store, so even a cell whose session was already deleted goes) and its outcome
-  records: `{ "tenant": "acme" }`. The tenant string is the isolation boundary;
-  a neighbour is untouched.
+  records: `{ "tenant": "acme" }`. Its API tokens are **revoked first** (before
+  the sweep): an offboarded tenant whose credentials still resolved kept
+  authenticating and could open a new session over the erasure. The tenant
+  string is the isolation boundary; a neighbour is untouched.
 - **Retention** — the age-based counterpart, as data: the settings key
   `retention_days` (Integer days; absent/0 = OFF, the engine never sweeps by
   default). The tick's daily sweep (at most once per 24 h, behind the same
@@ -767,7 +769,10 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   terminal tasks (+checkpoints), delivered/failed outbox records, memory
   facts/notes and outcomes older than the window. A non-terminal task is never
   touched — the Recovery sweep owns those lives — and neither is a delivery
-  still owed to somebody.
+  still owed to somebody. One thing the same daily pass sweeps **regardless of
+  `retention_days`**: the budget counter cells whose window already rolled over
+  (and their once-per-window alert markers). Those are engine bookkeeping, not
+  customer content, and nothing else ever collected them.
 
 ## Outcomes — business results over real traffic (WS7)
 

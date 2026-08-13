@@ -41,6 +41,8 @@ something that left no task of its own behind:
 | `:delivery_failed` | `channel`, `outbox_id`, `status`, `attempts`, `error` | a delivery exhausted its bounded retries — the alert face of the row above (WS6) |
 | `:budget_warning` | `agent`, `tenant`, `window`, `spent`, `cap` | a calendar budget crossed its threshold (`alert_at` or a soft cap) — once per window (WS2) |
 | `:breaker_open` | `agent`, `ref`, `tenant` | the reliability circuit breaker tripped for a `(tenant, provider/model)` — further turns fail fast until the cooldown (WS3/WS6) |
+| `:provider_failure` | `agent`, `ref`, `error`, `kind` | one attempt against `ref` failed and spent a retry — emitted with or without a circuit breaker (WS3) |
+| `:provider_fallback` | `agent`, `from`, `to`, `error`, `kind` | the turn ROTATED mid-flight to the next node of the fallback chain, and the error that caused it (WS3) |
 | `:ttft` | `task_id`, `session_id`, `ttft_ms` | the provider's time-to-first-token on the streaming envelope — only under `INSIKA_TURN_TIMING`, once per turn (WS6) |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at

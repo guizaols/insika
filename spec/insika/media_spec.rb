@@ -88,6 +88,39 @@ RSpec.describe Insika::Media do
     end
   end
 
+  # The comment on fetch_binary promised an opt-out ("unless the deployment
+  # opts out") that the call did not pass: http:// media ALWAYS failed, however
+  # the deployment was configured.
+  describe "egress opt-out (INSIKA_EGRESS_ALLOW_HTTP / _ALLOW_PRIVATE)" do
+    around do |example|
+      original = ENV.values_at("INSIKA_EGRESS_ALLOW_HTTP", "INSIKA_EGRESS_ALLOW_PRIVATE")
+      example.run
+      ENV["INSIKA_EGRESS_ALLOW_HTTP"] = original[0]
+      ENV["INSIKA_EGRESS_ALLOW_PRIVATE"] = original[1]
+    end
+
+    it "https-only and private-blocked by default (strict guard)" do
+      ENV.delete("INSIKA_EGRESS_ALLOW_HTTP")
+      ENV.delete("INSIKA_EGRESS_ALLOW_PRIVATE")
+      expect(described_class.egress_opt_out).to eq(allow_http: false, allow_private: false)
+      expect { described_class.fetch_binary("http://media.test/a.ogg") }
+        .to raise_error(Insika::MediaError, /http not allowed/)
+    end
+
+    it "the env opt-out reaches the guard (a local run over http:// gets through it)" do
+      ENV["INSIKA_EGRESS_ALLOW_HTTP"] = "1"
+      ENV["INSIKA_EGRESS_ALLOW_PRIVATE"] = "1"
+      expect(described_class.egress_opt_out).to eq(allow_http: true, allow_private: true)
+      # the guard sees the opt-out and passes; the socket (stubbed — no network
+      # in a spec) is what fails from here, never the policy
+      expect(Insika::EgressGuard).to receive(:violation)
+        .with("http://127.0.0.1:3000/a.ogg", allow_http: true, allow_private: true).and_return(nil)
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      expect { described_class.fetch_binary("http://127.0.0.1:3000/a.ogg") }
+        .to raise_error(Errno::ECONNREFUSED)
+    end
+  end
+
   describe Insika::Media::Output do
     it "the default seams return [part, usage] pairs keyed by media kind" do
       seams = described_class.defaults(context: nil)

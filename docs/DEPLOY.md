@@ -112,7 +112,7 @@ this section is the single source of truth for what changing it means.
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
 | `CONSUMER_INTERNAL_URL` | — | base URL for data-tools calling back a consumer's internal API (see below) |
 | `INSIKA_EGRESS_HOSTS` | — | outbound host allowlist (SSRF guard) |
-| `INSIKA_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**) |
+| `INSIKA_EGRESS_ALLOW_HTTP` / `_ALLOW_PRIVATE` | off | for `http`/loopback callbacks only (**never in cloud**). Also opens inbound **media** fetches (audio/image URLs) to `http`/private targets — a local run serving media over `http://` needs it |
 | `INSIKA_RELAY_TOKEN` | — | **mounts the relay channel** at `POST /channels/relay/events`, and is the Bearer it requires. Empty = the route does not exist (`404`). See [Channels](CHANNELS.md) |
 | `INSIKA_RELAY_DELIVER_URL` | — | your callback; the engine POSTs each reply there. Goes through the egress guard |
 | `INSIKA_RELAY_DELIVER_TOKEN` | — | Bearer the engine sends **to** your callback (optional) |

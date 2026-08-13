@@ -18,9 +18,11 @@ module Insika
   # BEGIN IMMEDIATE: no lost update. No enforcement here — the middleware is
   # WS2; this file is only correct accounting.
   #
-  # Growth is bounded like UsageLedger: each `add` deletes the (id)'s previous
-  # day AND previous month cell, so an active scope holds at most 4 keys and an
-  # idle one converges to 2.
+  # Growth is bounded on the hot path AND swept: each `add` deletes the (id)'s
+  # previous day and previous month cell (an ACTIVE scope holds at most 4 keys),
+  # and `prune` — the daily sweep on the tick — drops everything else: the cells
+  # of an id that went idle for more than one window and the alert flags, which
+  # the hot path never collects.
   class BudgetLedger
     SCOPE = "budget_counters"
     ALERT_SCOPE = "budget_alerts"
@@ -87,12 +89,41 @@ module Insika
       !@store.get(ALERT_SCOPE, alert_key(cell_id(tenant, agent), window, now, level)).nil?
     end
 
+    # The GC of both scopes: drops every cell whose window is not the CURRENT
+    # one. `add`'s two deletes only reach the IMMEDIATELY previous day/month, so
+    # a scope that goes idle for two days leaves its counter behind forever, and
+    # the alert flags were never collected at all — unbounded row growth the WS8
+    # retention sweep does not reach (that one is age-based over CONTENT; these
+    # are counters with no timestamp). Every key of both scopes ENDS in its
+    # bucket, so one rule sweeps both. -> count of cells removed.
+    def prune(now: Time.now)
+      day = daily_bucket(now)
+      month = month_bucket(now)
+      @store.transaction do
+        [SCOPE, ALERT_SCOPE].sum do |scope|
+          stale = @store.list(scope).select { |k| past?(k.rpartition(":").last.to_i, day, month) }
+          stale.each { |k| @store.delete(scope, k) }
+          stale.size
+        end
+      end
+    end
+
     private
 
     # No tenant (single_tenant default) is a LITERAL "platform" cell, never a
     # null-key collision with some other scope.
     def cell_id(tenant, agent)
       [tenant || "platform", agent].join(":")
+    end
+
+    # Is that bucket a window STRICTLY BEHIND the live one? The two kinds of
+    # bucket cannot collide — an epoch-day is a multiple of 86_400 (~1.7e9), a
+    # calendar month is year*12+month (~24e3) — so the magnitude tells them
+    # apart. STRICTLY behind, never "not the current one": a host whose clock
+    # runs minutes ahead writes tomorrow's cell around midnight, and a sweeper
+    # that deleted it would hand that tenant a fresh day of budget.
+    def past?(bucket, day, month)
+      bucket >= DAY ? bucket < day : bucket.positive? && bucket < month
     end
 
     def bump(id, bucket, by)
