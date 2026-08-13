@@ -42,6 +42,14 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.budget).to be_nil # WS2: no budget (parity)
       expect(profile.reliability).to be_nil # WS3: plain single ask (parity)
       expect(profile.alerts).to be_nil # WS6: no webhook (parity)
+      expect(profile.stuck_signal).to be_nil # WS5: opt-in, off by default
+    end
+
+    it "stuck_signal round-trips on/off (the gate the ChatBuilder reads)" do
+      off = described_class.build(id: "a", model: "m")
+      on = described_class.build(id: "a", model: "m", stuck_signal: true)
+      expect(off.stuck_signal).to be_nil
+      expect(on.stuck_signal).to be(true)
     end
 
     it "alerts is normalized to string keys (the shape the AlertDispatcher reads)" do

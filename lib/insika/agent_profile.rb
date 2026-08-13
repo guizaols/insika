@@ -102,6 +102,14 @@ module Insika
     #                                   breaker_open / delivery_failed events are POSTed to
     #                                   the URL as JSON (outbox + claim, at-most-once).
     #                                   nil/absent = no webhook (parity).
+    :stuck_signal,                    # the agent may signal it cannot proceed (WS5):
+    #                                   nil/false = OFF (parity — the signal_stuck system
+    #                                   tool is not wired); true = ON (the model may call
+    #                                   signal_stuck, which ends the turn with
+    #                                   `outcome: :stuck` + a final message + a :turn_stuck
+    #                                   event the consumer acts on). Same opt-in as
+    #                                   `memory`. What "stuck" MEANS is the consumer's call
+    #                                   (escalation via CRM/operator), never the engine's.
     :model_policy,                    # governance of WHICH models the agent may use:
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
@@ -187,7 +195,7 @@ module Insika
                    prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
-                   budget: nil, reliability: nil, alerts: nil)
+                   budget: nil, reliability: nil, alerts: nil, stuck_signal: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -218,7 +226,8 @@ module Insika
         metadata: Coercion.deep_stringify(metadata || {}),
         budget: Coercion.deep_stringify(budget),
         reliability: Coercion.deep_stringify(reliability),
-        alerts: Coercion.deep_stringify(alerts)
+        alerts: Coercion.deep_stringify(alerts),
+        stuck_signal: stuck_signal
       )
     end
 

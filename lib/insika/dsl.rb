@@ -231,6 +231,12 @@ module Insika
       #   alerts webhook: "https://ops.example.com/insika-alerts"
       def alerts(hash) = (@config[:alerts] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The agent may signal it cannot proceed (WS5): when on, the model
+      # can call `signal_stuck`, which ends the turn with `outcome: :stuck` + a final
+      # message + a `:turn_stuck` event. What "stuck" means is the consumer's call.
+      #   stuck_signal true
+      def stuck_signal(on = true) = @config[:stuck_signal] = on
+
       # Mechanical tool-result dedupe in the replayed history
       # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
       # SEES: repeated identical tool results collapse to a back-reference.

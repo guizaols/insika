@@ -12,6 +12,7 @@ RSpec.describe "Insika ProfileSource" do
       budget: { daily: 100_000, soft: true },
       reliability: { retries: 2, fallback: ["openai/gpt-4o-mini"] },
       alerts: { webhook: "https://ops.example.com/alerts" },
+      stuck_signal: true,
       limits: { tool_timeout: 30, turn_timeout: 120 }
     )
   end
@@ -51,6 +52,7 @@ RSpec.describe "Insika ProfileSource" do
       expect(got.budget).to eq("daily" => 100_000, "soft" => true) # string keys post-round-trip
       expect(got.reliability).to eq("retries" => 2, "fallback" => ["openai/gpt-4o-mini"])
       expect(got.alerts).to eq("webhook" => "https://ops.example.com/alerts")
+      expect(got.stuck_signal).to be(true) # WS5 opt-in survives the JSON round-trip
       # limits gets the defaults on build (merge)
       expect(got.limits[:max_tool_calls]).to eq(Insika::AgentProfile::DEFAULT_LIMITS[:max_tool_calls])
     end

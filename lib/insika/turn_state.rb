@@ -25,7 +25,11 @@ module Insika
                   #                      (after_task); the Executor emits one :guardrail_flagged each.
                   :response_content,   # the turn's final assistant text, set at stage 6/on halt so the
                   #                      after_task validator can inspect it.
-                  :output_filter       # per-turn Safety::OutputFilter (nil = off); redacts the stream.
+                  :output_filter,      # per-turn Safety::OutputFilter (nil = off); redacts the stream.
+                  :stuck_outcome       # set by the signal_stuck system tool (WS5):
+                  #                      { reason:, message: } when the agent declared it cannot
+                  #                      proceed. The Executor tags the terminal event with
+                  #                      outcome: "stuck" and emits :turn_stuck. nil = normal turn.
 
     # Internal (not part of the contract): per-CALL correlation between RubyLLM's
     # tool callbacks and the tool decorators — `current_tool_call` keys the
