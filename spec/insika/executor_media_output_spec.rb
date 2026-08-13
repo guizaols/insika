@@ -98,6 +98,17 @@ RSpec.describe "Insika::Executor + media output (WS9, saída)" do
     expect(chat.tools.grep(Insika::Tools::Tts)).to be_empty
   end
 
+  it "a non-Hash outputs entry never wires the tool (safe parity, no turn crash)" do
+    executor = build_executor(media_output: seams)
+    chat = FakeChat.new
+    weird = Insika::AgentProfile.build(id: "a", model: "m", outputs: { "image" => true })
+    run(executor, task("oi", channel: { capabilities: %w[image_output] }), chat,
+        profile: weird)
+
+    expect(chat.tools.grep(Insika::Tools::GenerateImage)).to be_empty
+    expect(completed(executor)).to have_key(:content)
+  end
+
   it "channel gate on, agent on: generate_image is wired and only it" do
     executor = build_executor(media_output: seams)
     chat = FakeChat.new

@@ -67,6 +67,16 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     expect(chat.asked).to eq("foto aqui")
   end
 
+  it "an IMAGE part whose URL the egress guard blocks fails the turn at :media (SSRF)" do
+    executor = build_executor
+    chat = FakeChat.new
+    run(executor, task("foto aqui", parts: [{ "type" => "image", "url" => "http://169.254.169.254/latest/meta-data" }]), chat)
+
+    failed = task_store.find("t-1")
+    expect(failed.status).to eq(:failed)
+    expect(failed.executions.last.error["stage"]).to eq("media")
+  end
+
   it "a text + image + audio mix: message = typed text + transcription, image attached" do
     executor = build_executor(media: ->(_url) { "a cor do sofá" })
     allow(executor).to receive(:media_attachment).and_return(Object.new)

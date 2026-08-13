@@ -61,6 +61,10 @@ module Insika
 
         default = routes["default"].to_s
         default = entries.first.name if default.empty?
+        unless entries.any? { |e| e.name == default }
+          raise Insika::ValidationError,
+                "default route '#{default}' is not a configured route"
+        end
         { entries: entries, default: default,
           model: routes["model"].to_s, provider: routes["provider"].to_s }
       end

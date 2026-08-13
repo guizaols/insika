@@ -663,8 +663,13 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   consumer's signal the person spoke. A consumer that transcribes itself can
   send the text with `"source": "voice"` directly.
 - **Images** attach to the model's ask as-is (vision); the provider bills
-  them and the usage flows like any ask. Media URLs pass the same egress guard
-  (a private/metadata target is refused — SSRF).
+  them and the usage flows like any ask. Media URLs (audio fetch AND image
+  attachments) pass the same egress guard (a private/metadata target is
+  refused — SSRF), and a refused or unreadable part fails the turn loudly at
+  the `:media` stage, never a silent drop.
+- **Parts are contract at the edge** — a malformed part (unknown type, an
+  image/audio without `url`, a text without `text`) is a 422 before dispatch
+  on `/v1/messages` and `/v1/responses`.
 - `/v1/responses` accepts the OpenAI multimodal shape: `input` as an array of
   text/image/audio parts.
 

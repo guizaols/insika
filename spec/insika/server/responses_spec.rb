@@ -34,6 +34,13 @@ RSpec.describe Insika::Server::Responses do
       expect(described_class.parse_request(body, req)[:message]).to eq("linha1\nlinha2")
     end
 
+    it "input as an array with a MALFORMED part is refused (422)" do
+      body = { model: "openclaw:a", user: "c",
+               input: [{ text: "linha1" }, { "type" => "image" }] } # image without url
+      expect { described_class.parse_request(body, req) }
+        .to raise_error(Insika::ValidationError, /malformed content part/)
+    end
+
     it "validates missing agent/user/input" do
       expect { described_class.parse_request({ user: "c", input: "x" }, req) }
         .to raise_error(Insika::ValidationError, /agent/)

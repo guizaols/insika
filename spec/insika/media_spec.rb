@@ -46,6 +46,30 @@ RSpec.describe Insika::Media do
     end
   end
 
+  describe ".well_formed?" do
+    it "accepts every well-formed text/image/audio part (string or symbol keys)" do
+      expect(described_class.well_formed?([
+        { "type" => "text", "text" => "oi" },
+        { text: "linha1" }, # untyped = a bare text part (the joiner's shape)
+        { type: "image", url: "https://cdn.example.com/f.png" },
+        { type: "audio", url: "https://cdn.example.com/v.ogg" }
+      ])).to be(true)
+    end
+
+    it "rejects any malformed entry — the edge's 422 contract" do
+      expect(described_class.well_formed?([{ "type" => "text" }])).to be(false)   # no text
+      expect(described_class.well_formed?([{ "type" => "image" }])).to be(false)  # no url
+      expect(described_class.well_formed?([{ "type" => "video", "url" => "x" }])).to be(false)
+      expect(described_class.well_formed?(["not a hash"])).to be(false)
+      expect(described_class.well_formed?([nil])).to be(false)
+    end
+
+    it "nil/empty parts -> true (no contract to break)" do
+      expect(described_class.well_formed?(nil)).to be(true)
+      expect(described_class.well_formed?([])).to be(true)
+    end
+  end
+
   describe ".channel_capabilities" do
     it "reads the declared output media kinds from string OR symbol keys" do
       expect(described_class.channel_capabilities({ "capabilities" => %w[image_output] }))
