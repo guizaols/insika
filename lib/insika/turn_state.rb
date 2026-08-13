@@ -25,6 +25,9 @@ module Insika
                   #                      (after_task); the Executor emits one :guardrail_flagged each.
                   :response_content,   # the turn's final assistant text, set at stage 6/on halt so the
                   #                      after_task validator can inspect it.
+                  :route,              # WS4: the intent route the classifier chose (Symbol | nil).
+                  #                      Set before the ask; rides the :route_classified event and the
+                  #                      terminal event additively. nil = no routing on this turn.
                   :output_filter,      # per-turn Safety::OutputFilter (nil = off); redacts the stream.
                   :stuck_outcome       # set by the signal_stuck system tool (WS5):
                   #                      { reason:, message: } when the agent declared it cannot

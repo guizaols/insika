@@ -8,7 +8,16 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Intent routing (WS4)** — `AgentProfile#routes` classifies the turn's
+  message into one configured route with a cheap model before the ask, from a
+  prompt auto-generated out of the route descriptions. The route rides the
+  turn (`state.route`, the `:route_classified` event, the terminal event), its
+  provider cost is counted in the usage, and a route can `delegate` to an
+  existing agent (its answer becomes the parent's) or end the turn with the
+  WS5 stuck outcome (`stuck: true`). Deterministic `default` fallback;
+  classifier failure leaves the turn unrouted (additive).
 
 ## [0.2.0] - 2026-08-13
 

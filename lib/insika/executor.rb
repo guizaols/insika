@@ -541,6 +541,10 @@ module Insika
       # reads circuit_open + retry_after (cooldown remaining). Worth its own
       # stage: an open breaker is a reliability decision, not an error bug.
       fail_task(task, e, stage: :reliability)
+    rescue Insika::RoutingError => e
+      # WS4: a route's delegate is missing or its turn failed — an operator
+      # config error, staged so the envelope names routing, never :unknown.
+      fail_task(task, e, stage: :routing)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
@@ -904,7 +908,13 @@ module Insika
       # stage 5: assemble chat + check mailbox (send_message only; a workflow does
       # not use the Insika chat — it orchestrates RubyLLM internally).
       drain_and_maybe_suspend(task, actor)
-      unless workflow_turn?(task)
+      # WS4: intent routing, data-gated. Runs BEFORE the agent chat is assembled:
+      # a route that delegates or ends :stuck completes the turn with no ask at
+      # all (routed = true); a plain route is a label + event and the turn
+      # proceeds. Skipped for workflows (no chat to route into) and resumed turns
+      # (already admitted; re-classifying would re-pay the extra call).
+      routed = !workflow_turn?(task) && !st.resumed ? attempt_route(task, profile, st) : false
+      unless workflow_turn?(task) || routed
         st.chat = create_chat(profile, st)
         @chat_builder.assemble(st.chat, st, emit: ->(type, data) { emit(type, data, task: task) })
         # R1: baseline = seeded-history size, before `ask` appends the turn.
@@ -915,8 +925,9 @@ module Insika
       st.output_filter = @content_filter_factory&.call(st)
 
       # stage 6: the turn's single agent interaction (send_message -> chat.ask;
-      # trigger_workflow -> workflow.call). Returns the turn's final content.
-      content = run_agent_stage(task, st, timing)
+      # trigger_workflow -> workflow.call). A routed turn's content IS its route
+      # action's answer (a delegate's reply or the stuck lead-in).
+      content = routed ? st.response_content : run_agent_stage(task, st, timing)
       st.response_content = content # after_task OutputValidator inspects this
 
       # stage 8: Persistence (fixed order checkpoint->session->task). pure drain!
@@ -929,6 +940,9 @@ module Insika
       # terminal event -> /v1/responses usage + Telemetry (OTEL).
       timing&.mark(:done)
       data = { task_id: task.id, content: content, usage: st.usage }
+      # WS4: the intent route rides the terminal additively (like outcome) — a
+      # consumer aggregating by route does not need the stream.
+      data[:route] = st.route.to_s if st.route
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
@@ -985,7 +999,13 @@ module Insika
         # release the redactor's retained tail (a value that never completed into a
         # match is emitted redacted-if-needed, not lost) before reading anything back.
         output.flush
-        state.usage = with_model_source(usage_of(response), state.model_selection) unless halted?(response)
+        # MERGED, not overwritten: a WS4 routing call already banked its tokens in
+        # state.usage before the ask — the classifier's cost must survive the ask
+        # (it feeds the EdgeLimiter's ceiling/budget and the terminal usage).
+        unless halted?(response)
+          state.usage = merge_usage(with_model_source(usage_of(response), state.model_selection),
+                                    state.usage)
+        end
 
         # BOUNDARY BEFORE THE ANSWER GOES OUT. A cancel that arrived while the provider
         # was working used to be observed at stage 8 — AFTER `:content` had already been
@@ -1074,6 +1094,125 @@ module Insika
     end
 
     def ref_of(selection) = model_ref(selection)
+
+    # --- WS4 intent routing --------------------------------------------
+    #
+    # The turn's message is classified into one of the profile's routes with a
+    # CHEAP model (data-gated: no `routes` on the profile = byte-identical turn).
+    # -> true when the route took over the turn (delegated / stuck — no ask
+    # happens); false when the turn proceeds normally. Classification happens on
+    # a fresh chat carrying ONLY the auto-generated route prompt (no identity,
+    # no tools — it is a router, not the agent); its tokens ride the turn's
+    # usage, so the trace, the token ceiling and the budget all see the cost.
+    def attempt_route(task, profile, state)
+      meta = Insika::Routing.normalize(profile.routes)
+      return false unless meta
+      return false unless route_model(meta, profile)
+
+      selection = route_selection(meta, profile)
+      classification = classify_route(selection, meta, state.message)
+      return false if classification.nil? # the classifier call failed — routing is additive
+
+      route = classification[:route]
+      state.route = route
+      state.usage = with_model_source(usage_of(classification[:response]), selection)
+      emit(:route_classified,
+           { task_id: task.id, agent: profile.id.to_s, route: route.to_s,
+             model: selection.model, usage: state.usage },
+           task: task)
+
+      entry = meta[:entries].find { |e| e.name == route.to_s }
+      apply_route_action(task, profile, state, entry)
+    end
+
+    # The classifier call, its answer parsed back into a route.
+    # -> { route:, response: } | nil (nil = the call failed — the turn proceeds
+    # unrouted rather than paying a wrong label or dying for an additive step).
+    def classify_route(selection, meta, message)
+      response = route_ask(selection, Insika::Routing.classifier_prompt(meta), message)
+      { route: Insika::Routing.parse(route_response_text(response), meta), response: response }
+    rescue StandardError
+      nil
+    end
+
+    # The cheap classifier's model: routes["model"] wins, the agent's own model
+    # otherwise. No model anywhere = no routing.
+    def route_model(meta, profile)
+      ref = meta[:model].to_s
+      ref = profile.model.to_s if ref.empty?
+      !ref.empty?
+    end
+
+    def route_selection(meta, profile)
+      ref = meta[:model].to_s
+      ref = profile.model.to_s if ref.empty?
+      parsed = parse_model_ref(ref) || {}
+      provider = parsed[:provider].nil? ? profile.provider : parsed[:provider].to_sym
+      Insika::ModelSelection.new(model: parsed[:model], provider: provider, source: :routing)
+    end
+
+    # A fresh chat for the routing model with ONLY the generated prompt. RubyLLM
+    # required lazily, exactly like create_chat (the load-guard holds).
+    def route_ask(selection, prompt, message)
+      require "ruby_llm"
+      chat = (@llm || RubyLLM).chat(model: selection.model, provider: selection.provider,
+                                    assume_model_exists: selection.assume_model_exists?)
+      chat.with_instructions(prompt) if chat.respond_to?(:with_instructions)
+      chat.ask(message.to_s)
+    end
+
+    def route_response_text(response)
+      response.respond_to?(:content) ? response.content.to_s : response.to_s
+    end
+
+    # The route's config decides the turn's fate: nothing (a label), a DELEGATE
+    # (an existing agent answers; its reply IS the turn's), or STUCK (WS5 — the
+    # turn ends with the stuck outcome; the consumer interprets it).
+    def apply_route_action(task, profile, state, entry)
+      return false unless entry
+
+      if entry.delegate && !entry.delegate.empty?
+        delegate_route(profile, state, entry.delegate)
+        true
+      elsif entry.stuck
+        message = entry.message.empty? ? entry.description : entry.message
+        state.stuck_outcome = { reason: "route:#{state.route}", message: message }
+        state.response_content = message
+        true
+      else
+        false
+      end
+    end
+
+    # WS4 delegate action: the route names an existing agent — the turn is
+    # handed to it (the sync subagent machinery) and the child's answer IS the
+    # parent's answer. A missing agent or a failed child fails the turn: never
+    # fabricate the customer's reply.
+    def delegate_route(profile, state, agent_id)
+      child = @profiles[agent_id.to_s]
+      raise Insika::RoutingError, "route delegate agent '#{agent_id}' not configured" if child.nil?
+
+      result = spawn_and_await_child(child, state.message, 1, state)
+      if result[:error]
+        raise Insika::RoutingError, "routed delegate '#{agent_id}' failed: #{result[:error]}"
+      end
+
+      state.response_content = result[:text].to_s
+    end
+
+    # The WS4 classifier's tokens, summed over the ask's (a call that reported no
+    # usage contributes nothing). The turn's own model/source win for attribution
+    # — the routing model's identity lives on the :route_classified event.
+    def merge_usage(main, extra)
+      return main || extra if main.nil? || extra.nil?
+
+      Insika::Routing::TOKEN_FIELDS.each_with_object(main.dup) do |k, acc|
+        next if extra[k].nil?
+        next unless main.key?(k) || extra[k].to_i.positive?
+
+        acc[k] = main[k].to_i + extra[k].to_i
+      end
+    end
 
     # "provider/model" for any selection duck (ModelSelection | { model:, provider: }).
     def model_ref(selection)

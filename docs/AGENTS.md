@@ -455,6 +455,41 @@ reliability retries: 2, backoff: "exponential",
 Absent `reliability` = the plain single attempt, byte-for-byte today's
 behavior.
 
+#### Intent routing — classify before you answer (WS4)
+
+For a store that must tell "shopping" from "order" from "human" up front,
+routing is data on the profile:
+
+```ruby
+routes "shopping" => "the customer wants to browse products",
+       "order"    => { "description" => "asks about an existing order",
+                       "delegate" => "order-agent" },
+       "human"    => { "description" => "the customer asks for a person",
+                       "stuck" => true, "message" => "A person will help you." },
+       "default"  => "shopping",
+       "model"    => "deepseek-v4-flash"   # the cheap classifier (absent = the agent's own)
+```
+
+- **Classification** — when `routes:` is present, the message is classified into
+  one route with the configured model BEFORE the agent chat is assembled, from
+  a prompt auto-generated out of the descriptions (no per-route prompt file).
+  The route rides the turn: `state.route`, the `:route_classified` event, and
+  the terminal event additively.
+- **Deterministic default** — the model's answer must be a route name; prose,
+  an unknown name, or an empty answer falls back to `default`, never invents.
+  A classifier call that FAILS leaves the turn unrouted (routing is additive —
+  it must not break the turn).
+- **Cost** — the classification is an extra provider call, counted in the
+  turn's usage (the trace, the token ceiling and the budget all see it).
+- **Actions** — a route value may be a description string, or a Hash:
+  `delegate: "<agent-id>"` hands the turn to that existing agent and its
+  answer becomes the parent's; `stuck: true` ends the turn with the [stuck
+  outcome](#the-stuck-signal--i-cannot-proceed-ws5) and the route's `message`
+  (or description) as the lead-in — the consumer interprets it. A route with
+  neither is just a label.
+
+Absent `routes` = no classification, no extra call, byte-identical turn.
+
 #### Operator alerts — the webhook (WS6)
 
 Three operational events — `budget_warning`, `breaker_open`, `delivery_failed` —
