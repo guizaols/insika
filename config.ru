@@ -94,7 +94,9 @@ Studio::App.configure(
   # :run_refinement on the bus (the Studio never writes a store directly).
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
-  golden_store: W::GOLDEN_STORE
+  golden_store: W::GOLDEN_STORE,
+  # WS7: the scorecard card reads the outcomes store (state + series).
+  outcome_store: W::OUTCOME_STORE
 )
 
 # OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.

@@ -55,6 +55,10 @@ module Insika
         # that turns a channel on later finds its state already durable.
         outbox_store         = Insika::OutboxStore.new(store: backend)
         inbound_log          = Insika::InboundLog.new(store: backend)
+        # WS7: business outcomes per conversation, recorded by the operator or
+        # the integration (POST /v1/outcomes). Built unconditionally (empty and
+        # free when nothing records) so the Studio's scorecard always has a store.
+        outcome_store        = Insika::OutcomeStore.new(store: backend)
         # refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
@@ -77,6 +81,7 @@ module Insika
           memory_store: memory_store, refinement_store: refinement_store,
           token_store: token_store, budget_ledger: budget_ledger, circuit_state: circuit_state,
           outbox_store: outbox_store, inbound_log: inbound_log,
+          outcome_store: outcome_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new,
@@ -168,6 +173,7 @@ module Insika
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
           outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
+          outcome_store: spine.outcome_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
@@ -214,6 +220,10 @@ module Insika
         bus.register(:rotate_tenant_token,
                      Insika::Commands::RotateTenantToken.new(token_store: spine.token_store,
                                                              event_stream: spine.event_stream))
+        # WS7: a business outcome per conversation (operator or integration).
+        bus.register(:record_outcome,
+                     Insika::Commands::RecordOutcome.new(outcome_store: spine.outcome_store,
+                                                         event_stream: spine.event_stream))
         bus
       end
 
@@ -222,8 +232,8 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :token_store, :budget_ledger, :circuit_state, :outbox_store, :inbound_log, :code_tool_registry,
-        :workflow_registry, :policy_registry, :capability_registry, :hooks,
+        :token_store, :budget_ledger, :circuit_state, :outbox_store, :inbound_log, :outcome_store,
+        :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
 
@@ -234,7 +244,7 @@ module Insika
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
         :memory_store, :refinement_store, :outbox_store, :inbound_log, :token_store,
-        :budget_ledger, :circuit_state, :channel_registry, :channel_delivery,
+        :budget_ledger, :circuit_state, :outcome_store, :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

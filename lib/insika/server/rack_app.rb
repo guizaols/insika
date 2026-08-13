@@ -71,6 +71,7 @@ module Insika
           channels: (@graph.channel_registry if channels?),
           config: { gateway_token: @token, tenancy: tenancy }.merge(@config),
           token_store: store,
+          outcome_store: @graph.outcome_store,
           # a 500's error_ref must be findable in the process log.
           logger: $stdout
         )

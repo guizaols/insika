@@ -84,7 +84,8 @@ module Studio
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
-                    refinement_store: nil, golden_store: nil, session_secret: nil)
+                    refinement_store: nil, golden_store: nil, session_secret: nil,
+                    outcome_store: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -113,7 +114,10 @@ module Studio
           # Read-only here; the "Run" button dispatches :run_refinement on the bus.
           refinement_store: refinement_store,
           # eval cases: read to render; writes go through:write_golden.
-          golden_store: golden_store
+          golden_store: golden_store,
+          # WS7: business outcomes — the agents grid's scorecard (state +
+          # series). Reads only; recording goes through POST /v1/outcomes.
+          outcome_store: outcome_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -233,6 +237,9 @@ module Studio
         r.is do
           r.get do
             @agents = insika[:profile_source].all.sort_by(&:id)
+            # WS7 scorecard: the LAST outcome per agent, computed once for the
+            # whole grid (a store scan per card would be n scans).
+            @latest_outcomes = insika[:outcome_store]&.latest_per_agent
             view("agents")
           end
 

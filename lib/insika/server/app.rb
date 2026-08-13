@@ -55,7 +55,7 @@ module Insika
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
-                     channels: nil, logger: nil, token_store: nil)
+                     channels: nil, logger: nil, token_store: nil, outcome_store: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -91,6 +91,10 @@ module Insika
         # injecting the registry (nil ⇒ the routes do not exist, parity with @a2a).
         # The channel does the translating; this class keeps doing only transport.
         @channels = channels
+        # WS7: business outcomes per conversation (POST /v1/outcomes — a Control
+        # command on the bus — and the tenant-scoped GET /v1/outcomes read).
+        # nil = the routes 404 (parity).
+        @outcome_store = outcome_store
         # where a 500's error_ref goes to be FOUND. nil = silent (parity for
         # embedders); the serving wirings pass $stdout. Class+message+backtrace
         # only — the ref never travels with request payloads (secrets stay out).
@@ -166,6 +170,10 @@ module Insika
           handle_trigger_workflow(req, name)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
+        in ["POST", ["v1", "outcomes"]] if @outcome_store
+          handle_record_outcome(req)
+        in ["GET", ["v1", "outcomes"]] if @outcome_store
+          handle_list_outcomes(req)
         in ["POST", ["v1", "tools", "manifest"]]
           handle_import_tools(req)
         in ["POST", ["v1", "mcp", name, "import"]]
@@ -262,6 +270,32 @@ module Insika
       def handle_command(req, type)
         command = Insika::Command.build(type.to_sym, parse_body(req), transport: :http)
         command_response(dispatch_with_timeout(command))
+      end
+
+      # POST /v1/outcomes — the operator or the integration records a business
+      # outcome for a conversation (WS7). A Control command on the bus, tenant
+      # stamped from the principal (WS1) — additive, outside the response
+      # contract: the engine transports the outcome, never interprets it.
+      # 201 { outcome: { agent, outcome, value, session_id, at } }.
+      def handle_record_outcome(req)
+        command = Insika::Command.build(:record_outcome, parse_body(req), transport: :http,
+                                         tenant: req_tenant(req))
+        record = dispatch_with_timeout(command)
+        json_response(201, { outcome: { agent: record.agent, outcome: record.outcome,
+                                        value: record.value, session_id: record.session_id,
+                                        at: record.at } })
+      end
+
+      # GET /v1/outcomes[?agent=] — the Studio scorecard's data: the LAST
+      # outcome per agent (state cards) + the per-day series. Tenant-scoped
+      # (WS1): a tenant principal reads only its own outcomes.
+      def handle_list_outcomes(req)
+        tenant = req_tenant(req)
+        agent = req.GET["agent"]
+        latest = @outcome_store.latest_per_agent(tenant: tenant)
+        latest = { agent => latest[agent] }.compact if agent && !agent.empty?
+        series = @outcome_store.series(tenant: tenant, agent: agent)
+        json_response(200, { latest: latest, series: series })
       end
 
       # POST /v1/sessions — sugar for create_session; 201 {session}.
@@ -481,6 +515,8 @@ TENANT_SURFACES = [
         ["POST", ["v1", "sessions"]],
         ["POST", ["v1", "messages"]],
         ["POST", ["v1", "responses"]],
+        ["POST", ["v1", "outcomes"]],
+        ["GET", ["v1", "outcomes"]],
         ["POST", ["v1", "workflows", nil]],
         ["GET", ["v1", "workflows"]],
         ["GET", ["v1", "sessions", nil]],
