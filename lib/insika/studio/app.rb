@@ -527,7 +527,7 @@ module Studio
       r.on "settings" do
         r.is do
           r.get { render_settings }
-          # General settings (streaming/timeouts/compaction) → :update_settings.
+          # General settings (streaming/timeouts) → :update_settings.
           r.post do
             check_csrf!
             with_flash("Settings saved.") do

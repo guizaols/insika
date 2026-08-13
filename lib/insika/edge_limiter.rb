@@ -94,9 +94,17 @@ module Insika
       budget_on = budget_configured?(state)
       budget_enforce(state) unless resumed
 
-      result = nxt.call(state)
-      record_usage(state, record_after) if record_after
-      record_budget_usage(state) if budget_on
+      result = begin
+        nxt.call(state)
+      ensure
+        # A turn that FAILED after burning tokens still SPENT them: record the
+        # usage the state captured before the error propagates. The ask's usage
+        # lands on state.usage before any later stage (guardrail block, tool
+        # error, workflow schema) can fail the turn — a failed turn must count
+        # against the budget like a completed one (WS2).
+        record_usage(state, record_after) if record_after
+        record_budget_usage(state) if budget_on
+      end
       result
     end
 
@@ -178,9 +186,9 @@ module Insika
               retry_after: @budget_ledger.reset_in(w[:window], now: now)
             )
           end
-          warn_budget(state, tenant, agent, w, spent, now)
+          warn_budget(state, tenant, agent, w, spent, now, level: "cap")
         elsif spent >= w[:alert_at]
-          warn_budget(state, tenant, agent, w, spent, now)
+          warn_budget(state, tenant, agent, w, spent, now, level: "alert_at")
         end
       end
       budget
@@ -212,18 +220,21 @@ module Insika
     end
 
     # The warning: a note in the context (the model sees it, the customer's
-    # transcript does not) + the budget_warning event — the event exactly once
-    # per (window) cell, however many turns stay past the threshold.
-    def warn_budget(state, tenant, agent, w, spent, now)
+    # transcript does not) + the budget_warning event — each LEVEL once per
+    # (window) cell: the `alert_at` crossing and the real soft-cap crossing are
+    # separate markers, so the cap event is never swallowed by the 80% one that
+    # fired earlier (WS2).
+    def warn_budget(state, tenant, agent, w, spent, now, level:)
       inject_budget_note(state,
                          "[budget: agent '#{agent}' is at #{spent}/#{w[:cap]} tokens this " \
                          "#{w[:window]} window — keep this turn cheap]")
-      return if @budget_ledger.mark_alert(tenant: tenant, agent: agent, window: w[:window], now: now)
+      return if @budget_ledger.mark_alert(tenant: tenant, agent: agent, window: w[:window],
+                                          level: level, now: now)
 
       @event_stream&.emit(Insika::Event.new(
                             type: :budget_warning,
                             data: { agent: agent, tenant: tenant, window: w[:window],
-                                    spent: spent, cap: w[:cap] },
+                                    spent: spent, cap: w[:cap], level: level },
                             meta: { task_id: state.task&.id, session_id: state.task&.session_id,
                                     at: Time.now.utc.iso8601 }
                           ))

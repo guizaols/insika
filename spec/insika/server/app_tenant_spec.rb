@@ -141,6 +141,21 @@ RSpec.describe Insika::Server::App do
       expect(stranger[0]).to eq(404)
     end
 
+    it "POST /v1/sessions — a tenant's session is born INSIDE its own namespace (read-back-guaranteed)" do
+      bus = ServerBusDouble.new
+      app = build_tenant_app(bus: bus)
+
+      call(app, "POST", "/v1/sessions", body: JSON.generate(id: "chat-1"), auth: tenant_a.token)
+      call(app, "POST", "/v1/sessions", body: JSON.generate(vars: { "a" => 1 }), auth: tenant_a.token)
+      call(app, "POST", "/v1/sessions", body: JSON.generate(id: "loja-a:chat-2"), auth: tenant_a.token)
+
+      creates = bus.dispatched.select { |c| c.type == :create_session }
+      expect(creates.map { |c| c.meta[:tenant] }).to all(eq("loja-a"))
+      expect(creates[0].payload[:id]).to eq("loja-a:chat-1")            # caller id scoped
+      expect(creates[2].payload[:id]).to eq("loja-a:chat-2")            # idempotent, no double prefix
+      expect(creates[1].payload[:id]).to match(/\Aloja-a:[0-9a-f-]+\z/) # no id -> a namespaced uuid
+    end
+
     it "GET /v1/tasks/:id — a tenant reads only tasks its own command stamped" do
       task = Insika::TaskStore::Task.new(
         id: "t-1", status: :failed, session_id: "loja-a:chat-1",

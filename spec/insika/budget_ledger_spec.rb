@@ -70,6 +70,16 @@ RSpec.describe Insika::BudgetLedger do
     expect(ledger.alerted?(tenant: "t", agent: "a", window: :monthly, now: now)).to be(false)
   end
 
+  it "alert markers are per LEVEL too: the real cap crossing is not swallowed by the 80% marker (WS2)" do
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, level: "alert_at", now: now)).to be(false)
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, level: "alert_at", now: now)).to be(true)  # deduped
+
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, level: "cap", now: now)).to be(false)     # NOT swallowed
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, level: "cap", now: now + 3_600)).to be(true)
+    # a level-less call (the historical spelling) is its own marker, untouched
+    expect(ledger.mark_alert(tenant: "t", agent: "a", window: :daily, now: now)).to be(false)
+  end
+
   it "reset_in counts down to the window roll (retry_after for a hard budget)" do
     expect(ledger.reset_in(:daily, now: Time.utc(2026, 8, 11, 12, 0, 0))).to eq(43_200) # 12h left
     expect(ledger.reset_in(:daily, now: Time.utc(2026, 8, 11, 0, 0, 0))).to eq(86_400) # a full day

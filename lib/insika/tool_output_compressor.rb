@@ -21,15 +21,27 @@ module Insika
   # AgentProfile#tool_output_compression. The LLM half of compaction (real
   # summarization) remains F5 — decided with data, not by matrix.
   class ToolOutputCompressor
-    # Below this a back-reference costs more tokens than the body it replaces.
+    # Below this a back-reference can never cost less than the body it
+    # replaces (an early bail; the REAL gate is the length check per repeat).
     MIN_LENGTH = 200
     # The mechanical "1-line summary": the original's first line, capped here
     # (160 chars ≈ ~40 tokens — a bounded, informative stub).
     SUMMARY_LIMIT = 160
 
+    # The boilerplate deliberately carries NO positional pointer ("see above"):
+    # the budget cut evicts the OLDEST unit first, which is the original this
+    # back-reference points at — a "↑" that survives its target leaves a dangle
+    # in the model's context (C3). The summary is the content; it stands alone.
+    BOILERPLATE = "[repeated tool output — byte-identical to an earlier result " \
+                  "in this conversation; One-line summary: "
+
     class << self
       # [message, ...] with repeated tool results back-referenced. A non-tool
       # message or a tool result that is not a String passes through untouched.
+      # A repeat is replaced ONLY when the back-reference is strictly shorter
+      # than the content it would replace (in the 200–~260-char band a
+      # back-reference is LONGER than the original — replacing there would
+      # GROW the transcript, C3).
       def compress_transcript(messages)
         seen = {}
         Array(messages).map do |m|
@@ -38,7 +50,8 @@ module Insika
 
           digest = Digest::SHA256.hexdigest(content)
           if seen.key?(digest)
-            replace_content(m, back_reference(seen[digest][:summary]))
+            replacement = back_reference(seen[digest][:summary])
+            replacement.length < content.length ? replace_content(m, replacement) : m
           else
             seen[digest] = { summary: summarize(content) }
             m
@@ -59,8 +72,7 @@ module Insika
       end
 
       def back_reference(summary)
-        "[repeated tool output — byte-identical to an earlier result in this " \
-        "conversation; see above. One-line summary: #{summary}]"
+        "#{BOILERPLATE}#{summary}]"
       end
 
       # A dup with the content replaced under the SAME key style as the original

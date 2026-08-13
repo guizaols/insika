@@ -208,10 +208,10 @@ module Insika
       def memory(on = true) = @config[:memory] = on
 
       # Spend caps per calendar window (WS2): daily/monthly token budgets for
-      # this agent, per (tenant, agent) when multi-tenant. `soft: false` turns
-      # the cap into a hard wall (the turn fails with budget_exceeded +
-      # retry_after); `soft: true` (default) warns once per window and keeps
-      # running.
+      # this agent, per (tenant, agent) when multi-tenant. HARD is the default:
+      # absent `soft:` (or `soft: false`) turns the cap into a hard wall (the
+      # turn fails with budget_exceeded + retry_after); `soft: true` warns once
+      # per window and keeps running.
       #   budget daily: 100_000, monthly: 2_000_000, soft: false
       def budget(hash) = (@config[:budget] ||= {}).merge!(hash.transform_keys(&:to_s))
 

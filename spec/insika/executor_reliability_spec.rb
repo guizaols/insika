@@ -51,7 +51,7 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     task_store.create(command: command.to_h, session_id: "s1", id: id)
   end
 
-  def run_turn(executor, task, chat)
+  def run_turn(executor, task, chat, profile: self.profile)
     allow(executor).to receive(:create_chat) do |_profile, st|
       st.model_selection = Insika::ModelSelection.new(model: "deepseek-v4-flash",
                                                       provider: :deepseek, source: :agent)
@@ -117,6 +117,27 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     # the provider was never touched
     task_started = task_store.find("r2")
     expect(task_started.executions.last.error["class"]).to eq("Insika::CircuitOpenError")
+  end
+
+  # A fallback ref that names the PRIMARY's own model, spelled without the
+  # provider, is the same physical model — it must be DEDUPED, never re-asked
+  # as if it were a second chance (WS3).
+  it "a bare-model fallback equal to the primary is deduped, not tried again" do
+    dedupe_profile = Insika::AgentProfile.build(
+      id: "example-agent", model: "deepseek-v4-flash",
+      reliability: { "retries" => 0, "backoff" => "exponential",
+                     "fallback" => ["deepseek-v4-flash"], # == the primary
+                     "circuit_breaker" => { "after" => 10, "within" => 60, "cooldown" => 300 } }
+    )
+    executor = build_executor
+    spy_error_chat(primary_chat) # the primary is down
+
+    run_turn(executor, make_task("oi", id: "r6"), primary_chat, profile: dedupe_profile)
+
+    # the chain dropped the duplicate node: the turn failed instead of re-asking
+    # the same dead model as its own fallback
+    expect(task_store.find("r6").status).to eq(:failed)
+    expect(fallback_chat.asked).to be_nil
   end
 
   it "a NON-reliability profile keeps the plain single-ask path (parity)" do
