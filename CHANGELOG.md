@@ -8,16 +8,70 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2026-08-13
+
+The workstreams between the first release and the one the gem actually became:
+multi-tenancy at the edge (WS1), calendar budgets (WS2), provider reliability
+(WS3), the stuck signal (WS5), operator alerts + live TTFB (WS6), and the
+failure-classification core (B9) — plus the two fix rounds that made them
+safe to ship.
+
 ### Added
 
-- **The periodic tick** — durability no longer waits for a reboot.
-  Serving workers run a tick every `INSIKA_TICK_INTERVAL` (default 60s, `0`
-  disables) as a child of the turn supervisor: it re-drives outbox records left
-  `:pending` and sweeps orphaned `:queued`/`:running` tasks untouched past
-  `INSIKA_TICK_STALE_AFTER` (default 900s) — so the orphans of a worker
-  respawned mid-generation are recovered without a deploy. One worker per
-  window sweeps (a single transactional claim), and a task someone alive owns
-  is skipped, never failed. `:waiting`/`:paused` stay boot recovery's.
+- **Multi-tenant at the edge (WS1)** — `INSIKA_TENANCY=multi_tenant` resolves the
+  Bearer to a principal before the routes: per-tenant + operator tokens stored
+  only as SHA-256 hashes, a tenant's sessions/tasks/streams living under its own
+  `<tenant>:` namespace (fail-closed: another tenant's reads as `404`), and every
+  authoring/config surface refused to a tenant.
+- **Calendar budgets (WS2)** — `AgentProfile#budget` caps the billed spend
+  (input + output + cached + cache-creation) per calendar day/month and
+  (tenant, agent): HARD (default) fails the turn with the typed
+  `Insika::BudgetExceeded` + `retry_after`; `soft: true` runs the turn and warns
+  once per window — with the `alert_at` (`0.8`) crossing and the real cap
+  crossing as separate events.
+- **Reliability (WS3)** — retries with backoff, mid-turn rotation to the
+  fallback chain, a per-`(tenant, provider/model)` circuit breaker with
+  half-open trials (a failed trial reopens), and a per-attempt `timeout`
+  (default 30s) counted as retryable. A `:fatal` provider error is never
+  retried.
+- **Stuck signal (WS5)** — an agent declared stuck ends its turn with
+  `outcome: "stuck"` on the envelope and a dedicated `:turn_stuck` event — the
+  deterministic point a consumer escalates on.
+- **Operator alerts + live TTFB (WS6)** — `budget_warning`, `breaker_open` and
+  `delivery_failed` POSTed to a per-agent `alerts.webhook` over the at-most-once
+  outbox pipeline (boot-recoverable); under `INSIKA_TURN_TIMING` the first
+  content chunk emits a live `:ttft` on the streaming envelope.
+- **Failure classification (B9)** — provider/transport failures classified by
+  action (`:fatal` / `:retryable` / `:rate_limited_*`) and wrapped with the
+  provider's `retry_after`; mechanical tool-output dedupe (C3) back-references a
+  byte-identical repeat only when the reference is genuinely shorter.
+- **The periodic tick** — durability no longer waits for a reboot. Serving
+  workers run a tick every `INSIKA_TICK_INTERVAL` (default 60s, `0` disables)
+  as a child of the turn supervisor: it re-drives outbox records left `:pending`
+  and sweeps orphaned `:queued`/`:running` tasks untouched past
+  `INSIKA_TICK_STALE_AFTER` (default 900s) — the orphans of a worker respawned
+  mid-generation are recovered without a deploy. One worker per window sweeps (a
+  single transactional claim); a task someone alive owns is skipped, never
+  failed. `:waiting`/`:paused` stay boot recovery's.
+
+### Fixed
+
+- **WS2/WS3/WS6 criticals** — the budget alert marker no longer returns inside
+  the store transaction (a leaked `BEGIN IMMEDIATE` locked SQLite on the 2nd
+  over-threshold turn); the monthly reset is December-safe and UTC-aligned; an
+  unset reliability timeout is 30s, not 1s, and a timeout retries/rotates
+  instead of dying as "fatal"; a failed half-open trial reopens the circuit;
+  webhook deliveries pass the egress guard (SSRF); `:ttft` is emitted once per
+  turn; webhook channels pre-register so the boot sweep recovers pending alerts;
+  the alert dispatcher subscribes typed and re-subscribes on overflow.
+- **WS1** — `#revoke` rides the store transaction; a `tenant_id` containing
+  `:` is refused (the session-namespace delimiter); `POST /v1/sessions` mints a
+  tenant's session under its own prefix.
+- **WS2/WS3 softs** — a failed turn's consumed tokens count against the budget;
+  `:breaker_open` alerts only on the closed→open transition; the fallback chain
+  dedupes `"model"` vs `"provider/model"` spellings.
 
 ## [0.1.0] - 2026-08-10
 
