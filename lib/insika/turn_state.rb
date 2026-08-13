@@ -31,8 +31,10 @@ module Insika
                   :message_source,     # WS9: how the turn's message entered (:voice when it came
                   #                      from a transcribed audio part; nil = typed). Rides the
                   #                      terminal event additively.
-                  :media_attachments,  # WS9: the ask's attachments (image parts); nil = none.
+                   :media_attachments,  # WS9: the ask's attachments (image parts); nil = none.
                   #                      The provider bills them; usage flows like any ask.
+                  #                      The first image URL also lands on turn_context[:image_url]
+                  #                      for data/HTTP tools (`{{ctx.image_url}}`).
                   :output_parts,       # WS9 (saída): media the turn GENERATED, as additive
                   #                      parts ({ type:, mime_type:, base64:, model: }). Rides
                   #                      the terminal event (output_parts) and the /v1/responses

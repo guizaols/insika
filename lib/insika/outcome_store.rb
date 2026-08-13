@@ -12,9 +12,9 @@ module Insika
   # tenant-scoped (WS1) — a tenant can only ever read/write its own cells (the
   # key carries the tenant, and the read methods narrow on it).
   #
-  # The Studio's scorecard card is the consumer: the LAST outcome per agent as
-  # a state card, and per-period series — both fed from the same store, no
-  # scheduler.
+  # The Studio's scorecard is the consumer: the LAST outcome per agent as a
+  # pill on the grid, and the per-day series on the agent detail — both fed
+  # from the same store, no scheduler.
   class OutcomeStore
     SCOPE = "outcomes"
 

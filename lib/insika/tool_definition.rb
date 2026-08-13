@@ -56,7 +56,7 @@ module Insika
     # resolved by DataDefinedTool. Closed allowlist (a typo becomes a validation
     # error, not a silently empty header).
     CTX_PREFIX = "ctx."
-    CTX_FIELDS = %w[chat_id store_id agent_id tenant].freeze
+    CTX_FIELDS = %w[chat_id store_id agent_id tenant image_url].freeze
 
     # ---- safe subset of JSON Schema (R1) --------------------------------------
     # Types supported by EVERY provider (OpenAI/Anthropic/Gemini/DeepSeek/Bedrock).

@@ -56,15 +56,34 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     expect(completed.data[:source]).to eq(:voice)
   end
 
-  it "an IMAGE part attaches to the ask — the model sees it, the usage flows like any ask" do
+  it "an IMAGE part attaches to the ask — the model sees it and the provider's tokens land on the turn" do
     attachment = Object.new
     executor = build_executor
     allow(executor).to receive(:media_attachment).and_return(attachment)
     chat = FakeChat.new
+    def chat.ask(message, with: nil, &on_chunk)
+      super
+      Struct.new(:content, :input_tokens, :output_tokens, :model_id)
+            .new(@final_content, 80, 12, "vision-m")
+    end
     run(executor, task("foto aqui", parts: [{ "type" => "image", "url" => "https://cdn.example.com/foto.png" }]), chat)
 
     expect(chat.instance_variable_get(:@attachments)).to eq([attachment])
     expect(chat.asked).to eq("foto aqui")
+    completed = event_stream.events.find { |e| e.type == :task_completed }
+    expect(completed.data[:usage]).to include(input_tokens: 80, output_tokens: 12, total_tokens: 92)
+  end
+
+  it "an IMAGE part is deposited as ctx.image_url for data/HTTP tools" do
+    executor = build_executor
+    allow(executor).to receive(:media_attachment).and_return(Object.new)
+    state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "foto")
+    state.turn_context = { chat_id: "s1" }
+    t = task("foto", parts: [{ "type" => "image", "url" => "https://cdn.example.com/foto.png" }])
+
+    executor.send(:run_media_stage, t, state)
+
+    expect(state.turn_context[:image_url]).to eq("https://cdn.example.com/foto.png")
   end
 
   it "an IMAGE part whose URL the egress guard blocks fails the turn at :media (SSRF)" do

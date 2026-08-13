@@ -13,6 +13,7 @@
   <a href="#prompts">prompts</a>
   <a href="#skills">skills</a>
   <a href="#memory">memory</a>
+  <a href="#outcomes">outcomes</a>
   <a href="#history">history</a>
 </nav>
 
@@ -256,6 +257,38 @@
       <input type="text" name="text" placeholder="free-form note…" required>
       <button type="submit" class="primary" data-turbo-submits-with="Adding…">Add note</button>
     </form>
+  </div>
+</section>
+
+<!-- ── Outcomes (WS7) ────────────────────────────────────────────────────── -->
+<section class="section" id="outcomes">
+  <div class="section-head">
+    <h2>Outcomes</h2>
+    <p class="muted">business results recorded via <code>POST /v1/outcomes</code> — last outcome and per-day series. The engine transports them; it does not interpret them.</p>
+  </div>
+  <div class="card">
+    <% if @latest_outcome %>
+      <p>last
+        <span class="pill <%= @latest_outcome[:outcome] == "conversion" ? "ok" : "warn" %>"><%= @latest_outcome[:outcome] %><%== format(" · R$ %0.2f", @latest_outcome[:value]) if @latest_outcome[:value] && @latest_outcome[:value].positive? %></span>
+        <span class="muted mono"><%= @latest_outcome[:at] %></span>
+      </p>
+    <% end %>
+    <% if @outcome_series.nil? || @outcome_series.empty? %>
+      <p class="muted">No outcomes recorded.</p>
+    <% else %>
+      <ul class="kv">
+        <% @outcome_series.sort.reverse.each do |day, by_outcome| %>
+          <li>
+            <span class="k mono"><%= day %></span>
+            <span class="v"><%= by_outcome.map { |name, cell|
+              bits = ["#{name} ×#{cell[:count]}"]
+              bits << format("R$ %0.2f", cell[:value]) if cell[:value].to_f.positive?
+              bits.join(" · ")
+            }.join(" · ") %></span>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
   </div>
 </section>
 

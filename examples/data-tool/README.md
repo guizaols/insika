@@ -47,7 +47,8 @@ by default — that's the SSRF defense. Two things to know:
 ## Notes
 
 - `{{from}}`/`{{to}}` are model parameters, validated against the tool's schema.
-  `{{ctx.chat_id}}` / `{{ctx.store_id}}` / `{{ctx.agent_id}}` are also available and
-  are filled server-side from the turn context (never by the model).
+  `{{ctx.chat_id}}` / `{{ctx.store_id}}` / `{{ctx.agent_id}}` / `{{ctx.image_url}}`
+  are also available and are filled server-side from the turn context (never by
+  the model). `image_url` is the first image part on the message, when present.
 - Secrets go in headers named in `secret_headers` (e.g. a bearer token) and are
   masked in traces — never inline them in the URL or body.
