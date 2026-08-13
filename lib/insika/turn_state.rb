@@ -33,6 +33,17 @@ module Insika
                   #                      terminal event additively.
                   :media_attachments,  # WS9: the ask's attachments (image parts); nil = none.
                   #                      The provider bills them; usage flows like any ask.
+                  :output_parts,       # WS9 (saída): media the turn GENERATED, as additive
+                  #                      parts ({ type:, mime_type:, base64:, model: }). Rides
+                  #                      the terminal event (output_parts) and the /v1/responses
+                  #                      envelope; the answer text stays text on purpose — the
+                  #                      media is a separate sibling. nil = nothing generated.
+                  :channel_capabilities, # WS9 (saída): the CHANNEL's declared OUTPUT media
+                  #                      kinds (Media::OUTPUT_CAPABILITIES — image_output /
+                  #                      audio_output). Half of the gate that decides whether
+                  #                      generate_image/tts are wired at all (the other half is
+                  #                      profile.outputs). [] = the channel declared nothing —
+                  #                      no media can leak to it.
                   :output_filter,      # per-turn Safety::OutputFilter (nil = off); redacts the stream.
                   :stuck_outcome       # set by the signal_stuck system tool (WS5):
                   #                      { reason:, message: } when the agent declared it cannot
@@ -159,6 +170,8 @@ module Insika
       @turn = turn
       @message = message
       @capability_names = {}
+      @output_parts = []
+      @channel_capabilities = []
       # Fiber storage is INHERITED by fibers created later, so a turn spawned from
       # inside a tool call (a subagent child) would start out carrying its
       # parent's correlation. Clearing at turn start keeps a child from keying its

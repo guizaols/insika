@@ -119,6 +119,19 @@ module Insika
     #                                   event the consumer acts on). Same opt-in as
     #                                   `memory`. What "stuck" MEANS is the consumer's call
     #                                   (escalation via CRM/operator), never the engine's.
+    :outputs,                         # generated-media output policy (WS9, saída):
+    #                                   { "image" => { "model" => …, "size" => "1024x1024" },
+    #                                   "tts" => { "model" => "tts-1", "voice" => "alloy",
+    #                                   "format" => "mp3" } }. THE AGENT'S HALF of the
+    #                                   media-output gate — nil/absent = the agent never
+    #                                   generates media (opt-in like `capabilities`, do NOT
+    #                                   "fix" to nil = all). The other half is the CHANNEL'S:
+    #                                   the request must declare it can receive the media
+    #                                   (`channel.capabilities` — "image_output" /
+    #                                   "audio_output"); only with BOTH does the model see
+    #                                   the generate_image/tts tools (the abstraction admits
+    #                                   only what leaks). Generated media rides the turn's
+    #                                   `output_parts` in the envelope, never the answer text.
     :model_policy,                    # governance of WHICH models the agent may use:
     #                                   { "allow" => [refs] }. nil = NO fence (all models —
     #                                   parity). Enforced on the RESOLVED model (ModelResolver).
@@ -204,7 +217,8 @@ module Insika
                    prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
-                   budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil)
+                   budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
+                   outputs: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -237,7 +251,8 @@ module Insika
         reliability: Coercion.deep_stringify(reliability),
         alerts: Coercion.deep_stringify(alerts),
         routes: Coercion.deep_stringify(routes),
-        stuck_signal: stuck_signal
+        stuck_signal: stuck_signal,
+        outputs: Coercion.deep_stringify(outputs)
       )
     end
 

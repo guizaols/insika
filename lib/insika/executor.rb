@@ -20,7 +20,7 @@ module Insika
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
-                    context_trace_store: nil, reliability: nil, media: nil)
+                    context_trace_store: nil, reliability: nil, media: nil, media_output: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -66,6 +66,12 @@ module Insika
       @reliability = reliability
       # WS9 media seam (nil = default built on first audio turn): ->(url) { text }.
       @media = media
+      # WS9 (saída) media-generation seams: { image: ->(prompt, cfg) [part,
+      # usage], tts: ->(text, cfg) [part, usage] }. nil = the defaults (built
+      # lazily on first generation — RubyLLM + Net::HTTP behind lazy requires,
+      # the core stays gem-free at load). Injected by specs; a production graph
+      # that wants a non-RubyLLM backend injects its own lambdas.
+      @media_output = media_output
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -86,7 +92,11 @@ module Insika
         # the ChatBuilder wires the spawn_subagent system tool (gated by
         # profile.subagents) and hands it this Executor as the runner. `self` is not
         # yet fully built here, but the ChatBuilder only STORES it (used per-turn).
-        subagent_runner: self
+        subagent_runner: self,
+        # WS9 (saída): the media-generation runner, same shape — the Executor
+        # owns the seams + usage accounting, the builder only wires the tools
+        # the turn's gates allow.
+        media_runner: self
       )
       # Stage-3-tail tool assembly (capability resolution, instantiation,
       # injection, dedup join, ToolEnvelope wrap) — extracted collaborator.
@@ -584,6 +594,36 @@ module Insika
       release_steered(task, profile, actor)
     end
 
+    # WS9 (saída), the RUNNER side the generate_image/tts system tools call
+    # (public like run_subagent — a tool reaches back into the Executor):
+    #
+    # -> [part, usage]: resolve the seam (injected or the lazy default) and
+    # run it. The default seams are built on FIRST use, when the turn already
+    # has a chat (ruby_llm loaded), so the load-guard holds.
+    def generate_media_output(kind, content, config)
+      seam = @media_output&.fetch(kind, nil) || Insika::Media::Output.defaults(context: @llm)[kind]
+      raise Insika::MediaError, "no #{kind} output seam" unless seam
+
+      seam.call(content, config)
+    end
+
+    # Accounts a generated part in the turn's usage: the provider's token
+    # counts (images — the merge keeps what the classifier already banked),
+    # plus an honest `media` call counter per part (the speech API reports no
+    # tokens; the part itself carries the model for consumer-side pricing).
+    def account_media_usage(state, part, usage)
+      usage ||= {}
+      tokens = {}
+      tokens[:input_tokens] = usage[:input_tokens].to_i if usage[:input_tokens]
+      tokens[:output_tokens] = usage[:output_tokens].to_i if usage[:output_tokens]
+      tokens[:total_tokens] = tokens[:input_tokens].to_i + tokens[:output_tokens].to_i if tokens.any?
+      unless tokens.empty?
+        tokens[:model] = part["model"] if part["model"]
+        state.usage = merge_usage(tokens, state.usage)
+      end
+      state.usage = (state.usage || {}).merge(media: state.usage&.fetch(:media, 0).to_i + 1)
+    end
+
     private
 
     # resolves session vars > profile.limits > settings["queue"] >
@@ -797,6 +837,12 @@ module Insika
     # -> tool assembly, each followed by a mailbox drain at the boundary. Mutates
     # `state` in place (the TurnState possibly rewritten by before_task).
     def prepare_turn(task, profile, state, actor, resume_from)
+      # WS9 (saída): the CHANNEL's declared output media kinds — read on EVERY
+      # run (including resumes — it is plain config) so the ChatBuilder gate
+      # can re-wire the media tools; the transcription below stays guarded.
+      state.channel_capabilities = Insika::Media.channel_capabilities(
+        rebuild_command(task).payload["channel"]
+      )
       # WS9: content parts -> turn. Runs BEFORE stage 2's context build so the
       # transcribed voice text feeds the prompt; a resumed turn was already
       # transcribed (never re-pay the STT call).
@@ -958,6 +1004,10 @@ module Insika
       # WS9: a turn whose message came from a VOICE note is marked — the
       # consumer's signal the person spoke (text was transcribed).
       data[:source] = :voice if st.message_source == :voice
+      # WS9 (saída): media the agent GENERATED this turn (image/audio clips).
+      # Additive sibling — the answer text stays text on purpose; the channel
+      # consumes the parts next to it. Absent when nothing was generated.
+      data[:output_parts] = st.output_parts if st.output_parts && !st.output_parts.empty?
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
@@ -2191,6 +2241,8 @@ module Insika
       require_relative "tools/subagent"
       require_relative "tools/subagents"
       require_relative "tools/stuck_signal"
+      require_relative "tools/generate_image"
+      require_relative "tools/tts"
       # v2 resolution: Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)

@@ -667,10 +667,50 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   (a private/metadata target is refused — SSRF).
 - `/v1/responses` accepts the OpenAI multimodal shape: `input` as an array of
   text/image/audio parts.
-- **Not here:** TTS and image *generation* as turn outputs (the channel
-  declares capability, the envelope carries the media) are the documented
-  follow-up half — the engine's input contract is what the fitting-room skill
-  builds on.
+
+## Generated media as outputs (WS9, saída)
+
+The turn can **produce** an image or a voice clip — but only when both sides of
+the gate agree, because nothing leaks by default. The agent declares it may
+generate media (`outputs` on the profile), and the **channel** declares it can
+receive it (`channel.capabilities` on the request):
+
+```bash
+curl -X POST /v1/responses -H "Authorization: Bearer $TOKEN" -d '{
+  "model": "openclaw:store-support", "user": "chat-7",
+  "input": "manda a foto do sofá da promoção",
+  "channel": { "capabilities": ["image_output", "audio_output"] }
+}'
+```
+
+```ruby
+agent = Insika.agent("store-support") do
+  instructions "…"
+  outputs image: { model: "gpt-image-1", size: "1024x1024" },   # the AGENT's half
+          tts:   { model: "tts-1", voice: "alloy" }
+end
+```
+
+- **Both gates** must pass for the model to even see the `generate_image` /
+  `tts` tools: the agent opted in (`outputs`) and the request declared the
+  matching capability (`image_output` / `audio_output` — an unknown value is a
+  422, never a silent ignore). The "abstraction admits only what leaks" rule.
+- **The media rides the envelope, never the answer text.** The terminal event
+  and the `/v1/responses` completed frame carry an additive `output_parts`
+  array — `{ type: "image", mime_type:, base64:, model: }` /
+  `{ type: "audio", mime_type:, base64:, model: }`. The model's prose stays
+  the `:content` answer; the channel consumes the bytes next to it.
+- **Generation is billed and counted.** Image tokens join the turn's usage
+  (like any ask). The speech API reports no token counts, so a TTS call adds
+  an honest `usage.media` counter and the part carries the `model` for
+  consumer-side pricing.
+- **Seams, not magic.** The generator is injectable per kind (specs stub it);
+  the defaults are lazy: images via RubyLLM (paint), speech via a thin POST to
+  the OpenAI-compatible `/audio/speech` endpoint using the same provider
+  config the chat uses — RubyLLM as of 1.16.0 has no speech API. A generated
+  part over 8 MB refuses loudly, never silently truncates.
+- **Not here:** what the generated image *means* — a fitting room, a product
+  mockup — is a skill on top. The engine transports bytes and cost.
 
 ## Customer-scoped memory and the right to be forgotten (WS8)
 

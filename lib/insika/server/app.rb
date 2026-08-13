@@ -387,6 +387,7 @@ module Insika
         payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
         payload[:parts] = parsed[:parts] if parsed[:parts] # WS9: multimodal content parts
         payload[:source] = parsed[:source] if parsed[:source] # WS9: voice-marked text
+        payload[:channel] = parsed[:channel] if parsed[:channel] # WS9 (saída): the channel's output capabilities
         message_flow(payload, stream: true, serialize: Responses.method(:frame_for),
                               tenant: tenant)
       end
@@ -824,6 +825,22 @@ TENANT_SURFACES = [
         source = payload[:source] || payload["source"]
         if source && source.to_s != "voice"
           raise Insika::ValidationError, 'source must be "voice"'
+        end
+        # WS9 (saída): the channel's declared OUTPUT media capabilities. The
+        # closed list IS the "abstraction admits only what leaks" rule: an
+        # unknown value is refused here (422), never silently ignored; a
+        # declared value is what the executor may wire (generate_image/tts).
+        channel = payload[:channel] || payload["channel"]
+        if channel.is_a?(Hash)
+          caps = Insika::Media.channel_capabilities(channel)
+          unknown = caps - Insika::Media::OUTPUT_CAPABILITIES
+          unless unknown.empty?
+            raise Insika::ValidationError,
+                  "unknown channel capability: #{unknown.join(', ')}"
+          end
+
+          payload = payload.dup
+          payload[:channel] = { capabilities: caps }
         end
         # WS1: a tenant's session_id is NAMESPACED before the command is built,
         # so the turn lands on the tenant's OWN session even when another tenant

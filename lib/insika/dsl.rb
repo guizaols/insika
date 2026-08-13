@@ -249,6 +249,14 @@ module Insika
       #   stuck_signal true
       def stuck_signal(on = true) = @config[:stuck_signal] = on
 
+      # Generated-media output policy (WS9, saída): the media kinds this
+      # agent MAY generate as turn outputs, with per-kind config. The other
+      # half of the gate is the CHANNEL's: the request must declare the
+      # matching capability for the tools to exist at all.
+      #   outputs image: { model: "gpt-image-1", size: "1024x1024" },
+      #           tts:   { model: "tts-1", voice: "alloy" }
+      def outputs(hash) = (@config[:outputs] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Mechanical tool-result dedupe in the replayed history
       # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
       # SEES: repeated identical tool results collapse to a back-reference.
