@@ -128,6 +128,27 @@ RSpec.shared_examples "an Insika store" do
     end
   end
 
+  describe "#scopes" do
+    it " returns scope names sorted lexicographically" do #
+      store.set("zeta", "k", 1)
+      store.set("alpha", "k", 1)
+      store.set("alpha:child", "k", 1)
+      expect(store.scopes).to eq(["alpha", "alpha:child", "zeta"])
+    end
+
+    it " filters by prefix with start_with? (not include?)" do #
+      store.set("s", "k", 1)
+      store.set("s:child", "k", 1)
+      store.set("s2", "k", 1) # trap: contains "s" but does not start with "s:"
+      expect(store.scopes("s:")).to eq(["s:child"])
+    end
+
+    it " returns [] when nothing matches (or the store is empty)" do #
+      expect(store.scopes("nope")).to eq([])
+      expect(store.scopes).to eq([])
+    end
+  end
+
   describe "scope isolation" do
     it " keeps scopes independent in get/list/delete" do #
       store.set("s1", "k", 1)

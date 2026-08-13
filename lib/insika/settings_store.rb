@@ -31,6 +31,11 @@ module Insika
       "turn_timeout" => 120,
       "tool_timeout" => 30,
       "compaction" => { "enabled" => false, "keep_last" => 20 },
+      # Data lifecycle (WS8, phase 2): the RETENTION window in days. The
+      # tick's Retention sweep purges sessions (+traces), terminal tasks
+      # (+checkpoints), memory cells and outcomes older than this. nil/0 =
+      # OFF (parity — nothing is ever swept by default).
+      "retention_days" => nil,
       # LLM config v2. Platform-wide model layer, resolved by the
       # ModelResolver under an agent that pins no model of its own:
       #   default_model/default_provider -> the platform default (Chat > Agent > HERE)

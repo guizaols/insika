@@ -66,6 +66,31 @@ module Insika
       end
     end
 
+    # Purges a tenant's records (WS8 phase 2 — delete_tenant_data). The tenant
+    # is the FIRST key segment, so the purge is a prefix scan — the key IS the
+    # isolation (WS1). -> count removed.
+    def purge(tenant:)
+      prefix = "#{tenant}:"
+      keys = @store.list(SCOPE).select { |k| k.start_with?(prefix) }
+      keys.each { |k| @store.delete(SCOPE, k) }
+      keys.size
+    end
+
+    # Purges records older than the cutoff (WS8 retention — the tick's sweep).
+    # `at` is ISO8601 UTC, so the comparison is lexicographic. -> count removed.
+    def delete_older_than(time)
+      cutoff = time.utc.iso8601
+      removed = 0
+      @store.list(SCOPE).each do |k|
+        rec = @store.get(SCOPE, k)
+        next unless rec && rec["at"].to_s < cutoff
+
+        @store.delete(SCOPE, k)
+        removed += 1
+      end
+      removed
+    end
+
     private
 
     def key(tenant, agent, time, id)

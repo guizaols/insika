@@ -78,6 +78,41 @@ module Insika
       keys.size
     end
 
+    # Purges a TENANT and every customer cell under it (WS8 phase 2 —
+    # delete_tenant_data). The tenant's own cell ("memory:<tenant>") plus each
+    # cell whose scope starts with "memory:<tenant>:" (the customer cells).
+    # The scope enumeration is the Store's — no session-derived list, so a
+    # customer cell whose session was already deleted is still purged.
+    # -> count of records purged.
+    def purge_tenant(tenant)
+      cell = scope_for(tenant)
+      scopes = [cell] + @store.scopes("#{cell}:")
+      scopes.sum do |scope|
+        keys = @store.list(scope)
+        keys.each { |k| @store.delete(scope, k) }
+        keys.size
+      end
+    end
+
+    # Age-based prune across EVERY cell (WS8 retention): a fact older than the
+    # cutoff by its updated_at, a note by its created_at. The scope enumeration
+    # is the Store's — nothing session-derived. -> count of records removed.
+    def prune_older_than(time)
+      cutoff = time.utc.iso8601
+      removed = 0
+      @store.scopes("#{SCOPE_PREFIX}:").each do |scope|
+        @store.list(scope).each do |k|
+          rec = @store.get(scope, k)
+          stamp = rec && (rec["updated_at"] || rec["created_at"])
+          next unless stamp && stamp.to_s < cutoff
+
+          @store.delete(scope, k)
+          removed += 1
+        end
+      end
+      removed
+    end
+
     # Append. `at` (ISO8601) goes at the START of the key so `list` returns the notes in
     # chronological order; `id`/`at` injectable for deterministic tests. -> Note
     def add_note(tenant:, text:, id: SecureRandom.uuid, at: nil)

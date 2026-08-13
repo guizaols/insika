@@ -109,6 +109,22 @@ module Insika
       nil
     end
 
+    # Deletes EVERY checkpoint + side-effect record of the task (WS8 retention:
+    # a purged task's durability trail goes with it — no orphaned keys).
+    # -> count of records removed.
+    def purge(task_id)
+      removed = 0
+      checkpoint_turns(task_id).each do |n|
+        @store.delete(SCOPE, checkpoint_key(task_id, n))
+        removed += 1
+      end
+      sideeffect_turns(task_id).each do |n|
+        @store.delete(SCOPE, sideeffects_key(task_id, n))
+        removed += 1
+      end
+      removed
+    end
+
     private
 
     def checkpoint_key(task_id, turn)

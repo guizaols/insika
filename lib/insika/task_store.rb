@@ -185,6 +185,13 @@ module Insika
       end
     end
 
+    # -> true | false (did it exist?). For Retention (WS8) — a purged session's
+    # tasks go with it, terminal tasks only (a live :running task must never
+    # be deleted under its own fiber).
+    def delete(id)
+      @store.delete(SCOPE, key_for(id))
+    end
+
     private
 
     def key_for(id)

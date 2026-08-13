@@ -32,6 +32,13 @@ it is released. Entries land with the pull request that makes the change.
   optimistic CAS write (`replace_if_revision`, microsecond revisions).
   `POST /v1/commands/forget_customer` (phase 2, LGPD) purges one customer's
   memory cell, their sessions and per-session traces — nothing else's.
+- **Tenant deletion + retention (WS8, phase 2 complete)** —
+  `POST /v1/commands/delete_tenant_data` purges everything the engine holds
+  about one tenant (sessions, traces, every memory cell under the tenant and
+  its outcome records); the `retention_days` settings key turns on the tick's
+  daily age-based sweep (sessions + traces, terminal tasks + checkpoints,
+  memory cells and outcomes — OFF by default). The KV store contract gained
+  an additive `scopes(prefix)` enumeration.
 - **Media in the message contract (WS9, input half)** — messages accept
   additive content parts (`text`/`image`/`audio` with a URL). Audio is
   transcribed via RubyLLM STT (model/language via `INSIKA_STT_MODEL`/

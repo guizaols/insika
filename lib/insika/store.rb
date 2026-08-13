@@ -17,10 +17,13 @@ module Insika
   #   normalizes at the boundary)
   # - list(scope) returns only keys of the scope, ordered lexicographically;
   #   prefix filters by start_with?
+  # - scopes(prefix) returns the scope NAMES that start with the prefix,
+  #   ordered lexicographically (an additive enumeration, for domain stores
+  #   that name cells hierarchically — "memory:acme", "memory:acme:123")
   # - a nested transaction reuses the outer transaction (no SAVEPOINT)
   # - a serialization failure on write -> Insika::StoreError (fail-fast)
   #
-  # Backends `include Store` and override the five methods; any forgotten
+  # Backends `include Store` and override the six methods; any forgotten
   # method raises NotImplementedError (fail-fast, better than a distant
   # NoMethodError).
   module Store
@@ -42,6 +45,12 @@ module Insika
     # -> [String] keys ordered lexicographically
     def list(scope, prefix = nil)
       raise NotImplementedError, "#{self.class}#list"
+    end
+
+    # -> [String] scope names ordered lexicographically, filtered by prefix
+    # (start_with?). Added for domain stores with hierarchical scope names.
+    def scopes(prefix = nil)
+      raise NotImplementedError, "#{self.class}#scopes"
     end
 
     # -> the block's result; atomic if the backend supports it
