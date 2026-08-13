@@ -78,6 +78,44 @@ class NullHooks
   def run_after(_pair, result) = result
 end
 
+# Store decorator that COUNTS the transaction discipline: how many
+# transactions were opened and how many writes happened outside one. The repo
+# rule is that every read-modify-write (and every list-then-delete) rides
+# `Store#transaction`; this makes the rule assertable instead of reviewable.
+class TransactionSpyStore
+  attr_reader :transactions, :deletes_outside_transaction
+
+  def initialize(inner)
+    @inner = inner
+    reset!
+  end
+
+  def reset!
+    @transactions = 0
+    @deletes_outside_transaction = 0
+    @depth = 0
+  end
+
+  def transaction(&blk)
+    @transactions += 1 if @depth.zero?
+    @depth += 1
+    @inner.transaction(&blk)
+  ensure
+    @depth -= 1
+  end
+
+  def delete(scope, key)
+    @deletes_outside_transaction += 1 if @depth.zero?
+    @inner.delete(scope, key)
+  end
+
+  def method_missing(name, *args, **kwargs, &blk)
+    @inner.respond_to?(name) ? @inner.public_send(name, *args, **kwargs, &blk) : super
+  end
+
+  def respond_to_missing?(name, include_private = false) = @inner.respond_to?(name, include_private) || super
+end
+
 # Synchronous event stream for order assertions without fiber choreography:
 # emit just accumulates (the turn's fiber completes during spawn+wait).
 class SpyEventStream

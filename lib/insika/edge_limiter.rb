@@ -231,12 +231,17 @@ module Insika
       return if @budget_ledger.mark_alert(tenant: tenant, agent: agent, window: w[:window],
                                           level: level, now: now)
 
+      # `tenant` on the META too, not only in the payload: the tenant-scoped
+      # /v1/events subscription filters on meta[:tenant] and is fail-closed, so
+      # a warning about the tenant's OWN budget never reached the tenant.
+      meta = { task_id: state.task&.id, session_id: state.task&.session_id,
+               at: Time.now.utc.iso8601 }
+      meta[:tenant] = tenant unless tenant.nil?
       @event_stream&.emit(Insika::Event.new(
                             type: :budget_warning,
                             data: { agent: agent, tenant: tenant, window: w[:window],
                                     spent: spent, cap: w[:cap], level: level },
-                            meta: { task_id: state.task&.id, session_id: state.task&.session_id,
-                                    at: Time.now.utc.iso8601 }
+                            meta: meta
                           ))
     end
 

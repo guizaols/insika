@@ -1454,16 +1454,15 @@ module Insika
     end
 
     # The provider's TTFB as a live event (data: ttft_ms) — only under
-    # INSIKA_TURN_TIMING, so absent by default (parity).
+    # INSIKA_TURN_TIMING, so absent by default (parity). Rides the SINGLE
+    # emitter: a hand-built meta here lacked `tenant`, and a tenant-scoped
+    # /v1/events subscription is fail-closed on it — the tenant's own TTFB was
+    # invisible to the tenant.
     def emit_ttft(task, timing)
       ttft = timing.to_h[:ttft_ms]
       return if ttft.nil?
 
-      @event_stream.emit(Insika::Event.new(
-                           type: :ttft, data: { ttft_ms: ttft },
-                           meta: { task_id: task.id, session_id: task.session_id,
-                                   at: Time.now.utc.iso8601 }
-                         ))
+      emit(:ttft, { ttft_ms: ttft }, task: task)
     rescue StandardError
       nil
     end

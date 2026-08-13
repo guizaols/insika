@@ -17,6 +17,7 @@ module Insika
   class Retention
     SCOPE = "retention"
     KEY = "claim"
+    BUDGET_KEY = "budget_claim"
     WINDOW = 86_400 # one sweep per day, at most
 
     TERMINAL = %w[completed failed cancelled].freeze
@@ -24,7 +25,7 @@ module Insika
     def initialize(session_store:, task_store:, checkpoint_store:,
                    memory_store:, outcome_store:, tool_trace_store: nil,
                    context_trace_store: nil, outbox_store: nil, settings_store: nil,
-                   store:, window: WINDOW, now: nil)
+                   budget_ledger: nil, store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -34,6 +35,7 @@ module Insika
       @context_trace_store = context_trace_store
       @outbox_store = outbox_store
       @settings_store = settings_store
+      @budget_ledger = budget_ledger # WS2 counter GC; nil = nothing to sweep
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
@@ -41,19 +43,37 @@ module Insika
 
     # -> { claimed: false } |
     #    { claimed: true, sessions:, tasks:, outcomes:, memory:, deliveries: }.
+    # Either shape may carry `budget_cells:` — the budget counter GC is NOT
+    # gated by retention_days (see #sweep_budget_cells).
     def run
+      budget_cells = sweep_budget_cells
       days = retention_days
-      return { claimed: false } unless days.to_i.positive? && claim_window
+      unless days.to_i.positive? && claim_window
+        return budget_cells.nil? ? { claimed: false } : { claimed: false, budget_cells: budget_cells }
+      end
 
       cutoff = now - (days.to_i * 86_400)
       summary = { claimed: true, sessions: sweep_sessions(cutoff),
                   tasks: sweep_tasks(cutoff), outcomes: sweep_outcomes(cutoff),
                   memory: @memory_store.prune_older_than(cutoff),
                   deliveries: sweep_outbox(cutoff) }
+      summary[:budget_cells] = budget_cells if budget_cells
       summary
     end
 
     private
+
+    # The BudgetLedger's expired cells (WS2). Deliberately OUTSIDE the
+    # retention_days gate, on its OWN daily claim: those rows are engine
+    # bookkeeping whose window already rolled over, not customer content, so a
+    # deployment that keeps its conversations forever (retention OFF — the
+    # default) must still not grow budget rows forever. -> count | nil (no
+    # ledger, or another worker holds today's claim).
+    def sweep_budget_cells
+      return nil unless @budget_ledger && claim(BUDGET_KEY)
+
+      @budget_ledger.prune(now: now)
+    end
 
     def retention_days
       return nil unless @settings_store
@@ -107,20 +127,24 @@ module Insika
       @outbox_store ? @outbox_store.delete_older_than(cutoff) : 0
     end
 
+    def claim_window = claim(KEY)
+
     # The daily claim: one key, a timestamp, a 24 h window — the tick's
     # claim_window idiom (a key per day would be a slow leak; the window is
-    # long enough that the store never grows).
-    def claim_window
+    # long enough that the store never grows). One key per SWEEP (the age-based
+    # one, the budget GC): they gate on different knobs, so a single shared key
+    # would let whichever ran first starve the other for a day.
+    def claim(key)
       now_time = now
       @store.transaction do
-        current = @store.get(SCOPE, KEY)
+        current = @store.get(SCOPE, key)
         last = current && begin
           Time.iso8601(current["claimed_at"].to_s)
         rescue ArgumentError
           nil
         end
         if last.nil? || (now_time - last) >= @window
-          @store.set(SCOPE, KEY, { "claimed_at" => now_time.iso8601 })
+          @store.set(SCOPE, key, { "claimed_at" => now_time.iso8601 })
           true
         else
           false

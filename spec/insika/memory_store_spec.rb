@@ -131,5 +131,39 @@ RSpec.describe Insika::MemoryStore do
     it "purge on an empty scope is 0, never an error" do
       expect(store.purge(tenant: "acme:999")).to eq(0)
     end
+
+    # The repo rule: a read-modify-write goes through Store#transaction. A
+    # list-then-delete outside one can report an erasure that a concurrent write
+    # survived — the LGPD defect.
+    it "the list-then-delete of purge/purge_tenant rides ONE transaction" do
+      spy = TransactionSpyStore.new(Insika::Stores::Memory.new)
+      counted = described_class.new(store: spy)
+      counted.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+      counted.put_fact(tenant: "acme", key: "catalogo", value: "v2")
+      spy.reset!
+
+      expect(counted.purge(tenant: "acme:123")).to eq(1)
+      expect(spy.transactions).to eq(1)
+      expect(spy.deletes_outside_transaction).to eq(0)
+
+      spy.reset!
+      expect(counted.purge_tenant("acme")).to eq(1)
+      expect(spy.transactions).to eq(1)
+      expect(spy.deletes_outside_transaction).to eq(0)
+    end
+
+    it "purge/purge_tenant work on SQLite without leaking the transaction" do
+      sqlite = Insika::Stores::SQLite.new(path: ":memory:")
+      durable = described_class.new(store: sqlite)
+      durable.put_fact(tenant: "acme", key: "catalogo", value: "v2")
+      durable.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+
+      expect(durable.purge(tenant: "acme:123")).to eq(1)
+      expect(durable.purge_tenant("acme")).to eq(1)
+      # a leaked BEGIN IMMEDIATE would deadlock/raise on the next write
+      expect(durable.put_fact(tenant: "acme", key: "catalogo", value: "v3").value).to eq("v3")
+    ensure
+      sqlite&.close
+    end
   end
 end

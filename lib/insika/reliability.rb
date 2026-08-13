@@ -65,9 +65,20 @@ module Insika
       if breaker && breaker_open?(tenant, selection, breaker)
         raise circuit_open(tenant, selection, breaker)
       end
+      # the last node we actually ASKED: the `from` of a rotation. A node the
+      # breaker skipped was never asked, so it is never the `from`.
+      asked = nil
       nodes.each do |node|
         selection = node[:selection]
         next if breaker && breaker_open?(tenant, selection, breaker)
+
+        # ROTATION is an EVENT, not an inference from the usage attribution
+        # (WS3): the trace names the node we left, the node we moved to and why.
+        # Emitted for every node past the first one asked — with or WITHOUT a
+        # breaker (a fallback policy with no circuit_breaker used to rotate in
+        # complete silence).
+        emit_fallback(agent, asked, selection, last_error) if asked
+        asked = selection
 
         attempts = retries + 1
         attempts.times do |index|
@@ -131,17 +142,28 @@ module Insika
       )
     end
 
+    # The failure is ALWAYS an event; only the circuit bump needs a breaker (the
+    # old `return unless breaker` made a retry/fallback policy without a
+    # circuit_breaker run with no trace at all).
     def record_failure(tenant, selection, breaker, error, agent)
+      emit(:provider_failure,
+           { agent: agent, ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
       return unless breaker
 
       tripped = @circuit_store.record_failure(
         tenant: tenant, ref: ref_of(selection),
         after: breaker[:after], within: breaker[:within]
       )
-      emit(:provider_failure,
-           { agent: agent, ref: ref_of(selection), error: error.class.name, kind: kind_of(error) })
       # the failure that TRIPPED the circuit is itself an alert (WS6).
       emit(:breaker_open, { agent: agent, ref: ref_of(selection), tenant: tenant }) if tripped == :open
+    end
+
+    # The mid-turn rotation across the fallback chain: the node we left, the one
+    # we moved to, and the error that spent the previous node's retries.
+    def emit_fallback(agent, from, to, error)
+      emit(:provider_fallback,
+           { agent: agent, from: ref_of(from), to: ref_of(to),
+             error: error&.class&.name, kind: error && kind_of(error) })
     end
 
     def kind_of(error) = ProviderErrorClassifier.classify(error).kind

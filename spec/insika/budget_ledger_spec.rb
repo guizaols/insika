@@ -108,6 +108,63 @@ RSpec.describe Insika::BudgetLedger do
     expect(ledger.current(tenant: "t", agent: "a", now: local_late)).to eq(daily: 10, monthly: 10)
   end
 
+  # `add` only deletes the IMMEDIATELY previous day/month cell and NOTHING ever
+  # collected the alert flags: both scopes grew rows forever, and the WS8
+  # retention sweep (age-based over content) does not reach them.
+  describe "prune (the counter GC)" do
+    it "drops the cells of a window that already rolled over, keeps the live ones" do
+      ledger.add(tenant: "loja-42", agent: "atendente", by: 500, now: now - (3 * 86_400))
+      ledger.add(tenant: "loja-42", agent: "atendente", by: 100, now: now)
+      # the 3-day-old day cell survived `add`'s two deletes
+      expect(store.list(described_class::SCOPE).size).to eq(3) # 2 daily + 1 monthly
+
+      expect(ledger.prune(now: now)).to eq(1)
+      expect(store.list(described_class::SCOPE).size).to eq(2)
+      # the live windows are untouched — the totals still read
+      expect(ledger.current(tenant: "loja-42", agent: "atendente", now: now))
+        .to eq(daily: 100, monthly: 600)
+    end
+
+    it "collects the alert flags of past windows (nothing else ever did)" do
+      ledger.mark_alert(tenant: "loja-42", agent: "a", window: :daily, level: "cap",
+                        now: now - (2 * 86_400))
+      ledger.mark_alert(tenant: "loja-42", agent: "a", window: :daily, level: "cap", now: now)
+      expect(store.list(described_class::ALERT_SCOPE).size).to eq(2)
+
+      expect(ledger.prune(now: now)).to eq(1)
+      # today's marker survives: the window must not re-warn on the next turn
+      expect(ledger.alerted?(tenant: "loja-42", agent: "a", window: :daily,
+                             level: "cap", now: now)).to be(true)
+    end
+
+    it "keeps the monthly cell of the current calendar month (a day bucket never collides)" do
+      ledger.add(tenant: nil, agent: "a", by: 10, now: now)
+      expect(ledger.prune(now: now)).to eq(0)
+      expect(ledger.current(tenant: nil, agent: "a", now: now)).to eq(daily: 10, monthly: 10)
+    end
+
+    # A host whose clock runs ahead writes tomorrow's cell around midnight; a
+    # sweeper that dropped it would hand that tenant a fresh day of budget.
+    it "never drops a cell AHEAD of the live window (clock skew)" do
+      ledger.add(tenant: "loja-42", agent: "a", by: 400, now: now + 86_400) # tomorrow
+      expect(ledger.prune(now: now)).to eq(0)
+      expect(ledger.current(tenant: "loja-42", agent: "a", now: now + 86_400))
+        .to eq(daily: 400, monthly: 400)
+    end
+
+    it "prune on SQLite leaves no open transaction behind" do
+      sqlite = Insika::Stores::SQLite.new(path: ":memory:")
+      durable = described_class.new(store: sqlite)
+      durable.add(tenant: "t", agent: "a", by: 10, now: now - (5 * 86_400))
+      # only the day cell is stale — 5 days back is the SAME calendar month
+      expect(durable.prune(now: now)).to eq(1)
+      # the month cell survived the prune (it is the live window) -> 10 + 10
+      expect(durable.add(tenant: "t", agent: "a", by: 10, now: now)).to eq(daily: 10, monthly: 20)
+    ensure
+      sqlite&.close
+    end
+  end
+
   it "mark_alert does not leak an open transaction on SQLite (the 2nd call's block return)" do
     sqlite = Insika::Stores::SQLite.new(path: ":memory:")
     durable = described_class.new(store: sqlite)

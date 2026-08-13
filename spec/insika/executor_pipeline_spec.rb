@@ -693,6 +693,33 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(timing.values).to all(be_a(Numeric))
     end
 
+    # The live :ttft frame was hand-built with its own meta: no seq and, worse,
+    # no tenant — and a tenant-scoped /v1/events subscription is fail-closed on
+    # meta[:tenant], so the tenant's own TTFB never reached the tenant.
+    it "the live :ttft event carries the task's tenant (and its seq) like every other event" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
+      session_store.create(id: "loja-a:s1")
+      command = Insika::Command.build(:send_message, { agent: "sales", message: "oi" },
+                                      tenant: "loja-a")
+      task = task_store.create(command: command.to_h, session_id: "loja-a:s1", id: "t-tenant")
+      run_turn(build_executor, task)
+
+      ttft = event_stream.events.find { |e| e.type == :ttft }
+      expect(ttft).not_to be_nil
+      expect(ttft.meta).to include(tenant: "loja-a", task_id: "t-tenant")
+      expect(ttft.meta[:seq]).to be_a(Integer)
+      expect(Insika::EventStream::Subscription.new(tenant: "loja-a").matches?(ttft)).to be(true)
+    end
+
+    it "the live :ttft of a platform turn carries no tenant (parity)" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
+      session_store.create(id: "s1")
+      run_turn(build_executor, make_task)
+
+      ttft = event_stream.events.find { |e| e.type == :ttft }
+      expect(ttft.meta.key?(:tenant)).to be(false)
+    end
+
     it "reasoning does NOT move the TTFB mark (first_token = first token the customer sees)" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
       session_store.create(id: "s1")
