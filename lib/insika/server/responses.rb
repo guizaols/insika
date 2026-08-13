@@ -44,6 +44,8 @@ module Insika
 
         out = { agent: agent.strip, user: user, message: message }
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
+        # WS8: the optional customer_key — per-customer memory scope + purge handle
+        (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
         out
       end
 

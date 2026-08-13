@@ -6,12 +6,14 @@ RSpec.describe Insika::Context::Providers::Memory do
   let(:backend) { Insika::Stores::Memory.new }
   let(:mem) { Insika::MemoryStore.new(store: backend) }
 
-  def request(memory:, tenant: "acme")
+  def request(memory:, tenant: "acme", scope: nil)
     profile = Insika::AgentProfile.build(id: "a", model: "m", memory: memory)
     # the real object providers receive has :tenant (the Executor's Struct);
     # here we use the ContextRequest contract (Data.define) which also exposes it.
+    # `scope` is the WS8 memory_scope (nil = the tenant/session fallback).
     Insika::ContextRequest.new(session: nil, message: "oi", profile: profile,
-                                tenant: tenant, vars: {}, checkpoint: nil)
+                                tenant: tenant, vars: {}, checkpoint: nil,
+                                memory_scope: scope)
   end
 
   it "memory off (enabled_for? false) -> produces nothing" do
@@ -44,6 +46,25 @@ RSpec.describe Insika::Context::Providers::Memory do
     # a request from another tenant does not see it
     frags = described_class.new(store: mem).call(request(memory: true, tenant: "outro"))
     expect(frags).to eq([])
+  end
+
+  # WS8: the customer_key moves the memory scope to the customer cell — the
+  # 360 view. Two customers under the SAME tenant must never read each other.
+  it "a CUSTOMER-scoped request reads only its own cell (WS8)" do
+    mem.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+    mem.put_fact(tenant: "acme:456", key: "pedido", value: "delivered")
+
+    frags = described_class.new(store: mem).call(request(memory: true, scope: "acme:123"))
+    expect(frags.first.content).to include('<fact key="pedido">open</fact>')
+    expect(frags.first.content).not_to include("delivered")
+
+    other = described_class.new(store: mem).call(request(memory: true, scope: "acme:456"))
+    expect(other.first.content).to include('<fact key="pedido">delivered</fact>')
+
+    # an UNTAGGED request (no memory_scope) falls back to tenant/session and
+    # sees neither customer cell — the shared cell stays empty
+    untagged = mem.facts(tenant: "acme")
+    expect(untagged).to be_empty
   end
 
   it "notes_limit is respected" do

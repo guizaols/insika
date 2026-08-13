@@ -20,7 +20,7 @@ module Insika
         # required? == false (default): a failure (store unavailable) becomes a
         # :provider_warning + graceful degradation — never aborts the turn.
         def call(request)
-          tenant = memory_tenant(request)
+          tenant = memory_scope(request)
           facts = @store.facts(tenant: tenant)
           notes = @store.notes(tenant: tenant, limit: @notes_limit)
           return [] if facts.empty? && notes.empty?
@@ -33,11 +33,16 @@ module Insika
 
         private
 
-        # Engine memory scope: an EXPLICIT tenant from the Command wins
-        # (multi-merchant override); otherwise the SESSION (=chat) — engine-owner
-        # memory is per-chat. No session (one-shot) and no tenant -> nil (MemoryStore
-        # applies _default). Symmetric to the write path (`state.tenant` in the Executor).
-        def memory_tenant(request)
+        # Engine memory scope (WS8): the request's CUSTOMER-scoped cell
+        # ("[tenant:]customer" — engine-owner memory is per customer, never per
+        # tenant) wins; otherwise an EXPLICIT tenant from the Command (the
+        # multi-merchant override); otherwise the SESSION (=chat). No session
+        # (one-shot) and no tenant -> nil (MemoryStore applies _default).
+        # Symmetric to the write path (`state.tenant` in the Executor).
+        def memory_scope(request)
+          scoped = request.respond_to?(:memory_scope) ? request.memory_scope : nil
+          return scoped if scoped
+
           explicit = request.respond_to?(:tenant) ? request.tenant : nil
           return explicit if explicit
 
