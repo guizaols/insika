@@ -160,4 +160,22 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
   ensure
     ENV.delete("INSIKA_TURN_TIMING")
   end
+
+  # The old code re-emitted :ttft on EVERY content chunk (a probe showed 3
+  # chunks = 3 insika.ttft frames); the fixture passed because it streams one
+  # chunk. A multi-chunk response must still emit exactly one TTFB signal.
+  it "emits EXACTLY ONE :ttft per turn, even across many content chunks (WS6)" do
+    ENV["INSIKA_TURN_TIMING"] = "1"
+    executor = build_executor
+    chat = FakeChat.new
+    chat.script = proc { 3.times { |i| emit_chunk("chunk #{i} ") } }
+
+    run_turn(executor, make_task("oi", id: "r5"), chat)
+
+    ttfts = event_stream.events.select { |e| e.type == :ttft }
+    expect(ttfts.size).to eq(1)
+    expect(ttfts.first.data[:ttft_ms]).to be >= 0
+  ensure
+    ENV.delete("INSIKA_TURN_TIMING")
+  end
 end

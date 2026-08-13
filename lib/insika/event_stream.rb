@@ -20,10 +20,11 @@ module Insika
       # local :error event — the turn never waits on transport.
       MAX_QUEUED = 1000
 
-      def initialize(task_id: nil, session_id: nil, tenant: nil, on_close: nil)
+      def initialize(task_id: nil, session_id: nil, tenant: nil, types: nil, on_close: nil)
         @task_id = task_id
         @session_id = session_id
         @tenant = tenant
+        @types = types
         @on_close = on_close
         @queue = Async::Queue.new
       end
@@ -44,11 +45,16 @@ module Insika
       # A TENANT-scoped subscription is FAIL-CLOSED on the meta's tenant (WS1):
       # an event that does not carry the tenant (control events, ignored turns)
       # matches NO tenant subscription. The tenant only ever sees its own.
+      #
+      # `types:` (nil = any) keeps a subscriber's queue to the events it answers
+      # — an alert consumer must not sit behind a full-traffic stream's 1000-cap
+      # (WS6), and a filtered queue is the cheapest way to keep it there.
       def matches?(event)
         meta = event.meta || {}
         owned = @tenant.nil? || meta[:tenant] == @tenant
 
         owned &&
+          (@types.nil? || @types.include?(event.type)) &&
           (@task_id.nil? || meta[:task_id] == @task_id) &&
           (@session_id.nil? || meta[:session_id] == @session_id)
       end
@@ -112,9 +118,12 @@ module Insika
 
     # nil/nil = all events. Returns the Subscription (the caller iterates with
     # `#each` on its own fiber). `tenant:` scopes the stream to one tenant's
-    # events (WS1) — fail-closed, see Subscription#matches?.
-    def subscribe(task_id: nil, session_id: nil, tenant: nil)
+    # events (WS1) — fail-closed, see Subscription#matches?. `types:` (nil =
+    # any) filters by event type so a subscriber's queue only ever holds what
+    # its consumer answers (WS6).
+    def subscribe(task_id: nil, session_id: nil, tenant: nil, types: nil)
       sub = Subscription.new(task_id: task_id, session_id: session_id, tenant: tenant,
+                             types: types,
                              on_close: ->(s) { @subscriptions.delete(s) })
       @subscriptions << sub
       sub

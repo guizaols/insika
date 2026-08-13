@@ -6,9 +6,10 @@ module Insika
   # "tenant:agent:window:calendar-bucket":
   #
   #   · DAILY    — the UTC calendar day (epoch/86400 IS midnight-aligned).
-  #   · MONTHLY  — (year * 12 + month): a budget month is the CALENDAR month,
-  #                however many days long it is (a fixed N-day window drifts
-  #                its bucket start across month lengths).
+  #   · MONTHLY  — (year * 12 + month) of the UTC calendar month: a budget month
+  #                is the CALENDAR month, however many days long it is (a fixed
+  #                N-day window drifts its bucket start across month lengths).
+  #                UTC like the daily, so both rollovers agree on any host.
   #
   # Built on the UsageLedger vocabulary (tenant/agent instead of kind/id) but
   # on the store directly, with the increment riding `@store.transaction` — the
@@ -51,11 +52,13 @@ module Insika
     end
 
     # Seconds until the window's bucket rolls over (the retry_after the
-    # enforcement quotes when a hard budget refuses a turn).
+    # enforcement quotes when a hard budget refuses a turn). Both windows are
+    # UTC-aligned (the daily via the epoch, the monthly via UTC components) so a
+    # non-UTC host never quotes a negative or local-midnight reset.
     def reset_in(window, now: Time.now)
       case window
       when :daily then DAY - (now.to_i % DAY)
-      when :monthly then (Time.utc(now.year, now.month + 1, 1) - now).to_i
+      when :monthly then (next_utc_month_start(now) - now).to_i
       end
     end
 
@@ -67,7 +70,10 @@ module Insika
       id = cell_id(tenant, agent)
       flag = alert_key(id, window, now)
       @store.transaction do
-        return true unless @store.get(ALERT_SCOPE, flag).nil?
+        # `next`, NOT `return`: a non-local return from inside the block skips
+        # the store's COMMIT and leaks the BEGIN IMMEDIATE open — the 2nd turn
+        # over a threshold then locks the whole backend (WS2).
+        next true unless @store.get(ALERT_SCOPE, flag).nil?
 
         @store.set(ALERT_SCOPE, flag, 1)
         false
@@ -97,9 +103,19 @@ module Insika
       (now.to_i / DAY) * DAY
     end
 
-    # the calendar month as one integer (2026-08 -> 24296).
+    # the UTC calendar month as one integer (2026-08 -> 24296). UTC, not local:
+    # the month boundary must agree with the daily epoch-day boundary on a
+    # non-UTC host (WS2), or the cap resets at a different moment than the day.
     def month_bucket(now)
-      now.year * 12 + now.month
+      u = now.utc
+      u.year * 12 + u.month
+    end
+
+    # Midnight UTC of the 1st of the window's NEXT month — December-safe
+    # (Time.utc(y, 13, 1) raises; y+1/1 is the calendar answer).
+    def next_utc_month_start(now)
+      u = now.utc
+      u.month == 12 ? Time.utc(u.year + 1, 1, 1) : Time.utc(u.year, u.month + 1, 1)
     end
 
     def key(id, bucket)

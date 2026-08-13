@@ -38,6 +38,14 @@ something that left no task of its own behind:
 | `:turn_interrupted` | `task_id`, `replaced_by` | the turn was abandoned mid-run, and which turn replaced it |
 | `:turn_stuck` | `task_id`, `agent`, `reason`, `message` | the agent declared it could not proceed (`signal_stuck`, WS5) — the deterministic signal a consumer escalates on |
 | `:channel_delivered` | `channel`, `outbox_id`, `status`, `attempts`, `error` | the answer reached the platform (or did not) — the turn completing says nothing about that |
+| `:delivery_failed` | `channel`, `outbox_id`, `status`, `attempts`, `error` | a delivery exhausted its bounded retries — the alert face of the row above (WS6) |
+| `:budget_warning` | `agent`, `tenant`, `window`, `spent`, `cap` | a calendar budget crossed its threshold (`alert_at` or a soft cap) — once per window (WS2) |
+| `:breaker_open` | `agent`, `ref`, `tenant` | the reliability circuit breaker tripped for a `(tenant, provider/model)` — further turns fail fast until the cooldown (WS3/WS6) |
+| `:ttft` | `task_id`, `session_id`, `ttft_ms` | the provider's time-to-first-token on the streaming envelope — only under `INSIKA_TURN_TIMING`, once per turn (WS6) |
+
+`delivery_failed` and `breaker_open` are the two the operator config is pointed at
+(`alerts.webhook` on the profile): each only fires when something durable did
+not land. `:ttft` is additive debug, absent unless `INSIKA_TURN_TIMING` is set.
 
 `:channel_delivered` is the one worth alerting on: a turn can be `:task_completed`
 and correct while the customer got nothing, because delivery is a separate,

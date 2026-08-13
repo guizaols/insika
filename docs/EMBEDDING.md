@@ -163,15 +163,19 @@ was given a backend never looks at it.
 | The reactor / `supervised` | You, matching your server |
 | Recovery of orphaned turns at boot | You, if you want it — the sweep is `Insika::Recovery`, wired by `Insika::Server::Boot` for the standalone deployment, not by `embed` |
 
-### Embedding is not multi-tenancy
+### Embedding is not the multi-tenant server
 
 Two graphs stop corrupting each other. That is all this contract says. **Who is
 allowed to talk to which graph** is authorization, and it is not here: `token:` is
 a single Bearer gating the whole mounted app, exactly as it does for the
-standalone server — the written decision is [one deployment, one token;
-multi-tenancy belongs to the host](SECURITY.md#the-bearer-gate). If your app has
-users, put the mounted app behind your own authentication and pass `session:`
-yourself — do not hand the mount point to the browser.
+standalone server in the default mode. Multi-tenancy is a property of the
+*standalone* server, not of an embed: with `INSIKA_TENANCY=multi_tenant` the
+Bearer resolves to a principal before the routes — per-tenant tokens scoped to
+their own sessions, tasks and events, operator tokens with the run of the
+deployment (see [Security](SECURITY.md#the-bearer-gate)). An embedded graph keeps
+no token store, so an embed's tenancy belongs to the host: put the mounted app
+behind your own authentication and pass `session:` yourself — do not hand the
+mount point to the browser.
 
 ---
 
