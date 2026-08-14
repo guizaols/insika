@@ -16,7 +16,7 @@
     <% @agents.each do |a| %>
       <article class="card agent" data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>">
         <a class="agent-head" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">
-          <span class="avatar"><%= a.id[0, 2].upcase %></span>
+          <span class="avatar <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
           <div>
             <div class="agent-id"><%= a.id %></div>
             <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>

@@ -58,7 +58,7 @@
         <% @recent.each do |s| %>
           <li>
             <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
-              <span class="avatar sm"><%= s.id[0, 2].upcase %></span>
+              <span class="avatar sm <%= avatar_class(s.id) %>"><%= s.id[0, 2].upcase %></span>
               <span class="convo-main">
                 <span class="convo-id mono"><%= s.id[0, 20] %></span>
                 <span class="convo-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></span>

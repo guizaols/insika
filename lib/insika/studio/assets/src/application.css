@@ -28,6 +28,16 @@
     --accent-weak:rgba(232,169,42,.16); --ring:rgba(232,169,42,.38);
     --ok:#157347; --warn:#b45309; --err:#c62f2f; --info:#2563eb;
     --diff-del:#b4232b; --diff-ins:#1a7f45;
+    /* Avatar hues (h0 = brand accent, defined by --accent-*). */
+    --av-1-bg:#d9e3ff; --av-1-fg:#2349b8;
+    --av-2-bg:#d3f0e0; --av-2-fg:#14663c;
+    --av-3-bg:#e6dffb; --av-3-fg:#5b3dc4;
+    --av-4-bg:#fbe0ec; --av-4-fg:#b0316f;
+    --av-5-bg:#ffe3cd; --av-5-fg:#a34a0e;
+    --av-6-bg:#cdeeec; --av-6-fg:#0f6e6a;
+    --av-7-bg:#fbdcd9; --av-7-fg:#b03128;
+    --av-8-bg:#dde4f7; --av-8-fg:#36409c;
+    --av-9-bg:#e3f3c9; --av-9-fg:#4f6d10;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
     /* Platform UI font (SF Pro on macOS, Segoe on Windows) — the CSP rules
        out webfonts, so the system font IS the product font. */
@@ -52,6 +62,15 @@
       --accent-weak:rgba(232,178,58,.13); --ring:rgba(232,178,58,.42);
       --ok:#3fb950; --warn:#e3a008; --err:#f4685c; --info:#5b9bff;
       --diff-del:#ff8a8a; --diff-ins:#6ee7a8;
+      --av-1-bg:#2c3f7a; --av-1-fg:#aec3ff;
+      --av-2-bg:#1f5c3f; --av-2-fg:#7fe3ab;
+      --av-3-bg:#3f2f7a; --av-3-fg:#c9b8ff;
+      --av-4-bg:#6e2a52; --av-4-fg:#ffb3d4;
+      --av-5-bg:#7a4218; --av-5-fg:#ffc290;
+      --av-6-bg:#1d5c58; --av-6-fg:#86e2dc;
+      --av-7-bg:#6e2f2a; --av-7-fg:#ffaca3;
+      --av-8-bg:#333a77; --av-8-fg:#b9c3fa;
+      --av-9-bg:#485f14; --av-9-fg:#c8ea7e;
       --shadow:0 1px 2px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.25);
       --shadow-lg:0 16px 40px rgba(0,0,0,.5);
       color-scheme:dark;
@@ -66,6 +85,15 @@
     --accent-weak:rgba(232,169,42,.16); --ring:rgba(232,169,42,.38);
     --ok:#157347; --warn:#b45309; --err:#c62f2f; --info:#2563eb;
     --diff-del:#b4232b; --diff-ins:#1a7f45;
+    --av-1-bg:#d9e3ff; --av-1-fg:#2349b8;
+    --av-2-bg:#d3f0e0; --av-2-fg:#14663c;
+    --av-3-bg:#e6dffb; --av-3-fg:#5b3dc4;
+    --av-4-bg:#fbe0ec; --av-4-fg:#b0316f;
+    --av-5-bg:#ffe3cd; --av-5-fg:#a34a0e;
+    --av-6-bg:#cdeeec; --av-6-fg:#0f6e6a;
+    --av-7-bg:#fbdcd9; --av-7-fg:#b03128;
+    --av-8-bg:#dde4f7; --av-8-fg:#36409c;
+    --av-9-bg:#e3f3c9; --av-9-fg:#4f6d10;
     --shadow:0 1px 2px rgba(16,20,40,.05),0 1px 3px rgba(16,20,40,.04);
     --shadow-lg:0 12px 32px rgba(16,20,40,.10);
     color-scheme:light;
@@ -79,6 +107,15 @@
     --accent-weak:rgba(232,178,58,.13); --ring:rgba(232,178,58,.42);
     --ok:#3fb950; --warn:#e3a008; --err:#f4685c; --info:#5b9bff;
     --diff-del:#ff8a8a; --diff-ins:#6ee7a8;
+    --av-1-bg:#2c3f7a; --av-1-fg:#aec3ff;
+    --av-2-bg:#1f5c3f; --av-2-fg:#7fe3ab;
+    --av-3-bg:#3f2f7a; --av-3-fg:#c9b8ff;
+    --av-4-bg:#6e2a52; --av-4-fg:#ffb3d4;
+    --av-5-bg:#7a4218; --av-5-fg:#ffc290;
+    --av-6-bg:#1d5c58; --av-6-fg:#86e2dc;
+    --av-7-bg:#6e2f2a; --av-7-fg:#ffaca3;
+    --av-8-bg:#333a77; --av-8-fg:#b9c3fa;
+    --av-9-bg:#485f14; --av-9-fg:#c8ea7e;
     --shadow:0 1px 2px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.25);
     --shadow-lg:0 16px 40px rgba(0,0,0,.5);
     color-scheme:dark;
@@ -347,6 +384,18 @@
   .agent-meta dd { margin:0; font-size:var(--text-md); font-weight:600; letter-spacing:-.01em; }
   .agent-actions { margin-top:auto; display:flex; gap:.5rem; }
   .avatar.sm { display:inline-grid; place-items:center; width:1.75rem; height:1.75rem; border-radius:var(--radius-sm); font-size:.7rem; font-weight:700; color:var(--accent-fg); background:var(--accent-bg); vertical-align:middle; margin-right:.45rem; }
+  /* Hue overrides (the id's fingerprint via avatar_class): h0 stays the brand
+     accent; the rest ride the themed --av-N tokens above. The doubled class
+     ties the .agent-head .avatar / .avatar.sm specificity — later source wins. */
+  .avatar.avatar-h1 { background:var(--av-1-bg); color:var(--av-1-fg); }
+  .avatar.avatar-h2 { background:var(--av-2-bg); color:var(--av-2-fg); }
+  .avatar.avatar-h3 { background:var(--av-3-bg); color:var(--av-3-fg); }
+  .avatar.avatar-h4 { background:var(--av-4-bg); color:var(--av-4-fg); }
+  .avatar.avatar-h5 { background:var(--av-5-bg); color:var(--av-5-fg); }
+  .avatar.avatar-h6 { background:var(--av-6-bg); color:var(--av-6-fg); }
+  .avatar.avatar-h7 { background:var(--av-7-bg); color:var(--av-7-fg); }
+  .avatar.avatar-h8 { background:var(--av-8-bg); color:var(--av-8-fg); }
+  .avatar.avatar-h9 { background:var(--av-9-bg); color:var(--av-9-fg); }
 
   /* ── Drill-down layout: master → detail panes, app-like ────────────────
      A full-height framed panel split into independently-scrolling columns.
@@ -758,3 +807,5 @@
     .page { padding:1.5rem 1.25rem 4rem; }
   }
 }
+
+/* unlayered probe */

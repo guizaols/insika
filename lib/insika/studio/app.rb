@@ -833,6 +833,14 @@ end
           @agent = presence(r.params["agent"]) || default_agent
           @session_id = presence(r.params["session_id"])
           @agents = insika[:profile_source].ids.sort
+          # Session combobox: recent conversations as <datalist> suggestions for the
+          # session field. The open session always appears, even if it fell off the
+          # recent list (it is the one being edited).
+          @recent = recent_sessions(limit: 8)
+          if @session_id && @recent.none? { |s| s.id == @session_id }
+            current = insika[:session_store]&.find(@session_id)
+            @recent.unshift(current) if current
+          end
           # Server-side echo + continuity: render the session's persisted
           # transcript as bubbles. The user's message is only persisted at the END
           # of the turn, so the just-sent message rides a one-shot flash bubble
@@ -1672,6 +1680,13 @@ end
     def agent_path(id, anchor = nil)
       base = "/studio/agents/#{Rack::Utils.escape(id)}"
       anchor ? "#{base}##{anchor}" : base
+    end
+
+    # Deterministic avatar hue: the id's fingerprint, so agents/sessions are
+    # scannable at a glance (Linear-style). CSP forbids inline styles, so the
+    # hue is a class: avatar-h0..avatar-h9 in application.css.
+    def avatar_class(id)
+      "avatar-h#{id.to_s.bytes.sum % 10}"
     end
 
     # Where a prompt POST lands back: the same file open in the drill, scrolled
