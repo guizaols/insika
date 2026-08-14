@@ -391,6 +391,17 @@ module MigrateOpenclaw
     config["limits"] = limits
     reasoning = a["entry_extra"]["reasoningDefault"]
     config["params"] = { "thinking" => reasoning } if reasoning
+
+    # agents.list[].tools carries the ACTIVE tool names (definitions live on the
+    # consumer side, not in the state dir). An explicit allow maps verbatim; an
+    # empty/missing allow meant "open" in OpenClaw, but Insika packs never get
+    # nil=all (global ToolStore — see PackImporter), so the operator must name
+    # the tools (tools_allow / --tools-from).
+    entry_tools = a["entry_extra"]["tools"] || {}
+    allow = Array(entry_tools["allow"]).map(&:to_s)
+    deny = Array(entry_tools["deny"]).map(&:to_s)
+    config["tools_allow"] = allow unless allow.empty?
+    config["tools_deny"] = deny unless deny.empty?
     File.write(File.join(out, "agent.config.json"), JSON.pretty_generate(config) + "\n")
 
     archive_rest(ws, out, archived_files, state, agent, migrate_secrets: migrate_secrets)
@@ -408,7 +419,11 @@ module MigrateOpenclaw
       "secrets" => a["secrets"],
       "notes" => [
         "context_budget set to #{CONTEXT_BUDGET} (OpenClaw bootstrapMaxChars has no token equivalent; matches hand-built store packs)",
-        tool_count.zero? ? "no tools: TOOLS.md is prose and cannot be derived; pass --tools-from to seed tools/*.json" : nil
+        tool_count.zero? ? "no tools: TOOLS.md is prose and cannot be derived; pass --tools-from to seed tools/*.json" : nil,
+        if allow.empty?
+          "tool access was OPEN in OpenClaw (no allow list); Insika allowlists are explicit — " \
+          "set tools_allow in agent.config.json or seed via --tools-from"
+        end
       ].compact
     }
     File.write(File.join(out, ".report.json"), JSON.pretty_generate(report) + "\n")
