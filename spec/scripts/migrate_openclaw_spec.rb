@@ -21,12 +21,13 @@ RSpec.describe MigrateOpenclaw do
       expect(by_id.keys).to contain_exactly("alpha", "beta")
     end
 
-    it "resolves the model: defaults for alpha, per-agent override for beta" do
+    it "resolves the model: defaults for alpha, agents.list override for beta" do
       expect(by_id["alpha"]["model"]["primary"]).to eq("deepseek/deepseek-v4-flash")
       expect(by_id["alpha"]["model"]["source"]).to eq("openclaw.json agents.defaults")
       expect(by_id["alpha"]["model"]["fallbacks"]).to eq(["minimax/MiniMax-M2.7-highspeed"])
       expect(by_id["beta"]["model"]["primary"]).to eq("openai/gpt-4o-mini")
-      expect(by_id["beta"]["model"]["source"]).to eq("agents/<id>/agent/models.json")
+      expect(by_id["beta"]["model"]["source"]).to eq("openclaw.json agents.list")
+      expect(by_id["beta"]["entry_extra"]).not_to have_key("model")
     end
 
     it "classifies skills: byte-identical copy and symlink are shared; the rest own" do
@@ -45,7 +46,7 @@ RSpec.describe MigrateOpenclaw do
 
     it "detects secrets by NAME and kind — never the value" do
       secrets = by_id["alpha"]["secrets"]
-      expect(secrets.map { |s| s["file"] }).to contain_exactly("AGENTS.md", "IDENTITY.md")
+      expect(secrets.map { |s| s["file"] }).to contain_exactly("AGENTS.md", "IDENTITY.md", "TOOLS.md")
       ref = secrets.find { |s| s["kind"] == "ref" }
       expect(ref["ref"]).to eq("${OPENCLAW_GATEWAY_TOKEN}")
       value = secrets.find { |s| s["kind"] == "value" }
@@ -120,6 +121,13 @@ RSpec.describe MigrateOpenclaw do
       expect(identity).to include("${WHATSAPP}")
       agents = File.read(File.join(out, "AGENTS.md"))
       expect(agents).to include("${OPENCLAW_GATEWAY_TOKEN}")
+    end
+
+    it "with migrate_secrets: archived files are scrubbed too (.archive is inside the pack)" do
+      convert("alpha", migrate_secrets: true)
+      tools = File.read(File.join(out, ".archive", "TOOLS.md"))
+      expect(tools).not_to include(SECRET_VALUE)
+      expect(tools).to include("${WHATSAPP}")
     end
 
     it "seeds tools/ from --tools-from and reports zero tools otherwise" do
