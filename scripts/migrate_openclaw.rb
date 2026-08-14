@@ -12,6 +12,8 @@
 #   agents/<id>/sessions/*.jsonl
 #   workspace/<id>/AGENTS.md IDENTITY.md SOUL.md USER.md MEMORY.md … TOOLS.md HEARTBEAT.md
 #   workspace/<id>/skills/<name>/SKILL.md
+#   (agents.list[].workspace may point the agent at another workspace dir; it is
+#   an absolute path on the source machine, so only its basename is honoured)
 #   skills-shared/<name>/              # shared skills (copied or symlinked into agents)
 #   credentials/                       # platform allowlists/tokens
 #
@@ -148,8 +150,16 @@ module MigrateOpenclaw
     ref.include?("/") ? ref.split("/", 2) : [nil, ref]
   end
 
+  # agents.list[].workspace is an ABSOLUTE path on the machine OpenClaw ran on
+  # (e.g. /data/openclaw/workspace/agent-store-natura4 for agent-store-natura-br)
+  # — only its basename survives copying the state dir elsewhere.
+  def workspace_dir(root, id, entry)
+    name = entry["workspace"].to_s.empty? ? id : File.basename(entry["workspace"])
+    File.join(root, "workspace", name)
+  end
+
   def detect_secrets(root, agent, cred_names)
-    ws = File.join(root, "workspace", agent["id"])
+    ws = agent["workspace_dir"]
     values = credential_values(root, cred_names)
     found = []
     agent["files"].each { |f| scan_secrets(File.join(ws, f), found, values, cred_names, root) }
@@ -208,16 +218,19 @@ module MigrateOpenclaw
 
     ids = list.map { |e| e["id"] }.compact
     ids += Dir.children(File.join(root, "agents")).sort if Dir.exist?(File.join(root, "agents"))
-    ids += Dir.children(File.join(root, "workspace")).sort if Dir.exist?(File.join(root, "workspace"))
+    # A workspace dir claimed by an entry under a different name (agents.list[].
+    # workspace) belongs to that agent — it must not surface as a phantom id.
+    claimed = list.filter_map { |e| File.basename(e["workspace"].to_s) unless e["workspace"].to_s.empty? }
+    ids += (Dir.children(File.join(root, "workspace")).sort - claimed) if Dir.exist?(File.join(root, "workspace"))
     ids = ids.uniq.sort
 
     shared_dir = File.join(root, "skills-shared")
     creds = credential_names(root)
 
     agents = ids.map do |id|
-      ws = File.join(root, "workspace", id)
-      agent_dir = File.join(root, "agents", id, "agent")
       entry = list.find { |e| e["id"] == id } || {}
+      ws = workspace_dir(root, id, entry)
+      agent_dir = File.join(root, "agents", id, "agent")
 
       files = Dir.exist?(ws) ? Dir.glob(File.join(ws, "*.md")).sort.map { |f| File.basename(f) } : []
       skills = skill_md_files(ws).map do |f|
@@ -232,6 +245,7 @@ module MigrateOpenclaw
       {
         "id" => id,
         "workspace" => Dir.exist?(ws) ? "present" : "missing",
+        "workspace_dir" => ws,
         "files" => files,
         "skills" => skills,
         "model" => resolve_model(defaults, entry),
@@ -327,7 +341,7 @@ module MigrateOpenclaw
                    "to keep placeholders, never values):\n#{listing.join("\n")}"
     end
 
-    ws = File.join(state["state"], "workspace", agent)
+    ws = a["workspace_dir"]
     migrated_files, archived_files = classify_files(a["files"])
     root = state["state"]
 

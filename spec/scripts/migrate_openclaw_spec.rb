@@ -57,6 +57,28 @@ RSpec.describe MigrateOpenclaw do
     it "keeps beta clean (no secrets)" do
       expect(by_id["beta"]["secrets"]).to be_empty
     end
+
+    it "honours agents.list[].workspace by basename (real volume: natura-br lives in natura4)" do
+      Dir.mktmpdir("migrate-ws") do |root|
+        File.write(File.join(root, "openclaw.json"), JSON.generate(
+                     "agents" => {
+                       "defaults" => { "model" => { "primary" => "deepseek/deepseek-v4-flash" } },
+                       "list" => [{ "id" => "gamma", "workspace" => "/data/openclaw/workspace/gamma-custom" }]
+                     }
+                   ))
+        FileUtils.mkdir_p(File.join(root, "workspace", "gamma-custom"))
+        File.write(File.join(root, "workspace", "gamma-custom", "AGENTS.md"), "# gamma")
+        state = described_class.read_state(root)
+        expect(state["agents"].map { |a| a["id"] }).to eq(["gamma"]) # no phantom gamma-custom
+        gamma = state["agents"].first
+        expect(gamma["workspace"]).to eq("present")
+        expect(gamma["files"]).to eq(["AGENTS.md"])
+        Dir.mktmpdir("migrate-ws-out") do |out|
+          described_class.convert(root, agent: "gamma", out: out)
+          expect(File.read(File.join(out, "AGENTS.md"))).to eq("# gamma")
+        end
+      end
+    end
   end
 
   describe ".convert" do
