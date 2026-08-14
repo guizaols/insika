@@ -159,7 +159,6 @@
         <% pf = new ? nil : @prompt_files.find { |f| f[:name] == @prompt_selected } %>
         <div class="drill-pane-head">
           <div class="title">
-            <nav class="crumbs"><a href="<%= agent_path(@agent.id) %>#prompts">prompts</a> / <span><%= new ? "new" : @prompt_selected %></span></nav>
             <strong class="mono"><%= new ? "New prompt file" : @prompt_selected %></strong>
           </div>
           <button type="submit" form="prompt-form" class="btn primary" data-turbo-submits-with="Saving…"><%= new ? "Create prompt" : "Save prompt" %></button>

@@ -124,7 +124,7 @@
   .sidebar {
     position:sticky; top:0; height:100vh; overflow-y:auto;
     background:var(--panel); border-right:1px solid var(--line-1);
-    display:flex; flex-direction:column; gap:.125rem; padding:.875rem .75rem;
+    display:flex; flex-direction:column; gap:.125rem; padding:.75rem .75rem .5rem;
   }
   .app-main { min-width:0; display:flex; flex-direction:column; }
 
@@ -141,7 +141,7 @@
   .brand.big { font-size:var(--text-2xl); padding:0; margin-bottom:.5rem; }
 
   /* Sidebar navigation — 30px rows, hairline gap, filled active state. */
-  .nav-group { margin-top:.75rem; }
+  .nav-group { margin-top:.6rem; }
   .nav-label { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); padding:0 .5rem .3rem; }
   .nav { display:flex; flex-direction:column; gap:1px; }
   .nav a {
@@ -154,10 +154,10 @@
   .nav a[aria-current="page"] svg { color:var(--accent-bg); opacity:1; }
 
   /* Sidebar footer: health readout + theme + logout + environment identity */
-  .sidebar-foot { margin-top:auto; padding-top:.875rem; display:flex; flex-direction:column; gap:.625rem; }
-  .health-card { border:1px solid var(--line-1); border-radius:var(--radius); background:var(--surface-1); padding:.625rem .75rem; }
+  .sidebar-foot { margin-top:auto; padding-top:.75rem; display:flex; flex-direction:column; gap:.5rem; }
+  .health-card { border:1px solid var(--line-1); border-radius:var(--radius); background:var(--surface-1); padding:.55rem .7rem; }
   .health-card .row { display:flex; align-items:center; gap:.45rem; font-size:var(--text-sm); }
-  .health-card .stat { color:var(--dim); font-size:var(--text-xs); margin-top:.45rem; display:flex; flex-direction:column; gap:.15rem; }
+  .health-card .stat { color:var(--dim); font-size:var(--text-xs); margin-top:.3rem; display:flex; flex-direction:column; gap:.1rem; }
   .health-card .stat-row { display:flex; align-items:baseline; gap:.35rem; }
   .health-card .stat-row b { flex:0 0 auto; }
   .health-card .stat b { color:var(--fg); font-weight:600; }
@@ -220,6 +220,10 @@
     padding:1.25rem 1.5rem; box-shadow:var(--shadow);
   }
   .card + .card { margin-top:1rem; }
+  /* The sibling spacing above must NOT leak into grid children — a margin on
+     grid items offsets the whole row instead of adding rhythm (cards 2+ sat
+     16px lower than the first in the agents grid). */
+  .agent-grid > .card, .stat-cards > .card, .check-grid > .card, .home-grid > .card { margin-top:0; }
 
   /* ── Buttons ────────────────────────────────────────────────────────── */
   .btn, button {
@@ -359,7 +363,7 @@
   .drill-detail { flex:1 1 auto; }
   .drill-pane-head {
     flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:.6rem;
-    padding:.7rem 1rem; min-height:3.25rem; border-bottom:1px solid var(--line-1);
+    padding:.55rem 1rem; min-height:3.5rem; border-bottom:1px solid var(--line-1);
     background:color-mix(in srgb,var(--panel) 65%,var(--surface-1));
   }
   .drill-pane-head .title { min-width:0; }
