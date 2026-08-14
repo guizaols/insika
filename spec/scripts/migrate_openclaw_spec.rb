@@ -58,6 +58,24 @@ RSpec.describe MigrateOpenclaw do
       expect(by_id["beta"]["secrets"]).to be_empty
     end
 
+    it "archives a SKILL.md without YAML frontmatter instead of emitting an invalid pack" do
+      dir = File.join(FIXTURE, "workspace", "alpha", "skills", "not-a-skill")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "SKILL.md"), "# just an index, no frontmatter\n")
+      begin
+        Dir.mktmpdir("migrate-nofm") do |out|
+          report = described_class.convert(FIXTURE, agent: "alpha", out: out, migrate_secrets: true)
+          entry = report["skills"].find { |s| s["name"] == "not-a-skill" }
+          expect(entry["result"]).to eq("archived (no frontmatter)")
+          expect(File.exist?(File.join(out, "skills", "not-a-skill", "SKILL.md"))).to be(false)
+          expect(File.exist?(File.join(out, ".archive", "skills", "not-a-skill", "SKILL.md"))).to be(true)
+          expect { Insika::Pack.from_dir(out) }.not_to raise_error
+        end
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
+
     it "refuses a missing or non-state dir with a clear error (not 'agent not found')" do
       expect { described_class.read_state("/nonexistent/nowhere") }
         .to raise_error(MigrateOpenclaw::Error, /state dir does not exist/)
