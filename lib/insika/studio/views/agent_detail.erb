@@ -8,17 +8,18 @@
   <a class="btn primary" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>">Open playground →</a>
 </header>
 
-<nav class="subnav">
-  <a href="#config">config</a>
-  <a href="#prompts">prompts</a>
-  <a href="#skills">skills</a>
-  <a href="#memory">memory</a>
-  <a href="#outcomes">outcomes</a>
-  <a href="#history">history</a>
+<div class="tabs-page" data-controller="tabs">
+<nav class="subnav" aria-label="agent sections">
+  <a href="#config" data-tabs-target="tab">config</a>
+  <a href="#prompts" data-tabs-target="tab">prompts</a>
+  <a href="#skills" data-tabs-target="tab">skills</a>
+  <a href="#memory" data-tabs-target="tab">memory</a>
+  <a href="#outcomes" data-tabs-target="tab">outcomes</a>
+  <a href="#history" data-tabs-target="tab">history</a>
 </nav>
 
 <!-- ── Config / model ────────────────────────────────────────────────────── -->
-<section class="section" id="config">
+<section class="section" id="config" data-tabs-target="panel">
   <div class="section-head"><h2>Configuration</h2><p class="muted">model, provider, memory, limits, generation params and the model fence — saved via <code>update_agent</code>.</p></div>
   <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/config">
     <%== csrf_tag %>
@@ -113,7 +114,7 @@
 </section>
 
 <!-- ── Prompts / identity (drill: file list | editor, like skills) ────────── -->
-<section class="section" id="prompts">
+<section class="section" id="prompts" data-tabs-target="panel">
   <div class="section-head">
     <h2>Prompts <span class="pill info plain"><%= @prompt_files.size %></span></h2>
     <p class="muted">the BIA's own identity (store-backed, versioned). Empty = uses the deployment default.</p>
@@ -221,7 +222,7 @@
 </section>
 
 <!-- ── Agent skills ──────────────────────────────────────────────────────── -->
-<section class="section" id="skills">
+<section class="section" id="skills" data-tabs-target="panel">
   <div class="section-head">
     <h2>Skills</h2>
     <p class="muted">which catalog skills this agent may load (<code>load_skill</code>).</p>
@@ -252,7 +253,7 @@
 </section>
 
 <!-- ── Agent memory (tenant = id) ────────────────────────────────────────── -->
-<section class="section" id="memory">
+<section class="section" id="memory" data-tabs-target="panel">
   <div class="section-head">
     <h2>Memory</h2>
     <p class="muted">facts and notes the BIA reads each turn (tenant <code><%= @agent.id %></code>).</p>
@@ -304,7 +305,7 @@
 </section>
 
 <!-- ── Outcomes (WS7) ────────────────────────────────────────────────────── -->
-<section class="section" id="outcomes">
+<section class="section" id="outcomes" data-tabs-target="panel">
   <div class="section-head">
     <h2>Outcomes</h2>
     <p class="muted">business results recorded via <code>POST /v1/outcomes</code> — last outcome and per-day series. The engine transports them; it does not interpret them.</p>
@@ -336,7 +337,7 @@
 </section>
 
 <!-- ── History ───────────────────────────────────────────────────────────── -->
-<section class="section" id="history">
+<section class="section" id="history" data-tabs-target="panel">
   <div class="section-head">
     <h2>History</h2>
     <p class="muted">recent conversations (all agents — a session doesn't stamp its author).</p>
@@ -359,3 +360,4 @@
     </div>
   <% end %>
 </section>
+</div>

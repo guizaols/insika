@@ -197,7 +197,7 @@
   /* Uses the real estate: fills the column up to a wide cap, generous gutters
      that tighten on narrow screens. Dense pages (tool matrix, agent grid) then
      lay out multi-column inside this width instead of a skinny 1200px ribbon. */
-  .page { width:100%; max-width:1560px; margin:0 auto; padding:1.75rem clamp(1.25rem,3.5vw,3rem) 5rem; }
+  .page { width:100%; max-width:1560px; margin:0 auto; padding:1.75rem clamp(1.25rem,3.5vw,3rem) 4rem; }
   /* Sticky page header: the title + primary action stay pinned as you scroll a
      long form/list — the "action always in reach" pattern. Backdrop keeps text
      legible over scrolling content. */
@@ -254,7 +254,7 @@
   button.ghost[disabled]:hover { background:transparent; }
 
   /* ── Forms ──────────────────────────────────────────────────────────── */
-  label { display:block; font-size:var(--text-sm); font-weight:500; color:var(--dim); margin:.8rem 0 0; letter-spacing:.004em; }
+  label { display:block; font-size:var(--text-sm); font-weight:500; color:var(--dim); margin:.6rem 0 0; letter-spacing:.004em; }
   input[type=text], input[type=password], input[type=number], textarea, select {
     display:block; width:100%; margin-top:.35rem; font:inherit; font-size:var(--text); padding:.32rem .65rem;
     /* `font:inherit` also inherits the parent <label>'s weight — force normal so
@@ -406,16 +406,29 @@
     .drill-pane + .drill-pane { border-left:0; border-top:1px solid var(--line-1); }
   }
 
-  /* Breadcrumbs + anchor subnav */
+  /* Breadcrumbs + tab bar (agent page). The subnav IS the tabs: the hash picks
+     the open section (tabs_controller), so the bar sits once under the page
+     head and the page stops stacking every section into one long scroll.
+     Static, not sticky — it no longer needs to chase a scroll that does not
+     exist (and a second sticky would slide under the page head's backdrop). */
   .crumbs { font-family:var(--mono); font-size:var(--text-xs); color:var(--dim); margin-bottom:.35rem; display:flex; gap:.4rem; align-items:center; }
   .crumbs a { color:var(--dim); }
   .crumbs a:hover { color:var(--accent); }
-  .subnav { display:flex; gap:.3rem; flex-wrap:wrap; margin-bottom:1.5rem; position:sticky; top:0; background:color-mix(in srgb,var(--ink) 85%,transparent); backdrop-filter:blur(8px); padding:.5rem 0; z-index:5; }
-  .subnav a { font-size:var(--text-sm); color:var(--dim); padding:.3rem .65rem; border-radius:var(--radius-sm); border:1px solid var(--line-1); background:var(--panel); transition:color var(--t-fast), border-color var(--t-fast); }
-  .subnav a:hover { color:var(--fg); border-color:var(--line-2); text-decoration:none; }
+  .subnav { display:flex; gap:.125rem; margin-bottom:1.25rem; border-bottom:1px solid var(--line-1); }
+  .subnav a { font-size:var(--text-sm); font-weight:500; color:var(--dim); padding:.45rem .7rem .5rem; border:0; background:transparent;
+    border-bottom:2px solid transparent; margin-bottom:-1px; border-radius:0;
+    transition:color var(--t-fast), border-color var(--t-fast); }
+  .subnav a:hover { color:var(--fg); background:transparent; border-color:transparent; text-decoration:none; }
+  .subnav a.on { color:var(--fg); font-weight:600; border-bottom-color:var(--accent-bg); }
+
+  /* In the tabbed agent page the drills fill the remaining viewport instead of
+     a fixed 100vh minus header guess — no page-level scrollbar in normal use.
+     The section's trailing margin is dead space when exactly one tab shows. */
+  .section .drill { height:calc(100vh - 19rem); min-height:26rem; }
+  .tabs-page .section { margin-bottom:.5rem; }
 
   /* Detail sections */
-  .section { margin-bottom:2.5rem; scroll-margin-top:5rem; }
+  .section { margin-bottom:2.5rem; scroll-margin-top:9rem; }
   .section > .card { margin-top:.75rem; }
   .section-head h2 { font-size:var(--text-md); font-weight:600; letter-spacing:-.01em; margin:.1rem 0; display:flex; align-items:center; gap:.5rem; }
   .section-head p { margin:.2rem 0 0; font-size:var(--text-sm); }
