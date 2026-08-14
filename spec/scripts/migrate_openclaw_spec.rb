@@ -58,6 +58,37 @@ RSpec.describe MigrateOpenclaw do
       expect(by_id["beta"]["secrets"]).to be_empty
     end
 
+    it "carries agents.list[].tools into tools_allow/tools_deny; open access only gets a note" do
+      Dir.mktmpdir("migrate-tools") do |root|
+        File.write(File.join(root, "openclaw.json"), JSON.generate(
+                     "agents" => {
+                       "defaults" => { "model" => { "primary" => "deepseek/deepseek-v4-flash" } },
+                       "list" => [
+                         { "id" => "with-allow", "tools" => { "allow" => %w[search_products add_to_cart], "deny" => ["process"] } },
+                         { "id" => "open-access", "tools" => { "deny" => ["process"] } }
+                       ]
+                     }
+                   ))
+        %w[with-allow open-access].each do |id|
+          FileUtils.mkdir_p(File.join(root, "workspace", id))
+          File.write(File.join(root, "workspace", id, "AGENTS.md"), "# #{id}")
+        end
+        Dir.mktmpdir do |out|
+          described_class.convert(root, agent: "with-allow", out: out)
+          config = JSON.parse(File.read(File.join(out, "agent.config.json")))
+          expect(config["tools_allow"]).to eq(%w[search_products add_to_cart])
+          expect(config["tools_deny"]).to eq(["process"])
+        end
+        Dir.mktmpdir do |out|
+          report = described_class.convert(root, agent: "open-access", out: out)
+          config = JSON.parse(File.read(File.join(out, "agent.config.json")))
+          expect(config).not_to have_key("tools_allow")
+          expect(config["tools_deny"]).to eq(["process"])
+          expect(report["notes"].join).to include("OPEN in OpenClaw")
+        end
+      end
+    end
+
     it "archives a SKILL.md without YAML frontmatter instead of emitting an invalid pack" do
       dir = File.join(FIXTURE, "workspace", "alpha", "skills", "not-a-skill")
       FileUtils.mkdir_p(dir)
