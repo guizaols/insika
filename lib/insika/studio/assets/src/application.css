@@ -477,6 +477,11 @@
   .versions ul { list-style:none; padding:0; margin:.6rem 0 0; display:flex; flex-direction:column; gap:.35rem; }
   .versions li { display:flex; align-items:center; gap:.6rem; }
   .versions li form { margin:0; }
+  /* Versions inside the prompts drill (always-open rows, not a <details>). */
+  .versions-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; }
+  .versions-list li { display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.4rem 0; border-bottom:1px solid var(--line-1); font-size:var(--text-sm); }
+  .versions-list li:last-child { border-bottom:0; }
+  .versions-list li form { margin:0; }
   .newfile { margin-top:1rem; }
   .newfile summary { cursor:pointer; font-weight:600; font-size:var(--text); color:var(--fg); }
   .newfile > summary::marker { color:var(--accent-bg); }
