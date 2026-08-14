@@ -58,6 +58,15 @@ RSpec.describe MigrateOpenclaw do
       expect(by_id["beta"]["secrets"]).to be_empty
     end
 
+    it "refuses a missing or non-state dir with a clear error (not 'agent not found')" do
+      expect { described_class.read_state("/nonexistent/nowhere") }
+        .to raise_error(MigrateOpenclaw::Error, /state dir does not exist/)
+      Dir.mktmpdir("migrate-empty") do |empty|
+        expect { described_class.read_state(empty) }
+          .to raise_error(MigrateOpenclaw::Error, /not an OpenClaw state dir/)
+      end
+    end
+
     it "honours agents.list[].workspace by basename (real volume: natura-br lives in natura4)" do
       Dir.mktmpdir("migrate-ws") do |root|
         File.write(File.join(root, "openclaw.json"), JSON.generate(

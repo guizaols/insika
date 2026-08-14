@@ -53,6 +53,7 @@ spec/scripts/*
 !spec/scripts/replay_compaction_spec.rb
 !spec/scripts/migrate_openclaw_spec.rb
 
-# OpenClaw state fetched from the Railway volume (customer data — never commit)
-/openclaw-state/
+# OpenClaw state fetched from the Railway volumes (customer data — never commit)
+/openclaw-state*/
+/openclaw-*.tgz
 /openclaw-volume.tgz
