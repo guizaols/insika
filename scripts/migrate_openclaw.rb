@@ -362,9 +362,18 @@ module MigrateOpenclaw
 
     outcomes = a["skills"].map do |s|
       src = File.join(ws, "skills", s["name"], "SKILL.md")
-      dst = File.join(out, "skills", s["name"], "SKILL.md")
       text = File.read(src, encoding: "UTF-8")
       text = scrub_secrets(text, root, state["credentials"]) if migrate_secrets
+      # Insika requires YAML frontmatter in a SKILL.md; a bare one (e.g. the
+      # openclaw-skills index some workspaces carry) is not a skill — archive it.
+      unless text.start_with?("---")
+        dst = File.join(out, ".archive", "skills", s["name"], "SKILL.md")
+        FileUtils.mkdir_p(File.dirname(dst))
+        File.write(dst, text)
+        next [dst, text, s["name"], "archived (no frontmatter)"]
+      end
+
+      dst = File.join(out, "skills", s["name"], "SKILL.md")
       FileUtils.mkdir_p(File.dirname(dst))
       [dst, text, s["name"], write_with_conflict(dst, text, skill_conflict)]
     end
