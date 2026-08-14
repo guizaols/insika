@@ -32,6 +32,27 @@ and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
 - **`import_pack.rb`** — provisions a pack (agent.config.json + skills + tools)
   into a **running** harness via `POST /v1/agents`. Runs as a client (no provider
   key needed); the server reloads the tool overlay and skill catalog in place.
+- **`migrate_openclaw.rb`** — migrates an OpenClaw state directory into Insika
+  packs. `analyze` (read-only report, the default), `convert` (state dir →
+  pack; unmapped files go to `.archive/`, never dropped), `sessions` (per-agent
+  volume report + `--archive`; history is archived, never imported), `import`
+  (delegates to `import_pack.rb`). The state dir can be a local OpenClaw repo
+  or a Railway volume fetched over `railway ssh` — the recipe, the state
+  layout, and the secret-handling rules are documented in the script header.
+  End-to-end:
+
+  ```bash
+  ruby scripts/migrate_openclaw.rb analyze  <state-dir>
+  ruby scripts/migrate_openclaw.rb convert  <state-dir> --agent <id> --out <pack-dir>
+  ruby scripts/migrate_openclaw.rb sessions <state-dir> --archive <safe-dir-outside-the-repo>
+  INSIKA_URL=<url> OPENCLAW_GATEWAY_TOKEN=<token> \
+    ruby scripts/migrate_openclaw.rb import <pack-dir>
+  ```
+
+  `import` targets whatever `INSIKA_URL` points at — a local server or a
+  deployed one, same command. A pack without `tools/` leaves the target's tool
+  registry untouched (TOOLS.md is prose and cannot be derived into data tools;
+  seed a fresh deployment with `--tools-from`).
 - **`serve_real.rb`** — boots the real single-process HTTP server (`/admin`,
   `/v1/*`) against the seeded Bia deployment; open `/admin/chat` and converse with
   real tools/skills/memory.
