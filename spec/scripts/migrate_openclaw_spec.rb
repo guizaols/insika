@@ -252,6 +252,22 @@ RSpec.describe MigrateOpenclaw do
       end
     end
 
+    it "excludes the sessions.json index from transcripts but archives it (real volume has one)" do
+      idx = File.join(FIXTURE, "agents", "alpha", "sessions", "sessions.json")
+      File.write(idx, %({"s1":{"updatedAt":1721260465932}}\n))
+      begin
+        alpha = described_class.session_report(state, "alpha").first
+        expect(alpha["transcripts"]).to eq(1)
+        expect(alpha["bytes"]).to be > File.size(File.join(FIXTURE, "agents", "alpha", "sessions", "s1.jsonl"))
+        Dir.mktmpdir do |out|
+          described_class.archive_sessions(state, ["alpha"], out)
+          expect(File.exist?(File.join(out, "alpha", "sessions.json"))).to be(true)
+        end
+      ensure
+        FileUtils.rm_f(idx)
+      end
+    end
+
     it "archives session files to <out>/<agent>/ with names preserved" do
       Dir.mktmpdir do |out|
         described_class.archive_sessions(state, ["alpha"], out)

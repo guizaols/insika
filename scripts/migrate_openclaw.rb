@@ -84,7 +84,9 @@ module MigrateOpenclaw
 
   # Session file kinds (validated against the real volume): <uuid>.jsonl is the
   # transcript, <uuid>.trajectory.jsonl the tool trajectory, and
-  # <uuid>.trajectory-path.json its metadata.
+  # <uuid>.trajectory-path.json its metadata. The dir also holds a
+  # sessions.json index — bytes/archive include it, transcript counts don't.
+  TRANSCRIPT_RE = /\.jsonl\z/
   TRAJECTORY_JSONL_RE = /\.trajectory\.jsonl\z/
   TRAJECTORY_PATH_RE = /\.trajectory-path\.json\z/
 
@@ -454,7 +456,7 @@ module MigrateOpenclaw
     agents.map do |a|
       dir = File.join(state["state"], "agents", a["id"], "sessions")
       files = Dir.exist?(dir) ? Dir.glob(File.join(dir, "*")).sort.select { |f| File.file?(f) } : []
-      transcripts = files.reject { |f| File.basename(f) =~ TRAJECTORY_JSONL_RE || File.basename(f) =~ TRAJECTORY_PATH_RE }
+      transcripts = files.select { |f| File.basename(f) =~ TRANSCRIPT_RE && File.basename(f) !~ TRAJECTORY_JSONL_RE }
       trajectories = files.select { |f| File.basename(f) =~ TRAJECTORY_JSONL_RE }
       paths = files.select { |f| File.basename(f) =~ TRAJECTORY_PATH_RE }
       messages = 0
