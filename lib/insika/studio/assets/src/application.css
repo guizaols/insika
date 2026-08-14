@@ -252,10 +252,10 @@
   /* ── Forms ──────────────────────────────────────────────────────────── */
   label { display:block; font-size:var(--text-sm); font-weight:500; color:var(--dim); margin:.8rem 0 0; letter-spacing:.004em; }
   input[type=text], input[type=password], input[type=number], textarea, select {
-    display:block; width:100%; margin-top:.35rem; font:inherit; font-size:var(--text); padding:.42rem .65rem;
+    display:block; width:100%; margin-top:.35rem; font:inherit; font-size:var(--text); padding:.32rem .65rem;
     /* `font:inherit` also inherits the parent <label>'s weight — force normal so
        field VALUES aren't rendered medium (reads as "everything is bold"). */
-    font-weight:400; min-height:2.1rem;
+    font-weight:400; min-height:2rem;
     border:1px solid var(--line-2); border-radius:var(--radius-sm); background:var(--surface-1); color:var(--fg);
     transition:border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
   }
@@ -671,7 +671,7 @@
   /* ── List filter bar ─────────────────────────────────────────── */
   .filter-bar { display:flex; align-items:center; gap:.7rem; margin:0 0 1rem; }
   input[type=search].filter-input {
-    display:block; flex:1; margin:0; font:inherit; font-size:var(--text-sm); padding:.42rem .8rem .42rem 2rem; min-height:2.1rem;
+    display:block; flex:1; margin:0; font:inherit; font-size:var(--text-sm); padding:.32rem .8rem .32rem 2rem; min-height:2rem;
     border:1px solid var(--line-2); border-radius:var(--radius); background-color:var(--surface-1); background-repeat:no-repeat; background-position:.65rem 50%;
     color:var(--fg); -webkit-appearance:none; appearance:none; transition:border-color var(--t-fast), box-shadow var(--t-fast);
     /* inline data-URI magnifier (allowed: img-src data:) tinted to --faint */
