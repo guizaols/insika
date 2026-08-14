@@ -35,6 +35,14 @@
 #       ${NAME} placeholders — the VALUE never lands in the pack, .archive/
 #       included).
 #
+#   sessions <state-dir> [--agent <id>] [--archive <dir>] [--json]
+#       Report the session data volume per agent — transcript/trajectory file
+#       counts, total bytes, message count, first/last timestamp. Sessions are
+#       NOT migrated into the Insika session store (Hermes decision carried
+#       over: history is archived, not imported); --archive <dir> copies the
+#       files to <dir>/<agent>/ for safe keeping. Transcripts may contain
+#       customer data — the copy is the operator's call.
+#
 #   import <pack-dir>
 #       Delegates to scripts/import_pack.rb (Insika::Pack.from_dir →
 #       POST /v1/agents). Same env as import_pack.rb (INSIKA_URL,
@@ -73,6 +81,12 @@ module MigrateOpenclaw
 
   VAR_REF = /\$\{[A-Z][A-Z0-9_]*\}/
   MIN_CRED_VALUE_LENGTH = 8
+
+  # Session file kinds (validated against the real volume): <uuid>.jsonl is the
+  # transcript, <uuid>.trajectory.jsonl the tool trajectory, and
+  # <uuid>.trajectory-path.json its metadata.
+  TRAJECTORY_JSONL_RE = /\.trajectory\.jsonl\z/
+  TRAJECTORY_PATH_RE = /\.trajectory-path\.json\z/
 
   module_function
 
@@ -433,6 +447,67 @@ module MigrateOpenclaw
     File.write(File.join(out, ".archive", "credentials.names.txt"), state["credentials"].join("\n") + "\n")
   end
 
+  # ---------- sessions (report + archive; never imported) ----------
+
+  def session_report(state, agent_id = nil)
+    agents = agent_id ? state["agents"].select { |a| a["id"] == agent_id } : state["agents"]
+    agents.map do |a|
+      dir = File.join(state["state"], "agents", a["id"], "sessions")
+      files = Dir.exist?(dir) ? Dir.glob(File.join(dir, "*")).sort.select { |f| File.file?(f) } : []
+      transcripts = files.reject { |f| File.basename(f) =~ TRAJECTORY_JSONL_RE || File.basename(f) =~ TRAJECTORY_PATH_RE }
+      trajectories = files.select { |f| File.basename(f) =~ TRAJECTORY_JSONL_RE }
+      paths = files.select { |f| File.basename(f) =~ TRAJECTORY_PATH_RE }
+      messages = 0
+      first = last = nil
+      transcripts.each do |f|
+        File.foreach(f) do |line|
+          row = JSON.parse(line)
+          messages += 1 if row["type"] == "message"
+          ts = row["timestamp"]
+          next unless ts.is_a?(String) && ts =~ /\A\d{4}-\d{2}-\d{2}T/
+
+          first = ts if first.nil? || ts < first
+          last = ts if last.nil? || ts > last
+        rescue JSON::ParserError
+          next
+        end
+      end
+      {
+        "id" => a["id"],
+        "transcripts" => transcripts.size,
+        "trajectories" => trajectories.size,
+        "trajectory_paths" => paths.size,
+        "bytes" => files.sum { |f| File.size?(f).to_i },
+        "messages" => messages,
+        "first" => first,
+        "last" => last
+      }
+    end
+  end
+
+  def print_session_report(report)
+    report.each do |r|
+      range = r["first"] ? "#{r['first']} .. #{r['last']}" : "(no timestamps)"
+      puts "agent #{r['id']}"
+      puts "  transcripts: #{r['transcripts']}  trajectories: #{r['trajectories']}" \
+           "  messages: #{r['messages']}  size: #{human_bytes(r['bytes'])}"
+      puts "  range: #{range}"
+      puts
+    end
+  end
+
+  def archive_sessions(state, agent_ids, out)
+    agent_ids.each do |id|
+      dir = File.join(state["state"], "agents", id, "sessions")
+      next unless Dir.exist?(dir)
+
+      FileUtils.mkdir_p(File.join(out, id))
+      Dir.glob(File.join(dir, "*")).sort.each do |f|
+        FileUtils.cp(f, File.join(out, id, File.basename(f))) if File.file?(f)
+      end
+    end
+  end
+
   # ---------- CLI ----------
 
   USAGE = <<~USAGE
@@ -440,12 +515,13 @@ module MigrateOpenclaw
            migrate_openclaw.rb convert <state-dir> --agent <id> --out <dir>
                               [--tools-from <pack-dir>] [--skill-conflict skip|overwrite|rename]
                               [--migrate-secrets]
+           migrate_openclaw.rb sessions <state-dir> [--agent <id>] [--archive <dir>] [--json]
            migrate_openclaw.rb import <pack-dir>
   USAGE
 
   def cli(argv)
     # analyze is the default subcommand: a bare state-dir argument means analyze.
-    cmd = %w[analyze convert import].include?(argv.first) ? argv.shift : "analyze"
+    cmd = %w[analyze convert sessions import].include?(argv.first) ? argv.shift : "analyze"
     case cmd
     when "analyze"
       options = {}
@@ -468,6 +544,35 @@ module MigrateOpenclaw
       dir = argv.shift or abort(USAGE)
       abort(USAGE) unless options[:agent] && options[:out]
       convert(dir, **options)
+    when "sessions"
+      options = {}
+      OptionParser.new do |o|
+        o.on("--agent ID") { |v| options[:agent] = v }
+        o.on("--archive DIR") { |v| options[:archive] = v }
+        o.on("--json") { options[:json] = true }
+        o.on("-h", "--help") { puts USAGE; exit 0 }
+      end.parse!(argv)
+      dir = argv.shift or abort(USAGE)
+      state = read_state(dir)
+      if options[:agent] && state["agents"].none? { |a| a["id"] == options[:agent] }
+        raise Error, "agent '#{options[:agent]}' not found in #{state['state']}"
+      end
+      report = session_report(state, options[:agent])
+      if options[:json]
+        puts JSON.pretty_generate(report)
+      else
+        print_session_report(report)
+      end
+      if options[:archive]
+        ids = report.map { |r| r["id"] }
+        archive_sessions(state, ids, options[:archive])
+        out_stream = options[:json] ? $stderr : $stdout
+        report.each do |r|
+          out_dir = File.join(options[:archive], r["id"])
+          archived = Dir.exist?(out_dir) ? Dir.children(out_dir).size : 0
+          out_stream.puts "archived #{archived} files for #{r['id']} -> #{out_dir}"
+        end
+      end
     when "import"
       pack = argv.shift or abort(USAGE)
       import_pack = File.expand_path("import_pack.rb", __dir__)
