@@ -198,6 +198,71 @@ RSpec.describe MigrateOpenclaw do
     end
   end
 
+  describe ".session_report / .archive_sessions" do
+    let(:state) { described_class.read_state(FIXTURE) }
+    let(:report) { described_class.session_report(state) }
+    let(:by_id) { report.to_h { |r| [r["id"], r] } }
+
+    it "reports transcripts and messages per agent, never content" do
+      expect(by_id.keys).to contain_exactly("alpha", "beta")
+      expect(by_id["alpha"]["transcripts"]).to eq(1)
+      expect(by_id["alpha"]["messages"]).to eq(2)
+      expect(by_id["alpha"]["trajectories"]).to eq(0)
+      expect(by_id["alpha"]["bytes"]).to be_positive
+      expect(JSON.pretty_generate(report)).not_to include("como posso ajudar")
+    end
+
+    it "filters by --agent via the id argument" do
+      filtered = described_class.session_report(state, "beta")
+      expect(filtered.map { |r| r["id"] }).to eq(["beta"])
+    end
+
+    it "counts trajectories and reads the timestamp range" do
+      sdir = File.join(FIXTURE, "agents", "alpha", "sessions")
+      original = File.read(File.join(sdir, "s1.jsonl"))
+      File.write(File.join(sdir, "t.trajectory.jsonl"),
+                 %({"type":"tool","timestamp":"2026-07-17T22:14:25.932Z"}\n))
+      File.write(File.join(sdir, "t.trajectory-path.json"), "{}")
+      File.open(File.join(sdir, "s1.jsonl"), "a") do |f|
+        f.write(%({"type":"message","role":"user","text":"x","timestamp":"2026-07-18T10:00:00.000Z"}\n))
+      end
+      alpha = described_class.session_report(state, "alpha").first
+      expect(alpha["trajectories"]).to eq(1)
+      expect(alpha["trajectory_paths"]).to eq(1)
+      expect(alpha["first"]).to eq("2026-07-18T10:00:00.000Z")
+      expect(alpha["last"]).to eq("2026-07-18T10:00:00.000Z")
+    ensure
+      File.write(File.join(FIXTURE, "agents", "alpha", "sessions", "s1.jsonl"), original)
+      FileUtils.rm_f(File.join(FIXTURE, "agents", "alpha", "sessions", "t.trajectory.jsonl"))
+      FileUtils.rm_f(File.join(FIXTURE, "agents", "alpha", "sessions", "t.trajectory-path.json"))
+    end
+
+    it "ignores subdirectories inside sessions/ (real volume has skills-prompts/)" do
+      sub = File.join(FIXTURE, "agents", "alpha", "sessions", "skills-prompts")
+      FileUtils.mkdir_p(sub)
+      begin
+        alpha = described_class.session_report(state, "alpha").first
+        expect(alpha["transcripts"]).to eq(1)
+        Dir.mktmpdir do |out|
+          described_class.archive_sessions(state, ["alpha"], out)
+          expect(File.directory?(File.join(out, "alpha", "skills-prompts"))).to be(false)
+        end
+      ensure
+        FileUtils.rm_rf(sub)
+      end
+    end
+
+    it "archives session files to <out>/<agent>/ with names preserved" do
+      Dir.mktmpdir do |out|
+        described_class.archive_sessions(state, ["alpha"], out)
+        expect(File.exist?(File.join(out, "alpha", "s1.jsonl"))).to be(true)
+        expect(File.read(File.join(out, "alpha", "s1.jsonl"))).to eq(File.read(
+          File.join(FIXTURE, "agents", "alpha", "sessions", "s1.jsonl")
+        ))
+      end
+    end
+  end
+
   describe "CLI" do
     let(:script) { File.expand_path("../../scripts/migrate_openclaw.rb", __dir__) }
 
@@ -229,6 +294,32 @@ RSpec.describe MigrateOpenclaw do
         expect(status).not_to be_success
         expect(_stdout).to include("secrets detected")
       end
+    end
+
+    it "sessions reports the volume and --archive copies the files" do
+      out, status = run("sessions", FIXTURE)
+      expect(status).to be_success
+      expect(out).to include("agent alpha")
+      expect(out).to include("transcripts: 1")
+      expect(out).to include("messages: 2")
+      expect(out).not_to include("como posso ajudar")
+
+      Dir.mktmpdir do |archive|
+        out, status = run("sessions", FIXTURE, "--agent", "alpha", "--archive", archive)
+        expect(status).to be_success
+        expect(File.exist?(File.join(archive, "alpha", "s1.jsonl"))).to be(true)
+        expect(out).to include("archived 1 files for alpha")
+        expect(out).not_to include("agent beta")
+      end
+    end
+
+    it "sessions --json emits the report as JSON" do
+      out, status = run("sessions", FIXTURE, "--json")
+      expect(status).to be_success
+      report = JSON.parse(out)
+      expect(report.map { |r| r["id"] }).to contain_exactly("alpha", "beta")
+      expect(report.find { |r| r["id"] == "alpha" }["messages"]).to eq(2)
+      expect(out).not_to include(SECRET_VALUE)
     end
 
     it "import delegates to import_pack.rb (same client flow)" do
