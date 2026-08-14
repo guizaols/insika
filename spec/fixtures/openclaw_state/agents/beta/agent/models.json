@@ -1,5 +1,4 @@
 {
-  "primary": "openai/gpt-4o-mini",
   "providers": {
     "openai": {
       "baseUrl": "https://api.openai.com/v1",

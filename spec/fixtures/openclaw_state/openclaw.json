@@ -15,6 +15,7 @@
       {
         "id": "beta",
         "workspace": "/dev/path/workspace/beta",
+        "model": "openai/gpt-4o-mini",
         "reasoningDefault": "off",
         "heartbeat": { "every": "0" }
       }

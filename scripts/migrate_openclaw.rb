@@ -7,7 +7,7 @@
 #
 # State layout (validated against the local OpenClaw repo):
 #   openclaw.json                      # providers, agents.defaults, agents.list
-#   agents/<id>/agent/models.json      # per-agent provider catalog / model override
+#   agents/<id>/agent/models.json      # per-agent provider CATALOG (not a model override)
 #   agents/<id>/agent/openclaw-agent.sqlite
 #   agents/<id>/sessions/*.jsonl
 #   workspace/<id>/AGENTS.md IDENTITY.md SOUL.md USER.md MEMORY.md … TOOLS.md HEARTBEAT.md
@@ -32,7 +32,8 @@
 #       unmapped defaults are ARCHIVED to <dir>/.archive/, never dropped.
 #       Secrets: refuses when a file to migrate contains a ${VAR} ref or a
 #       credentials/ value, unless --migrate-secrets (values then become
-#       ${NAME} placeholders — the VALUE never lands in the pack).
+#       ${NAME} placeholders — the VALUE never lands in the pack, .archive/
+#       included).
 #
 #   import <pack-dir>
 #       Delegates to scripts/import_pack.rb (Insika::Pack.from_dir →
@@ -164,10 +165,13 @@ module MigrateOpenclaw
     end || "(unknown credential)"
   end
 
-  def resolve_model(defaults, models)
-    override = models["primary"] || models["model"]
+  # The per-agent override lives in openclaw.json agents.list[].model; the
+  # agents/<id>/agent/models.json file is a provider CATALOG and never carries
+  # the model choice (validated against the real state).
+  def resolve_model(defaults, entry)
+    override = entry["model"]
     if override
-      { "primary" => override, "source" => "agents/<id>/agent/models.json", "fallbacks" => [] }
+      { "primary" => override, "source" => "openclaw.json agents.list", "fallbacks" => [] }
     else
       dmodel = (defaults["model"] || {})
       { "primary" => dmodel["primary"], "source" => "openclaw.json agents.defaults",
@@ -197,7 +201,6 @@ module MigrateOpenclaw
     agents = ids.map do |id|
       ws = File.join(root, "workspace", id)
       agent_dir = File.join(root, "agents", id, "agent")
-      models = read_json(File.join(agent_dir, "models.json")) || {}
       entry = list.find { |e| e["id"] == id } || {}
 
       files = Dir.exist?(ws) ? Dir.glob(File.join(ws, "*.md")).sort.map { |f| File.basename(f) } : []
@@ -215,8 +218,8 @@ module MigrateOpenclaw
         "workspace" => Dir.exist?(ws) ? "present" : "missing",
         "files" => files,
         "skills" => skills,
-        "model" => resolve_model(defaults, models),
-        "entry_extra" => entry.reject { |k, _| %w[id workspace].include?(k) },
+        "model" => resolve_model(defaults, entry),
+        "entry_extra" => entry.reject { |k, _| %w[id workspace model].include?(k) },
         "sessions" => { "jsonl" => jsonl, "sqlite_bytes" => sqlite_bytes }
       }
     end
@@ -345,7 +348,7 @@ module MigrateOpenclaw
     config["params"] = { "thinking" => reasoning } if reasoning
     File.write(File.join(out, "agent.config.json"), JSON.pretty_generate(config) + "\n")
 
-    archive_rest(ws, out, archived_files, state, agent)
+    archive_rest(ws, out, archived_files, state, agent, migrate_secrets: migrate_secrets)
 
     report = {
       "agent" => agent,
@@ -408,8 +411,14 @@ module MigrateOpenclaw
     files.size
   end
 
-  def archive_rest(ws, out, archived_files, state, agent)
-    archived_files.each { |name| FileUtils.cp(File.join(ws, name), File.join(out, ".archive", name)) }
+  # .archive/ lives inside the pack dir, so credential values are scrubbed
+  # there too — archived does not mean exempt from the secrets promise.
+  def archive_rest(ws, out, archived_files, state, agent, migrate_secrets: false)
+    archived_files.each do |name|
+      text = File.read(File.join(ws, name), encoding: "UTF-8")
+      text = scrub_secrets(text, state["state"], state["credentials"]) if migrate_secrets
+      File.write(File.join(out, ".archive", name), text)
+    end
     File.write(File.join(out, ".archive", "openclaw-defaults.json"),
                JSON.pretty_generate(state["defaults"]) + "\n")
     models = read_json(File.join(state["state"], "agents", agent, "agent", "models.json"))
