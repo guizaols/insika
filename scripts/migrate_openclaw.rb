@@ -212,6 +212,12 @@ module MigrateOpenclaw
 
   def read_state(dir)
     root = File.expand_path(dir)
+    raise Error, "state dir does not exist: #{root}" unless Dir.exist?(root)
+    unless File.exist?(File.join(root, "openclaw.json")) ||
+           Dir.exist?(File.join(root, "agents")) || Dir.exist?(File.join(root, "workspace"))
+      raise Error, "not an OpenClaw state dir (no openclaw.json, agents/ or workspace/): #{root}"
+    end
+
     config = read_json(File.join(root, "openclaw.json")) || {}
     defaults = (config["agents"] || {})["defaults"] || {}
     list = (config["agents"] || {})["list"] || []
