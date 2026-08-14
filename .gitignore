@@ -52,3 +52,7 @@ spec/scripts/*
 !spec/scripts/loadtest_session_spec.rb
 !spec/scripts/replay_compaction_spec.rb
 !spec/scripts/migrate_openclaw_spec.rb
+
+# OpenClaw state fetched from the Railway volume (customer data — never commit)
+/openclaw-state/
+/openclaw-volume.tgz
