@@ -369,6 +369,34 @@ RSpec.describe Studio::App do
     expect(res.body).to include('data-controller="live-transcript"')
   end
 
+  it "playground GET suggests recent sessions in a datalist combobox" do
+    sessions = {
+      "s-recent" => StoredSession.new(id: "s-recent",
+                                       messages: [{ "role" => "user", "content" => "oi" }],
+                                       vars: nil, updated_at: "2026-08-14T10:00:00Z"),
+      "s-older" => StoredSession.new(id: "s-older", messages: [], vars: nil,
+                                     updated_at: "2026-08-13T10:00:00Z")
+    }
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/playground").body
+    expect(body).to include('<datalist id="recent-sessions">')
+    expect(body).to include(%(<option value="s-recent" label="))
+    expect(body).to include(%(<option value="s-older" label="))
+  end
+
+  it "playground keeps the open session in the combobox even when it fell off the recents" do
+    sessions = {}
+    9.times do |i|
+      sessions["s-new-#{i}"] = StoredSession.new(id: "s-new-#{i}", messages: [], vars: nil,
+                                                 updated_at: "2026-08-1#{i}T10:00:00Z")
+    end
+    sessions["s-open"] = StoredSession.new(id: "s-open", messages: [], vars: nil,
+                                           updated_at: "2026-08-01T10:00:00Z")
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/playground?session_id=s-open").body
+    expect(body).to include(%(<option value="s-open" label="))
+  end
+
   it "escapes dynamic content exactly once (no double-escape, XSS-safe)" do
     app, = build_app(agents: [profile("bia", model: "modelo&<x>")])
     client = login(app)
@@ -1626,6 +1654,13 @@ RSpec.describe Studio::App do
     expect(body).to include("runtime online")
   end
 
+  it "stamps each avatar with a deterministic hue class (the id's fingerprint)" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include(%(class="avatar avatar-h#{"bia".bytes.sum % 10}"))
+    expect(body).to include(%(class="avatar avatar-h#{"chef".bytes.sum % 10}"))
+  end
+
   it "the sidebar shows the environment identity chip" do
     app, = build_app
     body = login(app).get("/agents").body
@@ -1638,6 +1673,17 @@ RSpec.describe Studio::App do
     body = login(app).get("/agents").body
     expect(body).to match(%r{/studio/assets/dist/application\.css\?v=\d+})
     expect(body).to match(%r{/studio/assets/dist/application\.js\?v=\d+})
+  end
+
+  it "serves the favicon svg and links it from the layout (no /favicon.ico 401)" do
+    app, = build_app
+    res = Client.new(app).get("/assets/dist/favicon.svg")
+    expect(res.status).to eq(200)
+    expect(res.headers["content-type"]).to include("image/svg+xml")
+    # The link is in the layout, so the unauthenticated login page has it too:
+    # the browser requests THIS instead of the auth-protected root /favicon.ico.
+    body = Client.new(app).get("/login").body
+    expect(body).to match(%r{<link rel="icon" type="image/svg\+xml" href="/studio/assets/dist/favicon\.svg\?v=\d+">})
   end
 
   it "applies the cookie theme server-side (no wrong-theme flash on load)" do

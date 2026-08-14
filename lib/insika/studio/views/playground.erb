@@ -15,7 +15,13 @@
         </select>
       </label>
       <label class="chat-field">session
-        <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation">
+        <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation"
+               list="recent-sessions" autocomplete="off">
+        <datalist id="recent-sessions">
+          <% Array(@recent).each do |s| %>
+            <option value="<%= s.id %>" label="<%= [time_ago(s.updated_at), presence(session_preview(s).to_s[0, 60])].compact.join(" · ") %>">
+          <% end %>
+        </datalist>
       </label>
       <span class="pill info chat-status" data-live-transcript-target="status">disconnected</span>
       <details class="pin chat-pin">
