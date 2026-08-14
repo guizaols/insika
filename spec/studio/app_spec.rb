@@ -467,8 +467,40 @@ RSpec.describe Studio::App do
      expect(res.status).to eq(200)
      %w[config prompts skills memory outcomes history].each { |a| expect(res.body).to include("id=\"#{a}\"") }
     expect(res.body).to include('name="model"')
-    expect(res.body).to include('data-controller="code-editor"')
   end
+
+   it "the prompts section is a drill: nothing selected shows the pick-a-file state" do
+     app, = build_app
+     body = login(app).get("/agents/bia").body
+     expect(body).to include("Pick a prompt file on the left")
+     expect(body).not_to include('data-controller="code-editor"')
+   end
+
+   it "GET prompts/new opens the create form in the drill" do
+     app, = build_app
+     body = login(app).get("/agents/bia/prompts/new").body
+     expect(body).to include("New prompt file")
+     expect(body).to include('name="file"')
+     expect(body).to include('data-controller="code-editor"')
+   end
+
+   it "GET prompts/:file opens that file's editor, versions and remove action" do
+     app, = build_app(agents: [profile("bia", prompt_files: %w[IDENTITY.md])],
+                      agent_files: { ["bia", "IDENTITY.md"] => "# Eu" })
+     body = login(app).get("/agents/bia/prompts/IDENTITY.md").body
+     expect(body).to include("IDENTITY.md")
+     expect(body).to include("# Eu")
+     expect(body).to include("/prompts/delete")
+     expect(body).to include('data-controller="code-editor"')
+     expect(body).to include("Save prompt")
+   end
+
+   it "the prompt file list links into the drill routes" do
+     app, = build_app(agents: [profile("bia", prompt_files: %w[IDENTITY.md SOUL.md])])
+     body = login(app).get("/agents/bia").body
+     expect(body).to include("/agents/bia/prompts/IDENTITY.md")
+     expect(body).to include("/agents/bia/prompts/SOUL.md")
+   end
 
    it "the agents grid shows the last outcome per agent" do
      app, = build_app(outcomes: [
@@ -637,11 +669,12 @@ RSpec.describe Studio::App do
     app, bus = build_app # bia has prompt_files: []
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
-    client.post("/agents/bia/prompts", params: {
-                  "file" => "IDENTITY.md", "content" => "# Eu", "_csrf" => csrf
-                })
+    res = client.post("/agents/bia/prompts", params: {
+                        "file" => "IDENTITY.md", "content" => "# Eu", "_csrf" => csrf
+                      })
     expect(bus.last(:write_agent_file).payload).to include(agent_id: "bia", file: "IDENTITY.md")
     expect(bus.types).not_to include(:update_agent) # prompt_files sync belongs to the Command
+    expect(res.headers["location"]).to eq("/studio/agents/bia/prompts/IDENTITY.md#prompts")
   end
 
   it "removing a prompt dispatches delete_agent_file (the Command removes it from prompt_files)" do
@@ -1625,9 +1658,11 @@ RSpec.describe Studio::App do
   end
 
   it "the editors load the dirty-guard island (warning about leaving without saving)" do
-    app, = build_app(system_files: { "H.md" => "x" })
+    app, = build_app(agents: [profile("bia", prompt_files: %w[SOUL.md])],
+                     agent_files: { ["bia", "SOUL.md"] => "x" },
+                     system_files: { "H.md" => "x" })
     client = login(app)
-    expect(client.get("/agents/bia").body).to include('data-controller="dirty-guard"')
+    expect(client.get("/agents/bia/prompts/SOUL.md").body).to include('data-controller="dirty-guard"')
     expect(client.get("/system-files").body).to include('data-controller="dirty-guard"')
     expect(client.get("/skills/new").body).to include('data-controller="dirty-guard"')
   end
@@ -1647,9 +1682,9 @@ RSpec.describe Studio::App do
     expect(client.get("/tools/def/cep").body).to include("/delete", "data-turbo-confirm=")
     expect(client.get("/system-files").body).to include('action="/studio/system-files/delete"', "data-turbo-confirm=")
     expect(client.get("/settings?s=llm").body).to include('action="/studio/settings/providers/delete"', "data-turbo-confirm=")
-    detail = client.get("/agents/bia").body
+    detail = client.get("/agents/bia/prompts/SOUL.md").body
     expect(detail).to include("/prompts/delete", "data-turbo-confirm=")
-    expect(detail).to include('/memory/forget" data-turbo-confirm=')
+    expect(client.get("/agents/bia").body).to include('/memory/forget" data-turbo-confirm=')
   end
 
   it "action buttons declare a data-turbo-submits-with loading label" do

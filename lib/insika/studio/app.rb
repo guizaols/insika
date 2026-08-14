@@ -285,13 +285,27 @@ module Studio
           # enters `prompt_files` — otherwise the Prompt provider wouldn't load it.
           # prompt_files is synced by the Commands themselves (write/delete
           # register/remove the file) — the Studio just dispatches the operation.
+          #
+          # The prompts section renders as a drill (master file list | editor), so
+          # the file under edit rides the URL like skills does: GET .../prompts/:file
+          # opens that file, .../prompts/new opens the create form.
           r.on "prompts" do
+            r.get "new" do
+              @prompt_selected = ""
+              render_agent_detail
+            end
+
+            r.get String do |file|
+              @prompt_selected = utf8(file)
+              render_agent_detail
+            end
+
             r.post "delete" do
               check_csrf!
               with_flash("Prompt removed.") do
                 dispatch(:delete_agent_file, { agent_id: id, file: presence(r.params["file"]) })
               end
-              r.redirect(agent_path(id))
+              r.redirect(agent_path(id, "prompts"))
             end
 
             r.post "restore" do
@@ -302,7 +316,7 @@ module Studio
                            version: r.params["version"]
                          })
               end
-              r.redirect(agent_path(id))
+              r.redirect(prompt_edit_path(id, r.params["file"]))
             end
 
             r.post do
@@ -312,7 +326,7 @@ module Studio
                            agent_id: id, file: presence(r.params["file"]), content: r.params["content"].to_s
                          })
               end
-              r.redirect(agent_path(id))
+              r.redirect(prompt_edit_path(id, r.params["file"]))
             end
           end
 
@@ -1658,6 +1672,13 @@ end
     def agent_path(id, anchor = nil)
       base = "/studio/agents/#{Rack::Utils.escape(id)}"
       anchor ? "#{base}##{anchor}" : base
+    end
+
+    # Where a prompt POST lands back: the same file open in the drill, scrolled
+    # to the prompts section. No file (a delete, say) → the agent page itself.
+    def prompt_edit_path(id, file)
+      name = presence(file)
+      name ? "#{agent_path(id)}/prompts/#{Rack::Utils.escape(name)}#prompts" : agent_path(id, "prompts")
     end
 
     # Serves a versioned asset from dist. `File.basename` kills path traversal; only
