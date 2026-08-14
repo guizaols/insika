@@ -39,7 +39,6 @@
       <% new = @selected == "" %>
       <div class="drill-pane-head">
         <div class="title">
-          <nav class="crumbs"><a href="/studio/skills">skills</a> / <span><%= new ? "new" : @selected %></span><% if scope %> / <span>for <%= scope %></span><% end %></nav>
           <strong class="mono"><%= new ? "New skill" : @selected %><% if scope %> <span class="pill warn">specialized for <%= scope %></span><% end %></strong>
         </div>
         <button type="submit" form="skill-form" class="btn primary" data-turbo-submits-with="Saving…">Save skill</button>
