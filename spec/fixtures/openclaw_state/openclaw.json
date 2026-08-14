@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "deepseek/deepseek-v4-flash",
+        "fallbacks": ["minimax/MiniMax-M2.7-highspeed"]
+      },
+      "timeoutSeconds": 300,
+      "maxConcurrent": 16,
+      "compaction": { "mode": "safeguard", "recentTurnsPreserve": 12 },
+      "contextPruning": { "mode": "cache-ttl", "ttl": "5m" }
+    },
+    "list": [
+      { "id": "alpha", "workspace": "/dev/path/workspace/alpha" },
+      {
+        "id": "beta",
+        "workspace": "/dev/path/workspace/beta",
+        "reasoningDefault": "off",
+        "heartbeat": { "every": "0" }
+      }
+    ]
+  }
+}
