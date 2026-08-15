@@ -59,7 +59,8 @@ module Insika
 
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
-                   profile_source: nil, backend: nil, extra_env_specs: [])
+                   profile_source: nil, backend: nil, extra_env_specs: [],
+                   soak_envelope_path: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -70,6 +71,7 @@ module Insika
       @profile_source = profile_source
       @backend = backend
       @extra_env_specs = extra_env_specs
+      @soak_envelope_path = soak_envelope_path || File.join(Dir.pwd, Insika::Soak::Envelope::DEFAULT_PATH)
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -88,7 +90,8 @@ module Insika
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
-                    check_web_widget check_skill_eager check_skill_drift]
+                    check_web_widget check_skill_eager check_skill_drift check_soak_envelope
+                    check_turn_timing]
 
     def safe(check)
       Array(send(check))
@@ -157,6 +160,34 @@ module Insika
 
       [Finding.new(check: "admin-token", severity: :warn,
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
+    end
+
+    # RFC-0026: the soak envelope (evals/SOAK.md). Absent is :info — not every
+    # deployment soaks, and the tooling is optional. Present-and-broken is
+    # :error — an envelope that exists but does not parse is a pre-declaration
+    # somebody wrote down that the runner will refuse, and only this check says
+    # so before the run is attempted.
+    def check_soak_envelope
+      return [Finding.new(check: "soak-envelope", severity: :info, fix: nil,
+                          message: "no soak envelope (#{@soak_envelope_path}) — `insika soak` is available, not required")] unless File.file?(@soak_envelope_path)
+
+      Insika::Soak::Envelope.load(@soak_envelope_path)
+      [ok("soak-envelope", "soak envelope parses (#{@soak_envelope_path})")]
+    rescue Insika::ConfigError => e
+      [Finding.new(check: "soak-envelope", severity: :error, fix: nil,
+                   message: "soak envelope present but broken: #{e.message}")]
+    end
+
+    # RFC-0026: the soak's prep_p95 gate needs INSIKA_TURN_TIMING on the
+    # target. Off is :info normally, and the message names what a soak would
+    # refuse — the preflight failure must never be a surprise found 72 hours in.
+    def check_turn_timing
+      if Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_TURN_TIMING", @env))
+        [ok("turn-timing", "INSIKA_TURN_TIMING on — the soak's prep_p95 gate is measurable")]
+      else
+        [Finding.new(check: "turn-timing", severity: :info, fix: nil,
+                     message: "INSIKA_TURN_TIMING off — a soak would refuse at preflight (P2: no timing block)")]
+      end
     end
 
     # A half-configured relay is the silent kind of broken: with only
