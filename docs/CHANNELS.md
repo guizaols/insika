@@ -367,6 +367,50 @@ nothing at all).
 A runnable consumer in ~40 lines lives in
 [`examples/relay-channel/`](https://github.com/guizaols/insika/tree/main/examples/relay-channel).
 
+## Shadow mode
+
+Shadow mode (RFC-0025) lets one channel run every turn **end to end and deliver
+nothing** — the experiment that answers "can we replace the incumbent?" before
+any customer is handed over. The incumbent keeps answering; the engine records
+what it *would* have answered, and the two replies are judged pairwise against a
+**frozen criterion** (`evals/PARITY.md`).
+
+```bash
+INSIKA_RELAY_SHADOW=1    # the switch
+# INSIKA_PARITY_CRITERION defaults to evals/PARITY.md
+```
+
+Three things change when it is on:
+
+- The turn still runs; the reply is recorded as a **pair** and never reaches the
+  customer. Zero outbox records, ever — and `Relay#deliver` refuses loudly if one
+  somehow exists.
+- The inbound ack becomes `200 {"task_id": …, "shadow": true}` instead of `202`,
+  so a consumer wired to "202 means a reply is coming" cannot be misled.
+- `event_id` becomes **required** — it is the correlation key both halves of the
+  pair are built from.
+
+The incumbent's reply enters the same pair through one of two shapes: alongside
+the mirror call itself (`"incumbent_reply": "…"` on `POST /channels/relay/events`),
+or as a follow-up when the consumer answers first:
+
+```jsonc
+POST /channels/relay/shadow-reply
+Authorization: Bearer <INSIKA_RELAY_TOKEN>
+{ "external_id": "5511999998888", "event_id": "wamid.HBg…",
+  "reply": "Claro! Me passa o número do pedido?", "at": "2026-…Z" }
+→ 202 { "pair_id": "9f2c…", "status": "open" }
+```
+
+Both shapes land in one command; a retried reply is ignored (first write wins —
+the customer received one reply, and a retry must not rewrite evidence).
+
+**No criterion, no shadow.** Boot refuses when shadow is on and
+`evals/PARITY.md` is missing or unparseable — a number nobody pre-registered
+does not count. The Studio's Parity page folds the running verdict on demand
+from the pair store; `insika doctor` reports the shadow configuration before
+boot does.
+
 ## Sessions
 
 The engine mints the session id: `relay:<your external_id>`. Namespacing is not

@@ -24,8 +24,8 @@ module Insika
 
     def initialize(session_store:, task_store:, checkpoint_store:,
                    memory_store:, outcome_store:, tool_trace_store: nil,
-                   context_trace_store: nil, outbox_store: nil, settings_store: nil,
-                   budget_ledger: nil, store:, window: WINDOW, now: nil)
+                   context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
+                   settings_store: nil, budget_ledger: nil, store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -34,6 +34,7 @@ module Insika
       @tool_trace_store = tool_trace_store
       @context_trace_store = context_trace_store
       @outbox_store = outbox_store
+      @shadow_pair_store = shadow_pair_store
       @settings_store = settings_store
       @budget_ledger = budget_ledger # WS2 counter GC; nil = nothing to sweep
       @store = store
@@ -56,7 +57,8 @@ module Insika
       summary = { claimed: true, sessions: sweep_sessions(cutoff),
                   tasks: sweep_tasks(cutoff), outcomes: sweep_outcomes(cutoff),
                   memory: @memory_store.prune_older_than(cutoff),
-                  deliveries: sweep_outbox(cutoff) }
+                  deliveries: sweep_outbox(cutoff),
+                  pairs: sweep_shadow_pairs(cutoff) }
       summary[:budget_cells] = budget_cells if budget_cells
       summary
     end
@@ -125,6 +127,13 @@ module Insika
     # with the rest of the footprint instead of living in the store forever.
     def sweep_outbox(cutoff)
       @outbox_store ? @outbox_store.delete_older_than(cutoff) : 0
+    end
+
+    # Shadow pairs (RFC-0025) past the cutoff, TERMINAL statuses only
+    # (judged/incomplete) — an open/complete pair older than the window is
+    # still someone's unjudged evidence, exactly like the outbox's rule.
+    def sweep_shadow_pairs(cutoff)
+      @shadow_pair_store ? @shadow_pair_store.delete_older_than(cutoff) : 0
     end
 
     def claim_window = claim(KEY)

@@ -26,7 +26,8 @@ module Insika
     BACKOFF_SECONDS = [1, 5].freeze
 
     def initialize(channels:, outbox:, session_store:, event_stream: nil,
-                   max_attempts: MAX_ATTEMPTS, backoff: BACKOFF_SECONDS, sleeper: nil)
+                   max_attempts: MAX_ATTEMPTS, backoff: BACKOFF_SECONDS, sleeper: nil,
+                   shadow_pairs: nil, criterion_sha: nil)
       @channels = channels
       @outbox = outbox
       @session_store = session_store
@@ -34,7 +35,15 @@ module Insika
       @max_attempts = max_attempts
       @backoff = Array(backoff)
       @sleeper = sleeper || method(:default_sleep)
+      @shadow_pairs = shadow_pairs
+      @criterion_sha = criterion_sha
     end
+
+    # RFC-0025 C3: the pair store and the frozen criterion's sha. Both default to
+    # nil (parity — a graph without them behaves exactly as today); the server
+    # root sets them at boot, after the criterion file has been loaded and
+    # refused-or-accepted (the graph itself reads no env and no file).
+    attr_writer :shadow_pairs, :criterion_sha
 
     # The turn committed an answer. -> the Delivery to dispatch, or nil when there
     # is nothing to deliver, which is the common case and must stay cheap:
@@ -42,12 +51,17 @@ module Insika
     #   · the channel is Shape A (answers on its own stream — no `deliver`),
     #   · the answer is empty (a turn that died mid-message published nothing, and
     #     half a sentence was never an answer),
+    #   · the channel is in SHADOW mode (RFC-0025): the answer is recorded as a
+    #     pair and nothing is dispatched — zero outbox writes, ever (E1),
     #   · or we do not know who to send it to.
     def record(task:, channel_id:, content:)
-      return nil if content.to_s.strip.empty?
-
       channel = @channels&.find(channel_id)
       return nil unless channel.respond_to?(:deliver)
+      # Shadow BEFORE the empty guard: a turn that published nothing must be
+      # counted as :silent, not vanish.
+      return record_shadow(task, channel_id, content) if shadow?(channel)
+
+      return nil if content.to_s.strip.empty?
 
       to = recipient(channel, task.session_id)
       return nil if to.nil? || to.empty?
@@ -58,6 +72,8 @@ module Insika
                    "content" => content.to_s }
       )
     end
+
+    def shadow?(channel) = channel.respond_to?(:shadow?) && channel.shadow?
 
     # Claim + POST + bounded retry. Safe to call twice: the second caller loses the
     # claim and returns without touching the recipient.
@@ -89,6 +105,46 @@ module Insika
     end
 
     private
+
+    # Our half of the shadow pair (C3). One store upsert on the turn's terminal,
+    # then nil — `Executor#finalize_channel_delivery` returns without dispatching.
+    # The ordering rules: no event_id -> :shadow_unpairable (C1 makes this
+    # unreachable through the relay; a plugin channel could still get it wrong);
+    # no pair store wired -> the same event (fail-closed, nothing delivered).
+    def record_shadow(task, channel_id, content)
+      command = task.respond_to?(:command) ? task.command : nil
+      payload = command.is_a?(Hash) ? (command["payload"] || command[:payload] || {}) : {}
+      agent = payload["agent"] || payload[:agent]
+      message = payload["message"] || payload[:message]
+      event_id = Insika::Coercion.presence(payload["event_id"] || payload[:event_id])
+      if event_id.nil? || @shadow_pairs.nil?
+        emit_shadow(:shadow_unpairable, channel_id, agent, nil, silent: nil)
+        return nil
+      end
+
+      channel = @channels&.find(channel_id)
+      external_id = recipient(channel, task.session_id)
+      silent = content.to_s.strip.empty?
+      id = Insika::ShadowPairStore.key_for(channel: channel_id, external_id: external_id,
+                                           event_id: event_id)
+      @shadow_pairs.record_ours(id: id, channel: channel_id, agent: agent,
+                                session_id: task.session_id, task_id: task.id,
+                                event_id: event_id, inbound: message.to_s,
+                                reply: content.to_s, criterion_sha: @criterion_sha)
+      emit_shadow(:shadow_recorded, channel_id, agent, id, silent: silent)
+      nil
+    end
+
+    # Metadata only: the stream reaches every subscriber and stays free of
+    # customer content, per the Studio's own emit_operator_action rule.
+    def emit_shadow(type, channel, agent, pair_id, silent:)
+      return unless @event_stream
+
+      data = { channel: channel.to_s, agent: agent, pair_id: pair_id }.compact
+      data[:silent] = silent unless silent.nil?
+      @event_stream.emit(Insika::Event.new(type: type, data: data,
+                                           meta: { at: Time.now.utc.iso8601 }))
+    end
 
     def attempt(delivery, channel)
       last_error = nil

@@ -31,6 +31,10 @@ module Insika
       end
 
       def run
+        # The boot refusal (shadow + no criterion) lives in the AppBuilder; run it
+        # BEFORE the Studio is configured so the criterion the Studio folds is the
+        # same object the delivery path stamps pairs with.
+        @builder.channels?
         configure_studio
         dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => @builder.app)
         endpoint = Async::HTTP::Endpoint.parse("http://#{@host}:#{@port}")
@@ -72,7 +76,12 @@ module Insika
           task_store: @graph.task_store, checkpoint_store: @graph.checkpoint_store,
           pending_action_store: @graph.pending_action_store,
           # WS7: the agents-grid scorecard reads the outcome store.
-          outcome_store: @graph.outcome_store
+          outcome_store: @graph.outcome_store,
+          # RFC-0025: the parity page (only rendered when a shadow channel exists —
+          # the nav row keys off the registry).
+          shadow_pair_store: @graph.shadow_pair_store,
+          parity_criterion: @builder.criterion,
+          channel_registry: @graph.channel_registry
         )
       end
 

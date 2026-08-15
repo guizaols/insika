@@ -271,3 +271,12 @@ needs to score a candidate agent with the same judge, and a second copy of the j
 would be the worst possible outcome. It stays a **client** even so: it reaches a running
 deployment over HTTP through `POST /v1/responses` and never reads a store directly.
 `evals/run.rb` is a thin CLI over it.
+
+## Parity — the shadow criterion
+
+The shadow experiment's rule lives in **`evals/PARITY.md`** — prose a human reads
+and a `yaml` block the machine applies, in one file, so there is exactly one place
+to edit. The file's whole bytes are hashed; every shadow pair records that hash,
+and a window whose pairs disagree produces `:invalid`, never a verdict. Editing
+the criterion mid-experiment is *caught*, not averaged away. The fold itself is
+`lib/insika/parity/*` (see [Channels](CHANNELS.md#shadow-mode)).

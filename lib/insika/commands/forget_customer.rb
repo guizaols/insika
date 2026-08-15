@@ -26,7 +26,7 @@ module Insika
 
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
                      context_trace_store: nil, task_store: nil, checkpoint_store: nil,
-                     outbox_store: nil, event_stream:)
+                     outbox_store: nil, shadow_pairs: nil, event_stream:)
         @memory_store = memory_store
         @session_store = session_store
         @tool_trace_store = tool_trace_store
@@ -34,6 +34,7 @@ module Insika
         @task_store = task_store
         @checkpoint_store = checkpoint_store
         @outbox_store = outbox_store
+        @shadow_pairs = shadow_pairs
         @event_stream = event_stream
       end
 

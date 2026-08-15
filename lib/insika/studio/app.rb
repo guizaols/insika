@@ -85,7 +85,8 @@ module Studio
                     system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil,
-                    outcome_store: nil)
+                    outcome_store: nil, shadow_pair_store: nil, parity_criterion: nil,
+                    channel_registry: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -118,7 +119,13 @@ module Studio
           # WS7: business outcomes — the agents grid's last-outcome pill; the
           # agent detail shows the per-day series. Reads only; recording goes
           # through POST /v1/outcomes.
-          outcome_store: outcome_store
+          outcome_store: outcome_store,
+          # RFC-0025: the shadow pair store (read to render /studio/parity), the
+          # frozen criterion (folded by Verdict), and the channel registry (the
+          # nav row only exists when a shadow channel is registered — the page
+          # is not an invitation, unlike Refinement's).
+          shadow_pair_store: shadow_pair_store, parity_criterion: parity_criterion,
+          channel_registry: channel_registry
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -826,6 +833,27 @@ end
         end
       end
 
+      # --- Parity: the running shadow verdict (RFC-0025 C8) -----------------
+      # Reads stores and folds the verdict on demand; the judge button is a slow
+      # synchronous POST, exactly like Refinement's gate, for the same reason: it
+      # returns when the answer is real. There is deliberately no "freeze the
+      # criterion" button — freezing is a git commit, reviewed by a human.
+      r.on "parity" do
+        r.is do
+          r.get { render_parity }
+          r.post do
+            check_csrf!
+            agent = presence(r.params["agent"])
+            limit = presence(r.params["limit"]).to_i
+            payload = { agent: agent }.compact
+            payload[:limit] = limit if limit.positive?
+            control_action(:judge_shadow_pairs, payload,
+                           ok: "Judged — the verdict below is recomputed.")
+            r.redirect("/studio/parity?agent=#{Rack::Utils.escape(agent.to_s)}")
+          end
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
@@ -912,7 +940,8 @@ end
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
           ["Evals", "/studio/evals", :evals]
-        ]]
+        ] + parity_nav_item
+        ]
       ]
     end
 
@@ -1590,6 +1619,45 @@ end
       # gating requires a `completed` run and there is one lifecycle per record.
       @proposal = @runs.find(&:awaiting_approval?)
       view("refinement")
+    end
+
+    # --- Parity (RFC-0025 C8) -------------------------------------------------
+
+    # The nav row exists ONLY when a shadow channel is registered — the page is
+    # not an invitation, unlike Refinement's.
+    def parity_nav_item
+      shadow_channel? ? [["Parity", "/studio/parity", :parity]] : []
+    end
+
+    def shadow_channel?
+      registry = insika[:channel_registry]
+      return false unless registry
+
+      Array(registry.names).any? do |name|
+        channel = registry.find(name)
+        channel.respond_to?(:shadow?) && channel.shadow?
+      end
+    end
+
+    def parity_pairs
+      insika[:shadow_pair_store] ? insika[:shadow_pair_store].each.to_a : []
+    end
+
+    def render_parity
+      @criterion = insika[:parity_criterion]
+      pairs = parity_pairs
+      @counts = insika[:shadow_pair_store]&.counts
+      @report = @criterion && Insika::Parity::Verdict.fold(pairs: pairs, criterion: @criterion)
+      @pairs = pairs.sort_by { |p| p.created_at.to_s }.reverse.first(50)
+      @pending = pairs.count { |p| p.status == :complete }
+      if @criterion
+        @judge_cost = @pending * @criterion.rule.min_judge_models * 2
+        @judge_models = ((insika[:settings_store]&.get || {})["evals"] || {})
+      end
+      # Judge agreement (RFC §2.3): split/unknown from the fold, plus how many
+      # verdicts flipped with presentation order.
+      @agreement = { order_dependent: pairs.count { |p| p.verdict.is_a?(Hash) && p.verdict["order_dependent"] } }
+      view("parity")
     end
 
     # A run's window in words. An EMPTY window means "the collector's own default" —

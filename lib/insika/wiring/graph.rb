@@ -54,6 +54,11 @@ module Insika
         # (they are empty and free when no channel is registered) so a deployment
         # that turns a channel on later finds its state already durable.
         outbox_store         = Insika::OutboxStore.new(store: backend)
+        # RFC-0025: the shadow pair store — one durable record per mirrored
+        # exchange, written by our half and the incumbent's. Built unconditionally
+        # (empty and free when shadow is off) so turning it on later finds the
+        # state already durable, beside the outbox on the same runtime backend.
+        shadow_pair_store    = Insika::ShadowPairStore.new(store: backend)
         inbound_log          = Insika::InboundLog.new(store: backend)
         # WS7: business outcomes per conversation, recorded by the operator or
         # the integration (POST /v1/outcomes). Built unconditionally (empty and
@@ -80,7 +85,8 @@ module Insika
           delegation_store: delegation_store,
           memory_store: memory_store, refinement_store: refinement_store,
           token_store: token_store, budget_ledger: budget_ledger, circuit_state: circuit_state,
-          outbox_store: outbox_store, inbound_log: inbound_log,
+          outbox_store: outbox_store, shadow_pair_store: shadow_pair_store,
+          inbound_log: inbound_log,
           outcome_store: outcome_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -120,7 +126,8 @@ module Insika
         # only production exercises.
         channel_delivery = Insika::ChannelDelivery.new(
           channels: spine.channel_registry, outbox: spine.outbox_store,
-          session_store: spine.session_store, event_stream: spine.event_stream
+          session_store: spine.session_store, event_stream: spine.event_stream,
+          shadow_pairs: spine.shadow_pair_store
         )
 
 # WS3 provider reliability (retries/backoff/fallback/breaker) is ALWAYS wired —
@@ -165,6 +172,7 @@ module Insika
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
             outbox_store: spine.outbox_store,
+            shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
             budget_ledger: spine.budget_ledger # WS2 counter GC (retention-independent)
           ),
@@ -186,7 +194,8 @@ module Insika
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, refinement_store: spine.refinement_store,
-          outbox_store: spine.outbox_store, inbound_log: spine.inbound_log,
+          outbox_store: spine.outbox_store, shadow_pair_store: spine.shadow_pair_store,
+          inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
@@ -238,6 +247,11 @@ module Insika
         bus.register(:record_outcome,
                      Insika::Commands::RecordOutcome.new(outcome_store: spine.outcome_store,
                                                          event_stream: spine.event_stream))
+        # RFC-0025 C4: the incumbent's half of a shadow pair, one command behind
+        # both mirror shapes (the mirror call itself + the follow-up route).
+        bus.register(:record_shadow_reply,
+                     Insika::Commands::RecordShadowReply.new(shadow_pairs: spine.shadow_pair_store,
+                                                             event_stream: spine.event_stream))
         # WS8 (LGPD): purge one customer's memory + the whole footprint of their
         # sessions (traces, tasks, checkpoints, outbox). The trace stores are
         # deployment components (nil at the base — skipped).
@@ -248,6 +262,7 @@ module Insika
                        context_trace_store: executor_extra[:context_trace_store],
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
+                       shadow_pairs: spine.shadow_pair_store,
                        event_stream: spine.event_stream
                      ))
         # WS8 (LGPD): purge ONE TENANT's data — sessions and their footprint,
@@ -260,6 +275,7 @@ module Insika
                        outcome_store: spine.outcome_store,
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
+                       shadow_pairs: spine.shadow_pair_store,
                        token_store: spine.token_store, # revoked BEFORE the sweep
                        event_stream: spine.event_stream
                      ))
@@ -271,7 +287,8 @@ module Insika
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :refinement_store,
-        :token_store, :budget_ledger, :circuit_state, :outbox_store, :inbound_log, :outcome_store,
+        :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
+        :inbound_log, :outcome_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -282,7 +299,7 @@ module Insika
       Result = Struct.new(
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
-        :memory_store, :refinement_store, :outbox_store, :inbound_log, :token_store,
+        :memory_store, :refinement_store, :outbox_store, :shadow_pair_store, :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

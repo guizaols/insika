@@ -83,6 +83,11 @@ APP = Insika::Server::App.new(
 # INSIKA_DB is set; ephemeral in memory otherwise).
 PERSISTENCE = (ENV["INSIKA_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)")
 
+# RFC-0025: config/deployment.rb loads the frozen criterion (and refuses boot)
+# whenever shadow is on — the Studio folds the SAME object the delivery path
+# stamps pairs with.
+PARITY_CRITERION = (defined?(W::PARITY_CRITERION) && W::PARITY_CRITERION) || nil
+
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
   event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN, persistence: PERSISTENCE },
@@ -107,7 +112,11 @@ Studio::App.configure(
   # :run_refinement on the bus (the Studio never writes a store directly).
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
-  golden_store: W::GOLDEN_STORE
+  golden_store: W::GOLDEN_STORE,
+  # RFC-0025: the parity page (nav row only when a shadow channel is registered).
+  shadow_pair_store: W::SPINE.shadow_pair_store,
+  parity_criterion: PARITY_CRITERION,
+  channel_registry: W::CHANNEL_REGISTRY
 )
 
 # URLMap routes /studio -> Studio (Roda, cookie-auth) and the rest -> Server::App

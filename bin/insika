@@ -341,6 +341,10 @@ end
         skill_store: Insika::SkillStore.new(config_store: config_store),
         skill_catalog: Insika::SkillCatalog.new(skill_roots),
         profile_source: Insika::StoredProfileSource.new(config_store: config_store),
+        # RFC-0025: the shadow-parity check reads the pair store over the same
+        # runtime backend (pairs hold raw customer text — the check reports their
+        # age and the criterion's loadability before boot does).
+        shadow_pair_store: Insika::ShadowPairStore.new(store: backend),
         backend: backend
       )
     end

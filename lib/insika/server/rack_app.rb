@@ -42,6 +42,10 @@ module Insika
       end
 
       attr_reader :token
+      attr_reader :graph
+      # RFC-0025: the frozen criterion, memoized when the relay runs in shadow —
+      # nil otherwise. Loaded ONCE at boot (the refusal below), then shared.
+      attr_reader :criterion
 
       def app
         tenancy = @config[:tenancy] || ENV["INSIKA_TENANCY"] || "single_tenant"
@@ -88,6 +92,16 @@ module Insika
             allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
             allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"])
           )
+          # RFC-0025 D2: NO criterion, no shadow — enforced at boot, not per
+          # turn. Raises ConfigError when the file is missing, unparseable, or
+          # incomplete; the criterion is memoized here and injected into
+          # ChannelDelivery (its sha stamps every pair our half records).
+          if relay&.shadow?
+            @criterion = Insika::Parity::Criterion.load(
+              Insika::EnvSchema.read("INSIKA_PARITY_CRITERION") || "evals/PARITY.md"
+            )
+            @graph.channel_delivery&.criterion_sha = @criterion.sha
+          end
           @graph.channel_registry.register(relay.id, relay) if relay
 
           widget = Insika::Channels::Web.from_env(

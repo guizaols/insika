@@ -169,4 +169,107 @@ RSpec.describe "Insika::Server::App channels" do
       end
     end
   end
+
+  # RFC-0025 C4 — the mirror contract. A shadow channel never 202s (there is no
+  # reply coming), and the incumbent's half lands in the pair store through the
+  # SAME command whatever shape the mirror chose.
+  describe "the mirror contract (shadow mode)" do
+    let(:recorded) do
+      # The real RecordShadowReply, over a real pair store — the route's whole
+      # job is to translate one POST into this command.
+      pairs = Insika::ShadowPairStore.new(store: Insika::Stores::Memory.new)
+      command = Insika::Commands::RecordShadowReply.new(shadow_pairs: pairs,
+                                                        event_stream: ServerEventStreamDouble.new)
+      [pairs, command]
+    end
+    let(:pairs) { recorded.first }
+    let(:shadow_bus) do
+      ServerBusDouble.new do |c|
+        case c.type
+        when :send_message then { task_id: "t-1" }
+        when :record_shadow_reply then recorded.last.call(c)
+        end
+      end
+    end
+
+    def shadow_app
+      build_app(channels: registry_with(relay_channel(shadow: true)), bus: shadow_bus)
+    end
+
+    def pair_for(event_id) = Insika::ShadowPairStore.key_for(channel: "relay", external_id: "5511999998888", event_id: event_id)
+
+    it "acks 200 {task_id, shadow: true} — never 202, so a consumer wired to '202 means a reply is coming' cannot be misled" do
+      status, _h, body = post(shadow_app, "/channels/relay/events", envelope("event_id" => "wamid.1"))
+      expect(status).to eq(200)
+      expect(body_of(body)).to eq("task_id" => "t-1", "shadow" => true)
+    end
+
+    it "passes the duplicate/merged/steered verdicts through untouched" do
+      joined = ServerBusDouble.new do |c|
+        c.type == :send_message ? { task_id: "t-owner", duplicate: true } : {}
+      end
+      app = build_app(channels: registry_with(relay_channel(shadow: true)), bus: joined)
+      status, _h, body = post(app, "/channels/relay/events", envelope("event_id" => "wamid.1"))
+      expect(status).to eq(200)
+      expect(body_of(body)).to eq("task_id" => "t-owner", "duplicate" => true)
+    end
+
+    it "Shape 1 — the reply riding the mirror call records the incumbent half" do
+      post(shadow_app, "/channels/relay/events",
+           envelope("event_id" => "wamid.1", "incumbent_reply" => "me passa o número?"))
+      pair = pairs.find(pair_for("wamid.1"))
+      expect(pair).not_to be_nil
+      expect(pair.incumbent_reply).to eq("me passa o número?")
+    end
+
+    it "Shape 2 — the follow-up route lands on the SAME pair and answers 202 {pair_id}" do
+      post(shadow_app, "/channels/relay/events", envelope("event_id" => "wamid.1"))
+      follow_up = JSON.generate({ "external_id" => "5511999998888", "event_id" => "wamid.1",
+                                  "reply" => "me passa o número?" })
+      status, _h, body = post(shadow_app, "/channels/relay/shadow-reply", follow_up)
+
+      expect(status).to eq(202)
+      expect(body_of(body)).to eq("pair_id" => pair_for("wamid.1"), "status" => "open")
+      expect(pairs.find(pair_for("wamid.1")).incumbent_reply).to eq("me passa o número?")
+    end
+
+    it "Shape 1 and Shape 2 produce the identical pair (same digest, same fields)" do
+      post(shadow_app, "/channels/relay/events", envelope("event_id" => "wamid.9"))
+      post(shadow_app, "/channels/relay/shadow-reply",
+           JSON.generate({ "external_id" => "5511999998888", "event_id" => "wamid.9",
+                           "reply" => "me passa o número?" }))
+      expect(pairs.each.to_a.length).to eq(1)
+    end
+
+    it "the follow-up route 404s on a NON-shadow channel" do
+      app = build_app(channels: registry_with(relay_channel))
+      status, = post(app, "/channels/relay/shadow-reply",
+                     JSON.generate({ "external_id" => "5511999998888", "event_id" => "e", "reply" => "r" }))
+      expect(status).to eq(404)
+    end
+
+    it "the follow-up route 401s without the channel's bearer" do
+      app = shadow_app
+      env = Rack::MockRequest.env_for("/channels/relay/shadow-reply", method: "POST",
+                                      input: JSON.generate({ "external_id" => "5511999998888", "event_id" => "e", "reply" => "r" }))
+      expect(app.call(env).first).to eq(401)
+    end
+
+    it "a missing event_id is a 422 on both doors" do
+      app = shadow_app
+      expect(post(app, "/channels/relay/events", envelope).first).to eq(422)
+      expect(post(app, "/channels/relay/shadow-reply",
+                  JSON.generate({ "external_id" => "5511999998888", "reply" => "r" })).first).to eq(422)
+    end
+
+    it "a retried follow-up is answered, not re-recorded (first write wins)" do
+      app = shadow_app
+      body = JSON.generate({ "external_id" => "5511999998888", "event_id" => "wamid.7", "reply" => "original" })
+      expect(post(app, "/channels/relay/shadow-reply", body).first).to eq(202)
+      status, _h, res = post(app, "/channels/relay/shadow-reply", JSON.generate({ "external_id" => "5511999998888", "event_id" => "wamid.7", "reply" => "REWRITTEN" }))
+      expect(status).to eq(202)
+      expect(body_of(res)["status"]).to eq("already_recorded")
+      expect(pairs.find(pair_for("wamid.7")).incumbent_reply).to eq("original")
+    end
+  end
 end

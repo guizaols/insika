@@ -20,7 +20,8 @@ module Studio
       tasks: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="m18 9 3 3-3 3"/>',
       approvals: '<path d="M9 12l2 2 4-4"/><path d="M12 3a9 9 0 1 0 9 9"/>',
       refinement: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/><path d="m9 12 2 2 4-4"/>',
-      evals: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'
+      evals: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+      parity: '<path d="M7 21h10"/><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M3 17h4l1.5-1.5L6 13 3 15.5z"/><path d="M21 17h-4l-1.5-1.5L18 13l3 2.5z"/>'
     }.freeze
 
     def nav_icon(key)
