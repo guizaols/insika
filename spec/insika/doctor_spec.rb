@@ -493,5 +493,73 @@ RSpec.describe Insika::Doctor do
       expect(finding.message).to include("503")
     end
   end
+
+  describe "shadow-parity check (RFC-0025 C9)" do
+    let(:pairs) { Insika::ShadowPairStore.new(store: backend) }
+    let(:criterion_path) { File.expand_path("../../evals/PARITY.md", __dir__) }
+
+    def shadow_findings(env, pair_store: nil, settings: nil)
+      described_class.new(env: env, settings_store: settings, shadow_pair_store: pair_store)
+                     .run.findings.select { |f| f.check == "shadow-parity" }
+    end
+
+    def plant_pair(store, created_at: Time.now.utc)
+      id = Insika::ShadowPairStore.key_for(channel: "relay", external_id: "5511", event_id: SecureRandom.hex(4))
+      store.record_incumbent(id: id, channel: "relay", event_id: id, external_id: "5511",
+                             reply: "r", at: created_at)
+      store.record_ours(id: id, channel: "relay", agent: "a", session_id: "relay:5511",
+                        task_id: "t", event_id: id, inbound: "oi", reply: "ola", criterion_sha: "sha256:x")
+    end
+
+    it "says nothing when shadow is off and there are no pairs" do
+      expect(shadow_findings({})).to be_empty
+    end
+
+    it "remembers the evidence: shadow off + pairs present is an ok with the count" do
+      plant_pair(pairs)
+      findings = shadow_findings({}, pair_store: pairs)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("1 pair")
+    end
+
+    it "errors when shadow is on and the criterion does not load, naming the path" do
+      findings = shadow_findings({ "INSIKA_RELAY_SHADOW" => "1",
+                                   "INSIKA_PARITY_CRITERION" => "/nope.md" })
+      expect(findings.map(&:severity)).to eq([:error])
+      expect(findings.first.message).to include("/nope.md")
+    end
+
+    it "is ok with the frozen sha when shadow is on and the criterion loads" do
+      findings = shadow_findings({ "INSIKA_RELAY_SHADOW" => "1",
+                                   "INSIKA_PARITY_CRITERION" => criterion_path })
+      ok_finding = findings.find(&:ok?)
+      expect(ok_finding).not_to be_nil
+      expect(ok_finding.message).to include("criterion frozen")
+    end
+
+    it "warns that the deliver URL is inert in shadow" do
+      findings = shadow_findings({ "INSIKA_RELAY_SHADOW" => "1",
+                                   "INSIKA_RELAY_DELIVER_URL" => "https://8.8.8.8/hook",
+                                   "INSIKA_PARITY_CRITERION" => criterion_path })
+      expect(findings.map(&:severity)).to include(:warn)
+      expect(findings.find { |f| f.message.include?("INERT") }).not_to be_nil
+    end
+
+    it "warns when nobody is configured to judge" do
+      findings = shadow_findings({ "INSIKA_RELAY_SHADOW" => "1",
+                                   "INSIKA_PARITY_CRITERION" => criterion_path },
+                                 settings: settings_store)
+      expect(findings.map(&:severity)).to include(:warn)
+      expect(findings.find { |f| f.message.include?("judges") }).not_to be_nil
+    end
+
+    it "warns when the oldest pair is older than 2 × window_days — shadow is not permanent" do
+      plant_pair(pairs, created_at: Time.now.utc - 30 * 86_400)
+      findings = shadow_findings({ "INSIKA_RELAY_SHADOW" => "1",
+                                   "INSIKA_PARITY_CRITERION" => criterion_path },
+                                 pair_store: pairs)
+      expect(findings.find { |f| f.message.include?("not a permanent mode") }).not_to be_nil
+    end
+  end
 end
 

@@ -82,6 +82,7 @@ require_relative "insika/delegation_store"
 # Channels: the outbound record + the inbound retry window. Both are
 # plain stores; the channel objects themselves come after the HTTP client.
 require_relative "insika/outbox_store"
+require_relative "insika/shadow_pair_store"
 require_relative "insika/inbound_log"
 require_relative "insika/memory_store"
 require_relative "insika/config_store"
@@ -134,6 +135,10 @@ require_relative "insika/evals/runner"
 require_relative "insika/evals/report"
 require_relative "insika/evals/baseline"
 require_relative "insika/evals/transport"
+# RFC-0025 shadow parity: the frozen criterion (C5) and the mechanical
+# fold over the pair store (C6). Pure — no store, no provider gem.
+require_relative "insika/parity/criterion"
+require_relative "insika/parity/verdict"
 # Authored eval cases: the corpus becomes editable without a
 # checkout. Requires the loader above (it is the one validator).
 require_relative "insika/golden_store"
@@ -182,6 +187,8 @@ require_relative "insika/commands/issue_tenant_token"
 require_relative "insika/commands/revoke_token"
 require_relative "insika/commands/rotate_tenant_token"
 require_relative "insika/commands/record_outcome"
+require_relative "insika/commands/record_shadow_reply"
+require_relative "insika/commands/judge_shadow_pairs"
 require_relative "insika/commands/session_purge"
 require_relative "insika/commands/forget_customer"
 require_relative "insika/commands/delete_tenant_data"

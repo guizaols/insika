@@ -147,4 +147,44 @@ RSpec.describe Insika::Evals::Pairwise do
 
     expect(seen[0]).to include("customer: oi\nassistant: olá!\ncustomer: tem creatina?\nassistant: temos!")
   end
+
+  # RFC-0025 C6: the shadow pairs are graded by the SAME object with the SAME
+  # prompt — two transcripts, no golden.
+  describe "compare_texts (the shadow seam)" do
+    let(:ours) { "customer: tem creatina?\nassistant: temos, segue o link" }
+    let(:theirs) { "customer: tem creatina?\nassistant: acho que sim" }
+
+    it "produces the identical verdict compare() would for the same two transcripts" do
+      via_compare = described_class.new(asks: [scripted(json("A"), json("B")).first])
+                                  .compare(golden: golden(reference), turns: turns("temos, segue o link"))
+      via_texts = described_class.new(asks: [scripted(json("A"), json("B")).first])
+                                 .compare_texts(ours: ours, theirs: theirs)
+
+      expect(via_texts.to_h).to eq(via_compare.to_h)
+    end
+
+    it "labels the incumbent a human-assisted half when asked" do
+      ask, = scripted(json("A"), json("B"))
+      v = described_class.new(asks: [ask]).compare_texts(ours: ours, theirs: theirs, vs: "human-assisted")
+      expect(v.vs).to eq("human-assisted")
+      expect(v.human_assisted?).to be(true)
+    end
+
+    it "returns nil when either side is empty — never judges against an empty string" do
+      ask, seen = scripted(json("A"), json("B"))
+      expect(described_class.new(asks: [ask]).compare_texts(ours: "", theirs: theirs)).to be_nil
+      expect(described_class.new(asks: [ask]).compare_texts(ours: ours, theirs: "  ")).to be_nil
+      expect(seen).to be_empty
+    end
+  end
+
+  # RFC-0025 C6/§7.8: an empty REFERENCE transcript is now refused instead of
+  # judged against an empty string (a fix, called out so it is not discovered).
+  it "returns nil for an empty reference transcript" do
+    empty = Struct.new(:reference?, :user_turns, :reference_messages, :human_assisted?)
+            .new(true, ["tem creatina?"], [{ "role" => "assistant", "text" => "  " }], false)
+    ask, seen = scripted(json("A"), json("B"))
+    expect(described_class.new(asks: [ask]).compare(golden: empty, turns: turns("temos!"))).to be_nil
+    expect(seen).to be_empty
+  end
 end

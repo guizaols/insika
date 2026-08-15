@@ -19,19 +19,20 @@ module Insika
     # beyond the session are optional (deployment components): a graph without
     # them purges what it has and reports zero for the rest.
     module SessionPurge
-      # ids: the session ids to erase. -> { tasks:, checkpoints:, deliveries: }
+      # ids: the session ids to erase. -> { tasks:, checkpoints:, deliveries:, pairs: }
       def purge_sessions(ids)
         ids = Array(ids).map(&:to_s)
-        return { tasks: 0, checkpoints: 0, deliveries: 0 } if ids.empty?
+        return { tasks: 0, checkpoints: 0, deliveries: 0, pairs: 0 } if ids.empty?
 
         tasks, checkpoints = purge_tasks_of(ids)
         deliveries = @outbox_store ? @outbox_store.purge_sessions(ids) : 0
+        pairs = @shadow_pairs ? @shadow_pairs.purge_sessions(ids) : 0
         ids.each do |id|
           @tool_trace_store&.clear(id)
           @context_trace_store&.clear(id)
           @session_store.delete(id)
         end
-        { tasks: tasks, checkpoints: checkpoints, deliveries: deliveries }
+        { tasks: tasks, checkpoints: checkpoints, deliveries: deliveries, pairs: pairs }
       end
 
       private

@@ -1,0 +1,144 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>operate</span></nav>
+    <h1>Parity<span class="sub">the shadow experiment</span></h1>
+  </div>
+</header>
+
+<% if @criterion.nil? %>
+  <div class="empty">
+    No shadow channel is registered. Set <span class="mono">INSIKA_RELAY_SHADOW=1</span> and
+    restart — this page appears only when a channel is actually running in shadow.
+  </div>
+<% elsif @pairs.empty? %>
+  <div class="empty">
+    No pairs yet. A mirrored exchange records a pair the moment our turn ends; the
+    incumbent's half lands when the mirror reports its reply
+    (<span class="mono">POST /channels/relay/shadow-reply</span>).
+  </div>
+<% else %>
+  <% r = @report %>
+  <div class="card">
+    <div class="skill-desc">
+      <span class="pill <%= { pass: 'ok', fail: 'err', insufficient: 'warn', invalid: 'err' }.fetch(r.verdict, 'info') %>"><%= r.verdict %></span>
+      <span class="muted"><%= r.reason %></span>
+    </div>
+    <% sha_check = r.checks.find { |c| c.id == :criterion_sha } %>
+    <div class="skill-desc">
+      <span class="mono"><%= r.criterion_sha %></span>
+      <% if sha_check&.met %>
+        <span class="pill ok">frozen · matches every pair in the window</span>
+      <% else %>
+        <span class="pill err">MISMATCH — the window carries pairs stamped with a different file</span>
+      <% end %>
+    </div>
+  </div>
+
+  <h2>Checks<span class="sub">the arithmetic, not the conclusion</span></h2>
+  <div class="card">
+    <table class="grid">
+      <thead><tr><th>check</th><th>required</th><th>actual</th><th></th></tr></thead>
+      <tbody>
+        <% r.checks.each do |c| %>
+          <tr>
+            <td class="mono"><%= c.id %></td>
+            <td><%= c.required %></td>
+            <td><% if c.actual.is_a?(Hash) %><%= c.actual.map { |k, v| "#{k}: #{v}" }.join(" · ") %><% else %><%= c.actual %><% end %></td>
+            <td><span class="pill <%= c.met ? 'ok' : 'err' %>"><%= c.met ? "met" : "no" %></span></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Pairs / day<span class="sub">floor <%= @criterion.rule.pairs_per_day %> · a gap day invalidates the window</span></h2>
+  <div class="card">
+    <table class="grid">
+      <thead><tr><th>date</th><th>pairs</th><th>decided</th><th></th></tr></thead>
+      <tbody>
+        <% r.daily.each do |d| %>
+          <tr>
+            <td class="mono"><%= d[:date] %></td>
+            <td><%= d[:pairs] %></td>
+            <td><%= d[:decided] %></td>
+            <td><% if d[:pairs] >= @criterion.rule.pairs_per_day %><span class="pill ok">met</span><% else %><span class="pill err">below floor</span><% end %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <% if r.counts %>
+    <h2>Per store<span class="sub">a store blocks its own cut even when the aggregate passes</span></h2>
+    <div class="card">
+      <table class="grid">
+        <thead><tr><th>store</th><th>decided</th><th>win-or-tie</th><th>worse</th><th>meets floor</th></tr></thead>
+        <tbody>
+          <% r.per_agent.each do |agent, stats| %>
+            <tr>
+              <td class="mono"><%= agent %></td>
+              <td><%= stats[:decided] %></td>
+              <td><%= stats[:win_or_tie] %></td>
+              <td><%= stats[:worse] %></td>
+              <td><% if stats[:meets].nil? %><span class="muted">below per-store minimum</span><% elsif stats[:meets] %><span class="pill ok">yes</span><% else %><span class="pill err">no</span><% end %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Judge agreement<span class="sub">split / unknown / order-dependent</span></h2>
+    <div class="card">
+      <div class="skill-desc">
+        <span class="pill <%= r.counts[:split].positive? ? 'warn' : 'ok' %>"><%= r.counts[:split] %> split</span>
+        <span class="pill <%= r.counts[:unknown].positive? ? 'warn' : 'ok' %>"><%= r.counts[:unknown] %> unknown</span>
+        <span class="pill <%= @agreement[:order_dependent].positive? ? 'warn' : 'ok' %>"><%= @agreement[:order_dependent] %> flipped with order</span>
+        <span class="muted">of <%= r.counts[:judged] %> judged pairs</span>
+      </div>
+    </div>
+  <% end %>
+
+  <h2>Judge a batch</h2>
+  <div class="card">
+    <form method="post" action="/studio/parity" class="actions">
+      <%== csrf_tag %>
+      <label>
+        Agent (all stores when blank)
+        <input type="text" name="agent" placeholder="agent-store-ocean-drop">
+      </label>
+      <label>
+        Limit
+        <input type="number" name="limit" value="50" min="1" max="200">
+      </label>
+      <button type="submit" class="primary">Judge <%= @pending %> complete pair(s)</button>
+    </form>
+    <div class="skill-desc muted">
+      Cost: <span class="mono"><%= @judge_cost %></span> provider calls
+      (<%= @pending %> pairs × <%= @criterion.rule.min_judge_models %> judges × 2 orders).
+      <% if Array((@judge_models || {})["judges"]).empty? %>
+        <span class="pill err">no judges configured in settings['evals'] — the press will refuse</span>
+      <% end %>
+    </div>
+  </div>
+
+  <h2>Recent pairs<span class="sub">inbound · incumbent · insika</span></h2>
+  <div class="card">
+    <ul class="history">
+      <% @pairs.each do |p| %>
+        <li>
+          <span class="pill <%= { open: 'warn', complete: 'info', silent: 'info', judged: 'ok', incomplete: 'err' }.fetch(p.status, 'info') %>"><%= p.status %></span>
+          <span class="mono"><%= p.id[0, 12] %></span>
+          <% if p.agent %><span class="mono"><%= p.agent %></span><% end %>
+          <% if p.outcome %><span class="pill"><%= p.outcome %></span><% end %>
+          <% if p.session_id %><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(p.session_id) %>">session →</a><% end %>
+          <div class="skill-desc muted"><strong>customer:</strong> <%= p.inbound.to_s %></div>
+          <div class="skill-desc"><strong>incumbent:</strong> <%= p.incumbent_reply.to_s %></div>
+          <div class="skill-desc"><strong>insika:</strong> <%= p.insika_reply.to_s %></div>
+          <% if p.verdict.is_a?(Hash) && presence(p.verdict["reason"]) %>
+            <div class="skill-desc muted">why: <%= p.verdict["reason"] %></div>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

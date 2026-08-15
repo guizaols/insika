@@ -211,6 +211,17 @@ module Deploy
       }
     )
 
+    # RFC-0025 D2: shadow on + criterion missing/unparseable refuses boot here
+    # (the AppBuilder does it for the rack_app path; this root wires its own
+    # channel and its own judge command). The sha stamps every pair our half
+    # records, through the same criterion object the judge command folds with.
+    if Insika::EnvSchema.truthy?(ENV["INSIKA_RELAY_SHADOW"])
+      PARITY_CRITERION = Insika::Parity::Criterion.load(
+        Insika::EnvSchema.read("INSIKA_PARITY_CRITERION") || "evals/PARITY.md"
+      )
+      GRAPH.channel_delivery.criterion_sha = PARITY_CRITERION.sha
+    end
+
     CONTEXT_BUILDER = GRAPH.context_builder
     POLICY_ENGINE   = GRAPH.policy_engine
     MIDDLEWARE      = GRAPH.middleware
@@ -324,6 +335,19 @@ module Deploy
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
+
+    # RFC-0025 C7: judging shadow pairs is a command on the DEPLOYMENT bus (like
+    # the memory and refinement commands — not in the embeddable base). The
+    # judges come from settings['evals'] through the one JudgePanel builder.
+    # Registered only when shadow is on: the criterion refuses boot above
+    # otherwise, and the command without one would be a fake judge.
+    if defined?(PARITY_CRITERION) && PARITY_CRITERION
+      BUS.register(:judge_shadow_pairs,
+                   Insika::Commands::JudgeShadowPairs.new(
+                     shadow_pairs: SPINE.shadow_pair_store, settings_store: SETTINGS_STORE,
+                     criterion: PARITY_CRITERION, event_stream: EVENT_STREAM
+                   ))
+    end
 
     # MCP + system files: CRUD of MCP instances and of the global files that apply to
     # all agents.

@@ -59,7 +59,8 @@ module Insika
 
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
-                   profile_source: nil, backend: nil, extra_env_specs: [])
+                   profile_source: nil, backend: nil, extra_env_specs: [],
+                   shadow_pair_store: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -70,6 +71,7 @@ module Insika
       @profile_source = profile_source
       @backend = backend
       @extra_env_specs = extra_env_specs
+      @shadow_pair_store = shadow_pair_store
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -88,7 +90,7 @@ module Insika
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
-                    check_web_widget check_skill_eager check_skill_drift]
+                    check_web_widget check_skill_eager check_skill_drift check_shadow_parity]
 
     def safe(check)
       Array(send(check))
@@ -527,6 +529,53 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     end
 
     # -- helpers -------------------------------------------------------
+
+    # RFC-0025 shadow parity (C9). Shadow holds raw customer conversations, so
+    # every dangerous configuration says so BEFORE the experiment starts — and
+    # the one automated reminder to turn it off:
+    def check_shadow_parity
+      shadow_on = Insika::EnvSchema.truthy?(@env["INSIKA_RELAY_SHADOW"])
+      path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION", @env) || "evals/PARITY.md"
+      pairs = @shadow_pair_store ? @shadow_pair_store.each.to_a : []
+
+      unless shadow_on
+        return [] if pairs.empty?
+
+        return [ok("shadow-parity",
+                   "shadow off — #{pairs.length} pair(s) still stored, evidence is not forgotten")]
+      end
+
+      criterion = begin
+        Insika::Parity::Criterion.load(path)
+      rescue Insika::Error => e
+        return [Finding.new(check: "shadow-parity", severity: :error, fix: nil,
+                            message: "shadow on but the criterion did not load from #{path}: #{e.message}")]
+      end
+
+      findings = [ok("shadow-parity", "shadow on — criterion frozen (#{criterion.sha}) at #{path}")]
+      if Insika::EnvSchema.present?(@env["INSIKA_RELAY_DELIVER_URL"])
+        findings << Finding.new(check: "shadow-parity", severity: :warn, fix: nil,
+                                message: "INSIKA_RELAY_DELIVER_URL is set — the URL is INERT: a shadow relay never delivers")
+      end
+      judges = ((@settings_store&.get || {})["evals"] || {})
+      if Array(judges["judges"]).reject { |j| j["model"].to_s.strip.empty? }.empty?
+        findings << Finding.new(check: "shadow-parity", severity: :warn, fix: nil,
+                                message: "no judges in settings['evals'] — pairs will accumulate and nothing can judge them")
+      end
+      window = criterion.rule.window_days
+      oldest = pairs.filter_map { |p| parse_pair_time(p) }.min
+      if oldest && oldest < Time.now.utc - (2 * window * 86_400)
+        findings << Finding.new(check: "shadow-parity", severity: :warn, fix: nil,
+                                message: "the oldest pair is older than 2 × window_days — shadow is not a permanent mode; judge and turn it off")
+      end
+      findings
+    end
+
+    def parse_pair_time(pair)
+      Time.iso8601(pair.created_at.to_s)
+    rescue ArgumentError
+      nil
+    end
 
     def ok(check, message) = Finding.new(check: check, severity: :ok, message: message, fix: nil)
 

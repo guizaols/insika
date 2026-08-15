@@ -77,6 +77,68 @@ RSpec.describe Insika::Channels::Relay do
     it "still honors the deprecated HARNESS_ alias, like every other engine key" do
       expect(described_class.from_env({ "HARNESS_RELAY_TOKEN" => "t" })).not_to be_nil
     end
+
+    it "reads INSIKA_RELAY_SHADOW as the shadow switch" do
+      env = { "INSIKA_RELAY_TOKEN" => "t", "INSIKA_RELAY_SHADOW" => "1" }
+      expect(described_class.from_env(env)).to be_shadow
+      expect(described_class.from_env({ "INSIKA_RELAY_TOKEN" => "t" })).not_to be_shadow
+      expect(described_class.from_env({ "INSIKA_RELAY_TOKEN" => "t", "INSIKA_RELAY_SHADOW" => "0" })).not_to be_shadow
+    end
+  end
+
+  describe "shadow mode (RFC-0025 C1)" do
+    it "is off by default — every existing caller keeps working" do
+      expect(relay.shadow?).to be(false)
+    end
+
+    it "refuses to deliver, loudly and immediately — the turn's answer never reaches the customer" do
+      expect do
+        relay(shadow: true).deliver({ "content" => "oi" }, to: "5511999998888")
+      end.to raise_error(Insika::DeliveryError, /shadow mode/)
+      expect(http.requests).to be_empty # and nothing was POSTed
+    end
+
+    it "requires event_id in shadow — the correlation key both halves are built from" do
+      shadow = relay(shadow: true)
+      expect { shadow.parse(nil, body: { "agent" => "a", "external_id" => "e", "message" => "oi" }) }
+        .to raise_error(Insika::ValidationError, /event_id is required in shadow mode/)
+      parsed = shadow.parse(nil, body: { "agent" => "a", "external_id" => "e", "message" => "oi", "event_id" => "wamid.1" })
+      expect(parsed[:event_id]).to eq("wamid.1")
+    end
+
+    it "still accepts a missing event_id outside shadow (the dedup key stays optional)" do
+      expect(relay.parse(nil, body: { "agent" => "a", "external_id" => "e", "message" => "oi" })[:event_id]).to be_nil
+    end
+
+    it "passes the mirror's own reply through parse (Shape 1, optional outside shadow too)" do
+      body = { "agent" => "a", "external_id" => "e", "message" => "oi",
+               "event_id" => "wamid.1", "incumbent_reply" => "me passa o número?" }
+      expect(relay(shadow: true).parse(nil, body: body)[:incumbent_reply]).to eq("me passa o número?")
+      expect(relay.parse(nil, body: body)[:incumbent_reply]).to eq("me passa o número?")
+    end
+
+    describe "parse_shadow_reply (the follow-up, Shape 2)" do
+      let(:body) { { "external_id" => "5511999998888", "event_id" => "wamid.1",
+                     "reply" => "me passa o número?" } }
+
+      it "parses the three required fields and the optional at" do
+        parsed = relay(shadow: true).parse_shadow_reply(nil, body: body)
+        expect(parsed).to eq({ external_id: "5511999998888", event_id: "wamid.1",
+                               reply: "me passa o número?", at: nil })
+      end
+
+      it "refuses a missing field" do
+        expect { relay.parse_shadow_reply(nil, body: body.merge("event_id" => nil)) }
+          .to raise_error(Insika::ValidationError, /event_id/)
+        expect { relay.parse_shadow_reply(nil, body: body.merge("reply" => "  ")) }
+          .to raise_error(Insika::ValidationError, /reply/)
+      end
+
+      it "refuses a non-ISO at" do
+        expect { relay.parse_shadow_reply(nil, body: body.merge("at" => "ontem")) }
+          .to raise_error(Insika::ValidationError, /ISO8601/)
+      end
+    end
   end
 
   describe "parse" do
@@ -86,7 +148,7 @@ RSpec.describe Insika::Channels::Relay do
                                      "vars" => { "store" => "demo-store" } })
       expect(out).to eq(agent: "support", external_id: "5511999998888",
                         message: "queria saber do pedido", event_id: "wamid.1",
-                        vars: { "store" => "demo-store" })
+                        incumbent_reply: nil, vars: { "store" => "demo-store" })
     end
 
     it "treats event_id and vars as optional" do

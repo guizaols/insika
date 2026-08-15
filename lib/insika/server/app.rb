@@ -192,6 +192,8 @@ module Insika
           handle_events(req)
         in ["POST", ["channels", id, "events"]] if @channels
           handle_channel_event(req, id)
+        in ["POST", ["channels", id, "shadow-reply"]] if @channels
+          handle_channel_shadow_reply(req, id)
         in ["POST", ["channels", id, "sessions"]] if @channels
           handle_channel_session(req, id)
         in ["POST", ["channels", id, "messages"]] if @channels
@@ -249,7 +251,7 @@ module Insika
       # tomorrow is gated by default and publishing it is a deliberate edit here.
       def channel_route?(method, segments)
         case [method, segments]
-        in ["POST", ["channels", _, "events" | "sessions" | "messages"]] then true
+        in ["POST", ["channels", _, "events" | "sessions" | "messages" | "shadow-reply"]] then true
         in ["GET", ["channels", _, "asset", _]] then true
         in ["OPTIONS", ["channels", _, *]] then true # CORS preflight carries no credential, by spec
         else false
@@ -582,7 +584,52 @@ TENANT_SURFACES = [
 
         payload = { agent: parsed[:agent], session_id: session_id,
                     message: parsed[:message], event_id: parsed[:event_id] }.compact
-        channel_ack(payload, transport: :"channel:#{id}")
+        ack = channel_ack(payload, transport: :"channel:#{id}")
+        # RFC-0025 C4: in shadow the mirror's own reply may ride the SAME call
+        # (Shape 1) — recorded before we answer, through the one command.
+        if channel.respond_to?(:shadow?) && channel.shadow?
+          dispatch_shadow_reply(id, parsed) if parsed[:incumbent_reply]
+          return shadow_ack(ack)
+        end
+        ack
+      end
+
+      # POST /channels/:id/shadow-reply — the mirror contract's fallback (Shape 2),
+      # for a consumer that mirrors the exchange BEFORE it answers the customer.
+      # Same channel_gate (auth is the channel's, not the route's); 404 unless the
+      # channel is in shadow — the same parity every other optional surface has.
+      def handle_channel_shadow_reply(req, id)
+        channel = @channels.find(id)
+        return not_found if channel.nil? || !(channel.respond_to?(:shadow?) && channel.shadow?)
+
+        gate = channel_gate(channel, req)
+        return gate if gate
+
+        parsed = channel.parse_shadow_reply(req, body: parse_raw_body(req)) # ValidationError -> 422
+        result = dispatch_shadow_reply(id, parsed)
+        json_response(202, { pair_id: result[:pair_id], status: result[:status] })
+      end
+
+      # The incumbent half rides ONE command whatever shape it arrived in, so
+      # server/ never writes to a store and both doors share one behaviour.
+      def dispatch_shadow_reply(id, parsed)
+        @command_bus.dispatch(
+          Insika::Command.build(:record_shadow_reply,
+                                { channel: id.to_s, external_id: parsed[:external_id],
+                                  event_id: parsed[:event_id], reply: parsed[:incumbent_reply] || parsed[:reply],
+                                  at: parsed[:at] }.compact,
+                                transport: :"channel:#{id}")
+        )
+      end
+
+      # 202 -> 200 {task_id, shadow: true}: a consumer wired to "202 means a
+      # reply is coming" must not be silently misled. The duplicate/merged/
+      # steered verdicts pass through untouched (they already say 200).
+      def shadow_ack(ack)
+        status, _headers, body = ack
+        return ack unless status == 202
+
+        json_response(200, JSON.parse(body.join).merge("shadow" => true))
       end
 
       # POST /channels/:id/sessions — mint a conversation for a PUBLIC Shape A

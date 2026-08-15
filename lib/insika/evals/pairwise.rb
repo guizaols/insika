@@ -60,12 +60,19 @@ module Insika
       def compare(golden:, turns:)
         return nil unless golden.reference?
 
-        ours = Pairwise.transcript(golden.user_turns, turns)
-        theirs = Pairwise.reference_transcript(golden.reference_messages)
-        return nil if ours.strip.empty?
+        compare_texts(ours: Pairwise.transcript(golden.user_turns, turns),
+                      theirs: Pairwise.reference_transcript(golden.reference_messages),
+                      vs: golden.human_assisted? ? "human-assisted" : "agent")
+      end
 
-        panel = @asks.map { |ask| judge_once(ask, ours, theirs) }
-        combine(panel, vs: golden.human_assisted? ? "human-assisted" : "agent")
+      # RFC-0025 C6: two transcripts, no golden — the shadow seam. The judge is
+      # the SAME object with the SAME prompt, so shadow pairs and golden cases are
+      # graded by one rule. An empty side returns nil (never a verdict against an
+      # empty string — that was a bug in the golden path until this seam landed).
+      def compare_texts(ours:, theirs:, vs: "agent")
+        return nil if ours.to_s.strip.empty? || theirs.to_s.strip.empty?
+
+        combine(@asks.map { |ask| judge_once(ask, ours, theirs) }, vs: vs)
       end
 
       # The replayed conversation as the judge reads it: the user turns we sent,
@@ -81,8 +88,13 @@ module Insika
       # is the conversation as the customer received it, and telling it "a person wrote
       # this one" is an invitation to grade the author instead. The fact is carried to
       # the READER as `vs: human-assisted` instead, which is where it changes a decision.
+      # A reference with no text at all returns "" — the caller's empty guard then
+      # refuses instead of judging against an empty string (RFC-0025 C6 §7.8).
       def self.reference_transcript(messages)
-        Array(messages).map do |m|
+        msgs = Array(messages)
+        return "" if msgs.all? { |m| m["text"].to_s.strip.empty? }
+
+        msgs.map do |m|
           speaker = m["role"].to_s == "user" ? "customer" : "assistant"
           "#{speaker}: #{m['text'].to_s.strip}"
         end.join("\n")

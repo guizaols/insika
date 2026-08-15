@@ -3,6 +3,7 @@
 require "digest"
 require "json"
 require "openssl"
+require "time"
 require "uri"
 
 module Insika
@@ -39,6 +40,9 @@ module Insika
       # token is the SWITCH — no token, no channel, so there is no way to end up with
       # this route mounted and open. -> Relay | nil.
       #
+      # `INSIKA_RELAY_SHADOW` (truthy) is the shadow switch (RFC-0025): the turn
+      # runs end to end and the reply is recorded, never delivered.
+      #
       # Shared by every composition root on purpose: the DSL front door has to reach
       # the same feature as `config.ru`, or the docs are true of only one of them.
       def self.from_env(env = ENV, http: nil, allow_http: false, allow_private: false)
@@ -48,6 +52,7 @@ module Insika
         new(inbound_token: token,
             deliver_url: Insika::EnvSchema.read("INSIKA_RELAY_DELIVER_URL", env),
             deliver_token: Insika::EnvSchema.read("INSIKA_RELAY_DELIVER_TOKEN", env),
+            shadow: Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_RELAY_SHADOW", env)),
             http: http, allow_http: allow_http, allow_private: allow_private)
       end
 
@@ -59,9 +64,13 @@ module Insika
       #                 reply and the delivery fails loudly instead of silently).
       # deliver_token:  Bearer we send THEM. Optional: a consumer on a private
       #                 network may authenticate us another way.
+      # shadow:         RFC-0025. The turn runs, the reply is recorded and never
+      #                 sent. Fail-closed by construction: everything downstream
+      #                 duck-types `shadow?`, so a channel that does not answer it
+      #                 is a normal channel.
       def initialize(inbound_token:, deliver_url:, deliver_token: nil, http: nil,
                      id: DEFAULT_ID, allow_http: false, allow_private: false,
-                     timeout: DEFAULT_TIMEOUT)
+                     timeout: DEFAULT_TIMEOUT, shadow: false)
         @id = id.to_s
         @inbound_token = inbound_token.to_s
         @deliver_url = deliver_url.to_s
@@ -70,7 +79,10 @@ module Insika
         @allow_http = allow_http
         @allow_private = allow_private
         @timeout = timeout
+        @shadow = shadow
       end
+
+      def shadow? = @shadow
 
       # -> :ok | :unauthorized | :disabled. A SYMBOL and not a Rack triple (the
       # RFC sketched one): a status code is the transport's vocabulary, and keeping
@@ -91,19 +103,25 @@ module Insika
       #   { "agent": "support", "external_id": "5511999998888",
       #     "event_id": "wamid.HBg…", "message": "queria saber do pedido",
       #     "vars": { … } }
+      #
+      # In SHADOW mode `event_id` is REQUIRED: it is the correlation key both
+      # halves of the pair are built from, and a mirror that cannot supply a
+      # stable id cannot be paired.
       def parse(_req, body:)
         body = body.is_a?(Hash) ? body : {}
         agent = string(body["agent"])
         external_id = string(body["external_id"])
         message = string(body["message"])
+        event_id = presence(body["event_id"])
 
         raise Insika::ValidationError, "agent is required" if agent.empty?
         raise Insika::ValidationError, "external_id is required" if external_id.empty?
         raise Insika::ValidationError, "message is required" if message.strip.empty?
+        raise Insika::ValidationError, "event_id is required in shadow mode" if @shadow && event_id.nil?
 
         vars = body["vars"].is_a?(Hash) ? body["vars"] : {}
         { agent: agent, external_id: external_id, message: message,
-          event_id: presence(body["event_id"]), vars: vars }
+          event_id: event_id, vars: vars, incumbent_reply: presence(body["incumbent_reply"]) }
       end
 
       # the engine namespaces the platform's conversation key, so a
@@ -127,6 +145,8 @@ module Insika
       # consumer that receives the same delivery twice (we retried after a timeout
       # that actually landed) can drop the second one.
       def deliver(payload, to:, delivery_id: nil)
+        raise Insika::DeliveryError, "relay '#{@id}' is in shadow mode and must never deliver" if @shadow
+
         raise Insika::DeliveryError, "relay deliver_url is not configured" if @deliver_url.empty?
 
         if (reason = egress_violation)
@@ -143,7 +163,32 @@ module Insika
         raise Insika::DeliveryError, "#{e.class}: #{e.message}"
       end
 
+      # The reply, as recorded by the mirror (RFC-0025 C4, Shape 2). Follows the
+      # same strictness as `parse`; `at` is optional (nil = now).
+      def parse_shadow_reply(_req, body:)
+        body = body.is_a?(Hash) ? body : {}
+        external_id = string(body["external_id"])
+        event_id = presence(body["event_id"])
+        reply = string(body["reply"])
+
+        raise Insika::ValidationError, "external_id is required" if external_id.empty?
+        raise Insika::ValidationError, "event_id is required" if event_id.nil?
+        raise Insika::ValidationError, "reply is required" if reply.strip.empty?
+
+        at = presence(body["at"])
+        raise Insika::ValidationError, "at must be an ISO8601 timestamp" if at && !parseable_time?(at)
+
+        { external_id: external_id, event_id: event_id, reply: reply, at: at }
+      end
+
       private
+
+      def parseable_time?(value)
+        Time.iso8601(value)
+        true
+      rescue ArgumentError
+        false
+      end
 
       # Resolved on EVERY call, not once at boot: a hostname that answered a public
       # address yesterday can answer 169.254.169.254 today, and this POST carries
