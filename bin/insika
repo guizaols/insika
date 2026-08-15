@@ -27,6 +27,7 @@ module Insika
       when "doctor"  then doctor(argv)
       when "env"     then env(argv)
       when "refine"  then refine(argv)
+      when "soak"    then exit(Insika::Soak::Runner.main(argv, stdout: $stdout, stderr: $stderr))
       when "evals:import" then evals_import(argv)
       when "evals:export" then evals_export(argv)
       when "evals:baseline" then evals_baseline(argv)
@@ -48,6 +49,7 @@ module Insika
           doctor [--fix] [--json]   diagnose the deployment configuration
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic
+          soak   --run | --verify FILE | --preflight   the 72h soak (RFC-0026)
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
           evals:baseline <sub>      the accepted state per agent: show | import | export

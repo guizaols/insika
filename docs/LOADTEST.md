@@ -16,7 +16,7 @@ The whole point: the engine exposes `POST /v1/responses` as an **SSE drop-in** o
 the OpenClaw gateway. Same contract → the same load tools work against either side,
 so you can measure the engine you are about to ship against the gateway it replaces.
 
-There are three scripts, each answering a different question:
+There are four scripts, each answering a different question:
 
 | Script | Question it answers | Needs a provider? |
 |--------|---------------------|-------------------|
@@ -24,8 +24,13 @@ There are three scripts, each answering a different question:
 | `scripts/loadtest.rb` | End-to-end: TTFB/total/tokens/cache/error against `/v1/responses` | Yes |
 | `scripts/loadtest-local.sh` | Single-proc baseline vs N-worker multi-proc on one box | Yes |
 | `scripts/loadtest_session.rb` | A full multi-message session (CEP, searches, FAQ) under C concurrent sessions — direct to the engine (`--surface engine`, stream vs steer) or through the consumer's real ingress (`--surface web`, the consumer's widget API) | Yes |
+| `insika soak` | Does the deploy degrade over 72 h of steady load? | Yes |
 
-All three take `--help` / `-h`.
+The first four take `--help` / `-h`; the soak is a shipped command (`insika soak --help`) rather
+than a repo script. Bursts and uptime are different questions: a wave driver
+measures a burst, and the soak's arrival process measures *degradation over
+uptime* — the load-test table above deliberately stops where
+[Soak](SOAK.md) begins.
 
 ---
 
@@ -224,6 +229,7 @@ Work top-down and **measure before assuming** — avoid premature topology optim
 | 4 | Insika vs gateway, identical knobs | §4 (either method) | Is the engine at parity with the engine it replaces before cut-over? |
 | 5 | Cold vs hot conversation (cache) | `loadtest.rb` with/without `--same-user 1` | Expected steady-state cost/latency once conversations warm up. |
 | 6 | Remote (Railway) vs local | `loadtest.rb` with `INSIKA_URL` remote | Network/deploy overhead of the real environment. |
+| 7 | Degradation over uptime (72 h) | `insika soak` (see [Soak](SOAK.md)) | The cut argument: does latency or memory grow with uptime? Run it last — it needs the topology settled first. |
 
 **Reaching for horizontal scale is only justified after 1–3 show the single box is
 the limit.** If it is, the paths are: sharding-by-tenant +

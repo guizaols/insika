@@ -162,6 +162,53 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "soak checks (RFC-0026)" do
+    it "soak-envelope: :info when the envelope is absent (not every deployment soaks)" do
+      Dir.mktmpdir do |dir|
+        finding = described_class.new(env: {}, soak_envelope_path: File.join(dir, "SOAK.md")).run
+                                .findings.find { |f| f.check == "soak-envelope" }
+        expect(finding.severity).to eq(:info)
+      end
+    end
+
+    it "soak-envelope: :ok when present and parseable" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "SOAK.md")
+        File.write(path, "```yaml\n" \
+                         "version: 1\ntarget: staging\nduration_hours: 72\nwarmup_hours: 6\n" \
+                         "arrival: poisson\nturns_per_hour: 60\nsession_turns: 7\nconcurrency_cap: 8\n" \
+                         "web_concurrency: 1\n" \
+                         "rss_growth_ratio: 1.15\nprep_p95_drift_ratio: 1.5\nrestarts_max: 0\n" \
+                         "error_rate_ceiling: 0.005\nno_usage_rate_ceiling: 0.002\n" \
+                         "coverage_min_ratio: 0.95\ngap_seconds_max: 900\nhourly_turn_floor: 30\n```\n")
+        finding = described_class.new(env: {}, soak_envelope_path: path).run
+                                .findings.find { |f| f.check == "soak-envelope" }
+        expect(finding.severity).to eq(:ok)
+      end
+    end
+
+    it "soak-envelope: :error when present and broken" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "SOAK.md")
+        File.write(path, "# no yaml fence here\n")
+        finding = described_class.new(env: {}, soak_envelope_path: path).run
+                                .findings.find { |f| f.check == "soak-envelope" }
+        expect(finding.severity).to eq(:error)
+        expect(finding.message).to match(/no fenced yaml block/)
+      end
+    end
+
+    it "turn-timing: :info when INSIKA_TURN_TIMING is off, :ok when on" do
+      off = described_class.new(env: {}).run.findings.find { |f| f.check == "turn-timing" }
+      expect(off.severity).to eq(:info)
+      expect(off.message).to match(/soak/)
+
+      on = described_class.new(env: { "INSIKA_TURN_TIMING" => "1" }).run
+                         .findings.find { |f| f.check == "turn-timing" }
+      expect(on.severity).to eq(:ok)
+    end
+  end
+
   # A prompt file holding a serialized object serves a mangled prompt on every turn and
   # nothing else reports it: the file is present, non-empty, and the agent answers.
   describe "prompt-files check" do
