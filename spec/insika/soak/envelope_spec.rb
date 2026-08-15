@@ -8,6 +8,7 @@ RSpec.describe Insika::Soak::Envelope do
     yaml = {
       version: 1, target: "staging", duration_hours: 72, warmup_hours: 6,
       arrival: "poisson", turns_per_hour: 60, session_turns: 7, concurrency_cap: 8,
+      web_concurrency: 1,
       rss_growth_ratio: 1.15, prep_p95_drift_ratio: 1.5,
       restarts_max: 0, error_rate_ceiling: 0.005, no_usage_rate_ceiling: 0.002,
       coverage_min_ratio: 0.95, gap_seconds_max: 900, hourly_turn_floor: 30
