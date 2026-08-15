@@ -20,7 +20,7 @@ module Insika
       # Required keys. A missing one is a ConfigError, not a default.
       REQUIRED = %i[
         version target duration_hours warmup_hours
-        arrival turns_per_hour session_turns concurrency_cap
+        arrival turns_per_hour session_turns concurrency_cap web_concurrency
         rss_growth_ratio prep_p95_drift_ratio
         restarts_max error_rate_ceiling no_usage_rate_ceiling
         coverage_min_ratio gap_seconds_max hourly_turn_floor
@@ -37,7 +37,7 @@ module Insika
       # Keys validated as positive integers.
       POSITIVE_COUNT_KEYS = %i[
         duration_hours warmup_hours turns_per_hour session_turns
-        concurrency_cap gap_seconds_max hourly_turn_floor
+        concurrency_cap web_concurrency gap_seconds_max hourly_turn_floor
       ].freeze
 
       # Keys validated as rates in [0, 1].

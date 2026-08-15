@@ -54,10 +54,12 @@ module Insika
       TXT
 
       # Poisson inter-arrival seconds: `-mean * Math.log(1.0 - rand)`. Seeded,
-      # so a re-run with the same seed is the same arrival sequence.
-      def self.arrivals(seed:, turns_per_hour:, count:)
+      # so a re-run with the same seed is the same arrival sequence. The rate is
+      # expressed in the ARRIVAL unit (sessions per hour when session_turns > 1);
+      # the envelope's turns_per_hour is divided by session_turns before this.
+      def self.arrivals(seed:, rate_per_hour:, count:)
         rng = Random.new(seed)
-        mean = 3600.0 / turns_per_hour
+        mean = 3600.0 / rate_per_hour
         Array.new(count) { -mean * Math.log(1.0 - rng.rand) }
       end
 
@@ -167,6 +169,7 @@ module Insika
         @lanes = []
         @in_flight = 0
         @mutex = Mutex.new
+        @write_mutex = Mutex.new
         @cond = ConditionVariable.new
         @vitals_failures = 0
         @vitals_degraded_noted = false
@@ -255,7 +258,7 @@ module Insika
 
         install_traps if traps
 
-        header = resume ? resume_header(resume) : new_header
+        header, lane_id = resume ? resume_state(resume) : [new_header, 0]
         path = resume || File.join(@out, "#{header['run_id']}.jsonl")
         FileUtils.mkdir_p(File.dirname(path)) unless resume
         @file = File.open(path, "a")
@@ -274,12 +277,16 @@ module Insika
         offset_hours = resume ? elapsed_hours(header["started_at"]) : 0
         start = @clock.call
         deadline = start + (duration_hours - offset_hours) * 3600.0
-        arrivals = self.class.arrivals(seed: @seed, turns_per_hour: @envelope[:turns_per_hour],
-                                       count: @envelope[:turns_per_hour] * duration_hours)
+        # The envelope declares TURNS per hour; each arrival is a SESSION of
+        # session_turns turns, so arrivals arrive at turns_per_hour/session_turns
+        # per hour — otherwise a 60/h x 7-turn envelope fires 420 turns/h.
+        sessions_per_hour = @envelope[:turns_per_hour].to_f / @envelope[:session_turns]
+        arrivals = self.class.arrivals(seed: @seed, rate_per_hour: sessions_per_hour,
+                                       count: (sessions_per_hour * duration_hours).ceil)
+        messages = corpus
         next_turn = start
         snapshot_index = 1
         turn_index = 0
-        lane_id = 0
 
         loop do
           break if @stop_reason
@@ -303,7 +310,8 @@ module Insika
           next_turn = Float::INFINITY if turn_index >= arrivals.length
 
           if now >= next_turn && next_turn <= deadline
-            spawn_lane(lane_id, turn_index)
+            spawn_lane(lane_id, turn_index, messages)
+            @lanes.reject! { |t| !t.alive? }
             lane_id += 1
             next_turn += arrivals[turn_index]
             turn_index += 1
@@ -346,12 +354,25 @@ module Insika
         }
       end
 
-      def resume_header(path)
-        first = File.foreach(path).first
-        header = JSON.parse(first)
-        raise Insika::ConfigError, "#{path} has no header record" unless header["t"] == "header"
+      # The header plus the next free lane id: lane ids are per-user session
+      # ids on the target, so a resume MUST NOT reuse them — a lane 0 that
+      # existed before the gap would continue a conversation, not start one.
+      def resume_state(path)
+        header = nil
+        last_lane = 0
+        File.foreach(path) do |line|
+          record = JSON.parse(line)
+          if record["t"] == "header"
+            header ||= record
+          elsif record["t"] == "turn" && record["lane"].is_a?(Integer)
+            last_lane = record["lane"] if record["lane"] >= last_lane
+          end
+        rescue JSON::ParserError
+          next
+        end
+        raise Insika::ConfigError, "#{path} has no header record" unless header
 
-        header
+        [header, last_lane + 1]
       end
 
       def elapsed_hours(started_iso)
@@ -367,8 +388,10 @@ module Insika
       end
 
       def append(record)
-        @file.puts(JSON.generate(record))
-        @file.fsync
+        @write_mutex.synchronize do
+          @file.puts(JSON.generate(record))
+          @file.fsync
+        end
       end
 
       def append_snapshot(hour)
@@ -388,7 +411,7 @@ module Insika
         end
       end
 
-      def spawn_lane(lane_id, turn_index)
+      def spawn_lane(lane_id, turn_index, messages)
         @lanes << Thread.new do
           queued_at = @clock.call
           @mutex.synchronize do
@@ -397,14 +420,15 @@ module Insika
           end
           queued_ms = ((@clock.call - queued_at) * 1000).round
           begin
-            messages = corpus
             @envelope[:session_turns].times do |step|
-              line = messages[turn_index % messages.length]
+              # step advances the corpus read: turn 7 of a session must not
+              # repeat turn 1's line.
+              line = messages[(turn_index + step) % messages.length]
               result = @http.post_turn(target_url, @agent, user: "soak-#{lane_id}", message: line,
                                        timeout: (@envelope[:request_timeout_s] || 120))
               append({
                        "t" => "turn", "at" => Time.now.utc.iso8601, "lane" => lane_id, "step" => step + 1,
-                       "corpus_line" => (turn_index % messages.length) + 1,
+                       "corpus_line" => ((turn_index + step) % messages.length) + 1,
                        "ok" => result[:ok] == true, "status" => result[:status],
                        "queued_ms" => queued_ms, "ttfb_ms" => result[:ttfb_ms],
                        "total_ms" => result[:total_ms], "timing" => result[:timing],

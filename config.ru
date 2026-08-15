@@ -75,10 +75,10 @@ APP = Insika::Server::App.new(
   # WS1: only multi_tenant hands the token store to the edge.
   token_store: (W::SPINE.token_store if TENANCY == "multi_tenant"),
   # RFC-0026 GET /v1/vitals: in-flight count + SQLite bytes.
-  executor: W::EXECUTOR, db_path: ENV["INSIKA_DB"]
+  executor: W::EXECUTOR, db_path: Insika::EnvSchema.read("INSIKA_DB")
 )
 
-PERSISTENCE = ENV["INSIKA_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"
+PERSISTENCE = Insika::EnvSchema.read("INSIKA_DB").to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"
 Studio::App.configure(
   command_bus: W::BUS, profile_source: W::PROFILE_SOURCE,
   event_stream: W::EVENT_STREAM, config: { admin_token: ADMIN_TOKEN, persistence: PERSISTENCE },

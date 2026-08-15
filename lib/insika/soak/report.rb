@@ -83,8 +83,8 @@ module Insika
         items = records.to_a
         return insufficient(envelope, nil, "no records", {}) if items.empty?
 
-        parsed = items.map { |l| l.is_a?(Hash) ? l : nil }
-        malformed = parsed.count(nil)
+        parsed = items.select { |l| l.is_a?(Hash) }
+        malformed = items.length - parsed.length
         header = parsed.find { |l| l["t"] == "header" }
         return invalid(envelope, nil, "missing header record", {}) if header.nil?
 
@@ -246,8 +246,18 @@ module Insika
         totals = turns.filter_map { |t| t["total_ms"] }
         ttfts = turns.filter_map { |t| t.dig("timing", "ttft_ms") }
 
-        first_window = ((warmup + 1)..(warmup + 6)).flat_map { |h| by_hour[h] }.filter_map { |t| t.dig("timing", "prep_ms") }
-        last_window = ((duration - 6)..(duration - 1)).flat_map { |h| by_hour[h] }.filter_map { |t| t.dig("timing", "prep_ms") }
+        # Drift windows: (warmup+1..warmup+6) vs (duration-6..duration-1). A run
+        # shorter than ~12h cannot hold two non-overlapping 6h windows: the last
+        # window is then empty (drift is reported as "-", never gated) and the
+        # first window runs to the end — it never reaches back into the warmup.
+        first_lo, first_hi = warmup + 1, warmup + 6
+        last_lo, last_hi = duration - 6, duration - 1
+        if last_lo <= first_hi
+          first_hi = last_hi
+          last_lo = last_hi + 1
+        end
+        first_window = (first_lo..first_hi).flat_map { |h| by_hour[h] }.filter_map { |t| t.dig("timing", "prep_ms") }
+        last_window = (last_lo..last_hi).flat_map { |h| by_hour[h] }.filter_map { |t| t.dig("timing", "prep_ms") }
         first_p95 = pct(first_window.sort, 95)
         last_p95 = pct(last_window.sort, 95)
 
@@ -272,10 +282,10 @@ module Insika
           heap_growth_ratio: heap_ratio,
           db_growth_mb_per_day: db_fit && (db_fit[:slope] * 24 / MB).round(3),
           tokens_per_turn: tokens_per_turn(turns),
-          prep_p95_first_ms: first_window.empty? ? nil : first_p95.round(2),
-          prep_p95_last_ms: last_window.empty? ? nil : last_p95.round(2),
-          prep_p95_drift_ratio: drift_ratio(first_p95, last_p95),
-          prep_p95_ms: prep.empty? ? nil : pct(prep.sort, 95).round(2),
+          prep_p95_first_ms: first_window.empty? ? nil : first_p95,
+          prep_p95_last_ms: last_window.empty? ? nil : last_p95,
+          prep_p95_drift_ratio: last_window.empty? ? nil : drift_ratio(first_p95, last_p95),
+          prep_p95_ms: prep.empty? ? nil : pct(prep.sort, 95),
           total_p95_ms: totals.empty? ? nil : pct(totals.sort, 95).round(1),
           ttft_p95_ms: ttfts.empty? ? nil : pct(ttfts.sort, 95).round(1),
           coverage_ratio: duration.zero? ? 0.0 : covered.to_f / duration,

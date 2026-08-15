@@ -177,6 +177,7 @@ RSpec.describe Insika::Doctor do
         File.write(path, "```yaml\n" \
                          "version: 1\ntarget: staging\nduration_hours: 72\nwarmup_hours: 6\n" \
                          "arrival: poisson\nturns_per_hour: 60\nsession_turns: 7\nconcurrency_cap: 8\n" \
+                         "web_concurrency: 1\n" \
                          "rss_growth_ratio: 1.15\nprep_p95_drift_ratio: 1.5\nrestarts_max: 0\n" \
                          "error_rate_ceiling: 0.005\nno_usage_rate_ceiling: 0.002\n" \
                          "coverage_min_ratio: 0.95\ngap_seconds_max: 900\nhourly_turn_floor: 30\n```\n")

@@ -111,6 +111,34 @@ RSpec.describe Insika::Soak::Report do
       end
     end
 
+    describe "malformed (unparseable) lines — the fold tolerates what the reader tolerates" do
+      # green-72h.jsonl: 289 turns (0..288), snapshots at 289..360. Corrupting a
+      # SNAPSHOT line is safe — corrupting a turn would widen the inter-turn gap.
+      it "tolerates a sub-0.5% truncated line and still folds to the true verdict" do
+        lines = records("green-72h")
+        lines[300] = "truncated line without a newline" # 1 of ~363 -> 0.28%
+        result = described_class.fold(lines, envelope: envelope)
+        expect(result.verdict).to eq(:pass)
+        expect(result.metrics[:turns]).to eq(288)
+      end
+
+      it ":invalid when more than 0.5% of the file fails to parse" do
+        lines = records("green-72h")
+        lines << "garbage one" << "garbage two\n"
+        result = described_class.fold(lines, envelope: envelope)
+        expect(result.verdict).to eq(:invalid)
+        expect(result.reasons).to include(a_string_matching(/malformed/))
+        expect(result.metrics).to eq({})
+      end
+
+      it ":pass (NOT a NoMethodError) when a truncated snapshot sits below the threshold" do
+        lines = records("green-72h")
+        lines[300] = "{\"t\":\"snapshot\"  # cut mid-line"
+        result = described_class.fold(lines, envelope: envelope)
+        expect(result.verdict).to eq(:pass)
+      end
+    end
+
     describe "inline verdict cases" do
       it ":invalid when the header hash does not match the envelope" do
         other = Insika::Soak::Envelope.parse(File.read(File.join(FIXTURES, "envelope.md")),
