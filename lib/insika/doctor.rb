@@ -532,18 +532,22 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
 
     # RFC-0025 shadow parity (C9). Shadow holds raw customer conversations, so
     # every dangerous configuration says so BEFORE the experiment starts — and
-    # the one automated reminder to turn it off:
+    # the one automated reminder to turn it off. The pairs themselves are only
+    # loaded when shadow is ON (a full scan pays for customer text); the off
+    # path needs just a count, which the store answers from its keys.
     def check_shadow_parity
       shadow_on = Insika::EnvSchema.truthy?(@env["INSIKA_RELAY_SHADOW"])
       path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION", @env) || "evals/PARITY.md"
-      pairs = @shadow_pair_store ? @shadow_pair_store.each.to_a : []
 
       unless shadow_on
-        return [] if pairs.empty?
+        stored = @shadow_pair_store ? @shadow_pair_store.size : 0
+        return [] if stored.zero?
 
         return [ok("shadow-parity",
-                   "shadow off — #{pairs.length} pair(s) still stored, evidence is not forgotten")]
+                   "shadow off — #{stored} pair(s) still stored, evidence is not forgotten")]
       end
+
+      pairs = @shadow_pair_store ? @shadow_pair_store.each.to_a : []
 
       criterion = begin
         Insika::Parity::Criterion.load(path)

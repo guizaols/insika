@@ -29,7 +29,7 @@
       <% if sha_check&.met %>
         <span class="pill ok">frozen · matches every pair in the window</span>
       <% else %>
-        <span class="pill err">MISMATCH — the window carries pairs stamped with a different file</span>
+        <span class="pill err">NOT VERIFIED — the window's pairs do not all carry this frozen hash</span>
       <% end %>
     </div>
   </div>
@@ -61,7 +61,7 @@
             <td class="mono"><%= d[:date] %></td>
             <td><%= d[:pairs] %></td>
             <td><%= d[:decided] %></td>
-            <td><% if d[:pairs] >= @criterion.rule.pairs_per_day %><span class="pill ok">met</span><% else %><span class="pill err">below floor</span><% end %></td>
+            <td><% if d[:floor].zero? %><span class="muted">partial day — reported, not required</span><% elsif d[:pairs] >= d[:floor] %><span class="pill ok">met</span><% else %><span class="pill err">below floor</span><% end %></td>
           </tr>
         <% end %>
       </tbody>

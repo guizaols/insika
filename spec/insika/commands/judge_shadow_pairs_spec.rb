@@ -114,6 +114,51 @@ RSpec.describe Insika::Commands::JudgeShadowPairs do
     end.to raise_error(Insika::ValidationError, /3 judge|judge model/)
   end
 
+  it "refuses when the SAME model is configured three times — entries are not distinct models" do
+    plant(id: "p1")
+    allow(Insika::Evals::JudgePanel).to receive(:pairwise).and_return([pairwise, %w[m1 m1 m1]])
+    expect do
+      described_class.new(shadow_pairs: pairs, settings_store: settings_store,
+                          criterion: CRITERION, event_stream: events)
+                     .call(Insika::Command.build(:judge_shadow_pairs, {}))
+    end.to raise_error(Insika::ValidationError, /distinct judge models/)
+  end
+
+  it "refuses BEFORE expiring — a bad click must not stamp :incomplete on pairs" do
+    stale = Insika::ShadowPairStore.key_for(channel: "relay", external_id: "old", event_id: "e")
+    pairs.record_incumbent(id: stale, channel: "relay", event_id: "e", external_id: "old",
+                           reply: "r", at: Time.now.utc - 48 * 3600)
+    allow(Insika::Evals::JudgePanel).to receive(:pairwise).and_return(nil)
+    expect do
+      described_class.new(shadow_pairs: pairs, settings_store: settings_store,
+                          criterion: CRITERION, event_stream: events)
+                     .call(Insika::Command.build(:judge_shadow_pairs, {}))
+    end.to raise_error(Insika::ValidationError, /no judges/)
+    expect(pairs.find(stale).status).to eq(:open)
+  end
+
+  it "a provider error on one pair never aborts the batch (its class is not Insika::Error)" do
+    plant(id: "ok")
+    plant(id: "boom")
+    flaky = Object.new
+    calls = 0
+    flaky.define_singleton_method(:compare_texts) do |**| # **
+      calls += 1
+      raise RuntimeError, "provider 502" if calls == 1
+
+      Insika::Evals::Pairwise::Verdict.new(outcome: "better", reason: "r", vs: "agent",
+                                           judges: [], order_dependent: false)
+    end
+    allow(Insika::Evals::JudgePanel).to receive(:pairwise).and_return([flaky, %w[m1 m2 m3]])
+
+    result = described_class.new(shadow_pairs: pairs, settings_store: settings_store,
+                                 criterion: CRITERION, event_stream: events)
+                            .call(Insika::Command.build(:judge_shadow_pairs, {}))
+    expect(result[:failed]).to eq(1)
+    expect(result[:judged]).to eq(1)
+    expect(pairs.find("boom").status).to eq(:complete)
+  end
+
   it "leaves a raising pair :complete and continues the batch" do
     plant(id: "ok")
     plant(id: "boom")

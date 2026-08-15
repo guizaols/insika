@@ -2,6 +2,20 @@
 
 require "spec_helper"
 
+# A backend that deletes a record the first time a transaction opens — the
+# LGPD/retention race expire must survive.
+class VanishingBackend < Insika::Stores::Memory
+  attr_accessor :vanish
+
+  def transaction(&blk)
+    if @vanish
+      delete(*@vanish)
+      @vanish = nil
+    end
+    super
+  end
+end
+
 # C2 — the pair record, written by two independent halves that must converge
 # on one key without an index and without ordering assumptions.
 RSpec.describe Insika::ShadowPairStore do
@@ -71,6 +85,13 @@ RSpec.describe Insika::ShadowPairStore do
       expect(pair.insika_reply).to eq("já confiro pra você")
       expect(pair.agent).to eq("agent-store-ocean-drop")
       expect(pair.criterion_sha).to eq("sha256:abc")
+    end
+
+    it "is first-write-wins: a mirror retry never rewrites the reply the customer received" do
+      record_incumbent
+      pair = record_incumbent(reply: "REWRITTEN BY A RETRY")
+      expect(pair.incumbent_reply).to eq("me passa o número?")
+      expect(store.find(key).incumbent_reply).to eq("me passa o número?")
     end
   end
 
@@ -142,6 +163,48 @@ RSpec.describe Insika::ShadowPairStore do
 
     it "is a best-effort counter that never raises on an absent record" do
       expect(store.expire(older_than: Time.now.utc)).to eq(0)
+    end
+
+    # The write is update-style, not an upsert: a pair purged (LGPD) or deleted
+    # between the scan and the write stays deleted — an upsert would resurrect
+    # it as a ghost :incomplete carrying none of its fields.
+    it "never resurrects a pair that vanished between the scan and the write" do
+      stale_id = described_class.key_for(channel: "relay", external_id: "z", event_id: "e10")
+      backend = VanishingBackend.new
+      own = described_class.new(store: backend)
+      own.record_incumbent(id: stale_id, channel: "relay", event_id: "e10", external_id: "z",
+                           reply: "r", at: Time.now.utc - 86_400)
+      backend.vanish = [described_class::SCOPE, "pair:#{stale_id}"]
+
+      expect(own.expire(older_than: Time.now.utc - 3600)).to eq(0)
+      expect(own.find(stale_id)).to be_nil
+    end
+  end
+
+  describe "the mirror's reported time" do
+    it "normalizes a String offset to UTC so lexicographic comparisons order correctly" do
+      tokyo = described_class.key_for(channel: "relay", external_id: "tokyo", event_id: "e1")
+      sao = described_class.key_for(channel: "relay", external_id: "sao", event_id: "e2")
+      store.record_incumbent(id: tokyo, channel: "relay", event_id: "e1", external_id: "tokyo",
+                             reply: "r", at: "2026-08-15T10:00:00+09:00")
+      store.record_incumbent(id: sao, channel: "relay", event_id: "e2", external_id: "sao",
+                             reply: "r", at: "2026-08-15T04:00:00-03:00")
+      record_ours(id: tokyo)
+      record_ours(id: sao)
+
+      expect(store.find(tokyo).created_at).to eq("2026-08-15T01:00:00Z")
+      expect(store.find(sao).created_at).to eq("2026-08-15T07:00:00Z")
+      expect(store.unjudged.map(&:id)).to eq([tokyo, sao])
+      expect(store.since(Time.utc(2026, 8, 15, 2))).to eq([store.find(sao)])
+    end
+  end
+
+  describe "size" do
+    it "counts the keys without materializing a single record" do
+      expect(store.size).to eq(0)
+      record_ours
+      record_incumbent
+      expect(store.size).to eq(1)
     end
   end
 

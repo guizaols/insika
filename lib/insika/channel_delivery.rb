@@ -110,7 +110,9 @@ module Insika
     # then nil — `Executor#finalize_channel_delivery` returns without dispatching.
     # The ordering rules: no event_id -> :shadow_unpairable (C1 makes this
     # unreachable through the relay; a plugin channel could still get it wrong);
-    # no pair store wired -> the same event (fail-closed, nothing delivered).
+    # no pair store wired -> the same event (fail-closed, nothing delivered);
+    # no recipient -> the same event (a pair keyed on an empty external_id can
+    # never meet the mirror's half).
     def record_shadow(task, channel_id, content)
       command = task.respond_to?(:command) ? task.command : nil
       payload = command.is_a?(Hash) ? (command["payload"] || command[:payload] || {}) : {}
@@ -124,6 +126,15 @@ module Insika
 
       channel = @channels&.find(channel_id)
       external_id = recipient(channel, task.session_id)
+      # The same empty-recipient guard the delivery path has: a pair keyed on an
+      # empty external_id can never meet the mirror's half (its digest differs),
+      # so the pair would sit :open forever. C1 makes this unreachable through
+      # the relay; a plugin channel could still get it wrong.
+      if Insika::Coercion.presence(external_id).nil?
+        emit_shadow(:shadow_unpairable, channel_id, agent, nil, silent: nil)
+        return nil
+      end
+
       silent = content.to_s.strip.empty?
       id = Insika::ShadowPairStore.key_for(channel: channel_id, external_id: external_id,
                                            event_id: event_id)

@@ -175,6 +175,44 @@ RSpec.describe Insika::Parity::Verdict do
       expect(report.counts[:unknown]).to eq(1)
       expect(report.counts[:decided]).to eq(29)
     end
+
+    # 48 pairs/day over 7 days — constant traffic above the floor. The window
+    # cuts the first and last calendar days in half, so the volume check must
+    # hold only FULL days to the floor: the pre-fix bucketing anchored days at
+    # `from`'s time of day, dropped the newest pairs off the grid entirely, and
+    # made :pass unreachable below 2 × the floor.
+    def constant_traffic_pairs
+      stamps = (12..23).map { |h| format("2026-08-08T%02d:00:00Z", h) } +
+               (9..14).flat_map { |d| (0..23).map { |h| format("2026-08-%02dT%02d:00:00Z", d, h) } } +
+               (0..11).map { |h| format("2026-08-15T%02d:00:00Z", h) }
+      # 2 pairs per hour = 48/day: 24 in the first boundary day, 48 × 6 full
+      # days, 24 in the last boundary day -> 336 in window.
+      stamps.each_with_index.flat_map do |t, i|
+        [pair(id: "c#{i}a", created_at: t), pair(id: "c#{i}b", created_at: t)]
+      end
+    end
+
+    it "reaches :pass at constant traffic above the floor — nothing dropped off the daily grid" do
+      report = described_class.fold(pairs: constant_traffic_pairs, criterion: CRITERION, now: FIXED_NOW)
+      expect(report.verdict).to eq(:pass)
+      expect(report.daily.map { |d| d[:pairs] }.sum).to eq(336)
+      expect(report.daily.last[:date]).to eq("2026-08-15")
+      expect(report.checks.find { |c| c.id == :volume }.met).to be(true)
+    end
+
+    it "reports :invalid when no pair carries a criterion_sha — nothing stamped, no verdict" do
+      unstamped = constant_traffic_pairs.map { |p| ParityPair.new(**p.to_h.merge(criterion_sha: nil)) }
+      report = described_class.fold(pairs: unstamped, criterion: CRITERION, now: FIXED_NOW)
+      expect(report.verdict).to eq(:invalid)
+      expect(report.reason).to include("predates the freeze")
+      expect(report.counts).to be_nil
+    end
+
+    it "keeps :insufficient (not :invalid) for an empty window — there is nothing to pre-register" do
+      report = described_class.fold(pairs: [], criterion: CRITERION, now: FIXED_NOW)
+      expect(report.verdict).to eq(:insufficient)
+      expect(report.checks.find { |c| c.id == :criterion_sha }.met).to be(true)
+    end
   end
 
   describe "Parity.transcript" do

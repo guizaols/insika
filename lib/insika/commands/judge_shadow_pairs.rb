@@ -43,18 +43,22 @@ module Insika
           raise ValidationError, "expire_after_hours must be an integer"
         end
 
-        # A mirror that dropped a half stops looking like pending work.
-        expired = @shadow_pairs.expire(older_than: Time.now.utc - (expire_hours * 3600))
-
+        # Judges BEFORE the expire: a refusal (no judges, too few models) must
+        # leave every pair untouched — expiring first would stamp :incomplete on
+        # pairs and that is terminal evidence against a click that judged nothing.
         panel = Insika::Evals::JudgePanel.pairwise(settings, llm: @llm)
         raise ValidationError, "no judges configured in settings['evals'] — refusing to judge without judges" if panel.nil?
 
         pairwise, models = panel
         minimum = @criterion.rule.min_judge_models
-        if models.length < minimum
-          raise ValidationError, "the criterion requires at least #{minimum} judge models; " \
-                                 "#{models.length} configured (#{models.join(', ')})"
+        distinct = models.uniq
+        if distinct.length < minimum
+          raise ValidationError, "the criterion requires at least #{minimum} distinct judge models; " \
+                                 "#{distinct.length} configured (#{distinct.join(', ')})"
         end
+
+        # A mirror that dropped a half stops looking like pending work.
+        expired = @shadow_pairs.expire(older_than: Time.now.utc - (expire_hours * 3600))
 
         judged = 0
         failed = 0
@@ -79,7 +83,11 @@ module Insika
 
       # -> true when the pair was judged. A raising judge leaves the pair
       # :complete (retryable on the next press) and never aborts the batch; an
-      # empty side is recorded :unknown — visible, never a preference.
+      # empty side is recorded :unknown — visible, never a preference. The rescue
+      # is broad on purpose: a provider outage raises the transport's own error
+      # class (RubyLLM::Error, an HTTP status as StandardError), NOT an
+      # Insika::Error — and one broken provider must not sink the rest of the
+      # batch against this method's own contract.
       def judge_pair(pair, pairwise, models)
         verdict = pairwise.compare_texts(
           ours: Insika::Parity.transcript(pair.inbound, pair.insika_reply),
@@ -97,7 +105,7 @@ module Insika
                               meta: { at: Time.now.utc.iso8601 }
                             ))
         true
-      rescue Insika::Error
+      rescue StandardError
         false
       end
 
