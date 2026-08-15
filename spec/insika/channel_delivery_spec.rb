@@ -91,6 +91,37 @@ RSpec.describe Insika::ChannelDelivery do
     end
   end
 
+  describe "record in shadow mode" do
+    # A task that carried the event_id the correlation key needs.
+    def shadow_task
+      t = OutboxTaskDouble.new("t-1", "x")
+      t.define_singleton_method(:command) do
+        { "payload" => { "agent" => "a", "message" => "oi", "event_id" => "wamid.1" } }
+      end
+      t
+    end
+
+    def shadow_dispatcher(shadow_pairs:)
+      channel = Insika::Channels::Relay.new(inbound_token: "t", deliver_url: "https://8.8.8.8/h",
+                                            shadow: true, http: nil)
+      channels.register("relay", channel)
+      dispatcher(shadow_pairs: shadow_pairs, criterion_sha: "sha256:frozen",
+                 session_store: ServerStoreDouble.new(OutboxSessionDouble.new("x", {})))
+    end
+
+    # The same empty-recipient guard the delivery path has: a pair keyed on an
+    # empty external_id can never meet the mirror's half (a different digest),
+    # so it would sit :open forever. Fail-closed, nothing recorded.
+    it "records nothing when the shadow pair has no recipient — fail-closed, :shadow_unpairable" do
+      pairs = Insika::ShadowPairStore.new(store: backend)
+      expect(shadow_dispatcher(shadow_pairs: pairs).record(task: shadow_task,
+                                                           channel_id: "relay", content: "ola"))
+        .to be_nil
+      expect(pairs.each.to_a).to be_empty
+      expect(events.emitted.map(&:type)).to include(:shadow_unpairable)
+    end
+  end
+
   describe "deliver" do
     let(:channel) { DeliveryChannelDouble.new(200) }
 

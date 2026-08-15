@@ -11,9 +11,11 @@ module Insika
     # store method behind both.
     #
     # Idempotency is first-write-wins: the customer received ONE reply, and
-    # letting a retry overwrite it would silently rewrite evidence. A reply for
-    # a pair that does not exist yet creates it :open — the mirror may
-    # legitimately arrive before our turn finishes.
+    # letting a retry overwrite it would silently rewrite evidence. The
+    # guarantee lives in ShadowPairStore#record_incumbent (inside its
+    # transaction); the find below is only the cheap fast path for the common
+    # retry. A reply for a pair that does not exist yet creates it :open — the
+    # mirror may legitimately arrive before our turn finishes.
     class RecordShadowReply
       def initialize(shadow_pairs:, event_stream: nil)
         @shadow_pairs = shadow_pairs

@@ -67,12 +67,15 @@ module Insika
 
     # The incumbent's half (the mirror contract). Same upsert shape; the fields
     # this half owns are the reply and, on first write, the timestamp the mirror
-    # reports. Never overwrites our half's fields. -> Pair
+    # reports. Never overwrites our half's fields. First-write-wins is enforced
+    # HERE, inside the transaction: the customer received ONE reply, and two
+    # concurrent mirror retries must not let the second rewrite the evidence.
+    # -> Pair
     def record_incumbent(id:, channel:, event_id:, external_id:, reply:, at: nil)
       upsert(id, at: at) do |record, created|
         record["channel"] = channel.to_s
         record["event_id"] = event_id.to_s
-        record["incumbent_reply"] = reply.to_s
+        record["incumbent_reply"] = reply.to_s if record["incumbent_reply"].nil?
         created
       end
     end
@@ -133,18 +136,31 @@ module Insika
     end
 
     # An `open` pair older than the cutoff will never complete. -> count moved.
-    # `complete`/`silent`/`judged` are never touched.
+    # `complete`/`silent`/`judged` are never touched. Update-style only: a pair
+    # deleted between the scan and the write (retention, LGPD purge) is left
+    # deleted — an upsert here would resurrect it as a ghost :incomplete record
+    # carrying none of its fields.
     def expire(older_than:)
       cutoff = older_than.utc.iso8601
-      doomed = each.select { |p| p.status == :open && p.created_at.to_s < cutoff }
-      doomed.each do |pair|
-        upsert(pair.id) do |record, _created|
-          record["status"] = "incomplete" if record["status"] == "open"
-          true
+      moved = 0
+      each.select { |p| p.status == :open && p.created_at.to_s < cutoff }.each do |pair|
+        @store.transaction do
+          key = key_for(pair.id)
+          record = @store.get(SCOPE, key)
+          next unless record && record["status"] == "open"
+
+          record["status"] = "incomplete"
+          record["updated_at"] = timestamp
+          @store.set(SCOPE, key, record)
+          moved += 1
         end
       end
-      doomed.size
+      moved
     end
+
+    # -> Integer. Keys only, no record materialization — a count of pairs must
+    # not pay for customer text (doctor's shadow-off check, the Studio).
+    def size = @store.list(SCOPE, KEY_PREFIX).length
 
     # LGPD / retention (C9): drops every pair of these sessions, whatever its
     # status — the pair holds the customer's own words. -> count removed.
@@ -211,11 +227,18 @@ module Insika
 
     # The mirror's reported time on first write; nil = now. A String rides
     # through as-is (it is the wire format); a Time is normalized to ISO8601.
+    # A String is ALSO normalized to UTC ISO8601: the mirrors report local
+    # offsets (+09:00, -03:00) and every comparison against created_at
+    # (since/expire/retention/unjudged ordering) is lexicographic — two offsets
+    # would make those comparisons lie. Unparseable input keeps the old
+    # ride-through behaviour rather than refusing the pair.
     def arrival_time(at)
       return timestamp if at.nil?
-      return at if at.is_a?(String)
+      return at.utc.iso8601 unless at.is_a?(String)
 
-      at.utc.iso8601
+      Time.iso8601(at).utc.iso8601
+    rescue ArgumentError
+      at
     end
 
     def to_pair(record)

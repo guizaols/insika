@@ -1645,8 +1645,9 @@ end
 
     def render_parity
       @criterion = insika[:parity_criterion]
+      # ONE materialization per request: the fold and the pair list share this
+      # array (the store's counts would scan the whole table a second time).
       pairs = parity_pairs
-      @counts = insika[:shadow_pair_store]&.counts
       @report = @criterion && Insika::Parity::Verdict.fold(pairs: pairs, criterion: @criterion)
       @pairs = pairs.sort_by { |p| p.created_at.to_s }.reverse.first(50)
       @pending = pairs.count { |p| p.status == :complete }

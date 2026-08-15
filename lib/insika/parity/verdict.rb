@@ -59,7 +59,7 @@ module Insika
         # model (`vs: agent`). human-assisted/silent/incomplete/open/split/unknown
         # are counted and reported, never in the denominator.
         counts = count(windowed)
-        daily = daily_of(windowed, from, rule.window_days)
+        daily = daily_of(windowed, from, now, rule)
         per_agent = per_agent_of(windowed)
 
         # 4. Volume: every day at the floor, and enough decided pairs in total —
@@ -168,10 +168,19 @@ module Insika
       end
       private_class_method :in_window?
 
+      # Pre-registration has nothing to stand on when NO pair carries the sha:
+      # the window predates the freeze, and stamping a verdict on it is the same
+      # post-hoc edit the mixed-sha rule exists to refuse.
       def sha_check(pairs, expected)
-        shas = pairs.map { |p| p.respond_to?(:criterion_sha) ? p.criterion_sha : nil }.compact.uniq
-        if shas.length <= 1 && (shas.empty? || shas.first == expected)
+        shas = pairs.filter_map { |p| p.respond_to?(:criterion_sha) ? p.criterion_sha : nil }.compact.uniq
+        if shas.length == 1 && shas.first == expected
           Check.new(id: :criterion_sha, met: true, actual: expected, required: expected, note: nil)
+        elsif pairs.empty?
+          # nothing to pre-register — the volume check owns the empty window
+          Check.new(id: :criterion_sha, met: true, actual: expected, required: expected, note: nil)
+        elsif shas.empty?
+          Check.new(id: :criterion_sha, met: false, actual: "no pair stamped", required: expected,
+                    note: "no pair in the window carries a criterion_sha — the window predates the freeze")
         else
           Check.new(id: :criterion_sha, met: false, actual: shas.join(" | "), required: expected,
                     note: "window carries #{shas.join(', ')}, expected the frozen #{expected}")
@@ -209,26 +218,56 @@ module Insika
       end
       private_class_method :bucket_of
 
-      def daily_of(windowed, from, days)
-        day_strings = (0...days).map { |i| (from + (i * 86_400)).utc.strftime("%Y-%m-%d") }
+      # One entry per CALENDAR date the window touches, bucketed by each pair's
+      # own date — the newest pairs must land on the grid, never outside the list.
+      # `floor` is the daily requirement: pairs_per_day for a day whose full 24h
+      # lie inside the window, 0 for the two boundary days — they are partial by
+      # construction (`from` carries now's time of day), and holding a partial day
+      # to a full floor would make the gate unreachable under constant traffic at
+      # exactly the floor. Partial days are reported, never required.
+      def daily_of(windowed, from, to, rule)
         by_day = windowed.group_by { |p| Time.iso8601(p.created_at.to_s).utc.strftime("%Y-%m-%d") }
-        day_strings.map do |date|
+        calendar_dates(from, to).map do |date|
           pairs = by_day[date].to_a
           decided = pairs.count { |p| DECIDED.include?(bucket_of(p).to_s) }
-          { date: date, pairs: pairs.length, decided: decided }
+          { date: date, pairs: pairs.length, decided: decided,
+            floor: full_day?(date, from, to) ? rule.pairs_per_day : 0 }
         end
       end
       private_class_method :daily_of
 
+      def calendar_dates(from, to)
+        dates = []
+        day = Time.utc(from.utc.year, from.utc.month, from.utc.day)
+        last = Time.utc(to.utc.year, to.utc.month, to.utc.day)
+        while day <= last
+          dates << day.strftime("%Y-%m-%d")
+          day += 86_400
+        end
+        dates
+      end
+      private_class_method :calendar_dates
+
+      def full_day?(date, from, to)
+        y, m, d = date.split("-").map(&:to_i)
+        day_start = Time.utc(y, m, d)
+        day_end = day_start + 86_400
+        [[to, day_end].min - [from, day_start].max, 0].max >= 86_400
+      end
+      private_class_method :full_day?
+
       def volume_check(daily, rule)
-        short = daily.find { |d| d[:pairs] < rule.pairs_per_day }
-        return Check.new(id: :volume, met: true, actual: "#{daily.length} days at >= #{rule.pairs_per_day}",
-                         required: "#{rule.pairs_per_day} pairs/day", note: nil) unless short
+        short = daily.find { |d| d[:floor].positive? && d[:pairs] < d[:floor] }
+        full_days = daily.count { |d| d[:floor].positive? }
+        return Check.new(id: :volume, met: true,
+                         actual: "#{full_days} full day(s) at >= #{rule.pairs_per_day}",
+                         required: "#{rule.pairs_per_day} pairs on every full day",
+                         note: nil) unless short
 
         Check.new(id: :volume, met: false,
                   actual: "#{short[:date]}: #{short[:pairs]} pairs",
-                  required: "#{rule.pairs_per_day} pairs/day",
-                  note: "day #{short[:date]} has #{short[:pairs]} pairs (floor #{rule.pairs_per_day})")
+                  required: "#{short[:floor]} pairs that day",
+                  note: "day #{short[:date]} has #{short[:pairs]} pairs (floor #{short[:floor]})")
       end
       private_class_method :volume_check
 

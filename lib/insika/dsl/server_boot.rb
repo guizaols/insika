@@ -35,6 +35,7 @@ module Insika
         # BEFORE the Studio is configured so the criterion the Studio folds is the
         # same object the delivery path stamps pairs with.
         @builder.channels?
+        register_parity_commands
         configure_studio
         dispatch = Rack::URLMap.new("/studio" => Studio::App, "/" => @builder.app)
         endpoint = Async::HTTP::Endpoint.parse("http://#{@host}:#{@port}")
@@ -59,6 +60,23 @@ module Insika
 
       def workflows? = @builder.workflows?
       def channels? = @builder.channels?
+
+      # The parity page renders whenever a shadow channel exists, so the judge
+      # button must reach a registered command — the deployment bus registers the
+      # same one (config/deployment.rb); a page that answers "unknown command"
+      # would make this root a second-class citizen. Registered only when the
+      # criterion loaded (a command without one would be a fake judge).
+      def register_parity_commands
+        criterion = @builder.criterion
+        return unless criterion
+
+        @graph.bus.register(:judge_shadow_pairs,
+                            Insika::Commands::JudgeShadowPairs.new(
+                              shadow_pairs: @graph.shadow_pair_store,
+                              settings_store: @rt.component(:settings_store),
+                              criterion: criterion, event_stream: @graph.event_stream
+                            ))
+      end
 
       def configure_studio
         Studio::App.configure(
