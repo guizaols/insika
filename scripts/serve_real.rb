@@ -73,7 +73,9 @@ APP = Insika::Server::App.new(
   # gateway_token: Bearer for /v1/responses + /v1/agents (drop-in for the OpenClaw
   # gateway). The consumer sends OPENCLAW_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
   config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN),
-            public_url: ENV["INSIKA_PUBLIC_URL"] }
+            public_url: ENV["INSIKA_PUBLIC_URL"] },
+  # RFC-0026 GET /v1/vitals: in-flight count + SQLite bytes.
+  executor: W::EXECUTOR, db_path: ENV["INSIKA_DB"]
 )
 
 # Insika Studio: Roda app mounted under /studio, with cookie login — the

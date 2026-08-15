@@ -15,12 +15,13 @@ RSpec.describe Insika::Server::App do
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
                 config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
-                profiles: nil, logger: nil)
+                profiles: nil, logger: nil, token_store: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       onboarding: onboarding, profiles: profiles, logger: logger,
+      token_store: token_store,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -971,6 +972,44 @@ RSpec.describe Insika::Server::App do
       expect(status).to eq(200)
       expect(headers["content-type"]).to eq("application/json")
       expect(json_body(resp)).to eq("status" => "ok")
+    end
+  end
+
+  describe "GET /v1/vitals (RFC-0026)" do
+    def exploding_store = Class.new { def method_missing(*) = raise("store touched") }.new
+
+    it "401 with no bearer — not a public route" do
+      status, = call(build_app, "GET", "/v1/vitals", auth: nil)
+      expect(status).to eq(401)
+    end
+
+    it "403 for a tenant principal — operator surface only" do
+      tenant_store = Class.new do
+        Record = Struct.new(:role, :tenant_id)
+        def resolve(_token) = Record.new("tenant", "loja-1")
+      end.new
+      app = build_app(token_store: tenant_store)
+      status, = call(app, "GET", "/v1/vitals", auth: "tenant-token")
+      expect(status).to eq(403)
+    end
+
+    it "200 + boot_id/pid for an operator" do
+      status, _h, resp = call(build_app, "GET", "/v1/vitals")
+      expect(status).to eq(200)
+      body = json_body(resp)
+      expect(body["pid"]).to eq(Process.pid)
+      expect(body).to include("boot_id", "rss_bytes", "gc", "uptime_s", "at")
+    end
+
+    it "the version gate applies" do
+      status, = call(build_app, "GET", "/v1/vitals", version: "1999-01-01")
+      expect(status).to eq(400)
+    end
+
+    it "reads no store" do
+      app = build_app(session_store: exploding_store, task_store: exploding_store)
+      status, = call(app, "GET", "/v1/vitals")
+      expect(status).to eq(200)
     end
   end
 

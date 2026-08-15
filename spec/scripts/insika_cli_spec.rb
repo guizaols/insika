@@ -40,6 +40,19 @@ RSpec.describe "bin/insika" do
     expect(status.exitstatus).to eq(2)
   end
 
+  it "soak --help prints the soak usage and exits 0" do
+    out, status = run("soak", "--help")
+    expect(out).to match(/insika soak/)
+    expect(out).to match(/--verify/)
+    expect(status).to be_success
+  end
+
+  it "soak with no mode exits 2 with usage" do
+    out, status = run("soak")
+    expect(out).to match(/choose exactly one/)
+    expect(status.exitstatus).to eq(2)
+  end
+
   it "env lists the known keys with (unset) values" do
     out, status = run("env")
     expect(out).to match(/^INSIKA_DB\s+path\s+\(unset\)/)

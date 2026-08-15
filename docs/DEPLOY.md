@@ -37,7 +37,9 @@ The image boots **N Falcon worker processes over one SQLite file**
 knob**: it decides which engine semantics hold cluster-wide and which are
 per-worker. The default is 1 because the per-worker semantics are the product
 — the queue modes (`collect`/`steer`) and FIFO ordering need one
-session actor; raise N only with sticky routing per session in front. The
+session actor; raise N only with sticky routing per session in front. It is
+also a [Soak](SOAK.md) precondition: with more than one worker the hourly RSS
+series is a random process per sample, and a soak refuses to start. The
 contract:
 
 > Everything here describes N workers of **one** deployment — one graph, replicated.

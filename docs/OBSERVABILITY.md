@@ -368,6 +368,49 @@ consumer that fell far behind would have its subscription closed (telemetry stop
 the turn does not). Span and instrument operations are cheap, so there's ample
 headroom.
 
+## Process vitals — `GET /v1/vitals`
+
+OTel carries turn/tool telemetry; it says nothing about the **process**. For the
+questions a soak (or any operator) asks — *which process is this, how long has it
+been up, how much memory does it hold, and what is the Ruby heap doing?* — there
+is one read-only route:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://<target>/v1/vitals
+```
+
+```jsonc
+{
+  "boot_id": "20260820T09-…",     // one per container start; a change = a restart
+  "pid": 42,
+  "started_at": "2026-08-20T09:00:00Z",
+  "uptime_s": 259200,
+  "version": "0.2.0",
+  "ruby": "ruby 3.4.1 …",
+  "yjit": true,
+  "rss_bytes": 536870912,          // nil when unreadable — never a guess
+  "gc": { "heap_live_slots": …, "major_gc_count": …, "malloc_increase_bytes": … },
+  "threads": 8,
+  "in_flight": 1,                  // the executor's in-flight turns
+  "db_bytes": { "db": …, "wal": …, "shm": … },
+  "at": "2026-08-20T09:00:00Z"
+}
+```
+
+The two fields that make it a **restart detector**: `boot_id` (one per container
+start, exported by the entrypoint and shared by every worker) and `pid`. A
+`boot_id` change is a container restart; a `pid` change under the same `boot_id`
+is a worker respawn — the event a platform metrics API cannot see.
+
+- **Operator-only.** The route is not in the public allowlist (no bearer →
+  unauthorized) and not on the tenant surface, so only an operator reads
+  process internals. `/up` stays the public health probe and carries no
+  process data.
+- **Reads no store.** Pure OS/VM readings — safe to poll at any rate, and it
+  cannot contend with turns.
+- **The soak's sampler.** [Soak](SOAK.md) polls it hourly; a `nil` RSS reads as
+  missing coverage, never as zero.
+
 ---
 
 *Packaging note.* Today the bridge lives in the Insika repo as an opt-in core
