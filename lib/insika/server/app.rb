@@ -55,7 +55,8 @@ module Insika
       def initialize(command_bus:, event_stream:, session_store:, task_store:,
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
-                     channels: nil, logger: nil, token_store: nil, outcome_store: nil)
+                     channels: nil, logger: nil, token_store: nil, outcome_store: nil,
+                     executor: nil, db_path: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -99,6 +100,10 @@ module Insika
         # embedders); the serving wirings pass $stdout. Class+message+backtrace
         # only — the ref never travels with request payloads (secrets stay out).
         @logger = logger
+        # RFC-0026 GET /v1/vitals: process readings, operator-only, no store.
+        # Both optional — nil means the body simply omits those readings.
+        @executor = executor
+        @db_path = db_path
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -190,6 +195,8 @@ module Insika
           handle_read_task(req, id)
         in ["GET", ["v1", "events"]]
           handle_events(req)
+        in ["GET", ["v1", "vitals"]]
+          handle_vitals
         in ["POST", ["channels", id, "events"]] if @channels
           handle_channel_event(req, id)
         in ["POST", ["channels", id, "shadow-reply"]] if @channels
@@ -1116,6 +1123,15 @@ TENANT_SURFACES = [
       # has already run (Boot only returns the app afterward), it's ready. Does NOT
       # touch a store (health cannot fail on IO nor require auth).
       def health = json_response(200, { status: "ok" })
+
+      # RFC-0026 process vitals. Operator-only by construction: not in
+      # PUBLIC_ROUTES (no bearer -> unauthorized) and not in TENANT_SURFACES
+      # (a tenant principal hits the operator-surface gate), so only an
+      # operator reads process internals. Reads no store — pure OS/VM
+      # readings, safe at any rate.
+      def handle_vitals
+        json_response(200, Insika::Vitals.snapshot(executor: @executor, db_path: @db_path))
+      end
 
       # Thin Subscription decorator: discards
       # events from OTHER tasks and CLOSES the subscription after forwarding the task's

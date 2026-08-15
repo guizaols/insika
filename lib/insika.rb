@@ -226,6 +226,12 @@ require_relative "insika/telemetry"
 # Strict config + diagnosis. Doctor reads the config stores above;
 # EnvSchema (required at the top) is its env layer.
 require_relative "insika/doctor"
+# Soak (RFC-0026): the 72h uptime-degradation harness. Pure stdlib — the
+# envelope and the report fold are deterministic, the runner only talks Net::HTTP.
+require_relative "insika/soak/envelope"
+require_relative "insika/soak/report"
+require_relative "insika/soak/runner"
+require_relative "insika/vitals"
 # Shared composition core for both roots (config/wiring.rb + config/deployment.rb).
 # Only references the classes above at call-time, so require order is unconstrained.
 require_relative "insika/wiring/graph"

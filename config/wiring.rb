@@ -183,6 +183,11 @@ module Insika
       token_store: (SPINE.token_store if MULTI_TENANT),
       # WS7: business outcomes per conversation (POST/GET /v1/outcomes).
       outcome_store: OUTCOME_STORE,
+      # RFC-0026 GET /v1/vitals: in-flight count + SQLite bytes.
+      executor: EXECUTOR,
+      # EnvSchema.read: the HARNESS_DB alias still works, so a deploy that has
+      # not renamed yet keeps reporting real db_bytes instead of 0.
+      db_path: Insika::EnvSchema.read("INSIKA_DB"),
       # a 500's error_ref must be findable in the process log.
       logger: $stdout
     )
