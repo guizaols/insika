@@ -27,6 +27,7 @@ into a deterministic prompt:
 | **Skills** | `<available_skills>` | 80 | Level-1 skill list, minus whatever is already eager — see [Skills](SKILLS.md). |
 | **Memory** | `<memory>` | 75 | Durable facts + recent notes, only if `memory` is on. Cuttable. |
 | **Tool search** | `<available_tools>` | 70 | Level-1 list of deferred tools — see [Tools](TOOLS.md). |
+| **Briefing** | `<briefing>` | 65 | The session's working state (known fields, still-missing list, next step) — only if the pack declared `briefing_fields`. Cuttable. |
 | **Session** | history | 60–79 | The running transcript; priority scales with recency. |
 | **Request** | `<request_context>` | 40 | Turn variables + tenant. Most cuttable; sits last. |
 
@@ -82,6 +83,53 @@ agent. This is distinct from *session history*, which is the transcript of one
 conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
+
+## Briefing — the session's working state
+
+The **briefing** is the per-conversation working state the agent keeps and asks
+for: which facts it already learned (size, budget, delivery day) and the agreed
+next step. It is **engine-owned data** — one `"briefing"` key on the session
+record, written only by the agent through tools — whose *fields* come from the
+pack:
+
+```jsonc
+// pack agent.config.json
+{ "id": "store-support", "briefing_fields": ["size", "budget", "delivery_day"] }
+```
+
+```ruby
+# or the DSL — [] = the feature is off (no block, no tools)
+briefing_fields "size", "budget", "delivery_day"
+```
+
+With fields declared, the turn's `:system` context gains a `<briefing>` block
+(priority 65 — below identity/skill/memory so it never breaks the cacheable
+prefix, above the turn's own `<request_context>`):
+
+```
+<briefing>
+known:
+  size: M
+still missing: budget, delivery_day
+next step: send the payment link tomorrow at 10
+</briefing>
+```
+
+The `still missing` list is the point: the *model* sees which declared fields are
+still unanswered, so it stops re-asking for something already given. Stored keys
+that the pack no longer declares are never rendered. The Studio session screen
+shows the persisted state (known fields + next step), read-only.
+
+The agent writes the briefing through two built-in tools, wired only when the
+pack declared fields:
+
+- `update_briefing(field:, value:)` — records a field. An undeclared `field`
+  returns an envelope error (`unknown field '…'; declared: …`) and nothing is
+  persisted; a blank `value` clears the field.
+- `set_next_step(text:)` — records the agreed next step; a blank `text` clears it.
+
+Both are deterministic in-process writes (never enveloped) and survive across
+turns and resumes — a resumed conversation re-opens with the briefing intact.
 
 ## The provider prefix cache
 

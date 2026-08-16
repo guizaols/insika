@@ -171,6 +171,36 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "briefing_fields (RFC-0028 — the session working-state schema)" do
+    it "default [] = the feature off (no provider, no tools)" do
+      expect(described_class.build(id: "a", model: "m").briefing_fields).to eq([])
+      expect(described_class.build(id: "a", model: "m", briefing_fields: nil).briefing_fields).to eq([])
+    end
+
+    it "normalizes names to a flat [String] (symbols accepted)" do
+      profile = described_class.build(id: "a", model: "m", briefing_fields: [:size, "budget"])
+      expect(profile.briefing_fields).to eq(%w[size budget])
+    end
+
+    it "trims, drops empties and uniqs in stable order" do
+      profile = described_class.build(id: "a", model: "m",
+                                      briefing_fields: [" size ", "", "budget", "size", "size"])
+      expect(profile.briefing_fields).to eq(%w[size budget])
+    end
+
+    it "refuses a malformed name (the names become store keys and tool text)" do
+      expect { described_class.build(id: "a", model: "m", briefing_fields: ["size ok"]) }
+        .to raise_error(Insika::ValidationError, /briefing_fields/)
+      expect { described_class.build(id: "a", model: "m", briefing_fields: ["Tamanho"]) }
+        .to raise_error(Insika::ValidationError, /briefing_fields/)
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(id: "a", model: "m", briefing_fields: %w[size budget])
+      expect(profile.to_h[:briefing_fields]).to eq(%w[size budget])
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

@@ -23,7 +23,13 @@ module Insika
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
-                          :created_at, :updated_at)
+                          :created_at, :updated_at, :briefing) do
+      # Trailing member with a default: an old record without the "briefing"
+      # key reads as an empty briefing without a migration.
+      def initialize(id:, messages:, vars:, memory_refs:, created_at:, updated_at:, briefing: nil)
+        super
+      end
+    end
 
     # store: any Insika::Store (Memory, SQLite, ...) — injected by the
     # composition root (config/wiring.rb). SessionStore does not know the
@@ -44,6 +50,7 @@ module Insika
         "messages" => [],
         "vars" => deep_stringify(vars),
         "memory_refs" => [],
+        "briefing" => { "fields" => {}, "next_step" => nil },
         "created_at" => now,
         "updated_at" => now
       }
@@ -89,6 +96,37 @@ module Insika
       to_session(record)
     end
 
+    # -> Session. Upsert ONE briefing field. The pack owns the schema; the
+    # engine validates nothing about field NAMES here (the tools do, at the
+    # write edge). value is a String (anything else -> to_s); a BLANK value
+    # (after strip) REMOVES the key — absence means "not yet asked" (RFC-0028
+    # D4). NotFoundError if the session does not exist.
+    #
+    # CONCURRENCY LIMITATION: same as append_messages — the RMW is atomic ONLY
+    # because the SessionActor serializes turns of the same session (session_store.rb
+    # append_messages comment). The briefing writers run on the turn's own fiber,
+    # inside that serialization — no lock, no CAS.
+    def update_briefing(id, field:, value:)
+      record = fetch!(id)
+      briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }
+      value = Coercion.presence(Coercion.utf8(value.to_s))
+      value ? briefing["fields"][field.to_s] = value : briefing["fields"].delete(field.to_s)
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_session(record)
+    end
+
+    # -> Session. Upsert the agreed next step; a blank text clears to nil
+    # (RFC-0028 D4). NotFoundError if absent.
+    def set_next_step(id, text:)
+      record = fetch!(id)
+      briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }
+      briefing["next_step"] = Coercion.presence(Coercion.utf8(text.to_s))
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_session(record)
+    end
+
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
       @store.delete(SCOPE, key_for(id))
@@ -126,7 +164,8 @@ module Insika
         vars: record["vars"],
         memory_refs: record["memory_refs"],
         created_at: record["created_at"],
-        updated_at: record["updated_at"]
+        updated_at: record["updated_at"],
+        briefing: record["briefing"] || { "fields" => {}, "next_step" => nil }
       )
     end
 

@@ -280,6 +280,22 @@ RSpec.describe Insika::DSL do
       expect(from_dsl.stuck_signal).to be(true)
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the briefing_fields knob is DATA on the pack (RFC-0028)" do
+      dsl = Insika.agent("bia6") do
+        model "deepseek-chat"
+        briefing_fields "size", "budget", "delivery_day"
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia6", model: "deepseek-chat",
+                  briefing_fields: %w[size budget delivery_day],
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.briefing_fields).to eq(%w[size budget delivery_day])
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

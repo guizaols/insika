@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "coercion"
+require_relative "tool_definition"
 
 module Insika
   # Single point of per-agent policy.
@@ -183,10 +184,18 @@ module Insika
     #                                   (WhatsApp) puts the deliberation in front of a
     #                                   customer; that is the operator's call to make, not a
     #                                   default to inherit.
-    :metadata                         # free-form agent metadata, stable per agent
-    #                                   (from the pack `agent.config.json`). Home of the `store_id`
-    #                                   that becomes turn context (ctx.store_id).
-    #                                   It is NOT a policy — never decides security. {} = absent.
+    :metadata,                      # free-form agent metadata, stable per agent
+                                   # (from the pack `agent.config.json`). Home of the `store_id`
+                                   # that becomes turn context (ctx.store_id).
+                                   # It is NOT a policy — never decides security. {} = absent.
+    :briefing_fields                 # the per-session working-state schema this agent
+                                   # keeps and asks for (RFC-0028): a flat [String] of
+                                   # field names the pack declares. []/nil/absent = the
+                                   # feature is OFF (no provider output, no tools — visibly
+                                   # removable, RFC-0036). Names are engine-owned store keys
+                                   # and tool text, so they are validated against NAME_RE at
+                                   # build time. Data, never a policy: the engine owns the
+                                   # briefing object, the pack owns the fields.
   )
 
   # Reopened class (not a Data.define block): a constant assigned inside
@@ -218,7 +227,7 @@ module Insika
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                    budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-                   outputs: nil)
+                   outputs: nil, briefing_fields: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -252,8 +261,26 @@ module Insika
         alerts: Coercion.deep_stringify(alerts),
         routes: Coercion.deep_stringify(routes),
         stuck_signal: stuck_signal,
-        outputs: Coercion.deep_stringify(outputs)
+        outputs: Coercion.deep_stringify(outputs),
+        # Flat [String] — same discipline as capabilities_declared: a
+        # symbol/string mix would be a silent miss in the provider's known-set.
+        briefing_fields: normalize_briefing_fields(briefing_fields)
       )
+    end
+
+    # nil -> []; strings; trim + drop empties + uniq (stable order); every name
+    # must match ToolDefinition::NAME_RE (\A[a-z][a-z0-9_]*\z) or it is a
+    # ValidationError at build time — the names become tool-description text,
+    # store keys and context-block lines, so "size ok" or "tamanho do cliente"
+    # is refused here, not corrupted later.
+    def self.normalize_briefing_fields(list)
+      names = Array(list).map { |f| f.to_s.strip }.reject(&:empty?).uniq
+      bad = names.reject { |n| ToolDefinition::NAME_RE.match?(n) }
+      unless bad.empty?
+        raise Insika::ValidationError,
+              "briefing_fields must match #{ToolDefinition::NAME_RE.inspect}: #{bad.join(', ')}"
+      end
+      names
     end
 
     # opt-in for an optional tool = being in the agent's allow list.

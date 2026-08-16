@@ -14,7 +14,7 @@ module Insika
   class ChatBuilder
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
                    hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil,
-                   tool_trace_store: nil, media_runner: nil)
+                   tool_trace_store: nil, media_runner: nil, session_store: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -31,6 +31,11 @@ module Insika
       # the Executor as the generate_image/tts runner (seams + usage
       # accounting). nil = the media tools are never wired (parity for stubs).
       @media_runner = media_runner
+      # RFC-0028: update_briefing / set_next_step are the briefing-write system
+      # tools — wired only with @session_store present AND profile.briefing_fields
+      # non-empty (double gate, like remember). nil = never wired (parity for a
+      # builder used without session persistence, e.g. some unit stubs).
+      @session_store = session_store
     end
 
     # Configures an already-created chat with the context (stage 2) and the
@@ -91,6 +96,22 @@ module Insika
       if @memory_store && state.profile.memory
         tools << Tools::Remember.new(@memory_store, state.tenant,
                                      event_stream: @event_stream, state: state)
+      end
+
+      # update_briefing / set_next_step are the briefing-write system tools
+      # (RFC-0028) — wired only with @session_store present AND
+      # profile.briefing_fields non-empty (double gate, like remember). Never
+      # enveloped: deterministic in-process writes.
+      fields = if state.profile.respond_to?(:briefing_fields)
+                 Array(state.profile.briefing_fields).map(&:to_s)
+               else
+                 []
+               end
+      if @session_store && !fields.empty?
+        tools << Tools::UpdateBriefing.new(session_store: @session_store, fields: fields,
+                                           event_stream: @event_stream, state: state)
+        tools << Tools::UpdateBriefing::SetNextStep.new(session_store: @session_store,
+                                                        event_stream: @event_stream, state: state)
       end
 
       # signal_stuck is the "I cannot proceed" system tool (WS5) — wired only

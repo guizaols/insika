@@ -175,6 +175,7 @@ module Deploy
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
 

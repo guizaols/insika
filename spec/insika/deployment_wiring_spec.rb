@@ -107,11 +107,12 @@ RSpec.describe Deploy::Wiring do
       expect(w::TOOL_REGISTRY).to be_a(Insika::OverlayToolRegistry)
     end
 
-    it "wires the context providers, including Session and Memory" do
+    it "wires the context providers, including Session, Memory and Briefing" do
       classes = w::CONTEXT_PROVIDERS.map(&:class)
       expect(classes).to include(Insika::Context::Providers::Session)
       expect(classes).to include(Insika::Context::Providers::Memory)
       expect(classes).to include(Insika::Context::Providers::Prompt)
+      expect(classes).to include(Insika::Context::Providers::Briefing)
     end
 
     it "registers the policy builtins the profiles reference" do

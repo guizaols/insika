@@ -35,6 +35,20 @@ RSpec.describe "Context — trust boundary" do
       expect(p::REQUEST).to eq(ladder.min)           # turn injection = the most cuttable
       expect(p::IDENTITY).to eq(ladder.max)          # identity = the highest
     end
+
+    it "BRIEFING (RFC-0028) sits at 65 — below identity/skill/memory, above REQUEST" do
+      p = Insika::Context::Priority
+      expect(p::BRIEFING).to eq(65)
+      # below every identity/skill/memory block (never breaks the pinned prefix)
+      expect(p::BRIEFING).to be < p::MEMORY
+      expect(p::BRIEFING).to be < p::TOOL_SEARCH
+      # above the turn's own <request_context>
+      expect(p::BRIEFING).to be > p::REQUEST
+      # and the whole ladder (with briefing) stays strictly decreasing
+      ladder = [p::IDENTITY, p::PROMPT_REF, p::SKILL_BODY, p::SKILL, p::MEMORY,
+                p::TOOL_SEARCH, p::BRIEFING, p::REQUEST]
+      expect(ladder).to eq(ladder.sort.reverse)
+    end
   end
 
   describe "assemble" do
