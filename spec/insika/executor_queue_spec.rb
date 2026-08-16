@@ -95,6 +95,30 @@ before { session_store.create(id: "s1") }
     end
   end
 
+  # RFC-0027 C1: a `steer` agent that set a window has BOTH windows. The door one is
+  # the same policy's other half — the buffer it replaces was doing both and the
+  # enum just failed to compose.
+  it "a steer policy with a window also merges at the door (collect is not a separate mode)" do
+    executor = build_executor
+    executor.supervised = true
+    allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+    steering = profile({ queue_mode: "steer", debounce_ms: 50 })
+
+    Sync do |top|
+      command = Insika::Command.build(:send_message, { agent: "a", message: "oi" })
+      task = task_store.create(command: command.to_h, session_id: "s1", id: "t1")
+      executor.spawn_in_session(task, profile: steering)
+      top.sleep(0.01)
+
+      expect(executor.collect_into_pending("s1", "queria o pedido", profile: steering)).to eq("t1")
+      expect(task_store.find("t1").command["payload"]["message"]).to eq("oi\nqueria o pedido")
+
+      top.sleep(0.12) # the window closes and the turn runs
+      expect(event_stream.types).to include(:turn_coalesced)
+      stop_serving(executor)
+    end
+  end
+
   it "the platform default reaches an agent that declares nothing" do
     executor = build_executor(settings_store: settings({ "queue_mode" => "collect",
                                                          "debounce_ms" => 50 }))

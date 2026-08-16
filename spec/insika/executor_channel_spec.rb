@@ -8,11 +8,14 @@ require "async"
 # and "every other turn" includes ones on the SAME session, which is the part worth
 # a test rather than a comment.
 RSpec.describe "Insika::Executor channel delivery" do
-  # Shape B channel: remembers what it was asked to send.
+  # Shape B channel: remembers what it was asked to send. `progressive` (RFC-0027
+  # C2) is the channel's own delivery policy; the executor asks.
   class SpyChannel
     attr_reader :sent
+    attr_accessor :progressive
 
-    def initialize = @sent = []
+    def initialize = (@sent = [])
+    def progressive? = !!@progressive
 
     def deliver(payload, to:, delivery_id: nil)
       @sent << { payload: payload, to: to, delivery_id: delivery_id }
@@ -47,16 +50,20 @@ RSpec.describe "Insika::Executor channel delivery" do
   end
 
   # A turn on the relay session, tagged with whatever transport the caller says.
-  def run_turn(transport:, answer: "seu pedido saiu hoje", session_id: "relay:551")
+  def run_turn(transport:, answer: "seu pedido saiu hoje", session_id: "relay:551",
+               progressive: false, chat: nil)
     session_store.find(session_id) ||
       session_store.create(id: session_id, vars: { "channel" => "relay", "external_id" => "551" })
+    channel.progressive = progressive
     command = Insika::Command.build(:send_message, { agent: "support", message: "cadê meu pedido?",
                                                      session_id: session_id },
                                     transport: transport).to_h
     task = task_store.create(command: command, session_id: session_id)
 
     exec = executor
-    allow(exec).to receive(:create_chat) { FakeChat.new.tap { |c| c.final_content = answer } }
+    allow(exec).to receive(:create_chat) do
+      chat || FakeChat.new.tap { |c| c.final_content = answer }
+    end
     Sync { exec.spawn(task, profile: profile) }
     task
   end
@@ -114,7 +121,8 @@ RSpec.describe "Insika::Executor channel delivery" do
   # down is not a reason to fail a turn that already answered correctly.
   it "never re-fails a committed turn when the delivery blows up" do
     exploding = Class.new do
-      def record(**) = raise(Insika::StoreError, "outbox unavailable")
+      def progressive?(_channel_id) = false
+      def record_balloons(**) = raise(Insika::StoreError, "outbox unavailable")
     end.new
     exec = executor(channel_delivery: exploding)
     session_store.create(id: "relay:551", vars: { "channel" => "relay", "external_id" => "551" })
@@ -125,6 +133,97 @@ RSpec.describe "Insika::Executor channel delivery" do
 
     Sync { exec.spawn(task, profile: profile) }
     expect(task_store.find(task.id).status).to eq(:completed)
+  end
+
+  # RFC-0027 C4 E1: a progressive relay turns the answer into N outbox rows and
+  # dispatches them IN ORDER, before the turn is even observed completed (the
+  # dispatch is inline when not serving).
+  describe "progressive delivery (RFC-0027 C4)" do
+    it "E1: a two-paragraph answer is two POSTs, first paragraph first, both before :task_completed" do
+      task = run_turn(transport: :"channel:relay", progressive: true,
+                      answer: "Para um.\n\nPara dois.")
+
+      expect(channel.sent.size).to eq(2)
+      expect(channel.sent.map { |s| s[:payload]["content"] }).to eq(["Para um.", "Para dois."])
+      expect(channel.sent.first[:payload]).to include("index" => 0, "final" => false)
+      expect(channel.sent.last[:payload]).to include("index" => 1, "final" => true)
+      expect(channel.sent.first[:payload]["task_id"]).to eq(task.id.to_s)
+
+      completed = event_stream.events.find { |e| e.type == :task_completed }
+      expect(completed).not_to be_nil
+      expect(completed.data[:content]).to eq("Para um.\n\nPara dois.") # :content stays WHOLE
+    end
+
+    # D1: balloons are cut from turn_answer AFTER hooks, so narration that preceded
+    # a tool call is never a balloon — it was not the answer.
+    it "E1 discard: loop narration before a tool call never becomes a balloon" do
+      chat = FakeChat.new
+      chat.final_content = "Achei.\n\nPronto."
+      chat.script = proc do
+        emit_chunk("Deixa eu buscar.")
+        fire_tool_call(name: "search")
+      end
+      run_turn(transport: :"channel:relay", progressive: true, chat: chat)
+
+      contents = channel.sent.map { |s| s[:payload]["content"] }
+      expect(contents).to eq(["Achei.", "Pronto."])
+      expect(contents.join).not_to include("Deixa eu buscar.")
+      # the narration WAS the intermediate stream — the operator still sees it
+      expect(event_stream.events.map(&:type)).to include(:intermediate)
+    end
+
+    it ":at_end (the default) is ONE POST, whole text, no index/final" do
+      run_turn(transport: :"channel:relay", answer: "Para um.\n\nPara dois.")
+
+      expect(channel.sent.size).to eq(1)
+      expect(channel.sent.first[:payload]["content"]).to eq("Para um.\n\nPara dois.")
+      expect(channel.sent.first[:payload]).not_to have_key("index")
+      expect(channel.sent.first[:payload]).not_to have_key("final")
+    end
+
+    it "a progressive turn that split to one balloon is indistinguishable from at_end" do
+      run_turn(transport: :"channel:relay", progressive: true, answer: "oi")
+
+      expect(channel.sent.size).to eq(1)
+      expect(channel.sent.first[:payload]["content"]).to eq("oi")
+      expect(channel.sent.first[:payload]).not_to have_key("index")
+      expect(channel.sent.first[:payload]).not_to have_key("final")
+    end
+  end
+
+  # RFC-0027 C5: first_balloon_ms — inbound -> first outbox row, always measured
+  # on a channel turn, persisted onto the task record.
+  describe "first_balloon_ms (RFC-0027 C5)" do
+    it "a channel turn persists timing to the task record; first_balloon_ms < the turn's wall clock" do
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      task = run_turn(transport: :"channel:relay", progressive: true,
+                      answer: "Para um.\n\nPara dois.")
+      elapsed_ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start) * 1000
+
+      stored = task_store.find(task.id)
+      expect(stored.timing).to be_a(Hash)
+      expect(stored.timing["first_balloon_ms"]).to be_a(Numeric)
+      expect(stored.timing["first_balloon_ms"]).to be < elapsed_ms
+    end
+
+    it "a one-balloon :at_end turn still stamps it — the flush happened, even if n=1" do
+      task = run_turn(transport: :"channel:relay", answer: "oi")
+
+      expect(task_store.find(task.id).timing["first_balloon_ms"]).to be_a(Numeric)
+    end
+
+    it "a NON-channel turn with the flag off leaves timing absent (no balloon, no clock)" do
+      task = run_turn(transport: :http)
+
+      expect(task_store.find(task.id).timing).to be_nil
+    end
+
+    it "the terminal event carries first_balloon_ms for a channel turn, even with the flag off" do
+      run_turn(transport: :"channel:relay", answer: "oi")
+
+      completed = event_stream.events.find { |e| e.type == :task_completed }
+      expect(completed.data[:timing]).to include(:first_balloon_ms)
+    end
   end
 
   describe "recover_channel_deliveries (boot)" do

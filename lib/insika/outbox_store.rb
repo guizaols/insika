@@ -38,7 +38,7 @@ module Insika
 
     Delivery = Data.define(
       :id, :channel, :to, :task_id, :session_id, :payload,
-      :status, :attempts, :last_error, :created_at, :updated_at
+      :status, :attempts, :last_error, :index, :created_at, :updated_at
     )
 
     def initialize(store:)
@@ -47,7 +47,9 @@ module Insika
 
     # -> Delivery (:pending). `payload` is the body the channel will send; it is
     # DATA (string keys, JSON types) and the store never interprets it.
-    def create(channel:, to:, task_id:, session_id:, payload:, id: SecureRandom.uuid)
+    # `index` (RFC-0027 C4) is the balloon's position inside its turn — 0 for a
+    # plain `:at_end` delivery, written by a progressive flush.
+    def create(channel:, to:, task_id:, session_id:, payload:, index: 0, id: SecureRandom.uuid)
       record = {
         "id" => id.to_s,
         "channel" => channel.to_s,
@@ -58,6 +60,7 @@ module Insika
         "status" => "pending",
         "attempts" => 0,
         "last_error" => nil,
+        "index" => index.to_i,
         "created_at" => timestamp,
         "updated_at" => timestamp
       }
@@ -75,8 +78,12 @@ module Insika
     # `delivering`: that one was claimed by a process that then died, and whether
     # its POST landed is unknowable — replaying it is the duplicate the claim
     # exists to prevent.
+    #
+    # Ordered by [task_id, index] (RFC-0027 C4): a crashed progressive turn re-drives
+    # balloon 1 only after balloon 0, never the reverse.
     def pending
       scan.select { |d| d.status == :pending }
+          .sort_by { |d| [d.task_id.to_s, d.index] }
     end
 
     # pending -> delivering, ATOMICALLY — across processes, not just fibers: the
@@ -187,7 +194,8 @@ module Insika
         task_id: record["task_id"], session_id: record["session_id"],
         payload: record["payload"], status: record["status"].to_sym,
         attempts: record["attempts"].to_i, last_error: record["last_error"],
-        created_at: record["created_at"], updated_at: record["updated_at"]
+        index: record["index"].to_i, created_at: record["created_at"],
+        updated_at: record["updated_at"]
       )
     end
 

@@ -181,6 +181,35 @@ RSpec.describe Insika::Channels::Relay do
     end
   end
 
+  describe "delivery policy (RFC-0027 C2)" do
+    it "is :at_end by default — every existing caller keeps working, one POST" do
+      expect(relay.delivery).to eq(:at_end)
+      expect(relay.progressive?).to be(false)
+    end
+
+    it "a relay built with delivery: :progressive answers progressive?" do
+      expect(relay(delivery: :progressive).progressive?).to be(true)
+    end
+
+    it "from_env reads INSIKA_RELAY_DELIVERY as the switch, unset = :at_end" do
+      env = { "INSIKA_RELAY_TOKEN" => "t", "INSIKA_RELAY_DELIVER_URL" => "https://8.8.8.8/h" }
+      expect(described_class.from_env(env)).not_to be_progressive
+      expect(described_class.from_env(env.merge("INSIKA_RELAY_DELIVERY" => "progressive"))).to be_progressive
+      expect(described_class.from_env(env.merge("INSIKA_RELAY_DELIVERY" => "at_end"))).not_to be_progressive
+    end
+
+    it "refuses an unknown policy at construction — a typo dies at boot, not per turn" do
+      expect { relay(delivery: "banana") }.to raise_error(Insika::ConfigError, /unknown relay delivery/)
+      expect { described_class.policy!("banana") }.to raise_error(Insika::ConfigError, /at_end, progressive/)
+    end
+
+    it "deliver still POSTs ONE payload — the policy never turns this class into a splitter" do
+      relay(delivery: :progressive).deliver({ "content" => "ola" }, to: "5511999998888")
+      expect(http.requests.size).to eq(1)
+      expect(JSON.parse(http.requests.first[:body])).to eq("content" => "ola", "external_id" => "5511999998888")
+    end
+  end
+
   describe "deliver" do
     it "POSTs the reply with the recipient, the bearer and the idempotency key" do
       status = relay.deliver({ "content" => "seu pedido saiu" }, to: "5511999998888", delivery_id: "ob-1")

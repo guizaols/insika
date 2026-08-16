@@ -94,9 +94,20 @@ RSpec.describe Insika::QueuePolicy do
   end
 
   describe "#collect?" do
-    it "is true only for the collect mode" do
+    it "is true for collect AND steer — both absorb fragments that land before the turn starts" do
       expect(described_class.resolve(profile({ queue_mode: "collect" })).collect?).to be(true)
+      expect(described_class.resolve(profile({ queue_mode: "steer" })).collect?).to be(true)
+    end
+
+    it "is false for followup / interrupt — neither has a door window" do
       expect(described_class.resolve(profile({ queue_mode: "followup" })).collect?).to be(false)
+      expect(described_class.resolve(profile({ queue_mode: "interrupt" })).collect?).to be(false)
+    end
+
+    it "a steer agent with steer_max_messages: 0 still merges at the door — mid-run, not at the door" do
+      policy = described_class.resolve(profile({ queue_mode: "steer", steer_max_messages: 0 }))
+      expect(policy.collect?).to be(true)
+      expect(policy.steer?).to be(false)
     end
   end
 

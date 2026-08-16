@@ -70,7 +70,8 @@ RSpec.describe Studio::App do
   end
 
   # tasks/approvals read stores. Only the surface the pages consume.
-  TaskDouble = Struct.new(:id, :status, :command, :session_id, :executions, :updated_at, keyword_init: true)
+  TaskDouble = Struct.new(:id, :status, :command, :session_id, :executions, :updated_at,
+                          :timing, keyword_init: true)
   ExecDouble = Struct.new(:attempt, :started_at, :finished_at, :outcome, :error, keyword_init: true)
   TaskStoreDouble = Struct.new(:tasks) do # tasks: { id => TaskDouble }
     def each_id(&blk) = block_given? ? tasks.keys.each(&blk) : tasks.keys.each
@@ -1823,9 +1824,10 @@ RSpec.describe Studio::App do
 
   # Tasks & Approvals ------------------------------------------
 
-  def task(id: "t1", status: :running, session_id: "s1", executions: [])
+  def task(id: "t1", status: :running, session_id: "s1", executions: [], timing: nil)
     TaskDouble.new(id: id, status: status, command: { "type" => "send_message" },
-                   session_id: session_id, executions: executions, updated_at: "2026-07-21T00:00:00Z")
+                   session_id: session_id, executions: executions, updated_at: "2026-07-21T00:00:00Z",
+                   timing: timing)
   end
 
   def pending(id: "p1", task_id: "t1", tool: "charge", status: :pending)
@@ -1877,6 +1879,20 @@ RSpec.describe Studio::App do
     res = login(app).get("/tasks/t1")
     expect(res.body).to include("Latest checkpoint")
     expect(res.body).not_to include("No checkpoint recorded")
+  end
+
+  # RFC-0027 C5: the task page IS the ledger — first_balloon_ms shows there when a
+  # channel turn recorded it, and a task without timing still renders.
+  it "renders first_balloon_ms on the task page when present" do
+    app, = build_app(tasks: { "t1" => task(timing: { "first_balloon_ms" => 812.5 }) })
+    res = login(app).get("/tasks/t1")
+    expect(res.body).to include("first_balloon_ms")
+    expect(res.body).to include("812.5")
+  end
+
+  it "renders a task page without crashing when timing is nil (pre-RFC tasks)" do
+    app, = build_app(tasks: { "t1" => task })
+    expect(login(app).get("/tasks/t1").status).to eq(200)
   end
 
   %i[pause resume cancel].each do |action|

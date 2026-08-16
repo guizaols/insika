@@ -720,6 +720,30 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(ttft.meta.key?(:tenant)).to be(false)
     end
 
+    # RFC-0027 C5: a CHANNEL turn allocates TurnTiming even with the flag off, so
+    # first_balloon_ms (H-latência) is always measured — but only that one window;
+    # the full breakdown stays the flag's job.
+    it "a channel turn with the flag OFF still carries first_balloon_ms and nothing else" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
+      channel = Class.new do
+        def deliver(payload, to:, delivery_id: nil) = 200
+      end.new
+      registry = Insika::ChannelRegistry.new.tap { |r| r.register("relay", channel) }
+      delivery = Insika::ChannelDelivery.new(channels: registry, outbox: Insika::OutboxStore.new(store: backend),
+                                             session_store: session_store, sleeper: ->(_s) {})
+      executor = build_executor(channel_delivery: delivery)
+      session_store.create(id: "relay:s1", vars: { "channel" => "relay", "external_id" => "551" })
+      command = Insika::Command.build(:send_message, { agent: "sales", message: "oi", session_id: "relay:s1" },
+                                      transport: :"channel:relay")
+      task = task_store.create(command: command.to_h, session_id: "relay:s1", id: "t-chan")
+      run_turn(executor, task)
+
+      timing = event_stream.events.find { |e| e.type == :task_completed }.data[:timing]
+      expect(timing).not_to be_nil
+      expect(timing.keys).to contain_exactly(:first_balloon_ms)
+      expect(timing[:first_balloon_ms]).to be_a(Numeric)
+    end
+
     it "reasoning does NOT move the TTFB mark (first_token = first token the customer sees)" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
       session_store.create(id: "s1")
