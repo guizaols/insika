@@ -191,6 +191,59 @@ RSpec.describe "Insika::Executor channel delivery" do
     end
   end
 
+  # RFC-0027 §9 E3: steering with the buffer OFF, in-process. A progressive relay
+  # whose agent steers — the balloons are the POST-steer answer, never the
+  # narration that preceded the tool call.
+  describe "steer + progressive (RFC-0027 §9 E3)" do
+    def stop_serving(executor)
+      executor.stop_session_actors
+      executor.instance_variable_get(:@supervisor)&.stop
+    end
+
+    it "balloons are the post-steer answer, never the pre-steer narration" do
+      steering = Insika::AgentProfile.build(id: "support", model: "gpt", base_prompt: "SUPPORT",
+                                            limits: { queue_mode: "steer" })
+      exec = executor
+      exec.supervised = true
+      session_store.create(id: "relay:551", vars: { "channel" => "relay", "external_id" => "551" })
+      channel.progressive = true
+
+      chat = FakeChat.new
+      chat.final_content = "Certo, o outro.\n\nMandei."
+      chat.script = proc do
+        emit_chunk("Vou buscar o primeiro.")
+        fire_tool_call(name: "search")
+        Async::Task.current.sleep(0.05) # the steered message lands while the tool is in flight
+        fire_tool_result("ok")
+        fire_tool_result_message("ok")
+      end
+      allow(exec).to receive(:create_chat).and_return(chat)
+
+      Sync do |top|
+        command = Insika::Command.build(:send_message,
+                                        { agent: "support", message: "quero o primeiro",
+                                          session_id: "relay:551" }, transport: :"channel:relay")
+        task = task_store.create(command: command.to_h, session_id: "relay:551")
+        exec.spawn_in_session(task, profile: steering)
+        top.sleep(0.02)
+
+        expect(exec.steer_into_running("relay:551", "não, o outro", profile: steering)).to eq(task.id)
+
+        200.times do
+          break if channel.sent.size >= 2
+          top.sleep(0.01)
+        end
+        stop_serving(exec)
+      end
+
+      contents = channel.sent.map { |s| s[:payload]["content"] }
+      expect(contents).to eq(["Certo, o outro.", "Mandei."])
+      expect(contents.join).not_to include("Vou buscar")
+      expect(channel.sent.first[:payload]).to include("index" => 0, "final" => false)
+      expect(event_stream.types).to include(:turn_steered)
+    end
+  end
+
   # RFC-0027 C5: first_balloon_ms — inbound -> first outbox row, always measured
   # on a channel turn, persisted onto the task record.
   describe "first_balloon_ms (RFC-0027 C5)" do
