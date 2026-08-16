@@ -29,7 +29,7 @@ module Insika
           session = request.respond_to?(:session) ? request.session : nil
           return [] if session.nil? # one-shot turns have no briefing
 
-          briefing = session.briefing || {}
+          briefing = briefing_for(session)
           fields = briefing["fields"] || {}
           declared = Array(request.profile.briefing_fields)
           return [] if declared.empty? # defensive; enabled_for? already gates
@@ -43,6 +43,14 @@ module Insika
         end
 
         private
+
+        # Re-reads the briefing from the store, like the Session provider: the
+        # persisted record is the source of truth, not the request's turn-start
+        # snapshot. A read failure propagates to the Builder, which degrades it
+        # to a :provider_warning (required? == false).
+        def briefing_for(session)
+          @session_store.find(session.id)&.briefing || {}
+        end
 
         # Byte contract (the specs assert this shape):
         #   <briefing>

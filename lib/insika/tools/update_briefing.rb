@@ -1,9 +1,33 @@
 # frozen_string_literal: true
 
 require "ruby_llm"
+require_relative "agent_enum"
 
 module Insika
   module Tools
+    # Shared write-edge plumbing for the two briefing tools (RFC-0028): the
+    # session id always comes from the turn's task — never from the model's
+    # arguments — and the :briefing_updated event carries task/session
+    # correlation for the trace.
+    module BriefingWrite
+      private
+
+      # The turn's session, from the task (turn_state.rb:7) — never the model's args.
+      def session_id
+        @state.respond_to?(:task) ? @state.task&.session_id : nil
+      end
+
+      def no_session_error = { error: "no session to brief" }
+
+      def emit(kind, field, value)
+        @event_stream&.emit(Insika::Event.new(
+                              type: :briefing_updated,
+                              data: { kind: kind, field: field, value: value },
+                              meta: { task_id: @state.task&.id, session_id: @state.task&.session_id }
+                            ))
+      end
+    end
+
     # Write edge of the session briefing (RFC-0028): the agent records what it
     # learned in THIS conversation — the working state it is accountable for
     # (tool-written, never engine-inferred). System builtin (like remember):
@@ -12,16 +36,23 @@ module Insika
     # builder has a session_store (double gate, like remember). Never enveloped:
     # deterministic in-process writes.
     class UpdateBriefing < RubyLLM::Tool
-      # The description lists the DECLARED names (D3): the model sees the valid
-      # set in the schema text instead of inventing one. Per-instance, like the
-      # subagent tools' dynamic schemas.
+      include BriefingWrite
+
+      # The class-level text carries no field list, so it can never render the
+      # empty "field must be one of: ." placeholder; the instance adds the
+      # DECLARED names (D3) to the description AND as the `field` enum (the
+      # model sees the valid set in the schema instead of inventing one —
+      # RFC-0028 §3). Per-instance, like the subagent tools' dynamic schemas.
+      BASE_DESCRIPTION = "Records a fact learned in this conversation into the session briefing. " \
+                         "Call it as soon as the customer gives one of these, and when they correct one."
+
+      description BASE_DESCRIPTION
+
       def self.description_for(fields)
-        "Records a fact learned in this conversation into the session briefing. " \
-          "field must be one of: #{fields.join(', ')}. Call it as soon as the " \
-          "customer gives one of these, and when they correct one."
+        names = Array(fields).map(&:to_s)
+        names.empty? ? BASE_DESCRIPTION : "#{BASE_DESCRIPTION} field must be one of: #{names.join(', ')}."
       end
 
-      description description_for([]) # placeholder; the instance overrides
       param :field, desc: "The briefing field name (one of the declared list)"
       param :value, desc: "The value learned. Blank clears the field."
 
@@ -29,7 +60,7 @@ module Insika
 
       def initialize(session_store:, fields:, event_stream:, state:)
         @session_store = session_store
-        @fields = fields
+        @fields = Array(fields).map(&:to_s)
         @event_stream = event_stream
         @state = state
         super()
@@ -39,11 +70,17 @@ module Insika
         self.class.description_for(@fields)
       end
 
+      # The declared names become the `field` enum in the schema the provider
+      # sees — per-turn data, like the subagent allowlist (Tools::AgentEnum).
+      def params_schema
+        @field_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @fields, path: %i[field])
+      end
+
       # E2: an undeclared name returns an ENVELOPE error to the model and never
       # persists. A missing session is the same shape (the model can retry later).
       def execute(field:, value:)
         sid = session_id
-        return { error: "no session to brief" } if sid.to_s.empty?
+        return no_session_error if sid.to_s.empty?
         unless @fields.include?(field.to_s)
           return { error: "unknown field '#{field}'; declared: #{@fields.join(', ')}" }
         end
@@ -58,6 +95,8 @@ module Insika
       # The agreed next step (RFC-0028 D4): same engine-owned briefing object,
       # sibling writer. Blank clears to nil.
       class SetNextStep < RubyLLM::Tool
+        include BriefingWrite
+
         description "Records the next step agreed with the customer " \
                     "(e.g. 'send the payment link tomorrow at 10'). Blank clears it."
         param :text, desc: "The agreed next step, in one sentence"
@@ -73,7 +112,7 @@ module Insika
 
         def execute(text:)
           sid = session_id
-          return { error: "no session to brief" } if sid.to_s.empty?
+          return no_session_error if sid.to_s.empty?
 
           session = @session_store.set_next_step(sid, text: text.to_s)
           emit("next_step", nil, text.to_s)
@@ -81,32 +120,6 @@ module Insika
         rescue Insika::NotFoundError
           { error: "session not found" }
         end
-
-        private
-
-        # The turn's session, from the task (turn_state.rb:7) — never the model's args.
-        def session_id = @state.respond_to?(:task) ? @state.task&.session_id : nil
-
-        def emit(kind, field, value)
-          @event_stream&.emit(Insika::Event.new(
-                                type: :briefing_updated,
-                                data: { kind: kind, field: field, value: value },
-                                meta: { task_id: @state.task&.id, session_id: @state.task&.session_id }
-                              ))
-        end
-      end
-
-      private
-
-      # The turn's session, from the task (turn_state.rb:7) — never the model's args.
-      def session_id = @state.respond_to?(:task) ? @state.task&.session_id : nil
-
-      def emit(kind, field, value)
-        @event_stream&.emit(Insika::Event.new(
-                              type: :briefing_updated,
-                              data: { kind: kind, field: field, value: value },
-                              meta: { task_id: @state.task&.id, session_id: @state.task&.session_id }
-                            ))
       end
     end
   end

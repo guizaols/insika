@@ -102,10 +102,17 @@ module Insika
     # (after strip) REMOVES the key — absence means "not yet asked" (RFC-0028
     # D4). NotFoundError if the session does not exist.
     #
-    # CONCURRENCY LIMITATION: same as append_messages — the RMW is atomic ONLY
-    # because the SessionActor serializes turns of the same session (session_store.rb
-    # append_messages comment). The briefing writers run on the turn's own fiber,
-    # inside that serialization — no lock, no CAS.
+    # CONCURRENCY NOTE: an unlocked RMW (read -> mutate -> set), like
+    # append_messages — but the SessionActor argument does NOT apply here. A
+    # briefing writer is a system tool, never enveloped, and with
+    # tool_concurrency > 1 the gem runs each call in its OWN fiber — outside the
+    # actor's per-session turn serialization. The RMW is still safe, for a
+    # different reason: nothing in the read/mutate/set path suspends. Store
+    # get/set are synchronous (the SQLite write semaphore is a non-yielding fast
+    # path when free), and a fiber only switches at a scheduler suspension point
+    # — so no other writer can interleave mid-RMW (measured: N concurrent
+    # writers lose nothing). It holds ONLY while that path never suspends; an
+    # async store (a real yield in get/set) would need a lock or CAS.
     def update_briefing(id, field:, value:)
       record = fetch!(id)
       briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }
