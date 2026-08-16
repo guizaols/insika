@@ -96,7 +96,10 @@ module Insika
         # WS9 (saída): the media-generation runner, same shape — the Executor
         # owns the seams + usage accounting, the builder only wires the tools
         # the turn's gates allow.
-        media_runner: self
+        media_runner: self,
+        # RFC-0028: the builder wires the briefing-write system tools gated by
+        # @session_store + profile.briefing_fields. nil = never wired (parity).
+        session_store: session_store
       )
       # Stage-3-tail tool assembly (capability resolution, instantiation,
       # injection, dedup join, ToolEnvelope wrap) — extracted collaborator.
@@ -2297,6 +2300,7 @@ module Insika
       require_relative "tools/stuck_signal"
       require_relative "tools/generate_image"
       require_relative "tools/tts"
+      require_relative "tools/update_briefing"
       # v2 resolution: Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)

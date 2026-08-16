@@ -116,6 +116,7 @@ module Insika
         routes: h[:routes],
         stuck_signal: h[:stuck_signal],
         outputs: h[:outputs],
+        briefing_fields: h[:briefing_fields],
         # guardrails: a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.
         guardrails: h[:guardrails],

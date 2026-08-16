@@ -11,7 +11,7 @@ require_relative "../../lib/insika/studio/app"
 # directly) — the same surface as Server::App.
 RSpec.describe Studio::App do
   SessionDouble = Struct.new(:id)
-  StoredSession = Struct.new(:id, :messages, :vars, :updated_at, keyword_init: true)
+  StoredSession = Struct.new(:id, :messages, :vars, :updated_at, :briefing, keyword_init: true)
 
   BusDouble = Struct.new(:dispatched) do
     def dispatch(command)
@@ -1337,6 +1337,44 @@ RSpec.describe Studio::App do
     app, = build_app(sessions: { "sess-nc" => sess })
     body = login(app).get("/sessions/sess-nc").body
     expect(body).not_to include("tokens by category")
+  end
+
+  # RFC-0028 — the read-only briefing card shows PERSISTED state only (known
+  # fields + next step). The missing list is model-facing and lives in the
+  # context provider, not here (D6).
+  it "session viewer renders the briefing card (known fields + next step)" do
+    sess = StoredSession.new(
+      id: "sess-bf", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
+      briefing: { "fields" => { "size" => "M", "budget" => "400" },
+                  "next_step" => "send the payment link tomorrow at 10" }
+    )
+    app, = build_app(sessions: { "sess-bf" => sess })
+    body = login(app).get("/sessions/sess-bf").body
+    expect(body).to include("Briefing")
+    expect(body).to include("size")
+    expect(body).to include("M")
+    expect(body).to include("budget")
+    expect(body).to include("400")
+    expect(body).to include("next step")
+    expect(body).to include("send the payment link tomorrow at 10")
+  end
+
+  it "session viewer renders the briefing card with a next step only" do
+    sess = StoredSession.new(
+      id: "sess-bs", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
+      briefing: { "fields" => {}, "next_step" => "chamar de volta às 10" }
+    )
+    app, = build_app(sessions: { "sess-bs" => sess })
+    body = login(app).get("/sessions/sess-bs").body
+    expect(body).to include("Briefing")
+    expect(body).to include("chamar de volta às 10")
+  end
+
+  it "an old record without a briefing renders no briefing card (D1 default, no nil leak)" do
+    sess = StoredSession.new(id: "sess-bn", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-bn" => sess })
+    body = login(app).get("/sessions/sess-bn").body
+    expect(body).not_to include("this conversation's working state")
   end
 
   it "session viewer shows the tool-calls trace (name + args + response)" do

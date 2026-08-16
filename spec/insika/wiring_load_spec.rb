@@ -25,6 +25,13 @@ RSpec.describe Insika::Wiring do
     expect(described_class::CONTEXT_PROVIDERS).to include(a_kind_of(Insika::Context::Providers::Memory))
   end
 
+  it "includes the Briefing provider (RFC-0028) in CONTEXT_PROVIDERS, before Session" do
+    providers = described_class::CONTEXT_PROVIDERS
+    expect(providers).to include(a_kind_of(Insika::Context::Providers::Briefing))
+    expect(providers.index { |p| p.is_a?(Insika::Context::Providers::Briefing) })
+      .to be < providers.index { |p| p.is_a?(Insika::Context::Providers::Session) }
+  end
+
   it "A2A_APP is nil by default (opt-in; empty PROFILES at the base) and the APP builds" do
     expect(described_class::A2A_APP).to be_nil # no INSIKA_A2A_AGENT / empty PROFILES
     expect(described_class::APP).to be_a(Insika::Server::App) # aceita a2a: nil

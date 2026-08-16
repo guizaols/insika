@@ -5,6 +5,7 @@ require "insika/tools/load_skill" # the Executor loads them lazily in create_cha
 require "insika/tools/tool_search"
 require "insika/tools/remember"
 require "insika/tools/stuck_signal"
+require "insika/tools/update_briefing"
 
 RSpec.describe Insika::ChatBuilder do
   Ctx = Struct.new(:system)
@@ -18,10 +19,12 @@ RSpec.describe Insika::ChatBuilder do
   let(:event_stream) { Object.new }
 
   # Minimal ChatBuilder (inert deps except the ones the test exercises).
-  def builder(tool_registry: inert, tool_catalog: nil, memory_store: nil, hooks: Insika::Hooks.new)
+  def builder(tool_registry: inert, tool_catalog: nil, memory_store: nil, hooks: Insika::Hooks.new,
+              session_store: nil)
     described_class.new(tool_registry: tool_registry, skill_catalog: skill_catalog,
                         checkpoint_store: inert, event_stream: event_stream, hooks: hooks,
-                        tool_catalog: tool_catalog, memory_store: memory_store)
+                        tool_catalog: tool_catalog, memory_store: memory_store,
+                        session_store: session_store)
   end
 
   let(:chat) { FakeChat.new }
@@ -253,6 +256,46 @@ RSpec.describe Insika::ChatBuilder do
     it "profile.stuck_signal nil: no signal_stuck (parity)" do
       builder.configure_chat(chat, stuck_state(on: nil))
       expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::StuckSignal) }).to be(false)
+    end
+  end
+
+  describe "#configure_chat — system briefing tools (RFC-0028)" do
+    let(:sessions) { Insika::SessionStore.new(store: Insika::Stores::Memory.new) }
+
+    def builder_with_sessions
+      builder(session_store: sessions)
+    end
+
+    def briefing_state(fields:)
+      profile = Insika::AgentProfile.build(id: "a", model: "gpt", briefing_fields: fields)
+      st = Insika::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st
+    end
+
+    it "wires update_briefing + set_next_step when session_store present AND fields declared (double gate)" do
+      builder_with_sessions.configure_chat(chat, briefing_state(fields: %w[size budget]))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::UpdateBriefing) }).to be(true)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::UpdateBriefing::SetNextStep) }).to be(true)
+    end
+
+    it "neither wired when fields empty (parity — the feature is visibly off)" do
+      builder_with_sessions.configure_chat(chat, briefing_state(fields: []))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::UpdateBriefing) }).to be(false)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::UpdateBriefing::SetNextStep) }).to be(false)
+    end
+
+    it "without @session_store: no briefing tools even with fields (parity for unit stubs)" do
+      builder.configure_chat(chat, briefing_state(fields: %w[size]))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::UpdateBriefing) }).to be(false)
+    end
+
+    it "briefing tools are never wrapped (direct instances)" do
+      builder_with_sessions.configure_chat(chat, briefing_state(fields: %w[size]))
+      t = chat.tools.find { |x| x.is_a?(Insika::Tools::UpdateBriefing) }
+      expect(t).not_to be_a(Insika::ToolEnvelope)
     end
   end
 

@@ -249,6 +249,14 @@ module Insika
       #   stuck_signal true
       def stuck_signal(on = true) = @config[:stuck_signal] = on
 
+      # The per-session working-state schema this agent keeps and asks for
+      # (RFC-0028): a flat list of field names. [] = off (no provider output,
+      # no update_briefing/set_next_step tools).
+      #   briefing_fields "size", "budget", "delivery_day"
+      def briefing_fields(*names)
+        @config[:briefing_fields] = names.flatten.map(&:to_s)
+      end
+
       # Generated-media output policy (WS9, saída): the media kinds this
       # agent MAY generate as turn outputs, with per-kind config. The other
       # half of the gate is the CHANNEL's: the request must declare the

@@ -116,6 +116,96 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
+  describe "briefing (RFC-0028 — session working state)" do
+    before { sessions.create(id: "s") }
+
+    it "create initializes briefing to empty fields + nil next_step" do
+      session = sessions.create(id: "s2")
+      expect(session.briefing).to eq({ "fields" => {}, "next_step" => nil })
+    end
+
+    describe "#update_briefing" do
+      it "upserts one field and returns the Session with the fresh briefing" do
+        session = sessions.update_briefing("s", field: "size", value: "M")
+        expect(session.briefing["fields"]).to eq("size" => "M")
+        expect(sessions.find("s").briefing["fields"]).to eq("size" => "M")
+      end
+
+      it "overwrites an existing field" do
+        sessions.update_briefing("s", field: "size", value: "M")
+        session = sessions.update_briefing("s", field: "size", value: "L")
+        expect(session.briefing["fields"]).to eq("size" => "L")
+      end
+
+      it "a blank value REMOVES the key (absence = not yet asked)" do
+        sessions.update_briefing("s", field: "size", value: "M")
+        session = sessions.update_briefing("s", field: "size", value: "   ")
+        expect(session.briefing["fields"]).to eq({})
+        expect(sessions.find("s").briefing["fields"]).to eq({})
+      end
+
+      it "utf8s the value (a non-UTF8 byte string is tagged)" do
+        latin1 = "M".dup.force_encoding(Encoding::ISO_8859_1)
+        sessions.update_briefing("s", field: "size", value: latin1)
+        expect(sessions.find("s").briefing["fields"]["size"].encoding).to eq(Encoding::UTF_8)
+      end
+
+      it "coerces a non-string value with to_s" do
+        session = sessions.update_briefing("s", field: "size", value: 42)
+        expect(session.briefing["fields"]).to eq("size" => "42")
+      end
+
+      it "normalizes the field name to a String" do
+        sessions.update_briefing("s", field: :size, value: "M")
+        expect(sessions.find("s").briefing["fields"]).to eq("size" => "M")
+      end
+
+      it "leaves next_step untouched" do
+        sessions.set_next_step("s", text: "send link at 10")
+        session = sessions.update_briefing("s", field: "size", value: "M")
+        expect(session.briefing["next_step"]).to eq("send link at 10")
+      end
+
+      it "raises NotFoundError on a nonexistent session" do
+        expect { sessions.update_briefing("nope", field: "size", value: "M") }
+          .to raise_error(Insika::NotFoundError)
+      end
+    end
+
+    describe "#set_next_step" do
+      it "sets the agreed next step" do
+        session = sessions.set_next_step("s", text: "send the payment link tomorrow at 10")
+        expect(session.briefing["next_step"]).to eq("send the payment link tomorrow at 10")
+        expect(sessions.find("s").briefing["next_step"]).to eq("send the payment link tomorrow at 10")
+      end
+
+      it "a blank text clears to nil" do
+        sessions.set_next_step("s", text: "send the payment link")
+        session = sessions.set_next_step("s", text: "")
+        expect(session.briefing["next_step"]).to be_nil
+      end
+
+      it "leaves fields untouched" do
+        sessions.update_briefing("s", field: "size", value: "M")
+        session = sessions.set_next_step("s", text: "send the payment link")
+        expect(session.briefing["fields"]).to eq("size" => "M")
+      end
+
+      it "raises NotFoundError on a nonexistent session" do
+        expect { sessions.set_next_step("nope", text: "x") }
+          .to raise_error(Insika::NotFoundError)
+      end
+    end
+
+    it "an old record without the 'briefing' key reads as empty (no migration, no nil leak)" do
+      backend.set("sessions", "session:legacy", { "id" => "legacy", "messages" => [],
+                                                   "vars" => {}, "memory_refs" => [],
+                                                   "created_at" => "2026-01-01T00:00:00Z",
+                                                   "updated_at" => "2026-01-01T00:00:00Z" })
+      expect(sessions.find("legacy").briefing).to eq({ "fields" => {}, "next_step" => nil })
+    end
+  end
+
   describe "#delete" do
     it "returns true and removes an existing session" do
       sessions.create(id: "s")

@@ -12,6 +12,24 @@
   <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
 </header>
 
+<% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
+<% fields = briefing["fields"] || {} %>
+<% next_step = briefing["next_step"] %>
+<% if fields.any? || next_step %>
+  <div class="card">
+    <div class="trace-head">
+      <h2>Briefing</h2>
+      <span class="muted">this conversation's working state — read-only, written by the agent</span>
+    </div>
+    <% fields.sort.each do |name, value| %>
+      <div class="kv"><span><%= name %></span><div><%= value %></div></div>
+    <% end %>
+    <% if next_step %>
+      <div class="kv"><span>next step</span><div><%= next_step %></div></div>
+    <% end %>
+  </div>
+<% end %>
+
 <% ctx_traces = @context_traces || [] %>
 <% unless ctx_traces.empty? %>
   <div class="card tooltrace">

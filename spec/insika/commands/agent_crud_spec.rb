@@ -57,6 +57,14 @@ RSpec.describe "Agent authoring commands" do
         .to raise_error(Insika::SubagentCycleError)
       expect(source.fetch("parent")).to be_nil
     end
+
+    it "briefing_fields round-trips through the authoring payload (create -> stored -> fetch)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "briefing-agent", "model" => "m",
+                         "briefing_fields" => %w[size budget]
+                       }))
+      expect(source.fetch("briefing-agent").briefing_fields).to eq(%w[size budget])
+    end
   end
 
   describe Insika::Commands::UpdateAgent do

@@ -22,6 +22,9 @@ module Insika
       SKILL        = 80  # <available_skills> level 1 (Skill)
       MEMORY       = 75  # <memory> read path (Memory)
       TOOL_SEARCH  = 70  # <available_tools> level 1 (ToolSearch)
+      BRIEFING     = 65  # <briefing> session working state (Briefing) — D5:
+                         #   below every identity/skill/memory block (never breaks the
+                         #   pinned prefix), above the turn's own <request_context>.
       HISTORY_MAX  = 79  # history ceiling by recency (Session)
       HISTORY_BASE = 60  # history base; +idx up to the ceiling (Session)
       REQUEST      = 40  # <request_context> — turn injection, the most cuttable

@@ -93,6 +93,9 @@ module Insika
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       # Cross-session memory: read path. Inert for agents without `memory`.
       Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      # Session briefing (RFC-0028): read path. Inert for agents without
+      # briefing_fields.
+      Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
     ].freeze
 
