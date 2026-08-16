@@ -44,5 +44,51 @@ RSpec.describe Insika::TurnTiming do
       expect(t.instance_variable_get(:@marks)[:first_token]).to eq(recorded)
       expect(recorded).to be >= first
     end
+
+    # RFC-0027 C5: inbound -> first outbox flush. Present only when BOTH ends fired.
+    it "reports first_balloon_ms once inbound and first_balloon both fired" do
+      t = described_class.new
+      t.mark(:inbound)
+      sleep 0.001
+      t.mark(:first_balloon)
+
+      expect(t.to_h[:first_balloon_ms]).to be_a(Numeric)
+      expect(t.to_h[:first_balloon_ms]).to be > 0
+    end
+
+    it "omits first_balloon_ms when either end is missing (a missing number is not a zero)" do
+      only_inbound = described_class.new
+      only_inbound.mark(:inbound)
+      expect(only_inbound.to_h).not_to have_key(:first_balloon_ms)
+
+      only_balloon = described_class.new
+      only_balloon.mark(:first_balloon)
+      expect(only_balloon.to_h).not_to have_key(:first_balloon_ms)
+    end
+  end
+
+  describe "breakdown: false (the channel-balloon-only clock)" do
+    # RFC-0027 C5: a channel turn allocates TurnTiming even when INSIKA_TURN_TIMING
+    # is off, but then to_h may carry ONLY first_balloon_ms — the full breakdown
+    # marks are the flag's job.
+    it "records only inbound/first_balloon; the breakdown marks are no-ops" do
+      t = described_class.new(breakdown: false)
+      t.mark(:inbound)
+      t.mark(:prep_start)
+      t.mark(:ask)
+      t.mark(:first_token)
+      t.mark(:done)
+      t.mark(:first_balloon)
+
+      expect(t.to_h.keys).to contain_exactly(:first_balloon_ms)
+      expect(t.to_h[:first_balloon_ms]).to be_a(Numeric)
+    end
+
+    it "omits first_balloon_ms when the balloon never fired" do
+      t = described_class.new(breakdown: false)
+      t.mark(:inbound)
+
+      expect(t.to_h).to eq({})
+    end
   end
 end

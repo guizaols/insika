@@ -414,7 +414,7 @@ RSpec.describe Insika::Server::App do
     it "GET /v1/tasks/:id calls the store and does NOT dispatch" do
       task = Insika::TaskStore::Task.new(
         id: "t-1", status: :completed, command: {}, session_id: nil,
-        executions: [], mailbox_state: {},
+        executions: [], mailbox_state: {}, timing: nil,
         created_at: "t", updated_at: "t"
       )
       bus = ServerBusDouble.new
@@ -434,7 +434,7 @@ RSpec.describe Insika::Server::App do
       )
       task = Insika::TaskStore::Task.new(
         id: "t-1", status: :failed, command: {}, session_id: nil,
-        executions: [execution], mailbox_state: {}, created_at: "t", updated_at: "t"
+        executions: [execution], mailbox_state: {}, timing: nil, created_at: "t", updated_at: "t"
       )
       app = build_app(task_store: ServerStoreDouble.new(task))
 

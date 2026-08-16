@@ -88,6 +88,19 @@
   <% end %>
 </section>
 
+<% if @task.timing && !@task.timing.empty? %>
+  <section class="section">
+    <div class="section-head"><h2>Timing <span class="muted">· the turn's latency windows</span></h2></div>
+    <div class="card">
+      <ul class="kv">
+        <% @task.timing.each do |key, value| %>
+          <li><span class="k mono"><%= key %></span><span class="v mono"><%= value %></span></li>
+        <% end %>
+      </ul>
+    </div>
+  </section>
+<% end %>
+
 <section class="section">
   <div class="section-head"><h2>Latest checkpoint</h2></div>
   <% if @checkpoint.nil? %>

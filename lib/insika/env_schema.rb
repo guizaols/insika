@@ -123,6 +123,7 @@ module Insika
       spec(name: "INSIKA_RELAY_DELIVER_URL", type: :url, description: "Consumer callback the relay POSTs each reply to."),
       spec(name: "INSIKA_RELAY_DELIVER_TOKEN", secret: true, description: "Bearer the relay sends TO the consumer's callback (optional)."),
       spec(name: "INSIKA_RELAY_SHADOW", type: :boolean, description: "RFC-0025 shadow mode: the relay records replies instead of delivering them."),
+      spec(name: "INSIKA_RELAY_DELIVERY", type: :enum, enum: %w[at_end progressive], description: "How the relay flushes the outbox (RFC-0027): at_end (one POST) or progressive (one POST per balloon). Unset -> at_end."),
       spec(name: "INSIKA_PARITY_CRITERION", type: :path, description: "The frozen parity criterion file (default: evals/PARITY.md)."),
       spec(name: "INSIKA_WIDGET_ORIGINS", type: :csv, description: "Exact-match origins allowed to embed the web widget. Unset -> the widget channel is not mounted."),
       spec(name: "INSIKA_WIDGET_AGENTS", type: :csv, description: "Agent ids a widget visitor may address. Unset -> the widget channel is not mounted."),

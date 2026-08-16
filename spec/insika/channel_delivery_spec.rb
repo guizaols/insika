@@ -122,6 +122,92 @@ RSpec.describe Insika::ChannelDelivery do
     end
   end
 
+  describe "record with balloon markers (RFC-0027 C4)" do
+    it "omits index/final by default — a plain record is byte-identical to today" do
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      delivery = dispatcher.record(task: task, channel_id: "relay", content: "pronto")
+
+      expect(delivery.payload).to eq("session_id" => "relay:551", "task_id" => "t-1",
+                                     "content" => "pronto")
+      expect(delivery.index).to eq(0)
+    end
+
+    it "rides index/final on the payload only when the caller passes them" do
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      delivery = dispatcher.record(task: task, channel_id: "relay", content: "pronto",
+                                   index: 0, final: false)
+
+      expect(delivery.payload).to eq("session_id" => "relay:551", "task_id" => "t-1",
+                                     "content" => "pronto", "index" => 0, "final" => false)
+    end
+  end
+
+  describe "record_balloons (RFC-0027 C4)" do
+    it "records one row with today's payload when the channel is not progressive" do
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                        content: "A.\n\nB.", progressive: false)
+
+      expect(rows.size).to eq(1)
+      expect(rows.first.payload).to eq("session_id" => "relay:551", "task_id" => "t-1",
+                                       "content" => "A.\n\nB.")
+    end
+
+    it "splits a progressive answer into N ordered rows with index/final" do
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                        content: "A.\n\nB.", progressive: true)
+
+      expect(rows.size).to eq(2)
+      expect(rows.map(&:index)).to eq([0, 1])
+      expect(rows.map { |r| r.payload["final"] }).to eq([false, true])
+      expect(rows.map { |r| r.payload["content"] }).to eq(["A.", "B."])
+      expect(rows.first.payload).to include("index" => 0, "final" => false)
+      expect(rows.last.payload).to include("index" => 1, "final" => true)
+    end
+
+    it "a progressive turn that splits to ONE balloon omits index/final — indistinguishable from today" do
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                        content: "oi", progressive: true)
+
+      expect(rows.size).to eq(1)
+      expect(rows.first.payload).not_to have_key("index")
+      expect(rows.first.payload).not_to have_key("final")
+    end
+
+    it "returns [] through the same cheap exits as record" do
+      expect(dispatcher.record_balloons(task: task, channel_id: "slack",
+                                        content: "hi", progressive: true)).to eq([])
+      channels.register("web", ShapeAChannelDouble.new)
+      expect(dispatcher.record_balloons(task: task, channel_id: "web",
+                                        content: "hi", progressive: true)).to eq([])
+      channels.register("relay", DeliveryChannelDouble.new(200))
+      expect(dispatcher.record_balloons(task: task, channel_id: "relay",
+                                        content: "   ", progressive: true)).to eq([])
+    end
+
+    it "records ONE shadow pair for the whole answer, never one per balloon" do
+      shadow_task = OutboxTaskDouble.new("t-1", "x")
+      shadow_task.define_singleton_method(:command) do
+        { "payload" => { "agent" => "a", "message" => "oi", "event_id" => "wamid.1" } }
+      end
+      pairs = Insika::ShadowPairStore.new(store: backend)
+      shadow = Insika::Channels::Relay.new(inbound_token: "t", deliver_url: "https://8.8.8.8/h",
+                                           shadow: true, http: nil)
+      channels.register("relay", shadow)
+      d = dispatcher(shadow_pairs: pairs, criterion_sha: "sha256:frozen",
+                     session_store: ServerStoreDouble.new(OutboxSessionDouble.new("x",
+                                                                                 { "external_id" => "551" })))
+      rows = d.record_balloons(task: shadow_task, channel_id: "relay",
+                               content: "A.\n\nB.", progressive: true)
+
+      expect(rows).to eq([])
+      expect(pairs.each.to_a.size).to eq(1)
+      expect(pairs.each.to_a.first.insika_reply).to eq("A.\n\nB.")
+    end
+  end
+
   describe "deliver" do
     let(:channel) { DeliveryChannelDouble.new(200) }
 

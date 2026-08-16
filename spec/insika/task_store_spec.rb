@@ -266,6 +266,24 @@ RSpec.describe Insika::TaskStore do
     end
   end
 
+  describe "timing on the task record (RFC-0027 C5)" do
+    it "is nil for a task written before the field existed" do
+      id = tasks.create(command: command, id: "t").id
+      expect(tasks.find(id).timing).to be_nil
+    end
+
+    it "record_timing writes the string-keyed hash and find reads it back" do
+      id = tasks.create(command: command, id: "t").id
+
+      tasks.record_timing(id, { first_balloon_ms: 812.5, prep_ms: 3.0 })
+      expect(tasks.find(id).timing).to eq("first_balloon_ms" => 812.5, "prep_ms" => 3.0)
+    end
+
+    it "raises NotFoundError for an unknown task" do
+      expect { tasks.record_timing("nope", {}) }.to raise_error(Insika::NotFoundError)
+    end
+  end
+
   describe "smoke against Stores::SQLite ':memory:'" do
     it "create->transition->begin->finish flow identical to Memory" do
       require "sqlite3"
