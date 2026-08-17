@@ -273,4 +273,29 @@ RSpec.describe Insika::Tick do
       expect(bus.dispatched.map(&:type)).to eq([:resume_task])
     end
   end
+
+  describe "the follow-up firer (RFC-0033 C9 — the tick's third duty)" do
+    let(:firer) { double("followup engine", run: { claimed: true, fired: 1, blocked: 0, errors: 0, blocked_reasons: {}, deferred: 0 }) }
+
+    it "calls the firer each pass and carries its summary under :followup" do
+      tick = described_class.new(store: backend, recovery: recovery, channel_delivery: delivery,
+                                 interval: 60, stale_after: 900, followup: firer)
+      result = tick.run_once
+      expect(firer).to have_received(:run).once
+      expect(result[:followup]).to eq(fired: 1, blocked: 0, errors: 0, blocked_reasons: {}, deferred: 0, claimed: true)
+    end
+
+    it "nil followup = no key in the summary (parity)" do
+      tick = described_class.new(store: backend, recovery: recovery, channel_delivery: delivery,
+                                 interval: 60, stale_after: 900)
+      expect(tick.run_once).not_to have_key(:followup)
+    end
+
+    it "exposes the setter (the graph wires the engine after the tick is built)" do
+      tick = described_class.new(store: backend, recovery: recovery, channel_delivery: delivery,
+                                 interval: 60, stale_after: 900)
+      tick.followup = firer
+      expect(tick.followup).to be(firer)
+    end
+  end
 end

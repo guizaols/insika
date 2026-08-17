@@ -21,7 +21,8 @@ module Insika
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
-                    grounding_enforcer: nil, cache_series_store: nil)
+                    grounding_enforcer: nil, cache_series_store: nil,
+                    contact_store: nil, followup_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -86,6 +87,10 @@ module Insika
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
       @model_resolver = ModelResolver.new(settings_store: settings_store)
+      # RFC-0033 C7: the follow-up stores the ChatBuilder gates the
+      # schedule/cancel_followup tools on (nil = never wired — parity).
+      @contact_store = contact_store
+      @followup_store = followup_store
       # the platform layer of the queue policy (nil = per-agent and
       # defaults only, which is `followup` with no window — today's behavior).
       @settings_store = settings_store
@@ -109,7 +114,12 @@ module Insika
         media_runner: self,
         # RFC-0028: the builder wires the briefing-write system tools gated by
         # @session_store + profile.briefing_fields. nil = never wired (parity).
-        session_store: session_store
+        session_store: session_store,
+        # RFC-0033 C7: the builder wires the schedule/cancel_followup system
+        # tools gated by a parsed policy AND both stores present. nil = never
+        # wired (parity).
+        contact_store: contact_store,
+        followup_store: followup_store
       )
       # Stage-3-tail tool assembly (capability resolution, instantiation,
       # injection, dedup join, ToolEnvelope wrap) — extracted collaborator.
@@ -2494,6 +2504,10 @@ module Insika
       require_relative "tools/generate_image"
       require_relative "tools/tts"
       require_relative "tools/update_briefing"
+      # RFC-0033 C7: the schedule/cancel_followup builtins — lazy, same
+      # boundary (the ChatBuilder wires them only when a profile declares
+      # followup AND the stores are present).
+      require_relative "tools/schedule_followup"
       # v2 resolution: Chat pin > Agent model > platform default, model_policy
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)

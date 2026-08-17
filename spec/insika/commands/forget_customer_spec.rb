@@ -14,12 +14,15 @@ RSpec.describe Insika::Commands::ForgetCustomer do
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
   let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
+  let(:followup_store) { Insika::FollowupStore.new(store: backend) }
+  let(:contact_store) { Insika::ContactStore.new(store: backend) }
   let(:event_stream) { Insika::EventStream.new }
   subject(:command) do
     described_class.new(memory_store: memory_store, session_store: session_store,
                         tool_trace_store: tool_trace, context_trace_store: context_trace,
                         task_store: task_store, checkpoint_store: checkpoint_store,
-                        outbox_store: outbox_store, event_stream: event_stream)
+                        outbox_store: outbox_store, event_stream: event_stream,
+                        followup_store: followup_store, contact_store: contact_store)
   end
 
   def run(customer:, tenant: nil, payload_tenant: nil)
@@ -171,5 +174,27 @@ RSpec.describe Insika::Commands::ForgetCustomer do
 
   it "nil audit_store -> no audit line, no error (the minimal graph)" do
     expect { run(customer: "123", tenant: "acme") }.not_to raise_error
+  end
+
+  describe "RFC-0033 C11 — the follow-up footprint dies with the person" do
+    it "purges the customer's records and contact cell; a neighbour survives" do
+      followup_store.create(tenant: "acme", agent: "a", customer: "123", session_id: "s-1",
+                            at: Time.now.utc + 3600, reason: "r1", arm: "schedule", id: "f1",
+                            now: Time.now.utc)
+      followup_store.create(tenant: "acme", agent: "a", customer: "456", session_id: "s-2",
+                            at: Time.now.utc + 3600, reason: "r2", arm: "schedule", id: "f2",
+                            now: Time.now.utc)
+      contact_store.set_granted(tenant: "acme", customer: "123")
+      contact_store.set_granted(tenant: "acme", customer: "456")
+
+      result = run(customer: "123", tenant: "acme")
+
+      expect(result[:followups]).to eq(1)
+      expect(result[:contacts]).to eq(1)
+      expect(followup_store.find("f1")).to be_nil
+      expect(followup_store.find("f2")).not_to be_nil
+      expect(contact_store.get(tenant: "acme", customer: "123")).to be_nil
+      expect(contact_store.get(tenant: "acme", customer: "456")).not_to be_nil
+    end
   end
 end

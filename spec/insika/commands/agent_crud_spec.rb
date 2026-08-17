@@ -88,6 +88,19 @@ RSpec.describe "Agent authoring commands" do
                                    "advance_on" => { "conversion" => "paid" },
                                    "primary" => "paid", "attribution_window" => "72h")
     end
+
+    it "followup round-trips through the authoring payload (RFC-0033)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "followup-agent", "model" => "m",
+                         "followup" => { "arm" => "schedule",
+                                         "policy" => { "max_frequency" => "2/24h",
+                                                       "cancel_keywords" => ["não quero mais contato"] } }
+                       }))
+      profile = source.fetch("followup-agent")
+      expect(profile.followup).to eq("arm" => "schedule",
+                                     "policy" => { "max_frequency" => "2/24h",
+                                                   "cancel_keywords" => ["não quero mais contato"] })
+    end
   end
 
   describe Insika::Commands::UpdateAgent do
@@ -123,6 +136,15 @@ RSpec.describe "Agent authoring commands" do
                  ))
       handler.call(cmd(:update_agent, { "id" => "bia", "model" => "m2" }))
       expect(source.fetch("bia").funnel["primary"]).to eq("paid")
+    end
+
+    it "an update WITHOUT followup preserves the stored declaration" do
+      source.put(Insika::AgentProfile.build(
+                   id: "bia", model: "m",
+                   followup: { "arm" => "schedule", "policy" => { "max_frequency" => "1/24h" } }
+                 ))
+      handler.call(cmd(:update_agent, { "id" => "bia", "model" => "m2" }))
+      expect(source.fetch("bia").followup["arm"]).to eq("schedule")
     end
 
     it "an update WITH funnel overwrites the stored declaration" do

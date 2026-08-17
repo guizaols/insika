@@ -73,6 +73,11 @@ module Insika
         # free when no pack declares a funnel) so the fold, the doctor and the
         # Studio always have a store to read/write.
         funnel_store        = Insika::FunnelStore.new(store: backend)
+        # RFC-0033 C3/C4: the contact-state cells and the follow-up schedule
+        # records. Built unconditionally (empty and free when no pack declares
+        # followup) so the engine, the tools and the Studio always have stores.
+        contact_store       = Insika::ContactStore.new(store: backend)
+        followup_store      = Insika::FollowupStore.new(store: backend)
         # refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
@@ -99,6 +104,8 @@ module Insika
           inbound_log: inbound_log,
           outcome_store: outcome_store,
           funnel_store: funnel_store,
+          contact_store: contact_store,
+          followup_store: followup_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new,
@@ -159,6 +166,10 @@ module Insika
         channel_delivery: channel_delivery, # out-of-band reply delivery
         reliability: reliability, # WS3: retries/fallback/breaker (data-gated)
         grounding_enforcer: guardrails.grounding_enforcer, # RFC-0029: :enforce cut
+        # RFC-0033 C7: the follow-up stores — the ChatBuilder wires the
+        # schedule/cancel_followup tools on them (parity when no pack declares).
+        contact_store: spine.contact_store,
+        followup_store: spine.followup_store,
         **executor_extra
       )
 
@@ -187,7 +198,9 @@ module Insika
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
             budget_ledger: spine.budget_ledger, # WS2 counter GC (retention-independent)
-            funnel_store: spine.funnel_store # RFC-0032 C6: fold dies with its source
+            funnel_store: spine.funnel_store, # RFC-0032 C6: fold dies with its source
+            followup_store: spine.followup_store, # RFC-0033 C11: records age out too
+            contact_store: spine.contact_store
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
@@ -200,6 +213,15 @@ module Insika
         executor.tick.funnel = Insika::FunnelFold.new(
           outcome_store: spine.outcome_store, funnel_store: spine.funnel_store,
           profiles: profiles, store: spine.backend
+        )
+        # RFC-0033 C5: the tick-driven follow-up firer — the tick's third
+        # duty, wired here after the Tick, gated by its own claim window.
+        # Always built: a pack that declares followup later finds its firer
+        # already on the tick (inert when no profile declares followup).
+        executor.tick.followup = Insika::FollowupEngine.new(
+          store: spine.backend, followup_store: spine.followup_store,
+          contact_store: spine.contact_store, task_store: spine.task_store,
+          profiles: profiles, executor: executor, event_stream: spine.event_stream
         )
         # WS6 operator alerts: answers budget_warning / breaker_open /
         # delivery_failed per agent (`alerts.webhook`) via the outbox+claim
@@ -221,6 +243,8 @@ module Insika
           inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
           funnel_store: spine.funnel_store,
+          contact_store: spine.contact_store,
+          followup_store: spine.followup_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
@@ -251,7 +275,10 @@ module Insika
         bus.register(:send_message,
                      Insika::Commands::SendMessage.new(profiles: profiles, session_store: spine.session_store,
                                                         task_store: spine.task_store, executor: executor,
-                                                        inbound_log: spine.inbound_log))
+                                                        inbound_log: spine.inbound_log,
+                                                        contact_store: spine.contact_store,
+                                                        followup_store: spine.followup_store,
+                                                        store: spine.backend))
         bus.register(:resume_task,
                      Insika::Commands::ResumeTask.new(profiles: profiles, task_store: spine.task_store,
                                                        checkpoint_store: spine.checkpoint_store, executor: executor))
@@ -289,6 +316,8 @@ module Insika
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
                        audit_store: spine.memory_audit_store,
+                       followup_store: spine.followup_store, # RFC-0033 C11
+                       contact_store: spine.contact_store,   # RFC-0033 C11
                        event_stream: spine.event_stream
                      ))
         # RFC-0031 C3: the LGPD access right — export one customer's memory
@@ -306,6 +335,8 @@ module Insika
                        context_trace_store: executor_extra[:context_trace_store],
                        outcome_store: spine.outcome_store,
                        funnel_store: spine.funnel_store, # RFC-0032 C6: the fold dies with the tenant
+                       followup_store: spine.followup_store, # RFC-0033 C11
+                       contact_store: spine.contact_store,   # RFC-0033 C11
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
@@ -319,6 +350,17 @@ module Insika
                        funnel_store: spine.funnel_store, profiles: profiles,
                        event_stream: spine.event_stream
                      ))
+        # RFC-0033 C6/C10: the follow-up mutations — the Studio's Cancel button
+        # and the channel opt-out event (a tenant principal never reaches the
+        # generic command ingress; these ride the same operator-grade path).
+        bus.register(:cancel_followup,
+                     Insika::Commands::CancelFollowup.new(followup_store: spine.followup_store,
+                                                          event_stream: spine.event_stream))
+        bus.register(:revoke_contact,
+                     Insika::Commands::RevokeContact.new(contact_store: spine.contact_store,
+                                                         followup_store: spine.followup_store,
+                                                         store: spine.backend,
+                                                         event_stream: spine.event_stream))
         bus
       end
 
@@ -330,6 +372,7 @@ module Insika
         :refinement_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
+        :contact_store, :followup_store, # RFC-0033 C3/C4
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -343,6 +386,7 @@ module Insika
         :memory_store, :memory_audit_store, :refinement_store, :outbox_store, :shadow_pair_store,
         :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :funnel_store,
+        :contact_store, :followup_store, # RFC-0033 C3/C4
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

@@ -259,6 +259,46 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "followup (RFC-0033 — the follow-up declaration)" do
+    it "nil/absent -> nil = feature off (parity)" do
+      expect(described_class.build(id: "a", model: "m").followup).to be_nil
+    end
+
+    it "deep-stringifies the declaration (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        followup: { arm: "schedule",
+                    policy: { quiet_hours: { timezone: "America/Sao_Paulo",
+                                             start: "21:30", end: "09:00" },
+                              max_frequency: "2/24h",
+                              cancel_keywords: ["não quero mais contato"],
+                              silence_after_sends: 3 } }
+      )
+      expect(profile.followup).to eq(
+        "arm" => "schedule",
+        "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                         "start" => "21:30", "end" => "09:00" },
+                      "max_frequency" => "2/24h",
+                      "cancel_keywords" => ["não quero mais contato"],
+                      "silence_after_sends" => 3 }
+      )
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        followup: { "arm" => "schedule", "policy" => { "max_frequency" => "1/24h" } }
+      )
+      expect(profile.to_h[:followup]).to eq("arm" => "schedule",
+                                            "policy" => { "max_frequency" => "1/24h" })
+    end
+
+    it "a profile without a followup declaration sees nil (no shape validation here)" do
+      plain = described_class.build(id: "a", model: "m")
+      expect(plain.followup).to be_nil
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

@@ -61,7 +61,8 @@ module Insika
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                    profile_source: nil, backend: nil, extra_env_specs: [],
                    shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
-                   memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil)
+                   memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil,
+                   followup_store: nil, contact_store: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -86,6 +87,10 @@ module Insika
       # reports declarations only (env-only callers stay cheap).
       @funnel_store = funnel_store
       @outcome_store = outcome_store
+      # RFC-0033 C12: the follow-up check — nil collaborators = the check
+      # reports declarations only.
+      @followup_store = followup_store
+      @contact_store = contact_store
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -106,7 +111,7 @@ module Insika
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
-                    check_memory_scopes check_funnel_declarations]
+                    check_memory_scopes check_funnel_declarations check_followup]
 
     def safe(check)
       Array(send(check))
@@ -768,6 +773,99 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
                                          "read the baseline. Freeze it in the Studio.")
       end
       findings
+    end
+
+    # RFC-0033 C12: the follow-up check — declarations validated where they are
+    # declared (D9), plus the two data-age reads that answer "whose follow-ups
+    # will fire" and "what is blocked right now" without reading the store:
+    #   · a pending record whose `at` is more than one claim window in the past
+    #     will NEVER fire — a blocked rule or a broken policy is holding it
+    #     (warn; the Follow-ups page is the drill);
+    #   · revoked contact cells per tenant (info — the human opt-out bar).
+    def check_followup
+      return [] unless @profile_source
+
+      declared = @profile_source.all.select do |profile|
+        profile.respond_to?(:followup) && !profile.followup.nil?
+      end
+      # a bare install (no follow-up on any profile) reports NOTHING — no
+      # follow-up vocabulary leaks into the doctor of a store that never
+      # scheduled one.
+      return [] if declared.empty?
+
+      findings = declared.flat_map do |profile|
+        followup = profile.followup
+        decl = Insika::FollowupPolicy.parse(followup)
+        if decl.nil?
+          [Finding.new(check: "follow-up", severity: :error, fix: nil,
+                       message: "agent '#{profile.id}': malformed follow-up declaration — " \
+                                "#{followup_defect(followup)}. The engine will never fire its " \
+                                "follow-ups until this is fixed.")]
+        else
+          [ok("follow-up",
+              "agent '#{profile.id}': follow-up declared — arm #{decl.arm}, " \
+              "#{decl.quiet_hours ? "quiet hours #{decl.quiet_hours.start}-#{decl.quiet_hours.end} " \
+              "<#{decl.quiet_hours.timezone}>" : 'no quiet hours'}, " \
+              "#{decl.cancel_keywords.size} keyword(s), " \
+              "silence after #{decl.silence_after_sends} send(s)")] +
+            followup_data_findings(profile, decl)
+        end
+      end
+
+      findings
+    end
+
+    # The named defect, for the error message — `parse!` gives the exact field.
+    def followup_defect(hash)
+      Insika::FollowupPolicy.parse!(hash).to_s
+    rescue Insika::ValidationError => e
+      e.message
+    end
+
+    # Data-age findings, gated on the optional collaborators (nil = skip,
+    # env-only callers stay cheap).
+    def followup_data_findings(profile, decl)
+      return [] unless @followup_store && @contact_store
+
+      findings = []
+      # a pending record more than one claim window PAST its `at` (the sign:
+      # due(now - window)) is a promise the tick will never honor. A
+      # quiet-hours deferral is EXCLUDED — that record still fires next pass;
+      # only a record the tick could fire RIGHT NOW and doesn't is stuck.
+      now = Time.now.utc
+      window = Insika::FollowupEngine::DEFAULT_WINDOW
+      deferred_now = decl.quiet?(now)
+      stale = @followup_store.due(now: now - window)
+                 .reject { |r| r.agent != profile.id.to_s }
+                 .reject { deferred_now }
+      unless stale.empty?
+        findings << Finding.new(check: "follow-up", severity: :warn, fix: nil,
+                                message: "agent '#{profile.id}': #{stale.size} pending " \
+                                         "follow-up(s) past their scheduled time by more than " \
+                                         "one claim window — the tick will never fire them. A " \
+                                         "blocked rule or a broken policy is pending; see the " \
+                                         "Follow-ups page.")
+      end
+      revoked_for(profile).each do |tenant, count|
+        findings << Finding.new(check: "follow-up", severity: :info, fix: nil,
+                                message: "agent '#{profile.id}': #{count} revoked contact cell(s) " \
+                                         "in tenant #{tenant.inspect} — the human opt-out bar " \
+                                         "(opt-outs are per tenant/customer, shared across agents).")
+      end
+      findings
+    end
+
+    # { tenant => revoked-cell count } among the cells this agent may message.
+    # The contact cell is per (tenant, customer) — shared across agents (D2's
+    # multi-agent note), so the count is a per-tenant tally of revoked cells.
+    def revoked_for(_profile)
+      return {} unless @contact_store
+
+      @contact_store.cells.each_with_object(Hash.new(0)) do |(key, cell), tally|
+        next unless cell["state"] == "revoked"
+
+        tally[key.split(":", 2).first] += 1
+      end
     end
 
     def broken_tool(raw)
