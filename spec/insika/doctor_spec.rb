@@ -776,5 +776,109 @@ RSpec.describe Insika::Doctor do
       expect(doctor.run.findings.select { |f| f.check == "memory-scopes" }).to be_empty
     end
   end
+
+  describe "funnel declarations (RFC-0032 C7)" do
+    let(:funnel_store) { Insika::FunnelStore.new(store: Insika::Stores::Memory.new) }
+    let(:outcome_store) { Insika::OutcomeStore.new(store: Insika::Stores::Memory.new) }
+    let(:valid_decl) do
+      { "stages" => %w[greeted qualified cart paid],
+        "advance_on" => { "qualified" => "qualified", "pix_paid" => "paid" },
+        "primary" => "paid", "attribution_window" => "72h" }
+    end
+
+    def profiles_with(*agents)
+      hash = agents.to_h { |a| [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m",
+                                                                   funnel: a[:funnel])] }
+      Insika::StaticProfileSource.new(hash)
+    end
+
+    def funnel_findings(profile_source: nil, funnel: funnel_store, outcomes: outcome_store)
+      doctor(profile_source: profile_source, funnel_store: funnel,
+             outcome_store: outcomes).run.findings.select { |f| f.check == "outcome-funnel" }
+    end
+
+    it "a valid declaration -> a single ok naming stages/primary/window" do
+      profiles = profiles_with({ id: "store-support", funnel: valid_decl })
+      findings = funnel_findings(profile_source: profiles)
+      expect(findings.size).to eq(1)
+      expect(findings.first.severity).to eq(:ok)
+      expect(findings.first.message).to include("store-support")
+      expect(findings.first.message).to include("4 stages")
+      expect(findings.first.message).to include("primary 'paid'")
+      expect(findings.first.message).to include("72h")
+    end
+
+    it "each malformed shape -> an error naming the field" do
+      profiles = profiles_with(
+        { id: "a", funnel: { "stages" => [], "advance_on" => {}, "primary" => "x" } },
+        { id: "b", funnel: { "stages" => %w[x y], "advance_on" => { "k" => "z" },
+                             "primary" => "y", "attribution_window" => "nope" } }
+      )
+      findings = funnel_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:error, :error])
+      expect(findings[0].message).to match(/agent 'a'/)
+      expect(findings[0].message).to match(/stages/)
+      expect(findings[1].message).to match(/agent 'b'/)
+      expect(findings[1].message).to match(/advance_on|attribution_window/)
+    end
+
+    it "outcomes-without-funnel -> warn (nothing folds — the funnel shows the hole)" do
+      profiles = profiles_with({ id: "store-support", funnel: nil })
+      outcome_store.create(tenant: "acme", agent: "store-support", outcome: "conversion")
+      outcome_store.create(tenant: "acme", agent: "store-support", outcome: "deflected")
+
+      findings = funnel_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to include("2 outcomes")
+      expect(findings.first.message).to include("no funnel")
+    end
+
+    it "primary never observed over the folded days -> info" do
+      profiles = profiles_with({ id: "store-support", funnel: valid_decl })
+      funnel_store.add(tenant: "acme", agent: "store-support",
+                       at: Time.iso8601("2026-08-14T10:00:00Z"),
+                       counts: { "greeted" => 5, "qualified" => 3 })
+
+      info = funnel_findings(profile_source: profiles).find { |f| f.severity == :info }
+      expect(info).not_to be_nil
+      expect(info.message).to include("'paid' was never observed")
+    end
+
+    it ">= 28 folded days without a baseline -> info (RFC-0033/0035 read it)" do
+      profiles = profiles_with({ id: "store-support", funnel: valid_decl })
+      30.times do |i|
+        funnel_store.add(tenant: "acme", agent: "store-support",
+                         at: Time.utc(2026, 7, 1 + i, 10), counts: { "greeted" => 1, "paid" => 1 })
+      end
+
+      info = funnel_findings(profile_source: profiles).find { |f| f.severity == :info }
+      expect(info).not_to be_nil
+      expect(info.message).to include("no baseline frozen")
+    end
+
+    it "a baseline exists -> no info about freezing" do
+      profiles = profiles_with({ id: "store-support", funnel: valid_decl })
+      30.times do |i|
+        funnel_store.add(tenant: "acme", agent: "store-support",
+                         at: Time.utc(2026, 7, 1 + i, 10), counts: { "greeted" => 1, "paid" => 1 })
+      end
+      funnel_store.set_baseline(tenant: "acme", agent: "store-support",
+                                record: { "frozen_at" => "2026-08-01" })
+
+      findings = funnel_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "both collaborators nil -> declarations only, nothing raises" do
+      profiles = profiles_with({ id: "store-support", funnel: valid_decl })
+      report = doctor(profile_source: profiles).run
+      findings = report.findings.select { |f| f.check == "outcome-funnel" }
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "no profile_source -> nothing reported" do
+      expect(funnel_findings).to be_empty
+    end
+  end
 end
 

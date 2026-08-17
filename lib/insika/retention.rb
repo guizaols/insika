@@ -29,7 +29,8 @@ module Insika
     def initialize(session_store:, task_store:, checkpoint_store:,
                    memory_store:, outcome_store:, tool_trace_store: nil,
                    context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
-                   settings_store: nil, budget_ledger: nil, store:, window: WINDOW, now: nil)
+                   settings_store: nil, budget_ledger: nil, funnel_store: nil,
+                   store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -41,6 +42,7 @@ module Insika
       @shadow_pair_store = shadow_pair_store
       @settings_store = settings_store
       @budget_ledger = budget_ledger # WS2 counter GC; nil = nothing to sweep
+      @funnel_store = funnel_store   # RFC-0032 C6; nil = nothing to sweep
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
@@ -73,6 +75,7 @@ module Insika
                   memory: @memory_store.prune_older_than(cutoff),
                   deliveries: sweep_outbox(cutoff),
                   pairs: sweep_shadow_pairs(cutoff) }
+      summary[:funnel] = sweep_funnel(cutoff) if @funnel_store
       summary[:budget_cells] = budget_cells if budget_cells
       summary[:memory_ttl] = memory_ttl if memory_ttl
       summary
@@ -214,6 +217,13 @@ module Insika
     # still someone's unjudged evidence, exactly like the outbox's rule.
     def sweep_shadow_pairs(cutoff)
       @shadow_pair_store ? @shadow_pair_store.delete_older_than(cutoff) : 0
+    end
+
+    # RFC-0032 C6: the funnel DAY CELLS die with the outcomes they fold — same
+    # retention_days gate, same daily claim. Cursors/baselines live while their
+    # agent does. nil collaborator = nothing to sweep (base graph, parity).
+    def sweep_funnel(cutoff)
+      @funnel_store.delete_older_than(cutoff)
     end
 
     def claim_window = claim(KEY)

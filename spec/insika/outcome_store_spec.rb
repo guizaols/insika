@@ -67,4 +67,49 @@ RSpec.describe Insika::OutcomeStore do
   ensure
     sqlite&.close
   end
+
+  describe "#for_pair (RFC-0032 C4 — the fold's per-pair read)" do
+    before do
+      store.create(tenant: nil, agent: "bia", outcome: "conversion",
+                   at: Time.utc(2026, 8, 12, 9), id: "a")
+      store.create(tenant: nil, agent: "bia", outcome: "escalation",
+                   at: Time.utc(2026, 8, 13, 9), id: "b")
+      store.create(tenant: "loja-a", agent: "bia", outcome: "conversion",
+                   at: Time.utc(2026, 8, 13, 10), id: "c")
+    end
+
+    it "reads only that pair's records (the key IS the isolation)" do
+      expect(store.for_pair(tenant: nil, agent: "bia").map(&:id)).to contain_exactly("a", "b")
+      expect(store.for_pair(tenant: "loja-a", agent: "bia").map(&:id)).to eq(["c"])
+    end
+
+    it "nil, '' and 'platform' all reach the no-tenant pair" do
+      ids = %w[a b]
+      expect(store.for_pair(tenant: "platform", agent: "bia").map(&:id)).to contain_exactly(*ids)
+      expect(store.for_pair(tenant: "", agent: "bia").map(&:id)).to contain_exactly(*ids)
+    end
+
+    it "since_date skips the older keys without reading them" do
+      expect(store.for_pair(tenant: nil, agent: "bia", since_date: "2026-08-13").map(&:id))
+        .to eq(["b"])
+    end
+  end
+
+  describe "#pairs (RFC-0032 C4 — one key scan, no record reads)" do
+    it "lists distinct (tenant, agent), nil for the no-tenant segment" do
+      store.create(tenant: nil, agent: "bia", outcome: "conversion")
+      store.create(tenant: nil, agent: "bia", outcome: "escalation") # same pair, 2nd day
+      store.create(tenant: nil, agent: "ana", outcome: "deflected")
+      store.create(tenant: "loja-a", agent: "bia", outcome: "conversion")
+
+      expect(store.pairs).to contain_exactly(
+        { tenant: nil, agent: "bia" }, { tenant: nil, agent: "ana" },
+        { tenant: "loja-a", agent: "bia" }
+      )
+    end
+
+    it "empty store -> []" do
+      expect(store.pairs).to eq([])
+    end
+  end
 end

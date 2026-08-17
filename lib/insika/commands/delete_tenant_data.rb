@@ -20,7 +20,7 @@ module Insika
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
                      context_trace_store: nil, outcome_store: nil, task_store: nil,
                      checkpoint_store: nil, outbox_store: nil, shadow_pairs: nil,
-                     token_store: nil, event_stream:)
+                     token_store: nil, funnel_store: nil, event_stream:)
         @memory_store = memory_store
         @token_store = token_store
         @session_store = session_store
@@ -31,6 +31,7 @@ module Insika
         @checkpoint_store = checkpoint_store
         @outbox_store = outbox_store
         @shadow_pairs = shadow_pairs
+        @funnel_store = funnel_store # RFC-0032 C6; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -53,17 +54,19 @@ module Insika
 
         memory_records = @memory_store.purge_tenant(tenant)
         outcomes = @outcome_store ? @outcome_store.purge(tenant: tenant) : 0
+        funnel = @funnel_store ? @funnel_store.purge(tenant: tenant) : 0
 
         @event_stream.emit(Insika::Event.new(
                              type: :tenant_data_deleted,
                              data: { tenant: tenant, sessions: sessions,
                                      memory_records: memory_records,
                                      outcomes: outcomes,
+                                     funnel: funnel,
                                      tokens_revoked: tokens_revoked }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { tenant: tenant, sessions: sessions, memory_records: memory_records,
-          outcomes: outcomes, tokens_revoked: tokens_revoked }.merge(purged)
+          outcomes: outcomes, funnel: funnel, tokens_revoked: tokens_revoked }.merge(purged)
       end
     end
   end

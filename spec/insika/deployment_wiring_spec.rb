@@ -151,6 +151,38 @@ RSpec.describe Deploy::Wiring do
     it "exposes the provisioner (pack importer) for the gateway /v1/agents" do
       expect(w::PACK_IMPORTER).to be_a(Insika::PackImporter)
     end
+
+    # RFC-0032 C8: the outcome funnel is wired through the shared core — spine
+    # store, tick fold, freeze command and tenant purge all ride the SAME
+    # backend, inert when no pack declares a funnel.
+    describe "outcome funnel (RFC-0032)" do
+      it "builds the funnel store over BACKEND in the spine" do
+        expect(w::SPINE.funnel_store).to be_a(Insika::FunnelStore)
+        expect(w::SPINE.funnel_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.funnel_store).to be(w::SPINE.funnel_store)
+      end
+
+      it "wires the fold onto the tick" do
+        fold = w::GRAPH.executor.tick.funnel
+        expect(fold).to be_a(Insika::FunnelFold)
+        expect(fold.instance_variable_get(:@outcome_store)).to be(w::SPINE.outcome_store)
+        expect(fold.instance_variable_get(:@funnel_store)).to be(w::SPINE.funnel_store)
+      end
+
+      it "registers the freeze command on the bus" do
+        expect(w::BUS.registered?(:freeze_funnel_baseline)).to be(true)
+      end
+
+      it "wires the funnel store into the tenant purge (the fold dies with the tenant)" do
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@funnel_store)).to be(w::SPINE.funnel_store)
+      end
+
+      it "wires the funnel store into retention (the fold dies with its source)" do
+        retention = w::GRAPH.executor.tick.instance_variable_get(:@retention)
+        expect(retention.instance_variable_get(:@funnel_store)).to be(w::SPINE.funnel_store)
+      end
+    end
   end
 
   # the production wiring finally instantiates Recovery and speaks
