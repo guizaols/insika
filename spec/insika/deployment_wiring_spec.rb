@@ -107,6 +107,16 @@ RSpec.describe Deploy::Wiring do
       expect(w::TOOL_REGISTRY).to be_a(Insika::OverlayToolRegistry)
     end
 
+    # RFC-0030 C8: the deployment wires the per-agent cache-hit series over the
+    # SAME BACKEND as the context trace (a module graph that omits it still
+    # builds — the Executor default is nil, and `cache_series_store_spec` covers
+    # the store itself).
+    it "wires the per-agent cache series (RFC-0030) over BACKEND into the Executor" do
+      expect(w::CACHE_SERIES_STORE).to be_a(Insika::CacheSeriesStore)
+      expect(w::CACHE_SERIES_STORE.instance_variable_get(:@store)).to be(w::BACKEND)
+      expect(w::EXECUTOR.instance_variable_get(:@cache_series_store)).to be(w::CACHE_SERIES_STORE)
+    end
+
     it "wires the context providers, including Session, Memory and Briefing" do
       classes = w::CONTEXT_PROVIDERS.map(&:class)
       expect(classes).to include(Insika::Context::Providers::Session)

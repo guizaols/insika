@@ -104,4 +104,62 @@ RSpec.describe Insika::ContextTraceStore do
     expect(store.clear("s")).to be(true)
     expect(store.for_session("s")).to eq([])
   end
+
+  describe "RFC-0030 C4: fingerprints + cache fields" do
+    it "fingerprints round-trip: only string keys with hex values" do
+      store.record(session_id: "s", entry: entry(fingerprints: {
+                    "prompt" => "a1b2c3", "memory" => "d4e5f6", "prefix" => "ff00ff"
+                  }))
+      got = store.for_session("s").first
+      expect(got["fingerprints"]).to eq("prompt" => "a1b2c3", "memory" => "d4e5f6", "prefix" => "ff00ff")
+    end
+
+    it "non-string fingerprint values are dropped" do
+      store.record(session_id: "s", entry: entry(fingerprints: { "a" => 123, "b" => "ok" }))
+      got = store.for_session("s").first
+      expect(got["fingerprints"]).to eq("b" => "ok")
+    end
+
+    it "cache block round-trips: hit_pct, cached_tokens, prompt_tokens, invalidation_reason" do
+      store.record(session_id: "s", entry: entry(cache: { hit_pct: 83, cached_tokens: 21_845,
+                                                          prompt_tokens: 26_319, invalidation_reason: "memory" }))
+      got = store.for_session("s").first
+      expect(got["cache"]).to eq("hit_pct" => 83, "cached_tokens" => 21_845,
+                                 "prompt_tokens" => 26_319, "invalidation_reason" => "memory")
+    end
+
+    it "an entry without cache reads back without it (backward compat)" do
+      store.record(session_id: "s", entry: entry)
+      expect(store.for_session("s").first).not_to have_key("cache")
+    end
+
+    it "cache with nil invalidation_reason is stored as nil (not dropped)" do
+      store.record(session_id: "s", entry: entry(cache: { hit_pct: 50, invalidation_reason: nil }))
+      expect(store.for_session("s").first.dig("cache", "invalidation_reason")).to be_nil
+    end
+
+    it "category layer round-trips: identity or volatile" do
+      store.record(session_id: "s", entry: entry(categories: {
+                    "prompt" => { tokens: 100, fragments: 1, pinned: 100, layer: "identity" },
+                    "memory" => { tokens: 50, fragments: 1, pinned: 0, layer: "volatile" }
+                  }))
+      cats = store.for_session("s").first["categories"]
+      expect(cats["prompt"]["layer"]).to eq("identity")
+      expect(cats["memory"]["layer"]).to eq("volatile")
+    end
+
+    it "a category without layer gets no key (nil becomes absent)" do
+      store.record(session_id: "s", entry: entry(categories: {
+                    "prompt" => { tokens: 100, fragments: 1, pinned: 100 }
+                  }))
+      expect(store.for_session("s").first["categories"]["prompt"]).not_to have_key("layer")
+    end
+
+    it "record returns the sanitized entry (C5 parks it for the stage-8 merge)" do
+      result = store.record(session_id: "s", entry: entry(turn: 1, used: 100))
+      expect(result).to be_a(Hash)
+      expect(result["used"]).to eq(100)
+      expect(result["task_id"]).to eq("t1")
+    end
+  end
 end

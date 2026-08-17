@@ -850,9 +850,14 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       entry = got.first
       expect(entry).to include("task_id" => "t", "turn" => 1, "cap" => 8_000, "used" => 600)
       expect(entry["categories"]).to eq(
-        "prompt" => { "tokens" => 400, "fragments" => 1, "pinned" => 400 },
-        "session" => { "tokens" => 200, "fragments" => 1, "pinned" => 0 }
+        "prompt" => { "tokens" => 400, "fragments" => 1, "pinned" => 400, "layer" => "volatile" },
+        "session" => { "tokens" => 200, "fragments" => 1, "pinned" => 0, "layer" => "volatile" }
       )
+      # RFC-0030 C5: the entry carries the prefix fingerprints + the cache
+      # reason (nil on the first turn) alongside the breakdown.
+      expect(entry["fingerprints"]).to be_a(Hash)
+      expect(entry["fingerprints"].keys).to include("prompt", "prefix")
+      expect(entry.dig("cache", "invalidation_reason")).to be_nil
       expect(entry["tools"]["count"]).to eq(1)
       expect(entry["tools"]["tokens"]).to be > 0
     end

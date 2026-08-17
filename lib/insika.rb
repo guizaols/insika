@@ -64,6 +64,10 @@ require_relative "insika/context/providers/tool_search"
 require_relative "insika/context/providers/memory"
 require_relative "insika/context/providers/session"
 require_relative "insika/context/providers/briefing"
+# RFC-0030 C2/C6: the cache-prefix hash chain + the per-agent cache-hit series.
+# Both are referenced by the Executor at runtime, so they load before it.
+require_relative "insika/prefix_fingerprint"
+require_relative "insika/cache_series_store"
 require_relative "insika/policy/policy"
 require_relative "insika/policy/engine"
 require_relative "insika/registry"

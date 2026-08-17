@@ -21,7 +21,7 @@ module Insika
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
-                    grounding_enforcer: nil)
+                    grounding_enforcer: nil, cache_series_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -79,6 +79,9 @@ module Insika
       # the Executor directly still gets the cut; `nil` stays injectable for
       # stubs that want none.
       @grounding_enforcer = grounding_enforcer || Insika::Safety::GroundingEnforcer.new
+      # RFC-0030 C5/C6: the per-AGENT cache-hit series. nil = no series recorded
+      # (parity — the trace store still gets the per-turn entry when wired).
+      @cache_series_store = cache_series_store
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -932,8 +935,12 @@ module Insika
 
     # one entry per turn in the ContextTraceStore — tokens per
     # category (the demodulized provider id), the tools-schema estimate and the
-    # budget verdict. Counts and ids ONLY, never content. nil store = off; the
-    # store itself rescues everything (the trace never breaks the turn).
+    # budget verdict. RFC-0030 C5: the entry also carries the prefix
+    # fingerprints + the invalidation_reason vs the previous turn, and the
+    # categories gain their cache layer. Counts and ids ONLY, never content.
+    # nil store = off; the store itself rescues everything (the trace never
+    # breaks the turn). -> the sanitized entry (parked on TurnState for the
+    # stage-8 cache stamp).
     def record_context_trace(task, state)
       return unless @context_trace_store && task.session_id
 
@@ -947,6 +954,10 @@ module Insika
         c[:tokens] += f.tokens || 0
         c[:fragments] += 1
         c[:pinned] += (f.tokens || 0) if f.pinned
+        # RFC-0030 C5: the category's cache layer (:identity | :volatile —
+        # stamped by the Builder at production, C3).
+        layer = f.layer || :volatile
+        c[:layer] ||= layer
         # WHICH skills/tools the fragment carried and WHY — ids only, still
         # content-free. Without this the trace proves a turn injected N tokens of
         # skill but not which ones, and deterministic activation is unauditable
@@ -954,14 +965,88 @@ module Insika
         labels = Array(f.labels)
         (c[:labels] ||= []).concat(labels) unless labels.empty?
       end
-      @context_trace_store.record(
-        session_id: task.session_id,
-        entry: { task_id: task.id, turn: state.turn, at: Time.now.utc.iso8601,
-                 cap: package.budget[:cap], used: package.budget[:used],
-                 evicted: package.budget[:evicted], categories: categories,
-                 tools: { count: state.allowed_tools.size,
-                          tokens: estimate_tools_tokens(state.allowed_tools) } }
-      )
+      # RFC-0030 C2/C3: the prefix chain over the SYSTEM-placement fragments in
+      # canonical (identity-first) render order + the tool-schema serialization.
+      # The reason is computed against the PREVIOUS trace entry (D3): the first
+      # category, in current chain order, whose bytes changed (or vanished).
+      previous = previous_trace_entry(task, state.turn)
+      fingerprints = Insika::PrefixFingerprint.compute(
+        Array(package.fragments).select { |f| f.placement == :system },
+        tool_serial: serialize_tools(state.allowed_tools))
+      reason = Insika::PrefixFingerprint.invalidation_reason(
+        fingerprints, previous && previous["fingerprints"])
+
+      entry = { task_id: task.id, turn: state.turn, at: Time.now.utc.iso8601,
+                cap: package.budget[:cap], used: package.budget[:used],
+                evicted: package.budget[:evicted], categories: categories,
+                tools: { count: state.allowed_tools.size,
+                         tokens: estimate_tools_tokens(state.allowed_tools) },
+                fingerprints: fingerprints,
+                cache: { invalidation_reason: reason } }
+      # Park the SANITIZED entry (string keys) — the stage-8 stamp merges into
+      # it and re-records the same key; a raw entry would add a SECOND "cache"
+      # key that sanitize would then ignore (the symbol one wins).
+      state.context_trace_entry = @context_trace_store.record(session_id: task.session_id,
+                                                              entry: entry)
+    end
+
+    # RFC-0030 C5 (D3): the previous turn's trace entry — the session list minus
+    # THIS (task_id, turn) (an approval-resumed turn re-records over its own key
+    # — never compare to self). `turn` is the turn being recorded, passed
+    # explicitly. -> Hash | nil (first turn of the session).
+    def previous_trace_entry(task, turn)
+      @context_trace_store.for_session(task.session_id)
+                           .reject { |x| x["task_id"] == task.id && x["turn"] == turn }
+                           .last
+    end
+
+    # RFC-0030 C2: the tool-schema yardstick — the SAME serialization the token
+    # estimate uses (estimate_tools_tokens), so the fingerprint and the estimate
+    # never disagree. The digest covers name + description + parameters.inspect,
+    # approximating RubyLLM's rendering (honest in the doc: the reason's job is
+    # the CONTEXT categories; the tool hash is a guard rail).
+    def serialize_tools(tools)
+      tools.map { |t| "#{t.name} #{t.description} #{t.parameters.inspect}" }.join(" ")
+    end
+
+    # RFC-0030 C5 (D4): the stage-8 stamp — the usage (cached_tokens,
+    # input_tokens) only exists after the provider answered, so a SECOND
+    # UPSERT with the SAME (task_id, turn) merges the cache fields into the
+    # entry parked at prepare_turn (the start-of-turn write stays: a turn that
+    # dies mid-flight still shows its context on the Studio screen). The same
+    # numbers append one entry to the agent's CacheSeriesStore (C6).
+    def stamp_cache_hit(task, state)
+      usage = state.usage || {}
+      input = usage[:input_tokens].to_i
+      cached = usage[:cached_tokens].to_i
+      creation = usage[:cache_creation_tokens].to_i
+      # A4: the billed prefix is input + cached + cache_creation. RubyLLM's
+      # input_tokens is the FRESH input only — cached_tokens is disjoint, not a
+      # subset — so dividing by input alone yields absurd numbers (22000/500 =
+      # 4400%) and renders a full hit as "—" (fresh=0). The denominator is the
+      # whole billed prompt; hit_pct is then always in [0,100].
+      billed = input + cached + creation
+      hit = billed.positive? ? ((cached * 100.0) / billed).round : nil
+      reason = state.context_trace_entry&.dig("cache", "invalidation_reason")
+
+      # The trace merge needs the entry parked at prepare_turn (the UPSERT
+      # replaces the same (task_id, turn)); a failed trace write leaves it nil
+      # and the cache line simply never lands — never a turn failure.
+      if @context_trace_store && state.context_trace_entry && task.session_id
+        @context_trace_store.record(
+          session_id: task.session_id,
+          entry: state.context_trace_entry.merge("cache" => {
+            "hit_pct" => hit, "cached_tokens" => cached, "prompt_tokens" => billed,
+            "invalidation_reason" => reason }))
+      end
+
+      # The per-agent series is INDEPENDENT of the trace store: a deployment
+      # that wires the series without the trace (or whose trace write failed)
+      # still records its cache-hit numbers — reason is simply nil then.
+      @cache_series_store&.record(agent: state.profile.id, entry: {
+        at: Time.now.utc.iso8601, turn: state.turn,
+        hit_pct: hit, cached_tokens: cached, prompt_tokens: billed,
+        invalidation_reason: reason })
     end
 
     # Skill bodies that reached the prompt WITHOUT a tool call (`triggers:` or
@@ -1047,6 +1132,11 @@ module Insika
       # but is not honored (last stage); :cancel here still raises.
       actor.drain!
       persist_turn(task, profile, st, content, timing: timing)
+
+      # RFC-0030 C5 (D4): the cache-hit stamp — the usage exists only now. The
+      # stamped entry is durable before anything is delivered (same slot as the
+      # RFC-0029 enforcer). Best-effort by construction (both stores rescue).
+      stamp_cache_hit(task, st)
 
       # stage 9: Response. usage (tokens) captured at stage 6 travels in the
       # terminal event -> /v1/responses usage + Telemetry (OTEL).

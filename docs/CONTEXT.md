@@ -20,20 +20,21 @@ Providers are chosen by a double gate (the provider opts in for the profile **an
 the agent's `context_providers` allowlist permits it), then assembled by priority
 into a deterministic prompt:
 
-| Provider | Block | Priority | Notes |
-|----------|-------|:--------:|-------|
-| **Identity** | system | **100 — pinned** | The agent's prompt files (global system files first). Never cut. |
-| **Skill trigger** | `<active_skill>` | 85 | Level-2 bodies: the agent's `skills_eager` set, plus the ones whose `triggers:` match the message — see [Skills](SKILLS.md). |
-| **Skills** | `<available_skills>` | 80 | Level-1 skill list, minus whatever is already eager — see [Skills](SKILLS.md). |
-| **Memory** | `<memory>` | 75 | Durable facts + recent notes, only if `memory` is on. Cuttable. |
-| **Tool search** | `<available_tools>` | 70 | Level-1 list of deferred tools — see [Tools](TOOLS.md). |
-| **Briefing** | `<briefing>` | 65 | The session's working state (known fields, still-missing list, next step) — only if the pack declared `briefing_fields`. Cuttable. |
-| **Session** | history | 60–79 | The running transcript; priority scales with recency. |
-| **Request** | `<request_context>` | 40 | Turn variables + tenant. Most cuttable; sits last. |
+| Provider | Block | Priority | Layer | Notes |
+|----------|-------|:--------:|-------|-------|
+| **Identity** | system | **100 — pinned** | identity | The agent's prompt files (global system files first). Never cut. |
+| **Skills** | `<available_skills>` | 80 | identity | Level-1 skill list, minus whatever is already eager — see [Skills](SKILLS.md). |
+| **Tool search** | `<available_tools>` | 70 | identity | Level-1 list of deferred tools — see [Tools](TOOLS.md). |
+| **Skill trigger** | `<active_skill>` | 85 | volatile | Level-2 bodies: the agent's `skills_eager` set, plus the ones whose `triggers:` match the message — see [Skills](SKILLS.md). |
+| **Memory** | `<memory>` | 75 | volatile | Durable facts + recent notes, only if `memory` is on. Cuttable. |
+| **Briefing** | `<briefing>` | 65 | volatile | The session's working state (known fields, still-missing list, next step) — only if the pack declared `briefing_fields`. Cuttable. |
+| **Session** | history | 60–79 | volatile | The running transcript; priority scales with recency. |
+| **Request** | `<request_context>` | 40 | volatile | Turn variables + tenant. Most cuttable; sits last. |
 
-The ordering is deliberate: the **stable identity sits first**, the **volatile
-request context sits last**. That keeps the cacheable prefix byte-stable (see the
-prefix cache below).
+The ordering is deliberate: the render order is **identity layer first, volatile
+layer after** — nothing volatile can sit above the cache boundary, whatever its
+priority — and within each layer the priority sort above holds. That keeps the
+cacheable prefix byte-stable (see the prefix cache below).
 
 ## Budget and eviction — the actual "compaction"
 
@@ -137,8 +138,8 @@ Two distinct caching mechanisms — don't conflate them:
 
 - **Automatic server-side prefix cache.** Some providers prefix-cache a stable
   system prefix automatically, at no cost to configure. This works **only because**
-  the identity is at the top of the system block and the volatile
-  `<request_context>` is at the bottom, keeping the cacheable prefix byte-stable.
+  the engine renders the system in two layers (below) and the volatile half sits
+  **under** the identity boundary, keeping the cacheable prefix byte-stable.
   Anything that injects volatile content high in the system block breaks the cache.
 - **Manual cache breakpoints (opt-in).** With `prompt_caching` on **and** a
   provider that supports explicit cache control, the builder sets one cache
@@ -147,6 +148,52 @@ Two distinct caching mechanisms — don't conflate them:
 
 Cache accounting surfaces as `cached_tokens` (reads) and `cache_creation_tokens`
 (writes), visible in telemetry and the Studio tokens chip.
+
+### The two layers (RFC-0030)
+
+The system block is partitioned into two cache layers:
+
+- **Identity** — bytes that change only on deploy/config edit: the persona
+  prompt (`Prompt`), the level-1 skill list (`Skill`) and the deferred-tool
+  catalog (`ToolSearch`). This is the cacheable prefix.
+- **Volatile** — bytes that may change per turn: memory, session history,
+  triggered skill bodies, the `<request_context>`. Everything else.
+
+The layer is a **provider-class contract**, not profile data: `ContextProvider`
+declares `def layer = :volatile` (conservative — nothing gets pinned by
+accident) and the three identity builtins override to `:identity`. A pack does
+not set it — a pack reorganizes *which content goes into the Prompt provider vs
+the volatile providers*. The Builder stamps the layer on every fragment at
+production, and the render order is **identity first, volatile after** — a
+volatile block can never land above the cache boundary, whatever its priority.
+Within each partition the existing priority sort is untouched.
+
+The engine's own `doctor` check verifies the declaration: an engine-known
+volatile provider (Memory, Session, Request, SkillTrigger) that overrides to
+`:identity` is an **error** (guaranteed cache kill); any other custom
+`:identity` provider is a **warning** (purity unverifiable from outside — the
+output must be byte-stable across turns).
+
+### The observable cache: fingerprints and the invalidation reason
+
+Each turn, the Executor hashes the rendered prefix into a PII-free fingerprint
+chain — one SHA-256 per system category in render order, one for the tool
+schemas, one cumulative `prefix` — and compares it against the previous turn's
+entry. The **invalidation reason** is the first category whose bytes changed (or
+vanished); a turn whose prefix held reports nothing. History is deliberately
+excluded: a new user message is a divergence every turn, which would be noise,
+not a reason.
+
+The Studio surfaces it in two places: the **session Context card** shows the
+turn's cache-hit percentage and the `broke: <category>` line (plus the
+`identity` marker on the category rows), and the **agent detail** carries a
+cache tab with the per-agent hit series over time. The per-agent series lives
+in its own capped store, because a session does not stamp its author — the
+per-session trace cannot answer "cache-hit over time for *this* agent".
+
+With the prefix stable by construction, the existing `prompt_caching` breakpoint
+sits on bytes that stay put — the first (write) turn of a deployment pays the
+cache write once, every subsequent turn reads.
 
 ## The volume
 

@@ -347,6 +347,14 @@ end
         # runtime backend (pairs hold raw customer text — the check reports their
         # age and the criterion's loadability before boot does).
         shadow_pair_store: Insika::ShadowPairStore.new(store: backend),
+        # RFC-0030 C7: the cache-layers check — the BUILTIN set as classes (the
+        # check reads the layer declaration off the class, no instances needed).
+        context_providers: [
+          Insika::Context::Providers::Request, Insika::Context::Providers::Prompt,
+          Insika::Context::Providers::Skill, Insika::Context::Providers::SkillTrigger,
+          Insika::Context::Providers::ToolSearch, Insika::Context::Providers::Memory,
+          Insika::Context::Providers::Session
+        ],
         backend: backend
       )
     end

@@ -56,9 +56,14 @@ module Insika
                   #                      context via an evidence-declared tool (the envelope
                   #                      appends; the validator/enforcer read it). Built per
                   #                      turn by the Executor; nil = no session/no evidence.
-                  :evidence_attachments # RFC-0029: [ {type, url, caption} ] hoarded by the
+                  :evidence_attachments, # RFC-0029: [ {type, url, caption} ] hoarded by the
                   #                      envelope this turn; read by the Executor at stage 8
                   #                      for the channel delivery. Reset per turn.
+                  :context_trace_entry  # RFC-0030 C5: the sanitized trace entry parked at
+                  #                      prepare_turn (fingerprints + invalidation_reason);
+                  #                      the stage-8 stamp merges the cache-hit fields into
+                  #                      it and re-records the same (task_id, turn) key.
+                  #                      nil = no store wired / no session.
 
     # Internal (not part of the contract): per-CALL correlation between RubyLLM's
     # tool callbacks and the tool decorators — `current_tool_call` keys the

@@ -66,7 +66,14 @@ module Insika
 
       fragments = []
       tasks.each do |provider, child|
-        fragments.concat(Array(child.wait))
+        # RFC-0030 C3: stamp the layer at PRODUCTION from the PROVIDER's
+        # declaration — authoritative, so a fragment that arrives pre-stamped
+        # cannot sneak above the boundary (a :volatile provider emitting a
+        # fragment with layer :identity would otherwise bypass the doctor's
+        # class-level check). A custom provider that never learned the contract
+        # leaves :volatile.
+        layer = provider.respond_to?(:layer) ? provider.layer : :volatile
+        Array(child.wait).each { |f| fragments << f.with(layer: layer) }
       rescue StandardError => e # Async::TimeoutError is a StandardError; Async::Stop is NOT (propagates)
         handle_provider_failure(provider, e, request)
       end
@@ -135,10 +142,14 @@ module Insika
       [survivors, evicted_sources]
     end
 
-    # Step 6: assembly in DETERMINISTIC canonical order.
+    # Step 6: assembly in DETERMINISTIC canonical order. RFC-0030 C3: the
+    # identity-first partition — nothing volatile renders above the cache
+    # boundary. Each partition keeps the existing canonical sort; the partition
+    # is by LAYER only.
     def assemble(fragments, cap, evicted)
       system_frags = fragments.select { |f| f.placement == :system }
-                              .sort_by.with_index { |f, i| [-f.priority, f.source.to_s, i] }
+      identity, volatile = system_frags.partition { |f| (f.layer || :volatile) == :identity }
+      system_frags = sort_canonical(identity) + sort_canonical(volatile)
       history_frags = fragments.select { |f| f.placement == :history } # production order (chronological)
       tool_frags = fragments.select { |f| f.placement == :tool_context }
 
@@ -151,6 +162,13 @@ module Insika
         system: system, history: history, tool_context: tool_context,
         fragments: canonical, budget: { cap: cap, used: canonical.sum(&:tokens), evicted: evicted }
       )
+    end
+
+    # The canonical system sort (priority DESC, source ASC, production index) —
+    # applied WITHIN each layer partition, so the pre-RFC order survives inside
+    # it and the boundary is the only thing that moved.
+    def sort_canonical(frags)
+      frags.sort_by.with_index { |f, i| [-f.priority, f.source.to_s, i] }
     end
 
     # :provider_warning. The Builder does not know task_id/seq (correlation is
