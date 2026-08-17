@@ -6,6 +6,10 @@ require_relative "moderator"
 require_relative "output_filter"
 require_relative "input_guardrail"
 require_relative "output_validator"
+# RFC-0029 C7: the grounding validator (flagged as the OutputValidator's first
+# step) and the enforcer (the executor's stage-8 boundary call). Pure Ruby.
+require_relative "grounding_validator"
+require_relative "grounding_enforcer"
 
 module Insika
   module Safety
@@ -36,9 +40,17 @@ module Insika
       end
 
       # The after_task hook (register with hooks.register(:task, after: ...)).
+      # RFC-0029: the grounding validator is the OutputValidator's FIRST step —
+      # it runs before the output gate (D9), so grounding is independent of the
+      # guardrails opt-in.
       def output_validator
-        OutputValidator.new(ask_factory: ->(config) { ask_for(config) })
+        OutputValidator.new(ask_factory: ->(config) { ask_for(config) },
+                            grounding: GroundingValidator.new)
       end
+
+      # RFC-0029 C7/C8: the `:enforce` boundary step the Executor calls between
+      # stages 6 and 8. Inert unless the profile's grounding.mode is :enforce.
+      def grounding_enforcer = GroundingEnforcer.new
 
       # Injected into the Executor. ->(state) { OutputFilter | nil }: a fresh stateful
       # filter per turn when the agent has output guardrails on; nil = off (parity).

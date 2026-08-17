@@ -43,6 +43,11 @@ module Insika
       def name = @definition.name
       def description = @definition.description
 
+      # RFC-0029 D4: the tool's own evidence declaration (a Spec | nil). The
+      # envelope's duck-typed resolution checks this FIRST — a data-tool declares
+      # its evidence on its definition, never in the registry metadata.
+      def evidence = @definition.evidence
+
       # FULL (nested) JSON Schema straight into RubyLLM's params_schema — it is what
       # the providers serialize (OpenAI/Anthropic/Gemini/Bedrock prefer
       # params_schema; parameters is just a fallback). Provider-agnostic and
@@ -148,6 +153,11 @@ module Insika
         when "status" then { status: result[:status] }
         when "body_raw" then http_ok?(result) ? result[:body] : http_error(result)
         when "json_path" then extract_json(result)
+        # RFC-0029 D3: the raw response body under an envelope-only key, so the
+        # ToolEnvelope can parse items/attachments. A non-2xx is an ERROR like
+        # any other extract — an error must reach the model verbatim.
+        when "evidence_envelope"
+          http_ok?(result) ? { "__insika_body" => result[:body].to_s } : http_error(result)
         end
       end
 

@@ -23,10 +23,11 @@ module Insika
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
-                          :created_at, :updated_at, :briefing) do
-      # Trailing member with a default: an old record without the "briefing"
-      # key reads as an empty briefing without a migration.
-      def initialize(id:, messages:, vars:, memory_refs:, created_at:, updated_at:, briefing: nil)
+                          :created_at, :updated_at, :briefing, :evidence) do
+      # Trailing members with defaults: an old record without the "briefing" /
+      # "evidence" keys reads as empty/nil without a migration.
+      def initialize(id:, messages:, vars:, memory_refs:, created_at:, updated_at:,
+                     briefing: nil, evidence: nil)
         super
       end
     end
@@ -51,6 +52,7 @@ module Insika
         "vars" => deep_stringify(vars),
         "memory_refs" => [],
         "briefing" => { "fields" => {}, "next_step" => nil },
+        "evidence" => { "ids" => [], "ungrounded" => 0 },
         "created_at" => now,
         "updated_at" => now
       }
@@ -91,6 +93,20 @@ module Insika
     def update_vars(id, vars)
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_session(record)
+    end
+
+    # RFC-0029 C4: appends this turn's evidence (ids + ungrounded delta) to the
+    # session record. RMW like append_messages — the SessionActor serializes
+    # same-session turns; the copy is in the method comment.
+    def append_evidence(id, ids:, ungrounded:)
+      record = fetch!(id)
+      ev = record["evidence"] ||= { "ids" => [], "ungrounded" => 0 }
+      fresh = (ev["ids"] + Array(ids).map(&:to_s).reject(&:empty?)).uniq.last(EvidenceLedger::MAX_IDS)
+      ev["ids"] = fresh
+      ev["ungrounded"] = ev["ungrounded"].to_i + ungrounded.to_i
       record["updated_at"] = timestamp
       @store.set(SCOPE, key_for(id), record)
       to_session(record)
@@ -172,7 +188,8 @@ module Insika
         memory_refs: record["memory_refs"],
         created_at: record["created_at"],
         updated_at: record["updated_at"],
-        briefing: record["briefing"] || { "fields" => {}, "next_step" => nil }
+        briefing: record["briefing"] || { "fields" => {}, "next_step" => nil },
+        evidence: record["evidence"]
       )
     end
 

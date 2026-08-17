@@ -117,6 +117,9 @@ module Insika
         stuck_signal: h[:stuck_signal],
         outputs: h[:outputs],
         briefing_fields: h[:briefing_fields],
+        # RFC-0029: grounding profile data — a plain Hash read with string keys
+        # by Insika::Grounding.parse per turn; nil round-trips as nil (= off).
+        grounding: h[:grounding],
         # guardrails: a plain Hash; Safety::Config tolerates the JSON
         # round-trip (string keys/values), so no re-symbolization here.
         guardrails: h[:guardrails],

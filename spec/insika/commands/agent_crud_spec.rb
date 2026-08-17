@@ -65,6 +65,16 @@ RSpec.describe "Agent authoring commands" do
                        }))
       expect(source.fetch("briefing-agent").briefing_fields).to eq(%w[size budget])
     end
+
+    it "grounding round-trips through the authoring payload (RFC-0029)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "grounded-agent", "model" => "m",
+                         "grounding" => { "mode" => "flag",
+                                          "matcher" => { "sku" => "\\d+" } }
+                       }))
+      profile = source.fetch("grounded-agent")
+      expect(profile.grounding).to eq("mode" => "flag", "matcher" => { "sku" => "\\d+" })
+    end
   end
 
   describe Insika::Commands::UpdateAgent do

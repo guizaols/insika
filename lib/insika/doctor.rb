@@ -92,7 +92,7 @@ module Insika
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
-                    check_soak_envelope check_turn_timing]
+                    check_soak_envelope check_turn_timing check_grounding]
 
     def safe(check)
       Array(send(check))
@@ -526,6 +526,26 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       return [ok("data-tools", "#{total} data tool(s): every definition valid")] if broken.empty?
 
       broken
+    end
+
+    # RFC-0029 D7: grounding with a matcher that matches NOTHING (no sku) is
+    # harmless but useless — every claim passes and the audit reads zero. A
+    # warning, never an error: the pack owns matcher quality; the engine refuses
+    # only uncompileable data.
+    def check_grounding
+      return [] unless @profile_source
+
+      findings = @profile_source.all.flat_map do |profile|
+        grounding = profile.respond_to?(:grounding) ? profile.grounding : nil
+        next [] if grounding.nil? || grounding == false
+        next [] if Coercion.present?(grounding["matcher"].is_a?(Hash) ? grounding["matcher"]["sku"] : nil)
+
+        [Finding.new(check: "grounding", severity: :warn, fix: nil,
+                     message: "agent '#{profile.id}' has grounding enabled but no matcher.sku — " \
+                              "it matches nothing, so no claim is ever flagged or cut. " \
+                              "Add the store's SKU regex to grounding.matcher.sku.")]
+      end
+      findings.empty? ? [ok("grounding", "grounding: no agent with an empty matcher")] : findings
     end
 
     def broken_tool(raw)

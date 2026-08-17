@@ -56,6 +56,11 @@ module Insika
 
       started = monotonic
       result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) } }
+      # RFC-0029 C3: the ONE seam every tool result passes on its way to the model.
+      # For a declared-evidence tool: reshape to the lean envelope, record the ids
+      # on the ledger, hoard the attachments. No evidence = the result passes
+      # through untouched (one nil-check — parity).
+      result = process_evidence(result)
       record_side_effect!(call_id) if side_effect?
       trace(call_id, args, result, started)
       result
@@ -135,6 +140,70 @@ module Insika
 
       @checkpoint_store.record_side_effect(@state.task.id, turn: @state.turn,
                                                            tool_call_id: call_id)
+    end
+
+    # ---- RFC-0029 evidence (C3) ---------------------------------------------
+
+    # The evidence spec for the wrapped tool (D4). Resolution order:
+    #   1. the wrapped tool responds to `evidence` -> its spec (the data-tool
+    #      path — DataDefinedTool exposes its definition's evidence);
+    #   2. otherwise the tool_registry entry's metadata carries an `evidence`
+    #      spec (the code-tool path — a registry tool opts in at registration).
+    # No spec = pass the result through untouched (parity, byte-identical).
+    def evidence_spec
+      tool = __getobj__
+      if tool.respond_to?(:evidence)
+        raw = tool.evidence
+        return raw && Insika::Evidence::Spec.parse(raw)
+      end
+
+      entry = @tool_registry.respond_to?(:entries) ? registry_entry(real_name) : nil
+      metadata = entry&.respond_to?(:metadata) ? entry.metadata : nil
+      raw = metadata && (metadata[:evidence] || metadata["evidence"])
+      raw && Insika::Evidence::Spec.parse(raw)
+    end
+
+    def registry_entry(name)
+      @tool_registry.entries.find { |e| e.name == name.to_s }
+    end
+
+    # -> result (possibly reshaped). NEVER raises out: a broken evidence result
+    # becomes the envelope error the model can act on, exactly like a malformed
+    # CALL is today. A tool ERROR result is never reshaped (an error must reach
+    # the model verbatim — the DataDefinedTool rule).
+    def process_evidence(result)
+      spec = evidence_spec
+      return result unless spec
+      return result if result.is_a?(Hash) && (result[:error] || result["error"])
+
+      raw = Insika::Evidence::Processor.raw(spec, result)
+      bad = Insika::SchemaGuard.violation_output(spec, raw)
+      return { error: bad } if bad
+
+      lean, attachments = Insika::Evidence::Processor.build(spec, raw)
+      record_evidence!(spec, lean)
+      hoard_attachments!(attachments)
+      lean
+    rescue StandardError => e
+      { error: "evidence processing failed: #{e.message}" }
+    end
+
+    # Ledger write + attachment hoarding, both via the state (duck-typed — the
+    # envelope's existing specs construct state stubs without these readers).
+    def record_evidence!(_spec, lean)
+      ledger = @state.respond_to?(:evidence_ledger) ? @state.evidence_ledger : nil
+      return unless ledger
+
+      ids = Array(lean["items"]).map { |i| i["id"] }
+      ledger.record(ids) unless ids.empty?
+    end
+
+    def hoard_attachments!(attachments)
+      return if attachments.empty?
+      return unless @state.respond_to?(:evidence_attachments)
+
+      @state.evidence_attachments ||= []
+      @state.evidence_attachments.concat(attachments)
     end
   end
 end

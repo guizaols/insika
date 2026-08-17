@@ -25,6 +25,9 @@ require_relative "insika/model_selection"
 require_relative "insika/model_resolver"
 require_relative "insika/tool_definition"
 require_relative "insika/tool_manifest"
+# RFC-0029 C5/C6: the pack's grounding policy (Insika::Grounding + the
+# GroundingMatcher it wraps). Pure Ruby — profile data, parsed per turn.
+require_relative "insika/grounding"
 require_relative "insika/frontmatter"
 require_relative "insika/token_estimator"
 require_relative "insika/checkpoint"
@@ -107,6 +110,9 @@ require_relative "insika/refinement/candidate"
 require_relative "insika/refinement/proposer"
 require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
+# RFC-0029: the evidence contract (Spec + Processor + EvidenceLedger). Pure Ruby.
+# Required BEFORE tool_envelope.rb — the envelope references it at runtime.
+require_relative "insika/evidence"
 require_relative "insika/sandbox"
 require_relative "insika/http_client"
 # Channels: the registry, the bundled relay adapter and the

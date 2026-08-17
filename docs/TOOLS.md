@@ -183,6 +183,72 @@ backend, not of whoever calls it. Every agent sharing the tool gets the same val
 > there **preserves** it — the form carries the stored values through instead of
 > replacing the record with only what it shows.
 
+## Evidence: the lean envelope and grounding (RFC-0029)
+
+A catalog tool returns products; the model should only ever quote the ones the tool
+actually returned — the store dies of a SKU the model invented. `evidence` is the
+declaration that makes "no claim without a tool ID" an engine rule instead of a
+prompt convention. One declaration does **both** jobs: the engine strips the result
+down to what the model sees (the lean envelope) **and** records every returned id on
+the session's evidence ledger. There is no "lean but not evidence" mode.
+
+```jsonc
+{ "name": "search_products",
+  "response": { "extract": "evidence_envelope" },
+  "evidence": "products" }                        // bare kind
+
+{ "evidence": { "kind": "products",               // full form
+                "items": "results",               // non-default paths
+                "attachments": "cards" } }
+```
+
+- `evidence_envelope` is the canonical extract: the raw response body arrives under
+  an engine-only key, the envelope parses `items`/`attachments` out of it, and
+  **nothing re-fattens** — the transcript and the tool trace record only the lean
+  result. It **requires** the `evidence` declaration (refused at load otherwise).
+- **Wire contract** — the lean result the model sees is always
+  `{ "items": [ { "id": "…", "line": "…" } ] }` (≤ 16 items; `line` truncated to
+  200 chars). A tool whose result has no valid items yields `{ "items": [] }`,
+  never a null. A malformed evidence result becomes `{ "error": … }` back to the
+  model — a correctable tool answer, exactly like a malformed call.
+- **Attachments** are the optional second half: `[{ "type": "card"|"image",
+  "url": "…", "caption": "…" }]` (≤ 16, url ≤ 500 chars, malformed dropped). They
+  **never** reach the model context or the transcript — they ride the channel
+  delivery as an additive `attachments` key on the outbox payload, and the channel
+  (or its consumer) decides what a card looks like.
+- A **code tool** opts in the same way: it either returns `{ items, attachments }`
+  directly and declares `evidence` in its registry metadata, or exposes an
+  `evidence` reader. No declaration = today's tool behavior, byte for byte.
+
+### Grounding: policing claims against the ledger
+
+With the ledger fed, the pack declares how claims are policed — data on the agent,
+not a separate code path (see [Agents](AGENTS.md)):
+
+```ruby
+grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
+```
+
+- `mode` is `flag` (the default — audit), `enforce` (cut), or `off`. Absent = off.
+- `matcher.sku` is a regex for the store's SKU shape, applied to the final answer;
+  every match that is **not** in the evidence ledger is an ungrounded claim.
+  Grounding is **SKU-only** by design: a name-based half cannot flag anything
+  without a "this is a product name" signal, so the ledger grounds ids, and the
+  model quoting a returned product by its *name* is simply outside the check
+  (the SKU path is the claim detector). A `sku` that does not compile is refused
+  at build; a matcher with no `sku` builds but matches nothing — `insika doctor`
+  warns about it.
+- **`flag`** appends an `:ungrounded` flag (category `ungrounded`, source
+  `evidence`) to the existing `:guardrail_flagged` event — audit after the fact,
+  like every other output flag.
+- **`enforce`** *cuts the sentence* containing an ungrounded claim from the content
+  the turn persists and delivers, and the flag carries `action: "cut"` so the audit
+  can tell a cut from a flag. It is honest about streaming: on a streaming surface
+  the already-streamed bytes are the channel's reality, which is exactly why the
+  default is `flag` — ship `enforce` only after a matcher audit proves precision.
+- Grounding is **independent of the guardrails opt-in**: an agent with guardrails
+  off and `grounding.mode: :flag` still gets the check.
+
 ## Registering a tool
 
 A tool appears in the Studio panel and enters an agent's tool-loop when it is

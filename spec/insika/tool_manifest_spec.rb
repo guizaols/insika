@@ -162,6 +162,22 @@ RSpec.describe Insika::ToolManifest do
     expect(b["halt_when"]).to eq(halt)
   end
 
+  it "carries the evidence declaration through (RFC-0029), absent when undeclared" do
+    m = manifest(tools: [{ "name" => "a", "url" => "https://api.test/a" },
+                         { "name" => "b", "url" => "https://api.test/b",
+                           "evidence" => { "kind" => "products", "items" => "results" } }])
+    a, b = defn(m)
+    expect(a).not_to have_key("evidence")
+    expect(b["evidence"]).to eq("kind" => "products", "items" => "results",
+                                "attachments" => "attachments")
+  end
+
+  it "refuses a malformed evidence declaration at ingestion (isolable per tool)" do
+    m = manifest(tools: [{ "name" => "b", "url" => "https://api.test/b",
+                           "evidence" => { "items" => "results" } }])
+    expect { defn(m) }.to raise_error(Insika::ValidationError, /kind/)
+  end
+
   describe "secret safety (R3 + leak guard)" do
     it "rejects a secret_header with a LITERAL value (no {{secret.*}}) — R3" do
       d = consumer_defaults.merge("headers" => consumer_defaults["headers"].merge("Authorization" => "Bearer HARDCODED"))

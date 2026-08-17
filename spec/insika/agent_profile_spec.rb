@@ -201,6 +201,27 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "grounding (RFC-0029 — the evidence-grounding policy)" do
+    it "nil/absent -> nil = the whole feature is OFF (parity, zero allocations)" do
+      expect(described_class.build(id: "a", model: "m").grounding).to be_nil
+    end
+
+    it "deep-stringifies the config (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        grounding: { mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' } }
+      )
+      expect(profile.grounding).to eq("mode" => "flag",
+                                      "matcher" => { "sku" => '\b[A-Z]{2,4}\d{4,8}\b' })
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(id: "a", model: "m",
+                                      grounding: { "mode" => "enforce", "matcher" => { "sku" => "\\d+" } })
+      expect(profile.to_h[:grounding]).to eq("mode" => "enforce", "matcher" => { "sku" => "\\d+" })
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

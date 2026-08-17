@@ -164,6 +164,42 @@ RSpec.describe Insika::ChannelDelivery do
       expect(rows.first.payload).not_to have_key("final")
     end
 
+    describe "attachments (RFC-0029 C8 — evidence cards on the outbox payload)" do
+      before { channels.register("relay", DeliveryChannelDouble.new(200)) }
+
+      it "absent attachments = today's payload exactly (no key)" do
+        rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                          content: "hi", progressive: false)
+        expect(rows.first.payload).not_to have_key("attachments")
+      end
+
+      it "valid attachments land on the payload" do
+        rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                          content: "hi", progressive: false,
+                                          attachments: [{ "type" => "card", "url" => "https://cdn/x.png",
+                                                          "caption" => "Tênis" }])
+        expect(rows.first.payload["attachments"])
+          .to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }])
+      end
+
+      it "malformed attachments are dropped, never a turn failure" do
+        rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                          content: "hi", progressive: false,
+                                          attachments: [{ "type" => "card" }, "junk",
+                                                        { "url" => "https://ok" }])
+        expect(rows.first.payload["attachments"])
+          .to eq([{ "type" => "", "url" => "https://ok", "caption" => nil }])
+      end
+
+      it "a progressive split rides the attachments on the LAST balloon only" do
+        rows = dispatcher.record_balloons(task: task, channel_id: "relay",
+                                          content: "A.\n\nB.", progressive: true,
+                                          attachments: [{ "url" => "https://cdn/x.png" }])
+        expect(rows.first.payload).not_to have_key("attachments")
+        expect(rows.last.payload["attachments"].size).to eq(1)
+      end
+    end
+
     it "returns [] through the same cheap exits as record" do
       expect(dispatcher.record_balloons(task: task, channel_id: "slack",
                                         content: "hi", progressive: true)).to eq([])

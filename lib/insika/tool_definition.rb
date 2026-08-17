@@ -34,7 +34,8 @@ module Insika
   # (masks/reconciles); the definition itself is agnostic to masking.
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
-    :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when
+    :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when,
+    :evidence                       # Insika::Evidence::Spec | nil (RFC-0029)
   )
 
   class ToolDefinition
@@ -46,7 +47,7 @@ module Insika
     ARRAY_SUGAR = PARAM_TYPES.map { |t| "array:#{t}" }.freeze
     HTTP_METHODS = %w[GET HEAD POST PUT PATCH DELETE].freeze
     IDEMPOTENT = %w[GET HEAD].freeze              # side_effect default = false
-    EXTRACTS = %w[body_raw status json_path].freeze
+    EXTRACTS = %w[body_raw status json_path evidence_envelope].freeze
     NAME_RE = /\A[a-z][a-z0-9_]*\z/               # identifier for the model
     # A `.` in the placeholder enables the turn-context namespace `{{ctx.*}}`
     # separate from the model's `{{param}}`. Params follow NAME_RE (no
@@ -74,7 +75,7 @@ module Insika
     # `parameters` accepts JSON Schema (Hash) OR the legacy flat array.
     def self.build(name:, description:, request:, parameters: nil, response: nil,
                    secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil,
-                   halt_when: nil)
+                   halt_when: nil, evidence: nil)
       name = name.to_s
       raise Insika::ValidationError, "name must match #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
@@ -84,6 +85,10 @@ module Insika
       schema = normalize_params(parameters)
       req = normalize_request(request, top_level_names(schema))
       resp = normalize_response(response)
+      if resp[:extract] == "evidence_envelope" && evidence.nil?
+        raise Insika::ValidationError,
+              "extract 'evidence_envelope' requires an 'evidence' declaration"
+      end
 
       method = req[:method]
       effect = side_effect.nil? ? !IDEMPOTENT.include?(method) : (side_effect ? true : false)
@@ -93,7 +98,8 @@ module Insika
         secret_headers: Array(secret_headers).map(&:to_s), side_effect: effect,
         timeout: timeout.nil? ? nil : Integer(timeout),
         group: normalize_group(group), tags: normalize_tags(tags),
-        halt_when: normalize_halt_when(halt_when)
+        halt_when: normalize_halt_when(halt_when),
+        evidence: Insika::Evidence::Spec.parse(evidence)
       )
     end
 
@@ -104,7 +110,7 @@ module Insika
         name: h[:name], description: h[:description], parameters: h[:parameters],
         request: h[:request] || {}, response: h[:response],
         secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout],
-        group: h[:group], tags: h[:tags], halt_when: h[:halt_when]
+        group: h[:group], tags: h[:tags], halt_when: h[:halt_when], evidence: h[:evidence]
       )
     end
 
@@ -405,7 +411,7 @@ module Insika
     # String-keyed Hash for persistence (ConfigStore stringifies again, but we
     # normalize here so the record is stable across backends).
     def to_h
-      {
+      h = {
         "name" => name, "description" => description,
         "parameters" => parameters,
         "request" => request.transform_keys(&:to_s),
@@ -415,6 +421,10 @@ module Insika
         "group" => group, "tags" => tags,
         "halt_when" => halt_when&.transform_keys(&:to_s)
       }
+      # present only when declared — a tool without evidence is byte-identical
+      # to today (no declaration, no envelope processing).
+      h["evidence"] = evidence.to_h if evidence
+      h
     end
 
     # -> true when this response ENDS the turn (no further model call). `body` is the

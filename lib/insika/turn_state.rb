@@ -47,10 +47,18 @@ module Insika
                   #                      profile.outputs). [] = the channel declared nothing —
                   #                      no media can leak to it.
                   :output_filter,      # per-turn Safety::OutputFilter (nil = off); redacts the stream.
-                  :stuck_outcome       # set by the signal_stuck system tool (WS5):
+                  :stuck_outcome,      # set by the signal_stuck system tool (WS5):
                   #                      { reason:, message: } when the agent declared it cannot
                   #                      proceed. The Executor tags the terminal event with
                   #                      outcome: "stuck" and emits :turn_stuck. nil = normal turn.
+                  :evidence_ledger,     # RFC-0029: Insika::EvidenceLedger | nil — the
+                  #                      session-scoped set of product ids that entered the
+                  #                      context via an evidence-declared tool (the envelope
+                  #                      appends; the validator/enforcer read it). Built per
+                  #                      turn by the Executor; nil = no session/no evidence.
+                  :evidence_attachments # RFC-0029: [ {type, url, caption} ] hoarded by the
+                  #                      envelope this turn; read by the Executor at stage 8
+                  #                      for the channel delivery. Reset per turn.
 
     # Internal (not part of the contract): per-CALL correlation between RubyLLM's
     # tool callbacks and the tool decorators — `current_tool_call` keys the
@@ -174,6 +182,7 @@ module Insika
       @capability_names = {}
       @output_parts = []
       @channel_capabilities = []
+      @evidence_attachments = []
       # Fiber storage is INHERITED by fibers created later, so a turn spawned from
       # inside a tool call (a subagent child) would start out carrying its
       # parent's correlation. Clearing at turn start keeps a child from keying its

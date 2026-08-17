@@ -141,4 +141,47 @@ RSpec.describe Insika::SchemaGuard do
     empty = { "type" => "object", "properties" => {}, "required" => [] }
     expect(violation({ whatever: 1 }, schema: empty)).to be_nil
   end
+
+  describe "violation_output (RFC-0029 — the evidence RESULT shape)" do
+    let(:spec) { Insika::Evidence::Spec.parse({ "kind" => "products" }) }
+
+    it "nil when the raw carries a well-formed items list" do
+      expect(described_class.violation_output(spec, { "items" => [{ "id" => "A", "line" => "x" }] }))
+        .to be_nil
+    end
+
+    it "nil for a well-formed list / a nil spec" do
+      expect(described_class.violation_output(nil, { "items" => [] })).to be_nil
+    end
+
+    it "a raw body that is NOT an object is a violation (never a silent empty items)" do
+      expect(described_class.violation_output(spec, [])).to eq("evidence: result must be an object")
+      expect(described_class.violation_output(spec, "text")).to eq("evidence: result must be an object")
+      expect(described_class.violation_output(spec, nil)).to eq("evidence: result must be an object")
+    end
+
+    it "missing items path -> message" do
+      expect(described_class.violation_output(spec, {})).to eq("evidence: items is missing")
+    end
+
+    it "items not a list -> message" do
+      expect(described_class.violation_output(spec, { "items" => { "id" => "A" } }))
+        .to eq("evidence: items must be a list")
+    end
+
+    it "an item without id or line -> message naming the index" do
+      expect(described_class.violation_output(spec, { "items" => [{ "id" => "A", "line" => "x" },
+                                                                 { "id" => "B" }] }))
+        .to eq("evidence: items[1] must be {id, line}")
+      expect(described_class.violation_output(spec, { "items" => [{ "line" => "x" }] }))
+        .to match(/items\[0\]/)
+    end
+
+    it "digs the declared non-default path" do
+      custom = Insika::Evidence::Spec.parse({ "kind" => "products", "items" => "results" })
+      expect(described_class.violation_output(custom, { "results" => [{ "id" => "A", "line" => "x" }] }))
+        .to be_nil
+      expect(described_class.violation_output(custom, {})).to eq("evidence: items is missing")
+    end
+  end
 end
