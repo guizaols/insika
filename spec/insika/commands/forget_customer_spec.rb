@@ -16,13 +16,15 @@ RSpec.describe Insika::Commands::ForgetCustomer do
   let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
   let(:followup_store) { Insika::FollowupStore.new(store: backend) }
   let(:contact_store) { Insika::ContactStore.new(store: backend) }
+  let(:proposal_store) { Insika::ProposalStore.new(store: backend) }
   let(:event_stream) { Insika::EventStream.new }
   subject(:command) do
     described_class.new(memory_store: memory_store, session_store: session_store,
                         tool_trace_store: tool_trace, context_trace_store: context_trace,
                         task_store: task_store, checkpoint_store: checkpoint_store,
                         outbox_store: outbox_store, event_stream: event_stream,
-                        followup_store: followup_store, contact_store: contact_store)
+                        followup_store: followup_store, contact_store: contact_store,
+                        proposal_store: proposal_store)
   end
 
   def run(customer:, tenant: nil, payload_tenant: nil)
@@ -195,6 +197,29 @@ RSpec.describe Insika::Commands::ForgetCustomer do
       expect(followup_store.find("f2")).not_to be_nil
       expect(contact_store.get(tenant: "acme", customer: "123")).to be_nil
       expect(contact_store.get(tenant: "acme", customer: "456")).not_to be_nil
+    end
+  end
+
+  describe "RFC-0034 C8 — the proposals die with the person" do
+    it "purges the customer's proposals (every status) and reports the count; a neighbour survives" do
+      p1 = proposal_store.create(tenant: "acme", customer: "123", session_ref: "acme:s-1",
+                                 key: "size", value: "M", id: "p1")
+      proposal_store.create(tenant: "acme", customer: "456", session_ref: "acme:s-2",
+                            key: "size", value: "L", id: "p2")
+      proposal_store.dismiss(id: p1.id) # a terminal row dies too
+
+      result = run(customer: "123", tenant: "acme")
+
+      expect(result[:proposals]).to eq(1)
+      expect(proposal_store.find("p1")).to be_nil
+      expect(proposal_store.find("p2")).not_to be_nil
+    end
+
+    it "nil proposal_store -> no purge, no error (the minimal graph)" do
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, proposal_store: nil)
+      expect { cmd.call(Insika::Command.build(:forget_customer, { customer: "123" })) }
+        .not_to raise_error
     end
   end
 end

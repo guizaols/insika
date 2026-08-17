@@ -219,4 +219,33 @@ RSpec.describe Insika::Commands::DeleteTenantData do
       expect(result[:contacts]).to eq(0)
     end
   end
+
+  describe "RFC-0034 C8 — the proposals die with the tenant" do
+    let(:proposal_store) { Insika::ProposalStore.new(store: backend) }
+
+    it "purges the tenant's proposals and reports the count; another tenant survives" do
+      proposal_store.create(tenant: "acme", customer: "123", session_ref: "acme:s-1",
+                            key: "size", value: "M", id: "p1")
+      proposal_store.create(tenant: "acme", customer: "456", session_ref: "acme:s-2",
+                            key: "size", value: "L", id: "p2")
+      proposal_store.create(tenant: "loja-b", customer: "123", session_ref: "loja-b:s-1",
+                            key: "size", value: "XL", id: "p3")
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, proposal_store: proposal_store)
+
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      expect(result[:proposals]).to eq(2)
+      expect(proposal_store.find("p1")).to be_nil
+      expect(proposal_store.find("p2")).to be_nil
+      expect(proposal_store.find("p3")).not_to be_nil
+    end
+
+    it "nil proposal_store -> 0, never an error (the minimal graph)" do
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, proposal_store: nil)
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+      expect(result[:proposals]).to eq(0)
+    end
+  end
 end

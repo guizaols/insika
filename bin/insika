@@ -372,6 +372,9 @@ end
         # CLI reports declarations only).
         followup_store: Insika::FollowupStore.new(store: backend),
         contact_store: Insika::ContactStore.new(store: backend),
+        # RFC-0034 C10: the distillation check reads the proposal store over
+        # the same runtime backend (nil = the CLI reports declarations only).
+        proposal_store: Insika::ProposalStore.new(store: backend),
         backend: backend
       )
     end

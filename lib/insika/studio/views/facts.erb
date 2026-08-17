@@ -1,0 +1,133 @@
+<%# RFC-0034 C7: the Facts (wiki) page — the human gate on distilled proposals.
+   Nothing is ever applied automatically: each pending fact needs a click.
+   Reads ProposalStore + SessionStore directly (evidence is a link, never a
+   copy — D7); the approve/reject/dismiss mutations dispatch :resolve_proposal
+   on the bus. %>
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>operate</span></nav>
+    <h1>Facts<span class="sub">distilled customer facts, human-gated</span></h1>
+  </div>
+  <div class="head-actions">
+    <form method="get" action="/studio/facts" class="actions inline">
+      <label>
+        Store
+        <select name="store" onchange="this.form.submit()">
+          <option value="">all</option>
+          <% @stores.each do |scope| %>
+            <option value="<%= scope %>"<%== ' selected' if scope == @filter %>><%= scope %></option>
+          <% end %>
+        </select>
+      </label>
+    </form>
+  </div>
+</header>
+
+<% if insika[:proposal_store].nil? %>
+  <div class="empty">
+    Distillation is off — nothing distills until an agent declares a
+    <span class="mono">distill:</span> block in its pack.
+  </div>
+<% elsif @pending.empty? && @stale.empty? && @recent.empty? %>
+  <div class="empty">
+    No proposals yet — facts appear here when a session's traffic is distilled.
+    Nothing is ever applied automatically.
+  </div>
+<% else %>
+  <% unless @pending.empty? %>
+    <h2>Pending<span class="sub">oldest first — evidence ages</span></h2>
+    <% @pending.each do |p| %>
+      <div class="card">
+        <div class="section-head">
+          <h3><span class="mono"><%= p.key %></span> = <strong><%= p.value %></strong>
+            <% if p.confidence %><span class="pill info"><%= format("%.2f", p.confidence) %></span><% end %>
+          </h3>
+          <span class="muted"><%= p.scope %> · <a href="/studio/sessions/<%= Rack::Utils.escape(p.session_ref) %>"><%= p.session_ref %></a></span>
+        </div>
+        <% excerpt = proposal_excerpt(p) %>
+        <% unless excerpt.empty? %>
+          <div class="skill-desc muted">
+            <% excerpt.each do |line| %>
+              <div class="evidence"><%= line %></div>
+            <% end %>
+          </div>
+        <% end %>
+        <div class="actions">
+          <form method="post" action="/studio/facts/resolve" class="inline">
+            <%== csrf_tag %>
+            <input type="hidden" name="proposal_id" value="<%= p.id %>">
+            <input type="hidden" name="decision" value="approved">
+            <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+            <button type="submit" class="primary">Approve &amp; save to memory</button>
+          </form>
+          <form method="post" action="/studio/facts/resolve" class="inline">
+            <%== csrf_tag %>
+            <input type="hidden" name="proposal_id" value="<%= p.id %>">
+            <input type="hidden" name="decision" value="rejected">
+            <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+            <input type="text" name="note" placeholder="reason (optional)">
+            <button type="submit" class="secondary">Reject</button>
+          </form>
+          <form method="post" action="/studio/facts/resolve" class="inline">
+            <%== csrf_tag %>
+            <input type="hidden" name="proposal_id" value="<%= p.id %>">
+            <input type="hidden" name="decision" value="dismissed">
+            <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+            <button type="submit" class="ghost">Dismiss<span class="muted"> — will not be proposed again</span></button>
+          </form>
+        </div>
+      </div>
+    <% end %>
+  <% end %>
+
+  <% unless @stale.empty? %>
+    <h2>Stale<span class="sub">the fact moved after this was distilled — the operator's edit wins (CAS)</span></h2>
+    <% @stale.each do |p| %>
+      <div class="card">
+        <div class="section-head">
+          <h3>
+            <span class="mono"><%= p.key %></span> =
+            <s><%= p.value %></s>
+            <span class="pill warn"><%= p.current_value %></span>
+            <span class="muted">(your edit)</span>
+          </h3>
+          <span class="muted"><%= p.scope %> · <a href="/studio/sessions/<%= Rack::Utils.escape(p.session_ref) %>"><%= p.session_ref %></a></span>
+        </div>
+        <div class="skill-desc">
+          The proposed value was not applied — the fact stands as you left it.
+        </div>
+        <div class="actions">
+          <form method="post" action="/studio/facts/resolve" class="inline">
+            <%== csrf_tag %>
+            <input type="hidden" name="proposal_id" value="<%= p.id %>">
+            <input type="hidden" name="decision" value="dismissed">
+            <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+            <button type="submit" class="ghost">Dismiss<span class="muted"> — resolve the re-present</span></button>
+          </form>
+        </div>
+      </div>
+    <% end %>
+  <% end %>
+
+  <% unless @recent.empty? %>
+    <h2>Recent<span class="sub">resolved, most recent first</span></h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>fact</th><th>status</th><th>by</th><th>note</th><th>session</th></tr>
+        </thead>
+        <tbody>
+          <% @recent.first(20).each do |p| %>
+            <tr>
+              <td><span class="mono"><%= p.key %></span> = <%= p.value %></td>
+              <td><span class="pill <%= %w[approved].include?(p.status) ? 'ok' : 'info' %>"><%= p.status %></span></td>
+              <td><%= p.operator %></td>
+              <td class="muted"><%= p.note %></td>
+              <td><a href="/studio/sessions/<%= Rack::Utils.escape(p.session_ref) %>"><%= p.session_ref %></a></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+<% end %>

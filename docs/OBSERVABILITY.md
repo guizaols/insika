@@ -44,6 +44,11 @@ something that left no task of its own behind:
 | `:provider_failure` | `agent`, `ref`, `error`, `kind` | one attempt against `ref` failed and spent a retry — emitted with or without a circuit breaker (WS3) |
 | `:provider_fallback` | `agent`, `from`, `to`, `error`, `kind` | the turn ROTATED mid-flight to the next node of the fallback chain, and the error that caused it (WS3) |
 | `:ttft` | `task_id`, `session_id`, `ttft_ms` | the provider's time-to-first-token on the streaming envelope — only under `INSIKA_TURN_TIMING`, once per turn (WS6) |
+| `:distillation_completed` | `session_ref`, `agent`, `proposals`, `dropped{}`, `deduped`, `cost{}` | a session's traffic was distilled into N proposals (RFC-0034) — counts and ids only, never a fact value |
+| `:proposal_approved` | `proposal_id`, `status`, `operator` | a human approved a distilled fact on the Facts page — written to memory via CAS |
+| `:proposal_rejected` | `proposal_id`, `status`, `operator` | a human rejected it (the reason is on the proposal record, not in the event) |
+| `:proposal_dismissed` | `proposal_id`, `status`, `operator` | a human dismissed it — the tuple is latched, never proposed again |
+| `:proposal_stale` | `proposal_id`, `status`, `operator` | the CAS lost: the fact moved after distillation — re-presented with both values on the wiki, never silently overwritten |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at
 (`alerts.webhook` on the profile): each only fires when something durable did

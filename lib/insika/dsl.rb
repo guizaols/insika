@@ -237,6 +237,13 @@ module Insika
       #                      silence_after_sends: 3 }
       def followup(hash) = (@config[:followup] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The session-distillation declaration (RFC-0034): what counts as a fact
+      # for THIS store, distilled from finished customer conversations. Pack
+      # data — merges, so repeated calls accumulate (like budget). `prompt` and
+      # `model` are pack-authored keys the DSL passes through.
+      #   distill enabled: true, idle_hours: 6, max_proposals: 10
+      def distill(hash) = (@config[:distill] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Provider-interaction reliability, as DATA (WS3): retries + exponential
       # backoff on transient failures, a fallback model chain (mid-turn
       # rotation), and a circuit breaker per (tenant, provider/model) that
