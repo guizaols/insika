@@ -880,5 +880,117 @@ RSpec.describe Insika::Doctor do
       expect(funnel_findings).to be_empty
     end
   end
+
+  describe "follow-up (RFC-0033 C12)" do
+    let(:fu_backend) { Insika::Stores::Memory.new }
+    let(:followup_store) { Insika::FollowupStore.new(store: fu_backend) }
+    let(:contact_store) { Insika::ContactStore.new(store: fu_backend) }
+    let(:valid_decl) do
+      { "arm" => "schedule",
+        "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                         "start" => "21:30", "end" => "09:00" },
+                      "max_frequency" => "2/24h",
+                      "cancel_keywords" => ["não quero mais contato"],
+                      "silence_after_sends" => 3 } }
+    end
+
+    def profiles_with(*agents)
+      hash = agents.to_h { |a| [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m",
+                                                                   followup: a[:followup])] }
+      Insika::StaticProfileSource.new(hash)
+    end
+
+    def followup_findings(profile_source: nil, followup: followup_store, contacts: contact_store)
+      doctor(profile_source: profile_source, followup_store: followup,
+             contact_store: contacts).run.findings.select { |f| f.check == "follow-up" }
+    end
+
+    it "a valid declaration -> a single ok naming arm/quiet hours/keywords" do
+      profiles = profiles_with({ id: "store-support", followup: valid_decl })
+      findings = followup_findings(profile_source: profiles)
+      expect(findings.size).to eq(1)
+      expect(findings.first.severity).to eq(:ok)
+      expect(findings.first.message).to include("store-support")
+      expect(findings.first.message).to include("arm schedule")
+      expect(findings.first.message).to include("21:30-09:00")
+      expect(findings.first.message).to include("1 keyword(s)")
+    end
+
+    it "each malformed shape -> an error naming the defect (D9)" do
+      profiles = profiles_with(
+        { id: "a", followup: { "arm" => "x", "policy" => { "max_frequency" => "2/3w" } } },
+        { id: "b", followup: { "arm" => "y", "policy" => { "quiet_hours" => { "start" => "9" } } } }
+      )
+      findings = followup_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq(%i[error error])
+      expect(findings[0].message).to include("max_frequency")
+      expect(findings[1].message).to include("timezone")
+    end
+
+    it "a pending record past one claim window of its at -> warn (the tick will never fire it)" do
+      # no quiet hours — deterministic whatever the wall clock says (a
+      # quiet-hours deferral is EXCLUDED by design: it still fires next pass)
+      no_quiet = { "arm" => "schedule", "policy" => { "max_frequency" => "2/24h" } }
+      profiles = profiles_with({ id: "store-support", followup: no_quiet })
+      now = Time.now.utc
+      followup_store.create(tenant: "acme", agent: "store-support", customer: "c-1",
+                            session_id: "s-1", at: now + 3600, reason: "r", arm: "schedule",
+                            id: "z", now: now) # due in the future — no warn
+      findings = followup_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok])
+
+      # a record whose `at` has LONG passed while still pending
+      fu_backend.set("followups", "acme:store-support:c-1:#{(now - 86_400).iso8601}:zombie",
+                  { "id" => "zombie", "tenant" => "acme", "agent" => "store-support",
+                    "customer" => "c-1", "session_id" => "s-1",
+                    "at" => (now - 86_400).iso8601, "reason" => "r", "arm" => "schedule",
+                    "status" => "pending", "task_id" => nil, "blocked_reason" => nil,
+                    "transport" => "channel:whatsapp", "created_at" => now.iso8601,
+                    "updated_at" => now.iso8601, "fired_at" => nil })
+      findings = followup_findings(profile_source: profiles)
+      warn = findings.find { |f| f.severity == :warn }
+      expect(warn).not_to be_nil
+      expect(warn.message).to include("past their scheduled time")
+    end
+
+    it "a quiet-hours deferral is NOT a stale-pending warn (it still fires next pass)" do
+      decl = { "arm" => "schedule",
+               "policy" => { "quiet_hours" => { "timezone" => "UTC",
+                                                "start" => "00:00", "end" => "23:59" } } }
+      profiles = profiles_with({ id: "store-support", followup: decl })
+      now = Time.now.utc
+      fu_backend.set("followups", "acme:store-support:c-1:#{(now - 86_400).iso8601}:deferred",
+                     { "id" => "deferred", "tenant" => "acme", "agent" => "store-support",
+                       "customer" => "c-1", "session_id" => "s-1",
+                       "at" => (now - 86_400).iso8601, "reason" => "r", "arm" => "schedule",
+                       "status" => "pending", "task_id" => nil, "blocked_reason" => nil,
+                       "transport" => "channel:whatsapp", "created_at" => now.iso8601,
+                       "updated_at" => now.iso8601, "fired_at" => nil })
+      findings = followup_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok]) # no warn — a deferral, not a zombie
+    end
+
+    it "revoked contact cells -> an info naming the tenant" do
+      profiles = profiles_with({ id: "store-support", followup: valid_decl })
+      contact_store.set_revoked(tenant: "acme", customer: "c-1")
+      contact_store.set_granted(tenant: "acme", customer: "c-2")
+
+      findings = followup_findings(profile_source: profiles)
+      info = findings.find { |f| f.severity == :info }
+      expect(info).not_to be_nil
+      expect(info.message).to include("1 revoked contact cell(s)")
+      expect(info.message).to include("acme")
+    end
+
+    it "a bare install reports nothing (no follow-up vocabulary)" do
+      expect(followup_findings(profile_source: Insika::StaticProfileSource.new)).to be_empty
+    end
+
+    it "collaborators nil -> declarations only, nothing raises" do
+      profiles = profiles_with({ id: "store-support", followup: valid_decl })
+      findings = doctor(profile_source: profiles).run.findings.select { |f| f.check == "follow-up" }
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+  end
 end
 

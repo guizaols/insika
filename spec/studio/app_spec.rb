@@ -101,11 +101,48 @@ RSpec.describe Studio::App do
 
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
               tools_allow: %w[menu calc], skills: %w[pedido], skills_eager: nil, prompt_files: [],
-              funnel: nil)
+              funnel: nil, followup: nil)
     Insika::AgentProfile.build(id: id, model: model, provider: provider,
                                 memory: memory, tools_allow: tools_allow,
                                 skills: skills, skills_eager: skills_eager, prompt_files: prompt_files,
-                                funnel: funnel)
+                                funnel: funnel, followup: followup)
+  end
+
+  # RFC-0033 C10: the follow-up page reads REAL stores (records + contact
+  # cells over one in-memory backend), like the funnel page does.
+  FOLLOWUP_DECL = {
+    "arm" => "schedule",
+    "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                     "start" => "21:30", "end" => "09:00" },
+                  "max_frequency" => "2/24h",
+                  "cancel_keywords" => ["não quero mais contato"],
+                  "silence_after_sends" => 3 }
+  }.freeze
+
+  def seed_followups(records)
+    return nil unless records
+
+    backend = Insika::Stores::Memory.new
+    store = Insika::FollowupStore.new(store: backend)
+    contacts = Insika::ContactStore.new(store: backend)
+    records.each do |r|
+      store.create(tenant: r[:tenant] || "platform", agent: r[:agent], customer: r[:customer],
+                   session_id: r[:session_id], at: r[:at], reason: r[:reason],
+                   arm: r[:arm] || "schedule", id: r[:id], now: r[:now] || Time.iso8601("2026-08-14T12:00:00Z"))
+      case r[:status]
+      when "fired" then store.transition_fired(id: r[:id], task_id: "t-#{r[:id]}",
+                                               now: r[:now] || Time.iso8601("2026-08-14T12:00:00Z"))
+      when "cancelled" then store.cancel(id: r[:id])
+      when "blocked" then store.block(id: r[:id], reason: r[:blocked_reason] || "frequency")
+      end
+      # contact cells for the opt-out fold (review fix: the fold is per
+      # (tenant, customer) — seed the cells the arms' customers own)
+      Array(r[:contacts]).each do |c|
+        contacts.set_revoked(tenant: c[:tenant] || "platform", customer: c[:customer]) if c[:state] == "revoked"
+        contacts.set_granted(tenant: c[:tenant] || "platform", customer: c[:customer]) if c[:state] == "granted"
+      end
+    end
+    { followup_store: store, contact_store: contacts }
   end
 
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
@@ -114,7 +151,7 @@ RSpec.describe Studio::App do
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
-                 outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil)
+                 outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -184,10 +221,13 @@ RSpec.describe Studio::App do
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
        refinement_store: refinement_store, golden_store: golden_store,
-       outcome_store: seed_outcomes(outcomes),
-       funnel_store: seed_funnel(funnel_cells),
-       budget_ledger: seed_budget(budget),
-       session_secret: "x" * 64
+        outcome_store: seed_outcomes(outcomes),
+        funnel_store: seed_funnel(funnel_cells),
+        budget_ledger: seed_budget(budget),
+        # RFC-0033 C10: the Follow-ups page reads the real stores.
+        followup_store: seed_followups(followup_seed)&.fetch(:followup_store),
+        contact_store: seed_followups(followup_seed)&.fetch(:contact_store),
+        session_secret: "x" * 64
     )
      [app, bus]
    end
@@ -2867,5 +2907,112 @@ end
     app, = build_app
     body = login(app).get("/home").body
     expect(body).to include("Funnel")
+  end
+
+  describe "Follow-ups page (RFC-0033 C10)" do
+    def followup_app(records:, agents: nil)
+      agents ||= [profile("funnel-store", followup: FOLLOWUP_DECL), profile("chef")]
+      app, bus = build_app(agents: agents, followup_seed: records,
+                           outcomes: [{ tenant: nil, agent: "funnel-store",
+                                        session_id: "s-fired", outcome: "conversion" }])
+      [app, bus]
+    end
+
+    def record(id, at: Time.iso8601("2026-08-15T10:00:00Z"), status: "pending",
+               agent: "funnel-store", customer: "c-1", reason: nil,
+               session_id: "s-1", blocked_reason: nil, arm: "schedule", tenant: nil)
+      { id: id, at: at, status: status, agent: agent, customer: customer,
+        reason: reason || "reason-#{id}", session_id: session_id,
+        blocked_reason: blocked_reason, arm: arm, tenant: tenant,
+        now: Time.iso8601("2026-08-14T12:00:00Z") }
+    end
+
+    it "lists only declaring agents and renders pending/fired/blocked rows" do
+      records = [
+        record("p1", status: "pending"),
+        record("f1", status: "fired", session_id: "s-fired"),
+        record("b1", status: "blocked", blocked_reason: "frequency")
+      ]
+      app, = followup_app(records: records)
+      body = login(app).get("/followups").body
+
+      expect(body).to include("funnel-store")
+      expect(body).not_to include("chef") # no declaration -> no block
+      expect(body).to include("pending")
+      expect(body).to include("fired")
+      expect(body).to include("blocked")
+      expect(body).to include("frequency") # the blocked-reason pill
+      expect(body).to include("não quero mais contato") # the policy keywords
+    end
+
+    it "renders the A/B card per arm with zero-safe counts" do
+      records = [record("f1", status: "fired", session_id: "s-fired", arm: "schedule")]
+      app, = followup_app(records: records)
+      body = login(app).get("/followups").body
+
+      expect(body).to include("A/B readout")
+      expect(body).to include("schedule")
+      expect(body).to include("sent")
+      expect(body).to include("conversions")
+      expect(body).to include("opt-outs")
+    end
+
+    it "the opt-out column counts ONLY the arm's own fired customers — never strangers (review fix)" do
+      fired = Time.iso8601("2026-08-15T10:00:00Z")
+      records = [
+        record("f1", status: "fired", session_id: "s-fired", customer: "c-1",
+               tenant: "platform", arm: "schedule"),
+        # an UNRELATED revocation — other tenant, other customer — must not
+        # count against this arm:
+        { id: "x1", at: fired, status: "pending", agent: "funnel-store",
+          customer: "c-other", session_id: "s-2", reason: "r-x", arm: "schedule",
+          now: Time.iso8601("2026-08-14T12:00:00Z"),
+          contacts: [
+            { tenant: "platform", customer: "c-other", state: "revoked" },
+            { tenant: "zed", customer: "c-1", state: "revoked" },
+            # the ONE real opt-out: same customer, revoked after her fire
+            { tenant: "platform", customer: "c-1", state: "revoked" }
+          ] }
+      ]
+      app, = followup_app(records: records)
+      body = login(app).get("/followups").body
+      # the arm row ends "…<conversion%> | <opt-outs>" — one real opt-out, and
+      # NOT the 3 a global revoked-count would show.
+      expect(body).to match(%r{100\.0%<\/td>\s*<td>1</td>})
+      expect(body).not_to match(%r{100\.0%<\/td>\s*<td>3</td>})
+    end
+
+    it "the revoke POST dispatches :revoke_contact with customer + tenant" do
+      app, bus = followup_app(records: [record("p1")])
+      client = login(app)
+      csrf = csrf_from(client.get("/followups").body)
+      res = client.post("/followups/funnel-store/revoke",
+                        params: { "customer" => "c-1", "tenant" => "platform", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/followups?agent=funnel-store")
+      expect(bus.last(:revoke_contact).payload).to include(customer: "c-1")
+      expect(bus.last(:revoke_contact).meta[:tenant]).to eq("platform")
+    end
+
+    it "the cancel POST dispatches :cancel_followup and redirects" do
+      app, bus = followup_app(records: [record("p1")])
+      client = login(app)
+      csrf = csrf_from(client.get("/followups").body)
+      res = client.post("/followups/funnel-store/cancel",
+                        params: { "id" => "p1", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/followups?agent=funnel-store")
+      expect(bus.last(:cancel_followup).payload).to include(followup_id: "p1")
+    end
+
+    it "the empty state renders without declaring agents" do
+      app, = build_app(agents: [profile("chef")])
+      body = login(app).get("/followups").body
+      expect(body).to include("No follow-ups")
+    end
+
+    it "the nav row is present" do
+      app, = build_app
+      body = login(app).get("/home").body
+      expect(body).to include("Follow-ups")
+    end
   end
 end

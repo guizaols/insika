@@ -20,12 +20,22 @@ module Insika
       # nil = no dedup (every surface that does not send an `event_id`, which is all
       # of them today), and a caller that cannot supply a stable id gets
       # at-least-once turns rather than a content hash pretending to be dedup.
-      def initialize(profiles:, session_store:, task_store:, executor:, inbound_log: nil)
+      #
+      # `contact_store`/`followup_store` (RFC-0033 C6): the contact-state hook —
+      # a customer message reopens the contact cell and a cancellation keyword
+      # revokes it + falls the pending records. nil = the hook is off (parity).
+      # `store` is the SHARED backend the two stores ride — the keyword revoke
+      # commits in ONE transaction (D2). nil = best-effort separate writes.
+      def initialize(profiles:, session_store:, task_store:, executor:, inbound_log: nil,
+                     contact_store: nil, followup_store: nil, store: nil)
         @profiles = ProfileSource.coerce(profiles)
         @session_store = session_store
         @task_store = task_store
         @executor = executor
         @inbound_log = inbound_log
+        @contact_store = contact_store
+        @followup_store = followup_store
+        @store = store
       end
 
       def call(command)
@@ -57,7 +67,14 @@ module Insika
         # is what a turn has always meant. Refused here rather than downstream: a
         # typo'd origin would read as absent, and a marker that silently means
         # "unmarked" is worse than none — it looks like the filtering is on.
-        Insika::MessageOrigin.parse!(p[:origin])
+        origin = Insika::MessageOrigin.parse!(p[:origin])
+        # RFC-0033 C8: `scheduled` is ENGINE-RESERVED — the FollowupEngine's
+        # synthetic turn stamps it, and the edge must not let a consumer
+        # impersonate the engine's kick (a spoofed follow-up is the spam bug).
+        if origin == Insika::MessageOrigin::SCHEDULED
+          raise Insika::ValidationError,
+                "origin 'scheduled' is engine-reserved (RFC-0033): it is stamped by the follow-up engine only"
+        end
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
             (raise Insika::NotFoundError, "session '#{p[:session_id]}' not found")
@@ -73,12 +90,55 @@ module Insika
           return { task_id: prior, duplicate: true }
         end
 
+        # RFC-0033 C6: the contact-state hook — the ONLY path that sees every
+        # customer message. A real customer message reopens the contact cell; a
+        # cancellation keyword revokes it and falls the pending records in ONE
+        # transaction. Runs AFTER validation and dedup: a refused or duplicated
+        # message must not touch contact state. Nil-safe and policy-gated: no
+        # profile declaration = the hook is off (parity).
+        touch_contact(p, profile, command, origin)
+
         result = start_turn(command, p, profile)
         @inbound_log.record(key, result[:task_id]) if key
         result
       end
 
       private
+
+      # RFC-0033 C6: the contact bookkeeping of a customer message. The
+      # keyword cast IS a revocation: the customer just said the shut-off
+      # words — the pending records must fall with the state (D2, ONE
+      # transaction). The reset-on-origin list: only an origin that is
+      # nil/customer acts — an engine/operator-composed line (even one QUOTING
+      # the customer's words) never touches contact state. Nil collaborators
+      # or no profile declaration = the hook is a no-op (byte-parity).
+      def touch_contact(p, profile, command, origin)
+        return unless @contact_store
+        return unless origin.nil? || origin == Insika::MessageOrigin::CUSTOMER
+
+        policy = Insika::FollowupPolicy.parse(profile.followup)
+        return unless policy
+
+        customer = p[:customer]
+        return if customer.to_s.empty?
+
+        keyword = policy.match_keyword(p[:message].to_s)
+        if keyword
+          # one transaction on the shared backend: the revoke and the pending
+          # fall commit together — a half-cancelled opt-out is the spam bug.
+          if @store
+            @store.transaction do
+              @contact_store.set_revoked(tenant: command.meta[:tenant], customer: customer)
+              @followup_store&.cancel_pending_for(tenant: command.meta[:tenant], customer: customer)
+            end
+          else
+            @contact_store.set_revoked(tenant: command.meta[:tenant], customer: customer)
+            @followup_store&.cancel_pending_for(tenant: command.meta[:tenant], customer: customer)
+          end
+        else
+          @contact_store.set_granted(tenant: command.meta[:tenant], customer: customer)
+        end
+      end
 
       # The turn (or the verdict that this message joined someone else's).
       def start_turn(command, p, profile)
@@ -169,7 +229,8 @@ module Insika
           history: payload[:history] || payload["history"],
           origin: payload[:origin] || payload["origin"],
           event_id: payload[:event_id] || payload["event_id"],
-          parts: payload[:parts] || payload["parts"]
+          parts: payload[:parts] || payload["parts"],
+          customer: payload[:customer] || payload["customer"]
         }
       end
 

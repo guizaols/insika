@@ -15,6 +15,15 @@ require_relative "insika/retention"
 require_relative "insika/funnel_declaration"
 require_relative "insika/funnel_store"
 require_relative "insika/funnel_fold"
+# RFC-0033 C2: the parsed follow-up policy of ONE agent — the ONLY shape the
+# engine accepts (tool/engine/doctor/Studio share it). Pure value object.
+require_relative "insika/followup_policy"
+# RFC-0033 C3/C4: the contact-state cells and the follow-up schedule records.
+# Both are dumb domain stores over the injected backend.
+require_relative "insika/contact_store"
+require_relative "insika/followup_store"
+# RFC-0033 C5: the tick-driven firer — rides the same tick as retention/funnel.
+require_relative "insika/followup_engine"
 require_relative "insika/commands/freeze_funnel_baseline"
 require_relative "insika/channels/webhook"
 require_relative "insika/coercion"
@@ -213,6 +222,10 @@ require_relative "insika/commands/delete_tenant_data"
 # RFC-0031 C3: the LGPD access right — export one customer's memory cell as
 # content (the Studio download); the event stays counts-only.
 require_relative "insika/commands/export_customer_memory"
+# RFC-0033 C6: the operator/integration follow-up mutations (cancel one
+# record; revoke a contact + fall its pending records atomically).
+require_relative "insika/commands/cancel_followup"
+require_relative "insika/commands/revoke_contact"
 require_relative "insika/commands/upsert_mcp"
 require_relative "insika/commands/delete_mcp"
 require_relative "insika/commands/write_system_file"

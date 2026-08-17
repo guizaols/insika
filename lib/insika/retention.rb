@@ -30,6 +30,7 @@ module Insika
                    memory_store:, outcome_store:, tool_trace_store: nil,
                    context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
                    settings_store: nil, budget_ledger: nil, funnel_store: nil,
+                   followup_store: nil, contact_store: nil,
                    store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
@@ -43,6 +44,8 @@ module Insika
       @settings_store = settings_store
       @budget_ledger = budget_ledger # WS2 counter GC; nil = nothing to sweep
       @funnel_store = funnel_store   # RFC-0032 C6; nil = nothing to sweep
+      @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
+      @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
@@ -76,6 +79,11 @@ module Insika
                   deliveries: sweep_outbox(cutoff),
                   pairs: sweep_shadow_pairs(cutoff) }
       summary[:funnel] = sweep_funnel(cutoff) if @funnel_store
+      # RFC-0033 C11: the follow-up footprint ages out with the rest — records
+      # and contact cells under the SAME retention_days gate (nil collaborator
+      # = nothing to sweep, base graph parity).
+      summary[:followups] = @followup_store.delete_older_than(cutoff) if @followup_store
+      summary[:contacts] = @contact_store.delete_older_than(cutoff) if @contact_store
       summary[:budget_cells] = budget_cells if budget_cells
       summary[:memory_ttl] = memory_ttl if memory_ttl
       summary

@@ -337,6 +337,39 @@ RSpec.describe Insika::DSL do
       )
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the followup knob is DATA on the pack (RFC-0033)" do
+      dsl = Insika.agent("bia9") do
+        model "deepseek-chat"
+        followup arm: "schedule",
+                 policy: { quiet_hours: { timezone: "America/Sao_Paulo",
+                                          start: "21:30", end: "09:00" },
+                           max_frequency: "2/24h",
+                           cancel_keywords: ["não quero mais contato"],
+                           silence_after_sends: 3 }
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia9", model: "deepseek-chat",
+                  followup: { "arm" => "schedule",
+                              "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                                               "start" => "21:30", "end" => "09:00" },
+                                            "max_frequency" => "2/24h",
+                                            "cancel_keywords" => ["não quero mais contato"],
+                                            "silence_after_sends" => 3 } },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.followup).to eq(
+        "arm" => "schedule",
+        "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                         "start" => "21:30", "end" => "09:00" },
+                      "max_frequency" => "2/24h",
+                      "cancel_keywords" => ["não quero mais contato"],
+                      "silence_after_sends" => 3 }
+      )
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

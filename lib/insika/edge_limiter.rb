@@ -65,8 +65,14 @@ module Insika
       # the rate-limit reply exactly when the window is saturated. Entry checks
       # are skipped; the turn's usage still lands on the ledger below.
       resumed = state.resumed
+      # RFC-0033 D5-bis: a SCHEDULED turn (the FollowupEngine's kick) skips the
+      # ENTRY checks exactly like a resume — a follow-up that trips the token
+      # ceiling must not receive the rate-limit REPLY (the customer agreed to
+      # this message; the volume control is the follow-up policy, not the flood
+      # rail). The turn still runs and its usage still lands on the ledger.
+      scheduled = scheduled_turn?(state)
 
-      if !resumed && (limit = positive(limits.key?(:chat_rate_limit) ? limits[:chat_rate_limit] : edge["chat_rate_limit"]))
+      if !resumed && !scheduled && (limit = positive(limits.key?(:chat_rate_limit) ? limits[:chat_rate_limit] : edge["chat_rate_limit"]))
         breach = check_chat_rate(state, limit, edge)
         return block(state, edge, **breach) if breach
       end
@@ -75,7 +81,7 @@ module Insika
       # `"chat_rate_limit": null`) reads as OFF for that agent, not "inherit".
       if (ceiling = positive(limits.key?(:agent_token_ceiling) ? limits[:agent_token_ceiling] : edge["agent_token_ceiling"]))
         token_window = positive(edge["agent_token_window"]) || DEFAULT_TOKEN_WINDOW
-        unless resumed
+        unless resumed || scheduled
           spent = @ledger.count(TOKENS_KIND, state.profile.id.to_s, window: token_window)
           if spent >= ceiling
             return block(state, edge, category: :token_ceiling,
@@ -90,9 +96,11 @@ module Insika
       # typed error (never a customer-facing reply); the alert_at warning and
       # the SOFT over-cap both warn once per window + inject a context note.
       # A resumed turn (crash/pause replay) was already admitted: it is never
-      # refused twice — its spend still lands on the ledger below.
+      # refused twice — its spend still lands on the ledger below. A scheduled
+      # turn (RFC-0033 D5-bis) rides the same rule: the follow-up policy is the
+      # volume control, not the budget wall.
       budget_on = budget_configured?(state)
-      budget_enforce(state) unless resumed
+      budget_enforce(state) unless resumed || scheduled
 
       result = begin
         nxt.call(state)
@@ -109,6 +117,14 @@ module Insika
     end
 
     private
+
+    # RFC-0033 D5-bis: is this turn the FollowupEngine's synthetic kick? The
+    # command type is stamped by the engine only — a consumer cannot send it
+    # (the SendMessage edge refuses the spelling, C8).
+    def scheduled_turn?(state)
+      command = state.respond_to?(:task) && state.task&.command
+      command.is_a?(Hash) && command["type"].to_s == "scheduled_followup"
+    end
 
     # One KV get per turn (same order of cost as the guardrail's config read);
     # no SettingsStore in the wiring -> per-agent limits only.

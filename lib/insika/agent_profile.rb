@@ -202,7 +202,7 @@ module Insika
                                    # and tool text, so they are validated against NAME_RE at
                                    # build time. Data, never a policy: the engine owns the
                                    # briefing object, the pack owns the fields.
-    :funnel                          # RFC-0032: the outcome funnel declaration — pack
+    :funnel,                         # RFC-0032: the outcome funnel declaration — pack
                                    # data, exactly like budget/reliability:
                                    # { "stages" => ["greeted", "qualified", "cart", "paid"],
                                    #   "advance_on" => { "pix_paid" => "paid", … },
@@ -212,6 +212,18 @@ module Insika
                                    # nil/absent = no funnel (parity — nothing folds).
                                    # Deep-stringified like the other free-form hashes;
                                    # shape-validated by FunnelDeclaration, never here (D8).
+    :followup                        # RFC-0033: the follow-up declaration — pack data,
+                                   # exactly like budget/funnel:
+                                   # { "arm" => "schedule",
+                                   #   "policy" => { "quiet_hours" => { "timezone" => "…",
+                                   #       "start" => "21:30", "end" => "09:00" },
+                                   #     "max_frequency" => "2/24h",
+                                   #     "cancel_keywords" => ["não quero mais contato"],
+                                   #     "silence_after_sends" => 3 } }.
+                                   # The engine OWNS the firing, never a policy value (D1);
+                                   # shape-validated by FollowupPolicy, never here (D9).
+                                   # nil/absent = the feature is off (parity).
+                                   # Deep-stringified like the other free-form hashes.
   )
 
   # Reopened class (not a Data.define block): a constant assigned inside
@@ -243,7 +255,8 @@ module Insika
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                     budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-                    outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil)
+                    outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
+                    followup: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -288,7 +301,11 @@ module Insika
         # RFC-0032: funnel is profile DATA, deep-stringified like the other
         # free-form hashes; parsed into a FunnelDeclaration by the fold/doctor/
         # Studio (shape-validated THERE, never here — D8). nil = no funnel (parity).
-        funnel: Coercion.deep_stringify(funnel)
+        funnel: Coercion.deep_stringify(funnel),
+        # RFC-0033: followup is profile DATA, deep-stringified like the other
+        # free-form hashes; parsed into a FollowupPolicy by the tool/engine/
+        # doctor/Studio (shape-validated THERE, never here — D9). nil = off (parity).
+        followup: Coercion.deep_stringify(followup)
       )
     end
 

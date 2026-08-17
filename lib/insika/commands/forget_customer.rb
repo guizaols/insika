@@ -26,7 +26,8 @@ module Insika
 
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
                      context_trace_store: nil, task_store: nil, checkpoint_store: nil,
-                     outbox_store: nil, shadow_pairs: nil, audit_store: nil, event_stream:)
+                     outbox_store: nil, shadow_pairs: nil, audit_store: nil, event_stream:,
+                     followup_store: nil, contact_store: nil)
         @memory_store = memory_store
         @session_store = session_store
         @tool_trace_store = tool_trace_store
@@ -37,10 +38,12 @@ module Insika
         @shadow_pairs = shadow_pairs
         @audit_store = audit_store
         @event_stream = event_stream
+        @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
+        @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
       end
 
       # -> { customer:, tenant:, memory_records:, sessions: [], tasks:,
-      #      checkpoints:, deliveries: }.
+      #      checkpoints:, deliveries:, followups:, contacts: }.
       def call(command)
         customer = Coercion.presence(command.payload[:customer] || command.payload["customer"])
         raise ValidationError, "customer is required" if customer.nil?
@@ -49,6 +52,11 @@ module Insika
                  Coercion.presence(command.payload[:tenant] || command.payload["tenant"])
         memory_scope = [tenant, customer].compact.join(":")
         memory_records = @memory_store.purge(tenant: memory_scope)
+
+        # RFC-0033 C11: the follow-up footprint dies with the person — the
+        # schedule records and the contact cell (LGPD).
+        followups = @followup_store&.purge_customer(tenant: tenant, customer: customer) || 0
+        contacts = @contact_store&.delete(tenant: tenant, customer: customer) ? 1 : 0
 
         sessions = session_ids_for(customer, tenant)
         purged = purge_sessions(sessions)
@@ -67,11 +75,13 @@ module Insika
                              type: :customer_forgotten,
                              data: { customer: customer, tenant: tenant,
                                      memory_records: memory_records,
-                                     sessions: sessions }.merge(purged),
+                                     sessions: sessions,
+                                     followups: followups,
+                                     contacts: contacts }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { customer: customer, tenant: tenant, memory_records: memory_records,
-          sessions: sessions }.merge(purged)
+          sessions: sessions, followups: followups, contacts: contacts }.merge(purged)
       end
 
       private
