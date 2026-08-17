@@ -181,16 +181,19 @@ whole turn and read the answer off it — or the relay, where the engine acks in
 milliseconds and POSTs the answer to you when it exists.
 
 The instinct is that streaming gets the customer their reply sooner, and that the
-relay trades that away. **It does not, and the reason is structural:** the engine
-publishes `:content` as the ANSWER, whole, after the turn's hooks
-([what crosses the edge](/architecture/#what-crosses-the-edge)). During the turn the
-stream carries tool activity; the text arrives in one piece at the end. Measured on
-a real store agent, the text frames span **0 ms** — there is nothing to deliver
-progressively, on either path.
+relay trades that away. **For the default relay it does not, and the reason is
+structural:** the engine publishes `:content` as the ANSWER, whole, after the
+turn's hooks ([what crosses the edge](/architecture/#what-crosses-the-edge)).
+During the turn the stream carries tool activity; the text arrives in one piece at
+the end. Measured on a real store agent, the text frames span **0 ms** — there is
+nothing to deliver progressively. That is the `:at_end` fact, true of `/v1/responses`
+and of a relay that never opted into [progressive delivery](#delivery-policy).
+The relay can opt out of it per channel — the opt-in is below, and it is the one
+thing that changes the 0 ms span.
 
 |  | drop-in `/v1/responses` | relay |
 |---|---|---|
-| What the customer receives | one message, at the end | one message, at the end |
+| What the customer receives | one message, at the end | one message at the end (`:at_end`), or one WhatsApp balloon per paragraph with the first one as soon as the answer exists (`delivery: :progressive`) |
 | Your app's request | held open for the whole turn (seconds) | acked in **milliseconds** |
 | A turn that outlives your HTTP timeout | your problem | already handled — the answer arrives later |
 | Retry on a failed handover | yours to build | the engine's outbox, bounded, at-most-once |
@@ -285,12 +288,14 @@ with the default `followup` you will only see `202` and `duplicate`.
 
 ### Outbound
 
-One POST per reply, to the URL you configured:
+One POST per **balloon**, to the URL you configured. For the default `:at_end`
+delivery a turn emits exactly one; a progressive turn may emit several — `task_id`
+is the correlation, `index` is the order.
 
 ```jsonc
 POST <INSIKA_RELAY_DELIVER_URL>
 Authorization: Bearer <INSIKA_RELAY_DELIVER_TOKEN>   // omitted if unset
-X-Insika-Delivery: 0f2c…                              // stable idempotency key
+X-Insika-Delivery: 0f2c…                              // stable idempotency key, PER balloon
 Content-Type: application/json
 
 {
@@ -309,6 +314,46 @@ the way to an answer ("vou verificar o cardápio…") does not come through here
 stays internal unless the agent opts in. That contract is
 [the edge contract](/architecture/#what-crosses-the-edge), and it is why you can
 forward `content` straight to the customer.
+
+### Delivery policy
+
+A relay declares **how the outbox flushes** — a property of the surface
+(WhatsApp balloons), not of the model:
+
+- **`:at_end`** (the default, also `INSIKA_RELAY_DELIVERY=at_end` or unset): one
+  POST at the end with the whole answer. Byte-identical to the contract above.
+- **`:progressive`** (`INSIKA_RELAY_DELIVERY=progressive`): the answer is split
+  into balloons at paragraph boundaries (a soft 600-char cap splits a single long
+  paragraph on sentences; fenced code blocks are atomic), and each balloon is its
+  own POST, in order, starting as soon as the answer exists. The consumer sends
+  each POST as its own platform message.
+
+A progressive POST carries two additive fields **only when the turn split into
+more than one balloon** — a one-balloon progressive turn is indistinguishable
+from `:at_end` on the wire:
+
+```jsonc
+{
+  "external_id": "5511999998888",
+  "session_id":  "relay:5511999998888",
+  "task_id":     "…",
+  "content":     "Seu pedido saiu para entrega hoje",
+  "index":       0,          // this balloon's position, 0-based
+  "final":       false       // true on the LAST balloon of this task_id
+}
+```
+
+When `index`/`final` are present, this POST is **one balloon of several for the
+same `task_id`** — forward `content` as its own platform message and honor
+`X-Insika-Delivery` per balloon. If you only forward `content` and ignore the new
+fields, progressive turns still read as N messages in arrival order (which is
+index order — the engine dispatches the chain sequentially); single-balloon turns
+behave exactly as before. A consumer that ignores unknown keys keeps working.
+
+The engine measures the win in-process: every channel turn records
+`first_balloon_ms` (inbound receipt → first outbox flush) on the task record and
+the terminal event, so the Studio task page shows whether the 2 s target is being
+hit without toggling any flag.
 
 ### Deduplication
 
@@ -344,6 +389,7 @@ Three environment variables on the engine:
 INSIKA_RELAY_TOKEN=<a long random secret>       # the switch AND the credential
 INSIKA_RELAY_DELIVER_URL=https://you.example/insika/deliver
 INSIKA_RELAY_DELIVER_TOKEN=<another secret>     # optional; what we send to you
+INSIKA_RELAY_DELIVERY=progressive               # optional; "at_end" (the default) = one POST
 ```
 
 `INSIKA_RELAY_TOKEN` is the switch: without it the channel is not mounted and

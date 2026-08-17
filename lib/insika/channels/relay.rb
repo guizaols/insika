@@ -34,6 +34,13 @@ module Insika
       DEFAULT_ID = "relay"
       DEFAULT_TIMEOUT = 10
 
+      # RFC-0027 C2: how the outbox flushes for THIS channel. `:at_end` (the
+      # default) is one POST with the whole answer, byte-identical to today;
+      # `:progressive` lets ChannelDelivery split the answer into balloons and
+      # POST them in order (the channel still only translates — it does not know
+      # what a balloon is).
+      POLICIES = %i[at_end progressive].freeze
+
       attr_reader :id
 
       # The bundled relay as an operator configures it: three env vars, of which the
@@ -42,6 +49,9 @@ module Insika
       #
       # `INSIKA_RELAY_SHADOW` (truthy) is the shadow switch (RFC-0025): the turn
       # runs end to end and the reply is recorded, never delivered.
+      #
+      # `INSIKA_RELAY_DELIVERY` ("progressive" | "at_end") is how the outbox
+      # flushes (RFC-0027 C2). Unset = :at_end.
       #
       # Shared by every composition root on purpose: the DSL front door has to reach
       # the same feature as `config.ru`, or the docs are true of only one of them.
@@ -53,6 +63,7 @@ module Insika
             deliver_url: Insika::EnvSchema.read("INSIKA_RELAY_DELIVER_URL", env),
             deliver_token: Insika::EnvSchema.read("INSIKA_RELAY_DELIVER_TOKEN", env),
             shadow: Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_RELAY_SHADOW", env)),
+            delivery: policy!(Insika::EnvSchema.read("INSIKA_RELAY_DELIVERY", env)),
             http: http, allow_http: allow_http, allow_private: allow_private)
       end
 
@@ -68,9 +79,10 @@ module Insika
       #                 sent. Fail-closed by construction: everything downstream
       #                 duck-types `shadow?`, so a channel that does not answer it
       #                 is a normal channel.
+      # delivery:       RFC-0027 C2. How the outbox flushes (:at_end | :progressive).
       def initialize(inbound_token:, deliver_url:, deliver_token: nil, http: nil,
                      id: DEFAULT_ID, allow_http: false, allow_private: false,
-                     timeout: DEFAULT_TIMEOUT, shadow: false)
+                     timeout: DEFAULT_TIMEOUT, shadow: false, delivery: :at_end)
         @id = id.to_s
         @inbound_token = inbound_token.to_s
         @deliver_url = deliver_url.to_s
@@ -80,9 +92,26 @@ module Insika
         @allow_private = allow_private
         @timeout = timeout
         @shadow = shadow
+        @delivery = self.class.policy!(delivery)
       end
 
       def shadow? = @shadow
+
+      def delivery = @delivery
+      def progressive? = @delivery == :progressive
+
+      # "progressive" | "at_end" | blank/unset (= :at_end). An unknown value is
+      # a config error at BOOT — the consumer would silently miss every
+      # progressive turn, so it is refused where the operator is.
+      def self.policy!(value)
+        return :at_end if Insika::Coercion.blank?(value)
+
+        name = value.to_s.strip.downcase.to_sym
+        return name if POLICIES.include?(name)
+
+        raise Insika::ConfigError,
+              "unknown relay delivery: #{value.inspect} (expected #{POLICIES.join(', ')})"
+      end
 
       # -> :ok | :unauthorized | :disabled. A SYMBOL and not a Rack triple (the
       # RFC sketched one): a status code is the transport's vocabulary, and keeping

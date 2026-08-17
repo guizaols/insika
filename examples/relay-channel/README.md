@@ -27,6 +27,7 @@ bundle exec falcon serve --bind http://127.0.0.1:4000 \
 ```bash
 export INSIKA_RELAY_TOKEN=dev-inbound-secret
 export INSIKA_RELAY_DELIVER_URL=http://127.0.0.1:4000
+export INSIKA_RELAY_DELIVERY=progressive          # optional: one POST per balloon
 export INSIKA_EGRESS_ALLOW_HTTP=1 INSIKA_EGRESS_ALLOW_PRIVATE=1  # localhost callback
 export DEEPSEEK_API_KEY=sk-...
 
@@ -41,6 +42,14 @@ rather than an open endpoint.
 > callback is on `localhost`. The delivery POST goes through the same SSRF guard as
 > data-tools; in production your callback is https on a public host and neither flag
 > belongs in the environment.
+
+**Progressive delivery.** With `INSIKA_RELAY_DELIVERY=progressive`, a multi-
+paragraph answer is split into balloons at paragraph boundaries and each balloon is
+its own POST, in order, starting as soon as the answer exists. The consumer forwards
+each POST as its own platform message — that is the shape WhatsApp wants. The
+payload gains `index`/`final` only when the turn split into more than one balloon;
+a one-balloon turn looks exactly like the default `:at_end` one. Watch terminal 1:
+the balloons print with their index, each with its own `X-Insika-Delivery`.
 
 **3 — send a message as the platform would:**
 

@@ -45,8 +45,10 @@ module Insika
     # refused-or-accepted (the graph itself reads no env and no file).
     attr_writer :shadow_pairs, :criterion_sha
 
-    # The turn committed an answer. -> the Delivery to dispatch, or nil when there
-    # is nothing to deliver, which is the common case and must stay cheap:
+    # Confirmed answer -> 0..N pending Deliveries, in order (RFC-0027 C4).
+    # A progressive channel splits on paragraphs (BalloonSplitter); everything
+    # else is the single whole-answer row.
+    # -> [] when there is nothing to send (the cheap exits):
     #   · the turn did not come in through a channel,
     #   · the channel is Shape A (answers on its own stream — no `deliver`),
     #   · the answer is empty (a turn that died mid-message published nothing, and
@@ -54,26 +56,40 @@ module Insika
     #   · the channel is in SHADOW mode (RFC-0025): the answer is recorded as a
     #     pair and nothing is dispatched — zero outbox writes, ever (E1),
     #   · or we do not know who to send it to.
-    def record(task:, channel_id:, content:)
+    def record_balloons(task:, channel_id:, content:, progressive:)
       channel = @channels&.find(channel_id)
-      return nil unless channel.respond_to?(:deliver)
-      # Shadow BEFORE the empty guard: a turn that published nothing must be
-      # counted as :silent, not vanish.
-      return record_shadow(task, channel_id, content) if shadow?(channel)
+      return [] unless channel.respond_to?(:deliver)
+      # Shadow records ONE pair for the whole answer — a balloon per paragraph
+      # would mint N pairs for one turn.
+      if shadow?(channel)
+        record_shadow(task, channel_id, content)
+        return []
+      end
 
-      return nil if content.to_s.strip.empty?
+      return [] if content.to_s.strip.empty?
 
       to = recipient(channel, task.session_id)
-      return nil if to.nil? || to.empty?
+      return [] if to.nil? || to.empty?
 
-      @outbox.create(
-        channel: channel_id, to: to, task_id: task.id, session_id: task.session_id,
-        payload: { "session_id" => task.session_id.to_s, "task_id" => task.id.to_s,
-                   "content" => content.to_s }
-      )
+      parts = progressive ? Insika::BalloonSplitter.split(content) : [content.to_s]
+      parts = parts.reject { |p| p.to_s.strip.empty? }
+      return [] if parts.empty?
+
+      multi = parts.size > 1
+      parts.each_with_index.map do |part, i|
+        create_pending(task, channel_id, part, to,
+                       index: multi ? i : nil, final: multi ? (i == parts.size - 1) : nil)
+      end
     end
 
     def shadow?(channel) = channel.respond_to?(:shadow?) && channel.shadow?
+
+    # RFC-0027 C2: does this channel flush progressively? Duck-typed — a channel
+    # that does not answer `progressive?` is `:at_end`.
+    def progressive?(channel_id)
+      channel = @channels&.find(channel_id)
+      channel.respond_to?(:progressive?) && channel.progressive?
+    end
 
     # Claim + POST + bounded retry. Safe to call twice: the second caller loses the
     # claim and returns without touching the recipient.
@@ -105,6 +121,19 @@ module Insika
     end
 
     private
+
+    # One outbox row for a confirmed balloon. `index`/`final` ride the payload
+    # only when non-nil — a single-balloon progressive turn is indistinguishable
+    # from an `:at_end` one on the wire. `index` also lands on the RECORD, which
+    # is what the boot sweep orders by (RFC-0027 C4).
+    def create_pending(task, channel_id, content, to, index: nil, final: nil)
+      payload = { "session_id" => task.session_id.to_s, "task_id" => task.id.to_s,
+                  "content" => content.to_s }
+      payload["index"] = index if index
+      payload["final"] = final unless final.nil?
+      @outbox.create(channel: channel_id, to: to, task_id: task.id, session_id: task.session_id,
+                     payload: payload, index: index.to_i)
+    end
 
     # Our half of the shadow pair (C3). One store upsert on the turn's terminal,
     # then nil — `Executor#finalize_channel_delivery` returns without dispatching.

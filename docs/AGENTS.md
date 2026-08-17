@@ -219,6 +219,12 @@ separately lives in one event, emitted when the window closes:
 Times and counts, never content. That is what answers "the customer says they
 sent the order number" without keeping a throwaway task per fragment.
 
+> **`steer` also collects at the door.** The two windows are the same policy's
+> halves, not two modes: a `steer` agent that set a `debounce_ms` also merges the
+> fragments that land before the turn starts (RFC-0027). The window value is what
+> an operator replaces the legacy pre-batch buffer with — `steer` catches anything
+> that arrives after the turn started, the door window the fragments before it.
+
 #### `steer` — the message arrives while the turn is already running
 
 `collect` only ever touches a turn that has **not started**. Once the agent is

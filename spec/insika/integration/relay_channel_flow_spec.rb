@@ -180,4 +180,42 @@ RSpec.describe "Integration: a relay message, answered and delivered" do
 
     expect(consumer.received).to be_empty
   end
+
+  # RFC-0027 C4: progressive relay, two-paragraph answer — TWO POSTs for the same
+  # task, in index order, each with its own idempotency key.
+  describe "a progressive relay" do
+    let(:channels) do
+      Insika::ChannelRegistry.new.tap do |registry|
+        registry.register("relay",
+                          Insika::Channels::Relay.new(inbound_token: "in-tok",
+                                                      deliver_url: "https://8.8.8.8/hook",
+                                                      deliver_token: "out-tok", http: consumer,
+                                                      delivery: :progressive))
+      end
+    end
+
+    before do
+      allow(executor).to receive(:create_chat) do
+        FakeChat.new.tap { |c| c.final_content = "Vou verificar o pedido 1234567.\n\nTe aviso já!" }
+      end
+    end
+
+    it "delivers one POST per balloon, same task_id, increasing index, distinct delivery ids" do
+      status, body = post_and_wait(message)
+
+      expect(status).to eq(202)
+      expect(consumer.received.size).to eq(2)
+      first, second = consumer.received
+
+      expect(first[:body]["task_id"]).to eq(body["task_id"])
+      expect(second[:body]["task_id"]).to eq(body["task_id"])
+      expect(first[:body]["content"]).to eq("Vou verificar o pedido 1234567.")
+      expect(first[:body]["index"]).to eq(0)
+      expect(first[:body]["final"]).to be(false)
+      expect(second[:body]["content"]).to eq("Te aviso já!")
+      expect(second[:body]["index"]).to eq(1)
+      expect(second[:body]["final"]).to be(true)
+      expect(first[:headers]["x-insika-delivery"]).not_to eq(second[:headers]["x-insika-delivery"])
+    end
+  end
 end

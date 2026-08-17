@@ -160,7 +160,7 @@ RSpec.describe Insika::Server::App do
       task = Insika::TaskStore::Task.new(
         id: "t-1", status: :failed, session_id: "loja-a:chat-1",
         command: { "type" => "send_message", "payload" => {}, "meta" => { "tenant" => "loja-a" } },
-        executions: [], mailbox_state: {}, created_at: "t", updated_at: "t"
+        executions: [], mailbox_state: {}, timing: nil, created_at: "t", updated_at: "t"
       )
       app = build_tenant_app(task_store: ServerStoreDouble.new(task))
 

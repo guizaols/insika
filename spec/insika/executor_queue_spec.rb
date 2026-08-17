@@ -95,6 +95,30 @@ before { session_store.create(id: "s1") }
     end
   end
 
+  # RFC-0027 C1: a `steer` agent that set a window has BOTH windows. The door one is
+  # the same policy's other half — the buffer it replaces was doing both and the
+  # enum just failed to compose.
+  it "a steer policy with a window also merges at the door (collect is not a separate mode)" do
+    executor = build_executor
+    executor.supervised = true
+    allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+    steering = profile({ queue_mode: "steer", debounce_ms: 50 })
+
+    Sync do |top|
+      command = Insika::Command.build(:send_message, { agent: "a", message: "oi" })
+      task = task_store.create(command: command.to_h, session_id: "s1", id: "t1")
+      executor.spawn_in_session(task, profile: steering)
+      top.sleep(0.01)
+
+      expect(executor.collect_into_pending("s1", "queria o pedido", profile: steering)).to eq("t1")
+      expect(task_store.find("t1").command["payload"]["message"]).to eq("oi\nqueria o pedido")
+
+      top.sleep(0.12) # the window closes and the turn runs
+      expect(event_stream.types).to include(:turn_coalesced)
+      stop_serving(executor)
+    end
+  end
+
   it "the platform default reaches an agent that declares nothing" do
     executor = build_executor(settings_store: settings({ "queue_mode" => "collect",
                                                          "debounce_ms" => 50 }))
@@ -113,9 +137,9 @@ before { session_store.create(id: "s1") }
     end
   end
 
-  it "session vars pin one conversation back to followup despite the platform default" do
+it "session vars pin one conversation back to followup despite the platform default" do
     executor = build_executor(settings_store: settings({ "queue_mode" => "collect",
-                                                         "debounce_ms" => 50 }))
+                                                          "debounce_ms" => 50 }))
     executor.supervised = true
     allow(executor).to receive(:create_chat).and_return(FakeChat.new)
     session_store.update_vars("s1", { "queue_mode" => "followup" })
@@ -129,6 +153,63 @@ before { session_store.create(id: "s1") }
 
       expect(executor.collect_into_pending("s1", "fragmento", profile: bare)).to be_nil
       stop_serving(executor)
+    end
+  end
+
+  # RFC-0027 C5 regression: t0 is the 202 acceptance (SendMessage), BEFORE the
+  # debounce window and the SessionActor FIFO. A channel turn that waits out the
+  # window must count that wait in first_balloon_ms — the Studio number is what
+  # the customer felt, not the turn's own run. Reverting the fix (marking
+  # :inbound at the pipeline start) makes this fail: the window would fall
+  # outside the measurement.
+  describe "first_balloon_ms includes the debounce window (RFC-0027 C5)" do
+    class SpyRelay
+      attr_reader :sent
+      def initialize = (@sent = [])
+      def progressive? = false
+      def deliver(payload, to:, delivery_id: nil)
+        @sent << payload
+        200
+      end
+    end
+
+    it "counts the debounce wait a channel turn spent at the door" do
+      windowed = profile({ queue_mode: "collect", debounce_ms: 80 })
+      relay = SpyRelay.new
+      registry = Insika::ChannelRegistry.new.tap { |r| r.register("relay", relay) }
+      delivery = Insika::ChannelDelivery.new(channels: registry,
+                                             outbox: Insika::OutboxStore.new(store: backend),
+                                             session_store: session_store, event_stream: event_stream,
+                                             sleeper: ->(_s) {})
+      exec = Insika::Executor.new(
+        context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
+        middleware: Insika::MiddlewareStack.new([]), hooks: Insika::Hooks.new,
+        tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
+        profiles: { "a" => windowed }, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, event_stream: event_stream, channel_delivery: delivery
+      )
+      exec.supervised = true
+      allow(exec).to receive(:create_chat).and_return(FakeChat.new)
+      send = Insika::Commands::SendMessage.new(profiles: { "a" => windowed },
+                                               session_store: session_store, task_store: task_store,
+                                               executor: exec)
+
+      task_id = nil
+      Sync do |parent|
+        session_store.update_vars("s1", { "external_id" => "551", "channel" => "relay" })
+        task_id = send.call(Insika::Command.build(:send_message,
+                                                  { agent: "a", message: "oi", session_id: "s1" },
+                                                  transport: :"channel:relay"))[:task_id]
+        until %w[completed failed cancelled].include?(task_store.find(task_id).status.to_s)
+          parent.sleep(0.005)
+        end
+        stop_serving(exec)
+      end
+
+      timing = task_store.find(task_id).timing
+      expect(timing).to include("first_balloon_ms")
+      expect(timing["first_balloon_ms"]).to be >= 70 # the 80ms window is inside the measurement
+      expect(relay.sent.size).to eq(1)
     end
   end
 end
