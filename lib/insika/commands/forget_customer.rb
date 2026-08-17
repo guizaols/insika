@@ -27,7 +27,7 @@ module Insika
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
                      context_trace_store: nil, task_store: nil, checkpoint_store: nil,
                      outbox_store: nil, shadow_pairs: nil, audit_store: nil, event_stream:,
-                     followup_store: nil, contact_store: nil)
+                     followup_store: nil, contact_store: nil, proposal_store: nil)
         @memory_store = memory_store
         @session_store = session_store
         @tool_trace_store = tool_trace_store
@@ -40,6 +40,7 @@ module Insika
         @event_stream = event_stream
         @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
         @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
+        @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
       end
 
       # -> { customer:, tenant:, memory_records:, sessions: [], tasks:,
@@ -57,6 +58,10 @@ module Insika
         # schedule records and the contact cell (LGPD).
         followups = @followup_store&.purge_customer(tenant: tenant, customer: customer) || 0
         contacts = @contact_store&.delete(tenant: tenant, customer: customer) ? 1 : 0
+
+        # RFC-0034 C8: the distilled PROPOSALS die with the person — a proposal
+        # is born inside a customer cell (D6), so forget_customer reaches it.
+        proposals = @proposal_store&.purge_customer(tenant: tenant, customer: customer) || 0
 
         sessions = session_ids_for(customer, tenant)
         purged = purge_sessions(sessions)
@@ -77,11 +82,13 @@ module Insika
                                      memory_records: memory_records,
                                      sessions: sessions,
                                      followups: followups,
-                                     contacts: contacts }.merge(purged),
+                                     contacts: contacts,
+                                     proposals: proposals }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { customer: customer, tenant: tenant, memory_records: memory_records,
-          sessions: sessions, followups: followups, contacts: contacts }.merge(purged)
+          sessions: sessions, followups: followups, contacts: contacts,
+          proposals: proposals }.merge(purged)
       end
 
       private

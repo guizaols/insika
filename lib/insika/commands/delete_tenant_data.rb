@@ -21,7 +21,7 @@ module Insika
                      context_trace_store: nil, outcome_store: nil, task_store: nil,
                      checkpoint_store: nil, outbox_store: nil, shadow_pairs: nil,
                      token_store: nil, funnel_store: nil, event_stream:,
-                     followup_store: nil, contact_store: nil)
+                     followup_store: nil, contact_store: nil, proposal_store: nil)
         @memory_store = memory_store
         @token_store = token_store
         @session_store = session_store
@@ -35,6 +35,7 @@ module Insika
         @funnel_store = funnel_store # RFC-0032 C6; nil = nothing to sweep
         @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
         @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
+        @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -62,6 +63,8 @@ module Insika
         # and contact cells under the same tenant prefix.
         followups = @followup_store ? @followup_store.purge(tenant: tenant) : 0
         contacts = @contact_store ? @contact_store.purge(tenant: tenant) : 0
+        # RFC-0034 C8: the distilled proposals die with the tenant.
+        proposals = @proposal_store ? @proposal_store.purge(tenant: tenant) : 0
 
         @event_stream.emit(Insika::Event.new(
                              type: :tenant_data_deleted,
@@ -71,12 +74,13 @@ module Insika
                                      funnel: funnel,
                                      followups: followups,
                                      contacts: contacts,
+                                     proposals: proposals,
                                      tokens_revoked: tokens_revoked }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { tenant: tenant, sessions: sessions, memory_records: memory_records,
           outcomes: outcomes, funnel: funnel, followups: followups, contacts: contacts,
-          tokens_revoked: tokens_revoked }.merge(purged)
+          proposals: proposals, tokens_revoked: tokens_revoked }.merge(purged)
       end
     end
   end

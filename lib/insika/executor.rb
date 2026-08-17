@@ -159,6 +159,12 @@ module Insika
     # the turn supervisor in serving mode (like the tick); nil = no alerts.
     attr_accessor :alert_dispatcher
 
+    # RFC-0034 C5: the distillation engine — the tick-duty that finds idle
+    # customer sessions and distills them on its own worker fiber (a child of
+    # the turn supervisor, like the tick). nil = distillation off (parity —
+    # nothing scans, nothing distills).
+    attr_accessor :distill_engine
+
     # closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
     # `:queued` (durable — the next boot's recovery replays it) instead of
@@ -726,6 +732,9 @@ module Insika
       # the alert dispatcher (WS6) lives on the same supervisor: its consumer
       # answers every alert event for as long as the process serves.
       @alert_dispatcher&.start(parent: @supervisor)
+      # the distillation engine (RFC-0034 C5) lives on the same supervisor —
+      # its worker fiber re-scans idle sessions off the turn path.
+      @distill_engine&.start(parent: @supervisor)
       @supervisor
     end
 
@@ -865,7 +874,7 @@ module Insika
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
-      stamp_customer_session(task)
+      stamp_customer_session(task, profile)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
       # resolved for the RUN, not per message, so what the turn accepts cannot
@@ -1855,18 +1864,21 @@ module Insika
       "#{MemoryStore::SESSION_TAG}:#{session_id}"
     end
 
-    # WS8: stamp the customer on the session ONCE (idempotent) — the
-    # `forget_customer` purge finds the customer's sessions through this var.
-    # A session that does not exist yet (no session_id on the turn) is skipped;
-    # a look-up failure never breaks the turn.
-    def stamp_customer_session(task)
+    # WS8 + RFC-0034 C5: stamp the customer (WS8 — the `forget_customer`
+    # purge finds the customer's sessions through this var) AND the agent (the
+    # distillation engine resolves each session's pack through it) on the
+    # session ONCE (idempotent). A session that does not exist yet (no
+    # session_id on the turn) is skipped; a look-up failure never breaks the
+    # turn.
+    def stamp_customer_session(task, profile)
       customer = command_customer(task)
       return if customer.nil? || task.session_id.nil?
 
       session = @session_store&.find(task.session_id)
       return if session.nil? || !Coercion.presence(session.vars["customer"]).nil?
 
-      @session_store.update_vars(task.session_id, "customer" => customer)
+      @session_store.update_vars(task.session_id,
+                                 "customer" => customer, "agent" => profile.id)
     rescue Insika::NotFoundError, ArgumentError
       nil
     end

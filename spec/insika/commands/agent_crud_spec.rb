@@ -101,6 +101,17 @@ RSpec.describe "Agent authoring commands" do
                                      "policy" => { "max_frequency" => "2/24h",
                                                    "cancel_keywords" => ["não quero mais contato"] })
     end
+
+    it "distill round-trips through the authoring payload (RFC-0034)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "distill-agent", "model" => "m",
+                         "distill" => { "enabled" => true, "idle_hours" => 6,
+                                        "max_proposals" => 10, "prompt" => "the pack prompt" }
+                       }))
+      profile = source.fetch("distill-agent")
+      expect(profile.distill).to eq("enabled" => true, "idle_hours" => 6,
+                                    "max_proposals" => 10, "prompt" => "the pack prompt")
+    end
   end
 
   describe Insika::Commands::UpdateAgent do
@@ -145,6 +156,27 @@ RSpec.describe "Agent authoring commands" do
                  ))
       handler.call(cmd(:update_agent, { "id" => "bia", "model" => "m2" }))
       expect(source.fetch("bia").followup["arm"]).to eq("schedule")
+    end
+
+    it "an update WITHOUT distill preserves the stored declaration" do
+      source.put(Insika::AgentProfile.build(
+                   id: "bia", model: "m",
+                   distill: { "enabled" => true, "idle_hours" => 6 }
+                 ))
+      handler.call(cmd(:update_agent, { "id" => "bia", "model" => "m2" }))
+      expect(source.fetch("bia").distill["idle_hours"]).to eq(6)
+    end
+
+    it "an update WITH distill overwrites the stored declaration" do
+      source.put(Insika::AgentProfile.build(
+                   id: "bia", model: "m",
+                   distill: { "enabled" => true, "idle_hours" => 6 }
+                 ))
+      handler.call(cmd(:update_agent, {
+                         "id" => "bia",
+                         "distill" => { "enabled" => true, "idle_hours" => 12 }
+                       }))
+      expect(source.fetch("bia").distill).to eq("enabled" => true, "idle_hours" => 12)
     end
 
     it "an update WITH funnel overwrites the stored declaration" do

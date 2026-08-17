@@ -29,9 +29,9 @@ module Insika
     def initialize(session_store:, task_store:, checkpoint_store:,
                    memory_store:, outcome_store:, tool_trace_store: nil,
                    context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
-                   settings_store: nil, budget_ledger: nil, funnel_store: nil,
-                   followup_store: nil, contact_store: nil,
-                   store:, window: WINDOW, now: nil)
+                    settings_store: nil, budget_ledger: nil, funnel_store: nil,
+                    followup_store: nil, contact_store: nil, proposal_store: nil,
+                    store:, window: WINDOW, now: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -46,6 +46,7 @@ module Insika
       @funnel_store = funnel_store   # RFC-0032 C6; nil = nothing to sweep
       @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
       @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
+      @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
@@ -84,6 +85,12 @@ module Insika
       # = nothing to sweep, base graph parity).
       summary[:followups] = @followup_store.delete_older_than(cutoff) if @followup_store
       summary[:contacts] = @contact_store.delete_older_than(cutoff) if @contact_store
+      # RFC-0034 C8: proposals are evidence OF a transcript — when the
+      # transcript dies, the proposal's excerpt is gone and the pending fact is
+      # stale. Pending AND terminal rows age out together; a proposal is
+      # re-derivable (D2), so pruning is never data loss. The session MARKERS
+      # are never pruned (the store's rule — the marker is the claim).
+      summary[:proposals] = @proposal_store.delete_older_than(cutoff) if @proposal_store
       summary[:budget_cells] = budget_cells if budget_cells
       summary[:memory_ttl] = memory_ttl if memory_ttl
       summary

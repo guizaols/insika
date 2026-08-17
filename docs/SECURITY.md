@@ -394,6 +394,19 @@ forgotten or aged out. Three operations enforce the right to be forgotten:
   outbox deliveries). The operator-mutation audit store records a digest-free line
   ("a purge happened, with N records") — content-free by construction.
 
+### Distilled facts are personal data (RFC-0034)
+
+The distillation loop ([Facts](FACTS.md)) writes **proposals** — a distilled
+fact's name and value are personal data, and they are treated like the rest of
+the memory footprint: `forget_customer` deletes the person's proposals (every
+status), `delete_tenant_data` deletes a tenant's, and the `retention_days`
+sweep ages them out with the transcripts they were distilled from. Provenance
+holds: an approved fact is written with `origin: "distilled:<session_ref>"`
+(the RFC-0031 closed set gains one spelling, never an open string). Events and
+audit carry ids and counts only — a fact value never enters the stream, the
+ledger or a log; the evidence excerpt is a link read from the transcript at
+request time, never a copy.
+
 The doctor's `memory-scopes` check flags bare cells only in a `multi_tenant`
 deployment (in `single_tenant` the bare cell is the designed customer shape), and
 never the session-marked cells. See [Context](CONTEXT.md#memory) and

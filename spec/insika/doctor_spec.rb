@@ -992,5 +992,81 @@ RSpec.describe Insika::Doctor do
       expect(findings.map(&:severity)).to eq([:ok])
     end
   end
+
+  describe "distillation (RFC-0034 C10)" do
+    let(:p_backend) { Insika::Stores::Memory.new }
+    let(:proposal_store) { Insika::ProposalStore.new(store: p_backend) }
+
+    def profiles_with(*agents)
+      hash = agents.to_h { |a| [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m",
+                                                                   distill: a[:distill])] }
+      Insika::StaticProfileSource.new(hash)
+    end
+
+    def distill_findings(profile_source: nil, proposals: proposal_store)
+      doctor(profile_source: profile_source, proposal_store: proposals)
+        .run.findings.select { |f| f.check == "distill" }
+    end
+
+    it "a declared distiller with a resolvable model -> ok naming the agent" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = profiles_with({ id: "store-support", distill: { "enabled" => true } })
+      findings = distill_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("store-support")
+      expect(findings.first.message).to include("distillation declared")
+    end
+
+    it "an explicit distill.model resolves without the platform utility_model" do
+      profiles = profiles_with({ id: "store-support",
+                                 distill: { "enabled" => true, "model" => "custom" } })
+      expect(distill_findings(profile_source: profiles).map(&:severity)).to eq([:ok])
+    end
+
+    it "declared but with NO model slot (neither distill.model nor utility_model) -> warn" do
+      profiles = profiles_with({ id: "store-support", distill: { "enabled" => true } })
+      findings = distill_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to include("no model slot")
+    end
+
+    it "an explicit enabled: false is a declaration the doctor does not warn on" do
+      profiles = profiles_with({ id: "store-support",
+                                 distill: { "enabled" => false } })
+      expect(distill_findings(profile_source: profiles).map(&:severity)).to eq([:ok])
+    end
+
+    it "the ok carries the proposal counts from the store" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = profiles_with({ id: "store-support", distill: { "enabled" => true } })
+      proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "s",
+                            key: "size", value: "M", id: "p1")
+      stale = proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "s",
+                                    key: "budget", value: "100", id: "p2")
+      proposal_store.mark_stale(id: stale.id, current_value: "50")
+
+      findings = distill_findings(profile_source: profiles)
+      expect(findings.first.message).to include("1 proposal(s) pending")
+      expect(findings.first.message).to include("1 stale")
+    end
+
+    it "a bare install (no agent declares distill) -> ok, off" do
+      findings = distill_findings(profile_source: Insika::StaticProfileSource.new)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("distillation off")
+    end
+
+    it "nil collaborators -> declarations only, nothing raises" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = profiles_with({ id: "store-support", distill: { "enabled" => true } })
+      findings = doctor(profile_source: profiles).run.findings.select { |f| f.check == "distill" }
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).not_to include("pending")
+    end
+
+    it "no profile_source -> nothing reported" do
+      expect(distill_findings).to be_empty
+    end
+  end
 end
 

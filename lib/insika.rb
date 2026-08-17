@@ -226,6 +226,14 @@ require_relative "insika/commands/export_customer_memory"
 # record; revoke a contact + fall its pending records atomically).
 require_relative "insika/commands/cancel_followup"
 require_relative "insika/commands/revoke_contact"
+# RFC-0034 C2/C3: session distillation — the distiller (pure, injected ask)
+# and the proposal store (proposals + the latched dedup ledger + the
+# per-session distilled marker).
+require_relative "insika/distill"
+require_relative "insika/proposal_store"
+require_relative "insika/commands/run_distillation"
+require_relative "insika/distill_engine"
+require_relative "insika/commands/resolve_proposal"
 require_relative "insika/commands/upsert_mcp"
 require_relative "insika/commands/delete_mcp"
 require_relative "insika/commands/write_system_file"

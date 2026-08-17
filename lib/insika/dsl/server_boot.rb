@@ -112,7 +112,10 @@ module Insika
           # RFC-0033 C9/C10: the Follow-ups page reads the stores directly;
           # its only mutations (cancel, force-revoke) dispatch bus commands.
           followup_store: @graph.followup_store,
-          contact_store: @graph.contact_store
+          contact_store: @graph.contact_store,
+          # RFC-0034 C7: the Facts (wiki) page reads the proposal store
+          # directly; its mutations dispatch :resolve_proposal on the bus.
+          proposal_store: @graph.proposal_store
         )
       end
 
