@@ -85,7 +85,10 @@ module Insika
     def debounce? = @debounce_ms.positive?
 
     # Does this policy merge into a turn that has not started yet?
-    def collect? = @mode == :collect
+    # True for :collect AND :steer — both absorb fragments that land before the
+    # turn starts. Debounce is what actually holds them; without a window a steer
+    # agent still steers mid-run and never waits at the door.
+    def collect? = @mode == :collect || @mode == :steer
 
     # Does this policy append into a turn that is already running? `steer_max_messages`
     # of 0 is the agent saying no, so it answers false rather than steering once and

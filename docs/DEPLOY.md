@@ -118,6 +118,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_RELAY_TOKEN` | — | **mounts the relay channel** at `POST /channels/relay/events`, and is the Bearer it requires. Empty = the route does not exist (`404`). See [Channels](CHANNELS.md) |
 | `INSIKA_RELAY_DELIVER_URL` | — | your callback; the engine POSTs each reply there. Goes through the egress guard |
 | `INSIKA_RELAY_DELIVER_TOKEN` | — | Bearer the engine sends **to** your callback (optional) |
+| `INSIKA_RELAY_DELIVERY` | `at_end` | how the relay flushes the outbox: `at_end` (one POST) or `progressive` (one POST per balloon — [RFC-0027](CHANNELS.md#delivery-policy)) |
 | `INSIKA_WIDGET_ORIGINS` | — | exact-match origins allowed to embed the [web widget](CHANNELS.md#the-web-widget), comma-separated. No wildcards. **Half the switch**: with `INSIKA_WIDGET_AGENTS` unset, nothing is mounted (`404`) |
 | `INSIKA_WIDGET_AGENTS` | — | agent ids a widget visitor may address, comma-separated. The other half of the switch. **A chat rate limit is also required** or the widget answers `503` |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |

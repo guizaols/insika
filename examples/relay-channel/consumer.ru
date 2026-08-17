@@ -26,7 +26,16 @@ run lambda { |env|
   # you will not normally see a repeat — but if a retry lands after a timeout that
   # actually succeeded, this is what lets you drop the second copy.
   puts "→ delivery #{env['HTTP_X_INSIKA_DELIVERY']} for #{body['external_id']}"
-  puts "  #{body['content']}"
+
+  # RFC-0027 progressive: when `index`/`final` are present this POST is one
+  # balloon of several for the same `task_id` — send it as its OWN platform
+  # message, in arrival order (which is index order). The consumer that only
+  # forwards `content` and ignores these keys still works.
+  if body["index"]
+    puts "  balloon #{body['index']}#{body['final'] ? ' (final)' : ''} → #{body['content']}"
+  else
+    puts "  #{body['content']}"
+  end
 
   # This is where you would hand `content` to the platform: send_whatsapp_message(
   # body["external_id"], body["content"]). Anything 2xx tells the engine it landed.

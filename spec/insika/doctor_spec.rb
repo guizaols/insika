@@ -25,6 +25,20 @@ RSpec.describe Insika::Doctor do
       expect(report).not_to be_ok
     end
 
+    # RFC-0027 C2: the relay delivery enum is validated like every other env key —
+    # a typo'd value is a finding, the two real values are not.
+    it "flags an unknown INSIKA_RELAY_DELIVERY, accepts progressive/at_end" do
+      bad = doctor(env: { "INSIKA_RELAY_DELIVERY" => "banana" }).run
+      env = bad.findings.select { |f| f.check == "env" }
+      expect(env.map(&:message).join).to match(/INSIKA_RELAY_DELIVERY must be one of .*progressive/)
+      expect(bad).not_to be_ok
+
+      ok = doctor(env: { "INSIKA_RELAY_DELIVERY" => "progressive" }).run
+      expect(ok.findings.select { |f| f.check == "env" && f.error? }).to be_empty
+      ok2 = doctor(env: { "INSIKA_RELAY_DELIVERY" => "at_end" }).run
+      expect(ok2.findings.select { |f| f.check == "env" && f.error? }).to be_empty
+    end
+
     it "a fully-configured deployment is ok? with all green checks" do
       settings_store.update("default_model" => "deepseek-chat")
       llm_provider_store.upsert(api: "deepseek", api_key: "sk-x")

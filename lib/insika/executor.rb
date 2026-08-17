@@ -240,12 +240,17 @@ module Insika
 
     # Stage 1 (async part): creates the actor, registers it and fires the fiber.
     # Called by the turn handlers (SendMessage/ResumeTask/TriggerWorkflow).
-    def spawn(task, profile:, resume_from: nil)
+    #
+    # `timing` (RFC-0027 C5) is the channel clock a channel turn allocated at 202
+    # acceptance, already carrying `:inbound`; nil means the pipeline allocates its
+    # own (resume, engine-initiated, non-channel). `mark` is first-write-wins, so
+    # re-marking `:inbound` in the pipeline is a no-op on a threaded clock.
+    def spawn(task, profile:, resume_from: nil, timing: nil)
       raise Insika::ValidationError, "task already running: #{task.id}" if running?(task.id)
 
       actor = TaskActor.new(task_id: task.id, parent: turn_parent)
       @running[task.id] = actor
-      actor.run { execute(task, profile: profile, resume_from: resume_from, actor: actor) }
+      actor.run { execute(task, profile: profile, resume_from: resume_from, actor: actor, timing: timing) }
       task.id
     end
 
@@ -253,7 +258,7 @@ module Insika
     # session_id is SERIALIZED in that session's SessionActor queue (one at a
     # time); without a session_id (one-shot/history) it goes straight to spawn
     # (standalone).
-    def spawn_in_session(task, profile:, resume_from: nil)
+    def spawn_in_session(task, profile:, resume_from: nil, timing: nil)
       # the intake is closed. The task is already durable (queued);
       # answering with its id and spawning NOTHING is what "stops accepting new
       # turns" means — the next boot's recovery replays it. Subagent turns are NOT
@@ -267,11 +272,12 @@ module Insika
       # owner awaits the turn). One-shot/history (no session_id)
       # never serialize.
       unless @supervised && task.session_id
-        return spawn(task, profile: profile, resume_from: resume_from)
+        return spawn(task, profile: profile, resume_from: resume_from, timing: timing)
       end
 
       session_actor(task.session_id).enqueue(task, profile: profile, resume_from: resume_from,
-                                                   policy: queue_policy(profile, task.session_id))
+                                                   policy: queue_policy(profile, task.session_id),
+                                                   timing: timing)
     end
 
     # the `collect` door, asked BEFORE a task is created.
@@ -311,7 +317,8 @@ module Insika
       return nil unless session_actor&.alive?
 
       # No turn running (or one still at the door): there is nothing to steer INTO.
-      # A turn at the door belongs to `collect`, which is a different mode.
+      # A turn at the door is the collect door's other window — a steer agent with a
+      # debounce merges there instead (RFC-0027 C1), so no message waits on either.
       task = session_actor.current_task
       return nil if task.nil?
       # A workflow turn orchestrates RubyLLM itself and has no Insika chat to append to
@@ -419,13 +426,13 @@ module Insika
     # its completion before returning — that is what serializes the session. A
     # turn error is already mapped to a terminal state inside its own fiber (single
     # capture); here we only ensure the session loop does not die.
-    def run_serial(task, profile:, resume_from: nil)
+    def run_serial(task, profile:, resume_from: nil, timing: nil)
       # a drain that started with turns already queued behind this
       # session's current one must not keep feeding the loop — without this gate
       # the drain would only converge when the whole backlog ran out.
       return defer_turn(task) if @draining
 
-      spawn(task, profile: profile, resume_from: resume_from)
+      spawn(task, profile: profile, resume_from: resume_from, timing: timing)
       @running[task.id]&.wait
     rescue Async::Stop
       raise # shutdown: propagate (ends the session loop)
@@ -520,7 +527,7 @@ module Insika
     end
 
     # Stages 2..9. Runs INSIDE the task's fiber.
-    def execute(task, profile:, actor:, resume_from: nil)
+    def execute(task, profile:, actor:, resume_from: nil, timing: nil)
       # Resume of a crash orphan: the interrupted attempt's Execution was left OPEN
       # (the fiber died). The TaskStore forbids opening a second one while one is
       # open -> close the orphan as :interrupted before opening the N+1 (a new
@@ -534,7 +541,7 @@ module Insika
       emit(:task_started, started_data(task, profile), task: task)
 
       actor.drain!
-      run_pipeline(task, profile, actor, resume_from)
+      run_pipeline(task, profile, actor, resume_from, timing)
     # SINGLE capture at the top of the fiber: a single place maps
     # error -> terminal state -> events. Stages do no rescue of their own
     # (except tool, RubyLLM semantics). The fiber NEVER re-raises.
@@ -763,8 +770,23 @@ module Insika
     # Stages 2-9, with mailbox drain only at the boundaries and the
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
-    def run_pipeline(task, profile, actor, resume_from)
-      timing = TurnTiming.new if TurnTiming.enabled?
+    def run_pipeline(task, profile, actor, resume_from, timing = nil)
+      # RFC-0027 C5: a CHANNEL turn always allocates the clock — first_balloon_ms
+      # (inbound -> first outbox flush) is H-latência and must not depend on
+      # INSIKA_TURN_TIMING. When the flag is off the clock measures ONLY that
+      # window (`breakdown: false`); the full prep/ttft/gen/total stays opt-in.
+      #
+      # A channel turn may already carry its clock: `SendMessage` stamped
+      # `:inbound` at 202 acceptance (before the debounce window and the
+      # SessionActor FIFO), so first_balloon_ms includes the wait the customer
+      # actually feels. A turn that reached here without one (boot resume,
+      # engine-initiated) falls back to allocating and stamps now — `mark` is
+      # first-write-wins, so a threaded clock is never re-stamped.
+      channel_turn = !channel_transport(task).nil?
+      timing ||= if TurnTiming.enabled? || channel_turn
+                   TurnTiming.new(breakdown: TurnTiming.enabled?)
+                 end
+      timing&.mark(:inbound) if channel_turn
       timing&.mark(:prep_start)
       state = build_turn_state(task, profile, resume_from)
       turn_timeout = turn_timeout_for(profile)
@@ -794,7 +816,7 @@ module Insika
         #   · halt_reason set    -> halt-as-FAILURE (the pre-existing contract).
         #   · neither            -> contract violation (short-circuit with no signal).
         if !terminal_ran && state.halt_response
-          complete_with_halt(task, profile, state)
+          complete_with_halt(task, profile, state, timing)
         elsif state.halt_reason
           raise Insika::Error, "turn halted: #{state.halt_reason}"
         elsif !terminal_ran
@@ -995,7 +1017,7 @@ module Insika
       # (NEVER suspends at stage 8 — forbidden window): a :pause here arms the flag
       # but is not honored (last stage); :cancel here still raises.
       actor.drain!
-      persist_turn(task, profile, st, content)
+      persist_turn(task, profile, st, content, timing: timing)
 
       # stage 9: Response. usage (tokens) captured at stage 6 travels in the
       # terminal event -> /v1/responses usage + Telemetry (OTEL).
@@ -1012,6 +1034,10 @@ module Insika
       # consumes the parts next to it. Absent when nothing was generated.
       data[:output_parts] = st.output_parts if st.output_parts && !st.output_parts.empty?
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
+      # RFC-0027 C5: best-effort persist of the same timing onto the task record —
+      # the Studio task page reads it from there. A failure here must not re-fail
+      # the turn (the task is already committed and the event already carries it).
+      persist_turn_timing(task, timing)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
       # to act on that, so the contract carries it twice: a dedicated :turn_stuck
@@ -2053,7 +2079,7 @@ module Insika
     # order mirrors a real turn so both the /v1/responses consumer (which reads the
     # text off :content deltas) and the Studio viewer render it: audit -> safe text
     # -> persist -> terminal.
-    def complete_with_halt(task, profile, state)
+    def complete_with_halt(task, profile, state, timing = nil)
       content = state.halt_response.to_s
       state.response_content = content
 
@@ -2074,8 +2100,26 @@ module Insika
       # reading the engine's own canned text (the `safe_reply` finding exists exactly
       # because that text is otherwise indistinguishable in the transcript).
       persist_turn(task, profile, state, content, reply_origin: MessageOrigin::ENGINE,
-                   session: state.guardrail_block&.[](:source) != "edge")
-      emit(:task_completed, { task_id: task.id, content: content, usage: state.usage }, task: task)
+                   session: state.guardrail_block&.[](:source) != "edge", timing: timing)
+      data = { task_id: task.id, content: content, usage: state.usage }
+      data[:timing] = timing.to_h if timing # RFC-0027 C5: a channel halt still measured
+      persist_turn_timing(task, timing)
+      emit(:task_completed, data, task: task)
+    end
+
+    # Best-effort write of the turn's timing onto the task record (RFC-0027 C5).
+    # The record gains `timing` once, when the turn completes; a store failure
+    # here is swallowed — the turn is already committed and the event already
+    # carries the number.
+    def persist_turn_timing(task, timing)
+      return unless timing
+
+      hash = timing.to_h
+      return if hash.empty?
+
+      @task_store.record_timing(task.id, hash)
+    rescue Insika::Error
+      nil
     end
 
     # Emits one :guardrail_flagged per flag the OutputValidator appended in
@@ -2107,7 +2151,7 @@ module Insika
     # So a long session legitimately has a Checkpoint SHORTER than the Session:
     # that is not drift to reconcile — it is the point. Do NOT "fix" the checkpoint
     # to carry the full history (it would defeat the budget) nor evict the session.
-    def persist_turn(task, profile, state, content, session: true, reply_origin: nil)
+    def persist_turn(task, profile, state, content, session: true, reply_origin: nil, timing: nil)
       new_messages = turn_transcript(state, content, origin: command_origin(task), reply_origin: reply_origin)
       transcript = flatten_history(state.context.history) + new_messages
 
@@ -2145,7 +2189,7 @@ module Insika
       # if this turn CAME IN through a Shape B channel, its answer
       # has to travel out of band. Same terminal hook, next door to the delegation
       # one, for the same reason: it fires for a fresh turn and a recovered one.
-      finalize_channel_delivery(task, content)
+      finalize_channel_delivery(task, content, timing)
     end
 
     # Records the answer in the outbox and dispatches it. The discriminator is the
@@ -2162,31 +2206,40 @@ module Insika
     #
     # Best-effort: the turn is already committed and durable, and a delivery problem
     # must never re-fail it.
-    def finalize_channel_delivery(task, content)
+    #
+    # RFC-0027 C4: a PROGRESSIVE channel gets the answer split into balloons —
+    # N outbox rows, dispatched in index order (dispatch_chain). `:at_end` is the
+    # single whole-answer row, byte-identical to today.
+    def finalize_channel_delivery(task, content, timing = nil)
       return unless @channel_delivery
 
       channel_id = channel_transport(task)
       return unless channel_id
 
-      delivery = @channel_delivery.record(task: task, channel_id: channel_id, content: content)
-      return unless delivery
+      deliveries = @channel_delivery.record_balloons(
+        task: task, channel_id: channel_id, content: content,
+        progressive: @channel_delivery.progressive?(channel_id)
+      )
+      return if deliveries.empty?
 
-      dispatch_delivery(delivery.id)
+      timing&.mark(:first_balloon) # C5: inbound -> first outbox row, first-write-wins
+      dispatch_chain(deliveries.map(&:id))
     rescue Insika::Error
       nil
     end
 
-    # The POST goes out on the SUPERVISOR, never on the turn's fiber: a bounded
-    # retry against a third party would otherwise hold the session's FIFO — the
-    # customer's next message would wait on their previous answer's delivery.
-    # Non-serving (boot sweep, specs) delivers inline, where waiting is what the
-    # caller wants.
-    def dispatch_delivery(delivery_id)
-      return @channel_delivery.deliver(delivery_id) unless @supervised
+    # ONE supervisor fiber for the whole chain (RFC-0027 C4). Sequential deliver()
+    # calls, so balloon N+1 cannot overtake balloon N on the wire. Still off the
+    # session's FIFO — the customer's next message does not wait on this turn's
+    # outbound. Non-serving (boot sweep, specs) delivers inline, where waiting is
+    # what the caller wants.
+    def dispatch_chain(ids)
+      run = lambda { ids.each { |id| @channel_delivery.deliver(id) } }
+      return run.call unless @supervised
 
       turn_parent.async do |t|
-        t.annotate("outbox:#{delivery_id}")
-        @channel_delivery.deliver(delivery_id)
+        t.annotate("outbox:#{ids.first}")
+        run.call
       end
     end
 

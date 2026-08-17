@@ -33,7 +33,7 @@ module Insika
     }.freeze
 
     Task      = Data.define(:id, :status, :command, :session_id, :executions,
-                            :mailbox_state, :created_at, :updated_at)
+                            :mailbox_state, :timing, :created_at, :updated_at)
     Execution = Data.define(:attempt, :started_at, :finished_at, :outcome, :error)
 
     def initialize(store:)
@@ -126,6 +126,18 @@ module Insika
 
       open["finished_at"] = timestamp
       open["outcome"] = outcome.to_s
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_task(record)
+    end
+
+    # RFC-0027 C5: writes the turn's timing breakdown onto the task record, once,
+    # when the turn completes. Best-effort by the caller's contract — a failure
+    # here must never re-fail an already-committed turn. `timing` is DATA (string
+    # keys, JSON types); deep_stringify makes a symbol-keyed to_h durable.
+    def record_timing(id, timing)
+      record = fetch!(id)
+      record["timing"] = deep_stringify(timing)
       record["updated_at"] = timestamp
       @store.set(SCOPE, key_for(id), record)
       to_task(record)
@@ -235,6 +247,7 @@ module Insika
         session_id: record["session_id"],
         executions: record["executions"].map { |e| to_execution(e) },
         mailbox_state: record["mailbox_state"],
+        timing: record["timing"],
         created_at: record["created_at"],
         updated_at: record["updated_at"]
       )

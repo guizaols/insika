@@ -111,14 +111,32 @@ module Insika
         # command.to_h persists the entire Command in the Task;
         # ResumeTask re-reads payload.message from there.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
+        # RFC-0027 C5: the channel clock starts HERE — the 202-owning request
+        # is accepted, before the SessionActor FIFO and the debounce window.
+        # `first_balloon_ms` is the wait the customer feels, so t0 is not the
+        # moment the turn finally runs; the same object travels with the turn
+        # and `:first_balloon` closes the window at the outbox flush.
         # `interrupt` mode: the turn in flight is now answering the wrong
         # question, so it is abandoned at its next boundary. This message keeps its OWN
         # task and its own reply (that is why it needs no verdict and no surface gate), and
         # the cancel is posted after `create` so the event can name what replaced what.
         # No-op in every other mode.
         @executor.interrupt_running(p[:session_id], profile: profile, replaced_by: task.id)
-        @executor.spawn_in_session(task, profile: profile)
+        @executor.spawn_in_session(task, profile: profile,
+                                          timing: channel_inbound_timing(command))
         { task_id: task.id }
+      end
+
+      # RFC-0027 C5: allocate the channel clock at 202 acceptance and stamp
+      # `:inbound` — the window's start. `breakdown: false` when INSIKA_TURN_TIMING
+      # is off, so a channel turn measures ONLY first_balloon_ms (H-latência never
+      # depends on the flag). nil for every non-channel transport: no clock to start.
+      def channel_inbound_timing(command)
+        return nil unless command.meta[:transport].to_s.start_with?("channel:")
+
+        timing = Insika::TurnTiming.new(breakdown: Insika::TurnTiming.enabled?)
+        timing.mark(:inbound)
+        timing
       end
 
       # Does the payload carry a part the engine will turn into the turn's
