@@ -194,7 +194,7 @@ module Insika
                                    # (from the pack `agent.config.json`). Home of the `store_id`
                                    # that becomes turn context (ctx.store_id).
                                    # It is NOT a policy — never decides security. {} = absent.
-    :briefing_fields                 # the per-session working-state schema this agent
+    :briefing_fields,                # the per-session working-state schema this agent
                                    # keeps and asks for (RFC-0028): a flat [String] of
                                    # field names the pack declares. []/nil/absent = the
                                    # feature is OFF (no provider output, no tools — visibly
@@ -202,6 +202,16 @@ module Insika
                                    # and tool text, so they are validated against NAME_RE at
                                    # build time. Data, never a policy: the engine owns the
                                    # briefing object, the pack owns the fields.
+    :funnel                          # RFC-0032: the outcome funnel declaration — pack
+                                   # data, exactly like budget/reliability:
+                                   # { "stages" => ["greeted", "qualified", "cart", "paid"],
+                                   #   "advance_on" => { "pix_paid" => "paid", … },
+                                   #   "primary" => "paid", "attribution_window" => "72h" }.
+                                   # The ENGINE never hard-codes a stage name: the fold,
+                                   # the doctor and the Studio read this declaration (D1).
+                                   # nil/absent = no funnel (parity — nothing folds).
+                                   # Deep-stringified like the other free-form hashes;
+                                   # shape-validated by FunnelDeclaration, never here (D8).
   )
 
   # Reopened class (not a Data.define block): a constant assigned inside
@@ -232,8 +242,8 @@ module Insika
                    prompt_caching: nil, tool_output_compression: nil,
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
-                   budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-                   outputs: nil, briefing_fields: nil, grounding: nil)
+                    budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
+                    outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -274,7 +284,11 @@ module Insika
         # RFC-0029: grounding is profile DATA, deep-stringified like the other
         # free-form hashes; parsed into a Grounding per turn by the validator/
         # enforcer. nil = off (parity).
-        grounding: Coercion.deep_stringify(grounding)
+        grounding: Coercion.deep_stringify(grounding),
+        # RFC-0032: funnel is profile DATA, deep-stringified like the other
+        # free-form hashes; parsed into a FunnelDeclaration by the fold/doctor/
+        # Studio (shape-validated THERE, never here — D8). nil = no funnel (parity).
+        funnel: Coercion.deep_stringify(funnel)
       )
     end
 

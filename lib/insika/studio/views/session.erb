@@ -125,6 +125,36 @@
   </div>
 <% end %>
 
+<%# RFC-0032 C9: the session's stage history — outcomes folded to the agent's
+    declared stages (unmapped kinds render the raw outcome: the hole is visible).
+    Without a declaration the block renders the raw outcomes. %>
+<% history = @stage_history || {} %>
+<% unless history.empty? %>
+  <div class="card">
+    <div class="trace-head">
+      <h2>Stage history</h2>
+      <span class="muted">
+        <% if history[:declaration] %>
+          <%= history[:declaration].stages.join(" → ") %> · outcome funnel
+        <% else %>
+          no funnel declared — raw outcomes
+        <% end %>
+      </span>
+    </div>
+    <div class="kv">
+      <% history[:rows].each do |row| %>
+        <% if row[:stage] %>
+          <span><%= row[:outcome] %></span>
+          <div>→ <strong><%= row[:stage] %></strong> <span class="lat"><%= row[:at] %></span></div>
+        <% else %>
+          <span><%= row[:outcome] %></span>
+          <div><span class="lat">not a declared stage</span> <span class="lat"><%= row[:at] %></span></div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+<% end %>
+
 <div class="card transcript">
   <% if Array(@session.messages).empty? %>
     <div class="empty">This session has no messages.</div>

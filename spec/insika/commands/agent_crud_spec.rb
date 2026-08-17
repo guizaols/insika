@@ -75,6 +75,19 @@ RSpec.describe "Agent authoring commands" do
       profile = source.fetch("grounded-agent")
       expect(profile.grounding).to eq("mode" => "flag", "matcher" => { "sku" => "\\d+" })
     end
+
+    it "funnel round-trips through the authoring payload (RFC-0032)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "funnel-agent", "model" => "m",
+                         "funnel" => { "stages" => %w[greeted paid],
+                                       "advance_on" => { "conversion" => "paid" },
+                                       "primary" => "paid", "attribution_window" => "72h" }
+                       }))
+      profile = source.fetch("funnel-agent")
+      expect(profile.funnel).to eq("stages" => %w[greeted paid],
+                                   "advance_on" => { "conversion" => "paid" },
+                                   "primary" => "paid", "attribution_window" => "72h")
+    end
   end
 
   describe Insika::Commands::UpdateAgent do
@@ -99,6 +112,36 @@ RSpec.describe "Agent authoring commands" do
       expect { handler.call(cmd(:update_agent, { "id" => "bia", "subagents" => %w[bia] })) }
         .to raise_error(Insika::SubagentCycleError)
       expect(source.fetch("bia").subagents).to be_nil # unchanged
+    end
+
+    it "an update WITHOUT funnel preserves the stored declaration" do
+      source.put(Insika::AgentProfile.build(
+                   id: "bia", model: "m",
+                   funnel: { "stages" => %w[greeted paid],
+                             "advance_on" => { "conversion" => "paid" },
+                             "primary" => "paid", "attribution_window" => "72h" }
+                 ))
+      handler.call(cmd(:update_agent, { "id" => "bia", "model" => "m2" }))
+      expect(source.fetch("bia").funnel["primary"]).to eq("paid")
+    end
+
+    it "an update WITH funnel overwrites the stored declaration" do
+      source.put(Insika::AgentProfile.build(
+                   id: "bia", model: "m",
+                   funnel: { "stages" => %w[greeted paid],
+                             "advance_on" => { "conversion" => "paid" },
+                             "primary" => "paid", "attribution_window" => "72h" }
+                 ))
+      handler.call(cmd(:update_agent, {
+                         "id" => "bia",
+                         "funnel" => { "stages" => %w[hello bye],
+                                       "advance_on" => { "x" => "bye" },
+                                       "primary" => "bye", "attribution_window" => "24h" }
+                       }))
+      expect(source.fetch("bia").funnel).to eq(
+        "stages" => %w[hello bye], "advance_on" => { "x" => "bye" },
+        "primary" => "bye", "attribution_window" => "24h"
+      )
     end
   end
 

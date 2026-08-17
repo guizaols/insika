@@ -61,7 +61,7 @@ module Insika
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                    profile_source: nil, backend: nil, extra_env_specs: [],
                    shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
-                   memory_store: nil, agent_ids: nil)
+                   memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -82,6 +82,10 @@ module Insika
       # agent_ids excuse bare cells named like an agent (the agent-memory tab's).
       @memory_store = memory_store
       @agent_ids = Array(agent_ids).map(&:to_s)
+      # RFC-0032 C7: the outcome-funnel check — nil collaborators = the check
+      # reports declarations only (env-only callers stay cheap).
+      @funnel_store = funnel_store
+      @outcome_store = outcome_store
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -102,7 +106,7 @@ module Insika
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
-                    check_memory_scopes]
+                    check_memory_scopes check_funnel_declarations]
 
     def safe(check)
       Array(send(check))
@@ -664,6 +668,106 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
 
     def single_tenant?
       Insika::EnvSchema.read("INSIKA_TENANCY", @env) != "multi_tenant"
+    end
+
+    # RFC-0032 C7: the outcome-funnel check — declarations on every pilot store,
+    # the plan's "no 1.0 target without a remeasure" backstop. Warn/error only:
+    # the doctor never rewrites a declaration (the pack is authoritative;
+    # `--fix` has nothing to fix here).
+    def check_funnel_declarations
+      return [] unless @profile_source
+
+      findings = @profile_source.all.flat_map do |profile|
+        next [] if profile.funnel.nil?
+
+        decl = Insika::FunnelDeclaration.parse(profile.funnel)
+        if decl.nil?
+          # D8: the fold skips this agent until it is fixed — the doctor is the
+          # only report of why.
+          [Finding.new(check: "outcome-funnel", severity: :error, fix: nil,
+                       message: "agent '#{profile.id}': malformed funnel declaration — " \
+                                "#{funnel_defect(profile.funnel)}. The fold skips it " \
+                                "until this is fixed.")]
+        else
+          [ok("outcome-funnel",
+              "agent '#{profile.id}': outcome funnel declared — #{decl.stages.length} " \
+              "stages, primary '#{decl.primary}', window #{decl.attribution_window}")] +
+            funnel_data_findings(profile, decl)
+        end
+      end
+
+      # RFC §2: visibility is the feature — a profile with outcomes but no
+      # funnel shows the hole. Warn only; the pack owns the vocabulary.
+      without = outcomes_without_funnel
+      without.each do |agent, count|
+        findings << Finding.new(check: "outcome-funnel", severity: :warn, fix: nil,
+                                message: "agent '#{agent}' records #{count} outcomes and " \
+                                         "declares no funnel: nothing folds — the funnel " \
+                                         "shows the hole. Add a `funnel:` block to the pack.")
+      end
+
+      return findings unless findings.empty?
+
+      [ok("outcome-funnel", "outcome funnels: every declared funnel valid")]
+    end
+
+    # -> { agent_id => outcome count } — profiles with records but no funnel.
+    # ONE scan of the outcome store, grouped by agent (a per-profile `all`
+    # would scan it once PER profile — the store is not that big, but the
+    # key shape exists precisely so this stays a single pass).
+    def outcomes_without_funnel
+      return {} unless @outcome_store && @profile_source
+
+      counts = @outcome_store.all.group_by(&:agent).transform_values(&:size)
+      @profile_source.all.each_with_object({}) do |p, acc|
+        next unless p.funnel.nil?
+
+        n = counts[p.id.to_s].to_i
+        acc[p.id.to_s] = n if n.positive?
+      end
+    end
+
+    # The named defect, for the error message. `parse!` gives the exact field.
+    def funnel_defect(hash)
+      Insika::FunnelDeclaration.parse!(hash).to_s
+    rescue Insika::ValidationError => e
+      e.message
+    end
+
+    # Data-age findings, gated on the optional collaborators (nil = skip, env-only
+    # callers stay cheap). Tenant-agnostic: folds are per (tenant, agent), so the
+    # check reads the store's `pairs` and aggregates over every tenant of the agent
+    # (a single-tenant deployment reads the "platform" pair).
+    def funnel_data_findings(profile, decl)
+      return [] unless @funnel_store
+
+      pairs = @funnel_store.pairs.select { |p| p[:agent] == profile.id.to_s }
+      return [] if pairs.empty?
+
+      findings = []
+      folded_days = 0
+      primary_count = 0
+      baseline = false
+      pairs.each do |pair|
+        days = @funnel_store.days(tenant: pair[:tenant], agent: pair[:agent])
+        folded_days += days.size
+        primary_count += days.values.sum { |c| c[decl.primary].to_i }
+        baseline ||= !@funnel_store.baseline(tenant: pair[:tenant], agent: pair[:agent]).nil?
+      end
+
+      if primary_count.zero?
+        findings << Finding.new(check: "outcome-funnel", severity: :info, fix: nil,
+                                message: "agent '#{profile.id}': the primary event " \
+                                         "'#{decl.primary}' was never observed over the " \
+                                         "folded days — check the integration.")
+      end
+      if folded_days >= 28 && !baseline
+        findings << Finding.new(check: "outcome-funnel", severity: :info, fix: nil,
+                                message: "agent '#{profile.id}': #{folded_days} folded " \
+                                         "days and no baseline frozen — RFC-0033/0035 " \
+                                         "read the baseline. Freeze it in the Studio.")
+      end
+      findings
     end
 
     def broken_tool(raw)

@@ -1,0 +1,105 @@
+<%# RFC-0032 C9: the outcome funnel per store. Reads the fold's cells and the
+   BudgetLedger's current counters (D6); the ONLY mutation on this page — the
+   baseline freeze — dispatches :freeze_funnel_baseline on the bus (D7). No
+   stage vocabulary of the engine's own: everything here comes from the pack
+   declaration (D1). %>
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>operate</span></nav>
+    <h1>Funnel<span class="sub">the outcome funnel per store</span></h1>
+  </div>
+  <div class="head-actions">
+    <form method="get" action="/studio/funnel" class="actions inline">
+      <label>
+        Period (days)
+        <select name="period" onchange="this.form.submit()">
+          <% [7, 30, 90].each do |p| %>
+            <option value="<%= p %>"<%== ' selected' if @period == p %>><%= p %></option>
+          <% end %>
+        </select>
+      </label>
+    </form>
+  </div>
+</header>
+
+<% if @stores.empty? %>
+  <div class="empty">
+    No outcome funnel declared — add a <span class="mono">funnel:</span> block to an
+    agent's pack and its stage counts fold here.
+  </div>
+<% else %>
+  <% @stores.each do |store| %>
+    <% profile, decl = store[:profile], store[:decl] %>
+    <% tenants = store[:tenants] %>
+    <% tenants = [nil] if tenants.empty? %>
+    <h2><%= profile.id %><span class="sub"><%= decl.stages.join(" → ") %></span></h2>
+    <% tenants.each do |tenant| %>
+      <% counts = funnel_period_counts(insika[:funnel_store], tenant, profile.id, @period) %>
+      <% spend = funnel_spend(insika[:budget_ledger], tenant, profile.id) %>
+      <% first = counts[decl.first_stage].to_i %>
+      <% conversion = first.zero? ? nil : counts[decl.primary].to_f / first %>
+      <% max = [counts.values.max || 0, 1].max %>
+      <div class="card">
+        <div class="section-head">
+          <h3><%= tenant || "platform" %><span class="muted">folded by the tick · recomputable from the outcome store</span></h3>
+          <span class="muted">primary <strong><%= decl.primary %></strong> · attribution window <%= decl.attribution_window %> (carried, never computed)</span>
+        </div>
+        <svg class="barchart" viewBox="0 0 700 120" preserveAspectRatio="none" role="img" aria-label="stage counts, last <%= @period %> days">
+          <% bw = 700.0 / decl.stages.length * 0.6 %>
+          <% decl.stages.each_with_index do |stage, i| %>
+            <% c = counts[stage].to_i %>
+            <% h = (c.to_f / max) * 96.0 %>
+            <% x = (i * (700.0 / decl.stages.length)) + ((700.0 / decl.stages.length - bw) / 2.0) %>
+            <rect class="bar<%== ' bar-empty' if c.zero? %>" x="<%= format('%.1f', x) %>" y="<%= format('%.1f', c.zero? ? 108.0 : 108.0 - h) %>"
+                  width="<%= format('%.1f', bw) %>" height="<%= format('%.1f', c.zero? ? 3.0 : [h, 3.0].max) %>" rx="2">
+              <title><%= stage %> · <%= c %></title>
+            </rect>
+          <% end %>
+          <line class="barchart-axis-line" x1="0" y1="108" x2="700" y2="108" />
+        </svg>
+        <div class="barchart-axis">
+          <% decl.stages.each do |stage| %>
+            <span><%= stage %> · <%= counts[stage].to_i %></span>
+          <% end %>
+        </div>
+        <div class="skill-desc">
+          <span class="pill <%= conversion && conversion.positive? ? 'ok' : 'info' %>">
+            conversion <%= conversion ? format("%.4f", conversion) : "—" %>
+          </span>
+          <span class="muted"><%= counts[decl.primary].to_i %> × <%= decl.primary %> / <%= counts[decl.first_stage].to_i %> × <%= decl.first_stage %>, last <%= @period %> days</span>
+          <%# D6: spend next to the counts, NOT cost-per-conversion. The
+              BudgetLedger holds current-window TOKEN totals, no currency and no
+              per-day series; a cost/conversion ratio is deferred (RFC §14) until
+              the ruler proves itself (E3). %>
+          <span class="muted">· tokens today <strong><%= spend[:daily] %></strong> / this month <strong><%= spend[:monthly] %></strong></span>
+        </div>
+
+        <% baseline = insika[:funnel_store]&.baseline(tenant: tenant, agent: profile.id) %>
+        <div class="skill-desc">
+          <% if baseline %>
+            <span class="pill ok">baseline frozen</span>
+            <span class="muted"><%= baseline["from"] %> → <%= baseline["to"] %> · <%= baseline["primary"] %> <%= baseline["primary_count"] %> · conversion <%= baseline["conversion"] ? format("%.4f", baseline["conversion"]) : "—" %> · <%= baseline["window"] %> window · frozen <%= baseline["frozen_at"] %></span>
+          <% else %>
+            <span class="pill warn">no baseline</span>
+            <span class="muted">≥ 28 days of data required — the freeze refuses a shorter span</span>
+          <% end %>
+        </div>
+        <form method="post" action="/studio/funnel/<%= Rack::Utils.escape(profile.id) %>/freeze" class="actions">
+          <%== csrf_tag %>
+          <label>
+            From
+            <input type="date" name="from" value="<%= baseline && baseline["from"] %>">
+          </label>
+          <label>
+            To
+            <input type="date" name="to" value="<%= baseline && baseline["to"] %>">
+          </label>
+          <button type="submit" class="primary">Freeze baseline</button>
+          <% if tenant %>
+            <input type="hidden" name="tenant" value="<%= tenant %>">
+          <% end %>
+        </form>
+      </div>
+    <% end %>
+  <% end %>
+<% end %>

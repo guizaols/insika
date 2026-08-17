@@ -145,6 +145,60 @@ RSpec.describe Insika::Retention do
   # WS2 counter GC: those cells are engine bookkeeping whose window already
   # rolled over, not customer content — so they are swept even with retention
   # OFF (the default), which is exactly where they used to leak forever.
+  # RFC-0032 C6: the funnel cells are swept with the outcomes they fold —
+  # same retention_days gate, same daily claim. The fold dies with its source.
+  describe "funnel sweep (RFC-0032)" do
+    let(:funnel_store) { Insika::FunnelStore.new(store: backend) }
+    subject(:retention) do
+      described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, outbox_store: outbox_store,
+        settings_store: settings, funnel_store: funnel_store, now: now
+      )
+    end
+
+    it "sweeps day cells older than the cutoff, keeps newer, cursor/baseline survive" do
+      funnel_store.add(tenant: "acme", agent: "a", at: now - 40 * 86_400,
+                       counts: { "greeted" => 1 })
+      funnel_store.add(tenant: "acme", agent: "a", at: now - 2 * 86_400,
+                       counts: { "greeted" => 1 })
+      funnel_store.set_cursor(tenant: "acme", agent: "a", at: "2026-01-01T00:00:00Z", ids: ["old"])
+      funnel_store.set_baseline(tenant: "acme", agent: "a", record: { "frozen_at" => "2026-01-01" })
+
+      summary = retention.run
+
+      expect(summary[:claimed]).to be(true)
+      expect(summary[:funnel]).to eq(1)
+      expect(funnel_store.day(tenant: "acme", agent: "a", day: (now - 40 * 86_400).strftime("%Y-%m-%d")))
+        .to eq({})
+      expect(funnel_store.day(tenant: "acme", agent: "a", day: (now - 2 * 86_400).strftime("%Y-%m-%d"))["greeted"])
+        .to eq(1)
+      expect(funnel_store.cursor(tenant: "acme", agent: "a")["at"]).to eq("2026-01-01T00:00:00Z")
+      expect(funnel_store.baseline(tenant: "acme", agent: "a")).to eq("frozen_at" => "2026-01-01")
+    end
+
+    it "with retention_days OFF nothing is swept (funnel untouched, claimed false)" do
+      settings.get["retention_days"] = nil
+      funnel_store.add(tenant: "acme", agent: "a", at: now - 40 * 86_400,
+                       counts: { "greeted" => 1 })
+
+      expect(retention.run).to eq({ claimed: false })
+      expect(funnel_store.day(tenant: "acme", agent: "a",
+                              day: (now - 40 * 86_400).strftime("%Y-%m-%d"))["greeted"]).to eq(1)
+    end
+
+    it "nil funnel_store -> the summary key is absent (parity)" do
+      settings.get["retention_days"] = nil
+      summary = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, settings_store: settings, now: now
+      ).run
+      expect(summary).to eq({ claimed: false })
+    end
+  end
+
   describe "budget counter GC" do
     let(:budget_ledger) { Insika::BudgetLedger.new(store: backend) }
     subject(:retention) do
