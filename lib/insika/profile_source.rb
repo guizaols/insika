@@ -139,7 +139,10 @@ module Insika
         funnel: h[:funnel],
         # RFC-0033: followup declaration — a plain Hash read with string keys by
         # FollowupPolicy.parse; nil round-trips as nil (= feature off).
-        followup: h[:followup]
+        followup: h[:followup],
+        # RFC-0034: distill declaration — a plain Hash read with string keys by
+        # the distiller/engine/doctor; nil round-trips as nil (= feature off).
+        distill: h[:distill]
       )
     end
 

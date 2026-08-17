@@ -145,13 +145,34 @@ RSpec.describe Studio::App do
     { followup_store: store, contact_store: contacts }
   end
 
+  # RFC-0034 C7: the Facts (wiki) page reads a REAL ProposalStore over an
+  # in-memory backend — the same store the engine writes through.
+  def seed_facts(rows)
+    return nil unless rows
+
+    store = Insika::ProposalStore.new(store: Insika::Stores::Memory.new)
+    rows.each do |r|
+      store.create(tenant: r[:tenant] || "acme", customer: r[:customer] || "c-1",
+                   session_ref: r[:session_ref], key: r[:key], value: r[:value],
+                   confidence: r[:confidence], evidence: r[:evidence] || [], id: r[:id])
+      case r[:status]
+      when "approved" then store.approve(id: r[:id], operator: "studio")
+      when "rejected" then store.reject(id: r[:id], operator: "studio", note: r[:note])
+      when "dismissed" then store.dismiss(id: r[:id])
+      when "stale" then store.mark_stale(id: r[:id], current_value: r[:current_value])
+      end
+    end
+    store
+  end
+
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
-                 outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil)
+                 outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
+                 proposal_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -227,6 +248,8 @@ RSpec.describe Studio::App do
         # RFC-0033 C10: the Follow-ups page reads the real stores.
         followup_store: seed_followups(followup_seed)&.fetch(:followup_store),
         contact_store: seed_followups(followup_seed)&.fetch(:contact_store),
+        # RFC-0034 C7: the Facts (wiki) page reads the real proposal store.
+        proposal_store: proposal_store,
         session_secret: "x" * 64
     )
      [app, bus]
@@ -3013,6 +3036,89 @@ end
       app, = build_app
       body = login(app).get("/home").body
       expect(body).to include("Follow-ups")
+    end
+  end
+
+  describe "Facts page (RFC-0034 C7)" do
+    def facts_app(rows:, sessions: {}, agents: nil)
+      agents ||= [profile("funnel-store"), profile("chef")]
+      app, bus = build_app(agents: agents, sessions: sessions,
+                           proposal_store: seed_facts(rows))
+      [app, bus]
+    end
+
+    def fact(id, key:, value:, session_ref: "acme:s_1", evidence: [1], status: "pending",
+             current_value: nil, note: nil, confidence: nil, tenant: nil)
+      { id: id, key: key, value: value, session_ref: session_ref, evidence: evidence,
+        status: status, current_value: current_value, note: note, confidence: confidence,
+        tenant: tenant }
+    end
+
+    it "lists pending proposals with their evidence excerpt" do
+      sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
+                                                   messages: [
+                                                     { "role" => "user", "content" => "hi" },
+                                                     { "role" => "user", "content" => "I wear size M" },
+                                                     { "role" => "assistant", "content" => "noted" }
+                                                   ], vars: nil, updated_at: "t", briefing: nil) }
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M", evidence: [1])], sessions: sessions)
+      body = login(app).get("/facts").body
+
+      expect(body).to include("size")
+      expect(body).to include("M")
+      expect(body).to include("I wear size M") # the evidence excerpt, read at request time
+      expect(body).to include("Approve &amp; save to memory")
+    end
+
+    it "the resolve POST dispatches :resolve_proposal with operator 'studio' and redirects" do
+      app, bus = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      client = login(app)
+      csrf = csrf_from(client.get("/facts").body)
+      res = client.post("/facts/resolve", params: { "proposal_id" => "p1", "decision" => "approved",
+                                                    "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/facts")
+      expect(bus.last(:resolve_proposal).payload).to include(proposal_id: "p1",
+                                                             decision: "approved",
+                                                             operator: "studio")
+    end
+
+    it "the reject note round-trips through the POST" do
+      app, bus = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      client = login(app)
+      csrf = csrf_from(client.get("/facts").body)
+      client.post("/facts/resolve", params: { "proposal_id" => "p1", "decision" => "rejected",
+                                              "note" => "not durable", "_csrf" => csrf })
+      expect(bus.last(:resolve_proposal).payload).to include(note: "not durable")
+    end
+
+    it "a stale card shows both values — the proposed one and the operator's current one (E3)" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M", status: "stale",
+                                   current_value: "L")])
+      body = login(app).get("/facts").body
+      expect(body).to include("M")
+      expect(body).to include("L")
+      expect(body).to include("Dismiss")
+    end
+
+    it "the filter narrows by store scope" do
+      rows = [fact("p1", key: "size", value: "M", session_ref: "acme:s_1"),
+              fact("p2", key: "color", value: "blue", session_ref: "other:s_1", tenant: "other")]
+      app, = facts_app(rows: rows)
+      body = login(app).get("/facts?store=acme:c-1").body
+      expect(body).to include("size")
+      expect(body).not_to include("blue")
+    end
+
+    it "without a proposal_store everything renders empty and nothing raises" do
+      app, = build_app(agents: [profile("chef")])
+      body = login(app).get("/facts").body
+      expect(body).to include("distill:")
+    end
+
+    it "the nav row is present" do
+      app, = build_app
+      body = login(app).get("/home").body
+      expect(body).to include("Facts")
     end
   end
 end

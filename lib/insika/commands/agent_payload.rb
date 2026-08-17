@@ -15,7 +15,7 @@ module Insika
                   memory prompt_caching tool_output_compression budget reliability alerts
                   routes stuck_signal outputs briefing_fields grounding funnel followup
                   params model_policy guardrails refinement capabilities_declared
-                  edge_stream metadata].freeze
+                  edge_stream metadata distill].freeze
 
       module_function
 

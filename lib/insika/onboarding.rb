@@ -54,6 +54,7 @@ module Insika
       "observability" => "docs/OBSERVABILITY.md",
       "evals" => "docs/EVALS.md",
       "refinement" => "docs/REFINEMENT.md",
+      "facts" => "docs/FACTS.md",
       "loadtest" => "docs/LOADTEST.md",
       "releasing" => "docs/RELEASING.md"
     }.freeze

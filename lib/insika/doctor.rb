@@ -62,7 +62,7 @@ module Insika
                    profile_source: nil, backend: nil, extra_env_specs: [],
                    shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
                    memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil,
-                   followup_store: nil, contact_store: nil)
+                   followup_store: nil, contact_store: nil, proposal_store: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -91,6 +91,9 @@ module Insika
       # reports declarations only.
       @followup_store = followup_store
       @contact_store = contact_store
+      # RFC-0034 C10: the distillation check — nil collaborator = the check
+      # reports declarations only (counts skipped).
+      @proposal_store = proposal_store
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -111,7 +114,7 @@ module Insika
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
-                    check_memory_scopes check_funnel_declarations check_followup]
+                    check_memory_scopes check_funnel_declarations check_followup check_distill]
 
     def safe(check)
       Array(send(check))
@@ -866,6 +869,46 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
 
         tally[key.split(":", 2).first] += 1
       end
+    end
+
+    # RFC-0034 C10: the distillation check — per profile WITH a `distill`
+    # hash: a declared-and-enabled distiller with NO resolvable model (no
+    # distill.model, no platform utility_model) can never run — the warn is
+    # the "declared but dead" signal (D4 — the engine never guesses a model).
+    # A bare install reports one ok ("off"), unlike follow-up's silence: the
+    # Facts page exists with or without declarations and the doctor names why
+    # it stays empty. nil proposal_store = declarations only (counts skipped).
+    def check_distill
+      return [] unless @profile_source
+
+      declared = @profile_source.all.select do |profile|
+        profile.respond_to?(:distill) && !profile.distill.nil?
+      end
+      return [ok("distill", "distillation off — no agent declares it")] if declared.empty?
+
+      settings = @settings_store ? @settings_store.get : {}
+      # one scan pair per run, not per declared profile (the counts are the
+      # store's, printed identically on each line).
+      counts = @proposal_store ? distill_counts : nil
+      declared.flat_map do |profile|
+        config = profile.distill
+        if Coercion.truthy?(config["enabled"]) &&
+           Coercion.presence(config["model"]).nil? &&
+           Coercion.presence(settings["utility_model"]).nil?
+          [Finding.new(check: "distill", severity: :warn, fix: nil,
+                       message: "agent '#{profile.id}': the distiller is declared but has " \
+                                "no model slot — distillation will never run (set " \
+                                "distill.model or the platform utility_model).")]
+        else
+          suffix = counts ? " — #{counts[:pending]} proposal(s) pending, #{counts[:stale]} stale" : ""
+          [ok("distill", "agent '#{profile.id}': distillation declared#{suffix}")]
+        end
+      end
+    end
+
+    def distill_counts
+      { pending: @proposal_store.pending(limit: 10_000).size,
+        stale: @proposal_store.stale(limit: 10_000).size }
     end
 
     def broken_tool(raw)

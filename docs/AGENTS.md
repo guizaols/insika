@@ -605,6 +605,29 @@ allowlist, one or more `proposers`, a token `budget`, and a gate that replays th
 golden set before anything reaches a human. All of it is in
 [Refinement](REFINEMENT.md); none of it is on until you name it.
 
+## Distillation of customer facts
+
+`distill` configures how finished, idle customer conversations are read back as
+proposed facts — the human-gated loop documented in [Facts](FACTS.md). Pack
+data, `refinement:`'s shape, and absent = off for that agent:
+
+```ruby
+distill enabled: true,
+        idle_hours: 6,      # how idle a session must be before it distills
+        min_messages: 3,    # a shorter session distills noise
+        max_proposals: 10   # cap per session pass
+        # prompt: "<what counts as a fact for THIS store>" (the forge's half)
+        # model:  "<ref — absent = the platform utility_model>"
+```
+
+Nothing is ever applied automatically: the engine writes **proposals**, the
+operator approves/rejects/dismisses them on the Studio **Facts** page (the
+latch: a dismissed or rejected tuple is never proposed again), and an approval
+writes the fact to the customer's memory cell stamped
+`distilled:<session_ref>` through an optimistic CAS — an approval never
+silently overwrites an operator edit. Sessions are the only candidates, and
+the distiller rides the platform `utility_model`, never a new model slot.
+
 ## Delegation (subagents)
 
 An agent can delegate to **subagents**: named child agents it may invoke as a
