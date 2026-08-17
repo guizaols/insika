@@ -67,4 +67,76 @@ RSpec.describe "Memory commands" do
       expect { handler.call(cmd(:memory_add_note, { "text" => "" })) }.to raise_error(Insika::ValidationError, /text/)
     end
   end
+
+  describe "RFC-0031 (customer + origin + audit)" do
+    let(:audit_store) { Insika::MemoryAuditStore.new(store: Insika::Stores::Memory.new) }
+
+    describe Insika::Commands::MemoryPutFact do
+      it "put with customer: lands in the customer cell; event carries the customer; audit has old/new hashes + actor" do
+        handler = described_class.new(memory_store: store, event_stream: stream, audit_store: audit_store)
+        fact = handler.call(cmd(:memory_put_fact, { "tenant" => "acme", "customer" => "c-1",
+                                                     "key" => "size", "value" => "M", "operator" => "studio" }))
+        expect(store.get_fact(tenant: "acme", customer: "c-1", key: "size").value).to eq("M")
+        expect(fact.origin).to eq("operator")
+
+        entry = audit_store.for_cell("memory:acme:c-1").first
+        expect(entry.action).to eq("put")
+        expect(entry.actor).to eq("studio")
+        expect(entry.key).to eq("size")
+        expect(entry.tenant).to eq("acme")
+        expect(entry.customer).to eq("c-1")
+        expect(entry.old_hash).to be_nil
+        expect(entry.new_hash).to eq(Insika::MemoryAuditStore.digest("M"))
+
+        expect(events.first.data[:customer]).to eq("c-1")
+      end
+
+      it "an update writes the old value's digest as old_hash" do
+        store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+        handler = described_class.new(memory_store: store, event_stream: stream, audit_store: audit_store)
+        handler.call(cmd(:memory_put_fact, { "tenant" => "acme", "customer" => "c-1",
+                                              "key" => "size", "value" => "L", "operator" => "studio" }))
+        entry = audit_store.for_cell("memory:acme:c-1").first
+        expect(entry.old_hash).to eq(Insika::MemoryAuditStore.digest("M"))
+        expect(entry.new_hash).to eq(Insika::MemoryAuditStore.digest("L"))
+      end
+
+      it "expires_at round-trips; invalid raises through the store" do
+        handler = described_class.new(memory_store: store, event_stream: stream, audit_store: audit_store)
+        handler.call(cmd(:memory_put_fact, { "tenant" => "acme", "customer" => "c-1", "key" => "k",
+                                              "value" => "v", "expires_at" => "2026-12-31T00:00:00Z",
+                                              "operator" => "studio" }))
+        expect(store.get_fact(tenant: "acme", customer: "c-1", key: "k").expires_at).not_to be_nil
+
+        expect {
+          handler.call(cmd(:memory_put_fact, { "tenant" => "acme", "customer" => "c-1", "key" => "k",
+                                                "value" => "v", "expires_at" => "nope", "operator" => "studio" }))
+        }.to raise_error(Insika::ValidationError, /expires_at/)
+      end
+
+      it "without customer:/audit_store: is byte-identical to today (no audit, no customer in the event)" do
+        handler = described_class.new(memory_store: store, event_stream: stream)
+        fact = handler.call(cmd(:memory_put_fact, { "tenant" => "acme", "key" => "k", "value" => "v" }))
+        expect(fact.key).to eq("k")
+        expect(events.first.data[:customer]).to be_nil
+        expect(audit_store.for_cell("memory:acme")).to eq([])
+      end
+    end
+
+    describe Insika::Commands::MemoryForgetFact do
+      it "forget writes the audit line with old_hash only" do
+        store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+        handler = described_class.new(memory_store: store, event_stream: stream, audit_store: audit_store)
+        result = handler.call(cmd(:memory_forget_fact, { "tenant" => "acme", "customer" => "c-1",
+                                                          "key" => "size", "operator" => "studio" }))
+        expect(result).to eq({ existed: true })
+        expect(store.get_fact(tenant: "acme", customer: "c-1", key: "size")).to be_nil
+
+        entry = audit_store.for_cell("memory:acme:c-1").first
+        expect(entry.action).to eq("forget")
+        expect(entry.old_hash).to eq(Insika::MemoryAuditStore.digest("M"))
+        expect(entry.new_hash).to be_nil
+      end
+    end
+  end
 end

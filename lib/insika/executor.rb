@@ -1824,11 +1824,25 @@ module Insika
     # "[tenant:]customer" when a tenant is present, the bare customer otherwise
     # (never _default — a tagged customer must never land in the shared cell).
     # Per-customer memory is the 360 view; per-tenant was the leak.
+    #
+    # RFC-0031: the SESSION fallback is MARKED ("chat:<session id>" -> cell
+    # "memory:chat:<session id>"), never a bare cell — a bare "memory:<id>" is
+    # indistinguishable from a single-tenant customer ref, and the Studio drill
+    # must not list conversations as customers with a Forget button.
     def memory_tenant(task)
       customer = command_customer(task)
-      return command_tenant(task) || task.session_id if customer.nil?
+      return command_tenant(task) || session_scope(task.session_id) if customer.nil?
 
       [command_tenant(task), customer].compact.join(":")
+    end
+
+    # The marked per-session scope (RFC-0031): "chat:<session id>" -> cell
+    # "memory:chat:<session id>". nil for a one-shot turn (no session) — the
+    # MemoryStore applies _default.
+    def session_scope(session_id)
+      return nil if session_id.nil?
+
+      "#{MemoryStore::SESSION_TAG}:#{session_id}"
     end
 
     # WS8: stamp the customer on the session ONCE (idempotent) — the

@@ -29,6 +29,16 @@ RSpec.describe Studio::App do
     def types = dispatched.map(&:type)
   end
 
+  # RFC-0031 C8: wraps a REAL CommandBus (executes the customer commands) and
+  # records every dispatch for assertion. NB: distinct name — RSpec constants
+  # leak to top-level Object, so a shared name would clobber.
+  StudioRecordingBus = Struct.new(:real, :dispatched) do
+    def initialize(real) = super(real, [])
+    def register(*args) = real.register(*args)
+    def dispatch(cmd) = (dispatched << cmd; real.dispatch(cmd))
+    def last(type) = dispatched.reverse.find { |c| c.type == type }
+  end
+
   # ProfileSource duck-type: `all` (list) + `ids` + `fetch`.
   ProfileSourceDouble = Struct.new(:profiles) do
     def all = profiles
@@ -803,7 +813,7 @@ RSpec.describe Studio::App do
   end
 
   it "detail shows the agent's memory facts (tenant = id)" do
-    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
+    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", origin: "engine", created_at: "t", updated_at: "t", expires_at: nil)
     app, = build_app(memory: { "bia" => { facts: [fact], notes: [] } })
     body = login(app).get("/agents/bia").body
     expect(body).to include("nome")
@@ -1558,6 +1568,158 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_settings).payload[:patch]["streaming"]).to be(false)
   end
 
+  describe "Customers drill (RFC-0031 C8)" do
+    # The drill reads the REAL MemoryStore (customer_cells/facts — the doubles
+    # other pages use don't model cells). The bus executes the REAL commands
+    # (export must produce a body; edit/forget must land in the store) and
+    # records the dispatches for assertion.
+    def build_customers_app(store, audit: nil, agents: [profile("bia")])
+      real = Insika::CommandBus.new
+      es = Insika::EventStream.new
+      sessions = Insika::SessionStore.new(store: backend)
+      real.register(:export_customer_memory,
+                    Insika::Commands::ExportCustomerMemory.new(memory_store: store, event_stream: es))
+      real.register(:memory_put_fact,
+                    Insika::Commands::MemoryPutFact.new(memory_store: store, event_stream: es, audit_store: audit))
+      real.register(:memory_forget_fact,
+                    Insika::Commands::MemoryForgetFact.new(memory_store: store, event_stream: es, audit_store: audit))
+      real.register(:forget_customer,
+                    Insika::Commands::ForgetCustomer.new(memory_store: store, session_store: sessions,
+                                                         event_stream: es))
+      bus = StudioRecordingBus.new(real)
+      app = Class.new(Studio::App)
+      app.configure(
+        command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
+        event_stream: nil, config: { admin_token: "s3cret" },
+        memory_store: store, memory_audit_store: audit, session_secret: "x" * 64
+      )
+      [app, bus]
+    end
+
+    let(:backend) { Insika::Stores::Memory.new }
+    let(:store) { Insika::MemoryStore.new(store: backend) }
+    let(:audit) { Insika::MemoryAuditStore.new(store: backend) }
+    let(:app) { build_customers_app(store, audit: audit) }
+    let(:path) { "/customers/#{Rack::Utils.escape('memory:acme:c-1')}" }
+
+    it "the index lists customer cells and hides _default, bare agent cells and SESSION cells" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      store.put_fact(tenant: nil, key: "k", value: "v") # _default — the shared cell
+      store.put_fact(tenant: nil, customer: "bia", key: "k", value: "v") # an agent id (reserved)
+      store.put_fact(tenant: nil, customer: "solo", key: "k", value: "v") # bare customer
+      store.put_fact(tenant: "chat:34403117-4b5d-48ab-a1b2-1234567890ab", key: "k", value: "v") # a session cell
+
+      body = login(app.first).get("/customers").body
+
+      expect(body).to include("c-1")
+      expect(body).to include("solo")
+      expect(body).to include("Shared (no tenant)") # the bare cells group
+      expect(body).not_to include("_default")
+      expect(body).not_to include('>bia<')
+      expect(body).not_to include("34403117") # a conversation is never a customer
+    end
+
+    it "the detail renders facts with origin/expiry, notes and the audit lines" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M",
+                     expires_at: "2099-01-01T00:00:00Z")
+      store.add_note(tenant: "acme", customer: "c-1", text: "prefere email")
+      audit.record(cell: "memory:acme:c-1", action: "put", actor: "studio", key: "size",
+                   tenant: "acme", customer: "c-1", new_hash: "a1b2")
+
+      body = login(app.first).get(path).body
+
+      expect(body).to include("size")
+      expect(body).to include(">M<")
+      expect(body).to include("engine") # origin
+      expect(body).to include("expires") # expiry column
+      expect(body).to include("prefere email") # note
+      expect(body).to include("a1b2") # audit digest
+    end
+
+    it "editing a fact POSTs :memory_put_fact with the parsed pair and operator: studio" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      csrf = csrf_from(client.get(path).body)
+
+      client.post("#{path}/fact", params: { "key" => "size", "value" => "L", "_csrf" => csrf })
+
+      cmd = app.last.last(:memory_put_fact)
+      expect(cmd.payload).to include(tenant: "acme", customer: "c-1",
+                                     key: "size", value: "L", operator: "studio")
+    end
+
+    it "forget-fact POSTs :memory_forget_fact with the parsed pair" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      csrf = csrf_from(client.get(path).body)
+
+      client.post("#{path}/forget-fact", params: { "key" => "size", "_csrf" => csrf })
+
+      expect(app.last.last(:memory_forget_fact).payload)
+        .to include(tenant: "acme", customer: "c-1", key: "size", operator: "studio")
+    end
+
+    it "export POST returns application/json with the attachment header and the facts in the body" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      csrf = csrf_from(client.get(path).body)
+
+      res = client.post("#{path}/export", params: { "_csrf" => csrf })
+
+      expect(res.status).to eq(200)
+      expect(res.headers["content-type"]).to include("application/json")
+      expect(res.headers["content-disposition"]).to include("attachment")
+      expect(res.headers["content-disposition"]).to include("memory-acme-c-1.json")
+      body = JSON.parse(res.body)
+      expect(body["facts"].map { |f| f["key"] }).to eq(["size"])
+      expect(body["counts"]).to eq({ "facts" => 1, "notes" => 0 })
+      expect(app.last.last(:export_customer_memory).payload).to include(tenant: "acme", customer: "c-1")
+    end
+
+    it "export on a customer-less cell (memory:_default, reachable by URL) redirects with a red flash, never a 500" do
+      client = login(app.first)
+      csrf = csrf_from(client.get("/customers/memory%3A_default").body)
+
+      res = client.post("/customers/memory%3A_default/export", params: { "_csrf" => csrf })
+
+      expect(res.status).to eq(302)
+      expect(res.headers["location"]).to include("/customers/memory:_default")
+    end
+
+    it "forget POST dispatches :forget_customer and redirects to the index" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      csrf = csrf_from(client.get(path).body)
+
+      res = client.post("#{path}/forget", params: { "_csrf" => csrf })
+
+      expect(res.status).to eq(302)
+      expect(res.headers["location"]).to include("/customers")
+      expect(app.last.last(:forget_customer).payload).to include(tenant: "acme", customer: "c-1")
+    end
+
+    it "without memory_store both pages render empty states and nothing raises" do
+      app, bus = build_customers_app(nil)
+      client = login(app)
+      expect(client.get("/customers").status).to eq(200)
+      expect(client.get("/customers").body).to include("No customers with memory yet")
+      detail = client.get("/customers/#{Rack::Utils.escape('memory:acme:c-1')}")
+      expect(detail.status).to eq(200)
+      expect(detail.body).to include("No facts.")
+    end
+  end
+
+  it "the memory TTL field lands a number in the settings record; blank clears it (RFC-0031 C5)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings", params: { "memory_ttl_days" => "45", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["memory_ttl_days"]).to eq(45)
+
+    client.post("/settings", params: { "memory_ttl_days" => "", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["memory_ttl_days"]).to be_nil
+  end
+
   it "the model-defaults form dispatches update_settings with the v2 platform layer" do
     app, bus = build_app
     client = login(app)
@@ -1850,7 +2012,7 @@ RSpec.describe Studio::App do
   # UI robustness — (loading states) + (confirm + copy) -----------
 
   it "destructive forms carry a data-turbo-confirm prompt" do
-    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", updated_at: "t")
+    fact = Insika::MemoryStore::Fact.new(key: "nome", value: "Ana", origin: "engine", created_at: "t", updated_at: "t", expires_at: nil)
     app, = build_app(agents: [profile("bia", prompt_files: %w[SOUL.md])],
                      data_tools: [data_tool(name: "cep")],
                      mcp_instances: [{ "name" => "tavily" }],

@@ -93,6 +93,9 @@ require_relative "insika/outbox_store"
 require_relative "insika/shadow_pair_store"
 require_relative "insika/inbound_log"
 require_relative "insika/memory_store"
+# RFC-0031 C2: the operator-mutation audit trail. After memory_store (no
+# mutual deps). Pure stdlib — `load_guard_spec` stays green.
+require_relative "insika/memory_audit_store"
 require_relative "insika/config_store"
 require_relative "insika/profile_source"
 require_relative "insika/agent_file_store"
@@ -203,6 +206,9 @@ require_relative "insika/commands/judge_shadow_pairs"
 require_relative "insika/commands/session_purge"
 require_relative "insika/commands/forget_customer"
 require_relative "insika/commands/delete_tenant_data"
+# RFC-0031 C3: the LGPD access right — export one customer's memory cell as
+# content (the Studio download); the event stays counts-only.
+require_relative "insika/commands/export_customer_memory"
 require_relative "insika/commands/upsert_mcp"
 require_relative "insika/commands/delete_mcp"
 require_relative "insika/commands/write_system_file"

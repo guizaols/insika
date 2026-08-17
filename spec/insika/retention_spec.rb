@@ -17,8 +17,9 @@ RSpec.describe Insika::Retention do
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
   let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
-  let(:settings) { Struct.new(:get).new({ "retention_days" => days }) }
+  let(:settings) { Struct.new(:get).new({ "retention_days" => days, "memory_ttl_days" => ttl_days }) }
   let(:days) { 30 }
+  let(:ttl_days) { nil }
   let(:now) { Time.utc(2026, 8, 13, 12, 0, 0) }
 
   subject(:retention) do
@@ -196,5 +197,112 @@ RSpec.describe Insika::Retention do
     expect(retention.run[:claimed]).to be(true)
     expect(retention.run).to eq({ claimed: false })
     expect(session_store.find("chat-old")).to be_nil # swept by the FIRST run only
+  end
+
+  describe "memory TTL sweep (RFC-0031, E4)" do
+    # E4: a fact with an explicit expires_at in the past is GONE after `run` —
+    # on its own daily claim, NOT gated by retention_days.
+    it "expires_at in the past -> gone after run, counted in memory_ttl:" do
+      settings.get["retention_days"] = nil # the memory TTL is the only sweep here
+      settings.get["memory_ttl_days"] = 10
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "deadline", value: "x",
+                                      expires_at: (now - 1 * 86_400).iso8601)
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "keep", value: "y",
+                                      expires_at: (now + 5 * 86_400).iso8601)
+
+      summary = retention.run
+
+      expect(summary[:claimed]).to be(false)
+      expect(summary[:memory_ttl]).to eq(1)
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "deadline")).to be_nil
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "keep")).not_to be_nil
+    end
+
+    it "Integer TTL prunes a cell by updated_at; an explicit later expires_at survives" do
+      settings.get["memory_ttl_days"] = 30
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "old", value: "1")
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "pinned", value: "2",
+                                      expires_at: (now + 365 * 86_400).iso8601)
+      # age both past the cutoff
+      retention.memory_store.instance_variable_get(:@store).set("memory:acme:c-1", "fact:old",
+        { "key" => "old", "value" => "1", "origin" => "engine",
+          "created_at" => (now - 60 * 86_400).iso8601(6), "updated_at" => (now - 60 * 86_400).iso8601(6),
+          "expires_at" => nil })
+      retention.memory_store.instance_variable_get(:@store).set("memory:acme:c-1", "fact:pinned",
+        { "key" => "pinned", "value" => "2", "origin" => "engine",
+          "created_at" => (now - 60 * 86_400).iso8601(6), "updated_at" => (now - 60 * 86_400).iso8601(6),
+          "expires_at" => (now + 365 * 86_400).iso8601 })
+
+      summary = retention.run
+
+      expect(summary[:memory_ttl]).to eq(1)
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "old")).to be_nil
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "pinned")).not_to be_nil
+    end
+
+    it "Hash TTL: per-tenant cell uses its tenant's days, an absent tenant falls back to '*'" do
+      settings.get["memory_ttl_days"] = { "acme" => 10, "*" => 30 }
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "a", value: "1")
+      retention.memory_store.put_fact(tenant: "globex:c-1", key: "b", value: "2")
+      # age acme past ITS 10d, globex past the '*' 30d
+      [["memory:acme:c-1", "fact:a", 20], ["memory:globex:c-1", "fact:b", 40]].each do |sc, k, days_ago|
+        rec = retention.memory_store.instance_variable_get(:@store).get(sc, k)
+        retention.memory_store.instance_variable_get(:@store).set(sc, k,
+          rec.merge("updated_at" => (now - days_ago * 86_400).iso8601(6)))
+      end
+
+      summary = retention.run
+
+      expect(summary[:memory_ttl]).to eq(2)
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "a")).to be_nil # tenant's 10d
+      expect(retention.memory_store.get_fact(tenant: "globex:c-1", key: "b")).to be_nil # '*' 30d
+    end
+
+    it "Hash TTL: a cell with no resolution (no '*') is untouched" do
+      settings.get["retention_days"] = nil # only the memory TTL sweep runs
+      settings.get["memory_ttl_days"] = { "acme" => 10 }
+      retention.memory_store.put_fact(tenant: "solo", key: "c", value: "3")
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "a", value: "1")
+      [["memory:solo", "fact:c", 40], ["memory:acme:c-1", "fact:a", 20]].each do |sc, k, days_ago|
+        rec = retention.memory_store.instance_variable_get(:@store).get(sc, k)
+        retention.memory_store.instance_variable_get(:@store).set(sc, k,
+          rec.merge("updated_at" => (now - days_ago * 86_400).iso8601(6)))
+      end
+
+      summary = retention.run
+
+      expect(summary[:memory_ttl]).to eq(1)
+      expect(retention.memory_store.get_fact(tenant: "acme:c-1", key: "a")).to be_nil
+      expect(retention.memory_store.get_fact(tenant: "solo", key: "c")).not_to be_nil # no resolution
+    end
+
+    it "runs with retention_days nil/0 (its own knob, not gated); a second run the same day does not claim" do
+      settings.get["retention_days"] = nil
+      settings.get["memory_ttl_days"] = 10
+      retention.memory_store.put_fact(tenant: "acme:c-1", key: "old", value: "1")
+      retention.memory_store.instance_variable_get(:@store).set("memory:acme:c-1", "fact:old",
+        { "key" => "old", "value" => "1", "origin" => "engine",
+          "created_at" => (now - 60 * 86_400).iso8601(6), "updated_at" => (now - 60 * 86_400).iso8601(6),
+          "expires_at" => nil })
+
+      first = retention.run
+      expect(first[:claimed]).to be(false)
+      expect(first[:memory_ttl]).to eq(1)
+      # the age-based sweep did NOT run (retention_days off): a session survives
+      session_store.create(id: "chat-1")
+
+      second = retention.run
+      expect(second[:memory_ttl]).to be_nil # claim held for the day
+      expect(session_store.find("chat-1")).not_to be_nil
+    end
+
+    it "no settings_store / nil setting -> nothing, byte-identical to today" do
+      memory_store.put_fact(tenant: "acme:c-1", key: "k", value: "v")
+      expect(described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, now: now
+      ).run).to eq({ claimed: false })
+    end
   end
 end

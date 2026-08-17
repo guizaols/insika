@@ -26,7 +26,7 @@ module Insika
 
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
                      context_trace_store: nil, task_store: nil, checkpoint_store: nil,
-                     outbox_store: nil, shadow_pairs: nil, event_stream:)
+                     outbox_store: nil, shadow_pairs: nil, audit_store: nil, event_stream:)
         @memory_store = memory_store
         @session_store = session_store
         @tool_trace_store = tool_trace_store
@@ -35,6 +35,7 @@ module Insika
         @checkpoint_store = checkpoint_store
         @outbox_store = outbox_store
         @shadow_pairs = shadow_pairs
+        @audit_store = audit_store
         @event_stream = event_stream
       end
 
@@ -52,6 +53,16 @@ module Insika
         sessions = session_ids_for(customer, tenant)
         purged = purge_sessions(sessions)
 
+        # RFC-0031: the audit records the thing that happened, content-free —
+        # a digest-free line with the counts (the deleted VALUES never enter
+        # the audit store). Written AFTER the purge, so the line describes a
+        # deletion that actually happened. nil audit_store = no-op.
+        @audit_store&.record(
+          cell: @memory_store.cell_for(tenant, customer),
+          action: "purge", actor: operator(command), tenant: tenant, customer: customer,
+          note: "memory_records: #{memory_records}, sessions: #{sessions.size}"
+        )
+
         @event_stream.emit(Insika::Event.new(
                              type: :customer_forgotten,
                              data: { customer: customer, tenant: tenant,
@@ -64,6 +75,10 @@ module Insika
       end
 
       private
+
+      def operator(command)
+        Coercion.presence(command.payload[:operator] || command.payload["operator"]) || "operator"
+      end
 
       # The customer's sessions: the ones the Executor stamped with this
       # customer var — plus, in multi_tenant, only ids inside the tenant's

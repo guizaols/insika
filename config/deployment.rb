@@ -68,6 +68,8 @@ module Deploy
     CHECKPOINT_STORE     = SPINE.checkpoint_store
     PENDING_ACTION_STORE = SPINE.pending_action_store
     MEMORY_STORE         = SPINE.memory_store
+    # RFC-0031: the append-only, content-free operator-mutation audit.
+    MEMORY_AUDIT_STORE   = SPINE.memory_audit_store
     REFINEMENT_STORE     = SPINE.refinement_store
     REGISTRY             = SPINE.code_tool_registry
     WORKFLOW_REGISTRY    = SPINE.workflow_registry
@@ -252,10 +254,13 @@ module Deploy
     BUS.register(:set_skill_agents, Insika::Commands::SetSkillAgents.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
     # Memory + settings + LLM — memory becomes editable over HTTP (not only via the
-    # `remember` tool); settings and providers gain durable CRUD.
-    BUS.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
-    BUS.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    # `remember` tool); settings and providers gain durable CRUD. RFC-0031: the
+    # operator edits carry an audit line (content-free digests).
+    BUS.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM, audit_store: MEMORY_AUDIT_STORE))
+    BUS.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM, audit_store: MEMORY_AUDIT_STORE))
     BUS.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
+    # RFC-0031 C3: the LGPD access right — the Studio Customers drill exports.
+    BUS.register(:export_customer_memory, Insika::Commands::ExportCustomerMemory.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     # Refinement: reads the agent's OWN traffic (tasks + sessions +
     # tool traces) and records a ranked failure report. Read-only — no model call and
     # no edit to the agent — so it needs no per-agent opt-in; `propose`/`auto_apply`

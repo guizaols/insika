@@ -355,6 +355,12 @@ end
           Insika::Context::Providers::ToolSearch, Insika::Context::Providers::Memory,
           Insika::Context::Providers::Session
         ],
+# RFC-0031 C6: the memory-scopes check reads the cells over the same
+        # runtime backend; `agent_ids` excuses the agent-memory tab's cells
+        # (a bare cell named like an agent is a profile, not a customer —
+        # the profile source is right here, so the CLI names them).
+        memory_store: Insika::MemoryStore.new(store: backend),
+        agent_ids: Insika::StoredProfileSource.new(config_store: config_store).all.map(&:id),
         backend: backend
       )
     end

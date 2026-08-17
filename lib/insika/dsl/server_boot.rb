@@ -86,6 +86,8 @@ module Insika
           agent_file_store: @rt.component(:agent_file_store), skill_store: @rt.component(:skill_store),
           skill_catalog: @graph.skill_catalog, tool_catalog: @graph.tool_catalog,
           tool_store: @rt.component(:tool_store), memory_store: @graph.memory_store,
+          # RFC-0031 C8: the Customers drill renders the audit lines.
+          memory_audit_store: @graph.memory_audit_store,
           session_store: @graph.session_store,
           settings_store: @rt.component(:settings_store), llm_provider_store: @rt.component(:provider_store),
           mcp_store: @rt.component(:mcp_store), system_file_store: @rt.component(:system_file_store),

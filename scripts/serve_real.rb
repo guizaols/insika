@@ -98,6 +98,8 @@ Studio::App.configure(
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
   skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG, tool_store: W::TOOL_STORE,
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
+  # RFC-0031: the Customers drill renders the audit lines (content-free).
+  memory_audit_store: W::MEMORY_AUDIT_STORE,
   # settings/LLM/MCP + global system files.
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,

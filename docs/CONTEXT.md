@@ -80,10 +80,22 @@ budget first.
 With `memory` enabled, an agent gains a built-in `remember` tool for durable
 facts, and those facts (plus recent notes) are injected back into the prompt on
 later turns — **including turns in a different session**. Memory is scoped per
-agent. This is distinct from *session history*, which is the transcript of one
+agent, per `(tenant, customer)` when the message carries a `customer`, and per
+session otherwise — a session's own memory lives in a marked `memory:chat:<session id>`
+cell, never a bare one, so the Customers drill cannot read a conversation as a
+customer. This is distinct from *session history*, which is the transcript of one
 conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
+
+Facts carry **provenance metadata** (RFC-0031): every fact record stores `origin`
+(who wrote it — `"engine"`, `"operator"`, `"legacy"` or `"distilled"`),
+`created_at` / `updated_at` timestamps, and an optional `expires_at` (ISO8601) —
+**an expired fact is never injected**, even before the daily sweep prunes it. The
+Studio Customers drill reads and edits the same cell the next turn reads (injection
+unchanged), and every operator mutation lands in the content-free audit trail
+(digests, never values). The sweep honors the `memory_ttl_days` setting on its own
+knob — see [Security](SECURITY.md#memory-and-the-right-to-be-forgotten-lgpd-rfc-0031).
 
 ## Briefing — the session's working state
 

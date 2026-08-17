@@ -18,6 +18,10 @@ module Insika
     SCOPE = "retention"
     KEY = "claim"
     BUDGET_KEY = "budget_claim"
+    # RFC-0031: the MEMORY TTL's own daily claim. Deliberately NOT the age-based
+    # KEY — memory TTLs sweep on their own knob (`memory_ttl_days`), gated by
+    # neither retention_days nor the age-based claim (D5).
+    MEMORY_TTL_KEY = "memory_ttl_claim"
     WINDOW = 86_400 # one sweep per day, at most
 
     TERMINAL = %w[completed failed cancelled].freeze
@@ -42,15 +46,25 @@ module Insika
       @now = now # injectable for specs (a deterministic "today")
     end
 
+    # RFC-0031: the sweep reads the memory store's cells/records (specs seed
+    # facts through it).
+    attr_reader :memory_store
+
     # -> { claimed: false } |
     #    { claimed: true, sessions:, tasks:, outcomes:, memory:, deliveries: }.
     # Either shape may carry `budget_cells:` — the budget counter GC is NOT
-    # gated by retention_days (see #sweep_budget_cells).
+    # gated by retention_days (see #sweep_budget_cells). Either shape may carry
+    # `memory_ttl:` — the RFC-0031 memory TTL sweep, gated by ITS OWN daily
+    # claim and knob, never by retention_days (see #sweep_memory_ttl).
     def run
       budget_cells = sweep_budget_cells
+      memory_ttl = sweep_memory_ttl
       days = retention_days
       unless days.to_i.positive? && claim_window
-        return budget_cells.nil? ? { claimed: false } : { claimed: false, budget_cells: budget_cells }
+        summary = { claimed: false }
+        summary[:budget_cells] = budget_cells if budget_cells
+        summary[:memory_ttl] = memory_ttl if memory_ttl
+        return summary
       end
 
       cutoff = now - (days.to_i * 86_400)
@@ -60,6 +74,7 @@ module Insika
                   deliveries: sweep_outbox(cutoff),
                   pairs: sweep_shadow_pairs(cutoff) }
       summary[:budget_cells] = budget_cells if budget_cells
+      summary[:memory_ttl] = memory_ttl if memory_ttl
       summary
     end
 
@@ -84,6 +99,71 @@ module Insika
       value.to_s.empty? ? nil : Integer(value)
     rescue ArgumentError, TypeError
       nil # a non-numeric value reads as OFF — never a crash at sweep time
+    end
+
+    # RFC-0031 (D5): the memory TTL sweep — TWO independent expiry clocks under
+    # ONE daily claim:
+    #   1. per-fact expires_at (prune_expired — past dates physically removed);
+    #   2. per-cell TTL by `memory_ttl_days` (age by the cell's updated_at).
+    # A fact with an explicit expires_at is EXCLUDED from the age-based pass
+    # (the explicit override owns that fact's life). Runs on its OWN claim and
+    # knob — a deployment with retention_days off still honors memory TTLs.
+    # -> Integer (removed) | nil (no knob, or another worker holds the claim).
+    def sweep_memory_ttl
+      ttl = memory_ttl_setting
+      return nil if ttl.nil?
+      return nil unless claim(MEMORY_TTL_KEY)
+
+      removed = @memory_store.prune_expired(now)
+      ttl_cutoffs(ttl).each do |scope, cutoff|
+        removed += @memory_store.prune_older_than(cutoff, scope: scope)
+      end
+      removed
+    end
+
+    # settings["memory_ttl_days"]: Integer | Hash{ "<tenant>" => days, "*" => days }.
+    # nil/empty/blank -> nil (OFF — parity). A non-numeric value -> nil (never
+    # a crash at sweep time, the retention_days rescue pattern).
+    def memory_ttl_setting
+      return nil unless @settings_store
+
+      raw = @settings_store.get["memory_ttl_days"]
+      case raw
+      when Integer then raw
+      when Hash
+        map = raw.each_with_object({}) do |(k, v), acc|
+          acc[k.to_s] = Integer(v.to_s)
+        rescue ArgumentError, TypeError
+          next
+        end
+        map.empty? ? nil : map
+      end
+    end
+
+    # -> [[scope, Time]] — one per existing cell with a resolved TTL. The
+    # setting is passed in (one settings-store read per sweep — the caller
+    # already resolved it).
+    def ttl_cutoffs(setting = memory_ttl_setting)
+      return [] unless setting
+
+      @memory_store.cells.filter_map do |cell|
+        days = cell_ttl(cell, setting)
+        next if days.nil? || days <= 0
+
+        [cell[:scope], now - days * 86_400]
+      end
+    end
+
+    # Customer cell "memory:acme:c-1" -> map["acme"]; tenant/bare cell
+    # "memory:acme" or "memory:c-123" -> map["acme"] / map["c-123"]; fallback
+    # map["*"]; an Integer setting -> every cell gets it.
+    def cell_ttl(cell, setting)
+      return setting if setting.is_a?(Integer)
+
+      key = cell[:tenant] || cell[:customer]
+      v = key && setting[key]
+      v ||= setting["*"]
+      v
     end
 
     # Sessions untouched past the cutoff, and their per-session traces.

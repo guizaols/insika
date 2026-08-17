@@ -36,9 +36,12 @@ module Insika
         # Engine memory scope (WS8): the request's CUSTOMER-scoped cell
         # ("[tenant:]customer" — engine-owner memory is per customer, never per
         # tenant) wins; otherwise an EXPLICIT tenant from the Command (the
-        # multi-merchant override); otherwise the SESSION (=chat). No session
-        # (one-shot) and no tenant -> nil (MemoryStore applies _default).
-        # Symmetric to the write path (`state.tenant` in the Executor).
+        # multi-merchant override); otherwise the SESSION (=chat), MARKED like
+        # the write path ("chat:<session id>" — RFC-0031: a session cell is
+        # never a bare cell, so the drill cannot read a conversation as a
+        # customer). No session (one-shot) and no tenant -> nil (MemoryStore
+        # applies _default). Symmetric to the write path (`state.tenant` in the
+        # Executor).
         def memory_scope(request)
           scoped = request.respond_to?(:memory_scope) ? request.memory_scope : nil
           return scoped if scoped
@@ -46,7 +49,8 @@ module Insika
           explicit = request.respond_to?(:tenant) ? request.tenant : nil
           return explicit if explicit
 
-          request.respond_to?(:session) ? request.session&.id : nil
+          session = request.respond_to?(:session) ? request.session : nil
+          session && session.id ? "#{Insika::MemoryStore::SESSION_TAG}:#{session.id}" : nil
         end
 
         # Passive <memory> (no instruction — the HOW of writing lives in the `remember` tool).

@@ -1,0 +1,29 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>customers</span></nav>
+    <h1>Customers<span class="sub"><%= @rows.size %> with memory</span></h1>
+  </div>
+</header>
+
+<% if @rows.empty? %>
+  <div class="empty">No customers with memory yet — facts appear here when a turn or the operator writes to a customer cell.</div>
+<% else %>
+  <% @by_tenant.each do |tenant, rows| %>
+    <section class="section">
+      <div class="section-head">
+        <h2><%= tenant.nil? ? "Shared (no tenant)" : tenant %></h2>
+        <p class="muted"><%= rows.size %> customer cell(s)</p>
+      </div>
+      <div class="card">
+        <ul class="history">
+          <% rows.each do |row| %>
+            <li>
+              <a href="<%= customer_path(row[:cell][:scope]) %>"><span class="mono"><%= row[:cell][:customer] %></span></a>
+              <span class="preview muted"><%= row[:count] %> fact(s)</span>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    </section>
+  <% end %>
+<% end %>

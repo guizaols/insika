@@ -45,6 +45,10 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
+        # RFC-0031 C2: the append-only, content-free audit of OPERATOR memory
+        # mutations. Built unconditionally (empty and free when nothing writes)
+        # so a deployment that turns it on later finds its audit already durable.
+        memory_audit_store  = Insika::MemoryAuditStore.new(store: backend)
         token_store          = Insika::TokenStore.new(store: backend)
         budget_ledger        = Insika::BudgetLedger.new(store: backend)
         circuit_state        = Insika::CircuitState.new(store: backend)
@@ -83,7 +87,8 @@ module Insika
           session_store: session_store, task_store: task_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
-          memory_store: memory_store, refinement_store: refinement_store,
+          memory_store: memory_store, memory_audit_store: memory_audit_store,
+          refinement_store: refinement_store,
           token_store: token_store, budget_ledger: budget_ledger, circuit_state: circuit_state,
           outbox_store: outbox_store, shadow_pair_store: shadow_pair_store,
           inbound_log: inbound_log,
@@ -194,7 +199,8 @@ module Insika
           session_store: spine.session_store, task_store: spine.task_store,
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
           delegation_store: spine.delegation_store,
-          memory_store: spine.memory_store, refinement_store: spine.refinement_store,
+          memory_store: spine.memory_store, memory_audit_store: spine.memory_audit_store,
+          refinement_store: spine.refinement_store,
           outbox_store: spine.outbox_store, shadow_pair_store: spine.shadow_pair_store,
           inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
@@ -255,7 +261,8 @@ module Insika
                                                              event_stream: spine.event_stream))
         # WS8 (LGPD): purge one customer's memory + the whole footprint of their
         # sessions (traces, tasks, checkpoints, outbox). The trace stores are
-        # deployment components (nil at the base — skipped).
+        # deployment components (nil at the base — skipped). RFC-0031: the
+        # audit collaborator records a content-free purge line.
         bus.register(:forget_customer,
                      Insika::Commands::ForgetCustomer.new(
                        memory_store: spine.memory_store, session_store: spine.session_store,
@@ -264,7 +271,14 @@ module Insika
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
+                       audit_store: spine.memory_audit_store,
                        event_stream: spine.event_stream
+                     ))
+        # RFC-0031 C3: the LGPD access right — export one customer's memory
+        # cell as content (the Studio download); the event stays counts-only.
+        bus.register(:export_customer_memory,
+                     Insika::Commands::ExportCustomerMemory.new(
+                       memory_store: spine.memory_store, event_stream: spine.event_stream
                      ))
         # WS8 (LGPD): purge ONE TENANT's data — sessions and their footprint,
         # memory cells and outcomes. Operator-only by construction (ingress).
@@ -287,7 +301,8 @@ module Insika
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
-        :pending_action_store, :delegation_store, :memory_store, :refinement_store,
+        :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
+        :refinement_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
@@ -300,7 +315,8 @@ module Insika
       Result = Struct.new(
         :backend, :event_stream,
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
-        :memory_store, :refinement_store, :outbox_store, :shadow_pair_store, :inbound_log, :token_store,
+        :memory_store, :memory_audit_store, :refinement_store, :outbox_store, :shadow_pair_store,
+        :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

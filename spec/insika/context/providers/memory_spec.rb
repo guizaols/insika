@@ -80,27 +80,29 @@ RSpec.describe Insika::Context::Providers::Memory do
     expect(f.priority).to eq(Insika::Context::Priority::MEMORY)
   end
 
-  # without an explicit tenant in the Command, the engine memory is PER-CHAT — scope =
-  # session id. Symmetric to the write path (state.tenant in the Executor).
-  describe "per-chat scope" do
-    def request_session(session_id:, tenant: nil)
-      profile = Insika::AgentProfile.build(id: "a", model: "m", memory: true)
-      session = Struct.new(:id, :messages).new(session_id, [])
-      Insika::ContextRequest.new(session: session, message: "oi", profile: profile,
-                                  tenant: tenant, vars: {}, checkpoint: nil)
-    end
+  # without an explicit tenant in the Command, the engine memory is PER-CHAT —
+    # scope = the MARKED session cell ("chat:<id>", RFC-0031 — never a bare
+    # cell, so the drill cannot read a conversation as a customer). Symmetric
+    # to the write path (state.tenant in the Executor).
+    describe "per-chat scope" do
+      def request_session(session_id:, tenant: nil)
+        profile = Insika::AgentProfile.build(id: "a", model: "m", memory: true)
+        session = Struct.new(:id, :messages).new(session_id, [])
+        Insika::ContextRequest.new(session: session, message: "oi", profile: profile,
+                                    tenant: tenant, vars: {}, checkpoint: nil)
+      end
 
-    it "no explicit tenant -> scopes by session (=chat)" do
-      mem.put_fact(tenant: "chat-42", key: "plano", value: "premium")
-      frags = described_class.new(store: mem).call(request_session(session_id: "chat-42"))
-      expect(frags.first.content).to include(%(<fact key="plano">premium</fact>))
-    end
+      it "no explicit tenant -> scopes by the marked session cell (=chat)" do
+        mem.put_fact(tenant: "chat:chat-42", key: "plano", value: "premium")
+        frags = described_class.new(store: mem).call(request_session(session_id: "chat-42"))
+        expect(frags.first.content).to include(%(<fact key="plano">premium</fact>))
+      end
 
-    it "chat A does not see chat B's memory" do
-      mem.put_fact(tenant: "chat-A", key: "k", value: "v")
-      frags = described_class.new(store: mem).call(request_session(session_id: "chat-B"))
-      expect(frags).to eq([])
-    end
+      it "chat A does not see chat B's memory" do
+        mem.put_fact(tenant: "chat:chat-A", key: "k", value: "v")
+        frags = described_class.new(store: mem).call(request_session(session_id: "chat-B"))
+        expect(frags).to eq([])
+      end
 
     it "explicit Command tenant wins over the session (multi-merchant override)" do
       mem.put_fact(tenant: "acme", key: "k", value: "v")
