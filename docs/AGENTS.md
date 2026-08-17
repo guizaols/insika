@@ -801,6 +801,47 @@ writes and reads only its own), and `GET /v1/outcomes?agent=` serves the last
 outcome per agent plus the per-day series — the last-outcome pill on the Studio
 agent grid, and the per-day series on the agent detail.
 
+### The outcome funnel (RFC-0032)
+
+A store's funnel is pack data on the agent — the engine folds WS7 outcomes into
+the **declared** stages, and never hard-codes one itself (the stage vocabulary
+is the forge's):
+
+```ruby
+agent = Insika.agent("store-support") do
+  instructions "…"
+  funnel stages: %w[greeted qualified cart paid],
+         advance_on: { "abandoned_cart" => "cart", "pix_paid" => "paid" },
+         primary: "paid", attribution_window: "72h"
+end
+```
+
+The fold contract:
+
+- **Tick-driven, cumulative event counts on the declared order.** An outcome of
+  kind K means the session *reached* `advance_on[K]`; the fold increments
+  `stages[0..index]` for the reached stage. A per-stage-complete integration
+  and a terminal-event integration therefore produce identical counts — a
+  session that paid also emitted the earlier events. A duplicate event
+  double-counts (the integration's defect, not the engine's); **do not declare
+  a stage off the linear path** (a "handoff" stage would be inflated by every
+  later event). Counts are **event counts, not distinct sessions** — the
+  baseline is events-based.
+- **Idempotent**: a per-pair `{at, ids}` cursor inside one transaction; a crash
+  mid-fold never double counts, and a second pass folds only what is new.
+- **The attribution window is carried data, never computed** — `72h` is
+  validated, rendered, and copied into the baseline snapshot; causal
+  attribution stays human.
+- **The baseline freeze** (Studio > Funnel, or `:freeze_funnel_baseline` on the
+  bus) sums the folded cells over a span of **≥ 28 days** (shorter spans are
+  refused) into one current snapshot per `(tenant, agent)` — the number
+  RFC-0033 (follow-up A/B) and RFC-0035 (promotion gate) compare against.
+- **Malformed declarations never crash the tick**: the fold skips them, the
+  doctor names the defect, the Studio shows nothing until it is fixed.
+- Vocabulary note: in the gem this is the **outcome funnel** — the stage names
+  are the forge's, and a bare install (no `funnel:` on any agent) shows no
+  funnel and no stage names at all.
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.

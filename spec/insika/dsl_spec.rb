@@ -313,6 +313,30 @@ RSpec.describe Insika::DSL do
       expect(from_dsl.grounding["matcher"]["sku"]).to eq('\b[A-Z]{2,4}\d{4,8}\b')
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the funnel knob is DATA on the pack (RFC-0032)" do
+      dsl = Insika.agent("bia8") do
+        model "deepseek-chat"
+        funnel stages: %w[greeted qualified cart paid],
+               advance_on: { pix_paid: "paid", abandoned_cart: "cart" },
+               primary: "paid", attribution_window: "72h"
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia8", model: "deepseek-chat",
+                  funnel: { "stages" => %w[greeted qualified cart paid],
+                            "advance_on" => { "pix_paid" => "paid", "abandoned_cart" => "cart" },
+                            "primary" => "paid", "attribution_window" => "72h" },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.funnel).to eq(
+        "stages" => %w[greeted qualified cart paid],
+        "advance_on" => { "pix_paid" => "paid", "abandoned_cart" => "cart" },
+        "primary" => "paid", "attribution_window" => "72h"
+      )
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

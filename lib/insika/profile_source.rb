@@ -133,7 +133,10 @@ module Insika
         capabilities_declared: h[:capabilities_declared],
         # edge_stream: which internal channels may cross to the customer. {} = neither.
         edge_stream: h[:edge_stream],
-        metadata: h[:metadata] || {}
+        metadata: h[:metadata] || {},
+        # RFC-0032: funnel declaration — a plain Hash read with string keys by
+        # FunnelDeclaration.parse; nil round-trips as nil (= no funnel).
+        funnel: h[:funnel]
       )
     end
 

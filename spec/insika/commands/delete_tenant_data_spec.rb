@@ -134,6 +134,54 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     end
   end
 
+  # RFC-0032 C6: the tenant purge reaches the funnel's cells, cursor and
+  # baseline — the funnel dies with the tenant, and the event carries the count.
+  describe "funnel (RFC-0032)" do
+    let(:funnel_store) { Insika::FunnelStore.new(store: backend) }
+    subject(:command) do
+      described_class.new(memory_store: memory_store, session_store: session_store,
+                          outcome_store: outcome_store, funnel_store: funnel_store,
+                          event_stream: event_stream)
+    end
+
+    it "purges the tenant's funnel cells/cursor/baseline; the neighbour's pair is untouched" do
+      funnel_store.add(tenant: "acme", agent: "a", at: Time.iso8601("2026-08-14T10:00:00Z"),
+                       counts: { "greeted" => 1 })
+      funnel_store.set_cursor(tenant: "acme", agent: "a", at: "2026-08-14T10:00:00Z", ids: ["x"])
+      funnel_store.set_baseline(tenant: "acme", agent: "a", record: { "frozen_at" => "2026-08-15" })
+      funnel_store.add(tenant: "loja-b", agent: "a", at: Time.iso8601("2026-08-14T10:00:00Z"),
+                       counts: { "greeted" => 5 })
+
+      result = run(tenant: "acme")
+
+      expect(result[:funnel]).to eq(3)
+      expect(funnel_store.day(tenant: "acme", agent: "a", day: "2026-08-14")).to eq({})
+      expect(funnel_store.cursor(tenant: "acme", agent: "a")["at"]).to be_nil
+      expect(funnel_store.baseline(tenant: "acme", agent: "a")).to be_nil
+      expect(funnel_store.day(tenant: "loja-b", agent: "a", day: "2026-08-14")["greeted"]).to eq(5)
+    end
+
+    it "the event carries the funnel count" do
+      funnel_store.add(tenant: "acme", agent: "a", at: Time.iso8601("2026-08-14T10:00:00Z"),
+                       counts: { "greeted" => 1 })
+      events = SpyEventStream.new
+      described_class.new(memory_store: memory_store, session_store: session_store,
+                          outcome_store: outcome_store, funnel_store: funnel_store,
+                          event_stream: events)
+        .call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      ev = events.events.find { |e| e.type == :tenant_data_deleted }
+      expect(ev.data[:funnel]).to eq(1)
+    end
+
+    it "no funnel store -> 0, never an error (parity)" do
+      result = described_class.new(memory_store: memory_store, session_store: session_store,
+                                   event_stream: event_stream)
+                              .call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+      expect(result[:funnel]).to eq(0)
+    end
+  end
+
   it "tenant is required" do
     expect { command.call(Insika::Command.build(:delete_tenant_data, {})) }
       .to raise_error(Insika::ValidationError, /tenant is required/)

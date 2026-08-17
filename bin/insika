@@ -361,6 +361,12 @@ end
         # the profile source is right here, so the CLI names them).
         memory_store: Insika::MemoryStore.new(store: backend),
         agent_ids: Insika::StoredProfileSource.new(config_store: config_store).all.map(&:id),
+        # RFC-0032 C7: the outcome-funnel check reads the fold's cells and the
+        # outcomes over the same runtime backend — a profile with outcomes but
+        # no funnel warns, and a frozen baseline is confirmed before it is
+        # relied on (RFC-0033/0035).
+        funnel_store: Insika::FunnelStore.new(store: backend),
+        outcome_store: Insika::OutcomeStore.new(store: backend),
         backend: backend
       )
     end
