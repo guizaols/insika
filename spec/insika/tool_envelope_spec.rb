@@ -178,6 +178,161 @@ RSpec.describe Insika::ToolEnvelope do
     end
   end
 
+  # RFC-0029 C3 — the evidence envelope: reshape the declared-evidence result,
+  # record the ids on the ledger, hoard the attachments. No evidence = pass-through.
+  describe "evidence envelope (RFC-0029)" do
+    let(:session_store) { Insika::SessionStore.new(store: backend) }
+    let(:ledger) { Insika::EvidenceLedger.new(store: session_store, session_id: "s1") }
+
+    before { session_store.create(id: "s1") }
+
+    def evidence_state
+      state = state_for(session_id: "s1")
+      state.evidence_ledger = ledger
+      state
+    end
+
+    # A code tool declaring evidence via its `evidence` reader (D4, path 1).
+    class EnvEvidenceTool
+      def name = "search_products"
+      def evidence = { "kind" => "products" }
+      def call(_args)
+        { "__insika_body" => JSON.generate(
+          "items" => [{ "id" => "SKU-1", "line" => "Tênis Runner 42" }],
+          "attachments" => [{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }]
+        ) }
+      end
+    end
+
+    # A plain tool with NO evidence reader — must pass through byte-identical.
+    class EnvPlainTool
+      def name = "plain"
+      def call(_args) = "plain result"
+    end
+
+    it "no evidence spec -> result passes through byte-identical, nothing recorded" do
+      st = evidence_state
+      env = envelope(EnvPlainTool.new, st)
+      expect(Sync { env.call({}) }).to eq("plain result")
+      expect(ledger.ids).to be_empty
+      expect(st.evidence_attachments).to eq([])
+    end
+
+    it "declared evidence (tool reader path) -> lean {items} to the model, ids on the ledger, attachments hoarded" do
+      st = evidence_state
+      env = envelope(EnvEvidenceTool.new, st)
+      result = Sync { env.call({}) }
+
+      expect(result).to eq("items" => [{ "id" => "SKU-1", "line" => "Tênis Runner 42" }])
+      expect(ledger.ids).to eq(["SKU-1"])
+      expect(st.evidence_attachments)
+        .to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }])
+    end
+
+    it "declared evidence via the registry entry metadata (code-tool path, D4 path 2)" do
+      registry = FakeToolRegistry.new(side_effect_names: [])
+      def registry.entries = [Insika::Registry::Entry.new(
+        name: "legacy_tool", plugin: "test", metadata: { evidence: { "kind" => "products" } },
+        factory: -> {}
+      )]
+      tool = Class.new do
+        def name = "legacy_tool"
+        def call(_args) = { "items" => [{ "id" => "A", "line" => "x" }] }
+      end.new
+      env = envelope(tool, evidence_state, tool_registry: registry)
+
+      result = Sync { env.call({}) }
+      expect(result).to eq("items" => [{ "id" => "A", "line" => "x" }])
+      expect(ledger.ids).to eq(["A"])
+    end
+
+    it "{error:} result is untouched and records nothing" do
+      tool = Class.new do
+        def name = "failing"
+        def evidence = { "kind" => "products" }
+        def call(_args) = { error: "backend said no" }
+      end.new
+      env = envelope(tool, evidence_state)
+      expect(Sync { env.call({}) }).to eq({ error: "backend said no" })
+      expect(ledger.ids).to be_empty
+    end
+
+    it "malformed items -> {error:} result and NO ledger record" do
+      tool = Class.new do
+        def name = "bad"
+        def evidence = { "kind" => "products" }
+        def call(_args) = { "__insika_body" => JSON.generate("items" => [{ "id" => "" }]) }
+      end.new
+      env = envelope(tool, evidence_state)
+      result = Sync { env.call({}) }
+
+      expect(result).to include(:error)
+      expect(ledger.ids).to be_empty
+    end
+
+    it "a bare JSON array body (no object) -> {error:}, never a silent empty items" do
+      tool = Class.new do
+        def name = "array_body"
+        def evidence = { "kind" => "products" }
+        def call(_args) = { "__insika_body" => JSON.generate([{ "id" => "A" }]) }
+      end.new
+      env = envelope(tool, evidence_state)
+      result = Sync { env.call({}) }
+
+      expect(result[:error]).to eq("evidence: result must be an object")
+      expect(ledger.ids).to be_empty
+    end
+
+    it "non-JSON __insika_body -> envelope error, nothing recorded (fail closed)" do
+      tool = Class.new do
+        def name = "garbage"
+        def evidence = { "kind" => "products" }
+        def call(_args) = { "__insika_body" => "{nope" }
+      end.new
+      env = envelope(tool, evidence_state)
+      result = Sync { env.call({}) }
+
+      expect(result[:error]).to match(/evidence processing failed/)
+      expect(ledger.ids).to be_empty
+    end
+
+    it "caps items at MAX_ITEMS" do
+      tool = Class.new do
+        def name = "many"
+        def evidence = { "kind" => "products" }
+        def call(_args)
+          items = (1..30).map { |i| { "id" => "SKU-#{i}", "line" => "produto #{i}" } }
+          { "__insika_body" => JSON.generate("items" => items) }
+        end
+      end.new
+      env = envelope(tool, evidence_state)
+      result = Sync { env.call({}) }
+
+      expect(result["items"].size).to eq(Insika::Evidence::MAX_ITEMS)
+      expect(ledger.ids.size).to eq(Insika::Evidence::MAX_ITEMS)
+    end
+
+    it "the trace_recorder receives the LEAN result (never the raw body)" do
+      recorder = Class.new do
+        attr_reader :entries
+        def initialize = (@entries = [])
+        def record(session_id:, entry:) = @entries << entry
+      end.new
+      env = envelope(EnvEvidenceTool.new, evidence_state, trace_recorder: recorder)
+      Sync { env.call({}) }
+
+      expect(recorder.entries.size).to eq(1)
+      expect(recorder.entries.first["result"]).to eq("items" => [{ "id" => "SKU-1", "line" => "Tênis Runner 42" }])
+      expect(recorder.entries.first["result"].to_s).not_to include("__insika_body")
+    end
+
+    it "state without a ledger is fine (duck-typed no-op)" do
+      env = envelope(EnvEvidenceTool.new, state_for)
+      result = Sync { env.call({}) }
+      expect(result).to eq("items" => [{ "id" => "SKU-1", "line" => "Tênis Runner 42" }])
+    end
+  end
+
   # The correlation the envelope reads (`state.current_tool_call`)
   # used to be ONE slot on the shared TurnState. RubyLLM 1.16 runs each tool call
   # of a batch in its own fiber — `before_tool_call` → `tool.call` →

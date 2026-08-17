@@ -20,7 +20,8 @@ module Insika
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
                    tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
-                    context_trace_store: nil, reliability: nil, media: nil, media_output: nil)
+                    context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
+                    grounding_enforcer: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -72,6 +73,12 @@ module Insika
       # the core stays gem-free at load). Injected by specs; a production graph
       # that wants a non-RubyLLM backend injects its own lambdas.
       @media_output = media_output
+      # RFC-0029 C8: the :enforce boundary step, called between stages 6 and 8.
+      # Defaults to a REAL enforcer (inert unless the profile's grounding.mode is
+      # :enforce — zero behavior change for parity) so an embedder that builds
+      # the Executor directly still gets the cut; `nil` stays injectable for
+      # stubs that want none.
+      @grounding_enforcer = grounding_enforcer || Insika::Safety::GroundingEnforcer.new
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
@@ -824,7 +831,15 @@ module Insika
         end
 
           state # subject of the :task pair (after_task receives it; the caller discards)
-        end.tap { |st| emit_guardrail_flags(task, st) }
+        end.tap do |st|
+          # RFC-0029 C4: flush the evidence ledger HERE — after the after_task
+          # hooks ran, because the :flag validator increments the ungrounded
+          # counter in after_task. The envelope's ids (stage 6) ride the same
+          # flush. AFTER persist_turn (already done), so a flush failure can
+          # never un-commit the turn (the ledger swallows store errors).
+          st.evidence_ledger&.flush!
+          emit_guardrail_flags(task, st)
+        end
       end
     rescue Async::TimeoutError
       raise Insika::TimeoutError.new("turn exceeded #{turn_timeout}s", stage: :turn)
@@ -845,6 +860,12 @@ module Insika
       # SESSION turn: steering needs a session to arrive through, and resolving here for a
       # one-shot would make an unrelated turn fail on a queue key it can never use.
       state.queue_policy = task.session_id ? queue_policy(profile, task.session_id) : nil
+      # RFC-0029 C4/C8: the session evidence ledger, built per turn. A nil
+      # session_id (one-shot) is fine — the ledger just never flushes (grounding
+      # on a one-shot is per-turn by definition). The envelope appends ids, the
+      # validator/enforcer read the union, stage 8 flushes.
+      state.evidence_ledger = Insika::EvidenceLedger.new(store: @session_store,
+                                                         session_id: task.session_id)
       state
     end
 
@@ -1012,6 +1033,14 @@ module Insika
       # action's answer (a delegate's reply or the stuck lead-in).
       content = routed ? st.response_content : run_agent_stage(task, st, timing)
       st.response_content = content # after_task OutputValidator inspects this
+
+      # RFC-0029 D6: the :enforce boundary — a CUT of the final content BEFORE
+      # persistence/delivery (after_task fires too late to change what is
+      # persisted). The cut text is what persists, delivers and terminates.
+      if @grounding_enforcer
+        content, st = @grounding_enforcer.call(task, st, content)
+        st.response_content = content
+      end
 
       # stage 8: Persistence (fixed order checkpoint->session->task). pure drain!
       # (NEVER suspends at stage 8 — forbidden window): a :pause here arms the flag
@@ -2122,18 +2151,21 @@ module Insika
       nil
     end
 
-    # Emits one :guardrail_flagged per flag the OutputValidator appended in
-    # after_task (audit only — the turn already completed). Reads a plain Array off
-    # the state, keeping the Executor decoupled from Safety.
-    def emit_guardrail_flags(task, state)
-      return unless state.respond_to?(:guardrail_flags)
+      # Emits one :guardrail_flagged per flag the OutputValidator appended in
+      # after_task (audit only — the turn already completed). Reads a plain Array off
+      # the state, keeping the Executor decoupled from Safety. RFC-0029: an
+      # :enforce cut rides the SAME event with `action: "cut"` so the audit can
+      # distinguish a cut from a flag.
+      def emit_guardrail_flags(task, state)
+        return unless state.respond_to?(:guardrail_flags)
 
-      Array(state.guardrail_flags).each do |flag|
-        emit(:guardrail_flagged, {
-               task_id: task.id, category: flag[:category], source: flag[:source], detail: flag[:detail]
-             }, task: task)
+        Array(state.guardrail_flags).each do |flag|
+          data = { task_id: task.id, category: flag[:category], source: flag[:source],
+                   detail: flag[:detail] }
+          data[:action] = flag[:action] if flag[:action]
+          emit(:guardrail_flagged, data, task: task)
+        end
       end
-    end
 
     # Stage 8: FIXED order checkpoint -> session -> task. If it crashes
     # between writes, the worst case is a new checkpoint with the task :running ->
@@ -2189,7 +2221,7 @@ module Insika
       # if this turn CAME IN through a Shape B channel, its answer
       # has to travel out of band. Same terminal hook, next door to the delegation
       # one, for the same reason: it fires for a fresh turn and a recovered one.
-      finalize_channel_delivery(task, content, timing)
+      finalize_channel_delivery(task, content, state, timing)
     end
 
     # Records the answer in the outbox and dispatches it. The discriminator is the
@@ -2210,15 +2242,19 @@ module Insika
     # RFC-0027 C4: a PROGRESSIVE channel gets the answer split into balloons —
     # N outbox rows, dispatched in index order (dispatch_chain). `:at_end` is the
     # single whole-answer row, byte-identical to today.
-    def finalize_channel_delivery(task, content, timing = nil)
+    def finalize_channel_delivery(task, content, state, timing = nil)
       return unless @channel_delivery
 
       channel_id = channel_transport(task)
       return unless channel_id
 
+      # RFC-0029 C8: the hoarded evidence attachments ride the channel delivery
+      # (additive outbox payload key — the channel contract widens, nothing breaks).
+      attachments = state.respond_to?(:evidence_attachments) ? state.evidence_attachments : nil
       deliveries = @channel_delivery.record_balloons(
         task: task, channel_id: channel_id, content: content,
-        progressive: @channel_delivery.progressive?(channel_id)
+        progressive: @channel_delivery.progressive?(channel_id),
+        attachments: attachments
       )
       return if deliveries.empty?
 

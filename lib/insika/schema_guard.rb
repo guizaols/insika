@@ -131,6 +131,41 @@ module Insika
       end
     end
 
+    # Walks a dotted path on a plain object (RFC-0029 C2.2): nil when a segment
+    # is absent or the intermediate is not a Hash. Shared by the evidence output
+    # check and the Processor's extraction.
+    def dig(obj, path)
+      path.to_s.split(".").reduce(obj) do |cur, seg|
+        return nil unless cur.is_a?(Hash) && cur.key?(seg)
+
+        cur[seg]
+      end
+    end
+
+    # The evidence RESULT contract: {items: [{id, line}]} (RFC-0029 C2.2).
+    # -> nil | String. Same idiom as `violation`: nil = fine, one message = what
+    # is wrong. A malformed evidence result is a correctable TOOL answer — the
+    # envelope returns it to the model as `{error:}`, exactly like a malformed
+    # call is today. A raw body that is NOT an object (a bare JSON array from a
+    # search, a string, nil) is a violation — never a silent `{items: []}` that
+    # the model reads as "no products".
+    def violation_output(spec, raw)
+      return nil if spec.nil?
+      return "evidence: result must be an object" unless raw.is_a?(Hash)
+
+      items = dig(raw, spec.items_path)
+      return "evidence: items is missing" if items.nil?
+      return "evidence: items must be a list" unless items.is_a?(Array)
+
+      items.each_with_index do |item, i|
+        ok = item.is_a?(Hash) &&
+             Coercion.present?(item["id"] || item[:id]) &&
+             (item["line"] || item[:line]).is_a?(String)
+        return "evidence: items[#{i}] must be {id, line}" unless ok
+      end
+      nil
+    end
+
     # Name the shape the way a model reads it, not the way Ruby does.
     def kind(value)
       case value

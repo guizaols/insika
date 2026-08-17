@@ -396,4 +396,32 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(ev.type).to eq(:data_tool_call)
     expect(ev.data).to eq(tool: "cep", status: 200)
   end
+
+  describe "evidence_envelope extract (RFC-0029 C3)" do
+    let(:evidence_def) do
+      { name: "search_products", description: "Busca produtos",
+        request: { method: "GET", url: "https://api.test/search" },
+        response: { extract: "evidence_envelope" },
+        evidence: { "kind" => "products" } }
+    end
+
+    it "returns the raw body under the __insika_body envelope-only key" do
+      body = JSON.generate("items" => [{ "id" => "SKU-1", "line" => "Tênis" }])
+      t = tool(evidence_def, result: { status: 200, body: body })
+
+      expect(t.execute).to eq("__insika_body" => body)
+    end
+
+    it "exposes the evidence declaration on the instance (the envelope reads it)" do
+      t = tool(evidence_def, result: { status: 200, body: "{}" })
+      expect(t.evidence.kind).to eq("products")
+    end
+
+    it "a non-2xx is an ERROR like every other extract (the model sees the failure)" do
+      t = tool(evidence_def, result: { status: 404, body: "nope" })
+      result = t.execute
+      expect(result).to be_a(Hash)
+      expect(result[:error]).to match(/HTTP 404/)
+    end
+  end
 end

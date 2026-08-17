@@ -62,6 +62,57 @@ RSpec.describe Insika::ToolDefinition do
     end
   end
 
+  describe "evidence (RFC-0029 — the tool declares its result carries grounded items)" do
+    it "evidence: nil -> absent key and nil reader (parity, byte-identical behavior)" do
+      d = described_class.build(**valid_attrs)
+      expect(d.evidence).to be_nil
+      expect(d.to_h).not_to have_key("evidence")
+    end
+
+    it "parses a bare kind string and the full form into an Evidence::Spec" do
+      bare = described_class.build(**valid_attrs(evidence: "products"))
+      expect(bare.evidence.kind).to eq("products")
+
+      full = described_class.build(**valid_attrs(evidence: { "kind" => "products",
+                                                             "items" => "results" }))
+      expect(full.evidence.items_path).to eq("results")
+      expect(full.evidence.attachments_path).to eq("attachments")
+    end
+
+    it "to_h round-trips the evidence declaration (from_h reads it back)" do
+      d = described_class.build(**valid_attrs(evidence: { kind: "products" }))
+      expect(d.to_h["evidence"]).to eq("kind" => "products",
+                                       "items" => "items", "attachments" => "attachments")
+      expect(described_class.from_h(d.to_h)).to eq(d)
+    end
+
+    it "accepts the evidence_envelope extract and exposes the declaration" do
+      d = described_class.build(**valid_attrs(
+                                  response: { extract: "evidence_envelope" },
+                                  evidence: "products"
+                                ))
+      expect(d.response[:extract]).to eq("evidence_envelope")
+      expect(d.evidence.kind).to eq("products")
+    end
+
+    it "refuses evidence_envelope without an evidence declaration (build-time)" do
+      expect { described_class.build(**valid_attrs(response: { extract: "evidence_envelope" })) }
+        .to raise_error(Insika::ValidationError, /evidence_envelope.*evidence/)
+    end
+
+    it "refuses an unknown extract" do
+      expect { described_class.build(**valid_attrs(response: { extract: "magic" })) }
+        .to raise_error(Insika::ValidationError, /invalid extract/)
+    end
+
+    it "refuses a malformed evidence declaration (bad kind / bad path)" do
+      expect { described_class.build(**valid_attrs(evidence: {})) }
+        .to raise_error(Insika::ValidationError, /kind/)
+      expect { described_class.build(**valid_attrs(evidence: { "kind" => "p", "items" => "a b" })) }
+        .to raise_error(Insika::ValidationError, /items/)
+    end
+  end
+
   describe "validation" do
     it "rejects a name outside the format" do
       expect { described_class.build(**valid_attrs(name: "Bad Name")) }

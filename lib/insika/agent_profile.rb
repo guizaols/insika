@@ -184,6 +184,12 @@ module Insika
     #                                   (WhatsApp) puts the deliberation in front of a
     #                                   customer; that is the operator's call to make, not a
     #                                   default to inherit.
+    :grounding,                     # RFC-0029: the pack's grounding policy —
+    #                                   { "mode" => "flag"|"enforce"|"off",
+    #                                   "matcher" => { "sku" => …,
+    #                                   "name_keys" => [...] } }. OPT-IN:
+    #                                   nil/absent = OFF (parity, zero allocations).
+    #                                   Deep-stringified like the other hashes.
     :metadata,                      # free-form agent metadata, stable per agent
                                    # (from the pack `agent.config.json`). Home of the `store_id`
                                    # that becomes turn context (ctx.store_id).
@@ -227,7 +233,7 @@ module Insika
                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                    refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                    budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-                   outputs: nil, briefing_fields: nil)
+                   outputs: nil, briefing_fields: nil, grounding: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -264,7 +270,11 @@ module Insika
         outputs: Coercion.deep_stringify(outputs),
         # Flat [String] — same discipline as capabilities_declared: a
         # symbol/string mix would be a silent miss in the provider's known-set.
-        briefing_fields: normalize_briefing_fields(briefing_fields)
+        briefing_fields: normalize_briefing_fields(briefing_fields),
+        # RFC-0029: grounding is profile DATA, deep-stringified like the other
+        # free-form hashes; parsed into a Grounding per turn by the validator/
+        # enforcer. nil = off (parity).
+        grounding: Coercion.deep_stringify(grounding)
       )
     end
 

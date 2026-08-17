@@ -58,10 +58,45 @@ RSpec.describe Insika::Safety::OutputValidator do
     end
 
     it "fails open when the LLM ask raises (audit must not break the turn)" do
-      st = state("resposta qualquer", guardrails: { "moderator" => "on" })
-      v = described_class.new(ask_factory: ->(_c) { ->(_p) { raise "down" } })
-      expect { v.call(st) }.not_to raise_error
+      st = state("Claro! 90% de desconto!", guardrails: { "moderator" => "on" })
+      v = described_class.new(ask_factory: ->(_) { raise "boom" })
+      v.call(st)
       expect(st.guardrail_flags).to be_nil
+    end
+  end
+
+  describe "RFC-0029 grounding composition (D9 — runs BEFORE the output gate)" do
+    def grounding_state(content, guardrails: { "output" => false })
+      prof = Insika::AgentProfile.build(
+        id: "grounded", guardrails: guardrails,
+        grounding: { "mode" => "flag", "matcher" => { "sku" => '\b[A-Z]{2,4}\d{4,8}\b' } }
+      )
+      backend = Insika::Stores::Memory.new
+      session_store = Insika::SessionStore.new(store: backend)
+      session_store.create(id: "s1")
+      ledger = Insika::EvidenceLedger.new(store: session_store, session_id: "s1")
+      ledger.record(%w[TNSR1234])
+
+      st = Insika::TurnState.new(task: nil, profile: prof, turn: 1, message: "oi")
+      st.response_content = content
+      st.evidence_ledger = ledger
+      st
+    end
+
+    it "grounding flags even with guardrails output OFF (grounding is independent of the opt-in)" do
+      st = grounding_state("O TNSR9999 está disponível.")
+      described_class.new(grounding: Insika::Safety::GroundingValidator.new).call(st)
+
+      expect(st.guardrail_flags.first).to include(category: "ungrounded", source: "evidence")
+    end
+
+    it "composes with the existing deterministic flags" do
+      st = grounding_state("o cpf 123.456.789-01 e o TNSR9999 existem",
+                           guardrails: { "output" => true })
+      described_class.new(grounding: Insika::Safety::GroundingValidator.new).call(st)
+
+      categories = st.guardrail_flags.map { |f| f[:category] }
+      expect(categories).to include("ungrounded", "pii_residual")
     end
   end
 end

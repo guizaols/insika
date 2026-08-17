@@ -147,6 +147,7 @@ module Insika
         delegation_store: spine.delegation_store, # async delegation durability
         channel_delivery: channel_delivery, # out-of-band reply delivery
         reliability: reliability, # WS3: retries/fallback/breaker (data-gated)
+        grounding_enforcer: guardrails.grounding_enforcer, # RFC-0029: :enforce cut
         **executor_extra
       )
 

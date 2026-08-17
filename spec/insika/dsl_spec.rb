@@ -296,6 +296,23 @@ RSpec.describe Insika::DSL do
       expect(from_dsl.briefing_fields).to eq(%w[size budget delivery_day])
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the grounding knob is DATA on the pack (RFC-0029)" do
+      dsl = Insika.agent("bia7") do
+        model "deepseek-chat"
+        grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia7", model: "deepseek-chat",
+                  grounding: { "mode" => "flag",
+                               "matcher" => { "sku" => '\b[A-Z]{2,4}\d{4,8}\b' } },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.grounding["matcher"]["sku"]).to eq('\b[A-Z]{2,4}\d{4,8}\b')
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

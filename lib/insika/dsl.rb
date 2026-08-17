@@ -278,6 +278,12 @@ module Insika
       #              responses: { "injection" => "I can't help with that." }
       def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # Evidence-grounding policy (RFC-0029): the pack declares how the engine
+      # polices product claims against the evidence ledger. Same
+      # config-over-code shape as `guardrails`; absent = off (parity).
+      #   grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
+      def grounding(hash = {}) = (@config[:grounding] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Refinement — how the agent's own instruction files may be
       # improved from real traffic. Same config-over-code shape as `guardrails`;
       # omitting it entirely leaves the agent report-only (writes nothing).

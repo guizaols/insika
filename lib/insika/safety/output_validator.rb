@@ -27,13 +27,19 @@ module Insika
     class OutputValidator
       # `ask_factory` (optional): ->(config) { ->(prompt){text} | nil }, built by the
       # Safety::Factory from the utility_model. nil = deterministic only.
-      def initialize(ask_factory: nil)
+      # `grounding` (optional, RFC-0029): a GroundingValidator — its step runs
+      # FIRST in #call, before the `config.output` gate (D9: grounding is
+      # evidence integrity, independent of the guardrails opt-in).
+      def initialize(ask_factory: nil, grounding: nil)
         @ask_factory = ask_factory
+        @grounding = grounding
       end
 
       # after_task hook body. Idempotent and defensive: never raises out (a hook
-      # error must not fail a committed turn).
+      # error must not fail a committed turn). Grounding runs BEFORE the output
+      # gate so an agent with guardrails off and grounding on still gets the check.
       def call(state)
+        state = @grounding&.call(state) || state
         config = Config.from_profile(state.profile)
         return state unless config.output
 

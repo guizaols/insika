@@ -327,6 +327,43 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "grounding check (RFC-0029 — a matcher that matches nothing is useless)" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+
+    def finding(**over)
+      described_class.new(env: {}, **over).run.findings.find { |f| f.check == "grounding" }
+    end
+
+    it "warns when an agent has grounding on but no matcher.sku" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m",
+                                              grounding: { "mode" => "flag", "matcher" => {} }))
+
+      f = finding(profile_source: profiles)
+
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("agent 'loja'", "no matcher.sku")
+    end
+
+    it "is ok when every grounding agent declares a sku" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m",
+                                              grounding: { "mode" => "flag",
+                                                           "matcher" => { "sku" => "\\d+" } }))
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "says nothing about an agent without grounding (the feature is off)" do
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m"))
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "is skipped without a profile source" do
+      expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("grounding")
+    end
+  end
+
   # Drift between a pack's prose and the catalog. Every input is MECHANICAL — names,
   # allowlists, agent identities — because a check that parses prose false-positives on
   # the first real pack and takes the doctor's credibility with it.

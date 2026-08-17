@@ -206,6 +206,56 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
+  describe "evidence (RFC-0029 — the session evidence ledger memory)" do
+    before { sessions.create(id: "s") }
+
+    it "create initializes evidence to empty ids + ungrounded 0" do
+      session = sessions.create(id: "s2")
+      expect(session.evidence).to eq({ "ids" => [], "ungrounded" => 0 })
+    end
+
+    it "an old record without the 'evidence' key reads as nil (no migration)" do
+      backend.set("sessions", "session:legacy2", { "id" => "legacy2", "messages" => [],
+                                                    "vars" => {}, "memory_refs" => [],
+                                                    "created_at" => "2026-01-01T00:00:00Z",
+                                                    "updated_at" => "2026-01-01T00:00:00Z" })
+      expect(sessions.find("legacy2").evidence).to be_nil
+    end
+
+    describe "#append_evidence" do
+      it "merges + dedupes ids and accumulates the ungrounded delta" do
+        sessions.append_evidence("s", ids: %w[SKU-1 SKU-2], ungrounded: 1)
+        session = sessions.append_evidence("s", ids: %w[SKU-2 SKU-3], ungrounded: 2)
+
+        expect(session.evidence["ids"]).to eq(%w[SKU-1 SKU-2 SKU-3])
+        expect(session.evidence["ungrounded"]).to eq(3)
+      end
+
+      it "drops empty ids and caps at MAX_IDS (oldest evicted)" do
+        many = (1..(Insika::EvidenceLedger::MAX_IDS + 5)).map { |i| "SKU-#{i}" }
+        session = sessions.append_evidence("s", ids: [""] + many, ungrounded: 0)
+
+        expect(session.evidence["ids"].size).to eq(Insika::EvidenceLedger::MAX_IDS)
+        expect(session.evidence["ids"].first).to eq("SKU-6")
+      end
+
+      it "appends cleanly to an old record that never had the key" do
+        backend.set("sessions", "session:legacy3", { "id" => "legacy3", "messages" => [],
+                                                      "vars" => {}, "memory_refs" => [],
+                                                      "created_at" => "2026-01-01T00:00:00Z",
+                                                      "updated_at" => "2026-01-01T00:00:00Z" })
+        session = sessions.append_evidence("legacy3", ids: %w[SKU-1], ungrounded: 1)
+        expect(session.evidence["ids"]).to eq(["SKU-1"])
+        expect(session.evidence["ungrounded"]).to eq(1)
+      end
+
+      it "raises NotFoundError on a nonexistent session" do
+        expect { sessions.append_evidence("nope", ids: %w[SKU-1], ungrounded: 0) }
+          .to raise_error(Insika::NotFoundError)
+      end
+    end
+  end
+
   describe "#delete" do
     it "returns true and removes an existing session" do
       sessions.create(id: "s")

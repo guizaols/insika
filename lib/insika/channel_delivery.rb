@@ -56,7 +56,11 @@ module Insika
     #   · the channel is in SHADOW mode (RFC-0025): the answer is recorded as a
     #     pair and nothing is dispatched — zero outbox writes, ever (E1),
     #   · or we do not know who to send it to.
-    def record_balloons(task:, channel_id:, content:, progressive:)
+    #
+    # RFC-0029 C8: `attachments` (evidence cards) ride the outbox payload as an
+    # ADDITIVE key on the LAST balloon — a Shape B channel that reads `payload`
+    # ignores it (JSON contract, additive); one that renders cards consumes it.
+    def record_balloons(task:, channel_id:, content:, progressive:, attachments: nil)
       channel = @channels&.find(channel_id)
       return [] unless channel.respond_to?(:deliver)
       # Shadow records ONE pair for the whole answer — a balloon per paragraph
@@ -77,8 +81,10 @@ module Insika
 
       multi = parts.size > 1
       parts.each_with_index.map do |part, i|
+        last = i == parts.size - 1
         create_pending(task, channel_id, part, to,
-                       index: multi ? i : nil, final: multi ? (i == parts.size - 1) : nil)
+                       index: multi ? i : nil, final: multi ? last : nil,
+                       attachments: last ? attachments : nil)
       end
     end
 
@@ -125,12 +131,15 @@ module Insika
     # One outbox row for a confirmed balloon. `index`/`final` ride the payload
     # only when non-nil — a single-balloon progressive turn is indistinguishable
     # from an `:at_end` one on the wire. `index` also lands on the RECORD, which
-    # is what the boot sweep orders by (RFC-0027 C4).
-    def create_pending(task, channel_id, content, to, index: nil, final: nil)
+    # is what the boot sweep orders by (RFC-0027 C4). `attachments` (RFC-0029):
+    # validated for the outbox — malformed entries dropped, never a turn failure.
+    def create_pending(task, channel_id, content, to, index: nil, final: nil, attachments: nil)
       payload = { "session_id" => task.session_id.to_s, "task_id" => task.id.to_s,
                   "content" => content.to_s }
       payload["index"] = index if index
       payload["final"] = final unless final.nil?
+      atts = Insika::Evidence.valid_attachments(attachments)
+      payload["attachments"] = atts unless atts.empty?
       @outbox.create(channel: channel_id, to: to, task_id: task.id, session_id: task.session_id,
                      payload: payload, index: index.to_i)
     end
