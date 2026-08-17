@@ -367,6 +367,38 @@ rotated key or a typo never takes the whole service down. The `insika doctor`
 command runs the same checks on demand against a live database. See
 [Deploy](DEPLOY.md#strict-config-and-insika-doctor).
 
+## Memory and the right to be forgotten (LGPD, RFC-0031)
+
+Memory is scoped per **`(tenant, customer)`** — the cell `"memory:<tenant>:<customer>"`
+is the isolation boundary. A query against one tenant never touches another's
+cells. A turn with no customer falls back to the session's own **marked** cell
+(`"memory:chat:<session id>"`) — the marker keeps the Studio drill and the doctor
+from ever reading a conversation as a customer (a bare `memory:<id>` cell is
+indistinguishable from a single-tenant customer ref). Cells written before the
+marker (bare session ids) may still appear as customers in the drill until
+forgotten or aged out. Three operations enforce the right to be forgotten:
+
+- **Retention** — the `memory_ttl_days` setting (platform default per cell, or an
+  ops-authored per-tenant map) sweeps facts older than the window. A per-fact
+  `expires_at` override wins over the cell TTL. Both run on the daily retention
+  tick, **not** gated by `retention_days` (the conversation-footprint window).
+  Note the interaction: an explicit `expires_at` also exempts the fact from the
+  `retention_days` age-based sweep — an explicit date owns that fact's life, so a
+  far-future date makes the fact immune to *both* age passes. Export and forget
+  still see it; the only way to remove it early is the Customers drill.
+- **Export** — `export_customer_memory` returns the full fact + note content to the
+  **operator** (the Studio turns it into a JSON download). The emitted event carries
+  counts only — the event stream, the audit store and every log stay content-free.
+- **Forget** — `forget_customer` purges the customer's memory cell AND their
+  sessions (and everything those sessions left behind: traces, tasks, checkpoints,
+  outbox deliveries). The operator-mutation audit store records a digest-free line
+  ("a purge happened, with N records") — content-free by construction.
+
+The doctor's `memory-scopes` check flags bare cells only in a `multi_tenant`
+deployment (in `single_tenant` the bare cell is the designed customer shape), and
+never the session-marked cells. See [Context](CONTEXT.md#memory) and
+[Deploy](DEPLOY.md#strict-config-and-insika-doctor).
+
 ## See also
 
 - [Agents](AGENTS.md) — the five access layers per agent.

@@ -270,6 +270,7 @@ module Insika
         bus = graph.bus
         es = graph.event_stream
         mem = graph.memory_store
+        audit = graph.memory_audit_store
         bus.register(:create_agent, Insika::Commands::CreateAgent.new(profile_source: c[:profile_source], event_stream: es))
         bus.register(:update_agent, Insika::Commands::UpdateAgent.new(profile_source: c[:profile_source], event_stream: es))
         bus.register(:delete_agent, Insika::Commands::DeleteAgent.new(profile_source: c[:profile_source], event_stream: es))
@@ -279,9 +280,11 @@ module Insika
         bus.register(:restore_agent_file, Insika::Commands::RestoreAgentFile.new(profile_source: c[:profile_source], agent_file_store: c[:agent_file_store], event_stream: es))
         bus.register(:write_skill, Insika::Commands::WriteSkill.new(skill_store: c[:skill_store], skill_catalog: c[:skill_catalog], event_stream: es))
         bus.register(:set_skill_agents, Insika::Commands::SetSkillAgents.new(profile_source: c[:profile_source], event_stream: es))
-        bus.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: mem, event_stream: es))
-        bus.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: mem, event_stream: es))
+        bus.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: mem, event_stream: es, audit_store: audit))
+        bus.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: mem, event_stream: es, audit_store: audit))
         bus.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: mem, event_stream: es))
+        # RFC-0031 C3: the LGPD access right — the Studio Customers drill exports.
+        bus.register(:export_customer_memory, Insika::Commands::ExportCustomerMemory.new(memory_store: mem, event_stream: es))
         bus.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: c[:settings_store], event_stream: es))
         bus.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))
         bus.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))

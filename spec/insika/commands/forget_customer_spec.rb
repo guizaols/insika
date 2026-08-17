@@ -130,4 +130,46 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     expect { run(customer: nil) }.to raise_error(Insika::ValidationError, /customer is required/)
     expect { run(customer: "ghost") }.not_to raise_error
   end
+
+  describe "RFC-0031 audit line" do
+    let(:audit_store) { Insika::MemoryAuditStore.new(store: backend) }
+    subject(:command) do
+      described_class.new(memory_store: memory_store, session_store: session_store,
+                          tool_trace_store: tool_trace, context_trace_store: context_trace,
+                          task_store: task_store, checkpoint_store: checkpoint_store,
+                          outbox_store: outbox_store, audit_store: audit_store,
+                          event_stream: event_stream)
+    end
+
+    it "records a content-free purge line with counts after the purge" do
+      memory_store.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+      memory_store.add_note(tenant: "acme:123", text: "prefere email")
+
+      run(customer: "123", tenant: "acme")
+
+      expect(memory_store.facts(tenant: "acme:123")).to be_empty
+      entry = audit_store.for_cell("memory:acme:123").first
+      expect(entry.action).to eq("purge")
+      expect(entry.actor).to eq("operator")
+      expect(entry.tenant).to eq("acme")
+      expect(entry.customer).to eq("123")
+      expect(entry.note).to include("memory_records: 2")
+      expect(entry.note).to include("sessions: 0")
+      # the audit line records the DELETION, never the deleted content
+      expect(entry.old_hash).to be_nil
+      expect(entry.new_hash).to be_nil
+      expect(entry.note).not_to include("open")
+    end
+
+    it "the payload operator rides through" do
+      memory_store.put_fact(tenant: "acme:123", key: "pedido", value: "open")
+      command.call(Insika::Command.build(:forget_customer, { customer: "123", tenant: "acme",
+                                                              operator: "studio" }))
+      expect(audit_store.for_cell("memory:acme:123").first.actor).to eq("studio")
+    end
+  end
+
+  it "nil audit_store -> no audit line, no error (the minimal graph)" do
+    expect { run(customer: "123", tenant: "acme") }.not_to raise_error
+  end
 end

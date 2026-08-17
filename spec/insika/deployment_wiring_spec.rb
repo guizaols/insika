@@ -49,7 +49,7 @@ RSpec.describe Deploy::Wiring do
         create_agent update_agent delete_agent set_agent_tools
         write_agent_file delete_agent_file restore_agent_file
         write_skill set_skill_agents
-        memory_put_fact memory_forget_fact memory_add_note
+        memory_put_fact memory_forget_fact memory_add_note export_customer_memory
         update_settings upsert_llm_provider delete_llm_provider
         upsert_mcp delete_mcp
         write_system_file delete_system_file restore_system_file
@@ -58,6 +58,18 @@ RSpec.describe Deploy::Wiring do
       ].each do |type|
         expect(w::BUS.registered?(type)).to be(true), "missing authoring command #{type}"
       end
+    end
+
+    # RFC-0031 C7: the operator memory commands write the audit through the
+    # SAME MemoryAuditStore the spine builds (content-free, capped per cell).
+    it "wires the memory audit store into the operator memory commands" do
+      expect(w::BUS.registered?(:export_customer_memory)).to be(true)
+      audit = w::MEMORY_AUDIT_STORE
+      expect(audit).to be_a(Insika::MemoryAuditStore)
+      put = w::BUS.instance_variable_get(:@handlers)[:memory_put_fact]
+      expect(put.instance_variable_get(:@audit_store)).to be(audit)
+      forget = w::BUS.instance_variable_get(:@handlers)[:memory_forget_fact]
+      expect(forget.instance_variable_get(:@audit_store)).to be(audit)
     end
 
     # (commit 2): pause_task/approve_action now come from the SHARED graph core

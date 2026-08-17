@@ -723,5 +723,58 @@ RSpec.describe Insika::Doctor do
       expect(doctor.run.findings.select { |f| f.check == "cache-layers" }).to be_empty
     end
   end
+
+  describe "memory scopes (RFC-0031 C6)" do
+    let(:memory_store) { Insika::MemoryStore.new(store: Insika::Stores::Memory.new) }
+
+    # A bare cell is the DESIGNED single-tenant customer shape — warning would
+    # flag what the engine itself writes, with no tenant to migrate to.
+    it "a bare cell in single_tenant (the default) -> ok, never a warn" do
+      memory_store.put_fact(tenant: nil, customer: "c-1", key: "k", value: "v")
+      finding = doctor(memory_store: memory_store).run.findings.find { |f| f.check == "memory-scopes" }
+      expect(finding.severity).to eq(:ok)
+      expect(finding.fix).to be_nil
+    end
+
+    it "a bare cell in multi_tenant -> warn (unscoped customer memory), never auto-fixed" do
+      memory_store.put_fact(tenant: nil, customer: "c-1", key: "k", value: "v")
+      finding = doctor(env: { "INSIKA_TENANCY" => "multi_tenant" }, memory_store: memory_store)
+                .run.findings.find { |f| f.check == "memory-scopes" }
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("unscoped")
+      expect(finding.fix).to be_nil
+    end
+
+    it "_default + a scoped [tenant:]customer cell -> ok in both tenancies" do
+      memory_store.put_fact(tenant: nil, key: "k", value: "v")
+      memory_store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v")
+      finding = doctor(memory_store: memory_store).run.findings.find { |f| f.check == "memory-scopes" }
+      expect(finding.severity).to eq(:ok)
+      expect(finding.message).to include("all scoped")
+
+      multi = doctor(env: { "INSIKA_TENANCY" => "multi_tenant" }, memory_store: memory_store)
+              .run.findings.find { |f| f.check == "memory-scopes" }
+      expect(multi.severity).to eq(:ok)
+    end
+
+    it "the engine's per-SESSION cells (memory:chat:<id>) never warn, in any tenancy" do
+      memory_store.put_fact(tenant: "chat:s-1", key: "k", value: "v")
+      finding = doctor(env: { "INSIKA_TENANCY" => "multi_tenant" }, memory_store: memory_store)
+                .run.findings.find { |f| f.check == "memory-scopes" }
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "in multi_tenant a bare cell matching agent_ids -> ok (the agent-memory tab's cells are excused)" do
+      memory_store.put_fact(tenant: nil, customer: "agent-1", key: "k", value: "v")
+      finding = doctor(env: { "INSIKA_TENANCY" => "multi_tenant" },
+                       memory_store: memory_store, agent_ids: ["agent-1"])
+                .run.findings.find { |f| f.check == "memory-scopes" }
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "collaborator nil -> the check is absent from the report" do
+      expect(doctor.run.findings.select { |f| f.check == "memory-scopes" }).to be_empty
+    end
+  end
 end
 

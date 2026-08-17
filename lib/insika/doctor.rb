@@ -60,7 +60,8 @@ module Insika
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                    profile_source: nil, backend: nil, extra_env_specs: [],
-                   shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil)
+                   shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
+                   memory_store: nil, agent_ids: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -77,6 +78,10 @@ module Insika
       # can pass the builtin set without deps; the check only reads .layer /
       # .name. nil = skip.
       @context_providers = context_providers
+      # RFC-0031 C6: the memory-scopes check — Insika::MemoryStore | nil = skip;
+      # agent_ids excuse bare cells named like an agent (the agent-memory tab's).
+      @memory_store = memory_store
+      @agent_ids = Array(agent_ids).map(&:to_s)
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -96,7 +101,8 @@ module Insika
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
-                    check_soak_envelope check_turn_timing check_grounding check_cache_layers]
+                    check_soak_envelope check_turn_timing check_grounding check_cache_layers
+                    check_memory_scopes]
 
     def safe(check)
       Array(send(check))
@@ -621,6 +627,45 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       findings.empty? ? [ok("grounding", "grounding: no agent with an empty matcher")] : findings
     end
 
+    # RFC-0031 C6: the memory-scopes check. Reads the cells via C1's enumeration.
+    # Warn-only: the doctor never moves data across cells (D2).
+    #
+    # What it flags, and what it deliberately does NOT:
+    # - "memory:chat:<session id>" cells are the engine's OWN per-session shape
+    #   (RFC-0031) — never flagged.
+    # - a BARE cell is the DESIGNED single-tenant customer shape ("nil tenant +
+    #   customer -> memory:<customer>, NEVER _default") — with no tenant to
+    #   migrate to, warning is a false positive, so the check only fires in a
+    #   multi_tenant deployment (INSIKA_TENANCY), where every customer must
+    #   live in a [tenant:]customer cell.
+    # - `agent_ids:` excuses the agent-memory tab's cells (a bare cell named
+    #   like an agent is a profile, not a customer).
+    def check_memory_scopes
+      return [] unless @memory_store
+
+      findings = []
+      @memory_store.cells.each do |cell|
+        next if Insika::MemoryStore.session_cell?(cell) # the engine's per-session cell
+        next if cell[:customer].nil? # _default — the shared cell
+        next if cell[:tenant] # [tenant:]customer — scoped
+        next if single_tenant? # bare = the designed single-tenant customer shape
+        next if @agent_ids.include?(cell[:customer].to_s)
+
+        findings << Finding.new(check: "memory-scopes", severity: :warn, fix: nil,
+                                message: "memory cell '#{cell[:scope]}' is unscoped — in a multi-tenant " \
+                                         "deployment customer memory must live in a [tenant:]customer cell. " \
+                                         "Migrate it, or confirm it is an agent-memory cell " \
+                                         "(a bare cell named like an agent is excused).")
+      end
+      return findings if findings.any?
+
+      [ok("memory-scopes", "memory cells: #{@memory_store.cells.size}, all scoped")]
+    end
+
+    def single_tenant?
+      Insika::EnvSchema.read("INSIKA_TENANCY", @env) != "multi_tenant"
+    end
+
     def broken_tool(raw)
       Insika::ToolDefinition.from_h(raw)
       nil
@@ -636,8 +681,6 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       Finding.new(check: "data-tools", severity: :error, fix: fix, message: message)
     end
 
-    # A fix ONLY when spelling the legacy bare `array` explicitly is enough to make the
-    # definition build — never a guess at a broken definition we don't understand.
     def array_sugar_fix(raw)
       params = raw.is_a?(Hash) ? raw["parameters"] : nil
       return nil unless params.is_a?(Array) && params.any? { |p| p.is_a?(Hash) && p["type"].to_s == "array" }

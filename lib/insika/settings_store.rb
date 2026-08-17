@@ -36,6 +36,11 @@ module Insika
       # (+checkpoints), memory cells and outcomes older than this. nil/0 =
       # OFF (parity — nothing is ever swept by default).
       "retention_days" => nil,
+      # RFC-0031: memory TTL. Integer = default for every cell; Hash =
+      # per-tenant { "<tenant>" => days, "*" => days } (ops-authored). nil = OFF.
+      # Swept by the Retention tick on its OWN daily claim, NOT gated by
+      # retention_days (D5). Additive key — reads overlay DEFAULTS.
+      "memory_ttl_days" => nil,
       # LLM config v2. Platform-wide model layer, resolved by the
       # ModelResolver under an agent that pins no model of its own:
       #   default_model/default_provider -> the platform default (Chat > Agent > HERE)

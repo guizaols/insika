@@ -1,0 +1,94 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/customers">customers</a></nav>
+    <h1><span class="mono"><%= @cell[:customer] || @cell[:scope] %></span><span class="sub">customer memory</span></h1>
+  </div>
+  <div class="actions">
+    <form method="post" action="<%= customer_path(@cell[:scope]) %>/export">
+      <%== csrf_tag %>
+      <button type="submit" class="btn" data-turbo-submits-with="Exporting…">Export</button>
+    </form>
+    <form method="post" action="<%= customer_path(@cell[:scope]) %>/forget"
+          data-turbo-confirm="Forget <%= @cell[:customer] %>? Their memory cell AND their sessions are purged. This cannot be undone.">
+      <%== csrf_tag %>
+      <button type="submit" class="btn danger" data-turbo-submits-with="Forgetting…">Forget</button>
+    </form>
+  </div>
+</header>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Facts</h2>
+    <p class="muted">what the next turn reads — expired facts are never injected (RFC-0031).</p>
+  </div>
+  <div class="card">
+    <% if @facts.empty? %>
+      <p class="muted">No facts.</p>
+    <% else %>
+      <ul class="kv">
+        <% @facts.each do |f| %>
+          <li>
+            <span class="k mono"><%= f.key %></span>
+            <span class="v"><%= f.value %></span>
+            <span class="muted mono"><%= f.origin %> · <%= f.created_at %><%= f.expires_at ? " · expires #{f.expires_at}" : "" %></span>
+            <form method="post" action="<%= customer_path(@cell[:scope]) %>/forget-fact"
+                  data-turbo-confirm="Forget &quot;<%= f.key %>&quot;? The next turn stops seeing it.">
+              <%== csrf_tag %>
+              <input type="hidden" name="key" value="<%= f.key %>">
+              <button type="submit" class="ghost danger" data-turbo-submits-with="Forgetting…">Forget</button>
+            </form>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+    <form class="inline-form" method="post" action="<%= customer_path(@cell[:scope]) %>/fact">
+      <%== csrf_tag %>
+      <input type="text" name="key" placeholder="key (e.g. size)" required>
+      <input type="text" name="value" placeholder="value" required>
+      <input type="text" name="expires_at" placeholder="expires_at (ISO8601, optional)">
+      <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save fact</button>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Notes <span class="muted">(recent — append-only)</span></h2>
+  </div>
+  <div class="card">
+    <% if @notes.empty? %>
+      <p class="muted">No notes.</p>
+    <% else %>
+      <ul class="notes">
+        <% @notes.each do |n| %>
+          <li><span class="muted mono"><%= n.created_at %></span> <%= n.text %></li>
+        <% end %>
+      </ul>
+    <% end %>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Audit <span class="muted">(operator mutations — digests, never content)</span></h2>
+  </div>
+  <div class="card">
+    <% if @audit.empty? %>
+      <p class="muted">No operator mutations recorded.</p>
+    <% else %>
+      <ul class="history">
+        <% @audit.each do |e| %>
+          <li>
+            <span class="pill<%= e.action == "purge" ? " danger" : "" %>"><%= e.action %></span>
+            <% if e.key %><span class="mono"><%= e.key %></span><% end %>
+            <span class="preview muted">
+              <%= e.actor %> · <%= e.at %>
+              <% if e.old_hash || e.new_hash %> · <%= e.old_hash ? e.old_hash[0, 8] : "∅" %>→<%= e.new_hash ? e.new_hash[0, 8] : "∅" %><% end %>
+              <% if e.note %> · <%= e.note %><% end %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </div>
+</section>

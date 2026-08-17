@@ -45,6 +45,204 @@ RSpec.describe Insika::MemoryStore do
     end
   end
 
+  describe "record shape (RFC-0031)" do
+    it "new fields round-trip; created_at stamped on create and preserved across an upsert" do
+      fact = store.put_fact(tenant: "acme", key: "size", value: "M")
+      expect(fact.origin).to eq("engine")
+      expect(fact.expires_at).to be_nil
+      expect(fact.created_at).to be_a(String)
+      expect(fact.created_at).to eq(fact.updated_at)
+
+      later = store.put_fact(tenant: "acme", key: "size", value: "L")
+      expect(later.created_at).to eq(fact.created_at)
+      expect(later.updated_at).not_to eq(fact.updated_at)
+      expect(later.origin).to eq("engine")
+    end
+
+    it "a legacy record reads tolerantly: origin legacy, created_at from updated_at, expires nil; one upsert materializes the shape" do
+      backend.set("memory:acme", "fact:size", { "key" => "size", "value" => "M",
+                                                 "updated_at" => "2026-01-01T00:00:00.000000Z" })
+      legacy = store.get_fact(tenant: "acme", key: "size")
+      expect(legacy.origin).to eq("legacy")
+      expect(legacy.created_at).to eq("2026-01-01T00:00:00.000000Z")
+      expect(legacy.expires_at).to be_nil
+
+      rewritten = store.put_fact(tenant: "acme", key: "size", value: "L")
+      expect(rewritten.origin).to eq("engine")
+      expect(rewritten.created_at).to eq("2026-01-01T00:00:00.000000Z") # preserved
+    end
+
+    it "explicit origin and expires_at round-trip (canonical ISO8601); invalid expires_at raises ValidationError" do
+      fact = store.put_fact(tenant: "acme", key: "k", value: "v", origin: "operator",
+                            expires_at: "2026-12-31T00:00:00Z")
+      expect(fact.origin).to eq("operator")
+      expect(Time.iso8601(fact.expires_at)).to eq(Time.iso8601("2026-12-31T00:00:00Z"))
+
+      expect { store.put_fact(tenant: "acme", key: "k", value: "v", expires_at: "not-a-date") }
+        .to raise_error(Insika::ValidationError, /expires_at/)
+    end
+
+    it "a blank origin defaults to engine, blank expires_at to nil" do
+      fact = store.put_fact(tenant: "acme", key: "k", value: "v", origin: "", expires_at: "  ")
+      expect(fact.origin).to eq("engine")
+      expect(fact.expires_at).to be_nil
+    end
+  end
+
+  describe "customer scoping (RFC-0031)" do
+    it "customer: -> the [tenant:]customer cell" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      expect(backend.get("memory:acme:c-1", "fact:size")).not_to be_nil
+      expect(store.get_fact(tenant: "acme", customer: "c-1", key: "size").value).to eq("M")
+    end
+
+    it "tenant nil + customer -> the bare customer cell, NEVER memory:_default:<c>" do
+      store.put_fact(tenant: nil, customer: "c-1", key: "size", value: "M")
+      expect(backend.get("memory:c-1", "fact:size")).not_to be_nil
+      expect(backend.get("memory:_default:c-1", "fact:size")).to be_nil
+    end
+
+    it "E3 unit half: the same customer under two tenants is two disjoint cells" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      store.put_fact(tenant: "globex", customer: "c-1", key: "size", value: "L")
+      expect(store.facts(tenant: "acme", customer: "c-1").map(&:value)).to eq(["M"])
+      expect(store.facts(tenant: "globex", customer: "c-1").map(&:value)).to eq(["L"])
+      expect(backend.get("memory:acme:c-1", "fact:size")["value"]).to eq("M")
+      expect(backend.get("memory:globex:c-1", "fact:size")["value"]).to eq("L")
+    end
+
+    it "customer: applies to notes and purge" do
+      store.add_note(tenant: "acme", customer: "c-1", text: "prefere email")
+      store.add_note(tenant: "acme", text: "sem cliente")
+      expect(store.notes(tenant: "acme", customer: "c-1").map(&:text)).to eq(["prefere email"])
+
+      expect(store.purge(tenant: "acme", customer: "c-1")).to eq(1)
+      expect(store.notes(tenant: "acme", customer: "c-1")).to be_empty
+      expect(store.notes(tenant: "acme").map(&:text)).to eq(["sem cliente"])
+    end
+
+    it "customer: on the CAS path and forget_fact" do
+      first = store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v1")
+      written = store.replace_if_revision(tenant: "acme", customer: "c-1", key: "k", value: "v2",
+                                          expected_revision: first.updated_at)
+      expect(written.value).to eq("v2")
+      expect(store.forget_fact(tenant: "acme", customer: "c-1", key: "k")).to be(true)
+      expect(store.get_fact(tenant: "acme", customer: "c-1", key: "k")).to be_nil
+    end
+  end
+
+  describe "expiry (RFC-0031)" do
+    let(:clock) { -> { Time.utc(2026, 8, 17, 12, 0, 0) } }
+    subject(:clocked) { described_class.new(store: backend, clock: clock) }
+
+    it "facts EXCLUDES expires_at <= now (injected clock), before any sweep" do
+      clocked.put_fact(tenant: "acme", key: "expired", value: "x", expires_at: "2026-08-17T11:59:00Z")
+      clocked.put_fact(tenant: "acme", key: "live", value: "y", expires_at: "2026-08-18T00:00:00Z")
+      clocked.put_fact(tenant: "acme", key: "noexpiry", value: "z")
+      expect(clocked.facts(tenant: "acme").map(&:key)).to eq(%w[live noexpiry])
+    end
+
+    it "prune_expired removes only past-expiry facts, across every cell" do
+      clocked.put_fact(tenant: "acme", key: "a", value: "1", expires_at: "2026-08-17T11:00:00Z")
+      clocked.put_fact(tenant: "acme", key: "b", value: "2", expires_at: "2026-08-18T00:00:00Z")
+      clocked.put_fact(tenant: "acme", key: "c", value: "3")
+      clocked.put_fact(tenant: "globex", key: "d", value: "4", expires_at: "2026-08-16T00:00:00Z")
+
+      expect(clocked.prune_expired).to eq(2)
+      expect(clocked.facts(tenant: "acme").map(&:key)).to eq(%w[b c])
+      expect(clocked.facts(tenant: "globex")).to be_empty
+    end
+
+    it "prune_older_than(scope:) touches ONE cell; a fact with an explicit expires_at survives the cutoff" do
+      store.put_fact(tenant: "acme:123", key: "old", value: "1")
+      store.put_fact(tenant: "acme:123", key: "pinned", value: "2", expires_at: "2099-01-01T00:00:00Z")
+      store.put_fact(tenant: "acme:456", key: "old", value: "1")
+      backend.set("memory:acme:123", "fact:old",
+                  backend.get("memory:acme:123", "fact:old").merge("updated_at" => "2020-01-01T00:00:00.000000Z"))
+      backend.set("memory:acme:123", "fact:pinned",
+                  backend.get("memory:acme:123", "fact:pinned").merge("updated_at" => "2020-01-01T00:00:00.000000Z"))
+      backend.set("memory:acme:456", "fact:old",
+                  backend.get("memory:acme:456", "fact:old").merge("updated_at" => "2020-01-01T00:00:00.000000Z"))
+
+      expect(store.prune_older_than(Time.utc(2026, 1, 1), scope: "memory:acme:123")).to eq(1)
+      expect(store.get_fact(tenant: "acme:123", key: "old")).to be_nil
+      expect(store.get_fact(tenant: "acme:123", key: "pinned")).not_to be_nil
+      expect(store.get_fact(tenant: "acme:456", key: "old")).not_to be_nil
+    end
+
+    it "prune_older_than without scope still touches every cell (WS8 parity)" do
+      store.put_fact(tenant: "acme:123", key: "old", value: "1")
+      store.put_fact(tenant: "acme:456", key: "old", value: "1")
+      backend.set("memory:acme:123", "fact:old",
+                  backend.get("memory:acme:123", "fact:old").merge("updated_at" => "2020-01-01T00:00:00.000000Z"))
+      backend.set("memory:acme:456", "fact:old",
+                  backend.get("memory:acme:456", "fact:old").merge("updated_at" => "2020-01-01T00:00:00.000000Z"))
+
+      expect(store.prune_older_than(Time.utc(2026, 1, 1))).to eq(2)
+    end
+  end
+
+  describe "cell enumeration (RFC-0031)" do
+    it "parse_cell classifies by SHAPE" do
+      expect(described_class.parse_cell("memory:acme:c-123"))
+        .to eq({ scope: "memory:acme:c-123", tenant: "acme", customer: "c-123" })
+      expect(described_class.parse_cell("memory:c-123"))
+        .to eq({ scope: "memory:c-123", tenant: nil, customer: "c-123" })
+      expect(described_class.parse_cell("memory:_default"))
+        .to eq({ scope: "memory:_default", tenant: nil, customer: nil })
+      expect(described_class.parse_cell("memory:acme"))
+        .to eq({ scope: "memory:acme", tenant: nil, customer: "acme" })
+    end
+
+    it "cells enumerates every memory scope classified by shape" do
+      store.put_fact(tenant: "acme", key: "k", value: "v")
+      store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v")
+      store.put_fact(tenant: "globex", customer: "c-1", key: "k", value: "v")
+      store.put_fact(tenant: nil, key: "k", value: "v")
+
+      expect(store.cells.map { |c| c[:scope] })
+        .to eq(["memory:_default", "memory:acme", "memory:acme:c-1", "memory:globex:c-1"])
+    end
+
+    it "customer_cells: 2+ segments always, bare cells filtered by reserved, _default excluded" do
+      store.put_fact(tenant: "acme", key: "k", value: "v")
+      store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v")
+      store.put_fact(tenant: nil, key: "k", value: "v")
+      store.put_fact(tenant: nil, customer: "agent-1", key: "k", value: "v")
+
+      # the caller reserves its own cells (agent ids + _default); the tenant's
+      # own shared cell is genuinely ambiguous and the caller names it too
+      expect(store.customer_cells(reserved: %w[agent-1 acme _default]))
+        .to eq([{ scope: "memory:acme:c-1", tenant: "acme", customer: "c-1" }])
+      # without the reserved list the bare cells read as customers
+      expect(store.customer_cells.map { |c| c[:customer] }).to include("agent-1", "acme")
+    end
+
+    it "customer_cells NEVER lists the engine's per-SESSION cells (memory:chat:<id>)" do
+      # the executor's session fallback (RFC-0031): "chat:<session id>"
+      store.put_fact(tenant: "chat:s-1", key: "k", value: "v")
+      store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v")
+
+      expect(store.customer_cells.map { |c| c[:scope] }).to eq(["memory:acme:c-1"])
+      # a multi-tenant session id ("acme:chat-1") marks the same way
+      store.put_fact(tenant: "chat:acme:chat-1", key: "k", value: "v")
+      expect(store.customer_cells.map { |c| c[:scope] }).to eq(["memory:acme:c-1"])
+    end
+
+    it "session_cell? is the shared classification" do
+      expect(described_class.session_cell?({ tenant: "chat", customer: "s-1" })).to be(true)
+      expect(described_class.session_cell?({ tenant: "acme", customer: "c-1" })).to be(false)
+      expect(described_class.session_cell?({ tenant: nil, customer: "c-1" })).to be(false)
+    end
+
+    it "cell_for is the public scope string the commands/audit share" do
+      expect(store.cell_for("acme", "c-1")).to eq("memory:acme:c-1")
+      expect(store.cell_for(nil, "c-1")).to eq("memory:c-1")
+      expect(store.cell_for("acme")).to eq("memory:acme")
+      expect(store.cell_for(nil)).to eq("memory:_default")
+    end
+  end
+
   describe "notes (notes layer)" do
     it "add_note + notes most-recent-first" do
       store.add_note(tenant: "acme", text: "primeira", at: "2026-01-01T00:00:00Z")
@@ -164,6 +362,19 @@ RSpec.describe Insika::MemoryStore do
       expect(durable.put_fact(tenant: "acme", key: "catalogo", value: "v3").value).to eq("v3")
     ensure
       sqlite&.close
+    end
+
+    it "purge_tenant also purges the tenant's SESSION-marked cells (RFC-0031)" do
+      store.put_fact(tenant: "acme", key: "catalogo", value: "v2")
+      store.put_fact(tenant: "acme:c-1", key: "pedido", value: "open")
+      store.put_fact(tenant: "chat:acme:chat-1", key: "k", value: "v") # acme's session cell
+      store.put_fact(tenant: "chat:globex:chat-1", key: "k", value: "v") # another tenant's
+
+      expect(store.purge_tenant("acme")).to eq(3)
+      expect(store.get_fact(tenant: "acme", key: "catalogo")).to be_nil
+      expect(store.facts(tenant: "acme:c-1")).to be_empty
+      expect(store.facts(tenant: "chat:acme:chat-1")).to be_empty
+      expect(store.get_fact(tenant: "chat:globex:chat-1", key: "k")).not_to be_nil # untouched
     end
   end
 end

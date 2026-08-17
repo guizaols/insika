@@ -81,6 +81,7 @@ module Studio
       def configure(command_bus:, profile_source:, event_stream:, config:,
                     agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
+                    memory_audit_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
                     cache_series_store: nil,
@@ -97,6 +98,9 @@ module Studio
           # shows the data-tools in the matrix; the store feeds the authoring page.
           tool_store: tool_store,
           memory_store: memory_store, session_store: session_store,
+          # RFC-0031: the Customers drill renders the audit lines (digests +
+          # counts, never content). nil = the audit section renders empty.
+          memory_audit_store: memory_audit_store,
           # runtime config (settings/LLM/MCP) + global system
           # files + conversations index. All optional (empty-state if nil).
           settings_store: settings_store, llm_provider_store: llm_provider_store,
@@ -714,6 +718,82 @@ module Studio
         end
       end
 
+      # --- Customers: the memory drill (RFC-0031 C8) ----------------
+      # Derived from the store, not a registry: the index enumerates memory
+      # cells and classifies them by shape (D6). Every mutation dispatches a
+      # Command on the bus — the transport's constitutional rule (app.rb:21).
+      # The cell scope in the URL is parsed back into the (tenant, customer)
+      # pair: a "memory:acme:c-1" URL must edit the SAME cell the turn reads
+      # (E1 live) — passing the raw scope as `tenant` would double-prefix it.
+      r.on "customers" do
+        r.is do
+          r.get { render_customers }
+        end
+
+        r.on String do |raw_scope|
+          # Roda captures the segment URL-encoded; a customer cell contains
+          # colons (memory:acme:c-1), so decode before parsing.
+          scope = Rack::Utils.unescape_path(utf8(raw_scope))
+          cell = Insika::MemoryStore.parse_cell(scope)
+
+          r.get { render_customer(scope, cell) }
+
+          # Add/edit a fact inline (upsert) — the operator's stamp + audit.
+          r.post "fact" do
+            check_csrf!
+            with_flash("Fact saved.") do
+              dispatch(:memory_put_fact, {
+                         tenant: cell[:tenant], customer: cell[:customer],
+                         key: presence(r.params["key"]), value: r.params["value"].to_s,
+                         expires_at: presence(r.params["expires_at"]), operator: "studio"
+                       })
+            end
+            r.redirect(customer_path(scope))
+          end
+
+          r.post "forget-fact" do
+            check_csrf!
+            with_flash("Fact forgotten.") do
+              dispatch(:memory_forget_fact, {
+                         tenant: cell[:tenant], customer: cell[:customer],
+                         key: presence(r.params["key"]), operator: "studio"
+                       })
+            end
+            r.redirect(customer_path(scope))
+          end
+
+          # The LGPD access right: JSON download of the cell's content (D7 —
+          # the RETURN value is the download; the event stays counts-only). A
+          # cell with no customer (a _default cell, reachable by URL) is a
+          # ValidationError -> red flash, never a 500.
+          r.post "export" do
+            check_csrf!
+            result = dispatch(:export_customer_memory, {
+                                tenant: cell[:tenant], customer: cell[:customer],
+                                operator: "studio"
+                              })
+            response["content-type"] = "application/json"
+            response["content-disposition"] =
+              %(attachment; filename="memory-#{Rack::Utils.escape_path(scope.tr(':', '-'))}.json")
+            JSON.pretty_generate(result)
+          rescue Insika::ValidationError => e
+            flash["error"] = e.message
+            r.redirect(customer_path(scope))
+          end
+
+          # The LGPD forget — purges the cell AND the customer's sessions.
+          r.post "forget" do
+            check_csrf!
+            with_flash("Customer forgotten.") do
+              dispatch(:forget_customer, {
+                         tenant: cell[:tenant], customer: cell[:customer], operator: "studio"
+                       })
+            end
+            r.redirect("/studio/customers")
+          end
+        end
+      end
+
       # Tasks: list + detail + operator controls -------
       # Parity with server/admin: READS the task/checkpoint/pending stores to
       # render; pause/resume/cancel dispatch Commands on the bus (never a direct
@@ -940,6 +1020,7 @@ end
         ]],
         ["operate", [
           ["Chats", "/studio/chats", :chats],
+          ["Customers", "/studio/customers", :chats],
           ["Playground", "/studio/playground", :playground],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
@@ -1558,6 +1639,40 @@ end
     def render_chats
       @sessions = recent_sessions(limit: 100)
       view("chats")
+    end
+
+    # --- Customers (RFC-0031 C8) ----------------------------------
+
+    # The index: every CUSTOMER memory cell, grouped by tenant. The caller
+    # passes `reserved:` (profile ids + _default) so the agent-memory tab's
+    # cells and the shared cell stay out of the drill (D6 — the store is
+    # policy-free). Fact count per cell via a keys-only list (no payload
+    # reads per conversation on every render).
+    def render_customers
+      mem = insika[:memory_store]
+      agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
+      @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |cell|
+        { cell: cell, count: mem.fact_count(tenant: cell[:tenant], customer: cell[:customer]) }
+      end : []
+      @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
+      view("customers")
+    end
+
+    # The detail: the parsed cell, its facts (expired excluded by C1), notes
+    # (append-only), and the operator audit (digests + counts, never content).
+    def render_customer(scope, cell)
+      @cell = cell
+      mem = insika[:memory_store]
+      @facts = mem ? mem.facts(tenant: cell[:tenant], customer: cell[:customer]) : []
+      @notes = mem ? mem.notes(tenant: cell[:tenant], customer: cell[:customer], limit: 50) : []
+      @audit = insika[:memory_audit_store]&.for_cell(scope) || []
+      view("customer")
+    end
+
+    def customer_path(scope)
+      # escape_path, not escape: the route decodes with unescape_path, which
+      # does not turn '+' back into a space (escape's form-encoding would).
+      "/studio/customers/#{Rack::Utils.escape_path(scope)}"
     end
 
     # Tasks & Approvals --------------------------------

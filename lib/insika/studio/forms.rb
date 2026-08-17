@@ -173,6 +173,11 @@ module Studio
         v = presence(r.params[f])
         patch[f] = Integer(v) if v
       end
+      # RFC-0031: memory TTL (days). Blank = off (nil); a number sets the
+      # platform default for EVERY cell. Saving here replaces an ops-authored
+      # per-tenant map in the record — the view says so.
+      v = presence(r.params["memory_ttl_days"])
+      patch["memory_ttl_days"] = v.nil? ? nil : Integer(v)
       patch
     end
 

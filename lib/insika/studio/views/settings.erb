@@ -39,7 +39,9 @@
             <label>max_retries<input type="text" name="max_retries" value="<%= @settings["max_retries"] %>" inputmode="numeric"></label>
             <label>turn_timeout (s)<input type="text" name="turn_timeout" value="<%= @settings["turn_timeout"] %>" inputmode="numeric"></label>
             <label>tool_timeout (s)<input type="text" name="tool_timeout" value="<%= @settings["tool_timeout"] %>" inputmode="numeric"></label>
+            <label>Memory TTL (days)<input type="text" name="memory_ttl_days" value="<%= @settings["memory_ttl_days"] %>" inputmode="numeric" placeholder="blank = off"></label>
           </div>
+          <p class="muted">Memory TTL: how many days a customer memory cell lives before the daily sweep prunes it (per-fact <code>expires_at</code> overrides always win). Editing here sets the platform default for <strong>every</strong> cell; a per-tenant map authored in the settings record is replaced by this save.</p>
         </form>
       </div>
 
