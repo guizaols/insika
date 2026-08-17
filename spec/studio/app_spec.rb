@@ -102,7 +102,7 @@ RSpec.describe Studio::App do
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
-                 outcomes: [])
+                 outcomes: [], cache_series: {})
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -145,6 +145,9 @@ RSpec.describe Studio::App do
     # REAL ContextTraceStore: the session view's breakdown card.
     ctx_trace_store = Insika::ContextTraceStore.new(store: Insika::Stores::Memory.new)
     context_traces.each { |sid, entries| entries.each { |e| ctx_trace_store.record(session_id: sid, entry: e) } }
+    # REAL CacheSeriesStore (RFC-0030): the agent-detail cache tab.
+    series_store = Insika::CacheSeriesStore.new(store: Insika::Stores::Memory.new)
+    cache_series.each { |agent, entries| entries.each { |e| series_store.record(agent: agent, entry: e) } }
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: event_stream, config: { admin_token: admin_token },
@@ -164,6 +167,7 @@ RSpec.describe Studio::App do
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
       tool_trace_store: trace_store, context_trace_store: ctx_trace_store,
+      cache_series_store: series_store,
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
@@ -561,6 +565,51 @@ RSpec.describe Studio::App do
    it "404 on the detail of a nonexistent agent" do
     app, = build_app
     expect(login(app).get("/agents/nao-existe").status).to eq(404)
+  end
+
+  # RFC-0030 C9 — the agent detail's cache tab (per-AGENT prefix cache-hit
+  # series, read from the CacheSeriesStore; nil store = the empty state).
+  describe "the agent detail cache tab (RFC-0030)" do
+    it "renders the cache card with hit % and the invalidation reason when the store has entries" do
+      app, = build_app(cache_series: {
+                         "bia" => [{ at: "2026-08-15T10:00:00Z", turn: 2, hit_pct: 83,
+                                     cached_tokens: 21_845, prompt_tokens: 26_319,
+                                     invalidation_reason: "memory" }]
+                       })
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("id=\"cache\"")
+      expect(body).to include("83% cached")
+      expect(body).to include("21845/26319 tokens")
+      expect(body).to include("broke: memory")
+      expect(body).not_to include("No turns recorded.")
+    end
+
+    it "without a store the tab renders 'No turns recorded.' and nothing raises" do
+      app, = build_app
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("id=\"cache\"")
+      expect(body).to include("No turns recorded.")
+    end
+
+    it "the series is per agent: chef's entries never appear on bia's tab" do
+      app, = build_app(cache_series: {
+                         "chef" => [{ at: "2026-08-15T10:00:00Z", turn: 1, hit_pct: 10,
+                                      cached_tokens: 1, prompt_tokens: 10, invalidation_reason: nil }]
+                       })
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("No turns recorded.")
+      expect(body).not_to include("10% cached")
+    end
+
+    it "a hit_pct of nil renders the em dash, not a fake zero" do
+      app, = build_app(cache_series: {
+                         "bia" => [{ at: "2026-08-15T10:00:00Z", turn: 1, hit_pct: nil,
+                                     cached_tokens: 0, prompt_tokens: 0, invalidation_reason: nil }]
+                       })
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("—")
+      expect(body).not_to include("0% cached")
+    end
   end
 
   # Regression (found running for real): Roda's String matcher delivers the path
@@ -1245,6 +1294,52 @@ RSpec.describe Studio::App do
     expect(body).to include("4100 tokens · 2 fragment(s)") # tokens + fragment count
     expect(body).to include("evicted: session")         # the budget cut something
     expect(body).to include("9 tool schema(s)")         # the tools estimate
+  end
+
+  # RFC-0030 C9 — the per-turn cache line on the Context card: the provider-
+  # reported hit % and the first category whose bytes diverged from the
+  # previous turn (PII-free), plus the identity boundary marker per category.
+  describe "session viewer cache line (RFC-0030)" do
+    def cache_trace
+      { "sess-cx" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
+                        cap: 8_000, used: 6_120, evicted: [],
+                        categories: { "prompt" => { tokens: 4_100, fragments: 2, pinned: 4_100,
+                                                    layer: "identity" },
+                                      "session" => { tokens: 1_900, fragments: 1, pinned: 0,
+                                                     layer: "volatile" } },
+                        tools: { count: 9, tokens: 1_200 },
+                        cache: { hit_pct: 83, cached_tokens: 21_845, prompt_tokens: 26_319,
+                                 invalidation_reason: "memory" } }] }
+    end
+
+    it "shows the cached badge and the broke: line on the turn summary" do
+      sess = StoredSession.new(id: "sess-cx", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+      app, = build_app(sessions: { "sess-cx" => sess }, context_traces: cache_trace)
+      body = login(app).get("/sessions/sess-cx").body
+      expect(body).to include("83% cached")
+      expect(body).to include("broke: memory")
+    end
+
+    it "marks the identity boundary on the category rows" do
+      sess = StoredSession.new(id: "sess-cx", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+      app, = build_app(sessions: { "sess-cx" => sess }, context_traces: cache_trace)
+      body = login(app).get("/sessions/sess-cx").body
+      expect(body).to include("4100 tokens · 2 fragment(s) · pinned · identity")
+      expect(body).to include("1900 tokens · 1 fragment(s)")
+      expect(body).not_to include("1900 tokens · 1 fragment(s) · identity")
+    end
+
+    it "an entry without cache fields (pre-RFC trace) renders neither the badge nor the broke line" do
+      sess = StoredSession.new(id: "sess-cx", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+      trace = { "sess-cx" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
+                                cap: 8_000, used: 6_120, evicted: [],
+                                categories: { "prompt" => { tokens: 4_100, fragments: 2, pinned: 4_100 } },
+                                tools: { count: 9, tokens: 1_200 } }] }
+      app, = build_app(sessions: { "sess-cx" => sess }, context_traces: trace)
+      body = login(app).get("/sessions/sess-cx").body
+      expect(body).not_to include("% cached")
+      expect(body).not_to include("broke:")
+    end
   end
 
   # Once bodies arrive by context instead of a load_skill call, this list is the

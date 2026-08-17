@@ -24,6 +24,8 @@ module Insika
         end
 
         def required? = true
+        # RFC-0030 C1: identity (config/agent-file derived — already pinned).
+        def layer = :identity
 
         def call(request)
           fragments = []

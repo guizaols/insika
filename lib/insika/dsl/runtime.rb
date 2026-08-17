@@ -178,7 +178,8 @@ module Insika
           guardrails: c[:guardrails], context_providers: context_providers(spine, c),
           edge_limiter: c[:edge_limiter],
           executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store],
-                            context_trace_store: c[:context_trace_store], llm: @llm }
+                            context_trace_store: c[:context_trace_store],
+                            cache_series_store: c[:cache_series_store], llm: @llm }
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
@@ -229,6 +230,8 @@ module Insika
           mcp_store: Insika::McpStore.new(config_store: config_store),
           tool_trace_store: Insika::ToolTraceStore.new(store: backend),
           context_trace_store: Insika::ContextTraceStore.new(store: backend),
+          # RFC-0030: the per-AGENT cache-hit series (the Studio agent-detail card).
+          cache_series_store: Insika::CacheSeriesStore.new(store: backend),
           tool_registry: tool_registry,
           tool_catalog: Insika::ToolCatalog.new(tool_registry: tool_registry),
           skill_catalog: Insika::SkillCatalog.new([], store: skill_store),

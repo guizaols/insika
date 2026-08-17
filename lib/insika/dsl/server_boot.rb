@@ -91,6 +91,8 @@ module Insika
           mcp_store: @rt.component(:mcp_store), system_file_store: @rt.component(:system_file_store),
           tool_trace_store: @rt.component(:tool_trace_store),
           context_trace_store: @rt.component(:context_trace_store),
+          # RFC-0030: the per-agent cache-hit series (agent-detail card).
+          cache_series_store: @rt.component(:cache_series_store),
           task_store: @graph.task_store, checkpoint_store: @graph.checkpoint_store,
           pending_action_store: @graph.pending_action_store,
           # WS7: the agents-grid scorecard reads the outcome store.

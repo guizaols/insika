@@ -57,4 +57,20 @@ RSpec.describe Insika::ContextFragment do
     expect(copy.tokens).to eq(5)
     expect(f.tokens).to be_nil # original untouched
   end
+
+  describe "layer (RFC-0030 C1)" do
+    it "defaults to nil in .build (reads as :volatile everywhere it is consumed)" do
+      expect(described_class.build(content: "x", placement: :system, source: "s").layer).to be_nil
+    end
+
+    it "round-trips an explicit layer" do
+      f = described_class.build(content: "x", placement: :system, source: "s", layer: :identity)
+      expect(f.layer).to eq(:identity)
+    end
+
+    it "with preserves the layer" do
+      f = described_class.build(content: "x", placement: :system, source: "s", layer: :identity)
+      expect(f.with(tokens: 5).layer).to eq(:identity)
+    end
+  end
 end

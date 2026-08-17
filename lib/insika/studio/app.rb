@@ -83,6 +83,7 @@ module Studio
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
                     system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
+                    cache_series_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil,
                     outcome_store: nil, shadow_pair_store: nil, parity_criterion: nil,
@@ -106,6 +107,10 @@ module Studio
           # per-session context breakdown: tokens by category +
           # budget per turn, on the same viewer. Counts only, no content.
           context_trace_store: context_trace_store,
+          # RFC-0030: per-AGENT cache-hit series (percentages + counts, no
+          # content) — the cache tab on the agent detail. nil = tab renders
+          # "No turns recorded.".
+          cache_series_store: cache_series_store,
           # operate: tasks + human-in-the-loop approvals. Reads the
           # task/checkpoint/pending stores to render; controls (pause/resume/
           # cancel/approve) dispatch on the bus — parity with server/admin.
@@ -1134,6 +1139,9 @@ end
       outcomes = insika[:outcome_store]
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
+      # RFC-0030: the per-agent cache-hit series (nil store -> the view's
+      # empty state; same guard as the tool trace).
+      @cache_series = insika[:cache_series_store]&.for_agent(id) || []
       view("agent_detail")
     end
 

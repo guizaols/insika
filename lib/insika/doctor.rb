@@ -60,7 +60,7 @@ module Insika
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                    profile_source: nil, backend: nil, extra_env_specs: [],
-                   shadow_pair_store: nil, soak_envelope_path: nil)
+                   shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -73,6 +73,10 @@ module Insika
       @extra_env_specs = extra_env_specs
       @shadow_pair_store = shadow_pair_store
       @soak_envelope_path = soak_envelope_path || File.join(Dir.pwd, Insika::Soak::Envelope::DEFAULT_PATH)
+      # RFC-0030 C7: [ContextProvider | Class] — classes accepted so the CLI
+      # can pass the builtin set without deps; the check only reads .layer /
+      # .name. nil = skip.
+      @context_providers = context_providers
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -92,7 +96,7 @@ module Insika
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
-                    check_soak_envelope check_turn_timing check_grounding]
+                    check_soak_envelope check_turn_timing check_grounding check_cache_layers]
 
     def safe(check)
       Array(send(check))
@@ -526,6 +530,75 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       return [ok("data-tools", "#{total} data tool(s): every definition valid")] if broken.empty?
 
       broken
+    end
+
+    # RFC-0030 D8: the doctor cannot run a turn, so it cannot prove purity — it
+    # CAN verify the declaration. An identity-layer provider that is not one of
+    # the engine's three known-safe classes is :warn; one of the engine's
+    # known-volatile classes overriding to :identity is :error (a volatile
+    # identity block bills a cache write every turn).
+    IDENTITY_BUILTINS = %w[
+      Insika::Context::Providers::Prompt
+      Insika::Context::Providers::Skill
+      Insika::Context::Providers::ToolSearch
+    ].freeze
+    VOLATILE_BUILTINS = %w[
+      Insika::Context::Providers::Request
+      Insika::Context::Providers::Session
+      Insika::Context::Providers::Memory
+      Insika::Context::Providers::SkillTrigger
+    ].freeze
+
+    def check_cache_layers
+      return [] unless @context_providers
+
+      findings = @context_providers.flat_map do |p|
+        name = p.is_a?(Class) ? p.name : p.class.name
+        layer = declared_layer(p)
+        next [] unless layer == :identity
+        next [] if builtin_of?(p, IDENTITY_BUILTINS)
+
+        known_volatile = builtin_of?(p, VOLATILE_BUILTINS)
+        [Finding.new(check: "cache-layers", severity: known_volatile ? :error : :warn, fix: nil,
+                     message: "context provider '#{name}' declares layer :identity but is " \
+                              "#{known_volatile ? 'engine-known turn-dependent' : 'not engine-verified'} — " \
+                              "a volatile block above the cache boundary bills a cache WRITE every turn. " \
+                              "Verify the output is byte-stable across turns (no timestamps, no per-turn data).")]
+      end
+      return findings if findings.any?
+
+      [ok("cache-layers", "context layers: #{@context_providers.size} provider(s), identity partition verified")]
+    end
+
+    # The declaration is an INSTANCE method, so a class passed as-is does not
+    # respond to .layer. Evaluate it on a bare instance (allocate skips
+    # initialize — the declaration must not depend on constructor state; a
+    # method that does degrades to :volatile, the conservative side). This is
+    # what makes an explicit `def layer = :volatile` read as volatile instead of
+    # a warning.
+    def declared_layer(provider)
+      return provider.layer unless provider.is_a?(Class)
+      return :volatile unless provider.instance_methods.include?(:layer)
+
+      provider.instance_method(:layer).bind_call(provider.allocate)
+    rescue StandardError
+      :volatile
+    end
+
+    # The declaration check is by CLASS: a subclass of an engine-known provider
+    # inherits its data source (a Memory subclass is still turn-dependent no
+    # matter what it overrides). Accepts instances OR classes; anonymous
+    # classes (Class.new(...)) have no .name, so the ancestor walk is what
+    # catches them.
+    def builtin_of?(provider, consts)
+      klass_of = provider.is_a?(Class) ? provider : provider.class
+
+      consts.any? do |c|
+        klass = Object.const_get(c)
+        klass_of == klass || klass_of < klass
+      rescue NameError
+        false
+      end
     end
 
     # RFC-0029 D7: grounding with a matcher that matches NOTHING (no sku) is

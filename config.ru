@@ -89,6 +89,7 @@ Studio::App.configure(
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
   context_trace_store: W::CONTEXT_TRACE_STORE, # context breakdown card
+  cache_series_store: W::CACHE_SERIES_STORE, # per-agent cache-hit series (RFC-0030)
   # tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,

@@ -7,11 +7,12 @@ RSpec.describe Insika::ContextBuilder do
   let(:event_stream) { SpyEventStream.new } # from spec/support/fakes.rb
 
   # Scriptable fake provider (implements the ContextProvider contract).
-  def provider(id:, fragments: [], required: false, enabled: true, raises: nil, sleep_for: nil)
+  def provider(id:, fragments: [], required: false, enabled: true, raises: nil, sleep_for: nil, layer: nil)
     Class.new(Insika::ContextProvider) do
       define_method(:id) { id }
       define_method(:required?) { required }
       define_method(:enabled_for?) { |_p| enabled }
+      define_method(:layer) { layer } if layer
       define_method(:call) do |_req|
         raise raises if raises
 
@@ -107,6 +108,68 @@ RSpec.describe Insika::ContextBuilder do
                      frag({ n: 3 }, placement: :history, priority: 50, source: "P")
                    ])
       expect(build([p]).history).to eq([{ n: 1 }, { n: 2 }, { n: 3 }])
+    end
+  end
+
+  describe "identity-first partition (RFC-0030 C3)" do
+    it "identity fragments render before volatile regardless of priority" do
+      volatile_hi = provider(id: "V", fragments: [frag("vol", source: "V", priority: 100)], layer: :volatile)
+      identity_lo = provider(id: "I", fragments: [frag("id", source: "I", priority: 1)], layer: :identity)
+      pkg = build([volatile_hi, identity_lo])
+      expect(pkg.system).to eq("id\n\nvol")
+      expect(pkg.fragments.map(&:source)).to eq(%w[I V])
+    end
+
+    it "D6 exact reorder: tool_search (identity, 70) renders above skilltrigger/memory (volatile)" do
+      ts = provider(id: "ToolSearch", fragments: [frag("tools", source: "ToolSearch", priority: 70)], layer: :identity)
+      st = provider(id: "SkillTrigger", fragments: [frag("trig", source: "SkillTrigger", priority: 85)], layer: :volatile)
+      mem = provider(id: "Memory", fragments: [frag("mem", source: "Memory", priority: 75)], layer: :volatile)
+      pkg = build([st, ts, mem])
+      expect(pkg.fragments.map(&:source)).to eq(%w[ToolSearch SkillTrigger Memory])
+    end
+
+    it "within each partition the priority/source sort is unchanged" do
+      a = provider(id: "A", fragments: [frag("a1", source: "A", priority: 80),
+                                        frag("a2", source: "A", priority: 90)], layer: :identity)
+      b = provider(id: "B", fragments: [frag("b1", source: "B", priority: 50),
+                                        frag("b2", source: "B", priority: 40)], layer: :volatile)
+      pkg = build([a, b])
+      expect(pkg.fragments.map(&:source)).to eq(%w[A A B B])
+      expect(pkg.fragments.map(&:content)).to eq(%w[a2 a1 b1 b2])
+    end
+
+    it "E1 byte-stability half: different messages leave the joined identity bytes == (volatile above the boundary would fail)" do
+      id_prov = provider(id: "ID", fragments: [frag("persona", source: "ID", priority: 100)], layer: :identity)
+      mem_prov = provider(id: "Memory", fragments: [frag("mem", source: "Memory", priority: 75)], layer: :volatile)
+      builder = described_class.new(providers: [id_prov, mem_prov], event_stream: event_stream)
+      r1 = Insika::ContextRequest.new(session: nil, message: "ola", profile: profile,
+                                      tenant: nil, vars: {}, checkpoint: nil)
+      r2 = r1.with(message: "outra mensagem")
+      p1 = Sync { builder.call(r1) }
+      p2 = Sync { builder.call(r2) }
+      identity_bytes = ->(pkg) { pkg.fragments.select { |f| (f.layer || :volatile) == :identity }.map(&:content).join("\n\n") }
+      expect(identity_bytes.call(p1)).to eq(identity_bytes.call(p2))
+    end
+
+    it "budget unchanged: a volatile fragment is cut before a pinned identity one" do
+      id_prov = provider(id: "ID", fragments: [frag("id", source: "ID", tokens: 40, pinned: true, priority: 1)], layer: :identity)
+      mem_prov = provider(id: "Memory", fragments: [frag("big", source: "Memory", tokens: 40, priority: 99)], layer: :volatile)
+      pkg = build([id_prov, mem_prov], profile(budget: 50))
+      expect(pkg.fragments.map(&:source)).to eq(%w[ID])
+      expect(pkg.budget[:evicted]).to eq(%w[Memory])
+    end
+
+    it "a fragment that arrives PRE-STAMPED cannot bypass the provider's declaration (the doctor's check stays truthful)" do
+      # a :volatile provider smuggling a fragment stamped :identity — the
+      # Builder OVERWRITES with the provider's layer, so it cannot rise above
+      # the boundary and no identity block leaks into the prefix.
+      smuggled = [Insika::ContextFragment.build(content: "sneaky", placement: :system,
+                                                source: "V", priority: 100, layer: :identity)]
+      vol = provider(id: "V", fragments: smuggled, layer: :volatile)
+      idp = provider(id: "I", fragments: [frag("id", source: "I", priority: 1)], layer: :identity)
+      pkg = build([vol, idp])
+      expect(pkg.fragments.find { |f| f.source == "V" }.layer).to eq(:volatile)
+      expect(pkg.system).to eq("id\n\nsneaky")
     end
   end
 

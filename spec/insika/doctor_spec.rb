@@ -659,5 +659,69 @@ RSpec.describe Insika::Doctor do
       expect(findings.find { |f| f.message.include?("not a permanent mode") }).not_to be_nil
     end
   end
+
+  describe "check_cache_layers (RFC-0030 C7)" do
+    BUILTINS = [
+      Insika::Context::Providers::Request, Insika::Context::Providers::Prompt,
+      Insika::Context::Providers::Skill, Insika::Context::Providers::SkillTrigger,
+      Insika::Context::Providers::ToolSearch, Insika::Context::Providers::Memory,
+      Insika::Context::Providers::Session
+    ].freeze
+
+    def layers_finding
+      doctor(context_providers: BUILTINS).run.findings.find { |f| f.check == "cache-layers" }
+    end
+
+    it "the builtin set passes (identity partition verified)" do
+      expect(layers_finding.severity).to eq(:ok)
+    end
+
+    it "a custom provider declaring :identity is a warn (purity unverifiable)" do
+      custom = Class.new(Insika::ContextProvider) do
+        def layer = :identity
+      end
+      finding = doctor(context_providers: [custom]).run.findings.find { |f| f.check == "cache-layers" }
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("not engine-verified")
+    end
+
+    it "a custom provider that EXPLICITLY declares :volatile — the conservative thing — is not flagged" do
+      conservative = Class.new(Insika::ContextProvider) do
+        def layer = :volatile
+      end
+      findings = doctor(context_providers: [conservative]).run.findings.select { |f| f.check == "cache-layers" }
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "works the same with provider INSTANCES (the deployment passes instances)" do
+      instance = Class.new(Insika::ContextProvider) do
+        def layer = :identity
+      end.new
+      finding = doctor(context_providers: [instance]).run.findings.find { |f| f.check == "cache-layers" }
+      expect(finding.severity).to eq(:warn)
+    end
+
+    it "an engine-known volatile provider overriding to :identity is an error (guaranteed cache kill)" do
+      rogue = Class.new(Insika::Context::Providers::Memory) do
+        def layer = :identity
+      end
+      finding = doctor(context_providers: [rogue]).run.findings.find { |f| f.check == "cache-layers" }
+      expect(finding.severity).to eq(:error)
+      expect(finding.message).to include("engine-known turn-dependent")
+    end
+
+    it "a provider without layer (never learned the contract) is not flagged" do
+      plain = Class.new(Insika::ContextProvider) do
+        undef_method(:layer)
+        def id = "Custom"
+      end
+      findings = doctor(context_providers: [plain]).run.findings.select { |f| f.check == "cache-layers" }
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "collaborator nil -> the check is absent from the report" do
+      expect(doctor.run.findings.select { |f| f.check == "cache-layers" }).to be_empty
+    end
+  end
 end
 

@@ -94,6 +94,10 @@ module Deploy
     # Per-session context breakdown (tokens by category + budget) for the
     # Studio session card. Counts and provider ids only — no content, no masking.
     CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: BACKEND)
+    # RFC-0030: per-AGENT cache-hit series (Studio agent-detail card). Sessions
+    # do not stamp their agent, so this capped list is the only way to answer
+    # "cache-hit over time for THIS agent". Percentages and counts — no content.
+    CACHE_SERIES_STORE = Insika::CacheSeriesStore.new(store: BACKEND)
     # Egress of the data-tools (SSRF guard). Default = strict (public https only).
     # For the engine to CALL BACK the consumer's internal API (its
     # /api/internal/*), which is http/loopback locally, enable via env — preferably
@@ -208,7 +212,8 @@ module Deploy
       executor_extra: {
         settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks
         tool_trace_store: TOOL_TRACE_STORE,
-        context_trace_store: CONTEXT_TRACE_STORE
+        context_trace_store: CONTEXT_TRACE_STORE,
+        cache_series_store: CACHE_SERIES_STORE
       }
     )
 

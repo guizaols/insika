@@ -50,6 +50,13 @@
           <summary>
             <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
             <strong>context</strong>
+            <%# RFC-0030: the prefix cache-hit of the turn + the first block
+                whose bytes changed vs the previous turn (PII-free category id). %>
+            <% cache = c["cache"] %>
+            <% if cache && cache["hit_pct"] %><span class="badge"><%= cache["hit_pct"] %>% cached</span><% end %>
+            <% if cache && cache["invalidation_reason"] %>
+              <span class="lat">broke: <%= cache["invalidation_reason"] %></span>
+            <% end %>
             <% unless skills.empty? %>
               <span class="badge">skills <%= skills.length %></span>
             <% end %>
@@ -59,7 +66,7 @@
           </summary>
           <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
             <div class="kv"><span><%= name %></span>
-              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %>
+              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %><%== " · identity" if cat["layer"] == "identity" %>
                 <%# WHICH skills the turn injected AND WHY — the only after-the-fact %>
                 <%# record of activation once the bodies arrive by context instead of a %>
                 <%# tool call. The reason is the half the operator was missing: a name %>
