@@ -68,6 +68,11 @@ module Insika
         # the integration (POST /v1/outcomes). Built unconditionally (empty and
         # free when nothing records) so the Studio's scorecard always has a store.
         outcome_store        = Insika::OutcomeStore.new(store: backend)
+        # RFC-0032 C3: the funnel's durable aggregates — per-day stage counts,
+        # fold cursors and baseline snapshots. Built unconditionally (empty and
+        # free when no pack declares a funnel) so the fold, the doctor and the
+        # Studio always have a store to read/write.
+        funnel_store        = Insika::FunnelStore.new(store: backend)
         # refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
@@ -93,6 +98,7 @@ module Insika
           outbox_store: outbox_store, shadow_pair_store: shadow_pair_store,
           inbound_log: inbound_log,
           outcome_store: outcome_store,
+          funnel_store: funnel_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new,
@@ -180,10 +186,20 @@ module Insika
             outbox_store: spine.outbox_store,
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
-            budget_ledger: spine.budget_ledger # WS2 counter GC (retention-independent)
+            budget_ledger: spine.budget_ledger, # WS2 counter GC (retention-independent)
+            funnel_store: spine.funnel_store # RFC-0032 C6: fold dies with its source
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
+        )
+        # RFC-0032 C4: the tick-driven outcome fold — wired here, after the
+        # Tick, because it reads the outcome/funnel stores of the spine and the
+        # profiles; the per-pair declaration gates it (nil funnel everywhere =
+        # an inert fold). Always built: a pack that declares a funnel later
+        # finds its fold already on the tick.
+        executor.tick.funnel = Insika::FunnelFold.new(
+          outcome_store: spine.outcome_store, funnel_store: spine.funnel_store,
+          profiles: profiles, store: spine.backend
         )
         # WS6 operator alerts: answers budget_warning / breaker_open /
         # delivery_failed per agent (`alerts.webhook`) via the outbox+claim
@@ -204,6 +220,7 @@ module Insika
           outbox_store: spine.outbox_store, shadow_pair_store: spine.shadow_pair_store,
           inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
+          funnel_store: spine.funnel_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
@@ -288,10 +305,18 @@ module Insika
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
                        outcome_store: spine.outcome_store,
+                       funnel_store: spine.funnel_store, # RFC-0032 C6: the fold dies with the tenant
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
                        token_store: spine.token_store, # revoked BEFORE the sweep
+                       event_stream: spine.event_stream
+                     ))
+        # RFC-0032 C5: the operator's baseline freeze — the number RFC-0033/0035
+        # read. Synchronous control command, dispatched from the Studio.
+        bus.register(:freeze_funnel_baseline,
+                     Insika::Commands::FreezeFunnelBaseline.new(
+                       funnel_store: spine.funnel_store, profiles: profiles,
                        event_stream: spine.event_stream
                      ))
         bus
@@ -304,7 +329,7 @@ module Insika
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
-        :inbound_log, :outcome_store,
+        :inbound_log, :outcome_store, :funnel_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -317,7 +342,8 @@ module Insika
         :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
         :memory_store, :memory_audit_store, :refinement_store, :outbox_store, :shadow_pair_store,
         :inbound_log, :token_store,
-        :budget_ledger, :circuit_state, :outcome_store, :channel_registry, :channel_delivery,
+        :budget_ledger, :circuit_state, :outcome_store, :funnel_store,
+        :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
         :hooks, :guardrails, :middleware,

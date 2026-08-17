@@ -88,6 +88,7 @@ module Studio
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil,
                     outcome_store: nil, shadow_pair_store: nil, parity_criterion: nil,
+                    funnel_store: nil, budget_ledger: nil,
                     channel_registry: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
@@ -129,6 +130,10 @@ module Studio
           # agent detail shows the per-day series. Reads only; recording goes
           # through POST /v1/outcomes.
           outcome_store: outcome_store,
+          # RFC-0032 C9: the Funnel page reads the fold's cells and the
+          # BudgetLedger's current counters (D6). nil = the page renders its
+          # empty state.
+          funnel_store: funnel_store, budget_ledger: budget_ledger,
           # RFC-0025: the shadow pair store (read to render /studio/parity), the
           # frozen criterion (folded by Verdict), and the channel registry (the
           # nav row only exists when a shadow channel is registered — the page
@@ -713,6 +718,9 @@ module Studio
                            .group_by { |t| t["turn"] }
             # Context breakdown per turn: chronological entries.
             @context_traces = insika[:context_trace_store]&.for_session(sid) || []
+            # RFC-0032 C9: the stage history — the session's outcomes folded
+            # into the agent's declared stages (unmapped kinds render raw).
+            @stage_history = stage_history_for(sid)
             view("session")
           end
         end
@@ -939,6 +947,32 @@ end
         end
       end
 
+      # --- Funnel: the outcome funnel per store (RFC-0032 C9) ----------------
+      # Reads the fold's cells + the BudgetLedger's current counters directly
+      # (D7 — the scorecard's constitutional split); the ONE mutation — the
+      # baseline freeze — dispatches :freeze_funnel_baseline on the bus.
+      r.on "funnel" do
+        r.get { render_funnel }
+        r.on String do |agent_id|
+          agent_id = utf8(agent_id)
+          r.post "freeze" do
+            check_csrf!
+            with_flash("Baseline frozen.") do
+              dispatch(:freeze_funnel_baseline,
+                       { agent: agent_id,
+                         from: presence(r.params["from"]),
+                         to: presence(r.params["to"]),
+                         # the card's hidden tenant field: WITHOUT it, a
+                         # multi-tenant deployment freezes the "platform" pair
+                         # while the operator believes they froze the store's.
+                         tenant: presence(r.params["tenant"]),
+                         operator: "studio" })
+            end
+            r.redirect("/studio/funnel")
+          end
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
@@ -1022,6 +1056,7 @@ end
           ["Chats", "/studio/chats", :chats],
           ["Customers", "/studio/customers", :chats],
           ["Playground", "/studio/playground", :playground],
+          ["Funnel", "/studio/funnel", :funnel],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
@@ -1782,6 +1817,73 @@ end
       # verdicts flipped with presentation order.
       @agreement = { order_dependent: pairs.count { |p| p.verdict.is_a?(Hash) && p.verdict["order_dependent"] } }
       view("parity")
+    end
+
+    # --- Funnel (RFC-0032 C9) ------------------------------------------------
+
+    # One card per STORE (agent) that declares a funnel, each with a block per
+    # tenant that has folded cells. The only mutation on this page — the
+    # baseline freeze — dispatches :freeze_funnel_baseline (D7).
+    def render_funnel
+      profiles = insika[:profile_source]&.all || []
+      p = request.params["period"].to_i
+      @period = p.positive? ? p : 30
+      @stores = profiles.filter_map do |p|
+        decl = Insika::FunnelDeclaration.parse(p.funnel)
+        next unless decl
+
+        { profile: p, decl: decl, tenants: tenants_for(p.id) }
+      end
+      view("funnel")
+    end
+
+    # Tenant list per agent, derived from the store cells (D7, the 0031 drill
+    # pattern) — multi-tenant deployments show one card block per tenant; a
+    # single-tenant deployment just "platform".
+    def tenants_for(agent_id)
+      cells = insika[:funnel_store]&.pairs.to_a || []
+      cells.select { |c| c[:agent] == agent_id }.map { |c| c[:tenant] }
+    end
+
+    # Sums the folded counts over the period -> { stage => count } for the view.
+    # A nil store (base wiring) reads as all-zero — the page still renders the
+    # declaration and the freeze form.
+    def funnel_period_counts(store, tenant, agent, period)
+      return {} unless store
+
+      today = Date.today.iso8601
+      from = (Date.today - period).iso8601
+      store.days(tenant: tenant, agent: agent, from: from, to: today)
+           .each_with_object(Hash.new(0)) { |(_, counts), acc| counts.each { |s, n| acc[s] += n } }
+    end
+
+    # BudgetLedger's current counters (D6): "tokens today / this month". nil
+    # store -> the view renders 0 (the empty state).
+    def funnel_spend(store, tenant, agent)
+      return { daily: 0, monthly: 0 } unless store
+
+      store.current(tenant: tenant, agent: agent)
+    end
+
+    # RFC-0032 C9: the session's stage history — each outcome record of the
+    # session folded to its stage by the agent's declaration (unmapped kinds
+    # render the raw outcome with a muted note — the hole is visible, RFC §2).
+    # Without a declaration the block renders the raw outcomes.
+    def stage_history_for(sid)
+      records = Array(insika[:outcome_store]&.all&.select { |r| r.session_id == sid })
+                 .sort_by { |r| r.at.to_s }
+      return [] if records.empty?
+
+      agent = records.first.agent
+      profile = insika[:profile_source]&.fetch(agent)
+      decl = profile && Insika::FunnelDeclaration.parse(profile.funnel)
+      {
+        declaration: decl,
+        rows: records.map do |r|
+          stage = decl && decl.advance_on[r.outcome]
+          { outcome: r.outcome, stage: stage, at: r.at, value: r.value }
+        end
+      }
     end
 
     # A run's window in words. An EMPTY window means "the collector's own default" —

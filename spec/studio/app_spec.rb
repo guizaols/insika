@@ -100,10 +100,12 @@ RSpec.describe Studio::App do
   end
 
   def profile(id, model: "deepseek-chat", provider: :deepseek, memory: true,
-              tools_allow: %w[menu calc], skills: %w[pedido], skills_eager: nil, prompt_files: [])
+              tools_allow: %w[menu calc], skills: %w[pedido], skills_eager: nil, prompt_files: [],
+              funnel: nil)
     Insika::AgentProfile.build(id: id, model: model, provider: provider,
                                 memory: memory, tools_allow: tools_allow,
-                                skills: skills, skills_eager: skills_eager, prompt_files: prompt_files)
+                                skills: skills, skills_eager: skills_eager, prompt_files: prompt_files,
+                                funnel: funnel)
   end
 
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
@@ -112,7 +114,7 @@ RSpec.describe Studio::App do
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
-                 outcomes: [], cache_series: {})
+                 outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -183,9 +185,30 @@ RSpec.describe Studio::App do
       checkpoint_store: CheckpointStoreDouble.new(checkpoints),
        refinement_store: refinement_store, golden_store: golden_store,
        outcome_store: seed_outcomes(outcomes),
+       funnel_store: seed_funnel(funnel_cells),
+       budget_ledger: seed_budget(budget),
        session_secret: "x" * 64
     )
      [app, bus]
+   end
+
+   def seed_funnel(cells)
+     return nil unless cells
+
+     store = Insika::FunnelStore.new(store: Insika::Stores::Memory.new)
+     cells.each do |cell|
+       store.add(tenant: cell[:tenant], agent: cell[:agent], at: cell[:at],
+                 counts: cell[:counts])
+     end
+     store
+   end
+
+   def seed_budget(rows)
+     return nil unless rows
+
+     ledger = Insika::BudgetLedger.new(store: Insika::Stores::Memory.new)
+     rows.each { |row| ledger.add(tenant: row[:tenant], agent: row[:agent], by: row[:by]) }
+     ledger
    end
 
    def seed_outcomes(rows)
@@ -2649,5 +2672,200 @@ end
     res = client.post("/tasks/t1/cancel", params: { "_csrf" => csrf })
     expect(res.status).to eq(302)
     expect(client.get("/tasks/t1").body).to include("task not found") # flash, not a crash
+  end
+
+  # Funnel (RFC-0032 C9) -------------------------------------------
+
+  FUNNEL_DECL = { "stages" => %w[greeted qualified cart paid],
+                  "advance_on" => { "qualified" => "qualified", "pix_paid" => "paid" },
+                  "primary" => "paid", "attribution_window" => "72h" }.freeze
+
+  # Cells are keyed by UTC date while the page windows with Date.today — seed
+  # RELATIVE to today so these specs do not expire (fixed dates did, and the
+  # page has no injectable clock by design).
+  def funnel_cell(days_ago, agent: "funnel-store", tenant: nil, counts:)
+    t = Date.today - days_ago
+    { tenant: tenant, agent: agent, at: Time.utc(t.year, t.month, t.day, 10),
+      counts: counts }
+  end
+
+  def funnel_app(funnel_cells: nil, budget: nil, outcomes: [], sessions: {})
+    agents = [profile("funnel-store", funnel: FUNNEL_DECL), profile("chef")]
+    build_app(agents: agents, funnel_cells: funnel_cells, budget: budget,
+              outcomes: outcomes, sessions: sessions)
+  end
+
+  it "the funnel index lists only agents with a valid declaration, with counts over the period" do
+    cells = [
+      funnel_cell(3, counts: { "greeted" => 10, "qualified" => 5, "paid" => 2 }),
+      funnel_cell(1, counts: { "greeted" => 5, "qualified" => 3, "paid" => 1 })
+    ]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel").body
+
+    expect(body).to include("funnel-store")
+    expect(body).not_to include("chef") # no declaration
+    # the stage rows carry "stage · count" — structured, not SVG noise
+    expect(body).to include("greeted · 15")
+    expect(body).to include("qualified · 8")
+    expect(body).to include("paid · 3")
+    expect(body).to include("conversion 0.2000") # 3 / 15
+  end
+
+  it "the period param switches the window" do
+    cells = [
+      funnel_cell(40, counts: { "greeted" => 99, "paid" => 1 }),
+      funnel_cell(1, counts: { "greeted" => 5, "paid" => 1 })
+    ]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel?period=7").body
+    expect(body).to include("greeted · 5")
+    expect(body).not_to include("greeted · 99") # outside the window
+    expect(body).to include("paid · 1")
+  end
+
+  it "a malformed period param falls back to 30 days" do
+    cells = [funnel_cell(1, counts: { "greeted" => 5 })]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel?period=abc").body
+    expect(body).to include("greeted · 5")
+  end
+
+  it "the empty state renders without a store collaborator" do
+    agents = [profile("chef")]
+    app, = build_app(agents: agents)
+    body = login(app).get("/funnel").body
+    expect(body).to include("No outcome funnel declared")
+  end
+
+  it "the freeze POST dispatches :freeze_funnel_baseline with from/to and redirects" do
+    app, bus = funnel_app(funnel_cells: [funnel_cell(1, counts: { "greeted" => 1 })])
+    client = login(app)
+    csrf = csrf_from(client.get("/funnel").body)
+    res = client.post("/funnel/funnel-store/freeze",
+                      params: { "from" => "2026-07-01", "to" => "2026-08-10", "_csrf" => csrf })
+    expect(res.headers["location"]).to eq("/studio/funnel")
+    cmd = bus.last(:freeze_funnel_baseline)
+    expect(cmd.payload).to include(agent: "funnel-store", from: "2026-07-01",
+                                   to: "2026-08-10", operator: "studio")
+  end
+
+  # blocker: the card's hidden tenant field must REACH the command — without
+  # it, a multi-tenant freeze writes the "platform" baseline instead of the
+  # store's, and the Studio reads the wrong cells for the sums.
+  it "the freeze POST carries the card's tenant into the payload" do
+    app, bus = funnel_app(funnel_cells: [funnel_cell(1, tenant: "acme", counts: { "greeted" => 1 })])
+    client = login(app)
+    csrf = csrf_from(client.get("/funnel").body)
+    client.post("/funnel/funnel-store/freeze",
+                params: { "tenant" => "acme", "_csrf" => csrf })
+    expect(bus.last(:freeze_funnel_baseline).payload).to include(tenant: "acme")
+  end
+
+  it "a multi-tenant freeze lands on THAT tenant's baseline (real command, end to end)" do
+    funnel_store = Insika::FunnelStore.new(store: Insika::Stores::Memory.new)
+    30.times do |i|
+      funnel_store.add(tenant: "acme", agent: "funnel-store",
+                       at: Time.utc(2026, 7, 1 + i, 10), counts: { "greeted" => 1, "paid" => 1 })
+    end
+    bus = Insika::CommandBus.new
+    bus.register(:freeze_funnel_baseline,
+                 Insika::Commands::FreezeFunnelBaseline.new(
+                   funnel_store: funnel_store,
+                   profiles: ProfileSourceDouble.new([profile("funnel-store", funnel: FUNNEL_DECL)]),
+                   event_stream: Insika::EventStream.new
+                 ))
+    recording = StudioRecordingBus.new(bus)
+    app = Class.new(Studio::App)
+    app.configure(command_bus: recording,
+                  profile_source: ProfileSourceDouble.new([profile("funnel-store", funnel: FUNNEL_DECL)]),
+                  event_stream: nil, config: { admin_token: "s3cret" },
+                  funnel_store: funnel_store, session_secret: "x" * 64)
+    client = login(app)
+    csrf = csrf_from(client.get("/funnel").body)
+    res = client.post("/funnel/funnel-store/freeze",
+                      params: { "tenant" => "acme", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(funnel_store.baseline(tenant: "acme", agent: "funnel-store")).not_to be_nil
+    expect(funnel_store.baseline(tenant: "platform", agent: "funnel-store")).to be_nil
+    expect(recording.last(:freeze_funnel_baseline).payload[:tenant]).to eq("acme")
+  end
+
+  it "a ValidationError (short span) renders the flash, not a crash" do
+    bus = Class.new(BusDouble) do
+      def dispatch(command)
+        raise Insika::ValidationError, "baseline span must cover at least 28 days" if command.type == :freeze_funnel_baseline
+
+        super
+      end
+    end.new([])
+    agents = [profile("funnel-store", funnel: FUNNEL_DECL)]
+    app = Class.new(Studio::App)
+    app.configure(command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
+                  event_stream: nil, config: { admin_token: "s3cret" },
+                  funnel_store: Insika::FunnelStore.new(store: Insika::Stores::Memory.new),
+                  session_secret: "x" * 64)
+    client = login(app)
+    csrf = csrf_from(client.get("/funnel").body)
+    res = client.post("/funnel/funnel-store/freeze", params: { "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(client.get("/funnel").body).to include("at least 28 days")
+  end
+
+  it "the spend block renders 0 without budget_ledger" do
+    app, = funnel_app
+    body = login(app).get("/funnel").body
+    expect(body).to include("tokens today <strong>0</strong>")
+  end
+
+  it "the spend block renders the BudgetLedger's current counters when wired" do
+    app, = funnel_app(budget: [{ tenant: nil, agent: "funnel-store", by: 1_234 }])
+    body = login(app).get("/funnel").body
+    expect(body).to include("tokens today <strong>1234</strong>")
+  end
+
+  it "the baseline block renders when a baseline exists" do
+    cells = [funnel_cell(1, counts: { "greeted" => 1 })]
+    app, = build_app(agents: [profile("funnel-store", funnel: FUNNEL_DECL), profile("chef")],
+                     funnel_cells: cells)
+    # seed the baseline into the same store the page reads:
+    app.insika[:funnel_store].set_baseline(
+      tenant: nil, agent: "funnel-store",
+      record: { "from" => "2026-07-01", "to" => "2026-08-10",
+                "stages" => { "greeted" => 30 }, "primary" => "paid",
+                "primary_count" => 2, "conversion" => 0.066,
+                "window" => "72h", "frozen_at" => "2026-08-15T10:00:00Z" }
+    )
+    body = login(app).get("/funnel").body
+    expect(body).to include("baseline frozen")
+    expect(body).to include("2026-07-01")
+  end
+
+  it "the session page shows the stage-history block for a declared agent" do
+    sess = StoredSession.new(id: "sess-f", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    outcomes = [
+      { tenant: nil, agent: "funnel-store", session_id: "sess-f", outcome: "qualified" },
+      { tenant: nil, agent: "funnel-store", session_id: "sess-f", outcome: "pix_paid" }
+    ]
+    app, = funnel_app(outcomes: outcomes, sessions: { "sess-f" => sess })
+    body = login(app).get("/sessions/sess-f").body
+    expect(body).to include("Stage history")
+    expect(body).to include("qualified")
+    expect(body).to include("paid")
+  end
+
+  it "the session page renders the raw-outcomes note without a declaration" do
+    sess = StoredSession.new(id: "sess-r", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    outcomes = [{ tenant: nil, agent: "chef", session_id: "sess-r", outcome: "conversion" }]
+    app, = funnel_app(outcomes: outcomes, sessions: { "sess-r" => sess })
+    body = login(app).get("/sessions/sess-r").body
+    expect(body).to include("no funnel declared — raw outcomes")
+    expect(body).to include("conversion")
+  end
+
+  it "the funnel nav row is present" do
+    app, = build_app
+    body = login(app).get("/home").body
+    expect(body).to include("Funnel")
   end
 end

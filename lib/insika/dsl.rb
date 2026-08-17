@@ -215,6 +215,15 @@ module Insika
       #   budget daily: 100_000, monthly: 2_000_000, soft: false
       def budget(hash) = (@config[:budget] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The outcome funnel declaration (RFC-0032): the store's stage vocabulary
+      # as pack data — the engine folds WS7 outcome kinds into the DECLARED
+      # stages, and never hard-codes one itself. Merges, so repeated calls
+      # accumulate (like budget).
+      #   funnel stages: %w[greeted qualified cart paid],
+      #          advance_on: { "pix_paid" => "paid", "abandoned_cart" => "cart" },
+      #          primary: "paid", attribution_window: "72h"
+      def funnel(hash) = (@config[:funnel] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Provider-interaction reliability, as DATA (WS3): retries + exponential
       # backoff on transient failures, a fallback model chain (mid-turn
       # rotation), and a circuit breaker per (tenant, provider/model) that

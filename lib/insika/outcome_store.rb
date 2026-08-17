@@ -38,11 +38,35 @@ module Insika
     # All records, NEWEST first. `tenant:` narrows to one tenant's (WS1 — the
     # read path a tenant query uses); `agent:` narrows further. An outcome is a
     # fact, never a secret: the fields are ids, an outcome name and a number.
+    # NOTE: `tenant: nil` means NO filter — the record's tenant field is
+    # `tenant.to_s` ("" for a single-tenant write), so a caller that wants only
+    # the no-tenant records must pass `tenant: ""` explicitly (the FOLD uses
+    # `for_pair`, never this nil-means-everything trap).
     def all(tenant: nil, agent: nil)
       records = @store.list(SCOPE).filter_map { |k| to_record(@store.get(SCOPE, k)) }
       records.select! { |r| r.tenant == tenant } if tenant
       records.select! { |r| r.agent == agent } if agent
       records.sort_by(&:at).reverse
+    end
+
+    # RFC-0032 C4: the fold's per-pair read — one KEY-prefix scan (the key IS
+    # tenant:agent:YYYY-MM-DD:id, WS1), optionally skipping the keys older than
+    # an ISO date WITHOUT reading them (the fold's cursor day — everything
+    # before it is already folded). `tenant:` takes either spelling (nil/""
+    # and "platform" all mean the no-tenant key segment). -> [Record].
+    def for_pair(tenant:, agent:, since_date: nil)
+      prefix = "#{key_tenant(tenant)}:#{agent}:"
+      keys = @store.list(SCOPE).select { |k| k.start_with?(prefix) }
+      keys.select! { |k| date_segment(k) >= since_date } if since_date
+      keys.filter_map { |k| to_record(@store.get(SCOPE, k)) }
+    end
+
+    # RFC-0032 C4: the distinct (tenant, agent) pairs present in the store —
+    # one key scan, no record reads. `tenant` is nil for the no-tenant segment
+    # (the FunnelStore#pairs spelling; every key-based API normalizes it back).
+    # -> [{ tenant: String | nil, agent: String }]
+    def pairs
+      @store.list(SCOPE).map { |k| pair_of(k) }.uniq
     end
 
     # -> { agent => { outcome:, value:, at:, session_id: } }: the LAST outcome
@@ -92,6 +116,18 @@ module Insika
     end
 
     private
+
+    def key_tenant(tenant) = tenant.to_s.empty? ? "platform" : tenant.to_s
+
+    # The date segment of the key (the 3rd segment, 0-indexed: 2).
+    def date_segment(k) = k.split(":").fetch(2, "")
+
+    # Parses the key's tenant segment back: "platform" -> nil (the
+    # FunnelStore#pairs spelling); anything else stays.
+    def pair_of(k)
+      tenant, agent, = k.split(":")
+      { tenant: tenant == "platform" ? nil : tenant, agent: agent }
+    end
 
     def key(tenant, agent, time, id)
       # tenant + agent + UTC date prefix: per-period / per-agent listing is a

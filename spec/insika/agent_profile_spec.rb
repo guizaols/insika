@@ -222,6 +222,43 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "funnel (RFC-0032 — the outcome funnel declaration)" do
+    it "nil/absent -> nil = no funnel (parity — nothing folds)" do
+      expect(described_class.build(id: "a", model: "m").funnel).to be_nil
+    end
+
+    it "deep-stringifies the declaration (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        funnel: { stages: %w[greeted qualified cart paid],
+                  advance_on: { pix_paid: "paid", abandoned_cart: "cart" },
+                  primary: :paid, attribution_window: "72h" }
+      )
+      expect(profile.funnel).to eq(
+        "stages" => %w[greeted qualified cart paid],
+        "advance_on" => { "pix_paid" => "paid", "abandoned_cart" => "cart" },
+        "primary" => "paid", "attribution_window" => "72h"
+      )
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        funnel: { "stages" => %w[greeted paid], "advance_on" => { "conversion" => "paid" },
+                  "primary" => "paid", "attribution_window" => "72h" }
+      )
+      expect(profile.to_h[:funnel]).to eq(
+        "stages" => %w[greeted paid], "advance_on" => { "conversion" => "paid" },
+        "primary" => "paid", "attribution_window" => "72h"
+      )
+    end
+
+    it "a profile without a funnel sees nil (no shape validation here)" do
+      plain = described_class.build(id: "a", model: "m")
+      expect(plain.funnel).to be_nil
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

@@ -65,6 +65,22 @@ RSpec.describe Insika::Tick do
       expect(result).to eq({ dispatched: ["d1"], resumed: ["t1"], failed: [] })
     end
 
+    # RFC-0032 C8: the outcome fold rides the tick next to retention — the
+    # summary carries its claim result, and a nil fold changes nothing.
+    it "calls the funnel fold every pass and reports it in the summary" do
+      fold = instance_double(Insika::FunnelFold, run: { claimed: true, folded: 2, skipped: 0, pairs: 1 })
+      tick.funnel = fold
+
+      result = tick.run_once
+
+      expect(fold).to have_received(:run)
+      expect(result[:funnel]).to eq(claimed: true, folded: 2, skipped: 0, pairs: 1)
+    end
+
+    it "a nil funnel (base wiring) leaves the summary byte-identical" do
+      expect(tick.run_once).not_to have_key(:funnel)
+    end
+
     it "one sweeper per window: a second worker drains but does NOT sweep" do
       other_recovery = FakeRecovery.new
       other = described_class.new(store: backend, recovery: other_recovery,

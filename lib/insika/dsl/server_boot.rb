@@ -99,6 +99,11 @@ module Insika
           pending_action_store: @graph.pending_action_store,
           # WS7: the agents-grid scorecard reads the outcome store.
           outcome_store: @graph.outcome_store,
+          # RFC-0032 C8: the outcome-funnel page reads the fold's cells and the
+          # BudgetLedger's current counters (D6); the only mutation — the
+          # baseline freeze — dispatches :freeze_funnel_baseline on the bus.
+          funnel_store: @graph.funnel_store,
+          budget_ledger: @graph.budget_ledger,
           # RFC-0025: the parity page (only rendered when a shadow channel exists —
           # the nav row keys off the registry).
           shadow_pair_store: @graph.shadow_pair_store,
