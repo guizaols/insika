@@ -136,7 +136,10 @@ module Insika
         metadata: h[:metadata] || {},
         # RFC-0032: funnel declaration — a plain Hash read with string keys by
         # FunnelDeclaration.parse; nil round-trips as nil (= no funnel).
-        funnel: h[:funnel]
+        funnel: h[:funnel],
+        # RFC-0033: followup declaration — a plain Hash read with string keys by
+        # FollowupPolicy.parse; nil round-trips as nil (= feature off).
+        followup: h[:followup]
       )
     end
 

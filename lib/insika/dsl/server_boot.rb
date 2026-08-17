@@ -108,7 +108,11 @@ module Insika
           # the nav row keys off the registry).
           shadow_pair_store: @graph.shadow_pair_store,
           parity_criterion: @builder.criterion,
-          channel_registry: @graph.channel_registry
+          channel_registry: @graph.channel_registry,
+          # RFC-0033 C9/C10: the Follow-ups page reads the stores directly;
+          # its only mutations (cancel, force-revoke) dispatch bus commands.
+          followup_store: @graph.followup_store,
+          contact_store: @graph.contact_store
         )
       end
 

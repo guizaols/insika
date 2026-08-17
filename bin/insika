@@ -367,6 +367,11 @@ end
         # relied on (RFC-0033/0035).
         funnel_store: Insika::FunnelStore.new(store: backend),
         outcome_store: Insika::OutcomeStore.new(store: backend),
+        # RFC-0033 C12: the follow-up check reads the schedule records and the
+        # contact cells over the same runtime backend (nil collaborators = the
+        # CLI reports declarations only).
+        followup_store: Insika::FollowupStore.new(store: backend),
+        contact_store: Insika::ContactStore.new(store: backend),
         backend: backend
       )
     end

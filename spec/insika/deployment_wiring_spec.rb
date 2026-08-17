@@ -183,6 +183,53 @@ RSpec.describe Deploy::Wiring do
         expect(retention.instance_variable_get(:@funnel_store)).to be(w::SPINE.funnel_store)
       end
     end
+
+    # RFC-0033 C9: the follow-up feature rides the SAME shared core — spine
+    # stores, tick firer, the two commands, the SendMessage hook and the LGPD
+    # purges, all over the shared BACKEND, inert when no pack declares followup.
+    describe "follow-up (RFC-0033)" do
+      it "builds the contact + follow-up stores over BACKEND in the spine" do
+        expect(w::SPINE.contact_store).to be_a(Insika::ContactStore)
+        expect(w::SPINE.contact_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::SPINE.followup_store).to be_a(Insika::FollowupStore)
+        expect(w::SPINE.followup_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.contact_store).to be(w::SPINE.contact_store)
+        expect(w::GRAPH.followup_store).to be(w::SPINE.followup_store)
+      end
+
+      it "wires the firer onto the tick (the tick's third duty)" do
+        firer = w::GRAPH.executor.tick.followup
+        expect(firer).to be_a(Insika::FollowupEngine)
+        expect(firer.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
+        expect(firer.instance_variable_get(:@followup_store)).to be(w::SPINE.followup_store)
+      end
+
+      it "registers the two follow-up commands on the bus" do
+        expect(w::BUS.registered?(:cancel_followup)).to be(true)
+        expect(w::BUS.registered?(:revoke_contact)).to be(true)
+      end
+
+      it "wires the stores into the SendMessage hook" do
+        send_message = w::BUS.instance_variable_get(:@handlers)[:send_message]
+        expect(send_message.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
+        expect(send_message.instance_variable_get(:@followup_store)).to be(w::SPINE.followup_store)
+      end
+
+      it "wires the stores into the LGPD purges" do
+        forget = w::BUS.instance_variable_get(:@handlers)[:forget_customer]
+        expect(forget.instance_variable_get(:@followup_store)).to be(w::SPINE.followup_store)
+        expect(forget.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@followup_store)).to be(w::SPINE.followup_store)
+        expect(delete.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
+      end
+
+      it "wires the stores into retention (records + cells age out)" do
+        retention = w::GRAPH.executor.tick.instance_variable_get(:@retention)
+        expect(retention.instance_variable_get(:@followup_store)).to be(w::SPINE.followup_store)
+        expect(retention.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
+      end
+    end
   end
 
   # the production wiring finally instantiates Recovery and speaks

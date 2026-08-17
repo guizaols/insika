@@ -28,6 +28,12 @@ RSpec.describe Insika::MessageOrigin do
       expect { described_class.parse!("enigne") }
         .to raise_error(Insika::ValidationError, /unknown message origin.*engine/m)
     end
+
+    it "accepts the RFC-0033 closed value 'scheduled'" do
+      expect(described_class.parse!("scheduled")).to eq("scheduled")
+      expect(described_class::SCHEDULED).to eq("scheduled")
+      expect(described_class::ALL).to include("scheduled")
+    end
   end
 
   describe "reading a message" do
@@ -44,6 +50,10 @@ RSpec.describe Insika::MessageOrigin do
 
     it "the engine's own 'user' turn is not the customer" do
       expect(described_class).not_to be_customer(msg("user", "engine"))
+    end
+
+    it "a scheduled follow-up kick is never read as the customer (the #133 discipline)" do
+      expect(described_class).not_to be_customer(msg("user", "scheduled"))
     end
 
     it "a guardrail's reply and a human operator's are not the agent" do
@@ -101,5 +111,18 @@ RSpec.describe "message origin in the transcript" do
 
     expect(messages[0]["origin"]).to eq("engine")   # the composed input
     expect(messages[1]).not_to have_key("origin")   # the model's reply is still the model's
+  end
+
+  # RFC-0033 E1 (closing the deliver loop): the FollowupEngine's synthetic
+  # command flows through the FULL pipeline like any turn — the task runs, the
+  # kick text is stamped origin "scheduled", so a refinement read can never
+  # mistake the engine for the customer (the #133 discipline).
+  it "a scheduled_followup command runs through the pipeline stamped 'scheduled'" do
+    messages = run_turn(message: "the follow-up kick text", origin: "scheduled")
+
+    expect(messages.map { |m| m["role"] }).to eq(%w[user assistant])
+    expect(messages[0]["origin"]).to eq("scheduled")
+    expect(messages[0]["content"]).to eq("the follow-up kick text")
+    expect(Insika::MessageOrigin).not_to be_customer(messages[0])
   end
 end

@@ -5,7 +5,9 @@ require "spec_helper"
 RSpec.describe Insika::Commands::SendMessage do
   subject(:handler) do
     described_class.new(profiles: profiles, session_store: session_store,
-                        task_store: task_store, executor: executor)
+                        task_store: task_store, executor: executor,
+                        contact_store: contact_store, followup_store: followup_store,
+                        store: backend)
   end
 
   let(:backend) { Insika::Stores::Memory.new }
@@ -13,6 +15,11 @@ RSpec.describe Insika::Commands::SendMessage do
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:profile) { Insika::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
+
+  # RFC-0033 C6: the contact hook's collaborators. The default profile has NO
+  # followup declaration — the hook is off (parity) unless a test declares one.
+  let(:contact_store) { Insika::ContactStore.new(store: backend) }
+  let(:followup_store) { Insika::FollowupStore.new(store: backend) }
 
   # Records the spawn and declines every door (the real fiber is the
   # integration). See spec/support/fake_turn_executor.rb.
@@ -352,6 +359,145 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(first).to eq({ task_id: "t-door", merged: true })
       expect(handler.call(cmd)).to eq({ task_id: "t-door", duplicate: true })
       expect(coalescing.asked.count { |door, _s, _t| door == :collect }).to eq(1)
+    end
+  end
+
+  describe "RFC-0033 — the contact hook (C6/C8)" do
+    def declared(over = {})
+      Insika::AgentProfile.build(
+        id: "sales", model: "gpt",
+        followup: { "arm" => "schedule",
+                    "policy" => { "cancel_keywords" => ["não quero mais contato"] } }.merge(over)
+      )
+    end
+
+    def send_msg(**over)
+      handler.call(Insika::Command.build(:send_message, payload(**over), tenant: "acme"))
+    end
+
+    it "is a no-op with no profile declaration (byte-parity)" do
+      session_store.create(id: "s1")
+      send_msg(customer: "c-1", session_id: "s1")
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).to be_nil
+    end
+
+    it "is a no-op with contact_store nil" do
+      plain = described_class.new(profiles: profiles, session_store: session_store,
+                                  task_store: task_store, executor: executor)
+      profiles["sales"] = declared
+      session_store.create(id: "s1")
+      plain.call(Insika::Command.build(:send_message, payload(customer: "c-1", session_id: "s1"),
+                                       tenant: "acme"))
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).to be_nil
+    end
+
+    it "runs AFTER validation: a refused message never touches contact state (review fix)" do
+      profiles["sales"] = declared
+      session_store.create(id: "s1")
+      # empty body -> ValidationError below, and the hook must not run
+      expect do
+        handler.call(Insika::Command.build(:send_message,
+                                           payload(customer: "c-1", message: "", session_id: "s1"),
+                                           tenant: "acme"))
+      end.to raise_error(Insika::ValidationError)
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).to be_nil
+    end
+
+    it "runs AFTER the dedup check: a redelivered event does not touch contact twice (review fix)" do
+      profiles["sales"] = declared
+      log = Insika::InboundLog.new(store: backend)
+      handler = described_class.new(profiles: profiles, session_store: session_store,
+                                    task_store: task_store, executor: executor,
+                                    contact_store: contact_store, followup_store: followup_store,
+                                    inbound_log: log, store: backend)
+      session_store.create(id: "s1")
+      cmd = Insika::Command.build(:send_message,
+                                  payload(customer: "c-1", event_id: "wamid.1", session_id: "s1"),
+                                  tenant: "acme", transport: :"channel:relay")
+      handler.call(cmd)
+      handler.call(cmd)
+      cell = contact_store.get(tenant: "acme", customer: "c-1")
+      expect(cell).not_to be_nil
+      expect(contact_store.cells.size).to eq(1) # one write, not two
+    end
+
+    it "a customer message sets granted (a tagged conversation opens the cell)" do
+      profiles["sales"] = declared
+      session_store.create(id: "s1")
+      send_msg(customer: "c-1", session_id: "s1")
+      cell = contact_store.get(tenant: "acme", customer: "c-1")
+      expect(cell.state).to eq("granted")
+      expect(cell.sends_without_reply).to eq(0)
+    end
+
+    it "a keyword match revokes + cancels the pending records in ONE transaction" do
+      profiles["sales"] = declared
+      followup_store.create(tenant: "acme", agent: "sales", customer: "c-1", session_id: "s1",
+                            at: Time.now.utc + 3600, reason: "pix pending", arm: "schedule",
+                            id: "k", now: Time.now.utc)
+      session_store.create(id: "s1")
+
+      send_msg(customer: "c-1", message: "NÃO quero mais contato, obrigada", session_id: "s1")
+
+      expect(contact_store.get(tenant: "acme", customer: "c-1").state).to eq("revoked")
+      expect(followup_store.find("k").status).to eq("cancelled")
+    end
+
+    it "an origin: 'engine' message changes nothing (only a real customer speaks)" do
+      profiles["sales"] = declared
+      session_store.create(id: "s1")
+      send_msg(customer: "c-1", origin: "engine", session_id: "s1")
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).to be_nil
+    end
+
+    it "an engine-composed line QUOTING the keyword does not revoke (review fix — only the customer's own words act)" do
+      profiles["sales"] = declared
+      followup_store.create(tenant: "acme", agent: "sales", customer: "c-1", session_id: "s1",
+                            at: Time.now.utc + 3600, reason: "pix pending", arm: "schedule",
+                            id: "k", now: Time.now.utc)
+      session_store.create(id: "s1")
+      send_msg(customer: "c-1", message: "a cliente disse \"não quero mais contato\"",
+               origin: "engine", session_id: "s1")
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).to be_nil
+      expect(followup_store.find("k").status).to eq("pending")
+    end
+
+    it "the keyword revoke commits in ONE transaction on the shared backend (D2)" do
+      profiles["sales"] = declared
+      followup_store.create(tenant: "acme", agent: "sales", customer: "c-1", session_id: "s1",
+                            at: Time.now.utc + 3600, reason: "pix pending", arm: "schedule",
+                            id: "k", now: Time.now.utc)
+      session_store.create(id: "s1")
+
+      # a raising FALLING store on the shared backend rolls back the whole
+      # pair — the cell is never left revoked with pending records alive
+      flaky = Class.new do
+        def initialize(real) = @real = real
+        def transaction(&blk) = @real.transaction(&blk)
+        def method_missing(...) = @real.public_send(...)
+        def respond_to_missing?(*) = true
+      end.new(backend)
+      handler = described_class.new(profiles: profiles, session_store: session_store,
+                                    task_store: task_store, executor: executor,
+                                    contact_store: contact_store,
+                                    followup_store: followup_store, store: flaky)
+
+      send_msg = -> { handler.call(Insika::Command.build(:send_message,
+                                                         payload(customer: "c-1",
+                                                                 message: "NÃO quero mais contato",
+                                                                 session_id: "s1"),
+                                                         tenant: "acme")) }
+      expect(send_msg).not_to raise_error
+      expect(contact_store.get(tenant: "acme", customer: "c-1").state).to eq("revoked")
+      expect(followup_store.find("k").status).to eq("cancelled")
+    end
+
+    it "refuses the engine-reserved origin 'scheduled' at the edge (C8)" do
+      profiles["sales"] = declared
+      session_store.create(id: "s1")
+      expect { send_msg(origin: "scheduled", session_id: "s1") }
+        .to raise_error(Insika::ValidationError, /engine-reserved/)
+      expect(task_store.each_id.to_a).to be_empty
     end
   end
 end

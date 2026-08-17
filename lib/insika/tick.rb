@@ -31,7 +31,7 @@ module Insika
 
     def initialize(store:, recovery:, channel_delivery:, logger: nil,
                    interval: DEFAULT_INTERVAL, stale_after: DEFAULT_STALE_AFTER,
-                   sleeper: nil, retention: nil, funnel: nil)
+                   sleeper: nil, retention: nil, funnel: nil, followup: nil)
       @store = store
       @recovery = recovery
       @channel_delivery = channel_delivery
@@ -41,12 +41,17 @@ module Insika
       @sleeper = sleeper || method(:default_sleep)
       @retention = retention # WS8: the daily age-based sweep; nil = none
       @funnel = funnel # RFC-0032 C4: the tick-driven outcome fold; nil = none
+      @followup = followup # RFC-0033 C5: the tick-driven follow-up firer; nil = none
     end
 
     # RFC-0032 C8: the fold is wired after the Tick is built (the graph passes
     # it to `executor.tick.funnel =` — the outcome/funnel stores come from the
     # spine). Setter + kwarg: same shape as `retention`.
     attr_accessor :funnel
+
+    # RFC-0033 C9: the follow-up firer, wired after the Tick is built (same
+    # shape as `funnel` — the stores come from the spine).
+    attr_accessor :followup
 
     def enabled? = @interval.positive?
 
@@ -64,6 +69,10 @@ module Insika
       # when another worker holds it. Sits next to retention, on the same tick.
       funnel_summary = @funnel&.run
       summary[:funnel] = funnel_summary if funnel_summary
+      # RFC-0033 C5: the follow-up firer — the tick's third duty, gated by its
+      # OWN claim window so the O(n) scans never ride the 60 s loop.
+      followup_summary = @followup&.run
+      summary[:followup] = followup_summary if followup_summary
       return summary unless claim_window
 
       result = @recovery.run(stale_after: @stale_after)

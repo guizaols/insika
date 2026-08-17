@@ -1,0 +1,122 @@
+<%# RFC-0033 C10: the Follow-ups page. Reads the FollowupStore/ContactStore/
+   OutcomeStore directly (D10); the ONLY mutations — cancel a pending record,
+   force-revoke a contact — dispatch bus commands. Nothing here is engine
+   vocabulary: the arm names, the reasons and the policy values are the pack's
+   (D1/D8). %>
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>operate</span></nav>
+    <h1>Follow-ups<span class="sub">scheduled, fired, blocked, cancelled — per agent</span></h1>
+  </div>
+</header>
+
+<% if !@has_followups %>
+  <div class="empty">
+    No follow-ups — add a <span class="mono">followup:</span> block to an agent's pack and
+    the records it schedules land here.
+  </div>
+<% else %>
+  <% @stores.each do |store| %>
+    <% profile, policy, records = store[:profile], store[:policy], store[:records] %>
+    <% pending   = records.select { |r| r.status == "pending" } %>
+    <% fired     = records.select { |r| r.status == "fired" } %>
+    <% cancelled = records.select { |r| r.status == "cancelled" } %>
+    <% blocked   = records.select { |r| r.status == "blocked" } %>
+    <h2><%= profile.id %><span class="sub">arm <strong><%= policy.arm %></strong> · <%= policy.cancel_keywords.size %> keyword(s) · silence after <%= policy.silence_after_sends %> send(s)</span></h2>
+
+    <div class="card">
+      <div class="section-head">
+        <h3>Schedule records</h3>
+        <span class="muted"><%= pending.size %> pending · <%= fired.size %> fired · <%= cancelled.size %> cancelled · <%= blocked.size %> blocked</span>
+      </div>
+
+      <% if records.empty? %>
+        <div class="empty">No follow-up records for this agent yet — the <span class="mono">schedule</span> tool writes them.</div>
+      <% else %>
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>customer</th><th>at</th><th>reason</th><th>arm</th><th>status</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% records.each do |r| %>
+              <tr>
+                <td class="mono"><%= r.customer %></td>
+                <td class="mono"><%= r.at %></td>
+                <td><%= r.reason %></td>
+                <td><span class="pill info"><%= r.arm %></span></td>
+                <td>
+                  <% if r.status == "pending" %>
+                    <span class="pill warn">pending</span>
+                  <% elsif r.status == "fired" %>
+                    <span class="pill ok">fired</span>
+                  <% elsif r.status == "cancelled" %>
+                    <span class="pill">cancelled</span>
+                  <% else %>
+                    <span class="pill error">blocked · <%= r.blocked_reason %></span>
+                  <% end %>
+                </td>
+                <td>
+                  <% if r.status == "pending" %>
+                    <form method="post" action="/studio/followups/<%= Rack::Utils.escape(profile.id) %>/cancel" class="actions">
+                      <%== csrf_tag %>
+                      <input type="hidden" name="id" value="<%= r.id %>">
+                      <button type="submit" class="danger">Cancel</button>
+                    </form>
+                    <form method="post" action="/studio/followups/<%= Rack::Utils.escape(profile.id) %>/revoke" class="actions">
+                      <%== csrf_tag %>
+                      <input type="hidden" name="customer" value="<%= r.customer %>">
+                      <input type="hidden" name="tenant" value="<%= r.tenant %>">
+                      <button type="submit" class="danger" title="A channel opt-out event that never arrived — revokes the contact and cancels its pending follow-ups">Revoke contact</button>
+                    </form>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+
+      <div class="section-head" style="margin-top: 1.2rem;">
+        <h3>Policy <span class="muted">pack data — edit it on the agent's pack</span></h3>
+      </div>
+      <div class="skill-desc">
+        <% qh = policy.quiet_hours %>
+        <span class="pill info"><%= qh ? "quiet #{qh.start}-#{qh.end} <#{qh.timezone}>" : "no quiet hours" %></span>
+        <span class="pill info"><%= policy.max_frequency ? "max #{policy.max_frequency}" : "no frequency ceiling" %></span>
+        <span class="muted"><%= policy.cancel_keywords.empty? ? "no cancellation keywords" : "keywords: #{policy.cancel_keywords.join(' · ')}" %></span>
+      </div>
+    </div>
+
+    <%# D3: the A/B card — a READ-ONLY fold over the same records. The ruler
+        outside the card is the operator's RFC-0032 baseline; this card only
+        reads it (the note says so). %>
+    <div class="card">
+      <div class="section-head">
+        <h3>A/B readout <span class="muted">last 30 days · per arm</span></h3>
+        <span class="muted">the A/B is the operator's — the card reads the RFC-0032 baseline</span>
+      </div>
+      <% if store[:ab].empty? %>
+        <div class="empty">Nothing fired in the period — the readout appears when the engine fires.</div>
+      <% else %>
+        <table class="grid">
+          <thead>
+            <tr><th>arm</th><th>sent</th><th>conversions</th><th>conversion %</th><th>opt-outs</th></tr>
+          </thead>
+          <tbody>
+            <% store[:ab].each do |arm, row| %>
+              <tr>
+                <td><span class="pill info"><%= arm %></span></td>
+                <td><%= row[:sent] %></td>
+                <td><%= row[:conversions] %></td>
+                <td><%= row[:sent].zero? ? "—" : format("%.1f", row[:conversions].to_f / row[:sent] * 100) %>%</td>
+                <td><%= row[:opt_outs] %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+    </div>
+  <% end %>
+<% end %>
