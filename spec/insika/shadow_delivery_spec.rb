@@ -55,9 +55,10 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
   it "E1 — a shadow turn writes exactly one pair and ZERO outbox records; deliver is never called" do
     result = delivery(shadow_pairs: shadow_pairs, criterion_sha: "sha256:abc")
-                 .record(task: task, channel_id: "relay", content: "já confiro pra você")
+                 .record_balloons(task: task, channel_id: "relay", content: "já confiro pra você",
+                                  progressive: false)
 
-    expect(result).to be_nil # nothing to dispatch
+    expect(result).to eq([]) # nothing to dispatch
     expect(outbox.pending).to be_empty
     pairs = shadow_pairs.each.to_a
     expect(pairs.length).to eq(1)
@@ -74,7 +75,8 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
   it "correlates with the incumbent's half through the SAME digest" do
     delivery(shadow_pairs: shadow_pairs, criterion_sha: "sha256:abc")
-      .record(task: task, channel_id: "relay", content: "já confiro pra você")
+      .record_balloons(task: task, channel_id: "relay", content: "já confiro pra você",
+                       progressive: false)
     shadow_pairs.record_incumbent(
       id: Insika::ShadowPairStore.key_for(channel: "relay", external_id: "5511999998888",
                                           event_id: "wamid.HBg1"),
@@ -86,7 +88,7 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
   it "a silent turn (empty content) still produces a pair — :silent once both halves land, never invisible" do
     delivery(shadow_pairs: shadow_pairs, criterion_sha: "sha256:abc")
-      .record(task: task, channel_id: "relay", content: "")
+      .record_balloons(task: task, channel_id: "relay", content: "", progressive: false)
 
     pair = shadow_pairs.each.to_a.first
     expect(pair).not_to be_nil
@@ -101,7 +103,8 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
   it "emits :shadow_recorded with metadata only — never the customer's text" do
     delivery(shadow_pairs: shadow_pairs, criterion_sha: "sha256:abc")
-      .record(task: task, channel_id: "relay", content: "já confiro pra você")
+      .record_balloons(task: task, channel_id: "relay", content: "já confiro pra você",
+                       progressive: false)
 
     recorded = event_stream.emitted.find { |e| e.type == :shadow_recorded }
     expect(recorded).not_to be_nil
@@ -111,7 +114,8 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
   it "a turn without event_id is unpairable: no pair, no outbox, one event" do
     delivery(shadow_pairs: shadow_pairs, criterion_sha: "sha256:abc")
-      .record(task: task(command_payload: { "agent" => "a", "message" => "oi" }), channel_id: "relay", content: "ola")
+      .record_balloons(task: task(command_payload: { "agent" => "a", "message" => "oi" }),
+                       channel_id: "relay", content: "ola", progressive: false)
 
     expect(shadow_pairs.each.to_a).to be_empty
     expect(outbox.pending).to be_empty
@@ -131,14 +135,16 @@ RSpec.describe "ChannelDelivery shadow suppression" do
     normal.register("relay", ShadowSpyChannel.new(shadow: false).tap do |c|
       c.define_singleton_method(:deliver) { |*| 202 }
     end)
-    result = delivery(channels: normal).record(task: task, channel_id: "relay", content: "ola")
-    expect(result).not_to be_nil
+    result = delivery(channels: normal).record_balloons(task: task, channel_id: "relay",
+                                                        content: "ola", progressive: false)
+    expect(result.size).to eq(1)
     expect(outbox.pending.length).to eq(1)
   end
 
   it "without a pair store wired, a shadow channel still delivers nothing (fail-closed, parity)" do
-    result = delivery.record(task: task, channel_id: "relay", content: "ola")
-    expect(result).to be_nil
+    result = delivery.record_balloons(task: task, channel_id: "relay",
+                                      content: "ola", progressive: false)
+    expect(result).to eq([])
     expect(outbox.pending).to be_empty
   end
 end

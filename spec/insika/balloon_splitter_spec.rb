@@ -40,6 +40,30 @@ RSpec.describe Insika::BalloonSplitter do
         .to eq(["3.9s no p50. Depois o resto."])
     end
 
+    # RFC-0027 §4.9: the sentence split is a SOFT cap. Short sentences are
+    # re-packed into ~SENTENCE_AFTER blocks; atomizing a 680-char paragraph
+    # into one balloon per sentence would turn ONE bubble into 40 WhatsApp
+    # messages for no latency win.
+    it "re-groups short sentences into ~SENTENCE_AFTER blocks instead of atomizing the paragraph" do
+      long = Array.new(40) { "Tudo certo, sim." }.join(" ")
+      expect(long.length).to be > described_class::SENTENCE_AFTER
+
+      balloons = described_class.split(long)
+      expect(balloons.size).to eq(2)
+      expect(balloons.join(" ")).to eq(long)
+    end
+
+    it "keeps the fence atomic when the closing ``` shares a paragraph with its code" do
+      text = "Aqui está:\n\n```ruby\nx = 1\n```\n\nDeu certo?"
+      expect(described_class.split(text))
+        .to eq(["Aqui está:", "```ruby\nx = 1\n```", "Deu certo?"])
+    end
+
+    it "a fence whose opener and closer are in the same paragraph still closes there" do
+      text = "```ruby\n\nx = 1\n```\n\ndepois"
+      expect(described_class.split(text)).to eq(["```ruby\n\nx = 1\n```", "depois"])
+    end
+
     it "keeps a fenced code block atomic even when it spans paragraphs" do
       text = "```\n\ncode\n\n```\n\ndepois"
       expect(described_class.split(text)).to eq(["```\n\ncode\n\n```", "depois"])

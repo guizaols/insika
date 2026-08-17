@@ -46,6 +46,11 @@ module Insika
       @marks[name] ||= Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
+    # Has this mark fired? Used by `SendMessage` to prove the channel clock was
+    # stamped at 202 acceptance (`:inbound` before the debounce window), and by
+    # the pipeline to know a threaded clock already started.
+    def marked?(name) = @marks.key?(name)
+
     # -> Hash of phase deltas in ms (only the windows whose endpoints both fired;
     # a workflow turn has no ask/first_token, so those are simply absent).
     # RFC-0027 C5: first_balloon_ms is the inbound -> first outbox flush window.

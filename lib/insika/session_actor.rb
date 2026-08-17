@@ -40,8 +40,12 @@ module Insika
     #
     # `policy` (a QueuePolicy) opens the debounce window for this turn; nil or a
     # policy without a window behaves exactly as before — dequeued and run at once.
-    def enqueue(task, profile:, resume_from: nil, policy: nil)
-      @queue.enqueue([task, profile, resume_from, policy])
+    #
+    # `timing` (RFC-0027 C5) is the channel clock a channel turn allocated at 202
+    # acceptance and already stamped `:inbound`; it rides the queue so the debounce
+    # window and the FIFO wait land INSIDE first_balloon_ms.
+    def enqueue(task, profile:, resume_from: nil, policy: nil, timing: nil)
+      @queue.enqueue([task, profile, resume_from, policy, timing])
       task.id
     end
 
@@ -99,12 +103,12 @@ module Insika
 
     def run_loop
       loop do
-        task, profile, resume_from, policy = @queue.dequeue # blocks when empty
+        task, profile, resume_from, policy, timing = @queue.dequeue # blocks when empty
         task = hold_at_the_door(task, policy)
         @running = true
         @current_task = task
         begin
-          @executor.run_serial(task, profile: profile, resume_from: resume_from)
+          @executor.run_serial(task, profile: profile, resume_from: resume_from, timing: timing)
         rescue StandardError
           # run_serial already maps turn errors; this rescue is defense: an
           # unexpected error must NEVER bring down the session loop (Async::Stop <
