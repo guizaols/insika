@@ -14,7 +14,8 @@ module Insika
   class ChatBuilder
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
                    hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil,
-                   tool_trace_store: nil, media_runner: nil, session_store: nil)
+                   tool_trace_store: nil, media_runner: nil, session_store: nil,
+                   contact_store: nil, followup_store: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -36,6 +37,11 @@ module Insika
       # non-empty (double gate, like remember). nil = never wired (parity for a
       # builder used without session persistence, e.g. some unit stubs).
       @session_store = session_store
+      # RFC-0033 C7: the schedule/cancel_followup system tools — wired only
+      # with BOTH stores present AND a parsed follow-up policy on the profile
+      # (double gate, like remember). nil = never wired (parity).
+      @contact_store = contact_store
+      @followup_store = followup_store
     end
 
     # Configures an already-created chat with the context (stage 2) and the
@@ -122,6 +128,22 @@ module Insika
         tools << Tools::StuckSignal.new(state: state)
       end
 
+      # schedule/cancel_followup are the follow-up system tools (RFC-0033) —
+      # wired only with BOTH stores present AND a parsed follow-up policy on
+      # the profile (double gate, like remember). Never enveloped: the store
+      # writes are deterministic. The tools stay OUT of the allowlist — they
+      # are data-driven per agent, not admittable (prompts/memory/stuck_signal
+      # are the precedent).
+      if @contact_store && @followup_store && followup_policy(state)
+        tools << Tools::ScheduleFollowup.new(contact_store: @contact_store,
+                                             followup_store: @followup_store,
+                                             state: state,
+                                             event_stream: @event_stream)
+        tools << Tools::CancelFollowup.new(followup_store: @followup_store,
+                                           state: state,
+                                           event_stream: @event_stream)
+      end
+
       # generate_image / tts are the generated-media system tools (WS9, saída)
       # — wired only when BOTH gates pass, never enveloped: the AGENT opted in
       # (`profile.outputs` — the per-kind generator config) AND the CHANNEL
@@ -172,6 +194,14 @@ module Insika
 
       eager = @skill_catalog.eager_for(state.profile).map(&:name)
       names - eager
+    end
+
+    # RFC-0033 C7: the follow-up tools' gate — a PARSED policy on the profile.
+    # A malformed declaration reads as "no policy" (the firer blocks it, the
+    # doctor reports it; the tools are simply not offered).
+    def followup_policy(state)
+      followup = state.profile.respond_to?(:followup) ? state.profile.followup : nil
+      followup && Insika::FollowupPolicy.parse(followup)
     end
 
     # WS9 (saída): the media-output tools this turn may carry, per the double

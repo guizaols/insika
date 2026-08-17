@@ -6,6 +6,7 @@ require "insika/tools/tool_search"
 require "insika/tools/remember"
 require "insika/tools/stuck_signal"
 require "insika/tools/update_briefing"
+require "insika/tools/schedule_followup"
 
 RSpec.describe Insika::ChatBuilder do
   Ctx = Struct.new(:system)
@@ -256,6 +257,47 @@ RSpec.describe Insika::ChatBuilder do
     it "profile.stuck_signal nil: no signal_stuck (parity)" do
       builder.configure_chat(chat, stuck_state(on: nil))
       expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::StuckSignal) }).to be(false)
+    end
+  end
+
+  describe "#configure_chat — the follow-up system tools (RFC-0033 C7)" do
+    let(:contact_store) { Insika::ContactStore.new(store: Insika::Stores::Memory.new) }
+    let(:followup_store) { Insika::FollowupStore.new(store: Insika::Stores::Memory.new) }
+
+    def followup_builder
+      described_class.new(tool_registry: inert, skill_catalog: skill_catalog,
+                          checkpoint_store: inert, event_stream: event_stream,
+                          hooks: Insika::Hooks.new,
+                          contact_store: contact_store, followup_store: followup_store)
+    end
+
+    def followup_state(declared: true)
+      profile = Insika::AgentProfile.build(
+        id: "a", model: "gpt",
+        followup: declared ? { "arm" => "schedule", "policy" => {} } : nil
+      )
+      st = Insika::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st
+    end
+
+    it "wires schedule + cancel_followup when BOTH stores and a parsed policy are present" do
+      followup_builder.configure_chat(chat, followup_state)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::ScheduleFollowup) }).to be(true)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::CancelFollowup) }).to be(true)
+    end
+
+    it "no profile declaration: neither tool (parity)" do
+      followup_builder.configure_chat(chat, followup_state(declared: false))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::ScheduleFollowup) }).to be(false)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::CancelFollowup) }).to be(false)
+    end
+
+    it "without the stores: neither tool even with a declaration (parity for unit stubs)" do
+      builder.configure_chat(chat, followup_state)
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::ScheduleFollowup) }).to be(false)
     end
   end
 

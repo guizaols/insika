@@ -98,8 +98,16 @@ Studio::App.configure(
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
   golden_store: W::GOLDEN_STORE,
-  # WS7: the scorecard card reads the outcomes store (state + series).
-  outcome_store: W::OUTCOME_STORE
+  # WS7: the scorecard card reads the outcomes store (state + series). The
+  # outcome/funnel/follow-up stores are NOT promoted on Deploy::Wiring — they
+  # read from the shared GRAPH (the same spine instances).
+  outcome_store: W::GRAPH.outcome_store,
+  # RFC-0032 C8: the outcome-funnel page reads the fold's cells and baselines.
+  funnel_store: W::GRAPH.funnel_store,
+  # RFC-0033 C9/C10: the Follow-ups page reads the stores directly; its only
+  # mutations (cancel, force-revoke) dispatch bus commands.
+  followup_store: W::GRAPH.followup_store,
+  contact_store: W::GRAPH.contact_store
 )
 
 # OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.

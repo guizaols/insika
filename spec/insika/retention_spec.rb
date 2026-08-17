@@ -359,4 +359,82 @@ RSpec.describe Insika::Retention do
       ).run).to eq({ claimed: false })
     end
   end
+
+  # RFC-0033 C11: the follow-up footprint dies with the rest — schedule records
+  # and contact cells under the SAME retention_days gate + daily claim.
+  describe "follow-up sweep (RFC-0033)" do
+    let(:followup_store) { Insika::FollowupStore.new(store: backend) }
+    let(:contact_store) { Insika::ContactStore.new(store: backend) }
+    subject(:retention) do
+      described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, outbox_store: outbox_store,
+        settings_store: settings, followup_store: followup_store,
+        contact_store: contact_store, now: now
+      )
+    end
+
+    # Follow-up `create` refuses a past `at` (the tool's rule); a record that
+    # has ALREADY passed its scheduled time exists only via the direct path
+    # (a deferred-then-stale record, or a legacy write) — seeded through the
+    # backend like the cron arm writes.
+    def seed!(id:, at:, reason:, status: "pending", task_id: nil, updated_at: nil)
+      backend.set("followups", "acme:a:c-1:#{at.iso8601}:#{id}",
+                  { "id" => id, "tenant" => "acme", "agent" => "a", "customer" => "c-1",
+                    "session_id" => "s-1", "at" => at.iso8601, "reason" => reason,
+                    "arm" => "schedule", "status" => status, "task_id" => task_id,
+                    "blocked_reason" => nil, "transport" => "channel:whatsapp",
+                    "created_at" => now.iso8601, "updated_at" => (updated_at || now).iso8601 })
+    end
+
+    def book!(id:, at: nil, reason: "r")
+      followup_store.create(tenant: "acme", agent: "a", customer: "c-1", session_id: "s-1",
+                            at: at || now + 3600, reason: reason, arm: "schedule", id: id,
+                            now: now)
+    end
+
+    it "sweeps terminal records + old contact cells; a future pending survives; a zombie pending dies" do
+      seed!(id: "old-fired", at: now - 60, reason: "r1", status: "fired", task_id: "t-1",
+            updated_at: now - 40 * 86_400)
+      # a ZOMBIE: still pending, its scheduled time long past (deferred past the
+      # point of no return — retention ages it out rather than firing late)
+      seed!(id: "zombie", at: now - 40 * 86_400, reason: "r2")
+      book!(id: "future", at: now + 400 * 86_400, reason: "r3") # pending, well out
+      contact_store.set_granted(tenant: "acme", customer: "old", now: now - 60 * 86_400)
+      contact_store.set_granted(tenant: "acme", customer: "new", now: now - 60)
+
+      summary = retention.run
+
+      expect(summary[:claimed]).to be(true)
+      expect(summary[:followups]).to eq(2)
+      expect(followup_store.find("old-fired")).to be_nil
+      expect(followup_store.find("zombie")).to be_nil
+      expect(followup_store.find("future")).not_to be_nil
+      expect(summary[:contacts]).to eq(1)
+      expect(contact_store.get(tenant: "acme", customer: "old")).to be_nil
+      expect(contact_store.get(tenant: "acme", customer: "new")).not_to be_nil
+    end
+
+    it "with retention_days OFF nothing is swept" do
+      settings.get["retention_days"] = nil
+      seed!(id: "keep", at: now - 60, reason: "r")
+      contact_store.set_granted(tenant: "acme", customer: "c-1", now: now - 60 * 86_400)
+
+      expect(retention.run).to eq({ claimed: false })
+      expect(followup_store.find("keep")).not_to be_nil
+      expect(contact_store.get(tenant: "acme", customer: "c-1")).not_to be_nil
+    end
+
+    it "nil collaborators -> the summary keys are absent (base graph parity)" do
+      settings.get["retention_days"] = 30
+      summary = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, settings_store: settings, now: now
+      ).run
+      expect(summary).not_to have_key(:followups)
+      expect(summary).not_to have_key(:contacts)
+    end
+  end
 end

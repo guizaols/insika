@@ -89,6 +89,7 @@ module Studio
                     refinement_store: nil, golden_store: nil, session_secret: nil,
                     outcome_store: nil, shadow_pair_store: nil, parity_criterion: nil,
                     funnel_store: nil, budget_ledger: nil,
+                    followup_store: nil, contact_store: nil,
                     channel_registry: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
@@ -139,7 +140,12 @@ module Studio
           # nav row only exists when a shadow channel is registered — the page
           # is not an invitation, unlike Refinement's).
           shadow_pair_store: shadow_pair_store, parity_criterion: parity_criterion,
-          channel_registry: channel_registry
+          channel_registry: channel_registry,
+          # RFC-0033 C10: the Follow-ups page READS the stores directly (D10);
+          # its only mutations — cancel a pending record, force-revoke a contact
+          # — dispatch :cancel_followup / :revoke_contact on the bus. nil = the
+          # page renders its empty state.
+          followup_store: followup_store, contact_store: contact_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -973,6 +979,34 @@ end
         end
       end
 
+      # --- Follow-ups: the schedule records + the A/B readout (RFC-0033 C10) --
+      # Reads FollowupStore/ContactStore/OutcomeStore directly (D10 — the
+      # Studio's constitutional split); the ONLY mutations — cancel a pending
+      # record, force-revoke a contact (an opt-out event that never arrived) —
+      # dispatch bus commands.
+      r.on "followups" do
+        r.get { render_followups }
+        r.on String do |agent_id|
+          agent_id = utf8(agent_id)
+          r.post "cancel" do
+            check_csrf!
+            with_flash("Follow-up cancelled.") do
+              dispatch(:cancel_followup, { followup_id: r.params["id"] })
+            end
+            r.redirect("/studio/followups?agent=#{Rack::Utils.escape(agent_id)}")
+          end
+          r.post "revoke" do
+            check_csrf!
+            with_flash("Contact revoked — every pending follow-up cancelled.") do
+              dispatch(:revoke_contact,
+                       { customer: r.params["customer"], operator: "studio" },
+                       tenant: presence(r.params["tenant"]))
+            end
+            r.redirect("/studio/followups?agent=#{Rack::Utils.escape(agent_id)}")
+          end
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
@@ -1057,6 +1091,9 @@ end
           ["Customers", "/studio/customers", :chats],
           ["Playground", "/studio/playground", :playground],
           ["Funnel", "/studio/funnel", :funnel],
+          # RFC-0033 C10: the Follow-ups page — scheduled, fired, blocked and
+          # cancelled records per agent + the per-arm A/B readout card.
+          ["Follow-ups", "/studio/followups", :followups],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
@@ -1835,6 +1872,110 @@ end
         { profile: p, decl: decl, tenants: tenants_for(p.id) }
       end
       view("funnel")
+    end
+
+    # RFC-0033 C10: the Follow-ups page. Per agent WITH a parsed policy, one
+    # block: the pending/fired/cancelled/blocked lists (blocked rows carry the
+    # reason pill), the per-arm counts, the read-only policy summary and the
+    # A/B card (D10 — reads stores, mutates through bus commands only).
+    def render_followups
+      profiles = insika[:profile_source]&.all || []
+      @stores = profiles.filter_map do |p|
+        decl = Insika::FollowupPolicy.parse(p.followup)
+        next unless decl
+
+        {
+          profile: p, policy: decl,
+          tenant: presence(request.params["tenant"]) || "platform",
+          records: followup_records(p.id, decl),
+          ab: followup_ab(p.id, decl)
+        }
+      end
+      @has_followups = !@stores.empty?
+      view("followups")
+    end
+
+    # The agent's records across every status (a nil store reads as none).
+    def followup_records(agent_id, _decl)
+      store = insika[:followup_store]
+      return [] unless store
+
+      store.for_agent(tenant: presence(request.params["tenant"]) || "platform",
+                      agent: agent_id)
+    end
+
+    # The A/B readout per arm (D3 — a read-only fold over the same records):
+    #   sent         = fired count in the period;
+    #   conversions  = outcome records whose session_id is a fired record's
+    #                  session (primary-filtered by the RFC-0032 declaration
+    #                  when one exists, else the first outcome per session);
+    #   opt-outs     = contact cells flipped :revoked after a fired_at.
+    # The note anchors the ruler outside the card: the A/B is the operator's;
+    # this card reads the RFC-0032 baseline.
+    def followup_ab(agent_id, _decl)
+      store = insika[:followup_store]
+      return {} unless store
+
+      from = (Time.now.utc - 30 * 86_400).iso8601
+      fired = store.for_agent(tenant: presence(request.params["tenant"]) || "platform",
+                              agent: agent_id)
+                .select { |r| r.status == "fired" && r.at.to_s >= from }
+      fired.group_by(&:arm).each_with_object({}) do |(arm, records), acc|
+        sessions = records.filter_map(&:session_id)
+        acc[arm] = { sent: records.size, conversions: conversions_for(agent_id, sessions),
+                     opt_outs: opt_outs_since(records) }
+      end
+    end
+
+    # The conversions of the arm's fired sessions. Primary-filtered by the
+    # RFC-0032 funnel declaration when the agent declares one; else the FIRST
+    # outcome per session (an outcome record is one vote per session).
+    def conversions_for(agent_id, sessions)
+      outcomes = insika[:outcome_store]
+      return 0 unless outcomes
+
+      records = sessions.empty? ? [] : outcomes.all.select { |r| sessions.include?(r.session_id) }
+      primary = primary_stage_for(agent_id)
+      return records.count { |r| r.outcome == primary } if primary
+
+      records.group_by(&:session_id).size
+    end
+
+    def primary_stage_for(agent_id)
+      profile = insika[:profile_source]&.fetch(agent_id)
+      decl = profile && Insika::FunnelDeclaration.parse(profile.funnel)
+      decl && decl.primary
+    end
+
+    # The opt-outs of ONE arm: contact cells of the customers THAT ARM fired
+    # to (same tenant), flipped :revoked after that customer's own fire. Never
+    # a global revoked count — an unrelated opt-out (another tenant, another
+    # customer) must not count against an arm, or the H-followup kill decision
+    # reads strangers.
+    def opt_outs_since(records)
+      store = insika[:contact_store]
+      return 0 unless store
+
+      cells = store.cells
+      # group this arm's fires by (tenant, customer) -> the earliest fire
+      records.group_by { |r| [r.tenant, r.customer] }.sum do |(tenant, customer), recs|
+        fired_at = recs.filter_map { |r| parse_time(r.fired_at || r.at) }.min
+        next 0 if fired_at.nil?
+
+        cell = cells["#{tenant}:#{customer}"]
+        cell && cell["state"] == "revoked" && revoke_after?(cell, fired_at) ? 1 : 0
+      end
+    end
+
+    def revoke_after?(cell, fired_at)
+      updated = parse_time(cell["updated_at"])
+      updated && updated > fired_at
+    end
+
+    def parse_time(value)
+      Time.iso8601(value.to_s)
+    rescue ArgumentError
+      nil
     end
 
     # Tenant list per agent, derived from the store cells (D7, the 0031 drill

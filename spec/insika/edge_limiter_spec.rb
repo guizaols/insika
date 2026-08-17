@@ -171,6 +171,36 @@ RSpec.describe Insika::EdgeLimiter do
     end
   end
 
+  describe "scheduled turns (RFC-0033 D5-bis)" do
+    def scheduled_state
+      task = Struct.new(:id, :session_id, :command)
+             .new("t", "s", { "type" => "scheduled_followup", "payload" => {} })
+      prof = Insika::AgentProfile.build(id: "bia")
+      st = Insika::TurnState.new(task: task, profile: prof, turn: 1, message: "oi")
+      st.turn_context = { chat_id: "chat-1", agent_id: "bia", tenant: nil, store_id: nil }
+      st
+    end
+
+    it "skips the ENTRY checks exactly like a resume (a follow-up never gets the rate-limit reply)" do
+      mw = limiter({ "chat_rate_limit" => 1 })
+      run(mw, state) # saturates the window for chat-1
+      expect(run(mw, scheduled_state)).to be(true) # would be blocked if it counted again
+    end
+
+    it "skips the token-ceiling entry check but its usage still lands on the ledger" do
+      mw = limiter({ "agent_token_ceiling" => 100, "agent_token_window" => 3_600 })
+      run(mw, state, usage: { total_tokens: 200 }) # ledger over the ceiling
+      expect(run(mw, scheduled_state, usage: { total_tokens: 50 })).to be(true)
+      expect(ledger.count("tokens", "bia", window: 3_600)).to eq(250)
+    end
+
+    it "a NORMAL task is unchanged (the skip is keyed on the command type)" do
+      mw = limiter({ "chat_rate_limit" => 1 })
+      run(mw, state)
+      expect(run(mw, state)).to be(false) # second normal turn blocked
+    end
+  end
+
   describe "per-agent limits without any settings store (base wiring)" do
     it "enforces the profile's own limits" do
       mw = limiter(nil)

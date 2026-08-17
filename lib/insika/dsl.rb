@@ -224,6 +224,19 @@ module Insika
       #          primary: "paid", attribution_window: "72h"
       def funnel(hash) = (@config[:funnel] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The follow-up declaration (RFC-0033): the agent may book a follow-up
+      # with a customer at a future time (`schedule` tool); the engine fires the
+      # synthetic turn and enforces the policy (quiet hours, max frequency,
+      # cancellation keywords, silence detection) at fire time. Pack data —
+      # merges, so repeated calls accumulate (like budget).
+      #   followup arm: "schedule",
+      #            policy: { quiet_hours: { timezone: "America/Sao_Paulo",
+      #                                     start: "21:30", end: "09:00" },
+      #                      max_frequency: "2/24h",
+      #                      cancel_keywords: ["não quero mais contato"],
+      #                      silence_after_sends: 3 }
+      def followup(hash) = (@config[:followup] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Provider-interaction reliability, as DATA (WS3): retries + exponential
       # backoff on transient failures, a fallback model chain (mid-turn
       # rotation), and a circuit breaker per (tenant, provider/model) that
