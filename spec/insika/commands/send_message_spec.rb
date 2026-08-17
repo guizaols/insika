@@ -107,6 +107,32 @@ RSpec.describe Insika::Commands::SendMessage do
     expect(executor.spawned.size).to eq(1)
   end
 
+  # RFC-0027 C5: t0 is the 202 acceptance — the clock starts HERE, when the task
+  # is created, before the debounce window and the SessionActor FIFO. If the
+  # mark landed at the pipeline start instead, first_balloon_ms would exclude
+  # exactly the wait the debounce imported (with debounce_ms=4000 the Studio
+  # would report "<2s atingido" while the customer waits 4s+).
+  describe "the channel clock (RFC-0027 C5)" do
+    def send_from(transport)
+      session_store.create(id: "s1")
+      handler.call(Insika::Command.build(:send_message, payload(session_id: "s1"), transport: transport))
+    end
+
+    it "a channel transport allocates the clock and stamps :inbound at acceptance" do
+      send_from(:"channel:relay")
+
+      timing = executor.spawned_timing.first
+      expect(timing).to be_a(Insika::TurnTiming)
+      expect(timing.marked?(:inbound)).to be(true)
+    end
+
+    it "no clock for a non-channel transport — there is no inbound balloon to measure" do
+      send_from(:http)
+
+      expect(executor.spawned_timing.first).to be_nil
+    end
+  end
+
   describe "coalescing is offered only where `merged` can be reported" do
     subject(:handler) do
       described_class.new(profiles: profiles, session_store: session_store,

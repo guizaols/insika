@@ -45,8 +45,10 @@ module Insika
     # refused-or-accepted (the graph itself reads no env and no file).
     attr_writer :shadow_pairs, :criterion_sha
 
-    # The turn committed an answer. -> the Delivery to dispatch, or nil when there
-    # is nothing to deliver, which is the common case and must stay cheap:
+    # Confirmed answer -> 0..N pending Deliveries, in order (RFC-0027 C4).
+    # A progressive channel splits on paragraphs (BalloonSplitter); everything
+    # else is the single whole-answer row.
+    # -> [] when there is nothing to send (the cheap exits):
     #   · the turn did not come in through a channel,
     #   · the channel is Shape A (answers on its own stream — no `deliver`),
     #   · the answer is empty (a turn that died mid-message published nothing, and
@@ -54,29 +56,6 @@ module Insika
     #   · the channel is in SHADOW mode (RFC-0025): the answer is recorded as a
     #     pair and nothing is dispatched — zero outbox writes, ever (E1),
     #   · or we do not know who to send it to.
-    #
-    # `index`/`final` (RFC-0027 C4) ride the PAYLOAD only when the caller passes
-    # them (a progressive flush). A plain `:at_end` record omits both keys —
-    # byte-identical to today.
-    def record(task:, channel_id:, content:, index: nil, final: nil)
-      channel = @channels&.find(channel_id)
-      return nil unless channel.respond_to?(:deliver)
-      # Shadow BEFORE the empty guard: a turn that published nothing must be
-      # counted as :silent, not vanish.
-      return record_shadow(task, channel_id, content) if shadow?(channel)
-
-      return nil if content.to_s.strip.empty?
-
-      to = recipient(channel, task.session_id)
-      return nil if to.nil? || to.empty?
-
-      create_pending(task, channel_id, content, to, index: index, final: final)
-    end
-
-    # Confirmed answer -> 0..N pending Deliveries, in order (RFC-0027 C4).
-    # A progressive channel splits on paragraphs (BalloonSplitter); everything
-    # else is the single whole-answer row, byte-identical to `record`.
-    # -> [] when there is nothing to send (same cheap exits as #record).
     def record_balloons(task:, channel_id:, content:, progressive:)
       channel = @channels&.find(channel_id)
       return [] unless channel.respond_to?(:deliver)

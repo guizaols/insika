@@ -110,16 +110,20 @@ module ReplayLatency
 
   # One conversation: sends each message at its at_ms offset (the consumer's
   # buffer is gone; `--hold-ms` simulates the legacy pedestal) and measures
-  # monotonic time from the first POST to the first delivery of this external_id.
+  # monotonic time from the case start to the first delivery of this external_id.
+  #
+  # The hold is ONCE, before the first message — it is the pedestal the customer
+  # felt, and `start` is the measurement's reference, so a 3-message case must
+  # not accumulate the pedestal per message (that inflated the buffered baseline
+  # N× and made the before/after look better than it is).
   def measure_case(c, receiver, url, token, hold_ms)
     id = c["id"]
     external_id = c["external_id"]
-    start = nil
+    start = monotonic_now
+    sleep(hold_ms / 1000.0) if hold_ms.positive?
 
     c["messages"].sort_by { |m| m["at_ms"].to_i }.each do |m|
-      start ||= monotonic_now
       sleep_until(start + (m["at_ms"].to_i / 1000.0))
-      sleep(hold_ms / 1000.0) if hold_ms.positive?
       post_message(url, token, agent: c["agent"], external_id: external_id, message: m["text"])
     end
 

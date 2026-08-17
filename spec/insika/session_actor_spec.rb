@@ -16,7 +16,7 @@ RSpec.describe Insika::SessionActor do
       @raise_on = raise_on
     end
 
-    def run_serial(task, profile:, resume_from: nil)
+    def run_serial(task, profile:, resume_from: nil, timing: nil)
       @events << [:start, task.id]
       @release.dequeue
       raise "boom" if task.id == @raise_on
