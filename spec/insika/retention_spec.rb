@@ -31,7 +31,6 @@ RSpec.describe Insika::Retention do
       settings_store: settings, now: now
     )
   end
-
   def backdate_delivery(id, iso)
     record = backend.get("outbox", "outbox:#{id}").merge("created_at" => iso)
     backend.set("outbox", "outbox:#{id}", record)
@@ -424,6 +423,51 @@ RSpec.describe Insika::Retention do
       expect(retention.run).to eq({ claimed: false })
       expect(followup_store.find("keep")).not_to be_nil
       expect(contact_store.get(tenant: "acme", customer: "c-1")).not_to be_nil
+    end
+
+    it "RFC-0034 C8 — proposals older than the cutoff are swept (pending included); a recent one survives" do
+      proposal_store = Insika::ProposalStore.new(store: backend)
+      r = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, tool_trace_store: tool_trace,
+        context_trace_store: context_trace, outbox_store: outbox_store,
+        settings_store: settings, now: now, proposal_store: proposal_store
+      )
+      proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "acme:s-old",
+                            key: "size", value: "M", id: "old",
+                            now: now - 40 * 86_400)
+      proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "acme:s-old",
+                            key: "budget", value: "100", id: "old-term",
+                            now: now - 40 * 86_400)
+      proposal_store.dismiss(id: "old-term", now: now - 40 * 86_400)
+      proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "acme:s-new",
+                            key: "size", value: "L", id: "fresh", now: now)
+
+      summary = r.run
+
+      expect(summary[:claimed]).to be(true)
+      expect(summary[:proposals]).to eq(2)
+      expect(proposal_store.find("old")).to be_nil      # a zombie pending ages out
+      expect(proposal_store.find("old-term")).to be_nil  # terminal ages out
+      expect(proposal_store.find("fresh")).not_to be_nil
+    end
+
+    it "RFC-0034 C8 — with retention_days OFF proposals are untouched" do
+      proposal_store = Insika::ProposalStore.new(store: backend)
+      r = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, tool_trace_store: tool_trace,
+        context_trace_store: context_trace, outbox_store: outbox_store,
+        settings_store: settings, now: now, proposal_store: proposal_store
+      )
+      settings.get["retention_days"] = nil
+      proposal_store.create(tenant: "acme", customer: "c-1", session_ref: "acme:s-old",
+                            key: "size", value: "M", id: "keep", now: now - 400 * 86_400)
+
+      expect(r.run).to eq({ claimed: false })
+      expect(proposal_store.find("keep")).not_to be_nil
     end
 
     it "nil collaborators -> the summary keys are absent (base graph parity)" do

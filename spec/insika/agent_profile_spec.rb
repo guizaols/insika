@@ -299,6 +299,36 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "distill (RFC-0034 — the session distillation declaration)" do
+    it "nil/absent -> nil = the feature is off (parity)" do
+      expect(described_class.build(id: "a", model: "m").distill).to be_nil
+    end
+
+    it "deep-stringifies the declaration (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        distill: { enabled: true, idle_hours: 6, max_proposals: 10 }
+      )
+      expect(profile.distill).to eq("enabled" => true, "idle_hours" => 6, "max_proposals" => 10)
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        distill: { "enabled" => true, "prompt" => "what counts as a fact",
+                   "model" => "deepseek-v4-flash" }
+      )
+      expect(profile.to_h[:distill]).to eq("enabled" => true,
+                                           "prompt" => "what counts as a fact",
+                                           "model" => "deepseek-v4-flash")
+    end
+
+    it "a profile without a distill declaration sees nil (no shape validation here)" do
+      plain = described_class.build(id: "a", model: "m")
+      expect(plain.distill).to be_nil
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

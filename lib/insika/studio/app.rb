@@ -90,6 +90,7 @@ module Studio
                     outcome_store: nil, shadow_pair_store: nil, parity_criterion: nil,
                     funnel_store: nil, budget_ledger: nil,
                     followup_store: nil, contact_store: nil,
+                    proposal_store: nil,
                     channel_registry: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
@@ -145,7 +146,11 @@ module Studio
           # its only mutations — cancel a pending record, force-revoke a contact
           # — dispatch :cancel_followup / :revoke_contact on the bus. nil = the
           # page renders its empty state.
-          followup_store: followup_store, contact_store: contact_store
+          followup_store: followup_store, contact_store: contact_store,
+          # RFC-0034 C7: the Facts (wiki) page reads the proposal store directly
+          # (approvals/rejections dispatch :resolve_proposal on the bus).
+          # nil = the page renders its empty state.
+          proposal_store: proposal_store
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -932,6 +937,27 @@ end
         end
       end
 
+      # --- Facts: the human gate on distilled proposals (RFC-0034 C7) --------
+      # Reads ProposalStore directly (the Studio's constitutional split — reads
+      # hit the stores, mutations go through the bus); the ONLY mutation — the
+      # approve/reject/dismiss answer — dispatches :resolve_proposal.
+      r.on "facts" do
+        r.get { render_facts }
+        r.post "resolve" do
+          check_csrf!
+          decision = presence(r.params["decision"])
+          ok = { "approved" => "Fact saved to memory.", "rejected" => "Proposal rejected.",
+                 "dismissed" => "Proposal dismissed — it will not be proposed again." }[decision]
+          with_flash(ok || "Proposal resolved.") do
+            dispatch(:resolve_proposal, { proposal_id: presence(r.params["proposal_id"]),
+                                          decision: decision, note: presence(r.params["note"]),
+                                          operator: "studio" })
+          end
+          filter = presence(r.params["filter"])
+          r.redirect("/studio/facts#{filter ? "?store=#{Rack::Utils.escape(filter)}" : ""}")
+        end
+      end
+
       # --- Parity: the running shadow verdict (RFC-0025 C8) -----------------
       # Reads stores and folds the verdict on demand; the judge button is a slow
       # synchronous POST, exactly like Refinement's gate, for the same reason: it
@@ -1094,6 +1120,9 @@ end
           # RFC-0033 C10: the Follow-ups page — scheduled, fired, blocked and
           # cancelled records per agent + the per-arm A/B readout card.
           ["Follow-ups", "/studio/followups", :followups],
+          # RFC-0034 C7: the Facts (wiki) page — the human gate on distilled
+          # proposals (approve/reject/dismiss, the latch, the CAS re-present).
+          ["Facts", "/studio/facts", :facts],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
@@ -1893,6 +1922,36 @@ end
       end
       @has_followups = !@stores.empty?
       view("followups")
+    end
+
+    # RFC-0034 C7: the Facts (wiki) page — the human gate on distilled
+    # proposals. Reads ProposalStore + SessionStore directly (D7 — evidence is
+    # a link, never a copy: the excerpt is read from the session at request
+    # time); the mutations dispatch :resolve_proposal on the bus.
+    def render_facts
+      store = insika[:proposal_store]
+      @pending = store ? store.pending(limit: 100) : []
+      @stale   = store ? store.stale(limit: 50) : []
+      @recent  = store ? store.resolved(limit: 20) : []
+      @filter  = presence(request.params["store"])
+      @pending = @pending.select { |p| p.scope == @filter } if @filter
+      @stale   = @stale.select { |p| p.scope == @filter } if @filter
+      @recent  = @recent.select { |p| p.scope == @filter } if @filter
+      @stores  = (@pending + @stale + @recent).map(&:scope).uniq.sort
+      @sessions = insika[:session_store]
+      view("facts")
+    end
+
+    # The excerpt for a proposal's evidence — the transcript messages at the
+    # stored indexes, read at request time (D7: ids and indexes only are
+    # stored). Deep-links to the existing session page.
+    def proposal_excerpt(proposal)
+      session = @sessions&.find(proposal.session_ref)
+      return [] unless session && session.messages
+
+      Array(proposal.evidence).filter_map do |i|
+        session.messages[i] && session.messages[i]["content"].to_s
+      end
     end
 
     # The agent's records across every status (a nil store reads as none).

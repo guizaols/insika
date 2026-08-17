@@ -97,6 +97,10 @@ unchanged), and every operator mutation lands in the content-free audit trail
 (digests, never values). The sweep honors the `memory_ttl_days` setting on its own
 knob — see [Security](SECURITY.md#memory-and-the-right-to-be-forgotten-lgpd-rfc-0031).
 
+An **approved distilled fact** (RFC-0034 — see [Facts](FACTS.md)) lands in the
+same cell this provider injects, stamped `distilled:<session_ref>` — approved on
+the Studio Facts page, never applied automatically.
+
 ## Briefing — the session's working state
 
 The **briefing** is the per-conversation working state the agent keeps and asks

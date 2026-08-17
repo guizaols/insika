@@ -370,6 +370,22 @@ RSpec.describe Insika::DSL do
       )
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the distill knob is DATA on the pack (RFC-0034)" do
+      dsl = Insika.agent("bia10") do
+        model "deepseek-chat"
+        distill enabled: true, idle_hours: 6, max_proposals: 10
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia10", model: "deepseek-chat",
+                  distill: { "enabled" => true, "idle_hours" => 6, "max_proposals" => 10 },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.distill).to eq("enabled" => true, "idle_hours" => 6, "max_proposals" => 10)
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

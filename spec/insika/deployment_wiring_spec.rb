@@ -230,6 +230,43 @@ RSpec.describe Deploy::Wiring do
         expect(retention.instance_variable_get(:@contact_store)).to be(w::SPINE.contact_store)
       end
     end
+
+    # RFC-0034 C9: distillation is wired through the shared core — spine store,
+    # engine on the executor, resolve command on the bus, LGPD + retention
+    # hooks. Inert until a pack declares `distill:` (nil collaborators keep the
+    # base graph byte-identical).
+    describe "distillation (RFC-0034)" do
+      it "builds the proposal store over BACKEND in the spine" do
+        expect(w::SPINE.proposal_store).to be_a(Insika::ProposalStore)
+        expect(w::SPINE.proposal_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.proposal_store).to be(w::SPINE.proposal_store)
+      end
+
+      it "wires the distillation engine onto the executor" do
+        engine = w::GRAPH.executor.distill_engine
+        expect(engine).to be_a(Insika::DistillEngine)
+        expect(engine.instance_variable_get(:@proposal_store)).to be(w::SPINE.proposal_store)
+        expect(engine.instance_variable_get(:@session_store)).to be(w::SPINE.session_store)
+        expect(engine.instance_variable_get(:@runner)).to be_a(Insika::Commands::RunDistillation)
+      end
+
+      it "registers :resolve_proposal on the bus" do
+        expect(w::BUS.registered?(:resolve_proposal)).to be(true)
+      end
+
+      it "wires the proposal store into the LGPD purges and retention" do
+        forget = w::BUS.instance_variable_get(:@handlers)[:forget_customer]
+        expect(forget.instance_variable_get(:@proposal_store)).to be(w::SPINE.proposal_store)
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@proposal_store)).to be(w::SPINE.proposal_store)
+        retention = w::GRAPH.executor.tick.instance_variable_get(:@retention)
+        expect(retention.instance_variable_get(:@proposal_store)).to be(w::SPINE.proposal_store)
+      end
+
+      it "nothing distills without a declaration (the engine is inert)" do
+        expect(w::GRAPH.executor.distill_engine.run_once).to eq(claimed: false)
+      end
+    end
   end
 
   # the production wiring finally instantiates Recovery and speaks
