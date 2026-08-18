@@ -91,6 +91,7 @@ module Studio
                     funnel_store: nil, budget_ledger: nil,
                     followup_store: nil, contact_store: nil,
                     proposal_store: nil,
+                    harvest_store: nil, harvest_criterion: nil, negative_list: nil,
                     channel_registry: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
@@ -150,7 +151,14 @@ module Studio
           # RFC-0034 C7: the Facts (wiki) page reads the proposal store directly
           # (approvals/rejections dispatch :resolve_proposal on the bus).
           # nil = the page renders its empty state.
-          proposal_store: proposal_store
+          proposal_store: proposal_store,
+          # RFC-0035 C11: the Harvest page reads the harvest store directly
+          # (the pending/awaiting/promoted lists); its mutations — mine, gate,
+          # promote, reject, rollback — dispatch bus commands. The criterion
+          # (boot-loaded, with its sha) and the negative list render the two
+          # pre-registered artifacts. nil = the page renders its empty state.
+          harvest_store: harvest_store, harvest_criterion: harvest_criterion,
+          negative_list: negative_list
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -937,6 +945,60 @@ end
         end
       end
 
+      # --- Harvest: the gated skill loop (RFC-0035 C11) ----------------------
+      # Reads the HarvestStore directly (the Studio's constitutional split);
+      # every mutation — mine now, gate, promote, reject, rollback — dispatches
+      # a bus command. The gate POST is slow on purpose: it replays the golden
+      # set, like Refinement's propose button.
+      r.on "harvest" do
+        r.is do
+          r.get { render_harvest }
+          r.post do # mine now (manual trigger, D10)
+            check_csrf!
+            agent = presence(r.params["agent"])
+            payload = { agent: agent, full: r.params["full"] == "1" }
+            control_action(:run_harvest, payload, ok: "Harvest run finished.")
+            r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
+          end
+        end
+
+        r.post "gate" do # the double gate on one candidate (slow — replay)
+          check_csrf!
+          agent = presence(r.params["agent"])
+          payload = { candidate_id: presence(r.params["candidate_id"]) }
+          control_action(:gate_harvest, payload, ok: "Gated — see the verdicts below.")
+          r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
+        end
+
+        r.post "promote" do
+          check_csrf!
+          agent = presence(r.params["agent"])
+          payload = { candidate_id: presence(r.params["candidate_id"]),
+                      operator: "studio", note: presence(r.params["note"]) }.compact
+          control_action(:promote_harvest, payload,
+                         ok: "Promoted — the skill is live for this store.")
+          r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
+        end
+
+        r.post "reject" do
+          check_csrf!
+          agent = presence(r.params["agent"])
+          payload = { candidate_id: presence(r.params["candidate_id"]),
+                      operator: "studio", note: presence(r.params["note"]) }.compact
+          control_action(:reject_harvest, payload, ok: "Skill rejected.")
+          r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
+        end
+
+        r.post "rollback" do
+          check_csrf!
+          agent = presence(r.params["agent"])
+          payload = { snapshot_ref: presence(r.params["snapshot_ref"]),
+                      operator: "studio", reason: presence(r.params["reason"]) }.compact
+          control_action(:rollback_harvest, payload, ok: "Rolled back to the snapshot.")
+          r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
+        end
+      end
+
       # --- Facts: the human gate on distilled proposals (RFC-0034 C7) --------
       # Reads ProposalStore directly (the Studio's constitutional split — reads
       # hit the stores, mutations go through the bus); the ONLY mutation — the
@@ -1123,6 +1185,9 @@ end
           # RFC-0034 C7: the Facts (wiki) page — the human gate on distilled
           # proposals (approve/reject/dismiss, the latch, the CAS re-present).
           ["Facts", "/studio/facts", :facts],
+          # RFC-0035 C11: the Harvest page — the human gate on mined skills
+          # (gate, promote, reject, rollback; the append-only promotion log).
+          ["Harvest", "/studio/harvest", :harvest],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
@@ -1940,6 +2005,66 @@ end
       @stores  = (@pending + @stale + @recent).map(&:scope).uniq.sort
       @sessions = insika[:session_store]
       view("facts")
+    end
+
+    # RFC-0035 C11: the Harvest page — the human gate on mined skills. Reads
+    # HarvestStore/SessionStore directly (the evidence excerpt is read from the
+    # session at request time — D7: ids and indexes only are stored); every
+    # mutation dispatches a bus command.
+    def render_harvest
+      @agents = insika[:profile_source].ids.sort
+      @agent = presence(request.params["agent"]) || @agents.first
+      store = insika[:harvest_store]
+      # EVERY list respects the agent filter (the review fix) — the page is a
+      # per-store inbox, not a global one.
+      @candidates = @agent && store ? store.candidates(agent_id: @agent, status: "awaiting_approval") : []
+      @pending_gates = @agent && store ? store.candidates(agent_id: @agent, status: "pending").first(50) : []
+      @blocked = if @agent && store
+                   store.candidates(agent_id: @agent, status: "gated")
+                        .select { |c| !c.eval_gate || !c.conversion_gate || c.conversion_gate["passed"] == false }
+                        .first(50)
+                 else
+                   []
+                 end
+      @recent = @agent && store ? store.candidates(agent_id: @agent, status: "promoted").first(20) : []
+      @runs = @agent && store ? store.runs_for(@agent, limit: 5) : []
+      @promotions = @agent && store ? store.promotions(agent_id: @agent, limit: 50) : []
+      @criterion = insika[:harvest_criterion]
+      @funnel = insika[:funnel_store]
+      @sessions = insika[:session_store]
+      @negative = insika[:negative_list]
+      @filter = presence(request.params["agent"])
+      view("harvest")
+    end
+
+    # The evidence excerpt for a candidate — the origin sessions' messages at
+    # the stored indexes, read at request time (D7: ids and indexes only).
+    #
+    # An index is validated by the miner as "fits at least one origin
+    # session", so it must NOT be rendered against every origin session — the
+    # same index would point at different conversations (the review fix).
+    # Each index renders ONE message, from the first origin session where it
+    # is in range, labeled with that session.
+    def candidate_excerpt(candidate)
+      Array(candidate.evidence_turns).filter_map do |i|
+        session = Array(candidate.origin).filter_map { |sid| @sessions&.find(sid) }
+                                          .find { |s| s.messages && s.messages[i] }
+        next unless session
+
+        [session.id, i, session.messages[i]["content"].to_s]
+      end
+    end
+
+    # The negative list's rejection counts per rule, read from the RUN
+    # records (D4 — the counts the Studio shows are what the engine logged:
+    # the run carries { rule_id => count, "ungrounded" => N, ... }).
+    def negative_rule_counts
+      store = insika[:harvest_store]
+      return {} unless store
+
+      store.runs_for(@agent || "", limit: 200).each_with_object(Hash.new(0)) do |run, acc|
+        Array(run.rejected).each { |rule, n| acc[rule] += n.to_i }
+      end
     end
 
     # The excerpt for a proposal's evidence — the transcript messages at the

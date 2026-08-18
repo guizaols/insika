@@ -329,6 +329,40 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "harvest (RFC-0035 — the gated harvest declaration)" do
+    it "nil/absent -> nil = the loop is off for that agent (parity)" do
+      expect(described_class.build(id: "a", model: "m").harvest).to be_nil
+    end
+
+    it "deep-stringifies the declaration (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        harvest: { enabled: true,
+                   negative_list: [ { rule: "no-competitor-prices", pattern: "concorrente" } ],
+                   miner: { model: "deepseek-v4-flash", window: { last_sessions: 200 } } }
+      )
+      expect(profile.harvest).to eq("enabled" => true,
+                                    "negative_list" => [ { "rule" => "no-competitor-prices",
+                                                           "pattern" => "concorrente" } ],
+                                    "miner" => { "model" => "deepseek-v4-flash",
+                                                 "window" => { "last_sessions" => 200 } })
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        harvest: { "enabled" => true, "idle_hours" => 24, "min_messages" => 3 }
+      )
+      expect(profile.to_h[:harvest]).to eq("enabled" => true, "idle_hours" => 24,
+                                           "min_messages" => 3)
+    end
+
+    it "a profile without a harvest declaration sees nil (no shape validation here)" do
+      plain = described_class.build(id: "a", model: "m")
+      expect(plain.harvest).to be_nil
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

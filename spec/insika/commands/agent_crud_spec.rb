@@ -112,6 +112,23 @@ RSpec.describe "Agent authoring commands" do
       expect(profile.distill).to eq("enabled" => true, "idle_hours" => 6,
                                     "max_proposals" => 10, "prompt" => "the pack prompt")
     end
+
+    it "harvest round-trips through the authoring payload (RFC-0035)" do
+      handler.call(cmd(:create_agent, {
+                         "id" => "harvest-agent", "model" => "m",
+                         "harvest" => { "enabled" => true,
+                                        "negative_list" => [ { "rule" => "no-competitor-prices",
+                                                               "pattern" => "concorrente" } ],
+                                        "miner" => { "model" => "deepseek-v4-flash",
+                                                     "window" => { "last_sessions" => 200 } } }
+                       }))
+      profile = source.fetch("harvest-agent")
+      expect(profile.harvest).to eq("enabled" => true,
+                                    "negative_list" => [ { "rule" => "no-competitor-prices",
+                                                           "pattern" => "concorrente" } ],
+                                    "miner" => { "model" => "deepseek-v4-flash",
+                                                 "window" => { "last_sessions" => 200 } })
+    end
   end
 
   describe Insika::Commands::UpdateAgent do
@@ -124,6 +141,15 @@ RSpec.describe "Agent authoring commands" do
       expect(profile.skills).to eq(%w[pedido])   # preserved (was not in the patch)
       expect(profile.provider).to eq(:deepseek)  # preserved
       expect(events.map(&:type)).to include(:agent_updated)
+    end
+
+    it "an update that omits harvest preserves the stored declaration (the round-trip gate)" do
+      source.put(Insika::AgentProfile.build(
+                   id: "harvest-upd", model: "m",
+                   harvest: { "enabled" => true, "min_messages" => 3 }
+                 ))
+      handler.call(cmd(:update_agent, { "id" => "harvest-upd", "model" => "m2" }))
+      expect(source.fetch("harvest-upd").harvest).to eq("enabled" => true, "min_messages" => 3)
     end
 
     it "nonexistent agent -> NotFoundError" do

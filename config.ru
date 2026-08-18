@@ -107,7 +107,14 @@ Studio::App.configure(
   # RFC-0033 C9/C10: the Follow-ups page reads the stores directly; its only
   # mutations (cancel, force-revoke) dispatch bus commands.
   followup_store: W::GRAPH.followup_store,
-  contact_store: W::GRAPH.contact_store
+  contact_store: W::GRAPH.contact_store,
+  # RFC-0035 C11: the Harvest page reads the harvest store + the two
+  # pre-registered artifacts (criterion, negative list) directly; its
+  # mutations dispatch :run_harvest / :gate_harvest / :promote_harvest /
+  # :reject_harvest / :rollback_harvest on the bus.
+  harvest_store: W::GRAPH.harvest_store,
+  harvest_criterion: W::HARVEST_CRITERION,
+  negative_list: W::HARVEST_NEGATIVE
 )
 
 # OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.

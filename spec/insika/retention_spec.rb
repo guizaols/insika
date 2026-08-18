@@ -453,6 +453,73 @@ RSpec.describe Insika::Retention do
       expect(proposal_store.find("fresh")).not_to be_nil
     end
 
+    it "RFC-0035 C13 — harvest candidates (pending AND terminal), log rows and snapshots older than the cutoff are swept; a recent one survives; markers never die" do
+      harvest_store = Insika::HarvestStore.new(store: backend)
+      r = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, tool_trace_store: tool_trace,
+        context_trace_store: context_trace, outbox_store: outbox_store,
+        settings_store: settings, now: now, harvest_store: harvest_store
+      )
+      old = (now - 40 * 86_400).iso8601
+      cand = harvest_store.create_candidate(
+        run_id: "r-old", agent: "store-support", name: "old-skill",
+        description: "d", body: "b", rationale: "r", origin: ["acme:s-old"],
+        proposer: "utility_model"
+      )
+      backend.set("harvest", "cand:#{cand.id}",
+                  backend.get("harvest", "cand:#{cand.id}").merge("created_at" => old, "updated_at" => old))
+      harvest_store.append_promotion(id: "old-promo", agent: "store-support", skill: "old-skill",
+                                     origin: ["acme:s-old"], approver: "o")
+      old_promo_key = backend.list("harvest", "promo:").find { |k| k.end_with?(":old-promo") }
+      backend.set("harvest", old_promo_key,
+                  backend.get("harvest", old_promo_key).merge("at" => old))
+      snap = harvest_store.create_snapshot(agent: "store-support", skill: "old-skill",
+                                           content: "x", existed: true, enabled_for: ["store-support"])
+      backend.set("harvest", "snap:#{snap.id}",
+                  backend.get("harvest", "snap:#{snap.id}").merge("at" => old))
+
+      fresh = harvest_store.create_candidate(
+        run_id: "r-new", agent: "store-support", name: "fresh-skill",
+        description: "d", body: "b", rationale: "r", origin: ["acme:s-new"],
+        proposer: "utility_model"
+      )
+      harvest_store.mark_mined("kept:sess_1")
+
+      summary = r.run
+
+      expect(summary[:harvest]).to be >= 3
+      expect(harvest_store.find_candidate(cand.id)).to be_nil
+      expect(harvest_store.find_candidate(fresh.id)).to_not be_nil
+      expect(harvest_store.promotions).to be_empty
+      expect(harvest_store.find_snapshot(snap.id)).to be_nil
+      expect(harvest_store.mined?("kept:sess_1")).to be(true) # the marker is the claim
+    end
+
+    it "RFC-0035 C13 — with retention_days OFF the harvest rows are untouched" do
+      harvest_store = Insika::HarvestStore.new(store: backend)
+      r = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, tool_trace_store: tool_trace,
+        context_trace_store: context_trace, outbox_store: outbox_store,
+        settings_store: Struct.new(:get).new({ "retention_days" => nil }), now: now,
+        harvest_store: harvest_store
+      )
+      old = (now - 40 * 86_400).iso8601
+      cand = harvest_store.create_candidate(
+        run_id: "r-old", agent: "store-support", name: "old-skill",
+        description: "d", body: "b", rationale: "r", origin: ["acme:s-old"],
+        proposer: "utility_model"
+      )
+      backend.set("harvest", "cand:#{cand.id}",
+                  backend.get("harvest", "cand:#{cand.id}").merge("created_at" => old, "updated_at" => old))
+
+      expect(r.run).to eq(claimed: false)
+      expect(harvest_store.find_candidate(cand.id)).to_not be_nil
+    end
+
     it "RFC-0034 C8 — with retention_days OFF proposals are untouched" do
       proposal_store = Insika::ProposalStore.new(store: backend)
       r = described_class.new(

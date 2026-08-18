@@ -31,7 +31,7 @@ module Insika
                    context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
                     settings_store: nil, budget_ledger: nil, funnel_store: nil,
                     followup_store: nil, contact_store: nil, proposal_store: nil,
-                    store:, window: WINDOW, now: nil)
+                     store:, window: WINDOW, now: nil, harvest_store: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -50,6 +50,7 @@ module Insika
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
+      @harvest_store = harvest_store # RFC-0035 C13; nil = nothing to sweep
     end
 
     # RFC-0031: the sweep reads the memory store's cells/records (specs seed
@@ -91,6 +92,11 @@ module Insika
       # re-derivable (D2), so pruning is never data loss. The session MARKERS
       # are never pruned (the store's rule — the marker is the claim).
       summary[:proposals] = @proposal_store.delete_older_than(cutoff) if @proposal_store
+      # RFC-0035 C13: candidates (pending AND terminal), log rows and
+      # snapshots are DERIVED data of transcripts (D11) — when the transcripts
+      # die, the candidates' excerpts are gone; they are re-derivable (D2), so
+      # pruning is never data loss. The session markers are never pruned.
+      summary[:harvest] = @harvest_store.delete_older_than(cutoff) if @harvest_store
       summary[:budget_cells] = budget_cells if budget_cells
       summary[:memory_ttl] = memory_ttl if memory_ttl
       summary

@@ -115,8 +115,34 @@ module Insika
           contact_store: @graph.contact_store,
           # RFC-0034 C7: the Facts (wiki) page reads the proposal store
           # directly; its mutations dispatch :resolve_proposal on the bus.
-          proposal_store: @graph.proposal_store
+          proposal_store: @graph.proposal_store,
+          # RFC-0035 C11: the Harvest page reads the harvest store + the two
+          # pre-registered artifacts directly; its mutations dispatch the
+          # harvest bus commands. The criterion/negative list load best-effort
+          # (nil = the page renders the refusal/empty states).
+          harvest_store: @graph.harvest_store,
+          harvest_criterion: harvest_criterion,
+          negative_list: harvest_negative_list
         )
+      end
+
+      # The frozen criterion (D5) — best-effort at boot: a bare install
+      # without harvest/CRITERION.md renders the ruler's hole instead of
+      # crashing the Studio.
+      def harvest_criterion
+        Insika::Harvest::Criterion.load(
+          Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION") || "harvest/CRITERION.md"
+        )
+      rescue Insika::ConfigError, Insika::ValidationError
+        nil
+      end
+
+      def harvest_negative_list
+        Insika::Harvest::NegativeList.parse(
+          File.read(Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE") || "harvest/NEGATIVE.md")
+        )
+      rescue Errno::ENOENT
+        nil
       end
 
       def persistence

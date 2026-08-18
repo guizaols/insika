@@ -267,6 +267,53 @@ RSpec.describe Deploy::Wiring do
         expect(w::GRAPH.executor.distill_engine.run_once).to eq(claimed: false)
       end
     end
+
+    # RFC-0035 C14: the harvest rides the shared core — spine store, engine on
+    # the executor, the five commands on the bus, LGPD + retention hooks.
+    # The base graph wires nil factories (no eval surface, no criterion, no
+    # funnel): nothing mines and the gates refuse with named reasons (parity).
+    describe "harvest (RFC-0035)" do
+      it "builds the harvest store over BACKEND in the spine" do
+        expect(w::SPINE.harvest_store).to be_a(Insika::HarvestStore)
+        expect(w::SPINE.harvest_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.harvest_store).to be(w::SPINE.harvest_store)
+      end
+
+      it "wires the harvest engine onto the executor (the tick's fourth duty)" do
+        engine = w::GRAPH.executor.harvest_engine
+        expect(engine).to be_a(Insika::HarvestEngine)
+        expect(engine.instance_variable_get(:@harvest_store)).to be(w::SPINE.harvest_store)
+        expect(engine.instance_variable_get(:@runner)).to be_a(Insika::Commands::RunHarvest)
+      end
+
+      it "registers the five harvest commands on the bus" do
+        %i[run_harvest gate_harvest promote_harvest rollback_harvest reject_harvest].each do |type|
+          expect(w::BUS.registered?(type)).to be(true), "missing harvest command #{type}"
+        end
+      end
+
+      it "wires the harvest store into the LGPD purge and retention" do
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@harvest_store)).to be(w::SPINE.harvest_store)
+        retention = w::GRAPH.executor.tick.instance_variable_get(:@retention)
+        expect(retention.instance_variable_get(:@harvest_store)).to be(w::SPINE.harvest_store)
+      end
+
+      it "the deployment root swaps in the real gate, criterion and negative list" do
+        expect(w::HARVEST_GATE).to be_a(Insika::Harvest::Gate)
+        expect(w::HARVEST_CRITERION).to be_a(Insika::Harvest::Criterion)
+        expect(w::HARVEST_NEGATIVE).to be_a(Insika::Harvest::NegativeList)
+        expect(w::HARVEST_NEGATIVE.rules).to_not be_empty
+        gate_handler = w::BUS.instance_variable_get(:@handlers)[:gate_harvest]
+        expect(gate_handler.instance_variable_get(:@gate)).to be(w::HARVEST_GATE)
+        run_handler = w::BUS.instance_variable_get(:@handlers)[:run_harvest]
+        expect(run_handler.instance_variable_get(:@negative_list)).to be(w::HARVEST_NEGATIVE)
+      end
+
+      it "nothing mines without a declaration (the engine is inert)" do
+        expect(w::GRAPH.executor.harvest_engine.run_once).to eq(claimed: false)
+      end
+    end
   end
 
   # the production wiring finally instantiates Recovery and speaks

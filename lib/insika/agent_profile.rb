@@ -224,7 +224,7 @@ module Insika
                                    # shape-validated by FollowupPolicy, never here (D9).
                                    # nil/absent = the feature is off (parity).
                                    # Deep-stringified like the other free-form hashes.
-    :distill                         # RFC-0034: the session-distillation declaration — pack
+    :distill,                        # RFC-0034: the session-distillation declaration — pack
                                    # data, exactly like refinement/followup:
                                    # { "enabled" => bool, "prompt" => "<pack-authored markdown
                                    #   — what counts as a fact for this store>",
@@ -235,6 +235,20 @@ module Insika
                                    # model only names facts (D1). nil/absent = the feature is
                                    # off (parity, byte-identical engine). Shape-validated by
                                    # the command/engine, never here (the refinement precedent).
+                                   # Deep-stringified like the other free-form hashes.
+    :harvest                         # RFC-0035: the gated-harvest declaration — pack data,
+                                   # exactly like refinement/distill:
+                                   # { "enabled" => bool,
+                                   #   "negative_list" => [ { "rule" => "…", "pattern" => "…",
+                                   #                          "note" => "…" } ],
+                                   #   "miner" => { "model" => "<ref — absent = the platform
+                                   #       utility_model>", "window" => { "last_sessions" => N },
+                                   #       "max_proposals" => N, "budget" => { "tokens" => N } },
+                                   #   "idle_hours" => 24, "min_messages" => 3 }.
+                                   # The ENGINE mines (reads sessions, asks the miner, filters
+                                   # through the negative list + grounding), never authors a
+                                   # rule (D4). nil/absent = the loop is off (parity).
+                                   # Shape-validated by the command/engine/doctor, never here.
                                    # Deep-stringified like the other free-form hashes.
   )
 
@@ -268,7 +282,7 @@ module Insika
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
                      outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
-                     followup: nil, distill: nil)
+                     followup: nil, distill: nil, harvest: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -321,7 +335,11 @@ module Insika
         # RFC-0034: distill is profile DATA, deep-stringified like the other
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
-        distill: Coercion.deep_stringify(distill)
+        distill: Coercion.deep_stringify(distill),
+        # RFC-0035: harvest is profile DATA, deep-stringified like the other
+        # free-form hashes; shape-validated by the command/engine/doctor
+        # (never here — the refinement precedent). nil = off (parity).
+        harvest: Coercion.deep_stringify(harvest)
       )
     end
 
