@@ -25,13 +25,15 @@ module Insika
       include SessionPurge
 
       def initialize(memory_store:, session_store:, tool_trace_store: nil,
-                     context_trace_store: nil, task_store: nil, checkpoint_store: nil,
+                     context_trace_store: nil, model_visible_trace_store: nil,
+                     task_store: nil, checkpoint_store: nil,
                      outbox_store: nil, shadow_pairs: nil, audit_store: nil, event_stream:,
                      followup_store: nil, contact_store: nil, proposal_store: nil)
         @memory_store = memory_store
         @session_store = session_store
         @tool_trace_store = tool_trace_store
         @context_trace_store = context_trace_store
+        @model_visible_trace_store = model_visible_trace_store # RFC-0036 C4; nil = parity
         @task_store = task_store
         @checkpoint_store = checkpoint_store
         @outbox_store = outbox_store

@@ -22,7 +22,7 @@ module Insika
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
-                    contact_store: nil, followup_store: nil)
+                    contact_store: nil, followup_store: nil, model_visible_trace_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -42,6 +42,10 @@ module Insika
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
       @context_trace_store = context_trace_store
+      # RFC-0036 C4: the model-visible trace — what the provider received per
+      # (task, turn), captured at the chat boundary. nil = off (no record,
+      # zero overhead — parity).
+      @model_visible_trace_store = model_visible_trace_store
       # Guardrails output filter: ->(state) { OutputFilter | nil }.
       # Injected by the Safety::Factory; nil = off (parity — the stream is untouched).
       # The INPUT guardrail is a Middleware (in the stack, not here); this is the seam
@@ -1147,6 +1151,14 @@ module Insika
       content = routed ? st.response_content : run_agent_stage(task, st, timing)
       st.response_content = content # after_task OutputValidator inspects this
 
+      # RFC-0036 C4: the model-visible record — what the provider received this
+      # turn, captured at the boundary BEFORE stage 8 persists the checkpoint
+      # (turn n's provider-visible stream == checkpoint(turn n+1).messages).
+      # Skipped for workflows (they orchestrate RubyLLM inside the workflow
+      # body — the engine cannot see those calls, stated in the conformance
+      # scope) and absent-store runs (parity).
+      record_model_visible(task, st) if !workflow_turn?(task) && st.chat
+
       # RFC-0029 D6: the :enforce boundary — a CUT of the final content BEFORE
       # persistence/delivery (after_task fires too late to change what is
       # persisted). The cut text is what persists, delivers and terminates.
@@ -1199,6 +1211,23 @@ module Insika
 
     def workflow_turn?(task)
       command_type(task).to_s == "trigger_workflow"
+    end
+
+    # RFC-0036 C4: the model-visible record of ONE ask — the chat at the
+    # provider boundary (instructions + tool schemas + the message stream),
+    # persisted under the checkpoint's turn number (turn n's stream ==
+    # checkpoint(turn n+1).messages). Best-effort: the store rescues
+    # everything, and the absent-store path is parity. `chat` defaults to the
+    # turn's own chat; the routing classifier passes its own.
+    def record_model_visible(task, st, chat = nil, part: "turn")
+      return unless @model_visible_trace_store
+
+      c = chat || st.chat
+      return unless c
+
+      @model_visible_trace_store.record(
+        task_id: task.id, turn: st.turn + 1, part: part,
+        payload: Insika::ModelVisible.capture(c))
     end
 
     # Stage 6: the single agent interaction. Returns the turn's final content.
@@ -1433,7 +1462,7 @@ module Insika
       return false unless route_model(meta, profile)
 
       selection = route_selection(meta, profile)
-      classification = classify_route(selection, meta, state.message)
+      classification = classify_route(selection, meta, state.message, task, state)
       return false if classification.nil? # the classifier call failed — routing is additive
 
       route = classification[:route]
@@ -1454,8 +1483,8 @@ module Insika
     # The classifier call, its answer parsed back into a route.
     # -> { route:, response: } | nil (nil = the call failed — the turn proceeds
     # unrouted rather than paying a wrong label or dying for an additive step).
-    def classify_route(selection, meta, message)
-      response = route_ask(selection, Insika::Routing.classifier_prompt(meta), message)
+    def classify_route(selection, meta, message, task, st)
+      response = route_ask(selection, Insika::Routing.classifier_prompt(meta), message, task, st)
       { route: Insika::Routing.parse(route_response_text(response), meta), response: response }
     rescue StandardError
       nil
@@ -1479,12 +1508,17 @@ module Insika
 
     # A fresh chat for the routing model with ONLY the generated prompt. RubyLLM
     # required lazily, exactly like create_chat (the load-guard holds).
-    def route_ask(selection, prompt, message)
+    # RFC-0036 C4: the classifier is model-visible, so it is logged — the ONE
+    # engine-internal ask the conformance spec adds a record for (part
+    # "routing", same turn number as the answer ask).
+    def route_ask(selection, prompt, message, task, st)
       require "ruby_llm"
       chat = (@llm || RubyLLM).chat(model: selection.model, provider: selection.provider,
                                     assume_model_exists: selection.assume_model_exists?)
       chat.with_instructions(prompt) if chat.respond_to?(:with_instructions)
-      chat.ask(message.to_s)
+      response = chat.ask(message.to_s)
+      record_model_visible(task, st, chat, part: "routing")
+      response
     end
 
     def route_response_text(response)

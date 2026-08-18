@@ -31,6 +31,7 @@ module Insika
                    context_trace_store: nil, outbox_store: nil, shadow_pair_store: nil,
                     settings_store: nil, budget_ledger: nil, funnel_store: nil,
                     followup_store: nil, contact_store: nil, proposal_store: nil,
+                    model_visible_trace_store: nil,
                      store:, window: WINDOW, now: nil, harvest_store: nil)
       @session_store = session_store
       @task_store = task_store
@@ -39,6 +40,7 @@ module Insika
       @outcome_store = outcome_store
       @tool_trace_store = tool_trace_store
       @context_trace_store = context_trace_store
+      @model_visible_trace_store = model_visible_trace_store # RFC-0036 C4; nil = parity
       @outbox_store = outbox_store
       @shadow_pair_store = shadow_pair_store
       @settings_store = settings_store
@@ -207,7 +209,8 @@ module Insika
 
     # TERMINAL tasks untouched past the cutoff, and their checkpoints. A
     # non-terminal task (queued/running) is never touched here — the Recovery
-    # sweep owns those lives.
+    # sweep owns those lives. RFC-0036 C4: the model-visible traces are
+    # transcripts — they die next to their checkpoints.
     def sweep_tasks(cutoff)
       removed = 0
       @task_store.each_id.each do |id|
@@ -216,6 +219,7 @@ module Insika
         next unless task.updated_at && task.updated_at < cutoff.iso8601
 
         @checkpoint_store.purge(id)
+        @model_visible_trace_store&.purge(id)
         @task_store.delete(id)
         removed += 1
       end

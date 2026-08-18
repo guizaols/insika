@@ -183,6 +183,11 @@ module Insika
         # schedule/cancel_followup tools on them (parity when no pack declares).
         contact_store: spine.contact_store,
         followup_store: spine.followup_store,
+        # RFC-0036 C4: the model-visible trace rides executor_extra like the
+        # context trace — a module graph that omits it still builds (nil =
+        # parity). The base graph wires it over the same backend the context
+        # trace uses.
+        model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
         **executor_extra
       )
 
@@ -207,6 +212,8 @@ module Insika
             memory_store: spine.memory_store, outcome_store: spine.outcome_store,
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
+            # RFC-0036 C4: the model-visible traces die with their checkpoints.
+            model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
             outbox_store: spine.outbox_store,
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
@@ -368,6 +375,9 @@ module Insika
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
+                       # RFC-0036 C4: the model-visible traces die with the
+                       # checkpoints (the same SessionPurge list).
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
@@ -390,6 +400,8 @@ module Insika
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
+                       # RFC-0036 C4: the model-visible traces die with the tenant.
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        outcome_store: spine.outcome_store,
                        funnel_store: spine.funnel_store, # RFC-0032 C6: the fold dies with the tenant
                        followup_store: spine.followup_store, # RFC-0033 C11

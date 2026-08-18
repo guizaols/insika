@@ -22,6 +22,10 @@ deployment.
 - **Safe by default** — content-safety guardrails, an egress guard, confined execution, approvals, edge limits.
 - **Observable** — an event stream, per-session tool-call traces, optional OpenTelemetry.
 - **~0.4 ms of engine per turn** — p50 overhead on a neutral, key-free benchmark you can rerun yourself ([methodology](docs/BENCHMARK.md)).
+- **Domain-free core** — the gem carries no store vocabulary, no persona and no fixed
+  conversation language: the built-in pt-BR guardrail corpus is removable data, a
+  deployment declares what it is, and the payload boundary is a spec the suite asserts
+  on ([the domain-free map](docs/domain.md)).
 
 ## Your first agent
 
