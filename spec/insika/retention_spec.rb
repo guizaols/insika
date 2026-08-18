@@ -16,6 +16,7 @@ RSpec.describe Insika::Retention do
   let(:outcome_store) { Insika::OutcomeStore.new(store: backend) }
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
+  let(:model_visible_trace) { Insika::ModelVisibleTraceStore.new(store: backend) }
   let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
   let(:settings) { Struct.new(:get).new({ "retention_days" => days, "memory_ttl_days" => ttl_days }) }
   let(:days) { 30 }
@@ -27,7 +28,8 @@ RSpec.describe Insika::Retention do
       store: backend, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, memory_store: memory_store,
       outcome_store: outcome_store, tool_trace_store: tool_trace,
-      context_trace_store: context_trace, outbox_store: outbox_store,
+      context_trace_store: context_trace, model_visible_trace_store: model_visible_trace,
+      outbox_store: outbox_store,
       settings_store: settings, now: now
     )
   end
@@ -96,6 +98,29 @@ RSpec.describe Insika::Retention do
     expect(task_store.find("t-old")).to be_nil
     expect(checkpoint_store.find("t-old", turn: 1)).to be_nil
     expect(task_store.find("t-run")).not_to be_nil
+  end
+
+  # RFC-0036 C4: the model-visible traces are transcripts — the retention
+  # sweep must not leave the record of a dead conversation behind.
+  it "sweeps the model-visible traces next to the terminal task's checkpoints" do
+    task_store.create(command: { agent: "a" }, session_id: "s1", id: "t-old",
+                      at: (now - 40 * 86_400).iso8601)
+    task_store.transition("t-old", to: :running)
+    task_store.transition("t-old", to: :completed)
+    backdate_task("t-old", (now - 40 * 86_400).iso8601)
+    checkpoint_store.save(Insika::Checkpoint.new(task_id: "t-old", turn: 1, session_id: "s1",
+                                                 agent_id: "a", messages: [],
+                                                 completed_side_effects: [], created_at: nil))
+    model_visible_trace.record(task_id: "t-old", turn: 1,
+                               payload: Insika::ModelVisible.new(instructions: "sys", tools: [], messages: []))
+    model_visible_trace.record(task_id: "t-old", turn: 1, part: "routing",
+                               payload: Insika::ModelVisible.new(instructions: "cls", tools: [], messages: []))
+
+    summary = retention.run
+
+    expect(summary[:tasks]).to eq(1)
+    expect(model_visible_trace.for_task("t-old")).to eq([])
+    expect(model_visible_trace.for_task("t-old", part: "routing")).to eq([])
   end
 
   it "sweeps outcomes and memory cells older than the cutoff" do

@@ -39,8 +39,34 @@ module Insika
       {
         "name" => (tool.name.to_s if tool.respond_to?(:name)),
         "description" => (tool.description.to_s if tool.respond_to?(:description)),
-        "parameters" => params
+        "parameters" => params && json_safe(params)
       }.compact
+    end
+
+    # -> JSON-safe projection of an arbitrary schema value. The gem's tools
+    # answer parameters as Hash with RubyLLM::Parameter values (a class whose
+    # readers are name/type/description/required) — the trace must persist the
+    # schema, so it projects that shape instead of raising on the object (the
+    # record never breaks the turn). Anything unprojectable degrades to its
+    # string form, never raises.
+    def self.json_safe(value)
+      case value
+      when Hash
+        value.each_with_object({}) { |(k, v), acc| acc[k.to_s] = json_safe(v) }
+      when Array
+        value.map { |v| json_safe(v) }
+      when String, Integer, Float, TrueClass, FalseClass, NilClass
+        value
+      else
+        if %i[name type description required].all? { |m| value.respond_to?(m) }
+          { "name" => value.name.to_s, "type" => value.type.to_s,
+            "description" => value.description.to_s, "required" => value.required }
+        elsif value.respond_to?(:to_h)
+          json_safe(value.to_h)
+        else
+          value.to_s
+        end
+      end
     end
 
     # The store round-trip: a plain Hash (string keys) -> ModelVisible.

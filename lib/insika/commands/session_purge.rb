@@ -24,7 +24,7 @@ module Insika
         ids = Array(ids).map(&:to_s)
         return { tasks: 0, checkpoints: 0, deliveries: 0, pairs: 0 } if ids.empty?
 
-        tasks, checkpoints = purge_tasks_of(ids)
+        tasks, checkpoints, model_visible = purge_tasks_of(ids)
         deliveries = @outbox_store ? @outbox_store.purge_sessions(ids) : 0
         pairs = @shadow_pairs ? @shadow_pairs.purge_sessions(ids) : 0
         ids.each do |id|
@@ -32,29 +32,35 @@ module Insika
           @context_trace_store&.clear(id)
           @session_store.delete(id)
         end
-        { tasks: tasks, checkpoints: checkpoints, deliveries: deliveries, pairs: pairs }
+        { tasks: tasks, checkpoints: checkpoints, model_visible: model_visible,
+          deliveries: deliveries, pairs: pairs }
       end
 
       private
 
-      # -> [tasks removed, checkpoint records removed]. The id list is
-      # SNAPSHOTTED (`to_a`) before the deletes: `each_id` enumerates the
-      # backend's keys lazily, and deleting under it would skip records.
+      # -> [tasks removed, checkpoint records removed, model-visible records removed].
+      # RFC-0036 C4: the model-visible traces are transcripts — they die next to
+      # their checkpoints (the same single list, so "erase this person" cannot
+      # forget one half). The id list is SNAPSHOTTED (`to_a`) before the deletes:
+      # `each_id` enumerates the backend's keys lazily, and deleting under it
+      # would skip records.
       def purge_tasks_of(ids)
-        return [0, 0] unless @task_store
+        return [0, 0, 0] unless @task_store
 
         wanted = ids.each_with_object({}) { |id, acc| acc[id] = true }
         tasks = 0
         checkpoints = 0
+        model_visible = 0
         @task_store.each_id.to_a.each do |task_id|
           task = @task_store.find(task_id)
           next unless task && wanted[task.session_id.to_s]
 
           checkpoints += @checkpoint_store ? @checkpoint_store.purge(task_id) : 0
+          model_visible += @model_visible_trace_store ? @model_visible_trace_store.purge(task_id) : 0
           @task_store.delete(task_id)
           tasks += 1
         end
-        [tasks, checkpoints]
+        [tasks, checkpoints, model_visible]
       end
     end
   end

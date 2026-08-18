@@ -59,6 +59,33 @@ GEM_HOME="$T/gemhome" GEM_PATH="$T/gemhome" ruby -e '
   puts "clean"'
 ```
 
+### The 1.0 release gate — the RFC-0036 install proof (E1)
+
+For the 1.0 release the proof above is scripted and its **installed-bytes**
+half is asserted by the domain-boundary suite (C1) on the artifact, not the
+repo. Run the runbook, with a key (the smoke turn is one `reply` through the
+installed gem):
+
+```bash
+DEEPSEEK_API_KEY=sk-... scripts/install_proof/install_proof.sh   # prints PASS
+```
+
+The script builds, installs into a FRESH `GEM_HOME`, asserts `gem contents
+insika` carries no `deploy/ packs/ examples/ plugins/ evals/ scripts/ spec/`
+path and no demo-persona-name string, and answers one turn from an app dir that follows
+only the public docs. Archive the PASS output with the release notes — it is
+the 1.0 exit criterion "install proof by the docs alone".
+
+The same gate writes the freeze date: a breaking `/v1` change needs a new
+`Insika-Version` entry (server/app.rb), a compatibility branch (RFC-0016 A5)
+and a rewritten `**Frozen as of:**` line in `docs/API.md` — the version-gate
+spec pins the two together, and the 1.0 release writes the date at release
+time.
+
+Catalog submission checklist (RFC §6): verify the best-of-Agent-Harnesses
+catalog size at submission time (161 vs 154 — the counts diverge across the
+catalog's own pages) and cite the conformance suite as the `durable` evidence.
+
 ## Publish
 
 ```bash

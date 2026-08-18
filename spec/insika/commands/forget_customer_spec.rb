@@ -11,6 +11,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:tool_trace) { Insika::ToolTraceStore.new(store: backend) }
   let(:context_trace) { Insika::ContextTraceStore.new(store: backend) }
+  let(:model_visible_trace) { Insika::ModelVisibleTraceStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
   let(:checkpoint_store) { Insika::CheckpointStore.new(store: backend) }
   let(:outbox_store) { Insika::OutboxStore.new(store: backend) }
@@ -21,6 +22,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
   subject(:command) do
     described_class.new(memory_store: memory_store, session_store: session_store,
                         tool_trace_store: tool_trace, context_trace_store: context_trace,
+                        model_visible_trace_store: model_visible_trace,
                         task_store: task_store, checkpoint_store: checkpoint_store,
                         outbox_store: outbox_store, event_stream: event_stream,
                         followup_store: followup_store, contact_store: contact_store,
@@ -129,6 +131,36 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     expect(checkpoint_store.latest("t-1")).to be_nil
     expect(outbox_store.pending.map(&:session_id)).to eq(["acme:chat-2"])
     expect(task_store.find("t-2")).not_to be_nil
+  end
+
+  # RFC-0036 C4: the model-visible traces are transcripts — "model-visible
+  # means logged" loses its meaning if the record of what the provider saw
+  # survives the erasure of the conversation that produced it.
+  it "purges the customer's model-visible traces next to their checkpoints" do
+    session_store.create(id: "acme:chat-1", vars: { "customer" => "123" })
+    task = task_store.create(
+      command: Insika::Command.build(:send_message, { agent: "bia", message: "oi" }).to_h,
+      session_id: "acme:chat-1", id: "t-1"
+    )
+    checkpoint_store.save(Insika::Checkpoint.new(task_id: task.id, turn: 1, session_id: "acme:chat-1",
+                                                 agent_id: "bia", messages: [], completed_side_effects: [],
+                                                 created_at: nil))
+    model_visible_trace.record(task_id: "t-1", turn: 1,
+                               payload: Insika::ModelVisible.new(instructions: "sys", tools: [], messages: []))
+    model_visible_trace.record(task_id: "t-1", turn: 1, part: "routing",
+                               payload: Insika::ModelVisible.new(instructions: "cls", tools: [], messages: []))
+
+    # a neighbouring customer's task records survive
+    session_store.create(id: "acme:chat-2", vars: { "customer" => "456" })
+    task_store.create(command: { agent: "bia" }, session_id: "acme:chat-2", id: "t-2")
+    model_visible_trace.record(task_id: "t-2", turn: 1,
+                               payload: Insika::ModelVisible.new(instructions: "sys", tools: [], messages: []))
+
+    result = run(customer: "123", tenant: "acme")
+
+    expect(result[:model_visible]).to eq(2)
+    expect(model_visible_trace.for_task("t-1")).to eq([])
+    expect(model_visible_trace.for_task("t-2").length).to eq(1)
   end
 
   it "customer is required; an unknown customer is a clean no-op" do
