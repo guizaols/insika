@@ -844,6 +844,21 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:model_policy]).to be_nil
   end
 
+  # RFC-0036 C2: `corpora` is DSL/pack data (docs/domain.md), NOT a form
+  # field — the config form must carry the existing value through, or a save
+  # wipes the removability knob (the halt_when defect class: a shallow
+  # merge over a form that does not render the key).
+  it "config save preserves guardrails.corpora (the removability knob survives the UI)" do
+    agent = Insika::AgentProfile.build(id: "bia", model: "m",
+                                       guardrails: { "corpora" => { "languages" => ["en"] } })
+    app, bus = build_app(agents: [agent])
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
+    guardrails = bus.last(:update_agent).payload[:guardrails]
+    expect(guardrails["corpora"]).to eq("languages" => ["en"])
+  end
+
   it "saving a prompt dispatches write_agent_file (the Command syncs prompt_files)" do
     app, bus = build_app # bia has prompt_files: []
     client = login(app)
@@ -2146,7 +2161,7 @@ RSpec.describe Studio::App do
     expect(js).to include("clipboard")
   end
 
-  # --- Agent creation (parity: "each one creates its own BIA") -----------------
+  # --- Agent creation (parity: "each one creates its own agent") -----------------
 
   it "creates an agent via POST /agents (dispatches create_agent) and redirects to the detail" do
     app, bus = build_app
@@ -2165,7 +2180,7 @@ RSpec.describe Studio::App do
   it "empty agents opens the creation form (authoring empty-state)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body
-    expect(body).to include("Create your first BIA")
+    expect(body).to include("Create your first agent")
     expect(body).to include("Create agent")
   end
 

@@ -2,6 +2,9 @@
 
 require_relative "insika/version"
 require_relative "insika/errors"
+# RFC-0036 C1: the payload selection + the domain-boundary audit yardstick.
+# Pure module — loaded by the gemspec too, so it carries no app requires.
+require_relative "insika/packaging"
 require_relative "insika/provider_error_classifier"
 require_relative "insika/token_store"
 require_relative "insika/budget_ledger"
@@ -53,9 +56,12 @@ require_relative "insika/usage_ledger"
 require_relative "insika/budget_ledger"
 require_relative "insika/edge_limiter"
 require_relative "insika/tool_output_compressor"
-# Content safety / guardrails. detectors.rb is self-contained (the eval
-# requires it directly); the rest hang off Middleware/hooks seams. No ruby_llm
-# at load-time — Factory requires the gem lazily, like the Executor's create_chat.
+# Content safety / guardrails. RFC-0036 C2: the pattern SOURCE is the
+# language-tagged data in safety/corpus.rb; detectors.rb compiles it. Both are
+# self-contained (the eval requires detectors.rb directly); the rest hang off
+# Middleware/hooks seams. No ruby_llm at load-time — Factory requires the gem
+# lazily, like the Executor's create_chat.
+require_relative "insika/safety/corpus"
 require_relative "insika/safety/detectors"
 require_relative "insika/safety/safe_responses"
 require_relative "insika/safety/config"
@@ -117,6 +123,10 @@ require_relative "insika/secret_masking"
 require_relative "insika/tool_store"
 require_relative "insika/tool_trace_store"
 require_relative "insika/context_trace_store"
+# RFC-0036 C4: the model-visible payload of one ask + its durable trace —
+# "model-visible means logged" (the conformance suite's reconstruction half).
+require_relative "insika/model_visible"
+require_relative "insika/model_visible_trace_store"
 # Refinement: the run record + the evidence half of the loop.
 # Reads sessions/tasks/traces above; requires Safety::Detectors (loaded earlier) for
 # the PII redaction of the snippets it puts in a report.

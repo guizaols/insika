@@ -1,8 +1,13 @@
 # frozen_string_literal: true
 
+require_relative "corpus"
+
 module Insika
   module Safety
-    # SINGLE SOURCE of truth for content-safety pattern matching.
+    # The compiler/matcher over the language-tagged pattern corpus (RFC-0036
+    # C2). The pattern SOURCE lives in `Safety::Corpus`; every method here
+    # reads a compiled `Corpus::Compiled` set, defaulting to the full shipped
+    # corpus — byte-for-byte the runtime's pre-RFC-0036 behavior.
     #
     # Two families live here on purpose — the same lists back BOTH the runtime
     # guardrail AND the eval's `must_not` detectors: the eval
@@ -23,144 +28,58 @@ module Insika
     #
     # LANGUAGE: the input heuristics are inherently language-specific. We ship pt-BR
     # + EN (the pilot + the OSS lingua franca) as a BEST-EFFORT net; other languages
-    # rely on the LLM moderator, which is language-agnostic. Adding a language = adding
-    # patterns to the arrays below — it never needs core changes.
+    # rely on the LLM moderator, which is language-agnostic. A deployment clears a
+    # language via `guardrails.corpora` (docs/domain.md) — adding a language is
+    # adding data to Corpus, never core changes.
     module Detectors
       module_function
 
-      # ── OUTPUT: PII / secret (redaction targets) ────────────────────────────
-      # Formatted BR CPF/CNPJ only — a bare digit run (an order number, a price) is
-      # too ambiguous to flag. Credential shapes that must never leak.
-      PII = {
-        "cpf"    => /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/,
-        "cnpj"   => /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/,
-        "secret" => /\b(?:sk-[A-Za-z0-9]{16,}|Bearer\s+[A-Za-z0-9._-]{16,})\b/
-      }.freeze
-
-      # A run of the output stream that MIGHT still be growing into a PII/secret
-      # match if more chunks arrive — anchored at the buffer tail. The OutputFilter
-      # holds back from the start of such a run so a value split across chunk
-      # boundaries is never emitted in the clear (RFC). Covers the
-      # unbounded `sk-…`/`Bearer …` case that a fixed window cannot.
-      #
-      # Crucially it also matches a PARTIAL literal PREFIX at the tail — a lone "s"
-      # (start of "sk-"), "Bear" (start of "Bearer "), a trailing digit run — because
-      # the prefix ITSELF can be split across chunks (emitting the "s" then matching
-      # "k-…" alone would miss the secret entirely). The cost is a few chars of tail
-      # latency on words ending in "s"/"B"/a digit, released on the next chunk or flush.
-      OPEN_TAIL = %r{
-        (?:
-          s(?:k(?:-[A-Za-z0-9]*)?)?                    # prefix of "sk-" + optional body
-          | B(?:e(?:a(?:r(?:e(?:r(?:\s+[A-Za-z0-9._-]*)?)?)?)?)?)?  # prefix of "Bearer " + body
-          | \d[\d./-]*                                 # in-progress CPF/CNPJ digit run
-        )\z
-      }x
-
-      # ── INPUT: prompt-injection / exfiltration ──────────────────────────────
-      INJECTION = [
-        # exfil of the system prompt / internal rules
-        /\binstru[çc][õo]es\s+de\s+sistema\b/i,
-        /\bsystem\s*prompt\b/i,
-        /\b(regras|instru[çc][õo]es|orienta[çc][õo]es|diretrizes)\s+internas\b/i,
-        /\b(revele|mostre|exiba|me\s+(d[êe]|mande|envie|passe)|repita|imprima)\b[^.?!]{0,40}\b(prompt|instru[çc][õo]es|regras|configura[çc][ãa]o|system)\b/i,
-        # "ignore/disregard the (previous) instructions"
-        /\b(ignore|ignora|desconsidere|esque[çc]a)\b[^.?!]{0,30}\b(instru[çc][õo]es|regras|orienta[çc][õo]es|acima|anteriores)\b/i,
-        /\b(ignore|disregard|forget)\b[^.?!]{0,30}\b(instructions|rules|prompt|above|previous|prior)\b/i,
-        # encode/translate the prompt (the base64/rot13 exfil trick, either order)
-        /\b(base64|rot13|codific|encode|cifr)\w*\b[^.?!]{0,60}\b(instru[çc][õo]es|prompt|regras|sistema|system)\b/i,
-        /\b(instru[çc][õo]es|prompt|regras|sistema|system)\b[^.?!]{0,60}\b(base64|rot13|codific|encode|cifr)\w*\b/i
-      ].freeze
-
-      # ── INPUT: sexual / inappropriate ───────────────────────────────────────
-      # pt-BR + EN. Deterministic coverage is best-effort per language (see the
-      # module note): other languages fall to the LLM moderator (language-agnostic).
-      SEXUAL = [
-        /\b(nudes?|pelad[oa]s?|s?exo|transar|transa\b|gozar|tes[ãa]o|s[ãa]fad[oa]|puta|pau|buceta|piroca|caralho\s+(duro|na))\b/i,
-        /\bo\s+que\s+voc[êe]\s+faria\s+comigo\b/i,
-        /\b(descrev|imagina|conta)\w*\b[^.?!]{0,30}\bcomigo\s+(na\s+cama|pelad)/i,
-        /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo)\b/i,
-        # EN
-        /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
-        /\bwhat\s+(would|will)\s+you\s+do\s+to\s+me\b/i
-      ].freeze
-
-      # ── INPUT: verbal abuse / harassment (directed at the assistant) ─────────
-      # Directed insult only — "a entrega foi uma merda" (frustration about the
-      # service) must NOT block; "você é uma merda de atendente" (insult at the bot)
-      # should. The `você é …` anchor keeps precision high.
-      ABUSE = [
-        /\bvoc[êe]\s+(é|e|ta|est[áa])\b[^.?!]{0,25}\b(lixo|in[uú]til|merda|imprest[aá]vel|idiota|burr[oa]|est[uú]pid[oa]|otári[oa]|in[uú]teis|incompetente|p[áa]ssim[oa])\b/i,
-        /\b(seu|sua)\s+(lixo|in[uú]til|idiota|imbecil|otári[oa]|burr[oa]|est[uú]pid[oa]|merda|escrot[oa])\b/i,
-        /\bvai\s+(se\s+)?(fuder|foder|tomar\s+no)\b/i,
-        # EN — directed insult only (keeps precision high; frustration ≠ abuse)
-        /\byou\s*(?:'?re|\s+are)\b[^.?!]{0,25}\b(useless|garbage|trash|idiot|stupid|worthless|pathetic|incompetent|dumb|a\s+joke)\b/i,
-        /\b(fuck|screw)\s+you\b/i,
-        /\byou\s+(suck|are\s+the\s+worst)\b/i
-      ].freeze
-
-      # ── OUTPUT helpers ──────────────────────────────────────────────────────
+      # The universal open-tail pattern — the prefix of a PII/secret shape
+      # that might still be growing. Lives in the corpus data (universal, not
+      # language-tagged); kept here for the module's readers.
+      OPEN_TAIL = Corpus::OPEN_TAIL
 
       # Runs a NAMED output detector over `text` -> the matched substring | nil.
       # "pii_leak" = union of all PII patterns; otherwise a single named pattern.
       # Unknown name fails LOUD (a typo'd assertion must never silently pass).
-      def detect(name, text)
-        patterns =
-          if name.to_s == "pii_leak"
-            PII.values
-          else
-            p = PII[name.to_s]
-            raise ArgumentError, "unknown detector: #{name.inspect}" unless p
-
-            [p]
-          end
-        patterns.each { |re| (m = text.to_s.match(re)) && (return m[0]) }
-        nil
+      # `corpus:` — the compiled set for the agent; nil = the full default.
+      def detect(name, text, corpus: nil)
+        (corpus || Corpus.compile).detect_output(name, text)
       end
 
       # Names of the PII detectors (for iteration by the eval / config).
-      def pii_names = PII.keys
+      def pii_names(corpus: nil) = (corpus || Corpus.compile).pii.keys
 
       # [[begin, end), ...] byte-index ranges of every PII/secret match in `text`
       # (used by the OutputFilter to avoid splitting a complete match at a chunk
       # boundary).
-      def match_ranges(text)
-        ranges = []
-        PII.each_value do |re|
-          text.to_s.scan(re) { ranges << [Regexp.last_match.begin(0), Regexp.last_match.end(0)] }
-        end
-        ranges
+      def match_ranges(text, corpus: nil)
+        (corpus || Corpus.compile).match_ranges(text)
       end
 
       # Replaces every PII/secret occurrence with an opaque `[REDACTED:<name>]`
       # marker — the raw value NEVER survives (D "o redigido nunca aparece em
       # claro"). -> [redacted_text, {name => count}].
-      def redact(text)
-        counts = Hash.new(0)
-        out = text.to_s.dup
-        PII.each do |name, re|
-          out = out.gsub(re) do
-            counts[name] += 1
-            "[REDACTED:#{name}]"
-          end
-        end
-        [out, counts]
+      def redact(text, corpus: nil)
+        (corpus || Corpus.compile).redact(text)
       end
 
-      # ── INPUT helpers ───────────────────────────────────────────────────────
-
       # Scans a user message against the input heuristics, gated by strictness
-      # (see Insika::Safety::Config). Returns { category:, matched: } for the FIRST
-      # category that fires (injection is checked first — the highest-stakes), or
-      # nil when the message is clean. `categories` limits which families run.
+      # (see Insika::Safety::Config) and by the agent's compiled corpus.
+      # Returns { category:, matched: } for the FIRST category that fires
+      # (injection is checked first — the highest-stakes), or nil when the
+      # message is clean. `categories` limits which families run.
       #
       #   :injection -> always high confidence
       #   :sexual    -> medium+
       #   :abuse     -> medium+
-      def scan_input(text, categories: %i[injection sexual abuse])
+      def scan_input(text, categories: %i[injection sexual abuse], corpus: nil)
+        compiled = corpus || Corpus.compile
         s = text.to_s
-        return { category: :injection, matched: first_match(INJECTION, s) } if categories.include?(:injection) && any?(INJECTION, s)
-        return { category: :sexual, matched: first_match(SEXUAL, s) }        if categories.include?(:sexual) && any?(SEXUAL, s)
-        return { category: :abuse, matched: first_match(ABUSE, s) }          if categories.include?(:abuse) && any?(ABUSE, s)
+        cats = compiled.input_categories(categories)
+        return { category: :injection, matched: first_match(compiled.input["injection"], s) } if cats.include?(:injection) && any?(compiled.input["injection"], s)
+        return { category: :sexual, matched: first_match(compiled.input["sexual"], s) }        if cats.include?(:sexual) && any?(compiled.input["sexual"], s)
+        return { category: :abuse, matched: first_match(compiled.input["abuse"], s) }          if cats.include?(:abuse) && any?(compiled.input["abuse"], s)
 
         nil
       end

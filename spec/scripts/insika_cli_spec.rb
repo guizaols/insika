@@ -87,6 +87,36 @@ RSpec.describe "bin/insika" do
     expect(report["findings"].map { |f| f["message"] }.join).to match(/HARNESS_BOGUS/)
   end
 
+  it "doctor --domain prints the domain section (bare boot: zero artifacts, exit 0)" do
+    out, status = run("doctor", "--domain")
+    expect(out).to match(/domain: 0 artifacts/)
+    expect(status).to be_success # informational — never a gate
+  end
+
+  it "doctor --json --domain merges the domain report into the envelope" do
+    out, _ = run("doctor", "--json", "--domain")
+    report = JSON.parse(out)
+    expect(report["domain"]["count"]).to eq(0)
+    expect(report["domain"]["entries"]).to eq([])
+    expect(report["domain"]["gem_version"]).to eq(Insika::VERSION)
+  end
+
+  # RFC-0036 C2: the boot gate — a typo'd corpus language must fail `doctor`
+  # (exit 1), not the first turn. The agent is seeded straight into the store.
+  it "doctor exits 1 on a malformed guardrails.corpora declaration" do
+    Dir.mktmpdir do |dir|
+      db = File.join(dir, "cli.db")
+      cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+      profile = Insika::AgentProfile.build(id: "typo", model: "m",
+                                           guardrails: { "corpora" => { "languages" => ["es"] } })
+      cs.put("agents", "typo", profile.to_h)
+
+      out, status = run("doctor", env: { "INSIKA_DB" => db })
+      expect(out).to match(/malformed guardrails\.corpora/)
+      expect(status.exitstatus).to eq(1)
+    end
+  end
+
   it "doctor --fix migrates settings + seeds default_model against a durable SQLite" do
     Dir.mktmpdir do |dir|
       db = File.join(dir, "cli.db")

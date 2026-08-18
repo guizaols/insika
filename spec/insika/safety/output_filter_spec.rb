@@ -86,4 +86,14 @@ RSpec.describe Insika::Safety::OutputFilter do
       expect(streamed).to include("[REDACTED:cpf]")
     end
   end
+
+  describe "with a compiled corpus (RFC-0036 C2)" do
+    it "an EN-only corpus does not redact pt-BR document formats, still redacts secrets" do
+      f = described_class.new(corpus: Insika::Safety::Corpus.compile(languages: ["en"]))
+      out = f.push("cpf 123.456.789-01 e token sk-ABCDEFGHIJKLMNOP123") + f.flush
+      expect(out).to include("123.456.789-01")
+      expect(out).to include("[REDACTED:secret]")
+      expect(f.redaction_counts).to eq("secret" => 1)
+    end
+  end
 end

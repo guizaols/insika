@@ -21,7 +21,11 @@ module Insika
     class OutputFilter
       attr_reader :redaction_counts
 
-      def initialize
+      # `corpus` (RFC-0036 C2): the compiled corpus for the turn — the
+      # language-filtered PII set and its open-tail pattern. Default = the
+      # full shipped corpus (parity).
+      def initialize(corpus: Corpus.compile)
+        @corpus = corpus
         @buf = +""
         @emitted = +"" # full redacted text emitted so far (for the persisted content)
         @redaction_counts = Hash.new(0)
@@ -51,11 +55,11 @@ module Insika
       def safe_cut
         cut = @buf.length
 
-        if (m = @buf.match(Detectors::OPEN_TAIL))
+        if (m = @buf.match(@corpus.open_tail))
           cut = [cut, m.begin(0)].min
         end
 
-        Detectors.match_ranges(@buf).each do |b, e|
+        @corpus.match_ranges(@buf).each do |b, e|
           cut = b if b < cut && cut < e
         end
 
@@ -69,7 +73,7 @@ module Insika
 
         chunk = @buf[0...cut]
         @buf = @buf[cut..] || +""
-        redacted, counts = Detectors.redact(chunk)
+        redacted, counts = @corpus.redact(chunk)
         counts.each { |name, n| @redaction_counts[name] += n }
         @emitted << redacted
         redacted

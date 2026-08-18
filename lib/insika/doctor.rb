@@ -57,6 +57,47 @@ module Insika
       end
     end
 
+    # RFC-0036 C3: one entry of the domain inventory. The engine never GUESSES
+    # a store (D3) — every entry is something a deployment explicitly declared,
+    # or the built-in corpus still in effect (source "gem-default"). A broken
+    # enumerator degrades to one error-marked entry, never raises.
+    DomainEntry = Data.define(:kind, :agent, :detail, :source, :how_to_clear) do
+      def to_h
+        { "kind" => kind, "agent" => agent, "detail" => detail,
+          "source" => source, "how_to_clear" => how_to_clear }.compact
+      end
+    end
+
+    # The domain section of the doctor: the RFC's E2 proof surface. Read-only
+    # and informational — it never fails the exit code (a pilot reporting its
+    # own artifacts exits 0).
+    DomainReport = Data.define(:generated_at, :gem_version, :entries) do
+      def empty? = entries.empty?
+      def count  = entries.length
+
+      def to_h
+        { "generated_at" => generated_at, "gem_version" => gem_version,
+          "count" => count, "entries" => entries.map(&:to_h) }
+      end
+
+      # The human section (prints AFTER the findings — a section, not a finding).
+      def to_s
+        header =
+          if count.zero?
+            "domain: 0 artifacts — a bare install declares no store and ships no corpus in use"
+          else
+            "domain: #{count} artifact(s) — declared by the deployment or inherited from the gem default"
+          end
+        lines = entries.map do |e|
+          agent = e.agent ? "#{e.agent}: " : ""
+          source = e.source ? " (#{e.source})" : ""
+          clear = e.how_to_clear ? " — clear: #{e.how_to_clear}" : ""
+          "  [#{e.kind}] #{agent}#{e.detail}#{source}#{clear}"
+        end
+        ([header] + lines).join("\n")
+      end
+    end
+
     def initialize(env: ENV, settings_store: nil, llm_provider_store: nil, tool_store: nil,
                    agent_file_store: nil, skill_store: nil, skill_catalog: nil,
                    profile_source: nil, backend: nil, extra_env_specs: [],
@@ -113,6 +154,17 @@ module Insika
       [before, run]
     end
 
+    # RFC-0036 C3 — the domain inventory: what a deployment declares (personas
+    # with a metadata.domain tag, outcome funnels, tool evidence) plus the
+    # built-in pt-BR corpora still in effect. Read-only: informational, never
+    # a gate — a pilot reporting its own artifacts must exit 0.
+    def domain
+      entries = %i[personas corpora funnels evidence].flat_map { |section| safe_domain(section) }.compact
+      DomainReport.new(generated_at: Time.now.utc.iso8601,
+                       gem_version: Insika::VERSION,
+                       entries: entries.freeze)
+    end
+
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
@@ -120,13 +172,106 @@ module Insika
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
-                    check_harvest]
+                    check_harvest check_guardrail_corpora]
 
     def safe(check)
       Array(send(check))
     rescue StandardError => e
       id = check.to_s.sub(/^check_/, "").tr("_", "-")
       [Finding.new(check: id, severity: :error, message: "check crashed: #{e.class}: #{e.message}", fix: nil)]
+    end
+
+    # RFC-0036 C3: one domain section, wrapped — a broken read degrades to one
+    # error-marked entry, never raises (the same discipline as `safe`).
+    def safe_domain(section)
+      send(:"domain_#{section}")
+    rescue StandardError => e
+      [DomainEntry.new(kind: "error", agent: nil,
+                       detail: "#{section}: read failed — #{e.class}: #{e.message}",
+                       source: nil, how_to_clear: nil)]
+    end
+
+    # 1/4 personas/packs — `profile.metadata["domain"]` (pack `agent.config.json`
+    # passes it through; the DSL sets it via `metadata domain: "…"`).
+    def domain_personas
+      return [] unless @profile_source
+
+      @profile_source.all.filter_map do |p|
+        m = p.metadata
+        tag = m && m["domain"]
+        next if !Coercion.present?(tag)
+
+        DomainEntry.new(kind: "persona", agent: p.id, detail: "domain=#{tag}",
+                        source: "deployment", how_to_clear: nil)
+      end
+    end
+
+    # 2/4 corpora — the built-in pt-BR corpus still in effect (gem default) and
+    # the built-in pt-BR safe replies that are not fully overridden.
+    def domain_corpora
+      return [] unless @profile_source
+
+      @profile_source.all.each_with_object([]) do |p, acc|
+        config = Insika::Safety::Config.from_profile(p)
+        next unless config.enabled?
+
+        if config.corpus_languages.include?("pt-BR")
+          acc << DomainEntry.new(kind: "guardrail-corpus", agent: p.id,
+                                 detail: "languages=#{config.corpus_languages.join(',')}",
+                                 source: "gem-default",
+                                 how_to_clear: "docs/domain.md#guardrails")
+        end
+        fallback = builtin_response_categories(config)
+        next if fallback.empty?
+
+        acc << DomainEntry.new(kind: "safe-responses", agent: p.id,
+                               detail: "categories=#{fallback.join(',')}",
+                               source: "gem-default",
+                               how_to_clear: "docs/domain.md#guardrails")
+      end
+    end
+
+    # The safe-reply categories that still resolve to the built-in pt-BR
+    # DEFAULTS (a category the agent overrode — or a catch-all `default` that
+    # replaces every category — contributes none).
+    def builtin_response_categories(config)
+      Insika::Safety::SafeResponses::DEFAULTS.keys.select do |cat|
+        Insika::Safety::SafeResponses.for(cat, overrides: config.responses) == Insika::Safety::SafeResponses::DEFAULTS[cat]
+      end
+    end
+
+    # 3/4 funnels — the RFC-0032 declaration shape. Absent in the tree (or on a
+    # profile) -> absent in the report: a bare install shows no funnel and no
+    # stage names at all (the vocabulary note).
+    def domain_funnels
+      return [] unless @profile_source
+
+      @profile_source.all.filter_map do |p|
+        next unless p.respond_to?(:funnel) && p.funnel.is_a?(Hash) && !p.funnel.empty?
+
+        stages = Array(p.funnel["stages"]).join(",")
+        primary = p.funnel["primary"]
+        detail = +"stages=#{stages}"
+        detail << ", primary=#{primary}" if Coercion.present?(primary)
+        DomainEntry.new(kind: "funnel", agent: p.id, detail: detail,
+                        source: "deployment", how_to_clear: nil)
+      end
+    end
+
+    # 4/4 evidence — tool manifests carrying the RFC-0029 `evidence: <kind>`
+    # vocabulary. Kinds are pack vocabulary, never gem constants.
+    def domain_evidence
+      return [] unless @tool_store
+
+      @tool_store.all_raw.filter_map do |raw|
+        ev = raw["evidence"]
+        kind = ev.is_a?(Hash) ? ev["kind"] : ev
+        next if !Coercion.present?(kind)
+
+        DomainEntry.new(kind: "evidence", agent: nil,
+                        detail: "#{raw["name"]}: #{kind}",
+                        source: "deployment", how_to_clear: nil)
+      end
     end
 
     # -- checks --------------------------------------------------------
@@ -1065,6 +1210,27 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       Time.iso8601(pair.created_at.to_s)
     rescue ArgumentError
       nil
+    end
+
+    # RFC-0036 C2/C3: the BOOT gate for a malformed guardrail corpus. A typo'd
+    # language/family or a broken pattern source raises ValidationError inside
+    # Safety::Config on the FIRST TURN — mid-conversation, unrecoverable. This
+    # check makes `insika doctor` the place it surfaces instead: an :error
+    # finding (non-zero exit), so a deployment learns at boot, never mid-turn.
+    def check_guardrail_corpora
+      return [] unless @profile_source
+
+      findings = @profile_source.all.each_with_object([]) do |p, acc|
+        Insika::Safety::Config.from_profile(p) # compiles the corpus — raises on a bad declaration
+      rescue Insika::ValidationError => e
+        acc << Finding.new(check: "guardrail-corpora", severity: :error, fix: nil,
+                           message: "agent '#{p.id}': malformed guardrails.corpora — #{e.message}. " \
+                                    "Every message would fail the guardrail; fix the declaration " \
+                                    "(docs/domain.md#guardrails).")
+      end
+      return findings unless findings.empty?
+
+      [ok("guardrail-corpora", "guardrail corpora: every declaration compiles")]
     end
 
     def ok(check, message) = Finding.new(check: check, severity: :ok, message: message, fix: nil)

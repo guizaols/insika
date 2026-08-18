@@ -92,19 +92,19 @@ RSpec.describe Deploy::Wiring do
   end
 
   describe "agent seed (idempotent)" do
-    it "seeds the Bia agent into the durable ProfileSource" do
-      bia = w::PROFILE_SOURCE.fetch("bia")
-      expect(bia).not_to be_nil
-      expect(bia.model).to eq(Deploy::MODEL)
+    it "seeds the demo agent into the durable ProfileSource" do
+      demo = w::PROFILE_SOURCE.fetch("demo")
+      expect(demo).not_to be_nil
+      expect(demo.model).to eq(Deploy::MODEL)
     end
 
-    it "does not duplicate Bia when the seed guard runs again" do
-      before = w::PROFILE_SOURCE.ids.count("bia")
+    it "does not duplicate the demo agent when the seed guard runs again" do
+      before = w::PROFILE_SOURCE.ids.count("demo")
       # Re-run the exact guard from deployment.rb — must be a no-op.
-      unless w::PROFILE_SOURCE.fetch("bia")
-        w::PROFILE_SOURCE.put(Insika::AgentProfile.build(id: "bia", model: Deploy::MODEL, provider: :deepseek))
+      unless w::PROFILE_SOURCE.fetch("demo")
+        w::PROFILE_SOURCE.put(Insika::AgentProfile.build(id: "demo", model: Deploy::MODEL, provider: :deepseek))
       end
-      expect(w::PROFILE_SOURCE.ids.count("bia")).to eq(before)
+      expect(w::PROFILE_SOURCE.ids.count("demo")).to eq(before)
     end
 
     it "seeds the platform default_model (v2 model resolution)" do

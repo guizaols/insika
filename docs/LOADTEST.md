@@ -69,7 +69,7 @@ frame that carries it.
 INSIKA_URL=http://localhost:9292 \
 OPENCLAW_GATEWAY_TOKEN=xxx \
 bundle exec ruby scripts/loadtest.rb \
-  --agents bia,my-store --concurrency 16 --iterations 3 \
+  --agents demo,my-store --concurrency 16 --iterations 3 \
   --message "hi, how are you?"
 ```
 
@@ -80,7 +80,7 @@ Runs against a local server **or** a remote one (e.g. Railway) — just point
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--agents a,b,c` | `bia` | comma-separated agent ids (mapped to `model: openclaw:<agent>`) |
+| `--agents a,b,c` | `demo` | comma-separated agent ids (mapped to `model: openclaw:<agent>`) |
 | `--concurrency N` | `8` | concurrent turns per wave |
 | `--iterations N` | `1` | number of waves per agent |
 | `--message TEXT` | greeting | user message sent every turn |
@@ -103,7 +103,7 @@ Use `--dry-run` to sanity-check your flags/URL/token before firing real traffic
 
 ```bash
 INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
-  bundle exec ruby scripts/loadtest.rb --agents bia --concurrency 16 --dry-run
+  bundle exec ruby scripts/loadtest.rb --agents demo --concurrency 16 --dry-run
 ```
 
 ### `--same-user` and the cache
@@ -135,7 +135,7 @@ DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh [WORKERS] [CONCURRENCY]
 | `DEEPSEEK_API_KEY` | — (required) | real turns hit the provider; also auto-sourced from `.env.local` |
 | `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for the sweep |
 | `PORT` | `9299` | bind port for the local Falcon |
-| `AGENT` | `bia` | agent id to load |
+| `AGENT` | `demo` | agent id to load |
 
 The final block prints the lock counts; the expected reading is `0` for both:
 
@@ -168,7 +168,7 @@ drop-in for the gateway, you only change **where it points**:
 # In the OpenClaw checkout, run its gateway loadtest against the HARNESS:
 OPENCLAW_GATEWAY_URL=http://localhost:9292 \
 OPENCLAW_GATEWAY_TOKEN=<same bearer the engine accepts> \
-node scripts/loadtest-gateway.mjs --agents bia --concurrency 16 --iterations 3
+node scripts/loadtest-gateway.mjs --agents demo --concurrency 16 --iterations 3
 ```
 
 Then run the exact same command with `OPENCLAW_GATEWAY_URL` pointing at the real
@@ -179,7 +179,7 @@ gateway, and diff the two reports. This is the shadow comparison the pilot needs
 - The OpenClaw checkout containing `scripts/loadtest-gateway.mjs` and Node installed.
 - A **bearer token accepted by both** sides. For the engine that is
   `OPENCLAW_GATEWAY_TOKEN` (see DEPLOY.md); point the gateway run at its own token.
-- **The same agent id provisioned on both** sides (e.g. `bia`) so `model:
+- **The same agent id provisioned on both** sides (e.g. `demo`) so `model:
   openclaw:<agent>` resolves on each. On the engine, provision via
   `scripts/import_pack.rb`.
 - The **same provider** (or an equivalent-latency one) behind each, otherwise you

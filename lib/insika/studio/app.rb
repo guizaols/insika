@@ -286,7 +286,7 @@ module Studio
           end
 
           # POST /studio/agents — creates an agent ("everyone creates
-          # their own BIA"). Fires :create_agent; redirects to the new one's detail.
+          # their own agent"). Fires :create_agent; redirects to the new one's detail.
           r.post do
             check_csrf!
             id = presence(r.params["id"])
@@ -421,7 +421,7 @@ module Studio
 
           # Agent memory. Scoped by tenant = agent id — the
           # SAME tenant the playground uses when chatting, so what is edited
-          # here is what the BIA reads on the turn. Each agent, its own memory.
+          # here is what the agent reads on the turn. Each agent, its own memory.
           r.on "memory" do
             r.post "fact" do
               check_csrf!
@@ -1274,7 +1274,7 @@ end
 
     def default_agent
       ids = insika[:profile_source].ids
-      ids.include?("bia") ? "bia" : (ids.first || "bia")
+      ids.include?("demo") ? "demo" : (ids.first || "demo")
     end
 
     # --- Transcript display helpers (playground + session viewer) ------------

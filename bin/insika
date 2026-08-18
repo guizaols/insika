@@ -4,8 +4,9 @@
 # `insika` CLI — strict config + doctor --fix. The operator's
 # DX front door to the strict-config discipline:
 #
-#   insika doctor [--fix] [--json]   diagnose the deployment config; --fix applies
-#                                     the safe autofixes; exits non-zero on any error
+#   insika doctor [--fix] [--json] [--domain]  diagnose the deployment config; --fix applies
+#                                     the safe autofixes; --domain appends the RFC-0036
+#                                     domain inventory; exits non-zero on any error
 #   insika env    [--json]           list the known config keys + current (masked) values
 #   insika version                   print the engine version
 #   insika help                      this text
@@ -49,7 +50,7 @@ module Insika
         Usage: insika <command> [options]
 
         Commands:
-          doctor [--fix] [--json]   diagnose the deployment configuration
+          doctor [--fix] [--json] [--domain]  diagnose the deployment configuration
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic
           harvest --agent ID [...]  mine one window of finished traffic (RFC-0035)
@@ -70,13 +71,14 @@ module Insika
       TXT
     end
 
-    # insika doctor [--fix] [--json]
+    # insika doctor [--fix] [--json] [--domain]
     def doctor(argv)
-      opts = { fix: false, json: false }
+      opts = { fix: false, json: false, domain: false }
       OptionParser.new do |o|
-        o.banner = "Usage: insika doctor [--fix] [--json]"
+        o.banner = "Usage: insika doctor [--fix] [--json] [--domain]"
         o.on("--fix", "apply the safe autofixes, then re-diagnose") { opts[:fix] = true }
         o.on("--json", "emit the report as JSON") { opts[:json] = true }
+        o.on("--domain", "append the domain inventory (RFC-0036: declared personas, corpora, funnels, evidence)") { opts[:domain] = true }
       end.parse!(argv)
 
       doc = build_doctor
@@ -84,9 +86,12 @@ module Insika
 
       if opts[:json]
         require "json"
-        puts JSON.pretty_generate(report.to_h)
+        envelope = report.to_h
+        envelope["domain"] = doc.domain.to_h if opts[:domain]
+        puts JSON.pretty_generate(envelope)
       else
         puts report.to_s(color: $stdout.tty?)
+        puts doc.domain.to_s if opts[:domain]
       end
       exit(report.ok? ? 0 : 1)
     end

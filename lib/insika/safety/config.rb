@@ -16,7 +16,18 @@ module Insika
     #     moderator:  "provider/model"|nil,  # LLM moderator model; nil = deterministic only
     #     strictness: "low"|"medium"|"high", # which input categories fire (default medium)
     #     responses:  { <category> => "<safe reply>", ... }  # per-agent override, see below
+    #     corpora:    { "languages" => ["en"], "extra" => { "abuse" => ["/\\bdupa\\b/i"] } }
     #   }
+    #
+    # `corpora` (RFC-0036 C2/D2) is the removability knob for the shipped
+    # pt-BR corpus: `languages` filters the shipped families (nil = all,
+    # [] = none, ["en"] = the EN-only corpus — dropping the pt-BR input
+    # heuristics AND the CPF/CNPJ output redaction, a documented consequence),
+    # `extra` adds source-string patterns per family. Absent = the full
+    # shipped default, byte-for-byte today's behavior (parity). Validation
+    # fails loud (Insika::ValidationError naming the value): the doctor's
+    # guardrail-corpora check compiles every declaration, so a typo'd language
+    # surfaces at boot — `insika doctor` exits non-zero — never mid-turn.
     #
     # `responses` is the CONFIGURATION-OVER-CONVENTION knob. The engine
     # ships neutral built-in refusals (Safety::SafeResponses::DEFAULTS), but this is
@@ -37,14 +48,18 @@ module Insika
 
       DEFAULT_STRICTNESS = :medium
 
-      attr_reader :input, :output, :moderator, :strictness, :responses
+      attr_reader :input, :output, :moderator, :strictness, :responses, :corpora
 
-      def initialize(input:, output:, moderator:, strictness:, responses: {})
+      def initialize(input:, output:, moderator:, strictness:, responses: {}, corpora: nil)
         @input = input
         @output = output
         @moderator = moderator
         @strictness = strictness
         @responses = responses # { "category" => "safe reply" }, agent override map
+        @corpora = corpora     # { "languages" => [...]?, "extra" => {...}? } | nil (nil = the shipped default)
+        # Built ONCE at construction: the compiled corpus the whole turn reads.
+        @corpus = Corpus.compile(languages: corpora && corpora["languages"],
+                                 extra: (corpora && corpora["extra"]) || {})
       end
 
       # Builds a Config from a profile. A nil/empty `guardrails` -> the
@@ -58,8 +73,20 @@ module Insika
           output: bool(h.fetch(:output, true)),
           moderator: presence(h[:moderator]),
           strictness: normalize_strictness(h[:strictness]),
-          responses: normalize_responses(h[:responses])
+          responses: normalize_responses(h[:responses]),
+          corpora: normalize_corpora(h[:corpora])
         )
+      end
+
+      # The compiled corpus for this agent (RFC-0036 C2) — never nil: absent
+      # corpora -> the full shipped default.
+      def corpus = @corpus
+
+      # The resolved corpus languages (for the doctor's enumeration, C3):
+      # nil corpora (or nil languages) = ALL shipped languages.
+      def corpus_languages
+        langs = @corpora && @corpora["languages"]
+        langs.nil? ? Corpus::DEFAULTS.keys : langs
       end
 
       # Input categories the deterministic scan should run, per strictness.
@@ -103,7 +130,20 @@ module Insika
         end
       end
 
-      private_class_method :symbolize, :bool, :presence, :normalize_strictness, :normalize_responses
+      # `corpora` -> { "languages" => ...?, "extra" => ...? } with STRING keys |
+      # nil when absent/empty. Validation of the values happens in
+      # Corpus.compile (from_hash fails loud with the value named).
+      def self.normalize_corpora(v)
+        return nil unless v.is_a?(Hash)
+
+        h = v.each_with_object({}) { |(k, val), acc| acc[k.to_s] = val }
+        return nil if h["languages"].nil? && h["extra"].nil?
+
+        { "languages" => h["languages"], "extra" => h["extra"] }
+      end
+
+      private_class_method :symbolize, :bool, :presence, :normalize_strictness, :normalize_responses,
+                           :normalize_corpora
     end
   end
 end
