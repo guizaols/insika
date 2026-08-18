@@ -55,6 +55,7 @@ module Insika
       "evals" => "docs/EVALS.md",
       "refinement" => "docs/REFINEMENT.md",
       "facts" => "docs/FACTS.md",
+      "harvest" => "docs/HARVEST.md",
       "loadtest" => "docs/LOADTEST.md",
       "releasing" => "docs/RELEASING.md"
     }.freeze

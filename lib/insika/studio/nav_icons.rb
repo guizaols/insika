@@ -24,7 +24,8 @@ module Studio
       parity: '<path d="M7 21h10"/><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M3 17h4l1.5-1.5L6 13 3 15.5z"/><path d="M21 17h-4l-1.5-1.5L18 13l3 2.5z"/>',
       funnel: '<path d="M3 5h18l-8 9v6l-2 1v-7z"/>',
       followups: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
-      facts: '<path d="M7 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7z"/><path d="M7 3v18"/><path d="M11 8h5"/><path d="M11 12h5"/><path d="M11 16h3"/>'
+      facts: '<path d="M7 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7z"/><path d="M7 3v18"/><path d="M11 8h5"/><path d="M11 12h5"/><path d="M11 16h3"/>',
+      harvest: '<path d="M4 20V10"/><path d="M20 20V4"/><path d="M4 10h4v10"/><path d="M20 4h-4v16"/><path d="M4 20h16"/><path d="m8 8 4-4 4 4"/>'
     }.freeze
 
     def nav_icon(key)

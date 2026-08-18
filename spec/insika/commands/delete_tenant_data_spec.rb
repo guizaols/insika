@@ -248,4 +248,43 @@ RSpec.describe Insika::Commands::DeleteTenantData do
       expect(result[:proposals]).to eq(0)
     end
   end
+
+  describe "RFC-0035 C13 — the harvest rows die with the tenant (D11)" do
+    let(:harvest_store) { Insika::HarvestStore.new(store: backend) }
+
+    def seed_harvest(tenant: "acme", id: "c1", promo: "promo-1")
+      cand = harvest_store.create_candidate(
+        run_id: "r1", agent: "store-support", name: "skill",
+        description: "d", body: "b", rationale: "r", origin: ["#{tenant}:s-1"],
+        proposer: "utility_model"
+      )
+      harvest_store.mark_mined("#{tenant}:s-1")
+      harvest_store.append_promotion(id: promo, agent: "store-support", skill: "skill",
+                                     origin: ["#{tenant}:s-1"], approver: "o")
+      cand
+    end
+
+    it "purges the tenant's candidates, log rows and markers; another tenant survives" do
+      mine = seed_harvest(tenant: "acme", id: "c1", promo: "promo-1")
+      other = seed_harvest(tenant: "loja-b", id: "c2", promo: "promo-2")
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, harvest_store: harvest_store)
+
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      expect(result[:harvest]).to be >= 3
+      expect(harvest_store.find_candidate(mine.id)).to be_nil
+      expect(harvest_store.find_candidate(other.id)).to_not be_nil
+      expect(harvest_store.mined?("acme:s-1")).to be(false)
+      expect(harvest_store.mined?("loja-b:s-1")).to be(true)
+      expect(harvest_store.promotions.map(&:id)).to eq(%w[promo-2])
+    end
+
+    it "nil harvest_store -> 0, never an error (the minimal graph)" do
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, harvest_store: nil)
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+      expect(result[:harvest]).to eq(0)
+    end
+  end
 end

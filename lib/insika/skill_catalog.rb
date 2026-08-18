@@ -34,6 +34,10 @@ module Insika
       @skills, @agent_skills = load_all
     end
 
+    # The SkillStore the catalog overlays — the composition root hands it to
+    # the harvest (the dedup reads the AUTHORED skills the catalog serves).
+    attr_reader :store
+
     # `agent` (an agent id) resolves the AGENT SCOPE first, then the shared one — the
     # same precedence chain the catalog already runs for store-over-disk and
     # workspace-over-managed-over-bundled, with one more dimension.

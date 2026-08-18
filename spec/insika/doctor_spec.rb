@@ -1068,5 +1068,116 @@ RSpec.describe Insika::Doctor do
       expect(distill_findings).to be_empty
     end
   end
+
+  describe "harvest (RFC-0035 C15)" do
+    let(:p_backend) { Insika::Stores::Memory.new }
+    let(:harvest_store) { Insika::HarvestStore.new(store: p_backend) }
+
+    def harvest_profiles(*agents)
+      hash = agents.to_h do |a|
+        [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m",
+                                            harvest: a[:harvest], grounding: a[:grounding])]
+      end
+      Insika::StaticProfileSource.new(hash)
+    end
+
+    def harvest_findings(profile_source: nil, store: harvest_store, criterion: nil)
+      doctor(profile_source: profile_source, harvest_store: store, harvest_criterion: criterion)
+        .run.findings.select { |f| f.check == "harvest" || f.check == "harvest-criterion" }
+    end
+
+    def declared(extra = {})
+      { "enabled" => true, "miner" => { "model" => "deepseek-v4-flash" } }.merge(extra)
+    end
+
+    let(:grounded) { { "mode" => "enforce", "matcher" => { "sku" => '\bSKU\d{4}\b' } } }
+
+    it "declared with a resolvable model + matcher -> ok naming the agent and the counts" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = harvest_profiles({ id: "store-support", harvest: { "enabled" => true },
+                                    grounding: grounded })
+      cand = harvest_store.create_candidate(
+        run_id: "r1", agent: "store-support", name: "s", description: "d", body: "b",
+        rationale: "r", origin: ["acme:s"], proposer: "m"
+      )
+      harvest_store.attach_gate(cand.id, eval_gate: { "passed" => true },
+                                        conversion_gate: { "passed" => true },
+                                        criterion_sha: "sha")
+      harvest_store.mark_awaiting(cand.id)
+      findings = harvest_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("store-support")
+      expect(findings.first.message).to include("1 awaiting, 0 pending")
+    end
+
+    it "declared but with NO model slot -> warn (mining will never run)" do
+      profiles = harvest_profiles({ id: "store-support", harvest: { "enabled" => true },
+                                    grounding: grounded })
+      findings = harvest_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:warn, :ok])
+      expect(findings.first.message).to include("no model slot")
+    end
+
+    it "enabled without a grounding matcher -> warn (D3: nothing mines)" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = harvest_profiles({ id: "store-support", harvest: { "enabled" => true } })
+      findings = harvest_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:warn, :ok])
+      expect(findings.first.message).to include("product claims cannot be verified")
+    end
+
+    it "a malformed negative_list -> error naming the defect (D4)" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = harvest_profiles({ id: "store-support", harvest: declared("negative_list" => [{ "pattern" => "x" }]),
+                                    grounding: grounded })
+      findings = harvest_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to include(:error)
+      expect(findings.find { |f| f.severity == :error }.message).to include("malformed")
+    end
+
+    it "a bare install -> ok, off" do
+      findings = harvest_findings(profile_source: Insika::StaticProfileSource.new)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("harvest off")
+    end
+
+    it "the criterion line renders; a criterion file that moved warns" do
+      require "tmpdir"
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "CRITERION.md")
+        File.write(path, <<~MD)
+          # c
+
+          ```yaml
+          version: 1
+          metric: primary
+          window: 72h
+          threshold: 0.05
+          min_span: 28d
+          ```
+        MD
+        criterion = Insika::Harvest::Criterion.load(path)
+        ok = harvest_findings(profile_source: Insika::StaticProfileSource.new, criterion: criterion)
+        expect(ok.find { |f| f.check == "harvest-criterion" }.message).to include("sha256:")
+
+        File.write(path, "# edited, no block\n")
+        moved = harvest_findings(profile_source: Insika::StaticProfileSource.new, criterion: criterion)
+        expect(moved.find { |f| f.check == "harvest-criterion" && f.severity == :warn }).to_not be_nil
+      end
+    end
+
+    it "nil collaborators -> declarations only, nothing raises" do
+      settings_store.update("utility_model" => "deepseek-v4-flash")
+      profiles = harvest_profiles({ id: "store-support", harvest: { "enabled" => true },
+                                    grounding: grounded })
+      findings = harvest_findings(profile_source: profiles, store: nil, criterion: nil)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).not_to include("awaiting")
+    end
+
+    it "no profile_source -> nothing reported" do
+      expect(harvest_findings).to be_empty
+    end
+  end
 end
 

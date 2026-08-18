@@ -62,7 +62,8 @@ module Insika
                    profile_source: nil, backend: nil, extra_env_specs: [],
                    shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
                    memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil,
-                   followup_store: nil, contact_store: nil, proposal_store: nil)
+                   followup_store: nil, contact_store: nil, proposal_store: nil,
+                   harvest_store: nil, harvest_criterion: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -94,6 +95,10 @@ module Insika
       # RFC-0034 C10: the distillation check — nil collaborator = the check
       # reports declarations only (counts skipped).
       @proposal_store = proposal_store
+      # RFC-0035 C15: the harvest check — nil collaborators = the check
+      # reports declarations only (counts skipped).
+      @harvest_store = harvest_store
+      @harvest_criterion = harvest_criterion
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -114,7 +119,8 @@ module Insika
                     check_admin_token check_data_tools check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
-                    check_memory_scopes check_funnel_declarations check_followup check_distill]
+                    check_memory_scopes check_funnel_declarations check_followup check_distill
+                    check_harvest]
 
     def safe(check)
       Array(send(check))
@@ -909,6 +915,75 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     def distill_counts
       { pending: @proposal_store.pending(limit: 10_000).size,
         stale: @proposal_store.stale(limit: 10_000).size }
+    end
+
+    # RFC-0035 C15: the harvest check — per profile WITH a harvest hash:
+    #   declared-without-model warn (D12), no grounding matcher warn (D3),
+    #   malformed negative list error (D4), else ok with the pending counts.
+    # With @harvest_criterion: the loaded criterion line + a warn when the
+    # file at its path no longer loads (the frozen rule moved).
+    def check_harvest
+      return [] unless @profile_source
+
+      declared = @profile_source.all.select do |profile|
+        profile.respond_to?(:harvest) && !profile.harvest.nil?
+      end
+      findings = []
+      if declared.empty?
+        findings << ok("harvest", "harvest off — no agent declares it")
+      else
+        settings = @settings_store ? @settings_store.get : {}
+        declared.each do |profile|
+          config = profile.harvest
+          id = profile.id
+          if Coercion.truthy?(config["enabled"]) &&
+             Coercion.presence(config.dig("miner", "model")).nil? &&
+             Coercion.presence(settings["utility_model"]).nil?
+            findings << Finding.new(check: "harvest", severity: :warn, fix: nil,
+                                    message: "agent '#{id}': the harvester is declared but has no " \
+                                             "model slot — mining will never run (set " \
+                                             "harvest.miner.model or the platform utility_model).")
+          end
+          grounding = begin
+            Insika::Grounding.parse(profile.grounding)
+          rescue Insika::ValidationError
+            nil
+          end
+          if Coercion.truthy?(config["enabled"]) && (grounding.nil? || !grounding.matcher.sku?)
+            findings << Finding.new(check: "harvest", severity: :warn, fix: nil,
+                                    message: "agent '#{id}': product claims cannot be verified — " \
+                                             "mining is skipped (set grounding.matcher.sku).")
+          end
+          if config["negative_list"].is_a?(Array) &&
+             Insika::Harvest::NegativeList.parse(config["negative_list"]).nil?
+            findings << Finding.new(check: "harvest", severity: :error, fix: nil,
+                                    message: "agent '#{id}': the harvest.negative_list is malformed " \
+                                             "— the whole list is refused (half a list silently " \
+                                             "admits what the store banned).")
+          end
+          suffix = harvest_counts(id) if @harvest_store
+          findings << ok("harvest", "agent '#{id}': harvest declared#{suffix}")
+        end
+      end
+      if @harvest_criterion
+        findings << ok("harvest-criterion",
+                       "criterion #{@harvest_criterion.rule.metric} / #{@harvest_criterion.rule.window} " \
+                       "threshold #{@harvest_criterion.rule.threshold} (#{@harvest_criterion.sha})")
+        begin
+          Insika::Harvest::Criterion.load(@harvest_criterion.path)
+        rescue Insika::ConfigError, Insika::ValidationError
+          findings << Finding.new(check: "harvest-criterion", severity: :warn, fix: nil,
+                                  message: "the criterion file at #{@harvest_criterion.path} no longer " \
+                                           "loads — the frozen rule moved since boot.")
+        end
+      end
+      findings
+    end
+
+    def harvest_counts(agent_id)
+      awaiting = @harvest_store.candidates(agent_id: agent_id, status: "awaiting_approval").size
+      pending = @harvest_store.candidates(agent_id: agent_id, status: "pending").size
+      " — #{awaiting} awaiting, #{pending} pending"
     end
 
     def broken_tool(raw)

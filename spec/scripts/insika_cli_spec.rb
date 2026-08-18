@@ -105,4 +105,75 @@ RSpec.describe "bin/insika" do
       expect(ss.get["default_model"]).to eq("deepseek-chat")
     end
   end
+
+  describe "harvest (RFC-0035 C15)" do
+    it "harvest:criterion check exits 0 on the committed file and prints the frozen rule" do
+      out, status = run("harvest:criterion", "check")
+      expect(out).to match(/criterion ok: primary \/ 72h threshold 0.05 min_span 28d/)
+      expect(status).to be_success
+    end
+
+    it "harvest:criterion check exits non-zero on a broken file" do
+      Dir.mktmpdir do |dir|
+        bad = File.join(dir, "CRITERION.md")
+        File.write(bad, "# no block\n")
+        out, status = run("harvest:criterion", "check", "--file", bad)
+        expect(status.exitstatus).to eq(1)
+        expect(out).to match(/no ```yaml block/)
+      end
+    end
+
+    it "harvest:negative import seeds the profile's negative_list from the versioned file" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        profiles = Insika::StoredProfileSource.new(config_store: cs)
+        profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m",
+                                                harvest: { "enabled" => true }))
+
+        out, status = run("harvest:negative", "import", "--agent", "store-support",
+                          env: { "INSIKA_DB" => db })
+        expect(out).to match(/imported 4 rule\(s\)/)
+        expect(status).to be_success
+
+        reloaded = Insika::StoredProfileSource.new(
+          config_store: Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        ).fetch("store-support")
+        expect(reloaded.harvest["negative_list"]).to be_an(Array)
+        expect(reloaded.harvest["negative_list"].map { |r| r["rule"] })
+          .to include("no-competitor-prices")
+      end
+    end
+
+    it "harvest:negative import on an unknown agent exits non-zero" do
+      out, status = run("harvest:negative", "import", "--agent", "nope")
+      expect(out).to match(/not configured/)
+      expect(status.exitstatus).to eq(1)
+    end
+
+    it "harvest without --agent aborts" do
+      out, status = run("harvest")
+      expect(out).to match(/--agent is required/)
+      expect(status.exitstatus).to eq(1)
+    end
+
+    it "harvest on an unknown agent exits 2 with the name" do
+      out, status = run("harvest", "--agent", "store-support")
+      expect(out).to match(/not configured/)
+      expect(status.exitstatus).to eq(2)
+    end
+
+    it "harvest on an agent without a harvest declaration reports skipped (disabled)" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        profiles = Insika::StoredProfileSource.new(config_store: cs)
+        profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m"))
+
+        out, status = run("harvest", "--agent", "store-support", env: { "INSIKA_DB" => db })
+        expect(out).to match(/skipped \(disabled\)/)
+        expect(status).to be_success
+      end
+    end
+  end
 end

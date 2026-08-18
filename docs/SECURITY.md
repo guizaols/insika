@@ -412,6 +412,22 @@ deployment (in `single_tenant` the bare cell is the designed customer shape), an
 never the session-marked cells. See [Context](CONTEXT.md#memory) and
 [Deploy](DEPLOY.md#strict-config-and-insika-doctor).
 
+### Harvest candidates are derived data (RFC-0035)
+
+The harvest loop ([Harvest](HARVEST.md)) writes **candidates** — a mined skill
+proposal is behavior instructions, the same trust level as any skill content,
+and it is store-scoped, never customer-scoped: `forget_customer` does NOT reach
+it (a candidate's skill body is not customer content). Candidates reference
+sessions by id and their evidence excerpt is the transcript rendered at request
+time through the output filter — never a copy. `delete_tenant_data` purges a
+tenant's candidates, promotion rows and markers; the `retention_days` sweep
+ages them out with the transcripts they were derived from (they are
+re-derivable — pruning is never data loss). **No auto-application**: nothing
+reaches the catalog without a human click, and the grounding filter refuses any
+product claim the origin sessions' evidence ledger did not see. Events and the
+promotion log carry ids, refs and verdicts only — a skill body never enters
+the stream.
+
 ## See also
 
 - [Agents](AGENTS.md) — the five access layers per agent.
