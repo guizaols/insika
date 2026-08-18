@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # CONCRETE demo deployment — "run for real" (no mocks): real DeepSeek +
-# 1 agent (Bia) with OpenClaw-style prompts + real tools/skills + memory.
+# 1 agent (demo) with OpenClaw-style prompts + real tools/skills + memory.
 # Builds on the SAME shared graph as config/wiring.rb (Insika::Wiring::Graph),
 # then layers on the real PROFILES/tools + the full runtime-authoring surface.
 #
@@ -49,7 +49,7 @@ module Deploy
 
   MODEL = ENV.fetch("DEEPSEEK_MODEL", "deepseek-v4-flash") # the old "deepseek-chat" alias is retired
   ROOT  = File.expand_path("..", __dir__)
-  AGENT_DIR = File.join(ROOT, "deploy", "agents", "bia")
+  AGENT_DIR = File.join(ROOT, "deploy", "agents", "demo")
 
   module Wiring
     # --- Shared spine (Insika::Wiring::Graph) --------------------
@@ -134,7 +134,7 @@ module Deploy
 
     # LLM config v2: seed the PLATFORM default so a modelless agent works out of
     # the box (Chat > Agent > platform default). Idempotent — only seeds when the
-    # operator hasn't set one; mirrors the boot provider (DeepSeek). The Bia seed below
+    # operator hasn't set one; mirrors the boot provider (DeepSeek). The demo seed below
     # still pins its own model, so this only kicks in for agents created WITHOUT one.
     if Insika::Coercion.presence(SETTINGS_STORE.get["default_model"]).nil?
       SETTINGS_STORE.update("default_model" => Deploy::MODEL, "default_provider" => "deepseek")
@@ -190,11 +190,14 @@ module Deploy
     # at dispatch.
     PROFILE_SOURCE = Insika::StoredProfileSource.new(config_store: CONFIG_STORE)
 
-    # Bia agent seed (idempotent): only creates if it doesn't exist yet. In Memory it
-    # re-seeds every boot; in SQLite it persists and the owner can create other BIAs.
-    unless PROFILE_SOURCE.fetch("bia")
+    # `demo` agent seed (idempotent, RFC-0036 D8 — the docs' neutral id): only
+    # creates if it doesn't exist yet. In Memory it re-seeds every boot; in SQLite
+    # it persists and the owner can create other agents. (`BIA_INTERNAL_API_TOKEN`
+    # keeps its historical name — an operational contract; the GEM never mentions
+    # it.)
+    unless PROFILE_SOURCE.fetch("demo")
       PROFILE_SOURCE.put(Insika::AgentProfile.build(
-                           id: "bia", model: Deploy::MODEL, provider: :deepseek,
+                           id: "demo", model: Deploy::MODEL, provider: :deepseek,
                            tools_allow: %w[menu calc current_time], skills: %w[pedido],
                            policies: %i[tool_allowlist skill_allowlist], memory: true,
                            limits: { tool_timeout: Integer(ENV.fetch("TOOL_TIMEOUT", "30")),
@@ -238,13 +241,13 @@ module Deploy
 
     # --- Deployment-only command surface (authoring via the bus) --
 
-    # Runtime agent authoring — the "everyone creates their own BIA".
+    # Runtime agent authoring — the "everyone creates their own agent".
     BUS.register(:create_agent, Insika::Commands::CreateAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:update_agent, Insika::Commands::UpdateAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:delete_agent, Insika::Commands::DeleteAgent.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
     BUS.register(:set_agent_tools, Insika::Commands::SetAgentTools.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
-    # Per-agent prompts/skills — "everyone creates their own BIA with its own
+    # Per-agent prompts/skills — "everyone creates their own agent with its own
     # identity". Content in the Store, hot via reload/ProfileSource.
     BUS.register(:write_agent_file, Insika::Commands::WriteAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_agent_file, Insika::Commands::DeleteAgentFile.new(profile_source: PROFILE_SOURCE, agent_file_store: AGENT_FILE_STORE, event_stream: EVENT_STREAM))

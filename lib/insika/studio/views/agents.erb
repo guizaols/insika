@@ -1,10 +1,10 @@
 <header class="page-head">
-  <h1>Agents<span class="sub"><%= @agents.size %> configured · one BIA each</span></h1>
+  <h1>Agents<span class="sub"><%= @agents.size %> configured · one agent each</span></h1>
   <a class="btn primary" href="/studio/playground">Open playground →</a>
 </header>
 
 <% if @agents.empty? %>
-  <div class="empty">No agents yet. Create your first BIA below (id + model), then give it an identity on its detail page.</div>
+  <div class="empty">No agents yet. Create your first agent below (id + model), then give it an identity on its detail page.</div>
 <% else %>
   <div data-controller="list-filter">
     <div class="filter-bar">
@@ -48,8 +48,8 @@
   <form method="post" action="/studio/agents">
     <%== csrf_tag %>
     <div class="grid-2">
-      <label>id <span class="muted">(unique slug, e.g. bia)</span>
-        <input type="text" name="id" placeholder="bia" required>
+      <label>id <span class="muted">(unique slug, e.g. demo)</span>
+        <input type="text" name="id" placeholder="demo" required>
       </label>
       <label>model
         <input type="text" name="model" placeholder="deepseek-v4-flash" required>
@@ -60,7 +60,7 @@
     </label>
     <label class="check">
       <input type="checkbox" name="memory" value="1" checked>
-      cross-session memory (the BIA remembers across conversations)
+      cross-session memory (the agent remembers across conversations)
     </label>
     <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create agent</button></div>
   </form>

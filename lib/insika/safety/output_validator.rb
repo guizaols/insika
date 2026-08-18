@@ -47,7 +47,7 @@ module Insika
         return state if text.empty?
 
         flags = []
-        flags.concat(deterministic_flags(text))
+        flags.concat(deterministic_flags(text, config.corpus))
         flags.concat(llm_flags(text, config)) if config.moderator?
 
         state.guardrail_flags = Array(state.guardrail_flags) + flags unless flags.empty?
@@ -61,8 +61,8 @@ module Insika
       # Residual PII/secret that somehow reached the final text (the stream filter
       # should have caught it — this is defense in depth, and the flag itself
       # carries category counts, never the raw value).
-      def deterministic_flags(text)
-        _redacted, counts = Detectors.redact(text)
+      def deterministic_flags(text, corpus)
+        _redacted, counts = Detectors.redact(text, corpus: corpus)
         return [] if counts.empty?
 
         [{ category: "pii_residual", source: "deterministic", detail: counts.map { |k, v| "#{k}:#{v}" }.join(",") }]

@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# RFC-0036 C1: the payload selection is ONE function, shared with the
+# domain-boundary audit spec (spec/insika/domain_boundary_spec.rb) — what
+# ships is a fact the suite asserts on. Pure module, loads standalone.
+require_relative "lib/insika/packaging"
 require_relative "lib/insika/version"
 
 Gem::Specification.new do |spec|
@@ -33,24 +37,12 @@ Gem::Specification.new do |spec|
   # surface serves (/docs, start.md). config/, deploy/, Dockerfile and the
   # examples stay checkout-only: the reference deployment is not the gem.
   #
-  # The list comes from `git ls-files` (so an UNTRACKED lib file never ships —
-  # see docs/RELEASING.md), falling back to a glob where there is no .git (the
-  # Docker build context excludes it).
-  spec.files = Dir.chdir(__dir__) do
-    tracked = `git ls-files -z 2>/dev/null`.split("\x0")
-    tracked = Dir.glob("{lib,docs}/**/*", File::FNM_DOTMATCH).reject { |f| File.directory?(f) } +
-              %w[README.md LICENSE CHANGELOG.md bin/insika] if tracked.empty?
-    tracked.select do |file|
-      file.start_with?("lib/", "docs/") ||
-        %w[README.md LICENSE CHANGELOG.md bin/insika].include?(file)
-    end.reject do |file|
-      file.include?("node_modules") ||
-        file.start_with?("lib/insika/studio/test/", "lib/insika/studio/assets/src/") ||
-        %w[docs/Gemfile docs/Gemfile.lock docs/_config.yml
-           lib/insika/studio/README.md lib/insika/studio/package.json
-           lib/insika/studio/package-lock.json lib/insika/studio/tailwind.config.js].include?(file)
-    end
-  end
+  # The selection is Insika::Packaging.payload_files (RFC-0036 C1): `git
+  # ls-files` (so an UNTRACKED lib file never ships — see docs/RELEASING.md),
+  # falling back to a glob where there is no .git (the Docker build context
+  # excludes it), filtered to lib/ + docs/ + the four root files minus the
+  # never-ship set. The domain-boundary spec pins this exact list.
+  spec.files = Insika::Packaging.payload_files(__dir__)
   spec.bindir = "bin"
   spec.executables = ["insika"]
   spec.require_paths = ["lib"]

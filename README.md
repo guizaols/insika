@@ -37,7 +37,7 @@ require "insika"
 assistant = Insika.agent("assistant") do
   model "deepseek-v4-flash"
   provider :deepseek
-  instructions "You are Bia, a concise and friendly assistant. Answer briefly."
+  instructions "You are a concise and friendly assistant. Answer briefly."
 end
 
 puts assistant.reply("hi, what can you do?")   # one turn, in-process

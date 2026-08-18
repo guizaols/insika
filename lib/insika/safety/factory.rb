@@ -56,7 +56,8 @@ module Insika
       # filter per turn when the agent has output guardrails on; nil = off (parity).
       def content_filter_factory
         lambda do |state|
-          Config.from_profile(state.profile).output ? OutputFilter.new : nil
+          config = Config.from_profile(state.profile)
+          config.output ? OutputFilter.new(corpus: config.corpus) : nil
         end
       end
 

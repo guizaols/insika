@@ -49,7 +49,7 @@
     </div>
     <label class="check">
       <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
-      cross-session memory (the BIA remembers across conversations)
+      cross-session memory (the agent remembers across conversations)
     </label>
 
     <fieldset class="subgroup">
@@ -118,7 +118,7 @@
 <section class="section" id="prompts" data-tabs-target="panel">
   <div class="section-head">
     <h2>Prompts <span class="pill info plain"><%= @prompt_files.size %></span></h2>
-    <p class="muted">the BIA's own identity (store-backed, versioned). Empty = uses the deployment default.</p>
+    <p class="muted">the agent's own identity (store-backed, versioned). Empty = uses the deployment default.</p>
   </div>
 
   <div class="drill" data-controller="list-filter">
@@ -257,7 +257,7 @@
 <section class="section" id="memory" data-tabs-target="panel">
   <div class="section-head">
     <h2>Memory</h2>
-    <p class="muted">facts and notes the BIA reads each turn (tenant <code><%= @agent.id %></code>).</p>
+    <p class="muted">facts and notes the agent reads each turn (tenant <code><%= @agent.id %></code>).</p>
   </div>
   <div class="card">
     <h3>Facts</h3>

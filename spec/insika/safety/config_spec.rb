@@ -47,6 +47,50 @@ RSpec.describe Insika::Safety::Config do
     expect(described_class.from_hash("strictness" => "paranoid").strictness).to eq(:medium)
   end
 
+  describe "corpora (RFC-0036 C2 — the removable language-tagged corpus)" do
+    it "defaults to nil corpora — the full shipped corpus (parity)" do
+      c = described_class.from_hash({})
+      expect(c.corpora).to be_nil
+      expect(c.corpus).to be_a(Insika::Safety::Corpus::Compiled)
+      expect(c.corpus.languages).to eq(%w[pt-BR en])
+      expect(c.corpus_languages).to eq(%w[pt-BR en])
+    end
+
+    it "round-trips corpora with string keys (JSON)" do
+      c = described_class.from_hash("corpora" => { "languages" => ["en"], "extra" => { "abuse" => ["/\\bdupa\\b/i"] } })
+      expect(c.corpus.languages).to eq(["en"])
+      expect(c.corpus.input["abuse"]).to include(/\bdupa\b/i)
+      expect(c.corpus.input["abuse"].first).to be_an(Regexp)
+      expect(c.corpus_languages).to eq(["en"])
+    end
+
+    it "a languages-only corpora (nil languages) means all shipped languages" do
+      c = described_class.from_hash("corpora" => { "extra" => { "abuse" => ["/\\bdupa\\b/i"] } })
+      expect(c.corpus_languages).to eq(%w[pt-BR en])
+      expect(c.corpus.input["abuse"]).to include(/\bdupa\b/i)
+    end
+
+    it "builds the compiled corpus ONCE per config" do
+      c = described_class.from_hash("corpora" => { "languages" => ["en"] })
+      expect(c.corpus).to equal(c.corpus)
+    end
+
+    it "an unknown language fails with the value named (boot/doctor, not mid-turn)" do
+      expect { described_class.from_hash("corpora" => { "languages" => ["es"] }) }
+        .to raise_error(Insika::ValidationError, /es/)
+    end
+
+    it "an unknown extra family fails with the name" do
+      expect { described_class.from_hash("corpora" => { "extra" => { "nope" => ["/x/"] } }) }
+        .to raise_error(Insika::ValidationError, /nope/)
+    end
+
+    it "a malformed pattern source fails with the pattern named" do
+      expect { described_class.from_hash("corpora" => { "extra" => { "abuse" => ["(unclosed"] } }) }
+        .to raise_error(Insika::ValidationError, /\(unclosed/)
+    end
+  end
+
   describe "responses (config-over-convention overrides)" do
     it "defaults to an empty override map" do
       expect(described_class.from_hash({}).responses).to eq({})

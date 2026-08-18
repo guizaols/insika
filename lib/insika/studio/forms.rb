@@ -38,10 +38,15 @@ module Studio
       }
     end
 
-    # Guardrails config from the form. The config form OWNS these fields,
-    # so the patch reflects the whole guardrails state. String values round-trip
-    # cleanly through the JSON store; Safety::Config normalizes on read. A blank
-    # moderator drops the key (deterministic only).
+    # Guardrails config from the form. The config form OWNS the fields it
+    # renders, so the patch reflects the whole rendered state. String values
+    # round-trip cleanly through the JSON store; Safety::Config normalizes on
+    # read. A blank moderator drops the key (deterministic only).
+    #
+    # RFC-0036 C2: `corpora` (the removability knob — languages/extra) has NO
+    # form field: it is DSL/pack data (docs/domain.md), not Studio UI. The
+    # form must not erase it on save — carry the existing value through
+    # (the shallow patch merge would otherwise wipe it, the halt_when class).
     def guardrails_patch(r)
       out = {
         "input" => r.params["guardrail_input"] == "1",
@@ -51,6 +56,8 @@ module Studio
       (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
       responses = guardrail_responses_patch(r)
       out["responses"] = responses unless responses.empty?
+      existing = @agent.guardrails || {}
+      out["corpora"] = existing["corpora"] if existing["corpora"]
       out
     end
 

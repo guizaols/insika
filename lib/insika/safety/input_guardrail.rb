@@ -33,7 +33,7 @@ module Insika
         config = Config.from_profile(state.profile)
         return nxt.call(state) unless config.input
 
-        hit = Detectors.scan_input(state.message.to_s, categories: config.input_categories)
+        hit = Detectors.scan_input(state.message.to_s, categories: config.input_categories, corpus: config.corpus)
         return block(state, config, category: hit[:category], source: :deterministic, detail: hit[:matched]) if hit
 
         if config.moderator? && (mod = build_moderator(config))

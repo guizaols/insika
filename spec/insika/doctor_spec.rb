@@ -1179,5 +1179,156 @@ RSpec.describe Insika::Doctor do
       expect(harvest_findings).to be_empty
     end
   end
-end
 
+
+  describe "check_guardrail_corpora (RFC-0036 C2 — the boot gate)" do
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
+
+    it "a malformed corpora declaration is an :error finding — the doctor, not the turn, surfaces it" do
+      profiles.put(Insika::AgentProfile.build(id: "typo", model: "m",
+                                              guardrails: { "corpora" => { "languages" => ["es"] } }))
+      report = doctor(profile_source: profiles).run
+      f = report.findings.find { |x| x.check == "guardrail-corpora" }
+      expect(f.severity).to eq(:error)
+      expect(f.message).to include("typo").and include("es")
+    end
+
+    it "a broken pattern source is an :error finding too" do
+      profiles.put(Insika::AgentProfile.build(id: "badpat", model: "m",
+                                              guardrails: { "corpora" => { "extra" => { "abuse" => ["(unclosed"] } } }))
+      report = doctor(profile_source: profiles).run
+      f = report.findings.find { |x| x.check == "guardrail-corpora" }
+      expect(f.severity).to eq(:error)
+      expect(f.message).to include("(unclosed")
+    end
+
+    it "ok when every declaration compiles" do
+      profiles.put(Insika::AgentProfile.build(id: "fine", model: "m",
+                                              guardrails: { "corpora" => { "languages" => ["en"] } }))
+      report = doctor(profile_source: profiles).run
+      f = report.findings.find { |x| x.check == "guardrail-corpora" }
+      expect(f.severity).to eq(:ok)
+    end
+
+    it "no profile_source -> nothing reported" do
+      expect(doctor.run.findings.select { |f| f.check == "guardrail-corpora" }).to be_empty
+    end
+  end
+
+  describe "#domain (RFC-0036 C3 — the declared-domain inventory)" do
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
+    let(:tool_store) { Insika::ToolStore.new(config_store: config_store) }
+
+    # E2a — the RFC's "bare boot": a fresh install with NO agents names none.
+    # (An install that boots an agent reports the built-in pt-BR corpus as
+    # source "gem-default" — the removability surface, not a store; see the
+    # "no metadata domain" example below.)
+    it "E2a — a bare boot names no artifacts (empty report, count 0)" do
+      report = doctor(profile_source: Insika::StaticProfileSource.new, tool_store: tool_store).domain
+      expect(report).to be_empty
+      expect(report.count).to eq(0)
+      expect(report.to_h["count"]).to eq(0)
+      expect(report.to_h["entries"]).to eq([])
+    end
+
+    it "E2b — a pilot enumerates every declared artifact with its source" do
+      profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m",
+                                              metadata: { "domain" => "e-commerce-pt-BR" }))
+      profiles.put(Insika::AgentProfile.build(id: "store-support-guarded", model: "m",
+                                              guardrails: { "input" => true }))
+      profiles.put(Insika::AgentProfile.build(id: "with-funnel", model: "m",
+                                              funnel: { "stages" => %w[greeted cart paid], "primary" => "paid" }))
+      tool_store.write({ name: "search_products", description: "search the catalog",
+                 request: { url: "https://api.example.com/products", method: "GET" },
+                 evidence: { kind: "sku" } })
+
+      report = doctor(profile_source: profiles, tool_store: tool_store).domain
+      entries = report.to_h["entries"]
+
+      # persona(1) + guardrail-corpus(3) + safe-responses(3 — every guardrails-on
+      # agent also runs the built-in pt-BR replies) + funnel(1) + evidence(1)
+      expect(entries.length).to eq(9)
+
+      persona = entries.find { |e| e["kind"] == "persona" }
+      expect(persona).to include("agent" => "store-support", "detail" => "domain=e-commerce-pt-BR",
+                                 "source" => "deployment")
+
+      corpus = entries.find { |e| e["kind"] == "guardrail-corpus" && e["agent"] == "store-support-guarded" }
+      expect(corpus).to include("agent" => "store-support-guarded",
+                                "detail" => "languages=pt-BR,en", "source" => "gem-default")
+      expect(corpus["how_to_clear"]).to include("docs/domain.md")
+
+      funnel = entries.find { |e| e["kind"] == "funnel" }
+      expect(funnel).to include("agent" => "with-funnel",
+                                "detail" => "stages=greeted,cart,paid, primary=paid",
+                                "source" => "deployment")
+
+      evidence = entries.find { |e| e["kind"] == "evidence" }
+      expect(evidence).to include("detail" => "search_products: sku", "source" => "deployment")
+      expect(evidence).not_to have_key("agent") # nil compacted
+      expect(evidence.keys).not_to include("how_to_clear") # compact
+    end
+
+    it "an agent with no metadata domain contributes no persona entry" do
+      profiles.put(Insika::AgentProfile.build(id: "plain", model: "m"))
+      entries = doctor(profile_source: profiles, tool_store: tool_store).domain.to_h["entries"]
+      expect(entries.select { |e| e["kind"] == "persona" }).to be_empty
+      # the default guardrails ARE on (the conservative default) — its corpus +
+      # safe-reply entries are the gem-default half of the report, not a persona
+      expect(entries.map { |e| e["kind"] }).to eq(%w[guardrail-corpus safe-responses])
+    end
+
+    it "guardrails-off agents contribute nothing; an EN-only corpus still reports the pt-BR safe replies in effect" do
+      profiles.put(Insika::AgentProfile.build(id: "off", model: "m", guardrails: { "input" => false, "output" => false }))
+      profiles.put(Insika::AgentProfile.build(id: "cleared", model: "m",
+                                              guardrails: { "corpora" => { "languages" => ["en"] } }))
+      report = doctor(profile_source: profiles, tool_store: tool_store).domain
+      entries = report.to_h["entries"]
+      # the EN-only agent cleared the corpus but NOT the pt-BR fallback replies —
+      # the doctor's whole point is naming what is still in effect
+      expect(entries).to eq([{ "kind" => "safe-responses", "agent" => "cleared",
+                               "detail" => "categories=injection,sexual,abuse,escalate,default",
+                               "source" => "gem-default",
+                               "how_to_clear" => "docs/domain.md#guardrails" }])
+    end
+
+    it "the built-in safe-reply entry appears only while a category still falls back to DEFAULTS" do
+      partial = Insika::AgentProfile.build(id: "partial", model: "m",
+                                           guardrails: { "responses" => { "injection" => "Custom." } })
+      full = Insika::AgentProfile.build(id: "full", model: "m",
+                                        guardrails: { "responses" => { "default" => "Tudo resolvido." } })
+      profiles.put(partial)
+      profiles.put(full)
+
+      report = doctor(profile_source: profiles, tool_store: tool_store).domain
+      entries = report.to_h["entries"]
+      fallback = entries.select { |e| e["kind"] == "safe-responses" }
+      expect(fallback.length).to eq(1)
+      expect(fallback.first["agent"]).to eq("partial")
+      expect(fallback.first["detail"]).to match(/sexual,abuse,escalate,default/) # the 4 still built-in
+      expect(fallback.first["source"]).to eq("gem-default")
+    end
+
+    it "a raising enumerator degrades to one error-marked entry, never raises" do
+      broken = Object.new
+      def broken.all_raw
+        raise "boom"
+      end
+      report = doctor(profile_source: Insika::StaticProfileSource.new, tool_store: broken).domain
+      expect(report.count).to eq(1)
+      entry = report.to_h["entries"].first
+      expect(entry["kind"]).to eq("error")
+      expect(entry["detail"]).to match(/read failed/)
+    end
+
+    it "to_s renders the human section with one line per entry" do
+      profiles.put(Insika::AgentProfile.build(id: "x", model: "m", metadata: { "domain" => "retail" }))
+      text = doctor(profile_source: profiles, tool_store: tool_store).domain.to_s
+      expect(text).to include("domain: 3 artifact(s)")
+      expect(text).to include("[persona] x: domain=retail (deployment)")
+
+      empty = doctor(profile_source: Insika::StaticProfileSource.new, tool_store: tool_store).domain.to_s
+      expect(empty).to include("domain: 0 artifacts")
+    end
+  end
+end

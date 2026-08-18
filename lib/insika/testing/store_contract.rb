@@ -69,18 +69,18 @@ RSpec.shared_examples "an Insika store" do
     end
 
     it " converts Symbols (keys and values) to Strings" do #
-      store.set("s", "k", { chave: :valor })
-      expect(store.get("s", "k")).to eq({ "chave" => "valor" })
+      store.set("s", "k", { key: :value })
+      expect(store.get("s", "k")).to eq({ "key" => "value" })
     end
 
     it " returns nil for an absent key, never an exception" do #
-      expect(store.get("s", "nao-existe")).to be_nil
+      expect(store.get("s", "missing-key")).to be_nil
     end
 
     it " overwrites silently (last-write-wins)" do #
-      store.set("s", "k", "primeiro")
-      store.set("s", "k", "segundo")
-      expect(store.get("s", "k")).to eq("segundo")
+      store.set("s", "k", "first")
+      store.set("s", "k", "second")
+      expect(store.get("s", "k")).to eq("second")
     end
 
     it " set returns the same object passed in (not the round-trip)" do #

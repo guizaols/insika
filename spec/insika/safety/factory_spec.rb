@@ -21,6 +21,14 @@ RSpec.describe Insika::Safety::Factory do
       f = described_class.new.content_filter_factory
       expect(f.call(state("output" => false))).to be_nil
     end
+
+    it "builds the filter from the agent's compiled corpus (RFC-0036 C2)" do
+      f = described_class.new.content_filter_factory
+      st = state("corpora" => { "languages" => ["en"] })
+      filter = f.call(st)
+      out = filter.push("cpf 123.456.789-01") + filter.flush
+      expect(out).to include("123.456.789-01") # EN corpus: CPF cleared
+    end
   end
 
   describe "moderator model resolution" do

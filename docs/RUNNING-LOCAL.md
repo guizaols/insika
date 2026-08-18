@@ -8,7 +8,7 @@ permalink: /running-local/
 # Running the Insika locally
 
 Boots the engine single-process, serving `/studio` and `/v1/*` against a demo
-agent (the `bia` persona on DeepSeek). Every message runs the **same**
+agent (the `demo` agent on DeepSeek). Every message runs the **same**
 `send_message` the API runs — real tools, skills, and memory.
 
 ## Boot
@@ -26,7 +26,7 @@ Open `http://localhost:9292`:
 | URL | What |
 |-----|------|
 | `/studio` | management UI (log in with the token; default `local-demo`) |
-| `/studio/chats` | chat with the demo agent (`agent: bia`, `session_id: web`, multi-turn ready) |
+| `/studio/chats` | chat with the demo agent (`agent: demo`, `session_id: web`, multi-turn ready) |
 | `/studio/tasks` | tasks / approvals console |
 | `/v1/responses` | OpenAI-Responses ingress (Bearer) — the drop-in API contract |
 | `/v1/agents` | provisioning by definition/pack (Bearer) — `POST` imports, `DELETE /:id` removes |
@@ -82,7 +82,7 @@ the `model`:
 curl -N http://localhost:9292/v1/responses \
   -H "Authorization: Bearer local-demo" \
   -H "Content-Type: application/json" \
-  -d '{ "model": "bia", "user": "web", "stream": true, "input": "hello" }'
+  -d '{ "model": "demo", "user": "web", "stream": true, "input": "hello" }'
 ```
 
 `user` is the session id (any stable id for a multi-turn conversation).

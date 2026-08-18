@@ -32,11 +32,11 @@ it reaches anyone. Every part of that is below, including what it cannot catch.
 From the CLI, against the same database the engine uses:
 
 ```bash
-INSIKA_DB=insika.db bin/insika refine --agent bia
+INSIKA_DB=insika.db bin/insika refine --agent demo
 ```
 
 ```text
-bia — completed (last 200 session(s))
+demo — completed (last 200 session(s))
   tool_error     ×24   shipping_quote failed: cep is required
                        sessions: 9f2c1a04…, 4b7e5590…, c1d0aa31…
   repetition     ×7    customer repeated themselves
@@ -173,7 +173,7 @@ an agent with no configuration at all can be run. The optional block on the agen
 sets the defaults:
 
 ```ruby
-Insika.agent "bia" do
+Insika.agent "demo" do
   model "deepseek-v4-flash"
   refine window: { last_sessions: 200 }, max_findings: 20
 end
