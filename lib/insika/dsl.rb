@@ -244,6 +244,17 @@ module Insika
       #   distill enabled: true, idle_hours: 6, max_proposals: 10
       def distill(hash) = (@config[:distill] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The gated-harvest declaration (RFC-0035): the engine may read this
+      # agent's finished traffic and propose SKILLS for the store's playbook —
+      # through the negative list, the grounding filter and the double gate,
+      # never applied automatically. Pack data — merges, so repeated calls
+      # accumulate (like budget). `prompt`/`model` are pack-authored keys the
+      # DSL passes through.
+      #   harvest enabled: true,
+      #           negative_list: [ { rule: "no-competitor-prices", pattern: "concorrente" } ],
+      #           miner: { model: "deepseek-v4-flash", window: { last_sessions: 200 } }
+      def harvest(hash) = (@config[:harvest] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # Provider-interaction reliability, as DATA (WS3): retries + exponential
       # backoff on transient failures, a fallback model chain (mid-turn
       # rotation), and a circuit breaker per (tenant, provider/model) that

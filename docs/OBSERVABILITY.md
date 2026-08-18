@@ -49,6 +49,10 @@ something that left no task of its own behind:
 | `:proposal_rejected` | `proposal_id`, `status`, `operator` | a human rejected it (the reason is on the proposal record, not in the event) |
 | `:proposal_dismissed` | `proposal_id`, `status`, `operator` | a human dismissed it — the tuple is latched, never proposed again |
 | `:proposal_stale` | `proposal_id`, `status`, `operator` | the CAS lost: the fact moved after distillation — re-presented with both values on the wiki, never silently overwritten |
+| `:harvest_mined` | `agent`, `run_id`, `candidates`, `rejected{}`, `cost{}` | a mining pass finished (RFC-0035) — counts and rule ids only, never a skill body |
+| `:harvest_gated` | `run_id`, `candidate_id`, `agent`, `eval_passed`, `conversion_passed`, `reason` | the double gate's verdict on one candidate — ids and verdicts only |
+| `:skill_promoted` | `agent`, `skill`, `candidate_id`, `snapshot_ref`, `promotion_ref`, `approver` | a human approved a mined skill — it is live for the store, with the snapshot for rollback |
+| `:skill_rolled_back` | `snapshot_ref`, `skill`, `agent`, `operator` | the snapshot was restored — the promotion row carries the `rolled_back_at` stamp |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at
 (`alerts.webhook` on the profile): each only fires when something durable did

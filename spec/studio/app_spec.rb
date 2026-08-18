@@ -172,7 +172,8 @@ RSpec.describe Studio::App do
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
-                 proposal_store: nil)
+                 proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
+                 negative_list: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -250,6 +251,10 @@ RSpec.describe Studio::App do
         contact_store: seed_followups(followup_seed)&.fetch(:contact_store),
         # RFC-0034 C7: the Facts (wiki) page reads the real proposal store.
         proposal_store: proposal_store,
+        # RFC-0035 C11: the Harvest page reads the harvest store + the two
+        # pre-registered artifacts directly.
+        harvest_store: harvest_store, harvest_criterion: harvest_criterion,
+        negative_list: negative_list,
         session_secret: "x" * 64
     )
      [app, bus]
@@ -3119,6 +3124,194 @@ end
       app, = build_app
       body = login(app).get("/home").body
       expect(body).to include("Facts")
+    end
+  end
+
+  describe "Harvest page (RFC-0035 C11)" do
+    def harvest_app(candidates: [], promotions: [], runs: [], sessions: {},
+                    criterion: nil, negative: nil, agents: nil)
+      store = Insika::HarvestStore.new(store: Insika::Stores::Memory.new)
+      candidates.each do |c|
+        cand = store.create_candidate(
+          run_id: c[:run_id] || "run-1", agent: c[:agent] || "store-support",
+          name: c[:name], description: c[:description], body: c[:body] || "b",
+          rationale: c[:rationale] || "r", origin: c[:origin] || ["acme:s_1"],
+          evidence_turns: c[:evidence_turns] || [1], proposer: "utility_model"
+        )
+        case c[:status]
+        when "awaiting"
+          store.attach_gate(cand.id, eval_gate: { "passed" => true, "cases" => 7, "passed_cases" => 7 },
+                                    conversion_gate: { "passed" => true, "current" => 0.021,
+                                                       "baseline" => 0.02, "threshold" => 0.05 },
+                                    criterion_sha: "sha256:abc")
+          store.mark_awaiting(cand.id)
+        when "blocked"
+          store.attach_gate(cand.id, eval_gate: { "passed" => true },
+                                    conversion_gate: { "passed" => false, "reason" => "no_frozen_baseline" },
+                                    criterion_sha: "sha256:abc")
+        when "pending"
+          nil # stays pending
+        end
+      end
+      promotions.each do |p|
+        store.append_promotion(id: p[:id], agent: p[:agent] || "store-support", skill: p[:skill],
+                               approver: "studio", snapshot_ref: p[:snapshot_ref] || "snap:1",
+                               at: "2026-08-15T10:00:00Z")
+        store.append_rollback(promotion_id: p[:id], operator: "studio") if p[:rolled_back]
+      end
+      runs.each do |r|
+        run = store.create_run(agent_id: r[:agent], window: { "last_sessions" => 3 })
+        store.complete_run(run.id, candidates: r[:candidates] || 0,
+                                   rejected: r[:rejected] || {},
+                                   cost: { "spent" => 100 })
+      end
+      agents ||= [profile("store-support"), profile("chef")]
+      app, bus = build_app(agents: agents, sessions: sessions, harvest_store: store,
+                           harvest_criterion: criterion, negative_list: negative)
+      [app, bus]
+    end
+
+    let(:criterion) do
+      rule = Insika::Harvest::Criterion::Rule.new(version: 1, metric: "paid", window: "72h",
+                                                  threshold: 0.05, min_span: "28d")
+      Insika::Harvest::Criterion.new(rule: rule, path: "harvest/CRITERION.md", sha: "sha256:abc")
+    end
+
+    it "lists awaiting candidates with their evidence excerpt, read from the session at request time" do
+      sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
+                                                    messages: [
+                                                      { "role" => "user", "content" => "oi" },
+                                                      { "role" => "user", "content" => "pix nao caiu" },
+                                                      { "role" => "assistant", "content" => "vou verificar" }
+                                                    ], vars: nil, updated_at: "t", briefing: nil) }
+      app, = harvest_app(candidates: [{ name: "pix-recovery", description: "return for pending PIX",
+                                        status: "awaiting", evidence_turns: [1] }],
+                         sessions: sessions)
+      body = login(app).get("/harvest?agent=store-support").body
+
+      expect(body).to include("pix-recovery")
+      expect(body).to include("pix nao caiu") # the excerpt
+      expect(body).to include("7/7")          # the eval report line
+      expect(body).to include("Promote")
+    end
+
+    it "a conversion-blocked candidate renders the ruler's hole with a link to the Funnel page" do
+      app, = harvest_app(candidates: [{ name: "phantom", description: "d", status: "blocked" }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("no frozen funnel baseline")
+      expect(body).to include("/studio/funnel")
+    end
+
+    it "the gate POST dispatches :gate_harvest and redirects" do
+      app, bus = harvest_app(candidates: [{ name: "fresh", description: "d", status: "pending" }])
+      client = login(app)
+      csrf = csrf_from(client.get("/harvest").body)
+      res = client.post("/harvest/gate", params: { "candidate_id" => "anything", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/harvest")
+      expect(bus.last(:gate_harvest).payload).to include(candidate_id: "anything")
+    end
+
+    it "the promote POST dispatches :promote_harvest with operator 'studio' and the note" do
+      app, bus = harvest_app(candidates: [{ name: "pix", description: "d", status: "awaiting" }])
+      client = login(app)
+      csrf = csrf_from(client.get("/harvest").body)
+      res = client.post("/harvest/promote",
+                        params: { "candidate_id" => "c1", "note" => "go", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/harvest")
+      expect(bus.last(:promote_harvest).payload).to include(candidate_id: "c1",
+                                                            operator: "studio", note: "go")
+    end
+
+    it "the reject POST dispatches :reject_harvest (a human may always outvote the miner)" do
+      app, bus = harvest_app(candidates: [{ name: "pix", description: "d", status: "pending" }])
+      client = login(app)
+      csrf = csrf_from(client.get("/harvest").body)
+      client.post("/harvest/reject", params: { "candidate_id" => "c1", "_csrf" => csrf })
+      expect(bus.last(:reject_harvest).payload).to include(candidate_id: "c1", operator: "studio")
+    end
+
+    it "the rollback POST dispatches :rollback_harvest with the snapshot ref and reason" do
+      app, bus = harvest_app(promotions: [{ id: "p1", skill: "pix" }])
+      client = login(app)
+      csrf = csrf_from(client.get("/harvest").body)
+      res = client.post("/harvest/rollback",
+                        params: { "snapshot_ref" => "snap:1", "reason" => "audit", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/harvest")
+      expect(bus.last(:rollback_harvest).payload).to include(snapshot_ref: "snap:1", reason: "audit")
+    end
+
+    it "the promoted list renders rows and rollback buttons; rolled-back rows render the stamp" do
+      app, = harvest_app(promotions: [
+                           { id: "p1", skill: "live-skill" },
+                           { id: "p2", skill: "dead-skill", rolled_back: true }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("live-skill")
+      expect(body).to include("Rollback")
+      expect(body).to include("dead-skill")
+      expect(body).to include("rolled back")
+    end
+
+    it "the negative-list block renders the rules with their rejection counts from the runs" do
+      negative = Insika::Harvest::NegativeList.parse([
+                                                       { "rule" => "no-competitor-prices", "pattern" => "concorrente" }
+                                                     ])
+      app, = harvest_app(negative: negative,
+                         runs: [{ agent: "store-support", rejected: { "no-competitor-prices" => 2 } }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("no-competitor-prices")
+      expect(body).to include("rejected: 2")
+    end
+
+    it "the ruler block shows the criterion's metric, window, threshold and sha" do
+      app, = harvest_app(criterion: criterion)
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("paid")
+      expect(body).to include("72h")
+      expect(body).to include("sha256:abc")
+    end
+
+    it "the agent filter narrows EVERY list — store A's page never shows store B's candidates (the review fix)" do
+      app, = harvest_app(candidates: [
+                           { name: "a-skill", description: "d", status: "awaiting", agent: "store-support" },
+                           { name: "b-skill", description: "d", status: "awaiting", agent: "store-b" }
+                         ])
+      body_a = login(app).get("/harvest?agent=store-support").body
+      expect(body_a).to include("a-skill")
+      expect(body_a).not_to include("b-skill")
+    end
+
+    it "the evidence excerpt renders ONE message per index — an index valid in one origin session is not replayed against the others (the review fix)" do
+      sessions = {
+        "acme:s_1" => StoredSession.new(id: "acme:s_1",
+                                        messages: [
+                                          { "role" => "user", "content" => "msg-1" },
+                                          { "role" => "user", "content" => "msg-2" },
+                                          { "role" => "assistant", "content" => "msg-3" }
+                                        ], vars: nil, updated_at: "t", briefing: nil),
+        "acme:s_2" => StoredSession.new(id: "acme:s_2",
+                                        messages: [
+                                          { "role" => "user", "content" => "other-1" }
+                                        ], vars: nil, updated_at: "t", briefing: nil)
+      }
+      app, = harvest_app(candidates: [{ name: "multi", description: "d", status: "awaiting",
+                                        origin: %w[acme:s_1 acme:s_2], evidence_turns: [1] }],
+                         sessions: sessions)
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("msg-2")       # the evidence message, from the session where the index is valid
+      expect(body).not_to include("other-1") # the same index is NOT replayed against the other conversation
+    end
+
+    it "without any store everything renders empty and nothing raises" do
+      app, = build_app(agents: [profile("chef")])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("No harvest")
+    end
+
+    it "the nav row is present" do
+      app, = build_app
+      body = login(app).get("/home").body
+      expect(body).to include("Harvest")
     end
   end
 end
