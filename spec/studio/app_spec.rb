@@ -1467,7 +1467,7 @@ RSpec.describe Studio::App do
                             categories: {
                               "skilltrigger" => { tokens: 14_371, fragments: 1, pinned: 0,
                                                   labels: [{ "name" => "gift-concierge", "reason" => "trigger:presente" },
-                                                           { "name" => "natura-line-expert", "reason" => "eager" }] },
+                                                           { "name" => "prisma-line-expert", "reason" => "eager" }] },
                               "prompt" => { tokens: 5_600, fragments: 1, pinned: 5_600 }
                             },
                             tools: { count: 17, tokens: 3_430 } }] }
@@ -1478,7 +1478,7 @@ RSpec.describe Studio::App do
     expect(body).to include("skilltrigger")
     # the name AND the reason: a bare name does not say whether the operator triggered
     # it or the agent always carries it, which is the question the card exists for
-    expect(body).to include("gift-concierge · trigger:presente, natura-line-expert · eager")
+    expect(body).to include("gift-concierge · trigger:presente, prisma-line-expert · eager")
     # the card is collapsed, so the count has to be readable WITHOUT expanding it
     expect(body).to include("skills 2")
   end
@@ -3189,7 +3189,7 @@ end
     let(:criterion) do
       rule = Insika::Harvest::Criterion::Rule.new(version: 1, metric: "paid", window: "72h",
                                                   threshold: 0.05, min_span: "28d")
-      Insika::Harvest::Criterion.new(rule: rule, path: "harvest/CRITERION.md", sha: "sha256:abc")
+      Insika::Harvest::Criterion.new(rule: rule, path: "deployment/CRITERION.md", sha: "sha256:abc")
     end
 
     it "lists awaiting candidates with their evidence excerpt, read from the session at request time" do

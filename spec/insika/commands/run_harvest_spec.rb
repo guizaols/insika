@@ -220,9 +220,12 @@ RSpec.describe Insika::Commands::RunHarvest do
     end
 
     it "a banned phrase in the BODY is rejected too — the body is what enters the model's context (the review fix)" do
-      repo_list = Insika::Harvest::NegativeList.parse(
-        File.read(File.expand_path("../../../harvest/NEGATIVE.md", __dir__))
-      )
+      repo_list = Insika::Harvest::NegativeList.parse([
+                                                         { "rule" => "no-competitor-prices", "pattern" => "concorrente" },
+                                                         { "rule" => "no-competitor-store", "pattern" => "outra loja" },
+                                                         { "rule" => "no-refund-promise", "pattern" => "/nao devolvemos/i" },
+                                                         { "rule" => "no-delivery-promise", "pattern" => "garantimos a entrega" }
+                                                       ])
       handler_with_repo = described_class.new(
         profiles: { "store-support" => profile },
         harvest_store: harvest_store, session_store: session_store,

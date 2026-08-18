@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+# The harvest seeds are the deployment's own — the wiring boots with the
+# spec fixtures when the operator env does not name them already.
+ENV["INSIKA_HARVEST_CRITERION"] ||= File.expand_path("../fixtures/harvest/criterion.md", __dir__)
+ENV["INSIKA_HARVEST_NEGATIVE"] ||= File.expand_path("../fixtures/harvest/negative.md", __dir__)
 require_relative "../../config/deployment" # concrete deployment root (builds the graph eager)
 
 # Characterization of the CONCRETE deployment composition root (

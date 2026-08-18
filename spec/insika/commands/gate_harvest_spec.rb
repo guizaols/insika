@@ -21,7 +21,7 @@ RSpec.describe Insika::Commands::GateHarvest do
   let(:criterion) do
     rule = Insika::Harvest::Criterion::Rule.new(version: 1, metric: "paid", window: "72h",
                                                 threshold: 0.05, min_span: "28d")
-    Insika::Harvest::Criterion.new(rule: rule, path: "harvest/CRITERION.md", sha: "sha256:abc")
+    Insika::Harvest::Criterion.new(rule: rule, path: "deployment/CRITERION.md", sha: "sha256:abc")
   end
 
   let(:gate) { double("eval gate") }

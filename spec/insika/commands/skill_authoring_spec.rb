@@ -43,14 +43,14 @@ RSpec.describe "Skill authoring commands" do
     # Specializing is a write into the AGENT's scope. The shared record is untouched,
     # so the skill stays shared for everybody who did not specialize it.
     it "`agent` writes the specialization and leaves the shared skill alone" do
-      handler.call(cmd(:write_skill, { "name" => "esc", "content" => skill_md("esc", "na Natura") }))
-      res = handler.call(cmd(:write_skill, { "name" => "esc", "agent" => "cacau",
-                                            "content" => skill_md("esc", "na Cacau Show") }))
+      handler.call(cmd(:write_skill, { "name" => "esc", "content" => skill_md("esc", "na biro") }))
+      res = handler.call(cmd(:write_skill, { "name" => "esc", "agent" => "kino",
+                                            "content" => skill_md("esc", "na kino a troca") }))
 
-      expect(res[:agent]).to eq("cacau")
-      expect(catalog.find("esc", agent: "cacau").body).to eq("na Cacau Show")
-      expect(catalog.find("esc").body).to eq("na Natura")
-      expect(events.last.data).to include(name: "esc", agent: "cacau")
+      expect(res[:agent]).to eq("kino")
+      expect(catalog.find("esc", agent: "kino").body).to eq("na kino a troca")
+      expect(catalog.find("esc").body).to eq("na biro")
+      expect(events.last.data).to include(name: "esc", agent: "kino")
     end
   end
 
@@ -67,12 +67,12 @@ RSpec.describe "Skill authoring commands" do
     # "Stop specializing this" must not be expressible as "delete the skill": the agent
     # falls back to the shared body, which is still there.
     it "deleting the specialization leaves the shared skill, and the agent falls back to it" do
-      skill_store.write("esc", skill_md("esc", "mine"), agent: "cacau")
+      skill_store.write("esc", skill_md("esc", "mine"), agent: "kino")
       catalog.reload
 
-      handler.call(cmd(:delete_skill, { "name" => "esc", "agent" => "cacau" }))
+      handler.call(cmd(:delete_skill, { "name" => "esc", "agent" => "kino" }))
 
-      expect(catalog.find("esc", agent: "cacau").body).to eq("shared")
+      expect(catalog.find("esc", agent: "kino").body).to eq("shared")
     end
 
     it "a skill that is not there -> NotFoundError; name required -> ValidationError" do

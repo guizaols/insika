@@ -54,10 +54,10 @@ module Insika
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic
           harvest --agent ID [...]  mine one window of finished traffic (RFC-0035)
-          harvest:negative import --agent ID [--file F]
-                                    seed the profile's negative list from the repo file
-          harvest:criterion check [--file F]
-                                    strict-load the frozen conversion criterion (CI gate)
+          harvest:negative import --agent ID --file F
+                                    seed the profile's negative list from a rules file
+          harvest:criterion check --file F
+                                    strict-load the frozen conversion criterion
           soak   --run | --verify FILE | --preflight   the 72h soak (RFC-0026)
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
@@ -344,20 +344,21 @@ end
       exit(1) if result[:mined] && result[:run_id] && run_failed?(result)
     end
 
-    # insika harvest:negative import --agent ID [--file harvest/NEGATIVE.md]
+    # insika harvest:negative import --agent ID --file F
     #
-    # the E2 seed path: reads the VERSIONED repo file (parse! — loud), and
+    # the seed path: reads the VERSIONED rules file (parse! — loud), and
     # writes the rules into the profile's harvest.negative_list via UpdateAgent
-    # (the operative, hot-editable list the engine applies — D4).
+    # (the operative, hot-editable list the engine applies).
     def harvest_negative_import(argv)
-      opts = { file: File.expand_path("../harvest/NEGATIVE.md", __dir__) }
+      opts = {}
       OptionParser.new do |o|
-        o.banner = "Usage: insika harvest:negative import --agent ID [--file harvest/NEGATIVE.md]"
+        o.banner = "Usage: insika harvest:negative import --agent ID --file F"
         o.on("--agent ID", "agent whose profile receives the rules (required)") { |v| opts[:agent] = v }
-        o.on("--file F", "the versioned NEGATIVE.md (default harvest/NEGATIVE.md)") { |v| opts[:file] = v }
+        o.on("--file F", "the negative-list rules file (required)") { |v| opts[:file] = v }
       end.parse!(argv)
 
       abort "insika harvest:negative import: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+      abort "insika harvest:negative import: --file is required" if Insika::Coercion.blank?(opts[:file])
 
       rules = begin
         list = Insika::Harvest::NegativeList.parse!(File.read(opts[:file]))
@@ -380,17 +381,19 @@ end
       puts "imported #{rules.size} rule(s) into #{opts[:agent]}.harvest.negative_list"
     end
 
-    # insika harvest:criterion check [--file harvest/CRITERION.md]
+    # insika harvest:criterion check --file F
     #
-    # strict-loads the frozen conversion criterion (D5) — a missing key, an
-    # unknown key or an absent file exits non-zero. The CI hook before any
-    # promotion is allowed.
+    # strict-loads the frozen conversion criterion — a missing key, an unknown
+    # key or an absent file exits non-zero. The hook before any promotion is
+    # allowed.
     def harvest_criterion_check(argv)
-      opts = { file: File.expand_path("../harvest/CRITERION.md", __dir__) }
+      opts = {}
       OptionParser.new do |o|
-        o.banner = "Usage: insika harvest:criterion check [--file harvest/CRITERION.md]"
-        o.on("--file F", "the frozen criterion (default harvest/CRITERION.md)") { |v| opts[:file] = v }
+        o.banner = "Usage: insika harvest:criterion check --file F"
+        o.on("--file F", "the frozen criterion (required)") { |v| opts[:file] = v }
       end.parse!(argv)
+
+      abort "insika harvest:criterion check: --file is required" if Insika::Coercion.blank?(opts[:file])
 
       criterion = Insika::Harvest::Criterion.load(opts[:file])
       puts "criterion ok: #{criterion.rule.metric} / #{criterion.rule.window} " \
@@ -422,7 +425,8 @@ end
         skill_store: Insika::SkillStore.new(config_store: config_store),
         settings_store: Insika::SettingsStore.new(config_store: config_store),
         negative_list: begin
-          Insika::Harvest::NegativeList.parse(File.read(File.expand_path("../harvest/NEGATIVE.md", __dir__)))
+          path = Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE")
+          path && Insika::Harvest::NegativeList.parse(File.read(path))
         rescue Errno::ENOENT
           nil
         end,
@@ -495,7 +499,7 @@ end
         # a skill and the agents holding it, so neither half alone is enough. The
         # catalog brings the DISK seeds into the sweep (deploy/skills in a deployment,
         # skills/ in the minimal wiring — whichever exists here); without it a stale
-        # `eager:` or a Natura-in-shared-body sitting in a seed pack is invisible.
+        # `eager:` or a store-specific phrase sitting in a shared seed pack is invisible.
         skill_store: Insika::SkillStore.new(config_store: config_store),
         skill_catalog: Insika::SkillCatalog.new(skill_roots),
         profile_source: Insika::StoredProfileSource.new(config_store: config_store),
@@ -535,7 +539,8 @@ end
         # runtime backend + the frozen criterion (nil = declarations only).
         harvest_store: Insika::HarvestStore.new(store: backend),
         harvest_criterion: begin
-          Insika::Harvest::Criterion.load(File.expand_path("../harvest/CRITERION.md", __dir__))
+          path = Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION")
+          path && Insika::Harvest::Criterion.load(path)
         rescue Insika::ConfigError, Insika::ValidationError
           nil
         end,

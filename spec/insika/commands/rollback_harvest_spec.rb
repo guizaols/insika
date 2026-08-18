@@ -43,7 +43,7 @@ RSpec.describe Insika::Commands::RollbackHarvest do
     criterion = Insika::Harvest::Criterion.new(
       rule: Insika::Harvest::Criterion::Rule.new(version: 1, metric: "paid", window: "72h",
                                                  threshold: 0.05, min_span: "28d"),
-      path: "harvest/CRITERION.md", sha: "sha256:abc"
+      path: "deployment/CRITERION.md", sha: "sha256:abc"
     )
     conversion = double("conversion gate")
     allow(conversion).to receive(:call).and_return(

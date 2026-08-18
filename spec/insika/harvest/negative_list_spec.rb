@@ -99,8 +99,17 @@ it "word boundaries hold — a mid-word occurrence is NOT a phrase match" do
     end
   end
 
-  describe "the versioned NEGATIVE.md (E2's artifact run — the drift guard)" do
-    let(:list) { described_class.parse(File.read(File.expand_path("../../../harvest/NEGATIVE.md", __dir__))) }
+  describe "a versioned NEGATIVE.md (the drift guard)" do
+    let(:list) do
+      described_class.parse(<<~MD)
+        ## Restrictions
+
+        - `no-competitor-prices` — "concorrente" — never mention competitors or their prices
+        - `no-competitor-store` — "outra loja" — never steer the customer to another store
+        - `no-refund-promise` — /nao devolvemos/i — the refund policy is the human's answer, never a skill's
+        - `no-delivery-promise` — "garantimos a entrega" — delivery promises are the human's call
+      MD
+    end
 
     it "parses and matches its own rules — a broken file or a drifted matcher FAILS the suite" do
       expect(list).to_not be_nil

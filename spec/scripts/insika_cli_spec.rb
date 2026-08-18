@@ -136,11 +136,44 @@ RSpec.describe "bin/insika" do
     end
   end
 
-  describe "harvest (RFC-0035 C15)" do
-    it "harvest:criterion check exits 0 on the committed file and prints the frozen rule" do
+  describe "harvest" do
+    VALID_CRITERION = <<~MD
+      # criterion fixture
+
+      ```yaml
+      version: 1
+      metric: primary
+      window: 72h
+      threshold: 0.05
+      min_span: 28d
+      ```
+    MD
+
+    NEGATIVE_RULES = <<~MD
+      # negative list fixture
+
+      ## Restrictions
+
+      - `no-competitor-prices` — "concorrente" — never mention competitors or their prices
+      - `no-competitor-store` — "outra loja" — never steer the customer to another store
+      - `no-refund-promise` — /nao devolvemos/i — the refund policy is the human's answer, never a skill's
+      - `no-delivery-promise` — "garantimos a entrega" — delivery promises are the human's call
+    MD
+
+    it "harvest:criterion check exits 0 on a valid frozen file and prints the rule" do
+      Dir.mktmpdir do |dir|
+        file = File.join(dir, "CRITERION.md")
+        File.write(file, VALID_CRITERION)
+        out, status = run("harvest:criterion", "check", "--file", file)
+        expect(out).to match(/criterion ok: primary \/ 72h threshold 0.05 min_span 28d/)
+        expect(status).to be_success
+      end
+    end
+
+    it "harvest:criterion check without --file aborts" do
       out, status = run("harvest:criterion", "check")
-      expect(out).to match(/criterion ok: primary \/ 72h threshold 0.05 min_span 28d/)
-      expect(status).to be_success
+      expect(out).to match(/--file is required/)
+      expect(status.exitstatus).to eq(1)
     end
 
     it "harvest:criterion check exits non-zero on a broken file" do
@@ -153,16 +186,18 @@ RSpec.describe "bin/insika" do
       end
     end
 
-    it "harvest:negative import seeds the profile's negative_list from the versioned file" do
+    it "harvest:negative import seeds the profile's negative_list from the rules file" do
       Dir.mktmpdir do |dir|
         db = File.join(dir, "cli.db")
+        rules = File.join(dir, "NEGATIVE.md")
+        File.write(rules, NEGATIVE_RULES)
         cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
         profiles = Insika::StoredProfileSource.new(config_store: cs)
         profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m",
                                                 harvest: { "enabled" => true }))
 
         out, status = run("harvest:negative", "import", "--agent", "store-support",
-                          env: { "INSIKA_DB" => db })
+                          "--file", rules, env: { "INSIKA_DB" => db })
         expect(out).to match(/imported 4 rule\(s\)/)
         expect(status).to be_success
 
@@ -176,8 +211,18 @@ RSpec.describe "bin/insika" do
     end
 
     it "harvest:negative import on an unknown agent exits non-zero" do
-      out, status = run("harvest:negative", "import", "--agent", "nope")
-      expect(out).to match(/not configured/)
+      Dir.mktmpdir do |dir|
+        rules = File.join(dir, "NEGATIVE.md")
+        File.write(rules, NEGATIVE_RULES)
+        out, status = run("harvest:negative", "import", "--agent", "nope", "--file", rules)
+        expect(out).to match(/not configured/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "harvest:negative import without --file aborts" do
+      out, status = run("harvest:negative", "import", "--agent", "store-support")
+      expect(out).to match(/--file is required/)
       expect(status.exitstatus).to eq(1)
     end
 

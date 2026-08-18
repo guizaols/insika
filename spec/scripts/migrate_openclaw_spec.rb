@@ -116,7 +116,7 @@ RSpec.describe MigrateOpenclaw do
       end
     end
 
-    it "honours agents.list[].workspace by basename (real volume: natura-br lives in natura4)" do
+    it "honours agents.list[].workspace by basename (an absolute path whose basename survives the copy)" do
       Dir.mktmpdir("migrate-ws") do |root|
         File.write(File.join(root, "openclaw.json"), JSON.generate(
                      "agents" => {
@@ -427,7 +427,7 @@ RSpec.describe MigrateOpenclaw do
           "ruby", script, "import", pack_dir
         )
         expect(status).not_to be_success
-        expect(_stdout).to include("BIA_INTERNAL_API_TOKEN not set")
+        expect(_stdout).to include("INSIKA_INTERNAL_API_TOKEN not set")
         expect(_stdout).to include("import_pack.rb")
         expect(_stdout).to include("127.0.0.1")
       end

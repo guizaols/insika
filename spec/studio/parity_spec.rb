@@ -8,7 +8,7 @@ require_relative "../../lib/insika/studio/app"
 # slow synchronous POST dispatching :judge_shadow_pairs with CSRF enforced. The
 # nav row exists only when a shadow channel is registered.
 RSpec.describe "Studio parity page" do
-  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../evals/PARITY.md", __dir__))
+  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../fixtures/parity/criterion.md", __dir__))
   FIXED_NOW = Time.utc(2026, 8, 15, 12, 0, 0)
 
   ParityProfileSource = Struct.new(:profiles) do

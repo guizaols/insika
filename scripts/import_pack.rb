@@ -9,10 +9,10 @@
 # Usage:
 #   INSIKA_URL=http://localhost:9292 \
 #   OPENCLAW_GATEWAY_TOKEN=local-demo \
-#   BIA_INTERNAL_API_TOKEN=<the consumer's internal token> \
+#   INSIKA_INTERNAL_API_TOKEN=<the consumer's internal token> \
 #   bundle exec ruby scripts/import_pack.rb /path/to/pack
 #
-# BIA_INTERNAL_API_TOKEN replaces the __BIA_INTERNAL_API_TOKEN__ placeholder in the
+# INSIKA_INTERNAL_API_TOKEN replaces the __INSIKA_INTERNAL_API_TOKEN__ placeholder in the
 # tools' secret_headers in memory — the secret does NOT live in the pack's .json.
 
 require_relative "../lib/insika"
@@ -23,12 +23,12 @@ require "uri"
 dir = ARGV[0] or abort("usage: import_pack.rb <pack-dir>")
 base   = ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292"
 token  = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
-secret = ENV["BIA_INTERNAL_API_TOKEN"]
+secret = ENV["INSIKA_INTERNAL_API_TOKEN"]
 
 pack = Insika::Pack.from_dir(dir)
 
 # Inject the real internal token into the secret_headers (stays off disk).
-placeholder = "__BIA_INTERNAL_API_TOKEN__"
+placeholder = "__INSIKA_INTERNAL_API_TOKEN__"
 tools = pack.tools.map do |t|
   h = (t["request"] || t[:request] || {})
   headers = (h["headers"] || h[:headers] || {})
@@ -39,7 +39,7 @@ tools = pack.tools.map do |t|
   end
   t
 end
-warn "warning: BIA_INTERNAL_API_TOKEN not set — placeholder stays in the header (tool will 401)" if secret.nil?
+warn "warning: INSIKA_INTERNAL_API_TOKEN not set — placeholder stays in the header (tool will 401)" if secret.nil?
 
 body = { config: pack.config, files: pack.files, skills: pack.skills, tools: tools }
 uri = URI.join(base, "/v1/agents")

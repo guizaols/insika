@@ -230,46 +230,46 @@ RSpec.describe Insika::SkillCatalog do
   end
 
   # The precedence chain gains a dimension: (agent, name) in the agent scope, then
-  # `name` in the shared one. The pilot's live consequence of not having it: three
-  # skills shared between two stores, each naming Natura in its text, served to the
-  # Cacau Show agent as its own policy.
+  # `name` in the shared one. The live consequence of not having it: three
+  # skills shared between two stores, each naming one store in its text, served to
+  # the other store's agent as its own policy.
   describe "per-agent resolution" do
     let(:store) { Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
     def skill_md(name, body) = "---\nname: #{name}\ndescription: d\n---\n#{body}\n"
     def profile(id, **over) = Insika::AgentProfile.build(id: id, model: "m", **over)
 
     it "an override wins for its agent and changes nothing for anyone else" do
-      store.write("escalation", skill_md("escalation", "na Natura, devolucao em 7 dias"))
-      store.write("escalation", skill_md("escalation", "na Cacau Show, troca na loja"), agent: "cacau")
+      store.write("escalation", skill_md("escalation", "na biro, devolucao em 7 dias"))
+      store.write("escalation", skill_md("escalation", "na kino, troca na loja"), agent: "kino")
 
       cat = described_class.new(@root, store: store)
 
-      expect(cat.find("escalation", agent: "cacau").body).to include("Cacau Show")
-      expect(cat.find("escalation", agent: "natura").body).to include("na Natura")
-      expect(cat.find("escalation").body).to include("na Natura")
+      expect(cat.find("escalation", agent: "kino").body).to include("na kino")
+      expect(cat.find("escalation", agent: "biro").body).to include("na biro")
+      expect(cat.find("escalation").body).to include("na biro")
     end
 
     it "a shared skill stays shared: the override is one more record, not a fork" do
       store.write("escalation", skill_md("escalation", "shared"))
-      store.write("escalation", skill_md("escalation", "mine"), agent: "cacau")
+      store.write("escalation", skill_md("escalation", "mine"), agent: "kino")
 
       cat = described_class.new(@root, store: store)
 
       # ONE name in both catalogs — the allowlist, the level-1 list and load_skill all
       # keep saying `escalation`; only the body differs.
-      expect(cat.all(agent: "cacau").map(&:name)).to eq(["escalation"])
+      expect(cat.all(agent: "kino").map(&:name)).to eq(["escalation"])
       expect(cat.all.map(&:name)).to eq(["escalation"])
     end
 
     it "an agent-private skill is invisible to every other agent" do
-      store.write("only-cacau", skill_md("only-cacau", "b"), agent: "cacau")
+      store.write("only-kino", skill_md("only-kino", "b"), agent: "kino")
 
       cat = described_class.new(@root, store: store)
 
-      expect(cat.all(agent: "cacau").map(&:name)).to eq(["only-cacau"])
+      expect(cat.all(agent: "kino").map(&:name)).to eq(["only-kino"])
       expect(cat.all).to eq([])
-      expect(cat.find("only-cacau")).to be_nil
-      expect(cat.find("only-cacau", agent: "natura")).to be_nil
+      expect(cat.find("only-kino")).to be_nil
+      expect(cat.find("only-kino", agent: "biro")).to be_nil
     end
 
     # THE bug the agent scope exists to fix: an override keeps saying the bare shared
@@ -277,12 +277,12 @@ RSpec.describe Insika::SkillCatalog do
     # frontmatter would clobber the shared record globally.
     it "the STORE POSITION is the identity, not the frontmatter name" do
       store.write("escalation", skill_md("escalation", "shared"))
-      store.write("escalation", skill_md("escalation", "mine"), agent: "cacau")
+      store.write("escalation", skill_md("escalation", "mine"), agent: "kino")
 
       cat = described_class.new(@root, store: store)
 
       expect(cat.find("escalation").body).to eq("shared")
-      expect(cat.find("escalation", agent: "cacau").name).to eq("escalation")
+      expect(cat.find("escalation", agent: "kino").name).to eq("escalation")
     end
 
     it "a store record whose key and frontmatter name disagree resolves by the KEY" do
@@ -296,12 +296,12 @@ RSpec.describe Insika::SkillCatalog do
 
     it "eager_for/lazy_for resolve through the agent's own scope" do
       store.write("esc", skill_md("esc", "shared"))
-      store.write("esc", skill_md("esc", "mine"), agent: "cacau")
+      store.write("esc", skill_md("esc", "mine"), agent: "kino")
 
       cat = described_class.new(@root, store: store)
 
-      expect(cat.eager_for(profile("cacau", skills_eager: ["esc"])).first.body).to eq("mine")
-      expect(cat.lazy_for(profile("natura")).first.body).to eq("shared")
+      expect(cat.eager_for(profile("kino", skills_eager: ["esc"])).first.body).to eq("mine")
+      expect(cat.lazy_for(profile("biro")).first.body).to eq("shared")
     end
 
     it "a store without the agent dimension (an older one) falls through to shared" do
@@ -311,7 +311,7 @@ RSpec.describe Insika::SkillCatalog do
 
       cat = described_class.new(@root, store: legacy)
 
-      expect(cat.find("esc", agent: "cacau").body).to eq("shared")
+      expect(cat.find("esc", agent: "kino").body).to eq("shared")
     end
   end
 

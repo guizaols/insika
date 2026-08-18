@@ -48,7 +48,7 @@
 #   import <pack-dir>
 #       Delegates to scripts/import_pack.rb (Insika::Pack.from_dir →
 #       POST /v1/agents). Same env as import_pack.rb (INSIKA_URL,
-#       OPENCLAW_GATEWAY_TOKEN, BIA_INTERNAL_API_TOKEN).
+#       OPENCLAW_GATEWAY_TOKEN, INSIKA_INTERNAL_API_TOKEN).
 #
 # Railway volume (documented recipe; the volume is just a source of state dirs):
 #   railway link   # the OpenClaw gateway project/service
@@ -151,8 +151,8 @@ module MigrateOpenclaw
   end
 
   # agents.list[].workspace is an ABSOLUTE path on the machine OpenClaw ran on
-  # (e.g. /data/openclaw/workspace/agent-store-natura4 for agent-store-natura-br)
-  # — only its basename survives copying the state dir elsewhere.
+  # (e.g. /data/openclaw/workspace/agent-store-<brand>) — only its basename
+  # survives copying the state dir elsewhere.
   def workspace_dir(root, id, entry)
     name = entry["workspace"].to_s.empty? ? id : File.basename(entry["workspace"])
     File.join(root, "workspace", name)

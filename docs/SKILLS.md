@@ -219,8 +219,8 @@ Write one with `agent:`, and remove it the same way (which un-specializes, leavi
 the shared skill in place):
 
 ```ruby
-dispatch(:write_skill,  { name: "escalation-to-human", agent: "store-cacau", content: md })
-dispatch(:delete_skill, { name: "escalation-to-human", agent: "store-cacau" })
+dispatch(:write_skill,  { name: "escalation-to-human", agent: "store-demo", content: md })
+dispatch(:delete_skill, { name: "escalation-to-human", agent: "store-demo" })
 ```
 
 In the Studio: **Skills → specialize for this agent**, which seeds the override from

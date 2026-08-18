@@ -116,7 +116,7 @@ module Insika
       @backend = backend
       @extra_env_specs = extra_env_specs
       @shadow_pair_store = shadow_pair_store
-      @soak_envelope_path = soak_envelope_path || File.join(Dir.pwd, Insika::Soak::Envelope::DEFAULT_PATH)
+      @soak_envelope_path = soak_envelope_path
       # RFC-0030 C7: [ContextProvider | Class] — classes accepted so the CLI
       # can pass the builtin set without deps; the check only reads .layer /
       # .name. nil = skip.
@@ -336,14 +336,14 @@ module Insika
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
     end
 
-    # RFC-0026: the soak envelope (evals/SOAK.md). Absent is :info — not every
+    # the soak envelope (a deployment-side file). Absent is :info — not every
     # deployment soaks, and the tooling is optional. Present-and-broken is
     # :error — an envelope that exists but does not parse is a pre-declaration
     # somebody wrote down that the runner will refuse, and only this check says
     # so before the run is attempted.
     def check_soak_envelope
       return [Finding.new(check: "soak-envelope", severity: :info, fix: nil,
-                          message: "no soak envelope (#{@soak_envelope_path}) — `insika soak` is available, not required")] unless File.file?(@soak_envelope_path)
+                          message: "no soak envelope (#{@soak_envelope_path || 'unset'}) — `insika soak` is available, not required")] if @soak_envelope_path.nil? || !File.file?(@soak_envelope_path)
 
       Insika::Soak::Envelope.load(@soak_envelope_path)
       [ok("soak-envelope", "soak envelope parses (#{@soak_envelope_path})")]
@@ -521,8 +521,8 @@ module Insika
     end
 
     # D2. A skill in more than one allowlist that names one of its OWN holders in its
-    # text is specialized text in shared clothing — the pilot served the Cacau Show
-    # agent three shared skills that each said "na Natura". Specialize it per agent
+    # text is specialized text in shared clothing — a pilot deployment served every
+    # holder three shared skills that each named one of them. Specialize it per agent
     # (write_skill with `agent:`) instead of leaving one store's policy in a shared body.
     #
     # Merchant vocabulary beyond the holders' identities is deliberately out of scope:
@@ -1168,7 +1168,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     # path needs just a count, which the store answers from its keys.
     def check_shadow_parity
       shadow_on = Insika::EnvSchema.truthy?(@env["INSIKA_RELAY_SHADOW"])
-      path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION", @env) || "evals/PARITY.md"
+      path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION", @env)
 
       unless shadow_on
         stored = @shadow_pair_store ? @shadow_pair_store.size : 0
@@ -1176,6 +1176,11 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
 
         return [ok("shadow-parity",
                    "shadow off — #{stored} pair(s) still stored, evidence is not forgotten")]
+      end
+
+      if path.nil?
+        return [Finding.new(check: "shadow-parity", severity: :error, fix: nil,
+                            message: "shadow on but INSIKA_PARITY_CRITERION is unset — the frozen criterion is required to record pairs")]
       end
 
       pairs = @shadow_pair_store ? @shadow_pair_store.each.to_a : []

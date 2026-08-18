@@ -43,7 +43,7 @@ needs a live provider key on the server + the target agents provisioned.
 # 1. boot the engine (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
 # 2. provision the target agent(s) from the real packs (client; POST /v1/agents):
 INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
-BIA_INTERNAL_API_TOKEN=… \
+INSIKA_INTERNAL_API_TOKEN=… \
   bundle exec ruby scripts/import_pack.rb openclaw/workspace/agent-store-<id>
 # 3. run the evals:
 OPENCLAW_GATEWAY_TOKEN=local-demo \

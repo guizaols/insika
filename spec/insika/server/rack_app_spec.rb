@@ -18,7 +18,7 @@ RSpec.describe Insika::Server::AppBuilder do
     saved.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
   end
 
-  let(:criterion_path) { File.expand_path("../../../evals/PARITY.md", __dir__) }
+  let(:criterion_path) { File.expand_path("../../fixtures/parity/criterion.md", __dir__) }
 
   def builder
     handle = Insika.embed(backend: Insika::Stores::Memory.new) do
@@ -70,10 +70,8 @@ RSpec.describe Insika::Server::AppBuilder do
     expect(b.graph.channel_delivery.instance_variable_get(:@criterion_sha)).to eq(b.criterion.sha)
   end
 
-  it "defaults the criterion path to evals/PARITY.md when the env does not name one" do
+  it "shadow + unset criterion -> ConfigError at boot (the criterion is never defaulted)" do
     shadow_env
-    Dir.chdir(File.expand_path("../../..", __dir__)) do
-      expect { builder.app }.not_to raise_error
-    end
+    expect { builder.app }.to raise_error(Insika::ConfigError, /INSIKA_PARITY_CRITERION/)
   end
 end

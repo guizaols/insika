@@ -59,7 +59,14 @@ spec/scripts/*
 /openclaw-*.tgz
 /openclaw-volume.tgz
 
-# Store pack data (pilot packs: Natura, Cacau Show) — FORGE material, never
-# ships (plan §Motor vs forja: "o dado da loja não"). The engine ships
-# lib/, docs/, bin/; a pack is the store's data on top of it.
+# Store pack data (pilot packs) — FORGE material, never ships. The engine
+# ships lib/, docs/, bin/; a pack is the store's data on top of it.
 packs/
+
+# The store's frozen criteria, envelopes and load shapes (shadow parity,
+# soak, harvest seeds) — FORGE material, kept in the private deployment
+# repo, never in the public tree.
+/evals/PARITY.md
+/evals/SOAK.md
+/evals/soak/
+/harvest/

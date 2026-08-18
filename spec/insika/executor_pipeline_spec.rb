@@ -873,7 +873,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
             Insika::ContextFragment.build(content: "bodies", placement: :system, tokens: 900,
                                           source: "Insika::Context::Providers::SkillTrigger",
                                           labels: [{ "name" => "gift-concierge", "reason" => "eager" },
-                                                   { "name" => "natura-line-expert", "reason" => "trigger:linha" }]),
+                                                   { "name" => "prisma-line-expert", "reason" => "trigger:linha" }]),
             Insika::ContextFragment.build(content: "identity", placement: :system, tokens: 100,
                                           source: "Insika::Context::Providers::Prompt", pinned: true)
           ]
@@ -887,7 +887,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       cats = store.for_session("s1").first["categories"]
       expect(cats["skilltrigger"]["labels"]).to eq(
         [{ "name" => "gift-concierge", "reason" => "eager" },
-         { "name" => "natura-line-expert", "reason" => "trigger:linha" }]
+         { "name" => "prisma-line-expert", "reason" => "trigger:linha" }]
       )
       expect(cats["prompt"]).not_to have_key("labels")   # nothing to name -> no noise
     end

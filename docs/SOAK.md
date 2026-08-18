@@ -23,17 +23,17 @@ hour 40 is invisible to a 10-minute bench.
 
 ## The protocol in one paragraph
 
-1. **Freeze the envelope first.** `evals/SOAK.md` declares the load shape, the
-   gated ceilings and the isolation contract — *before* the first turn is
-   fired. Its SHA-256 is stamped into every hourly snapshot; editing it
-   mid-run turns the run `invalid` instead of producing a verdict.
+1. **Freeze the envelope first.** A deployment-side envelope file declares the
+   load shape, the gated ceilings and the isolation contract — *before* the
+   first turn is fired. Its SHA-256 is stamped into every hourly snapshot;
+   editing it mid-run turns the run `invalid` instead of producing a verdict.
 2. **Preflight.** `insika soak --preflight` refuses to start unless the target
    answers `/v1/vitals` with a readable RSS, turns carry the `INSIKA_TURN_TIMING`
    breakdown *and* a `usage` block, the pid is stable, and the target host
    matches the envelope. Each check is a named refusal, not a runtime warning.
 3. **Run.** `insika soak --run` fires the arrival process (Poisson, seeded,
    concurrency-capped), polls vitals hourly, and appends every observation to
-   `evals/soak/<run>.jsonl` as it happens — a runner that dies at hour 60 must
+   `<out>/<run>.jsonl` as it happens — a runner that dies at hour 60 must
    leave 60 usable hours behind. No retry, no self-healing: a failed turn is
    evidence.
 4. **Read the verdict.** `insika soak --verify <file>.jsonl.gz` recomputes the
@@ -83,19 +83,19 @@ the ceiling keeps that from reading as a pass.
 
 ```bash
 # the plan + one sample request, no traffic
-insika soak --dry-run --envelope evals/SOAK.md
+insika soak --dry-run --envelope soak-envelope.md
 
 # every precondition, and nothing else
-insika soak --preflight --envelope evals/SOAK.md
+insika soak --preflight --envelope soak-envelope.md
 
 # the run itself (INSIKA_URL + OPENCLAW_GATEWAY_TOKEN, like loadtest.rb)
-INSIKA_URL=https://<target> insika soak --run --envelope evals/SOAK.md --out evals/soak/
+INSIKA_URL=https://<target> insika soak --run --envelope soak-envelope.md --out soak-out/
 
 # resume after a short outage (the gap is recorded and counts against the window)
-insika soak --run --resume evals/soak/staging-2026-08-20T09-00-00Z.jsonl
+insika soak --run --resume soak-out/staging-2026-08-20T09-00-00Z.jsonl
 
 # the verdict, recomputed offline — the only step that needs no target
-insika soak --verify evals/soak/staging-2026-08-20T09-00-00Z.jsonl.gz
+insika soak --verify soak-out/staging-2026-08-20T09-00-00Z.jsonl.gz
 ```
 
 Duration, rate and ceilings all come from the envelope — there is no

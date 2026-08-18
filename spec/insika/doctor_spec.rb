@@ -405,49 +405,49 @@ RSpec.describe Insika::Doctor do
       expect(findings.map(&:severity)).to eq([:ok])
     end
 
-    # D2. Three shared skills on the pilot each said "na Natura", and the Cacau Show
-    # agent was served all three as its own policy.
+    # D2. Three shared skills on a pilot deployment each named one of their
+    # holders, and every holder was served all three as its own policy.
     it "flags a shared skill whose body names one of its holders" do
-      skills.write("escalation", skill_md("escalation", "na Natura a devolucao e em 7 dias"))
-      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
-      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+      skills.write("escalation", skill_md("escalation", "na biro a devolucao e em 7 dias"))
+      profiles.put(Insika::AgentProfile.build(id: "biro", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "kino", model: "m", skills: ["escalation"]))
 
       f = findings.find { |x| x.message.include?("shared skill") }
 
       expect(f.severity).to eq(:warn)
-      expect(f.message).to include("shared skill 'escalation'", "'natura'", "Specialize")
+      expect(f.message).to include("shared skill 'escalation'", "'biro'", "Specialize")
     end
 
     # The finding shrinks as the VICTIMS stop reading: a holder with its own version
     # is no longer served anybody else's text.
     it "clears once the affected holders have specialized" do
-      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
-      skills.write("escalation", skill_md("escalation", "na Cacau Show"), agent: "cacau")
-      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
-      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+      skills.write("escalation", skill_md("escalation", "na biro, 7 dias"))
+      skills.write("escalation", skill_md("escalation", "na kino a troca e em 3 dias"), agent: "kino")
+      profiles.put(Insika::AgentProfile.build(id: "biro", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "kino", model: "m", skills: ["escalation"]))
 
       expect(findings.map(&:severity)).to eq([:ok])
     end
 
-    # The direction that must NOT clear: specializing the NAMED holder moves natura
-    # onto its own copy, but the shared body still says "na Natura" and cacau still
+    # The direction that must NOT clear: specializing the NAMED holder moves biro
+    # onto its own copy, but the shared body still says "na biro" and kino still
     # reads it — the exact harm the check exists for. Identity comes from all
     # holders; only the readers shrink.
     it "keeps flagging while another holder still reads the body naming the specialized one" do
-      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
-      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"), agent: "natura")
-      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
-      profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+      skills.write("escalation", skill_md("escalation", "na biro, 7 dias"))
+      skills.write("escalation", skill_md("escalation", "na biro, 7 dias"), agent: "biro")
+      profiles.put(Insika::AgentProfile.build(id: "biro", model: "m", skills: ["escalation"]))
+      profiles.put(Insika::AgentProfile.build(id: "kino", model: "m", skills: ["escalation"]))
 
       f = findings.find { |x| x.message.include?("shared skill") }
 
       expect(f.severity).to eq(:warn)
-      expect(f.message).to include("'natura'", "cacau")
+      expect(f.message).to include("'biro'", "kino")
     end
 
     it "says nothing when only ONE agent holds the skill (it is not shared)" do
-      skills.write("escalation", skill_md("escalation", "na Natura, 7 dias"))
-      profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
+      skills.write("escalation", skill_md("escalation", "na biro, 7 dias"))
+      profiles.put(Insika::AgentProfile.build(id: "biro", model: "m", skills: ["escalation"]))
 
       expect(findings.map(&:severity)).to eq([:ok])
     end
@@ -463,24 +463,24 @@ RSpec.describe Insika::Doctor do
     end
 
     it "reads the display name from metadata, accents folded" do
-      skills.write("esc", skill_md("esc", "na Cacau Show a troca e na loja"))
+      skills.write("esc", skill_md("esc", "na Kino a troca e na loja"))
       profiles.put(Insika::AgentProfile.build(id: "a1", model: "m", skills: ["esc"],
-                                              metadata: { "name" => "Cacau" }))
+                                              metadata: { "name" => "Kino" }))
       profiles.put(Insika::AgentProfile.build(id: "a2", model: "m", skills: ["esc"]))
 
-      expect(findings.first.message).to include("names 'Cacau'")
+      expect(findings.first.message).to include("names 'Kino'")
     end
 
     # D3 residue: `companions:` prevents the pair breaking apart, but only where it is
     # declared, and only where the agent can load both halves.
     it "flags a body referencing another catalog skill without declaring it a companion" do
-      skills.write("natura-line-expert", skill_md("natura-line-expert", "consulte query-construction antes de buscar"))
+      skills.write("biro-line-expert", skill_md("biro-line-expert", "consulte query-construction antes de buscar"))
       skills.write("query-construction", skill_md("query-construction", "b"))
       profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", skills: nil))
 
       f = findings.find { |x| x.message.include?("without declaring") }
 
-      expect(f.message).to include("skill 'natura-line-expert' references skill 'query-construction'",
+      expect(f.message).to include("skill 'biro-line-expert' references skill 'query-construction'",
                                    "companions: [query-construction]")
     end
 
@@ -502,21 +502,21 @@ RSpec.describe Insika::Doctor do
       expect(f.message).to include("allows skill 'mapa' but not its companion 'query'")
     end
 
-    # The drift checks read DISK seeds too (via the catalog): a Natura-in-shared-body
-    # sitting in a seed pack drifts exactly like an authored one.
+    # The drift checks read DISK seeds too (via the catalog): a store-specific
+    # phrase in a shared seed pack drifts exactly like an authored one.
     it "flags a shared DISK seed naming a holder, with no store record at all" do
       Dir.mktmpdir do |root|
         FileUtils.mkdir_p(File.join(root, "escalation"))
-        File.write(File.join(root, "escalation", "SKILL.md"), skill_md("escalation", "na Natura, 7 dias"))
-        profiles.put(Insika::AgentProfile.build(id: "natura", model: "m", skills: ["escalation"]))
-        profiles.put(Insika::AgentProfile.build(id: "cacau", model: "m", skills: ["escalation"]))
+        File.write(File.join(root, "escalation", "SKILL.md"), skill_md("escalation", "na biro, 7 dias"))
+        profiles.put(Insika::AgentProfile.build(id: "biro", model: "m", skills: ["escalation"]))
+        profiles.put(Insika::AgentProfile.build(id: "kino", model: "m", skills: ["escalation"]))
 
         drift = described_class.new(env: {}, skill_catalog: Insika::SkillCatalog.new([root]),
                                     profile_source: profiles, agent_file_store: files).run
                                .findings.select { |f| f.check == "skill-drift" }
 
         expect(drift.first.severity).to eq(:warn)
-        expect(drift.first.message).to include("shared skill 'escalation'", "'natura'")
+        expect(drift.first.message).to include("shared skill 'escalation'", "'biro'")
       end
     end
   end
@@ -594,7 +594,7 @@ RSpec.describe Insika::Doctor do
 
   describe "shadow-parity check (RFC-0025 C9)" do
     let(:pairs) { Insika::ShadowPairStore.new(store: backend) }
-    let(:criterion_path) { File.expand_path("../../evals/PARITY.md", __dir__) }
+    let(:criterion_path) { File.expand_path("../fixtures/parity/criterion.md", __dir__) }
 
     def shadow_findings(env, pair_store: nil, settings: nil)
       described_class.new(env: env, settings_store: settings, shadow_pair_store: pair_store)

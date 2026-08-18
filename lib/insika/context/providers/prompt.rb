@@ -10,7 +10,7 @@ module Insika
       #
       # PER-AGENT identity. `profile.prompt_files` (file names)
       # wins over the wiring's `files:` — this fixes the limitation of a new
-      # agent inheriting Bia's prompt. The content comes from `agent_files`
+      # agent inheriting the previous persona's prompt. The content comes from `agent_files`
       # (AgentFileStore, lives in the Store), with a File.read fallback
       # for on-disk paths (compat/seed). Without prompt_files -> uses the wiring's
       # `files:` (deployment default; byte-for-byte parity).

@@ -28,7 +28,7 @@ module Deploy
     Insika::EnvSchema.spec(name: "TOOL_TIMEOUT", type: :integer, description: "Per-tool-call timeout (s)."),
     Insika::EnvSchema.spec(name: "TURN_TIMEOUT", type: :integer, description: "Per-turn timeout (s)."),
     Insika::EnvSchema.spec(name: "CONSUMER_INTERNAL_URL", type: :url, description: "Consumer internal API base (data-tool callbacks)."),
-    Insika::EnvSchema.spec(name: "BIA_INTERNAL_API_TOKEN", secret: true, description: "Bearer for the consumer internal API.")
+    Insika::EnvSchema.spec(name: "INSIKA_INTERNAL_API_TOKEN", secret: true, description: "Bearer for the consumer internal API.")
   ].freeze
   Insika::EnvSchema.enforce!(extra: ENV_SPECS)
 
@@ -192,9 +192,7 @@ module Deploy
 
     # `demo` agent seed (idempotent, RFC-0036 D8 — the docs' neutral id): only
     # creates if it doesn't exist yet. In Memory it re-seeds every boot; in SQLite
-    # it persists and the owner can create other agents. (`BIA_INTERNAL_API_TOKEN`
-    # keeps its historical name — an operational contract; the GEM never mentions
-    # it.)
+    # it persists and the owner can create other agents.
     unless PROFILE_SOURCE.fetch("demo")
       PROFILE_SOURCE.put(Insika::AgentProfile.build(
                            id: "demo", model: Deploy::MODEL, provider: :deepseek,
@@ -227,9 +225,10 @@ module Deploy
     # channel and its own judge command). The sha stamps every pair our half
     # records, through the same criterion object the judge command folds with.
     if Insika::EnvSchema.truthy?(ENV["INSIKA_RELAY_SHADOW"])
-      PARITY_CRITERION = Insika::Parity::Criterion.load(
-        Insika::EnvSchema.read("INSIKA_PARITY_CRITERION") || "evals/PARITY.md"
-      )
+      criterion_path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION")
+      raise Insika::ConfigError, "shadow mode requires INSIKA_PARITY_CRITERION (the frozen criterion)" if criterion_path.nil?
+
+      PARITY_CRITERION = Insika::Parity::Criterion.load(criterion_path)
       GRAPH.channel_delivery.criterion_sha = PARITY_CRITERION.sha
     end
 
@@ -350,23 +349,21 @@ module Deploy
     # (the base graph wires nil factories; the flows refuse with named reasons
     # until THIS root lands).
     #
-    # The two pre-registered artifacts (D4/D5): the frozen conversion
-    # criterion and the negative-list seed, both committed under harvest/ and
+    # The two pre-registered artifacts: the frozen conversion criterion and the
+    # negative-list seed, both read from the deployment's environment and
     # strict-loaded. A missing/unparseable criterion REFUSES (nil — the gate
     # names the hole), it never guesses; the negative list is the injected
     # fallback the per-profile operative list overrides.
     HARVEST_CRITERION = begin
-      Insika::Harvest::Criterion.load(
-        Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION") || "harvest/CRITERION.md"
-      )
+      path = Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION")
+      path && Insika::Harvest::Criterion.load(path)
     rescue Insika::ConfigError, Insika::ValidationError => e
       warn "[harvest] no frozen criterion at boot: #{e.message}"
       nil
     end
     HARVEST_NEGATIVE = begin
-      Insika::Harvest::NegativeList.parse!(
-        File.read(Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE") || "harvest/NEGATIVE.md")
-      )
+      path = Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE")
+      path && Insika::Harvest::NegativeList.parse!(File.read(path))
     rescue Errno::ENOENT, Insika::ValidationError => e
       warn "[harvest] no negative-list seed: #{e.message}"
       Insika::Harvest::NegativeList.parse(nil)
@@ -464,7 +461,7 @@ module Deploy
     # standard format (JSON Schema) + declarative binding, hot (no restart). The
     # manifest's `{{secret.*}}`/`{{env.*}}` resolve from the DEPLOYMENT's ENV (the
     # secret never comes in the manifest —/R3); the placeholder key is the name of
-    # the env var (e.g.: {{secret.BIA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
+    # the env var (e.g.: {{secret.INSIKA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
     IMPORT_TOOLS = Insika::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
     BUS.register(:import_tools, IMPORT_TOOLS)
 
