@@ -3,7 +3,8 @@
 require "spec_helper"
 require "tmpdir"
 
-# C5 — the frozen criterion, parsed from evals/PARITY.md's fenced yaml block.
+# C5 — the frozen criterion, parsed from the deployment's criterion file's
+# fenced yaml block.
 # The whole file's bytes are hashed, prose included: an edit to the rationale
 # invalidates the frozen rule, which is correct — the rationale is what makes
 # the numbers reviewable.
@@ -49,8 +50,8 @@ RSpec.describe Insika::Parity::Criterion do
     MD
   end
 
-  it "loads the committed evals/PARITY.md — a doc edit that breaks the block fails the suite" do
-    path = File.expand_path("../../../evals/PARITY.md", __dir__)
+  it "loads a frozen criterion file — a doc edit that breaks the block fails the suite" do
+    path = write_criterion(fenced(valid_yaml))
     criterion = described_class.load(path)
     expect(criterion.rule.version).to eq(1)
     expect(criterion.rule.window_days).to eq(7)

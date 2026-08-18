@@ -1,9 +1,7 @@
-# Negative list — what the harvest may never propose
+# Negative list fixture — what the harvest may never propose
 #
-# The versioned seed: the store's `NEGATIVE.md` content is the forge's, and
-# `insika harvest:negative import --agent ID` imports this file into the
-# profile. The engine only APPLIES the list, never authors it; every candidate
-# rejected by a rule is logged with the rule id.
+# The real list is the store's own, read from the file INSIKA_HARVEST_NEGATIVE
+# points at. This fixture exists so the deployment wiring spec boots with one.
 
 ## Restrictions
 

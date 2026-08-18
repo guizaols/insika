@@ -5,8 +5,8 @@ require "yaml"
 
 module Insika
   module Harvest
-    # C4 — the frozen conversion criterion (RFC §4.3), parsed from
-    # `harvest/CRITERION.md`. The parity shape (Parity::Criterion) copied: one
+    # C4 — the frozen conversion criterion, parsed from the deployment's
+    # criterion file. The parity shape (Parity::Criterion) copied: one
     # file, one ```yaml fence, the WHOLE bytes hashed (an edit to the rationale
     # invalidates the frozen rule too), strict keys, no defaults. A skill may
     # land only when the store's ruler is not measurably worse than the

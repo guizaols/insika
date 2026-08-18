@@ -419,11 +419,11 @@ Shadow mode (RFC-0025) lets one channel run every turn **end to end and deliver
 nothing** — the experiment that answers "can we replace the incumbent?" before
 any customer is handed over. The incumbent keeps answering; the engine records
 what it *would* have answered, and the two replies are judged pairwise against a
-**frozen criterion** (`evals/PARITY.md`).
+**frozen criterion** — the file `INSIKA_PARITY_CRITERION` points at.
 
 ```bash
 INSIKA_RELAY_SHADOW=1    # the switch
-# INSIKA_PARITY_CRITERION defaults to evals/PARITY.md
+# INSIKA_PARITY_CRITERION — required in shadow mode
 ```
 
 Three things change when it is on:
@@ -452,7 +452,7 @@ Both shapes land in one command; a retried reply is ignored (first write wins �
 the customer received one reply, and a retry must not rewrite evidence).
 
 **No criterion, no shadow.** Boot refuses when shadow is on and
-`evals/PARITY.md` is missing or unparseable — a number nobody pre-registered
+the criterion file is missing or unparseable — a number nobody pre-registered
 does not count. The Studio's Parity page folds the running verdict on demand
 from the pair store; `insika doctor` reports the shadow configuration before
 boot does.

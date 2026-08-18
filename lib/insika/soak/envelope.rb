@@ -15,8 +15,6 @@ module Insika
     # pre-declaration. Contrast with EnvSchema (tolerant, warn-and-boot) — that
     # resilience protects a live service; this strictness protects a claim.
     class Envelope
-      DEFAULT_PATH = "evals/SOAK.md"
-
       # Required keys. A missing one is a ConfigError, not a default.
       REQUIRED = %i[
         version target duration_hours warmup_hours
@@ -45,7 +43,7 @@ module Insika
 
       # Raises Insika::ConfigError: file missing, no fenced yaml block,
       # unparseable, a REQUIRED key absent, or a value out of range.
-      def self.load(path = DEFAULT_PATH)
+      def self.load(path)
         bytes = File.binread(path)
         parse(bytes, sha: "sha256:#{Digest::SHA256.hexdigest(bytes)}")
       rescue Errno::ENOENT

@@ -188,9 +188,9 @@
         <% end %>
       </ul>
       <div class="skill-desc muted">
-        The list is pack data on the profile (hot-editable); the repo file
-        <span class="mono">harvest/NEGATIVE.md</span> seeds it via
-        <span class="mono">insika harvest:negative import --agent ID</span>.
+        The list is pack data on the profile (hot-editable); the versioned
+        rules file seeds it via
+        <span class="mono">insika harvest:negative import --agent ID --file F</span>.
       </div>
     </div>
   <% end %>
@@ -206,7 +206,7 @@
         <span class="mono muted"><%= @criterion.sha %></span>
       </div>
       <div class="skill-desc muted">
-        The ruler is <span class="mono">harvest/CRITERION.md</span>, read-only here; the
+        The ruler is the frozen criterion file, read-only here; the
         store's frozen baseline lives on the <a href="/studio/funnel">Funnel page</a>. A
         store without one can mine, but the gate parks its candidates.
       </div>

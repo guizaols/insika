@@ -126,21 +126,19 @@ module Insika
         )
       end
 
-      # The frozen criterion (D5) — best-effort at boot: a bare install
-      # without harvest/CRITERION.md renders the ruler's hole instead of
+      # The frozen criterion — best-effort at boot: a bare install
+      # without the env var renders the ruler's hole instead of
       # crashing the Studio.
       def harvest_criterion
-        Insika::Harvest::Criterion.load(
-          Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION") || "harvest/CRITERION.md"
-        )
+        path = Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION")
+        path && Insika::Harvest::Criterion.load(path)
       rescue Insika::ConfigError, Insika::ValidationError
         nil
       end
 
       def harvest_negative_list
-        Insika::Harvest::NegativeList.parse(
-          File.read(Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE") || "harvest/NEGATIVE.md")
-        )
+        path = Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE")
+        path && Insika::Harvest::NegativeList.parse(File.read(path))
       rescue Errno::ENOENT
         nil
       end

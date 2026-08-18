@@ -20,11 +20,38 @@ RSpec.describe "the gated harvest, full cycle (RFC-0035)" do
   let(:events) { [] }
   let(:stream) { Class.new { def initialize(s) = (@s = s); def emit(e) = @s << e }.new(events) }
 
+  CRITERION_SOURCE = <<~MD
+    # criterion (spec fixture)
+
+    ```yaml
+    version: 1
+    metric: primary
+    window: 72h
+    threshold: 0.05
+    min_span: 28d
+    ```
+  MD
+
+  NEGATIVE_SOURCE = <<~MD
+    # negative list (spec fixture)
+
+    ## Restrictions
+
+    - `no-competitor-prices` — "concorrente" — never mention competitors or their prices
+    - `no-competitor-store` — "outra loja" — never steer the customer to another store
+    - `no-refund-promise` — /nao devolvemos/i — the refund policy is the human's answer, never a skill's
+    - `no-delivery-promise` — "garantimos a entrega" — delivery promises are the human's call
+  MD
+
   let(:criterion) do
-    Insika::Harvest::Criterion.load(File.expand_path("../../../harvest/CRITERION.md", __dir__))
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "CRITERION.md")
+      File.write(path, CRITERION_SOURCE)
+      Insika::Harvest::Criterion.load(path)
+    end
   end
   let(:negative) do
-    Insika::Harvest::NegativeList.parse(File.read(File.expand_path("../../../harvest/NEGATIVE.md", __dir__)))
+    Insika::Harvest::NegativeList.parse(NEGATIVE_SOURCE)
   end
 
   def profile_with_harvest

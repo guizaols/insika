@@ -131,8 +131,8 @@ RSpec.describe Insika::Context::Providers::SkillTrigger do
     end
   end
 
-  # The kill criterion of the per-agent scope: the loja-doce agent must stop being
-  # served text that says "na loja-bela", without escalation-to-human losing its shared
+  # The kill criterion of the per-agent scope: one store's agent must stop being
+  # served text that names another store, without the shared skill losing its
   # identity. This is the surface where that text actually reached the model.
   describe "a specialized skill in the injected body" do
     let(:store) { Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
@@ -146,19 +146,19 @@ RSpec.describe Insika::Context::Providers::SkillTrigger do
     end
 
     it "injects the agent's own body, and the shared one for everybody else" do
-      store.write("escalation", skill_md("escalation", "na loja-bela, devolucao em 7 dias"))
-      store.write("escalation", skill_md("escalation", "na loja-doce, troca na loja"), agent: "cacau")
+      store.write("escalation", skill_md("escalation", "na biro, devolucao em 7 dias"))
+      store.write("escalation", skill_md("escalation", "na kino, troca na loja"), agent: "kino")
       catalog = Insika::SkillCatalog.new(@dir, store: store)
       provider = described_class.new(catalog: catalog)
 
-      cacau = provider.call(scoped_request("cacau")).first
-      loja-bela = provider.call(scoped_request("loja-bela")).first
+      kino = provider.call(scoped_request("kino")).first
+      biro = provider.call(scoped_request("biro")).first
 
-      expect(cacau.content).to include("na loja-doce")
-      expect(cacau.content).not_to include("na loja-bela")
-      expect(loja-bela.content).to include("na loja-bela")
+      expect(kino.content).to include("na kino")
+      expect(kino.content).not_to include("na biro")
+      expect(biro.content).to include("na biro")
       # same bare name on both: the label, the level-1 list and load_skill agree
-      expect(cacau.labels.map { |l| l["name"] }).to eq(["escalation"])
+      expect(kino.labels.map { |l| l["name"] }).to eq(["escalation"])
     end
   end
 

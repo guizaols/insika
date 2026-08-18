@@ -1,9 +1,9 @@
 {
   "meta": {
-    "criterion": "evals/PARITY.md",
+    "criterion": "spec/fixtures/parity/criterion.md",
     "now": "2026-08-15T12:00:00Z",
     "recorded_verdict": "pass",
-    "how_to_read": "7 consecutive days x 35 pairs: 200 decided (160 better / 28 comparable / 12 worse), 8 split, 7 unknown, 10 human-assisted, 10 silent, 5 incomplete, 5 open. Hand-apply evals/PARITY.md to these pairs and you reach :pass; the spec asserts the fold does too. criterion_sha \"stamped\" is filled with the currently-loaded evals/PARITY.md hash at spec time."
+    "how_to_read": "7 consecutive days x 35 pairs: 200 decided (160 better / 28 comparable / 12 worse), 8 split, 7 unknown, 10 human-assisted, 10 silent, 5 incomplete, 5 open. Hand-apply spec/fixtures/parity/criterion.md to these pairs and you reach :pass; the spec asserts the fold does too. criterion_sha \"stamped\" is filled with the currently-loaded fixture's hash at spec time."
   },
   "pairs": [
     {

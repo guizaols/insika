@@ -10,36 +10,105 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
-- **Intent routing (WS4)** — `AgentProfile#routes` classifies the turn's
+- **Shadow mode** — the relay channel can run every turn end to end and deliver
+  nothing: the incumbent keeps answering, the engine records what it *would*
+  have answered, and the two replies are judged pairwise against a **frozen,
+  pre-registered criterion** (the file `INSIKA_PARITY_CRITERION` points at; its
+  SHA-256 stamps every pair, and editing it mid-window turns the verdict
+  `invalid`, never stale). A panel of judges scores each pair twice with the
+  sides swapped, so a preference that flips with presentation order is recorded
+  as comparable, not as a preference. The Studio's Parity page folds the
+  running verdict on demand. No criterion, no shadow: boot refuses.
+- **The 72h soak** — `insika soak` sustains a declared arrival rate for days and
+  asks whether the *process itself* degrades with uptime. A deployment-side
+  envelope freezes the load shape and the gated ceilings before the first hour
+  (its hash stamps every snapshot); `--preflight` refuses to start on a missing
+  precondition; the runner appends hourly vitals as they happen, so a crash at
+  hour 60 leaves 60 usable hours; `--verify` recomputes the whole verdict
+  offline from the raw records. A fail means *find the leak* — never cut, and
+  never loosen the envelope.
+- **Progressive delivery** — the relay can flush the outbox one balloon per
+  paragraph (`INSIKA_RELAY_DELIVERY=progressive`), with the first balloon
+  posted as soon as the answer exists; the default `:at_end` is byte-identical
+  to before. Every channel turn records `first_balloon_ms` (inbound receipt →
+  first outbox flush) so the target is measured, not assumed.
+- **Session briefing** — the pack can declare `briefing_fields`; the engine
+  keeps the session's working state as data (known fields, still-missing list,
+  next step), a tool updates it, and the context provider injects it into the
+  turn — the consultant stops re-asking what it already knows.
+- **Grounding** — an `evidence:` contract on the tool envelope: a model claim
+  must cite ids that came out of a tool call, with `:enforce` / `:flag` / `:off`
+  modes and a per-turn ledger. A claim without evidence is refused or flagged —
+  never silently passed through.
+- **Layered identity + observable cache** — context providers are split into
+  identity/volatile layers behind a byte-stable cache prefix; the per-agent
+  cache-hit series is recorded (`CacheSeriesStore`) and shown on the Studio
+  agent detail. Invalidations and hits are measurable, not guessed.
+- **Customer memory in the Studio** — a Customers drill reads and edits the
+  per-customer memory cell, with an append-only operator-mutation audit trail
+  (content-free digests), provenance metadata, expiry, the LGPD export
+  (`/v1/commands/export_customer_memory`) and the existing right to be
+  forgotten.
+- **The outcome funnel** — outcomes fold into a store-declared stage funnel
+  (`funnel:` on the pack) on the tick: idempotent cumulative counts, an
+  attribution window carried as data, a frozen baseline (`:freeze_funnel_baseline`)
+  and a Studio page per agent. The stage vocabulary is the deployment's; a bare
+  install shows no funnel at all.
+- **Follow-ups** — the agent can book a future contact: `schedule()` and
+  `cancel_followup()` tools, a durable per-customer contact state
+  (`granted | revoked | unavailable`, where silence is not a refusal), a policy
+  engine over the tick (quiet hours, frequency ceilings, dedup, opt-out
+  keywords) and a Studio page per agent. A customer who opted out can never be
+  rescheduled; blocking happens at fire time, never at schedule time.
+- **Distilled facts** — finished conversations are read back as proposed
+  customer facts; a human approves/rejects/dismisses each on the Studio Facts
+  page, with a latched dedup ledger (a dismissed tuple is never proposed again),
+  optimistic CAS writes and LGPD-friendly retention. Nothing is ever applied
+  automatically.
+- **Gated skill harvest** — finished traffic can be mined for skill proposals
+  behind a versioned negative list and an evidence ledger (product claims must
+  reference ids the origin sessions actually saw); promotion requires the eval
+  replay **and** the store's conversion ruler not to regress, with an
+  append-only log and snapshot rollback. Nothing is ever applied automatically.
+- **A domain-free core** — the gem payload is a spec-asserted boundary
+  (`lib/` + `docs/` + the four root files; `deploy/`, `packs/`, `examples/`,
+  `evals/`, `scripts/` and `spec/` never ship, even when tracked). The pt-BR
+  guardrail corpus is language-tagged removable data, and `insika doctor --domain`
+  inventories what a deployment declares. A bare install names no store.
+- **Model-visible conformance** — every byte that reaches the provider is
+  reconstructable from checkpoints + traces, proven byte-for-byte by the
+  conformance suite (`spec/insika/conformance/`): what the chat held == the
+  checkpoint transcript == the model trace, across plain, tool-calling, steered,
+  subagent, scheduled and resuming turns.
+- **Intent routing** — `AgentProfile#routes` classifies the turn's
   message into one configured route with a cheap model before the ask, from a
   prompt auto-generated out of the route descriptions. The route rides the
   turn (`state.route`, the `:route_classified` event, the terminal event), its
   provider cost is counted in the usage, and a route can `delegate` to an
   existing agent (its answer becomes the parent's) or end the turn with the
-  WS5 stuck outcome (`stuck: true`). Deterministic `default` fallback;
+  stuck outcome (`stuck: true`). Deterministic `default` fallback;
   classifier failure leaves the turn unrouted (additive).
-- **Outcomes (WS7)** — `POST /v1/outcomes` records a conversation's business
+- **Outcomes** — `POST /v1/outcomes` records a conversation's business
   outcome (`conversion`/`escalation`/`deflected`/…, optional monetary value)
   from the operator or the integration — additive, outside the response
-  contract, tenant-stamped (WS1). `GET /v1/outcomes` serves the last outcome
+  contract, tenant-stamped. `GET /v1/outcomes` serves the last outcome
   per agent + per-day series; the Studio's agent grid shows the last-outcome
-  pill and the agent detail shows the per-day series. `evals/run.rb` already runs the corpus against a real deployment
-  (`--base-url`).
-- **Customer-scoped memory + right to be forgotten (WS8)** — a message
+  pill and the agent detail shows the per-day series.
+- **Customer-scoped memory + right to be forgotten** — a message
   carrying a `customer` key moves the memory scope to the `[tenant:]customer`
   cell: two customers under one tenant never read each other (phase 1), and
   the `<request_context>` merchant label stays untouched. Facts gained an
   optimistic CAS write (`replace_if_revision`, microsecond revisions).
   `POST /v1/commands/forget_customer` (phase 2, LGPD) purges one customer's
   memory cell, their sessions and per-session traces — nothing else's.
-- **Tenant deletion + retention (WS8, phase 2 complete)** —
+- **Tenant deletion + retention** —
   `POST /v1/commands/delete_tenant_data` purges everything the engine holds
   about one tenant (sessions, traces, every memory cell under the tenant and
   its outcome records); the `retention_days` settings key turns on the tick's
   daily age-based sweep (sessions + traces, terminal tasks + checkpoints,
   memory cells and outcomes — OFF by default). The KV store contract gained
   an additive `scopes(prefix)` enumeration.
-- **Media in the message contract (WS9, input half)** — messages accept
+- **Media in the message contract** — messages accept
   additive content parts (`text`/`image`/`audio` with a URL). Audio is
   transcribed via RubyLLM STT (model/language via `INSIKA_STT_MODEL`/
   `INSIKA_STT_LANGUAGE`) and the text enters the turn marked
@@ -47,7 +116,7 @@ it is released. Entries land with the pull request that makes the change.
   (provider-billed, usage flows) and the first image URL is
   `{{ctx.image_url}}` for data/HTTP tools; media URLs pass the egress guard. The
   OpenAI multimodal `input` array shape works on `/v1/responses`.
-- **Generated media as outputs (WS9, saída)** — the turn can produce an
+- **Generated media as outputs** — the turn can produce an
   image or a voice clip when BOTH gates agree: the agent opts in
   (`AgentProfile#outputs` — per-kind model/voice/size config) and the request
   declares the channel can receive it (`channel.capabilities`, one of
@@ -64,39 +133,38 @@ it is released. Entries land with the pull request that makes the change.
 ## [0.2.0] - 2026-08-13
 
 The workstreams between the first release and the one the gem actually became:
-multi-tenancy at the edge (WS1), calendar budgets (WS2), provider reliability
-(WS3), the stuck signal (WS5), operator alerts + live TTFB (WS6), and the
-failure-classification core (B9) — plus the two fix rounds that made them
-safe to ship.
+multi-tenancy at the edge, calendar budgets, provider reliability, the stuck
+signal, operator alerts + live TTFB, and the failure-classification core — plus
+the two fix rounds that made them safe to ship.
 
 ### Added
 
-- **Multi-tenant at the edge (WS1)** — `INSIKA_TENANCY=multi_tenant` resolves the
+- **Multi-tenant at the edge** — `INSIKA_TENANCY=multi_tenant` resolves the
   Bearer to a principal before the routes: per-tenant + operator tokens stored
   only as SHA-256 hashes, a tenant's sessions/tasks/streams living under its own
   `<tenant>:` namespace (fail-closed: another tenant's reads as `404`), and every
   authoring/config surface refused to a tenant.
-- **Calendar budgets (WS2)** — `AgentProfile#budget` caps the billed spend
+- **Calendar budgets** — `AgentProfile#budget` caps the billed spend
   (input + output + cached + cache-creation) per calendar day/month and
   (tenant, agent): HARD (default) fails the turn with the typed
   `Insika::BudgetExceeded` + `retry_after`; `soft: true` runs the turn and warns
   once per window — with the `alert_at` (`0.8`) crossing and the real cap
   crossing as separate events.
-- **Reliability (WS3)** — retries with backoff, mid-turn rotation to the
+- **Reliability** — retries with backoff, mid-turn rotation to the
   fallback chain, a per-`(tenant, provider/model)` circuit breaker with
   half-open trials (a failed trial reopens), and a per-attempt `timeout`
   (default 30s) counted as retryable. A `:fatal` provider error is never
   retried.
-- **Stuck signal (WS5)** — an agent declared stuck ends its turn with
+- **Stuck signal** — an agent declared stuck ends its turn with
   `outcome: "stuck"` on the envelope and a dedicated `:turn_stuck` event — the
   deterministic point a consumer escalates on.
-- **Operator alerts + live TTFB (WS6)** — `budget_warning`, `breaker_open` and
+- **Operator alerts + live TTFB** — `budget_warning`, `breaker_open` and
   `delivery_failed` POSTed to a per-agent `alerts.webhook` over the at-most-once
   outbox pipeline (boot-recoverable); under `INSIKA_TURN_TIMING` the first
   content chunk emits a live `:ttft` on the streaming envelope.
-- **Failure classification (B9)** — provider/transport failures classified by
+- **Failure classification** — provider/transport failures classified by
   action (`:fatal` / `:retryable` / `:rate_limited_*`) and wrapped with the
-  provider's `retry_after`; mechanical tool-output dedupe (C3) back-references a
+  provider's `retry_after`; mechanical tool-output dedupe back-references a
   byte-identical repeat only when the reference is genuinely shorter.
 - **The periodic tick** — durability no longer waits for a reboot. Serving
   workers run a tick every `INSIKA_TICK_INTERVAL` (default 60s, `0` disables)
@@ -109,7 +177,7 @@ safe to ship.
 
 ### Fixed
 
-- **WS2/WS3/WS6 criticals** — the budget alert marker no longer returns inside
+- **Budget/reliability/alerts criticals** — the budget alert marker no longer returns inside
   the store transaction (a leaked `BEGIN IMMEDIATE` locked SQLite on the 2nd
   over-threshold turn); the monthly reset is December-safe and UTC-aligned; an
   unset reliability timeout is 30s, not 1s, and a timeout retries/rotates
@@ -117,10 +185,10 @@ safe to ship.
   webhook deliveries pass the egress guard (SSRF); `:ttft` is emitted once per
   turn; webhook channels pre-register so the boot sweep recovers pending alerts;
   the alert dispatcher subscribes typed and re-subscribes on overflow.
-- **WS1** — `#revoke` rides the store transaction; a `tenant_id` containing
+- **Tenancy** — `#revoke` rides the store transaction; a `tenant_id` containing
   `:` is refused (the session-namespace delimiter); `POST /v1/sessions` mints a
   tenant's session under its own prefix.
-- **WS2/WS3 softs** — a failed turn's consumed tokens count against the budget;
+- **Budget and reliability softs** — a failed turn's consumed tokens count against the budget;
   `:breaker_open` alerts only on the closed→open transition; the fallback chain
   dedupes `"model"` vs `"provider/model"` spellings.
 
@@ -194,7 +262,7 @@ The first release: `gem install insika`.
 - **The gate refuses to grade a judged baseline without a judge** — a rubric'd case
   with no verdict counts as a pass, so replaying without a judge against a baseline
   recorded with one does not measure less, it measures backwards. Found by running the
-  panel against the real pilot: the gate reported *6/6, no regression* against a
+  panel against real traffic: the gate reported *6/6, no regression* against a
   baseline the same corpus had just scored *2/6*, and both candidates cleared. With the
   judge configured, the same two candidates were correctly rejected on judge-score
   drops. Third member of the same family as the missing and all-red baseline refusals.
@@ -202,7 +270,7 @@ The first release: `gem install insika`.
   input + output and excludes the cached prefix (a 27 KB pack reports `88` total against
   `26624` cached), so a ceiling built on it alone let a run send hundreds of times what
   it said. Cost now bills `total + cached` and records the cached share, which on a real
-  panel run was 95% of the spend. A run that cannot be gated is also refused **before**
+  run was 95% of the spend. A run that cannot be gated is also refused **before**
   the proposal is paid for, not after.
 - **The eval baseline is a per-agent record, not only a file** — `evals/baseline.json`
   works from a checkout; the refinement gate runs inside a deployment that has none.

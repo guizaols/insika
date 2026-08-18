@@ -8,7 +8,7 @@ require_relative "../../lib/insika/dsl/server_boot"
 # config/deployment.rb; a page answering "unknown command" would make the OSS
 # root a second-class citizen.
 RSpec.describe Insika::DSL::ServerBoot do
-  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../evals/PARITY.md", __dir__))
+  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../fixtures/parity/criterion.md", __dir__))
 
   BootRecordingBus = Struct.new(:registered) do
     def register(name, handler)

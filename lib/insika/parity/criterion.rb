@@ -5,7 +5,7 @@ require "yaml"
 
 module Insika
   module Parity
-    # C5 — the frozen criterion, parsed from `evals/PARITY.md`.
+    # C5 — the frozen criterion, parsed from the deployment's criterion file.
     # The prose a human reads and the yaml block the machine applies are the SAME
     # file, so there is exactly one place to edit — and the file's WHOLE bytes are
     # hashed, so an edit to the rationale invalidates the frozen rule too, which is

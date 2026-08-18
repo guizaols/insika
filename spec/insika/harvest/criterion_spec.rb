@@ -3,8 +3,8 @@
 require "spec_helper"
 require "tmpdir"
 
-# C4 — the frozen conversion criterion, parsed from harvest/CRITERION.md's
-# fenced yaml block (D5 — the parity shape: strict keys, no defaults, whole
+# C4 — the frozen conversion criterion, parsed from the deployment's criterion
+# file's fenced yaml block (the parity shape: strict keys, no defaults, whole
 # bytes sha). A skill may land only when the store's ruler is not measurably
 # worse than the accepted state; the file IS the criterion — the profile
 # carries no thresholds.
@@ -30,7 +30,7 @@ RSpec.describe Insika::Harvest::Criterion do
 
   def fenced(body)
     <<~MD
-      # harvest/CRITERION.md — frozen BEFORE the first promotion.
+      # CRITERION.md — frozen BEFORE the first promotion.
 
       > A skill may land only when the store's ruler is not measurably worse
       > than the accepted state.
@@ -41,9 +41,8 @@ RSpec.describe Insika::Harvest::Criterion do
     MD
   end
 
-  it "loads the committed harvest/CRITERION.md — a doc edit that breaks the block fails the suite" do
-    path = File.expand_path("../../../harvest/CRITERION.md", __dir__)
-    criterion = described_class.load(path)
+  it "loads a frozen criterion file — a doc edit that breaks the block fails the suite" do
+    criterion = described_class.load(write_criterion(fenced(valid_yaml)))
     expect(criterion.rule.version).to eq(1)
     expect(criterion.rule.metric).to eq("primary")
     expect(criterion.rule.window).to eq("72h")

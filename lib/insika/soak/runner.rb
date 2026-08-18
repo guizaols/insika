@@ -43,9 +43,9 @@ module Insika
           --dry-run              print the plan + one sample request, send nothing
 
         Options:
-          --envelope PATH        the frozen envelope (default: evals/SOAK.md)
+          --envelope PATH        the frozen envelope (required)
           --agent ID             the soak agent (default: from envelope)
-          --out DIR              where the results file lands (default: evals/soak)
+          --out DIR              where the results file lands (default: soak-out)
           --resume FILE          continue an interrupted run, recording the gap
 
         Environment:
@@ -65,7 +65,7 @@ module Insika
 
       # CLI entry (bin/insika delegates here). -> exit status.
       def self.main(argv, stdout: $stdout, stderr: $stderr, env: ENV, http: nil)
-        opts = { envelope: Envelope::DEFAULT_PATH, out: "evals/soak" }
+        opts = { out: "soak-out" }
         modes = []
         OptionParser.new do |o|
           o.banner = "Usage: insika soak --run | --verify FILE | --preflight [options]"
@@ -82,6 +82,10 @@ module Insika
 
         if modes.length != 1
           stderr.puts "insika soak: choose exactly one of --run, --verify, --preflight, --dry-run\n\n#{USAGE}"
+          return 2
+        end
+        if opts[:envelope].nil?
+          stderr.puts "insika soak: --envelope PATH is required (the deployment's frozen envelope)\n\n#{USAGE}"
           return 2
         end
 
@@ -125,7 +129,9 @@ module Insika
 
       # Pure fold over the archived file — no traffic, no network, no clock.
       def self.verify(path, envelope_path: nil, stdout: $stdout, stderr: $stderr)
-        envelope = envelope_path ? Envelope.load(envelope_path) : Envelope.load
+        raise Insika::ConfigError, "soak --verify needs --envelope PATH (the frozen envelope the run was declared with)" if envelope_path.nil?
+
+        envelope = Envelope.load(envelope_path)
         records = read_records(path)
         result = Report.fold(records, envelope: envelope)
         stdout.puts result.to_s
@@ -153,7 +159,7 @@ module Insika
 
       attr_reader :envelope
 
-      def initialize(envelope:, out: "evals/soak", agent: nil, env: ENV, http: nil,
+      def initialize(envelope:, out: "soak-out", agent: nil, env: ENV, http: nil,
                      seed: nil, clock: nil, sleeper: nil, stdout: $stdout, stderr: $stderr)
         @envelope = envelope
         @out = out
@@ -180,7 +186,9 @@ module Insika
       end
 
       def corpus
-        path = @envelope[:corpus] || "evals/soak/corpus.txt"
+        path = @envelope[:corpus]
+        raise Insika::ConfigError, "soak envelope declares no corpus" if path.to_s.empty?
+
         lines = File.readlines(path, chomp: true).map(&:strip).reject(&:empty?)
         raise Insika::ConfigError, "soak corpus #{path} has no usable lines" if lines.empty?
 

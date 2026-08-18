@@ -7,7 +7,7 @@ require "json"
 # two people reading the same pairs get the same answer (E3). Every terminal
 # state has its own case; the fixture is the E3 experiment itself.
 RSpec.describe Insika::Parity::Verdict do
-  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../../evals/PARITY.md", __dir__))
+  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../fixtures/parity/criterion.md", __dir__))
 
   FIXED_NOW = Time.utc(2026, 8, 15, 12, 0, 0)
 

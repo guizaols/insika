@@ -39,19 +39,19 @@ RSpec.describe Insika::SkillStore do
   describe "the agent scope" do
     it "the same name holds a different body per agent, and the shared one is untouched" do
       store.write("escalation", skill_md("escalation", "shared"))
-      store.write("escalation", skill_md("escalation", "for loja-bela"), agent: "loja-bela")
+      store.write("escalation", skill_md("escalation", "for biro"), agent: "biro")
 
       expect(store.get("escalation")).to eq(skill_md("escalation", "shared"))
-      expect(store.get("escalation", agent: "loja-bela")).to eq(skill_md("escalation", "for loja-bela"))
-      expect(store.get("escalation", agent: "cacau")).to be_nil
+      expect(store.get("escalation", agent: "biro")).to eq(skill_md("escalation", "for biro"))
+      expect(store.get("escalation", agent: "kino")).to be_nil
     end
 
     it "an agent-private skill is invisible in the shared scope" do
-      store.write("only-mine", skill_md("only-mine"), agent: "loja-bela")
+      store.write("only-mine", skill_md("only-mine"), agent: "biro")
 
       expect(store.names).to eq([])
-      expect(store.names(agent: "loja-bela")).to eq(["only-mine"])
-      expect(store.all(agent: "loja-bela").keys).to eq(["only-mine"])
+      expect(store.names(agent: "biro")).to eq(["only-mine"])
+      expect(store.all(agent: "biro").keys).to eq(["only-mine"])
     end
 
     it "lists the agents that specialized something (what the catalog overlays)" do
@@ -64,23 +64,23 @@ RSpec.describe Insika::SkillStore do
 
     it "versions, restores and create_only work per agent, independently of the shared record" do
       store.write("esc", skill_md("esc", "shared v1"))
-      store.write("esc", skill_md("esc", "agent v1"), agent: "loja-bela")
-      store.write("esc", skill_md("esc", "agent v2"), agent: "loja-bela")
+      store.write("esc", skill_md("esc", "agent v1"), agent: "biro")
+      store.write("esc", skill_md("esc", "agent v2"), agent: "biro")
 
       expect(store.versions("esc")).to eq([])                        # the shared one never changed
-      expect(store.versions("esc", agent: "loja-bela").map { |h| h["content"] }).to eq([skill_md("esc", "agent v1")])
-      store.restore("esc", 0, agent: "loja-bela")
-      expect(store.get("esc", agent: "loja-bela")).to eq(skill_md("esc", "agent v1"))
-      expect { store.write("esc", skill_md("esc"), agent: "loja-bela", create_only: true) }
-        .to raise_error(Insika::ValidationError, /already exists for agent 'loja-bela'/)
+      expect(store.versions("esc", agent: "biro").map { |h| h["content"] }).to eq([skill_md("esc", "agent v1")])
+      store.restore("esc", 0, agent: "biro")
+      expect(store.get("esc", agent: "biro")).to eq(skill_md("esc", "agent v1"))
+      expect { store.write("esc", skill_md("esc"), agent: "biro", create_only: true) }
+        .to raise_error(Insika::ValidationError, /already exists for agent 'biro'/)
     end
 
     it "deleting the specialization leaves the shared skill in place" do
       store.write("esc", skill_md("esc", "shared"))
-      store.write("esc", skill_md("esc", "mine"), agent: "loja-bela")
+      store.write("esc", skill_md("esc", "mine"), agent: "biro")
 
-      expect(store.delete("esc", agent: "loja-bela")).to be(true)
-      expect(store.delete("esc", agent: "loja-bela")).to be(false)
+      expect(store.delete("esc", agent: "biro")).to be(true)
+      expect(store.delete("esc", agent: "biro")).to be(false)
       expect(store.get("esc")).to eq(skill_md("esc", "shared"))
     end
   end

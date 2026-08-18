@@ -97,9 +97,10 @@ module Insika
           # incomplete; the criterion is memoized here and injected into
           # ChannelDelivery (its sha stamps every pair our half records).
           if relay&.shadow?
-            @criterion = Insika::Parity::Criterion.load(
-              Insika::EnvSchema.read("INSIKA_PARITY_CRITERION") || "evals/PARITY.md"
-            )
+            criterion_path = Insika::EnvSchema.read("INSIKA_PARITY_CRITERION")
+            raise Insika::ConfigError, "shadow mode requires INSIKA_PARITY_CRITERION (the frozen criterion)" if criterion_path.nil?
+
+            @criterion = Insika::Parity::Criterion.load(criterion_path)
             @graph.channel_delivery&.criterion_sha = @criterion.sha
           end
           @graph.channel_registry.register(relay.id, relay) if relay

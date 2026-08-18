@@ -38,8 +38,8 @@ miner gets the transcript slices (masked), the session's evidence-ledger ids,
 and the agent's current skill names so it does not re-propose them. Then the
 filters, each drop counted and logged:
 
-1. **The negative list** — the versioned `harvest/NEGATIVE.md` (seed, imported
-   per store by `insika harvest:negative import --agent ID`) and the
+1. **The negative list** — the versioned rules file (seed, imported
+   per store by `insika harvest:negative import --agent ID --file F`) and the
    profile's hot-editable `harvest.negative_list`. A rule is a phrase or a
    regex; phrases match case/accent-folded at word boundaries. Every rejected
    candidate is logged with the rule id.
@@ -108,8 +108,8 @@ back, re-promoted is three readable rows.
 ## The operator surface
 
 - `insika harvest --agent ID [--last-sessions N] [--since ISO] [--full]` — mine one window.
-- `insika harvest:negative import --agent ID` — seed the profile's list from `harvest/NEGATIVE.md`.
-- `insika harvest:criterion check` — strict-load the frozen `harvest/CRITERION.md` (the CI hook before any promotion).
+- `insika harvest:negative import --agent ID --file F` — seed the profile's list from a rules file.
+- `insika harvest:criterion check --file F` — strict-load the frozen conversion criterion (the hook before any promotion).
 - The **Harvest page** in the Studio: the human's inbox (each candidate with
   its evidence excerpt, the eval report, the conversion card, promote/reject),
   the gated-but-blocked rows with the named ruler hole, the pending list, the

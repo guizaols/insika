@@ -6,7 +6,7 @@ require "spec_helper"
 # ALREADY configured. Never automatic, never a no-op: a refusal is visible,
 # a fake judge is not.
 RSpec.describe Insika::Commands::JudgeShadowPairs do
-  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../../evals/PARITY.md", __dir__))
+  CRITERION = Insika::Parity::Criterion.load(File.expand_path("../../fixtures/parity/criterion.md", __dir__))
 
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }

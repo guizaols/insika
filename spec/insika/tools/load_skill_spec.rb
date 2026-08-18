@@ -38,12 +38,12 @@ RSpec.describe Insika::Tools::LoadSkill do
     let(:scoped) do
       instance_double("Insika::SkillCatalog").tap do |c|
         allow(c).to receive(:find).with("esc", agent: nil).and_return(Skill.new("esc", "SHARED"))
-        allow(c).to receive(:find).with("esc", agent: "cacau").and_return(Skill.new("esc", "MINE"))
+        allow(c).to receive(:find).with("esc", agent: "kino").and_return(Skill.new("esc", "MINE"))
       end
     end
 
     it "serves the agent's own body" do
-      expect(described_class.new(scoped, ["esc"], agent: "cacau").execute(name: "esc")).to eq("MINE")
+      expect(described_class.new(scoped, ["esc"], agent: "kino").execute(name: "esc")).to eq("MINE")
     end
 
     it "no agent -> the shared body (parity)" do
