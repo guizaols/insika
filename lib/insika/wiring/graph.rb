@@ -87,6 +87,12 @@ module Insika
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
         refinement_store     = Insika::RefinementStore.new(store: backend)
+        # RFC-0035 C5: the harvest's durable half — mining runs, the per-
+        # candidate lifecycle, the append-only promotion log, the snapshots
+        # and the per-session markers. Built unconditionally (empty and free
+        # when no pack declares harvest) so the engine, the Studio and the
+        # LGPD purges always have a store.
+        harvest_store        = Insika::HarvestStore.new(store: backend)
 
         code_tool_registry = Insika::ToolRegistry.new
         workflow_registry  = Insika::WorkflowRegistry.new
@@ -104,6 +110,7 @@ module Insika
           delegation_store: delegation_store,
           memory_store: memory_store, memory_audit_store: memory_audit_store,
           refinement_store: refinement_store,
+          harvest_store: harvest_store,
           token_store: token_store, budget_ledger: budget_ledger, circuit_state: circuit_state,
           outbox_store: outbox_store, shadow_pair_store: shadow_pair_store,
           inbound_log: inbound_log,
@@ -180,7 +187,7 @@ module Insika
       )
 
         bus = build_core_bus(spine: spine, profiles: profiles, executor: executor,
-                             executor_extra: executor_extra)
+                             executor_extra: executor_extra, skill_catalog: skill_catalog)
 
         # the periodic tick (outbox drain + stale recovery sweep). Built
         # here, after the bus, because its recovery half dispatches resume_task
@@ -207,7 +214,8 @@ module Insika
             funnel_store: spine.funnel_store, # RFC-0032 C6: fold dies with its source
             followup_store: spine.followup_store, # RFC-0033 C11: records age out too
             contact_store: spine.contact_store, # RFC-0033 C11: cells age out too
-            proposal_store: spine.proposal_store # RFC-0034 C8: proposals age out too
+            proposal_store: spine.proposal_store, # RFC-0034 C8: proposals age out too
+            harvest_store: spine.harvest_store # RFC-0035 C13: candidates/log/snapshots too
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
@@ -248,6 +256,27 @@ module Insika
           profiles: profiles,
           window: Insika::DistillEngine::DEFAULT_WINDOW
         )
+        # RFC-0035 C12: the harvest engine — the tick-duty that finds idle,
+        # unmined sessions whose agent declares `harvest.enabled` and mines
+        # them on its own worker fiber (a supervisor child, started in serving
+        # mode next to the tick). Always built: INERT until a profile declares
+        # harvest (the engine gates its start and its passes on data). The
+        # runner is the same RunHarvest the bus serves, so the manual CLI and
+        # the automated loop share one code path.
+        run_harvest = Insika::Commands::RunHarvest.new(
+          profiles: profiles, harvest_store: spine.harvest_store,
+          session_store: spine.session_store, task_store: spine.task_store,
+          skill_store: skill_catalog.store, # the harvest's dedup reads the authored skills
+          tool_trace_store: executor_extra[:tool_trace_store],
+          settings_store: executor_extra[:settings_store],
+          negative_list: nil, miner_factory: nil,
+          event_stream: spine.event_stream
+        )
+        executor.harvest_engine = Insika::HarvestEngine.new(
+          store: spine.backend, harvest_store: spine.harvest_store,
+          session_store: spine.session_store, runner: run_harvest,
+          profiles: profiles, window: Insika::HarvestEngine::DEFAULT_WINDOW
+        )
         # WS6 operator alerts: answers budget_warning / breaker_open /
         # delivery_failed per agent (`alerts.webhook`) via the outbox+claim
         # pipeline. Always wired — the per-agent data gates it (parity).
@@ -264,6 +293,7 @@ module Insika
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, memory_audit_store: spine.memory_audit_store,
           refinement_store: spine.refinement_store,
+          harvest_store: spine.harvest_store,
           outbox_store: spine.outbox_store, shadow_pair_store: spine.shadow_pair_store,
           inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
@@ -287,7 +317,7 @@ module Insika
       # The CORE command surface every root needs — turn essentials + the operator
       # controls (pause/approve) the Studio dispatches. Registering pause_task/
       # approve_action HERE is the crux of: it retires the config.ru:28-34 patch.
-      def build_core_bus(spine:, profiles:, executor:, executor_extra: {})
+      def build_core_bus(spine:, profiles:, executor:, executor_extra: {}, skill_catalog: nil)
         bus = Insika::CommandBus.new
         bus.register(:create_session,
                      Insika::Commands::CreateSession.new(session_store: spine.session_store, event_stream: spine.event_stream))
@@ -365,6 +395,7 @@ module Insika
                        followup_store: spine.followup_store, # RFC-0033 C11
                        contact_store: spine.contact_store,   # RFC-0033 C11
                        proposal_store: spine.proposal_store, # RFC-0034 C8
+                       harvest_store: spine.harvest_store,   # RFC-0035 C13
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
@@ -397,6 +428,46 @@ module Insika
                        memory_store: spine.memory_store,
                        event_stream: spine.event_stream
                      ))
+        # RFC-0035 C6/C9/C10: the gated harvest — the mining pass, the double
+        # gate, the human's promote/rollback/dismiss. The BASE graph wires the
+        # nil factories (no eval surface, no criterion, no funnel): every flow
+        # refuses with a named reason or skips (parity). The deployment root
+        # re-registers with the real gate/criterion/negative list.
+        bus.register(:run_harvest,
+                     Insika::Commands::RunHarvest.new(
+                       profiles: profiles, harvest_store: spine.harvest_store,
+                       session_store: spine.session_store, task_store: spine.task_store,
+                       skill_store: skill_catalog.store,
+                       tool_trace_store: executor_extra[:tool_trace_store],
+                       settings_store: executor_extra[:settings_store],
+                       negative_list: nil, miner_factory: nil,
+                       event_stream: spine.event_stream
+                     ))
+        bus.register(:gate_harvest,
+                     Insika::Commands::GateHarvest.new(
+                       harvest_store: spine.harvest_store, gate: nil,
+                       conversion_gate: nil, criterion: nil,
+                       event_stream: spine.event_stream
+                     ))
+        bus.register(:promote_harvest,
+                     Insika::Commands::PromoteHarvest.new(
+                       harvest_store: spine.harvest_store,
+                       skill_store: skill_catalog.store,
+                       skill_catalog: skill_catalog,
+                       profile_source: profiles, criterion: nil, conversion_gate: nil,
+                       event_stream: spine.event_stream
+                     ))
+        bus.register(:rollback_harvest,
+                     Insika::Commands::RollbackHarvest.new(
+                       harvest_store: spine.harvest_store,
+                       skill_store: skill_catalog.store,
+                       skill_catalog: skill_catalog,
+                       profile_source: profiles, event_stream: spine.event_stream
+                     ))
+        bus.register(:reject_harvest,
+                     Insika::Commands::RejectHarvest.new(
+                       harvest_store: spine.harvest_store, event_stream: spine.event_stream
+                     ))
         bus
       end
 
@@ -406,6 +477,7 @@ module Insika
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
+        :harvest_store, # RFC-0035 C5
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
         :contact_store, :followup_store, :proposal_store, # RFC-0033 C3/C4 · RFC-0034 C3
@@ -423,6 +495,7 @@ module Insika
         :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :funnel_store,
         :contact_store, :followup_store, :proposal_store, # RFC-0033 C3/C4 · RFC-0034 C3
+        :harvest_store, # RFC-0035 C5
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

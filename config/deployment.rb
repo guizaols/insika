@@ -343,6 +343,89 @@ module Deploy
     BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM, proposer_factory: PROPOSER_FACTORY, resolver: RESOLVE_REFINEMENT))
     BUS.register(:resolve_refinement, RESOLVE_REFINEMENT)
 
+    # RFC-0035: the gated harvest — the deployment's half of the double gate
+    # (the base graph wires nil factories; the flows refuse with named reasons
+    # until THIS root lands).
+    #
+    # The two pre-registered artifacts (D4/D5): the frozen conversion
+    # criterion and the negative-list seed, both committed under harvest/ and
+    # strict-loaded. A missing/unparseable criterion REFUSES (nil — the gate
+    # names the hole), it never guesses; the negative list is the injected
+    # fallback the per-profile operative list overrides.
+    HARVEST_CRITERION = begin
+      Insika::Harvest::Criterion.load(
+        Insika::EnvSchema.read("INSIKA_HARVEST_CRITERION") || "harvest/CRITERION.md"
+      )
+    rescue Insika::ConfigError, Insika::ValidationError => e
+      warn "[harvest] no frozen criterion at boot: #{e.message}"
+      nil
+    end
+    HARVEST_NEGATIVE = begin
+      Insika::Harvest::NegativeList.parse!(
+        File.read(Insika::EnvSchema.read("INSIKA_HARVEST_NEGATIVE") || "harvest/NEGATIVE.md")
+      )
+    rescue Errno::ENOENT, Insika::ValidationError => e
+      warn "[harvest] no negative-list seed: #{e.message}"
+      Insika::Harvest::NegativeList.parse(nil)
+    end
+    # The eval gate mirrors REFINEMENT_GATE (same golden set, same baseline
+    # store, same transport/judge/capabilities over the deployment's own
+    # public URL) plus the skill collaborators, so the clone can SERVE the
+    # candidate skill — gated by being usable, not by prose (D7).
+    HARVEST_GATE = Insika::Harvest::Gate.new(
+      profiles: PROFILE_SOURCE, agent_files: AGENT_FILE_STORE, goldens: GOLDEN_STORE,
+      baselines: BASELINE_STORE, skill_store: SKILL_STORE, skill_catalog: CATALOG,
+      transport_factory: lambda {
+        Insika::Evals::HttpTransport.new(
+          base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
+                    "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
+          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+        )
+      },
+      capabilities_factory: lambda {
+        Insika::Evals::HttpCapabilities.new(
+          base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
+                    "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
+          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+        )
+      },
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+    )
+    # The second ruler (D6): the store's funnel metric against the RFC-0032
+    # frozen baseline. nil criterion -> the gate refuses with :no_criterion.
+    HARVEST_CONVERSION = Insika::Harvest::ConversionGate.new(
+      funnel_store: GRAPH.funnel_store, criterion: HARVEST_CRITERION
+    )
+    HARVEST_RUN = Insika::Commands::RunHarvest.new(
+      profiles: PROFILE_SOURCE, harvest_store: GRAPH.harvest_store,
+      session_store: SESSION_STORE, task_store: TASK_STORE,
+      skill_store: SKILL_STORE, tool_trace_store: TOOL_TRACE_STORE,
+      settings_store: SETTINGS_STORE, negative_list: HARVEST_NEGATIVE,
+      miner_factory: nil, # resolves harvest.miner.model -> the platform utility_model
+      event_stream: EVENT_STREAM
+    )
+    # the automated loop rides the deployment's own runner (the negative
+    # list + the settings-backed miner factory).
+    EXECUTOR.harvest_engine.runner = HARVEST_RUN if EXECUTOR.harvest_engine
+    BUS.register(:run_harvest, HARVEST_RUN)
+    BUS.register(:gate_harvest, Insika::Commands::GateHarvest.new(
+      harvest_store: GRAPH.harvest_store, gate: HARVEST_GATE,
+      conversion_gate: HARVEST_CONVERSION, criterion: HARVEST_CRITERION,
+      event_stream: EVENT_STREAM
+    ))
+    BUS.register(:promote_harvest, Insika::Commands::PromoteHarvest.new(
+      harvest_store: GRAPH.harvest_store, skill_store: SKILL_STORE, skill_catalog: CATALOG,
+      profile_source: PROFILE_SOURCE, criterion: HARVEST_CRITERION,
+      conversion_gate: HARVEST_CONVERSION, event_stream: EVENT_STREAM
+    ))
+    BUS.register(:rollback_harvest, Insika::Commands::RollbackHarvest.new(
+      harvest_store: GRAPH.harvest_store, skill_store: SKILL_STORE, skill_catalog: CATALOG,
+      profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM
+    ))
+    BUS.register(:reject_harvest, Insika::Commands::RejectHarvest.new(
+      harvest_store: GRAPH.harvest_store, event_stream: EVENT_STREAM
+    ))
+
     BUS.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: SETTINGS_STORE, event_stream: EVENT_STREAM))
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))

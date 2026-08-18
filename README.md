@@ -110,6 +110,7 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Evals](docs/EVALS.md) — the cases that grade an agent: rubrics, the judge panel, and the pre-merge gate.
 - [Refinement](docs/REFINEMENT.md) — read an agent's own traffic back as a ranked report of what broke.
 - [Facts](docs/FACTS.md) — distill finished customer conversations into proposed facts; a human approves them into memory (nothing is ever applied automatically).
+- [Harvest](docs/HARVEST.md) — mine real traffic for SKILL proposals; the negative list, the evidence-ledger grounding filter and the double gate hold every proposal to a human approval and the append-only log (nothing is ever applied automatically).
 
 All of the above is also browsable, searchable and cross-linked at
 **[guizaols.github.io/insika](https://guizaols.github.io/insika/)** — the same files,

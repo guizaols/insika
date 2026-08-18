@@ -26,6 +26,11 @@ module Insika
       @sku = sku && Regexp.new(sku, timeout: REGEX_TIMEOUT) # validated at build; a re-raise here is a bug
     end
 
+    # Is a SKU pattern actually configured? (The doctor's warning and the
+    # harvest's D3 refusal ask the same question — a matcher without a sku
+    # matches nothing and can verify no claim.)
+    def sku? = !@sku.nil?
+
     # raw (the pack's matcher Hash) -> GroundingMatcher. The `sku` must compile
     # and be length-capped. Raises ValidationError.
     def self.build(raw)

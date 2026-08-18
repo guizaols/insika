@@ -1,0 +1,234 @@
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>harvest</span></nav>
+    <h1>Harvest<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
+  </div>
+</header>
+
+<% if insika[:harvest_store].nil? %>
+  <div class="empty">No harvest — the store is not wired.</div>
+<% elsif @agents.empty? %>
+  <div class="empty">No agents yet. Add a <span class="mono">harvest:</span> block to an agent's pack to mine its finished traffic.</div>
+<% else %>
+  <div class="card">
+    <form method="post" action="/studio/harvest" class="actions">
+      <%== csrf_tag %>
+      <label>
+        Agent
+        <select name="agent">
+          <% @agents.each do |id| %>
+            <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
+          <% end %>
+        </select>
+      </label>
+      <label title="Ignore the mined markers and re-read the whole window (the ledger dedup still protects).">
+        <input type="checkbox" name="full" value="1"> full window
+      </label>
+      <button type="submit" class="primary">Mine now</button>
+    </form>
+    <div class="skill-desc muted">
+      Reads this agent's finished conversations, asks the configured miner for SKILL
+      proposals, and filters them through the negative list and the evidence ledger.
+      Nothing is ever applied automatically — a candidate only lands after the double
+      gate AND a human approval.
+    </div>
+  </div>
+
+  <% if @agents.size > 1 %>
+    <div class="filter-bar">
+      <% @agents.each do |id| %>
+        <a class="btn" href="/studio/harvest?agent=<%= Rack::Utils.escape(id) %>"<%== ' aria-current="page"' if id == @agent %>><%= id %></a>
+      <% end %>
+    </div>
+  <% end %>
+
+  <%# The human's inbox. %>
+  <% if @candidates.any? %>
+    <h2>Awaiting approval<span class="sub">the human's answer</span></h2>
+    <% @candidates.each do |cand| %>
+      <div class="card">
+        <div class="skill-desc">
+          <span class="pill ok">gated</span>
+          <span class="mono"><%= cand.name %></span>
+          <span class="muted">· <%= cand.description %></span>
+        </div>
+        <% Array(cand.triggers).each do |t| %>
+          <span class="pill"><%= t %></span>
+        <% end %>
+        <div class="skill-desc muted">
+          store <span class="mono"><%= cand.agent %></span> · proposed by
+          <span class="mono"><%= cand.proposer %></span> · <%= (cand.eval_gate || {})["passed_cases"] %>/<%= (cand.eval_gate || {})["cases"] %> case(s) no regression
+          · conversion <%= (cand.conversion_gate || {})["current"] %> vs <%= (cand.conversion_gate || {})["baseline"] %> (threshold <%= (cand.conversion_gate || {})["threshold"] %>)
+        </div>
+        <% if (excerpt = candidate_excerpt(cand)).any? %>
+          <details class="skill-desc">
+            <summary>evidence excerpt</summary>
+            <% excerpt.each do |sid, idx, text| %>
+              <div class="preview muted">
+                <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid %></a> [<%= idx %>]: <%= text %>
+              </div>
+            <% end %>
+          </details>
+        <% end %>
+        <% Array(cand.origin).each do |sid| %>
+          <a class="mono muted" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid %></a>
+        <% end %>
+        <form method="post" action="/studio/harvest/promote" class="actions">
+          <%== csrf_tag %>
+          <input type="hidden" name="agent" value="<%= cand.agent %>">
+          <input type="hidden" name="candidate_id" value="<%= cand.id %>">
+          <label>
+            Note
+            <input type="text" name="note" placeholder="why (optional)">
+          </label>
+          <button type="submit" class="primary">Promote</button>
+          <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
+        </form>
+        <div class="skill-desc muted">
+          Promoting snapshots the pre-promotion state, writes the skill into this store's
+          scope, enables it on the allowlist and appends the promotion log row. Rollback
+          is the one-click mirror.
+        </div>
+      </div>
+    <% end %>
+  <% end %>
+
+  <%# Gated-but-blocked: the ruler's hole, named. %>
+  <% if @blocked.any? %>
+    <h2>Blocked<span class="sub">gated, waiting on the ruler</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @blocked.each do |cand| %>
+          <li>
+            <span class="pill err">blocked</span>
+            <span class="mono"><%= cand.name %></span>
+            <span class="preview muted">
+              <% reason = (cand.conversion_gate || {})["reason"] %>
+              <% if reason == "no_frozen_baseline" %>
+                the store has no frozen funnel baseline — freeze it first on the
+                <a href="/studio/funnel">Funnel page</a>
+              <% elsif reason %>
+                <%= reason %>
+              <% else %>
+                <%= (cand.eval_gate || {})["reason"] %>
+              <% end %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%# Mined, not yet gated. %>
+  <% if @pending_gates.any? %>
+    <h2>Pending<span class="sub">mined, awaiting the double gate</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @pending_gates.each do |cand| %>
+          <li>
+            <span class="pill">pending</span>
+            <span class="mono"><%= cand.name %></span>
+            <span class="preview muted"><%= cand.description %></span>
+            <form method="post" action="/studio/harvest/gate" class="actions inline">
+              <%== csrf_tag %>
+              <input type="hidden" name="agent" value="<%= cand.agent %>">
+              <input type="hidden" name="candidate_id" value="<%= cand.id %>">
+              <button type="submit" class="primary">Gate it</button>
+              <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
+            </form>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%# The promotion log — the single ledger, with the rollback mirror. %>
+  <% if @promotions.any? %>
+    <h2>Promoted<span class="sub">the append-only log</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @promotions.each do |row| %>
+          <li>
+            <% if row.rolled_back_at %>
+              <span class="pill err">rolled back</span>
+            <% else %>
+              <span class="pill ok">promoted</span>
+            <% end %>
+            <span class="mono"><%= row.skill %></span>
+            <span class="preview muted">
+              <%= row.approver %> · <%= row.at %>
+              <% if row.rolled_back_at %>· rolled back <%= row.rolled_back_at %><% end %>
+            </span>
+            <% unless row.rolled_back_at %>
+              <form method="post" action="/studio/harvest/rollback" class="actions inline">
+                <%== csrf_tag %>
+                <input type="hidden" name="agent" value="<%= row.agent %>">
+                <input type="hidden" name="snapshot_ref" value="<%= row.snapshot_ref %>">
+                <input type="text" name="reason" placeholder="why (optional)">
+                <button type="submit" class="ghost">Rollback</button>
+              </form>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%# The negative list block. %>
+  <% if @negative && @negative.rules.any? %>
+    <h2>Negative list<span class="sub">the versioned seed, engine-applied</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @negative.rules.each do |rule| %>
+          <li>
+            <span class="pill"><%= rule.rule %></span>
+            <span class="preview muted"><%= rule.pattern %><%= " — #{rule.note}" if presence(rule.note) %></span>
+            <span class="preview muted">rejected: <%= negative_rule_counts[rule.rule] || 0 %></span>
+          </li>
+        <% end %>
+      </ul>
+      <div class="skill-desc muted">
+        The list is pack data on the profile (hot-editable); the repo file
+        <span class="mono">harvest/NEGATIVE.md</span> seeds it via
+        <span class="mono">insika harvest:negative import --agent ID</span>.
+      </div>
+    </div>
+  <% end %>
+
+  <%# The ruler block. %>
+  <% if @criterion %>
+    <h2>The conversion criterion<span class="sub">frozen before the first promotion</span></h2>
+    <div class="card">
+      <div class="skill-desc">
+        <span class="pill">metric <%= @criterion.rule.metric %></span>
+        <span class="pill">window <%= @criterion.rule.window %></span>
+        <span class="pill">not worse than <%= @criterion.rule.threshold %></span>
+        <span class="mono muted"><%= @criterion.sha %></span>
+      </div>
+      <div class="skill-desc muted">
+        The ruler is <span class="mono">harvest/CRITERION.md</span>, read-only here; the
+        store's frozen baseline lives on the <a href="/studio/funnel">Funnel page</a>. A
+        store without one can mine, but the gate parks its candidates.
+      </div>
+    </div>
+  <% end %>
+
+  <% if @runs.any? %>
+    <h2>Runs<span class="sub">most recent first</span></h2>
+    <div class="card">
+      <ul class="history">
+        <% @runs.each do |run| %>
+          <li>
+            <span class="pill <%= run.status == 'failed' ? 'err' : 'ok' %>"><%= run.status %></span>
+            <span class="mono"><%= run.id[0, 12] %></span>
+            <span class="preview muted">
+              <%= run.candidates %> candidate(s) ·
+              <% if run.cost && run.cost["spent"].to_i.positive? %><%= run.cost["spent"] %> tokens · <% end %>
+              <%= run.started_at %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+<% end %>

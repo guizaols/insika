@@ -386,6 +386,32 @@ RSpec.describe Insika::DSL do
       expect(from_dsl.distill).to eq("enabled" => true, "idle_hours" => 6, "max_proposals" => 10)
       expect(from_dsl).to eq(import_and_read(hand))
     end
+
+    it "the harvest knob is DATA on the pack (RFC-0035)" do
+      dsl = Insika.agent("bia11") do
+        model "deepseek-chat"
+        harvest enabled: true,
+                negative_list: [ { rule: "no-competitor-prices", pattern: "concorrente" } ],
+                miner: { model: "deepseek-v4-flash", window: { last_sessions: 200 } }
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia11", model: "deepseek-chat",
+                  harvest: { "enabled" => true,
+                             "negative_list" => [ { "rule" => "no-competitor-prices",
+                                                    "pattern" => "concorrente" } ],
+                             "miner" => { "model" => "deepseek-v4-flash",
+                                          "window" => { "last_sessions" => 200 } } },
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.harvest).to eq("enabled" => true,
+                                     "negative_list" => [ { "rule" => "no-competitor-prices",
+                                                            "pattern" => "concorrente" } ],
+                                     "miner" => { "model" => "deepseek-v4-flash",
+                                                  "window" => { "last_sessions" => 200 } })
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
   end
 
   describe "#reply / #chat (in-process turn — the quickstart's demo)" do

@@ -142,7 +142,10 @@ module Insika
         followup: h[:followup],
         # RFC-0034: distill declaration — a plain Hash read with string keys by
         # the distiller/engine/doctor; nil round-trips as nil (= feature off).
-        distill: h[:distill]
+        distill: h[:distill],
+        # RFC-0035: harvest declaration — a plain Hash read with string keys
+        # by the miner/engine/doctor; nil round-trips as nil (= loop off).
+        harvest: h[:harvest]
       )
     end
 

@@ -27,6 +27,9 @@ module Insika
       when "doctor"  then doctor(argv)
       when "env"     then env(argv)
       when "refine"  then refine(argv)
+      when "harvest" then harvest(argv)
+      when "harvest:negative" then harvest_negative_import(argv)
+      when "harvest:criterion" then harvest_criterion_check(argv)
       when "soak"    then exit(Insika::Soak::Runner.main(argv, stdout: $stdout, stderr: $stderr))
       when "evals:import" then evals_import(argv)
       when "evals:export" then evals_export(argv)
@@ -49,6 +52,11 @@ module Insika
           doctor [--fix] [--json]   diagnose the deployment configuration
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic
+          harvest --agent ID [...]  mine one window of finished traffic (RFC-0035)
+          harvest:negative import --agent ID [--file F]
+                                    seed the profile's negative list from the repo file
+          harvest:criterion check [--file F]
+                                    strict-load the frozen conversion criterion (CI gate)
           soak   --run | --verify FILE | --preflight   the 72h soak (RFC-0026)
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
@@ -298,6 +306,149 @@ end
                                         }.compact, transport: :cli))
     end
 
+    # insika harvest --agent ID [--last-sessions N] [--since ISO8601] [--full] [--json]
+    #
+    # mines one window of the agent's finished traffic and records
+    # the candidates. Writes nothing but the run + candidates + markers (D2's
+    # fork discipline); a cron or the operator's own habit runs it.
+    def harvest(argv)
+      opts = { json: false, full: false }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika harvest --agent ID [options]"
+        o.on("--agent ID", "agent whose traffic to mine (required)") { |v| opts[:agent] = v }
+        o.on("--last-sessions N", Integer, "mine the N most recent conversations") { |v| opts[:last_sessions] = v }
+        o.on("--since ISO8601", "mine only turns from this instant on") { |v| opts[:since] = v }
+        o.on("--full", "ignore the mined markers and re-read the window") { opts[:full] = true }
+        o.on("--json", "emit the summary as JSON") { opts[:json] = true }
+      end.parse!(argv)
+
+      abort "insika harvest: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+
+      result = begin
+        run_harvest(opts)
+      rescue Insika::Error, ArgumentError => e
+        warn "insika harvest: #{e.message}"
+        exit 2
+      end
+      if opts[:json]
+        require "json"
+        puts JSON.pretty_generate(result)
+      else
+        puts harvest_report(result)
+      end
+      exit(1) if result[:mined] && result[:run_id] && run_failed?(result)
+    end
+
+    # insika harvest:negative import --agent ID [--file harvest/NEGATIVE.md]
+    #
+    # the E2 seed path: reads the VERSIONED repo file (parse! — loud), and
+    # writes the rules into the profile's harvest.negative_list via UpdateAgent
+    # (the operative, hot-editable list the engine applies — D4).
+    def harvest_negative_import(argv)
+      opts = { file: File.expand_path("../harvest/NEGATIVE.md", __dir__) }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika harvest:negative import --agent ID [--file harvest/NEGATIVE.md]"
+        o.on("--agent ID", "agent whose profile receives the rules (required)") { |v| opts[:agent] = v }
+        o.on("--file F", "the versioned NEGATIVE.md (default harvest/NEGATIVE.md)") { |v| opts[:file] = v }
+      end.parse!(argv)
+
+      abort "insika harvest:negative import: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+
+      rules = begin
+        list = Insika::Harvest::NegativeList.parse!(File.read(opts[:file]))
+        list.rules.map { |r| { "rule" => r.rule, "pattern" => r.pattern, "note" => r.note } }
+      rescue Insika::Error, Errno::ENOENT => e
+        warn "insika harvest:negative import: #{e.message}"
+        exit 2
+      end
+
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      profiles = Insika::StoredProfileSource.new(config_store: config_store)
+      profile = profiles.fetch(opts[:agent]) ||
+                (abort "insika harvest:negative import: agent '#{opts[:agent]}' not configured")
+      handler = Insika::Commands::UpdateAgent.new(profile_source: profiles,
+                                                  event_stream: Insika::EventStream.new)
+      merged = (profile.harvest || {}).merge("negative_list" => rules)
+      handler.call(Insika::Command.build(:update_agent,
+                                         { id: opts[:agent], harvest: merged }, transport: :cli))
+      puts "imported #{rules.size} rule(s) into #{opts[:agent]}.harvest.negative_list"
+    end
+
+    # insika harvest:criterion check [--file harvest/CRITERION.md]
+    #
+    # strict-loads the frozen conversion criterion (D5) — a missing key, an
+    # unknown key or an absent file exits non-zero. The CI hook before any
+    # promotion is allowed.
+    def harvest_criterion_check(argv)
+      opts = { file: File.expand_path("../harvest/CRITERION.md", __dir__) }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika harvest:criterion check [--file harvest/CRITERION.md]"
+        o.on("--file F", "the frozen criterion (default harvest/CRITERION.md)") { |v| opts[:file] = v }
+      end.parse!(argv)
+
+      criterion = Insika::Harvest::Criterion.load(opts[:file])
+      puts "criterion ok: #{criterion.rule.metric} / #{criterion.rule.window} " \
+           "threshold #{criterion.rule.threshold} min_span #{criterion.rule.min_span} " \
+           "(#{criterion.sha})"
+      0
+    rescue Insika::Error => e
+      warn "insika harvest:criterion check: #{e.message}"
+      exit 1
+    end
+
+    def run_failed?(result)
+      backend = Insika::Wiring::Graph.backend_from_env
+      run = Insika::HarvestStore.new(store: backend).find_run(result[:run_id])
+      run && run.status == "failed"
+    end
+
+    # Builds the handler over the real durable backend — same "no app boot" rule as
+    # `doctor`: no DEEPSEEK, no seeding, no reactor.
+    def run_harvest(opts)
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      profiles = Insika::StoredProfileSource.new(config_store: config_store)
+      handler = Insika::Commands::RunHarvest.new(
+        profiles: profiles,
+        harvest_store: Insika::HarvestStore.new(store: backend),
+        session_store: Insika::SessionStore.new(store: backend),
+        task_store: Insika::TaskStore.new(store: backend),
+        skill_store: Insika::SkillStore.new(config_store: config_store),
+        settings_store: Insika::SettingsStore.new(config_store: config_store),
+        negative_list: begin
+          Insika::Harvest::NegativeList.parse(File.read(File.expand_path("../harvest/NEGATIVE.md", __dir__)))
+        rescue Errno::ENOENT
+          nil
+        end,
+        miner_factory: nil,
+        event_stream: Insika::EventStream.new
+      )
+      handler.call(Insika::Command.build(:run_harvest, {
+                                           agent: opts[:agent], since: opts[:since],
+                                           last_sessions: opts[:last_sessions], full: opts[:full]
+                                         }.compact, transport: :cli))
+    end
+
+    def harvest_report(result)
+      head = if result[:mined]
+               "harvest: #{result[:candidates]} candidate(s) — #{harvest_rejected(result[:rejected])}"
+             else
+               "harvest: skipped (#{result[:skipped]})"
+             end
+      if result[:cost] && result[:cost]["spent"].to_i.positive?
+        head += " — #{result[:cost]['spent']} tokens" \
+                "#{result[:cost]['cached'].to_i.positive? ? " (#{result[:cost]['cached']} cached)" : ''}"
+      end
+      head
+    end
+
+    def harvest_rejected(rejected)
+      return "nothing rejected" if rejected.nil? || rejected.values.all?(&:zero?)
+
+      rejected.reject { |_k, v| v.to_i.zero? }.map { |k, v| "#{k}: #{v}" }.join(", ")
+    end
+
     INDENT = " " * 23 # aligns the provenance line under the finding's title
 
     def refine_report(run)
@@ -375,6 +526,14 @@ end
         # RFC-0034 C10: the distillation check reads the proposal store over
         # the same runtime backend (nil = the CLI reports declarations only).
         proposal_store: Insika::ProposalStore.new(store: backend),
+        # RFC-0035 C15: the harvest check reads the candidates over the same
+        # runtime backend + the frozen criterion (nil = declarations only).
+        harvest_store: Insika::HarvestStore.new(store: backend),
+        harvest_criterion: begin
+          Insika::Harvest::Criterion.load(File.expand_path("../harvest/CRITERION.md", __dir__))
+        rescue Insika::ConfigError, Insika::ValidationError
+          nil
+        end,
         backend: backend
       )
     end

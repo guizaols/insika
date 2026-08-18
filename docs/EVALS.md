@@ -232,6 +232,15 @@ That is what you run before merging a prompt, tool or model change. A case with 
 baseline entry never blocks: it shows as failing in the report, but a brand-new case is
 not a regression.
 
+The same gate machinery guards the two automated loops — [Refinement](REFINEMENT.md)
+(cloned-agent replay of a proposed edit) and [Harvest](HARVEST.md) (cloned-agent
+replay of a mined skill). **Judges are mandatory for those gates** in exactly three
+shapes, the P18 lesson: a gate without a recorded baseline refuses, an all-red
+baseline refuses, and a baseline recorded WITH judge scores, replayed with no judge
+configured, refuses — a rubric'd case with no verdict reads as a pass, so the
+candidate would beat a measurement it never took. A store with no golden cases cannot
+gate, and cannot promote.
+
 ## Honest limits
 
 - **A judge is a model.** It has taste and it has bad days; that is why the

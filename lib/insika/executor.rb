@@ -165,6 +165,12 @@ module Insika
     # nothing scans, nothing distills).
     attr_accessor :distill_engine
 
+    # RFC-0035 C12: the harvest engine — the tick-duty that finds idle,
+    # unmined sessions and mines them on its own worker fiber (a child of the
+    # turn supervisor, like the tick). nil = harvest off (parity — nothing
+    # scans, nothing mines).
+    attr_accessor :harvest_engine
+
     # closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
     # `:queued` (durable — the next boot's recovery replays it) instead of
@@ -735,6 +741,9 @@ module Insika
       # the distillation engine (RFC-0034 C5) lives on the same supervisor —
       # its worker fiber re-scans idle sessions off the turn path.
       @distill_engine&.start(parent: @supervisor)
+      # the harvest engine (RFC-0035 C12) lives on the same supervisor — its
+      # worker fiber re-scans idle sessions off the turn path.
+      @harvest_engine&.start(parent: @supervisor)
       @supervisor
     end
 

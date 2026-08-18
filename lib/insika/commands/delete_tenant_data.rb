@@ -21,7 +21,8 @@ module Insika
                      context_trace_store: nil, outcome_store: nil, task_store: nil,
                      checkpoint_store: nil, outbox_store: nil, shadow_pairs: nil,
                      token_store: nil, funnel_store: nil, event_stream:,
-                     followup_store: nil, contact_store: nil, proposal_store: nil)
+                     followup_store: nil, contact_store: nil, proposal_store: nil,
+                     harvest_store: nil)
         @memory_store = memory_store
         @token_store = token_store
         @session_store = session_store
@@ -36,6 +37,7 @@ module Insika
         @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
         @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
         @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
+        @harvest_store = harvest_store   # RFC-0035 C13; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -65,6 +67,9 @@ module Insika
         contacts = @contact_store ? @contact_store.purge(tenant: tenant) : 0
         # RFC-0034 C8: the distilled proposals die with the tenant.
         proposals = @proposal_store ? @proposal_store.purge(tenant: tenant) : 0
+        # RFC-0035 C13: candidates reference sessions, and sessions carry the
+        # tenant prefix — the harvest rows die with the tenant (D11).
+        harvest = @harvest_store ? @harvest_store.purge(tenant: tenant) : 0
 
         @event_stream.emit(Insika::Event.new(
                              type: :tenant_data_deleted,
@@ -75,12 +80,13 @@ module Insika
                                      followups: followups,
                                      contacts: contacts,
                                      proposals: proposals,
+                                     harvest: harvest,
                                      tokens_revoked: tokens_revoked }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { tenant: tenant, sessions: sessions, memory_records: memory_records,
           outcomes: outcomes, funnel: funnel, followups: followups, contacts: contacts,
-          proposals: proposals, tokens_revoked: tokens_revoked }.merge(purged)
+          proposals: proposals, harvest: harvest, tokens_revoked: tokens_revoked }.merge(purged)
       end
     end
   end

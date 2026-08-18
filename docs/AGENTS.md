@@ -628,6 +628,33 @@ writes the fact to the customer's memory cell stamped
 silently overwrites an operator edit. Sessions are the only candidates, and
 the distiller rides the platform `utility_model`, never a new model slot.
 
+## Harvest of skills from real traffic
+
+`harvest` configures how finished, idle conversations are read back as
+proposed **SKILLS** for the agent's playbook — the human-gated loop documented
+in [Harvest](HARVEST.md). Pack data, `distill:`'s shape, and absent = off for
+that agent:
+
+```ruby
+harvest enabled: true,
+        negative_list: [ { rule: "no-competitor-prices", pattern: "concorrente" } ],
+        miner: { model: "deepseek-v4-flash",  # absent = the platform utility_model
+                 window: { last_sessions: 200 } },
+        idle_hours: 24,
+        min_messages: 3
+        # prompt: "<what a harvestable skill is for THIS store>" (the forge's half)
+```
+
+The loop reads only finished traffic (the fork is structural — the mining
+writes nothing to the sessions it read), filters every proposal through the
+negative list and the evidence ledger (product claims must reference IDs the
+origin sessions actually saw — an agent without `grounding.matcher.sku` does
+not mine at all), scores survivors with a double gate (the eval replay against
+the clone's golden set, judges mandatory in the three P18 shapes; the
+conversion "not worse" check against the RFC-0032 frozen baseline), and lands
+a skill **only after a human approves** — snapshot-first, append-only
+promotion log, deterministic rollback. Nothing is ever applied automatically.
+
 ## Delegation (subagents)
 
 An agent can delegate to **subagents**: named child agents it may invoke as a
