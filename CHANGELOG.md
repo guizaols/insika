@@ -8,6 +8,15 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-19
+
+The proof-and-consultant wave: shadow parity against a frozen criterion, the
+72h soak, perceived latency (progressive delivery), the session briefing,
+evidence grounding, the layered identity cache, customer memory in the Studio,
+the conversion ledger, `schedule()` with consent, human-gated facts, the gated
+skill harvest — and a domain-free core: the e-commerce defaults are removable,
+and what ships in the gem is asserted by the suite.
+
 ### Added
 
 - **Shadow mode** — the relay channel can run every turn end to end and deliver
