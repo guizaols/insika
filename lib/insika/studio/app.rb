@@ -318,7 +318,8 @@ module Studio
             with_flash("Configuration saved.") do
               dispatch(:update_agent, config_patch(r))
             end
-            r.redirect(agent_path(id))
+            group = CONFIG_SECTIONS.include?(r.params["cfg"]) ? r.params["cfg"] : "model"
+            r.redirect(agent_path(id, "config", "cfg=#{group}"))
           end
 
           # Automatic-loop triggers, per agent. The loops (distillation,
@@ -1412,6 +1413,7 @@ end
 
     def render_agent_detail
       id = @agent.id
+      @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
       store = insika[:agent_file_store]
       @prompt_files = Array(@agent.prompt_files).map do |name|
         {
@@ -1906,6 +1908,10 @@ end
     end
 
     # --- Settings + LLM providers ----------------------------------
+
+    # The agent config tab's groups, in sidebar order. The view renders the
+    # same keys; a bogus ?cfg= falls back to the first group.
+    CONFIG_SECTIONS = %w[model guardrails grounding funnel followups distill harvest refinement budget_rel routing advanced].freeze
 
     SETTINGS_SECTIONS = %w[general models edge evals llm].freeze
     def render_settings
@@ -2481,8 +2487,9 @@ end
       "/studio/playground?#{query}"
     end
 
-    def agent_path(id, anchor = nil)
+    def agent_path(id, anchor = nil, query = nil)
       base = "/studio/agents/#{Rack::Utils.escape(id)}"
+      base += "?#{query}" if query
       anchor ? "#{base}##{anchor}" : base
     end
 
