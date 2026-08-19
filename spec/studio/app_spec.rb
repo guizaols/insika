@@ -924,6 +924,35 @@ RSpec.describe Studio::App do
       expect(bus.last(:update_agent).payload[:followup]).to be_nil # blank arm = off
     end
 
+    it "schedules: the JSON array round-trips; blank = off" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x",
+                          "schedules" => '[ { "id": "daily_report", "cron": "0 22 * * *", ' \
+                                         '"tz": "America/Sao_Paulo", ' \
+                                         '"message": "Run the daily report now.", ' \
+                                         '"overrides": { "turn_timeout": 900 } }, ' \
+                                         '{ "id": "heartbeat", "every": 3600, "message": "ping" } ]')
+      expect(bus.last(:update_agent).payload[:schedules]).to eq(
+        [{ "id" => "daily_report", "cron" => "0 22 * * *",
+           "tz" => "America/Sao_Paulo", "message" => "Run the daily report now.",
+           "overrides" => { "turn_timeout" => 900 } },
+         { "id" => "heartbeat", "every" => 3600, "message" => "ping" }]
+      )
+
+      config_post(client, "model" => "x", "schedules" => "")
+      expect(bus.last(:update_agent).payload[:schedules]).to be_nil # blank = no schedules
+    end
+
+    it "schedules: malformed JSON is a red flash, never a dispatch" do
+      app, bus = build_app
+      client = login(app)
+      res = config_post(client, "model" => "x", "schedules" => "{ not json")
+      expect(res.status).to eq(302)
+      expect(client.get(res.headers["location"]).body).to include("invalid JSON")
+      expect(bus.types).not_to include(:update_agent)
+    end
+
     it "distill: the enabled switch + the forge's knobs; blank prompt drops the key" do
       app, bus = build_app
       client = login(app)
@@ -2841,8 +2870,9 @@ it "a non-numeric min_agreement is refused instead of quietly becoming 'off'" do
 end
 
   # Refinement ---------------------------------------
-  # Read-only page + one button. There is no scheduler in the engine, so the button
-  # (and the CLI) are how a run starts.
+  # Read-only page + one button. The button (and the CLI) are how a run
+  # starts — a refinement run is deliberate, operator-paced work, even though
+  # an agent's schedule could make one a turn like any other.
 
   it "shows the refinement empty-state before an agent has ever been run" do
     app, = build_app

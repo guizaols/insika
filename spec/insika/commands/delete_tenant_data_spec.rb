@@ -287,4 +287,31 @@ RSpec.describe Insika::Commands::DeleteTenantData do
       expect(result[:harvest]).to eq(0)
     end
   end
+
+  describe "the schedule rows die with the tenant" do
+    let(:schedule_store) { Insika::ScheduleStore.new(store: backend) }
+    let(:now) { Time.iso8601("2026-08-19T14:00:00Z") }
+    let(:declaration) { { "id" => "daily", "every" => 3600, "message" => "run the report" } }
+
+    it "purges the tenant's schedule rows (message text included); another tenant survives" do
+      schedule_store.sync_declared(tenant: "acme", agent: "report-a",
+                                   schedules: [declaration], now: now)
+      schedule_store.sync_declared(tenant: "loja-b", agent: "report-b",
+                                   schedules: [declaration], now: now)
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, schedule_store: schedule_store)
+
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      expect(result[:schedules]).to eq(1)
+      expect(schedule_store.all.map(&:tenant)).to eq(%w[loja-b])
+    end
+
+    it "nil schedule_store -> 0, never an error (the minimal graph)" do
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, schedule_store: nil)
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+      expect(result[:schedules]).to eq(0)
+    end
+  end
 end

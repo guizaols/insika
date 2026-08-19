@@ -12,7 +12,7 @@ module Insika
     # Synchronous like `run_refinement`, and for the same reason: it is operator-paced
     # work with a human waiting on the answer. It is NOT cheap — the replay is a real
     # conversation per golden case — so it is fired deliberately, never on a timer
-    # (the engine has no scheduler and this design does not add one).
+    # (a recurring timer may schedule OTHER turns; this gate stays human-paced).
     #
     # Payload:
     #   run_id     (required) a run in :completed — the evidence the candidate answers

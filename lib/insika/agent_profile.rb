@@ -244,20 +244,37 @@ module Insika
                                    # off (parity, byte-identical engine). Shape-validated by
                                    # the command/engine, never here (the refinement precedent).
                                    # Deep-stringified like the other free-form hashes.
-    :harvest                         # the gated-harvest declaration — pack data,
-                                   # exactly like refinement/distill:
-                                   # { "enabled" => bool,
-                                   #   "negative_list" => [ { "rule" => "…", "pattern" => "…",
-                                   #                          "note" => "…" } ],
-                                   #   "miner" => { "model" => "<ref — absent = the platform
-                                   #       utility_model>", "window" => { "last_sessions" => N },
-                                   #       "max_proposals" => N, "budget" => { "tokens" => N } },
-                                   #   "idle_hours" => 24, "min_messages" => 3 }.
-                                   # The ENGINE mines (reads sessions, asks the miner, filters
-                                   # through the negative list + grounding), never authors a
-                                   # rule (D4). nil/absent = the loop is off (parity).
-                                   # Shape-validated by the command/engine/doctor, never here.
-                                   # Deep-stringified like the other free-form hashes.
+    :harvest,                        # the gated-harvest declaration — pack data,
+                                     # exactly like refinement/distill:
+                                     # { "enabled" => bool,
+                                     #   "negative_list" => [ { "rule" => "…", "pattern" => "…",
+                                     #                          "note" => "…" } ],
+                                     #   "miner" => { "model" => "<ref — absent = the platform
+                                     #       utility_model>", "window" => { "last_sessions" => N },
+                                     #       "max_proposals" => N, "budget" => { "tokens" => N } },
+                                     #   "idle_hours" => 24, "min_messages" => 3 }.
+                                     # The ENGINE mines (reads sessions, asks the miner, filters
+                                     # through the negative list + grounding), never authors a
+                                     # rule (D4). nil/absent = the loop is off (parity).
+                                     # Shape-validated by the command/engine/doctor, never here.
+                                     # Deep-stringified like the other free-form hashes.
+    :schedules                       # the recurring-schedule declarations — pack
+                                     # data, exactly like followup/distill:
+                                     # [ { "id" => "daily_report",
+                                     #     "cron" | "every" => …,
+                                     #     "tz" => "America/Sao_Paulo",
+                                     #     "message" => "<the synthetic inbound>",
+                                     #     "session_mode" => "new"|"fixed",
+                                     #     "overrides" => { "turn_timeout" => N,
+                                     #                        "max_tool_calls" => N,
+                                     #                        "model" => … },
+                                     #     "enabled" => bool }, … ].
+                                     # The ENGINE owns the firing (the
+                                     # ScheduleEngine, the tick's duty); the
+                                     # store rows are declared-derived.
+                                     # Shape-validated by Insika::Schedule,
+                                     # never here. nil/empty = the feature is
+                                     # off for that agent (parity).
   )
 
   # Reopened class (not a Data.define block): a constant assigned inside
@@ -289,8 +306,8 @@ module Insika
                     params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-                     outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
-                     followup: nil, distill: nil, harvest: nil)
+outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
+                      followup: nil, distill: nil, harvest: nil, schedules: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -348,8 +365,22 @@ module Insika
         # harvest is profile DATA, deep-stringified like the other
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
-        harvest: Coercion.deep_stringify(harvest)
+        harvest: Coercion.deep_stringify(harvest),
+        # schedules is profile DATA, deep-stringified like the other
+        # free-form hashes (an ARRAY of declarations); parsed into
+        # Insika::Schedule entries by the engine/doctor/Studio (shape-validated
+        # THERE, never here). nil/[] = the feature is off (parity).
+        schedules: normalize_schedules(schedules)
       )
+    end
+
+    # nil/absent -> nil; a single Hash -> [Hash]; else an Array of Hashes —
+    # deep-stringified so JSON round-trips stay stable.
+    def self.normalize_schedules(list)
+      return nil if list.nil?
+
+      entries = list.is_a?(Hash) ? [list] : Array(list)
+      entries.empty? ? nil : Coercion.deep_stringify(entries)
     end
 
     # nil -> []; strings; trim + drop empties + uniq (stable order); every name

@@ -3,21 +3,23 @@
 require "time"
 
 module Insika
-  # The periodic tick: durability stops waiting for a reboot. One
-  # pass does two things, in this order:
+# The periodic tick: durability stops waiting for a reboot. One
+  # pass does three things, in this order:
   #
   #   1. DRAIN the outbox (`ChannelDelivery#sweep`) — replies a previous pass
   #      (or process) recorded and never claimed. Ungated: every record carries
   #      its own transactional claim, so N workers draining is safe.
-  #   2. SWEEP stale orphaned tasks (`Recovery#run(stale_after:)`) — gated by a
-  #      bucketed claim (`Recovery.claim_sweep` on "tick:<epoch/interval>"), so
-  #      exactly one worker per window sweeps. The staleness threshold is the
-  #      liveness gate: a live :running turn is bounded by turn_timeout, so
-  #      anything untouched past it cannot be alive.
+  #   2. The engine's background duties, each gated by its OWN claim window so
+  #      their O(n) scans never ride the 60 s loop: retention (daily), the
+  #      outcome fold, the follow-up firer, and the recurring-schedule firer
+  #      (the engine's own cron — it superseded the "point your own cron at
+  #      the route" decision, see docs/SCHEDULING.md).
+  #   3. SWEEP stale orphaned tasks (`Recovery#run(stale_after:)`) — gated by a
+  #      bucketed claim, so exactly one worker per window sweeps. The staleness
+  #      threshold is the liveness gate: a live :running turn is bounded by
+  #      turn_timeout, so anything untouched past it cannot be alive.
   #
-  # It is NOT a job queue: no schedules, no priorities, no fan-out. The
-  # refinement hook once pictured here is dropped by merit —
-  # docs/REFINEMENT.md's "no scheduler in the engine" stands.
+  # It is NOT a job queue: no schedules queue, no priorities, no fan-out.
   class Tick
     # 60s: a customer waiting on WhatsApp is the deadline. 900s = 3x the
     # default turn_timeout (300s) — the rule, not the number: the threshold
@@ -31,7 +33,8 @@ module Insika
 
     def initialize(store:, recovery:, channel_delivery:, logger: nil,
                    interval: DEFAULT_INTERVAL, stale_after: DEFAULT_STALE_AFTER,
-                   sleeper: nil, retention: nil, funnel: nil, followup: nil)
+                   sleeper: nil, retention: nil, funnel: nil, followup: nil,
+                   schedule: nil)
       @store = store
       @recovery = recovery
       @channel_delivery = channel_delivery
@@ -39,9 +42,10 @@ module Insika
       @interval = interval.to_i
       @stale_after = stale_after.to_i
       @sleeper = sleeper || method(:default_sleep)
-      @retention = retention # WS8: the daily age-based sweep; nil = none
+      @retention = retention # the daily age-based sweep; nil = none
       @funnel = funnel # the tick-driven outcome fold; nil = none
       @followup = followup # the tick-driven follow-up firer; nil = none
+      @schedule = schedule # the recurring-schedule firer; nil = none
     end
 
     # the fold is wired after the Tick is built (the graph passes
@@ -52,6 +56,10 @@ module Insika
     # the follow-up firer, wired after the Tick is built (same
     # shape as `funnel` — the stores come from the spine).
     attr_accessor :followup
+
+    # the recurring-schedule firer, wired after the Tick is built
+    # (same shape — the stores come from the spine).
+    attr_accessor :schedule
 
     def enabled? = @interval.positive?
 
@@ -73,6 +81,10 @@ module Insika
       # OWN claim window so the O(n) scans never ride the 60 s loop.
       followup_summary = @followup&.run
       summary[:followup] = followup_summary if followup_summary
+      # the recurring-schedule firer — the tick's fourth duty,
+      # the same claim-window discipline as the follow-up firer.
+      schedule_summary = @schedule&.run
+      summary[:schedule] = schedule_summary if schedule_summary
       return summary unless claim_window
 
       result = @recovery.run(stale_after: @stale_after)

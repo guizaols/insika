@@ -51,11 +51,14 @@ Or from **Studio → Refinement**: pick the agent, press Run, and the same repor
 renders with each session id linking to its transcript. Every finding is a claim
 you can go and check.
 
-There is no scheduler in the engine, by design. A run is one command
-(`run_refinement`), and the CLI and the button are the two ways to fire it. If you
-want it on a timer, point your own cron at the authenticated route the button uses
-— that keeps the engine free of a background ticker and of the single-node
-assumption one would bring.
+A run is one command (`run_refinement`), and the CLI and the button are the
+two ways to fire it. There is still no built-in timer *for the report itself*,
+but there is one for the *agent*: fine-grained recurring turns live in
+[Schedules](SCHEDULING.md), and a refinement run scheduled like any other turn
+is just a message the agent's schedule sends it. If you prefer to stay outside
+the engine, pointing your own cron at the authenticated route the button uses
+works just the same — both paths are supported, the engine's trigger is the
+built-in one.
 
 ```
 insika refine ─┐
@@ -466,8 +469,10 @@ prompt edits have real leverage, and it is also where they do damage.
 
 ## What this is not
 
-It has no scheduler: a run happens because a person or a cron asked for one, never
-because a timer inside the engine went off. A proposal is written when you ask for
+A run happens because a person or a cron asked for one — the refinement
+pipeline has no timer of its own, and if you want one, a schedule
+([Schedules](SCHEDULING.md)) makes a run a turn any agent can be scheduled to
+send. A proposal is written when you ask for
 one, and — unless you turned on [`auto_apply`](#applying-without-a-human), which is
 off until you do and bounded when you do — applied when you approve it. And it cannot
 touch your guardrails, tools, policies, model pins or limits, and not because a prompt
