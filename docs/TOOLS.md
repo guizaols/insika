@@ -361,9 +361,19 @@ Work down this checklist:
 4. **URL literal?** For non-manifest tools, an unresolved `{{env.*}}` would have
    422'd at import — re-check the definition.
 
+## The `save_artifact` built-in
+
+`save_artifact` is a **registry tool** — it obeys the same per-agent
+`tools_allow` as any data tool, and an agent that did not name it cannot call
+it (`tools_allow: %w[save_artifact]`). The agent hands in `title` + `content`
+and gets the URL back; the tenant is bound from the turn, never a parameter the
+model types. See [Artifacts](ARTIFACTS.md) for the tool contract, the serving
+routes, the signed link and the retention/LGPD reach.
+
 ## See also
 
 - [Agents](AGENTS.md) — allowlists, groups, and per-agent tool exposure.
+- [Artifacts](ARTIFACTS.md) — the report destination: the tool, the routes, the signed link.
 - [Plugins](PLUGINS.md) — where a code tool comes from, and how to package one.
 - [Security](SECURITY.md) — egress, sandbox, and approval gating together.
 - [Architecture](ARCHITECTURE.md) — the tool-loop and side-effect checkpointing.

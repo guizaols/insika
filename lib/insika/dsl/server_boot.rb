@@ -122,8 +122,23 @@ module Insika
           # (nil = the page renders the refusal/empty states).
           harvest_store: @graph.harvest_store,
           harvest_criterion: harvest_criterion,
-          negative_list: harvest_negative_list
+          negative_list: harvest_negative_list,
+          # the Artifacts tab reads the report store; the signing
+          # config (nil without INSIKA_ARTIFACT_SIGNING_KEY) decides whether a
+          # signed sharing link exists at all.
+          artifact_store: @graph.artifact_store,
+          artifact_signing: artifact_signing
         )
+      end
+
+      # -> { key:, ttl:, base_url: } | nil (no signing key -> no signed surface).
+      def artifact_signing
+        key = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_KEY")
+        return nil if key.to_s.empty?
+
+        { key: key,
+          ttl: (Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_TTL") || 604_800).to_i,
+          base_url: Insika::Coercion.presence(Insika::EnvSchema.read("INSIKA_PUBLIC_URL")).to_s }
       end
 
       # The frozen criterion — best-effort at boot: a bare install

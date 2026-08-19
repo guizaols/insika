@@ -1950,10 +1950,17 @@ module Insika
         # the memory scope carries a customer — the backend identifies the store,
         # not the shopper (WS8 keeps the two scopes separate).
         tenant: command_tenant(task) || task.session_id,
+        # the DECLARED tenant alone (nil in single-tenant). Distinct from
+        # `tenant` for the ownership-binding tools (save_artifact): a report
+        # belongs to the AGENT's tenant — the deployment's tenant in
+        # single-tenant, never the chat that happened to run it.
+        command_tenant: command_tenant(task),
         store_id: profile.store_id,
-        # current delegation depth (0 for a top-level turn). Carried in
-        # the child command's payload by run_subagent; read here so the child's OWN
-        # spawn_subagent tool sees depth+1 and the runtime cap holds down the chain.
+        # the current task id — the save_artifact binding (which run produced
+        # this report), same turn-origin discipline as the rest of ctx.*.
+        task_id: task.id,
+        # current delegation depth (0 for a top-level turn). Set by run_subagent
+        # for children.
         delegation_depth: delegation_depth(task)
       }
     end

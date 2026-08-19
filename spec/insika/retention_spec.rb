@@ -384,6 +384,80 @@ RSpec.describe Insika::Retention do
     end
   end
 
+  # the artifact TTL — the guarantee that PII inside a report
+  # expires even though no reader can see inside the opaque HTML. Its OWN
+  # daily claim + knob (`artifact_ttl_days`), never gated by retention_days:
+  # a deployment that keeps its conversations forever must still expire the
+  # reports (the same reasoning as the memory TTL).
+  describe "artifact TTL sweep" do
+    let(:artifact_store) { Insika::ArtifactStore.new(store: backend) }
+    subject(:retention) do
+      described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, outbox_store: outbox_store,
+        settings_store: settings, artifact_store: artifact_store, now: now
+      )
+    end
+
+    it "removes artifacts past artifact_ttl_days; a newer one survives, counted in artifacts:" do
+      settings.get["retention_days"] = nil # the artifact TTL is the only sweep here
+      settings.get["artifact_ttl_days"] = 10
+      artifact_store.create(tenant: "acme", agent: "a", task_id: "t-1", title: "old",
+                            mime: "text/html", content: "<p>old</p>", id: "old",
+                            now: now - 40 * 86_400)
+      artifact_store.create(tenant: "acme", agent: "a", task_id: "t-2", title: "new",
+                            mime: "text/html", content: "<p>new</p>", id: "new", now: now)
+
+      summary = retention.run
+
+      expect(summary[:claimed]).to be(false)
+      expect(summary[:artifacts]).to eq(1)
+      expect(artifact_store.find("old")).to be_nil
+      expect(artifact_store.find("new")).not_to be_nil
+    end
+
+    it "nil/absent artifact_ttl_days -> OFF (no sweep, no claim)" do
+      settings.get["retention_days"] = nil
+      settings.get["artifact_ttl_days"] = nil
+      artifact_store.create(tenant: "acme", agent: "a", task_id: "t-1", title: "old",
+                            mime: "text/html", content: "x", id: "old",
+                            now: now - 400 * 86_400)
+
+      expect(retention.run).to eq({ claimed: false })
+      expect(artifact_store.find("old")).not_to be_nil
+    end
+
+    it "runs even with retention_days off; a second run the same day does not claim again" do
+      settings.get["retention_days"] = nil
+      settings.get["artifact_ttl_days"] = 10
+      artifact_store.create(tenant: "acme", agent: "a", task_id: "t-1", title: "old",
+                            mime: "text/html", content: "x", id: "old",
+                            now: now - 40 * 86_400)
+
+      first = retention.run
+      expect(first[:claimed]).to be(false)
+      expect(first[:artifacts]).to eq(1)
+
+      artifact_store.create(tenant: "acme", agent: "a", task_id: "t-2", title: "old2",
+                            mime: "text/html", content: "x", id: "old2",
+                            now: now - 40 * 86_400)
+      second = retention.run
+      expect(second[:artifacts]).to be_nil # the artifact claim held for the day
+      expect(artifact_store.find("old2")).not_to be_nil
+    end
+
+    it "no artifact_store wired -> the summary key is absent (base graph parity)" do
+      settings.get["retention_days"] = 30
+      summary = described_class.new(
+        store: backend, session_store: session_store, task_store: task_store,
+        checkpoint_store: checkpoint_store, memory_store: memory_store,
+        outcome_store: outcome_store, settings_store: settings, now: now
+      ).run
+      expect(summary).not_to have_key(:artifacts)
+    end
+  end
+
   # the follow-up footprint dies with the rest — schedule records
   # and contact cells under the SAME retention_days gate + daily claim.
   describe "follow-up sweep " do
