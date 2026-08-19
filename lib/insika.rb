@@ -27,6 +27,16 @@ require_relative "insika/contact_store"
 require_relative "insika/followup_store"
 # the tick-driven firer — rides the same tick as retention/funnel.
 require_relative "insika/followup_engine"
+# IANA zone resolution through the OS tz database — the stdlib-only route
+# to a zone NAME (Follow-up quiet hours, the cron scheduler, the doctor).
+require_relative "insika/timezone"
+# the recurring schedule: the five-field cron subset + next-fire
+# materialization, the declaration parse, the per-agent rows, and the
+# tick-driven firer (the recurring half of the tick).
+require_relative "insika/cron"
+require_relative "insika/schedule"
+require_relative "insika/schedule_store"
+require_relative "insika/schedule_engine"
 require_relative "insika/commands/freeze_funnel_baseline"
 require_relative "insika/channels/webhook"
 require_relative "insika/coercion"

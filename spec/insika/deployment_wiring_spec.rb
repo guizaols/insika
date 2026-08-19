@@ -235,6 +235,29 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
+    # the recurring-schedule feature — spine store +
+    # tick firer, over the shared BACKEND, inert when no pack declares
+    # schedules.
+    describe "schedules" do
+      it "builds the schedule store over BACKEND in the spine" do
+        expect(w::SPINE.schedule_store).to be_a(Insika::ScheduleStore)
+        expect(w::SPINE.schedule_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.schedule_store).to be(w::SPINE.schedule_store)
+      end
+
+      it "wires the firer onto the tick (the tick's fourth duty)" do
+        firer = w::GRAPH.executor.tick.schedule
+        expect(firer).to be_a(Insika::ScheduleEngine)
+        expect(firer.instance_variable_get(:@schedule_store)).to be(w::SPINE.schedule_store)
+        expect(firer.instance_variable_get(:@budget_ledger)).to be(w::SPINE.budget_ledger)
+      end
+
+      it "wires the store into the tenant purge (the LGPD sweep)" do
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@schedule_store)).to be(w::SPINE.schedule_store)
+      end
+    end
+
     # distillation is wired through the shared core — spine store,
     # engine on the executor, resolve command on the bus, LGPD + retention
     # hooks. Inert until a pack declares `distill:` (nil collaborators keep the

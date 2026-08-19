@@ -104,6 +104,7 @@ module Insika
                    shadow_pair_store: nil, soak_envelope_path: nil, context_providers: nil,
                    memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil,
                    followup_store: nil, contact_store: nil, proposal_store: nil,
+                   schedule_store: nil,
                    harvest_store: nil, harvest_criterion: nil)
       @env = env
       @settings_store = settings_store
@@ -136,6 +137,9 @@ module Insika
       # the distillation check — nil collaborator = the check
       # reports declarations only (counts skipped).
       @proposal_store = proposal_store
+      # the schedules check — nil collaborator = the check
+      # reports declarations only (skip counts skipped).
+      @schedule_store = schedule_store
       # the harvest check — nil collaborators = the check
       # reports declarations only (counts skipped).
       @harvest_store = harvest_store
@@ -172,7 +176,7 @@ module Insika
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
-                    check_harvest check_guardrail_corpora]
+                    check_harvest check_schedules check_guardrail_corpora]
 
     def safe(check)
       Array(send(check))
@@ -974,6 +978,80 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       Insika::FollowupPolicy.parse!(hash).to_s
     rescue Insika::ValidationError => e
       e.message
+    end
+
+    # the recurring-schedule check — declarations
+    # validated where they are declared (each one through the SAME
+    # Insika::Schedule parser the engine fires on, never a second opinion),
+    # plus the data read that answers "what is being skipped right now".
+    # A bare install (no schedule on any profile) reports NOTHING.
+    def check_schedules
+      return [] unless @profile_source
+
+      declared = @profile_source.all.select do |profile|
+        profile.respond_to?(:schedules) && Array(profile.schedules).any?
+      end
+      return [] if declared.empty?
+
+      declared.flat_map do |profile|
+        Array(profile.schedules).flat_map do |schedule|
+          decl = Insika::Schedule.parse(schedule)
+          if decl.nil?
+            [Finding.new(check: "schedules", severity: :error, fix: nil,
+                         message: "agent '#{profile.id}': malformed schedule — " \
+                                  "#{schedule_defect(schedule)}. The engine will never " \
+                                  "fire it until this is fixed.")]
+          else
+            ok_finding = schedule_ok(profile, decl)
+            [ok_finding] + schedule_data_findings(profile, decl)
+          end
+        end
+      end
+    end
+
+    # The ok finding for one valid declaration — plus the warning that
+    # names the cadence ceiling: the engine claims ONE window per pass, so an
+    # `every` shorter than the claim window cannot fire more often than it.
+    def schedule_ok(profile, decl)
+      trigger = decl.cron ? "cron #{decl.cron} <#{decl.tz}>" : "every #{decl.every}s"
+      floor = Insika::ScheduleEngine::DEFAULT_WINDOW
+      if !decl.cron.nil? || decl.every >= floor
+        ok("schedules",
+           "agent '#{profile.id}': schedule '#{decl.id}' — #{trigger}, " \
+           "#{decl.fixed_session? ? "a fixed standing session" : 'a new session per run'}, " \
+           "#{decl.enabled ? 'enabled' : 'disabled'}")
+      else
+        Finding.new(check: "schedules", severity: :warn, fix: nil,
+                    message: "agent '#{profile.id}': schedule '#{decl.id}' declares " \
+                             "every #{decl.every}s, but the engine fires at most once per " \
+                             "#{floor}s claim window — the effective cadence is one run " \
+                             "per ~#{floor}s, not one per #{decl.every}s.")
+      end
+    end
+
+    # The named defect, for the error message — the engine's parser's words.
+    def schedule_defect(hash)
+      Insika::Schedule.parse!(hash).to_s
+    rescue Insika::ValidationError => e
+      e.message
+    end
+
+    # Data-age findings, gated on the optional collaborator (nil = skip,
+    # env-only callers stay cheap): the row's last skip, when the schedule
+    # was created and has one — visible in the Studio, named here too.
+    def schedule_data_findings(profile, decl)
+      return [] unless @schedule_store
+
+      row = @schedule_store.find(tenant: Insika::ScheduleEngine::TENANT,
+                                 agent: profile.id.to_s, id: decl.id)
+      return [] unless row&.last_skip
+
+      [Finding.new(check: "schedules", severity: :info, fix: nil,
+                   message: "agent '#{profile.id}' schedule '#{decl.id}': the last run was " \
+                            "SKIPPED at #{row.last_skip['at']} — reason " \
+                            "#{row.last_skip['reason'].inspect} (overlap = the previous " \
+                            "run still live; budget = a hard cap reached; late = the " \
+                            "window was missed by the no-catch-up policy).")]
     end
 
     # Data-age findings, gated on the optional collaborators (nil = skip,

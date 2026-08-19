@@ -78,6 +78,11 @@ module Insika
         # followup) so the engine, the tools and the Studio always have stores.
         contact_store       = Insika::ContactStore.new(store: backend)
         followup_store      = Insika::FollowupStore.new(store: backend)
+        # the recurring-schedule rows: one row per
+        # declared schedule, declaration + runtime state. Built unconditionally
+        # (empty and free when no pack declares schedules) so the engine, the
+        # doctor and the Studio always have a store.
+        schedule_store      = Insika::ScheduleStore.new(store: backend)
         # the distilled proposals + the latched dedup ledger +
         # the per-session markers. Built unconditionally (empty and free when
         # no pack declares distill) so the wiki, the engine and the LGPD
@@ -118,6 +123,7 @@ module Insika
           funnel_store: funnel_store,
           contact_store: contact_store,
           followup_store: followup_store,
+          schedule_store: schedule_store,
           proposal_store: proposal_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -256,6 +262,16 @@ module Insika
           contact_store: spine.contact_store, task_store: spine.task_store,
           profiles: profiles, executor: executor, event_stream: spine.event_stream
         )
+        # the recurring-schedule firer — the tick's
+        # fourth duty, wired here after the Tick, gated by its own claim
+        # window. Always built: a pack that declares `schedules` later finds
+        # its firer already on the tick (inert when no profile declares one).
+        executor.tick.schedule = Insika::ScheduleEngine.new(
+          store: spine.backend, schedule_store: spine.schedule_store,
+          task_store: spine.task_store, session_store: spine.session_store,
+          profiles: profiles, executor: executor, budget_ledger: spine.budget_ledger,
+          event_stream: spine.event_stream
+        )
         # the distillation engine — the tick-duty that finds idle
         # customer sessions and distills them on its own worker fiber (a
         # supervisor child, started in serving mode next to the tick).
@@ -313,6 +329,7 @@ module Insika
           funnel_store: spine.funnel_store,
           contact_store: spine.contact_store,
           followup_store: spine.followup_store,
+          schedule_store: spine.schedule_store,
           proposal_store: spine.proposal_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
@@ -414,13 +431,14 @@ module Insika
                        followup_store: spine.followup_store,
                        contact_store: spine.contact_store,
                        proposal_store: spine.proposal_store,
-                       harvest_store: spine.harvest_store,
-                       task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
-                       outbox_store: spine.outbox_store,
-                       shadow_pairs: spine.shadow_pair_store,
-                       token_store: spine.token_store, # revoked BEFORE the sweep
-                       event_stream: spine.event_stream
-                     ))
+harvest_store: spine.harvest_store,
+                          schedule_store: spine.schedule_store,
+                          task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
+                          outbox_store: spine.outbox_store,
+                          shadow_pairs: spine.shadow_pair_store,
+                          token_store: spine.token_store, # revoked BEFORE the sweep
+                          event_stream: spine.event_stream
+                        ))
         # the operator's baseline freeze — the number
         # read. Synchronous control command, dispatched from the Studio.
         bus.register(:freeze_funnel_baseline,
@@ -505,7 +523,7 @@ module Insika
         :harvest_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
-        :contact_store, :followup_store, :proposal_store,
+        :contact_store, :followup_store, :schedule_store, :proposal_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -520,6 +538,7 @@ module Insika
         :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :funnel_store,
         :contact_store, :followup_store, :proposal_store,
+        :schedule_store,
         :harvest_store,
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,

@@ -17,7 +17,7 @@ module Insika
   #      party with outages, so "keep trying" is a real requirement and "keep trying
   #      forever" is a real outage of ours.
   #
-  # It is NOT a job queue: no scheduler, no priorities, no fan-out. The moment it
+  # It is NOT a job queue: no priorities, no fan-out. The moment it
   # grows one, the thing to do is take a real queue, not to finish building this.
   class ChannelDelivery
     MAX_ATTEMPTS = 3
