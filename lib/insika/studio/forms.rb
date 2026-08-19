@@ -44,6 +44,7 @@ module Studio
         grounding: grounding_patch(r),
         funnel: funnel_patch(r),
         followup: followup_patch(r),
+        schedules: schedules_patch(r),
         distill: distill_patch(r),
         harvest: harvest_patch(r),
         refinement: refinement_patch(r),
@@ -122,6 +123,20 @@ module Studio
       silence = edge_int(r.params["followup_silence_after_sends"], "followup_silence_after_sends")
       policy["silence_after_sends"] = silence unless silence.nil?
       { "arm" => arm, "policy" => policy }
+    end
+
+    # recurring schedules — a JSON array of declarations
+    # (name / trigger / tz / message / session mode / overrides / enabled).
+    # Same honest shape as routes/metadata: the list is unbounded, and a
+    # JSON textarea is the CSP-safe editor. Blank = no schedules (parity).
+    def schedules_patch(r)
+      parsed = json_block(r.params["schedules"], "schedules")
+      return nil if parsed.nil?
+
+      parsed = parsed.is_a?(Hash) ? [parsed] : parsed
+      raise Insika::ValidationError, "schedules must be an array of declarations" unless parsed.is_a?(Array)
+
+      parsed
     end
 
     # distillation — enabled checkbox + the forge's knobs. Blank

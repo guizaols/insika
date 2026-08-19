@@ -983,6 +983,30 @@ records, byte-identical turns. The A/B against an existing cron is an
 operator experiment: the engine only keeps the records and the read card (the
 cron arm writes through the same store class with its own `arm` label).
 
+## Schedules — recurring turns the engine fires
+
+The operator's counterpart to follow-ups: a turn **nobody sends** — the daily
+report at 22:00, the eval sweep every night. Declared per agent as pack data
+(`schedule "daily_report", cron: …, tz: …, message: …` or `every: N`), edited
+hot in the Studio's Schedules config group, fired by the engine's own tick
+one turn per claim window, never queued, no catch-up after a downtime (each
+missed window is a recorded skip, visible in the Studio):
+
+```ruby
+agent = Insika.agent("reporter") do
+  schedule "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",
+           message: "Run the daily report now.",
+           overrides: { turn_timeout: 900, max_tool_calls: 200 }
+end
+```
+
+The run is a first-class turn stamped `origin: "scheduled"`; `session_mode:
+"new"` gives it a fresh session per run (the report shape), `"fixed"` a
+standing one; per-run `overrides` raise the chat-time ceilings a report needs.
+A hard calendar budget at its cap skips instead of burning the store's tokens.
+Distinct by shape and by law from the follow-up tool. See
+[Schedules](SCHEDULING.md).
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.

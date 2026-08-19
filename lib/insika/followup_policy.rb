@@ -70,7 +70,7 @@ module Insika
     def quiet?(time)
       return false unless @quiet_hours
 
-      local = in_zone(@quiet_hours.timezone, time) { |t| t.getlocal }
+      local = Insika::Timezone.in_zone(@quiet_hours.timezone, time) { |t| t.getlocal }
       minutes = local.hour * 60 + local.min
       start_min = minutes_of(@quiet_hours.start)
       end_min = minutes_of(@quiet_hours.end)
@@ -136,7 +136,7 @@ module Insika
       # a bogus IANA zone is a malformed policy — refused HERE, where the
       # doctor can name it. An unknown ENV["TZ"] silently behaves as UTC, so
       # existence is checked against the OS tz database, not by asking Time.
-      unless zone_known?(timezone.to_s)
+      unless Insika::Timezone.known?(timezone.to_s)
         raise Insika::ValidationError,
               "followup.policy.quiet_hours.timezone is not a valid IANA timezone: #{timezone.inspect}"
       end
@@ -188,29 +188,6 @@ module Insika
     # identity matcher uses, so "NÃO" matches "não".
     def fold(text)
       text.to_s.unicode_normalize(:nfd).gsub(/\p{Mn}/, "").downcase
-    end
-
-    # Yields `time` interpreted in the given IANA zone (via a save/restore of
-    # ENV["TZ"] — the stdlib-only route to the OS tz database; see #quiet?).
-    def in_zone(zone, time)
-      previous = ENV["TZ"]
-      ENV["TZ"] = zone
-      yield time
-    ensure
-      ENV["TZ"] = previous
-    end
-
-    # The candidate tz-data roots (TZDIR first — Ruby's own lookup env). The
-    # zone name maps to a FILE under the root ("America/Sao_Paulo" ->
-    # "America/Sao_Paulo").
-    TZ_ROOTS = ([ENV["TZDIR"]] +
-                %w[/usr/share/zoneinfo /usr/share/lib/zoneinfo /etc/zoneinfo])
-               .compact.freeze
-
-    def zone_known?(zone)
-      return true if zone == "UTC" || zone == "Etc/UTC"
-
-      TZ_ROOTS.any? { |root| File.directory?(root) && File.exist?(File.join(root, zone)) }
     end
 
     def minutes_of(hhmm)

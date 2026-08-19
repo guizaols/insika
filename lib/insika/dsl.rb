@@ -255,6 +255,33 @@ module Insika
       #           miner: { model: "deepseek-v4-flash", window: { last_sessions: 200 } }
       def harvest(hash) = (@config[:harvest] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # A recurring schedule: one declaration per call,
+      # named — a turn the ENGINE fires on its own tick, nobody has to
+      # remember. `cron` (5 fields) or `every` (plain interval), a tz for
+      # cron materialization, the synthetic inbound `message` that kicks each
+      # run, a session mode (`new` = a fresh session per run — the report
+      # case; `fixed` = one standing session), per-run `overrides`
+      # (turn_timeout / max_tool_calls / model) and `enabled`.
+      #   schedule "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",
+      #            message: "Run the daily report now.",
+      #            overrides: { turn_timeout: 900, max_tool_calls: 200 }
+      # Distinct by shape from the `schedule_followup` TOOL (a one-shot,
+      # customer-facing, consent-gated contact); see docs/SCHEDULING.md.
+      def schedule(name, every: nil, cron: nil, tz: nil, message: nil,
+                   session_mode: nil, session_id: nil, overrides: nil, enabled: nil)
+        id = name.to_s.downcase # the engine canonicalizes ids to lowercase
+        if Array(@config[:schedules]).any? { |s| s["id"] == id }
+          raise ArgumentError, "duplicate schedule in agent: #{id}"
+        end
+
+        entry = { "id" => id, "every" => every, "cron" => cron, "tz" => tz,
+                  "message" => message, "session_mode" => session_mode,
+                  "session_id" => session_id, "overrides" => overrides,
+                  "enabled" => enabled }.compact
+        @config[:schedules] = Array(@config[:schedules]) + [entry]
+        id
+      end
+
       # Provider-interaction reliability, as DATA (WS3): retries + exponential
       # backoff on transient failures, a fallback model chain (mid-turn
       # rotation), and a circuit breaker per (tenant, provider/model) that

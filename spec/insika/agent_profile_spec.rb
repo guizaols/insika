@@ -307,6 +307,38 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "schedules (the recurring-schedule declarations)" do
+    it "nil/absent -> nil = feature off (parity)" do
+      expect(described_class.build(id: "a", model: "m").schedules).to be_nil
+    end
+
+    it "deep-stringifies the ARRAY (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        schedules: [{ id: "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",
+                      message: "run", overrides: { turn_timeout: 900 } }]
+      )
+      expect(profile.schedules).to eq(
+        [{ "id" => "daily_report", "cron" => "0 22 * * *", "tz" => "America/Sao_Paulo",
+           "message" => "run", "overrides" => { "turn_timeout" => 900 } }]
+      )
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        schedules: [{ "id" => "hb", "every" => 86_400, "message" => "ping" }]
+      )
+      expect(profile.to_h[:schedules]).to eq(
+        [{ "id" => "hb", "every" => 86_400, "message" => "ping" }]
+      )
+    end
+
+    it "an empty array normalizes to nil (nothing declared)" do
+      expect(described_class.build(id: "a", model: "m", schedules: []).schedules).to be_nil
+    end
+  end
+
   describe "distill (— the session distillation declaration)" do
     it "nil/absent -> nil = the feature is off (parity)" do
       expect(described_class.build(id: "a", model: "m").distill).to be_nil

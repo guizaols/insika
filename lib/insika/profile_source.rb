@@ -148,7 +148,10 @@ module Insika
         distill: h[:distill],
         # harvest declaration — a plain Hash read with string keys
         # by the miner/engine/doctor; nil round-trips as nil (= loop off).
-        harvest: h[:harvest]
+        harvest: h[:harvest],
+        # schedules declaration — an Array of Hashes read with string
+        # keys by the ScheduleEngine/doctor/Studio; nil round-trips as nil.
+        schedules: h[:schedules]
       )
     end
 

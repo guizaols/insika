@@ -3,7 +3,8 @@
 require "spec_helper"
 
 # the ONE way a refinement run starts (CLI, Studio button and any
-# external cron all dispatch this command — the engine has no scheduler).
+# external cron all dispatch this command — a run starts because a person or a
+# schedule asked for one).
 RSpec.describe Insika::Commands::RunRefinement do
   subject(:handler) do
     described_class.new(profiles: profiles, refinement_store: runs,
