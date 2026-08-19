@@ -11,7 +11,8 @@ require "spec_helper"
 #       plugins/ evals/ scripts/ spec/) — even a TRACKED pack cannot ship;
 #   (b) the shipped pt-BR content is confined to the named allowlist (the
 #       removable safety corpora, RFC-0036 D2) plus the docs' neutral
-#       references (the pt-BR customer-message examples the docs teach);
+#       references (the pt-BR customer-message examples the docs teach) and
+#       the agent form's field-hint examples (the same class of content);
 #   (c) the demo persona name ("bia") ships nowhere — the rename pass (C7)
 #       made this green.
 #
@@ -46,7 +47,10 @@ RSpec.describe "the domain boundary (RFC-0036 C1)" do
   ALLOWLIST = {
     "lib/insika/safety/corpus.rb"         => "the shipped guardrail corpus data (C2) — cleared via guardrails.corpora",
     "lib/insika/safety/safe_responses.rb" => "pt-BR neutral fallback replies — cleared via guardrails.responses",
-    "lib/insika/packaging.rb"             => "the audit's own token table (see the allowlist comment)"
+    "lib/insika/packaging.rb"             => "the audit's own token table (see the allowlist comment)",
+    "lib/insika/studio/views/agent_detail.erb" => "the agent config form's EXAMPLE placeholder — the default cancel-keyword " \
+                                                  "('não quero mais contato') shown as the field's hint, data-like like the " \
+                                                  "docs' neutral references, not engine vocabulary"
   }.freeze
 
   DOMAIN_DIRS = %w[deploy/ packs/ examples/ plugins/ evals/ scripts/ spec/].freeze
@@ -118,6 +122,7 @@ RSpec.describe "the domain boundary (RFC-0036 C1)" do
 
     it "non-ruby, non-markdown payload files carry no domain content (the studio views/JS included)" do
       offenders = payload.reject { |f| f.end_with?(".rb", ".md") }
+                         .reject { |f| ALLOWLIST.key?(f) } # the named exception is the exception everywhere
                          .select { |f| Insika::Packaging.domain_content?(f) }
       expect(offenders).to be_empty, "domain content in: #{offenders.join(", ")}"
     end

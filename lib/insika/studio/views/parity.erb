@@ -3,6 +3,9 @@
     <nav class="crumbs"><span>operate</span></nav>
     <h1>Parity<span class="sub">the shadow experiment</span></h1>
   </div>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/parity", @agent) %>
+  </div>
 </header>
 
 <% if @criterion.nil? %>

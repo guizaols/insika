@@ -321,6 +321,57 @@ module Studio
             r.redirect(agent_path(id))
           end
 
+          # Automatic-loop triggers, per agent. The loops (distillation,
+          # harvest, follow-up firing, funnel fold) already run on their own
+          # worker fibers when the agent declares them; these buttons exist so
+          # an operator can ask for a pass NOW, without waiting for the
+          # window. All three dispatch bus commands — the Studio never runs a
+          # loop itself.
+          r.post "distill" do
+            check_csrf!
+            done = 0
+            skipped = 0
+            begin
+              due_distill_sessions(id).each do |sid|
+                result = dispatch(:run_distillation, { session_id: sid })
+                if result && result[:distilled]
+                  done += 1
+                else
+                  skipped += 1
+                end
+              end
+              flash["notice"] = "Distilled #{done} session(s)" + (skipped.positive? ? " (#{skipped} skipped)." : ".")
+            rescue Insika::ValidationError, Insika::NotFoundError => e
+              flash["error"] = e.message
+            end
+            r.redirect(agent_path(id, "loops"))
+          end
+
+          r.post "harvest" do
+            check_csrf!
+            begin
+              result = dispatch(:run_harvest, { agent: id })
+              if result && result[:mined]
+                flash["notice"] = "Harvest run finished — #{result[:candidates]} candidate(s) mined."
+              elsif result && result[:skipped]
+                flash["notice"] = "Nothing mined — #{result[:skipped]}."
+              else
+                flash["notice"] = "Harvest run finished."
+              end
+            rescue Insika::ValidationError, Insika::NotFoundError => e
+              flash["error"] = e.message
+            end
+            r.redirect(agent_path(id, "loops"))
+          end
+
+          r.post "refinement" do
+            check_csrf!
+            with_flash("Refinement run finished — see the Refinement page.") do
+              dispatch(:run_refinement, { agent: id })
+            end
+            r.redirect(agent_path(id, "loops"))
+          end
+
           # Store-backed prompts. Writing also ensures the file
           # enters `prompt_files` — otherwise the Prompt provider wouldn't load it.
           # prompt_files is synced by the Commands themselves (write/delete
@@ -1400,6 +1451,93 @@ end
       params[key.to_s].nil? ? "" : params[key.to_s]
     end
 
+    # A free-form config block (string-keyed by AgentProfile.build) rendered
+    # as the JSON textarea the form parses back. Pretty-printed so an operator
+    # actually reads the current state; "" when the block is absent.
+    def agent_json(config)
+      return "" if config.nil? || config.empty?
+
+      JSON.pretty_generate(config)
+    rescue StandardError
+      config.to_s
+    end
+
+    # A list field as comma-joined text for the form's textarea.
+    def agent_list(list)
+      Array(list).join(", ")
+    end
+
+    # A list field as newline-joined lines for the form's textarea.
+    def agent_lines(list)
+      Array(list).join("\n")
+    end
+
+    # The shared "filter by agent" GET form used by every shared screen
+    # (home, chats, tasks, approvals, customers, evals, funnel, follow-ups,
+    # facts, parity). Same markup everywhere: a select that submits on change.
+    def agent_filter_form(path, current)
+      ids = insika[:profile_source].ids.sort
+      options = [["", "all"]] + ids.map { |id| [id, id] }
+      rows = options.map do |value, label|
+        %(<option value="#{value}"#{' selected' if value.to_s == current.to_s}>#{label}</option>)
+      end.join
+      %(<form method="get" action="#{path}" class="actions inline"><label>Agent <select name="agent" onchange="this.form.submit()">#{rows}</select></label></form>)
+    end
+
+    # The sessions of one agent — the session stamps its agent in
+    # `vars["agent"]`, so any list of sessions is filterable by agent.
+    def agent_sessions(sessions, agent)
+      return sessions if agent.nil? || agent.empty?
+
+      sessions.select { |s| session_agent(s) == agent }
+    end
+
+    def session_agent(session)
+      vars = session.respond_to?(:vars) ? session.vars : nil
+      vars.is_a?(Hash) ? vars["agent"].to_s : ""
+    end
+
+    # The distill button's scope (the DistillEngine's own scan, scoped to ONE
+    # agent): the agent's sessions that are idle past the pack's window, long
+    # enough, and not yet distilled. Oldest first, capped — each entry is a
+    # provider call, so one click stays bounded. Reads hit the stores; the
+    # writes go through :run_distillation on the bus.
+    def due_distill_sessions(agent_id, limit: 5)
+      store = insika[:session_store]
+      proposals = insika[:proposal_store]
+      profile = insika[:profile_source].fetch(agent_id)
+      return [] if profile.nil? || store.nil? || proposals.nil?
+
+      config = Insika::Coercion.deep_stringify(profile.distill) || {}
+      idle_hours = positive_int(config["idle_hours"]) || 6
+      min_messages = positive_int(config["min_messages"]) || 3
+      cutoff = Time.now.utc - idle_hours * 3600
+      store.each_id.filter_map do |sid|
+        session = store.find(sid)
+        next unless session
+        next unless session.vars.is_a?(Hash) && session.vars["agent"] == agent_id
+        next if Insika::Coercion.blank?(session.vars["customer"])
+        next unless aged?(session.updated_at, cutoff)
+        next if session.messages.size < min_messages
+        next if proposals.distilled?(sid)
+
+        [sid, session.updated_at.to_s]
+      end.sort_by(&:last).map(&:first).first(limit)
+    end
+
+    def positive_int(value)
+      v = value.to_i
+      v.positive? ? v : nil
+    end
+
+    def aged?(updated_at, cutoff)
+      return false if Insika::Coercion.blank?(updated_at)
+
+      Time.iso8601(updated_at.to_s) <= cutoff
+    rescue ArgumentError
+      false
+    end
+
     # Renders the reasoning <select> shared by the agent config, settings and
     # playground (4-layer). `blank_label` names the empty option — the
     # "inherit the broader layer" / provider-default choice. Values come from a
@@ -1684,9 +1822,12 @@ end
     # At-a-glance dashboard: counts + activity + recent conversations. All from
     # data the Studio already reads (one scan of the session store); no new
     # metrics pipeline. `active_now` = sessions touched in the last 5 minutes.
+    # `?agent=` narrows every number to one agent (the sessions stamp their
+    # author in `vars["agent"]`).
     def render_home
       ps = insika[:profile_source]
-      sessions = all_sessions
+      @agent = presence(request.params["agent"])
+      sessions = agent_sessions(all_sessions, @agent)
       @counts = {
         "conversations" => sessions.size,
         "messages" => sessions.sum { |s| Array(s.messages).size },
@@ -1803,7 +1944,8 @@ end
     # --- Chats -----------------------------------------------------
 
     def render_chats
-      @sessions = recent_sessions(limit: 100)
+      @agent = presence(request.params["agent"])
+      @sessions = agent_sessions(recent_sessions(limit: 100), @agent)
       view("chats")
     end
 
@@ -1817,9 +1959,13 @@ end
     def render_customers
       mem = insika[:memory_store]
       agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
+      @agent = presence(request.params["agent"])
       @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |cell|
         { cell: cell, count: mem.fact_count(tenant: cell[:tenant], customer: cell[:customer]) }
       end : []
+      # ?agent= narrows to one tenant — the memory scope is the agent (the
+      # agent-memory tab writes under tenant = agent id).
+      @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
       @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
       view("customers")
     end
@@ -1844,11 +1990,19 @@ end
     # Tasks & Approvals --------------------------------
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
+    # `?agent=` narrows to one agent (the task's command payload stamps it).
     def render_tasks
       store = insika[:task_store]
+      @agent = presence(request.params["agent"])
       @tasks = store ? store.each_id.filter_map { |id| store.find(id) } : []
+      @tasks = @tasks.select { |t| task_agent(t) == @agent } if @agent
       @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
       view("tasks")
+    end
+
+    def task_agent(task)
+      command = task.command
+      command.is_a?(Hash) ? command.dig("payload", "agent").to_s : ""
     end
 
     # Task detail: @task is set by the route. Adds the open approvals for this task
@@ -1860,11 +2014,16 @@ end
     end
 
     # Approvals inbox: every :pending action across tasks, each paired with its
-    # task (for the status pill + a link into the task detail).
+    # task (for the status pill + a link into the task detail). `?agent=`
+    # narrows to one agent (via the owning task).
     def render_approvals
       pstore = insika[:pending_action_store]
       tstore = insika[:task_store]
+      @agent = presence(request.params["agent"])
       @approvals = pstore ? pstore.all_open.map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
+      if @agent
+        @approvals = @approvals.select { |a| task_agent(a[:task]) == @agent if a[:task] }
+      end
       view("approvals")
     end
 
@@ -1877,6 +2036,8 @@ def render_evals
   store = insika[:golden_store]
   @cases = store ? store.all : []
   @invalid = store ? store.invalid : []
+  @filter = presence(request.params["agent"])
+  @cases = @cases.select { |g| g.agent == @filter } if @filter
   @by_agent = @cases.group_by(&:agent).sort.to_h
   wanted = presence(request.params["id"])
   @case = wanted && @cases.find { |g| g.id == wanted }
@@ -1934,9 +2095,11 @@ end
 
     def render_parity
       @criterion = insika[:parity_criterion]
+      @agent = presence(request.params["agent"])
       # ONE materialization per request: the fold and the pair list share this
       # array (the store's counts would scan the whole table a second time).
       pairs = parity_pairs
+      pairs = pairs.select { |p| p.agent.to_s == @agent } if @agent
       @report = @criterion && Insika::Parity::Verdict.fold(pairs: pairs, criterion: @criterion)
       @pairs = pairs.sort_by { |p| p.created_at.to_s }.reverse.first(50)
       @pending = pairs.count { |p| p.status == :complete }
@@ -1959,6 +2122,8 @@ end
       profiles = insika[:profile_source]&.all || []
       p = request.params["period"].to_i
       @period = p.positive? ? p : 30
+      @agent = presence(request.params["agent"])
+      profiles = profiles.select { |p| p.id == @agent } if @agent
       @stores = profiles.filter_map do |p|
         decl = Insika::FunnelDeclaration.parse(p.funnel)
         next unless decl
@@ -1974,6 +2139,8 @@ end
     # A/B card (D10 — reads stores, mutates through bus commands only).
     def render_followups
       profiles = insika[:profile_source]&.all || []
+      @agent = presence(request.params["agent"])
+      profiles = profiles.select { |p| p.id == @agent } if @agent
       @stores = profiles.filter_map do |p|
         decl = Insika::FollowupPolicy.parse(p.followup)
         next unless decl
@@ -1998,13 +2165,31 @@ end
       @pending = store ? store.pending(limit: 100) : []
       @stale   = store ? store.stale(limit: 50) : []
       @recent  = store ? store.resolved(limit: 20) : []
-      @filter  = presence(request.params["store"])
-      @pending = @pending.select { |p| p.scope == @filter } if @filter
-      @stale   = @stale.select { |p| p.scope == @filter } if @filter
-      @recent  = @recent.select { |p| p.scope == @filter } if @filter
-      @stores  = (@pending + @stale + @recent).map(&:scope).uniq.sort
+      # `?agent=` filters by the proposal's AGENT (the origin session's
+      # stamp); `?store=` keeps filtering by the memory-cell scope (the
+      # pre-review behavior). Both narrow the same three lists.
+      @filter = presence(request.params["agent"]) || presence(request.params["store"])
+      if @filter
+        @pending = @pending.select { |p| scope_matches?(p, @filter) }
+        @stale   = @stale.select { |p| scope_matches?(p, @filter) }
+        @recent  = @recent.select { |p| scope_matches?(p, @filter) }
+      end
+      # The select: the filtered agents (profile ids) PLUS every scope a
+      # proposal ever carried, so an agent with proposals and one without can
+      # both be picked.
+      @stores  = (insika[:profile_source].ids.sort +
+                  (@pending + @stale + @recent).map(&:scope)).uniq.sort
       @sessions = insika[:session_store]
       view("facts")
+    end
+
+    # A proposal matches the filter as the memory scope it carries, or as the
+    # agent of the session it came from (when the session is still around).
+    def scope_matches?(proposal, filter)
+      return true if proposal.scope == filter
+
+      session = insika[:session_store]&.find(proposal.session_ref)
+      session && session_agent(session) == filter
     end
 
     # RFC-0035 C11: the Harvest page — the human gate on mined skills. Reads

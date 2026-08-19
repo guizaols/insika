@@ -8,6 +8,9 @@
     <nav class="crumbs"><span>operate</span></nav>
     <h1>Follow-ups<span class="sub">scheduled, fired, blocked, cancelled — per agent</span></h1>
   </div>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/followups", @agent) %>
+  </div>
 </header>
 
 <% if !@has_followups %>

@@ -3,7 +3,10 @@
     <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>chats</span></nav>
     <h1>Chats<span class="sub"><%= @sessions.size %> recent conversation(s)</span></h1>
   </div>
-  <a class="btn primary" href="/studio/playground">New conversation →</a>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/chats", @agent) %>
+    <a class="btn primary" href="/studio/playground">New conversation →</a>
+  </div>
 </header>
 
 <% if @sessions.empty? %>

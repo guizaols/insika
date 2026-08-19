@@ -25,6 +25,7 @@ RSpec.describe Studio::App do
       end
     end
 
+    def registered?(_type) = true
     def last(type) = dispatched.reverse.find { |c| c.type == type }
     def types = dispatched.map(&:type)
   end
@@ -35,6 +36,7 @@ RSpec.describe Studio::App do
   StudioRecordingBus = Struct.new(:real, :dispatched) do
     def initialize(real) = super(real, [])
     def register(*args) = real.register(*args)
+    def registered?(type) = real.registered?(type)
     def dispatch(cmd) = (dispatched << cmd; real.dispatch(cmd))
     def last(type) = dispatched.reverse.find { |c| c.type == type }
   end
@@ -857,6 +859,369 @@ RSpec.describe Studio::App do
     client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
     guardrails = bus.last(:update_agent).payload[:guardrails]
     expect(guardrails["corpora"]).to eq("languages" => ["en"])
+  end
+
+  # --- The full config surface: EVERY profile field is editable here ---------
+  # The pack import is one door; the config form is the other. Each feature's
+  # block round-trips: the form renders the current value, the patch parses it
+  # back into the same deep-stringified shape the engine reads.
+
+  describe "the agent config edits every profile field" do
+    def config_post(client, params)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/config", params: params.merge("_csrf" => csrf))
+    end
+
+    it "grounding: mode, matcher sku and name keys" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "grounding_mode" => "enforce",
+                          "grounding_matcher_sku" => "sku:", "grounding_name_keys" => "product, name")
+      expect(bus.last(:update_agent).payload[:grounding]).to eq(
+        "mode" => "enforce", "matcher" => { "sku" => "sku:", "name_keys" => %w[product name] }
+      )
+
+      config_post(client, "model" => "x", "grounding_mode" => "")
+      expect(bus.last(:update_agent).payload[:grounding]).to be_nil
+    end
+
+    it "funnel: stages per line, primary, window and the advance_on JSON" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x",
+                          "funnel_stages" => "greeted\nqualified\npaid",
+                          "funnel_primary" => "paid",
+                          "funnel_attribution_window" => "72h",
+                          "funnel_advance_on" => '{ "pix_paid": "paid" }')
+      expect(bus.last(:update_agent).payload[:funnel]).to eq(
+        "stages" => %w[greeted qualified paid], "primary" => "paid",
+        "attribution_window" => "72h", "advance_on" => { "pix_paid" => "paid" }
+      )
+
+      config_post(client, "model" => "x", "funnel_stages" => "")
+      expect(bus.last(:update_agent).payload[:funnel]).to be_nil # blank stages = no funnel
+    end
+
+    it "followup: arm, quiet hours, keywords, frequency and silence" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "followup_arm" => "schedule",
+                          "followup_tz" => "America/Sao_Paulo",
+                          "followup_quiet_start" => "21:30", "followup_quiet_end" => "09:00",
+                          "followup_max_frequency" => "2/24h",
+                          "followup_cancel_keywords" => "não quero mais contato",
+                          "followup_silence_after_sends" => "3")
+      expect(bus.last(:update_agent).payload[:followup]).to eq(
+        "arm" => "schedule",
+        "policy" => { "quiet_hours" => { "timezone" => "America/Sao_Paulo",
+                                         "start" => "21:30", "end" => "09:00" },
+                      "max_frequency" => "2/24h",
+                      "cancel_keywords" => ["não quero mais contato"],
+                      "silence_after_sends" => 3 }
+      )
+
+      config_post(client, "model" => "x", "followup_arm" => "")
+      expect(bus.last(:update_agent).payload[:followup]).to be_nil # blank arm = off
+    end
+
+    it "distill: the enabled switch + the forge's knobs; blank prompt drops the key" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "distill_enabled" => "1",
+                          "distill_idle_hours" => "12", "distill_min_messages" => "5",
+                          "distill_max_proposals" => "3", "distill_model" => "deepseek-v4-flash",
+                          "distill_prompt" => "what counts")
+      expect(bus.last(:update_agent).payload[:distill]).to eq(
+        "enabled" => true, "idle_hours" => 12, "min_messages" => 5,
+        "max_proposals" => 3, "model" => "deepseek-v4-flash", "prompt" => "what counts"
+      )
+
+      # unchecked = explicit off, with the other knobs preserved
+      config_post(client, "model" => "x", "distill_idle_hours" => "12")
+      expect(bus.last(:update_agent).payload[:distill]).to eq("enabled" => false, "idle_hours" => 12)
+    end
+
+    it "harvest: the enabled switch, the miner block and the negative list JSON" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "harvest_enabled" => "1",
+                          "harvest_idle_hours" => "48",
+                          "harvest_miner_model" => "deepseek-v4-flash",
+                          "harvest_miner_window" => "100",
+                          "harvest_miner_max_proposals" => "5",
+                          "harvest_miner_budget_tokens" => "20000",
+                          "harvest_negative_list" => '[ { "rule": "no-competitor-prices", "pattern": "concorrente" } ]')
+      expect(bus.last(:update_agent).payload[:harvest]).to eq(
+        "enabled" => true, "idle_hours" => 48,
+        "miner" => { "model" => "deepseek-v4-flash", "window" => { "last_sessions" => 100 },
+                     "max_proposals" => 5, "budget" => { "tokens" => 20_000 } },
+        "negative_list" => [{ "rule" => "no-competitor-prices", "pattern" => "concorrente" }]
+      )
+    end
+
+    it "refinement: mode, window, findings cap, files, proposers and budget" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "refinement_mode" => "propose",
+                          "refinement_window" => "50", "refinement_max_findings" => "5",
+                          "refinement_files" => "IDENTITY.md",
+                          "refinement_proposers" => "deepseek/deepseek-v4-flash",
+                          "refinement_budget_tokens" => "30000",
+                          "refinement_auto_apply_max_edits" => "2")
+      expect(bus.last(:update_agent).payload[:refinement]).to eq(
+        "mode" => "propose", "window" => { "last_sessions" => 50 }, "max_findings" => 5,
+        "files" => ["IDENTITY.md"], "proposers" => ["deepseek/deepseek-v4-flash"],
+        "budget" => { "tokens" => 30_000 }, "auto_apply_max_edits" => 2
+      )
+    end
+
+    it "budget, reliability, routes, outputs, metadata, alerts and edge_stream" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x",
+                          "budget_daily" => "100000", "budget_monthly" => "2000000",
+                          "budget_soft" => "1", "budget_alert_at" => "0.9",
+                          "reliability_retries" => "2", "reliability_backoff" => "exponential",
+                          "reliability_timeout" => "30", "reliability_fallback" => "openai/gpt-4o-mini",
+                          "reliability_breaker_after" => "10", "reliability_breaker_within" => "60",
+                          "reliability_breaker_cooldown" => "300",
+                          "routes" => '{ "shopping": "browse", "default": "shopping" }',
+                          "outputs" => '{ "image": { "model": "gpt-image-1" } }',
+                          "metadata" => '{ "store_id": "acme" }',
+                          "alerts_webhook" => "https://ops.example.com/hook",
+                          "edge_thinking" => "1")
+      payload = bus.last(:update_agent).payload
+      expect(payload[:budget]).to eq("daily" => 100_000, "monthly" => 2_000_000,
+                                     "soft" => true, "alert_at" => 0.9)
+      expect(payload[:reliability]).to eq(
+        "retries" => 2, "backoff" => "exponential", "timeout" => 30,
+        "fallback" => ["openai/gpt-4o-mini"],
+        "circuit_breaker" => { "after" => 10, "within" => 60, "cooldown" => 300 }
+      )
+      expect(payload[:routes]).to eq("shopping" => "browse", "default" => "shopping")
+      expect(payload[:outputs]).to eq("image" => { "model" => "gpt-image-1" })
+      expect(payload[:metadata]).to eq("store_id" => "acme")
+      expect(payload[:alerts]).to eq("webhook" => "https://ops.example.com/hook")
+      expect(payload[:edge_stream]).to eq("thinking" => true, "intermediate" => false)
+    end
+
+    it "the advanced lists: subagents/capabilities/briefing/policies (symbols)/declares; blank allowlists = nil (all)" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x",
+                          "subagents" => "order-agent, security",
+                          "capabilities" => "promotions",
+                          "tools_deferred" => "search",
+                          "briefing_fields" => "customer_name, wishlist",
+                          "approvals_required" => "send_coupon",
+                          "policies" => "tool_allowlist, skill_allowlist",
+                          "prompt_refs" => "base",
+                          "capabilities_declared" => "promotions, human_handoff",
+                          "skills_eager" => "all")
+      payload = bus.last(:update_agent).payload
+      expect(payload[:subagents]).to eq(%w[order-agent security])
+      expect(payload[:capabilities]).to eq(["promotions"])
+      expect(payload[:tools_deferred]).to eq(["search"])
+      expect(payload[:briefing_fields]).to eq(%w[customer_name wishlist])
+      expect(payload[:approvals_required]).to eq(["send_coupon"])
+      expect(payload[:policies]).to eq(%i[tool_allowlist skill_allowlist])
+      expect(payload[:prompt_refs]).to eq(["base"])
+      expect(payload[:capabilities_declared]).to eq(%w[promotions human_handoff])
+      expect(payload[:skills_eager]).to be(true) # "all"
+
+      config_post(client, "model" => "x", "context_providers" => "", "workflows_allow" => "")
+      payload = bus.last(:update_agent).payload
+      expect(payload[:context_providers]).to be_nil # nil = all
+      expect(payload[:workflows_allow]).to be_nil
+    end
+
+    it "malformed JSON in a config block is a red flash, never a dispatch" do
+      app, bus = build_app
+      client = login(app)
+      res = config_post(client, "model" => "x", "routes" => "{ not json")
+      expect(res.status).to eq(302)
+      expect(client.get(res.headers["location"]).body).to include("invalid JSON")
+      expect(bus.types).not_to include(:update_agent)
+    end
+  end
+
+  # --- The loops tab: automatic loops with a manual trigger per agent --------
+
+  describe "the automatic-loops tab" do
+    def loops_app(agent)
+      build_app(agents: [agent])
+    end
+
+    it "shows the Run buttons only for the loops the agent declares" do
+      agent = Insika::AgentProfile.build(
+        id: "bia", model: "m", memory: true,
+        distill: { "enabled" => true, "idle_hours" => 6 },
+        harvest: { "enabled" => true, "idle_hours" => 24 },
+        refinement: { "mode" => "report" }
+      )
+      app, = loops_app(agent)
+      body = login(app).get("/agents/bia#loops").body
+
+      expect(body).to include("Run distillation now")
+      expect(body).to include("Run harvest now")
+      expect(body).to include("Run refinement now")
+      expect(body).to include("idle 6h")
+      expect(body).to include("idle 24h")
+    end
+
+    it "a declared-off loop shows no Run button" do
+      app, = build_app # bia has no distill/harvest/refinement
+      body = login(app).get("/agents/bia").body
+      expect(body).not_to include("Run distillation now")
+      expect(body).not_to include("Run harvest now")
+    end
+
+    it "POST distill runs the due sessions of THIS agent" do
+      old = (Time.now.utc - 24 * 3600).iso8601
+      sessions = {
+        "s-bia" => StoredSession.new(id: "s-bia",
+                                     messages: Array.new(5) { { "role" => "user", "content" => "hi" } },
+                                     vars: { "agent" => "bia", "customer" => "c-1" },
+                                     updated_at: old, briefing: nil),
+        "s-chef" => StoredSession.new(id: "s-chef",
+                                      messages: Array.new(5) { { "role" => "user", "content" => "hi" } },
+                                      vars: { "agent" => "chef", "customer" => "c-9" },
+                                      updated_at: old, briefing: nil)
+      }
+      agents = [Insika::AgentProfile.build(id: "bia", model: "m", memory: true),
+                profile("chef")]
+      app, bus = build_app(agents: agents, sessions: sessions, proposal_store: seed_facts([]))
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/distill", params: { "_csrf" => csrf })
+
+      runs = bus.dispatched.select { |c| c.type == :run_distillation }
+      expect(runs.map { |c| c.payload[:session_id] }).to eq(["s-bia"]) # chef's session never touched
+    end
+
+    it "POST harvest dispatches :run_harvest for the agent" do
+      app, bus = build_app
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/harvest", params: { "_csrf" => csrf })
+      expect(bus.last(:run_harvest).payload).to include(agent: "bia")
+    end
+
+    it "POST refinement dispatches :run_refinement for the agent" do
+      app, bus = build_app
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/refinement", params: { "_csrf" => csrf })
+      expect(bus.last(:run_refinement).payload).to include(agent: "bia")
+    end
+  end
+
+  # --- Every shared screen is filterable by agent ----------------------------
+
+  describe "the shared screens filter by agent" do
+    def sess(id, agent)
+      StoredSession.new(id: id,
+                        messages: [{ "role" => "user", "content" => "hi #{id}" }],
+                        vars: { "agent" => agent, "customer" => "c-#{id}" },
+                        updated_at: "2026-08-15T10:00:00Z", briefing: nil)
+    end
+
+    it "chats?agent= narrows the list" do
+      app, = build_app(sessions: { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") })
+      body = login(app).get("/chats?agent=bia").body
+      expect(body).to include("s-1")
+      expect(body).not_to include("s-2")
+    end
+
+    it "tasks?agent= narrows by the task's command payload" do
+      tasks = { "t-1" => TaskDouble.new(id: "t-1", status: :completed,
+                                        command: { "payload" => { "agent" => "bia" } },
+                                        session_id: "s-1", executions: [], updated_at: "x"),
+                "t-2" => TaskDouble.new(id: "t-2", status: :completed,
+                                        command: { "payload" => { "agent" => "chef" } },
+                                        session_id: "s-2", executions: [], updated_at: "x") }
+      app, = build_app(tasks: tasks)
+      body = login(app).get("/tasks?agent=bia").body
+      expect(body).to include("t-1")
+      expect(body).not_to include("t-2")
+    end
+
+    it "approvals?agent= narrows via the owning task" do
+      tasks = { "t-1" => TaskDouble.new(id: "t-1", status: :running,
+                                        command: { "payload" => { "agent" => "bia" } },
+                                        session_id: "s-1", executions: [], updated_at: "x") }
+      pendings = [StudioPendingRow.new(id: "p-1", task_id: "t-1", turn: 1, tool: "ship",
+                                       args: {}, status: :pending, requested_at: "x")]
+      app, = build_app(tasks: tasks, pendings: pendings)
+      body = login(app).get("/approvals?agent=chef").body
+      expect(body).not_to include("ship")
+    end
+
+    it "customers?agent= narrows to one tenant (the memory scope IS the agent)" do
+      backend = Insika::Stores::Memory.new
+      store = Insika::MemoryStore.new(store: backend)
+      store.put_fact(tenant: "bia", customer: "c-1", key: "size", value: "M")
+      store.put_fact(tenant: "chef", customer: "c-2", key: "size", value: "L")
+      app, = build_app(agents: [profile("bia"), profile("chef")])
+      # seed via the real store, then read through the app's own store
+      app2 = Class.new(Studio::App)
+      app2.configure(command_bus: BusDouble.new([]),
+                     profile_source: ProfileSourceDouble.new([profile("bia"), profile("chef")]),
+                     event_stream: nil, config: { admin_token: "s3cret" },
+                     memory_store: store, session_secret: "x" * 64)
+      body = login(app2).get("/customers?agent=bia").body
+      expect(body).to include("c-1")
+      expect(body).not_to include("c-2")
+    end
+
+    it "evals?agent= narrows the case list" do
+      goldens = [
+        { id: "g1", agent: "bia", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } },
+        { id: "g2", agent: "chef", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } }
+      ]
+      app, = build_app(agents: [profile("bia"), profile("chef")], goldens: goldens)
+      body = login(app).get("/evals?agent=bia").body
+      expect(body).to include("g1")
+      expect(body).not_to include("g2")
+    end
+
+    it "funnel?agent= shows only that agent's declaration" do
+      app, = funnel_app(funnel_cells: [])
+      body = login(app).get("/funnel?agent=funnel-store").body
+      expect(body).to include("funnel-store")
+      expect(body).not_to match(%r{<h2>chef})
+    end
+
+    it "facts?agent= matches by the origin session's agent stamp" do
+      def clean_fact(id, key:, value:, session_ref:)
+        { id: id, key: key, value: value, session_ref: session_ref, evidence: [1],
+          status: "pending", current_value: nil, note: nil, confidence: nil, tenant: nil }
+      end
+      sessions = { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") }
+      rows = [clean_fact("p1", key: "size", value: "M", session_ref: "s-1"),
+              clean_fact("p2", key: "color", value: "blue", session_ref: "s-2")]
+      app, = build_app(agents: [profile("bia"), profile("chef")],
+                       sessions: sessions, proposal_store: seed_facts(rows))
+      body = login(app).get("/facts?agent=bia").body
+      expect(body).to include("size")
+      expect(body).not_to include("blue")
+    end
+
+    it "home?agent= narrows the counts and the recent list" do
+      app, = build_app(sessions: { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") })
+      body = login(app).get("/home?agent=bia").body
+      expect(body).to include("1</div>")
+      expect(body).not_to include("s-2")
+    end
+
+    it "every filtered page renders the agent select" do
+      app, = build_app
+      # customers has its own drill (a real MemoryStore) — covered by its spec above
+      %w[home chats tasks approvals evals funnel followups facts].each do |path|
+        body = login(app).get("/#{path}").body
+        expect(body).to include('name="agent"'), "#{path} lacks the agent filter"
+      end
+    end
   end
 
   it "saving a prompt dispatches write_agent_file (the Command syncs prompt_files)" do
@@ -1721,7 +2086,7 @@ RSpec.describe Studio::App do
       expect(body).to include("solo")
       expect(body).to include("Shared (no tenant)") # the bare cells group
       expect(body).not_to include("_default")
-      expect(body).not_to include('>bia<')
+      expect(body).not_to match(%r{<h2>bia</h2>}) # the reserved agent cell is not a section
       expect(body).not_to include("34403117") # a conversation is never a customer
     end
 
@@ -2787,7 +3152,7 @@ end
     body = login(app).get("/funnel").body
 
     expect(body).to include("funnel-store")
-    expect(body).not_to include("chef") # no declaration
+    expect(body).not_to match(%r{<h2>chef}) # no declaration -> no block (the filter select lists every agent)
     # the stage rows carry "stage · count" — structured, not SVG noise
     expect(body).to include("greeted · 15")
     expect(body).to include("qualified · 8")
@@ -2980,7 +3345,7 @@ end
       body = login(app).get("/followups").body
 
       expect(body).to include("funnel-store")
-      expect(body).not_to include("chef") # no declaration -> no block
+      expect(body).not_to match(%r{<h2>chef}) # no declaration -> no block (the filter select lists every agent)
       expect(body).to include("pending")
       expect(body).to include("fired")
       expect(body).to include("blocked")
