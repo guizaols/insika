@@ -98,6 +98,11 @@ module Insika
         # when no pack declares harvest) so the engine, the Studio and the
         # LGPD purges always have a store.
         harvest_store        = Insika::HarvestStore.new(store: backend)
+        # the report destination — one record per run, no
+        # versioning. Built unconditionally (empty and free when nothing saves)
+        # so the tool, the routes, the retention sweep and the tenant purge
+        # always have a store.
+        artifact_store       = Insika::ArtifactStore.new(store: backend)
 
         code_tool_registry = Insika::ToolRegistry.new
         workflow_registry  = Insika::WorkflowRegistry.new
@@ -125,6 +130,7 @@ module Insika
           followup_store: followup_store,
           schedule_store: schedule_store,
           proposal_store: proposal_store,
+          artifact_store: artifact_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
           capability_registry: Insika::CapabilityRegistry.new, hooks: Insika::Hooks.new,
@@ -147,6 +153,13 @@ module Insika
       def build(spine:, profiles:, tool_registry:, tool_catalog:, skill_catalog:,
                 prompt_catalog:, guardrails:, context_providers:, edge_limiter: nil,
                 executor_extra: {})
+        # the save_artifact tool: a REGISTRY tool registered OPTIONAL (the
+        # per-agent allowlist is the switch — an agent that did not name it
+        # cannot call it). Registered in the shared code registry, so both
+        # roots (base registry + the deployment's overlay, which composes it)
+        # expose it. The gem's require lives IN the factory block (loaded on
+        # the 1st instance, turn time -> wiring-load stays gem-free).
+        register_artifact_tool(spine)
         spine.hooks.register(:task, after: guardrails.output_validator)
         middleware = Insika::MiddlewareStack.new([edge_limiter, guardrails.input_guardrail].compact)
 
@@ -239,7 +252,8 @@ module Insika
             followup_store: spine.followup_store, # records age out too
             contact_store: spine.contact_store, # cells age out too
             proposal_store: spine.proposal_store, # proposals age out too
-            harvest_store: spine.harvest_store # candidates/log/snapshots too
+            harvest_store: spine.harvest_store, # candidates/log/snapshots too
+            artifact_store: spine.artifact_store # reports expire on their own TTL
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
@@ -323,6 +337,7 @@ module Insika
           memory_store: spine.memory_store, memory_audit_store: spine.memory_audit_store,
           refinement_store: spine.refinement_store,
           harvest_store: spine.harvest_store,
+          artifact_store: spine.artifact_store,
           outbox_store: spine.outbox_store, shadow_pair_store: spine.shadow_pair_store,
           inbound_log: spine.inbound_log,
           outcome_store: spine.outcome_store,
@@ -428,12 +443,13 @@ module Insika
                        model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        outcome_store: spine.outcome_store,
                        funnel_store: spine.funnel_store, # the fold dies with the tenant
-                       followup_store: spine.followup_store,
-                       contact_store: spine.contact_store,
-                       proposal_store: spine.proposal_store,
-harvest_store: spine.harvest_store,
-                          schedule_store: spine.schedule_store,
-                          task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
+                        followup_store: spine.followup_store,
+                        contact_store: spine.contact_store,
+                        proposal_store: spine.proposal_store,
+                        harvest_store: spine.harvest_store,
+                        schedule_store: spine.schedule_store,
+                        artifact_store: spine.artifact_store,
+                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                           outbox_store: spine.outbox_store,
                           shadow_pairs: spine.shadow_pair_store,
                           token_store: spine.token_store, # revoked BEFORE the sweep
@@ -451,6 +467,12 @@ harvest_store: spine.harvest_store,
         # generic command ingress; these ride the same operator-grade path).
         bus.register(:cancel_followup,
                      Insika::Commands::CancelFollowup.new(followup_store: spine.followup_store,
+                                                          event_stream: spine.event_stream))
+        # the report destination's Studio mutation — delete one
+        # artifact (the only write on the Artifacts tab; a bus command, like
+        # every Studio mutation).
+        bus.register(:delete_artifact,
+                     Insika::Commands::DeleteArtifact.new(artifact_store: spine.artifact_store,
                                                           event_stream: spine.event_stream))
         bus.register(:revoke_contact,
                      Insika::Commands::RevokeContact.new(contact_store: spine.contact_store,
@@ -524,6 +546,7 @@ harvest_store: spine.harvest_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
         :contact_store, :followup_store, :schedule_store, :proposal_store,
+        :artifact_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -540,6 +563,7 @@ harvest_store: spine.harvest_store,
         :contact_store, :followup_store, :proposal_store,
         :schedule_store,
         :harvest_store,
+        :artifact_store,
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,
@@ -549,6 +573,30 @@ harvest_store: spine.harvest_store,
         keyword_init: true
       ) do
         def durable? = backend.is_a?(Insika::Stores::SQLite)
+      end
+
+      # The save_artifact tool, registered OPTIONAL on the shared code registry
+      # (the per-agent allowlist is the switch). The signing/base config is
+      # bound at registration time from the environment — the tool instance is
+      # per-deployment, and the tenant/agent/task bindings arrive per-turn via
+      # the deposited turn context.
+      def register_artifact_tool(spine)
+        signing_key = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_KEY")
+        signing_ttl = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_TTL")
+        max_bytes = Insika::EnvSchema.read("INSIKA_ARTIFACT_MAX_BYTES")
+        base_url = Insika::Coercion.presence(Insika::EnvSchema.read("INSIKA_PUBLIC_URL"))
+        spine.code_tool_registry.register("save_artifact", optional: true) do
+          require "ruby_llm"
+          require_relative "../tools/save_artifact"
+          Insika::Tools::SaveArtifact.new(
+            artifact_store: spine.artifact_store,
+            base_url: base_url,
+            signing_key: signing_key,
+            signing_ttl: signing_ttl&.to_i,
+            max_bytes: max_bytes&.to_i,
+            event_stream: spine.event_stream
+          )
+        end
       end
     end
   end

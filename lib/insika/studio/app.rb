@@ -92,7 +92,8 @@ module Studio
                     followup_store: nil, contact_store: nil,
                     proposal_store: nil,
                     harvest_store: nil, harvest_criterion: nil, negative_list: nil,
-                    channel_registry: nil)
+                    channel_registry: nil,
+                    artifact_store: nil, artifact_signing: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -158,7 +159,13 @@ module Studio
           # (boot-loaded, with its sha) and the negative list render the two
           # pre-registered artifacts. nil = the page renders its empty state.
           harvest_store: harvest_store, harvest_criterion: harvest_criterion,
-          negative_list: negative_list
+          negative_list: negative_list,
+          # the Artifacts tab reads the report store directly; its
+          # only mutation (delete) dispatches :delete_artifact on the bus.
+          # artifact_signing is a { key:, ttl:, base_url: } Hash when a signing
+          # key is configured (nil = no signed surface). nil stores = the
+          # pages render their empty states.
+          artifact_store: artifact_store, artifact_signing: artifact_signing
         }.freeze
         # "restart recommended" flag — in memory, PER PROCESS. A
         # config change that the runtime only re-reads at boot (e.g.: MCP instances are
@@ -225,6 +232,18 @@ module Studio
             @error = "Invalid token, or the studio is disabled (set ADMIN_TOKEN)."
             response.status = 401
             view("login")
+          end
+        end
+      end
+
+      # The signed artifact link: the ONLY path that serves an artifact without
+      # a Studio session (the point of a sharing link). Without a signing key
+      # there is NO signed surface — a forged link 404s, never a login redirect
+      # (a link that cannot exist must not advertise a door).
+      r.on "artifacts", "s" do
+        r.on String do |id|
+          r.get do
+            serve_signed_artifact(utf8(id), r.params["exp"], r.params["sig"])
           end
         end
       end
@@ -1147,6 +1166,26 @@ end
         end
       end
 
+      # --- Artifacts: the report destination -------------------
+      # Reads the ArtifactStore directly (the list, the preview, the content);
+      # the ONLY mutation — delete — dispatches :delete_artifact on the bus
+      # (the Studio never writes a store directly).
+      r.on "artifacts" do
+        r.is { r.get { render_artifacts } }
+        r.on String do |id|
+          id = utf8(id)
+          r.get "content" do
+            serve_artifact_content(id)
+          end
+          r.post "delete" do
+            check_csrf!
+            with_flash("Artifact deleted.") { dispatch(:delete_artifact, { id: id }) }
+            r.redirect("/studio/artifacts?agent=#{Rack::Utils.escape(presence(r.params['agent']).to_s)}")
+          end
+          r.is { r.get { render_artifact(id) } }
+        end
+      end
+
       # Playground: sends `send_message` (the SAME Command as the API) and streams the
       # response live through the `live-transcript` island (SSE from /studio/events).
       r.on "playground" do
@@ -1234,6 +1273,9 @@ end
           # the Follow-ups page — scheduled, fired, blocked and
           # cancelled records per agent + the per-arm A/B readout card.
           ["Follow-ups", "/studio/followups", :followups],
+          # the Artifacts page — the report destination: per-agent
+          # list, sandboxed preview, signed sharing link.
+          ["Artifacts", "/studio/artifacts", :artifacts],
           # the Facts (wiki) page — the human gate on distilled
           # proposals (approve/reject/dismiss, the latch, the CAS re-present).
           ["Facts", "/studio/facts", :facts],
@@ -2120,6 +2162,93 @@ end
       # verdicts flipped with presentation order.
       @agreement = { order_dependent: pairs.count { |p| p.verdict.is_a?(Hash) && p.verdict["order_dependent"] } }
       view("parity")
+    end
+
+    # --- Artifacts  ---------------------------------------------
+
+    # The restrictive CSP for artifact CONTENT (both the authenticated and the
+    # signed route): artifact content is LLM output — untrusted. No script, no
+    # external fetch, no forms; inline styles (the report's own styling) and
+    # data: images (inline SVG) are the two things a report legitimately needs.
+    ARTIFACT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+
+    def artifact_store = insika[:artifact_store]
+
+    # -> { key:, ttl:, base_url: } | nil (no signing configured -> no signed surface).
+    def artifact_signing = insika[:artifact_signing]
+
+    def artifact_tenant = presence(request.params["tenant"]) || "platform"
+
+    # The Artifacts page: per-agent list (the listing IS the history — newest
+    # first). Reads the store directly; the only mutation (delete) dispatches
+    # :delete_artifact on the bus.
+    def render_artifacts
+      @agents = insika[:profile_source].ids.sort
+      @agent = presence(request.params["agent"])
+      @signed_available = !artifact_signing.nil? && artifact_signing[:key].to_s.length.positive?
+      store = artifact_store
+      @artifacts = if @agent && store
+                     store.for_agent(tenant: artifact_tenant, agent: @agent)
+                   else
+                     []
+                   end
+      view("artifacts")
+    end
+
+    # The preview page: metadata + the artifact in a SANDBOXED iframe (no
+    # allow-scripts / allow-same-origin / allow-forms — on top of the content
+    # route's own restrictive CSP).
+    def render_artifact(id)
+      record = artifact_store&.find(id)
+      return next_404 if record.nil?
+
+      @artifact = record
+      @content_url = "/studio/artifacts/#{Rack::Utils.escape_path(id)}/content"
+      @signed_url = signed_artifact_url(record.id)
+      view("artifact")
+    end
+
+    # The authenticated content route: raw content + the restrictive CSP. The
+    # iframe (same-origin) and the channel-navigated operator read here.
+    def serve_artifact_content(id)
+      record = artifact_store&.find(id)
+      return next_404 if record.nil?
+
+      serve_artifact_bytes(record)
+    end
+
+    # The signed route: verifies the HMAC over (id, expiry) in constant time,
+    # serves only what verifies AND is unexpired. Bad/expired/absent-key ->
+    # 404 (never 403 — no oracle).
+    def serve_signed_artifact(id, exp, sig)
+      signing = artifact_signing
+      key = signing && signing[:key].to_s
+      return next_404 if key.to_s.empty?
+
+      return next_404 unless Insika::ArtifactSigning.valid?(id: id, token: sig, key: key, exp: exp)
+
+      record = artifact_store&.find(id)
+      return next_404 if record.nil?
+
+      serve_artifact_bytes(record)
+    end
+
+    # -> the signed sharing URL | nil (no key -> no signed surface).
+    def signed_artifact_url(id)
+      signing = artifact_signing
+      return nil unless signing && signing[:key] && signing[:key].to_s.length.positive?
+
+      Insika::ArtifactSigning.url_for(id: id, base: signing[:base_url],
+                                      key: signing[:key], ttl: signing[:ttl])
+    end
+
+    def serve_artifact_bytes(record)
+      response.headers["content-type"] = "#{record.mime}; charset=utf-8"
+      response.headers["Content-Security-Policy"] = ARTIFACT_CSP
+      response.headers["X-Content-Type-Options"] = "nosniff"
+      response.headers["Cache-Control"] = "no-store"
+      response.write(record.content)
+      request.halt
     end
 
     # --- Funnel  ------------------------------------------------
