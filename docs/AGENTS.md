@@ -842,11 +842,12 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   purges EVERYTHING the engine holds about one tenant: its sessions and their
   whole footprint (traces, tasks, checkpoints, outbox deliveries), every memory
   cell under the tenant (its own + the customer cells — enumerated from the
-  store, so even a cell whose session was already deleted goes) and its outcome
-  records: `{ "tenant": "acme" }`. Its API tokens are **revoked first** (before
-  the sweep): an offboarded tenant whose credentials still resolved kept
-  authenticating and could open a new session over the erasure. The tenant
-  string is the isolation boundary; a neighbour is untouched.
+  store, so even a cell whose session was already deleted goes), its outcome
+  records and its artifacts (a report is content, never kept behind an
+  offboarded tenant): `{ "tenant": "acme" }`. Its API tokens are **revoked
+  first** (before the sweep): an offboarded tenant whose credentials still
+  resolved kept authenticating and could open a new session over the erasure.
+  The tenant string is the isolation boundary; a neighbour is untouched.
 - **Retention** — the age-based counterpart, as data: the settings key
   `retention_days` (Integer days; absent/0 = OFF, the engine never sweeps by
   default). The tick's daily sweep (at most once per 24 h, behind the same
@@ -857,7 +858,10 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   still owed to somebody. One thing the same daily pass sweeps **regardless of
   `retention_days`**: the budget counter cells whose window already rolled over
   (and their once-per-window alert markers). Those are engine bookkeeping, not
-  customer content, and nothing else ever collected them.
+  customer content, and nothing else ever collected them. Artifacts (reports)
+  likewise expire on their **own** knob, `artifact_ttl_days` (settings; absent
+  = OFF) — the guarantee that PII inside a report dies even in a deployment
+  that keeps its conversations forever. See [Artifacts](ARTIFACTS.md).
 
 ## Outcomes — business results over real traffic (WS7)
 
@@ -1007,9 +1011,23 @@ A hard calendar budget at its cap skips instead of burning the store's tokens.
 Distinct by shape and by law from the follow-up tool. See
 [Schedules](SCHEDULING.md).
 
+## Artifacts — a report the agent can hand you a URL to
+
+A scheduled report's natural output is not a message but a page — tables,
+sections, inline charts. The `save_artifact` tool (a registry tool, in the
+agent's `tools_allow`) gives the agent a durable destination: it hands in
+title + content and gets a URL back, which it can include in a channel message
+("today's report: <url>"). The report is stored (one per run, the listing is
+the history), served under `/studio/artifacts/…` inside a sandboxed iframe,
+optionally shared outside the Studio via an expiring signed link
+(`INSIKA_ARTIFACT_SIGNING_KEY`). The tenant binding is inherited from the
+saving agent — never a parameter the model types. Artifact content is LLM
+output and is served as untrusted. See [Artifacts](ARTIFACTS.md).
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.
+- [Artifacts](ARTIFACTS.md) — the report destination: the tool, the routes, the signed link.
 - [Skills](SKILLS.md) — progressive playbooks an agent loads on demand.
 - [Context](CONTEXT.md) — what fills a turn's prompt, and memory.
 - [Security](SECURITY.md) — guardrails, sandbox, approvals, edge limits.

@@ -45,6 +45,15 @@ RSpec.describe Insika::EnvSchema do
       expect(described_class.validate({ "INSIKA_SUBAGENT_FANOUT_CAP" => "8" })).to be_empty
     end
 
+    it "validates the artifact env keys (signing TTL/max-bytes integers; signing key secret)" do
+      expect(described_class.validate({ "INSIKA_ARTIFACT_SIGNING_KEY" => "k", "INSIKA_ARTIFACT_SIGNING_TTL" => "3600",
+                                        "INSIKA_ARTIFACT_MAX_BYTES" => "1048576" })).to be_empty
+      findings = described_class.validate({ "INSIKA_ARTIFACT_SIGNING_TTL" => "soon" })
+      expect(findings.map(&:kind)).to eq([:invalid])
+      spec = described_class.known_specs.find { |s| s.name == "INSIKA_ARTIFACT_SIGNING_KEY" }
+      expect(spec.secret?).to be(true)
+    end
+
     it "flags a non-boolean flag" do
       findings = described_class.validate({ "INSIKA_EGRESS_ALLOW_HTTP" => "maybe" })
       expect(findings.map(&:kind)).to eq([:invalid])

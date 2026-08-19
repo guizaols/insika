@@ -1,0 +1,57 @@
+<%# the Artifacts page: the report destination. Reads the ArtifactStore
+   directly (the listing IS the history); the only mutation — delete —
+   dispatches :delete_artifact on the bus. The preview is a sandboxed iframe
+   on top of the content route's own restrictive CSP. %>
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><span>operate</span></nav>
+    <h1>Artifacts<span class="sub">the report destination — saved pages, per agent</span></h1>
+  </div>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/artifacts", @agent) %>
+  </div>
+</header>
+
+<% if @agent.nil? %>
+  <div class="empty">
+    Pick an agent to see its artifacts.
+  </div>
+<% elsif @artifacts.empty? %>
+  <div class="empty">
+    No artifacts for <span class="mono"><%= @agent %></span> — an agent that
+    has <span class="mono">save_artifact</span> in its <span class="mono">tools_allow</span>
+    writes its reports here.
+  </div>
+<% else %>
+  <h2><%= @agent %><span class="sub"><%= @artifacts.size %> artifact(s)</span></h2>
+  <div class="card">
+    <table class="grid">
+      <thead>
+        <tr>
+          <th>title</th><th>mime</th><th>task</th><th>created_at</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @artifacts.each do |a| %>
+          <tr>
+            <td><a href="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>"><%= a.title %></a></td>
+            <td><span class="pill"><%= a.mime %></span></td>
+            <td class="mono"><%= a.task_id %></td>
+            <td class="mono"><%= a.created_at %></td>
+            <td class="row-actions">
+              <% if @signed_available %>
+                <button type="button" class="btn ghost sm" data-copy="<%= signed_artifact_url(a.id) %>">copy link</button>
+              <% end %>
+              <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>/delete"
+                    class="inline" data-confirm="Delete this artifact?">
+                <%== csrf_tag %>
+                <input type="hidden" name="agent" value="<%= @agent %>">
+                <button class="btn ghost sm danger">delete</button>
+              </form>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

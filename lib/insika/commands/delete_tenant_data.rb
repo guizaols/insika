@@ -21,9 +21,9 @@ module Insika
                      context_trace_store: nil, model_visible_trace_store: nil,
                      outcome_store: nil, task_store: nil,
                      checkpoint_store: nil, outbox_store: nil, shadow_pairs: nil,
-                     token_store: nil, funnel_store: nil, event_stream:,
+                      token_store: nil, funnel_store: nil, event_stream:,
                      followup_store: nil, contact_store: nil, proposal_store: nil,
-                     harvest_store: nil, schedule_store: nil)
+                     harvest_store: nil, schedule_store: nil, artifact_store: nil)
         @memory_store = memory_store
         @token_store = token_store
         @session_store = session_store
@@ -41,6 +41,7 @@ module Insika
         @proposal_store = proposal_store #  ; nil = nothing to sweep
         @harvest_store = harvest_store   #  ; nil = nothing to sweep
         @schedule_store = schedule_store #  ; nil = nothing to sweep
+        @artifact_store = artifact_store #  ; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -76,6 +77,9 @@ module Insika
         # recurring-schedule rows die with the tenant too (their
         # message text is content, never kept behind an offboarded tenant).
         schedules = @schedule_store ? @schedule_store.purge(tenant: tenant) : 0
+        # artifacts die with the tenant — a report is content, and the
+        # tenant binding is the isolation boundary (never a model-typed id).
+        artifacts = @artifact_store ? @artifact_store.purge(tenant: tenant) : 0
 
         @event_stream.emit(Insika::Event.new(
                              type: :tenant_data_deleted,
@@ -88,12 +92,14 @@ module Insika
                                      proposals: proposals,
                                      harvest: harvest,
                                      schedules: schedules,
+                                     artifacts: artifacts,
                                      tokens_revoked: tokens_revoked }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { tenant: tenant, sessions: sessions, memory_records: memory_records,
           outcomes: outcomes, funnel: funnel, followups: followups, contacts: contacts,
           proposals: proposals, harvest: harvest, schedules: schedules,
+          artifacts: artifacts,
           tokens_revoked: tokens_revoked }.merge(purged)
       end
     end

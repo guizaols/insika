@@ -258,6 +258,49 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
+    # the report destination — spine store, the registry tool
+    # (optional: the allowlist is the switch), the delete command, the
+    # retention TTL and the tenant purge, all over the shared BACKEND.
+    describe "artifacts" do
+      it "builds the artifact store over BACKEND in the spine" do
+        expect(w::SPINE.artifact_store).to be_a(Insika::ArtifactStore)
+        expect(w::SPINE.artifact_store.instance_variable_get(:@store)).to be(w::BACKEND)
+        expect(w::GRAPH.artifact_store).to be(w::SPINE.artifact_store)
+      end
+
+      it "registers save_artifact on the code registry as OPTIONAL (the allowlist is the switch)" do
+        entry = w::SPINE.code_tool_registry.entries.find { |e| e.name == "save_artifact" }
+        expect(entry).not_to be_nil
+        expect(entry.metadata[:optional]).to be(true)
+      end
+
+      it "registers :delete_artifact on the bus" do
+        expect(w::BUS.registered?(:delete_artifact)).to be(true)
+        cmd = w::BUS.instance_variable_get(:@handlers)[:delete_artifact]
+        expect(cmd.instance_variable_get(:@artifact_store)).to be(w::SPINE.artifact_store)
+      end
+
+      it "wires the store into the tenant purge" do
+        delete = w::BUS.instance_variable_get(:@handlers)[:delete_tenant_data]
+        expect(delete.instance_variable_get(:@artifact_store)).to be(w::SPINE.artifact_store)
+      end
+
+      it "wires the store into retention (reports expire on their own TTL)" do
+        retention = w::GRAPH.executor.tick.instance_variable_get(:@retention)
+        expect(retention.instance_variable_get(:@artifact_store)).to be(w::SPINE.artifact_store)
+      end
+
+      it "threads INSIKA_ARTIFACT_MAX_BYTES into the tool instance (a documented env must be read)" do
+        spine = Insika::Wiring::Graph.spine(backend: Insika::Stores::Memory.new)
+        original = ENV["INSIKA_ARTIFACT_MAX_BYTES"]
+        ENV["INSIKA_ARTIFACT_MAX_BYTES"] = "12345"
+        Insika::Wiring::Graph.register_artifact_tool(spine)
+        ENV["INSIKA_ARTIFACT_MAX_BYTES"] = original
+        tool = spine.code_tool_registry.entries.find { |e| e.name == "save_artifact" }.factory.call
+        expect(tool.instance_variable_get(:@max_bytes)).to eq(12_345)
+      end
+    end
+
     # distillation is wired through the shared core — spine store,
     # engine on the executor, resolve command on the bus, LGPD + retention
     # hooks. Inert until a pack declares `distill:` (nil collaborators keep the
