@@ -1622,7 +1622,7 @@ RSpec.describe Studio::App do
   # record: without carrying them through, editing the description alone would erase
   # the halt condition and the customer would start getting the duplicate message again.
   it "POST /tools/def/:name preserves the fields the form does not render" do
-    tool = data_tool(name: "subscribe", group: "faith", tags: %w[faith b2b],
+    tool = data_tool(name: "subscribe", group: "crm", tags: %w[crm retail],
                      halt_when: { json_path: "tool_result.status", equals: ["SUBSCRIBED"] })
     app, bus = build_app(data_tools: [tool])
     client = login(app)
@@ -1636,8 +1636,8 @@ RSpec.describe Studio::App do
     p = bus.last(:write_data_tool).payload
     expect(p[:description]).to eq("só corrigi a descrição")
     expect(p["halt_when"]).to eq("json_path" => "tool_result.status", "equals" => ["SUBSCRIBED"])
-    expect(p["group"]).to eq("faith")
-    expect(p["tags"]).to eq(%w[faith b2b])
+    expect(p["group"]).to eq("crm")
+    expect(p["tags"]).to eq(%w[crm retail])
   end
 
   it "POST /tools/def/:name/delete dispatches :delete_data_tool" do

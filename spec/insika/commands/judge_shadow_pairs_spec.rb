@@ -34,7 +34,7 @@ RSpec.describe Insika::Commands::JudgeShadowPairs do
                    .call(Insika::Command.build(:judge_shadow_pairs, payload))
   end
 
-  def plant(id:, status: :complete, agent: "agent-store-ocean-drop", created_at: nil)
+  def plant(id:, status: :complete, agent: "agent-store-loja-chocolates", created_at: nil)
     pairs.record_incumbent(id: id, channel: "relay", event_id: id, external_id: "5511",
                            reply: "me passa o número?", at: created_at || Time.now.utc)
     pairs.record_ours(id: id, channel: "relay", agent: agent, session_id: "relay:5511",

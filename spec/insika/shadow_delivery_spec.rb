@@ -40,7 +40,7 @@ RSpec.describe "ChannelDelivery shadow suppression" do
   end
 
   # A persisted Task's command is a string-keyed Hash (TaskStore's shape).
-  def task(command_payload: { "agent" => "agent-store-ocean-drop", "message" => "queria saber do pedido",
+  def task(command_payload: { "agent" => "agent-store-loja-chocolates", "message" => "queria saber do pedido",
                              "event_id" => "wamid.HBg1" }, session_id: "relay:5511999998888")
     Struct.new(:id, :command, :session_id).new(
       "t-1", { "type" => "send_message", "payload" => command_payload,
@@ -65,7 +65,7 @@ RSpec.describe "ChannelDelivery shadow suppression" do
     pair = pairs.first
     expect(pair.insika_reply).to eq("já confiro pra você")
     expect(pair.inbound).to eq("queria saber do pedido")
-    expect(pair.agent).to eq("agent-store-ocean-drop")
+    expect(pair.agent).to eq("agent-store-loja-chocolates")
     expect(pair.session_id).to eq("relay:5511999998888")
     expect(pair.task_id).to eq("t-1")
     expect(pair.event_id).to eq("wamid.HBg1")
@@ -108,7 +108,7 @@ RSpec.describe "ChannelDelivery shadow suppression" do
 
     recorded = event_stream.emitted.find { |e| e.type == :shadow_recorded }
     expect(recorded).not_to be_nil
-    expect(recorded.data).to include(channel: "relay", agent: "agent-store-ocean-drop")
+    expect(recorded.data).to include(channel: "relay", agent: "agent-store-loja-chocolates")
     expect(JSON.generate(recorded.data)).not_to include("queria saber do pedido")
   end
 

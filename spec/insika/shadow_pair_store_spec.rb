@@ -25,7 +25,7 @@ RSpec.describe Insika::ShadowPairStore do
   let(:key) { described_class.key_for(channel: "relay", external_id: "5511999998888", event_id: "wamid.HBg1") }
 
   def record_ours(**over)
-    defaults = { id: key, channel: "relay", agent: "agent-store-ocean-drop",
+    defaults = { id: key, channel: "relay", agent: "agent-store-loja-chocolates",
                  session_id: "relay:5511999998888", task_id: "t-1", event_id: "wamid.HBg1",
                  inbound: "queria saber do pedido", reply: "já confiro pra você",
                  criterion_sha: "sha256:abc" }
@@ -63,7 +63,7 @@ RSpec.describe Insika::ShadowPairStore do
       expect(pair.status).to eq(:complete)
       expect(pair.insika_reply).to eq("já confiro pra você")
       expect(pair.incumbent_reply).to eq("me passa o número?")
-      expect(pair.agent).to eq("agent-store-ocean-drop")
+      expect(pair.agent).to eq("agent-store-loja-chocolates")
       expect(store.counts[:complete]).to eq(1)
     end
 
@@ -83,7 +83,7 @@ RSpec.describe Insika::ShadowPairStore do
       record_incumbent(reply: "me passa o número?")
       pair = store.find(key)
       expect(pair.insika_reply).to eq("já confiro pra você")
-      expect(pair.agent).to eq("agent-store-ocean-drop")
+      expect(pair.agent).to eq("agent-store-loja-chocolates")
       expect(pair.criterion_sha).to eq("sha256:abc")
     end
 
