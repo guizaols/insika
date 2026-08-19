@@ -3,6 +3,9 @@
     <nav class="crumbs"><span>customers</span></nav>
     <h1>Customers<span class="sub"><%= @rows.size %> with memory</span></h1>
   </div>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/customers", @agent) %>
+  </div>
 </header>
 
 <% if @rows.empty? %>

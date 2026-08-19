@@ -191,8 +191,19 @@ module Insika
         **executor_extra
       )
 
+        # RFC-0034 C4: the ONE path that writes proposals, shared by the
+        # automatic DistillEngine loop and the bus command behind the Studio's
+        # "Run distillation now" button (one code path for both).
+        run_distillation = Insika::Commands::RunDistillation.new(
+          profiles: profiles, proposal_store: spine.proposal_store,
+          session_store: spine.session_store, memory_store: spine.memory_store,
+          settings_store: executor_extra[:settings_store],
+          event_stream: spine.event_stream
+        )
+
         bus = build_core_bus(spine: spine, profiles: profiles, executor: executor,
-                             executor_extra: executor_extra, skill_catalog: skill_catalog)
+                             executor_extra: executor_extra, skill_catalog: skill_catalog,
+                             run_distillation: run_distillation)
 
         # the periodic tick (outbox drain + stale recovery sweep). Built
         # here, after the bus, because its recovery half dispatches resume_task
@@ -254,12 +265,7 @@ module Insika
         executor.distill_engine = Insika::DistillEngine.new(
           store: spine.backend, proposal_store: spine.proposal_store,
           session_store: spine.session_store,
-          runner: Insika::Commands::RunDistillation.new(
-            profiles: profiles, proposal_store: spine.proposal_store,
-            session_store: spine.session_store, memory_store: spine.memory_store,
-            settings_store: executor_extra[:settings_store],
-            event_stream: spine.event_stream
-          ),
+          runner: run_distillation,
           profiles: profiles,
           window: Insika::DistillEngine::DEFAULT_WINDOW
         )
@@ -324,7 +330,8 @@ module Insika
       # The CORE command surface every root needs — turn essentials + the operator
       # controls (pause/approve) the Studio dispatches. Registering pause_task/
       # approve_action HERE is the crux of: it retires the config.ru:28-34 patch.
-      def build_core_bus(spine:, profiles:, executor:, executor_extra: {}, skill_catalog: nil)
+      def build_core_bus(spine:, profiles:, executor:, executor_extra: {}, skill_catalog: nil,
+                         run_distillation: nil)
         bus = Insika::CommandBus.new
         bus.register(:create_session,
                      Insika::Commands::CreateSession.new(session_store: spine.session_store, event_stream: spine.event_stream))
@@ -480,6 +487,12 @@ module Insika
                      Insika::Commands::RejectHarvest.new(
                        harvest_store: spine.harvest_store, event_stream: spine.event_stream
                      ))
+        # RFC-0034 C9: the ONE path that writes proposals, served to the
+        # Studio's "Run distillation now" button. The same instance the
+        # DistillEngine's loop uses, so the manual and the automatic share one
+        # code path; the engine keeps the automatic pass when the root does
+        # not pass a runner here (nil = the command is not on the bus).
+        bus.register(:run_distillation, run_distillation) if run_distillation
         bus
       end
 

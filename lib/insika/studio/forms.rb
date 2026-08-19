@@ -7,6 +7,10 @@ module Studio
   # per-request state (`@agent`) exactly as before. Pure extraction — the bodies
   # moved verbatim from app.rb; app_spec's POST cases are the safety net.
   module Forms
+    # The agent config form OWNS every rendered field: a save reflects the
+    # whole form state, so a blank field is a deliberate "clear to default",
+    # never a carry-over. The one exception is keys the form cannot express —
+    # those ride the `carry` merge below (the guardrails corpora precedent).
     def config_patch(r)
       limits = @agent.limits.dup
       # Always present via DEFAULT_LIMITS (tool_concurrency defaults to 1 = serial),
@@ -34,8 +38,246 @@ module Studio
         limits: limits,
         params: params_patch(r),
         model_policy: model_policy_patch(r),
-        guardrails: guardrails_patch(r)
+        guardrails: guardrails_patch(r),
+        # Every remaining AgentProfile field is editable here — the pack
+        # import is one door, this form is the other (hot, no restart).
+        grounding: grounding_patch(r),
+        funnel: funnel_patch(r),
+        followup: followup_patch(r),
+        distill: distill_patch(r),
+        harvest: harvest_patch(r),
+        refinement: refinement_patch(r),
+        budget: budget_patch(r),
+        reliability: reliability_patch(r),
+        routes: json_patch(r, "routes"),
+        outputs: json_patch(r, "outputs"),
+        metadata: json_patch(r, "metadata") || {},
+        alerts: alerts_patch(r),
+        edge_stream: edge_stream_patch(r),
+        stuck_signal: r.params["stuck_signal"] == "1",
+        prompt_caching: r.params["prompt_caching"] == "1",
+        tool_output_compression: r.params["tool_output_compression"] == "1",
+        subagents: list_patch(r, "subagents"),
+        capabilities: list_patch(r, "capabilities"),
+        tools_deferred: list_patch(r, "tools_deferred"),
+        briefing_fields: list_patch(r, "briefing_fields"),
+        context_providers: allowlist_patch(r, "context_providers"),
+        workflows_allow: allowlist_patch(r, "workflows_allow"),
+        approvals_required: list_patch(r, "approvals_required"),
+        policies: list_patch(r, "policies").map(&:to_sym),
+        prompt_refs: list_patch(r, "prompt_refs"),
+        capabilities_declared: list_patch(r, "capabilities_declared"),
+        skills_eager: skills_eager_patch(r)
       }
+    end
+
+    # RFC-0029: grounding — { "mode" => "flag"|"enforce", "matcher" =>
+    # { "sku" => "sku:…", "name_keys" => [...] } }. Blank mode = no grounding
+    # (parity). The matcher keys are carried only while a mode is declared.
+    def grounding_patch(r)
+      mode = presence(r.params["grounding_mode"])
+      return nil unless %w[flag enforce].include?(mode)
+
+      matcher = {}
+      (sku = presence(r.params["grounding_matcher_sku"])) && (matcher["sku"] = sku)
+      keys = list(r.params["grounding_name_keys"])
+      matcher["name_keys"] = keys unless keys.empty?
+      { "mode" => mode, "matcher" => matcher }
+    end
+
+    # RFC-0032: the outcome funnel — the pack's own stage vocabulary, edited
+    # hot. Blank stages = no funnel (parity). Stages: one per line.
+    def funnel_patch(r)
+      stages = lines(r.params["funnel_stages"])
+      return nil if stages.empty?
+
+      out = { "stages" => stages }
+      (p = presence(r.params["funnel_primary"])) && (out["primary"] = p)
+      (w = presence(r.params["funnel_attribution_window"])) && (out["attribution_window"] = w)
+      advance = json_block(r.params["funnel_advance_on"], "funnel advance_on")
+      out["advance_on"] = advance unless advance.nil? || advance.empty?
+      out
+    end
+
+    # RFC-0033: the follow-up declaration. Blank arm = the feature is off
+    # (parity). The policy keys are all rendered; a blank one drops the key.
+    def followup_patch(r)
+      arm = presence(r.params["followup_arm"])
+      return nil unless arm
+
+      policy = {}
+      tz = presence(r.params["followup_tz"])
+      if tz
+        quiet = { "timezone" => tz }
+        (s = presence(r.params["followup_quiet_start"])) && (quiet["start"] = s)
+        (e = presence(r.params["followup_quiet_end"])) && (quiet["end"] = e)
+        policy["quiet_hours"] = quiet
+      end
+      (f = presence(r.params["followup_max_frequency"])) && (policy["max_frequency"] = f)
+      keywords = list(r.params["followup_cancel_keywords"])
+      policy["cancel_keywords"] = keywords unless keywords.empty?
+      silence = edge_int(r.params["followup_silence_after_sends"], "followup_silence_after_sends")
+      policy["silence_after_sends"] = silence unless silence.nil?
+      { "arm" => arm, "policy" => policy }
+    end
+
+    # RFC-0034: distillation — enabled checkbox + the forge's knobs. Blank
+    # prompt/model drop the keys (the engine defaults take over).
+    def distill_patch(r)
+      enabled = r.params["distill_enabled"] == "1"
+      out = { "enabled" => enabled }
+      (p = presence(r.params["distill_prompt"])) && (out["prompt"] = p)
+      (m = presence(r.params["distill_model"])) && (out["model"] = m)
+      %w[idle_hours min_messages max_proposals].each do |key|
+        v = edge_int(r.params["distill_#{key}"], "distill_#{key}")
+        out[key] = v unless v.nil?
+      end
+      out
+    end
+
+    # RFC-0035: the gated harvest. Same shape discipline as distill; the
+    # negative list is a JSON array of { rule, pattern, note }.
+    def harvest_patch(r)
+      enabled = r.params["harvest_enabled"] == "1"
+      out = { "enabled" => enabled }
+      (p = presence(r.params["harvest_prompt"])) && (out["prompt"] = p)
+      %w[idle_hours min_messages].each do |key|
+        v = edge_int(r.params["harvest_#{key}"], "harvest_#{key}")
+        out[key] = v unless v.nil?
+      end
+      negative = json_block(r.params["harvest_negative_list"], "harvest negative_list")
+      out["negative_list"] = negative unless negative.nil?
+      miner = harvest_miner_patch(r)
+      out["miner"] = miner unless miner.empty?
+      out
+    end
+
+    def harvest_miner_patch(r)
+      miner = {}
+      (m = presence(r.params["harvest_miner_model"])) && (miner["model"] = m)
+      window = {}
+      (w = edge_int(r.params["harvest_miner_window"], "harvest_miner_window")) && (window["last_sessions"] = w)
+      miner["window"] = window unless window.empty?
+      (m = edge_int(r.params["harvest_miner_max_proposals"], "harvest_miner_max_proposals")) && (miner["max_proposals"] = m)
+      budget = {}
+      (t = edge_int(r.params["harvest_miner_budget_tokens"], "harvest_miner_budget_tokens")) && (budget["tokens"] = t)
+      miner["budget"] = budget unless budget.empty?
+      miner
+    end
+
+    # Refinement: mode select + the report/propose/auto_apply knobs. Blank
+    # mode = report-only (the no-opt-in default — the form's "report" option
+    # writes it down explicitly).
+    def refinement_patch(r)
+      mode = presence(r.params["refinement_mode"])
+      out = { "mode" => mode } if mode
+      (w = edge_int(r.params["refinement_window"], "refinement_window")) && (out["window"] = { "last_sessions" => w })
+      (f = edge_int(r.params["refinement_max_findings"], "refinement_max_findings")) && (out["max_findings"] = f)
+      files = list(r.params["refinement_files"])
+      out["files"] = files unless files.empty?
+      proposers = list(r.params["refinement_proposers"])
+      out["proposers"] = proposers unless proposers.empty?
+      (t = edge_int(r.params["refinement_budget_tokens"], "refinement_budget_tokens")) && (out["budget"] = { "tokens" => t })
+      (e = edge_int(r.params["refinement_auto_apply_max_edits"], "refinement_auto_apply_max_edits")) && (out["auto_apply_max_edits"] = e)
+      out
+    end
+
+    # WS2: the calendar spend caps. All blank = no budget (parity).
+    def budget_patch(r)
+      daily = edge_int(r.params["budget_daily"], "budget_daily")
+      monthly = edge_int(r.params["budget_monthly"], "budget_monthly")
+      return nil if daily.nil? && monthly.nil?
+
+      out = {}
+      out["daily"] = daily unless daily.nil?
+      out["monthly"] = monthly unless monthly.nil?
+      (a = edge_float(r.params["budget_alert_at"], "budget_alert_at")) && (out["alert_at"] = a)
+      out["soft"] = r.params["budget_soft"] == "1"
+      out
+    end
+
+    # WS3: retries/backoff/fallback/breaker/timeout. All blank = the plain
+    # single attempt (parity).
+    def reliability_patch(r)
+      retries = edge_int(r.params["reliability_retries"], "reliability_retries")
+      backoff = presence(r.params["reliability_backoff"])
+      timeout = edge_int(r.params["reliability_timeout"], "reliability_timeout")
+      fallback = list(r.params["reliability_fallback"])
+      return nil if retries.nil? && backoff.nil? && timeout.nil? && fallback.empty?
+
+      out = {}
+      out["retries"] = retries unless retries.nil?
+      out["backoff"] = backoff if backoff
+      out["timeout"] = timeout unless timeout.nil?
+      out["fallback"] = fallback unless fallback.empty?
+      breaker = {}
+      %w[after within cooldown].each do |key|
+        v = edge_int(r.params["reliability_breaker_#{key}"], "reliability_breaker_#{key}")
+        breaker[key] = v unless v.nil?
+      end
+      out["circuit_breaker"] = breaker unless breaker.empty?
+      out
+    end
+
+    # WS6: the operator-alert webhook. Blank = no webhook (parity).
+    def alerts_patch(r)
+      url = presence(r.params["alerts_webhook"])
+      url ? { "webhook" => url } : nil
+    end
+
+    # Which internal channels may cross to the customer. Both checkboxes are
+    # rendered, so the patch reflects the whole state (false = held back).
+    def edge_stream_patch(r)
+      { "thinking" => r.params["edge_thinking"] == "1",
+        "intermediate" => r.params["edge_intermediate"] == "1" }
+    end
+
+    # skills_eager: blank = none (progressive disclosure, parity); "all" =
+    # blanket eager; otherwise a comma list of exactly these.
+    def skills_eager_patch(r)
+      raw = r.params["skills_eager"].to_s.strip
+      return nil if raw.empty?
+
+      raw == "all" ? true : list(raw)
+    end
+
+    # A JSON textarea -> parsed Hash/Array, or nil when blank. Malformed JSON
+    # is a ValidationError (a red flash, never a silent drop).
+    def json_patch(r, field)
+      json_block(r.params[field], field)
+    end
+
+    def json_block(raw, field)
+      text = raw.to_s.strip
+      return nil if text.empty?
+
+      begin
+        JSON.parse(text)
+      rescue JSON::ParserError => e
+        raise Insika::ValidationError, "#{field}: invalid JSON (#{e.message.lines.first.to_s.strip})"
+      end
+    end
+
+    # A comma-separated list field. Blank = [] (none) — the explicit empty
+    # reading; an allowlist-style field wants nil=all and should not use this.
+    def list_patch(r, field)
+      list(r.params[field])
+    end
+
+    # An ALLOWLIST-style field (nil = all, [] = none). Blank → nil (all), the
+    # open reading; a typed list closes it to exactly those names.
+    def allowlist_patch(r, field)
+      names = list(r.params[field])
+      names.empty? ? nil : names
+    end
+
+    def list(str)
+      str.to_s.split(/[,\n]/).map(&:strip).reject(&:empty?).uniq
+    end
+
+    # One non-blank token per line.
+    def lines(str)
+      str.to_s.lines.map(&:strip).reject(&:empty?)
     end
 
     # Guardrails config from the form. The config form OWNS the fields it

@@ -3,7 +3,10 @@
     <nav class="crumbs"><span>approvals</span></nav>
     <h1>Approvals<span class="sub"><%= @approvals.size %> pending</span></h1>
   </div>
-  <a class="btn" href="/studio/tasks">Tasks →</a>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/approvals", @agent) %>
+    <a class="btn" href="/studio/tasks">Tasks →</a>
+  </div>
 </header>
 
 <% if @approvals.empty? %>

@@ -9,6 +9,7 @@
     <h1>Funnel<span class="sub">the outcome funnel per store</span></h1>
   </div>
   <div class="head-actions">
+    <%== agent_filter_form("/studio/funnel", @agent) %>
     <form method="get" action="/studio/funnel" class="actions inline">
       <label>
         Period (days)

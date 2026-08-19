@@ -41,7 +41,7 @@ ergonomics, not in what they produce.
   re-import that drops a tool or skill also removes it. `DELETE /v1/agents/:id`
   removes an agent.
 - **Studio** — create and edit an agent by hand in the control UI (Config /
-  Prompts / Skills / Memory / History tabs), backed by the same commands.
+  Prompts / Skills / Memory / Outcomes / Cache / History / **loops** tabs), backed by the same commands.
 
 Creating an agent validates its id (required, must be unique) and its subagent
 graph (cycle/depth — see [subagents](#delegation-subagents)) **before**

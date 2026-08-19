@@ -11,8 +11,8 @@
   <div class="head-actions">
     <form method="get" action="/studio/facts" class="actions inline">
       <label>
-        Store
-        <select name="store" onchange="this.form.submit()">
+        Agent / scope
+        <select name="agent" onchange="this.form.submit()">
           <option value="">all</option>
           <% @stores.each do |scope| %>
             <option value="<%= scope %>"<%== ' selected' if scope == @filter %>><%= scope %></option>

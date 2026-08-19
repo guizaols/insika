@@ -3,7 +3,10 @@
     <nav class="crumbs"><span>evals</span></nav>
     <h1>Evals<span class="sub"><%= @cases.size %> case(s)</span></h1>
   </div>
-  <a class="btn" href="/studio/settings?s=evals">Judges →</a>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/evals", @filter) %>
+    <a class="btn" href="/studio/settings?s=evals">Judges →</a>
+  </div>
 </header>
 
 <% if @invalid.any? %>
