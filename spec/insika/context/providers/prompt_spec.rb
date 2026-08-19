@@ -12,8 +12,15 @@ RSpec.describe Insika::Context::Providers::Prompt do
     parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
   end
 
-  def profile(prompt_refs: nil, prompt_files: [], id: "a")
-    Insika::AgentProfile.build(id: id, model: "m", prompt_refs: prompt_refs, prompt_files: prompt_files)
+  def profile(prompt_refs: nil, prompt_files: [], id: "a", tool_persistence: nil)
+    Insika::AgentProfile.build(id: id, model: "m", prompt_refs: prompt_refs,
+                               prompt_files: prompt_files, tool_persistence: tool_persistence)
+  end
+
+  # The engine's Tool discipline block rides after every non-empty identity
+  # (the deliberate parity break — see TOOL_PERSISTENCE).
+  def with_discipline(identity)
+    "#{identity}\n\n#{described_class::TOOL_PERSISTENCE}"
   end
 
   def request(prof = profile)
@@ -25,7 +32,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
     Dir.mktmpdir { |d| @dir = d; example.run }
   end
 
-  it "characterization vs: content byte-for-byte equal (base + files, one missing)" do
+  it "characterization vs: the base+files concatenation, plus the engine discipline block" do
     soul = File.join(@dir, "SOUL.md")
     File.write(soul, "Você é o assistente.")
     missing = File.join(@dir, "missing.md")
@@ -34,8 +41,33 @@ RSpec.describe Insika::Context::Providers::Prompt do
 
     frag = described_class.new(base: base, files: files).call(request).first
 
-    expect(frag.content).to eq(phase0_build(base, files))
-    expect(frag.content).to eq("Instruções base.\n\nVocê é o assistente.")
+    expect(frag.content).to eq(with_discipline(phase0_build(base, files)))
+    expect(frag.content).to eq(with_discipline("Instruções base.\n\nVocê é o assistente."))
+  end
+
+  describe "tool persistence (the engine's Tool discipline block)" do
+    it "rides after the identity by default (nil profile flag = ON)" do
+      frag = described_class.new(base: "id").call(request).first
+      expect(frag.content).to eq(with_discipline("id"))
+      expect(frag.content).to include("## Tool discipline")
+    end
+
+    it "tool_persistence: false removes the block — identity byte-identical to phase0" do
+      frag = described_class.new(base: "id").call(request(profile(tool_persistence: false))).first
+      expect(frag.content).to eq("id")
+    end
+
+    it "never substitutes an empty identity (no discipline-only fragment)" do
+      expect(described_class.new(base: "", files: []).call(request)).to eq([])
+    end
+
+    it "a profile stub without the flag reads ON (defensive respond_to?)" do
+      stub = Struct.new(:base_prompt, :prompt_files, :prompt_refs).new("", [], [])
+      req = Insika::ContextRequest.new(session: nil, message: "oi", profile: stub,
+                                       tenant: nil, vars: {}, checkpoint: nil)
+      frag = described_class.new(base: "id").call(req).first
+      expect(frag.content).to eq(with_discipline("id"))
+    end
   end
 
   it "identity = 1 :system priority 100 pinned fragment" do
@@ -100,7 +132,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
       provider = described_class.new(base: "base", files: [soul], agent_files: agent_files)
 
       frag = provider.call(request(profile(prompt_files: []))).first
-      expect(frag.content).to eq("base\n\nIdentidade default do deployment.")
+      expect(frag.content).to eq(with_discipline("base\n\nIdentidade default do deployment."))
     end
 
     it "with prompt_files: reads the agent's content from the Store, NOT the wiring files" do
@@ -110,7 +142,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
       provider = described_class.new(base: "", files: [wiring_soul], agent_files: agent_files)
 
       frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md]))).first
-      expect(frag.content).to eq("Sou o Chef, especialista em massas.")   # its own, not Bia's
+      expect(frag.content).to eq(with_discipline("Sou o Chef, especialista em massas.")) # its own, not Bia's
       expect(frag.content).not_to include("IDENTIDADE DA BIA")
     end
 
@@ -120,7 +152,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
       provider = described_class.new(base: "B", agent_files: agent_files)
 
       frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md SOUL.md]))).first
-      expect(frag.content).to eq("B\n\nIDENT\n\nALMA")
+      expect(frag.content).to eq(with_discipline("B\n\nIDENT\n\nALMA"))
     end
 
     it "prompt_files as a disk path: falls back to File.read (compat/seed)" do
@@ -129,7 +161,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
       provider = described_class.new(base: "", agent_files: agent_files)
 
       frag = provider.call(request(profile(id: "chef", prompt_files: [disk]))).first
-      expect(frag.content).to eq("do disco")
+      expect(frag.content).to eq(with_discipline("do disco"))
     end
   end
 end

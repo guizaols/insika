@@ -37,7 +37,10 @@ RSpec.describe "ContextBuilder + real providers" do
     File.write(soul, "Você é o assistente.")
     write_skill("cardapio")
     catalog = Insika::SkillCatalog.new(@dir)
-    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "", skills: nil)
+    # tool_persistence off: parity characterization of the assembly order —
+    # the engine discipline block has its own coverage in prompt_spec.
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "", skills: nil,
+                                         tool_persistence: false)
     providers = [
       Insika::Context::Providers::Prompt.new(base: "Base.", files: [soul]),
       Insika::Context::Providers::Skill.new(catalog: catalog)
@@ -57,7 +60,8 @@ RSpec.describe "ContextBuilder + real providers" do
   # plausibly; it was caught by asking a live provider to reply "BANANA" and
   # getting the capital of France.
   it "injects the agent's own base_prompt into the system prompt" do
-    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "You are Bia.", skills: [])
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "You are Bia.", skills: [],
+                                         tool_persistence: false)
 
     pkg = build([Insika::Context::Providers::Prompt.new(base: "")], profile)
 
@@ -68,7 +72,8 @@ RSpec.describe "ContextBuilder + real providers" do
     identity = File.join(@dir, "IDENTITY.md")
     File.write(identity, "Never promise a delivery date.")
     profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "You are Bia.",
-                                          prompt_files: [identity], skills: [])
+                                          prompt_files: [identity], skills: [],
+                                          tool_persistence: false)
 
     pkg = build([Insika::Context::Providers::Prompt.new(base: "Platform preamble.")], profile)
 
@@ -78,7 +83,10 @@ RSpec.describe "ContextBuilder + real providers" do
   it "under tight budget: old history evicted first; skills and identity intact (L7)" do
     write_skill("cardapio")
     catalog = Insika::SkillCatalog.new(@dir)
-    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "IDENTIDADE", skills: nil)
+    # tool_persistence off: the budget arithmetic below is tuned to a tiny
+    # identity; the discipline block would evict the whole history by itself.
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "IDENTIDADE", skills: nil,
+                                         tool_persistence: false)
     session_store = Insika::SessionStore.new(store: Insika::Stores::Memory.new)
     session_store.create(id: "s1")
     # 6 history messages of controlled size (~44 chars -> 11 tokens each).

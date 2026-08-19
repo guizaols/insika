@@ -97,6 +97,31 @@ the next tool-batch boundary: "you already ran this, answer with what you
 have"). A repeat after the warning aborts the turn like `max_tool_calls` does.
 Set it below 2 to switch it off.
 
+### `tool_persistence` — don't give up on the first empty result
+
+The loop guard's mirror image. `max_tool_repeat` stops the model from repeating
+the *same* call; `tool_persistence` stops it from giving up after *one* weak
+call. When ON (the default), the engine appends a short **"Tool discipline"**
+block after the agent's identity in the system prompt: a weak or empty tool
+result means *try again with a different approach — a rephrased query, a
+synonym, a broader term — before telling the user you found nothing* (and don't
+narrate the retries); a tool error means *read it and fix the arguments*, never
+repeat the exact same call. Without it, a search that returns 0 results reads as
+final and the model answers "I couldn't find it" when a synonym one call away
+would have.
+
+This is the **one default-ON profile flag** — every field above is opt-in, this
+one is opt-out, because the behavior is the proven default and the exception is
+the thing worth declaring:
+
+```ruby
+tool_persistence false   # remove the block for this agent
+```
+
+The block is a byte-stable constant, so `prompt_caching` stays effective: the
+deploy that introduces it costs one cache write per agent, and every turn after
+that hits as before.
+
 ### Why some limits are missing from that list
 
 `chat_rate_limit`, `agent_token_ceiling`, `queue_mode`, `debounce_ms`,
@@ -345,7 +370,9 @@ Three capabilities invert the default — `nil`/absent means **OFF**, not "all":
 setting, never "everything on"). `tool_output_compression` is a fourth: opt-in
 mechanical dedupe of repeated tool results in the history (see
 [Context](CONTEXT.md#compaction-is-not-wired--except-the-mechanical-dedupe)),
-off by default because it changes what the model sees.
+off by default because it changes what the model sees. And one flag inverts the
+other way: `tool_persistence` is **ON unless you set it to `false`** (see
+[`tool_persistence`](#tool_persistence--dont-give-up-on-the-first-empty-result)).
 
 ### Declaring what this deployment has
 
