@@ -532,6 +532,9 @@ end
         # CLI reports declarations only).
         followup_store: Insika::FollowupStore.new(store: backend),
         contact_store: Insika::ContactStore.new(store: backend),
+        # the schedules check reads the rows over the same runtime
+        # backend (nil = the CLI reports declarations only).
+        schedule_store: Insika::ScheduleStore.new(store: backend),
         # the distillation check reads the proposal store over
         # the same runtime backend (nil = the CLI reports declarations only).
         proposal_store: Insika::ProposalStore.new(store: backend),

@@ -993,6 +993,100 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "recurring schedules " do
+    let(:s_backend) { Insika::Stores::Memory.new }
+    let(:schedule_store) { Insika::ScheduleStore.new(store: s_backend) }
+
+    def sched_profiles_with(*agents)
+      hash = agents.to_h { |a| [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m",
+                                                                   schedules: a[:schedules])] }
+      Insika::StaticProfileSource.new(hash)
+    end
+
+    def schedule_findings(profile_source: nil, schedule: schedule_store)
+      doctor(profile_source: profile_source, schedule_store: schedule)
+        .run.findings.select { |f| f.check == "schedules" }
+    end
+
+    it "a valid declaration -> a single ok naming the trigger and the session mode" do
+      profiles = sched_profiles_with({ id: "reporter", schedules: [{ "id" => "daily",
+                                                                     "cron" => "0 22 * * *",
+                                                                     "tz" => "America/Sao_Paulo",
+                                                                     "message" => "run" }] })
+      findings = schedule_findings(profile_source: profiles)
+      expect(findings.size).to eq(1)
+      expect(findings.first.severity).to eq(:ok)
+      expect(findings.first.message).to include("reporter")
+      expect(findings.first.message).to include("cron 0 22 * * *")
+      expect(findings.first.message).to include("new session per run")
+    end
+
+    it "each malformed shape -> an error naming the defect" do
+      profiles = sched_profiles_with(
+        { id: "a", schedules: [{ "id" => "x", "cron" => "0 22 * *", "message" => "m" }] },
+        { id: "b", schedules: [{ "id" => "y", "every" => 60, "message" => "m",
+                                 "tz" => "Mars/Olympus" }] },
+        { id: "c", schedules: [{ "id" => "z", "every" => 60, "message" => "", "tz" => "UTC" }] },
+        { id: "d", schedules: [{ "id" => "w", "every" => 60, "message" => "m",
+                                 "overrides" => { "spawn_rockets" => 9 } }] }
+      )
+      findings = schedule_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq(%i[error error error error])
+      expect(findings[0].message).to include("5 fields")
+      expect(findings[1].message).to include("timezone")
+      expect(findings[2].message).to include("message")
+      expect(findings[3].message).to include("overrides")
+    end
+
+    it "an every-interval declaration passes too" do
+      profiles = sched_profiles_with({ id: "pulse", schedules: [{ "id" => "hb",
+                                                                  "every" => 86_400,
+                                                                  "message" => "ping" }] })
+      findings = schedule_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("every 86400s")
+    end
+
+    it "an `every` shorter than the claim window warns (the cadence floor)" do
+      profiles = sched_profiles_with({ id: "pulse", schedules: [{ "id" => "hb",
+                                                                  "every" => 60,
+                                                                  "message" => "ping" }] })
+      findings = schedule_findings(profile_source: profiles)
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to include("every 60s")
+      expect(findings.first.message).to include("300s claim window")
+    end
+
+    it "a recorded skip on the row -> an info naming reason and time" do
+      profiles = sched_profiles_with({ id: "reporter", schedules: [{ "id" => "daily",
+                                                                     "every" => 60,
+                                                                     "message" => "run" }] })
+      now = Time.iso8601("2026-08-19T14:00:00Z")
+      schedule_store.sync_declared(tenant: "platform", agent: "reporter",
+                                   schedules: [{ "id" => "daily", "every" => 60,
+                                                 "message" => "run" }], now: now)
+      schedule_store.mark_skip(id: "daily", tenant: "platform", agent: "reporter",
+                               reason: :budget, next_fire_at: now + 3600, now: now)
+      findings = schedule_findings(profile_source: profiles)
+      info = findings.find { |f| f.severity == :info }
+      expect(info).not_to be_nil
+      expect(info.message).to include("SKIPPED")
+      expect(info.message).to include("budget")
+    end
+
+    it "a bare install reports nothing (no schedule vocabulary)" do
+      expect(schedule_findings(profile_source: Insika::StaticProfileSource.new)).to be_empty
+    end
+
+    it "a nil schedule_store -> declarations only, nothing raises" do
+      profiles = sched_profiles_with({ id: "reporter", schedules: [{ "id" => "d",
+                                                                     "every" => 86_400,
+                                                                     "message" => "m" }] })
+      findings = doctor(profile_source: profiles).run.findings.select { |f| f.check == "schedules" }
+      expect(findings.map(&:severity)).to eq([:ok])
+    end
+  end
+
   describe "distillation " do
     let(:p_backend) { Insika::Stores::Memory.new }
     let(:proposal_store) { Insika::ProposalStore.new(store: p_backend) }

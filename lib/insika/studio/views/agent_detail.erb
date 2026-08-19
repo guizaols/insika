@@ -28,6 +28,7 @@
        ["grounding", "Grounding", "evidence behind product claims"],
        ["funnel", "Outcome funnel", "stage vocabulary"],
        ["followups", "Follow-ups", "frequency, quiet hours, silence"],
+       ["schedules", "Schedules", "recurring runs — cron/every, session, overrides"],
        ["distill", "Distillation", "finished chats → fact proposals"],
        ["harvest", "Harvest", "traffic → skill candidates"],
        ["refinement", "Refinement", "ranked findings, proposed edits"],
@@ -226,6 +227,35 @@
       <input type="text" name="followup_silence_after_sends" value="<%= fup["silence_after_sends"] %>" placeholder="3" inputmode="numeric">
     </label>
   </div>
+</fieldset>
+          </div>
+
+          <div class="config-group" data-config-group="schedules"<%== " hidden" unless @config_group == "schedules" %>>
+<fieldset class="subgroup">
+  <legend>schedules <span class="muted">— recurring turns the ENGINE fires; nobody has to remember. Blank = off.</span></legend>
+  <p class="muted">One JSON array of declarations: <code>{ "id": "daily_report", "cron": "0 22 * * *", "every": 3600, "tz": "America/Sao_Paulo", "message": "the synthetic inbound", "session_mode": "new"|"fixed", "overrides": { "turn_timeout": 900, "max_tool_calls": 200, "model": … }, "enabled": true }</code>. <code>cron</code> and <code>every</code> are exclusive.</p>
+  <label>
+    <textarea name="schedules" rows="8" spellcheck="false" class="mono" placeholder='[ { "id": "daily_report", "cron": "0 22 * * *", "tz": "America/Sao_Paulo", "message": "Run the daily report now." } ]'><%= agent_json(@agent.schedules) %></textarea>
+  </label>
+  <% unless @schedules.empty? %>
+    <ul class="kv">
+      <% @schedules.each do |sch| %>
+        <li>
+          <span class="k mono"><%= h(sch.id) %></span>
+          <span class="v">
+            <span class="pill <%= sch.enabled ? "ok" : "info" %>"><%= sch.enabled ? "enabled" : "disabled" %></span>
+            · next <% if sch.next_fire_at %><span class="mono"><%= h(sch.next_fire_at) %></span><% else %>— <span class="muted">a cron that can never fire</span><% end %>
+            <% if sch.last_skip %>
+              <span class="pill warn">skipped <%= h(sch.last_skip["reason"]) %> at <%= h(sch.last_skip["at"]) %></span>
+            <% end %>
+            <% if sch.last_run_at %>
+              · last run <%= h(sch.last_run_at) %> <span class="mono">(<%= h(sch.last_task_id) %>)</span>
+            <% end %>
+          </span>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
 </fieldset>
           </div>
 

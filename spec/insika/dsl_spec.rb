@@ -371,6 +371,57 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
+    it "a schedule block is DATA on the pack (one entry per call)" do
+      dsl = Insika.agent("reporter") do
+        model "deepseek-chat"
+        schedule "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",
+                 message: "Run the daily report now.",
+                 overrides: { turn_timeout: 900, max_tool_calls: 200 }
+        schedule "heartbeat", every: 86_400, message: "Say you are alive.",
+                 enabled: false
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "reporter", model: "deepseek-chat",
+                  schedules: [
+                    { "id" => "daily_report", "cron" => "0 22 * * *",
+                      "tz" => "America/Sao_Paulo",
+                      "message" => "Run the daily report now.",
+                      "overrides" => { "turn_timeout" => 900, "max_tool_calls" => 200 } },
+                    { "id" => "heartbeat", "every" => 86_400,
+                      "message" => "Say you are alive.", "enabled" => false }
+                  ],
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.schedules).to eq(
+        [{ "id" => "daily_report", "cron" => "0 22 * * *",
+           "tz" => "America/Sao_Paulo", "message" => "Run the daily report now.",
+           "overrides" => { "turn_timeout" => 900, "max_tool_calls" => 200 } },
+         { "id" => "heartbeat", "every" => 86_400,
+           "message" => "Say you are alive.", "enabled" => false }]
+      )
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
+
+    it "a duplicate schedule name is refused" do
+      expect do
+        Insika.agent("reporter") do
+          schedule "daily", every: 60, message: "m"
+          schedule "daily", every: 120, message: "m"
+        end
+      end.to raise_error(ArgumentError, /duplicate schedule/)
+
+      # ids canonicalize to lowercase — a case-variant duplicate collapses to
+      # one row downstream, so it must be refused HERE.
+      expect do
+        Insika.agent("reporter") do
+          schedule "Daily", every: 60, message: "m"
+          schedule "daily", every: 120, message: "m"
+        end
+      end.to raise_error(ArgumentError, /duplicate schedule/)
+    end
+
     it "the distill knob is DATA on the pack " do
       dsl = Insika.agent("bia10") do
         model "deepseek-chat"

@@ -1442,6 +1442,9 @@ end
       # the per-agent cache-hit series (nil store -> the view's
       # empty state; same guard as the tool trace).
       @cache_series = insika[:cache_series_store]&.for_agent(id) || []
+      # the agent's schedule rows (declaration + runtime state) —
+      # the card shows next fire and the last run/skip alongside the editor.
+      @schedules = insika[:schedule_store]&.for_agent(tenant: Insika::ScheduleEngine::TENANT, agent: id) || []
       view("agent_detail")
     end
 
@@ -1911,7 +1914,7 @@ end
 
     # The agent config tab's groups, in sidebar order. The view renders the
     # same keys; a bogus ?cfg= falls back to the first group.
-    CONFIG_SECTIONS = %w[model guardrails grounding funnel followups distill harvest refinement budget_rel routing advanced].freeze
+    CONFIG_SECTIONS = %w[model guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
 
     SETTINGS_SECTIONS = %w[general models edge evals llm].freeze
     def render_settings

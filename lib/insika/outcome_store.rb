@@ -14,7 +14,7 @@ module Insika
   #
   # The Studio's scorecard is the consumer: the LAST outcome per agent as a
   # pill on the grid, and the per-day series on the agent detail — both fed
-  # from the same store, no scheduler.
+  # from the same store, read on demand.
   class OutcomeStore
     SCOPE = "outcomes"
 

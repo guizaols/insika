@@ -23,7 +23,7 @@ module Insika
                      checkpoint_store: nil, outbox_store: nil, shadow_pairs: nil,
                      token_store: nil, funnel_store: nil, event_stream:,
                      followup_store: nil, contact_store: nil, proposal_store: nil,
-                     harvest_store: nil)
+                     harvest_store: nil, schedule_store: nil)
         @memory_store = memory_store
         @token_store = token_store
         @session_store = session_store
@@ -40,6 +40,7 @@ module Insika
         @contact_store = contact_store   #  ; nil = nothing to sweep
         @proposal_store = proposal_store #  ; nil = nothing to sweep
         @harvest_store = harvest_store   #  ; nil = nothing to sweep
+        @schedule_store = schedule_store #  ; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -72,6 +73,9 @@ module Insika
         # candidates reference sessions, and sessions carry the
         # tenant prefix — the harvest rows die with the tenant (D11).
         harvest = @harvest_store ? @harvest_store.purge(tenant: tenant) : 0
+        # recurring-schedule rows die with the tenant too (their
+        # message text is content, never kept behind an offboarded tenant).
+        schedules = @schedule_store ? @schedule_store.purge(tenant: tenant) : 0
 
         @event_stream.emit(Insika::Event.new(
                              type: :tenant_data_deleted,
@@ -83,12 +87,14 @@ module Insika
                                      contacts: contacts,
                                      proposals: proposals,
                                      harvest: harvest,
+                                     schedules: schedules,
                                      tokens_revoked: tokens_revoked }.merge(purged),
                              meta: { at: Time.now.utc.iso8601 }
                            ))
         { tenant: tenant, sessions: sessions, memory_records: memory_records,
           outcomes: outcomes, funnel: funnel, followups: followups, contacts: contacts,
-          proposals: proposals, harvest: harvest, tokens_revoked: tokens_revoked }.merge(purged)
+          proposals: proposals, harvest: harvest, schedules: schedules,
+          tokens_revoked: tokens_revoked }.merge(purged)
       end
     end
   end

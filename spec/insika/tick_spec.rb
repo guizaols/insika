@@ -292,10 +292,40 @@ RSpec.describe Insika::Tick do
     end
 
     it "exposes the setter (the graph wires the engine after the tick is built)" do
-      tick = described_class.new(store: backend, recovery: recovery, channel_delivery: delivery,
-                                 interval: 60, stale_after: 900)
+      tick = described_class.new(store: backend, recovery: recovery,
+                                 channel_delivery: delivery, interval: 60, stale_after: 900)
       tick.followup = firer
       expect(tick.followup).to be(firer)
+    end
+  end
+
+  describe "the schedule firer (the tick's fourth duty)" do
+    let(:firer) do
+      double("schedule engine",
+             run: { claimed: true, fired: 1, skipped: 0, errors: 0, skip_reasons: {} })
+    end
+
+    it "calls the firer each pass and carries its summary under :schedule" do
+      tick = described_class.new(store: backend, recovery: recovery,
+                                 channel_delivery: delivery, interval: 60,
+                                 stale_after: 900, schedule: firer)
+      result = tick.run_once
+      expect(firer).to have_received(:run).once
+      expect(result[:schedule]).to eq(fired: 1, skipped: 0, errors: 0, skip_reasons: {},
+                                      claimed: true)
+    end
+
+    it "nil schedule = no key in the summary (parity)" do
+      tick = described_class.new(store: backend, recovery: recovery,
+                                 channel_delivery: delivery, interval: 60, stale_after: 900)
+      expect(tick.run_once).not_to have_key(:schedule)
+    end
+
+    it "exposes the setter (the graph wires the engine after the tick is built)" do
+      tick = described_class.new(store: backend, recovery: recovery,
+                                 channel_delivery: delivery, interval: 60, stale_after: 900)
+      tick.schedule = firer
+      expect(tick.schedule).to be(firer)
     end
   end
 end
