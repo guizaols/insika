@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0029 C7 (E2's engine half) — the :flag grounding validator. A reply
+#   (E2's engine half)— the :flag grounding validator. A reply
 # claiming a product whose reference is not in the evidence ledger is FLAGGED
 # (audit via guardrail_flags -> :guardrail_flagged); a grounded one is not.
 RSpec.describe Insika::Safety::GroundingValidator do

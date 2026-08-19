@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0030 C1 — the layer contract. `layer` declares which cache layer a
+#   — the layer contract. `layer` declares which cache layer a
 # provider's output belongs to; :volatile is the conservative default so nothing
 # gets pinned by accident.
 RSpec.describe Insika::ContextProvider do

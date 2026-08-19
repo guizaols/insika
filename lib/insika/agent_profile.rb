@@ -192,7 +192,7 @@ module Insika
     #                                   (WhatsApp) puts the deliberation in front of a
     #                                   customer; that is the operator's call to make, not a
     #                                   default to inherit.
-    :grounding,                     # RFC-0029: the pack's grounding policy —
+    :grounding,                     # the pack's grounding policy —
     #                                   { "mode" => "flag"|"enforce"|"off",
     #                                   "matcher" => { "sku" => …,
     #                                   "name_keys" => [...] } }. OPT-IN:
@@ -203,14 +203,14 @@ module Insika
                                    # that becomes turn context (ctx.store_id).
                                    # It is NOT a policy — never decides security. {} = absent.
     :briefing_fields,                # the per-session working-state schema this agent
-                                   # keeps and asks for (RFC-0028): a flat [String] of
+                                   # keeps and asks for: a flat [String] of
                                    # field names the pack declares. []/nil/absent = the
                                    # feature is OFF (no provider output, no tools — visibly
-                                   # removable, RFC-0036). Names are engine-owned store keys
+                                   # removable). Names are engine-owned store keys
                                    # and tool text, so they are validated against NAME_RE at
                                    # build time. Data, never a policy: the engine owns the
                                    # briefing object, the pack owns the fields.
-    :funnel,                         # RFC-0032: the outcome funnel declaration — pack
+    :funnel,                         # the outcome funnel declaration — pack
                                    # data, exactly like budget/reliability:
                                    # { "stages" => ["greeted", "qualified", "cart", "paid"],
                                    #   "advance_on" => { "pix_paid" => "paid", … },
@@ -220,7 +220,7 @@ module Insika
                                    # nil/absent = no funnel (parity — nothing folds).
                                    # Deep-stringified like the other free-form hashes;
                                    # shape-validated by FunnelDeclaration, never here (D8).
-    :followup,                       # RFC-0033: the follow-up declaration — pack data,
+    :followup,                       # the follow-up declaration — pack data,
                                    # exactly like budget/funnel:
                                    # { "arm" => "schedule",
                                    #   "policy" => { "quiet_hours" => { "timezone" => "…",
@@ -232,7 +232,7 @@ module Insika
                                    # shape-validated by FollowupPolicy, never here (D9).
                                    # nil/absent = the feature is off (parity).
                                    # Deep-stringified like the other free-form hashes.
-    :distill,                        # RFC-0034: the session-distillation declaration — pack
+    :distill,                        # the session-distillation declaration — pack
                                    # data, exactly like refinement/followup:
                                    # { "enabled" => bool, "prompt" => "<pack-authored markdown
                                    #   — what counts as a fact for this store>",
@@ -244,7 +244,7 @@ module Insika
                                    # off (parity, byte-identical engine). Shape-validated by
                                    # the command/engine, never here (the refinement precedent).
                                    # Deep-stringified like the other free-form hashes.
-    :harvest                         # RFC-0035: the gated-harvest declaration — pack data,
+    :harvest                         # the gated-harvest declaration — pack data,
                                    # exactly like refinement/distill:
                                    # { "enabled" => bool,
                                    #   "negative_list" => [ { "rule" => "…", "pattern" => "…",
@@ -329,23 +329,23 @@ module Insika
         # Flat [String] — same discipline as capabilities_declared: a
         # symbol/string mix would be a silent miss in the provider's known-set.
         briefing_fields: normalize_briefing_fields(briefing_fields),
-        # RFC-0029: grounding is profile DATA, deep-stringified like the other
+        # grounding is profile DATA, deep-stringified like the other
         # free-form hashes; parsed into a Grounding per turn by the validator/
         # enforcer. nil = off (parity).
         grounding: Coercion.deep_stringify(grounding),
-        # RFC-0032: funnel is profile DATA, deep-stringified like the other
+        # funnel is profile DATA, deep-stringified like the other
         # free-form hashes; parsed into a FunnelDeclaration by the fold/doctor/
         # Studio (shape-validated THERE, never here — D8). nil = no funnel (parity).
         funnel: Coercion.deep_stringify(funnel),
-        # RFC-0033: followup is profile DATA, deep-stringified like the other
+        # followup is profile DATA, deep-stringified like the other
         # free-form hashes; parsed into a FollowupPolicy by the tool/engine/
         # doctor/Studio (shape-validated THERE, never here — D9). nil = off (parity).
         followup: Coercion.deep_stringify(followup),
-        # RFC-0034: distill is profile DATA, deep-stringified like the other
+        # distill is profile DATA, deep-stringified like the other
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
         distill: Coercion.deep_stringify(distill),
-        # RFC-0035: harvest is profile DATA, deep-stringified like the other
+        # harvest is profile DATA, deep-stringified like the other
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
         harvest: Coercion.deep_stringify(harvest)

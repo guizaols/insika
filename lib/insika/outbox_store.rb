@@ -23,7 +23,7 @@ module Insika
   #               a third party that refused N times is an operator problem, not
   #               something to replay forever.
   #
-  # `failed` and `delivering` are a deliberate widening of the RFC's two-status
+  # `failed` and `delivering` are a deliberate widening of the two-status
   # sketch (`pending -> delivered`): without them a crashed claim and an
   # exhausted retry are indistinguishable from a fresh record, and the sweep
   # would redeliver both.
@@ -47,7 +47,7 @@ module Insika
 
     # -> Delivery (:pending). `payload` is the body the channel will send; it is
     # DATA (string keys, JSON types) and the store never interprets it.
-    # `index` (RFC-0027 C4) is the balloon's position inside its turn — 0 for a
+    # `index`  is the balloon's position inside its turn — 0 for a
     # plain `:at_end` delivery, written by a progressive flush.
     def create(channel:, to:, task_id:, session_id:, payload:, index: 0, id: SecureRandom.uuid)
       record = {
@@ -79,7 +79,7 @@ module Insika
     # its POST landed is unknowable — replaying it is the duplicate the claim
     # exists to prevent.
     #
-    # Ordered by [task_id, index] (RFC-0027 C4): a crashed progressive turn re-drives
+    # Ordered by [task_id, index] : a crashed progressive turn re-drives
     # balloon 1 only after balloon 0, never the reverse.
     def pending
       scan.select { |d| d.status == :pending }

@@ -4,10 +4,10 @@ require_relative "corpus"
 
 module Insika
   module Safety
-    # The compiler/matcher over the language-tagged pattern corpus (RFC-0036
+    # The compiler/matcher over the language-tagged pattern corpus (
     # C2). The pattern SOURCE lives in `Safety::Corpus`; every method here
     # reads a compiled `Corpus::Compiled` set, defaulting to the full shipped
-    # corpus — byte-for-byte the runtime's pre-RFC-0036 behavior.
+    # corpus — byte-for-byte the runtime's pre-  behavior.
     #
     # Two families live here on purpose — the same lists back BOTH the runtime
     # guardrail AND the eval's `must_not` detectors: the eval
@@ -21,7 +21,7 @@ module Insika
     #   · INPUT side (injection/abuse/sexual) — high-confidence heuristics that
     #     short-circuit the turn with a safe refusal BEFORE the LLM runs.
     #
-    # Everything here is CONSERVATIVE by design (RFC: a false positive blocks a
+    # Everything here is CONSERVATIVE by design: a false positive blocks a
     # legitimate customer). The deterministic layer catches only the gross,
     # unambiguous cases; the subtler judgment (social engineering, tone) is the LLM
     # moderator's job, not regex.

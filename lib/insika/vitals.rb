@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # Process vitals (RFC-0026 C2). One cheap read-only answer to "which process
+  # Process vitals. One cheap read-only answer to "which process
   # is this, how long has it been up, how much memory does it hold, and what is
   # the Ruby heap doing?" It touches NO store, allocates nothing meaningful,
   # and knows nothing about soaks — a general operator surface the soak
@@ -16,7 +16,7 @@ module Insika
 
     # The subset of GC.stat that answers "is the Ruby heap growing, or is this
     # the allocator?" — the difference between a leak and fragmentation, which
-    # is the first fork of any leak hunt (RFC §4.3).
+    # is the first fork of any leak hunt .
     GC_KEYS = %i[heap_live_slots heap_free_slots heap_allocated_pages
                  total_allocated_objects total_freed_objects
                  major_gc_count minor_gc_count

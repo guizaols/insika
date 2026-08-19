@@ -51,15 +51,15 @@ module Insika
                   #                      { reason:, message: } when the agent declared it cannot
                   #                      proceed. The Executor tags the terminal event with
                   #                      outcome: "stuck" and emits :turn_stuck. nil = normal turn.
-                  :evidence_ledger,     # RFC-0029: Insika::EvidenceLedger | nil — the
+                  :evidence_ledger,     # Insika::EvidenceLedger | nil — the
                   #                      session-scoped set of product ids that entered the
                   #                      context via an evidence-declared tool (the envelope
                   #                      appends; the validator/enforcer read it). Built per
                   #                      turn by the Executor; nil = no session/no evidence.
-                  :evidence_attachments, # RFC-0029: [ {type, url, caption} ] hoarded by the
+                  :evidence_attachments, # [ {type, url, caption} ] hoarded by the
                   #                      envelope this turn; read by the Executor at stage 8
                   #                      for the channel delivery. Reset per turn.
-                  :context_trace_entry  # RFC-0030 C5: the sanitized trace entry parked at
+                  :context_trace_entry  # the sanitized trace entry parked at
                   #                      prepare_turn (fingerprints + invalidation_reason);
                   #                      the stage-8 stamp merges the cache-hit fields into
                   #                      it and re-records the same (task_id, turn) key.

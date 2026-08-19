@@ -3,7 +3,7 @@
 require "spec_helper"
 require "securerandom"
 
-# RFC-0035 C6: the ONLY path that writes candidates. Mines ONE window end to
+# the ONLY path that writes candidates. Mines ONE window end to
 # end: resolve the sessions, read transcripts + evidence, ask the miner,
 # schema-drop, apply the negative list and the grounding filter, dedup against
 # the ledger, write the run + candidates, stamp the markers. Writes NOTHING to

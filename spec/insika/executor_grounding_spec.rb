@@ -3,13 +3,13 @@
 require "spec_helper"
 require "async"
 
-# RFC-0029 E2 — the acceptance gate, end-to-end through the REAL Executor. A
+#   — the acceptance gate, end-to-end through the REAL Executor. A
 # turn whose data tool returns an evidence-shaped result: the provider step sees
 # the LEAN items, the ids land on the session evidence ledger, and the final
 # answer claiming a non-ledgered id is, per mode, FLAGGED (`:flag` ->
 # `:guardrail_flagged` with category "ungrounded") or CUT (`:enforce` -> the
 # terminal content is the cut text).
-RSpec.describe "Insika::Executor — grounding end-to-end (RFC-0029 E2)" do
+RSpec.describe "Insika::Executor — grounding end-to-end " do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

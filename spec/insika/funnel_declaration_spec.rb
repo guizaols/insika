@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0032 C2: the ONE parser every consumer shares (fold, doctor, Studio,
+# the ONE parser every consumer shares (fold, doctor, Studio,
 # freeze command). Pure value object — never touches a store. `parse` returns
 # nil on a malformed shape (D8: the fold skips, the doctor explains); `parse!`
 # raises Insika::ValidationError naming the defect.

@@ -58,7 +58,7 @@ RSpec.describe Insika::ContextFragment do
     expect(f.tokens).to be_nil # original untouched
   end
 
-  describe "layer (RFC-0030 C1)" do
+  describe "layer " do
     it "defaults to nil in .build (reads as :volatile everywhere it is consumed)" do
       expect(described_class.build(content: "x", placement: :system, source: "s").layer).to be_nil
     end

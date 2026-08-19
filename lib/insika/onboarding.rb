@@ -58,7 +58,7 @@ module Insika
       "harvest" => "docs/HARVEST.md",
       "loadtest" => "docs/LOADTEST.md",
       "releasing" => "docs/RELEASING.md",
-      # RFC-0036 C6/C7: the /v1 compatibility contract and the domain-free map.
+      # the /v1 compatibility contract and the domain-free map.
       "api" => "docs/API.md",
       "domain" => "docs/domain.md"
     }.freeze

@@ -3,13 +3,13 @@
 require "spec_helper"
 require "async"
 
-# RFC-0030 C5 + E2 — the acceptance gate, end-to-end through the REAL Executor
+#   + E2 — the acceptance gate, end-to-end through the REAL Executor
 # and the REAL ContextBuilder. Turn 1 then turn 2: the prefix fingerprint of
 # the identity categories is byte-stable (E1's discard condition), a mutated
 # volatile category names itself as the invalidation reason, and the provider-
 # reported cached_tokens stamp the trace entry and the agent's cache series
 # (CacheSeriesStore) after stage 8.
-RSpec.describe "Insika::Executor — layered identity cache (RFC-0030 E2)" do
+RSpec.describe "Insika::Executor — layered identity cache " do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

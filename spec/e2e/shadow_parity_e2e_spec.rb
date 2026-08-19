@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# RFC-0025 E2, as a spec: a scripted mirrored conversation of N exchanges — our
+# An E2 scripted mirrored conversation of N exchanges — our
 # turn runs end to end through a shadow channel, the mirror reports the reply
 # the customer actually got — yields N complete pairs and an incomplete rate of
 # 0. This is the fixture that makes the >20% discard condition measurable

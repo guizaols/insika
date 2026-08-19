@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0034 C5: the trigger — finds due (idle, customer-tagged, undistilled)
+# the trigger — finds due (idle, customer-tagged, undistilled)
 # sessions and distills them on a worker fiber, off the tick's critical path
 # and off every customer turn's path (D8). The scan uses the engine default
 # idle_hours as the lower bound; the per-agent value is re-checked inside

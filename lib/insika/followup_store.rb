@@ -4,7 +4,7 @@ require "securerandom"
 require "time"
 
 module Insika
-  # RFC-0033 C4: the schedule records of the follow-up feature. The store owns
+  # the schedule records of the follow-up feature. The store owns
   # the `pending|fired|cancelled|blocked` states (never written by a consumer —
   # the task_store.rb state-machine idiom) and the (customer, reason) scans.
   # It holds no policy (C2) and no contact cells (C3).
@@ -166,7 +166,7 @@ module Insika
     # retention ages it out rather than firing late). All count-returning and
     # nil-safe.
 
-    # RFC-0033 C6: cancels every PENDING record of the customer inside ONE
+    # cancels every PENDING record of the customer inside ONE
     # transaction — the opt-out discipline (D2: a half-cancelled opt-out is
     # the spam bug). Blocked/fired records are never touched. -> count
     # cancelled.

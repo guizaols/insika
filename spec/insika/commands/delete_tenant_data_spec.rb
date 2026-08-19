@@ -137,9 +137,9 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     end
   end
 
-  # RFC-0032 C6: the tenant purge reaches the funnel's cells, cursor and
+  # the tenant purge reaches the funnel's cells, cursor and
   # baseline — the funnel dies with the tenant, and the event carries the count.
-  describe "funnel (RFC-0032)" do
+  describe "funnel " do
     let(:funnel_store) { Insika::FunnelStore.new(store: backend) }
     subject(:command) do
       described_class.new(memory_store: memory_store, session_store: session_store,
@@ -190,7 +190,7 @@ RSpec.describe Insika::Commands::DeleteTenantData do
       .to raise_error(Insika::ValidationError, /tenant is required/)
   end
 
-  describe "RFC-0033 C11 — the follow-up footprint dies with the tenant" do
+  describe "the follow-up footprint dies with the tenant" do
     it "purges the tenant's follow-up records and contact cells; the neighbour survives" do
       followup_store.create(tenant: "acme", agent: "a", customer: "123", session_id: "s-1",
                             at: Time.now.utc + 3600, reason: "r1", arm: "schedule", id: "f1",
@@ -220,7 +220,7 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     end
   end
 
-  describe "RFC-0034 C8 — the proposals die with the tenant" do
+  describe "the proposals die with the tenant" do
     let(:proposal_store) { Insika::ProposalStore.new(store: backend) }
 
     it "purges the tenant's proposals and reports the count; another tenant survives" do
@@ -249,7 +249,7 @@ RSpec.describe Insika::Commands::DeleteTenantData do
     end
   end
 
-  describe "RFC-0035 C13 — the harvest rows die with the tenant (D11)" do
+  describe "the harvest rows die with the tenant (D11)" do
     let(:harvest_store) { Insika::HarvestStore.new(store: backend) }
 
     def seed_harvest(tenant: "acme", id: "c1", promo: "promo-1")

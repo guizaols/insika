@@ -260,7 +260,7 @@ RSpec.describe Insika::ChatBuilder do
     end
   end
 
-  describe "#configure_chat — the follow-up system tools (RFC-0033 C7)" do
+  describe "#configure_chat — the follow-up system tools " do
     let(:contact_store) { Insika::ContactStore.new(store: Insika::Stores::Memory.new) }
     let(:followup_store) { Insika::FollowupStore.new(store: Insika::Stores::Memory.new) }
 
@@ -301,7 +301,7 @@ RSpec.describe Insika::ChatBuilder do
     end
   end
 
-  describe "#configure_chat — system briefing tools (RFC-0028)" do
+  describe "#configure_chat — system briefing tools " do
     let(:sessions) { Insika::SessionStore.new(store: Insika::Stores::Memory.new) }
 
     def builder_with_sessions

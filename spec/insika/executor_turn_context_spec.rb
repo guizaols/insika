@@ -68,7 +68,7 @@ RSpec.describe "Insika::Executor — turn context" do
   # session. It's what the write path (state.tenant) and the read path (Memory provider)
   # use symmetrically.
   describe "#memory_tenant" do
-    it "no tenant in the Command -> the marked session cell (RFC-0031)" do
+    it "no tenant in the Command -> the marked session cell " do
       expect(executor.send(:memory_tenant, task_with(session_id: "chat-42"))).to eq("chat:chat-42")
     end
 

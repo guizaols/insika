@@ -65,7 +65,7 @@ RSpec.describe Insika::Safety::OutputValidator do
     end
   end
 
-  describe "RFC-0029 grounding composition (D9 — runs BEFORE the output gate)" do
+  describe "grounding composition (D9 — runs BEFORE the output gate)" do
     def grounding_state(content, guardrails: { "output" => false })
       prof = Insika::AgentProfile.build(
         id: "grounded", guardrails: guardrails,

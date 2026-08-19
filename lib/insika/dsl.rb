@@ -215,7 +215,7 @@ module Insika
       #   budget daily: 100_000, monthly: 2_000_000, soft: false
       def budget(hash) = (@config[:budget] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # The outcome funnel declaration (RFC-0032): the store's stage vocabulary
+      # The outcome funnel declaration: the store's stage vocabulary
       # as pack data — the engine folds WS7 outcome kinds into the DECLARED
       # stages, and never hard-codes one itself. Merges, so repeated calls
       # accumulate (like budget).
@@ -224,7 +224,7 @@ module Insika
       #          primary: "paid", attribution_window: "72h"
       def funnel(hash) = (@config[:funnel] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # The follow-up declaration (RFC-0033): the agent may book a follow-up
+      # The follow-up declaration: the agent may book a follow-up
       # with a customer at a future time (`schedule` tool); the engine fires the
       # synthetic turn and enforces the policy (quiet hours, max frequency,
       # cancellation keywords, silence detection) at fire time. Pack data —
@@ -237,14 +237,14 @@ module Insika
       #                      silence_after_sends: 3 }
       def followup(hash) = (@config[:followup] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # The session-distillation declaration (RFC-0034): what counts as a fact
+      # The session-distillation declaration: what counts as a fact
       # for THIS store, distilled from finished customer conversations. Pack
       # data — merges, so repeated calls accumulate (like budget). `prompt` and
       # `model` are pack-authored keys the DSL passes through.
       #   distill enabled: true, idle_hours: 6, max_proposals: 10
       def distill(hash) = (@config[:distill] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # The gated-harvest declaration (RFC-0035): the engine may read this
+      # The gated-harvest declaration: the engine may read this
       # agent's finished traffic and propose SKILLS for the store's playbook —
       # through the negative list, the grounding filter and the double gate,
       # never applied automatically. Pack data — merges, so repeated calls
@@ -290,7 +290,7 @@ module Insika
       def stuck_signal(on = true) = @config[:stuck_signal] = on
 
       # The per-session working-state schema this agent keeps and asks for
-      # (RFC-0028): a flat list of field names. [] = off (no provider output,
+      # a flat list of field names. [] = off (no provider output,
       # no update_briefing/set_next_step tools).
       #   briefing_fields "size", "budget", "delivery_day"
       def briefing_fields(*names)
@@ -324,7 +324,7 @@ module Insika
       #              responses: { "injection" => "I can't help with that." }
       def guardrails(hash) = (@config[:guardrails] ||= {}).merge!(hash.transform_keys(&:to_s))
 
-      # Evidence-grounding policy (RFC-0029): the pack declares how the engine
+      # Evidence-grounding policy: the pack declares how the engine
       # polices product claims against the evidence ledger. Same
       # config-over-code shape as `guardrails`; absent = off (parity).
       #   grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }

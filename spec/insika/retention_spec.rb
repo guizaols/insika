@@ -100,7 +100,7 @@ RSpec.describe Insika::Retention do
     expect(task_store.find("t-run")).not_to be_nil
   end
 
-  # RFC-0036 C4: the model-visible traces are transcripts — the retention
+  # the model-visible traces are transcripts — the retention
   # sweep must not leave the record of a dead conversation behind.
   it "sweeps the model-visible traces next to the terminal task's checkpoints" do
     task_store.create(command: { agent: "a" }, session_id: "s1", id: "t-old",
@@ -169,9 +169,9 @@ RSpec.describe Insika::Retention do
   # WS2 counter GC: those cells are engine bookkeeping whose window already
   # rolled over, not customer content — so they are swept even with retention
   # OFF (the default), which is exactly where they used to leak forever.
-  # RFC-0032 C6: the funnel cells are swept with the outcomes they fold —
+  # the funnel cells are swept with the outcomes they fold —
   # same retention_days gate, same daily claim. The fold dies with its source.
-  describe "funnel sweep (RFC-0032)" do
+  describe "funnel sweep " do
     let(:funnel_store) { Insika::FunnelStore.new(store: backend) }
     subject(:retention) do
       described_class.new(
@@ -277,7 +277,7 @@ RSpec.describe Insika::Retention do
     expect(session_store.find("chat-old")).to be_nil # swept by the FIRST run only
   end
 
-  describe "memory TTL sweep (RFC-0031, E4)" do
+  describe "memory TTL sweep E4)" do
     # E4: a fact with an explicit expires_at in the past is GONE after `run` —
     # on its own daily claim, NOT gated by retention_days.
     it "expires_at in the past -> gone after run, counted in memory_ttl:" do
@@ -384,9 +384,9 @@ RSpec.describe Insika::Retention do
     end
   end
 
-  # RFC-0033 C11: the follow-up footprint dies with the rest — schedule records
+  # the follow-up footprint dies with the rest — schedule records
   # and contact cells under the SAME retention_days gate + daily claim.
-  describe "follow-up sweep (RFC-0033)" do
+  describe "follow-up sweep " do
     let(:followup_store) { Insika::FollowupStore.new(store: backend) }
     let(:contact_store) { Insika::ContactStore.new(store: backend) }
     subject(:retention) do
@@ -450,7 +450,7 @@ RSpec.describe Insika::Retention do
       expect(contact_store.get(tenant: "acme", customer: "c-1")).not_to be_nil
     end
 
-    it "RFC-0034 C8 — proposals older than the cutoff are swept (pending included); a recent one survives" do
+    it "proposals older than the cutoff are swept (pending included); a recent one survives" do
       proposal_store = Insika::ProposalStore.new(store: backend)
       r = described_class.new(
         store: backend, session_store: session_store, task_store: task_store,
@@ -478,7 +478,7 @@ RSpec.describe Insika::Retention do
       expect(proposal_store.find("fresh")).not_to be_nil
     end
 
-    it "RFC-0035 C13 — harvest candidates (pending AND terminal), log rows and snapshots older than the cutoff are swept; a recent one survives; markers never die" do
+    it "harvest candidates (pending AND terminal), log rows and snapshots older than the cutoff are swept; a recent one survives; markers never die" do
       harvest_store = Insika::HarvestStore.new(store: backend)
       r = described_class.new(
         store: backend, session_store: session_store, task_store: task_store,
@@ -522,7 +522,7 @@ RSpec.describe Insika::Retention do
       expect(harvest_store.mined?("kept:sess_1")).to be(true) # the marker is the claim
     end
 
-    it "RFC-0035 C13 — with retention_days OFF the harvest rows are untouched" do
+    it "with retention_days OFF the harvest rows are untouched" do
       harvest_store = Insika::HarvestStore.new(store: backend)
       r = described_class.new(
         store: backend, session_store: session_store, task_store: task_store,
@@ -545,7 +545,7 @@ RSpec.describe Insika::Retention do
       expect(harvest_store.find_candidate(cand.id)).to_not be_nil
     end
 
-    it "RFC-0034 C8 — with retention_days OFF proposals are untouched" do
+    it "with retention_days OFF proposals are untouched" do
       proposal_store = Insika::ProposalStore.new(store: backend)
       r = described_class.new(
         store: backend, session_store: session_store, task_store: task_store,

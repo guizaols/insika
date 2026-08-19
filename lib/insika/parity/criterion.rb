@@ -13,7 +13,7 @@ module Insika
     #
     # Strict by construction: a missing key or an unknown key is refused at load
     # (`ValidationError`), and no key has a default — a number the machine filled in
-    # is a number nobody pre-registered (RFC §4.4).
+    # is a number nobody pre-registered.
     class Criterion
       Rule = Data.define(
         :version, :unit, :window_days, :pairs_per_day, :min_decided,

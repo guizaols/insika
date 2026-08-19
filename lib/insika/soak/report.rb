@@ -5,7 +5,7 @@ require "time"
 
 module Insika
   module Soak
-    # The mechanical fold (RFC-0026 techspec C5): a results file plus its
+    # The mechanical fold: a results file plus its
     # frozen envelope becomes ONE verdict and the numbers behind it. Pure — no
     # clock, no network, no store, no randomness. This is where "pass/fail is
     # mechanical" lives: two people folding the same bytes get the same verdict.

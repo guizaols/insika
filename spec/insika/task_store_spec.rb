@@ -266,7 +266,7 @@ RSpec.describe Insika::TaskStore do
     end
   end
 
-  describe "timing on the task record (RFC-0027 C5)" do
+  describe "timing on the task record " do
     it "is nil for a task written before the field existed" do
       id = tasks.create(command: command, id: "t").id
       expect(tasks.find(id).timing).to be_nil

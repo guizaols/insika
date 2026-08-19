@@ -62,7 +62,7 @@ RSpec.describe Insika::ToolDefinition do
     end
   end
 
-  describe "evidence (RFC-0029 — the tool declares its result carries grounded items)" do
+  describe "evidence (— the tool declares its result carries grounded items)" do
     it "evidence: nil -> absent key and nil reader (parity, byte-identical behavior)" do
       d = described_class.build(**valid_attrs)
       expect(d.evidence).to be_nil

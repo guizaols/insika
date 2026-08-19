@@ -171,7 +171,7 @@ RSpec.describe Insika::EdgeLimiter do
     end
   end
 
-  describe "scheduled turns (RFC-0033 D5-bis)" do
+  describe "scheduled turns " do
     def scheduled_state
       task = Struct.new(:id, :session_id, :command)
              .new("t", "s", { "type" => "scheduled_followup", "payload" => {} })

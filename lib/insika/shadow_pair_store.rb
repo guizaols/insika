@@ -4,7 +4,7 @@ require "digest"
 require "time"
 
 module Insika
-  # C2 — one durable record per mirrored exchange (RFC-0025 shadow mode),
+  # C2 — one durable record per mirrored exchange (shadow mode),
   # written by TWO INDEPENDENT HALVES: ours at the turn's terminal, the
   # incumbent's at the mirror. Both land on the same key — a digest of
   # (channel, external_id, event_id), deterministic and order-free — so the two
@@ -104,7 +104,7 @@ module Insika
     end
 
     # -> [Pair] status :complete, oldest first — the judging queue. `silent`
-    # pairs are NEVER here: RFC-0014 §7's finding that pairwise is
+    # pairs are NEVER here:   finding that pairwise is
     # systematically unfair to a tool that delivers out of band is not
     # something to average away.
     def unjudged(limit: nil, agent: nil)

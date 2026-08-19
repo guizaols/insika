@@ -59,7 +59,7 @@ module Insika
     module Assertions
       # Named negative detectors for `must_not` now live in the runtime. Kept as
       # an alias so any external reference to Evals::Assertions::PII_DETECTORS still
-      # resolves; the values ARE the runtime's, never a fork. RFC-0036 C2: the
+      # resolves; the values ARE the runtime's, never a fork. the
       # pattern data moved to the corpus, still under the same Safety umbrella.
       PII_DETECTORS = Insika::Safety::Corpus::PII
 

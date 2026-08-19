@@ -19,7 +19,7 @@ module Insika
     #     corpora:    { "languages" => ["en"], "extra" => { "abuse" => ["/\\bdupa\\b/i"] } }
     #   }
     #
-    # `corpora` (RFC-0036 C2/D2) is the removability knob for the shipped
+    # `corpora`  is the removability knob for the shipped
     # pt-BR corpus: `languages` filters the shipped families (nil = all,
     # [] = none, ["en"] = the EN-only corpus — dropping the pt-BR input
     # heuristics AND the CPF/CNPJ output redaction, a documented consequence),
@@ -78,7 +78,7 @@ module Insika
         )
       end
 
-      # The compiled corpus for this agent (RFC-0036 C2) — never nil: absent
+      # The compiled corpus for this agent  — never nil: absent
       # corpora -> the full shipped default.
       def corpus = @corpus
 

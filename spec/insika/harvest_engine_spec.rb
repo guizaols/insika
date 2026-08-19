@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0035 C12 — the tick-driven harvest loop (D10): one pass per claim
+#   — the tick-driven harvest loop: one pass per claim
 # window scans for idle, unmined sessions whose agent declares
 # harvest.enabled AND a grounding matcher, and mines them through RunHarvest
 # on a worker fiber. The loop-stop (the H-harvest kill) is the profile's

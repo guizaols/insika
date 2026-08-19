@@ -3,12 +3,12 @@
 require "spec_helper"
 require_relative "../../../lib/insika/server/app"
 
-# RFC-0036 C6 — the /v1 freeze is a DOC promise plus a drift pin: the frozen
+#   — the /v1 freeze is a DOC promise plus a drift pin: the frozen
 # date in docs/API.md must equal the server gate's first known version. The
 # two cannot drift: a release that bumps the gate without rewriting the
 # promise (or vice-versa) fails here, before it ships. The gate's RUNTIME half
 # (400 on unknown, known versions accepted) stays covered in server/app_spec.
-RSpec.describe "the /v1 freeze pin (RFC-0036 C6)" do
+RSpec.describe "the /v1 freeze pin " do
   it "the gate's first known version is the doc's frozen-as date" do
     api_doc = File.read(File.expand_path("../../../docs/API.md", __dir__))
     frozen = api_doc[/\*\*Frozen as of:\s*([0-9-]+)\*\*/, 1]

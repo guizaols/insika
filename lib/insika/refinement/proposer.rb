@@ -214,7 +214,7 @@ module Insika
       end
 
       # `proposers` accepts either syntax — a bare ref ("deepseek/deepseek-v4-flash") or
-      # the RFC's `{ "model" =>, "provider"? => }` — because the two already coexist in
+      # the hash form `{ "model" =>, "provider"? => }` — because the two already coexist in
       # this config (`proposer` is a bare ref, `judges` are hashes) and refusing one of
       # them would only teach operators which page they were reading.
       def refs_for(config, utility_model)

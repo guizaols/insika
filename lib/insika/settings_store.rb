@@ -36,7 +36,7 @@ module Insika
       # (+checkpoints), memory cells and outcomes older than this. nil/0 =
       # OFF (parity — nothing is ever swept by default).
       "retention_days" => nil,
-      # RFC-0031: memory TTL. Integer = default for every cell; Hash =
+      # memory TTL. Integer = default for every cell; Hash =
       # per-tenant { "<tenant>" => days, "*" => days } (ops-authored). nil = OFF.
       # Swept by the Retention tick on its OWN daily claim, NOT gated by
       # retention_days (D5). Additive key — reads overlay DEFAULTS.

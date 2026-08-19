@@ -20,7 +20,7 @@ module Insika
   # validated by `Evals::GoldenLoader.build` — the one validator, so a case authored in
   # the Studio and a case read from disk cannot diverge. `evals/golden/**` stays the
   # export format and the seed for a fresh deploy (`insika evals:import`), for the same
-  # reason the knowledge RFC keeps markdown as both: no converter to keep honest.
+  # reason the knowledge base keeps markdown as both: no converter to keep honest.
   #
   # No version history here, unlike the prompt/skill stores: the corpus on disk IS the
   # backup, and re-importing restores it.

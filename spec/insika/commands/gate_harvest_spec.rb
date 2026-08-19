@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0035 C9 — the double gate on ONE candidate (D7 + D6), eval first
+#   — the double gate on ONE candidate, eval first
 # (expensive — replay), conversion second (cheap — a fold read). Both passed ->
 # awaiting_approval; either failed -> rejected with the reason; a conversion
 # REFUSAL (missing data) PARKS the candidate at gated with the named reason —

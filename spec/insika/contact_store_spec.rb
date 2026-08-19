@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0033 C3 — the durable contact-state cell per (tenant, customer). One
+#   — the durable contact-state cell per (tenant, customer). One
 # derived cell, never a transition log (D2): granted | revoked | unavailable,
 # the sends-without-reply counter and the last outbound timestamp. The store
 # holds no policy and no follow-ups; the firer and the inbound hook own the
@@ -52,7 +52,7 @@ RSpec.describe Insika::ContactStore do
     end
   end
 
-  describe "#consent (RFC-0033 D7 — the schedule tool's write)" do
+  describe "#consent (— the schedule tool's write)" do
     it "creates the cell when absent (the first consent is granted)" do
       cell = store.consent(tenant: "acme", customer: "c-1")
       expect(cell.state).to eq("granted")

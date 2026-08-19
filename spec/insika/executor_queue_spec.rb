@@ -95,7 +95,7 @@ before { session_store.create(id: "s1") }
     end
   end
 
-  # RFC-0027 C1: a `steer` agent that set a window has BOTH windows. The door one is
+  # a `steer` agent that set a window has BOTH windows. The door one is
   # the same policy's other half — the buffer it replaces was doing both and the
   # enum just failed to compose.
   it "a steer policy with a window also merges at the door (collect is not a separate mode)" do
@@ -156,13 +156,13 @@ it "session vars pin one conversation back to followup despite the platform defa
     end
   end
 
-  # RFC-0027 C5 regression: t0 is the 202 acceptance (SendMessage), BEFORE the
+  #   regression: t0 is the 202 acceptance (SendMessage), BEFORE the
   # debounce window and the SessionActor FIFO. A channel turn that waits out the
   # window must count that wait in first_balloon_ms — the Studio number is what
   # the customer felt, not the turn's own run. Reverting the fix (marking
   # :inbound at the pipeline start) makes this fail: the window would fall
   # outside the measurement.
-  describe "first_balloon_ms includes the debounce window (RFC-0027 C5)" do
+  describe "first_balloon_ms includes the debounce window " do
     class SpyRelay
       attr_reader :sent
       def initialize = (@sent = [])

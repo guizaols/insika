@@ -3,11 +3,11 @@
 require "time"
 
 module Insika
-  # RFC-0032 C3: the durable aggregates of the OUTCOME FUNNEL — per-day stage
+  # the durable aggregates of the OUTCOME FUNNEL — per-day stage
   # counts (the fold's cells), the fold cursor and the baseline snapshot.
   # A dumb domain store: it holds no outcome_store and never folds (C4 owns the
   # transformation), and it is recomputable by construction — the OutcomeStore
-  # stays the source of truth (RFC §4.2).
+  # stays the source of truth.
   #
   # Key shapes (string keys, Store-contract JSON):
   #   "funnel"           "acme:store-support:2026-08-14"  -> { "greeted" => 41, "paid" => 3 }
@@ -110,7 +110,7 @@ module Insika
       removed
     end
 
-    # RFC-0032 C4: wipes ONE pair's day cells — the recompute repair path (the
+    # wipes ONE pair's day cells — the recompute repair path (the
     # fold rebuilds them from the outcome store, so it must start from zero,
     # never sum on top). Same tenant normalization as every other key builder
     # (`""`/nil/"platform" all reach the "platform" segment). -> count removed.

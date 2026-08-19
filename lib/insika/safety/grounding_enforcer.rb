@@ -2,7 +2,7 @@
 
 module Insika
   module Safety
-    # RFC-0029 C7/D6 — the `:enforce` half of grounding: the claim's SENTENCE is
+    #   — the `:enforce` half of grounding: the claim's SENTENCE is
     # cut from the content the turn persists and delivers. A NEW stage-8 boundary
     # step (a plain executor call, NOT an after_task hook — after_task fires too
     # late to change what is persisted).
@@ -11,7 +11,7 @@ module Insika
     # surgical span — removing half a sentence produces broken prose). What the
     # cut CANNOT do is unsay a streamed delta — for a streaming surface `:enforce`
     # still delivers the cut text via channel delivery and flags the turn; that
-    # honesty is why the RFC's own default is `:flag` (ship `:enforce` only after
+    # honesty is why the own default is `:flag` (ship `:enforce` only after
     # the matcher audit). Runs ONLY in :enforce mode — inert otherwise.
     class GroundingEnforcer
       # -> [new_content, state]. The stage-8 boundary call. Fail-open: grounding

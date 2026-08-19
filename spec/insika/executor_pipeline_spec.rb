@@ -720,7 +720,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(ttft.meta.key?(:tenant)).to be(false)
     end
 
-    # RFC-0027 C5: a CHANNEL turn allocates TurnTiming even with the flag off, so
+    # a CHANNEL turn allocates TurnTiming even with the flag off, so
     # first_balloon_ms (H-latência) is always measured — but only that one window;
     # the full breakdown stays the flag's job.
     it "a channel turn with the flag OFF still carries first_balloon_ms and nothing else" do
@@ -853,7 +853,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
         "prompt" => { "tokens" => 400, "fragments" => 1, "pinned" => 400, "layer" => "volatile" },
         "session" => { "tokens" => 200, "fragments" => 1, "pinned" => 0, "layer" => "volatile" }
       )
-      # RFC-0030 C5: the entry carries the prefix fingerprints + the cache
+      # the entry carries the prefix fingerprints + the cache
       # reason (nil on the first turn) alongside the breakdown.
       expect(entry["fingerprints"]).to be_a(Hash)
       expect(entry["fingerprints"].keys).to include("prompt", "prefix")

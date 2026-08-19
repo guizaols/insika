@@ -2,7 +2,7 @@
 
 module Insika
   module Harvest
-    # C3 — the versioned negative list (RFC §4.2): things the harvester must
+    # C3 — the versioned negative list : things the harvester must
     # never propose. Pure value object — never touches a store, never authors
     # a rule (D4: the engine applies it, the forge authors it). `parse`
     # accepts BOTH the markdown file shape (frontmatter + rule bullets) and
@@ -10,7 +10,7 @@ module Insika
     # cannot exist in one and not the other (E2's drift guard).
     #
     # A rule is a phrase or a regex. Phrases match case/accent-folded at WORD
-    # boundaries (the RFC-0024 §3.7 hygiene — "NÃO DEVOLVEMOS" is the same
+    # boundaries (the   hygiene — "NÃO DEVOLVEMOS" is the same
     # word as "não devolvemos"); regexes match the raw OR the folded text (the
     # author may write either spelling, `/…/flags` honored). `matches_name` is
     # the stricter SUBSTRING reading the CI spec uses on skill names.

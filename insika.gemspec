@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# RFC-0036 C1: the payload selection is ONE function, shared with the
+# the payload selection is ONE function, shared with the
 # domain-boundary audit spec (spec/insika/domain_boundary_spec.rb) — what
 # ships is a fact the suite asserts on. Pure module, loads standalone.
 require_relative "lib/insika/packaging"
@@ -37,7 +37,7 @@ Gem::Specification.new do |spec|
   # surface serves (/docs, start.md). config/, deploy/, Dockerfile and the
   # examples stay checkout-only: the reference deployment is not the gem.
   #
-  # The selection is Insika::Packaging.payload_files (RFC-0036 C1): `git
+  # The selection is Insika::Packaging.payload_files (the payload selection): `git
   # ls-files` (so an UNTRACKED lib file never ships — see docs/RELEASING.md),
   # falling back to a glob where there is no .git (the Docker build context
   # excludes it), filtered to lib/ + docs/ + the four root files minus the

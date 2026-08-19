@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0033 C6: the operator cancels ONE pending follow-up record (the
+    # the operator cancels ONE pending follow-up record (the
     # Studio's Cancel button dispatches this). Synchronous control command (no
     # task, like RecordOutcome); idempotent — an already-cancelled record
     # returns as-is (a repeat of the same call is not an error). Tenant-scoped

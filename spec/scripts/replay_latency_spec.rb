@@ -4,7 +4,7 @@ require "spec_helper"
 require "json"
 require_relative "../../scripts/replay_latency"
 
-# RFC-0027 C7 — the E2 replay harness' arithmetic, so it cannot silently rot.
+#   — the E2 replay harness' arithmetic, so it cannot silently rot.
 # No network, no provider, no staging: corpus parsing + percentiles + the report
 # fold. The live before/after is a human-run measurement (script, not CI).
 RSpec.describe "scripts/replay_latency.rb" do
@@ -17,7 +17,7 @@ RSpec.describe "scripts/replay_latency.rb" do
   ].freeze
 
   describe "parse_corpus" do
-    it "parses the RFC's corpus shape" do
+    it "parses the recorded corpus shape" do
       cases = ReplayLatency.parse_corpus(JSON.generate(CORPUS))
 
       expect(cases.size).to eq(2)

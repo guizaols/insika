@@ -142,7 +142,7 @@ RSpec.describe Insika::SchemaGuard do
     expect(violation({ whatever: 1 }, schema: empty)).to be_nil
   end
 
-  describe "violation_output (RFC-0029 — the evidence RESULT shape)" do
+  describe "violation_output (— the evidence RESULT shape)" do
     let(:spec) { Insika::Evidence::Spec.parse({ "kind" => "products" }) }
 
     it "nil when the raw carries a well-formed items list" do

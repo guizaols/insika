@@ -10,7 +10,7 @@ module Insika
     # Studio uses to edit facts directly. Scoped by `tenant` (nil = _default).
     # Synchronous; does not create a Task. -> Fact.
     #
-    # RFC-0031: the OPERATOR surface — every write stamps `origin: "operator"`
+    # the OPERATOR surface — every write stamps `origin: "operator"`
     # (the `remember` tool keeps "engine") and, with an `audit_store:`
     # collaborator, appends a content-free audit line (old/new digests). The
     # audit is optional: nil = no audit (specs, minimal graphs).

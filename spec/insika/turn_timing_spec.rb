@@ -45,7 +45,7 @@ RSpec.describe Insika::TurnTiming do
       expect(recorded).to be >= first
     end
 
-    # RFC-0027 C5: inbound -> first outbox flush. Present only when BOTH ends fired.
+    # inbound -> first outbox flush. Present only when BOTH ends fired.
     it "reports first_balloon_ms once inbound and first_balloon both fired" do
       t = described_class.new
       t.mark(:inbound)
@@ -68,7 +68,7 @@ RSpec.describe Insika::TurnTiming do
   end
 
   describe "breakdown: false (the channel-balloon-only clock)" do
-    # RFC-0027 C5: a channel turn allocates TurnTiming even when INSIKA_TURN_TIMING
+    # a channel turn allocates TurnTiming even when INSIKA_TURN_TIMING
     # is off, but then to_h may carry ONLY first_balloon_ms — the full breakdown
     # marks are the flag's job.
     it "records only inbound/first_balloon; the breakdown marks are no-ops" do

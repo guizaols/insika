@@ -98,7 +98,7 @@ module Insika
       to_session(record)
     end
 
-    # RFC-0029 C4: appends this turn's evidence (ids + ungrounded delta) to the
+    # appends this turn's evidence (ids + ungrounded delta) to the
     # session record. RMW like append_messages — the SessionActor serializes
     # same-session turns; the copy is in the method comment.
     def append_evidence(id, ids:, ungrounded:)
@@ -115,7 +115,7 @@ module Insika
     # -> Session. Upsert ONE briefing field. The pack owns the schema; the
     # engine validates nothing about field NAMES here (the tools do, at the
     # write edge). value is a String (anything else -> to_s); a BLANK value
-    # (after strip) REMOVES the key — absence means "not yet asked" (RFC-0028
+    # (after strip) REMOVES the key — absence means "not yet asked" (
     # D4). NotFoundError if the session does not exist.
     #
     # CONCURRENCY NOTE: an unlocked RMW (read -> mutate -> set), like
@@ -140,7 +140,7 @@ module Insika
     end
 
     # -> Session. Upsert the agreed next step; a blank text clears to nil
-    # (RFC-0028 D4). NotFoundError if absent.
+    # NotFoundError if absent.
     def set_next_step(id, text:)
       record = fetch!(id)
       briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }

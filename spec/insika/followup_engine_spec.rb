@@ -3,7 +3,7 @@
 require "spec_helper"
 require "async"
 
-# RFC-0033 C5 — the tick-driven firer. The experiments E1/E2/E3 live here:
+#   — the tick-driven firer. The experiments E1/E2/E3 live here:
 # book-fire-deliver, the policy blocks, and silence ≠ refusal.
 RSpec.describe Insika::FollowupEngine do
   let(:backend) { Insika::Stores::Memory.new }

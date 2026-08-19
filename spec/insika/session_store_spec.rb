@@ -116,7 +116,7 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
-  describe "briefing (RFC-0028 — session working state)" do
+  describe "briefing (— session working state)" do
     before { sessions.create(id: "s") }
 
     it "create initializes briefing to empty fields + nil next_step" do
@@ -206,7 +206,7 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
-  describe "evidence (RFC-0029 — the session evidence ledger memory)" do
+  describe "evidence (— the session evidence ledger memory)" do
     before { sessions.create(id: "s") }
 
     it "create initializes evidence to empty ids + ungrounded 0" do

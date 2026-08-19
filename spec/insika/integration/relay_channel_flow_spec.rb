@@ -181,7 +181,7 @@ RSpec.describe "Integration: a relay message, answered and delivered" do
     expect(consumer.received).to be_empty
   end
 
-  # RFC-0027 C4: progressive relay, two-paragraph answer — TWO POSTs for the same
+  # progressive relay, two-paragraph answer — TWO POSTs for the same
   # task, in index order, each with its own idempotency key.
   describe "a progressive relay" do
     let(:channels) do

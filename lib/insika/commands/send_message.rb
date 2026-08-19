@@ -21,7 +21,7 @@ module Insika
       # of them today), and a caller that cannot supply a stable id gets
       # at-least-once turns rather than a content hash pretending to be dedup.
       #
-      # `contact_store`/`followup_store` (RFC-0033 C6): the contact-state hook —
+      # `contact_store`/`followup_store` : the contact-state hook —
       # a customer message reopens the contact cell and a cancellation keyword
       # revokes it + falls the pending records. nil = the hook is off (parity).
       # `store` is the SHARED backend the two stores ride — the keyword revoke
@@ -68,12 +68,12 @@ module Insika
         # typo'd origin would read as absent, and a marker that silently means
         # "unmarked" is worse than none — it looks like the filtering is on.
         origin = Insika::MessageOrigin.parse!(p[:origin])
-        # RFC-0033 C8: `scheduled` is ENGINE-RESERVED — the FollowupEngine's
+        # `scheduled` is ENGINE-RESERVED — the FollowupEngine's
         # synthetic turn stamps it, and the edge must not let a consumer
         # impersonate the engine's kick (a spoofed follow-up is the spam bug).
         if origin == Insika::MessageOrigin::SCHEDULED
           raise Insika::ValidationError,
-                "origin 'scheduled' is engine-reserved (RFC-0033): it is stamped by the follow-up engine only"
+                "origin 'scheduled' is engine-reserved: it is stamped by the follow-up engine only"
         end
         if p[:session_id]
           @session_store.find(p[:session_id]) ||
@@ -90,7 +90,7 @@ module Insika
           return { task_id: prior, duplicate: true }
         end
 
-        # RFC-0033 C6: the contact-state hook — the ONLY path that sees every
+        # the contact-state hook — the ONLY path that sees every
         # customer message. A real customer message reopens the contact cell; a
         # cancellation keyword revokes it and falls the pending records in ONE
         # transaction. Runs AFTER validation and dedup: a refused or duplicated
@@ -105,7 +105,7 @@ module Insika
 
       private
 
-      # RFC-0033 C6: the contact bookkeeping of a customer message. The
+      # the contact bookkeeping of a customer message. The
       # keyword cast IS a revocation: the customer just said the shut-off
       # words — the pending records must fall with the state (D2, ONE
       # transaction). The reset-on-origin list: only an origin that is
@@ -171,7 +171,7 @@ module Insika
         # command.to_h persists the entire Command in the Task;
         # ResumeTask re-reads payload.message from there.
         task = @task_store.create(command: command.to_h, session_id: p[:session_id])
-        # RFC-0027 C5: the channel clock starts HERE — the 202-owning request
+        # the channel clock starts HERE — the 202-owning request
         # is accepted, before the SessionActor FIFO and the debounce window.
         # `first_balloon_ms` is the wait the customer feels, so t0 is not the
         # moment the turn finally runs; the same object travels with the turn
@@ -187,7 +187,7 @@ module Insika
         { task_id: task.id }
       end
 
-      # RFC-0027 C5: allocate the channel clock at 202 acceptance and stamp
+      # allocate the channel clock at 202 acceptance and stamp
       # `:inbound` — the window's start. `breakdown: false` when INSIKA_TURN_TIMING
       # is off, so a channel turn measures ONLY first_balloon_ms (H-latência never
       # depends on the flag). nil for every non-channel transport: no clock to start.

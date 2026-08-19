@@ -25,11 +25,11 @@
   <% config_groups = [
        ["model", "Model & limits", "model, provider, timeouts, ceilings, generation, fence"],
        ["guardrails", "Guardrails", "input/output checks, strictness, safe replies"],
-       ["grounding", "Grounding", "RFC-0029 evidence behind product claims"],
-       ["funnel", "Outcome funnel", "RFC-0032 stage vocabulary"],
-       ["followups", "Follow-ups", "RFC-0033 frequency, quiet hours, silence"],
-       ["distill", "Distillation", "RFC-0034 finished chats → fact proposals"],
-       ["harvest", "Harvest", "RFC-0035 traffic → skill candidates"],
+       ["grounding", "Grounding", "evidence behind product claims"],
+       ["funnel", "Outcome funnel", "stage vocabulary"],
+       ["followups", "Follow-ups", "frequency, quiet hours, silence"],
+       ["distill", "Distillation", "finished chats → fact proposals"],
+       ["harvest", "Harvest", "traffic → skill candidates"],
        ["refinement", "Refinement", "ranked findings, proposed edits"],
        ["budget_rel", "Budget & reliability", "spend caps, retries, fallback, breaker"],
        ["routing", "Routing & media", "routes, outputs, alerts, the streaming edge"],
@@ -152,7 +152,7 @@
 
           <div class="config-group" data-config-group="grounding"<%== " hidden" unless @config_group == "grounding" %>>
     <fieldset class="subgroup">
-      <legend>grounding <span class="muted">— RFC-0029: product claims must point at evidence the session actually saw</span></legend>
+      <legend>grounding <span class="muted">— product claims must point at evidence the session actually saw</span></legend>
       <% gr = @agent.grounding || {} %>
       <div class="grid-2">
         <label>mode <span class="muted">(blank = off)</span>
@@ -175,7 +175,7 @@
 
           <div class="config-group" data-config-group="funnel"<%== " hidden" unless @config_group == "funnel" %>>
     <fieldset class="subgroup">
-      <legend>outcome funnel <span class="muted">— RFC-0032: the stage vocabulary the engine folds WS7 outcomes into</span></legend>
+      <legend>outcome funnel <span class="muted">— the stage vocabulary the engine folds WS7 outcomes into</span></legend>
       <% fun = @agent.funnel || {} %>
       <div class="grid-2">
         <label>stages <span class="muted">(one per line, in order; blank = no funnel)</span>
@@ -199,7 +199,7 @@
 
           <div class="config-group" data-config-group="followups"<%== " hidden" unless @config_group == "followups" %>>
 <fieldset class="subgroup">
-  <legend>follow-ups <span class="muted">— RFC-0033: the seller who comes back (blank arm = off)</span></legend>
+  <legend>follow-ups <span class="muted">— the seller who comes back (blank arm = off)</span></legend>
   <% fu = @agent.followup || {}; fup = fu["policy"] || {}; fqh = fup["quiet_hours"] || {} %>
   <div class="grid-2">
     <label>arm
@@ -231,7 +231,7 @@
 
           <div class="config-group" data-config-group="distill"<%== " hidden" unless @config_group == "distill" %>>
 <fieldset class="subgroup">
-  <legend>distillation <span class="muted">— RFC-0034: finished conversations → proposed customer facts (Facts page)</span></legend>
+  <legend>distillation <span class="muted">— finished conversations → proposed customer facts (Facts page)</span></legend>
   <% dist = @agent.distill || {} %>
   <label class="check">
     <input type="checkbox" name="distill_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(dist["enabled"]) %>>
@@ -259,7 +259,7 @@
 
           <div class="config-group" data-config-group="harvest"<%== " hidden" unless @config_group == "harvest" %>>
 <fieldset class="subgroup">
-  <legend>harvest <span class="muted">— RFC-0035: finished traffic → proposed SKILLs, double-gated, human-promoted (Harvest page)</span></legend>
+  <legend>harvest <span class="muted">— finished traffic → proposed SKILLs, double-gated, human-promoted (Harvest page)</span></legend>
   <% hv = @agent.harvest || {}; hvm = hv["miner"] || {} %>
   <label class="check">
     <input type="checkbox" name="harvest_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(hv["enabled"]) %>>
@@ -775,7 +775,7 @@
   </div>
 </section>
 
-<!-- ── Cache (RFC-0030) ─────────────────────────────────────────────────── -->
+<!-- ── Cache  ─────────────────────────────────────────────────── -->
 <section class="section" id="cache" data-tabs-target="panel">
   <div class="section-head">
     <h2>Cache</h2>

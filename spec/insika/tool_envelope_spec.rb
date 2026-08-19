@@ -178,9 +178,9 @@ RSpec.describe Insika::ToolEnvelope do
     end
   end
 
-  # RFC-0029 C3 — the evidence envelope: reshape the declared-evidence result,
+  #   — the evidence envelope: reshape the declared-evidence result,
   # record the ids on the ledger, hoard the attachments. No evidence = pass-through.
-  describe "evidence envelope (RFC-0029)" do
+  describe "evidence envelope " do
     let(:session_store) { Insika::SessionStore.new(store: backend) }
     let(:ledger) { Insika::EvidenceLedger.new(store: session_store, session_id: "s1") }
 

@@ -41,7 +41,7 @@ module Insika
     # `policy` (a QueuePolicy) opens the debounce window for this turn; nil or a
     # policy without a window behaves exactly as before — dequeued and run at once.
     #
-    # `timing` (RFC-0027 C5) is the channel clock a channel turn allocated at 202
+    # `timing`  is the channel clock a channel turn allocated at 202
     # acceptance and already stamped `:inbound`; it rides the queue so the debounce
     # window and the FIFO wait land INSIDE first_balloon_ms.
     def enqueue(task, profile:, resume_from: nil, policy: nil, timing: nil)

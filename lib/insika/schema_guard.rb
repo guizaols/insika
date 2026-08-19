@@ -131,7 +131,7 @@ module Insika
       end
     end
 
-    # Walks a dotted path on a plain object (RFC-0029 C2.2): nil when a segment
+    # Walks a dotted path on a plain object: nil when a segment
     # is absent or the intermediate is not a Hash. Shared by the evidence output
     # check and the Processor's extraction.
     def dig(obj, path)
@@ -142,7 +142,7 @@ module Insika
       end
     end
 
-    # The evidence RESULT contract: {items: [{id, line}]} (RFC-0029 C2.2).
+    # The evidence RESULT contract: {items: [{id, line}]} .
     # -> nil | String. Same idiom as `violation`: nil = fine, one message = what
     # is wrong. A malformed evidence result is a correctable TOOL answer — the
     # envelope returns it to the model as `{error:}`, exactly like a malformed

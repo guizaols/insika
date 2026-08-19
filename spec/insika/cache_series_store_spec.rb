@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0030 C6 — the per-AGENT cache-hit series (scope "cache_series"). Sessions
+#   — the per-AGENT cache-hit series (scope "cache_series"). Sessions
 # do not stamp their agent, so the per-session context trace cannot answer
 # "cache-hit over time for THIS agent"; this capped list can. Entries are
 # counts and a category name only — PII-free by construction.

@@ -10,7 +10,7 @@ require "optparse"
 
 module Insika
   module Soak
-    # The arrival-rate runner (RFC-0026 C3): sustain a declared load against a
+    # The arrival-rate runner: sustain a declared load against a
     # live deploy for N hours, poll vitals hourly, append every observation to
     # the results file as it happens. It computes NO verdict (C5 does, offline)
     # and never retries a turn — a failed turn is evidence, not a problem to
@@ -32,7 +32,7 @@ module Insika
       end
 
       USAGE = <<~TXT
-        insika soak — the 72h soak runner (RFC-0026)
+        insika soak — the 72h soak runner
 
         Usage: insika soak --run | --verify FILE | --preflight [options]
 

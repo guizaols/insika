@@ -30,7 +30,7 @@ RSpec.describe Studio::App do
     def types = dispatched.map(&:type)
   end
 
-  # RFC-0031 C8: wraps a REAL CommandBus (executes the customer commands) and
+  # wraps a REAL CommandBus (executes the customer commands) and
   # records every dispatch for assertion. NB: distinct name — RSpec constants
   # leak to top-level Object, so a shared name would clobber.
   StudioRecordingBus = Struct.new(:real, :dispatched) do
@@ -110,7 +110,7 @@ RSpec.describe Studio::App do
                                 funnel: funnel, followup: followup)
   end
 
-  # RFC-0033 C10: the follow-up page reads REAL stores (records + contact
+  # the follow-up page reads REAL stores (records + contact
   # cells over one in-memory backend), like the funnel page does.
   FOLLOWUP_DECL = {
     "arm" => "schedule",
@@ -147,7 +147,7 @@ RSpec.describe Studio::App do
     { followup_store: store, contact_store: contacts }
   end
 
-  # RFC-0034 C7: the Facts (wiki) page reads a REAL ProposalStore over an
+  # the Facts (wiki) page reads a REAL ProposalStore over an
   # in-memory backend — the same store the engine writes through.
   def seed_facts(rows)
     return nil unless rows
@@ -218,7 +218,7 @@ RSpec.describe Studio::App do
     # REAL ContextTraceStore: the session view's breakdown card.
     ctx_trace_store = Insika::ContextTraceStore.new(store: Insika::Stores::Memory.new)
     context_traces.each { |sid, entries| entries.each { |e| ctx_trace_store.record(session_id: sid, entry: e) } }
-    # REAL CacheSeriesStore (RFC-0030): the agent-detail cache tab.
+    # REAL CacheSeriesStore: the agent-detail cache tab.
     series_store = Insika::CacheSeriesStore.new(store: Insika::Stores::Memory.new)
     cache_series.each { |agent, entries| entries.each { |e| series_store.record(agent: agent, entry: e) } }
     app.configure(
@@ -248,12 +248,12 @@ RSpec.describe Studio::App do
         outcome_store: seed_outcomes(outcomes),
         funnel_store: seed_funnel(funnel_cells),
         budget_ledger: seed_budget(budget),
-        # RFC-0033 C10: the Follow-ups page reads the real stores.
+        # the Follow-ups page reads the real stores.
         followup_store: seed_followups(followup_seed)&.fetch(:followup_store),
         contact_store: seed_followups(followup_seed)&.fetch(:contact_store),
-        # RFC-0034 C7: the Facts (wiki) page reads the real proposal store.
+        # the Facts (wiki) page reads the real proposal store.
         proposal_store: proposal_store,
-        # RFC-0035 C11: the Harvest page reads the harvest store + the two
+        # the Harvest page reads the harvest store + the two
         # pre-registered artifacts directly.
         harvest_store: harvest_store, harvest_criterion: harvest_criterion,
         negative_list: negative_list,
@@ -670,9 +670,9 @@ RSpec.describe Studio::App do
     expect(login(app).get("/agents/nao-existe").status).to eq(404)
   end
 
-  # RFC-0030 C9 — the agent detail's cache tab (per-AGENT prefix cache-hit
+  #   — the agent detail's cache tab (per-AGENT prefix cache-hit
   # series, read from the CacheSeriesStore; nil store = the empty state).
-  describe "the agent detail cache tab (RFC-0030)" do
+  describe "the agent detail cache tab " do
     it "renders the cache card with hit % and the invalidation reason when the store has entries" do
       app, = build_app(cache_series: {
                          "bia" => [{ at: "2026-08-15T10:00:00Z", turn: 2, hit_pct: 83,
@@ -846,7 +846,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:model_policy]).to be_nil
   end
 
-  # RFC-0036 C2: `corpora` is DSL/pack data (docs/domain.md), NOT a form
+  # `corpora` is DSL/pack data (docs/domain.md), NOT a form
   # field — the config form must carry the existing value through, or a save
   # wipes the removability knob (the halt_when defect class: a shallow
   # merge over a form that does not render the key).
@@ -1777,10 +1777,10 @@ RSpec.describe Studio::App do
     expect(body).to include("9 tool schema(s)")         # the tools estimate
   end
 
-  # RFC-0030 C9 — the per-turn cache line on the Context card: the provider-
+  #   — the per-turn cache line on the Context card: the provider-
   # reported hit % and the first category whose bytes diverged from the
   # previous turn (PII-free), plus the identity boundary marker per category.
-  describe "session viewer cache line (RFC-0030)" do
+  describe "session viewer cache line " do
     def cache_trace
       { "sess-cx" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
                         cap: 8_000, used: 6_120, evicted: [],
@@ -1810,7 +1810,7 @@ RSpec.describe Studio::App do
       expect(body).not_to include("1900 tokens · 1 fragment(s) · identity")
     end
 
-    it "an entry without cache fields (pre-RFC trace) renders neither the badge nor the broke line" do
+    it "an entry without cache fields (legacy trace) renders neither the badge nor the broke line" do
       sess = StoredSession.new(id: "sess-cx", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
       trace = { "sess-cx" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
                                 cap: 8_000, used: 6_120, evicted: [],
@@ -1916,7 +1916,7 @@ RSpec.describe Studio::App do
     expect(body).not_to include("tokens by category")
   end
 
-  # RFC-0028 — the read-only briefing card shows PERSISTED state only (known
+  #   — the read-only briefing card shows PERSISTED state only (known
   # fields + next step). The missing list is model-facing and lives in the
   # context provider, not here (D6).
   it "session viewer renders the briefing card (known fields + next step)" do
@@ -2039,7 +2039,7 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_settings).payload[:patch]["streaming"]).to be(false)
   end
 
-  describe "Customers drill (RFC-0031 C8)" do
+  describe "Customers drill " do
     # The drill reads the REAL MemoryStore (customer_cells/facts — the doubles
     # other pages use don't model cells). The bus executes the REAL commands
     # (export must produce a body; edit/forget must land in the store) and
@@ -2180,7 +2180,7 @@ RSpec.describe Studio::App do
     end
   end
 
-  it "the memory TTL field lands a number in the settings record; blank clears it (RFC-0031 C5)" do
+  it "the memory TTL field lands a number in the settings record; blank clears it " do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/settings").body)
@@ -2647,7 +2647,7 @@ RSpec.describe Studio::App do
     expect(res.body).not_to include("No checkpoint recorded")
   end
 
-  # RFC-0027 C5: the task page IS the ledger — first_balloon_ms shows there when a
+  # the task page IS the ledger — first_balloon_ms shows there when a
   # channel turn recorded it, and a task without timing still renders.
   it "renders first_balloon_ms on the task page when present" do
     app, = build_app(tasks: { "t1" => task(timing: { "first_balloon_ms" => 812.5 }) })
@@ -2656,7 +2656,7 @@ RSpec.describe Studio::App do
     expect(res.body).to include("812.5")
   end
 
-  it "renders a task page without crashing when timing is nil (pre-RFC tasks)" do
+  it "renders a task page without crashing when timing is nil (legacy tasks)" do
     app, = build_app(tasks: { "t1" => task })
     expect(login(app).get("/tasks/t1").status).to eq(200)
   end
@@ -3122,7 +3122,7 @@ end
     expect(client.get("/tasks/t1").body).to include("task not found") # flash, not a crash
   end
 
-  # Funnel (RFC-0032 C9) -------------------------------------------
+  # Funnel  -------------------------------------------
 
   FUNNEL_DECL = { "stages" => %w[greeted qualified cart paid],
                   "advance_on" => { "qualified" => "qualified", "pix_paid" => "paid" },
@@ -3317,7 +3317,7 @@ end
     expect(body).to include("Funnel")
   end
 
-  describe "Follow-ups page (RFC-0033 C10)" do
+  describe "Follow-ups page " do
     def followup_app(records:, agents: nil)
       agents ||= [profile("funnel-store", followup: FOLLOWUP_DECL), profile("chef")]
       app, bus = build_app(agents: agents, followup_seed: records,
@@ -3424,7 +3424,7 @@ end
     end
   end
 
-  describe "Facts page (RFC-0034 C7)" do
+  describe "Facts page " do
     def facts_app(rows:, sessions: {}, agents: nil)
       agents ||= [profile("funnel-store"), profile("chef")]
       app, bus = build_app(agents: agents, sessions: sessions,
@@ -3507,7 +3507,7 @@ end
     end
   end
 
-  describe "Harvest page (RFC-0035 C11)" do
+  describe "Harvest page " do
     def harvest_app(candidates: [], promotions: [], runs: [], sessions: {},
                     criterion: nil, negative: nil, agents: nil)
       store = Insika::HarvestStore.new(store: Insika::Stores::Memory.new)

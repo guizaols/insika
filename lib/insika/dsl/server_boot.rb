@@ -86,37 +86,37 @@ module Insika
           agent_file_store: @rt.component(:agent_file_store), skill_store: @rt.component(:skill_store),
           skill_catalog: @graph.skill_catalog, tool_catalog: @graph.tool_catalog,
           tool_store: @rt.component(:tool_store), memory_store: @graph.memory_store,
-          # RFC-0031 C8: the Customers drill renders the audit lines.
+          # the Customers drill renders the audit lines.
           memory_audit_store: @graph.memory_audit_store,
           session_store: @graph.session_store,
           settings_store: @rt.component(:settings_store), llm_provider_store: @rt.component(:provider_store),
           mcp_store: @rt.component(:mcp_store), system_file_store: @rt.component(:system_file_store),
           tool_trace_store: @rt.component(:tool_trace_store),
           context_trace_store: @rt.component(:context_trace_store),
-          # RFC-0030: the per-agent cache-hit series (agent-detail card).
+          # the per-agent cache-hit series (agent-detail card).
           cache_series_store: @rt.component(:cache_series_store),
           task_store: @graph.task_store, checkpoint_store: @graph.checkpoint_store,
           pending_action_store: @graph.pending_action_store,
           # WS7: the agents-grid scorecard reads the outcome store.
           outcome_store: @graph.outcome_store,
-          # RFC-0032 C8: the outcome-funnel page reads the fold's cells and the
+          # the outcome-funnel page reads the fold's cells and the
           # BudgetLedger's current counters (D6); the only mutation — the
           # baseline freeze — dispatches :freeze_funnel_baseline on the bus.
           funnel_store: @graph.funnel_store,
           budget_ledger: @graph.budget_ledger,
-          # RFC-0025: the parity page (only rendered when a shadow channel exists —
+          # the parity page (only rendered when a shadow channel exists —
           # the nav row keys off the registry).
           shadow_pair_store: @graph.shadow_pair_store,
           parity_criterion: @builder.criterion,
           channel_registry: @graph.channel_registry,
-          # RFC-0033 C9/C10: the Follow-ups page reads the stores directly;
+          # the Follow-ups page reads the stores directly;
           # its only mutations (cancel, force-revoke) dispatch bus commands.
           followup_store: @graph.followup_store,
           contact_store: @graph.contact_store,
-          # RFC-0034 C7: the Facts (wiki) page reads the proposal store
+          # the Facts (wiki) page reads the proposal store
           # directly; its mutations dispatch :resolve_proposal on the bus.
           proposal_store: @graph.proposal_store,
-          # RFC-0035 C11: the Harvest page reads the harvest store + the two
+          # the Harvest page reads the harvest store + the two
           # pre-registered artifacts directly; its mutations dispatch the
           # harvest bus commands. The criterion/negative list load best-effort
           # (nil = the page renders the refusal/empty states).

@@ -975,7 +975,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  describe "GET /v1/vitals (RFC-0026)" do
+  describe "GET /v1/vitals " do
     def exploding_store = Class.new { def method_missing(*) = raise("store touched") }.new
 
     it "401 with no bearer — not a public route" do

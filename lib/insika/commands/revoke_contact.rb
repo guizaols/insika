@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0033 C6: a channel opt-out event (mapped by the integration) — or
+    # a channel opt-out event (mapped by the integration)— or
     # the operator force-revoking a contact whose opt-out never arrived.
     # Revokes the contact cell AND cancels every pending record of that
     # customer in ONE transaction on the shared backend (D2: a half-cancelled

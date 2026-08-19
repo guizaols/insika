@@ -30,7 +30,7 @@ RSpec.describe Insika::Safety::OutputFilter do
     end
   end
 
-  # THE critical guarantee (RFC): a value split across a chunk boundary at ANY
+  # THE critical guarantee: a value split across a chunk boundary at ANY
   # offset must NEVER be emitted in the clear.
   describe "split across a chunk boundary at every offset" do
     samples = {
@@ -87,7 +87,7 @@ RSpec.describe Insika::Safety::OutputFilter do
     end
   end
 
-  describe "with a compiled corpus (RFC-0036 C2)" do
+  describe "with a compiled corpus " do
     it "an EN-only corpus does not redact pt-BR document formats, still redacts secrets" do
       f = described_class.new(corpus: Insika::Safety::Corpus.compile(languages: ["en"]))
       out = f.push("cpf 123.456.789-01 e token sk-ABCDEFGHIJKLMNOP123") + f.flush

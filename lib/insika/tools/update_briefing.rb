@@ -5,7 +5,7 @@ require_relative "agent_enum"
 
 module Insika
   module Tools
-    # Shared write-edge plumbing for the two briefing tools (RFC-0028): the
+    # Shared write-edge plumbing for the two briefing tools: the
     # session id always comes from the turn's task — never from the model's
     # arguments — and the :briefing_updated event carries task/session
     # correlation for the trace.
@@ -28,7 +28,7 @@ module Insika
       end
     end
 
-    # Write edge of the session briefing (RFC-0028): the agent records what it
+    # Write edge of the session briefing: the agent records what it
     # learned in THIS conversation — the working state it is accountable for
     # (tool-written, never engine-inferred). System builtin (like remember):
     # `require "ruby_llm"` stays in THIS file, loaded lazily by the Executor in
@@ -42,7 +42,7 @@ module Insika
       # empty "field must be one of: ." placeholder; the instance adds the
       # DECLARED names (D3) to the description AND as the `field` enum (the
       # model sees the valid set in the schema instead of inventing one —
-      # RFC-0028 §3). Per-instance, like the subagent tools' dynamic schemas.
+      # the set is instance-built. Per-instance, like the subagent tools' dynamic schemas.
       BASE_DESCRIPTION = "Records a fact learned in this conversation into the session briefing. " \
                          "Call it as soon as the customer gives one of these, and when they correct one."
 
@@ -92,7 +92,7 @@ module Insika
         { error: "session not found" }
       end
 
-      # The agreed next step (RFC-0028 D4): same engine-owned briefing object,
+      # The agreed next step: same engine-owned briefing object,
       # sibling writer. Blank clears to nil.
       class SetNextStep < RubyLLM::Tool
         include BriefingWrite

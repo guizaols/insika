@@ -4,7 +4,7 @@ require "securerandom"
 require "time"
 
 module Insika
-  # RFC-0035 C5: the durable half of the harvest. One record per mining RUN
+  # the durable half of the harvest. One record per mining RUN
   # (window, candidates, cost), the per-candidate lifecycle (the unit a human
   # acts on — D8), the APPEND-ONLY promotion log, the pre-promotion snapshots,
   # and the per-session mined markers (D10's re-scan discipline). A dumb
@@ -243,7 +243,7 @@ module Insika
 
     # ---- the append-only promotion log + snapshots ----------------------------
 
-    # Appends the RFC row — NO update, NO delete, no re-key. A second row with
+    # Appends the promotion row — NO update, NO delete, no re-key. A second row with
     # the same id is refused loudly.
     def append_promotion(id:, agent:, skill:, origin: [], eval_ref: nil,
                          conversion_ref: nil, approver:, snapshot_ref: nil,

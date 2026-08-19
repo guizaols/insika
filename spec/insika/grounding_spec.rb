@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0029 C5 — the profile-facing half: parse the pack's `grounding` data into
+#   — the profile-facing half: parse the pack's `grounding` data into
 # the per-turn Grounding object (mode + matcher).
 RSpec.describe Insika::Grounding do
   it "nil / false -> nil (off)" do
@@ -10,7 +10,7 @@ RSpec.describe Insika::Grounding do
     expect(described_class.parse(false)).to be_nil
   end
 
-  it "defaults the mode to :flag (the RFC default) when absent/unknown" do
+  it "defaults the mode to :flag when absent/unknown" do
     expect(described_class.parse({}).mode).to eq("flag")
     expect(described_class.parse({ "mode" => "bogus" }).mode).to eq("flag")
   end

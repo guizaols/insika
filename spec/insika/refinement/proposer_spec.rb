@@ -190,7 +190,7 @@ RSpec.describe Insika::Refinement::ProposerFactory do
 
     # Both syntaxes already coexist in this config (`proposer` is a bare ref, `judges`
     # are hashes); refusing one would only teach operators which page they read.
-    it "accepts the RFC's hash form alongside a bare ref" do
+    it "accepts the hash form alongside a bare ref" do
       _, resolved = panel({ "proposers" => ["deepseek-chat",
                                             { "model" => "gpt-5-mini", "provider" => "openai" }] })
       expect(resolved).to eq([["deepseek-chat", nil], ["gpt-5-mini", "openai"]])

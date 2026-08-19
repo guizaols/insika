@@ -9,7 +9,7 @@ module Insika
     # sits between the provider chunks and the `:content` event and only ever emits
     # text it has PROVEN clean.
     #
-    # The hard part (RFC, "fronteira de chunk"): a CPF/secret can arrive split
+    # The hard part ("fronteira de chunk"): a CPF/secret can arrive split
     # across two chunks and neither half matches on its own. A naive delta-by-delta
     # regex leaks "by construction". So the filter keeps a SLIDING BUFFER: it retains
     # the tail that might still be growing into a match (Detectors::OPEN_TAIL, which
@@ -21,7 +21,7 @@ module Insika
     class OutputFilter
       attr_reader :redaction_counts
 
-      # `corpus` (RFC-0036 C2): the compiled corpus for the turn — the
+      # `corpus` : the compiled corpus for the turn — the
       # language-filtered PII set and its open-tail pattern. Default = the
       # full shipped corpus (parity).
       def initialize(corpus: Corpus.compile)

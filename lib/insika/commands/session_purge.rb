@@ -39,7 +39,7 @@ module Insika
       private
 
       # -> [tasks removed, checkpoint records removed, model-visible records removed].
-      # RFC-0036 C4: the model-visible traces are transcripts — they die next to
+      # the model-visible traces are transcripts — they die next to
       # their checkpoints (the same single list, so "erase this person" cannot
       # forget one half). The id list is SNAPSHOTTED (`to_a`) before the deletes:
       # `each_id` enumerates the backend's keys lazily, and deleting under it

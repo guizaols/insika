@@ -3,7 +3,7 @@
 module Insika
   module Context
     module Providers
-      # Read path for the session briefing (RFC-0028): the per-session
+      # Read path for the session briefing: the per-session
       # working-state the agent keeps and asks for. Thin adapter over the
       # SessionStore, same pattern as Memory: one `:system` fragment,
       # deterministic. The MISSING list is rendered, never implied — that list

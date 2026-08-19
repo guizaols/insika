@@ -29,17 +29,17 @@ module Insika
         @session_store = session_store
         @tool_trace_store = tool_trace_store
         @context_trace_store = context_trace_store
-        @model_visible_trace_store = model_visible_trace_store # RFC-0036 C4; nil = parity
+        @model_visible_trace_store = model_visible_trace_store #  ; nil = parity
         @outcome_store = outcome_store
         @task_store = task_store
         @checkpoint_store = checkpoint_store
         @outbox_store = outbox_store
         @shadow_pairs = shadow_pairs
-        @funnel_store = funnel_store # RFC-0032 C6; nil = nothing to sweep
-        @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
-        @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
-        @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
-        @harvest_store = harvest_store   # RFC-0035 C13; nil = nothing to sweep
+        @funnel_store = funnel_store #  ; nil = nothing to sweep
+        @followup_store = followup_store #  ; nil = nothing to sweep
+        @contact_store = contact_store   #  ; nil = nothing to sweep
+        @proposal_store = proposal_store #  ; nil = nothing to sweep
+        @harvest_store = harvest_store   #  ; nil = nothing to sweep
         @event_stream = event_stream
       end
 
@@ -63,13 +63,13 @@ module Insika
         memory_records = @memory_store.purge_tenant(tenant)
         outcomes = @outcome_store ? @outcome_store.purge(tenant: tenant) : 0
         funnel = @funnel_store ? @funnel_store.purge(tenant: tenant) : 0
-        # RFC-0033 C11: the follow-up footprint dies with the tenant — records
+        # the follow-up footprint dies with the tenant — records
         # and contact cells under the same tenant prefix.
         followups = @followup_store ? @followup_store.purge(tenant: tenant) : 0
         contacts = @contact_store ? @contact_store.purge(tenant: tenant) : 0
-        # RFC-0034 C8: the distilled proposals die with the tenant.
+        # the distilled proposals die with the tenant.
         proposals = @proposal_store ? @proposal_store.purge(tenant: tenant) : 0
-        # RFC-0035 C13: candidates reference sessions, and sessions carry the
+        # candidates reference sessions, and sessions carry the
         # tenant prefix — the harvest rows die with the tenant (D11).
         harvest = @harvest_store ? @harvest_store.purge(tenant: tenant) : 0
 

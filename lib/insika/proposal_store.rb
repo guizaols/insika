@@ -4,7 +4,7 @@ require "securerandom"
 require "time"
 
 module Insika
-  # RFC-0034 C3: the proposals and the two persisted mechanisms the RFC gates
+  # the proposals and the two persisted mechanisms the gates
   # on — the **latched dedup ledger** (D3: the rows themselves ARE the ledger —
   # a dismissed/rejected tuple is never proposed again, and an unanswered
   # proposal is not piled on) and the **per-session distilled marker** (D2:
@@ -12,7 +12,7 @@ module Insika
   # unwritten and the next pass re-scans). A dumb domain store — it holds no
   # policy (which tuple is a fact is the distiller's job), no memory facts and
   # no model. The scope string (the memory cell) is built by the callers from
-  # the RFC-0031 `MemoryStore::parse_cell` shape; the store keys by
+  # the   `MemoryStore::parse_cell` shape; the store keys by
   # `(tenant, customer)` explicitly.
   #
   # Statuses: pending -> approved | rejected | dismissed | stale.

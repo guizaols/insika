@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0030 C6 — per-AGENT cache-hit series (scope "cache_series"), for the
+  #   — per-AGENT cache-hit series (scope "cache_series"), for the
   # Studio agent-detail plot. Sessions do not stamp their agent, so the
   # per-session context trace cannot answer "cache-hit over time for THIS
   # agent"; this capped list can. Entries are counts and a category name only —

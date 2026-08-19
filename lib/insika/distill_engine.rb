@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # RFC-0034 C5: the trigger (D8) — finds due sessions and distills them. It
+  # the trigger — finds due sessions and distills them. It
   # spawns a worker fiber (supervisor child, `Tick#start` shape) whose loop
   # claims a window and runs the distillation for due sessions ON the worker
   # fiber — off the tick's critical path and off every customer turn's path.

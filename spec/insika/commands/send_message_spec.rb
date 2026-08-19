@@ -16,7 +16,7 @@ RSpec.describe Insika::Commands::SendMessage do
   let(:profile) { Insika::AgentProfile.build(id: "sales", model: "gpt") }
   let(:profiles) { { "sales" => profile } }
 
-  # RFC-0033 C6: the contact hook's collaborators. The default profile has NO
+  # the contact hook's collaborators. The default profile has NO
   # followup declaration — the hook is off (parity) unless a test declares one.
   let(:contact_store) { Insika::ContactStore.new(store: backend) }
   let(:followup_store) { Insika::FollowupStore.new(store: backend) }
@@ -114,12 +114,12 @@ RSpec.describe Insika::Commands::SendMessage do
     expect(executor.spawned.size).to eq(1)
   end
 
-  # RFC-0027 C5: t0 is the 202 acceptance — the clock starts HERE, when the task
+  # t0 is the 202 acceptance — the clock starts HERE, when the task
   # is created, before the debounce window and the SessionActor FIFO. If the
   # mark landed at the pipeline start instead, first_balloon_ms would exclude
   # exactly the wait the debounce imported (with debounce_ms=4000 the Studio
   # would report "<2s atingido" while the customer waits 4s+).
-  describe "the channel clock (RFC-0027 C5)" do
+  describe "the channel clock " do
     def send_from(transport)
       session_store.create(id: "s1")
       handler.call(Insika::Command.build(:send_message, payload(session_id: "s1"), transport: transport))
@@ -362,7 +362,7 @@ RSpec.describe Insika::Commands::SendMessage do
     end
   end
 
-  describe "RFC-0033 — the contact hook (C6/C8)" do
+  describe "the contact hook (C6/C8)" do
     def declared(over = {})
       Insika::AgentProfile.build(
         id: "sales", model: "gpt",

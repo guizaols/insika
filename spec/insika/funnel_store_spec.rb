@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0032 C3: the durable aggregates of the outcome funnel — per-day stage
+# the durable aggregates of the outcome funnel — per-day stage
 # counts, the fold cursor and the baseline snapshot. Dumb domain store: it
 # holds no outcome_store and never folds (C4 owns the transformation), and it
 # is recomputable by construction — the OutcomeStore stays the source of truth.
@@ -168,7 +168,7 @@ RSpec.describe Insika::FunnelStore do
     end
   end
 
-  describe "#delete_days (RFC-0032 C4 — the recompute repair's wipe)" do
+  describe "#delete_days (— the recompute repair's wipe)" do
     before do
       store.add(tenant: nil, agent: "a", at: Time.iso8601("2026-08-14T10:00:00Z"),
                 counts: { "greeted" => 1 })

@@ -81,7 +81,7 @@ RSpec.describe Insika::Context::Providers::Memory do
   end
 
   # without an explicit tenant in the Command, the engine memory is PER-CHAT —
-    # scope = the MARKED session cell ("chat:<id>", RFC-0031 — never a bare
+    # scope = the MARKED session cell ("chat:<id>",   — never a bare
     # cell, so the drill cannot read a conversation as a customer). Symmetric
     # to the write path (state.tenant in the Executor).
     describe "per-chat scope" do

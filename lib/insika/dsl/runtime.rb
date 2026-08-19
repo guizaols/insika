@@ -230,7 +230,7 @@ module Insika
           mcp_store: Insika::McpStore.new(config_store: config_store),
           tool_trace_store: Insika::ToolTraceStore.new(store: backend),
           context_trace_store: Insika::ContextTraceStore.new(store: backend),
-          # RFC-0030: the per-AGENT cache-hit series (the Studio agent-detail card).
+          # the per-AGENT cache-hit series (the Studio agent-detail card).
           cache_series_store: Insika::CacheSeriesStore.new(store: backend),
           tool_registry: tool_registry,
           tool_catalog: Insika::ToolCatalog.new(tool_registry: tool_registry),
@@ -283,7 +283,7 @@ module Insika
         bus.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: mem, event_stream: es, audit_store: audit))
         bus.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: mem, event_stream: es, audit_store: audit))
         bus.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: mem, event_stream: es))
-        # RFC-0031 C3: the LGPD access right — the Studio Customers drill exports.
+        # the LGPD access right — the Studio Customers drill exports.
         bus.register(:export_customer_memory, Insika::Commands::ExportCustomerMemory.new(memory_store: mem, event_stream: es))
         bus.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: c[:settings_store], event_stream: es))
         bus.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))

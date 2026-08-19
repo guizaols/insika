@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # The single source of the gem payload selection (RFC-0036 C1/D1). The
+  # The single source of the gem payload selection. The
   # gemspec and the domain-boundary audit spec call THE SAME function, so
   # "what ships in the gem" is a fact the suite asserts on, never a prose
   # promise: `git ls-files` (fallback: a glob where there is no .git) filtered
@@ -19,7 +19,7 @@ module Insika
   # and the audit's own token table live in the spec's named allowlist.
   module Packaging
     # The pt-BR domain vocabulary the audit scans for. `loja`/`shop`/`store`
-    # are generic-retail stopwords — the ONE justification the RFC's inventory
+    # are generic-retail stopwords — the ONE justification the inventory
     # allows (D3); `bia` is the demo persona name (D8).
     #
     # The scan is FOLD-aware: both the scanned text and these words go through
@@ -27,7 +27,7 @@ module Insika
     # to their canonical chars) before matching. That is what makes the
     # shipped corpus data — whose patterns encode pt-BR as `voc[êe]`,
     # `instru[çc][õo]es` — detectable by the same token table (D1: the
-    # boundary holds for the content the RFC names).
+    # boundary holds for the content the inventory names).
     ACCENT_MAP = {
       "á" => "a", "à" => "a", "â" => "a", "ã" => "a", "ä" => "a",
       "é" => "e", "è" => "e", "ê" => "e", "ë" => "e",

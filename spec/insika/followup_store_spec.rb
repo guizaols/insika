@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0033 C4 — the follow-up schedule records: the store owns the
+#   — the follow-up schedule records: the store owns the
 # pending|fired|cancelled|blocked states (never written by a consumer) and the
 # (customer, reason) scans. It holds no policy (C2) and no contact cells (C3).
 RSpec.describe Insika::FollowupStore do

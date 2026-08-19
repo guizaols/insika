@@ -2,7 +2,7 @@
 
 module Insika
   module Commands
-    # RFC-0034 C4: the ONLY path that writes proposals. Distills ONE session
+    # the ONLY path that writes proposals. Distills ONE session
     # end to end: read the transcript and the memory baseline, ask the model,
     # schema-drop, dedup against the ledger, write proposals, mark the session
     # distilled. Synchronous (it runs on the engine's worker fiber, C5) — it
@@ -148,8 +148,8 @@ module Insika
         !applied.nil? && applied.value == value && applied.origin.to_s.start_with?("distilled:")
       end
 
-      # The prompt gets the transcript slice (masked through the RFC-0009
-      # output filter first — the RFC-0012 §3.4 redaction rule), the
+      # The prompt gets the transcript slice (masked through the
+      # output filter first — the   redaction rule), the
       # customer's CURRENT facts (so the model can avoid re-proposing applied
       # facts), and the answer rules (the pack prompt or DEFAULT_PROMPT).
       def build_prompt(config, session, baseline)

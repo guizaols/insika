@@ -5,7 +5,7 @@ require "json"
 require "time"
 
 module Insika
-  # RFC-0031 C2: append-only, per-cell audit of MEMORY mutations. Every
+  # append-only, per-cell audit of MEMORY mutations. Every
   # operator mutation of a cell appends a line (who, when, what, old->new
   # digests). The entry holds DIGESTS of values, never the values — the forget
   # line records that a deletion happened without the deleted content (the

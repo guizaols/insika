@@ -100,7 +100,7 @@ module Insika
         # embedders); the serving wirings pass $stdout. Class+message+backtrace
         # only — the ref never travels with request payloads (secrets stay out).
         @logger = logger
-        # RFC-0026 GET /v1/vitals: process readings, operator-only, no store.
+        #   GET /v1/vitals: process readings, operator-only, no store.
         # Both optional — nil means the body simply omits those readings.
         @executor = executor
         @db_path = db_path
@@ -592,7 +592,7 @@ TENANT_SURFACES = [
         payload = { agent: parsed[:agent], session_id: session_id,
                     message: parsed[:message], event_id: parsed[:event_id] }.compact
         ack = channel_ack(payload, transport: :"channel:#{id}")
-        # RFC-0025 C4: in shadow the mirror's own reply may ride the SAME call
+        # in shadow the mirror's own reply may ride the SAME call
         # (Shape 1) — recorded before we answer, through the one command.
         if channel.respond_to?(:shadow?) && channel.shadow?
           dispatch_shadow_reply(id, parsed) if parsed[:incumbent_reply]
@@ -1124,7 +1124,7 @@ TENANT_SURFACES = [
       # touch a store (health cannot fail on IO nor require auth).
       def health = json_response(200, { status: "ok" })
 
-      # RFC-0026 process vitals. Operator-only by construction: not in
+      #   process vitals. Operator-only by construction: not in
       # PUBLIC_ROUTES (no bearer -> unauthorized) and not in TENANT_SURFACES
       # (a tenant principal hits the operator-surface gate), so only an
       # operator reads process internals. Reads no store — pure OS/VM

@@ -102,7 +102,7 @@ module Studio
           # shows the data-tools in the matrix; the store feeds the authoring page.
           tool_store: tool_store,
           memory_store: memory_store, session_store: session_store,
-          # RFC-0031: the Customers drill renders the audit lines (digests +
+          # the Customers drill renders the audit lines (digests +
           # counts, never content). nil = the audit section renders empty.
           memory_audit_store: memory_audit_store,
           # runtime config (settings/LLM/MCP) + global system
@@ -115,7 +115,7 @@ module Studio
           # per-session context breakdown: tokens by category +
           # budget per turn, on the same viewer. Counts only, no content.
           context_trace_store: context_trace_store,
-          # RFC-0030: per-AGENT cache-hit series (percentages + counts, no
+          # per-AGENT cache-hit series (percentages + counts, no
           # content) — the cache tab on the agent detail. nil = tab renders
           # "No turns recorded.".
           cache_series_store: cache_series_store,
@@ -133,26 +133,26 @@ module Studio
           # agent detail shows the per-day series. Reads only; recording goes
           # through POST /v1/outcomes.
           outcome_store: outcome_store,
-          # RFC-0032 C9: the Funnel page reads the fold's cells and the
+          # the Funnel page reads the fold's cells and the
           # BudgetLedger's current counters (D6). nil = the page renders its
           # empty state.
           funnel_store: funnel_store, budget_ledger: budget_ledger,
-          # RFC-0025: the shadow pair store (read to render /studio/parity), the
+          # the shadow pair store (read to render /studio/parity), the
           # frozen criterion (folded by Verdict), and the channel registry (the
           # nav row only exists when a shadow channel is registered — the page
           # is not an invitation, unlike Refinement's).
           shadow_pair_store: shadow_pair_store, parity_criterion: parity_criterion,
           channel_registry: channel_registry,
-          # RFC-0033 C10: the Follow-ups page READS the stores directly (D10);
+          # the Follow-ups page READS the stores directly;
           # its only mutations — cancel a pending record, force-revoke a contact
           # — dispatch :cancel_followup / :revoke_contact on the bus. nil = the
           # page renders its empty state.
           followup_store: followup_store, contact_store: contact_store,
-          # RFC-0034 C7: the Facts (wiki) page reads the proposal store directly
+          # the Facts (wiki) page reads the proposal store directly
           # (approvals/rejections dispatch :resolve_proposal on the bus).
           # nil = the page renders its empty state.
           proposal_store: proposal_store,
-          # RFC-0035 C11: the Harvest page reads the harvest store directly
+          # the Harvest page reads the harvest store directly
           # (the pending/awaiting/promoted lists); its mutations — mine, gate,
           # promote, reject, rollback — dispatch bus commands. The criterion
           # (boot-loaded, with its sha) and the negative list render the two
@@ -789,7 +789,7 @@ module Studio
                            .group_by { |t| t["turn"] }
             # Context breakdown per turn: chronological entries.
             @context_traces = insika[:context_trace_store]&.for_session(sid) || []
-            # RFC-0032 C9: the stage history — the session's outcomes folded
+            # the stage history — the session's outcomes folded
             # into the agent's declared stages (unmapped kinds render raw).
             @stage_history = stage_history_for(sid)
             view("session")
@@ -797,7 +797,7 @@ module Studio
         end
       end
 
-      # --- Customers: the memory drill (RFC-0031 C8) ----------------
+      # --- Customers: the memory drill  ----------------
       # Derived from the store, not a registry: the index enumerates memory
       # cells and classifies them by shape (D6). Every mutation dispatches a
       # Command on the bus — the transport's constitutional rule (app.rb:21).
@@ -997,7 +997,7 @@ end
         end
       end
 
-      # --- Harvest: the gated skill loop (RFC-0035 C11) ----------------------
+      # --- Harvest: the gated skill loop  ----------------------
       # Reads the HarvestStore directly (the Studio's constitutional split);
       # every mutation — mine now, gate, promote, reject, rollback — dispatches
       # a bus command. The gate POST is slow on purpose: it replays the golden
@@ -1051,7 +1051,7 @@ end
         end
       end
 
-      # --- Facts: the human gate on distilled proposals (RFC-0034 C7) --------
+      # --- Facts: the human gate on distilled proposals  --------
       # Reads ProposalStore directly (the Studio's constitutional split — reads
       # hit the stores, mutations go through the bus); the ONLY mutation — the
       # approve/reject/dismiss answer — dispatches :resolve_proposal.
@@ -1072,7 +1072,7 @@ end
         end
       end
 
-      # --- Parity: the running shadow verdict (RFC-0025 C8) -----------------
+      # --- Parity: the running shadow verdict  -----------------
       # Reads stores and folds the verdict on demand; the judge button is a slow
       # synchronous POST, exactly like Refinement's gate, for the same reason: it
       # returns when the answer is real. There is deliberately no "freeze the
@@ -1093,7 +1093,7 @@ end
         end
       end
 
-      # --- Funnel: the outcome funnel per store (RFC-0032 C9) ----------------
+      # --- Funnel: the outcome funnel per store  ----------------
       # Reads the fold's cells + the BudgetLedger's current counters directly
       # (D7 — the scorecard's constitutional split); the ONE mutation — the
       # baseline freeze — dispatches :freeze_funnel_baseline on the bus.
@@ -1119,7 +1119,7 @@ end
         end
       end
 
-      # --- Follow-ups: the schedule records + the A/B readout (RFC-0033 C10) --
+      # --- Follow-ups: the schedule records + the A/B readout  --
       # Reads FollowupStore/ContactStore/OutcomeStore directly (D10 — the
       # Studio's constitutional split); the ONLY mutations — cancel a pending
       # record, force-revoke a contact (an opt-out event that never arrived) —
@@ -1231,13 +1231,13 @@ end
           ["Customers", "/studio/customers", :chats],
           ["Playground", "/studio/playground", :playground],
           ["Funnel", "/studio/funnel", :funnel],
-          # RFC-0033 C10: the Follow-ups page — scheduled, fired, blocked and
+          # the Follow-ups page — scheduled, fired, blocked and
           # cancelled records per agent + the per-arm A/B readout card.
           ["Follow-ups", "/studio/followups", :followups],
-          # RFC-0034 C7: the Facts (wiki) page — the human gate on distilled
+          # the Facts (wiki) page — the human gate on distilled
           # proposals (approve/reject/dismiss, the latch, the CAS re-present).
           ["Facts", "/studio/facts", :facts],
-          # RFC-0035 C11: the Harvest page — the human gate on mined skills
+          # the Harvest page — the human gate on mined skills
           # (gate, promote, reject, rollback; the append-only promotion log).
           ["Harvest", "/studio/harvest", :harvest],
           ["Tasks", "/studio/tasks", :tasks],
@@ -1439,7 +1439,7 @@ end
       outcomes = insika[:outcome_store]
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
-      # RFC-0030: the per-agent cache-hit series (nil store -> the view's
+      # the per-agent cache-hit series (nil store -> the view's
       # empty state; same guard as the tool trace).
       @cache_series = insika[:cache_series_store]&.for_agent(id) || []
       view("agent_detail")
@@ -1955,7 +1955,7 @@ end
       view("chats")
     end
 
-    # --- Customers (RFC-0031 C8) ----------------------------------
+    # --- Customers  ----------------------------------
 
     # The index: every CUSTOMER memory cell, grouped by tenant. The caller
     # passes `reserved:` (profile ids + _default) so the agent-memory tab's
@@ -2077,7 +2077,7 @@ end
       view("refinement")
     end
 
-    # --- Parity (RFC-0025 C8) -------------------------------------------------
+    # --- Parity  -------------------------------------------------
 
     # The nav row exists ONLY when a shadow channel is registered — the page is
     # not an invitation, unlike Refinement's.
@@ -2113,13 +2113,13 @@ end
         @judge_cost = @pending * @criterion.rule.min_judge_models * 2
         @judge_models = ((insika[:settings_store]&.get || {})["evals"] || {})
       end
-      # Judge agreement (RFC §2.3): split/unknown from the fold, plus how many
+      # Judge agreement : split/unknown from the fold, plus how many
       # verdicts flipped with presentation order.
       @agreement = { order_dependent: pairs.count { |p| p.verdict.is_a?(Hash) && p.verdict["order_dependent"] } }
       view("parity")
     end
 
-    # --- Funnel (RFC-0032 C9) ------------------------------------------------
+    # --- Funnel  ------------------------------------------------
 
     # One card per STORE (agent) that declares a funnel, each with a block per
     # tenant that has folded cells. The only mutation on this page — the
@@ -2139,7 +2139,7 @@ end
       view("funnel")
     end
 
-    # RFC-0033 C10: the Follow-ups page. Per agent WITH a parsed policy, one
+    # the Follow-ups page. Per agent WITH a parsed policy, one
     # block: the pending/fired/cancelled/blocked lists (blocked rows carry the
     # reason pill), the per-arm counts, the read-only policy summary and the
     # A/B card (D10 — reads stores, mutates through bus commands only).
@@ -2162,7 +2162,7 @@ end
       view("followups")
     end
 
-    # RFC-0034 C7: the Facts (wiki) page — the human gate on distilled
+    # the Facts (wiki) page — the human gate on distilled
     # proposals. Reads ProposalStore + SessionStore directly (D7 — evidence is
     # a link, never a copy: the excerpt is read from the session at request
     # time); the mutations dispatch :resolve_proposal on the bus.
@@ -2198,7 +2198,7 @@ end
       session && session_agent(session) == filter
     end
 
-    # RFC-0035 C11: the Harvest page — the human gate on mined skills. Reads
+    # the Harvest page — the human gate on mined skills. Reads
     # HarvestStore/SessionStore directly (the evidence excerpt is read from the
     # session at request time — D7: ids and indexes only are stored); every
     # mutation dispatches a bus command.
@@ -2282,11 +2282,11 @@ end
     # The A/B readout per arm (D3 — a read-only fold over the same records):
     #   sent         = fired count in the period;
     #   conversions  = outcome records whose session_id is a fired record's
-    #                  session (primary-filtered by the RFC-0032 declaration
+    #                  session (primary-filtered by the   declaration
     #                  when one exists, else the first outcome per session);
     #   opt-outs     = contact cells flipped :revoked after a fired_at.
     # The note anchors the ruler outside the card: the A/B is the operator's;
-    # this card reads the RFC-0032 baseline.
+    # this card reads the   baseline.
     def followup_ab(agent_id, _decl)
       store = insika[:followup_store]
       return {} unless store
@@ -2303,7 +2303,7 @@ end
     end
 
     # The conversions of the arm's fired sessions. Primary-filtered by the
-    # RFC-0032 funnel declaration when the agent declares one; else the FIRST
+    #   funnel declaration when the agent declares one; else the FIRST
     # outcome per session (an outcome record is one vote per session).
     def conversions_for(agent_id, sessions)
       outcomes = insika[:outcome_store]
@@ -2381,9 +2381,9 @@ end
       store.current(tenant: tenant, agent: agent)
     end
 
-    # RFC-0032 C9: the session's stage history — each outcome record of the
+    # the session's stage history — each outcome record of the
     # session folded to its stage by the agent's declaration (unmapped kinds
-    # render the raw outcome with a muted note — the hole is visible, RFC §2).
+    # render the raw outcome with a muted note — the hole is visible).
     # Without a declaration the block renders the raw outcomes.
     def stage_history_for(sid)
       records = Array(insika[:outcome_store]&.all&.select { |r| r.session_id == sid })

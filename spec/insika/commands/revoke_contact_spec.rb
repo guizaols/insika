@@ -1,6 +1,6 @@
 require "spec_helper"
 
-# RFC-0033 C6 — the channel opt-out event (mapped by the integration) or the
+#   — the channel opt-out event (mapped by the integration) or the
 # operator force-revoking a contact: the cell + every pending record fall in
 # ONE transaction — a half-cancelled opt-out is the spam bug (D2).
 RSpec.describe Insika::Commands::RevokeContact do

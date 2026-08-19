@@ -2,13 +2,13 @@
 
 require "spec_helper"
 
-# RFC-0035 §20.17 — the full cycle once, end to end (the 0.6 exit criterion):
+#   — the full cycle once, end to end (the 0.6 exit criterion):
 # mine -> gate -> approve -> promote -> rollback, over the REAL commands and
 # stores, with the double gate stubbed only at the provider boundary (the
 # eval gate's replay and the conversion gate's fold read). The drill spec's
 # acceptance: the store + profile are byte-identical to the pre-promotion
 # state when the loop is done.
-RSpec.describe "the gated harvest, full cycle (RFC-0035)" do
+RSpec.describe "the gated harvest, full cycle " do
   let(:backend) { Insika::Stores::Memory.new }
   let(:config_store) { Insika::ConfigStore.new(store: backend) }
   let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0036 C4 — the durable half of the conformance claim: what the model
+  #   — the durable half of the conformance claim: what the model
   # received, per (task, turn), captured at the RubyLLM boundary and persisted.
   #
   # One record per (task, turn, part) under the scope "model_visible_traces",

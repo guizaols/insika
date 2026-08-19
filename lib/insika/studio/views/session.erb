@@ -50,7 +50,7 @@
           <summary>
             <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
             <strong>context</strong>
-            <%# RFC-0030: the prefix cache-hit of the turn + the first block
+            <%# the prefix cache-hit of the turn + the first block
                 whose bytes changed vs the previous turn (PII-free category id). %>
             <% cache = c["cache"] %>
             <% if cache && cache["hit_pct"] %><span class="badge"><%= cache["hit_pct"] %>% cached</span><% end %>
@@ -125,7 +125,7 @@
   </div>
 <% end %>
 
-<%# RFC-0032 C9: the session's stage history — outcomes folded to the agent's
+<%# the session's stage history — outcomes folded to the agent's
     declared stages (unmapped kinds render the raw outcome: the hole is visible).
     Without a declaration the block renders the raw outcomes. %>
 <% history = @stage_history || {} %>

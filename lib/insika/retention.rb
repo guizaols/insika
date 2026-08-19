@@ -18,7 +18,7 @@ module Insika
     SCOPE = "retention"
     KEY = "claim"
     BUDGET_KEY = "budget_claim"
-    # RFC-0031: the MEMORY TTL's own daily claim. Deliberately NOT the age-based
+    # the MEMORY TTL's own daily claim. Deliberately NOT the age-based
     # KEY — memory TTLs sweep on their own knob (`memory_ttl_days`), gated by
     # neither retention_days nor the age-based claim (D5).
     MEMORY_TTL_KEY = "memory_ttl_claim"
@@ -40,22 +40,22 @@ module Insika
       @outcome_store = outcome_store
       @tool_trace_store = tool_trace_store
       @context_trace_store = context_trace_store
-      @model_visible_trace_store = model_visible_trace_store # RFC-0036 C4; nil = parity
+      @model_visible_trace_store = model_visible_trace_store #  ; nil = parity
       @outbox_store = outbox_store
       @shadow_pair_store = shadow_pair_store
       @settings_store = settings_store
       @budget_ledger = budget_ledger # WS2 counter GC; nil = nothing to sweep
-      @funnel_store = funnel_store   # RFC-0032 C6; nil = nothing to sweep
-      @followup_store = followup_store # RFC-0033 C11; nil = nothing to sweep
-      @contact_store = contact_store   # RFC-0033 C11; nil = nothing to sweep
-      @proposal_store = proposal_store # RFC-0034 C8; nil = nothing to sweep
+      @funnel_store = funnel_store   #  ; nil = nothing to sweep
+      @followup_store = followup_store #  ; nil = nothing to sweep
+      @contact_store = contact_store   #  ; nil = nothing to sweep
+      @proposal_store = proposal_store #  ; nil = nothing to sweep
       @store = store
       @window = window
       @now = now # injectable for specs (a deterministic "today")
-      @harvest_store = harvest_store # RFC-0035 C13; nil = nothing to sweep
+      @harvest_store = harvest_store #  ; nil = nothing to sweep
     end
 
-    # RFC-0031: the sweep reads the memory store's cells/records (specs seed
+    # the sweep reads the memory store's cells/records (specs seed
     # facts through it).
     attr_reader :memory_store
 
@@ -63,7 +63,7 @@ module Insika
     #    { claimed: true, sessions:, tasks:, outcomes:, memory:, deliveries: }.
     # Either shape may carry `budget_cells:` — the budget counter GC is NOT
     # gated by retention_days (see #sweep_budget_cells). Either shape may carry
-    # `memory_ttl:` — the RFC-0031 memory TTL sweep, gated by ITS OWN daily
+    # `memory_ttl:` — the   memory TTL sweep, gated by ITS OWN daily
     # claim and knob, never by retention_days (see #sweep_memory_ttl).
     def run
       budget_cells = sweep_budget_cells
@@ -83,18 +83,18 @@ module Insika
                   deliveries: sweep_outbox(cutoff),
                   pairs: sweep_shadow_pairs(cutoff) }
       summary[:funnel] = sweep_funnel(cutoff) if @funnel_store
-      # RFC-0033 C11: the follow-up footprint ages out with the rest — records
+      # the follow-up footprint ages out with the rest — records
       # and contact cells under the SAME retention_days gate (nil collaborator
       # = nothing to sweep, base graph parity).
       summary[:followups] = @followup_store.delete_older_than(cutoff) if @followup_store
       summary[:contacts] = @contact_store.delete_older_than(cutoff) if @contact_store
-      # RFC-0034 C8: proposals are evidence OF a transcript — when the
+      # proposals are evidence OF a transcript — when the
       # transcript dies, the proposal's excerpt is gone and the pending fact is
       # stale. Pending AND terminal rows age out together; a proposal is
       # re-derivable (D2), so pruning is never data loss. The session MARKERS
       # are never pruned (the store's rule — the marker is the claim).
       summary[:proposals] = @proposal_store.delete_older_than(cutoff) if @proposal_store
-      # RFC-0035 C13: candidates (pending AND terminal), log rows and
+      # candidates (pending AND terminal), log rows and
       # snapshots are DERIVED data of transcripts (D11) — when the transcripts
       # die, the candidates' excerpts are gone; they are re-derivable (D2), so
       # pruning is never data loss. The session markers are never pruned.
@@ -127,7 +127,7 @@ module Insika
       nil # a non-numeric value reads as OFF — never a crash at sweep time
     end
 
-    # RFC-0031 (D5): the memory TTL sweep — TWO independent expiry clocks under
+    # the memory TTL sweep — TWO independent expiry clocks under
     # ONE daily claim:
     #   1. per-fact expires_at (prune_expired — past dates physically removed);
     #   2. per-cell TTL by `memory_ttl_days` (age by the cell's updated_at).
@@ -209,7 +209,7 @@ module Insika
 
     # TERMINAL tasks untouched past the cutoff, and their checkpoints. A
     # non-terminal task (queued/running) is never touched here — the Recovery
-    # sweep owns those lives. RFC-0036 C4: the model-visible traces are
+    # sweep owns those lives. the model-visible traces are
     # transcripts — they die next to their checkpoints.
     def sweep_tasks(cutoff)
       removed = 0
@@ -237,14 +237,14 @@ module Insika
       @outbox_store ? @outbox_store.delete_older_than(cutoff) : 0
     end
 
-    # Shadow pairs (RFC-0025) past the cutoff, TERMINAL statuses only
+    # Shadow pairs  past the cutoff, TERMINAL statuses only
     # (judged/incomplete) — an open/complete pair older than the window is
     # still someone's unjudged evidence, exactly like the outbox's rule.
     def sweep_shadow_pairs(cutoff)
       @shadow_pair_store ? @shadow_pair_store.delete_older_than(cutoff) : 0
     end
 
-    # RFC-0032 C6: the funnel DAY CELLS die with the outcomes they fold — same
+    # the funnel DAY CELLS die with the outcomes they fold — same
     # retention_days gate, same daily claim. Cursors/baselines live while their
     # agent does. nil collaborator = nothing to sweep (base graph, parity).
     def sweep_funnel(cutoff)

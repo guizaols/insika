@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0035 C9 — the double gate on ONE candidate (D7 + D6), in order:
+    #   — the double gate on ONE candidate, in order:
     # eval first (expensive — a full golden replay), conversion second (cheap
     # — a fold read). Synchronous control command (the Studio dispatches it;
     # the gate is minutes of real replay, exactly like `gate_refinement`).

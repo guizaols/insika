@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # RFC-0035 C12: the trigger (D10) — finds due sessions and mines them. It
+  # the trigger — finds due sessions and mines them. It
   # spawns a worker fiber (supervisor child, `Tick#start` shape) whose loop
   # claims a window and runs ONE due session's harvest ON the worker fiber —
   # off the tick's critical path and off every customer turn's path (D2: the

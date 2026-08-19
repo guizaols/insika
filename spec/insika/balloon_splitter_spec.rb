@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0027 C3 — a pure function: confirmed answer text -> [String] balloons.
+#   — a pure function: confirmed answer text -> [String] balloons.
 # Paragraphs are the unit (E1 is about \n\n); the sentence split only fires as a
 # soft cap after SENTENCE_AFTER. No pacing, no events, no outbox.
 RSpec.describe Insika::BalloonSplitter do
@@ -40,7 +40,7 @@ RSpec.describe Insika::BalloonSplitter do
         .to eq(["3.9s no p50. Depois o resto."])
     end
 
-    # RFC-0027 §4.9: the sentence split is a SOFT cap. Short sentences are
+    # the sentence split is a SOFT cap. Short sentences are
     # re-packed into ~SENTENCE_AFTER blocks; atomizing a 680-char paragraph
     # into one balloon per sentence would turn ONE bubble into 40 WhatsApp
     # messages for no latency win.

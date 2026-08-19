@@ -133,7 +133,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     expect(task_store.find("t-2")).not_to be_nil
   end
 
-  # RFC-0036 C4: the model-visible traces are transcripts — "model-visible
+  # the model-visible traces are transcripts — "model-visible
   # means logged" loses its meaning if the record of what the provider saw
   # survives the erasure of the conversation that produced it.
   it "purges the customer's model-visible traces next to their checkpoints" do
@@ -168,7 +168,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     expect { run(customer: "ghost") }.not_to raise_error
   end
 
-  describe "RFC-0031 audit line" do
+  describe "audit line" do
     let(:audit_store) { Insika::MemoryAuditStore.new(store: backend) }
     subject(:command) do
       described_class.new(memory_store: memory_store, session_store: session_store,
@@ -210,7 +210,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     expect { run(customer: "123", tenant: "acme") }.not_to raise_error
   end
 
-  describe "RFC-0033 C11 — the follow-up footprint dies with the person" do
+  describe "the follow-up footprint dies with the person" do
     it "purges the customer's records and contact cell; a neighbour survives" do
       followup_store.create(tenant: "acme", agent: "a", customer: "123", session_id: "s-1",
                             at: Time.now.utc + 3600, reason: "r1", arm: "schedule", id: "f1",
@@ -232,7 +232,7 @@ RSpec.describe Insika::Commands::ForgetCustomer do
     end
   end
 
-  describe "RFC-0034 C8 — the proposals die with the person" do
+  describe "the proposals die with the person" do
     it "purges the customer's proposals (every status) and reports the count; a neighbour survives" do
       p1 = proposal_store.create(tenant: "acme", customer: "123", session_ref: "acme:s-1",
                                  key: "size", value: "M", id: "p1")

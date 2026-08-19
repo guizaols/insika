@@ -12,18 +12,18 @@ require_relative "../../../lib/insika/tools/tool_search"
 require_relative "../../../lib/insika/tools/remember"
 require_relative "../../../lib/insika/tools/update_briefing"
 
-# RFC-0036 C5/E3 — the conformance suite: "every byte that reaches the provider
+#   — the conformance suite: "every byte that reaches the provider
 # is reconstructable from checkpoints + traces". One oracle (the capturing
-# chat), one assertion shape, the RFC's path list — context providers, tool
+# chat), one assertion shape, the path list — context providers, tool
 # cycles, steer appends, scheduled synthetic turns, subagent calls and the WS4
 # routing ask. Workflows are OUT: a workflow orchestrates RubyLLM inside the
 # workflow body, the engine cannot see those calls (stated, not waived).
 #
 # The suite drives the ORDINARY pipeline with the house harness (CapturingChat
 # as the oracle) — no RubyLLM, no network, no keys (load-guard safe).
-# A failing assertion names the path whose bytes are not logged: per the RFC,
+# A failing assertion names the path whose bytes are not logged: 
 # the FIX is engine-side, never a waiver — this suite has no skip mechanism.
-RSpec.describe "the model-visible conformance suite (RFC-0036 C5)" do
+RSpec.describe "the model-visible conformance suite " do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }
@@ -67,7 +67,7 @@ RSpec.describe "the model-visible conformance suite (RFC-0036 C5)" do
   # the message stream from the checkpoint transcript. The ONE bookkeeping byte
   # stripped: MessageOrigin's `origin` stamp — session bookkeeping the provider
   # never serializes (the transcript keeps it for the operator; the wire never
-  # had it). Anything ELSE a path needs is the RFC's "gap becomes a fix" — the
+  # had it). Anything ELSE a path needs is a "gap becomes a fix" — the
   # fix lands in the engine, never in this helper.
   def reconstruct(trace, checkpoint)
     messages = checkpoint.messages.map { |m| m.reject { |k, _| k == "origin" } }
@@ -334,7 +334,7 @@ RSpec.describe "the model-visible conformance suite (RFC-0036 C5)" do
     end
   end
 
-  describe "the seam's parity (RFC-0036 C4)" do
+  describe "the seam's parity " do
     it "nil store = the turn behaves byte-identically (the default executor)" do
       executor = build_executor(model_visible_trace_store: nil)
       chat = CapturingChat.new

@@ -39,13 +39,13 @@ module Insika
       @criterion_sha = criterion_sha
     end
 
-    # RFC-0025 C3: the pair store and the frozen criterion's sha. Both default to
+    # the pair store and the frozen criterion's sha. Both default to
     # nil (parity — a graph without them behaves exactly as today); the server
     # root sets them at boot, after the criterion file has been loaded and
     # refused-or-accepted (the graph itself reads no env and no file).
     attr_writer :shadow_pairs, :criterion_sha
 
-    # Confirmed answer -> 0..N pending Deliveries, in order (RFC-0027 C4).
+    # Confirmed answer -> 0..N pending Deliveries, in order .
     # A progressive channel splits on paragraphs (BalloonSplitter); everything
     # else is the single whole-answer row.
     # -> [] when there is nothing to send (the cheap exits):
@@ -53,11 +53,11 @@ module Insika
     #   · the channel is Shape A (answers on its own stream — no `deliver`),
     #   · the answer is empty (a turn that died mid-message published nothing, and
     #     half a sentence was never an answer),
-    #   · the channel is in SHADOW mode (RFC-0025): the answer is recorded as a
+    #   · the channel is in SHADOW mode: the answer is recorded as a
     #     pair and nothing is dispatched — zero outbox writes, ever (E1),
     #   · or we do not know who to send it to.
     #
-    # RFC-0029 C8: `attachments` (evidence cards) ride the outbox payload as an
+    # `attachments` (evidence cards) ride the outbox payload as an
     # ADDITIVE key on the LAST balloon — a Shape B channel that reads `payload`
     # ignores it (JSON contract, additive); one that renders cards consumes it.
     def record_balloons(task:, channel_id:, content:, progressive:, attachments: nil)
@@ -90,7 +90,7 @@ module Insika
 
     def shadow?(channel) = channel.respond_to?(:shadow?) && channel.shadow?
 
-    # RFC-0027 C2: does this channel flush progressively? Duck-typed — a channel
+    # does this channel flush progressively? Duck-typed — a channel
     # that does not answer `progressive?` is `:at_end`.
     def progressive?(channel_id)
       channel = @channels&.find(channel_id)
@@ -131,7 +131,7 @@ module Insika
     # One outbox row for a confirmed balloon. `index`/`final` ride the payload
     # only when non-nil — a single-balloon progressive turn is indistinguishable
     # from an `:at_end` one on the wire. `index` also lands on the RECORD, which
-    # is what the boot sweep orders by (RFC-0027 C4). `attachments` (RFC-0029):
+    # is what the boot sweep orders by. `attachments` :
     # validated for the outbox — malformed entries dropped, never a turn failure.
     def create_pending(task, channel_id, content, to, index: nil, final: nil, attachments: nil)
       payload = { "session_id" => task.session_id.to_s, "task_id" => task.id.to_s,

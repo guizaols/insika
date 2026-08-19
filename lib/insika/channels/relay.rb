@@ -34,7 +34,7 @@ module Insika
       DEFAULT_ID = "relay"
       DEFAULT_TIMEOUT = 10
 
-      # RFC-0027 C2: how the outbox flushes for THIS channel. `:at_end` (the
+      # how the outbox flushes for THIS channel. `:at_end` (the
       # default) is one POST with the whole answer, byte-identical to today;
       # `:progressive` lets ChannelDelivery split the answer into balloons and
       # POST them in order (the channel still only translates — it does not know
@@ -47,11 +47,11 @@ module Insika
       # token is the SWITCH — no token, no channel, so there is no way to end up with
       # this route mounted and open. -> Relay | nil.
       #
-      # `INSIKA_RELAY_SHADOW` (truthy) is the shadow switch (RFC-0025): the turn
+      # `INSIKA_RELAY_SHADOW` (truthy) is the shadow switch: the turn
       # runs end to end and the reply is recorded, never delivered.
       #
       # `INSIKA_RELAY_DELIVERY` ("progressive" | "at_end") is how the outbox
-      # flushes (RFC-0027 C2). Unset = :at_end.
+      # flushes. Unset = :at_end.
       #
       # Shared by every composition root on purpose: the DSL front door has to reach
       # the same feature as `config.ru`, or the docs are true of only one of them.
@@ -75,11 +75,11 @@ module Insika
       #                 reply and the delivery fails loudly instead of silently).
       # deliver_token:  Bearer we send THEM. Optional: a consumer on a private
       #                 network may authenticate us another way.
-      # shadow:         RFC-0025. The turn runs, the reply is recorded and never
+      # shadow: The turn runs, the reply is recorded and never
       #                 sent. Fail-closed by construction: everything downstream
       #                 duck-types `shadow?`, so a channel that does not answer it
       #                 is a normal channel.
-      # delivery:       RFC-0027 C2. How the outbox flushes (:at_end | :progressive).
+      # delivery: How the outbox flushes (:at_end | :progressive).
       def initialize(inbound_token:, deliver_url:, deliver_token: nil, http: nil,
                      id: DEFAULT_ID, allow_http: false, allow_private: false,
                      timeout: DEFAULT_TIMEOUT, shadow: false, delivery: :at_end)
@@ -114,7 +114,7 @@ module Insika
       end
 
       # -> :ok | :unauthorized | :disabled. A SYMBOL and not a Rack triple (the
-      # RFC sketched one): a status code is the transport's vocabulary, and keeping
+      # the design sketched one): a status code is the transport's vocabulary, and keeping
       # it out of here is what lets this class be tested without Rack and read
       # without knowing HTTP.
       def authenticate(req)
@@ -192,7 +192,7 @@ module Insika
         raise Insika::DeliveryError, "#{e.class}: #{e.message}"
       end
 
-      # The reply, as recorded by the mirror (RFC-0025 C4, Shape 2). Follows the
+      # The reply, as recorded by the mirror. Follows the
       # same strictness as `parse`; `at` is optional (nil = now).
       def parse_shadow_reply(_req, body:)
         body = body.is_a?(Hash) ? body : {}

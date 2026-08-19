@@ -10,7 +10,7 @@ module Insika
   # `PendingActionStore` (normalizes symbol→string on write, O(n) scan on
   # read, records with a timestamp).
   #
-  # RFC-0031: the record gains `origin`/`created_at`/`expires_at`, the
+  # the record gains `origin`/`created_at`/`expires_at`, the
   # (tenant, customer) pair becomes first-class at the API (`customer:`
   # builds the same "memory:<tenant>:<customer>" scope the Executor derives),
   # and the store enumerates its cells (the Studio drill, the doctor, the
@@ -26,13 +26,13 @@ module Insika
     NOTE_PREFIX  = "note:"
     DEFAULT_TENANT = "_default"   # no tenant in the Command
 
-    # RFC-0031: the record's provenance. A closed string set: "legacy"
+    # the record's provenance. A closed string set: "legacy"
     # (migrated, unknown writer), "engine" (the remember tool / an
-    # integration write), "operator" (Studio edit), "distilled" (RFC-0034,
+    # integration write), "operator" (Studio edit), "distilled"
     # reserved).
     ORIGIN_LEGACY = "legacy"
 
-    # RFC-0031: the per-SESSION cell marker. Engine-owner memory with no
+    # the per-SESSION cell marker. Engine-owner memory with no
     # customer and no explicit tenant falls back to the session (executor
     # parity) — the cell is MARKED "memory:chat:<session id>" so the drill and
     # the doctor never read a conversation as a customer (a bare
@@ -159,7 +159,7 @@ module Insika
       end
     end
 
-    # Age-based prune (WS8 retention). New (RFC-0031): `scope:` limits the pass
+    # Age-based prune (WS8 retention). New : `scope:` limits the pass
     # to ONE cell; a fact with an explicit expires_at is SKIPPED (D5 — the
     # explicit override owns that fact's life). -> count removed.
     def prune_older_than(time, scope: nil)

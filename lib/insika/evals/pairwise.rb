@@ -65,7 +65,7 @@ module Insika
                       vs: golden.human_assisted? ? "human-assisted" : "agent")
       end
 
-      # RFC-0025 C6: two transcripts, no golden — the shadow seam. The judge is
+      # two transcripts, no golden — the shadow seam. The judge is
       # the SAME object with the SAME prompt, so shadow pairs and golden cases are
       # graded by one rule. An empty side returns nil (never a verdict against an
       # empty string — that was a bug in the golden path until this seam landed).
@@ -89,7 +89,7 @@ module Insika
       # this one" is an invitation to grade the author instead. The fact is carried to
       # the READER as `vs: human-assisted` instead, which is where it changes a decision.
       # A reference with no text at all returns "" — the caller's empty guard then
-      # refuses instead of judging against an empty string (RFC-0025 C6 §7.8).
+      # refuses instead of judging against an empty string .
       def self.reference_transcript(messages)
         msgs = Array(messages)
         return "" if msgs.all? { |m| m["text"].to_s.strip.empty? }

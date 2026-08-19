@@ -2,9 +2,9 @@
 
 require "spec_helper"
 
-# RFC-0035 C10 — the snapshot restored (D9). RollbackHarvest restores the
+#   — the snapshot restored. RollbackHarvest restores the
 # pre-promotion state deterministically; the "rehearsed once end-to-end"
-# acceptance (the RFC §4.5 drill) is the full promote -> rollback cycle
+# acceptance (the drill) is the full promote -> rollback cycle
 # leaving the store + profile byte-identical.
 RSpec.describe Insika::Commands::RollbackHarvest do
   subject(:handler) do

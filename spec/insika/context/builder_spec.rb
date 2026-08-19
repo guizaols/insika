@@ -111,7 +111,7 @@ RSpec.describe Insika::ContextBuilder do
     end
   end
 
-  describe "identity-first partition (RFC-0030 C3)" do
+  describe "identity-first partition " do
     it "identity fragments render before volatile regardless of priority" do
       volatile_hi = provider(id: "V", fragments: [frag("vol", source: "V", priority: 100)], layer: :volatile)
       identity_lo = provider(id: "I", fragments: [frag("id", source: "I", priority: 1)], layer: :identity)

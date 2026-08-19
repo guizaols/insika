@@ -57,7 +57,7 @@ module Insika
       end
     end
 
-    # RFC-0036 C3: one entry of the domain inventory. The engine never GUESSES
+    # one entry of the domain inventory. The engine never GUESSES
     # a store (D3) — every entry is something a deployment explicitly declared,
     # or the built-in corpus still in effect (source "gem-default"). A broken
     # enumerator degrades to one error-marked entry, never raises.
@@ -68,7 +68,7 @@ module Insika
       end
     end
 
-    # The domain section of the doctor: the RFC's E2 proof surface. Read-only
+    # The domain section of the doctor: the E2 proof surface. Read-only
     # and informational — it never fails the exit code (a pilot reporting its
     # own artifacts exits 0).
     DomainReport = Data.define(:generated_at, :gem_version, :entries) do
@@ -117,26 +117,26 @@ module Insika
       @extra_env_specs = extra_env_specs
       @shadow_pair_store = shadow_pair_store
       @soak_envelope_path = soak_envelope_path
-      # RFC-0030 C7: [ContextProvider | Class] — classes accepted so the CLI
+      # [ContextProvider | Class] — classes accepted so the CLI
       # can pass the builtin set without deps; the check only reads .layer /
       # .name. nil = skip.
       @context_providers = context_providers
-      # RFC-0031 C6: the memory-scopes check — Insika::MemoryStore | nil = skip;
+      # the memory-scopes check — Insika::MemoryStore | nil = skip;
       # agent_ids excuse bare cells named like an agent (the agent-memory tab's).
       @memory_store = memory_store
       @agent_ids = Array(agent_ids).map(&:to_s)
-      # RFC-0032 C7: the outcome-funnel check — nil collaborators = the check
+      # the outcome-funnel check — nil collaborators = the check
       # reports declarations only (env-only callers stay cheap).
       @funnel_store = funnel_store
       @outcome_store = outcome_store
-      # RFC-0033 C12: the follow-up check — nil collaborators = the check
+      # the follow-up check — nil collaborators = the check
       # reports declarations only.
       @followup_store = followup_store
       @contact_store = contact_store
-      # RFC-0034 C10: the distillation check — nil collaborator = the check
+      # the distillation check — nil collaborator = the check
       # reports declarations only (counts skipped).
       @proposal_store = proposal_store
-      # RFC-0035 C15: the harvest check — nil collaborators = the check
+      # the harvest check — nil collaborators = the check
       # reports declarations only (counts skipped).
       @harvest_store = harvest_store
       @harvest_criterion = harvest_criterion
@@ -154,7 +154,7 @@ module Insika
       [before, run]
     end
 
-    # RFC-0036 C3 — the domain inventory: what a deployment declares (personas
+    #   — the domain inventory: what a deployment declares (personas
     # with a metadata.domain tag, outcome funnels, tool evidence) plus the
     # built-in pt-BR corpora still in effect. Read-only: informational, never
     # a gate — a pilot reporting its own artifacts must exit 0.
@@ -181,7 +181,7 @@ module Insika
       [Finding.new(check: id, severity: :error, message: "check crashed: #{e.class}: #{e.message}", fix: nil)]
     end
 
-    # RFC-0036 C3: one domain section, wrapped — a broken read degrades to one
+    # one domain section, wrapped — a broken read degrades to one
     # error-marked entry, never raises (the same discipline as `safe`).
     def safe_domain(section)
       send(:"domain_#{section}")
@@ -240,7 +240,7 @@ module Insika
       end
     end
 
-    # 3/4 funnels — the RFC-0032 declaration shape. Absent in the tree (or on a
+    # 3/4 funnels — the   declaration shape. Absent in the tree (or on a
     # profile) -> absent in the report: a bare install shows no funnel and no
     # stage names at all (the vocabulary note).
     def domain_funnels
@@ -258,7 +258,7 @@ module Insika
       end
     end
 
-    # 4/4 evidence — tool manifests carrying the RFC-0029 `evidence: <kind>`
+    # 4/4 evidence — tool manifests carrying the   `evidence: <kind>`
     # vocabulary. Kinds are pack vocabulary, never gem constants.
     def domain_evidence
       return [] unless @tool_store
@@ -352,7 +352,7 @@ module Insika
                    message: "soak envelope present but broken: #{e.message}")]
     end
 
-    # RFC-0026: the soak's prep_p95 gate needs INSIKA_TURN_TIMING on the
+    # the soak's prep_p95 gate needs INSIKA_TURN_TIMING on the
     # target. Off is :info normally, and the message names what a soak would
     # refuse — the preflight failure must never be a surprise found 72 hours in.
     def check_turn_timing
@@ -701,7 +701,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       broken
     end
 
-    # RFC-0030 D8: the doctor cannot run a turn, so it cannot prove purity — it
+    # the doctor cannot run a turn, so it cannot prove purity — it
     # CAN verify the declaration. An identity-layer provider that is not one of
     # the engine's three known-safe classes is :warn; one of the engine's
     # known-volatile classes overriding to :identity is :error (a volatile
@@ -770,7 +770,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       end
     end
 
-    # RFC-0029 D7: grounding with a matcher that matches NOTHING (no sku) is
+    # grounding with a matcher that matches NOTHING (no sku) is
     # harmless but useless — every claim passes and the audit reads zero. A
     # warning, never an error: the pack owns matcher quality; the engine refuses
     # only uncompileable data.
@@ -790,12 +790,12 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       findings.empty? ? [ok("grounding", "grounding: no agent with an empty matcher")] : findings
     end
 
-    # RFC-0031 C6: the memory-scopes check. Reads the cells via C1's enumeration.
+    # the memory-scopes check. Reads the cells via C1's enumeration.
     # Warn-only: the doctor never moves data across cells (D2).
     #
     # What it flags, and what it deliberately does NOT:
     # - "memory:chat:<session id>" cells are the engine's OWN per-session shape
-    #   (RFC-0031) — never flagged.
+    #    — never flagged.
     # - a BARE cell is the DESIGNED single-tenant customer shape ("nil tenant +
     #   customer -> memory:<customer>, NEVER _default") — with no tenant to
     #   migrate to, warning is a false positive, so the check only fires in a
@@ -829,7 +829,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       Insika::EnvSchema.read("INSIKA_TENANCY", @env) != "multi_tenant"
     end
 
-    # RFC-0032 C7: the outcome-funnel check — declarations on every pilot store,
+    # the outcome-funnel check — declarations on every pilot store,
     # the plan's "no 1.0 target without a remeasure" backstop. Warn/error only:
     # the doctor never rewrites a declaration (the pack is authoritative;
     # `--fix` has nothing to fix here).
@@ -855,7 +855,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
         end
       end
 
-      # RFC §2: visibility is the feature — a profile with outcomes but no
+      # visibility is the feature — a profile with outcomes but no
       # funnel shows the hole. Warn only; the pack owns the vocabulary.
       without = outcomes_without_funnel
       without.each do |agent, count|
@@ -923,13 +923,13 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       if folded_days >= 28 && !baseline
         findings << Finding.new(check: "outcome-funnel", severity: :info, fix: nil,
                                 message: "agent '#{profile.id}': #{folded_days} folded " \
-                                         "days and no baseline frozen — RFC-0033/0035 " \
+                                         "days and no baseline frozen —   " \
                                          "read the baseline. Freeze it in the Studio.")
       end
       findings
     end
 
-    # RFC-0033 C12: the follow-up check — declarations validated where they are
+    # the follow-up check — declarations validated where they are
     # declared (D9), plus the two data-age reads that answer "whose follow-ups
     # will fire" and "what is blocked right now" without reading the store:
     #   · a pending record whose `at` is more than one claim window in the past
@@ -1022,7 +1022,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       end
     end
 
-    # RFC-0034 C10: the distillation check — per profile WITH a `distill`
+    # the distillation check — per profile WITH a `distill`
     # hash: a declared-and-enabled distiller with NO resolvable model (no
     # distill.model, no platform utility_model) can never run — the warn is
     # the "declared but dead" signal (D4 — the engine never guesses a model).
@@ -1062,7 +1062,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
         stale: @proposal_store.stale(limit: 10_000).size }
     end
 
-    # RFC-0035 C15: the harvest check — per profile WITH a harvest hash:
+    # the harvest check — per profile WITH a harvest hash:
     #   declared-without-model warn (D12), no grounding matcher warn (D3),
     #   malformed negative list error (D4), else ok with the pending counts.
     # With @harvest_criterion: the loaded criterion line + a warn when the
@@ -1161,7 +1161,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
 
     # -- helpers -------------------------------------------------------
 
-    # RFC-0025 shadow parity (C9). Shadow holds raw customer conversations, so
+    #   shadow parity. Shadow holds raw customer conversations, so
     # every dangerous configuration says so BEFORE the experiment starts — and
     # the one automated reminder to turn it off. The pairs themselves are only
     # loaded when shadow is ON (a full scan pays for customer text); the off
@@ -1217,7 +1217,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       nil
     end
 
-    # RFC-0036 C2/C3: the BOOT gate for a malformed guardrail corpus. A typo'd
+    # the BOOT gate for a malformed guardrail corpus. A typo'd
     # language/family or a broken pattern source raises ValidationError inside
     # Safety::Config on the FIRST TURN — mid-conversation, unrecoverable. This
     # check makes `insika doctor` the place it surfaces instead: an :error

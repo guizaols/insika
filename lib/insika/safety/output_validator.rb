@@ -27,7 +27,7 @@ module Insika
     class OutputValidator
       # `ask_factory` (optional): ->(config) { ->(prompt){text} | nil }, built by the
       # Safety::Factory from the utility_model. nil = deterministic only.
-      # `grounding` (optional, RFC-0029): a GroundingValidator — its step runs
+      # `grounding` (optional): a GroundingValidator — its step runs
       # FIRST in #call, before the `config.output` gate (D9: grounding is
       # evidence integrity, independent of the guardrails opt-in).
       def initialize(ask_factory: nil, grounding: nil)

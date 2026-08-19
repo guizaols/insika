@@ -43,7 +43,7 @@ module Insika
 
       attr_reader :token
       attr_reader :graph
-      # RFC-0025: the frozen criterion, memoized when the relay runs in shadow —
+      # the frozen criterion, memoized when the relay runs in shadow —
       # nil otherwise. Loaded ONCE at boot (the refusal below), then shared.
       attr_reader :criterion
 
@@ -92,7 +92,7 @@ module Insika
             allow_http: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_HTTP"]),
             allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"])
           )
-          # RFC-0025 D2: NO criterion, no shadow — enforced at boot, not per
+          # NO criterion, no shadow — enforced at boot, not per
           # turn. Raises ConfigError when the file is missing, unparseable, or
           # incomplete; the criterion is memoized here and injected into
           # ChannelDelivery (its sha stamps every pair our half records).

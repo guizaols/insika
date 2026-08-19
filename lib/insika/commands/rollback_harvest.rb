@@ -5,7 +5,7 @@ require "securerandom"
 
 module Insika
   module Commands
-    # RFC-0035 C10 — the snapshot restored (D9). `RollbackHarvest(snapshot_ref:)`
+    #   — the snapshot restored. `RollbackHarvest(snapshot_ref:)`
     # restores the pre-promotion state deterministically: WriteSkill with the
     # snapshot's pre-promotion content (or DeleteSkill when the skill did not
     # exist before — the snapshot's `existed` flag), SetSkillAgents to the

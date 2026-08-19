@@ -3,7 +3,7 @@
 require "json"
 
 module Insika
-  # RFC-0029 — the evidence contract (engine half).
+  #   — the evidence contract (engine half).
   #
   # A tool DECLARES `evidence` in its manifest; the engine then does BOTH jobs
   # from the same declaration: strips the result down to `{items: [{id, line}]}`
@@ -24,7 +24,7 @@ module Insika
     #                   "items": "results",
     #                   "attachments": "cards" } }             // non-default paths
     #
-    # `kind` is the PILOT PACK's value, never a gem constant (RFC-0036: the
+    # `kind` is the PILOT PACK's value, never a gem constant (the
     # engine owns nothing about product shape).
     Spec = Data.define(:kind, :items_path, :attachments_path) do
       PATH_RE = /\A[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*\z/
@@ -118,7 +118,7 @@ module Insika
 
   # The session evidence ledger (C4). A session-scoped SET with an `ungrounded`
   # counter: records every product id that entered the context via an
-  # evidence-declared tool this session (RFC-0029 §4.2), plus the ungrounded
+  # evidence-declared tool this session , plus the ungrounded
   # counter that feeds the daily metric. It is NOT a policy object — it records
   # and answers `ids` / `ungrounded` / `lines`; it never decides.
   class EvidenceLedger

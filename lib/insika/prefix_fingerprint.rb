@@ -3,7 +3,7 @@
 require "digest/sha2"
 
 module Insika
-  # RFC-0030 C2 — the cache-prefix hash chain. Inputs are the SYSTEM-placement
+  #   — the cache-prefix hash chain. Inputs are the SYSTEM-placement
   # fragments in canonical render order (the Builder's sort, C3) and the tool
   # schema serialization — the same yardstick the token estimate uses
   # (name + description + parameters.inspect, executor.rb:957). Outputs are

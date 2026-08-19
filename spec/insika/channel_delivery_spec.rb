@@ -129,7 +129,7 @@ RSpec.describe Insika::ChannelDelivery do
     end
   end
 
-  describe "record_balloons (RFC-0027 C4)" do
+  describe "record_balloons " do
     it "records one row with today's payload when the channel is not progressive" do
       channels.register("relay", DeliveryChannelDouble.new(200))
       rows = dispatcher.record_balloons(task: task, channel_id: "relay",
@@ -164,7 +164,7 @@ RSpec.describe Insika::ChannelDelivery do
       expect(rows.first.payload).not_to have_key("final")
     end
 
-    describe "attachments (RFC-0029 C8 — evidence cards on the outbox payload)" do
+    describe "attachments (— evidence cards on the outbox payload)" do
       before { channels.register("relay", DeliveryChannelDouble.new(200)) }
 
       it "absent attachments = today's payload exactly (no key)" do

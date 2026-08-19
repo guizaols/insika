@@ -5,7 +5,7 @@ require "time"
 module Insika
   module Parity
     # Both halves of an exchange formatted IDENTICALLY, so the judge cannot tell
-    # them apart by shape (anonymity by construction, RFC-0014's own rule).
+    # them apart by shape (anonymity by construction).
     def self.transcript(inbound, reply)
       "customer: #{inbound.to_s.strip}\nassistant: #{reply.to_s.strip}"
     end
@@ -15,7 +15,7 @@ module Insika
     # the injected `now`, no LLM. Every number the Studio prints comes from here,
     # so two people reading the same pairs get the same answer (E3).
     #
-    # The order of the steps IS the rule (RFC §4.4's teeth):
+    # The order of the steps IS the rule:
     #   window -> pre-registration -> buckets -> volume -> sanity -> primary -> guards
     module Verdict
       module_function
@@ -80,7 +80,7 @@ module Insika
         # 5. Sanity: a panel that cannot decide, or a mirror that cannot pair,
         # is not measuring anything -> :invalid. The denominator is the panel's
         # own work: judged pairs against a model — human-assisted pairs are
-        # counted and reported, never in a denominator (RFC-0014 §7).
+        # counted and reported, never in a denominator.
         judged = counts[:judged] - counts[:human_assisted]
         undecided_rate = judged.positive? ? (counts[:split] + counts[:unknown]).fdiv(judged) : 0.0
         undecided = Check.new(id: :undecided, met: undecided_rate <= rule.undecided_rate_ceiling,

@@ -1,4 +1,4 @@
-<%# RFC-0033 C10: the Follow-ups page. Reads the FollowupStore/ContactStore/
+<%# the Follow-ups page. Reads the FollowupStore/ContactStore/
    OutcomeStore directly (D10); the ONLY mutations — cancel a pending record,
    force-revoke a contact — dispatch bus commands. Nothing here is engine
    vocabulary: the arm names, the reasons and the policy values are the pack's
@@ -93,12 +93,12 @@
     </div>
 
     <%# D3: the A/B card — a READ-ONLY fold over the same records. The ruler
-        outside the card is the operator's RFC-0032 baseline; this card only
+        outside the card is the operator's   baseline; this card only
         reads it (the note says so). %>
     <div class="card">
       <div class="section-head">
         <h3>A/B readout <span class="muted">last 30 days · per arm</span></h3>
-        <span class="muted">the A/B is the operator's — the card reads the RFC-0032 baseline</span>
+        <span class="muted">the A/B is the operator's — the card reads the   baseline</span>
       </div>
       <% if store[:ab].empty? %>
         <div class="empty">Nothing fired in the period — the readout appears when the engine fires.</div>

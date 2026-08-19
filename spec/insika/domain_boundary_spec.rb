@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0036 C1 — the domain boundary is the PAYLOAD, and it is enforced by one
+#   — the domain boundary is the PAYLOAD, and it is enforced by one
 # selection function: `Insika::Packaging.payload_files` is what the gemspec
 # ships, so "what the gem contains" is a fact the suite asserts on, never a
 # prose promise. Three mechanical checks:
@@ -10,7 +10,7 @@ require "spec_helper"
 #   (a) the selection excludes every domain directory (deploy/ packs/ examples/
 #       plugins/ evals/ scripts/ spec/) — even a TRACKED pack cannot ship;
 #   (b) the shipped pt-BR content is confined to the named allowlist (the
-#       removable safety corpora, RFC-0036 D2) plus the docs' neutral
+#       removable safety corpora) plus the docs' neutral
 #       references (the pt-BR customer-message examples the docs teach) and
 #       the agent form's field-hint examples (the same class of content);
 #   (c) the demo persona name ("bia") ships nowhere — the rename pass (C7)
@@ -20,12 +20,12 @@ require "spec_helper"
   # written justification here. Expected result: the list stays at its entries.
   # (The yardstick is best-effort: it catches literal pt-BR strings, so the
   # corpus data with bracket-character regexes like `voc[êe]` is named here by
-  # the RFC's inventory, not by the token scan.)
-RSpec.describe "the domain boundary (RFC-0036 C1)" do
+  # the inventory, not by the token scan.)
+RSpec.describe "the domain boundary " do
   let(:payload) { Insika::Packaging.payload_files }
 
   # The ONLY payload files that may carry pt-BR domain content, each with its
-  # justification (the RFC's "justified in writing" gate):
+  # justification (the "justified in writing" gate):
   #
   #   lib/insika/safety/corpus.rb         — the shipped guardrail corpus DATA
   #                                         (C2/D2); removable via
@@ -56,7 +56,7 @@ RSpec.describe "the domain boundary (RFC-0036 C1)" do
   DOMAIN_DIRS = %w[deploy/ packs/ examples/ plugins/ evals/ scripts/ spec/].freeze
 
   # The docs teach pt-BR customer-message EXAMPLES (data, like the bilingual
-  # safety suite) — the RFC's "docs' neutral references". The audit strips
+  # safety suite)— the "docs' neutral references". The audit strips
   # fenced code blocks, inline code spans and short quoted examples before the
   # token scan, so a doc that teaches "queria saber do pedido" in a code block
   # stays green while prose with domain vocabulary fails.

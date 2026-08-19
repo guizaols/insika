@@ -37,7 +37,7 @@ module Insika
         # ("[tenant:]customer" — engine-owner memory is per customer, never per
         # tenant) wins; otherwise an EXPLICIT tenant from the Command (the
         # multi-merchant override); otherwise the SESSION (=chat), MARKED like
-        # the write path ("chat:<session id>" — RFC-0031: a session cell is
+        # the write path ("chat:<session id>" —  : a session cell is
         # never a bare cell, so the drill cannot read a conversation as a
         # customer). No session (one-shot) and no tenant -> nil (MemoryStore
         # applies _default). Symmetric to the write path (`state.tenant` in the

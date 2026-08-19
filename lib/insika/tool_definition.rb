@@ -35,7 +35,7 @@ module Insika
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
     :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when,
-    :evidence                       # Insika::Evidence::Spec | nil (RFC-0029)
+    :evidence                       # Insika::Evidence::Spec | nil
   )
 
   class ToolDefinition
