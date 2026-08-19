@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # RFC-0033 C5: the tick-driven FIRER of follow-up records (RFC §4.2). One
+  # the tick-driven FIRER of follow-up records: one
   # pass per claim window; each record is its own claim (pending -> fired + task
   # creation + the contact bump in ONE transaction — D5). Gating order (D6):
   #

@@ -86,7 +86,7 @@ RSpec.describe Insika::Channels::Relay do
     end
   end
 
-  describe "shadow mode (RFC-0025 C1)" do
+  describe "shadow mode " do
     it "is off by default — every existing caller keeps working" do
       expect(relay.shadow?).to be(false)
     end
@@ -181,7 +181,7 @@ RSpec.describe Insika::Channels::Relay do
     end
   end
 
-  describe "delivery policy (RFC-0027 C2)" do
+  describe "delivery policy " do
     it "is :at_end by default — every existing caller keeps working, one POST" do
       expect(relay.delivery).to eq(:at_end)
       expect(relay.progressive?).to be(false)

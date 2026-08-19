@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0031 C3: ExportCustomerMemory — the LGPD access right. Returns the FULL
+# ExportCustomerMemory — the LGPD access right. Returns the FULL
 # content in its return value (the Studio turns it into a JSON download); the
 # emitted event carries counts only, so the event stream stays content-free.
 RSpec.describe Insika::Commands::ExportCustomerMemory do

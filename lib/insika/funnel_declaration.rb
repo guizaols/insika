@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0032 C2: the parsed funnel declaration of ONE agent — the ONLY shape
+  # the parsed funnel declaration of ONE agent — the ONLY shape
   # the engine accepts, shared by the fold, the doctor, the Studio and the
   # freeze command. Pure value object: it never touches a store, and the engine
   # never hard-codes a stage name (D1) — `stages`/`primary`/`advance_on` are the

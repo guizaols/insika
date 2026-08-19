@@ -66,7 +66,7 @@ RSpec.describe "Agent authoring commands" do
       expect(source.fetch("briefing-agent").briefing_fields).to eq(%w[size budget])
     end
 
-    it "grounding round-trips through the authoring payload (RFC-0029)" do
+    it "grounding round-trips through the authoring payload " do
       handler.call(cmd(:create_agent, {
                          "id" => "grounded-agent", "model" => "m",
                          "grounding" => { "mode" => "flag",
@@ -76,7 +76,7 @@ RSpec.describe "Agent authoring commands" do
       expect(profile.grounding).to eq("mode" => "flag", "matcher" => { "sku" => "\\d+" })
     end
 
-    it "funnel round-trips through the authoring payload (RFC-0032)" do
+    it "funnel round-trips through the authoring payload " do
       handler.call(cmd(:create_agent, {
                          "id" => "funnel-agent", "model" => "m",
                          "funnel" => { "stages" => %w[greeted paid],
@@ -89,7 +89,7 @@ RSpec.describe "Agent authoring commands" do
                                    "primary" => "paid", "attribution_window" => "72h")
     end
 
-    it "followup round-trips through the authoring payload (RFC-0033)" do
+    it "followup round-trips through the authoring payload " do
       handler.call(cmd(:create_agent, {
                          "id" => "followup-agent", "model" => "m",
                          "followup" => { "arm" => "schedule",
@@ -102,7 +102,7 @@ RSpec.describe "Agent authoring commands" do
                                                    "cancel_keywords" => ["não quero mais contato"] })
     end
 
-    it "distill round-trips through the authoring payload (RFC-0034)" do
+    it "distill round-trips through the authoring payload " do
       handler.call(cmd(:create_agent, {
                          "id" => "distill-agent", "model" => "m",
                          "distill" => { "enabled" => true, "idle_hours" => 6,
@@ -113,7 +113,7 @@ RSpec.describe "Agent authoring commands" do
                                     "max_proposals" => 10, "prompt" => "the pack prompt")
     end
 
-    it "harvest round-trips through the authoring payload (RFC-0035)" do
+    it "harvest round-trips through the authoring payload " do
       handler.call(cmd(:create_agent, {
                          "id" => "harvest-agent", "model" => "m",
                          "harvest" => { "enabled" => true,

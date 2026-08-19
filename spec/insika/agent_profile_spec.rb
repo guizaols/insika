@@ -179,7 +179,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "briefing_fields (RFC-0028 — the session working-state schema)" do
+  describe "briefing_fields (— the session working-state schema)" do
     it "default [] = the feature off (no provider, no tools)" do
       expect(described_class.build(id: "a", model: "m").briefing_fields).to eq([])
       expect(described_class.build(id: "a", model: "m", briefing_fields: nil).briefing_fields).to eq([])
@@ -209,7 +209,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "grounding (RFC-0029 — the evidence-grounding policy)" do
+  describe "grounding (— the evidence-grounding policy)" do
     it "nil/absent -> nil = the whole feature is OFF (parity, zero allocations)" do
       expect(described_class.build(id: "a", model: "m").grounding).to be_nil
     end
@@ -230,7 +230,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "funnel (RFC-0032 — the outcome funnel declaration)" do
+  describe "funnel (— the outcome funnel declaration)" do
     it "nil/absent -> nil = no funnel (parity — nothing folds)" do
       expect(described_class.build(id: "a", model: "m").funnel).to be_nil
     end
@@ -267,7 +267,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "followup (RFC-0033 — the follow-up declaration)" do
+  describe "followup (— the follow-up declaration)" do
     it "nil/absent -> nil = feature off (parity)" do
       expect(described_class.build(id: "a", model: "m").followup).to be_nil
     end
@@ -307,7 +307,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "distill (RFC-0034 — the session distillation declaration)" do
+  describe "distill (— the session distillation declaration)" do
     it "nil/absent -> nil = the feature is off (parity)" do
       expect(described_class.build(id: "a", model: "m").distill).to be_nil
     end
@@ -337,7 +337,7 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
-  describe "harvest (RFC-0035 — the gated harvest declaration)" do
+  describe "harvest (— the gated harvest declaration)" do
     it "nil/absent -> nil = the loop is off for that agent (parity)" do
       expect(described_class.build(id: "a", model: "m").harvest).to be_nil
     end

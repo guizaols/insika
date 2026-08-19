@@ -74,7 +74,7 @@ APP = Insika::Server::App.new(
             tenancy: TENANCY },
   # WS1: only multi_tenant hands the token store to the edge.
   token_store: (W::SPINE.token_store if TENANCY == "multi_tenant"),
-  # RFC-0026 GET /v1/vitals: in-flight count + SQLite bytes.
+  # GET /v1/vitals: in-flight count + SQLite bytes.
   executor: W::EXECUTOR, db_path: Insika::EnvSchema.read("INSIKA_DB")
 )
 
@@ -89,7 +89,7 @@ Studio::App.configure(
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
   context_trace_store: W::CONTEXT_TRACE_STORE, # context breakdown card
-  cache_series_store: W::CACHE_SERIES_STORE, # per-agent cache-hit series (RFC-0030)
+  cache_series_store: W::CACHE_SERIES_STORE, # per-agent cache-hit series
   # tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
   task_store: W::TASK_STORE, checkpoint_store: W::CHECKPOINT_STORE,
   pending_action_store: W::PENDING_ACTION_STORE,
@@ -102,13 +102,13 @@ Studio::App.configure(
   # outcome/funnel/follow-up stores are NOT promoted on Deploy::Wiring — they
   # read from the shared GRAPH (the same spine instances).
   outcome_store: W::GRAPH.outcome_store,
-  # RFC-0032 C8: the outcome-funnel page reads the fold's cells and baselines.
+  # the outcome-funnel page reads the fold's cells and baselines.
   funnel_store: W::GRAPH.funnel_store,
-  # RFC-0033 C9/C10: the Follow-ups page reads the stores directly; its only
+  # the Follow-ups page reads the stores directly; its only
   # mutations (cancel, force-revoke) dispatch bus commands.
   followup_store: W::GRAPH.followup_store,
   contact_store: W::GRAPH.contact_store,
-  # RFC-0035 C11: the Harvest page reads the harvest store + the two
+  # the Harvest page reads the harvest store + the two
   # pre-registered artifacts (criterion, negative list) directly; its
   # mutations dispatch :run_harvest / :gate_harvest / :promote_harvest /
   # :reject_harvest / :rollback_harvest on the bus.

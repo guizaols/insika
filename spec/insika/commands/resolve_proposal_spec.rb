@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0034 C6: the human's answer — approve (→ the RFC-0031 store, CAS,
+# the human's answer — approve (→ the   store, CAS,
 # provenance `distilled:<session_ref>`), reject (with an optional reason),
 # dismiss (latches the tuple). Approval never silently overwrites an operator
 # edit (E3 — the CAS + re-present).

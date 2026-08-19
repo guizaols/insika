@@ -56,7 +56,7 @@ module Insika
 
       started = monotonic
       result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) } }
-      # RFC-0029 C3: the ONE seam every tool result passes on its way to the model.
+      # the ONE seam every tool result passes on its way to the model.
       # For a declared-evidence tool: reshape to the lean envelope, record the ids
       # on the ledger, hoard the attachments. No evidence = the result passes
       # through untouched (one nil-check — parity).
@@ -142,7 +142,7 @@ module Insika
                                                            tool_call_id: call_id)
     end
 
-    # ---- RFC-0029 evidence (C3) ---------------------------------------------
+    # ----   evidence ---------------------------------------------
 
     # The evidence spec for the wrapped tool (D4). Resolution order:
     #   1. the wrapped tool responds to `evidence` -> its spec (the data-tool

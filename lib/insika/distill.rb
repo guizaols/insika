@@ -3,7 +3,7 @@
 require "json"
 
 module Insika
-  # RFC-0034 C2: the one place distillation asks a model for anything.
+  # the one place distillation asks a model for anything.
   #
   # The engine's generic prompt (what a durable customer fact is, the shape of
   # the answer, and the "never invent, never guess a scope" rules). A pack
@@ -90,7 +90,7 @@ module Insika
       # message_count: the session transcript size — turns are validated
       #   against it (an index >= message_count drops the proposal).
       # max_proposals: cap on surviving proposals (the model may return more).
-      # Drops are counted, never fixed up (RFC §4.2).
+      # Drops are counted, never fixed up.
       def distill(prompt:, message_count:, max_proposals: 10)
         answer = @ask.call(prompt)
         raw = parse(text_of(answer))

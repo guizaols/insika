@@ -131,7 +131,7 @@ module Insika
       to_task(record)
     end
 
-    # RFC-0027 C5: writes the turn's timing breakdown onto the task record, once,
+    # writes the turn's timing breakdown onto the task record, once,
     # when the turn completes. Best-effort by the caller's contract — a failure
     # here must never re-fail an already-committed turn. `timing` is DATA (string
     # keys, JSON types); deep_stringify makes a symbol-keyed to_h durable.

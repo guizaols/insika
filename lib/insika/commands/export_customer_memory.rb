@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # Control command (RFC-0031, the LGPD access right): exports what the
+    # Control command  the LGPD access right): exports what the
     # engine holds about ONE customer — their memory cell's facts + notes,
     # expired facts excluded. The FULL content is the RETURN VALUE (the Studio
     # turns it into a JSON download); the emitted event carries counts only, so

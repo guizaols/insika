@@ -65,7 +65,7 @@ RSpec.describe Insika::Tick do
       expect(result).to eq({ dispatched: ["d1"], resumed: ["t1"], failed: [] })
     end
 
-    # RFC-0032 C8: the outcome fold rides the tick next to retention — the
+    # the outcome fold rides the tick next to retention — the
     # summary carries its claim result, and a nil fold changes nothing.
     it "calls the funnel fold every pass and reports it in the summary" do
       fold = instance_double(Insika::FunnelFold, run: { claimed: true, folded: 2, skipped: 0, pairs: 1 })
@@ -274,7 +274,7 @@ RSpec.describe Insika::Tick do
     end
   end
 
-  describe "the follow-up firer (RFC-0033 C9 — the tick's third duty)" do
+  describe "the follow-up firer (— the tick's third duty)" do
     let(:firer) { double("followup engine", run: { claimed: true, fired: 1, blocked: 0, errors: 0, blocked_reasons: {}, deferred: 0 }) }
 
     it "calls the firer each pass and carries its summary under :followup" do

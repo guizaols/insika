@@ -179,7 +179,7 @@ RSpec.describe Insika::HarvestStore do
   end
 
   describe "the append-only promotion log (D8)" do
-    it "appends the RFC row; no update/delete method exists" do
+    it "appends the promotion row; no update/delete method exists" do
       row = store.append_promotion(
         id: "promo-1", agent: "store-support", skill: "pix-recovery-followup",
         origin: %w[sess_8f3c], eval_ref: "cand:c1",

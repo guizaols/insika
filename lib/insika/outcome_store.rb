@@ -49,7 +49,7 @@ module Insika
       records.sort_by(&:at).reverse
     end
 
-    # RFC-0032 C4: the fold's per-pair read — one KEY-prefix scan (the key IS
+    # the fold's per-pair read — one KEY-prefix scan (the key IS
     # tenant:agent:YYYY-MM-DD:id, WS1), optionally skipping the keys older than
     # an ISO date WITHOUT reading them (the fold's cursor day — everything
     # before it is already folded). `tenant:` takes either spelling (nil/""
@@ -61,7 +61,7 @@ module Insika
       keys.filter_map { |k| to_record(@store.get(SCOPE, k)) }
     end
 
-    # RFC-0032 C4: the distinct (tenant, agent) pairs present in the store —
+    # the distinct (tenant, agent) pairs present in the store —
     # one key scan, no record reads. `tenant` is nil for the no-tenant segment
     # (the FunnelStore#pairs spelling; every key-based API normalizes it back).
     # -> [{ tenant: String | nil, agent: String }]

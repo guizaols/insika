@@ -4,7 +4,7 @@ require_relative "coercion"
 require_relative "grounding/matcher"
 
 module Insika
-  # RFC-0029 C5 — the profile-facing half of grounding: parse the pack's
+  #   — the profile-facing half of grounding: parse the pack's
   # `grounding` data into the per-turn Grounding object (mode + matcher).
   #
   # Data (on the AgentProfile):
@@ -29,7 +29,7 @@ module Insika
       return nil if raw.nil? || raw == false
 
       h = Coercion.deep_stringify(raw.is_a?(Hash) ? raw : {})
-      mode = MODES.include?(h["mode"].to_s) ? h["mode"].to_s : "flag" # RFC: default :flag
+      mode = MODES.include?(h["mode"].to_s) ? h["mode"].to_s : "flag" # default :flag
       new(mode: mode, matcher: GroundingMatcher.build(h["matcher"]))
     end
 

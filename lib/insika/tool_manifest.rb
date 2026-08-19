@@ -78,7 +78,7 @@ module Insika
         # Per-tool only: "this result ends the turn" is a property of THIS backend's
         # response, never something a manifest default should hand to its siblings.
         "halt_when" => t["halt_when"],
-        # RFC-0029: the evidence declaration (lean envelope + ledger feed are the
+        # the evidence declaration (lean envelope + ledger feed are the
         # SAME data contract — D1). Normalized here; a malformed declaration is a
         # ValidationError at ingestion, isolable per tool (R4).
         "evidence" => t["evidence"] && Insika::Evidence::Spec.parse(t["evidence"]).to_h

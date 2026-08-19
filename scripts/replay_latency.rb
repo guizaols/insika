@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# RFC-0027 C7 — E2 replay harness. The number that kills or keeps H-latência.
+# — E2 replay harness. The number that kills or keeps H-latência.
 #
 # Replays N conversations against a LIVE staging engine (relay inbound) and
 # measures the median first-balloon latency on the CUSTOMER clock: the POST that

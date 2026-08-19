@@ -3,7 +3,7 @@
 module Insika
   module Safety
     # The SHIPPED deterministic guardrail corpus as language-tagged DATA
-    # (RFC-0036 C2/D2). Pure data — no Insika requires, standalone-loadable
+    # Pure data — no Insika requires, standalone-loadable
     # like detectors.rb used to be.
     #
     # Pattern SOURCE now lives here; `Detectors` is the compiler/matcher on
@@ -15,7 +15,7 @@ module Insika
     # LANGUAGE: each regex lives in exactly ONE language. `compile` (no args)
     # is the union of the shipped languages, each family in its shipped order.
     # For a single-language input the default behaves exactly as the runtime
-    # that hard-coded one flat list — the ONE honest delta: the pre-RFC flat
+    # that hard-coded one flat list — the ONE honest delta: the previous flat
     # list INTERLEAVED the languages, so for a phrase matching patterns of
     # BOTH languages the reported `matched` substring may differ (the
     # category never does). Pinned in spec/insika/safety/corpus_spec.rb.
@@ -73,7 +73,7 @@ module Insika
       # ── The shipped OUTPUT detectors (PII/secret redaction targets) ────────
       # Language-tagged: "secret" is universal (never cleared); "cpf"/"cnpj"
       # are pt-BR tax-id formats — an EN-only corpus drops them (documented
-      # consequence, docs/domain.md). Key ORDER is the pre-RFC runtime's
+      # consequence, docs/domain.md). Key ORDER is the previous runtime's
       # (cpf, cnpj, secret) — it is what `pii_names` and the "pii_leak" union
       # iterate.
       PII = {

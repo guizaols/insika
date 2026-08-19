@@ -27,7 +27,7 @@ run lambda { |env|
   # actually succeeded, this is what lets you drop the second copy.
   puts "→ delivery #{env['HTTP_X_INSIKA_DELIVERY']} for #{body['external_id']}"
 
-  # RFC-0027 progressive: when `index`/`final` are present this POST is one
+  # progressive: when `index`/`final` are present this POST is one
   # balloon of several for the same `task_id` — send it as its OWN platform
   # message, in arrival order (which is index order). The consumer that only
   # forwards `content` and ignores these keys still works.

@@ -83,7 +83,7 @@ RSpec.describe Insika::OutboxStore do
       expect(store.pending.map(&:id)).to eq([fresh.id])
     end
 
-    # RFC-0027 C4: a crashed progressive turn must re-drive balloon 0 before
+    # a crashed progressive turn must re-drive balloon 0 before
     # balloon 1 — never the reverse. The sort is by [task_id, index], so the
     # consumer's ordering is stable even though the rows were written in one call.
     it "orders by task then index, so a half-sent progressive turn re-drives in order" do
@@ -95,8 +95,8 @@ RSpec.describe Insika::OutboxStore do
     end
   end
 
-  describe "index (RFC-0027 C4 — the balloon's position)" do
-    it "defaults to 0 on read, so rows written before the RFC stay valid" do
+  describe "index (— the balloon's position)" do
+    it "defaults to 0 on read, so rows written before the change stay valid" do
       record = create
       expect(record.index).to eq(0)
     end

@@ -5,7 +5,7 @@ require "date"
 
 module Insika
   module Harvest
-    # C8 — the RFC-0032 second gate (D6): the store's target METRIC RATE over
+    # C8 — the   second gate: the store's target METRIC RATE over
     # the criterion's window, compared to the frozen baseline's rate. Outcome
     # is EVIDENCE — the only verdict this object can produce is "the store is
     # measurably worse than the accepted state" and "there is nothing to
@@ -34,7 +34,7 @@ module Insika
         end
       end
 
-      # funnel_store: the RFC-0032 FunnelStore (nil = the gate REFUSES — a
+      # funnel_store: the   FunnelStore (nil = the gate REFUSES — a
       # store without a ruler cannot promote on outcome, D6).
       # criterion: the boot-loaded Harvest::Criterion (nil = refuse).
       def initialize(funnel_store:, criterion:)
@@ -50,10 +50,10 @@ module Insika
         baseline = @funnel_store.baseline(tenant: tenant, agent: agent)
         return refuse(:no_frozen_baseline) if baseline.nil?
 
-        # The criterion's metric is a stage NAME from the RFC-0032 declaration
+        # The criterion's metric is a stage NAME from the   declaration
         # (D5). The seed token "primary" resolves to the frozen snapshot's
         # primary stage — the declaration's own vocabulary, never a gem
-        # constant (RFC-0036).
+        # constant .
         metric = resolve_metric(@criterion.rule.metric, baseline)
         return refuse(:metric_mismatch) if metric != baseline["primary"].to_s
 
@@ -136,7 +136,7 @@ module Insika
         true
       end
 
-      # The criterion's window folded over the day cells (the RFC-0032 C3
+      # The criterion's window folded over the day cells (the
       # read) — the fold's day cells SUMMED by stage, so the gate can build
       # the window's rate the same way the baseline built its own.
       # -> { stage => count }

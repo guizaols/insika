@@ -2,7 +2,7 @@
 
 module Insika
   module Commands
-    # RFC-0034 C6: the human's answer (RFC §4.4): approve (→ the RFC-0031
+    # the human's answer : approve (→ the
     # store, CAS, provenance `distilled:<session_ref>`), reject (with an
     # optional reason), dismiss (latches the tuple). Approval never silently
     # overwrites an operator edit (D5/E3): the CAS baseline captured at distill

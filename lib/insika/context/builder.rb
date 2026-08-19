@@ -66,7 +66,7 @@ module Insika
 
       fragments = []
       tasks.each do |provider, child|
-        # RFC-0030 C3: stamp the layer at PRODUCTION from the PROVIDER's
+        # stamp the layer at PRODUCTION from the PROVIDER's
         # declaration — authoritative, so a fragment that arrives pre-stamped
         # cannot sneak above the boundary (a :volatile provider emitting a
         # fragment with layer :identity would otherwise bypass the doctor's
@@ -142,7 +142,7 @@ module Insika
       [survivors, evicted_sources]
     end
 
-    # Step 6: assembly in DETERMINISTIC canonical order. RFC-0030 C3: the
+    # Step 6: assembly in DETERMINISTIC canonical order. The
     # identity-first partition — nothing volatile renders above the cache
     # boundary. Each partition keeps the existing canonical sort; the partition
     # is by LAYER only.
@@ -165,7 +165,7 @@ module Insika
     end
 
     # The canonical system sort (priority DESC, source ASC, production index) —
-    # applied WITHIN each layer partition, so the pre-RFC order survives inside
+    # applied WITHIN each layer partition, so the prior order survives inside
     # it and the boundary is the only thing that moved.
     def sort_canonical(frags)
       frags.sort_by.with_index { |f, i| [-f.priority, f.source.to_s, i] }

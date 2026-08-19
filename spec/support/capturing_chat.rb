@@ -2,7 +2,7 @@
 
 require_relative "fake_chat"
 
-# RFC-0036 C5 — the conformance suite's ORACLE chat. FakeChat plus message
+#   — the conformance suite's ORACLE chat. FakeChat plus message
 # RECORDING in the exact serialized shape the checkpoint persists (string
 # keys, tool_calls as [{id, name, arguments}]), so the durable transcript
 # equals the provider-visible stream byte-for-byte and the suite can prove

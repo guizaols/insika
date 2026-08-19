@@ -74,7 +74,7 @@ module Studio
       }
     end
 
-    # RFC-0029: grounding — { "mode" => "flag"|"enforce", "matcher" =>
+    # grounding — { "mode" => "flag"|"enforce", "matcher" =>
     # { "sku" => "sku:…", "name_keys" => [...] } }. Blank mode = no grounding
     # (parity). The matcher keys are carried only while a mode is declared.
     def grounding_patch(r)
@@ -88,7 +88,7 @@ module Studio
       { "mode" => mode, "matcher" => matcher }
     end
 
-    # RFC-0032: the outcome funnel — the pack's own stage vocabulary, edited
+    # the outcome funnel — the pack's own stage vocabulary, edited
     # hot. Blank stages = no funnel (parity). Stages: one per line.
     def funnel_patch(r)
       stages = lines(r.params["funnel_stages"])
@@ -102,7 +102,7 @@ module Studio
       out
     end
 
-    # RFC-0033: the follow-up declaration. Blank arm = the feature is off
+    # the follow-up declaration. Blank arm = the feature is off
     # (parity). The policy keys are all rendered; a blank one drops the key.
     def followup_patch(r)
       arm = presence(r.params["followup_arm"])
@@ -124,7 +124,7 @@ module Studio
       { "arm" => arm, "policy" => policy }
     end
 
-    # RFC-0034: distillation — enabled checkbox + the forge's knobs. Blank
+    # distillation — enabled checkbox + the forge's knobs. Blank
     # prompt/model drop the keys (the engine defaults take over).
     def distill_patch(r)
       enabled = r.params["distill_enabled"] == "1"
@@ -138,7 +138,7 @@ module Studio
       out
     end
 
-    # RFC-0035: the gated harvest. Same shape discipline as distill; the
+    # the gated harvest. Same shape discipline as distill; the
     # negative list is a JSON array of { rule, pattern, note }.
     def harvest_patch(r)
       enabled = r.params["harvest_enabled"] == "1"
@@ -288,7 +288,7 @@ module Studio
     # round-trip cleanly through the JSON store; Safety::Config normalizes on
     # read. A blank moderator drops the key (deterministic only).
     #
-    # RFC-0036 C2: `corpora` (the removability knob — languages/extra) has NO
+    # `corpora` (the removability knob — languages/extra) has NO
     # form field: it is DSL/pack data (docs/domain.md), not Studio UI. The
     # form must not erase it on save — carry the existing value through
     # (the shallow patch merge would otherwise wipe it, the halt_when class).
@@ -425,7 +425,7 @@ module Studio
         v = presence(r.params[f])
         patch[f] = Integer(v) if v
       end
-      # RFC-0031: memory TTL (days). Blank = off (nil); a number sets the
+      # memory TTL (days). Blank = off (nil); a number sets the
       # platform default for EVERY cell. Saving here replaces an ops-authored
       # per-tenant map in the record — the view says so.
       v = presence(r.params["memory_ttl_days"])

@@ -101,7 +101,7 @@ RSpec.describe "bin/insika" do
     expect(report["domain"]["gem_version"]).to eq(Insika::VERSION)
   end
 
-  # RFC-0036 C2: the boot gate — a typo'd corpus language must fail `doctor`
+  # the boot gate — a typo'd corpus language must fail `doctor`
   # (exit 1), not the first turn. The agent is seeded straight into the store.
   it "doctor exits 1 on a malformed guardrails.corpora declaration" do
     Dir.mktmpdir do |dir|

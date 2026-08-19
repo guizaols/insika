@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0035 C10 — the human's answer (RFC §4.4), the ONLY path that lands a
+    # — the human's answer, the ONLY path that lands a
     # skill. Snapshot FIRST (the pre-promotion state), then the two existing
     # write commands, then the append-only log row (D8). A promotion row's
     # `rolled_back_at` makes the log the single ledger; re-promotion after a

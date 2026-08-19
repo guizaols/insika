@@ -5,13 +5,13 @@ require "date"
 
 module Insika
   module Commands
-    # RFC-0032 C5: the operator's FREEZE — turn the folded counts over a
-    # declared span into the baseline snapshot RFC-0033 (A/B follow-up) and
-    # RFC-0035 (promotion gate) read. One command, dispatched from the Studio
+    # the operator's FREEZE — turn the folded counts over a
+    # declared span into the baseline snapshot (A/B follow-up) and
+    # (promotion gate) read. One command, dispatched from the Studio
     # and available to any operator-grade caller. Synchronous control command —
     # no task, no actor, same discipline as RecordOutcome (WS7).
     #
-    # The ≥ 4-week rule (RFC §4.4 — "no 1.0 target before a remeasure") is
+    # The ≥ 4-week rule ("no 1.0 target before a remeasure") is
     # enforced HERE, not by convention: a frozen span shorter than 28 days is a
     # ValidationError. `frozen_at` stamps when; the baseline OVERWRITES (D5) —
     # the freeze event is the audit surface.
@@ -103,7 +103,7 @@ module Insika
         if span < MIN_SPAN_DAYS
           raise ValidationError,
                 "baseline span must cover at least #{MIN_SPAN_DAYS} days " \
-                "(the RFC-0033/0035 number needs a remeasured baseline)"
+                "(the number needs a remeasured baseline)"
         end
       rescue Date::Error
         raise ValidationError, "from/to must be ISO dates (YYYY-MM-DD)"

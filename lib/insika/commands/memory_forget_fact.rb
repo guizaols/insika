@@ -8,7 +8,7 @@ module Insika
     # agent's memory. Idempotent: forgetting something that doesn't exist is not an error
     # (`existed: false`). Scoped by `tenant`. -> { existed: bool }.
     #
-    # RFC-0031: with an `audit_store:` collaborator, appends a content-free
+    # with an `audit_store:` collaborator, appends a content-free
     # audit line (old_hash only — the deleted value's digest, never the
     # value). Optional: nil = no audit.
     class MemoryForgetFact

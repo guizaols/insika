@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0029 C7/D6 — the :enforce half. The sentence containing an ungrounded
+#   — the :enforce half. The sentence containing an ungrounded
 # claim is CUT from the content the turn persists/delivers; the flag carries
 # `action: "cut"` and the ledger counter increments.
 RSpec.describe Insika::Safety::GroundingEnforcer do

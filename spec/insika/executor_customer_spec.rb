@@ -45,7 +45,7 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
         .to eq("123")
     end
 
-    it "no customer -> the explicit tenant, else the MARKED session cell (RFC-0031)" do
+    it "no customer -> the explicit tenant, else the MARKED session cell " do
       expect(build_executor.send(:memory_tenant, task("oi", tenant: "acme"))).to eq("acme")
       expect(build_executor.send(:memory_tenant, task("oi"))).to eq("chat:s1")
     end
@@ -67,7 +67,7 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
     expect(task_store.find("t-1").status).to eq(:completed)
   end
 
-  # RFC-0034 C5: the agent stamp rides the same write — the distillation
+  # the agent stamp rides the same write — the distillation
   # engine resolves each session's pack through it (RunDistillation step 4).
   it "stamps vars['agent'] next to vars['customer'] on the tagged session" do
     session_store.create(id: "s1")
@@ -85,11 +85,11 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
     expect(session_store.find("s1").vars["agent"]).to eq("a")
   end
 
-  # RFC-0031 E1/E2/E3 — the acceptance gate, end-to-end through the REAL
+  #  /E3 — the acceptance gate, end-to-end through the REAL
   # Executor + REAL ContextBuilder + REAL Memory provider. The trace holds
-  # counts only (RFC-0023), so the assertion reads the CONTEXT PACKAGE's memory
+  # counts only , so the assertion reads the CONTEXT PACKAGE's memory
   # fragment — the same thing the model sees.
-  describe "RFC-0031 experiments (E1–E3)" do
+  describe "experiments (E1–E3)" do
     let(:memory_store) { Insika::MemoryStore.new(store: backend) }
     let(:profile) { Insika::AgentProfile.build(id: "a", model: "m", memory: true) }
 
@@ -189,10 +189,10 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
       expect(memory_store.facts(tenant: "globex", customer: "c-1")).to be_empty
     end
 
-    # RFC-0034 E1 — the proposal round trip: distill a finished session, approve
+    #   — the proposal round trip: distill a finished session, approve
     # the proposal, and the NEXT turn's context package carries the fact (the
     # Memory provider reads the same cell the approval wrote).
-    it "E1 (RFC-0034) — approve a distilled proposal and the fact rides the next turn" do
+    it "E1  — approve a distilled proposal and the fact rides the next turn" do
       distill_profile = Insika::AgentProfile.build(
         id: "a", model: "m", memory: true,
         distill: { "enabled" => true, "idle_hours" => 6, "min_messages" => 3 }

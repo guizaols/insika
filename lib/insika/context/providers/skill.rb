@@ -10,7 +10,7 @@ module Insika
       class Skill < CatalogProvider
         # priority 80: above deferred tools (70), below pinned identity.
         def priority = Context::Priority::SKILL
-        # RFC-0030 C1: catalog + allowlist — config only.
+        # catalog + allowlist — config only.
         def layer = :identity
 
         private

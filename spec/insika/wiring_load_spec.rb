@@ -25,7 +25,7 @@ RSpec.describe Insika::Wiring do
     expect(described_class::CONTEXT_PROVIDERS).to include(a_kind_of(Insika::Context::Providers::Memory))
   end
 
-  it "includes the Briefing provider (RFC-0028) in CONTEXT_PROVIDERS, before Session" do
+  it "includes the Briefing provider  in CONTEXT_PROVIDERS, before Session" do
     providers = described_class::CONTEXT_PROVIDERS
     expect(providers).to include(a_kind_of(Insika::Context::Providers::Briefing))
     expect(providers.index { |p| p.is_a?(Insika::Context::Providers::Briefing) })

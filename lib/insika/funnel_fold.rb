@@ -4,12 +4,12 @@ require "time"
 require "securerandom"
 
 module Insika
-  # RFC-0032 C4: the tick-driven fold of WS7 outcome records into the
-  # pack-declared stages (RFC-0019's cadence, RFC §4.2). One pass per claim
+  # the tick-driven fold of WS7 outcome records into the
+  # pack-declared stages (the tick's cadence). One pass per claim
   # window; the fold is idempotent across crashes via the per-pair {at, ids}
   # cursor (D3) and per-pair transactions. Pairs whose declaration is absent or
   # malformed are skipped (D8), as are outcome kinds the declaration does not
-  # map — the funnel shows the hole (RFC §2). Nothing else: no attribution
+  # map — the funnel shows the hole. Nothing else: no attribution
   # (D4), no stage vocabulary of its own (D1).
   class FunnelFold
     SCOPE = "funnel_fold"

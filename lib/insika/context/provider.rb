@@ -9,7 +9,7 @@ module Insika
     def required? = false          # true -> failure aborts the turn
     def enabled_for?(_profile) = true
     def call(_request) = []        # -> [ContextFragment]; may do IO
-    # RFC-0030 C1: which cache layer the output belongs to.
+    # which cache layer the output belongs to.
     #   :identity -> changes only on deploy/config edit (the cacheable prefix);
     #   :volatile -> may change per turn (the Builder renders identity first).
     # :volatile is the conservative default — nothing gets pinned by accident.

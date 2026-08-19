@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RFC-0036 C8/E1 — the INSTALL PROOF: the gem is installable from the docs
+# — the INSTALL PROOF: the gem is installable from the docs
 # alone, and the INSTALLED bytes carry no domain artifact. Release gate
 # runbook (docs/RELEASING.md) — checkout-only by design (scripts/ never ships).
 #
@@ -22,7 +22,7 @@ trap 'rm -rf "$WORK"' EXIT
 export GEM_HOME="$WORK/gems"
 export GEM_PATH="$GEM_HOME"
 
-echo "== install proof (RFC-0036 E1) =="
+echo "== install proof  =="
 
 # (1) build
 echo "[1/5] gem build"

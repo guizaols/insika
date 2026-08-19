@@ -42,7 +42,7 @@ module Insika
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
       @context_trace_store = context_trace_store
-      # RFC-0036 C4: the model-visible trace — what the provider received per
+      # the model-visible trace — what the provider received per
       # (task, turn), captured at the chat boundary. nil = off (no record,
       # zero overhead — parity).
       @model_visible_trace_store = model_visible_trace_store
@@ -78,20 +78,20 @@ module Insika
       # the core stays gem-free at load). Injected by specs; a production graph
       # that wants a non-RubyLLM backend injects its own lambdas.
       @media_output = media_output
-      # RFC-0029 C8: the :enforce boundary step, called between stages 6 and 8.
+      # the :enforce boundary step, called between stages 6 and 8.
       # Defaults to a REAL enforcer (inert unless the profile's grounding.mode is
       # :enforce — zero behavior change for parity) so an embedder that builds
       # the Executor directly still gets the cut; `nil` stays injectable for
       # stubs that want none.
       @grounding_enforcer = grounding_enforcer || Insika::Safety::GroundingEnforcer.new
-      # RFC-0030 C5/C6: the per-AGENT cache-hit series. nil = no series recorded
+      # the per-AGENT cache-hit series. nil = no series recorded
       # (parity — the trace store still gets the per-turn entry when wired).
       @cache_series_store = cache_series_store
       # LLM config v2: resolves the model at turn start (Chat > Agent >
       # platform default) + model_policy + fallback chain. settings_store nil =
       # no platform layer (pre-v2 behavior: the agent's own model is used as-is).
       @model_resolver = ModelResolver.new(settings_store: settings_store)
-      # RFC-0033 C7: the follow-up stores the ChatBuilder gates the
+      # the follow-up stores the ChatBuilder gates the
       # schedule/cancel_followup tools on (nil = never wired — parity).
       @contact_store = contact_store
       @followup_store = followup_store
@@ -116,10 +116,10 @@ module Insika
         # owns the seams + usage accounting, the builder only wires the tools
         # the turn's gates allow.
         media_runner: self,
-        # RFC-0028: the builder wires the briefing-write system tools gated by
+        # the builder wires the briefing-write system tools gated by
         # @session_store + profile.briefing_fields. nil = never wired (parity).
         session_store: session_store,
-        # RFC-0033 C7: the builder wires the schedule/cancel_followup system
+        # the builder wires the schedule/cancel_followup system
         # tools gated by a parsed policy AND both stores present. nil = never
         # wired (parity).
         contact_store: contact_store,
@@ -163,13 +163,13 @@ module Insika
     # the turn supervisor in serving mode (like the tick); nil = no alerts.
     attr_accessor :alert_dispatcher
 
-    # RFC-0034 C5: the distillation engine — the tick-duty that finds idle
+    # the distillation engine — the tick-duty that finds idle
     # customer sessions and distills them on its own worker fiber (a child of
     # the turn supervisor, like the tick). nil = distillation off (parity —
     # nothing scans, nothing distills).
     attr_accessor :distill_engine
 
-    # RFC-0035 C12: the harvest engine — the tick-duty that finds idle,
+    # the harvest engine — the tick-duty that finds idle,
     # unmined sessions and mines them on its own worker fiber (a child of the
     # turn supervisor, like the tick). nil = harvest off (parity — nothing
     # scans, nothing mines).
@@ -277,7 +277,7 @@ module Insika
     # Stage 1 (async part): creates the actor, registers it and fires the fiber.
     # Called by the turn handlers (SendMessage/ResumeTask/TriggerWorkflow).
     #
-    # `timing` (RFC-0027 C5) is the channel clock a channel turn allocated at 202
+    # `timing`  is the channel clock a channel turn allocated at 202
     # acceptance, already carrying `:inbound`; nil means the pipeline allocates its
     # own (resume, engine-initiated, non-channel). `mark` is first-write-wins, so
     # re-marking `:inbound` in the pipeline is a no-op on a threaded clock.
@@ -354,7 +354,7 @@ module Insika
 
       # No turn running (or one still at the door): there is nothing to steer INTO.
       # A turn at the door is the collect door's other window — a steer agent with a
-      # debounce merges there instead (RFC-0027 C1), so no message waits on either.
+      # debounce merges there instead , so no message waits on either.
       task = session_actor.current_task
       return nil if task.nil?
       # A workflow turn orchestrates RubyLLM itself and has no Insika chat to append to
@@ -742,10 +742,10 @@ module Insika
       # the alert dispatcher (WS6) lives on the same supervisor: its consumer
       # answers every alert event for as long as the process serves.
       @alert_dispatcher&.start(parent: @supervisor)
-      # the distillation engine (RFC-0034 C5) lives on the same supervisor —
+      # the distillation engine  lives on the same supervisor —
       # its worker fiber re-scans idle sessions off the turn path.
       @distill_engine&.start(parent: @supervisor)
-      # the harvest engine (RFC-0035 C12) lives on the same supervisor — its
+      # the harvest engine  lives on the same supervisor — its
       # worker fiber re-scans idle sessions off the turn path.
       @harvest_engine&.start(parent: @supervisor)
       @supervisor
@@ -813,7 +813,7 @@ module Insika
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
     def run_pipeline(task, profile, actor, resume_from, timing = nil)
-      # RFC-0027 C5: a CHANNEL turn always allocates the clock — first_balloon_ms
+      # a CHANNEL turn always allocates the clock — first_balloon_ms
       # (inbound -> first outbox flush) is H-latência and must not depend on
       # INSIKA_TURN_TIMING. When the flag is off the clock measures ONLY that
       # window (`breakdown: false`); the full prep/ttft/gen/total stays opt-in.
@@ -867,7 +867,7 @@ module Insika
 
           state # subject of the :task pair (after_task receives it; the caller discards)
         end.tap do |st|
-          # RFC-0029 C4: flush the evidence ledger HERE — after the after_task
+          # flush the evidence ledger HERE — after the after_task
           # hooks ran, because the :flag validator increments the ungrounded
           # counter in after_task. The envelope's ids (stage 6) ride the same
           # flush. AFTER persist_turn (already done), so a flush failure can
@@ -895,7 +895,7 @@ module Insika
       # SESSION turn: steering needs a session to arrive through, and resolving here for a
       # one-shot would make an unrelated turn fail on a queue key it can never use.
       state.queue_policy = task.session_id ? queue_policy(profile, task.session_id) : nil
-      # RFC-0029 C4/C8: the session evidence ledger, built per turn. A nil
+      # the session evidence ledger, built per turn. A nil
       # session_id (one-shot) is fine — the ledger just never flushes (grounding
       # on a one-shot is per-turn by definition). The envelope appends ids, the
       # validator/enforcer read the union, stage 8 flushes.
@@ -967,7 +967,7 @@ module Insika
 
     # one entry per turn in the ContextTraceStore — tokens per
     # category (the demodulized provider id), the tools-schema estimate and the
-    # budget verdict. RFC-0030 C5: the entry also carries the prefix
+    # budget verdict. the entry also carries the prefix
     # fingerprints + the invalidation_reason vs the previous turn, and the
     # categories gain their cache layer. Counts and ids ONLY, never content.
     # nil store = off; the store itself rescues everything (the trace never
@@ -986,7 +986,7 @@ module Insika
         c[:tokens] += f.tokens || 0
         c[:fragments] += 1
         c[:pinned] += (f.tokens || 0) if f.pinned
-        # RFC-0030 C5: the category's cache layer (:identity | :volatile —
+        # the category's cache layer (identity | :volatile —
         # stamped by the Builder at production, C3).
         layer = f.layer || :volatile
         c[:layer] ||= layer
@@ -997,7 +997,7 @@ module Insika
         labels = Array(f.labels)
         (c[:labels] ||= []).concat(labels) unless labels.empty?
       end
-      # RFC-0030 C2/C3: the prefix chain over the SYSTEM-placement fragments in
+      # the prefix chain over the SYSTEM-placement fragments in
       # canonical (identity-first) render order + the tool-schema serialization.
       # The reason is computed against the PREVIOUS trace entry (D3): the first
       # category, in current chain order, whose bytes changed (or vanished).
@@ -1022,7 +1022,7 @@ module Insika
                                                               entry: entry)
     end
 
-    # RFC-0030 C5 (D3): the previous turn's trace entry — the session list minus
+    # the previous turn's trace entry — the session list minus
     # THIS (task_id, turn) (an approval-resumed turn re-records over its own key
     # — never compare to self). `turn` is the turn being recorded, passed
     # explicitly. -> Hash | nil (first turn of the session).
@@ -1032,7 +1032,7 @@ module Insika
                            .last
     end
 
-    # RFC-0030 C2: the tool-schema yardstick — the SAME serialization the token
+    # the tool-schema yardstick — the SAME serialization the token
     # estimate uses (estimate_tools_tokens), so the fingerprint and the estimate
     # never disagree. The digest covers name + description + parameters.inspect,
     # approximating RubyLLM's rendering (honest in the doc: the reason's job is
@@ -1041,7 +1041,7 @@ module Insika
       tools.map { |t| "#{t.name} #{t.description} #{t.parameters.inspect}" }.join(" ")
     end
 
-    # RFC-0030 C5 (D4): the stage-8 stamp — the usage (cached_tokens,
+    # the stage-8 stamp — the usage (cached_tokens,
     # input_tokens) only exists after the provider answered, so a SECOND
     # UPSERT with the SAME (task_id, turn) merges the cache fields into the
     # entry parked at prepare_turn (the start-of-turn write stays: a turn that
@@ -1151,7 +1151,7 @@ module Insika
       content = routed ? st.response_content : run_agent_stage(task, st, timing)
       st.response_content = content # after_task OutputValidator inspects this
 
-      # RFC-0036 C4: the model-visible record — what the provider received this
+      # the model-visible record — what the provider received this
       # turn, captured at the boundary BEFORE stage 8 persists the checkpoint
       # (turn n's provider-visible stream == checkpoint(turn n+1).messages).
       # Skipped for workflows (they orchestrate RubyLLM inside the workflow
@@ -1159,7 +1159,7 @@ module Insika
       # scope) and absent-store runs (parity).
       record_model_visible(task, st) if !workflow_turn?(task) && st.chat
 
-      # RFC-0029 D6: the :enforce boundary — a CUT of the final content BEFORE
+      # the :enforce boundary — a CUT of the final content BEFORE
       # persistence/delivery (after_task fires too late to change what is
       # persisted). The cut text is what persists, delivers and terminates.
       if @grounding_enforcer
@@ -1173,9 +1173,9 @@ module Insika
       actor.drain!
       persist_turn(task, profile, st, content, timing: timing)
 
-      # RFC-0030 C5 (D4): the cache-hit stamp — the usage exists only now. The
+      # the cache-hit stamp — the usage exists only now. The
       # stamped entry is durable before anything is delivered (same slot as the
-      # RFC-0029 enforcer). Best-effort by construction (both stores rescue).
+      #   enforcer). Best-effort by construction (both stores rescue).
       stamp_cache_hit(task, st)
 
       # stage 9: Response. usage (tokens) captured at stage 6 travels in the
@@ -1193,7 +1193,7 @@ module Insika
       # consumes the parts next to it. Absent when nothing was generated.
       data[:output_parts] = st.output_parts if st.output_parts && !st.output_parts.empty?
       data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
-      # RFC-0027 C5: best-effort persist of the same timing onto the task record —
+      # best-effort persist of the same timing onto the task record —
       # the Studio task page reads it from there. A failure here must not re-fail
       # the turn (the task is already committed and the event already carries it).
       persist_turn_timing(task, timing)
@@ -1213,7 +1213,7 @@ module Insika
       command_type(task).to_s == "trigger_workflow"
     end
 
-    # RFC-0036 C4: the model-visible record of ONE ask — the chat at the
+    # the model-visible record of ONE ask — the chat at the
     # provider boundary (instructions + tool schemas + the message stream),
     # persisted under the checkpoint's turn number (turn n's stream ==
     # checkpoint(turn n+1).messages). Best-effort: the store rescues
@@ -1508,7 +1508,7 @@ module Insika
 
     # A fresh chat for the routing model with ONLY the generated prompt. RubyLLM
     # required lazily, exactly like create_chat (the load-guard holds).
-    # RFC-0036 C4: the classifier is model-visible, so it is logged — the ONE
+    # the classifier is model-visible, so it is logged — the ONE
     # engine-internal ask the conformance spec adds a record for (part
     # "routing", same turn number as the answer ask).
     def route_ask(selection, prompt, message, task, st)
@@ -1887,7 +1887,7 @@ module Insika
     # (never _default — a tagged customer must never land in the shared cell).
     # Per-customer memory is the 360 view; per-tenant was the leak.
     #
-    # RFC-0031: the SESSION fallback is MARKED ("chat:<session id>" -> cell
+    # the SESSION fallback is MARKED ("chat:<session id>" -> cell
     # "memory:chat:<session id>"), never a bare cell — a bare "memory:<id>" is
     # indistinguishable from a single-tenant customer ref, and the Studio drill
     # must not list conversations as customers with a Forget button.
@@ -1898,7 +1898,7 @@ module Insika
       [command_tenant(task), customer].compact.join(":")
     end
 
-    # The marked per-session scope (RFC-0031): "chat:<session id>" -> cell
+    # The marked per-session scope : "chat:<session id>" -> cell
     # "memory:chat:<session id>". nil for a one-shot turn (no session) — the
     # MemoryStore applies _default.
     def session_scope(session_id)
@@ -1907,7 +1907,7 @@ module Insika
       "#{MemoryStore::SESSION_TAG}:#{session_id}"
     end
 
-    # WS8 + RFC-0034 C5: stamp the customer (WS8 — the `forget_customer`
+    # WS8 +  : stamp the customer (WS8 — the `forget_customer`
     # purge finds the customer's sessions through this var) AND the agent (the
     # distillation engine resolves each session's pack through it) on the
     # session ONCE (idempotent). A session that does not exist yet (no
@@ -2300,12 +2300,12 @@ module Insika
       persist_turn(task, profile, state, content, reply_origin: MessageOrigin::ENGINE,
                    session: state.guardrail_block&.[](:source) != "edge", timing: timing)
       data = { task_id: task.id, content: content, usage: state.usage }
-      data[:timing] = timing.to_h if timing # RFC-0027 C5: a channel halt still measured
+      data[:timing] = timing.to_h if timing # a channel halt still measured
       persist_turn_timing(task, timing)
       emit(:task_completed, data, task: task)
     end
 
-    # Best-effort write of the turn's timing onto the task record (RFC-0027 C5).
+    # Best-effort write of the turn's timing onto the task record .
     # The record gains `timing` once, when the turn completes; a store failure
     # here is swallowed — the turn is already committed and the event already
     # carries the number.
@@ -2322,7 +2322,7 @@ module Insika
 
       # Emits one :guardrail_flagged per flag the OutputValidator appended in
       # after_task (audit only — the turn already completed). Reads a plain Array off
-      # the state, keeping the Executor decoupled from Safety. RFC-0029: an
+      # the state, keeping the Executor decoupled from Safety. an
       # :enforce cut rides the SAME event with `action: "cut"` so the audit can
       # distinguish a cut from a flag.
       def emit_guardrail_flags(task, state)
@@ -2408,7 +2408,7 @@ module Insika
     # Best-effort: the turn is already committed and durable, and a delivery problem
     # must never re-fail it.
     #
-    # RFC-0027 C4: a PROGRESSIVE channel gets the answer split into balloons —
+    # a PROGRESSIVE channel gets the answer split into balloons —
     # N outbox rows, dispatched in index order (dispatch_chain). `:at_end` is the
     # single whole-answer row, byte-identical to today.
     def finalize_channel_delivery(task, content, state, timing = nil)
@@ -2417,7 +2417,7 @@ module Insika
       channel_id = channel_transport(task)
       return unless channel_id
 
-      # RFC-0029 C8: the hoarded evidence attachments ride the channel delivery
+      # the hoarded evidence attachments ride the channel delivery
       # (additive outbox payload key — the channel contract widens, nothing breaks).
       attachments = state.respond_to?(:evidence_attachments) ? state.evidence_attachments : nil
       deliveries = @channel_delivery.record_balloons(
@@ -2433,7 +2433,7 @@ module Insika
       nil
     end
 
-    # ONE supervisor fiber for the whole chain (RFC-0027 C4). Sequential deliver()
+    # ONE supervisor fiber for the whole chain. Sequential deliver
     # calls, so balloon N+1 cannot overtake balloon N on the wire. Still off the
     # session's FIFO — the customer's next message does not wait on this turn's
     # outbound. Non-serving (boot sweep, specs) delivers inline, where waiting is
@@ -2559,7 +2559,7 @@ module Insika
       require_relative "tools/generate_image"
       require_relative "tools/tts"
       require_relative "tools/update_briefing"
-      # RFC-0033 C7: the schedule/cancel_followup builtins — lazy, same
+      # the schedule/cancel_followup builtins — lazy, same
       # boundary (the ChatBuilder wires them only when a profile declares
       # followup AND the stores are present).
       require_relative "tools/schedule_followup"

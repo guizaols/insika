@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0035 C10 — the human's answer (RFC §4.4). PromoteHarvest is the ONLY
+# the human's answer. PromoteHarvest is the ONLY
 # path that lands a skill: snapshot first, then the two existing write
 # commands, then the append-only log row (D8). The conversion ruler is RE-READ
 # at the moment the skill lands (D8-bis); a moved criterion is a refusal.

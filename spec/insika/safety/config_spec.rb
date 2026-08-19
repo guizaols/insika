@@ -47,7 +47,7 @@ RSpec.describe Insika::Safety::Config do
     expect(described_class.from_hash("strictness" => "paranoid").strictness).to eq(:medium)
   end
 
-  describe "corpora (RFC-0036 C2 — the removable language-tagged corpus)" do
+  describe "corpora (— the removable language-tagged corpus)" do
     it "defaults to nil corpora — the full shipped corpus (parity)" do
       c = described_class.from_hash({})
       expect(c.corpora).to be_nil

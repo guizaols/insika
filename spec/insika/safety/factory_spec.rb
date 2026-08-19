@@ -22,7 +22,7 @@ RSpec.describe Insika::Safety::Factory do
       expect(f.call(state("output" => false))).to be_nil
     end
 
-    it "builds the filter from the agent's compiled corpus (RFC-0036 C2)" do
+    it "builds the filter from the agent's compiled corpus " do
       f = described_class.new.content_filter_factory
       st = state("corpora" => { "languages" => ["en"] })
       filter = f.call(st)

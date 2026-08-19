@@ -8,7 +8,7 @@ require "async"
 # and "every other turn" includes ones on the SAME session, which is the part worth
 # a test rather than a comment.
 RSpec.describe "Insika::Executor channel delivery" do
-  # Shape B channel: remembers what it was asked to send. `progressive` (RFC-0027
+  # Shape B channel: remembers what it was asked to send. `progressive` (
   # C2) is the channel's own delivery policy; the executor asks.
   class SpyChannel
     attr_reader :sent
@@ -135,10 +135,10 @@ RSpec.describe "Insika::Executor channel delivery" do
     expect(task_store.find(task.id).status).to eq(:completed)
   end
 
-  # RFC-0027 C4 E1: a progressive relay turns the answer into N outbox rows and
+  # a progressive relay turns the answer into N outbox rows and
   # dispatches them IN ORDER, before the turn is even observed completed (the
   # dispatch is inline when not serving).
-  describe "progressive delivery (RFC-0027 C4)" do
+  describe "progressive delivery " do
     it "E1: a two-paragraph answer is two POSTs, first paragraph first, both before :task_completed" do
       task = run_turn(transport: :"channel:relay", progressive: true,
                       answer: "Para um.\n\nPara dois.")
@@ -191,10 +191,10 @@ RSpec.describe "Insika::Executor channel delivery" do
     end
   end
 
-  # RFC-0027 §9 E3: steering with the buffer OFF, in-process. A progressive relay
+  # steering with the buffer OFF, in-process. A progressive relay
   # whose agent steers — the balloons are the POST-steer answer, never the
   # narration that preceded the tool call.
-  describe "steer + progressive (RFC-0027 §9 E3)" do
+  describe "steer + progressive " do
     def stop_serving(executor)
       executor.stop_session_actors
       executor.instance_variable_get(:@supervisor)&.stop
@@ -244,9 +244,9 @@ RSpec.describe "Insika::Executor channel delivery" do
     end
   end
 
-  # RFC-0027 C5: first_balloon_ms — inbound -> first outbox row, always measured
+  # first_balloon_ms — inbound -> first outbox row, always measured
   # on a channel turn, persisted onto the task record.
-  describe "first_balloon_ms (RFC-0027 C5)" do
+  describe "first_balloon_ms " do
     it "a channel turn persists timing to the task record; first_balloon_ms < the turn's wall clock" do
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       task = run_turn(transport: :"channel:relay", progressive: true,

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0031 C2: the operator-mutation audit trail. Append-only, content-free by
+# the operator-mutation audit trail. Append-only, content-free by
 # construction (DIGESTS, never values), capped per cell. A failed audit write
 # is a no-op — it never breaks the mutation it describes.
 RSpec.describe Insika::MemoryAuditStore do

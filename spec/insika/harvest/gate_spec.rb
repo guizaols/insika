@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0035 C7 — the eval half of the double gate. The Refinement::Gate
+#   — the eval half of the double gate. The Refinement::Gate
 # mechanism with the skill's apply (D7): clone the agent, write the candidate
 # skill into the clone's agent-scoped SkillStore, enable it on the clone's
 # allowlist, reload the catalog, replay the golden set, compare to the

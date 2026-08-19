@@ -60,7 +60,7 @@ RSpec.describe Insika::Tools::UpdateBriefing do
     expect(desc).not_to include("vibe")
   end
 
-  it "the schema carries the declared names as the `field` enum (RFC-0028 §3)" do
+  it "the schema carries the declared names as the `field` enum " do
     schema = tool(fields: %w[size budget delivery_day]).params_schema
     expect(schema.dig("properties", "field", "enum")).to eq(%w[size budget delivery_day])
   end

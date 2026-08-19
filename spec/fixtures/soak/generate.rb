@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Regenerates the committed soak fixtures (RFC-0026 techspec §5.7): one
+# Regenerates the committed soak fixtures : one
 # synthesized 72h run per verdict. The fold (Insika::Soak::Report) reads these
 # files; the generator exists so a fixture is always reproducible, never
 # hand-edited into place.

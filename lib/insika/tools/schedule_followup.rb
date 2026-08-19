@@ -5,7 +5,7 @@ require "time"
 
 module Insika
   module Tools
-    # RFC-0033 C7: `schedule` — the agent books a follow-up with a customer at
+    # `schedule` — the agent books a follow-up with a customer at
     # a future time. The tool ONLY validates shape + the dedup rule (D6/D7):
     # everything that can block (contact state, frequency, quiet hours, a
     # malformed policy) is decided at FIRE time by the policy in force then —
@@ -120,7 +120,7 @@ module Insika
       end
     end
 
-    # RFC-0033 C7: `cancel_followup` — the sibling of `schedule`. Refuses a
+    # `cancel_followup` — the sibling of `schedule`. Refuses a
     # record that is already fired (":fired — it is in the air; it fires
     # once"), refuses a record of another tenant (WS1), and is an idempotent
     # no-op for an already-cancelled one.

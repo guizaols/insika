@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0029 C2/C4 — the evidence contract: parse the declaration, validate a tool
+#   — the evidence contract: parse the declaration, validate a tool
 # RESULT against it, extract the lean items + attachments, and the session
 # ledger that records ids for the grounding validator/enforcer.
 RSpec.describe Insika::Evidence::Spec do

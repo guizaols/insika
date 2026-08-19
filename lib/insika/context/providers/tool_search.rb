@@ -10,7 +10,7 @@ module Insika
       class ToolSearch < CatalogProvider
         # priority 70: below skills (80) in the sacrifice order.
         def priority = Context::Priority::TOOL_SEARCH
-        # RFC-0030 C1: tool registry + tools_deferred — config only.
+        # tool registry + tools_deferred — config only.
         def layer = :identity
 
         private

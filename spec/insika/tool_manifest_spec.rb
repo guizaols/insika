@@ -162,7 +162,7 @@ RSpec.describe Insika::ToolManifest do
     expect(b["halt_when"]).to eq(halt)
   end
 
-  it "carries the evidence declaration through (RFC-0029), absent when undeclared" do
+  it "carries the evidence declaration through , absent when undeclared" do
     m = manifest(tools: [{ "name" => "a", "url" => "https://api.test/a" },
                          { "name" => "b", "url" => "https://api.test/b",
                            "evidence" => { "kind" => "products", "items" => "results" } }])

@@ -148,7 +148,7 @@ RSpec.describe Insika::Evals::Pairwise do
     expect(seen[0]).to include("customer: oi\nassistant: olá!\ncustomer: tem creatina?\nassistant: temos!")
   end
 
-  # RFC-0025 C6: the shadow pairs are graded by the SAME object with the SAME
+  # the shadow pairs are graded by the SAME object with the SAME
   # prompt — two transcripts, no golden.
   describe "compare_texts (the shadow seam)" do
     let(:ours) { "customer: tem creatina?\nassistant: temos, segue o link" }
@@ -178,7 +178,7 @@ RSpec.describe Insika::Evals::Pairwise do
     end
   end
 
-  # RFC-0025 C6/§7.8: an empty REFERENCE transcript is now refused instead of
+  # an empty REFERENCE transcript is now refused instead of
   # judged against an empty string (a fix, called out so it is not discovered).
   it "returns nil for an empty reference transcript" do
     empty = Struct.new(:reference?, :user_turns, :reference_messages, :human_assisted?)

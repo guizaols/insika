@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# C3 — the versioned negative list (RFC §4.2): things the harvester must
+# C3 — the versioned negative list : things the harvester must
 # never propose. One matcher, two inputs — the committed NEGATIVE.md file
 # shape and the profile's `harvest.negative_list` array — so a rule cannot
 # exist in one and not the other (the E2 drift guard).

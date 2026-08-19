@@ -397,7 +397,7 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(ev.data).to eq(tool: "cep", status: 200)
   end
 
-  describe "evidence_envelope extract (RFC-0029 C3)" do
+  describe "evidence_envelope extract " do
     let(:evidence_def) do
       { name: "search_products", description: "Busca produtos",
         request: { method: "GET", url: "https://api.test/search" },

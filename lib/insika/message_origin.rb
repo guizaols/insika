@@ -33,7 +33,7 @@ module Insika
     AGENT    = "agent"    # the model (the default for `assistant`)
     ENGINE   = "engine"   # Insika itself, or the consumer composing on its behalf
     OPERATOR = "operator" # a HUMAN on the assistant side (a handoff; set by importers)
-    # RFC-0033: the FollowupEngine's synthetic turn — the engine's own kick,
+    # the FollowupEngine's synthetic turn — the engine's own kick,
     # never the customer. RESERVED: a consumer cannot declare it (the
     # SendMessage edge refuses the spelling — only the engine creates those
     # turns, D5).

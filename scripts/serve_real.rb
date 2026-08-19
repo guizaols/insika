@@ -74,7 +74,7 @@ APP = Insika::Server::App.new(
   # gateway). The consumer sends OPENCLAW_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
   config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN),
             public_url: ENV["INSIKA_PUBLIC_URL"] },
-  # RFC-0026 GET /v1/vitals: in-flight count + SQLite bytes.
+  #   GET /v1/vitals: in-flight count + SQLite bytes.
   executor: W::EXECUTOR, db_path: ENV["INSIKA_DB"]
 )
 
@@ -85,7 +85,7 @@ APP = Insika::Server::App.new(
 # INSIKA_DB is set; ephemeral in memory otherwise).
 PERSISTENCE = (ENV["INSIKA_DB"].to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)")
 
-# RFC-0025: config/deployment.rb loads the frozen criterion (and refuses boot)
+# config/deployment.rb loads the frozen criterion (and refuses boot)
 # whenever shadow is on — the Studio folds the SAME object the delivery path
 # stamps pairs with.
 PARITY_CRITERION = (defined?(W::PARITY_CRITERION) && W::PARITY_CRITERION) || nil
@@ -98,7 +98,7 @@ Studio::App.configure(
   agent_file_store: W::AGENT_FILE_STORE, skill_store: W::SKILL_STORE,
   skill_catalog: W::CATALOG, tool_catalog: W::TOOL_CATALOG, tool_store: W::TOOL_STORE,
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
-  # RFC-0031: the Customers drill renders the audit lines (content-free).
+  # the Customers drill renders the audit lines (content-free).
   memory_audit_store: W::MEMORY_AUDIT_STORE,
   # settings/LLM/MCP + global system files.
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
@@ -117,7 +117,7 @@ Studio::App.configure(
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
   golden_store: W::GOLDEN_STORE,
-  # RFC-0025: the parity page (nav row only when a shadow channel is registered).
+  # the parity page (nav row only when a shadow channel is registered).
   shadow_pair_store: W::SPINE.shadow_pair_store,
   parity_criterion: PARITY_CRITERION,
   channel_registry: W::CHANNEL_REGISTRY

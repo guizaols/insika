@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0033 C2: the parsed follow-up policy of ONE agent — the ONLY shape the
+  # the parsed follow-up policy of ONE agent — the ONLY shape the
   # engine accepts, shared by the schedule/cancel tools, the FollowupEngine,
   # the doctor and the Studio. Pure value object: it never touches a store
   # (D8 — the policy is pack data on the profile, no platform settings layer).

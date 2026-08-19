@@ -24,7 +24,7 @@ module Insika
     # suspends (approval) and resumes re-runs the context stage, and the
     # re-record replaces the first one instead of duplicating it. (`turn` is
     # 1-based PER TASK, so the task is part of the key.) Missing session_id ->
-    # no-op. -> the sanitized entry (RFC-0030 C5 parks it on TurnState for the
+    # no-op. -> the sanitized entry (parks it on TurnState for the
     # stage-8 cache merge).
     def record(session_id:, entry:)
       sid = session_id.to_s
@@ -65,7 +65,7 @@ module Insika
           cat = { "tokens" => int(c[:tokens] || c["tokens"]),
                   "fragments" => int(c[:fragments] || c["fragments"]),
                   "pinned" => int(c[:pinned] || c["pinned"]) }
-          # RFC-0030 C4: which cache layer the category belongs to ("identity" |
+          # which cache layer the category belongs to ("identity" |
           # "volatile"). Absent for a category recorded before the contract (or
           # one that never learned it) — the view guards on nil.
           layer = c[:layer] || c["layer"]
@@ -84,7 +84,7 @@ module Insika
       }.compact
     end
 
-    # RFC-0030 C4: { name => sha256-hex }; names stringified, non-strings
+    # { name => sha256-hex }; names stringified, non-strings
     # dropped. Absent when the caller passed nothing (a trace recorded before
     # this feature has no key and the view guards on nil).
     def fingerprints_of(raw)
@@ -95,7 +95,7 @@ module Insika
       end.then { |h| h.empty? ? nil : h }
     end
 
-    # RFC-0030 C4: { hit_pct, cached_tokens, prompt_tokens, invalidation_reason }.
+    # { hit_pct, cached_tokens, prompt_tokens, invalidation_reason }.
     # Unknown keys dropped. Present only when the caller passed it.
     def cache_of(raw)
       return nil unless raw.is_a?(Hash)

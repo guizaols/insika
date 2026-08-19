@@ -68,7 +68,7 @@ RSpec.describe "Memory commands" do
     end
   end
 
-  describe "RFC-0031 (customer + origin + audit)" do
+  describe "(customer + origin + audit)" do
     let(:audit_store) { Insika::MemoryAuditStore.new(store: Insika::Stores::Memory.new) }
 
     describe Insika::Commands::MemoryPutFact do

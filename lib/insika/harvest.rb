@@ -3,7 +3,7 @@
 require "json"
 
 module Insika
-  # RFC-0035 C2: the one place harvest asks a model for anything.
+  # the one place harvest asks a model for anything.
   #
   # The engine's generic prompt (what a harvestable skill is, the answer
   # shape, the provenance + grounding rules — "only reference IDs you saw in

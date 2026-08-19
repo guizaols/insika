@@ -2,7 +2,7 @@
 
 require_relative "insika/version"
 require_relative "insika/errors"
-# RFC-0036 C1: the payload selection + the domain-boundary audit yardstick.
+# the payload selection + the domain-boundary audit yardstick.
 # Pure module — loaded by the gemspec too, so it carries no app requires.
 require_relative "insika/packaging"
 require_relative "insika/provider_error_classifier"
@@ -18,14 +18,14 @@ require_relative "insika/retention"
 require_relative "insika/funnel_declaration"
 require_relative "insika/funnel_store"
 require_relative "insika/funnel_fold"
-# RFC-0033 C2: the parsed follow-up policy of ONE agent — the ONLY shape the
+# the parsed follow-up policy of ONE agent — the ONLY shape the
 # engine accepts (tool/engine/doctor/Studio share it). Pure value object.
 require_relative "insika/followup_policy"
-# RFC-0033 C3/C4: the contact-state cells and the follow-up schedule records.
+# the contact-state cells and the follow-up schedule records.
 # Both are dumb domain stores over the injected backend.
 require_relative "insika/contact_store"
 require_relative "insika/followup_store"
-# RFC-0033 C5: the tick-driven firer — rides the same tick as retention/funnel.
+# the tick-driven firer — rides the same tick as retention/funnel.
 require_relative "insika/followup_engine"
 require_relative "insika/commands/freeze_funnel_baseline"
 require_relative "insika/channels/webhook"
@@ -41,7 +41,7 @@ require_relative "insika/model_selection"
 require_relative "insika/model_resolver"
 require_relative "insika/tool_definition"
 require_relative "insika/tool_manifest"
-# RFC-0029 C5/C6: the pack's grounding policy (Insika::Grounding + the
+# the pack's grounding policy (Insika::Grounding + the
 # GroundingMatcher it wraps). Pure Ruby — profile data, parsed per turn.
 require_relative "insika/grounding"
 require_relative "insika/frontmatter"
@@ -56,7 +56,7 @@ require_relative "insika/usage_ledger"
 require_relative "insika/budget_ledger"
 require_relative "insika/edge_limiter"
 require_relative "insika/tool_output_compressor"
-# Content safety / guardrails. RFC-0036 C2: the pattern SOURCE is the
+# Content safety / guardrails. The pattern SOURCE is the
 # language-tagged data in safety/corpus.rb; detectors.rb compiles it. Both are
 # self-contained (the eval requires detectors.rb directly); the rest hang off
 # Middleware/hooks seams. No ruby_llm at load-time — Factory requires the gem
@@ -83,7 +83,7 @@ require_relative "insika/context/providers/tool_search"
 require_relative "insika/context/providers/memory"
 require_relative "insika/context/providers/session"
 require_relative "insika/context/providers/briefing"
-# RFC-0030 C2/C6: the cache-prefix hash chain + the per-agent cache-hit series.
+# the cache-prefix hash chain + the per-agent cache-hit series.
 # Both are referenced by the Executor at runtime, so they load before it.
 require_relative "insika/prefix_fingerprint"
 require_relative "insika/cache_series_store"
@@ -112,7 +112,7 @@ require_relative "insika/outbox_store"
 require_relative "insika/shadow_pair_store"
 require_relative "insika/inbound_log"
 require_relative "insika/memory_store"
-# RFC-0031 C2: the operator-mutation audit trail. After memory_store (no
+# the operator-mutation audit trail. After memory_store (no
 # mutual deps). Pure stdlib — `load_guard_spec` stays green.
 require_relative "insika/memory_audit_store"
 require_relative "insika/config_store"
@@ -123,7 +123,7 @@ require_relative "insika/secret_masking"
 require_relative "insika/tool_store"
 require_relative "insika/tool_trace_store"
 require_relative "insika/context_trace_store"
-# RFC-0036 C4: the model-visible payload of one ask + its durable trace —
+# the model-visible payload of one ask + its durable trace —
 # "model-visible means logged" (the conformance suite's reconstruction half).
 require_relative "insika/model_visible"
 require_relative "insika/model_visible_trace_store"
@@ -140,7 +140,7 @@ require_relative "insika/refinement/candidate"
 require_relative "insika/refinement/proposer"
 require_relative "insika/egress_guard"
 require_relative "insika/schema_guard"
-# RFC-0029: the evidence contract (Spec + Processor + EvidenceLedger). Pure Ruby.
+# the evidence contract (Spec + Processor + EvidenceLedger). Pure Ruby.
 # Required BEFORE tool_envelope.rb — the envelope references it at runtime.
 require_relative "insika/evidence"
 require_relative "insika/sandbox"
@@ -172,7 +172,7 @@ require_relative "insika/evals/runner"
 require_relative "insika/evals/report"
 require_relative "insika/evals/baseline"
 require_relative "insika/evals/transport"
-# RFC-0025 shadow parity: the frozen criterion (C5) and the mechanical
+# shadow parity: the frozen criterion and the mechanical
 # fold over the pair store (C6). Pure — no store, no provider gem.
 require_relative "insika/parity/criterion"
 require_relative "insika/parity/verdict"
@@ -229,14 +229,14 @@ require_relative "insika/commands/judge_shadow_pairs"
 require_relative "insika/commands/session_purge"
 require_relative "insika/commands/forget_customer"
 require_relative "insika/commands/delete_tenant_data"
-# RFC-0031 C3: the LGPD access right — export one customer's memory cell as
+# the LGPD access right — export one customer's memory cell as
 # content (the Studio download); the event stays counts-only.
 require_relative "insika/commands/export_customer_memory"
-# RFC-0033 C6: the operator/integration follow-up mutations (cancel one
+# the operator/integration follow-up mutations (cancel one
 # record; revoke a contact + fall its pending records atomically).
 require_relative "insika/commands/cancel_followup"
 require_relative "insika/commands/revoke_contact"
-# RFC-0034 C2/C3: session distillation — the distiller (pure, injected ask)
+# session distillation — the distiller (pure, injected ask)
 # and the proposal store (proposals + the latched dedup ledger + the
 # per-session distilled marker).
 require_relative "insika/distill"
@@ -244,7 +244,7 @@ require_relative "insika/proposal_store"
 require_relative "insika/commands/run_distillation"
 require_relative "insika/distill_engine"
 require_relative "insika/commands/resolve_proposal"
-# RFC-0035 C2/C4: the gated harvest — the miner (pure, injected ask), the
+# the gated harvest — the miner (pure, injected ask), the
 # frozen conversion criterion and the versioned negative list. The provider
 # touch stays inside MinerFactory's lazy ask (load_guard stays green).
 require_relative "insika/harvest"
@@ -294,7 +294,7 @@ require_relative "insika/telemetry"
 # Strict config + diagnosis. Doctor reads the config stores above;
 # EnvSchema (required at the top) is its env layer.
 require_relative "insika/doctor"
-# Soak (RFC-0026): the 72h uptime-degradation harness. Pure stdlib — the
+# Soak: the 72h uptime-degradation harness. Pure stdlib — the
 # envelope and the report fold are deterministic, the runner only talks Net::HTTP.
 require_relative "insika/soak/envelope"
 require_relative "insika/soak/report"

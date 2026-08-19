@@ -4,10 +4,10 @@ require "spec_helper"
 require "async"
 require "insika/tools/update_briefing" # the Executor loads it lazily; explicit here in the test
 
-# RFC-0028 E1 — the acceptance gate, end-to-end. A turn WRITES the briefing
+#   — the acceptance gate, end-to-end. A turn WRITES the briefing
 # through the real tool, the NEXT turn's context RENDERS it as a <briefing>
 # block, and a RESUME re-reads it from the store (it survives the transcript).
-RSpec.describe "Insika::Executor — briefing end-to-end (RFC-0028 E1)" do
+RSpec.describe "Insika::Executor — briefing end-to-end " do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
   let(:task_store) { Insika::TaskStore.new(store: backend) }

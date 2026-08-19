@@ -29,7 +29,7 @@ RSpec.describe Insika::MessageOrigin do
         .to raise_error(Insika::ValidationError, /unknown message origin.*engine/m)
     end
 
-    it "accepts the RFC-0033 closed value 'scheduled'" do
+    it "accepts the   closed value 'scheduled'" do
       expect(described_class.parse!("scheduled")).to eq("scheduled")
       expect(described_class::SCHEDULED).to eq("scheduled")
       expect(described_class::ALL).to include("scheduled")
@@ -113,7 +113,7 @@ RSpec.describe "message origin in the transcript" do
     expect(messages[1]).not_to have_key("origin")   # the model's reply is still the model's
   end
 
-  # RFC-0033 E1 (closing the deliver loop): the FollowupEngine's synthetic
+  #   (closing the deliver loop): the FollowupEngine's synthetic
   # command flows through the FULL pipeline like any turn — the task runs, the
   # kick text is stamped origin "scheduled", so a refinement read can never
   # mistake the engine for the customer (the #133 discipline).

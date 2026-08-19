@@ -1,4 +1,4 @@
-<%# RFC-0032 C9: the outcome funnel per store. Reads the fold's cells and the
+<%# the outcome funnel per store. Reads the fold's cells and the
    BudgetLedger's current counters (D6); the ONLY mutation on this page — the
    baseline freeze — dispatches :freeze_funnel_baseline on the bus (D7). No
    stage vocabulary of the engine's own: everything here comes from the pack
@@ -70,7 +70,7 @@
           <span class="muted"><%= counts[decl.primary].to_i %> × <%= decl.primary %> / <%= counts[decl.first_stage].to_i %> × <%= decl.first_stage %>, last <%= @period %> days</span>
           <%# D6: spend next to the counts, NOT cost-per-conversion. The
               BudgetLedger holds current-window TOKEN totals, no currency and no
-              per-day series; a cost/conversion ratio is deferred (RFC §14) until
+              per-day series; a cost/conversion ratio is deferred until
               the ruler proves itself (E3). %>
           <span class="muted">· tokens today <strong><%= spend[:daily] %></strong> / this month <strong><%= spend[:monthly] %></strong></span>
         </div>

@@ -105,7 +105,7 @@ RSpec.describe Insika::ContextTraceStore do
     expect(store.for_session("s")).to eq([])
   end
 
-  describe "RFC-0030 C4: fingerprints + cache fields" do
+  describe "fingerprints + cache fields" do
     it "fingerprints round-trip: only string keys with hex values" do
       store.record(session_id: "s", entry: entry(fingerprints: {
                     "prompt" => "a1b2c3", "memory" => "d4e5f6", "prefix" => "ff00ff"

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0027 C3 — pure: confirmed answer text -> the balloons a progressive
+  #   — pure: confirmed answer text -> the balloons a progressive
   # channel should POST. Paragraphs are the unit (`\n\n` is the seam E1 cares
   # about); the sentence split fires only as a SOFT cap for one paragraph that
   # grew past `SENTENCE_AFTER`. It never splits inside a fenced code block.
@@ -72,7 +72,7 @@ module Insika
     # (their period is not followed by whitespace) and a decimal does too. A
     # leftover without a closer stays one balloon.
     #
-    # Sentences are then RE-GROUPED into ~SENTENCE_AFTER blocks (RFC-0027 §4.9:
+    # Sentences are then RE-GROUPED into ~SENTENCE_AFTER blocks (
     # the split is a cap, not a mandate). Without the regroup, a 680-char
     # paragraph of short sentences would atomize into one balloon per sentence —
     # a paragraph that was ONE bubble becomes 40 WhatsApp messages for no

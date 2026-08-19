@@ -15,7 +15,7 @@
 class FakeTurnExecutor
   # [[task, profile], …] — the turns that were actually spawned.
   attr_reader :spawned
-  # [timing, …] — the RFC-0027 C5 channel clock threaded alongside each spawn
+  # [timing, …] — the   channel clock threaded alongside each spawn
   # (nil for a non-channel turn). Kept apart so the shared `spawned` shape stays.
   attr_reader :spawned_timing
   # [[door, session_id, text], …] — the JOINING doors (collect/steer) that were asked, in

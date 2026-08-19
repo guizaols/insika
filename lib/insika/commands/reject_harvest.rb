@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0035 C10/C11 — the operator's dismissal: a candidate that is NOT yet
+    #   — the operator's dismissal: a candidate that is NOT yet
     # gated can be rejected by a human directly (a human may always outvote
     # the miner). The thin wrapper over `mark_rejected`.
     class RejectHarvest

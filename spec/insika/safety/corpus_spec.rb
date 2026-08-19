@@ -3,12 +3,12 @@
 require "spec_helper"
 
 RSpec.describe Insika::Safety::Corpus do
-  # The PARITY PIN (RFC-0036 C2/D2): the shipped corpus is the exact pattern
+  # The PARITY PIN: the shipped corpus is the exact pattern
   # data the runtime has always hard-coded, moved verbatim. A drift here is a
   # behavior change, not a refactor. Each regex lives in exactly one language;
   # `compile` (no args) is their union, each family in its shipped order —
-  # category-identical to the pre-RFC runtime for every input (the ONE honest
-  # delta: the pre-RFC flat list interleaved the languages, so a mixed-language
+  # category-identical to the previous runtime for every input (the ONE honest
+  # delta: the previous flat list interleaved the languages, so a mixed-language
   # phrase may report a different `matched` substring; the category never
   # changes).
   let(:pt_br_injection) do
@@ -61,7 +61,7 @@ RSpec.describe Insika::Safety::Corpus do
       c = described_class.compile
       expect(c.languages).to eq(%w[pt-BR en])
       expect(c.input.keys).to match_array(%w[injection sexual abuse])
-      # PII key ORDER is the pre-RFC runtime's (cpf, cnpj, secret) — it is
+      # PII key ORDER is the previous runtime's (cpf, cnpj, secret)— it is
       # what `pii_names` and the "pii_leak" union iterate
       expect(c.pii.keys).to eq(%w[cpf cnpj secret])
     end

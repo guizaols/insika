@@ -2,7 +2,7 @@
 
 module Insika
   module Safety
-    # RFC-0029 C7 — the `:flag` half of grounding. A reply claiming a product
+    #   — the `:flag` half of grounding. A reply claiming a product
     # whose reference is not in the evidence ledger is FLAGGED (audit via the
     # existing `:guardrail_flagged` channel) — the text is already out, so
     # flagging is audit, exactly like every other output flag.

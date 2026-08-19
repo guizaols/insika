@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0034 C4: the ONLY path that writes proposals — distill ONE session end to
+# the ONLY path that writes proposals — distill ONE session end to
 # end: read the transcript and the memory baseline, ask the model, schema-drop,
 # dedup against the ledger, write proposals, mark the session distilled.
 RSpec.describe Insika::Commands::RunDistillation do
@@ -117,7 +117,7 @@ RSpec.describe Insika::Commands::RunDistillation do
       expect(result[:skipped]).to eq("too_fresh")
     end
 
-    it "too_short — fewer messages than min_messages distills noise (RFC-0012 §8)" do
+    it "too_short — fewer messages than min_messages distills noise " do
       session = seed_session(messages: 2)
       result = handler.call(cmd({ "session_id" => session.id }))
       expect(result[:skipped]).to eq("too_short")

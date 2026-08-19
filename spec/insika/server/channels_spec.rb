@@ -170,7 +170,7 @@ RSpec.describe "Insika::Server::App channels" do
     end
   end
 
-  # RFC-0025 C4 — the mirror contract. A shadow channel never 202s (there is no
+  #   — the mirror contract. A shadow channel never 202s (there is no
   # reply coming), and the incumbent's half lands in the pair store through the
   # SAME command whatever shape the mirror chose.
   describe "the mirror contract (shadow mode)" do

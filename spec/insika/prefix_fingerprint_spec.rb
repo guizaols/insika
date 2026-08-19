@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0030 C2 — the cache-prefix hash chain. Inputs are the SYSTEM-placement
+#   — the cache-prefix hash chain. Inputs are the SYSTEM-placement
 # fragments in canonical render order and the tool schema serialization; outputs
 # are PII-free SHA-256 digests. Never sees message text — only hashes leave.
 RSpec.describe Insika::PrefixFingerprint do

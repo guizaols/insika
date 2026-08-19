@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0029 C6 — the pack's deterministic claim extractor + membership check.
+#   — the pack's deterministic claim extractor + membership check.
 # REVIEW-DECISION: grounding is SKU-only (the name half could never flag — cut).
 RSpec.describe Insika::GroundingMatcher do
   let(:matcher) { described_class.build({ "sku" => '\b[A-Z]{2,4}\d{4,8}\b' }) }

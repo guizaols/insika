@@ -65,7 +65,7 @@ module Insika
       # the rate-limit reply exactly when the window is saturated. Entry checks
       # are skipped; the turn's usage still lands on the ledger below.
       resumed = state.resumed
-      # RFC-0033 D5-bis: a SCHEDULED turn (the FollowupEngine's kick) skips the
+      # a SCHEDULED turn (the FollowupEngine's kick) skips the
       # ENTRY checks exactly like a resume — a follow-up that trips the token
       # ceiling must not receive the rate-limit REPLY (the customer agreed to
       # this message; the volume control is the follow-up policy, not the flood
@@ -97,7 +97,7 @@ module Insika
       # the SOFT over-cap both warn once per window + inject a context note.
       # A resumed turn (crash/pause replay) was already admitted: it is never
       # refused twice — its spend still lands on the ledger below. A scheduled
-      # turn (RFC-0033 D5-bis) rides the same rule: the follow-up policy is the
+      # turn  rides the same rule: the follow-up policy is the
       # volume control, not the budget wall.
       budget_on = budget_configured?(state)
       budget_enforce(state) unless resumed || scheduled
@@ -118,7 +118,7 @@ module Insika
 
     private
 
-    # RFC-0033 D5-bis: is this turn the FollowupEngine's synthetic kick? The
+    # is this turn the FollowupEngine's synthetic kick? The
     # command type is stamped by the engine only — a consumer cannot send it
     # (the SendMessage edge refuses the spelling, C8).
     def scheduled_turn?(state)

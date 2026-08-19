@@ -4,7 +4,7 @@ require "time"
 
 module Insika
   module Commands
-    # RFC-0035 C6: the ONLY path that writes candidates. Mines ONE window end
+    # the ONLY path that writes candidates. Mines ONE window end
     # to end: resolve the sessions, read the transcripts + evidence, ask the
     # miner, schema-drop, apply the negative list and the grounding filter,
     # dedup against the ledger, write the run + candidates, stamp the markers.
@@ -186,7 +186,7 @@ module Insika
       # agent's turns (by the task's command payload), distinct session ids,
       # newest first, capped at the "last N conversations". Marker suppression
       # unless `full` (a re-mine is explicit). A session's evidence ledger
-      # (RFC-0029 C4) is the grounding filter's input (D3).
+      #  is the grounding filter's input.
       def resolve_sessions(agent, p, config)
         ids = window_session_ids(agent, p, config)
         ids = ids.reject { |sid| @harvest_store.mined?(sid) } unless EnvSchema.truthy?(p[:full])
@@ -266,8 +266,8 @@ module Insika
         raw ? Integer(raw) : DEFAULT_MAX_PROPOSALS
       end
 
-      # The prompt: the transcript slices (masked through the RFC-0009 output
-      # filter — the RFC-0012 §3.4 redaction rule), the evidence ids per
+      # The prompt: the transcript slices (masked through the   output
+      # filter — the   redaction rule), the evidence ids per
       # session, the agent's CURRENT skill names (the model should not
       # re-propose them), and the answer rules. The pack prompt replaces
       # DEFAULT_PROMPT whole (the forge's half).
@@ -335,7 +335,7 @@ module Insika
       # D4: every rejected-by-list candidate is logged with the matching rule
       # id. The BODY is part of the match (the review fix): it is exactly what
       # enters the model's context when the skill loads, so a banned phrase
-      # hidden there is the Hermes failure the RFC §1 cites — the same text
+      # hidden there is the Hermes failure the design cites — the same text
       # the grounding filter already reads (name+description+body). The name
       # uses the stricter substring reading, the prose the word-boundary one.
       def negative_hits(skill)

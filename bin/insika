@@ -5,8 +5,8 @@
 # DX front door to the strict-config discipline:
 #
 #   insika doctor [--fix] [--json] [--domain]  diagnose the deployment config; --fix applies
-#                                     the safe autofixes; --domain appends the RFC-0036
-#                                     domain inventory; exits non-zero on any error
+#                                     the safe autofixes; --domain appends the domain inventory;
+#                                     exits non-zero on any error
 #   insika env    [--json]           list the known config keys + current (masked) values
 #   insika version                   print the engine version
 #   insika help                      this text
@@ -53,12 +53,12 @@ module Insika
           doctor [--fix] [--json] [--domain]  diagnose the deployment configuration
           env    [--json]           list known config keys + current (masked) values
           refine --agent ID [...]   report what broke in an agent's real traffic
-          harvest --agent ID [...]  mine one window of finished traffic (RFC-0035)
+          harvest --agent ID [...]  mine one window of finished traffic
           harvest:negative import --agent ID --file F
                                     seed the profile's negative list from a rules file
           harvest:criterion check --file F
                                     strict-load the frozen conversion criterion
-          soak   --run | --verify FILE | --preflight   the 72h soak (RFC-0026)
+          soak   --run | --verify FILE | --preflight   the 72h soak
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
           evals:baseline <sub>      the accepted state per agent: show | import | export
@@ -78,7 +78,7 @@ module Insika
         o.banner = "Usage: insika doctor [--fix] [--json] [--domain]"
         o.on("--fix", "apply the safe autofixes, then re-diagnose") { opts[:fix] = true }
         o.on("--json", "emit the report as JSON") { opts[:json] = true }
-        o.on("--domain", "append the domain inventory (RFC-0036: declared personas, corpora, funnels, evidence)") { opts[:domain] = true }
+        o.on("--domain", "append the domain inventory (declared personas, corpora, funnels, evidence)") { opts[:domain] = true }
       end.parse!(argv)
 
       doc = build_doctor
@@ -503,11 +503,11 @@ end
         skill_store: Insika::SkillStore.new(config_store: config_store),
         skill_catalog: Insika::SkillCatalog.new(skill_roots),
         profile_source: Insika::StoredProfileSource.new(config_store: config_store),
-        # RFC-0025: the shadow-parity check reads the pair store over the same
+        # the shadow-parity check reads the pair store over the same
         # runtime backend (pairs hold raw customer text — the check reports their
         # age and the criterion's loadability before boot does).
         shadow_pair_store: Insika::ShadowPairStore.new(store: backend),
-        # RFC-0030 C7: the cache-layers check — the BUILTIN set as classes (the
+        # the cache-layers check — the BUILTIN set as classes (the
         # check reads the layer declaration off the class, no instances needed).
         context_providers: [
           Insika::Context::Providers::Request, Insika::Context::Providers::Prompt,
@@ -515,27 +515,27 @@ end
           Insika::Context::Providers::ToolSearch, Insika::Context::Providers::Memory,
           Insika::Context::Providers::Session
         ],
-# RFC-0031 C6: the memory-scopes check reads the cells over the same
+# the memory-scopes check reads the cells over the same
         # runtime backend; `agent_ids` excuses the agent-memory tab's cells
         # (a bare cell named like an agent is a profile, not a customer —
         # the profile source is right here, so the CLI names them).
         memory_store: Insika::MemoryStore.new(store: backend),
         agent_ids: Insika::StoredProfileSource.new(config_store: config_store).all.map(&:id),
-        # RFC-0032 C7: the outcome-funnel check reads the fold's cells and the
+        # the outcome-funnel check reads the fold's cells and the
         # outcomes over the same runtime backend — a profile with outcomes but
         # no funnel warns, and a frozen baseline is confirmed before it is
-        # relied on (RFC-0033/0035).
+        # relied on.
         funnel_store: Insika::FunnelStore.new(store: backend),
         outcome_store: Insika::OutcomeStore.new(store: backend),
-        # RFC-0033 C12: the follow-up check reads the schedule records and the
+        # the follow-up check reads the schedule records and the
         # contact cells over the same runtime backend (nil collaborators = the
         # CLI reports declarations only).
         followup_store: Insika::FollowupStore.new(store: backend),
         contact_store: Insika::ContactStore.new(store: backend),
-        # RFC-0034 C10: the distillation check reads the proposal store over
+        # the distillation check reads the proposal store over
         # the same runtime backend (nil = the CLI reports declarations only).
         proposal_store: Insika::ProposalStore.new(store: backend),
-        # RFC-0035 C15: the harvest check reads the candidates over the same
+        # the harvest check reads the candidates over the same
         # runtime backend + the frozen criterion (nil = declarations only).
         harvest_store: Insika::HarvestStore.new(store: backend),
         harvest_criterion: begin

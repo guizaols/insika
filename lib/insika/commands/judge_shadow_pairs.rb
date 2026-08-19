@@ -8,7 +8,7 @@ module Insika
     # operator ALREADY configured (settings["evals"], through JudgePanel — the
     # one builder the eval CLI and the refinement gate use too). Never automatic:
     # a Studio button or the CLI dispatches it, and it states its cost
-    # (2 provider calls per judge per pair, both orders — RFC-0014's position-bias
+    # (2 provider calls per judge per pair, both orders —   position-bias
     # rule) before it runs.
     #
     # Refusals are visible, a fake judge is not: no configured judges, or fewer

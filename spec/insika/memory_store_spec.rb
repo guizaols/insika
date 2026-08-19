@@ -45,7 +45,7 @@ RSpec.describe Insika::MemoryStore do
     end
   end
 
-  describe "record shape (RFC-0031)" do
+  describe "record shape " do
     it "new fields round-trip; created_at stamped on create and preserved across an upsert" do
       fact = store.put_fact(tenant: "acme", key: "size", value: "M")
       expect(fact.origin).to eq("engine")
@@ -89,7 +89,7 @@ RSpec.describe Insika::MemoryStore do
     end
   end
 
-  describe "customer scoping (RFC-0031)" do
+  describe "customer scoping " do
     it "customer: -> the [tenant:]customer cell" do
       store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
       expect(backend.get("memory:acme:c-1", "fact:size")).not_to be_nil
@@ -131,7 +131,7 @@ RSpec.describe Insika::MemoryStore do
     end
   end
 
-  describe "expiry (RFC-0031)" do
+  describe "expiry " do
     let(:clock) { -> { Time.utc(2026, 8, 17, 12, 0, 0) } }
     subject(:clocked) { described_class.new(store: backend, clock: clock) }
 
@@ -182,7 +182,7 @@ RSpec.describe Insika::MemoryStore do
     end
   end
 
-  describe "cell enumeration (RFC-0031)" do
+  describe "cell enumeration " do
     it "parse_cell classifies by SHAPE" do
       expect(described_class.parse_cell("memory:acme:c-123"))
         .to eq({ scope: "memory:acme:c-123", tenant: "acme", customer: "c-123" })
@@ -219,7 +219,7 @@ RSpec.describe Insika::MemoryStore do
     end
 
     it "customer_cells NEVER lists the engine's per-SESSION cells (memory:chat:<id>)" do
-      # the executor's session fallback (RFC-0031): "chat:<session id>"
+      # the executor's session fallback : "chat:<session id>"
       store.put_fact(tenant: "chat:s-1", key: "k", value: "v")
       store.put_fact(tenant: "acme", customer: "c-1", key: "k", value: "v")
 
@@ -364,7 +364,7 @@ RSpec.describe Insika::MemoryStore do
       sqlite&.close
     end
 
-    it "purge_tenant also purges the tenant's SESSION-marked cells (RFC-0031)" do
+    it "purge_tenant also purges the tenant's SESSION-marked cells " do
       store.put_fact(tenant: "acme", key: "catalogo", value: "v2")
       store.put_fact(tenant: "acme:c-1", key: "pedido", value: "open")
       store.put_fact(tenant: "chat:acme:chat-1", key: "k", value: "v") # acme's session cell

@@ -5,7 +5,7 @@ require "yaml"
 
 module Insika
   module Soak
-    # The frozen pre-declared envelope for a soak run (RFC-0026). Parses the
+    # The frozen pre-declared envelope for a soak run. Parses the
     # fenced `yaml` block inside a markdown file, validates it completely or not
     # at all, and exposes the SHA-256 of the WHOLE file — every hourly snapshot
     # is stamped with it, so editing the envelope mid-run turns the run

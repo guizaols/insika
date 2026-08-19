@@ -33,7 +33,7 @@ module Insika
     private_constant :BREAKDOWN_MARKS
 
     # breakdown: true (the default) is the flag-on clock: prep/ttft/gen/total.
-    # false is the RFC-0027 C5 channel clock: only :inbound -> :first_balloon,
+    # false is the   channel clock: only :inbound -> :first_balloon,
     # so a channel turn with the flag off still answers H-latência.
     def initialize(breakdown: true)
       @marks = {}
@@ -53,7 +53,7 @@ module Insika
 
     # -> Hash of phase deltas in ms (only the windows whose endpoints both fired;
     # a workflow turn has no ask/first_token, so those are simply absent).
-    # RFC-0027 C5: first_balloon_ms is the inbound -> first outbox flush window.
+    # first_balloon_ms is the inbound -> first outbox flush window.
     # A missing number is never a zero — no mark, no key.
     def to_h
       {

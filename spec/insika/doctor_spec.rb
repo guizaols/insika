@@ -25,7 +25,7 @@ RSpec.describe Insika::Doctor do
       expect(report).not_to be_ok
     end
 
-    # RFC-0027 C2: the relay delivery enum is validated like every other env key —
+    # the relay delivery enum is validated like every other env key —
     # a typo'd value is a finding, the two real values are not.
     it "flags an unknown INSIKA_RELAY_DELIVERY, accepts progressive/at_end" do
       bad = doctor(env: { "INSIKA_RELAY_DELIVERY" => "banana" }).run
@@ -176,7 +176,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "soak checks (RFC-0026)" do
+  describe "soak checks " do
     it "soak-envelope: :info when the envelope is absent (not every deployment soaks)" do
       Dir.mktmpdir do |dir|
         finding = described_class.new(env: {}, soak_envelope_path: File.join(dir, "SOAK.md")).run
@@ -327,7 +327,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "grounding check (RFC-0029 — a matcher that matches nothing is useless)" do
+  describe "grounding check (— a matcher that matches nothing is useless)" do
     let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
     let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
 
@@ -592,7 +592,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "shadow-parity check (RFC-0025 C9)" do
+  describe "shadow-parity check " do
     let(:pairs) { Insika::ShadowPairStore.new(store: backend) }
     let(:criterion_path) { File.expand_path("../fixtures/parity/criterion.md", __dir__) }
 
@@ -660,7 +660,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "check_cache_layers (RFC-0030 C7)" do
+  describe "check_cache_layers " do
     BUILTINS = [
       Insika::Context::Providers::Request, Insika::Context::Providers::Prompt,
       Insika::Context::Providers::Skill, Insika::Context::Providers::SkillTrigger,
@@ -724,7 +724,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "memory scopes (RFC-0031 C6)" do
+  describe "memory scopes " do
     let(:memory_store) { Insika::MemoryStore.new(store: Insika::Stores::Memory.new) }
 
     # A bare cell is the DESIGNED single-tenant customer shape — warning would
@@ -777,7 +777,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "funnel declarations (RFC-0032 C7)" do
+  describe "funnel declarations " do
     let(:funnel_store) { Insika::FunnelStore.new(store: Insika::Stores::Memory.new) }
     let(:outcome_store) { Insika::OutcomeStore.new(store: Insika::Stores::Memory.new) }
     let(:valid_decl) do
@@ -844,7 +844,7 @@ RSpec.describe Insika::Doctor do
       expect(info.message).to include("'paid' was never observed")
     end
 
-    it ">= 28 folded days without a baseline -> info (RFC-0033/0035 read it)" do
+    it ">= 28 folded days without a baseline -> info (read it)" do
       profiles = profiles_with({ id: "store-support", funnel: valid_decl })
       30.times do |i|
         funnel_store.add(tenant: "acme", agent: "store-support",
@@ -881,7 +881,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "follow-up (RFC-0033 C12)" do
+  describe "follow-up " do
     let(:fu_backend) { Insika::Stores::Memory.new }
     let(:followup_store) { Insika::FollowupStore.new(store: fu_backend) }
     let(:contact_store) { Insika::ContactStore.new(store: fu_backend) }
@@ -993,7 +993,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "distillation (RFC-0034 C10)" do
+  describe "distillation " do
     let(:p_backend) { Insika::Stores::Memory.new }
     let(:proposal_store) { Insika::ProposalStore.new(store: p_backend) }
 
@@ -1069,7 +1069,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "harvest (RFC-0035 C15)" do
+  describe "harvest " do
     let(:p_backend) { Insika::Stores::Memory.new }
     let(:harvest_store) { Insika::HarvestStore.new(store: p_backend) }
 
@@ -1181,7 +1181,7 @@ RSpec.describe Insika::Doctor do
   end
 
 
-  describe "check_guardrail_corpora (RFC-0036 C2 — the boot gate)" do
+  describe "check_guardrail_corpora (— the boot gate)" do
     let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
 
     it "a malformed corpora declaration is an :error finding — the doctor, not the turn, surfaces it" do
@@ -1215,11 +1215,11 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "#domain (RFC-0036 C3 — the declared-domain inventory)" do
+  describe "#domain (— the declared-domain inventory)" do
     let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
     let(:tool_store) { Insika::ToolStore.new(config_store: config_store) }
 
-    # E2a — the RFC's "bare boot": a fresh install with NO agents names none.
+    # E2a — the "bare boot": a fresh install with NO agents names none.
     # (An install that boots an agent reports the built-in pt-BR corpus as
     # source "gem-default" — the removability surface, not a store; see the
     # "no metadata domain" example below.)

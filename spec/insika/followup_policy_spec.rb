@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0033 C2 — the parsed follow-up policy of ONE agent: the ONLY shape the
+#   — the parsed follow-up policy of ONE agent: the ONLY shape the
 # engine accepts, shared by the tool, the firer, the doctor and the Studio.
 # `parse` returns nil on a malformed hash (D9); `parse!` raises naming the
 # defect.

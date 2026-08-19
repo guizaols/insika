@@ -43,7 +43,7 @@ module Insika
       def name = @definition.name
       def description = @definition.description
 
-      # RFC-0029 D4: the tool's own evidence declaration (a Spec | nil). The
+      # the tool's own evidence declaration (a Spec | nil). The
       # envelope's duck-typed resolution checks this FIRST — a data-tool declares
       # its evidence on its definition, never in the registry metadata.
       def evidence = @definition.evidence
@@ -153,7 +153,7 @@ module Insika
         when "status" then { status: result[:status] }
         when "body_raw" then http_ok?(result) ? result[:body] : http_error(result)
         when "json_path" then extract_json(result)
-        # RFC-0029 D3: the raw response body under an envelope-only key, so the
+        # the raw response body under an envelope-only key, so the
         # ToolEnvelope can parse items/attachments. A non-2xx is an ERROR like
         # any other extract — an error must reach the model verbatim.
         when "evidence_envelope"

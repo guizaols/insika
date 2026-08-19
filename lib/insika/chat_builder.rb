@@ -32,12 +32,12 @@ module Insika
       # the Executor as the generate_image/tts runner (seams + usage
       # accounting). nil = the media tools are never wired (parity for stubs).
       @media_runner = media_runner
-      # RFC-0028: update_briefing / set_next_step are the briefing-write system
+      # update_briefing / set_next_step are the briefing-write system
       # tools — wired only with @session_store present AND profile.briefing_fields
       # non-empty (double gate, like remember). nil = never wired (parity for a
       # builder used without session persistence, e.g. some unit stubs).
       @session_store = session_store
-      # RFC-0033 C7: the schedule/cancel_followup system tools — wired only
+      # the schedule/cancel_followup system tools — wired only
       # with BOTH stores present AND a parsed follow-up policy on the profile
       # (double gate, like remember). nil = never wired (parity).
       @contact_store = contact_store
@@ -105,7 +105,7 @@ module Insika
       end
 
       # update_briefing / set_next_step are the briefing-write system tools
-      # (RFC-0028) — wired only with @session_store present AND
+      #  — wired only with @session_store present AND
       # profile.briefing_fields non-empty (double gate, like remember). Never
       # enveloped: deterministic in-process writes.
       fields = if state.profile.respond_to?(:briefing_fields)
@@ -128,7 +128,7 @@ module Insika
         tools << Tools::StuckSignal.new(state: state)
       end
 
-      # schedule/cancel_followup are the follow-up system tools (RFC-0033) —
+      # schedule/cancel_followup are the follow-up system tools  —
       # wired only with BOTH stores present AND a parsed follow-up policy on
       # the profile (double gate, like remember). Never enveloped: the store
       # writes are deterministic. The tools stay OUT of the allowlist — they
@@ -196,7 +196,7 @@ module Insika
       names - eager
     end
 
-    # RFC-0033 C7: the follow-up tools' gate — a PARSED policy on the profile.
+    # the follow-up tools' gate — a PARSED policy on the profile.
     # A malformed declaration reads as "no policy" (the firer blocks it, the
     # doctor reports it; the tools are simply not offered).
     def followup_policy(state)

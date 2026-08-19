@@ -64,7 +64,7 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # RFC-0031 C7: the operator memory commands write the audit through the
+    # the operator memory commands write the audit through the
     # SAME MemoryAuditStore the spine builds (content-free, capped per cell).
     it "wires the memory audit store into the operator memory commands" do
       expect(w::BUS.registered?(:export_customer_memory)).to be(true)
@@ -123,11 +123,11 @@ RSpec.describe Deploy::Wiring do
       expect(w::TOOL_REGISTRY).to be_a(Insika::OverlayToolRegistry)
     end
 
-    # RFC-0030 C8: the deployment wires the per-agent cache-hit series over the
+    # the deployment wires the per-agent cache-hit series over the
     # SAME BACKEND as the context trace (a module graph that omits it still
     # builds — the Executor default is nil, and `cache_series_store_spec` covers
     # the store itself).
-    it "wires the per-agent cache series (RFC-0030) over BACKEND into the Executor" do
+    it "wires the per-agent cache series  over BACKEND into the Executor" do
       expect(w::CACHE_SERIES_STORE).to be_a(Insika::CacheSeriesStore)
       expect(w::CACHE_SERIES_STORE.instance_variable_get(:@store)).to be(w::BACKEND)
       expect(w::EXECUTOR.instance_variable_get(:@cache_series_store)).to be(w::CACHE_SERIES_STORE)
@@ -156,10 +156,10 @@ RSpec.describe Deploy::Wiring do
       expect(w::PACK_IMPORTER).to be_a(Insika::PackImporter)
     end
 
-    # RFC-0032 C8: the outcome funnel is wired through the shared core — spine
+    # the outcome funnel is wired through the shared core — spine
     # store, tick fold, freeze command and tenant purge all ride the SAME
     # backend, inert when no pack declares a funnel.
-    describe "outcome funnel (RFC-0032)" do
+    describe "outcome funnel " do
       it "builds the funnel store over BACKEND in the spine" do
         expect(w::SPINE.funnel_store).to be_a(Insika::FunnelStore)
         expect(w::SPINE.funnel_store.instance_variable_get(:@store)).to be(w::BACKEND)
@@ -188,10 +188,10 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # RFC-0033 C9: the follow-up feature rides the SAME shared core — spine
+    # the follow-up feature rides the SAME shared core — spine
     # stores, tick firer, the two commands, the SendMessage hook and the LGPD
     # purges, all over the shared BACKEND, inert when no pack declares followup.
-    describe "follow-up (RFC-0033)" do
+    describe "follow-up " do
       it "builds the contact + follow-up stores over BACKEND in the spine" do
         expect(w::SPINE.contact_store).to be_a(Insika::ContactStore)
         expect(w::SPINE.contact_store.instance_variable_get(:@store)).to be(w::BACKEND)
@@ -235,11 +235,11 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # RFC-0034 C9: distillation is wired through the shared core — spine store,
+    # distillation is wired through the shared core — spine store,
     # engine on the executor, resolve command on the bus, LGPD + retention
     # hooks. Inert until a pack declares `distill:` (nil collaborators keep the
     # base graph byte-identical).
-    describe "distillation (RFC-0034)" do
+    describe "distillation " do
       it "builds the proposal store over BACKEND in the spine" do
         expect(w::SPINE.proposal_store).to be_a(Insika::ProposalStore)
         expect(w::SPINE.proposal_store.instance_variable_get(:@store)).to be(w::BACKEND)
@@ -272,11 +272,11 @@ RSpec.describe Deploy::Wiring do
       end
     end
 
-    # RFC-0035 C14: the harvest rides the shared core — spine store, engine on
+    # the harvest rides the shared core — spine store, engine on
     # the executor, the five commands on the bus, LGPD + retention hooks.
     # The base graph wires nil factories (no eval surface, no criterion, no
     # funnel): nothing mines and the gates refuse with named reasons (parity).
-    describe "harvest (RFC-0035)" do
+    describe "harvest " do
       it "builds the harvest store over BACKEND in the spine" do
         expect(w::SPINE.harvest_store).to be_a(Insika::HarvestStore)
         expect(w::SPINE.harvest_store.instance_variable_get(:@store)).to be(w::BACKEND)

@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-# RFC-0032 C5: the operator's freeze — turns the folded counts over a declared
-# span into the baseline snapshot RFC-0033/0035 read. One command, dispatched
+# the operator's freeze — turns the folded counts over a declared
+# span into the baseline snapshot read. One command, dispatched
 # from the Studio and available to any operator-grade caller. The ≥ 4-week rule
-# (RFC §4.4) is enforced HERE, not by convention.
+# is enforced HERE, not by convention.
 RSpec.describe Insika::Commands::FreezeFunnelBaseline do
   let(:backend) { Insika::Stores::Memory.new }
   let(:funnel_store) { Insika::FunnelStore.new(store: backend) }
@@ -112,7 +112,7 @@ RSpec.describe Insika::Commands::FreezeFunnelBaseline do
       .to raise_error(Insika::ValidationError, /from/)
   end
 
-  it "a span under 28 days -> ValidationError (the RFC §4.4 rule)" do
+  it "a span under 28 days -> ValidationError (the 4-week rule)" do
     seed_pair(days: 10) { |_day, _i| { "greeted" => 1 } }
     expect { freeze({ agent: "store-support", from: "2026-07-01", to: "2026-07-10" }, tenant: "acme") }
       .to raise_error(Insika::ValidationError, /28 days/)

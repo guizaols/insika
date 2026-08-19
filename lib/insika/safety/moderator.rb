@@ -13,7 +13,7 @@ module Insika
     #
     # FAIL-OPEN by construction: the deterministic layer already ran and caught the
     # gross cases, so an unparseable/failed moderator reply must NOT block a
-    # legitimate customer. Blocking is the high-stakes direction (RFC: a false
+    # legitimate customer. Blocking is the high-stakes direction (a false
     # positive turns away a real buyer). But fail-open is not a fake negative
     # a moderator that could not answer returns the third state
     # `unavailable` — it does not block, and it is NOT recorded as a clean `allow`,

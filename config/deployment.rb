@@ -68,7 +68,7 @@ module Deploy
     CHECKPOINT_STORE     = SPINE.checkpoint_store
     PENDING_ACTION_STORE = SPINE.pending_action_store
     MEMORY_STORE         = SPINE.memory_store
-    # RFC-0031: the append-only, content-free operator-mutation audit.
+    # the append-only, content-free operator-mutation audit.
     MEMORY_AUDIT_STORE   = SPINE.memory_audit_store
     REFINEMENT_STORE     = SPINE.refinement_store
     REGISTRY             = SPINE.code_tool_registry
@@ -96,7 +96,7 @@ module Deploy
     # Per-session context breakdown (tokens by category + budget) for the
     # Studio session card. Counts and provider ids only — no content, no masking.
     CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: BACKEND)
-    # RFC-0030: per-AGENT cache-hit series (Studio agent-detail card). Sessions
+    # per-AGENT cache-hit series (Studio agent-detail card). Sessions
     # do not stamp their agent, so this capped list is the only way to answer
     # "cache-hit over time for THIS agent". Percentages and counts — no content.
     CACHE_SERIES_STORE = Insika::CacheSeriesStore.new(store: BACKEND)
@@ -190,7 +190,7 @@ module Deploy
     # at dispatch.
     PROFILE_SOURCE = Insika::StoredProfileSource.new(config_store: CONFIG_STORE)
 
-    # `demo` agent seed (idempotent, RFC-0036 D8 — the docs' neutral id): only
+    # `demo` agent seed (idempotent — the docs' neutral id): only
     # creates if it doesn't exist yet. In Memory it re-seeds every boot; in SQLite
     # it persists and the owner can create other agents.
     unless PROFILE_SOURCE.fetch("demo")
@@ -220,7 +220,7 @@ module Deploy
       }
     )
 
-    # RFC-0025 D2: shadow on + criterion missing/unparseable refuses boot here
+    # shadow on + criterion missing/unparseable refuses boot here
     # (the AppBuilder does it for the rack_app path; this root wires its own
     # channel and its own judge command). The sha stamps every pair our half
     # records, through the same criterion object the judge command folds with.
@@ -256,12 +256,12 @@ module Deploy
     BUS.register(:set_skill_agents, Insika::Commands::SetSkillAgents.new(profile_source: PROFILE_SOURCE, event_stream: EVENT_STREAM))
 
     # Memory + settings + LLM — memory becomes editable over HTTP (not only via the
-    # `remember` tool); settings and providers gain durable CRUD. RFC-0031: the
+    # `remember` tool); settings and providers gain durable CRUD.
     # operator edits carry an audit line (content-free digests).
     BUS.register(:memory_put_fact, Insika::Commands::MemoryPutFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM, audit_store: MEMORY_AUDIT_STORE))
     BUS.register(:memory_forget_fact, Insika::Commands::MemoryForgetFact.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM, audit_store: MEMORY_AUDIT_STORE))
     BUS.register(:memory_add_note, Insika::Commands::MemoryAddNote.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
-    # RFC-0031 C3: the LGPD access right — the Studio Customers drill exports.
+    # the LGPD access right — the Studio Customers drill exports.
     BUS.register(:export_customer_memory, Insika::Commands::ExportCustomerMemory.new(memory_store: MEMORY_STORE, event_stream: EVENT_STREAM))
     # Refinement: reads the agent's OWN traffic (tasks + sessions +
     # tool traces) and records a ranked failure report. Read-only — no model call and
@@ -345,7 +345,7 @@ module Deploy
     BUS.register(:gate_refinement, Insika::Commands::GateRefinement.new(profiles: PROFILE_SOURCE, refinement_store: REFINEMENT_STORE, agent_file_store: AGENT_FILE_STORE, gate: REFINEMENT_GATE, event_stream: EVENT_STREAM, proposer_factory: PROPOSER_FACTORY, resolver: RESOLVE_REFINEMENT))
     BUS.register(:resolve_refinement, RESOLVE_REFINEMENT)
 
-    # RFC-0035: the gated harvest — the deployment's half of the double gate
+    # the gated harvest — the deployment's half of the double gate
     # (the base graph wires nil factories; the flows refuse with named reasons
     # until THIS root lands).
     #
@@ -391,8 +391,8 @@ module Deploy
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
     )
-    # The second ruler (D6): the store's funnel metric against the RFC-0032
-    # frozen baseline. nil criterion -> the gate refuses with :no_criterion.
+    # The second ruler: the store's funnel metric against the frozen baseline.
+    # nil criterion -> the gate refuses with :no_criterion.
     HARVEST_CONVERSION = Insika::Harvest::ConversionGate.new(
       funnel_store: GRAPH.funnel_store, criterion: HARVEST_CRITERION
     )
@@ -430,7 +430,7 @@ module Deploy
     BUS.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
     BUS.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: LLM_PROVIDER_STORE, configurator: LLM_CONFIGURATOR, event_stream: EVENT_STREAM))
 
-    # RFC-0025 C7: judging shadow pairs is a command on the DEPLOYMENT bus (like
+    # judging shadow pairs is a command on the DEPLOYMENT bus (like
     # the memory and refinement commands — not in the embeddable base). The
     # judges come from settings['evals'] through the one JudgePanel builder.
     # Registered only when shadow is on: the criterion refuses boot above

@@ -7,7 +7,7 @@ require "securerandom"
 module Insika
   module Channels
     # The web widget — the FIRST Shape A channel, and the adoption
-    # claim behind the whole RFC: an adopter pastes one tag into their site and has
+    # claim behind the whole design: an adopter pastes one tag into their site and has
     # a working agent, with no backend of their own and no build step.
     #
     #   <script src="https://agents.example.com/channels/web/asset/widget.js"
@@ -50,7 +50,7 @@ module Insika
       # never reach a browser that already has it. Short max-age + an ETag instead:
       # the common case is a 304 with no body, and an upgrade lands within minutes.
       # (A deliberate narrowing of's "long-cache versioned URL": the install
-      # snippet in the RFC has no version in it, so there is nothing to bust.)
+      # snippet has no version in it, so there is nothing to bust.)
       ASSET_CACHE_CONTROL = "public, max-age=300"
 
       attr_reader :id

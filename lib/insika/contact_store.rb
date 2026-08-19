@@ -3,7 +3,7 @@
 require "time"
 
 module Insika
-  # RFC-0033 C3: the durable CONTACT STATE cell per (tenant, customer) — ONE
+  # the durable CONTACT STATE cell per (tenant, customer)— ONE
   # derived cell, never a transition log (D2): `granted | revoked |
   # unavailable`, the sends-without-reply counter and the last outbound
   # timestamp. Dumb domain store: it holds no policy and no follow-up records

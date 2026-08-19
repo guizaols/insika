@@ -11,7 +11,7 @@ require_relative "../../lib/insika/server/rack_app"
 # not be told which store to use except through a process-wide environment
 # variable. Neither failure raised — the second graph simply won, for both.
 #
-# These are the RFC's experiments, turned into the regression tests that keep
+# These are the design's experiments, turned into the regression tests that keep
 # the embed contract (docs/EMBEDDING.md) true:
 #
 # 1  two tenants, no key theft   — a graph asks on ITS OWN key

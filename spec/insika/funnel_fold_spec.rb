@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0032 C4 — the tick-driven fold of WS7 outcomes into pack-declared stages.
+#   — the tick-driven fold of WS7 outcomes into pack-declared stages.
 # E1 lives here: the incremental fold, the recompute repair path, idempotence
 # across crashes, the claim window and the skip rules.
 RSpec.describe Insika::FunnelFold do

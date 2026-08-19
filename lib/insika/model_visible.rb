@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # RFC-0036 C4/D4 — the model-visible payload of ONE ask: the system text,
+  #   — the model-visible payload of ONE ask: the system text,
   # the tool schemas, and the full message stream — exactly what the provider
   # serializes. Captured AT the RubyLLM boundary (the chat object the executor
   # hands to `ask`), never re-derived: re-derivation would re-run volatile

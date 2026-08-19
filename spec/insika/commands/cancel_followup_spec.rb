@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0033 C6 — the operator cancels ONE pending follow-up record (the
+#   — the operator cancels ONE pending follow-up record (the
 # Studio's Cancel button). Tenant-scoped (WS1); a non-pending record (the tick
 # fired it between the render and the click) is a domain error the Studio can
 # flash — never a 500.

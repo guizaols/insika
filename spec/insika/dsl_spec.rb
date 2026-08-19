@@ -281,7 +281,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the briefing_fields knob is DATA on the pack (RFC-0028)" do
+    it "the briefing_fields knob is DATA on the pack " do
       dsl = Insika.agent("bia6") do
         model "deepseek-chat"
         briefing_fields "size", "budget", "delivery_day"
@@ -297,7 +297,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the grounding knob is DATA on the pack (RFC-0029)" do
+    it "the grounding knob is DATA on the pack " do
       dsl = Insika.agent("bia7") do
         model "deepseek-chat"
         grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
@@ -314,7 +314,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the funnel knob is DATA on the pack (RFC-0032)" do
+    it "the funnel knob is DATA on the pack " do
       dsl = Insika.agent("bia8") do
         model "deepseek-chat"
         funnel stages: %w[greeted qualified cart paid],
@@ -338,7 +338,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the followup knob is DATA on the pack (RFC-0033)" do
+    it "the followup knob is DATA on the pack " do
       dsl = Insika.agent("bia9") do
         model "deepseek-chat"
         followup arm: "schedule",
@@ -371,7 +371,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the distill knob is DATA on the pack (RFC-0034)" do
+    it "the distill knob is DATA on the pack " do
       dsl = Insika.agent("bia10") do
         model "deepseek-chat"
         distill enabled: true, idle_hours: 6, max_proposals: 10
@@ -387,7 +387,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the harvest knob is DATA on the pack (RFC-0035)" do
+    it "the harvest knob is DATA on the pack " do
       dsl = Insika.agent("bia11") do
         model "deepseek-chat"
         harvest enabled: true,

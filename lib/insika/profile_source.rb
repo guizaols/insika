@@ -120,7 +120,7 @@ module Insika
         stuck_signal: h[:stuck_signal],
         outputs: h[:outputs],
         briefing_fields: h[:briefing_fields],
-        # RFC-0029: grounding profile data — a plain Hash read with string keys
+        # grounding profile data — a plain Hash read with string keys
         # by Insika::Grounding.parse per turn; nil round-trips as nil (= off).
         grounding: h[:grounding],
         # guardrails: a plain Hash; Safety::Config tolerates the JSON
@@ -137,16 +137,16 @@ module Insika
         # edge_stream: which internal channels may cross to the customer. {} = neither.
         edge_stream: h[:edge_stream],
         metadata: h[:metadata] || {},
-        # RFC-0032: funnel declaration — a plain Hash read with string keys by
+        # funnel declaration — a plain Hash read with string keys by
         # FunnelDeclaration.parse; nil round-trips as nil (= no funnel).
         funnel: h[:funnel],
-        # RFC-0033: followup declaration — a plain Hash read with string keys by
+        # followup declaration — a plain Hash read with string keys by
         # FollowupPolicy.parse; nil round-trips as nil (= feature off).
         followup: h[:followup],
-        # RFC-0034: distill declaration — a plain Hash read with string keys by
+        # distill declaration — a plain Hash read with string keys by
         # the distiller/engine/doctor; nil round-trips as nil (= feature off).
         distill: h[:distill],
-        # RFC-0035: harvest declaration — a plain Hash read with string keys
+        # harvest declaration — a plain Hash read with string keys
         # by the miner/engine/doctor; nil round-trips as nil (= loop off).
         harvest: h[:harvest]
       )

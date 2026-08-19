@@ -3,7 +3,7 @@
 require_relative "../coercion"
 
 module Insika
-  # RFC-0029 C6 — the pack's deterministic claim extractor + membership check.
+  #   — the pack's deterministic claim extractor + membership check.
   # The pack's DATA (D7): a `sku` regex for the SKU shape. The engine only
   # APPLIES it — it never guesses what a SKU looks like. No NLP, no LLM, no gem.
   #

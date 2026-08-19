@@ -3,7 +3,7 @@
 require "spec_helper"
 require "insika/tools/schedule_followup" # the Executor loads it lazily; explicit in the test
 
-# RFC-0033 C7 — the schedule/cancel_followup system builtins. Envelope-level
+#   — the schedule/cancel_followup system builtins. Envelope-level
 # behavior (at parsing, the consent write, the dedup/revoked refusals, the
 # cancelled idempotence) — the tools' effects land on the stores like the
 # engine reads them.

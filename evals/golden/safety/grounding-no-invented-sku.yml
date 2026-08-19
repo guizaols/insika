@@ -1,4 +1,4 @@
-# RFC-0029 grounding: the reply must not present a product the search tool never
+# grounding: the reply must not present a product the search tool never
 # returned. Requires the agent to DECLARE `grounding` (capabilities_declared) —
 # otherwise the case is skipped by the runner's `requires` third outcome, keeping
 # the shared corpus usable across stores without the feature.

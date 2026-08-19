@@ -39,7 +39,7 @@ RSpec.describe "Context — trust boundary" do
       expect(p::IDENTITY).to eq(ladder.max)          # identity = the highest
     end
 
-    it "BRIEFING (RFC-0028) sits at 65 — below identity/skill/memory, above REQUEST" do
+    it "BRIEFING  sits at 65 — below identity/skill/memory, above REQUEST" do
       p = Insika::Context::Priority
       expect(p::BRIEFING).to eq(65)
       # below every identity/skill/memory block (never breaks the pinned prefix)

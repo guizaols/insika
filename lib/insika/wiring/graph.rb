@@ -45,7 +45,7 @@ module Insika
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
         memory_store         = Insika::MemoryStore.new(store: backend)
-        # RFC-0031 C2: the append-only, content-free audit of OPERATOR memory
+        # the append-only, content-free audit of OPERATOR memory
         # mutations. Built unconditionally (empty and free when nothing writes)
         # so a deployment that turns it on later finds its audit already durable.
         memory_audit_store  = Insika::MemoryAuditStore.new(store: backend)
@@ -58,7 +58,7 @@ module Insika
         # (they are empty and free when no channel is registered) so a deployment
         # that turns a channel on later finds its state already durable.
         outbox_store         = Insika::OutboxStore.new(store: backend)
-        # RFC-0025: the shadow pair store — one durable record per mirrored
+        # the shadow pair store — one durable record per mirrored
         # exchange, written by our half and the incumbent's. Built unconditionally
         # (empty and free when shadow is off) so turning it on later finds the
         # state already durable, beside the outbox on the same runtime backend.
@@ -68,17 +68,17 @@ module Insika
         # the integration (POST /v1/outcomes). Built unconditionally (empty and
         # free when nothing records) so the Studio's scorecard always has a store.
         outcome_store        = Insika::OutcomeStore.new(store: backend)
-        # RFC-0032 C3: the funnel's durable aggregates — per-day stage counts,
+        # the funnel's durable aggregates — per-day stage counts,
         # fold cursors and baseline snapshots. Built unconditionally (empty and
         # free when no pack declares a funnel) so the fold, the doctor and the
         # Studio always have a store to read/write.
         funnel_store        = Insika::FunnelStore.new(store: backend)
-        # RFC-0033 C3/C4: the contact-state cells and the follow-up schedule
+        # the contact-state cells and the follow-up schedule
         # records. Built unconditionally (empty and free when no pack declares
         # followup) so the engine, the tools and the Studio always have stores.
         contact_store       = Insika::ContactStore.new(store: backend)
         followup_store      = Insika::FollowupStore.new(store: backend)
-        # RFC-0034 C3: the distilled proposals + the latched dedup ledger +
+        # the distilled proposals + the latched dedup ledger +
         # the per-session markers. Built unconditionally (empty and free when
         # no pack declares distill) so the wiki, the engine and the LGPD
         # purges always have a store.
@@ -87,7 +87,7 @@ module Insika
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
         refinement_store     = Insika::RefinementStore.new(store: backend)
-        # RFC-0035 C5: the harvest's durable half — mining runs, the per-
+        # the harvest's durable half — mining runs, the per-
         # candidate lifecycle, the append-only promotion log, the snapshots
         # and the per-session markers. Built unconditionally (empty and free
         # when no pack declares harvest) so the engine, the Studio and the
@@ -178,12 +178,12 @@ module Insika
         delegation_store: spine.delegation_store, # async delegation durability
         channel_delivery: channel_delivery, # out-of-band reply delivery
         reliability: reliability, # WS3: retries/fallback/breaker (data-gated)
-        grounding_enforcer: guardrails.grounding_enforcer, # RFC-0029: :enforce cut
-        # RFC-0033 C7: the follow-up stores — the ChatBuilder wires the
+        grounding_enforcer: guardrails.grounding_enforcer, # :enforce cut
+        # the follow-up stores — the ChatBuilder wires the
         # schedule/cancel_followup tools on them (parity when no pack declares).
         contact_store: spine.contact_store,
         followup_store: spine.followup_store,
-        # RFC-0036 C4: the model-visible trace rides executor_extra like the
+        # the model-visible trace rides executor_extra like the
         # context trace — a module graph that omits it still builds (nil =
         # parity). The base graph wires it over the same backend the context
         # trace uses.
@@ -191,7 +191,7 @@ module Insika
         **executor_extra
       )
 
-        # RFC-0034 C4: the ONE path that writes proposals, shared by the
+        # the ONE path that writes proposals, shared by the
         # automatic DistillEngine loop and the bus command behind the Studio's
         # "Run distillation now" button (one code path for both).
         run_distillation = Insika::Commands::RunDistillation.new(
@@ -223,22 +223,22 @@ module Insika
             memory_store: spine.memory_store, outcome_store: spine.outcome_store,
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
-            # RFC-0036 C4: the model-visible traces die with their checkpoints.
+            # the model-visible traces die with their checkpoints.
             model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
             outbox_store: spine.outbox_store,
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
             budget_ledger: spine.budget_ledger, # WS2 counter GC (retention-independent)
-            funnel_store: spine.funnel_store, # RFC-0032 C6: fold dies with its source
-            followup_store: spine.followup_store, # RFC-0033 C11: records age out too
-            contact_store: spine.contact_store, # RFC-0033 C11: cells age out too
-            proposal_store: spine.proposal_store, # RFC-0034 C8: proposals age out too
-            harvest_store: spine.harvest_store # RFC-0035 C13: candidates/log/snapshots too
+            funnel_store: spine.funnel_store, # fold dies with its source
+            followup_store: spine.followup_store, # records age out too
+            contact_store: spine.contact_store, # cells age out too
+            proposal_store: spine.proposal_store, # proposals age out too
+            harvest_store: spine.harvest_store # candidates/log/snapshots too
           ),
           interval: tick_env("INSIKA_TICK_INTERVAL") || Insika::Tick::DEFAULT_INTERVAL,
           stale_after: tick_env("INSIKA_TICK_STALE_AFTER") || Insika::Tick::DEFAULT_STALE_AFTER
         )
-        # RFC-0032 C4: the tick-driven outcome fold — wired here, after the
+        # the tick-driven outcome fold — wired here, after the
         # Tick, because it reads the outcome/funnel stores of the spine and the
         # profiles; the per-pair declaration gates it (nil funnel everywhere =
         # an inert fold). Always built: a pack that declares a funnel later
@@ -247,7 +247,7 @@ module Insika
           outcome_store: spine.outcome_store, funnel_store: spine.funnel_store,
           profiles: profiles, store: spine.backend
         )
-        # RFC-0033 C5: the tick-driven follow-up firer — the tick's third
+        # the tick-driven follow-up firer — the tick's third
         # duty, wired here after the Tick, gated by its own claim window.
         # Always built: a pack that declares followup later finds its firer
         # already on the tick (inert when no profile declares followup).
@@ -256,7 +256,7 @@ module Insika
           contact_store: spine.contact_store, task_store: spine.task_store,
           profiles: profiles, executor: executor, event_stream: spine.event_stream
         )
-        # RFC-0034 C5: the distillation engine — the tick-duty that finds idle
+        # the distillation engine — the tick-duty that finds idle
         # customer sessions and distills them on its own worker fiber (a
         # supervisor child, started in serving mode next to the tick).
         # Always built: a pack that declares `distill:` later finds its engine
@@ -269,7 +269,7 @@ module Insika
           profiles: profiles,
           window: Insika::DistillEngine::DEFAULT_WINDOW
         )
-        # RFC-0035 C12: the harvest engine — the tick-duty that finds idle,
+        # the harvest engine — the tick-duty that finds idle,
         # unmined sessions whose agent declares `harvest.enabled` and mines
         # them on its own worker fiber (a supervisor child, started in serving
         # mode next to the tick). Always built: INERT until a profile declares
@@ -368,33 +368,33 @@ module Insika
         bus.register(:record_outcome,
                      Insika::Commands::RecordOutcome.new(outcome_store: spine.outcome_store,
                                                          event_stream: spine.event_stream))
-        # RFC-0025 C4: the incumbent's half of a shadow pair, one command behind
+        # the incumbent's half of a shadow pair, one command behind
         # both mirror shapes (the mirror call itself + the follow-up route).
         bus.register(:record_shadow_reply,
                      Insika::Commands::RecordShadowReply.new(shadow_pairs: spine.shadow_pair_store,
                                                              event_stream: spine.event_stream))
         # WS8 (LGPD): purge one customer's memory + the whole footprint of their
         # sessions (traces, tasks, checkpoints, outbox). The trace stores are
-        # deployment components (nil at the base — skipped). RFC-0031: the
+        # deployment components (nil at the base — skipped). the
         # audit collaborator records a content-free purge line.
         bus.register(:forget_customer,
                      Insika::Commands::ForgetCustomer.new(
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
-                       # RFC-0036 C4: the model-visible traces die with the
+                       # the model-visible traces die with the
                        # checkpoints (the same SessionPurge list).
                        model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
                        audit_store: spine.memory_audit_store,
-                       followup_store: spine.followup_store, # RFC-0033 C11
-                       contact_store: spine.contact_store,   # RFC-0033 C11
-                       proposal_store: spine.proposal_store, # RFC-0034 C8
+                       followup_store: spine.followup_store,
+                       contact_store: spine.contact_store,
+                       proposal_store: spine.proposal_store,
                        event_stream: spine.event_stream
                      ))
-        # RFC-0031 C3: the LGPD access right — export one customer's memory
+        # the LGPD access right — export one customer's memory
         # cell as content (the Studio download); the event stays counts-only.
         bus.register(:export_customer_memory,
                      Insika::Commands::ExportCustomerMemory.new(
@@ -407,28 +407,28 @@ module Insika
                        memory_store: spine.memory_store, session_store: spine.session_store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
-                       # RFC-0036 C4: the model-visible traces die with the tenant.
+                       # the model-visible traces die with the tenant.
                        model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        outcome_store: spine.outcome_store,
-                       funnel_store: spine.funnel_store, # RFC-0032 C6: the fold dies with the tenant
-                       followup_store: spine.followup_store, # RFC-0033 C11
-                       contact_store: spine.contact_store,   # RFC-0033 C11
-                       proposal_store: spine.proposal_store, # RFC-0034 C8
-                       harvest_store: spine.harvest_store,   # RFC-0035 C13
+                       funnel_store: spine.funnel_store, # the fold dies with the tenant
+                       followup_store: spine.followup_store,
+                       contact_store: spine.contact_store,
+                       proposal_store: spine.proposal_store,
+                       harvest_store: spine.harvest_store,
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
                        token_store: spine.token_store, # revoked BEFORE the sweep
                        event_stream: spine.event_stream
                      ))
-        # RFC-0032 C5: the operator's baseline freeze — the number RFC-0033/0035
+        # the operator's baseline freeze — the number
         # read. Synchronous control command, dispatched from the Studio.
         bus.register(:freeze_funnel_baseline,
                      Insika::Commands::FreezeFunnelBaseline.new(
                        funnel_store: spine.funnel_store, profiles: profiles,
                        event_stream: spine.event_stream
                      ))
-        # RFC-0033 C6/C10: the follow-up mutations — the Studio's Cancel button
+        # the follow-up mutations — the Studio's Cancel button
         # and the channel opt-out event (a tenant principal never reaches the
         # generic command ingress; these ride the same operator-grade path).
         bus.register(:cancel_followup,
@@ -439,7 +439,7 @@ module Insika
                                                          followup_store: spine.followup_store,
                                                          store: spine.backend,
                                                          event_stream: spine.event_stream))
-        # RFC-0034 C6: the human's answer on a distilled proposal — the ONLY
+        # the human's answer on a distilled proposal — the ONLY
         # mutation behind the Facts (wiki) page. Synchronous control command.
         bus.register(:resolve_proposal,
                      Insika::Commands::ResolveProposal.new(
@@ -447,7 +447,7 @@ module Insika
                        memory_store: spine.memory_store,
                        event_stream: spine.event_stream
                      ))
-        # RFC-0035 C6/C9/C10: the gated harvest — the mining pass, the double
+        #  /C10: the gated harvest — the mining pass, the double
         # gate, the human's promote/rollback/dismiss. The BASE graph wires the
         # nil factories (no eval surface, no criterion, no funnel): every flow
         # refuses with a named reason or skips (parity). The deployment root
@@ -487,7 +487,7 @@ module Insika
                      Insika::Commands::RejectHarvest.new(
                        harvest_store: spine.harvest_store, event_stream: spine.event_stream
                      ))
-        # RFC-0034 C9: the ONE path that writes proposals, served to the
+        # the ONE path that writes proposals, served to the
         # Studio's "Run distillation now" button. The same instance the
         # DistillEngine's loop uses, so the manual and the automatic share one
         # code path; the engine keeps the automatic pass when the root does
@@ -502,10 +502,10 @@ module Insika
         :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
-        :harvest_store, # RFC-0035 C5
+        :harvest_store,
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
-        :contact_store, :followup_store, :proposal_store, # RFC-0033 C3/C4 · RFC-0034 C3
+        :contact_store, :followup_store, :proposal_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
       )
@@ -519,8 +519,8 @@ module Insika
         :memory_store, :memory_audit_store, :refinement_store, :outbox_store, :shadow_pair_store,
         :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :funnel_store,
-        :contact_store, :followup_store, :proposal_store, # RFC-0033 C3/C4 · RFC-0034 C3
-        :harvest_store, # RFC-0035 C5
+        :contact_store, :followup_store, :proposal_store,
+        :harvest_store,
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,
         :tool_catalog, :skill_catalog, :prompt_catalog,

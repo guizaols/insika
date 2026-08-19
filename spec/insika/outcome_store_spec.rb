@@ -68,7 +68,7 @@ RSpec.describe Insika::OutcomeStore do
     sqlite&.close
   end
 
-  describe "#for_pair (RFC-0032 C4 — the fold's per-pair read)" do
+  describe "#for_pair (— the fold's per-pair read)" do
     before do
       store.create(tenant: nil, agent: "bia", outcome: "conversion",
                    at: Time.utc(2026, 8, 12, 9), id: "a")
@@ -95,7 +95,7 @@ RSpec.describe Insika::OutcomeStore do
     end
   end
 
-  describe "#pairs (RFC-0032 C4 — one key scan, no record reads)" do
+  describe "#pairs (— one key scan, no record reads)" do
     it "lists distinct (tenant, agent), nil for the no-tenant segment" do
       store.create(tenant: nil, agent: "bia", outcome: "conversion")
       store.create(tenant: nil, agent: "bia", outcome: "escalation") # same pair, 2nd day
