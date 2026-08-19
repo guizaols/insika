@@ -64,6 +64,14 @@ module Insika
     #                                   a context provider injecting volatile content into
     #                                   :system turns every turn into a paid cache WRITE with
     #                                   no read hit. Enable only for stable-system agents.
+    :tool_persistence,                # the engine's "Tool discipline" block in the system
+    #                                   prompt (retry weak/empty tool results with a different
+    #                                   approach before giving up). THE ONE OPT-OUT FIELD:
+    #                                   nil/true = ON (the proven default — every reference
+    #                                   harness ships it), false = OFF. Deliberately inverted
+    #                                   from the opt-in fields above: the exception here is
+    #                                   turning the good behavior OFF, so that is what an
+    #                                   operator declares. Read by Context::Providers::Prompt.
     :tool_output_compression,          # MECHANICAL tool-result dedupe in the replayed
     #                                   history (A3/C3): nil/false = OFF (parity); true = ON.
     #                                   Same opt-in as `memory`. When ON, the history the
@@ -277,7 +285,7 @@ module Insika
                    skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
-                   prompt_caching: nil, tool_output_compression: nil,
+                   prompt_caching: nil, tool_persistence: nil, tool_output_compression: nil,
                     params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
@@ -296,7 +304,8 @@ module Insika
         # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
         subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
         tools_deferred: tools_deferred, memory: memory,
-        prompt_caching: prompt_caching, tool_output_compression: tool_output_compression,
+        prompt_caching: prompt_caching, tool_persistence: tool_persistence,
+        tool_output_compression: tool_output_compression,
         # The free-form hashes arrive with symbol keys (internal build) OR string
         # keys (StoredProfileSource JSON round-trip). Normalize to string keys ONCE
         # here — the single front door every profile passes through — so no reader

@@ -80,6 +80,14 @@ RSpec.describe Insika::AgentProfile do
                                    "soft" => true, "alert_at" => 0.8)
     end
 
+    it "tool_persistence round-trips (the ONE opt-out flag: nil = ON, false = OFF)" do
+      default = described_class.build(id: "a", model: "m")
+      off = described_class.build(id: "a", model: "m", tool_persistence: false)
+
+      expect(default.tool_persistence).to be_nil # absent -> ON (opt-out, not opt-in)
+      expect(off.tool_persistence).to be(false)
+    end
+
     it "tool_output_compression round-trips on/off" do
       off = described_class.build(id: "a", model: "m")
       on = described_class.build(id: "a", model: "m", tool_output_compression: true)
