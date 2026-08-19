@@ -314,4 +314,45 @@ RSpec.describe Insika::Commands::DeleteTenantData do
       expect(result[:schedules]).to eq(0)
     end
   end
+
+  describe "the artifacts die with the tenant (a report is content, never kept behind an offboarded tenant)" do
+    let(:artifact_store) { Insika::ArtifactStore.new(store: backend) }
+
+    it "purges the tenant's artifacts; another tenant's report survives (the #124 lesson)" do
+      artifact_store.create(tenant: "acme", agent: "report-a", task_id: "t-1", title: "daily",
+                            mime: "text/html", content: "<p>acme</p>", id: "a1")
+      artifact_store.create(tenant: "acme", agent: "report-a", task_id: "t-2", title: "daily",
+                            mime: "text/html", content: "<p>acme 2</p>", id: "a2")
+      artifact_store.create(tenant: "loja-b", agent: "report-b", task_id: "t-3", title: "daily",
+                            mime: "text/html", content: "<p>loja-b</p>", id: "b1")
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, artifact_store: artifact_store)
+
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      expect(result[:artifacts]).to eq(2)
+      expect(artifact_store.find("a1")).to be_nil
+      expect(artifact_store.find("a2")).to be_nil
+      expect(artifact_store.find("b1")).not_to be_nil
+    end
+
+    it "the event carries the artifact count" do
+      artifact_store.create(tenant: "acme", agent: "report-a", task_id: "t-1", title: "daily",
+                            mime: "text/html", content: "<p>x</p>", id: "a1")
+      events = SpyEventStream.new
+      described_class.new(memory_store: memory_store, session_store: session_store,
+                          event_stream: events, artifact_store: artifact_store)
+        .call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+
+      ev = events.events.find { |e| e.type == :tenant_data_deleted }
+      expect(ev.data[:artifacts]).to eq(1)
+    end
+
+    it "nil artifact_store -> 0, never an error (the minimal graph)" do
+      cmd = described_class.new(memory_store: memory_store, session_store: session_store,
+                                event_stream: event_stream, artifact_store: nil)
+      result = cmd.call(Insika::Command.build(:delete_tenant_data, { tenant: "acme" }))
+      expect(result[:artifacts]).to eq(0)
+    end
+  end
 end

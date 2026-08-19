@@ -37,6 +37,10 @@ require_relative "insika/cron"
 require_relative "insika/schedule"
 require_relative "insika/schedule_store"
 require_relative "insika/schedule_engine"
+# the report destination — one record per run, no
+# versioning; the signing half of the sharing link (HMAC, no secret stored).
+require_relative "insika/artifact_store"
+require_relative "insika/artifact_signing"
 require_relative "insika/commands/freeze_funnel_baseline"
 require_relative "insika/channels/webhook"
 require_relative "insika/coercion"
@@ -246,6 +250,9 @@ require_relative "insika/commands/export_customer_memory"
 # record; revoke a contact + fall its pending records atomically).
 require_relative "insika/commands/cancel_followup"
 require_relative "insika/commands/revoke_contact"
+# the report destination's Studio mutation — delete one artifact
+# (a bus command, like every Studio mutation).
+require_relative "insika/commands/delete_artifact"
 # session distillation — the distiller (pure, injected ask)
 # and the proposal store (proposals + the latched dedup ledger + the
 # per-session distilled marker).

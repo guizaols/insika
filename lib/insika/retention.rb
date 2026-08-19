@@ -22,6 +22,11 @@ module Insika
     # KEY — memory TTLs sweep on their own knob (`memory_ttl_days`), gated by
     # neither retention_days nor the age-based claim (D5).
     MEMORY_TTL_KEY = "memory_ttl_claim"
+    # the ARTIFACT TTL's own daily claim — same discipline as the memory TTL:
+    # reports expire on their own knob (`artifact_ttl_days`), never gated by
+    # retention_days (a deployment that keeps conversations forever must still
+    # expire the PII-carrying reports).
+    ARTIFACT_TTL_KEY = "artifact_ttl_claim"
     WINDOW = 86_400 # one sweep per day, at most
 
     TERMINAL = %w[completed failed cancelled].freeze
@@ -32,7 +37,8 @@ module Insika
                     settings_store: nil, budget_ledger: nil, funnel_store: nil,
                     followup_store: nil, contact_store: nil, proposal_store: nil,
                     model_visible_trace_store: nil,
-                     store:, window: WINDOW, now: nil, harvest_store: nil)
+                     store:, window: WINDOW, now: nil, harvest_store: nil,
+                     artifact_store: nil)
       @session_store = session_store
       @task_store = task_store
       @checkpoint_store = checkpoint_store
@@ -53,6 +59,7 @@ module Insika
       @window = window
       @now = now # injectable for specs (a deterministic "today")
       @harvest_store = harvest_store #  ; nil = nothing to sweep
+      @artifact_store = artifact_store #  ; nil = nothing to sweep
     end
 
     # the sweep reads the memory store's cells/records (specs seed
@@ -68,11 +75,13 @@ module Insika
     def run
       budget_cells = sweep_budget_cells
       memory_ttl = sweep_memory_ttl
+      artifacts = sweep_artifacts
       days = retention_days
       unless days.to_i.positive? && claim_window
         summary = { claimed: false }
         summary[:budget_cells] = budget_cells if budget_cells
         summary[:memory_ttl] = memory_ttl if memory_ttl
+        summary[:artifacts] = artifacts if artifacts
         return summary
       end
 
@@ -101,6 +110,7 @@ module Insika
       summary[:harvest] = @harvest_store.delete_older_than(cutoff) if @harvest_store
       summary[:budget_cells] = budget_cells if budget_cells
       summary[:memory_ttl] = memory_ttl if memory_ttl
+      summary[:artifacts] = artifacts if artifacts
       summary
     end
 
@@ -164,6 +174,31 @@ module Insika
         end
         map.empty? ? nil : map
       end
+    end
+
+    # the artifact TTL sweep — the guarantee that PII inside a report expires
+    # even though no reader can see inside the opaque HTML. Its OWN daily
+    # claim + knob (`artifact_ttl_days` from settings; Integer; nil/absent =
+    # OFF), never gated by retention_days — a deployment that keeps its
+    # conversations forever must still expire the reports (the memory-TTL
+    # reasoning). -> Integer (removed) | nil (no knob, or the claim is held).
+    def sweep_artifacts
+      ttl = artifact_ttl_days
+      return nil if ttl.nil? || ttl <= 0
+      return nil unless claim(ARTIFACT_TTL_KEY)
+
+      @artifact_store.delete_older_than(now - ttl * 86_400)
+    end
+
+    # settings["artifact_ttl_days"]: Integer days. nil/blank/non-numeric -> nil
+    # (OFF — parity, never a crash at sweep time).
+    def artifact_ttl_days
+      return nil unless @settings_store
+
+      value = @settings_store.get["artifact_ttl_days"]
+      value.to_s.empty? ? nil : Integer(value)
+    rescue ArgumentError, TypeError
+      nil
     end
 
     # -> [[scope, Time]] — one per existing cell with a resolved TTL. The

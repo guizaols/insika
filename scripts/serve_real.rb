@@ -120,7 +120,20 @@ Studio::App.configure(
   # the parity page (nav row only when a shadow channel is registered).
   shadow_pair_store: W::SPINE.shadow_pair_store,
   parity_criterion: PARITY_CRITERION,
-  channel_registry: W::CHANNEL_REGISTRY
+  channel_registry: W::CHANNEL_REGISTRY,
+  # the Artifacts tab reads the report store; the signing config
+  # (nil without INSIKA_ARTIFACT_SIGNING_KEY) decides whether a signed sharing
+  # link exists at all.
+  artifact_store: W::SPINE.artifact_store,
+  artifact_signing: (
+    key = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_KEY")
+    if key.to_s.empty? then nil
+    else
+      { key: key,
+        ttl: (Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_TTL") || 604_800).to_i,
+        base_url: Insika::Coercion.presence(Insika::EnvSchema.read("INSIKA_PUBLIC_URL")).to_s }
+    end
+  )
 )
 
 # URLMap routes /studio -> Studio (Roda, cookie-auth) and the rest -> Server::App

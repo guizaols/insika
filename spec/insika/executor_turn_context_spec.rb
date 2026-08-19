@@ -39,7 +39,7 @@ RSpec.describe "Insika::Executor — turn context" do
       ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "chat-42"))
       # delegation_depth: 0 for a top-level turn — set by run_subagent for children.
       expect(ctx).to eq(chat_id: "chat-42", agent_id: "bia", tenant: "chat-42",
-                        store_id: "loja-7", delegation_depth: 0)
+                        command_tenant: nil, store_id: "loja-7", task_id: "t", delegation_depth: 0)
     end
 
     it "tenant reflects the multi-merchant override (the COMMAND tenant), not the chat" do
@@ -54,6 +54,7 @@ RSpec.describe "Insika::Executor — turn context" do
       )
       ctx = executor.send(:build_turn_context, task, profile, state_with(tenant: "acme:123"))
       expect(ctx[:tenant]).to eq("acme")
+      expect(ctx[:command_tenant]).to eq("acme")
       expect(ctx[:chat_id]).to eq("chat-42")
     end
 

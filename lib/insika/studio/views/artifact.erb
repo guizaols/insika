@@ -1,0 +1,23 @@
+<%# the artifact preview page. The content renders ONLY inside a SANDBOXED
+   iframe (no scripts, no same-origin, no forms) on top of the content
+   route's own restrictive CSP — artifact content is LLM output, untrusted. %>
+<header class="page-head">
+  <div>
+    <nav class="crumbs"><a href="/studio/artifacts">Artifacts</a></nav>
+    <h1><%= @artifact.title %><span class="sub"><span class="mono"><%= @artifact.id %></span> · <%= @artifact.mime %> · <%= @artifact.created_at %></span></h1>
+  </div>
+  <div class="head-actions">
+    <% if @signed_url %>
+      <button type="button" class="btn sm" data-copy="<%= @signed_url %>">copy signed link</button>
+    <% end %>
+    <a class="btn sm ghost" href="<%= @content_url %>" target="_blank" rel="noopener">open raw</a>
+    <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(@artifact.id) %>/delete" class="inline">
+      <%== csrf_tag %>
+      <button class="btn sm ghost danger">delete</button>
+    </form>
+  </div>
+</header>
+
+<div class="card artifact-frame">
+  <iframe sandbox src="<%= @content_url %>" title="<%= @artifact.title %>"></iframe>
+</div>
