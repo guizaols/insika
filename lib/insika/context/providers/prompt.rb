@@ -15,6 +15,21 @@ module Insika
       # for on-disk paths (compat/seed). Without prompt_files -> uses the wiring's
       # `files:` (deployment default; byte-for-byte parity).
       class Prompt < ContextProvider
+        # Engine-owned execution discipline, appended AFTER the agent's identity.
+        # The one behavior every reference harness bakes into its base prompt
+        # (OpenClaw's "Execution Bias") and this engine was missing: a weak tool
+        # result read as final. A constant — byte-identical every turn, so
+        # prompt_caching pays ONE write on the deploy that introduces it, never
+        # per turn. Opt-out per profile (`tool_persistence false`), the single
+        # default-ON profile flag: the proven-good behavior is the default, the
+        # exception is the thing an operator declares.
+        TOOL_PERSISTENCE = "## Tool discipline\n" \
+          "- Weak or empty tool result: try again with a different approach — rephrase the " \
+          "query, use a synonym or broader term, drop a secondary filter — before telling " \
+          "the user you found nothing. Do not narrate the retries. Then conclude.\n" \
+          "- Tool error: read the error, fix the arguments or try another path; never " \
+          "repeat the exact same call."
+
         def initialize(base: "", files: [], catalog: nil, agent_files: nil, system_files: nil)
           @base = base
           @files = Array(files)
@@ -64,7 +79,18 @@ module Insika
           else
             sources.each { |src| parts << read_source(profile&.id, src.to_s) }
           end
-          parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
+          identity = parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
+          # Discipline rides an EXISTING identity, never substitutes one: an
+          # agent with no identity at all must stay detectably empty.
+          return identity if identity.empty? || !tool_persistence?(profile)
+
+          "#{identity}\n\n#{TOOL_PERSISTENCE}"
+        end
+
+        # nil/absent/true = ON (the engine default); only an explicit `false`
+        # turns it off. Defensive respond_to?: a minimal profile stub reads ON.
+        def tool_persistence?(profile)
+          !(profile.respond_to?(:tool_persistence) && profile.tool_persistence == false)
         end
 
         # GLOBAL system files: apply to every agent,

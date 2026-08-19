@@ -56,6 +56,9 @@ module Studio
         edge_stream: edge_stream_patch(r),
         stuck_signal: r.params["stuck_signal"] == "1",
         prompt_caching: r.params["prompt_caching"] == "1",
+        # The one opt-out flag: checked (the rendered default) saves true, an
+        # unchecked box saves an explicit false — both spellings of ON collapse.
+        tool_persistence: r.params["tool_persistence"] == "1",
         tool_output_compression: r.params["tool_output_compression"] == "1",
         subagents: list_patch(r, "subagents"),
         capabilities: list_patch(r, "capabilities"),

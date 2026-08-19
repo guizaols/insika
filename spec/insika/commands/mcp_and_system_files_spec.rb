@@ -136,16 +136,18 @@ RSpec.describe "MCP + system-files" do
     let(:profile) { Insika::AgentProfile.build(id: "bia", model: "m", provider: :deepseek, memory: true) }
     let(:request) { Struct.new(:profile).new(profile) }
 
-    it "without system files the prompt is identical (parity)" do
+    it "without system files the prompt is the base + the engine discipline block" do
       provider = Insika::Context::Providers::Prompt.new(base: "BASE", system_files: store)
-      expect(provider.call(request).first.content).to eq("BASE")
+      expect(provider.call(request).first.content)
+        .to eq("BASE\n\n#{Insika::Context::Providers::Prompt::TOOL_PERSISTENCE}")
     end
 
     it "injects the system files BEFORE the identity, for every agent" do
       store.write("HOUSE.md", "REGRAS DA CASA")
       provider = Insika::Context::Providers::Prompt.new(base: "BASE", system_files: store)
       content = provider.call(request).first.content
-      expect(content).to eq("BASE\n\nREGRAS DA CASA")
+      expect(content)
+        .to eq("BASE\n\nREGRAS DA CASA\n\n#{Insika::Context::Providers::Prompt::TOOL_PERSISTENCE}")
     end
   end
 end
