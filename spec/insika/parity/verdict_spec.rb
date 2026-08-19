@@ -17,7 +17,7 @@ RSpec.describe Insika::Parity::Verdict do
     :status, :verdict, :criterion_sha, :created_at, :updated_at
   )
 
-  def pair(status: :judged, outcome: "comparable", vs: "agent", agent: "agent-store-ocean-drop",
+  def pair(status: :judged, outcome: "comparable", vs: "agent", agent: "agent-store-loja-chocolates",
            created_at: "2026-08-10T10:00:00Z", sha: CRITERION.sha, id: nil)
     verdict = { "outcome" => outcome, "reason" => "r", "vs" => vs, "judges" => [],
                 "order_dependent" => false, "models" => %w[m1 m2 m3],
@@ -91,7 +91,7 @@ RSpec.describe Insika::Parity::Verdict do
     it "reports per-store arithmetic, excluding out-of-window pairs" do
       old = pair(created_at: "2026-08-01T00:00:00Z", id: "old")
       report = described_class.fold(pairs: fixture_pairs + [old], criterion: CRITERION, now: FIXED_NOW)
-      expect(report.per_agent["agent-store-ocean-drop"][:decided]).to eq(200)
+      expect(report.per_agent["agent-store-loja-chocolates"][:decided]).to eq(200)
       expect(report.window[:from]).to eq((FIXED_NOW - 7 * 86_400).iso8601)
     end
 

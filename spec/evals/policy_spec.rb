@@ -7,7 +7,7 @@ require "spec_helper"
 # judge is told (judge_spec). Pure over (Golden, [TurnResult]) — no server, no tokens.
 #
 # The case that motivated it is REAL and both sides of it are in this file verbatim.
-# Maria Filó's own AGENTS.md, rule R6:
+# A pilot store's own AGENTS.md rule:
 #
 #   "UMA PERGUNTA POR VEZ. Máximo 1 pergunta principal por mensagem = 1 ponto de
 #    interrogação no fim, sem sub-perguntas aninhadas."
@@ -20,7 +20,7 @@ RSpec.describe "Insika::Evals policy checks" do
   INCUMBENT_REPLY = "Separo umas opções na mesma vibe folk pra você ✨ Qual número você usa?"
 
   def golden(expect, turns: [{ "user" => "queria um vestido pra um casamento no fim da tarde" }])
-    Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "maria-filo",
+    Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "loja-moda",
                                         "turns" => turns, "expect" => expect })
   end
 

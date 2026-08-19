@@ -36,7 +36,7 @@ RSpec.describe "Studio parity page" do
     id = Insika::ShadowPairStore.key_for(channel: "relay", external_id: "5511", event_id: "e1")
     pairs.record_incumbent(id: id, channel: "relay", event_id: "e1", external_id: "5511",
                            reply: "me passa o número?", at: created_at || FIXED_NOW)
-    pairs.record_ours(id: id, channel: "relay", agent: "agent-store-ocean-drop",
+    pairs.record_ours(id: id, channel: "relay", agent: "agent-store-loja-chocolates",
                       session_id: "relay:5511", task_id: "t", event_id: "e1",
                       inbound: "queria saber do pedido", reply: "já confiro pra você",
                       criterion_sha: CRITERION.sha)
@@ -143,12 +143,12 @@ RSpec.describe "Studio parity page" do
 
     form = client.get("/parity")
     csrf = form.body[/name="_csrf" value="([^"]+)"/, 1]
-    res = client.post("/parity", params: { "agent" => "agent-store-ocean-drop", "limit" => "10", "_csrf" => csrf })
+    res = client.post("/parity", params: { "agent" => "agent-store-loja-chocolates", "limit" => "10", "_csrf" => csrf })
     expect(res.status).to eq(302)
 
     judged = bus.dispatched.find { |c| c.type == :judge_shadow_pairs }
     expect(judged).not_to be_nil
-    expect(judged.payload).to eq(agent: "agent-store-ocean-drop", limit: 10)
+    expect(judged.payload).to eq(agent: "agent-store-loja-chocolates", limit: 10)
   end
 
   it "refuses the POST without the CSRF token" do
