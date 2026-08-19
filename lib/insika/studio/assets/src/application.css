@@ -463,12 +463,12 @@
   .crumbs { font-family:var(--mono); font-size:var(--text-xs); color:var(--dim); margin-bottom:.35rem; display:flex; gap:.4rem; align-items:center; }
   .crumbs a { color:var(--dim); }
   .crumbs a:hover { color:var(--accent); }
-  .subnav { display:flex; gap:.125rem; margin-bottom:1.25rem; border-bottom:1px solid var(--line-1); }
-  .subnav a { font-size:var(--text-sm); font-weight:500; color:var(--dim); padding:.45rem .7rem .5rem; border:0; background:transparent;
-    border-bottom:2px solid transparent; margin-bottom:-1px; border-radius:0;
-    transition:color var(--t-fast), border-color var(--t-fast); }
-  .subnav a:hover { color:var(--fg); background:transparent; border-color:transparent; text-decoration:none; }
-  .subnav a.on { color:var(--fg); font-weight:600; border-bottom-color:var(--accent-bg); }
+  .subnav { display:inline-flex; flex-wrap:wrap; gap:2px; margin-bottom:1.25rem; padding:2px;
+    border:1px solid var(--line-1); border-radius:var(--radius-sm); background:var(--surface-1); }
+  .subnav a { font-size:var(--text-sm); font-weight:500; color:var(--dim); padding:.3rem .7rem; border:0; background:transparent;
+    border-radius:var(--radius-sm); transition:background var(--t-fast), color var(--t-fast); }
+  .subnav a:hover { color:var(--fg); background:var(--surface-2); text-decoration:none; }
+  .subnav a.on { color:var(--fg); font-weight:600; background:var(--accent-weak); }
 
   /* In the tabbed agent page the drills fill the remaining viewport instead of
      a fixed 100vh minus header guess — no page-level scrollbar in normal use.
