@@ -482,6 +482,10 @@
           <input type="checkbox" name="tool_output_compression" value="1"<%== " checked" if @agent.tool_output_compression %>>
           tool output compression <span class="muted">— mechanical dedupe of repeated tool results</span>
         </label>
+        <label class="check">
+          <input type="checkbox" name="tool_persistence" value="1"<%== " checked" unless @agent.tool_persistence == false %>>
+          tool persistence <span class="muted">— the engine's "Tool discipline" prompt block (retry weak/empty tool results differently); ON by default</span>
+        </label>
       </fieldset>
 
       <fieldset class="subgroup">

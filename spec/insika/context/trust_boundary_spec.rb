@@ -13,7 +13,10 @@ RSpec.describe "Context — trust boundary" do
   let(:event_stream) { SpyEventStream.new }
 
   def build(providers, vars:, budget:)
+    # tool_persistence off: this spec is about the eviction arithmetic, and the
+    # engine discipline block would swamp the tiny token budgets used here.
     profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "IDENTIDADE",
+                                          tool_persistence: false,
                                           limits: { context_budget: budget })
     request = Insika::ContextRequest.new(session: nil, message: "oi", profile: profile,
                                           tenant: "loja-7", vars: vars, checkpoint: nil)

@@ -9,6 +9,7 @@ RSpec.describe "Insika ProfileSource" do
       tools_allow: %w[menu calc], skills: %w[pedido],
       policies: %i[tool_allowlist skill_allowlist], memory: true,
       tool_output_compression: true,
+      tool_persistence: false,
       budget: { daily: 100_000, soft: true },
       reliability: { retries: 2, fallback: ["openai/gpt-4o-mini"] },
       alerts: { webhook: "https://ops.example.com/alerts" },
@@ -49,6 +50,7 @@ RSpec.describe "Insika ProfileSource" do
       expect(got.skills).to eq(%w[pedido])
       expect(got.memory).to be(true)
       expect(got.tool_output_compression).to be(true) # survives the JSON round-trip
+      expect(got.tool_persistence).to be(false) # the explicit opt-out survives the round-trip
       expect(got.budget).to eq("daily" => 100_000, "soft" => true) # string keys post-round-trip
       expect(got.reliability).to eq("retries" => 2, "fallback" => ["openai/gpt-4o-mini"])
       expect(got.alerts).to eq("webhook" => "https://ops.example.com/alerts")

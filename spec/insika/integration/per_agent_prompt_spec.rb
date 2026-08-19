@@ -44,10 +44,11 @@ RSpec.describe "Integration: per-agent prompt identity" do
 
   it "an agent with its own identity does NOT inherit the default; an agent without prompt_files inherits" do
     # Bia: without prompt_files -> inherits the deployment default (parity).
-    create_agent({ "id" => "bia", "model" => "m" })
+    create_agent({ "id" => "bia", "model" => "m", "tool_persistence" => false })
 
     # Chef: created with its own prompt_files + content authored at runtime.
-    create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md] })
+    create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md],
+                   "tool_persistence" => false })
     write_file({ "agent_id" => "chef", "file" => "IDENTITY.md",
                  "content" => "Sou o Chef, especialista em massas artesanais." })
 
@@ -57,7 +58,8 @@ RSpec.describe "Integration: per-agent prompt identity" do
   end
 
   it "editing the agent's file takes effect on the next dispatch (hot, no restart)" do
-    create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md] })
+    create_agent({ "id" => "chef", "model" => "m", "prompt_files" => %w[IDENTITY.md],
+                   "tool_persistence" => false })
     write_file({ "agent_id" => "chef", "file" => "IDENTITY.md", "content" => "v1" })
     expect(identity_for("chef")).to eq("v1")
 

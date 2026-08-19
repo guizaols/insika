@@ -104,6 +104,9 @@ module Insika
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
         prompt_caching: h[:prompt_caching],
+        # tool_persistence: the one opt-out flag — nil round-trips as nil (= ON);
+        # only a stored explicit false turns the discipline block off.
+        tool_persistence: h[:tool_persistence],
         tool_output_compression: h[:tool_output_compression],
         # params/model_policy: the resolver tolerates string keys from
         # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no

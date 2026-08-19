@@ -305,6 +305,12 @@ module Insika
       #           tts:   { model: "tts-1", voice: "alloy" }
       def outputs(hash) = (@config[:outputs] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The engine's "Tool discipline" block in the system prompt (retry a
+      # weak/empty tool result with a different approach before giving up).
+      # ON by default — this setter exists to turn it OFF:
+      #   tool_persistence false
+      def tool_persistence(on = true) = @config[:tool_persistence] = on
+
       # Mechanical tool-result dedupe in the replayed history
       # (no-LLM compaction, apt for bloated transcripts). CHANGES WHAT THE MODEL
       # SEES: repeated identical tool results collapse to a back-reference.
