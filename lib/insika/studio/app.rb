@@ -53,6 +53,11 @@ module Studio
     # Strict CSP: no `unsafe-inline`. Everything comes from the same-origin bundle in
     # /studio/assets/dist. `connect-src 'self'` covers the playground's EventSource
     # (SSE from /studio/events, same origin). `img-src data:` covers inline SVG/icons.
+    # `frame-src 'self'` (explicit, not left to the `default-src 'none'` fallback):
+    # the artifact preview page frames /studio/artifacts/:id/content — same-origin,
+    # but frame-src does NOT inherit from default-src, so without this line the
+    # browser blocked its own iframe (found live: "Framing '...' violates ...
+    # default-src 'none' ... frame-src was not explicitly set").
     plugin :content_security_policy do |csp|
       csp.default_src :none
       csp.script_src :self
@@ -63,6 +68,7 @@ module Studio
       csp.form_action :self
       csp.base_uri :none
       csp.frame_ancestors :none
+      csp.frame_src :self
     end
 
     class << self

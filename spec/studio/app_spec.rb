@@ -395,6 +395,15 @@ RSpec.describe Studio::App do
     expect(res.headers["x-content-type-options"]).to eq("nosniff")
   end
 
+  it "explicitly allows frame-src 'self' — the artifact preview frames its own /content route" do
+    # frame-src does NOT inherit from default-src (unlike most fetch directives) — without
+    # this, the browser blocks the preview's own same-origin iframe (found live: "Framing
+    # '...' violates ... default-src 'none' ... frame-src was not explicitly set").
+    app, = build_app
+    res = Client.new(app).get("/login")
+    expect(res.headers["content-security-policy"]).to include("frame-src 'self'")
+  end
+
   it "whitelists a nonce on style-src and exposes it via <meta> (CodeMirror/Turbo)" do
     app, = build_app
     res = Client.new(app).get("/login")
