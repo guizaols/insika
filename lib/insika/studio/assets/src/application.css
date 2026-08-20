@@ -262,6 +262,13 @@
      16px lower than the first in the agents grid). */
   .agent-grid > .card, .stat-cards > .card, .check-grid > .card, .home-grid > .card { margin-top:0; }
 
+  /* The artifact preview's sandboxed iframe — an unstyled <iframe> defaults to
+     the browser's ~150px box, which only ever shows a report's title. Fill the
+     card edge-to-edge (padding:0, so there's no border-within-a-border look)
+     with a generous, scrollable height. */
+  .artifact-frame { padding:0; overflow:hidden; }
+  .artifact-frame iframe { display:block; width:100%; height:80vh; border:0; }
+
   /* ── Buttons ────────────────────────────────────────────────────────── */
   .btn, button {
     font:inherit; font-size:var(--text-sm); font-weight:500; cursor:pointer; color:var(--fg);
