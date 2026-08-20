@@ -51,4 +51,25 @@ Log in at `/studio` with the printed token and pick the `reporter` agent.
 - There is no real store here. The skill's "numbers" are whatever the model
   can say about the (empty) day — the point is the pipeline, not the data. A
   real report wires a data-defined tool (or an MCP server) with a read-only
-  credential; the tenant-bound placeholder pattern is the same one shown above.
+  credential, and this is where the tenant rule becomes concrete: the store is
+  a `{{ctx.*}}` binding the Executor deposits, **never** a parameter the model
+  types (see the `ctx.*` table in [`docs/TOOLS.md`](../../docs/TOOLS.md)).
+
+  ```ruby
+  data_tool(
+    "name"        => "sales_by_day",
+    "description" => "Daily sales totals for the last N days.",
+    "parameters"  => {
+      "type" => "object",
+      "properties" => { "days" => { "type" => "integer", "description" => "how many days back" } },
+      "required" => %w[days]
+    },
+    "request" => {
+      "method" => "GET",
+      # {{days}} is the model's argument; {{ctx.store_id}} is bound from the
+      # turn — the model cannot point this tool at another store.
+      "url" => "https://reports.internal.example/sales?days={{days}}&store={{ctx.store_id}}"
+    },
+    "response" => { "extract" => "body_raw" }
+  )
+  ```
