@@ -49,6 +49,11 @@ the one you create and change without a rebuild. See
 }
 ```
 
+`{{secret.api_token}}` above is only real coming through the **manifest**
+write path (`POST /v1/tools/manifest`) — writing this same shape via the DSL
+or Studio needs the literal header value instead; see
+"[The one gotcha](#the-one-gotcha-envsecret-templating-is-manifest-only)" below.
+
 ### Parameters: the schema is the contract
 
 `parameters` is **JSON Schema**, and it reaches the provider verbatim — it is the only
@@ -87,17 +92,25 @@ allow never becomes a request: it returns an `{ error: … }` naming the path
 retries against. Structure is strict; a scalar may arrive in its lossless string form
 (`"2"`, `"true"`) and is never coerced — what the model sent is what the request carries.
 
-**Placeholders** are resolved at turn time:
+**Placeholders**. Two of these resolve at turn time; `{{secret.*}}` resolves
+once, at ingestion — see the gotcha below before reaching for it:
 
-- `{{param}}` — a declared top-level parameter, filled from the model's call.
+- `{{param}}` — a declared top-level parameter, filled from the model's call,
+  every turn.
 - `{{ctx.*}}` — turn context set **server-side, never by the model**: a closed set
   of `chat_id`, `store_id`, `agent_id`, `tenant`, `image_url`. This is how a tool knows *which*
   session/agent it is acting for without trusting the model. `image_url` is the
   first image part on the message (a photo for analysis outside the prompt);
-  absent when the turn carried none.
-- `{{secret.*}}` — allowed **only** inside a header named in `secret_headers`.
-  A secret placeholder anywhere else is rejected (it would leak unmasked). The
-  real secret value is injected at provision time and never lives on disk.
+  absent when the turn carried none. Resolved every turn, like `{{param}}`.
+- `{{secret.*}}` — **only resolved on the manifest ingestion path**
+  (`POST /v1/tools/manifest`; see "[The one gotcha](#the-one-gotcha-envsecret-templating-is-manifest-only)"
+  below), and only once — the resolved value is what gets stored, the token
+  itself never lives on disk and is never re-read per turn. Allowed **only**
+  inside a header named in `secret_headers`. Written any other way — DSL,
+  Studio, MCP ingestion, or anywhere outside a `secret_headers` header — a
+  `{{secret.*}}` is not a credential the engine knows how to fill; it is an
+  undeclared parameter, and tool registration refuses it exactly like it
+  refuses any other unknown placeholder.
 
 **Validation** happens on ingestion. Common rejections:
 
@@ -263,14 +276,20 @@ reload, no restart):
    fails the whole request. The response reports `{ version, created, updated, errors }`.
 4. **MCP ingestion** — import a server; each of its tools becomes a data tool.
 
-### The one gotcha: env templating is manifest-only
+### The one gotcha: env/secret templating is manifest-only
 
-`{{env.*}}` (and `{{secret.*}}`) are substituted **at ingestion, on the manifest
-path**. Other write paths do **not** resolve `{{env.*}}` — a literal
-`{{env.API_URL}}` there fails the `http`/`https` URL check and 422s. Rule:
-**manifest tools may template the URL with `{{env.*}}`; tools written any other
-way must ship a literal URL.** `{{ctx.*}}` and `{{param}}` work everywhere (they
-resolve at turn time, not ingestion).
+`{{env.*}}` and `{{secret.*}}` are substituted **at ingestion, on the manifest
+path, once** — the resolved literal is what gets stored; the token itself
+never survives to a turn. Other write paths (DSL, Studio, MCP ingestion) do
+**not** resolve either: a literal `{{env.API_URL}}` in a URL fails the
+`http`/`https` check and 422s; a literal `{{secret.X}}` anywhere — including
+inside a header named in `secret_headers` — fails tool registration the same
+way an unknown parameter would (`ToolDefinition.build`'s placeholder check
+does not special-case it). Rule: **manifest tools may template a URL with
+`{{env.*}}` and a `secret_headers` header with `{{secret.*}}`; tools written
+any other way must ship literal values** — a real URL, and a real (masked on
+read) header value. `{{ctx.*}}` and `{{param}}` work everywhere (they resolve
+at turn time, not ingestion).
 
 ## Making it appear — and enter the tool-loop
 
