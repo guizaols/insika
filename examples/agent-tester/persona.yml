@@ -1,0 +1,17 @@
+id: agent-tester-objetivo-difuso
+agent: assistant
+persona:
+  goal: "find a gift under R$100 for a birthday; doesn't know product names"
+  style: "short messages, answers what they ask, gives up if asked to explain twice"
+  opens_with: "oi, queria um presente"
+  knows:
+    budget: "100"
+    occasion: "birthday"
+  max_turns: 8
+expect:
+  policy: investigate_first
+  rubric: |
+    Establishes the objective before recommending (one or two questions, not a form),
+    recommends real products within budget and closes with a clear next step. Fails
+    if it dumps the catalog before understanding, or keeps asking without ever searching.
+  min_score: 0.7

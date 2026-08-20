@@ -28,8 +28,8 @@
         <div class="nav-label"><%= agent %></div>
         <% cases.each do |g| %>
           <a class="drill-item<%== ' active' if @case && @case.id == g.id %>" href="/studio/evals?id=<%= Rack::Utils.escape(g.id) %>">
-            <div class="drill-item-name"><span class="txt mono"><%= g.id %></span><% if g.rubric.to_s.strip.empty? %><span class="pill info plain">no rubric</span><% end %></div>
-            <div class="drill-item-sub"><%= g.user_turns.first %></div>
+            <div class="drill-item-name"><span class="txt mono"><%= g.id %></span><% if g.rubric.to_s.strip.empty? %><span class="pill info plain">no rubric</span><% end %><% if g.simulated? %><span class="pill accent plain">simulated</span><% end %></div>
+            <div class="drill-item-sub"><%= g.opens_with.to_s %></div>
           </a>
         <% end %>
       <% end %>

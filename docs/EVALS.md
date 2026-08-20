@@ -157,6 +157,77 @@ Three rules make the number worth quoting:
 Cost: **two provider calls per judge per case**, which is why it is opt-in and never
 part of the gate.
 
+## Simulated users — conversations the agent never had
+
+A golden case fixes the user's turns in advance. Real customers branch — they answer
+the agent's question, or ignore it, or send an order number three messages later. A
+case with frozen turns can only ever test the path the author imagined.
+
+A **simulated** case generates the conversation instead: a persona model (the cheap
+platform `utility_model`) plays a customer with the persona as its **whole
+instruction**, and the target agent answers through the same transport a replay uses.
+They talk until the persona's `max_turns`, or until the persona emits a stop marker —
+`<<goal_met>>` when its goal is served, `<<gave_up>>` when it abandons. Both are
+recorded: "gave up at turn 3" is a finding.
+
+```yaml
+id: loja-objetivo-difuso
+agent: loja-chocolates
+persona:                          # the SIMULATED customer (alternative to `turns:`)
+  goal: "descobrir o que comprar de presente; não sabe nomes de produto"
+  style: "mensagens curtas, responde o que perguntam, desiste se tiver que explicar duas vezes"
+  opens_with: "oi, queria um presente"
+  knows:                          # the ONLY facts the persona may assert
+    orcamento: "até R$ 100"
+    ocasião: "aniversário"
+  max_turns: 8
+expect:
+  policy: investigate_first
+  rubric: |
+    Descobre o objetivo antes de recomendar (uma ou duas perguntas, não um formulário),
+    recomenda do catálogo real e fecha com um próximo passo claro. Reprova se despejar
+    catálogo antes de entender, ou se ficar perguntando sem nunca buscar.
+  min_score: 0.7
+```
+
+**The anti-invention rule is the soul of the feature.** The persona's prompt contains
+only the `knows` facts and the rule that it may assert exactly those and nothing else
+— asked about anything it does not have, it answers with ignorance ("não sei", "não
+tenho isso aqui"), like a real customer without that fact. A simulator that invents an
+order number produces a conversation the agent could never have had, and a case that
+tests nothing.
+
+```bash
+insika evals:simulate --persona persona.yml --target loja-chocolates --staging
+```
+
+- `--target <agent|url>` — an agent id over the deployment's `/v1/responses`, or a full
+  A2A URL (an agent that only speaks A2A rides the same Simulator through a thin A2A
+  transport; it polls once per second, bounded by `--timeout`, since a remote agent
+  takes seconds to finish a task).
+- `--staging` or `--eval-profile` — **one is required**. A simulated conversation
+  marks its transcript `simulated: true`; it does NOT disarm the agent's tools. So the
+  Simulator only runs against (a) a target the operator declares is a staging
+  deployment (`--staging`), or (b) an eval profile where the agent's side-effect tools
+  are swapped for dry-runs (`--eval-profile`).
+- `--eval-profile` is a **verified declaration, not a trust-me flag**. The CLI derives
+  the target's side-effect tools — the deployment's own registry over
+  `GET /v1/agents/:id` (`side_effect_tools`), or the local store when `INSIKA_DB`
+  points at it — and refuses unless `--eval-tools <a,b,c>` names every one of them.
+  The swap itself happens where the tools run (the deployment's eval profile; the
+  in-process overlay for a local graph, as in `examples/agent-tester/`); the
+  derivation is what keeps the client honest about what must be covered. An A2A target
+  has no reachable registry, so the explicit `--eval-tools` list is required there.
+- `--persona-model` — the model playing the customer (default: the platform
+  `utility_model`). The judge that scores the transcript comes from the same
+  panel configuration as a replay.
+
+Every simulated run is **`simulated: true`** — the transcript carries the flag end to
+end, so a report never mixes a generated conversation with real traffic. A simulated
+case (`persona:`) is one of the two shapes of a case; the replay Runner **skips** it
+(the turns do not exist until a Simulator generates them) and only the simulate CLI
+drives it.
+
 Cases live in two places, and it is the same YAML in both:
 
 - **`evals/golden/**`** in the repo — the curated corpus, reviewable in a pull request,

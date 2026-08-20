@@ -11,9 +11,19 @@ module Insika
   module Evals
     # A curated behavior case, loaded from a data file (evals/golden/<agent>/*.yml).
     # Data, not code — same spirit as tools-as-data. See evals/README.md for the format.
-    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, keyword_init: true) do
-      # The user messages to replay, in order.
+    #
+    # A case is ONE of two shapes: `turns:` (a scripted replay, RFC-0008) or
+    # `persona:` (a conversation the Simulator GENERATES, RFC-0014 §3.1). A persona
+    # case is `simulated?` — the replay Runner skips it, and the Simulator drives it.
+    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, :persona, keyword_init: true) do
+      # The user messages to replay, in order. Empty for a persona case: a generated
+      # conversation has no scripted turns.
       def user_turns = turns.map { |t| t["user"] }
+
+      # The simulated customer (RFC-0014 §3.1). nil for a scripted case.
+      def simulated? = !persona.nil?
+
+      def opens_with = persona ? persona.opens_with : user_turns.first
 
       # Tool refs the case expects; a trailing "?" marks OPTIONAL (never fails).
       # -> [{ name:, optional: }]
@@ -85,7 +95,12 @@ module Insika
 
         id = presence(raw["id"]) || (raise InvalidGolden, "#{source}: 'id' is required")
         agent = presence(raw["agent"]) || (raise InvalidGolden, "#{source}: 'agent' is required (case '#{id}')")
-        turns = normalize_turns(raw["turns"], id: id, source: source)
+        persona = normalize_persona(raw["persona"], id: id, source: source)
+        if persona && !raw["turns"].nil?
+          raise InvalidGolden, "#{source}: a case is ONE shape — 'turns' or 'persona', not both (case '#{id}')"
+        end
+
+        turns = persona ? [] : normalize_turns(raw["turns"], id: id, source: source)
         expect = raw["expect"] || {}
         raise InvalidGolden, "#{source}: 'expect' must be a mapping (case '#{id}')" unless expect.is_a?(Hash)
 
@@ -98,7 +113,21 @@ module Insika
         reference = normalize_reference(raw["reference"], id: id, source: source)
 
         Golden.new(id: id, agent: agent, turns: turns, expect: expect,
-                   requires: requires, reference: reference, source: source)
+                   requires: requires, reference: reference, source: source, persona: persona)
+      end
+
+      # `persona:` (RFC-0014 §3.1) is the alternative shape to `turns:`: the
+      # conversation is GENERATED, not replayed. Malformed is REFUSED — a persona
+      # without `knows` or `max_turns` would simulate nothing. The PersonaLoader
+      # already prefixes its messages with the source path; the case id is added
+      # ONCE here (the loader is shared by the persona-file CLI, which has no case
+      # shape).
+      def normalize_persona(raw, id:, source:)
+        return nil if raw.nil?
+
+        PersonaLoader.build(raw, source: source)
+      rescue PersonaLoader::InvalidPersona => e
+        raise InvalidGolden, "#{e.message} (case '#{id}')"
       end
 
       # reference: { "source" => String?, "messages" => [{ "role" =>, "text" =>,

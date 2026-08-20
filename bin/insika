@@ -35,6 +35,7 @@ module Insika
       when "evals:import" then evals_import(argv)
       when "evals:export" then evals_export(argv)
       when "evals:baseline" then evals_baseline(argv)
+      when "evals:simulate" then evals_simulate(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -62,6 +63,15 @@ module Insika
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
           evals:baseline <sub>      the accepted state per agent: show | import | export
+          evals:simulate --persona F --target <agent|url>
+                                    generate a simulated conversation against an
+                                    agent (RFC-0014): a persona model talks to the
+                                    target until max_turns or a stop marker; the
+                                    transcript is scored by the judge panel.
+                                    Requires --staging or --eval-profile (a simulated
+                                    run must not write for real); --eval-profile is
+                                    verified against the target's derived
+                                    side-effect tools (--eval-tools).
           version                   print the engine version
           help                      show this help
 
@@ -271,6 +281,328 @@ def baseline_export(path)
   at = store.agents.filter_map { |a| store.get(a)["at"] }.max
   File.write(path, JSON.pretty_generate({ "at" => at, "cases" => merged }))
   puts "exported #{merged.size} case(s) from #{store.agents.size} agent baseline(s) to #{path}"
+end
+
+# insika evals:simulate --persona F --target <agent|url> [--staging|--eval-profile]
+#
+# Generates a SIMULATED conversation (RFC-0014 PR2): a persona model (the cheap
+# utility_model) plays a customer with the persona as its whole instruction — and
+# one hard rule: it may ONLY assert what the persona's `knows` contains. The
+# target agent answers over the same Transport the replay uses (HttpTransport
+# against a running deployment, or a thin A2A transport when --target is a URL).
+#
+# SAFETY (fixed in the spec): a simulated conversation must not write for real,
+# because `simulated: true` marks the transcript, it does not disarm the tools.
+# So this CLI REQUIRES one of:
+#   --staging       the operator declares the target is a staging deployment
+#   --eval-profile  the target runs an eval profile (side-effect tools swapped
+#                   for dry-runs) — a VERIFIED declaration, not a trust-me flag:
+#                   the CLI derives the target's side-effect tools from the
+#                   deployment's own registry (GET /v1/agents/:id) or the local
+#                   store (INSIKA_DB), and requires --eval-tools to cover every
+#                   one of them. An A2A target (no reachable registry) requires
+#                   the explicit --eval-tools list.
+# and refuses to run without one. Every run is marked `simulated: true`.
+def evals_simulate(argv)
+  require "yaml"
+  require "json"
+  require "fileutils"
+  require "time"
+  opts = { base_url: ENV["INSIKA_URL"] || "http://localhost:9292",
+           token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo",
+           timeout: 120, persona_model: ENV["EVAL_PERSONA_MODEL"],
+           judge_model: ENV["EVAL_JUDGE_MODEL"], judge_provider: ENV["EVAL_JUDGE_PROVIDER"] }
+  OptionParser.new do |o|
+    o.banner = "Usage: insika evals:simulate --persona F --target <agent|url> [options]"
+    o.on("--persona FILE", "the persona YAML — a case with a `persona:` key (required)") { |v| opts[:persona] = v }
+    o.on("--target T", "agent id (over --base-url) or an A2A http(s) URL (required)") { |v| opts[:target] = v }
+    o.on("--base-url URL", "deployment base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
+    o.on("--token T", "gateway token (default OPENCLAW_GATEWAY_TOKEN/local-demo)") { |v| opts[:token] = v }
+    o.on("--timeout N", Integer, "per-turn read timeout, and the A2A poll budget in seconds (default 120)") { |v| opts[:timeout] = v }
+    o.on("--staging", "the target is a staging deployment (side effects acceptable)") { opts[:staging] = true }
+    o.on("--eval-profile", "the target runs an eval profile (side-effect tools swapped for fakes)") { opts[:eval_profile] = true }
+    o.on("--eval-tools LIST", "comma-separated side-effect tools the eval profile swaps (verified against the derived set; required for an A2A target)") { |v| opts[:eval_tools] = v }
+    o.on("--persona-model MODEL", "the model playing the customer (default settings utility_model)") { |v| opts[:persona_model] = v }
+    o.on("--judge-model MODEL", "score the transcript's rubric with this model") { |v| opts[:judge_model] = v }
+    o.on("--judge-provider PROVIDER", "provider for the judge model") { |v| opts[:judge_provider] = v }
+    o.on("--pairwise", "compare the simulated transcript against the case's `reference:`") { opts[:pairwise] = true }
+    o.on("--out FILE", "write the JSON report here") { |v| opts[:out] = v }
+  end.parse!(argv)
+
+  abort "insika evals:simulate: --persona is required" if opts[:persona].to_s.empty?
+  abort "insika evals:simulate: --target is required (<agent> or an A2A <url>)" if opts[:target].to_s.empty?
+  unless opts[:staging] || opts[:eval_profile]
+    abort "insika evals:simulate: a simulated run must not write for real — pass --staging " \
+          "(the target is a staging deployment) or --eval-profile (side-effect tools are swapped)"
+  end
+
+  golden = load_sim_persona(opts[:persona])
+  # --target names the agent actually simulated. An agent id overrides the
+  # persona file's `agent:` (the file is a reusable script); a URL means an A2A
+  # endpoint, where the agent id is irrelevant (the transport ignores it).
+  a2a_target = opts[:target].to_s.match?(%r{\Ahttps?://})
+  target_agent = a2a_target ? golden.agent : opts[:target].to_s
+  safety = build_sim_safety(opts, golden, target_agent, a2a_target)
+
+  settings = eval_settings_from_env
+  ask = build_persona_ask(opts, settings)
+  judge = build_sim_judge(opts, settings)
+
+  transport = build_sim_transport(opts)
+  simulator = Insika::Evals::Simulator.new(transport: transport, ask: ask, safety: safety)
+  conv = "sim-#{golden.id}"
+  run = simulator.run(persona: golden.persona, agent: target_agent, conv: conv)
+
+  verdict = judge && judge.score_conversation(
+    rubric: golden.rubric, transcript: run.transcript, policy: golden.policy,
+    min_score: golden.min_score || Insika::Evals::Judge::DEFAULT_MIN_SCORE
+  )
+
+  pairwise = if opts[:pairwise] && golden.reference?
+               p = build_sim_pairwise(opts, settings)
+               if p
+                 p.compare_texts(
+                   ours: Insika::Evals::Pairwise.transcript_text(run.transcript),
+                   theirs: Insika::Evals::Pairwise.reference_transcript(golden.reference_messages),
+                   vs: golden.human_assisted? ? "human-assisted" : "agent"
+                 )
+               end
+             end
+
+  at = Time.now.utc.iso8601
+  report = { "simulated" => true, "at" => at, "id" => golden.id, "agent" => golden.agent,
+             "conv" => conv, "stop" => run.stop.to_s, "turns" => run.turns, "error" => run.error,
+             "persona" => golden.persona.to_h, "transcript" => run.transcript }
+  report["judge"] = { "score" => verdict.score, "pass" => verdict.pass, "reason" => verdict.reason } if verdict
+  report["pairwise"] = { "outcome" => pairwise.outcome, "vs" => pairwise.vs, "reason" => pairwise.reason } if pairwise
+  puts simulate_markdown(report, verdict, pairwise)
+  if opts[:out]
+    FileUtils.mkdir_p(File.dirname(File.expand_path(opts[:out])))
+    File.write(opts[:out], JSON.pretty_generate(report))
+    puts "report: #{opts[:out]}"
+  end
+  exit(run.stop == :error || (verdict && !verdict.pass) ? 1 : 0)
+rescue Insika::Evals::PersonaLoader::InvalidPersona, Insika::Evals::GoldenLoader::InvalidGolden,
+       Insika::Evals::Simulator::UnsafeTarget => e
+  warn "insika evals:simulate: #{e.message}"
+  exit 2
+end
+
+# --persona: a case YAML carrying a `persona:` key (the RFC-0014 alternative
+# shape). A case without turns but with a persona is the only thing this CLI
+# drives — a scripted case has nothing to simulate.
+def load_sim_persona(path)
+  raw = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false) || {}
+  golden = Insika::Evals::GoldenLoader.build(raw, source: path)
+  raise Insika::Evals::GoldenLoader::InvalidGolden, "#{path}: needs a `persona:` (a simulated case)" unless golden.simulated?
+
+  golden
+rescue Errno::ENOENT => e
+  raise Insika::Evals::GoldenLoader::InvalidGolden, e.message
+end
+
+# The safety gate for a run. --staging is a straight declaration. --eval-profile
+# is a VERIFIED one: the CLI derives the target's side-effect tools (see
+# derive_side_effect_tools) and refuses unless the operator's --eval-tools names
+# every one of them — an eval profile that leaves a side-effect tool unswapped is
+# a lie, and a bare `--eval-profile` on a write-capable agent is exactly the
+# trust-me flag the docs promise is not what happens.
+def build_sim_safety(opts, golden, target_agent, a2a_target)
+  return Insika::Evals::Simulator::Safety.staging if opts[:staging]
+
+  declared = opts[:eval_tools].to_s.split(",").map(&:strip).reject(&:empty?)
+  derived = if a2a_target
+              nil # a remote A2A agent has no reachable registry — the list must be declared
+            else
+              derive_side_effect_tools(opts, target_agent)
+            end
+
+  if derived
+    uncovered = derived - declared
+    unless uncovered.empty?
+      abort "insika evals:simulate: --eval-profile, but the target's derived side-effect " \
+            "tool(s) (#{uncovered.join(', ')}) are not declared in --eval-tools — an eval " \
+            "profile must swap EVERY side-effect tool (or use --staging)"
+    end
+  elsif declared.empty?
+    abort "insika evals:simulate: cannot derive the target's side-effect tools (no " \
+          "/v1/agents/:id answer and no local store) — declare the swap list explicitly " \
+          "with --eval-tools, or use --staging"
+  end
+
+  Insika::Evals::Simulator::Safety.new(eval_profile: true, side_effect_tools: derived || [],
+                                       swapped_tools: declared)
+end
+
+# The target's side-effect tools — DERIVED, never hand-typed into the safety
+# gate. -> [names] | nil when derivation is impossible. Local store first (the
+# definitive answer when INSIKA_DB points at the deployment); otherwise the
+# deployment's own registry over GET /v1/agents/:id (`side_effect_tools` — the
+# server computes it from the same allowlist − deny resolution the capability
+# view uses).
+def derive_side_effect_tools(opts, agent)
+  local = local_side_effect_tools(agent)
+  return local unless local.nil?
+
+  capabilities = Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
+  answer = capabilities.for(agent)
+  answer && !answer["side_effect_tools"].nil? ? Array(answer["side_effect_tools"]).map(&:to_s) : nil
+end
+
+# Derivation from the local store (INSIKA_DB set): the profile's reachable set
+# intersected with the store-backed overlay registry's side-effect marks. nil
+# when there is no store or the agent is not in it.
+def local_side_effect_tools(agent)
+  db = Insika::EnvSchema.read("INSIKA_DB", ENV)
+  return nil if db.nil? || db.empty?
+
+  backend = Insika::Wiring::Graph.backend_from_env
+  config_store = Insika::ConfigStore.new(store: backend)
+  profile = Insika::StoredProfileSource.new(config_store: config_store).fetch(agent)
+  return nil if profile.nil?
+
+  registry = Insika::OverlayToolRegistry.new(
+    base: Insika::ToolRegistry.new, tool_store: Insika::ToolStore.new(config_store: config_store),
+    http: Insika::HttpClient.new
+  )
+  Insika::Evals::EvalProfile.side_effect_tools(profile, registry)
+end
+
+# The persona MODEL — the cheap side that plays the customer. Defaults to the
+# platform `utility_model` (the same setting the judges and the moderator read);
+# --persona-model overrides. Refuses when neither is set: never guess a model to
+# spend money on (the proposer's rule, applied to the cheap side too).
+def build_persona_ask(opts, settings)
+  model = opts[:persona_model] || settings["utility_model"]
+  abort "insika evals:simulate: no persona model — set the platform utility_model or pass --persona-model" if model.to_s.empty?
+
+  require "ruby_llm"
+  RubyLLM.configure do |c|
+    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
+    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
+    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+  end
+  Insika::Evals::JudgePanel.ruby_llm_ask(model, nil)
+end
+
+def build_sim_judge(opts, settings)
+  models = if opts[:judge_model]
+             [{ "model" => opts[:judge_model], "provider" => opts[:judge_provider] }]
+           else
+             Array(settings["evals"] && settings["evals"]["judges"])
+           end
+  return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
+
+  require "ruby_llm"
+  RubyLLM.configure do |c|
+    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
+    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
+    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+  end
+  Insika::Evals::JudgePanel.build(settings["evals"] || {}, overrides: {
+                                    "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
+                                  })&.first
+end
+
+# The pairwise judge — the SAME configured panel, asked which conversation served
+# the customer better. Same opt-in as a replay's --pairwise (2 calls per judge).
+def build_sim_pairwise(opts, settings)
+  models = if opts[:judge_model]
+             [{ "model" => opts[:judge_model], "provider" => opts[:judge_provider] }]
+           else
+             Array(settings["evals"] && settings["evals"]["judges"])
+           end
+  return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
+
+  require "ruby_llm"
+  RubyLLM.configure do |c|
+    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
+    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
+    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+  end
+  Insika::Evals::JudgePanel.pairwise(settings["evals"] || {}, overrides: {
+                                       "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
+                                     })&.first
+end
+
+# --target <agent|url>: an agent id rides HttpTransport over the deployment's
+# /v1/responses (the same surface the replay uses); a full http(s) URL is an A2A
+# endpoint (an agent that only speaks A2A) driven by the thin A2A transport. The
+# A2A client is built with a SYNCHRONOUS Net::HTTP adapter (the CLI has no
+# reactor) — `post_json(url, body) -> Hash` is the client's whole contract.
+#
+# POLLING: the A2A client's default cadence (0.02s, 30 polls = ~0.6s total) is
+# for in-process loopback. A remote agent takes SECONDS to finish a task, so the
+# CLI polls once per second, bounded by --timeout (the same flag the HTTP
+# transport's read timeout honors).
+def build_sim_transport(opts)
+  target = opts[:target]
+  if target.to_s.match?(%r{\Ahttps?://})
+    require_relative "../lib/insika/server/a2a/client"
+    require_relative "../lib/insika/server/a2a/message"
+    require "net/http"
+    require "uri"
+    cadence = 1.0
+    client = Insika::Server::A2A::Client.new(
+      http: SyncPostJson.new,
+      poll_max: [opts[:timeout].to_i, 1].max,
+      sleeper: ->(_delay) { sleep(cadence) }
+    )
+    Insika::Evals::A2ATransport.new(client: client, url: target)
+  else
+    Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
+  end
+end
+
+# A synchronous A2A JSON-RPC HTTP adapter for the CLI (no async reactor). The A2A
+# client calls `post_json(url, body) -> Hash`; this answers it over Net::HTTP. An
+# unreachable host or a non-JSON body becomes a clean `{ "error" => ... }` envelope —
+# the A2A client turns that into a turn error, never a crash.
+class SyncPostJson
+  def post_json(url, body)
+    uri = URI.parse(url)
+    req = Net::HTTP::Post.new(uri)
+    req["Content-Type"] = "application/json"
+    req["Accept"] = "application/json"
+    req.body = body.is_a?(String) ? body : JSON.generate(body)
+    res = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
+                                             open_timeout: 10, read_timeout: 120) { |http| http.request(req) }
+    JSON.parse(res.body.to_s)
+  rescue StandardError => e
+    { "error" => { "code" => -32_600, "message" => "A2A call failed: #{e.class}: #{e.message}" } }
+  end
+end
+
+def eval_settings_from_env
+  db = Insika::EnvSchema.read("INSIKA_DB", ENV)
+  return {} if db.nil? || db.empty?
+
+  Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))).get
+rescue StandardError
+  {}
+end
+
+def simulate_markdown(report, verdict, pairwise = nil)
+  lines = ["# Simulated run — #{report['id']} (#{report['agent']})", "",
+           "**simulated: true** · stop: #{report['stop']}#{" (turn #{report['turns']})" if report['turns']}" \
+           "#{" · error: #{report['error']}" if report['error']}", ""]
+  report["transcript"].each do |m|
+    role = m[:role].to_s == "user" ? "customer" : "assistant"
+    lines << "**#{role}**"
+    lines << m[:text].to_s.empty? ? "  _#{m[:error] || 'no reply'}_" : "  #{m[:text]}"
+    lines << "  _tools: #{m[:tools].join(', ')}_" if m[:tools] && !m[:tools].empty?
+  end
+  lines << ""
+  if verdict
+    lines << "**judge: #{verdict.pass ? '✅' : '❌'} #{verdict.score}** — #{verdict.reason}"
+  else
+    lines << "_(no judge configured — transcript only)_"
+  end
+  if pairwise
+    mark = { "better" => "🟢", "comparable" => "🟡", "worse" => "🔴" }.fetch(pairwise.outcome, "·")
+    lines << "**vs incumbent (#{pairwise.vs}): #{mark} #{pairwise.outcome}** — #{pairwise.reason}"
+  end
+  "#{lines.join("\n")}\n"
 end
 
     # -- helpers -------------------------------------------------------
