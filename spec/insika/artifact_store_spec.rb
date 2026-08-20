@@ -111,6 +111,27 @@ RSpec.describe Insika::ArtifactStore do
     end
   end
 
+  describe "#all (the Studio's read — no tenant guess)" do
+    it "lists everything, across every tenant, when agent is nil" do
+      create!(id: "a-1", tenant: "reporter", agent: "reporter", now: now)
+      create!(id: "a-2", tenant: "platform", agent: "reporter", now: now + 3600)
+
+      ids = store.all.map(&:id)
+      expect(ids).to contain_exactly("a-1", "a-2")
+    end
+
+    it "filters by the record's own agent field, regardless of its tenant" do
+      # same agent, saved under TWO different tenant strings — exactly the
+      # Playground (tenant=agent) vs plain-API (tenant="platform") split.
+      create!(id: "a-playground", tenant: "reporter", agent: "reporter", now: now)
+      create!(id: "a-api", tenant: "platform", agent: "reporter", now: now + 3600)
+      create!(id: "a-other", tenant: "other", agent: "other-agent", now: now + 7200)
+
+      ids = store.all(agent: "reporter").map(&:id)
+      expect(ids).to contain_exactly("a-playground", "a-api")
+    end
+  end
+
   describe "#delete" do
     it "removes the artifact; false when it does not exist" do
       create!(id: "a-1")

@@ -2193,14 +2193,12 @@ end
       @agents = insika[:profile_source].ids.sort
       @agent = presence(request.params["agent"])
       @signed_available = !artifact_signing.nil? && artifact_signing[:key].to_s.length.positive?
-      store = artifact_store
-      @artifacts = if store.nil?
-                     []
-                   elsif @agent
-                     store.for_agent(tenant: artifact_tenant, agent: @agent)
-                   else
-                     store.for_tenant(tenant: artifact_tenant) # the "all" filter
-                   end
+      # #all, not #for_agent/#for_tenant: the Studio doesn't reliably know
+      # which tenant string an artifact was bound under (Playground turns
+      # bind tenant=agent; a plain single-tenant API turn binds "platform") —
+      # see ArtifactStore#all. Filtering by the record's own `agent` field
+      # sidesteps the guess.
+      @artifacts = artifact_store&.all(agent: @agent) || []
       view("artifacts")
     end
 
