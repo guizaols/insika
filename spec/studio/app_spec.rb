@@ -1921,6 +1921,41 @@ RSpec.describe Studio::App do
     expect(thread.index("ola")).to be < thread.index("skills · eager (2)")
   end
 
+  # save_artifact's result is a Ruby Hash#to_s once persisted (RubyLLM tool
+  # results are .to_s'd verbatim — never JSON), so a bare <pre> dump was the
+  # only trace a report ever ran; found live as "gerou o artefato mas não
+  # aparece no chat".
+  it "a save_artifact tool result renders a visible artifact link, not just the raw dump" do
+    sess = StoredSession.new(
+      id: "sess-artifact", updated_at: "t",
+      messages: [
+        { "role" => "assistant", "content" => "",
+          "tool_calls" => [{ "id" => "call1", "name" => "save_artifact", "arguments" => {} }] },
+        { "role" => "tool", "tool_call_id" => "call1",
+          "content" => '{id: "f513ab2a-2d94-4a0e-b713-e3905ced738e", ' \
+                       'url: "/studio/artifacts/f513ab2a-2d94-4a0e-b713-e3905ced738e/content"}' }
+      ]
+    )
+    app, = build_app(sessions: { "sess-artifact" => sess })
+
+    body = login(app).get("/sessions/sess-artifact").body
+
+    expect(body).to include('href="/studio/artifacts/f513ab2a-2d94-4a0e-b713-e3905ced738e/content"')
+    expect(body).to include("open artifact")
+  end
+
+  it "an ordinary tool result (no url) renders no artifact link" do
+    sess = StoredSession.new(
+      id: "sess-plain-tool", updated_at: "t",
+      messages: [{ "role" => "tool", "tool_call_id" => "call1", "content" => "{rows: []}" }]
+    )
+    app, = build_app(sessions: { "sess-plain-tool" => sess })
+
+    body = login(app).get("/sessions/sess-plain-tool").body
+
+    expect(body).not_to include("artifact-chip")
+  end
+
   it "a message without a timestamp flushes no inline card (older sessions degrade quietly)" do
     sess = StoredSession.new(id: "sess-nots", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "oi" }])

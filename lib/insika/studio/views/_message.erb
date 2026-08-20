@@ -8,6 +8,10 @@
 <% role = m["role"].to_s %>
 <% at = short_time(m["at"]) %>
 <% if role == "tool" %>
+  <% artifact_url = artifact_link_in(m["content"]) %>
+  <% if artifact_url %>
+    <p class="artifact-chip">📄 <a class="btn sm" href="<%= artifact_url %>" target="_blank" rel="noopener">open artifact</a></p>
+  <% end %>
   <details class="toolcard result">
     <summary><span class="arrow">←</span><strong>tool result</strong><% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></summary>
     <pre><%= message_content(m["content"]) %></pre>

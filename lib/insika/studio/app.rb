@@ -1390,6 +1390,18 @@ end
       content.to_s
     end
 
+    # `save_artifact`'s tool-result content is a plain Hash#to_s (RubyLLM tool
+    # results are .to_s'd verbatim into the stored message — see Executor#
+    # serialize_chat_message — never JSON-encoded): `{id: "...", url: "/studio/
+    # artifacts/..."}`. A regex on purpose, not JSON.parse — it genuinely is
+    # not JSON. -> the artifact path, or nil when this tool result isn't one
+    # (every other tool's result renders exactly as before, unaffected).
+    def artifact_link_in(content)
+      return nil unless content.is_a?(String)
+
+      content[%r{url:\s*"(/studio/artifacts/[^"]+)"}, 1]
+    end
+
     # An activation label from the context trace, as the operator reads it:
     # "gift-concierge · trigger:presente". The REASON is the point of the card — a
     # bare list of names answers "was something injected", never "which one did I
