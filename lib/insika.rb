@@ -186,6 +186,10 @@ require_relative "insika/evals/runner"
 require_relative "insika/evals/report"
 require_relative "insika/evals/baseline"
 require_relative "insika/evals/transport"
+# simulated users (RFC-0014 PR2): the persona data + the conversation driver.
+# Pure — the persona model is an injected ask, the target rides the Transport.
+require_relative "insika/evals/persona"
+require_relative "insika/evals/simulator"
 # shadow parity: the frozen criterion and the mechanical
 # fold over the pair store (C6). Pure — no store, no provider gem.
 require_relative "insika/parity/criterion"

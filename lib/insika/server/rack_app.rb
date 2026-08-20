@@ -59,8 +59,10 @@ module Insika
           pending_action_store: @graph.pending_action_store,
           provisioner: Insika::PackImporter.new(bus: @graph.bus, profiles: @graph.profiles),
           # GET /v1/agents/:id — the read-only capability view a case's `requires`
-          # resolves against.
+          # resolves against (and the derived side-effect set an eval profile must
+          # cover, RFC-0014).
           profiles: @graph.profiles,
+          tool_registry: @graph.tool_registry,
           # the OSS onboarding surface (start.md + models.json + docs).
           # This is the primary "build my first agent" target — models.json reports the
           # DSL's stores + the agents this process serves (each id IS the `model`).

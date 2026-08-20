@@ -179,7 +179,9 @@ module Insika
       onboarding: ONBOARDING, # GET /start.md + /models.json + /docs (public)
       # GET /v1/agents/:id — read-only capability view (evals). Coerced because the
       # base wiring keeps a plain Hash of profiles, and the route needs the source API.
+      # The code registry powers the derived side-effect set (RFC-0014 eval profile).
       profiles: Insika::ProfileSource.coerce(PROFILES),
+      tool_registry: REGISTRY,
       config: CONFIG,
       # WS1: only multi_tenant hands the token store to the edge (in
       # single_tenant the gateway credential is the only one).

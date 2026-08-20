@@ -2780,6 +2780,23 @@ it "opens a case as the same YAML the corpus files hold" do
   expect(body).to include("Consults the coupon by tool.")
 end
 
+# RFC-0014: a SIMULATED case (persona) is a first-class case in the Studio — it
+# renders, is marked simulated, and round-trips through the store as persona, not
+# as an empty script.
+it "renders a simulated (persona) case and round-trips its persona key" do
+  sim = { "id" => "loja-sim", "agent" => "loja",
+          "persona" => { "goal" => "find a gift", "knows" => { "budget" => "100" },
+                         "opens_with" => "oi, queria um presente", "max_turns" => 6 },
+          "expect" => { "rubric" => "Descobre o objetivo antes de recomendar" } }
+  app, = build_app(goldens: [sim])
+  body = login(app).get("/evals?id=loja-sim").body
+
+  expect(body).to include("simulated")
+  expect(body).to include("persona:")
+  expect(body).to include("find a gift")
+  expect(body).to include("max_turns: 6")
+end
+
 it "offers a template when nothing is selected (an empty store is not a dead end)" do
   app, = build_app
   body = login(app).get("/evals").body

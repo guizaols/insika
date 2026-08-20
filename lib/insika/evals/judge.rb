@@ -67,7 +67,28 @@ module Insika
         return nil if rubric.empty?
 
         prompt = build_prompt(rubric, golden.user_turns, result.output_text.to_s, golden.policy)
-        min = golden.min_score || DEFAULT_MIN_SCORE
+        score_prompt(prompt, golden.min_score || DEFAULT_MIN_SCORE)
+      end
+
+      # A whole CONVERSATION (a simulated run, RFC-0014 §3.1) scored against the
+      # rubric — the transcript, not its last turn. `transcript` is
+      # [{ role: "user"|"assistant", text: }] in order. -> Verdict, or nil without
+      # a rubric. Same panel, same rules as `score`: the rubric that scores a
+      # scripted replay scores a generated one.
+      def score_conversation(rubric:, transcript:, policy: nil, min_score: DEFAULT_MIN_SCORE)
+        rubric = rubric.to_s.strip
+        return nil if rubric.empty?
+
+        prompt = conversation_prompt(rubric, transcript, policy)
+        score_prompt(prompt, min_score)
+      end
+
+      private
+
+      # The panel machinery shared by `score` (a single reply) and
+      # `score_conversation` (a generated transcript): ask each judge, combine,
+      # decide by min_agreement. -> Verdict.
+      def score_prompt(prompt, min)
         panel = @asks.map { |ask| judge_once(ask, prompt, min) }
 
         agreed = panel.count { |j| j[:pass] }
@@ -77,7 +98,31 @@ module Insika
                     judges: panel.map { |j| j[:score] })
       end
 
-      private
+      # The judge reads the FULL conversation as the customer lived it — every
+      # user turn and every assistant reply interleaved. A rubric about the whole
+      # exchange ("does it discover the objective before recommending?") is
+      # unanswerable from the last reply alone.
+      def conversation_prompt(rubric, transcript, policy)
+        lines = Array(transcript).map do |m|
+          role = m[:role].to_s == "user" ? "customer" : "assistant"
+          "#{role}: #{m[:text].to_s.strip}"
+        end.join("\n")
+        <<~PROMPT
+          You are a strict QA judge for a customer-service AI assistant. Judge the
+          ASSISTANT'S HANDLING OF THE WHOLE CONVERSATION against the RUBRIC — nothing
+          else.
+
+          RUBRIC:
+          #{rubric}
+          #{policy_clause(policy)}
+          CONVERSATION (in order):
+          #{lines}
+
+          Score from 0.0 (fails the rubric) to 1.0 (fully meets it). Respond with ONLY a
+          JSON object, no prose:
+          {"score": <0..1>, "reason": "<one short sentence>"}
+        PROMPT
+      end
 
       # One model's verdict: its own samples, its own median, its own pass/fail.
       def judge_once(ask, prompt, min)

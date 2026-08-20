@@ -121,6 +121,26 @@ RSpec.describe Insika::Evals::Runner do
     expect(rc.result.pass?).to be(false)
   end
 
+  # A simulated case (persona) cannot be REPLAYED — the turns do not exist until a
+  # Simulator generates them. The replay Runner must skip it loudly, never run it
+  # as an empty script (which would silently read as a pass).
+  describe "simulated (persona) cases" do
+    it "skips a persona case with the reason instead of replaying nothing" do
+      sim = Insika::Evals::GoldenLoader.build({
+        "id" => "c-sim", "agent" => "bia",
+        "persona" => { "goal" => "g", "knows" => { "a" => "b" },
+                       "opens_with" => "oi", "max_turns" => 4 },
+        "expect" => {}
+      })
+      t = FakeTransport.new { ok_result }
+      rc = described_class.new(transport: t).run_case(sim)
+      expect(rc.result).to be_skipped
+      expect(rc.result.skipped).to include("simulated")
+      expect(t.seen).to be_empty
+      expect(rc.tokens).to be_nil
+    end
+  end
+
   # the refinement gate has to bound what a replay costs, and it can
   # only do that if the case carries what its turns actually spent. Nothing else
   # reads this — the report and the exit code are untouched.
