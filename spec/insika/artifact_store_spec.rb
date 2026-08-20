@@ -96,6 +96,21 @@ RSpec.describe Insika::ArtifactStore do
     end
   end
 
+  describe "#for_tenant (the Studio's \"all agents\" filter)" do
+    it "lists every agent's artifacts for the tenant, newest first" do
+      create!(id: "a-old", agent: "reporter", now: now)
+      create!(id: "a-new", agent: "other-agent", now: now + 3600)
+      create!(tenant: "loja-b", agent: "reporter", id: "b-1", now: now + 7200)
+
+      ids = store.for_tenant(tenant: "acme").map(&:id)
+      expect(ids).to eq(%w[a-new a-old]) # loja-b never appears — tenant scoped
+    end
+
+    it "empty for a tenant with none" do
+      expect(store.for_tenant(tenant: "nobody-home")).to be_empty
+    end
+  end
+
   describe "#delete" do
     it "removes the artifact; false when it does not exist" do
       create!(id: "a-1")

@@ -2194,10 +2194,12 @@ end
       @agent = presence(request.params["agent"])
       @signed_available = !artifact_signing.nil? && artifact_signing[:key].to_s.length.positive?
       store = artifact_store
-      @artifacts = if @agent && store
+      @artifacts = if store.nil?
+                     []
+                   elsif @agent
                      store.for_agent(tenant: artifact_tenant, agent: @agent)
                    else
-                     []
+                     store.for_tenant(tenant: artifact_tenant) # the "all" filter
                    end
       view("artifacts")
     end

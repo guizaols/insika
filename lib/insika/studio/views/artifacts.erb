@@ -12,28 +12,30 @@
   </div>
 </header>
 
-<% if @agent.nil? %>
+<% if @artifacts.empty? %>
   <div class="empty">
-    Pick an agent to see its artifacts.
-  </div>
-<% elsif @artifacts.empty? %>
-  <div class="empty">
-    No artifacts for <span class="mono"><%= @agent %></span> — an agent that
-    has <span class="mono">save_artifact</span> in its <span class="mono">tools_allow</span>
-    writes its reports here.
+    <% if @agent %>
+      No artifacts for <span class="mono"><%= @agent %></span> — an agent that
+      has <span class="mono">save_artifact</span> in its <span class="mono">tools_allow</span>
+      writes its reports here.
+    <% else %>
+      No artifacts yet, for any agent.
+    <% end %>
   </div>
 <% else %>
-  <h2><%= @agent %><span class="sub"><%= @artifacts.size %> artifact(s)</span></h2>
+  <h2><%= @agent || "all agents" %><span class="sub"><%= @artifacts.size %> artifact(s)</span></h2>
   <div class="card">
     <table class="grid">
       <thead>
         <tr>
+          <% unless @agent %><th>agent</th><% end %>
           <th>title</th><th>mime</th><th>task</th><th>created_at</th><th></th>
         </tr>
       </thead>
       <tbody>
         <% @artifacts.each do |a| %>
           <tr>
+            <% unless @agent %><td class="mono"><%= a.agent %></td><% end %>
             <td><a href="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>"><%= a.title %></a></td>
             <td><span class="pill"><%= a.mime %></span></td>
             <td class="mono"><%= a.task_id %></td>
@@ -45,7 +47,7 @@
               <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>/delete"
                     class="inline" data-confirm="Delete this artifact?">
                 <%== csrf_tag %>
-                <input type="hidden" name="agent" value="<%= @agent %>">
+                <input type="hidden" name="agent" value="<%= a.agent %>">
                 <button class="btn ghost sm danger">delete</button>
               </form>
             </td>
