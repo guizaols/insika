@@ -85,6 +85,16 @@ module Insika
         end
       end
 
+      # Drains whatever is ALREADY queued without ever blocking. Safe in a
+      # cooperative reactor: between the `empty?` check and the `dequeue` no other
+      # fiber runs, so a non-empty dequeue never waits. The eval transports use it
+      # to collect the events a turn already emitted, AFTER the turn returned.
+      def drain_nonblocking
+        drained = []
+        drained << @queue.dequeue until @queue.empty?
+        drained
+      end
+
       # Idempotent: a second CLOSED is harmless (the `each` stops at the first).
       # `@on_close` fires only once (avoids removing the subscription twice).
       def close

@@ -15,13 +15,13 @@ RSpec.describe Insika::Server::App do
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
                 config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
-                profiles: nil, logger: nil, token_store: nil)
+                profiles: nil, logger: nil, token_store: nil, tool_registry: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       onboarding: onboarding, profiles: profiles, logger: logger,
-      token_store: token_store,
+      token_store: token_store, tool_registry: tool_registry,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -776,6 +776,54 @@ RSpec.describe Insika::Server::App do
       # [] would mean "has no tools" and would skip every case; null means "every
       # registered tool", which the client reads as "cannot rule anything out".
       expect(json_body(body)["tools"]).to be_nil
+    end
+
+    # RFC-0014: the capability view also answers the DERIVED side-effect set — the
+    # list a simulated run's eval profile must swap. It is computed from the
+    # deployment's own registry (a data-tool's non-GET method is a side effect),
+    # so the client never hand-maintains it.
+    describe "side_effect_tools (the derived eval-profile swap list)" do
+      def registry_with(tool_store)
+        Insika::OverlayToolRegistry.new(base: Insika::ToolRegistry.new, tool_store: tool_store,
+                                        http: Insika::HttpClient.new)
+      end
+
+      def write_tool(store, name, method)
+        store.write(Insika::ToolDefinition.build(
+                      name: name, description: "d",
+                      request: { method: method, url: "https://example.invalid/#{name}" },
+                      response: { extract: "status" }, parameters: { type: "object", properties: {} }
+                    ).to_h)
+      end
+
+      it "derives the reachable side-effect tools from the registry" do
+        cs = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+        store = Insika::ToolStore.new(config_store: cs)
+        write_tool(store, "search_products", "GET")
+        write_tool(store, "create_order", "POST")
+        registry = registry_with(store)
+        p = Insika::AgentProfile.build(id: "demo-store", model: "m", tools_allow: %w[search_products create_order])
+
+        _s, _h, body = call(build_app(profiles: profiles_with(p), tool_registry: registry), "GET", "/v1/agents/demo-store")
+        expect(json_body(body)["side_effect_tools"]).to eq(%w[create_order])
+      end
+
+      it "respects deny and an open allowlist" do
+        cs = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+        store = Insika::ToolStore.new(config_store: cs)
+        write_tool(store, "search_products", "GET")
+        write_tool(store, "create_order", "POST")
+        registry = registry_with(store)
+        p = Insika::AgentProfile.build(id: "demo-store", model: "m",
+                                       tools_allow: %w[create_order], tools_deny: %w[create_order])
+        _s, _h, body = call(build_app(profiles: profiles_with(p), tool_registry: registry), "GET", "/v1/agents/demo-store")
+        expect(json_body(body)["side_effect_tools"]).to eq([])
+      end
+
+      it "omits the field when no registry is wired (view parity)" do
+        _s, _h, body = call(build_app(profiles: profiles_with(profile)), "GET", "/v1/agents/demo-store")
+        expect(json_body(body).key?("side_effect_tools")).to be(false)
+      end
     end
 
     it "never leaks the profile — no prompt, no model, no guardrail config" do

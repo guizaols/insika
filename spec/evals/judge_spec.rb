@@ -131,5 +131,53 @@ RSpec.describe Insika::Evals::Judge do
         .to raise_error(ArgumentError, /unknown aggregate/)
     end
   end
+
+  # RFC-0014 PR2: a SIMULATED run is judged on the WHOLE conversation, not its
+  # last turn — a rubric about the exchange ("does it discover the objective
+  # before recommending?") is unanswerable from the last reply alone.
+  describe "#score_conversation" do
+    let(:transcript) do
+      [{ role: "user", text: "oi, queria um presente" },
+       { role: "assistant", text: "pra quem é?" },
+       { role: "user", text: "minha mãe" },
+       { role: "assistant", text: "o que ela gosta?" }]
+    end
+
+    it "returns nil without a rubric" do
+      j = described_class.new(ask: ->(_p) { '{"score":1}' })
+      expect(j.score_conversation(rubric: "", transcript: transcript)).to be_nil
+    end
+
+    it "scores the whole conversation and passes at/above min_score" do
+      j = described_class.new(ask: ->(_p) { '{"score": 0.9, "reason": "descobriu o objetivo"}' })
+      v = j.score_conversation(rubric: "descubra o objetivo", transcript: transcript, min_score: 0.7)
+      expect(v.score).to eq(0.9)
+      expect(v.pass).to be(true)
+    end
+
+    it "feeds the FULL transcript to the judge prompt (both sides, in order)" do
+      seen = nil
+      j = described_class.new(ask: ->(p) { seen = p; '{"score": 0.5}' })
+      j.score_conversation(rubric: "x", transcript: transcript, min_score: 0.7)
+      expect(seen).to include("customer: oi, queria um presente")
+      expect(seen).to include("assistant: pra quem é?")
+      expect(seen).to include("customer: minha mãe")
+      expect(seen).to include("assistant: o que ela gosta?")
+    end
+
+    it "injects the policy into the judge prompt like the single-reply path" do
+      seen = nil
+      j = described_class.new(ask: ->(p) { seen = p; '{"score": 0.5}' })
+      j.score_conversation(rubric: "x", transcript: transcript, policy: "investigate_first", min_score: 0.7)
+      expect(seen).to include("objective established BEFORE acting")
+    end
+
+    it "uses the same panel rules (majority pass, judge scores visible)" do
+      j = described_class.new(asks: [->(_p) { '{"score": 0.9}' }, ->(_p) { '{"score": 0.3}' }])
+      v = j.score_conversation(rubric: "x", transcript: transcript, min_score: 0.7)
+      expect(v.judges).to eq([0.9, 0.3])
+      expect(v.pass).to be(true) # 1 of 2 < 0.5? no: 0.5 majority means 1/2 passes
+    end
+  end
 end
 

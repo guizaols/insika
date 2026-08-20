@@ -27,6 +27,28 @@ RSpec.describe Insika::GoldenStore do
     expect(golden.min_score).to eq(0.7)
   end
 
+  # RFC-0014: a SIMULATED case is one of two shapes — the persona must survive
+  # the store AND the YAML export, or it would silently stop being simulated and
+  # replay as an empty script.
+  it "round-trips a persona case (simulated) through the store and out to YAML" do
+    sim = { "id" => "loja-sim", "agent" => "loja",
+            "persona" => { "goal" => "find a gift", "knows" => { "budget" => "100" },
+                           "opens_with" => "oi", "max_turns" => 6 },
+            "expect" => { "rubric" => "Descobre o objetivo antes de recomendar" } }
+    store.write(sim)
+    golden = store.find("loja-sim")
+    expect(golden.simulated?).to be(true)
+    expect(golden.persona.max_turns).to eq(6)
+    expect(golden.user_turns).to eq([])
+
+    Dir.mktmpdir do |dir|
+      store.export_dir(dir)
+      exported = Insika::Evals::GoldenLoader.load_dir(dir).first
+      expect(exported.simulated?).to be(true)
+      expect(exported.persona.knows).to eq("budget" => "100")
+    end
+  end
+
   # A case that lost its `requires` on the way through the store would come back as a
   # FAILURE on every deployment lacking the tool — the exact lie the key exists to end.
   it "keeps `requires` across the store and back out to YAML" do

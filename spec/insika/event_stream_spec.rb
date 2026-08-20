@@ -177,6 +177,23 @@ RSpec.describe Insika::EventStream do
     expect(stream.emit(evt)).to be_nil
   end
 
+  # RFC-0014: the in-process eval transport collects a turn's :tool_call events
+  # AFTER the turn returned, without ever blocking (the queue is read-only in a
+  # cooperative reactor, so a non-empty dequeue never waits).
+  it "drain_nonblocking returns what is already queued and never blocks" do
+    sub = stream.subscribe(types: [:tool_call])
+    stream.emit(evt(type: :tool_call, data: { name: "search_products" }))
+    stream.emit(evt(type: :thinking, data: {})) # filtered out by types
+    stream.emit(evt(type: :tool_call, data: { name: "create_order" }))
+
+    drained = sub.drain_nonblocking
+    expect(drained.map { |e| e.data[:name] }).to eq(%w[search_products create_order])
+
+    # Already drained -> nothing more, still no block.
+    expect(sub.drain_nonblocking).to be_empty
+    sub.close
+  end
+
   it "a subscriber is not skipped when another overflows (closes) during the same emit" do
     # A (no filter) saturates up to the cap; B (filtered by task_id) ignores A's
     # traffic. On the critical emit, A overflows -> close -> is removed from the array DURING

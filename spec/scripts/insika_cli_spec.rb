@@ -251,4 +251,100 @@ RSpec.describe "bin/insika" do
       end
     end
   end
+
+  describe "evals:simulate" do
+    def persona_file(dir, overrides = {})
+      path = File.join(dir, "persona.yml")
+      File.write(path, YAML.dump({
+        "id" => "loja-sim", "agent" => "loja",
+        "persona" => { "goal" => "find a gift under R$100", "knows" => { "budget" => "100" },
+                       "opens_with" => "oi, queria um presente", "max_turns" => 4 },
+        "expect" => {}
+      }.merge(overrides)))
+      path
+    end
+
+    it "refuses to run without --staging or --eval-profile (a simulated run must not write for real)" do
+      Dir.mktmpdir do |dir|
+        out, status = run("evals:simulate", "--persona", persona_file(dir), "--target", "loja")
+        expect(out).to match(/must not write for real/)
+        expect(out).to match(/--staging/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "aborts without --persona or --target" do
+      out, _ = run("evals:simulate")
+      expect(out).to match(/--persona is required/)
+      out, _ = run("evals:simulate", "--persona", "x.yml")
+      expect(out).to match(/--target is required/)
+    end
+
+    it "refuses a scripted case (no persona) — only simulated cases can be driven here" do
+      Dir.mktmpdir do |dir|
+        bad = File.join(dir, "scripted.yml")
+        File.write(bad, "id: x\nagent: a\nturns:\n  - user: oi\nexpect: {}\n")
+        out, status = run("evals:simulate", "--persona", bad, "--target", "loja", "--staging")
+        expect(out).to match(/needs a `persona:`/)
+        expect(status.exitstatus).to eq(2)
+      end
+    end
+
+    # RFC-0014 safety: --eval-profile must DERIVE the target's side-effect tools
+    # (from the store's registry here) and refuse a swap that does not cover them —
+    # a bare `--eval-profile` on a write-capable agent is the trust-me flag the
+    # docs promise is not what happens.
+    def seed_store_with_write_tool(db)
+      cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+      profiles = Insika::StoredProfileSource.new(config_store: cs)
+      profiles.put(Insika::AgentProfile.build(id: "loja", model: "m", tools_allow: %w[search_products create_order]))
+      tool_store = Insika::ToolStore.new(config_store: cs)
+      tool_store.write(Insika::ToolDefinition.build(
+                         name: "search_products", description: "d",
+                         request: { method: "GET", url: "https://example.invalid/search" },
+                         response: { extract: "status" }, parameters: { type: "object", properties: {} }
+                       ).to_h)
+      tool_store.write(Insika::ToolDefinition.build(
+                         name: "create_order", description: "d",
+                         request: { method: "POST", url: "https://example.invalid/order" },
+                         response: { extract: "status" }, parameters: { type: "object", properties: {} }
+                       ).to_h)
+    end
+
+    it "refuses --eval-profile when the derived side-effect tools are not declared in --eval-tools" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        seed_store_with_write_tool(db)
+        out, status = run("evals:simulate", "--persona", persona_file(dir), "--target", "loja",
+                          "--eval-profile", env: { "INSIKA_DB" => db })
+        expect(out).to match(/derived side-effect tool\(s\) \(create_order\)/)
+        expect(out).to match(/--eval-tools/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "accepts --eval-profile when --eval-tools covers the derived side-effect tools" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        seed_store_with_write_tool(db)
+        # The safety gate passes (the swap covers the derived list); the run then
+        # aborts only because no persona model is configured — NOT on safety.
+        out, status = run("evals:simulate", "--persona", persona_file(dir), "--target", "loja",
+                          "--eval-profile", "--eval-tools", "create_order",
+                          env: { "INSIKA_DB" => db })
+        expect(out).not_to match(/side-effect/)
+        expect(out).to match(/no persona model/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "requires the explicit --eval-tools list for an A2A target (no reachable registry)" do
+      Dir.mktmpdir do |dir|
+        out, status = run("evals:simulate", "--persona", persona_file(dir),
+                          "--target", "https://a2a.example.com", "--eval-profile")
+        expect(out).to match(/declare the swap list explicitly/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+  end
 end

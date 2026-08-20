@@ -1,0 +1,46 @@
+# agent-tester
+
+Simulate a customer against your own agent (RFC-0014 PR2). A persona model — the
+cheap platform `utility_model` — plays a customer whose **only** facts are the
+persona's `knows`, and the target agent answers until the persona's `max_turns` or a
+stop marker (`<<goal_met>>` / `<<gave_up>>`).
+
+```bash
+DEEPSEEK_API_KEY=sk-... ruby examples/agent-tester/agent_tester.rb
+```
+
+Prints the generated transcript and the judge's verdict on the whole conversation
+(not just the last turn).
+
+## What the file demonstrates
+
+- **The persona is the whole instruction.** `persona.yml` (in the script) has a goal,
+  a style, an opening message, the `knows` facts and `max_turns`. The customer model
+  is told it may assert ONLY those facts — anything else is answered with ignorance.
+  See [`docs/EVALS.md`](../../docs/EVALS.md) "Simulated users".
+- **The transport is in-process.** `GraphTransport` drives the local graph the way a
+  customer would reach it (tools and guardrails included), no server in between. The
+  same Simulator rides `HttpTransport` against a remote deployment, or a thin A2A
+  transport against an agent that only speaks A2A.
+- **The safety gate is derived, not hand-maintained.** The engine marks `side_effect`
+  on tools (a data-tool's non-GET method, the MCP ingestor's `tools/call`). The run
+  computes the agent's reachable side-effect tools from the registry and refuses to
+  run if any can write — unless you declare the target staging or use an eval profile
+  where they are swapped for dry-runs. Every run is `simulated: true`, so a report
+  never mixes a generated conversation with real traffic.- **The judge reads the whole conversation.** The rubric is scored against every user
+  and assistant turn interleaved — a rubric about the exchange ("does it discover the
+  objective before recommending?") is unanswerable from the last reply alone.
+
+## To run against a remote deployment instead
+
+```bash
+insika evals:simulate --persona examples/agent-tester/persona.yml \
+  --target https://your-deployment.example.com --staging
+```
+
+`--staging` (the target is a staging deployment) or `--eval-profile` (side-effect
+tools are swapped) is required: a simulated run must not write for real.
+`--eval-profile` is verified against the target's derived side-effect tools — the CLI
+derives them (the deployment's own registry over `GET /v1/agents/:id`, or the local
+store when `INSIKA_DB` is set) and refuses unless `--eval-tools <a,b,c>` names every
+one; an A2A target requires the explicit list.

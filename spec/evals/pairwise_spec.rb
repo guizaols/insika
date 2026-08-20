@@ -187,4 +187,18 @@ RSpec.describe Insika::Evals::Pairwise do
     expect(described_class.new(asks: [ask]).compare(golden: empty, turns: turns("temos!"))).to be_nil
     expect(seen).to be_empty
   end
+
+  # RFC-0014 PR2: a GENERATED (simulated) transcript maps to the same
+  # customer/assistant lines a replay produces, so a simulated run can be compared
+  # against the incumbent like for like.
+  describe ".transcript_text" do
+    it "renders a simulated transcript as interleaved customer/assistant lines" do
+      text = described_class.transcript_text(
+        [{ role: "user", text: "oi, queria um presente" },
+         { role: "assistant", text: "pra quem é?" },
+         { role: "user", text: "minha mãe" }]
+      )
+      expect(text).to eq("customer: oi, queria um presente\nassistant: pra quem é?\ncustomer: minha mãe")
+    end
+  end
 end
