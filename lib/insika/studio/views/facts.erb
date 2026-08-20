@@ -12,7 +12,7 @@
     <form method="get" action="/studio/facts" class="actions inline">
       <label>
         Agent / scope
-        <select name="agent" onchange="this.form.submit()">
+        <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">
           <option value="">all</option>
           <% @stores.each do |scope| %>
             <option value="<%= scope %>"<%== ' selected' if scope == @filter %>><%= scope %></option>
