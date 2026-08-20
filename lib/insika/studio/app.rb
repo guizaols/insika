@@ -1528,7 +1528,7 @@ end
       rows = options.map do |value, label|
         %(<option value="#{value}"#{' selected' if value.to_s == current.to_s}>#{label}</option>)
       end.join
-      %(<form method="get" action="#{path}" class="actions inline"><label>Agent <select name="agent" onchange="this.form.submit()">#{rows}</select></label></form>)
+      %(<form method="get" action="#{path}" class="actions inline"><label>Agent <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">#{rows}</select></label></form>)
     end
 
     # The sessions of one agent — the session stamps its agent in

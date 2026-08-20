@@ -13,7 +13,7 @@
     <form method="get" action="/studio/funnel" class="actions inline">
       <label>
         Period (days)
-        <select name="period" onchange="this.form.submit()">
+        <select name="period" data-controller="auto-submit" data-action="change->auto-submit#submit">
           <% [7, 30, 90].each do |p| %>
             <option value="<%= p %>"<%== ' selected' if @period == p %>><%= p %></option>
           <% end %>
