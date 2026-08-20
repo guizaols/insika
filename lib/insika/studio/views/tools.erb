@@ -60,6 +60,8 @@
             <span class="switch-track" aria-hidden="true"></span>
             <span class="switch-label">all tools</span>
           </label>
+          <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectNone"
+                  title="uncheck every tool (deny-all — Save tools to apply)">none</button>
         </div>
         <p class="muted">Checked tools are allowed next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
         <form id="tools-form" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
