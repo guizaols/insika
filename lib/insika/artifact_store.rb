@@ -75,6 +75,18 @@ module Insika
       end.sort_by { |r| [r.created_at.to_s, r.id] }.reverse
     end
 
+    # -> [Record] — EVERY agent's artifacts for the tenant, newest first (the
+    # Studio's "all" filter — same prefix scan as #purge, but reads instead of
+    # deletes).
+    def for_tenant(tenant:)
+      prefix = "#{tenant_id(tenant)}:"
+      @store.list(SCOPE).filter_map do |k|
+        next unless k.start_with?(prefix)
+
+        to_record(@store.get(SCOPE, k))
+      end.sort_by { |r| [r.created_at.to_s, r.id] }.reverse
+    end
+
     # -> bool (did it exist?).
     def delete(id)
       key = @store.list(SCOPE).find { |k| k.end_with?(":#{id}") }
