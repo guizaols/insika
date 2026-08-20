@@ -75,15 +75,35 @@ module Insika
       end.sort_by { |r| [r.created_at.to_s, r.id] }.reverse
     end
 
-    # -> [Record] — EVERY agent's artifacts for the tenant, newest first (the
-    # Studio's "all" filter — same prefix scan as #purge, but reads instead of
-    # deletes).
+    # -> [Record] — EVERY agent's artifacts for the tenant, newest first (same
+    # prefix scan as #purge, but reads instead of deletes). Needs the CALLER
+    # to know the right tenant string — see #all below for the Studio, which
+    # doesn't.
     def for_tenant(tenant:)
       prefix = "#{tenant_id(tenant)}:"
       @store.list(SCOPE).filter_map do |k|
         next unless k.start_with?(prefix)
 
         to_record(@store.get(SCOPE, k))
+      end.sort_by { |r| [r.created_at.to_s, r.id] }.reverse
+    end
+
+    # -> [Record] — every artifact in the store, optionally narrowed to one
+    # agent, with NO tenant guess. For the Studio only: it is already
+    # operator-only (sees every tenant's agents), and unlike #for_agent/
+    # #for_tenant (hot, tenant-scoped runtime paths that a real multi-tenant
+    # caller uses because it KNOWS its own tenant) the Studio often does not
+    # — `save_artifact` binds tenant from the turn (`agent` when the Playground
+    # dispatched it, `"platform"` for a plain single-tenant API turn), so a
+    # page guessing one fixed string is wrong for the other half of the time.
+    # Filtering by the record's own `agent` field sidesteps the guess entirely.
+    def all(agent: nil)
+      @store.list(SCOPE).filter_map do |k|
+        record = to_record(@store.get(SCOPE, k))
+        next if record.nil?
+        next if agent && record.agent != agent.to_s
+
+        record
       end.sort_by { |r| [r.created_at.to_s, r.id] }.reverse
     end
 
