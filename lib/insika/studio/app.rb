@@ -2098,8 +2098,15 @@ end
 
 # The case as the YAML an operator edits — the same shape `evals/golden/**` holds,
 # so there is one format to learn and a pull request can review what was authored.
+# A SIMULATED case (RFC-0014) carries `persona:` instead of `turns:` — the two
+# shapes are the same YAML, and dropping either key would silently change what
+# the case tests.
 def golden_yaml(golden)
-  h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+  h = if golden.simulated?
+        { "id" => golden.id, "agent" => golden.agent, "persona" => golden.persona.to_h }
+      else
+        { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+      end
   h["requires"] = golden.requires unless golden.requires.empty? # dropping it would un-skip the case
   h["reference"] = golden.reference unless golden.reference.empty? # …and this would un-compare it
   YAML.dump(h.merge("expect" => golden.expect))

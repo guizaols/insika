@@ -130,8 +130,14 @@ module Insika
     # in the store as it is on disk — but it is NEVER dropped when present: a case
     # that silently lost its requirements would come back as a failure on every
     # deployment that lacks the tool, which is the exact lie `requires` exists to end.
+    # Same for `persona` (RFC-0014): a simulated case that lost its persona would
+    # silently stop being simulated and replay as an empty script.
     def case_hash(golden)
-      h = { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+      h = if golden.simulated?
+            { "id" => golden.id, "agent" => golden.agent, "persona" => golden.persona.to_h }
+          else
+            { "id" => golden.id, "agent" => golden.agent, "turns" => golden.turns }
+          end
       h["requires"] = golden.requires unless golden.requires.empty?
       # Same rule for `reference`: omitted when absent, never dropped
       # when present. A case that lost its reference in a round-trip would stop being

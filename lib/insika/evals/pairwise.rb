@@ -84,6 +84,17 @@ module Insika
         end.flatten.join("\n")
       end
 
+      # A GENERATED (simulated) conversation as the judge reads it: the transcript
+      # is already interleaved [{ role: "user"|"assistant", text: }] — map it to the
+      # same customer/assistant lines a replay produces, so pairwise compares like
+      # for like (RFC-0014: a simulated run can be compared against the incumbent).
+      def self.transcript_text(messages)
+        Array(messages).map do |m|
+          role = m[:role].to_s == "user" ? "customer" : "assistant"
+          "#{role}: #{m[:text].to_s.strip}"
+        end.join("\n")
+      end
+
       # The incumbent's half. Human turns are NOT flagged to the judge: what it grades
       # is the conversation as the customer received it, and telling it "a person wrote
       # this one" is an invitation to grade the author instead. The fact is carried to

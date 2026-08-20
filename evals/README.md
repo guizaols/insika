@@ -13,12 +13,14 @@ loadtest, it talks to the engine only through the public API (`POST /v1/response
 ```
 evals/
   lib/evals/          the engine (pure, unit-tested in spec/evals/)
-    golden.rb           golden loader + validation
+    golden.rb           golden loader + validation (turns: OR persona: shapes)
     assertions.rb       deterministic checks (tools_called, must_not) over a TurnResult
     report.rb           JSON + markdown report
-    transport.rb        SSE reducer + HttpTransport over /v1/responses
+    transport.rb        SSE reducer + HttpTransport + GraphTransport + A2ATransport
     runner.rb           replay driver (orchestration; injected transport + judge)
     judge.rb            LLM-judge — rubric scoring over an injected ask
+    persona.rb          the simulated customer (RFC-0014 PR2): data + prompt
+    simulator.rb        the conversation driver: persona ↔ target, safety gate
   golden/<agent>/*.yml  the curated cases (DATA, not code)
   run.rb                CLI entrypoint
   reports/              run outputs (gitignored)
@@ -241,6 +243,29 @@ The real store set — tool names grounded in each store's `TOOLS.md`
 - **LLM-judge:** a rubric-scored pass using the `utility_model` (Settings)
   at temperature 0. A golden with a `rubric` reads as **judge-pending** until
   then — never a silent pass.
+
+## Simulated users — conversations the agent never had
+
+A `persona:` case (RFC-0014 PR2) is the alternative shape to `turns:`: instead of
+replaying a script, the **Simulator** generates the conversation. A persona model
+(the cheap `utility_model`) plays a customer with the persona as its whole
+instruction — and one hard rule: it may only assert what the persona's `knows`
+contains; anything else is answered with ignorance. The two sides talk until
+`max_turns` or a stop marker (`<<goal_met>>` / `<<gave_up>>`).
+
+```bash
+insika evals:simulate --persona persona.yml --target <agent|url> --staging
+```
+
+The safety gate is fixed in the spec: a simulated run must not write for real
+(`simulated: true` marks the transcript, it does not disarm the tools), so the
+Simulator only runs against a target declared **staging** or an **eval profile**
+where side-effect tools are swapped for dry-runs. `--eval-profile` is VERIFIED, not a
+trust-me flag: the CLI derives the target's side-effect tools (the deployment's own
+registry over `GET /v1/agents/:id`, or the local store) and requires `--eval-tools`
+to cover every one — an A2A target requires the explicit list. The transcript is
+judged on the WHOLE conversation (`Judge#score_conversation`), not its last turn. See
+[`docs/EVALS.md`](../docs/EVALS.md) "Simulated users".
 
 ## Layers
 

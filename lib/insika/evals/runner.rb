@@ -50,6 +50,15 @@ module Insika
       end
 
       def run_case(golden)
+        # A persona case is GENERATED, not replayed: the turns do not exist until a
+        # Simulator drives the conversation. The replay Runner cannot run it, and a
+        # silent no-op would read as a pass — so it is SKIPPED with the reason, and
+        # the Simulator (the simulate CLI) is the only driver.
+        if golden.simulated?
+          return RunCase.new(result: Assertions.skip(golden, "simulated case (persona) — drive it with `insika evals:simulate`"),
+                             timings: [])
+        end
+
         skip = skip_reason(golden)
         return RunCase.new(result: Assertions.skip(golden, skip), timings: []) if skip
 

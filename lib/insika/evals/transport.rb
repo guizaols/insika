@@ -108,7 +108,8 @@ module Insika
         return nil unless res.code.to_i == 200
 
         body = JSON.parse(res.body)
-        { "tools" => body["tools"], "capabilities" => Array(body["capabilities"]) }
+        { "tools" => body["tools"], "capabilities" => Array(body["capabilities"]),
+          "side_effect_tools" => body["side_effect_tools"] }
       rescue StandardError, JSON::ParserError
         nil
       end
@@ -172,6 +173,87 @@ module Insika
       def failure(msg, t0)
         TurnOutcome.new(result: TurnResult.new(output_text: "", tool_calls: [], error: msg),
                         ttfb: nil, total: (mono - t0) * 1000.0)
+      end
+    end
+
+    # A transport over the deployment's OWN graph, in-process — no HTTP. This is
+    # how a simulated conversation (or a replay) exercises the local agent the
+    # way a customer would reach it, tools and guardrails included, without a
+    # server in between. `runtime` is anything answering the DSL Runtime contract
+    # (#chat(message, session_id:, agent:) -> text, raising on failure) — the DSL
+    # Definition/System runtime, or a test double.
+    #
+    # Tool activity is captured from the graph's event stream (the `:tool_call`
+    # events the ChatBuilder emits), so an in-process transcript records the same
+    # tool names an HTTP replay would — the Simulator's transcript is not blind to
+    # what the local agent called. `event_stream` is optional; when omitted it is
+    # read off the runtime's graph when one is reachable.
+    class GraphTransport
+      def initialize(runtime:, event_stream: nil)
+        @runtime = runtime
+        @event_stream = event_stream ||
+                      (runtime.graph.event_stream if runtime.respond_to?(:graph) && runtime.graph)
+      end
+
+      def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      def turn(agent:, conv:, message:)
+        t0 = mono
+        sub = @event_stream&.subscribe(types: [:tool_call])
+        begin
+          text = @runtime.chat(message, session_id: conv, agent: agent)
+          TurnOutcome.new(
+            result: TurnResult.new(output_text: text.to_s, tool_calls: drain_tools(sub), error: nil),
+            ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
+          )
+        rescue Insika::Error => e
+          TurnOutcome.new(
+            result: TurnResult.new(output_text: "", tool_calls: drain_tools(sub), error: e.message),
+            ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
+          )
+        ensure
+          sub&.close
+        end
+      end
+
+      private
+
+      # The same shape an HTTP replay produces: [{ "name" =>, "status" => nil }]
+      # (the stream carries no per-tool status — that lives in the trace store).
+      def drain_tools(sub)
+        return [] if sub.nil?
+
+        sub.drain_nonblocking.map { |ev| { "name" => ev.data[:name].to_s, "status" => nil } }
+      end
+    end
+
+    # Thin A2A transport: drives a REMOTE A2A agent (an agent that only speaks
+    # A2A) through the same `turn` seam the Simulator uses. The outbound A2A
+    # client already does the send+poll; this is the wrapper that makes it a
+    # Transport. `client` answers `#call(url, text, context_id:)` -> {text:} or
+    # {error:} — the `Server::A2A::Client` shape.
+    class A2ATransport
+      def initialize(client:, url:)
+        @client = client
+        @url = url
+      end
+
+      def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      def turn(agent:, conv:, message:)
+        t0 = mono
+        result = @client.call(@url, message.to_s, context_id: conv)
+        if result[:error]
+          TurnOutcome.new(
+            result: TurnResult.new(output_text: "", tool_calls: [], error: result[:error].to_s),
+            ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
+          )
+        else
+          TurnOutcome.new(
+            result: TurnResult.new(output_text: result[:text].to_s, tool_calls: [], error: nil),
+            ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
+          )
+        end
       end
     end
   end

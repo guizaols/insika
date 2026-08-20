@@ -56,7 +56,7 @@ module Insika
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
                      channels: nil, logger: nil, token_store: nil, outcome_store: nil,
-                     executor: nil, db_path: nil)
+                     executor: nil, db_path: nil, tool_registry: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -104,6 +104,11 @@ module Insika
         # Both optional — nil means the body simply omits those readings.
         @executor = executor
         @db_path = db_path
+        # The deployment's EFFECTIVE tool registry, so the capability view can
+        # answer what the agent can reach that can WRITE (RFC-0014: the derived
+        # eval-profile swap list). Read-only use (names/side_effect?) — same
+        # constitutional footing as the profile source. nil = the view omits it.
+        @tool_registry = tool_registry
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -466,22 +471,50 @@ module Insika
       # (a client: it never reads a store) can tell "this case cannot run here" from
       # "this case failed". Deliberately NOT the profile: the prompt,
       # the model and the guardrail config are none of the caller's business. Just the
-      # two facts a case declares `requires` against.
+      # three facts a case declares `requires` against — plus the side-effect set
+      # (RFC-0014), which is what an eval profile must swap.
       #
       # `tools` is the DECLARED allowlist, and `null` means the agent has an open one
       # (every registered tool) — the client reads that as "cannot rule anything out"
       # and runs the case rather than skipping it.
+      #
+      # `side_effect_tools` is DERIVED here from the deployment's own registry (the
+      # effective one the Executor uses): the agent's reachable tools the registry
+      # marks `side_effect` (a data-tool's non-GET method, the MCP ingestor's
+      # `tools/call`). It is the list a simulated run's eval profile must cover —
+      # and it is a fact of the deployment, never a hand-maintained client list.
+      # Absent (no registry wired) -> the key is omitted, and the view behaves as
+      # before.
       def handle_read_agent(id)
         profile = @profiles.fetch(id)
         raise Insika::NotFoundError, "agent not found: #{id}" if profile.nil?
 
         allow = profile.tools_allow
         deny = Array(profile.tools_deny).map(&:to_s)
-        json_response(200, {
-                        id: profile.id,
-                        tools: allow.nil? ? nil : (Array(allow).map(&:to_s) - deny),
-                        capabilities: Array(profile.capabilities_declared).map(&:to_s)
-                      })
+        payload = {
+          id: profile.id,
+          # `tools: null` is MEANINGFUL (an open allowlist — the client reads it
+          # as "cannot rule anything out"), so it must survive, unlike the new
+          # field below.
+          tools: allow.nil? ? nil : (Array(allow).map(&:to_s) - deny),
+          capabilities: Array(profile.capabilities_declared).map(&:to_s)
+        }
+        derived = side_effect_tools(profile)
+        payload[:side_effect_tools] = derived unless derived.nil?
+        json_response(200, payload)
+      end
+
+      # The derived side-effect set for an agent: its reachable tools (the same
+      # allowlist − deny resolution the `tools` field uses) that the registry marks
+      # `side_effect`, sorted for a stable answer. -> [names] | nil (no registry).
+      def side_effect_tools(profile)
+        return nil unless @tool_registry
+
+        allowed = if profile.tools_allow.nil? then Array(@tool_registry.names)
+                  else Array(profile.tools_allow).map(&:to_s)
+                  end
+        denied = Array(profile.tools_deny).map(&:to_s)
+        (allowed - denied).select { |name| @tool_registry.side_effect?(name) }.sort
       end
 
       # `/v1` only — `/a2a` is versioned by its own JSON-RPC spec and a channel's
