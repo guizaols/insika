@@ -146,6 +146,46 @@ RSpec.describe Insika::McpToolIngestor do
     end
   end
 
+  describe "credential injection (env -> HTTP headers)" do
+    it "discovery (#list_tools) sends the instance's env as literal headers" do
+      seed_instance(env: { "Authorization" => "Bearer xyz" })
+      captured = nil
+      client_factory = lambda do |record|
+        captured = record
+        FakeMcpClient.new(mcp_tools)
+      end
+      described_class.new(mcp_store: mcp_store, import_tools: import_tools,
+                          client_factory: client_factory).ingest("tavily")
+      # the factory receives the RAW record (real env) — the client itself is
+      # built from it by whoever the factory is (default_client, in production).
+      expect(captured["env"]).to eq("Authorization" => "Bearer xyz")
+    end
+
+    it "the default client actually sends env as headers on tools/list" do
+      seed_instance(env: { "Authorization" => "Bearer xyz" })
+      http = Class.new do
+        attr_reader :last_headers
+        def request(**req) = (@last_headers = req[:headers]; { status: 200, body: '{"result":{"tools":[]}}' })
+      end.new
+      client = Insika::McpHttpClient.new(url: "https://mcp.test/rpc", http: http, egress: IngestorPermissiveEgress,
+                                         headers: { "Authorization" => "Bearer xyz" })
+      client.list_tools
+      expect(http.last_headers["Authorization"]).to eq("Bearer xyz")
+    end
+
+    it "every INGESTED tool's binding carries the env headers (real tools/call, not just discovery)" do
+      seed_instance(env: { "Authorization" => "Bearer xyz" })
+      ingestor.ingest("tavily")
+      expect(tool_store.get_raw("search")["request"]["headers"]).to include("Authorization" => "Bearer xyz")
+    end
+
+    it "no env -> unchanged (only Content-Type), byte-for-byte parity with before this fix" do
+      seed_instance(env: {})
+      ingestor.ingest("tavily")
+      expect(tool_store.get_raw("search")["request"]["headers"]).to eq("Content-Type" => "application/json")
+    end
+  end
+
   describe "instance validation" do
     it "nonexistent instance -> NotFoundError" do
       expect { ingestor.ingest("nope") }.to raise_error(Insika::NotFoundError, /not found/)
