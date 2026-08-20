@@ -35,9 +35,10 @@ module Insika
 
           RULES:
           1. You may ONLY assert the facts above. Asked about anything else, you do
-             not know it — say "não sei" or "não tenho isso aqui", like a real
-             customer without that fact. Never invent an order number, a name, a
-             date, a price or any other detail that is not in FACTS YOU KNOW.
+             not know it — answer with ignorance, like a real customer without that
+             fact (you have no order number, no name, no date, no price beyond the
+             facts above). Never invent an order number, a name, a date, a price or
+             any other detail that is not in FACTS YOU KNOW.
           2. Reply with ONLY the customer's next message.
           3. When your goal has been met, end the message with the marker
              <<goal_met>>. When you give up (the assistant cannot get you there),
