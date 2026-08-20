@@ -31,12 +31,19 @@ module Insika
   #     stdio has no HTTP endpoint -> raises a clear error (later work).
   #   - MCP session lifecycle (initialize/negotiation/session-id/notifications) and the
   #     UNWRAP of the `tools/call` response (`{content:[{type,text}]}`) — the binding
-  #     makes a stateless POST and returns the raw body (extract body_raw).
-  #   - Credential injection (the instance `env`) as an auth header in the HTTP
-  #     binding: the `env` is consumed by a real MCP client (deferred), not mapped
-  #     to a header here.
+  #     makes a stateless POST and returns the raw body (extract body_raw). A server
+  #     that requires the handshake before answering `tools/list`/`tools/call` is not
+  #     reachable yet — that IS the real transport, not this minimal client.
   #   - Tools whose name/top-level property is outside the ToolDefinition NAME_RE
   #     (uppercase/hyphens) are ISOLATED into `errors[]` by the import (R4).
+  #
+  # CREDENTIAL INJECTION: the instance `env` (Hash) is sent verbatim as HTTP
+  # headers, on BOTH the discovery request (`tools/list`, this file) and every
+  # ingested tool's `tools/call` binding (`build_manifest`'s `defaults.headers`)
+  # — literal header-name -> value, the same convention as a data-tool's own
+  # `secret_headers` (the operator types the full value, "Bearer xxx" included;
+  # no magic prefixing). An instance with no `env` sends the bare
+  # `Content-Type` header only, byte-for-byte what shipped before this.
   class McpToolIngestor
     def initialize(mcp_store:, import_tools:, client_factory: nil)
       @mcp_store = mcp_store
@@ -69,17 +76,29 @@ module Insika
       end
 
       tools = Array((client || @client_factory.call(record)).list_tools)
-      build_manifest(name.to_s, url, tools)
+      build_manifest(name.to_s, url, tools, env_headers(record))
     end
 
     private
 
-    def build_manifest(name, url, tools)
+    # `env` -> HTTP headers, literal (header-NAME -> value; the value carries
+    # its own scheme, e.g. "Bearer xxx" — no magic prefixing). NOT `secret_headers`:
+    # ToolManifest's own rule for a secret header requires a `{{secret.*}}`
+    # reference, which is the opposite of what a literal credential is — so an
+    # MCP instance's env is NOT masked in a tool's edit page in /studio/tools,
+    # unlike a hand-authored data-tool's Authorization header. Acceptable for
+    # now (Studio is already operator-gated); a real fix routes this through
+    # the deployment's own {{secret.*}}/{{env.*}} resolution instead — later work.
+    def env_headers(record)
+      (record["env"] || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v.to_s }
+    end
+
+    def build_manifest(name, url, tools, headers)
       {
         "version" => 1,
         "defaults" => {
           "method" => "POST",
-          "headers" => { "Content-Type" => "application/json" },
+          "headers" => { "Content-Type" => "application/json" }.merge(headers),
           "response" => { "extract" => "body_raw" },
           "group" => "mcp:#{name}"
         },
@@ -127,7 +146,7 @@ module Insika
     end
 
     def default_client(record)
-      Insika::McpHttpClient.new(url: record["url"])
+      Insika::McpHttpClient.new(url: record["url"], headers: env_headers(record))
     end
 
     def presence(str) = Insika::Coercion.presence(str)
