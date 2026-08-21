@@ -15,12 +15,33 @@ RSpec.describe "MCP + system-files" do
   describe Insika::McpStore do
     subject(:store) { described_class.new(config_store: config_store) }
 
-    it "upsert stores and returns with MASKED env; get_raw returns the real values" do
+    it "upsert stores and returns with MASKED headers; get_raw returns the real values" do
       masked = store.upsert("name" => "tavily", "transport" => "http", "url" => "https://x",
-                            "env" => { "TAVILY_KEY" => "tvly-real" })
-      expect(masked["env"]["TAVILY_KEY"]).to eq("__OCULTO__")
+                            "headers" => { "Authorization" => "Bearer real" })
+      expect(masked["headers"]["Authorization"]).to eq("__OCULTO__")
       expect(masked["enabled"]).to be(true) # default
-      expect(store.get_raw("tavily")["env"]["TAVILY_KEY"]).to eq("tvly-real")
+      expect(store.get_raw("tavily")["headers"]["Authorization"]).to eq("Bearer real")
+    end
+
+    it "stdio persists args and process env (unaffected by the http/sse headers migration)" do
+      masked = store.upsert("name" => "fs", "transport" => "stdio", "command" => "npx",
+                            "args" => ["-y", "@modelcontextprotocol/server-filesystem"],
+                            "env" => { "HOME" => "/tmp" })
+      expect(masked["args"]).to eq(["-y", "@modelcontextprotocol/server-filesystem"])
+      expect(store.get_raw("fs")["env"]["HOME"]).to eq("/tmp")
+      expect(store.get_raw("fs")["headers"]).to eq({})
+    end
+
+    it "an http/sse record written under the old meaning of `env` reads it back as `headers`" do
+      config_store.put("mcp", "legacy", {
+                          "name" => "legacy", "transport" => "http", "url" => "https://x",
+                          "env" => { "Authorization" => "Bearer old" }, "enabled" => true
+                        })
+      raw = store.get_raw("legacy")
+      expect(raw["headers"]).to eq({ "Authorization" => "Bearer old" })
+      expect(raw["env"]).to eq({})
+      # read-only: the stored record itself is untouched until re-saved
+      expect(config_store.get("mcp", "legacy")["env"]).to eq({ "Authorization" => "Bearer old" })
     end
 
     it "per-key sentinel preserves the secret; a new string replaces it; absence clears it" do
