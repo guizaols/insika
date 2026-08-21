@@ -44,6 +44,15 @@ RSpec.describe Insika::Evals::GoldenLoader do
     expect(g.min_score).to eq(0.8)
   end
 
+  # C3.1: run_persona_eval's isolation check compares this against the calling
+  # agent's own tenant — "platform" has to be the default, or every case
+  # authored before tenants existed would suddenly belong to nobody.
+  it "defaults tenant to 'platform', or keeps an explicit one" do
+    expect(build.tenant).to eq("platform")
+    expect(build("tenant" => "acme").tenant).to eq("acme")
+    expect(build("tenant" => "  ").tenant).to eq("platform") # blank is absent, not a tenant named " "
+  end
+
   it "loads the committed curated golden set from disk" do
     dir = File.expand_path("../../evals/golden", __dir__)
     goldens = described_class.load_dir(dir)
