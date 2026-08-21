@@ -14,8 +14,6 @@ module Insika
     # Built lazily by Definition#runtime, so `require "insika"` never pays for
     # ruby_llm or the HTTP server.
     class Runtime
-      TERMINAL = %i[task_completed task_failed task_cancelled].freeze
-
       # graph: the assembled Wiring::Graph::Result; pack: the PRIMARY imported
       # Pack; packs: every imported Pack (one per agent — a System has N, a
       # Definition has one). All read by the server boot and the specs.
@@ -40,6 +38,11 @@ module Insika
         # rather than reading a process-wide singleton at call time.
         @llm = build_llm_context
         @graph = build_graph
+        # the dispatch+drain seam `#chat`/`#run_workflow` delegate to —
+        # `Insika::Wiring::GraphChat`, shared with `config/deployment.rb`'s own
+        # registration of `run_persona_eval` (see `register_persona_eval_tool`
+        # below).
+        @chat_runtime = Insika::Wiring::GraphChat.new(graph: @graph)
         seed_default_model
         import_packs
       end
@@ -62,12 +65,8 @@ module Insika
       # one-shot; a value threads multi-turn memory (created on first use).
       # `agent:` targets one agent of a system (default: the primary).
       def chat(message, session_id: nil, timeout: nil, agent: nil)
-        command = Insika::Command.build(
-          :send_message,
-          { agent: (agent || @definition.id).to_s, message: message, session_id: session_id },
-          transport: :cli
-        )
-        run_command(command, session_id: session_id, timeout: timeout)[:text]
+        @chat_runtime.chat(message, agent: (agent || @definition.id).to_s,
+                                    session_id: session_id, timeout: timeout)
       end
 
       # Triggers a declared workflow and returns its OUTPUT (the typed value the
@@ -78,7 +77,7 @@ module Insika
         command = Insika::Command.build(
           :trigger_workflow, { workflow: name, agent: agent, input: input }, transport: :cli
         )
-        outcome = run_command(command, session_id: nil, timeout: timeout)
+        outcome = @chat_runtime.run_command(command, session_id: nil, timeout: timeout)
         outcome.key?(:output) ? outcome[:output] : outcome[:text]
       end
 
@@ -92,70 +91,6 @@ module Insika
       def component(name) = @components.fetch(name)
 
       private
-
-      # Dispatch + drain, shared by a turn and a workflow run: subscribe BEFORE
-      # dispatching (the fiber may emit eagerly), bind to the task, read to the
-      # terminal event. A synchronous handler error (unknown agent/workflow, bad
-      # input against the schema) propagates from `dispatch` untouched — the
-      # caller sees the real ValidationError/NotFoundError, not a turn failure.
-      def run_command(command, session_id:, timeout:)
-        require "async"
-        outcome = {}
-        rejected = nil
-        Async do |task|
-          serving = !session_id.nil?
-          @graph.executor.supervised = true if serving
-          ensure_session(session_id) if session_id
-          sub = @graph.event_stream.subscribe
-          res = begin
-            @graph.bus.dispatch(command)
-          rescue StandardError => e
-            # CAPTURED, not re-raised inside the reactor: letting it escape the
-            # Async block logs "Task may have ended with unhandled exception" —
-            # alarming noise for a DOCUMENTED rejection (a schema violation, an
-            # unknown agent). Re-raised verbatim below, outside the reactor.
-            sub.close
-            rejected = e
-            next
-          end
-          sub.bind(task_id: res[:task_id])
-          drain(sub, outcome, task, timeout)
-          teardown_serving if serving
-        end.wait
-        raise rejected if rejected
-        raise Insika::Error, "turn #{outcome[:error]}" if outcome[:error]
-
-        outcome
-      end
-
-      # Reads the stream until this turn reaches a terminal event, then stops.
-      # A workflow run also carries its typed OUTPUT, which is not the turn text.
-      def drain(sub, outcome, task, timeout)
-        reader = task.async do
-          sub.each do |ev|
-            case ev.type
-            when :task_completed      then outcome[:text] = ev.data[:content].to_s
-            when :workflow_completed  then outcome[:output] = ev.data[:output]
-            when :task_failed         then outcome[:error] = "failed: #{ev.data[:message] || ev.data[:error]}"
-            when :task_cancelled      then outcome[:error] = "cancelled"
-            end
-            sub.close if TERMINAL.include?(ev.type)
-          end
-        end
-        timeout ? task.with_timeout(timeout) { reader.wait } : reader.wait
-      rescue Async::TimeoutError
-        outcome[:error] = "timed out after #{timeout}s"
-        sub.close
-      end
-
-      def ensure_session(session_id)
-        @graph.session_store.find(session_id) || @graph.session_store.create(id: session_id, vars: {})
-      end
-
-      def teardown_serving
-        @graph.executor.stop_session_actors
-        @graph.executor.instance_variable_get(:@supervisor)&.stop
-      end
 
       # --- graph assembly (mirrors config/deployment.rb, generically) ------
 
@@ -183,31 +118,15 @@ module Insika
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
-        register_persona_eval_tool(graph, c)
+        # `run_persona_eval` (C3.1): the SAME registration `config/deployment.rb`
+        # does for its own graph — see `Wiring::Graph.register_persona_eval_tool`.
+        # One implementation, both roots; this one just already has its
+        # `golden_store`/`settings_store` at hand from `build_components`.
+        Insika::Wiring::Graph.register_persona_eval_tool(
+          graph, golden_store: Insika::GoldenStore.new(config_store: c[:config_store]),
+          settings_store: c[:settings_store]
+        )
         graph
-      end
-
-      # `run_persona_eval` (C3.1, RFC-0014 PR2): a QA agent's own probe
-      # against a SIBLING agent of this same graph — picks an authored
-      # simulated persona case (GoldenStore) and runs it in-process, scored by
-      # the configured judge panel. Registered OPTIONAL on the shared code
-      # registry (the per-agent allowlist is the switch, same as
-      # save_artifact); bound to THIS graph's own store/registry/credentials/
-      # budget — a graph never spends or reads another graph's config. `self`
-      # (this Runtime) is the GraphTransport-compatible `#chat` seam — the
-      # factory closes over it lazily, so it is always the FULLY built runtime
-      # by the time a turn actually calls the tool.
-      def register_persona_eval_tool(graph, c)
-        graph.code_tool_registry.register("run_persona_eval", optional: true) do
-          require "ruby_llm"
-          require_relative "../tools/run_persona_eval"
-          Insika::Tools::RunPersonaEval.new(
-            golden_store: Insika::GoldenStore.new(config_store: c[:config_store]),
-            profiles: graph.profiles, tool_registry: graph.tool_registry, runtime: self,
-            settings_store: c[:settings_store], budget_ledger: graph.budget_ledger,
-            event_stream: graph.event_stream
-          )
-        end
       end
 
       # Declared workflows land in the SAME registry a deployment uses, so a DSL
