@@ -54,6 +54,7 @@ Gem::Specification.new do |spec|
   # test that nothing below drags ruby_llm/roda/falcon in at require time.
   spec.add_dependency "async", "~> 2.0"       # reactor, SQLite write semaphore
   spec.add_dependency "ruby_llm", ">= 1.15"   # before_tool_call/after_tool_result need 1.15+
+  spec.add_dependency "ruby_llm-mcp", "~> 1.0" # MCP transports (stdio/Streamable HTTP/SSE), lazy-required (Insika::McpClient)
   spec.add_dependency "falcon", "~> 0.55"     # async server
   spec.add_dependency "sqlite3", "~> 2.0"     # the durable Store backend
   spec.add_dependency "rack", "~> 3.0"        # transport
