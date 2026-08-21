@@ -105,7 +105,7 @@ module Insika
       def api_base(value) = @runtime[:api_base] = value.to_s
 
       # Declares an MCP server instance (RFC-0040 PR3): global to the graph, not
-      # any one agent — gated per agent through `tools`/`deny_tools` on the
+      # any one agent — gated per agent through `tools_allow_groups` on the
       # group `mcp:<name>`, same as any other tool group. `Insika::DSL::Runtime`
       # upserts it into the McpStore at boot; the MOTOR-VS-FORJA rule applies —
       # code is the TEMPLATE (transport/command/args/url/description always
@@ -115,6 +115,12 @@ module Insika
       #       headers: { "Authorization" => "Bearer #{ENV["TAVILY_KEY"]}" }
       #   mcp "filesystem", transport: :stdio, command: "npx",
       #       args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+      #
+      # A SYSTEM-level declaration (as opposed to inside one member `agent { }`
+      # block) has no single agent's config to auto-grant — it does NOT by
+      # itself give any agent access. Declare the `mcp` inside the specific
+      # `agent { }` block that needs it instead, where `Builder#mcp` auto-adds
+      # "mcp:<name>" to THAT agent's `tools_allow_groups` (below).
       def mcp(name, transport: nil, command: nil, args: nil, url: nil,
               headers: nil, env: nil, description: nil, enabled: true)
         n = name.to_s
@@ -231,8 +237,19 @@ module Insika
 
       # --- mcp ---------------------------------------------------------------
       # Declares an MCP server instance (RFC-0040 PR3) — see
-      # Insika::DSL::SystemBuilder#mcp for the full doc; identical shape here for
-      # a standalone `Insika.agent { … }` script that wants one without a System.
+      # Insika::DSL::SystemBuilder#mcp for the transport/lifecycle doc; identical
+      # shape here for a standalone `Insika.agent { … }` script, or one member
+      # agent of a system, that wants one.
+      #
+      # Auto-adds "mcp:<name>" to THIS agent's `tools_allow_groups` — without
+      # it, a pack with no `data_tool` gets PackImporter's `tools_allow: []`
+      # (isolation default) and no `tools_allow_groups` at all, so
+      # Policy::ToolAllowlist#allowed_names resolves an EMPTY allowlist and the
+      # agent could never call the MCP tool it just declared (found writing the
+      # RFC-0039 MCP templates — no existing spec exercised this path end to
+      # end). Same "auto-added to the allowlist" contract `data_tool` already
+      # gives its own tool name; `deny_tools` has no group-string equivalent
+      # yet, so a whole MCP group cannot be denied by name today.
       def mcp(name, transport: nil, command: nil, args: nil, url: nil,
               headers: nil, env: nil, description: nil, enabled: true)
         n = name.to_s
@@ -241,6 +258,8 @@ module Insika
         @mcp_instances << { name: n, transport: transport&.to_s, command: command, args: args,
                              url: url, headers: headers, env: env, description: description,
                              enabled: enabled }
+        group = "mcp:#{n}"
+        (@config[:tools_allow_groups] ||= []) << group unless Array(@config[:tools_allow_groups]).include?(group)
         n
       end
 
