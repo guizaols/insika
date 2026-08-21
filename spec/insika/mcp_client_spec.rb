@@ -64,4 +64,27 @@ RSpec.describe Insika::McpClient do
 
     expect { described_class.for(record, egress: AllowEgress) }.to raise_error(Insika::ValidationError, /unknown transport/)
   end
+
+  # ruby_llm-mcp's StreamableHTTP#build_common_headers sets `Origin` to the
+  # endpoint's OWN url (path included) on every request — invalid per RFC
+  # 6454 (Origin is scheme+host[+port], never a path) and unneeded, since a
+  # server-to-server client has none to report. No server allowlist can
+  # match a value with a path, so any MCP server enforcing the spec's
+  # DNS-rebinding Origin check (GitHub's remote MCP, Grafana, Metabase, ...)
+  # rejects every request. https://github.com/patvice/ruby_llm-mcp/issues/140
+  # (open, unfixed as of 1.0.1) — `for` prepends a fix stripping it.
+  it "strips the gem's spec-incorrect Origin header from a streamable_http request" do
+    record = { "name" => "tavily", "transport" => "http", "url" => "https://mcp.test/rpc",
+              "headers" => { "Authorization" => "Bearer x" } }
+    described_class.for(record, egress: AllowEgress) # loads the gem + applies the fix
+
+    transport = RubyLLM::MCP::Native::Transports::StreamableHTTP.new(
+      url: "https://mcp.test/rpc", request_timeout: 5000, coordinator: Object.new,
+      headers: { "Authorization" => "Bearer x" }
+    )
+    headers = transport.send(:build_common_headers)
+
+    expect(headers).not_to have_key("Origin")
+    expect(headers["Authorization"]).to eq("Bearer x")
+  end
 end
