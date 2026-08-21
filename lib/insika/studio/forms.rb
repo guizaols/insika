@@ -574,19 +574,24 @@ module Studio
       }
     end
 
-    # MCP instance from the form. `env` comes as "KEY=value" lines (CSP
-    # forbids inline JS for add/remove line; a textarea is the simple, honest
-    # path). Masked values come back as a sentinel — keeping them preserves
-    # the secret; changing replaces; deleting the line clears it.
+    # MCP instance from the form (RFC-0040 PR4 — transport-aware, but the
+    # form always submits every field regardless of which the JS shows;
+    # McpStore stores them all either way). `env`/`headers` come as
+    # "KEY=value" lines, `args` as one argv token per line (CSP forbids
+    # inline JS for add/remove line; a textarea is the simple, honest path).
+    # Masked credential values come back as a sentinel — keeping them
+    # preserves the secret; changing replaces; deleting the line clears it.
     def mcp_patch(r)
       {
         name: presence(r.params["name"]),
         transport: presence(r.params["transport"]) || "stdio",
         command: r.params["command"].to_s,
+        args: split_lines(r.params["args"]),
         url: r.params["url"].to_s,
         description: r.params["description"].to_s,
         enabled: r.params["enabled"] == "1",
-        env: parse_kv_lines(r.params["env"])
+        env: parse_kv_lines(r.params["env"]),
+        headers: parse_kv_lines(r.params["headers"])
       }
     end
 
@@ -602,6 +607,11 @@ module Studio
 
         [k, v.to_s.strip]
       end.to_h
+    end
+
+    # One argv token per line (stdio's `args`). Ignores blank lines/comments.
+    def split_lines(text)
+      text.to_s.each_line.map(&:strip).reject { |l| l.empty? || l.start_with?("#") }
     end
   end
 end
