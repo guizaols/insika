@@ -86,6 +86,28 @@ RSpec.describe Insika::GoldenStore do
     expect(store.delete("a-1")).to be(false)
   end
 
+  # C3.1: run_persona_eval's isolation query. A case with no declared tenant is
+  # "platform" (the single-tenant default) and must round-trip WITHOUT the key
+  # (an explicit tenant is the one that must never round-trip away — same rule
+  # as `requires`/`reference`).
+  it "defaults tenant to 'platform', filters by tenant, and omits the default on export" do
+    store.write(a_case(id: "b-2").merge("tenant" => "acme"))
+    store.write(a_case(id: "a-1"))
+
+    expect(store.find("a-1").tenant).to eq("platform")
+    expect(store.find("b-2").tenant).to eq("acme")
+    expect(store.for_tenant("acme").map(&:id)).to eq(%w[b-2])
+    expect(store.for_tenant("platform").map(&:id)).to eq(%w[a-1])
+
+    Dir.mktmpdir do |dir|
+      store.export_dir(dir)
+      exported = Insika::Evals::GoldenLoader.load_dir(dir).sort_by(&:id)
+      expect(exported.map { |g| [g.id, g.tenant] }).to eq([%w[a-1 platform], %w[b-2 acme]])
+      raw = YAML.safe_load(File.read(File.join(dir, "loja/a-1.yml")))
+      expect(raw).not_to have_key("tenant") # the default never round-trips as an explicit key
+    end
+  end
+
   # A Studio edit can break the shape. The run must not silently shrink.
   it "reports a stored case that no longer validates instead of dropping it in silence" do
     store.write(a_case(id: "broken"))

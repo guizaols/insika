@@ -63,6 +63,11 @@ module Insika
     # -> [Evals::Golden] one agent's cases.
     def for_agent(agent_id) = all.select { |g| g.agent == agent_id.to_s }
 
+    # -> [Evals::Golden] one tenant's cases (C3.1's isolation query —
+    # `run_persona_eval` never lists or runs a case outside the calling agent's
+    # own tenant, "platform" being the single-tenant default).
+    def for_tenant(tenant) = all.select { |g| g.tenant == tenant.to_s }
+
     # -> [String] ids whose stored mapping no longer validates (an edit that broke the
     # shape). The Studio shows these; they never silently vanish from a run.
     def invalid
@@ -143,6 +148,10 @@ module Insika
       # when present. A case that lost its reference in a round-trip would stop being
       # compared against the incumbent and the report would look identical.
       h["reference"] = golden.reference unless golden.reference.empty?
+      # `tenant` follows the same omit-when-default rule: "platform" is the
+      # loader's own default, so leaving it out reproduces the same case; an
+      # explicit tenant is a case's isolation boundary and must never round-trip away.
+      h["tenant"] = golden.tenant unless golden.tenant == "platform"
       h.merge("expect" => golden.expect)
     end
 
