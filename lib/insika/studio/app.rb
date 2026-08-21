@@ -1504,7 +1504,7 @@ end
       @cache_series = insika[:cache_series_store]&.for_agent(id) || []
       # the agent's schedule rows (declaration + runtime state) —
       # the card shows next fire and the last run/skip alongside the editor.
-      @schedules = insika[:schedule_store]&.for_agent(tenant: Insika::ScheduleEngine::TENANT, agent: id) || []
+      @schedules = insika[:schedule_store]&.for_agent(tenant: Insika::ScheduleEngine.tenant_for(@agent), agent: id) || []
       view("agent_detail")
     end
 
