@@ -97,6 +97,7 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Channels](docs/CHANNELS.md) — how people reach the agent: a widget on your site in one `<script>` tag, or keep your own WhatsApp/Slack stack (relay).
 - [Plugins](docs/PLUGINS.md) — the two extension tiers: config-only, or a gem the engine loads.
 - [Running locally](docs/RUNNING-LOCAL.md) — the local demo, the control UI, wiring tools to your own backend.
+- [Templates](docs/TEMPLATES.md) — example agents shipped in the gem: `insika new <name>` or a Studio click gets you a running, editable app in one command.
 - [examples/](examples/) — one small runnable project per capability.
 
 **Ship it**

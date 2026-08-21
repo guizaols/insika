@@ -16,6 +16,7 @@
 # DEEPSEEK, no seeding. So it is safe to run against a live deployment's volume.
 
 require "optparse"
+require "fileutils"
 require_relative "../lib/insika"
 
 module Insika
@@ -37,6 +38,7 @@ module Insika
       when "evals:baseline" then evals_baseline(argv)
       when "evals:simulate" then evals_simulate(argv)
       when "mcp" then mcp(argv)
+      when "new" then new_from_template(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -79,6 +81,8 @@ module Insika
           mcp import FILE.json      upsert every entry of a `mcpServers` JSON document
           mcp test NAME             connect live, list its tools, print them (or the error)
           mcp refresh NAME          same as test, plus caches the result for display
+          new --list                the template gallery (RFC-0039): trail + one-line description
+          new <template> [dir]      copy a template (default dir: ./<template>) and print the run line
           version                   print the engine version
           help                      show this help
 
@@ -711,6 +715,53 @@ end
     rescue StandardError => e
       warn "MCP instance '#{name}': #{e.message}"
       exit 1
+    end
+
+    # insika new --list | insika new <template> [dir]  (RFC-0039)
+    def new_from_template(argv)
+      if argv.first == "--list"
+        new_list
+      else
+        new_copy(argv)
+      end
+    rescue Insika::Error => e
+      warn "insika new: #{e.message}"
+      exit 2
+    end
+
+    def new_list
+      entries = Insika::Templates.all
+      return puts("no templates available") if entries.empty?
+
+      entries.each { |t| puts format("%-18s %-10s %s", t.name, t.trail, t.description) }
+    end
+
+    # Copies the template's directory verbatim (agent.rb + README.md) — no
+    # rewriting, the generated script IS the editing surface. Prints the
+    # exact run line, including any env the template needs SET (not just
+    # available as an override, like MCP_URL's keyless default) — the
+    # EgressGuard/stdio-gate failure is silent otherwise, same discipline as
+    # the `mcp add`/data-tool egress hints elsewhere in this CLI.
+    def new_copy(argv)
+      name = argv.shift
+      raise Insika::ValidationError, "usage: insika new <template> [dir] (see insika new --list)" if name.nil?
+
+      entry = Insika::Templates.read(name)
+      dest = argv.shift || "./#{name}"
+      raise Insika::ValidationError, "already exists: #{dest}" if File.exist?(dest)
+
+      FileUtils.mkdir_p(dest)
+      FileUtils.cp(Insika::Templates.agent_path(name), File.join(dest, "agent.rb"))
+      readme = Insika::Templates.readme_path(name)
+      FileUtils.cp(readme, File.join(dest, "README.md")) if File.file?(readme)
+
+      puts "Created #{dest}/ (#{entry.title})"
+      puts
+      puts "Run it:"
+      env_flags = entry.env.map { |e| "#{e}=1" }.join(" ")
+      env_flags = "#{env_flags} " unless env_flags.empty?
+      puts "  #{env_flags}DEEPSEEK_API_KEY=sk-... ruby #{dest}/agent.rb"
+      puts "\nRequires: #{entry.requires}" if entry.requires
     end
 
     # -- helpers -------------------------------------------------------

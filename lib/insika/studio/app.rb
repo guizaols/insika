@@ -307,6 +307,9 @@ module Studio
             # whole grid (a store scan per card would be n scans). Series live
             # on the agent detail — one agent's periods, not n charts here.
             @latest_outcomes = insika[:outcome_store]&.latest_per_agent
+            # "New from template" gallery (RFC-0039) — cheap (frontmatter
+            # parse only, no evaluation) so it's safe on every render.
+            @templates = Insika::Templates.all
             view("agents")
           end
 
@@ -323,6 +326,19 @@ module Studio
                        })
             end
             r.redirect(result ? agent_path(id) : "/studio/agents")
+          end
+        end
+
+        # /studio/agents/from_template/:name — "New from template" gallery
+        # (RFC-0039). Must be declared BEFORE the generic `r.on String do |id|`
+        # below, or Roda would treat "from_template" as an agent id.
+        r.on "from_template", String do |name|
+          r.post do
+            check_csrf!
+            result = with_flash("Created from template '#{name}'.") do
+              create_agent_from_template(name)
+            end
+            r.redirect(result ? agent_path(result[:agent_id]) : "/studio/agents")
           end
         end
 
@@ -2716,6 +2732,27 @@ end
       base = "/studio/agents/#{Rack::Utils.escape(id)}"
       base += "?#{query}" if query
       anchor ? "#{base}##{anchor}" : base
+    end
+
+    # "New from template" (RFC-0039): evaluates the template (same isolated
+    # eval the CLI's `insika new` never even needs, since it just copies
+    # files — this is the OTHER door) and imports every pack through the
+    # SAME PackImporter a hand-written pack would use — E2's byte-identical
+    # promise. mcp_instances ride separately (RFC-0040: never part of a
+    # pack, McpStore is its own store) — each dispatched as its own
+    # :upsert_mcp, the same Command a Studio-authored instance would use
+    # (Studio never writes a store directly). -> { agent_id: }, the
+    # template's primary agent (Definition#id / System#id: the first
+    # declared) — the redirect target when several agents were created.
+    def create_agent_from_template(name)
+      built = Insika::Templates.evaluate(name)
+      packs = built.respond_to?(:to_packs) ? built.to_packs : [built.to_pack]
+      importer = Insika::PackImporter.new(bus: insika[:command_bus], profiles: insika[:profile_source])
+      packs.each { |pack| importer.import(pack) }
+      declared_mcp = Array(built.mcp_instances)
+      declared_mcp.each { |decl| dispatch(:upsert_mcp, decl) }
+      self.class.mark_restart_needed! unless declared_mcp.empty?
+      { agent_id: built.id }
     end
 
     # Deterministic avatar hue: the id's fingerprint, so agents/sessions are

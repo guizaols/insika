@@ -4,6 +4,7 @@ require "spec_helper"
 require "open3"
 require "tmpdir"
 require "json"
+require "fileutils"
 
 # Integration proof of the `insika` CLI (— "config estrito +
 # doctor --fix"). Shells out to the real binary so the exit codes and the
@@ -451,6 +452,62 @@ RSpec.describe "bin/insika" do
     it "an unknown mcp subcommand exits 2" do
       out, status = run("mcp", "bogus")
       expect(out).to match(/unknown subcommand/)
+      expect(status.exitstatus).to eq(2)
+    end
+  end
+
+  describe "new" do
+    it "--list shows the wave-1 roster with trail + description" do
+      out, status = run("new", "--list")
+      expect(out).to match(/travel-planner\s+Starter/)
+      expect(out).to match(/repo-explorer\s+MCP/)
+      expect(status).to be_success
+    end
+
+    it "copies the template verbatim into the given dir and prints the run line" do
+      Dir.mktmpdir do |dir|
+        dest = File.join(dir, "my-planner")
+        out, status = run("new", "travel-planner", dest)
+        expect(status).to be_success
+        expect(out).to include("Created #{dest}/ (Travel Planner)")
+        expect(out).to match(/DEEPSEEK_API_KEY=sk-\.\.\. ruby #{Regexp.escape(dest)}\/agent\.rb/)
+        expect(File.read(File.join(dest, "agent.rb"))).to include('Insika.agent("travel-planner")')
+        expect(File.file?(File.join(dest, "README.md"))).to be(true)
+      end
+    end
+
+    it "defaults the destination to ./<template> when no dir is given" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          out, status = run("new", "travel-planner")
+          expect(status).to be_success
+          expect(out).to include("Created ./travel-planner/")
+          expect(File.file?(File.join(dir, "travel-planner", "agent.rb"))).to be(true)
+        end
+      end
+    end
+
+    it "a stdio/MCP template's run line states its required env up front" do
+      Dir.mktmpdir do |dir|
+        out, = run("new", "browser-agent", File.join(dir, "b"))
+        expect(out).to match(/INSIKA_MCP_STDIO=1 DEEPSEEK_API_KEY=sk-\.\.\./)
+        expect(out).to include("Requires: Node.js and npm")
+      end
+    end
+
+    it "refuses to overwrite an existing destination" do
+      Dir.mktmpdir do |dir|
+        dest = File.join(dir, "taken")
+        FileUtils.mkdir_p(dest)
+        out, status = run("new", "travel-planner", dest)
+        expect(out).to match(/already exists/)
+        expect(status.exitstatus).to eq(2)
+      end
+    end
+
+    it "an unknown template name exits 2, not a crash" do
+      out, status = run("new", "bogus-template")
+      expect(out).to match(/template 'bogus-template' not found/)
       expect(status.exitstatus).to eq(2)
     end
   end
