@@ -132,4 +132,26 @@ RSpec.describe "the domain boundary " do
     spec = Gem::Specification.load(File.expand_path("../../insika.gemspec", __dir__))
     expect(spec.files.sort).to eq(payload.sort)
   end
+
+  # Found live (2026-08-21): a Railway/Docker build failed on `bundle install`
+  # with "cannot load such file -- lib/insika/packaging" — RFC-0036 added a
+  # require_relative to the gemspec but the Dockerfile's builder stage (which
+  # COPYs only Gemfile*/insika.gemspec + a few lib/insika/*.rb files BEFORE
+  # `bundle install`, for layer caching) was never updated to match. Bundler
+  # evaluates the gemspec, so every file it require_relative's must exist in
+  # that early, partial build context — not just somewhere in the final image.
+  it "the Dockerfile's builder stage COPYs every file the gemspec require_relative's before bundle install" do
+    gemspec_source = File.read(File.expand_path("../../insika.gemspec", __dir__))
+    required = gemspec_source.scan(%r{require_relative\s+"(lib/insika/[a-z_]+)"}).flatten.map { |f| "#{f}.rb" }
+    expect(required).not_to be_empty # a canary against the regex itself going stale
+
+    dockerfile = File.read(File.expand_path("../../Dockerfile", __dir__))
+    builder_stage = dockerfile[/FROM.*?RUN bundle install/m]
+    copied = builder_stage.scan(%r{COPY (lib/insika/[a-z_]+\.rb) }).flatten
+
+    missing = required - copied
+    expect(missing).to be_empty,
+                        "gemspec require_relative's #{missing.join(', ')} but the Dockerfile builder stage " \
+                        "never COPYs it before `bundle install` — add `COPY <file> <file>` there"
+  end
 end
