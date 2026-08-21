@@ -51,6 +51,10 @@ module Insika
         Insika::Shutdown.install(executor: @graph.executor)
         Async do
           @graph.executor.supervised = true # serving mode: turns survive disconnects
+          # forces the tick/alert/distill/harvest supervisor up now — otherwise a
+          # deployment with only scheduled agents (no live chat) never ticks until
+          # unrelated traffic happens to hit turn_parent first.
+          @graph.executor.start_supervisor!
           Insika::Telemetry.attach(event_stream: @graph.event_stream, recorder: telemetry)
           Async::HTTP::Server.new(middleware, endpoint).run
         end
