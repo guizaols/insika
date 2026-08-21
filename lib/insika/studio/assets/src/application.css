@@ -390,6 +390,14 @@
   .agent-meta dt { font-size:.625rem; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600; }
   .agent-meta dd { margin:0; font-size:var(--text-md); font-weight:600; letter-spacing:-.01em; }
   .agent-actions { margin-top:auto; display:flex; gap:.5rem; }
+
+  /* Template gallery (RFC-0039) — same auto-fill floor as .agent-grid, a
+     narrower card since there's no avatar/meta row to fill. */
+  .template-grid { display:grid; gap:.75rem; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); margin-top:.75rem; }
+  .card.template { display:flex; flex-direction:column; gap:.5rem; }
+  .template-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+  .template-caps { font-size:var(--text-xs); }
+  .card.template form { margin-top:auto; }
   .avatar.sm { display:inline-grid; place-items:center; width:1.75rem; height:1.75rem; border-radius:var(--radius-sm); font-size:.7rem; font-weight:700; color:var(--accent-fg); background:var(--accent-bg); vertical-align:middle; margin-right:.45rem; }
   /* Hue overrides (the id's fingerprint via avatar_class): h0 stays the brand
      accent; the rest ride the themed --av-N tokens above. The doubled class
