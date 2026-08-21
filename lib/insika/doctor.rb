@@ -1042,7 +1042,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     def schedule_data_findings(profile, decl)
       return [] unless @schedule_store
 
-      row = @schedule_store.find(tenant: Insika::ScheduleEngine::TENANT,
+      row = @schedule_store.find(tenant: Insika::ScheduleEngine.tenant_for(profile),
                                  agent: profile.id.to_s, id: decl.id)
       return [] unless row&.last_skip
 

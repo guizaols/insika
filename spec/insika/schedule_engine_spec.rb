@@ -314,6 +314,42 @@ RSpec.describe Insika::ScheduleEngine do
     end
   end
 
+  # C3.2's own finding: a scheduled turn has no caller to declare a tenant, so
+  # the ScheduleEngine used to hardcode "platform" for EVERY agent — the
+  # SAME tenant a schedule's own fired command carries (`current.tenant`,
+  # threaded into budget ledger lookups and the command's own meta), which
+  # means two qa-<store> agents scheduled in the same deployment would share
+  # one tenant cell, defeating exactly the per-tenant isolation the calling
+  # code (e.g. run_persona_eval) relies on.
+  describe "ScheduleEngine.tenant_for (per-agent tenant, not a fixed constant)" do
+    it "reads the agent's own metadata['tenant'], never the fixed default" do
+      declared = Insika::AgentProfile.build(id: "qa-ocean-drop", model: "m",
+                                            metadata: { "tenant" => "ocean-drop" },
+                                            schedules: [DECLARATION])
+      expect(described_class.tenant_for(declared)).to eq("ocean-drop")
+    end
+
+    it "falls back to the single-tenant default when nothing is declared (parity)" do
+      expect(described_class.tenant_for(profile)).to eq("platform")
+    end
+
+    it "the fired command and the row both land under the DECLARED tenant" do
+      declared = Insika::AgentProfile.build(id: "qa-ocean-drop", model: "m",
+                                            metadata: { "tenant" => "ocean-drop" },
+                                            schedules: [DECLARATION])
+      source = Insika::StaticProfileSource.new("qa-ocean-drop" => declared)
+      run_pass_for(source, now_at: now)       # reconciles: creates the row under "ocean-drop"
+      run_pass_for(source, now_at: now + 300) # a later claim window: now due -> fires
+
+      row = schedule_store.find(tenant: "ocean-drop", agent: "qa-ocean-drop", id: "daily")
+      expect(row).not_to be_nil
+      expect(schedule_store.find(tenant: "platform", agent: "qa-ocean-drop", id: "daily")).to be_nil
+
+      task, = spawns.last
+      expect(task.command["meta"]["tenant"]).to eq("ocean-drop")
+    end
+  end
+
   describe "isolation" do
     it "a failing schedule's transaction aborts ITS row, the loop continues" do
       seeded
