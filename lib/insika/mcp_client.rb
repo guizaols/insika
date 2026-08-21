@@ -34,6 +34,7 @@ module Insika
     # Insika::ValidationError (unknown transport).
     def for(record, env_reader: Insika::EnvSchema, egress: Insika::EgressGuard)
       require "ruby_llm/mcp"
+      apply_origin_header_fix!
 
       case record["transport"].to_s
       when "stdio" then stdio_client(record, env_reader: env_reader)
@@ -67,6 +68,27 @@ module Insika
         name: record["name"], transport_type: transport_type, start: false,
         config: { url: url, headers: record["headers"] || {} }
       )
+    end
+
+    # https://github.com/patvice/ruby_llm-mcp/issues/140 (open, unfixed as of
+    # 1.0.1): StreamableHTTP#build_common_headers sets `Origin` to the MCP
+    # endpoint's OWN url (path included) on every request. That's invalid per
+    # RFC 6454 §7 (Origin is scheme+host[+port], never a path) and unneeded —
+    # a server-to-server client has no browser Origin to report, and the
+    # reference TS/Python SDKs never send one. No allowlist can ever match a
+    # value that carries a path, so any server enforcing the spec's
+    # DNS-rebinding Origin check (GitHub's remote MCP, Grafana, Metabase, ...)
+    # rejects every request. Same prepend the issue's own author ships in
+    # production. `Module#prepend` no-ops if the module is already in the
+    # ancestor chain, so calling this on every `for` is cheap and safe.
+    def apply_origin_header_fix!
+      RubyLLM::MCP::Native::Transports::StreamableHTTP.prepend(OriginHeaderFix)
+    end
+
+    module OriginHeaderFix
+      def build_common_headers
+        super.except("Origin")
+      end
     end
   end
 end
