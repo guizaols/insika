@@ -124,7 +124,7 @@ module Insika
         # `golden_store`/`settings_store` at hand from `build_components`.
         Insika::Wiring::Graph.register_persona_eval_tool(
           graph, golden_store: Insika::GoldenStore.new(config_store: c[:config_store]),
-          settings_store: c[:settings_store]
+          settings_store: c[:settings_store], llm: @llm
         )
         graph
       end
