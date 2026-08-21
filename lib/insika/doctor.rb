@@ -701,11 +701,22 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     def check_data_tools
       return [] unless @tool_store
 
-      broken = @tool_store.all_raw.filter_map { |raw| broken_tool(raw) }
-      total = @tool_store.names.length
-      return [ok("data-tools", "#{total} data tool(s): every definition valid")] if broken.empty?
+      raws = @tool_store.all_raw
+      broken = raws.filter_map { |raw| broken_tool(raw) }
+      legacy = raws.select { |raw| raw["group"].to_s.start_with?("mcp:") }.map { |raw| legacy_mcp_snapshot(raw) }
+      base = broken.empty? ? [ok("data-tools", "#{raws.length} data tool(s): every definition valid")] : broken
+      base + legacy
+    end
 
-      broken
+    # RFC-0040 PR2: a data-tool in an `mcp:*` group was ingested by the
+    # RETIRED snapshot path (McpToolIngestor) — the live registry now serves
+    # that same MCP instance's tools directly. Still executes fine (never
+    # removed automatically), just a duplicate worth cleaning up.
+    def legacy_mcp_snapshot(raw)
+      Finding.new(check: "data-tools", severity: :info, fix: nil,
+                  message: "data tool '#{raw["name"]}' (group #{raw["group"]}) is a legacy MCP " \
+                           "snapshot — that instance's tools now run LIVE via the MCP registry; " \
+                           "this frozen copy still works but duplicates it, safe to remove.")
     end
 
     # RFC-0040: an http/sse instance whose credentials still sit under `env`

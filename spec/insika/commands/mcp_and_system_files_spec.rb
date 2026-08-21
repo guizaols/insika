@@ -82,6 +82,28 @@ RSpec.describe "MCP + system-files" do
     end
   end
 
+  describe Insika::Commands::RefreshMcpTools do
+    let(:registry) { instance_double(Insika::McpToolRegistry) }
+    subject(:handler) { described_class.new(mcp_registry: registry, event_stream: stream) }
+
+    def cmd(payload) = Insika::Command.build(:refresh_mcp_tools, payload)
+
+    it "delegates to the registry, returns the discovered tools, and emits a count-only event" do
+      tools = [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }]
+      allow(registry).to receive(:refresh).with("fs").and_return(tools)
+
+      result = handler.call(cmd("name" => "fs"))
+
+      expect(result).to eq({ instance: "fs", tools: tools })
+      expect(events.map(&:type)).to eq([:mcp_tools_refreshed])
+      expect(events.first.data).to eq({ instance: "fs", tools: 1 })
+    end
+
+    it "name required" do
+      expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError, /name/)
+    end
+  end
+
   describe Insika::Commands::DeleteMcp do
     subject(:handler) { described_class.new(mcp_store: store, event_stream: stream) }
     let(:store) { Insika::McpStore.new(config_store: config_store) }

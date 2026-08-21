@@ -117,9 +117,17 @@ module Deploy
       allow_private: Insika::EnvSchema.truthy?(ENV["INSIKA_EGRESS_ALLOW_PRIVATE"]),
       host_allowlist: ENV["INSIKA_EGRESS_HOSTS"].to_s.split(",").map(&:strip).reject(&:empty?).then { |l| l.empty? ? nil : l }
     }.compact
+    # MCP instances (durable config, masked credentials) — created here
+    # (rather than by its usual spot below, with SYSTEM_FILE_STORE) so
+    # TOOL_REGISTRY can fold in its LIVE tools (RFC-0040 PR2).
+    MCP_STORE = Insika::McpStore.new(config_store: CONFIG_STORE)
+    # `entries` is cheap (McpStore#tools_cache, no I/O) — `refresh` (below,
+    # wired to :refresh_mcp_tools) is the only thing that connects live.
+    MCP_TOOL_REGISTRY = Insika::McpToolRegistry.new(mcp_store: MCP_STORE)
     TOOL_REGISTRY = Insika::OverlayToolRegistry.new(
       base: REGISTRY, tool_store: TOOL_STORE, http: Insika::HttpClient.new,
-      event_stream: EVENT_STREAM, egress_options: EGRESS_OPTIONS
+      event_stream: EVENT_STREAM, egress_options: EGRESS_OPTIONS,
+      mcp_registry: MCP_TOOL_REGISTRY
     )
     TOOL_CATALOG  = Insika::ToolCatalog.new(tool_registry: TOOL_REGISTRY)
 
@@ -140,10 +148,9 @@ module Deploy
       SETTINGS_STORE.update("default_model" => Deploy::MODEL, "default_provider" => "deepseek")
     end
 
-    # MCP + global system files. MCP instances with masked credentials (durable
-    # config); system files apply to ALL agents (injected by the Prompt provider
-    # before the identity).
-    MCP_STORE          = Insika::McpStore.new(config_store: CONFIG_STORE)
+    # Global system files, applied to ALL agents (injected by the Prompt
+    # provider before the identity). MCP_STORE is defined earlier, alongside
+    # TOOL_REGISTRY (RFC-0040 PR2).
     SYSTEM_FILE_STORE  = Insika::SystemFileStore.new(config_store: CONFIG_STORE)
 
     # Catalogs with a Store overlay: disk = seed, Store = authored (wins). reload
@@ -454,6 +461,10 @@ module Deploy
     # all agents.
     BUS.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_mcp, Insika::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
+    # LIVE re-discovery (RFC-0040 PR2) — connects, lists, writes
+    # MCP_STORE#tools_cache; TOOL_REGISTRY's live tools (MCP_TOOL_REGISTRY,
+    # wired above) never depend on this cache to execute.
+    BUS.register(:refresh_mcp_tools, Insika::Commands::RefreshMcpTools.new(mcp_registry: MCP_TOOL_REGISTRY, event_stream: EVENT_STREAM))
     BUS.register(:write_system_file, Insika::Commands::WriteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_system_file, Insika::Commands::DeleteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:restore_system_file, Insika::Commands::RestoreSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
@@ -472,12 +483,14 @@ module Deploy
     IMPORT_TOOLS = Insika::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
     BUS.register(:import_tools, IMPORT_TOOLS)
 
-    # LIVE MCP ingestion: discovers the tools of an MCP
-    # instance at runtime (no manifest) and REUSES :import_tools (upsert + hot reload).
-    # The MCP client is INJECTABLE (client_factory): default = a minimal HTTP JSON-RPC
-    # client behind the egress guard (same EGRESS_OPTIONS as the data-tools). The tools
-    # get group `mcp:<instance>` for's group gating. The REAL MCP transport
-    # (stdio, session/initialize, tools/call unwrap) is later work.
+    # RETIRED (RFC-0040 PR2): this SNAPSHOT path froze each MCP tool as an
+    # HTTP data-tool via a minimal JSON-RPC client with no real MCP lifecycle.
+    # MCP_TOOL_REGISTRY (above, folded into TOOL_REGISTRY) replaces it with
+    # LIVE execution over real transports (stdio/Streamable HTTP/SSE) — the
+    # only thing to reach for going forward. Kept wired (never deleting a
+    # working command) so any :mcp:* data-tool already ingested by a PAST
+    # run of this command keeps executing; `insika doctor` flags such tools
+    # with a migration hint.
     MCP_TOOL_INGESTOR = Insika::McpToolIngestor.new(
       mcp_store: MCP_STORE, import_tools: IMPORT_TOOLS,
       client_factory: ->(record) { Insika::McpHttpClient.new(url: record["url"], egress_options: EGRESS_OPTIONS) }
