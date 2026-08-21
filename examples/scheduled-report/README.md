@@ -25,7 +25,7 @@ Log in at `/studio` with the printed token and pick the `reporter` agent.
 
 ## What the file demonstrates
 
-- **The allowlist is the switch.** `tools_allow %w[save_artifact]` is the ONLY
+- **The allowlist is the switch.** `tools %w[save_artifact]` is the ONLY
   thing that gives the model the `save_artifact` tool. Remove it and the turn
   cannot save — nothing global enables it.
 - **The tenant is bound, never typed.** The artifact is stored under the
