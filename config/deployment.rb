@@ -282,6 +282,13 @@ module Deploy
     BUS.register(:write_golden, Insika::Commands::WriteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_golden, Insika::Commands::DeleteGolden.new(golden_store: GOLDEN_STORE, event_stream: EVENT_STREAM))
 
+    # `run_persona_eval` (C3.1): a QA agent's own probe against a sibling agent
+    # of THIS deployment's own graph. Not part of `Graph.build` itself (it
+    # needs `GOLDEN_STORE`/`SETTINGS_STORE`, and neither lives on the spine —
+    # the minimal wiring builds without either) — registered here, the same
+    # call `DSL::Runtime` makes for its own graph.
+    Insika::Wiring::Graph.register_persona_eval_tool(GRAPH, golden_store: GOLDEN_STORE, settings_store: SETTINGS_STORE)
+
     # Refinement: a candidate is scored by RUNNING it —
     # clone the agent, apply the edits to the clone, replay the golden set over the
     # deployment's OWN /v1/responses, compare to the accepted baseline. Then a human

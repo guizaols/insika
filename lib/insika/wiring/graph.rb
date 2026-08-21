@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "graph_chat"
+
 module Insika
   module Wiring
     # SHARED composition core for both roots: the minimal wiring
@@ -580,6 +582,32 @@ module Insika
       # bound at registration time from the environment — the tool instance is
       # per-deployment, and the tenant/agent/task bindings arrive per-turn via
       # the deposited turn context.
+      # `run_persona_eval` (C3.1): a QA agent's own probe against a SIBLING
+      # agent of THIS SAME graph. Registered OPTIONAL on the shared code
+      # registry, same switch as `save_artifact` — but unlike that one, this
+      # is NOT called unconditionally from `build`: it needs a `golden_store`
+      # and a `settings_store` (the persona model + judge panel), and neither
+      # lives on the spine (the base/minimal wiring builds without either, the
+      # same way it builds without a Studio) — so each root calls this itself,
+      # once it has both. `config/deployment.rb` (round1, and the actual
+      # production `config.ru` root) and `DSL::Runtime` both do.
+      #
+      # `graph` is the ALREADY-RETURNED `Graph::Result` — bus/executor fully
+      # assembled by the time a caller has it to pass here, so `GraphChat.new`
+      # needs no laziness of its own (the tool's own factory block is what is
+      # lazy — this method just registers it).
+      def register_persona_eval_tool(graph, golden_store:, settings_store:)
+        graph.code_tool_registry.register("run_persona_eval", optional: true) do
+          require "ruby_llm"
+          require_relative "../tools/run_persona_eval"
+          Insika::Tools::RunPersonaEval.new(
+            golden_store: golden_store, profiles: graph.profiles, tool_registry: graph.tool_registry,
+            runtime: GraphChat.new(graph: graph), settings_store: settings_store,
+            budget_ledger: graph.budget_ledger, event_stream: graph.event_stream
+          )
+        end
+      end
+
       def register_artifact_tool(spine)
         signing_key = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_KEY")
         signing_ttl = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_TTL")
