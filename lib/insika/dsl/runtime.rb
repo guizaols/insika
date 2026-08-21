@@ -183,7 +183,31 @@ module Insika
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
+        register_persona_eval_tool(graph, c)
         graph
+      end
+
+      # `run_persona_eval` (C3.1, RFC-0014 PR2): a QA agent's own probe
+      # against a SIBLING agent of this same graph — picks an authored
+      # simulated persona case (GoldenStore) and runs it in-process, scored by
+      # the configured judge panel. Registered OPTIONAL on the shared code
+      # registry (the per-agent allowlist is the switch, same as
+      # save_artifact); bound to THIS graph's own store/registry/credentials/
+      # budget — a graph never spends or reads another graph's config. `self`
+      # (this Runtime) is the GraphTransport-compatible `#chat` seam — the
+      # factory closes over it lazily, so it is always the FULLY built runtime
+      # by the time a turn actually calls the tool.
+      def register_persona_eval_tool(graph, c)
+        graph.code_tool_registry.register("run_persona_eval", optional: true) do
+          require "ruby_llm"
+          require_relative "../tools/run_persona_eval"
+          Insika::Tools::RunPersonaEval.new(
+            golden_store: Insika::GoldenStore.new(config_store: c[:config_store]),
+            profiles: graph.profiles, tool_registry: graph.tool_registry, runtime: self,
+            settings_store: c[:settings_store], budget_ledger: graph.budget_ledger,
+            event_stream: graph.event_stream
+          )
+        end
       end
 
       # Declared workflows land in the SAME registry a deployment uses, so a DSL

@@ -249,6 +249,49 @@ A case whose stored YAML no longer validates is **listed as broken** on the Eval
 rather than skipped in silence — a test suite that quietly shrinks is worse than a red
 one.
 
+### `run_persona_eval` — a QA agent that tests other agents
+
+A tool (`lib/insika/tools/run_persona_eval.rb`), not a CLI: a QA agent picks one of its
+authored simulated cases and runs it **in-process**, against the case's declared
+target agent — the same Simulator + Judge machinery `evals:simulate` drives over HTTP,
+minus the network hop.
+
+```ruby
+tools %w[run_persona_eval save_artifact]
+```
+
+The model only sees `case_id`, enumerated with the ids the tool can actually run
+(never a free string it could invent) — every **simulated** case in the store, the same
+`persona:` shape as above.
+
+**Safety is derived here too, but there is no swap yet.** The tool computes the
+target's reachable side-effect tools (`Evals::EvalProfile`, the same derivation the CLI
+uses) and **refuses outright** — naming the tools — if that list is non-empty. Unlike
+the CLI, nothing here actually swaps a side-effect tool for a dry-run: `Evals::
+EvalProfile.registry` (the overlay) exists for exactly that, but nothing calls it yet.
+So `run_persona_eval` only runs against **read-only** target agents today; wiring the
+overlay into an in-process turn (so a target WITH a write tool can be tested safely) is
+follow-up work, not something this tool claims to do.
+
+**Budget**: the persona model + judge model calls are the cost of running the eval,
+charged to the **calling** agent's own turn — never the target's (the target's own
+turns bill normally, through the ordinary edge limiter, exactly as a real customer's
+would). A hard cap on the calling agent skips the run — visibly, in the tool's own
+result (`{skipped: true, reason: "budget", window: "daily"|"monthly"}`) — before a cent
+is spent; a soft cap just runs (the ledger's own alert already warns).
+
+Each run gets a **fresh session** (`eval-<case>-<random>`), never a reused one — a
+reused session lets the target agent "remember" earlier runs, which is not what a
+persona case is testing. See `examples/agent-tester/qa_scheduled.rb` for the full
+loop: `schedule` (RFC-0037) fires the QA agent, it calls `run_persona_eval`, then
+`save_artifact` publishes the quality report.
+
+**Known gap**: a golden case has no tenant field, so in a multi-tenant deployment
+`run_persona_eval` can run ANY store's persona case, not just the calling QA agent's
+own — GoldenStore isn't tenant-partitioned yet. Harmless for a single-tenant
+deployment (today's only real one); a real gap the day a deployment hosts more than
+one tenant's cases side by side.
+
 ## Running
 
 ```bash
