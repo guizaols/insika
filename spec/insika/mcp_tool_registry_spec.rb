@@ -25,6 +25,7 @@ RSpec.describe Insika::McpToolRegistry do
       @alive = true
     end
 
+    def stop = @alive = false
     def tools = tool_list
     def tool(name) = tool_list.find { |t| t.name == name }
   end
@@ -92,6 +93,21 @@ RSpec.describe Insika::McpToolRegistry do
       seed(enabled: false)
       registry = described_class.new(mcp_store: mcp_store)
       expect { registry.refresh("fs") }.to raise_error(Insika::ValidationError, /disabled/)
+    end
+
+    it "rebuilds the client every call, even one that's still alive? — an edited command/env " \
+       "must take effect without a process restart (grafana-stg gotcha)" do
+      seed
+      old_tool = FakeRegistryTool.new("old_tool", "d", {})
+      new_tool = FakeRegistryTool.new("new_tool", "d", {})
+      clients = [FakeRegistryClient.new([old_tool]), FakeRegistryClient.new([new_tool])]
+      registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { clients.shift })
+
+      first = registry.refresh("fs")
+      second = registry.refresh("fs")
+
+      expect(first.map { |t| t["name"] }).to eq(["old_tool"])
+      expect(second.map { |t| t["name"] }).to eq(["new_tool"])
     end
   end
 

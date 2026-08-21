@@ -28,6 +28,11 @@ module Insika
     end
 
     # Connects to `name` LIVE, lists its tools, and writes McpStore#tools_cache.
+    # ALWAYS drops any memoized client first and rebuilds from the current
+    # record: a stdio process can be `alive?` (still running) yet permanently
+    # broken (e.g. wrong transport args — see grafana-stg gotcha), and an
+    # edited command/url/env must take effect without a process restart —
+    # there's no SSH into a Railway dyno to do that by hand.
     # -> the discovered [{"name","description","inputSchema"}]. Raises on a
     # missing/disabled instance or a transport failure — the caller (a CLI
     # verb/API route/UI button, PR3/PR4) decides how to surface it.
@@ -36,6 +41,7 @@ module Insika
       raise Insika::NotFoundError, "MCP instance '#{name}' not found" if record.nil?
       raise Insika::ValidationError, "MCP instance '#{name}' is disabled" unless record["enabled"]
 
+      evict(record["name"])
       client = client_for(record)
       discovered = client.tools.map { |t| { "name" => t.name, "description" => t.description, "inputSchema" => t.params_schema } }
       @mcp_store.set_tools_cache(name, discovered)
@@ -43,6 +49,15 @@ module Insika
     end
 
     private
+
+    # Stops and drops any memoized client for `name` so the next
+    # `client_for` builds a fresh one off the current record.
+    def evict(name)
+      client = @mutex.synchronize { @clients.delete(name) }
+      client&.stop
+    rescue StandardError
+      nil # best-effort teardown of a possibly already-dead process
+    end
 
     def entries_for(record)
       Array(record["tools_cache"]).map { |tool| entry_for(record, tool) }
