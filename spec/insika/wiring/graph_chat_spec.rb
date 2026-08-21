@@ -98,5 +98,72 @@ RSpec.describe Insika::Wiring::GraphChat do
                                           { role: "assistant", text: "aqui estão algumas opções reais" }
                                         ])
     end
+
+    # The gap this whole file exists to close: a target that DOES reach a
+    # side-effect tool used to be refused outright (no swap). Proves the
+    # REAL swap — the target's turn actually runs, through a tool call, and
+    # the REAL side-effect tool is never invoked (a Simulator::DryRunTool
+    # answers in its place) — not just that the safety check computes the
+    # right list.
+    it "swaps a reachable side-effect tool for a dry-run fake and runs the target's turn for real" do
+      write_order = Class.new do
+        attr_reader :calls
+        def initialize = @calls = 0
+        def name = "write_order"
+        def call(_args)
+          @calls += 1
+          { ok: true }
+        end
+      end.new
+
+      backend = Insika::Stores::Memory.new
+      spine = Insika::Wiring::Graph.spine(backend: backend)
+      spine.code_tool_registry.register("write_order", side_effect: true) { write_order }
+      writer_profile = Insika::AgentProfile.build(id: "demo", model: "m", provider: :deepseek,
+                                                  tools_allow: %w[write_order])
+      settings_store = Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: backend))
+      graph = Insika::Wiring::Graph.build(
+        spine: spine, profiles: Insika::StaticProfileSource.new("demo" => writer_profile),
+        tool_registry: spine.code_tool_registry,
+        tool_catalog: Insika::ToolCatalog.new(tool_registry: spine.code_tool_registry),
+        skill_catalog: Insika::SkillCatalog.new([]), prompt_catalog: Insika::PromptCatalog.new([]),
+        guardrails: Insika::Safety::Factory.new, context_providers: [],
+        executor_extra: { settings_store: settings_store }
+      )
+      settings_store.update("utility_model" => "persona-model",
+                            "evals" => { "judges" => [{ "model" => "judge-model", "provider" => nil }] })
+      golden_store = Insika::GoldenStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+      golden_store.write(
+        { "id" => "case-1", "agent" => "demo",
+          "persona" => { "goal" => "fazer um pedido", "opens_with" => "quero pedir",
+                         "knows" => { "produto" => "x" }, "max_turns" => 1 },
+          "expect" => { "rubric" => "confirma o pedido" } }
+      )
+      Insika::Wiring::Graph.register_persona_eval_tool(graph, golden_store: golden_store, settings_store: settings_store)
+
+      chat = FakeChat.new
+      chat.final_content = "pedido confirmado"
+      chat.script = proc do
+        emit_chunk("pedido confirmado")
+        fire_tool_call(name: "write_order", arguments: {})
+        fire_tool_result("ok")
+      end
+      graph.executor.define_singleton_method(:create_chat) { |*_a, **_k| chat }
+
+      raw_chats = {
+        "persona-model" => StubbedRawChat.new(->(_p) { Msg.new(content: "<<goal_met>>", input_tokens: 1, output_tokens: 1) }),
+        "judge-model" => StubbedRawChat.new(lambda { |_p|
+          Msg.new(content: '{"score": 1.0, "reason": "confirmou o pedido"}', input_tokens: 1, output_tokens: 1)
+        })
+      }
+      allow(RubyLLM).to receive(:chat) { |model:, provider:, assume_model_exists:| raw_chats.fetch(model) }
+
+      tool = graph.code_tool_registry.entries.find { |e| e.name == "run_persona_eval" }.factory.call
+      result = tool.execute(case_id: "case-1")
+
+      expect(result[:error]).to be_nil
+      expect(result[:score]).to eq(1.0)
+      expect(write_order.calls).to eq(0) # the REAL side-effect tool was never invoked
+    end
   end
 end
