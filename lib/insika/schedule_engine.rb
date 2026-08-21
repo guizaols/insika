@@ -25,9 +25,26 @@ module Insika
     SCOPE = "schedule_fire"
     KEY = "claim"
     DEFAULT_WINDOW = 300 # seconds; one firing worker per window
-    TENANT = "platform"  # the engine's single-tenant default (ledger rules)
+    TENANT = "platform"  # the single-tenant default (ledger rules) — see `tenant_for`
 
     ACTIVE_STATUSES = %i[queued running waiting paused].freeze
+
+    # The tenant a SCHEDULED turn declares. Every other turn gets its tenant
+    # from its CALLER (an authenticated tenant token, a Command built with
+    # `tenant:`) — a scheduled turn has no caller, so it is the agent's OWN
+    # declaration instead: `metadata["tenant"]`, the same "stable per agent,
+    # from the pack" home `store_id` already lives in (never the model, never
+    # a policy — just a fact the pack states). Absent -> the single-tenant
+    # default, unchanged for every profile that does not declare one.
+    #
+    # PUBLIC and STATELESS on purpose: the Studio's own schedule list
+    # (`studio/app.rb`) must resolve to the exact SAME tenant the fire path
+    # uses, or a declared schedule becomes invisible there — one formula, two
+    # callers, never a second copy to drift.
+    def self.tenant_for(profile)
+      meta = profile.respond_to?(:metadata) ? profile.metadata : nil
+      Insika::Coercion.presence(meta && meta["tenant"]) || TENANT
+    end
 
     def initialize(store:, schedule_store:, task_store:, session_store:,
                    profiles:, executor:, budget_ledger: nil, event_stream: nil,
@@ -96,7 +113,7 @@ module Insika
         end
         @profiles.all.each do |profile|
           schedules = profile.respond_to?(:schedules) ? profile.schedules : nil
-          @schedule_store.sync_declared(tenant: TENANT, agent: profile.id,
+          @schedule_store.sync_declared(tenant: self.class.tenant_for(profile), agent: profile.id,
                                         schedules: schedules, now: now_time)
         end
       end
