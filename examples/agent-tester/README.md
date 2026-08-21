@@ -31,6 +31,26 @@ Prints the generated transcript and the judge's verdict on the whole conversatio
   and assistant turn interleaved — a rubric about the exchange ("does it discover the
   objective before recommending?") is unanswerable from the last reply alone.
 
+## As a tool a QA agent calls itself — `qa_scheduled.rb`
+
+`agent_tester.rb` above is a one-off script. `qa_scheduled.rb` wires the SAME
+Simulator + Judge as a tool (`run_persona_eval`, C3.1) a scheduled QA agent
+calls on its own — the Scheduler (RFC-0037) + Artifacts (RFC-0038) + Simulator
+in one flow:
+
+```bash
+DEEPSEEK_API_KEY=sk-... ruby examples/agent-tester/qa_scheduled.rb
+DEEPSEEK_API_KEY=sk-... ruby examples/agent-tester/qa_scheduled.rb --serve
+```
+
+A `qa` agent, allowlisted for `run_persona_eval` + `save_artifact`, runs the
+seeded persona case against its sibling `assistant` agent and publishes the
+verdict as an artifact — weekly, on its own schedule, or once now. See
+[`docs/EVALS.md`](../../docs/EVALS.md) "`run_persona_eval` — a QA agent that
+tests other agents" for what it refuses (any target with a reachable
+side-effect tool — no swap is wired for an in-process run yet) and how its
+own spend is charged (to the QA agent's turn, never the target's).
+
 ## To run against a remote deployment instead
 
 ```bash
