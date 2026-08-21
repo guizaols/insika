@@ -726,6 +726,25 @@ RSpec.describe Insika::DSL do
       expect(record["enabled"]).to be(true)
     end
 
+    it "auto-adds mcp:<name> to the agent's tools_allow_groups (else the agent could never call its own MCP tool)" do
+      definition = Insika.agent("assistant") do
+        model "m"
+        mcp "tavily", transport: :http, url: "https://mcp.tavily.com/mcp"
+      end
+
+      expect(definition.to_pack.config[:tools_allow_groups]).to eq(["mcp:tavily"])
+      expect(definition.profile.tools_allow_groups).to eq(["mcp:tavily"])
+    end
+
+    it "a system-level mcp declaration grants NO agent access by itself (declare it inside the member agent instead)" do
+      system = Insika.system do
+        agent("solo") { model "m" }
+        mcp "tavily", transport: :http, url: "https://mcp.tavily.com/mcp"
+      end
+
+      expect(system.profile("solo").tools_allow_groups).to be_nil
+    end
+
     it "rejects a duplicate mcp name within one agent" do
       expect do
         Insika.agent("a") do
