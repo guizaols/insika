@@ -80,6 +80,19 @@ RSpec.describe "MCP + system-files" do
       expect(masked["env"]["K"]).to eq("__OCULTO__")
       expect(events.map(&:type)).to eq([:mcp_upserted])
     end
+
+    it "evicts any memoized client for the instance so an edit takes effect without a restart" do
+      registry = instance_double(Insika::McpToolRegistry)
+      handler = described_class.new(mcp_store: Insika::McpStore.new(config_store: config_store),
+                                     mcp_registry: registry, event_stream: stream)
+      expect(registry).to receive(:evict).with("tavily")
+
+      handler.call(cmd("name" => "tavily"))
+    end
+
+    it "mcp_registry is optional — a bare store-only caller doesn't need one" do
+      expect { handler.call(cmd("name" => "tavily")) }.not_to raise_error
+    end
   end
 
   describe Insika::Commands::RefreshMcpTools do
@@ -115,6 +128,15 @@ RSpec.describe "MCP + system-files" do
       expect(handler.call(cmd("name" => "x"))).to eq({ existed: true })
       expect(handler.call(cmd("name" => "x"))).to eq({ existed: false })
       expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError, /name/)
+    end
+
+    it "evicts any memoized client so a removed instance stops answering right away" do
+      registry = instance_double(Insika::McpToolRegistry)
+      handler = described_class.new(mcp_store: store, mcp_registry: registry, event_stream: stream)
+      store.upsert("name" => "x")
+      expect(registry).to receive(:evict).with("x")
+
+      handler.call(cmd("name" => "x"))
     end
   end
 

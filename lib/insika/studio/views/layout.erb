@@ -60,17 +60,6 @@
       </aside>
 
       <div class="app-main">
-        <% if restart_needed? %>
-          <div class="banner" role="status">
-            <span><strong>Restart recommended.</strong> MCP changes take effect after the runtime restarts.</span>
-            <form method="post" action="/studio/restart-ack">
-              <%== csrf_tag %>
-              <input type="hidden" name="back" value="<%= request.script_name %><%= request.path %>">
-              <button type="submit" class="ghost">Dismiss</button>
-            </form>
-          </div>
-        <% end %>
-
         <% if flash["error"] %>
           <div class="flash err" role="alert"><%= flash["error"] %></div>
         <% end %>
