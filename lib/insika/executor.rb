@@ -175,6 +175,20 @@ module Insika
     # scans, nothing mines).
     attr_accessor :harvest_engine
 
+    # Forces the long-lived turn supervisor (and its tick/alert/distill/harvest
+    # children — see #turn_parent) to start NOW instead of lazily on the first
+    # served turn. Without this, a deployment whose only agents are scheduled
+    # (no live chat) never fires the tick until some unrelated turn happens to
+    # land first — observed live as 16+ minutes of silence after a clean boot.
+    # Call once, right after `supervised = true`, from the composition root
+    # (Server::Boot / config.ru / DSL::ServerBoot). A no-op outside a live
+    # reactor (nothing to bind the supervisor to yet) — the lazy path in
+    # #turn_parent still covers that case, e.g. specs that never enter Async.
+    def start_supervisor!
+      turn_parent if @supervised && Async::Task.current?
+      nil
+    end
+
     # closes the TURN intake for shutdown. Armed by Insika::Shutdown
     # when the process is asked to stop: from here on a new top-level turn is left
     # `:queued` (durable — the next boot's recovery replays it) instead of

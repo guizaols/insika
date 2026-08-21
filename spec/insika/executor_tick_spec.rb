@@ -85,4 +85,42 @@ RSpec.describe "Insika::Executor + the tick" do
       stop_serving(executor)
     end
   end
+
+  # start_supervisor! is what a deployment with only scheduled agents (no live
+  # chat) needs: without it, the tick stays silent until unrelated traffic
+  # happens to hit turn_parent first — observed live as 16+ minutes of nothing
+  # firing after a clean boot.
+  describe "#start_supervisor!" do
+    it "starts the tick eagerly, before any turn is served" do
+      executor = build_executor
+      executor.supervised = true
+      executor.tick = (tick = FakeTick.new)
+
+      Sync do
+        executor.start_supervisor!
+        expect(tick.started_with).to be_a(Async::Task)
+        stop_serving(executor)
+      end
+    end
+
+    it "is a no-op outside a reactor (nothing to bind to yet)" do
+      executor = build_executor
+      executor.supervised = true
+      executor.tick = (tick = FakeTick.new)
+
+      executor.start_supervisor!
+
+      expect(tick.started_with).to be_nil
+    end
+
+    it "is a no-op when not serving (boot/recovery stays tick-free)" do
+      executor = build_executor # @supervised defaults to false
+      executor.tick = (tick = FakeTick.new)
+
+      Sync do
+        executor.start_supervisor!
+        expect(tick.started_with).to be_nil
+      end
+    end
+  end
 end

@@ -134,9 +134,15 @@ RACK_APP = Rack::URLMap.new(
 # so the long-lived turn supervisor binds to Falcon's serving reactor.
 BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 
-# Serving mode: turns are born as children of a long-lived supervisor (created lazily
-# on the worker's reactor at the 1st turn) and survive the client disconnect.
+# Serving mode: turns are born as children of a long-lived supervisor and survive
+# the client disconnect. start_supervisor! forces it up now (Falcon already runs
+# config.ru inside the worker's live reactor, confirmed empirically — the task
+# below `supervised = true` is the same one requests later descend from) instead
+# of waiting for the first served turn: a deployment whose only agents are
+# scheduled (no live chat) would otherwise never tick until unrelated traffic
+# happened to arrive first.
 W::EXECUTOR.supervised = true
+W::EXECUTOR.start_supervisor!
 
 # shutdown is a drain, not a kill. This replaces async-container's
 # SIGINT/SIGTERM trap in THIS worker (config.ru loads per worker): the intake
