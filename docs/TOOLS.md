@@ -12,15 +12,16 @@ kinds, and the distinction that matters is **who can change one at runtime**:
 
 | | **Code tool** | **Data tool** | **MCP tool** |
 |---|---|---|---|
-| What | a Ruby class (`< RubyLLM::Tool`) | an HTTP call described by config, no Ruby | an MCP server's tool, ingested |
-| Lives | in the deployment image | as a row in SQLite | as data-tool rows in SQLite |
-| Editable at runtime | no (shipped in the image) | **yes** (DSL / API / manifest / Studio) | **yes** (re-ingest) |
-| Reach for it when | logic must run in-process (file edit, shell, subagent) | calling an external HTTP API | adopting a whole MCP toolset at once |
+| What | a Ruby class (`< RubyLLM::Tool`) | an HTTP call described by config, no Ruby | an MCP server's tool, called LIVE |
+| Lives | in the deployment image | as a row in SQLite | on the MCP server, behind a live client |
+| Editable at runtime | no (shipped in the image) | **yes** (DSL / API / manifest / Studio) | **yes** — enable/edit the *instance* (DSL / CLI / API / JSON import / Studio); the server owns its own tools |
+| Reach for it when | logic must run in-process (file edit, shell, subagent) | calling an external HTTP API | adopting a whole external MCP server's toolset |
 
-**MCP tools are not a separate runtime type.** An MCP ingestor discovers an MCP
-server's tools and turns each into an HTTP **data tool** that posts a JSON-RPC
-`tools/call`, tagged with a `group` naming the source instance. (Only
-HTTP-transport MCP servers are ingestible; stdio is rejected.)
+**MCP tools are not data tools.** Configuring an enabled MCP **instance** (any
+surface below) is enough — its tools appear automatically, tagged
+`mcp:<instance>`, and each CALL goes straight to the server through a live,
+held client (stdio process / Streamable HTTP / SSE, with the full protocol
+handshake) — never a frozen snapshot. See [MCP servers](#mcp-servers) below.
 
 Code tools **win name collisions** — you cannot register a data tool whose name
 shadows a code tool.
@@ -107,7 +108,7 @@ once, at ingestion — see the gotcha below before reaching for it:
   below), and only once — the resolved value is what gets stored, the token
   itself never lives on disk and is never re-read per turn. Allowed **only**
   inside a header named in `secret_headers`. Written any other way — DSL,
-  Studio, MCP ingestion, or anywhere outside a `secret_headers` header — a
+  Studio, or anywhere outside a `secret_headers` header — a
   `{{secret.*}}` is not a credential the engine knows how to fill; it is an
   undeclared parameter, and tool registration refuses it exactly like it
   refuses any other unknown placeholder.
@@ -274,13 +275,14 @@ reload, no restart):
 3. **Manifest** — `POST /v1/tools/manifest`. Partial failure is isolated: one
    malformed tool becomes an `errors[]` entry; only a structural manifest error
    fails the whole request. The response reports `{ version, created, updated, errors }`.
-4. **MCP ingestion** — import a server; each of its tools becomes a data tool.
+4. ~~MCP ingestion~~ — retired (RFC-0040 PR2). An MCP server's tools are no
+   longer written into this store at all; see [MCP servers](#mcp-servers).
 
 ### The one gotcha: env/secret templating is manifest-only
 
 `{{env.*}}` and `{{secret.*}}` are substituted **at ingestion, on the manifest
 path, once** — the resolved literal is what gets stored; the token itself
-never survives to a turn. Other write paths (DSL, Studio, MCP ingestion) do
+never survives to a turn. Other write paths (DSL, Studio) do
 **not** resolve either: a literal `{{env.API_URL}}` in a URL fails the
 `http`/`https` check and 422s; a literal `{{secret.X}}` anywhere — including
 inside a header named in `secret_headers` — fails tool registration the same
@@ -290,6 +292,96 @@ does not special-case it). Rule: **manifest tools may template a URL with
 any other way must ship literal values** — a real URL, and a real (masked on
 read) header value. `{{ctx.*}}` and `{{param}}` work everywhere (they resolve
 at turn time, not ingestion).
+
+## MCP servers
+
+An MCP **instance** is durable config — transport, target, credentials, an
+`enabled` flag — held in its own store, separate from data tools. Once an
+instance is enabled, its tools appear in the catalog automatically (group
+`mcp:<instance>`, `side_effect: true`), and every call goes straight to the
+server through a live, held client — the runtime never converts an MCP tool
+into a stored data tool.
+
+**Three transports**, picked by `transport:`:
+
+| Transport | Target | Notes |
+|---|---|---|
+| `stdio` | `command` + `args`, run as a child process, `env` is its process environment | requires `INSIKA_MCP_STDIO=1` — see below |
+| `http` | `url` + `headers` (Streamable HTTP, the modern default) | egress-guarded like any outbound URL |
+| `sse` | `url` + `headers` | same egress guard as `http` |
+
+**The stdio gate.** A stdio instance is arbitrary command execution by
+config — it saves, but refuses to start ("stdio disabled by env") until the
+operator sets `INSIKA_MCP_STDIO=1` (config-over-convention, the same pattern
+as the egress envs). `http`/`sse` need no such gate; their URL is checked by
+the normal egress allowlist instead.
+
+**Credentials are never visible in plaintext.** `env` (stdio) and `headers`
+(http/sse) mask every value as `__OCULTO__` on read, everywhere (CLI, API,
+Studio). On write, sending the sentinel back **preserves** the stored value; a
+new string **replaces** it; `""` (or omitting the key) **clears** it — the
+same per-key reconciliation `llm_providers` api keys use.
+
+**Discovery vs execution.** `insika mcp refresh <name>` (or `POST
+/v1/mcp/:name/import`, kept as that action's route since before the live
+registry) connects live, lists the server's tools, and caches the result
+(`tools_cache`) purely for display — the Studio panel and `insika doctor`.
+**Execution never reads that cache**: a live turn always goes through the
+held client, which does its own discovery on first use regardless of whether
+`refresh` ever ran.
+
+### Configuring an instance
+
+1. **DSL** — inside `Insika.system { … }` or a single `Insika.agent { … }`:
+
+   ```ruby
+   mcp "tavily", transport: :http, url: "https://mcp.tavily.com/mcp",
+       headers: { "Authorization" => "Bearer #{ENV['TAVILY_KEY']}" }
+   mcp "filesystem", transport: :stdio, command: "npx",
+       args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+   ```
+
+   Code is the **template**: transport/command/args/url/description always
+   follow the declaration on every boot. But once the instance exists, its
+   `enabled` flag and its credentials are the **operator's** — a Studio/CLI/API
+   edit made after boot is never clobbered back by the next restart.
+
+2. **CLI** — `insika mcp list | add | remove | import <file.json> | test <name> |
+   refresh <name>`. `add` takes `--name`, `--transport`, `--command`/`--arg`
+   (repeatable) or `--url`/`--header "Name: value"` (repeatable)/`--env
+   "KEY=value"` (repeatable), `--description`, `--disabled`. `test` connects
+   live and prints the discovered tools (or the error) without any special
+   setup; `refresh` does the same and additionally updates `tools_cache`.
+
+3. **JSON import/export** — the same `mcpServers` shape every MCP client
+   (Claude Desktop, Cursor, …) already uses:
+
+   ```jsonc
+   {
+     "mcpServers": {
+       "tavily":     { "url": "https://mcp.tavily.com/mcp", "headers": { "Authorization": "Bearer …" } },
+       "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] }
+     }
+   }
+   ```
+
+   `insika mcp import FILE.json` upserts every entry (a bare `command` implies
+   `stdio`; a bare `url` implies `http`; add `"transport": "sse"` explicitly
+   for SSE — the bare format has no other way to spell it). The same parser
+   backs `PUT /v1/mcp` and Studio's "Import JSON" box; `export` produces the
+   document back with secrets masked as `__OCULTO__`, so round-tripping an
+   export never wipes a stored credential.
+
+4. **HTTP API** (operator-only, gateway Bearer):
+   - `GET /v1/mcp` — every instance, masked.
+   - `GET /v1/mcp/:name` — one instance, masked.
+   - `PUT /v1/mcp` — upsert (body = the instance attrs, `name` required).
+   - `DELETE /v1/mcp/:name` — remove (idempotent).
+   - `POST /v1/mcp/:name/import` — refresh (connect live, list tools, cache).
+
+5. **Studio** — the `/studio/mcp` panel (create/edit/delete). A
+   transport-aware form, a "Test connection" button and an "Import JSON"
+   textarea are RFC-0040 PR4, not yet shipped.
 
 ## Making it appear — and enter the tool-loop
 

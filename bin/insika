@@ -36,6 +36,7 @@ module Insika
       when "evals:export" then evals_export(argv)
       when "evals:baseline" then evals_baseline(argv)
       when "evals:simulate" then evals_simulate(argv)
+      when "mcp" then mcp(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
       when "help", "--help", "-h" then puts usage
       else
@@ -72,12 +73,20 @@ module Insika
                                     run must not write for real); --eval-profile is
                                     verified against the target's derived
                                     side-effect tools (--eval-tools).
+          mcp list                  the configured MCP instances
+          mcp add --name N [...]    add/edit an instance (see mcp add --help)
+          mcp remove NAME           delete an instance
+          mcp import FILE.json      upsert every entry of a `mcpServers` JSON document
+          mcp test NAME             connect live, list its tools, print them (or the error)
+          mcp refresh NAME          same as test, plus caches the result for display
           version                   print the engine version
           help                      show this help
 
         Environment:
           INSIKA_DB                 SQLite path (durable). Unset -> ephemeral memory.
           INSIKA_CONFIG_STRICT      when truthy, the server refuses boot on any finding.
+          INSIKA_MCP_STDIO          set to 1 to allow stdio MCP instances to start
+                                    (arbitrary command execution by config — off by default)
       TXT
     end
 
@@ -605,7 +614,115 @@ def simulate_markdown(report, verdict, pairwise = nil)
   "#{lines.join("\n")}\n"
 end
 
+    # insika mcp list|add|remove|import|test|refresh
+    def mcp(argv)
+      sub = argv.shift
+      case sub
+      when "list"    then mcp_list
+      when "add"     then mcp_add(argv)
+      when "remove"  then mcp_remove(argv)
+      when "import"  then mcp_import(argv)
+      when "test"    then mcp_run(argv, verb: "test", persist_label: nil)
+      when "refresh" then mcp_run(argv, verb: "refresh", persist_label: "cached")
+      else
+        warn "insika mcp: unknown subcommand '#{sub}' (list|add|remove|import|test|refresh)"
+        exit 2
+      end
+    rescue Insika::Error => e
+      warn "insika mcp: #{e.message}"
+      exit 2
+    end
+
+    def mcp_list
+      store = mcp_store
+      names = store.names
+      return puts("no MCP instances configured (insika mcp add / insika mcp import FILE.json)") if names.empty?
+
+      names.each do |name|
+        r = store.get(name)
+        status = r["enabled"] ? "enabled" : "disabled"
+        target = r["transport"] == "stdio" ? r["command"].to_s : r["url"].to_s
+        puts format("%-20s %-8s %-8s %-40s %d tool(s)", name, r["transport"], status, target, Array(r["tools_cache"]).size)
+      end
+    end
+
+    def mcp_add(argv)
+      opts = { args: [], headers: {}, env: {}, enabled: true }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika mcp add --name NAME [--transport stdio|http|sse] [options]"
+        o.on("--name NAME", "instance name (required)") { |v| opts[:name] = v }
+        o.on("--transport T", "stdio|http|sse (default: stdio with --command, else http)") { |v| opts[:transport] = v }
+        o.on("--command CMD", "stdio: the executable") { |v| opts[:command] = v }
+        o.on("--arg ARG", "stdio: one argv entry (repeatable)") { |v| opts[:args] << v }
+        o.on("--url URL", "http/sse: the server URL") { |v| opts[:url] = v }
+        o.on("--header 'Name: value'", "http/sse: one header (repeatable)") do |v|
+          k, val = v.split(":", 2)
+          opts[:headers][k.to_s.strip] = val.to_s.strip
+        end
+        o.on("--env 'KEY=value'", "stdio: one env var (repeatable)") do |v|
+          k, val = v.split("=", 2)
+          opts[:env][k.to_s.strip] = val.to_s.strip
+        end
+        o.on("--description DESC", "free text") { |v| opts[:description] = v }
+        o.on("--disabled", "create it disabled") { opts[:enabled] = false }
+      end.parse!(argv)
+      raise Insika::ValidationError, "--name is required" if opts[:name].nil?
+
+      opts[:transport] ||= Insika::Coercion.presence(opts[:command]) ? "stdio" : "http"
+      record = mcp_store.upsert(opts)
+      puts "MCP instance '#{record['name']}' saved (#{record['transport']}, #{record['enabled'] ? 'enabled' : 'disabled'})"
+    end
+
+    def mcp_remove(argv)
+      name = argv.shift
+      raise Insika::ValidationError, "usage: insika mcp remove NAME" if name.nil?
+
+      existed = mcp_store.delete(name)
+      puts existed ? "MCP instance '#{name}' removed" : "MCP instance '#{name}' did not exist"
+    end
+
+    def mcp_import(argv)
+      path = argv.shift
+      raise Insika::ValidationError, "usage: insika mcp import FILE.json" if path.nil?
+      raise Insika::ValidationError, "no such file: #{path}" unless File.exist?(path)
+
+      records = Insika::McpJson.import(File.read(path), mcp_store: mcp_store)
+      puts "imported #{records.size} MCP instance(s) from #{path}"
+      records.each { |r| puts "  #{r['name']} (#{r['transport']})" }
+    end
+
+    # Shared by `test`/`refresh` — both connect live and list tools
+    # (Insika::McpToolRegistry#refresh always writes tools_cache; `test` differs
+    # only in what it prints, per RFC-0040 PR3). Exits 1 (not 2) on a
+    # connection/transport failure — the instance is configured correctly, the
+    # SERVER is unreachable, which is a finding, not a usage error. Rescues
+    # StandardError, not just Insika::Error: the registry's docstring is
+    # explicit that a transport failure is the GEM's error class (e.g.
+    # ruby_llm-mcp's own AuthenticationRequiredError) and it is this caller's
+    # job to turn it into a clean one-liner instead of a raw backtrace.
+    def mcp_run(argv, verb:, persist_label:)
+      name = argv.shift
+      raise Insika::ValidationError, "usage: insika mcp #{verb} NAME" if name.nil?
+
+      tools = mcp_registry.refresh(name)
+      suffix = persist_label ? ", #{persist_label}" : ""
+      puts "MCP instance '#{name}': connected, #{tools.size} tool(s)#{suffix}"
+      tools.each { |t| puts "  #{t['name']} — #{t['description']}" }
+    rescue StandardError => e
+      warn "MCP instance '#{name}': #{e.message}"
+      exit 1
+    end
+
     # -- helpers -------------------------------------------------------
+
+    def mcp_store
+      backend = Insika::Wiring::Graph.backend_from_env
+      Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: backend))
+    end
+
+    def mcp_registry
+      Insika::McpToolRegistry.new(mcp_store: mcp_store)
+    end
 
     def baseline_store
       backend = Insika::Wiring::Graph.backend_from_env

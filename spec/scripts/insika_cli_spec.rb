@@ -347,4 +347,111 @@ RSpec.describe "bin/insika" do
       end
     end
   end
+
+  describe "mcp" do
+    it "list on a fresh deploy says there is nothing configured" do
+      out, status = run("mcp", "list")
+      expect(out).to match(/no MCP instances configured/)
+      expect(status).to be_success
+    end
+
+    it "add then list shows the saved instance, never the header value" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        out, status = run("mcp", "add", "--name", "tavily", "--transport", "http",
+                          "--url", "https://mcp.tavily.com/mcp",
+                          "--header", "Authorization: Bearer supersecret",
+                          env: { "INSIKA_DB" => db })
+        expect(out).to match(/'tavily' saved \(http, enabled\)/)
+        expect(status).to be_success
+
+        out, status = run("mcp", "list", env: { "INSIKA_DB" => db })
+        expect(out).to match(/tavily\s+http\s+enabled\s+https:\/\/mcp\.tavily\.com\/mcp\s+0 tool\(s\)/)
+        expect(out).not_to include("supersecret")
+        expect(status).to be_success
+      end
+    end
+
+    it "add without --transport defaults to stdio when --command is given, else http" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        run("mcp", "add", "--name", "fs", "--command", "npx", env: { "INSIKA_DB" => db })
+        run("mcp", "add", "--name", "remote", "--url", "https://example.com/mcp", env: { "INSIKA_DB" => db })
+        out, = run("mcp", "list", env: { "INSIKA_DB" => db })
+        expect(out).to match(/fs\s+stdio/)
+        expect(out).to match(/remote\s+http/)
+      end
+    end
+
+    it "add without --name exits 2" do
+      out, status = run("mcp", "add", "--url", "https://example.com/mcp")
+      expect(out).to match(/--name is required/)
+      expect(status.exitstatus).to eq(2)
+    end
+
+    it "remove deletes an existing instance and is idempotent on a missing one" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        run("mcp", "add", "--name", "tavily", "--url", "https://mcp.tavily.com/mcp", env: { "INSIKA_DB" => db })
+
+        out, status = run("mcp", "remove", "tavily", env: { "INSIKA_DB" => db })
+        expect(out).to match(/'tavily' removed/)
+        expect(status).to be_success
+
+        out, status = run("mcp", "remove", "tavily", env: { "INSIKA_DB" => db })
+        expect(out).to match(/'tavily' did not exist/)
+        expect(status).to be_success
+      end
+    end
+
+    it "import upserts every entry of a mcpServers JSON document" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        file = File.join(dir, "mcpServers.json")
+        File.write(file, JSON.generate({
+          "mcpServers" => {
+            "filesystem" => { "command" => "npx", "args" => ["-y", "server-filesystem"] },
+            "tavily" => { "url" => "https://mcp.tavily.com/mcp", "headers" => { "Authorization" => "Bearer x" } }
+          }
+        }))
+
+        out, status = run("mcp", "import", file, env: { "INSIKA_DB" => db })
+        expect(out).to match(/imported 2 MCP instance\(s\)/)
+        expect(out).to match(/filesystem \(stdio\)/)
+        expect(out).to match(/tavily \(http\)/)
+        expect(status).to be_success
+      end
+    end
+
+    it "import on a missing file exits 2" do
+      out, status = run("mcp", "import", "/no/such/file.json")
+      expect(out).to match(/no such file/)
+      expect(status.exitstatus).to eq(2)
+    end
+
+    it "test/refresh on an unknown instance exits 1 with a clean message" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        out, status = run("mcp", "test", "nope", env: { "INSIKA_DB" => db })
+        expect(out).to match(/'nope'.*not found/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "test on a stdio instance without INSIKA_MCP_STDIO reports the gate, not a crash" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        run("mcp", "add", "--name", "fs", "--command", "npx", env: { "INSIKA_DB" => db })
+        out, status = run("mcp", "test", "fs", env: { "INSIKA_DB" => db })
+        expect(out).to match(/stdio \(arbitrary command execution by config\)/)
+        expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    it "an unknown mcp subcommand exits 2" do
+      out, status = run("mcp", "bogus")
+      expect(out).to match(/unknown subcommand/)
+      expect(status.exitstatus).to eq(2)
+    end
+  end
 end

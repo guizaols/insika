@@ -78,6 +78,8 @@ module Insika
           config: { gateway_token: @token, tenancy: tenancy }.merge(@config),
           token_store: store,
           outcome_store: @graph.outcome_store,
+          # GET/PUT/DELETE /v1/mcp[/:name] — the config surface (RFC-0040 PR3).
+          mcp_store: @rt.component(:mcp_store),
           # a 500's error_ref must be findable in the process log.
           logger: $stdout
         )
