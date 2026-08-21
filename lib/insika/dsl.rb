@@ -47,6 +47,7 @@ module Insika
       def initialize
         @definitions = []
         @workflows = []
+        @mcp_instances = []
         @runtime = {}
       end
 
@@ -54,7 +55,8 @@ module Insika
         instance_eval(&block) if block
         raise ArgumentError, "Insika.system needs at least one agent" if @definitions.empty?
 
-        System.new(definitions: @definitions, workflows: @workflows, runtime: @runtime, backend: backend)
+        System.new(definitions: @definitions, workflows: @workflows,
+                   mcp_instances: @mcp_instances, runtime: @runtime, backend: backend)
       end
 
       # Declares one agent — the SAME block the standalone `Insika.agent` takes.
@@ -101,6 +103,28 @@ module Insika
       def provider(name) = @runtime[:provider] = name.to_s
       def api_key(value) = @runtime[:api_key] = value.to_s
       def api_base(value) = @runtime[:api_base] = value.to_s
+
+      # Declares an MCP server instance (RFC-0040 PR3): global to the graph, not
+      # any one agent — gated per agent through `tools`/`deny_tools` on the
+      # group `mcp:<name>`, same as any other tool group. `Insika::DSL::Runtime`
+      # upserts it into the McpStore at boot; the MOTOR-VS-FORJA rule applies —
+      # code is the TEMPLATE (transport/command/args/url/description always
+      # follow the DSL), but an operator's own `enabled`/`env`/`headers` edit
+      # via Studio/CLI/API, once the instance exists, is never clobbered back.
+      #   mcp "tavily", transport: :http, url: "https://mcp.tavily.com/mcp",
+      #       headers: { "Authorization" => "Bearer #{ENV["TAVILY_KEY"]}" }
+      #   mcp "filesystem", transport: :stdio, command: "npx",
+      #       args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+      def mcp(name, transport: nil, command: nil, args: nil, url: nil,
+              headers: nil, env: nil, description: nil, enabled: true)
+        n = name.to_s
+        raise ArgumentError, "duplicate mcp instance in system: #{n}" if @mcp_instances.any? { |m| m[:name] == n }
+
+        @mcp_instances << { name: n, transport: transport&.to_s, command: command, args: args,
+                             url: url, headers: headers, env: env, description: description,
+                             enabled: enabled }
+        n
+      end
     end
 
     # Collects the declarations and emits a Insika::Pack. Declarations map 1:1 to
@@ -117,11 +141,12 @@ module Insika
         # correct once you restrict tools/skills. Visible in #to_pack — no hidden magic.
         @config[:policies] = %i[tool_allowlist skill_allowlist]
         @runtime = {} # non-pack knobs (llm provider/key/base) consumed by the runtime
+        @mcp_instances = []
       end
 
       def build(&block)
         instance_eval(&block) if block
-        Definition.new(pack: to_pack, runtime: @runtime)
+        Definition.new(pack: to_pack, runtime: @runtime, mcp_instances: @mcp_instances)
       end
 
       # --- identity & model ------------------------------------------------
@@ -202,6 +227,21 @@ module Insika
       # the store. Present ⇒ the engine wires `spawn_subagent`/`spawn_subagents`.
       def subagents(*ids)
         @config[:subagents] = ids.flatten.map(&:to_s)
+      end
+
+      # --- mcp ---------------------------------------------------------------
+      # Declares an MCP server instance (RFC-0040 PR3) — see
+      # Insika::DSL::SystemBuilder#mcp for the full doc; identical shape here for
+      # a standalone `Insika.agent { … }` script that wants one without a System.
+      def mcp(name, transport: nil, command: nil, args: nil, url: nil,
+              headers: nil, env: nil, description: nil, enabled: true)
+        n = name.to_s
+        raise ArgumentError, "duplicate mcp instance in agent: #{n}" if @mcp_instances.any? { |m| m[:name] == n }
+
+        @mcp_instances << { name: n, transport: transport&.to_s, command: command, args: args,
+                             url: url, headers: headers, env: env, description: description,
+                             enabled: enabled }
+        n
       end
 
       # --- knobs -----------------------------------------------------------

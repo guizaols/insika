@@ -11,11 +11,12 @@ module Insika
     # exactly like any other pack. That is what makes `#profile` identical to a
     # hand-written equivalent pack (the parity spec) — there is only one path.
     class Definition
-      attr_reader :pack, :runtime_options
+      attr_reader :pack, :runtime_options, :mcp_instances
 
-      def initialize(pack:, runtime: {})
+      def initialize(pack:, runtime: {}, mcp_instances: [])
         @pack = pack
         @runtime_options = runtime
+        @mcp_instances = mcp_instances
       end
 
       def id = pack.config[:id].to_s

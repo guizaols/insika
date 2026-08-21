@@ -15,13 +15,13 @@ RSpec.describe Insika::Server::App do
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
                 config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
-                profiles: nil, logger: nil, token_store: nil, tool_registry: nil)
+                profiles: nil, logger: nil, token_store: nil, tool_registry: nil, mcp_store: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       onboarding: onboarding, profiles: profiles, logger: logger,
-      token_store: token_store, tool_registry: tool_registry,
+      token_store: token_store, tool_registry: tool_registry, mcp_store: mcp_store,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -988,8 +988,8 @@ RSpec.describe Insika::Server::App do
       expect(status).to eq(401)
     end
 
-    it "token ok: dispatches :import_mcp_tools with the ROUTE name -> 200 report" do
-      bus = ServerBusDouble.new { |_c| { instance: "tavily", version: 1, created: ["search"], updated: [], errors: [] } }
+    it "token ok: dispatches :refresh_mcp_tools (the PR2 live registry, never the retired ingestor) with the ROUTE name -> 200 report" do
+      bus = ServerBusDouble.new { |_c| { instance: "tavily", tools: [{ "name" => "search" }] } }
       app = build_app(bus: bus, config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/mcp/tavily/import", method: "POST")
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
@@ -997,9 +997,9 @@ RSpec.describe Insika::Server::App do
       status, _h, resp = app.call(env)
 
       expect(status).to eq(200)
-      expect(json_body(resp)).to include("instance" => "tavily", "created" => ["search"])
+      expect(json_body(resp)).to include("instance" => "tavily")
       cmd = bus.dispatched.last
-      expect(cmd.type).to eq(:import_mcp_tools)
+      expect(cmd.type).to eq(:refresh_mcp_tools)
       expect(cmd.payload).to eq(name: "tavily")
       expect(cmd.meta[:transport]).to eq(:http)
     end
@@ -1011,6 +1011,74 @@ RSpec.describe Insika::Server::App do
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
       status, = app.call(env)
       expect(status).to eq(404)
+    end
+  end
+
+  # RFC-0040 PR3 — the CLI/DSL/Studio config surfaces all ride these same
+  # routes over HTTP. GET is a direct store read (MASKED, never a Command,
+  # constitutional rule); PUT/DELETE ride the `:upsert_mcp`/`:delete_mcp`
+  # Commands already registered on the bus by every composition root.
+  describe "MCP config CRUD GET/PUT/DELETE /v1/mcp" do
+    let(:mcp_store) { Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
+
+    it "mcp_store not wired -> 404 (parity, same as an unwired @profiles)" do
+      status, = call(build_app, "GET", "/v1/mcp")
+      expect(status).to eq(404)
+    end
+
+    it "GET /v1/mcp lists every instance, MASKED" do
+      mcp_store.upsert("name" => "tavily", "transport" => "http", "url" => "https://x",
+                       "headers" => { "Authorization" => "Bearer real" })
+      status, _h, resp = call(build_app(mcp_store: mcp_store), "GET", "/v1/mcp")
+      expect(status).to eq(200)
+      body = json_body(resp)
+      expect(body["instances"].map { |r| r["name"] }).to eq(["tavily"])
+      expect(body["instances"].first["headers"]["Authorization"]).to eq("__OCULTO__")
+    end
+
+    it "GET /v1/mcp/:name reads one instance, MASKED; a missing one -> 404" do
+      mcp_store.upsert("name" => "tavily", "transport" => "http", "url" => "https://x")
+      status, _h, resp = call(build_app(mcp_store: mcp_store), "GET", "/v1/mcp/tavily")
+      expect(status).to eq(200)
+      expect(json_body(resp)).to include("name" => "tavily", "transport" => "http")
+
+      status, = call(build_app(mcp_store: mcp_store), "GET", "/v1/mcp/nope")
+      expect(status).to eq(404)
+    end
+
+    it "PUT /v1/mcp dispatches :upsert_mcp with the parsed (symbolized) body -> 200 the record" do
+      bus = ServerBusDouble.new { |_c| { "name" => "tavily", "enabled" => true } }
+      app = build_app(bus: bus, mcp_store: mcp_store, config: { gateway_token: "tok" })
+
+      status, _h, resp = call(app, "PUT", "/v1/mcp",
+                              body: JSON.generate(name: "tavily", transport: "http", url: "https://x"), auth: "tok")
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to eq("name" => "tavily", "enabled" => true)
+      cmd = bus.dispatched.last
+      expect(cmd.type).to eq(:upsert_mcp)
+      expect(cmd.payload).to eq(name: "tavily", transport: "http", url: "https://x")
+      expect(cmd.meta[:transport]).to eq(:http)
+    end
+
+    it "DELETE /v1/mcp/:name dispatches :delete_mcp with the ROUTE name (not the body) -> 200 {existed}" do
+      bus = ServerBusDouble.new { |_c| { existed: true } }
+      app = build_app(bus: bus, mcp_store: mcp_store, config: { gateway_token: "tok" })
+
+      status, _h, resp = call(app, "DELETE", "/v1/mcp/tavily", auth: "tok")
+
+      expect(status).to eq(200)
+      expect(json_body(resp)).to eq("existed" => true)
+      cmd = bus.dispatched.last
+      expect(cmd.type).to eq(:delete_mcp)
+      expect(cmd.payload).to eq(name: "tavily")
+    end
+
+    it "without the gateway Bearer, every /v1/mcp route is refused (not a tenant/public surface)" do
+      app = build_app(mcp_store: mcp_store)
+      expect(call(app, "GET", "/v1/mcp", auth: nil).first).to eq(401)
+      expect(call(app, "PUT", "/v1/mcp", body: "{}", auth: nil).first).to eq(401)
+      expect(call(app, "DELETE", "/v1/mcp/tavily", auth: nil).first).to eq(401)
     end
   end
 

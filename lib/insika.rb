@@ -214,6 +214,7 @@ require_relative "insika/mcp_client"
 # require_relative's it lazily on the 1st instance (turn time), same as
 # OverlayToolRegistry does for tools/data_defined_tool.
 require_relative "insika/mcp_tool_registry"
+require_relative "insika/mcp_json"
 require_relative "insika/system_file_store"
 require_relative "insika/recovery"
 require_relative "insika/command_bus"

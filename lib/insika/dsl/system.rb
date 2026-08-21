@@ -15,13 +15,21 @@ module Insika
     # require the child agents to be resolvable in the SAME ProfileSource. A
     # Definition owns exactly one pack, so those patterns had no home in the DSL.
     class System
-      attr_reader :definitions, :workflows, :runtime_options
+      attr_reader :definitions, :workflows, :mcp_instances, :runtime_options
 
       # `backend`: the store this system's graph owns. nil = the
       # historic path (INSIKA_DB, or memory when unset). Set by `Insika.embed`.
-      def initialize(definitions:, workflows: [], runtime: {}, backend: nil)
+      def initialize(definitions:, workflows: [], mcp_instances: [], runtime: {}, backend: nil)
         @definitions = definitions.freeze
         @workflows = workflows.freeze
+        # MCP instances are global to the graph (one McpStore, not per-agent),
+        # so a system-level `mcp` declaration and one nested inside a member
+        # `agent { … }` block land in the same set. A name declared both places
+        # is NOT an error here (unlike within one collection) — the later one
+        # (system-level, applied last) simply wins; Insika::DSL::Runtime upserts
+        # this combined list once at boot.
+        @mcp_instances = (definitions.flat_map(&:mcp_instances) + mcp_instances)
+                          .each_with_object({}) { |m, acc| acc[m[:name]] = m }.values.freeze
         @backend = backend
         # Agent-level runtime knobs merged in declaration order, then the
         # system-level ones on top (an explicit `provider`/`api_key` in the
