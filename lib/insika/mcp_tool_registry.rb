@@ -48,16 +48,20 @@ module Insika
       discovered
     end
 
-    private
-
-    # Stops and drops any memoized client for `name` so the next
-    # `client_for` builds a fresh one off the current record.
+    # Stops and drops any memoized client for `name` (no-op if none), so the
+    # next `client_for` builds a fresh one off the current record. Public:
+    # called by `refresh` above AND by UpsertMcp/DeleteMcp right after they
+    # write the store — a Studio/CLI edit takes effect on that instance's
+    # NEXT tool call or refresh, no process restart required (there's no way
+    # to restart a process by hand on a Railway dyno).
     def evict(name)
-      client = @mutex.synchronize { @clients.delete(name) }
+      client = @mutex.synchronize { @clients.delete(name.to_s) }
       client&.stop
     rescue StandardError
       nil # best-effort teardown of a possibly already-dead process
     end
+
+    private
 
     def entries_for(record)
       Array(record["tools_cache"]).map { |tool| entry_for(record, tool) }

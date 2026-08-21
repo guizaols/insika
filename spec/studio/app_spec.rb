@@ -2675,7 +2675,7 @@ RSpec.describe Studio::App do
     end
   end
 
-  it "an MCP template upserts the instance (masked) and lights the restart banner" do
+  it "an MCP template upserts the instance (masked)" do
     app, runtime = build_template_app
     client = login(app)
     csrf = csrf_from(client.get("/agents").body)
@@ -2684,7 +2684,6 @@ RSpec.describe Studio::App do
     record = runtime.component(:mcp_store).get("repo-docs")
     expect(record["transport"]).to eq("http")
     expect(record["url"]).to eq("https://mcp.deepwiki.com/mcp")
-    expect(client.get("/agents").body).to include("Restart recommended")
   end
 
   it "re-creating from the same template is idempotent (upsert, not a duplicate-id error)" do
@@ -2713,32 +2712,6 @@ RSpec.describe Studio::App do
     expect(login(app).get("/mcp").body).to include("No MCP instances")
   end
 
-  # --- Recommended restart banner ------------------------------------------
-
-  it "lights the restart banner when touching MCP and clears it on dismiss" do
-    app, = build_app
-    client = login(app)
-    expect(client.get("/agents").body).not_to include("Restart recommended")
-
-    csrf = csrf_from(client.get("/mcp").body)
-    client.post("/mcp", params: { "name" => "tavily", "_csrf" => csrf })
-    expect(client.get("/agents").body).to include("Restart recommended")
-
-    csrf = csrf_from(client.get("/agents").body)
-    res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "/studio/mcp" })
-    expect(res.status).to eq(302)
-    expect(res.headers["location"]).to eq("/studio/mcp")
-    expect(client.get("/agents").body).not_to include("Restart recommended")
-  end
-
-  it "removing an MCP also lights the restart banner" do
-    app, = build_app(mcp_instances: [{ "name" => "tavily" }])
-    client = login(app)
-    csrf = csrf_from(client.get("/mcp").body)
-    client.post("/mcp/delete", params: { "name" => "tavily", "_csrf" => csrf })
-    expect(client.get("/agents").body).to include("Restart recommended")
-  end
-
   # --- MCP form (RFC-0040 PR4: transport-aware, test connection, JSON import) --
 
   it "the MCP form is transport-aware and lists discovered tools with an 'ok' status chip" do
@@ -2759,6 +2732,26 @@ RSpec.describe Studio::App do
     expect(body).to include("<code>search</code>")
     expect(body).to include("web search")
     expect(body).to include("1 tool(s)")
+  end
+
+  it "the MCP list is filterable and each instance's tools/edit form sit behind a collapsed disclosure" do
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
+    mcp_store.upsert("name" => "zeta", "transport" => "http", "url" => "https://x", "enabled" => true)
+    mcp_store.upsert("name" => "alpha", "transport" => "http", "url" => "https://y", "enabled" => true)
+    mcp_store.set_tools_cache("alpha", [{ "name" => "list_files", "description" => "d" }])
+    app = Class.new(Studio::App)
+    app.configure(command_bus: BusDouble.new([]), profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: nil, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
+    body = login(app).get("/mcp").body
+
+    expect(body).to include('data-controller="list-filter"')
+    expect(body).to include('data-list-filter-target="query"')
+    expect(body).to include('data-filter-text="alpha http on enabled 1 tool(s)"')
+    expect(body.index("alpha")).to be < body.index("zeta") # sorted, not insertion order
+    expect(body).to include('class="mcp-tools-details"')
+    expect(body).to include('class="mcp-edit"')
+    expect(body).to include("<summary>Edit configuration</summary>")
   end
 
   it "an enabled instance with no cached tools shows 'untested'" do
@@ -2852,7 +2845,6 @@ RSpec.describe Studio::App do
     expect(mcp_store.names).to contain_exactly("tavily", "fs")
     expect(mcp_store.get("fs")["transport"]).to eq("stdio")
     expect(client.get("/mcp").body).to include("Imported 2 MCP instance(s)") # one-shot flash — check before it's consumed
-    expect(client.get("/agents").body).to include("Restart recommended")
   end
 
   it "Import JSON with invalid JSON flashes an error, not a 500" do
@@ -2862,14 +2854,6 @@ RSpec.describe Studio::App do
     res = client.post("/mcp/import", params: { "json" => "not json", "_csrf" => csrf })
     expect(res.status).to eq(302)
     expect(client.get("/mcp").body).to include("Invalid JSON")
-  end
-
-  it "restart-ack does not open-redirect (external back is ignored)" do
-    app, = build_app
-    client = login(app)
-    csrf = csrf_from(client.get("/agents").body)
-    res = client.post("/restart-ack", params: { "_csrf" => csrf, "back" => "https://evil.com" })
-    expect(res.headers["location"]).to eq("/studio/agents")
   end
 
   # Tasks & Approvals ------------------------------------------

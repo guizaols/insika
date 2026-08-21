@@ -173,13 +173,6 @@ module Studio
           # pages render their empty states.
           artifact_store: artifact_store, artifact_signing: artifact_signing
         }.freeze
-        # "restart recommended" flag — in memory, PER PROCESS. A
-        # config change that the runtime only re-reads at boot (e.g.: MCP instances are
-        # wired at startup) lights the flag; restarting the process clears it
-        # naturally (new process = `configure` runs again = flag reset).
-        # Deliberately not put in the session: the session survives the restart (the secret
-        # derives from the token) and the flag would stay stuck on.
-        @restart_needed = false
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "insika.studio", secret: secret,
                           max_seconds: SESSION_MAX_AGE, same_site: :lax
@@ -198,11 +191,6 @@ module Studio
       def derive_secret(admin_token)
         Digest::SHA512.hexdigest("insika-studio-session-v1:#{admin_token}")
       end
-
-      # --- Restart recommended — per-process state -------------------
-      def restart_needed? = @restart_needed == true
-      def mark_restart_needed! = (@restart_needed = true)
-      def clear_restart_needed! = (@restart_needed = false)
     end
 
     route do |r|
@@ -261,14 +249,6 @@ module Studio
         check_csrf!
         clear_session
         r.redirect("/studio/login")
-      end
-
-      # Dismisses the "restart recommended" banner without restarting (the operator
-      # acknowledges and moves on). A real restart clears the flag on its own.
-      r.post "restart-ack" do
-        check_csrf!
-        self.class.clear_restart_needed!
-        r.redirect(safe_back(r.params["back"]))
       end
 
       # GET /studio/events — the live transcript's SSE, on the STUDIO's own auth.
@@ -760,9 +740,6 @@ module Studio
             check_csrf!
             with_flash("MCP instance saved.") do
               dispatch(:upsert_mcp, mcp_patch(r))
-              # MCP servers are wired at runtime boot; the new instance
-              # only takes effect after a restart. Lights the "restart" banner.
-              self.class.mark_restart_needed!
             end
             r.redirect("/studio/mcp")
           end
@@ -771,7 +748,6 @@ module Studio
           check_csrf!
           with_flash("MCP instance removed.") do
             dispatch(:delete_mcp, { name: presence(r.params["name"]) })
-            self.class.mark_restart_needed!
           end
           r.redirect("/studio/mcp")
         end
@@ -783,8 +759,7 @@ module Studio
         # Rescues StandardError, not just Insika::Error: a transport failure
         # is the ruby_llm-mcp gem's own error class, and turning it into a
         # clean flash instead of a 500 is this caller's job (same discipline
-        # as the CLI's `mcp_run`) — no restart banner, nothing durable changed
-        # except the tools_cache display.
+        # as the CLI's `mcp_run`).
         r.post "test" do
           check_csrf!
           name = presence(r.params["name"])
@@ -806,7 +781,6 @@ module Studio
           begin
             records = import_mcp_json(r.params["json"].to_s)
             flash["notice"] = "Imported #{records.size} MCP instance(s): #{records.map { |rec| rec["name"] }.join(", ")}."
-            self.class.mark_restart_needed!
           rescue JSON::ParserError
             flash["error"] = "Invalid JSON."
           rescue Insika::ValidationError, Insika::NotFoundError => e
@@ -1378,9 +1352,7 @@ end
     # styles. Memoized on the request instance so header and <meta> agree.
     def csp_nonce = (@csp_nonce ||= (session["csp_nonce"] ||= SecureRandom.base64(16)))
 
-    # --- Polish: theme, health chip, restart banner ----------------
-
-    def restart_needed? = self.class.restart_needed?
+    # --- Polish: theme, health chip -------------------------------
 
     # Environment label for the sidebar identity chip — reflects the REAL runtime
     # env (INSIKA_ENV → RACK_ENV → "local") so an operator always knows which box
@@ -2048,7 +2020,7 @@ end
     # --- MCP -------------------------------------------------------
 
     def render_mcp
-      @instances = insika[:mcp_store] ? insika[:mcp_store].all : []
+      @instances = insika[:mcp_store] ? insika[:mcp_store].all.sort_by { |m| m["name"].to_s } : []
       view("mcp")
     end
 
@@ -2081,6 +2053,14 @@ end
       return ["untested", ""] if tools.empty?
 
       ["#{tools.size} tool(s)", "ok"]
+    end
+
+    # Haystack for the /mcp list-filter box: name, transport, on/off, and the
+    # same status label the pill shows — so typing "stdio", "off", "err" or
+    # "untested" narrows the list, not just a name search.
+    def mcp_filter_text(record)
+      status_label, = mcp_status(record)
+      [record["name"], record["transport"], record["enabled"] ? "on enabled" : "off disabled", status_label].join(" ")
     end
 
     # --- System-files ----------------------------------------------
@@ -2751,7 +2731,6 @@ end
       packs.each { |pack| importer.import(pack) }
       declared_mcp = Array(built.mcp_instances)
       declared_mcp.each { |decl| dispatch(:upsert_mcp, decl) }
-      self.class.mark_restart_needed! unless declared_mcp.empty?
       { agent_id: built.id }
     end
 
