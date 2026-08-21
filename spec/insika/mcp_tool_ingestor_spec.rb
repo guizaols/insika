@@ -156,9 +156,11 @@ RSpec.describe Insika::McpToolIngestor do
       end
       described_class.new(mcp_store: mcp_store, import_tools: import_tools,
                           client_factory: client_factory).ingest("tavily")
-      # the factory receives the RAW record (real env) — the client itself is
-      # built from it by whoever the factory is (default_client, in production).
-      expect(captured["env"]).to eq("Authorization" => "Bearer xyz")
+      # the factory receives the RAW record (real credentials) — for an http
+      # instance that's `headers` (RFC-0040: `env` migrates to `headers` on
+      # read for http/sse). The client itself is built from it by whoever the
+      # factory is (default_client, in production).
+      expect(captured["headers"]).to eq("Authorization" => "Bearer xyz")
     end
 
     it "the default client actually sends env as headers on tools/list" do

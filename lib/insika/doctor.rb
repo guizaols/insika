@@ -105,7 +105,7 @@ module Insika
                    memory_store: nil, agent_ids: nil, funnel_store: nil, outcome_store: nil,
                    followup_store: nil, contact_store: nil, proposal_store: nil,
                    schedule_store: nil,
-                   harvest_store: nil, harvest_criterion: nil)
+                   harvest_store: nil, harvest_criterion: nil, mcp_store: nil)
       @env = env
       @settings_store = settings_store
       @llm_provider_store = llm_provider_store
@@ -144,6 +144,9 @@ module Insika
       # reports declarations only (counts skipped).
       @harvest_store = harvest_store
       @harvest_criterion = harvest_criterion
+      # the mcp check — nil collaborator = the check reports nothing
+      # (env-only callers stay cheap).
+      @mcp_store = mcp_store
     end
 
     # -> Report. Never raises (a broken check degrades to an :error Finding).
@@ -172,7 +175,7 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_data_tools check_prompt_files check_relay_channel
+                    check_admin_token check_data_tools check_mcp check_prompt_files check_relay_channel
                     check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
@@ -703,6 +706,34 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       return [ok("data-tools", "#{total} data tool(s): every definition valid")] if broken.empty?
 
       broken
+    end
+
+    # RFC-0040: an http/sse instance whose credentials still sit under `env`
+    # (the pre-RFC meaning) is READ as `headers` (McpStore#raw), but the
+    # record on disk is unchanged until the operator re-saves it — flag it so
+    # it doesn't linger silently. A stdio instance that is enabled but
+    # INSIKA_MCP_STDIO is not set will save fine but refuse to start.
+    def check_mcp
+      return [] unless @mcp_store
+
+      raws = @mcp_store.all_raw
+      gated = raws.select do |r|
+        r["transport"].to_s == "stdio" && r["enabled"] &&
+          !Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_MCP_STDIO", @env))
+      end
+      findings = @mcp_store.legacy_header_names.map do |name|
+        Finding.new(check: "mcp", severity: :warn, fix: nil,
+                    message: "MCP instance '#{name}' still stores credentials under 'env' — " \
+                             "re-save it so they move to 'headers' (env is now stdio-only).")
+      end
+      findings += gated.map do |r|
+        Finding.new(check: "mcp", severity: :info, fix: nil,
+                    message: "MCP instance '#{r["name"]}' is stdio and enabled, but INSIKA_MCP_STDIO " \
+                             "is not set — it will refuse to start.")
+      end
+      return [ok("mcp", "#{raws.length} MCP instance(s): no legacy env-as-headers records")] if findings.empty?
+
+      findings
     end
 
     # the doctor cannot run a turn, so it cannot prove purity — it

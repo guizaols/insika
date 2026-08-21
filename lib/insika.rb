@@ -207,6 +207,9 @@ require_relative "insika/refinement/panel"
 require_relative "insika/mcp_store"
 require_relative "insika/mcp_http_client"
 require_relative "insika/mcp_tool_ingestor"
+# require "ruby_llm/mcp" itself is LAZY, inside .for — this require_relative only
+# loads the thin factory (see spec/insika/load_guard_spec.rb).
+require_relative "insika/mcp_client"
 require_relative "insika/system_file_store"
 require_relative "insika/recovery"
 require_relative "insika/command_bus"

@@ -81,16 +81,19 @@ module Insika
 
     private
 
-    # `env` -> HTTP headers, literal (header-NAME -> value; the value carries
-    # its own scheme, e.g. "Bearer xxx" — no magic prefixing). NOT `secret_headers`:
-    # ToolManifest's own rule for a secret header requires a `{{secret.*}}`
-    # reference, which is the opposite of what a literal credential is — so an
-    # MCP instance's env is NOT masked in a tool's edit page in /studio/tools,
-    # unlike a hand-authored data-tool's Authorization header. Acceptable for
-    # now (Studio is already operator-gated); a real fix routes this through
-    # the deployment's own {{secret.*}}/{{env.*}} resolution instead — later work.
+    # `headers` (RFC-0040: an http/sse instance's credentials — `env` reads
+    # as `headers` for these transports via McpStore's migration-on-read, see
+    # McpStore#migrate_legacy_headers) -> literal HTTP headers (header-NAME ->
+    # value; the value carries its own scheme, e.g. "Bearer xxx" — no magic
+    # prefixing). NOT `secret_headers`: ToolManifest's own rule for a secret
+    # header requires a `{{secret.*}}` reference, which is the opposite of what
+    # a literal credential is — so an MCP instance's headers are NOT masked in
+    # a tool's edit page in /studio/tools, unlike a hand-authored data-tool's
+    # Authorization header. Acceptable for now (Studio is already
+    # operator-gated); a real fix routes this through the deployment's own
+    # {{secret.*}}/{{env.*}} resolution instead — later work.
     def env_headers(record)
-      (record["env"] || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v.to_s }
+      (record["headers"] || {}).each_with_object({}) { |(k, v), acc| acc[k.to_s] = v.to_s }
     end
 
     def build_manifest(name, url, tools, headers)

@@ -141,6 +141,39 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "mcp check (RFC-0040)" do
+    let(:mcp_store) { Insika::McpStore.new(config_store: config_store) }
+
+    it "is skipped when no mcp_store is injected" do
+      expect(doctor.run.findings.map(&:check)).not_to include("mcp")
+    end
+
+    it "ok when no instance needs attention" do
+      mcp_store.upsert("name" => "tavily", "transport" => "http", "url" => "https://x",
+                       "headers" => { "Authorization" => "Bearer x" })
+      finding = doctor(mcp_store: mcp_store).run.findings.find { |f| f.check == "mcp" }
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "warns on an http instance still storing credentials under the pre-RFC-0040 'env'" do
+      config_store.put("mcp", "legacy",
+                       { "name" => "legacy", "transport" => "http", "url" => "https://x",
+                         "env" => { "Authorization" => "Bearer old" }, "enabled" => true })
+      findings = doctor(mcp_store: mcp_store).run.findings.select { |f| f.check == "mcp" }
+      expect(findings.map(&:severity)).to include(:warn)
+      expect(findings.map(&:message).join).to match(/legacy.*'env'.*'headers'/)
+    end
+
+    it "flags an enabled stdio instance when INSIKA_MCP_STDIO is not set" do
+      mcp_store.upsert("name" => "fs", "transport" => "stdio", "command" => "npx", "enabled" => true)
+      findings = doctor(env: {}, mcp_store: mcp_store).run.findings.select { |f| f.check == "mcp" }
+      expect(findings.map(&:message).join).to match(/fs.*INSIKA_MCP_STDIO/)
+
+      gated = doctor(env: { "INSIKA_MCP_STDIO" => "1" }, mcp_store: mcp_store).run.findings.select { |f| f.check == "mcp" }
+      expect(gated.first.severity).to eq(:ok)
+    end
+  end
+
   describe "#fix!" do
     it "runs the fixable findings and re-diagnoses to green" do
       # pre-versioning settings record (no schema_version) + no default_model

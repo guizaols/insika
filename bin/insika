@@ -879,6 +879,8 @@ end
         rescue Insika::ConfigError, Insika::ValidationError
           nil
         end,
+        # the mcp check reads the instances over the same runtime backend.
+        mcp_store: Insika::McpStore.new(config_store: config_store),
         backend: backend
       )
     end
