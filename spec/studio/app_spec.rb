@@ -2626,6 +2626,88 @@ RSpec.describe Studio::App do
     expect(body).to include("Create agent")
   end
 
+  # --- Template gallery (RFC-0039) -----------------------------------------
+  # A REAL Insika.embed graph — the full authoring command surface
+  # (create_agent/write_data_tool/upsert_mcp/…) registered exactly as a real
+  # deployment would, not a hand-picked subset of doubles. `seed` is thrown
+  # away (embed needs >= 1 agent); the graph's bus/profile_source/mcp_store
+  # feed an isolated Studio subclass, same as every other spec here.
+  def build_template_app
+    backend = Insika::Stores::Memory.new
+    seed = Insika.embed(backend: backend) { agent("seed") { model "m" } }
+    runtime = seed.runtime
+    app = Class.new(Studio::App)
+    app.configure(command_bus: runtime.graph.bus, profile_source: runtime.component(:profile_source),
+                  event_stream: runtime.graph.event_stream, config: { admin_token: "s3cret" },
+                  mcp_store: runtime.component(:mcp_store), session_secret: "x" * 64)
+    [app, runtime]
+  end
+
+  it "the agents index lists the template gallery with a Create button per template" do
+    app, = build_template_app
+    body = login(app).get("/agents").body
+    expect(body).to include("Travel Planner", "Starter")
+    expect(body).to include('action="/studio/agents/from_template/travel-planner"')
+  end
+
+  it "creates a single-agent template via POST /agents/from_template/:name" do
+    app, runtime = build_template_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/agents/from_template/travel-planner", params: { "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/agents/travel-planner")
+
+    profile = runtime.component(:profile_source).fetch("travel-planner")
+    expect(profile).not_to be_nil
+    expect(profile.tools_allow).to include("geocode_city", "get_weather", "convert_currency")
+  end
+
+  it "creates every agent of a system template, redirecting to the primary (first-declared)" do
+    app, runtime = build_template_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/agents/from_template/review-panel", params: { "_csrf" => csrf })
+    expect(res.headers["location"]).to eq("/studio/agents/security")
+
+    %w[security performance reviewer].each do |id|
+      expect(runtime.component(:profile_source).fetch(id)).not_to be_nil
+    end
+  end
+
+  it "an MCP template upserts the instance (masked) and lights the restart banner" do
+    app, runtime = build_template_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    client.post("/agents/from_template/repo-explorer", params: { "_csrf" => csrf })
+
+    record = runtime.component(:mcp_store).get("repo-docs")
+    expect(record["transport"]).to eq("http")
+    expect(record["url"]).to eq("https://mcp.deepwiki.com/mcp")
+    expect(client.get("/agents").body).to include("Restart recommended")
+  end
+
+  it "re-creating from the same template is idempotent (upsert, not a duplicate-id error)" do
+    app, = build_template_app
+    client = login(app)
+    2.times do
+      csrf = csrf_from(client.get("/agents").body)
+      res = client.post("/agents/from_template/travel-planner", params: { "_csrf" => csrf })
+      expect(res.status).to eq(302)
+    end
+  end
+
+  it "an unknown template flashes an error, not a 500" do
+    app, = build_template_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    res = client.post("/agents/from_template/bogus-template", params: { "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    # ERB escapes the flash text (apostrophes -> &#39;) — assert the substance,
+    # not the exact punctuation encoding.
+    expect(client.get("/agents").body).to include("bogus-template", "not found")
+  end
+
   it "empty mcp shows empty-state" do
     app, = build_app
     expect(login(app).get("/mcp").body).to include("No MCP instances")

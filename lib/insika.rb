@@ -320,6 +320,7 @@ require_relative "insika/shutdown"
 require_relative "insika/tick"
 require_relative "insika/pack"
 require_relative "insika/pack_importer"
+require_relative "insika/templates"
 require_relative "insika/telemetry"
 # Strict config + diagnosis. Doctor reads the config stores above;
 # EnvSchema (required at the top) is its env layer.

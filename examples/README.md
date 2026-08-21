@@ -3,6 +3,13 @@
 One small, self-contained, runnable project per capability. Each is a few lines of
 the public `Insika.agent { … }` DSL — the examples *are* the integration docs.
 
+**Starting a new agent?** `insika new --list` shows a gallery of app-shaped
+templates (travel planner, research team, daily digest, review panel, two
+MCP demos) — one command gets you a running, editable agent. See
+[Templates](../docs/TEMPLATES.md). The examples below stay focused on
+*capabilities* (how the egress guard works, how a schedule fires) rather
+than a finished app.
+
 All of them need a provider key (the demo uses DeepSeek):
 
 ```bash
@@ -17,6 +24,7 @@ DEEPSEEK_API_KEY=sk-... ruby examples/<name>/<file>.rb
 | [memory/](memory/) | Cross-session memory (`remember`) | `ruby examples/memory/memory_agent.rb` |
 | [guardrails/](guardrails/) | Content-safety guardrails, opt-in per agent | `ruby examples/guardrails/guarded_agent.rb` |
 | [relay-channel/](relay-channel/) | Bring your own WhatsApp/Slack stack: the engine runs the turn, you deliver the reply | `ruby examples/relay-channel/support_agent.rb` |
+| [scheduled-report/](scheduled-report/) | Recurring schedule (`schedule`) + `save_artifact` | `ruby examples/scheduled-report/report_agent.rb` |
 
 | [agentic-workflows/](agentic-workflows/) | The five composition patterns: sequential, routing, parallel, evaluator, delegation | `ruby examples/agentic-workflows/sequential.rb` |
 

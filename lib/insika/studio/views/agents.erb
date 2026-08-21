@@ -43,6 +43,35 @@
   </div>
 <% end %>
 
+<% if @templates&.any? %>
+  <details class="card newfile">
+    <summary>+ from template</summary>
+    <p class="muted matrix-hint">Example agents shipped in the gem (RFC-0039) — pick one to see a working pattern, then edit it like any agent.</p>
+    <div class="template-grid">
+      <% @templates.each do |t| %>
+        <article class="card template">
+          <div class="template-head">
+            <strong><%= t.title %></strong>
+            <span class="pill info"><%= t.trail %></span>
+          </div>
+          <p class="muted"><%= t.description %></p>
+          <% if t.capabilities.any? %>
+            <p class="mono muted template-caps"><%= t.capabilities.join(" · ") %></p>
+          <% end %>
+          <% if t.studio? %>
+            <form method="post" action="/studio/agents/from_template/<%= Rack::Utils.escape(t.name) %>">
+              <%== csrf_tag %>
+              <button type="submit" class="btn" data-turbo-submits-with="Creating…">Create</button>
+            </form>
+          <% else %>
+            <p class="muted">CLI-only for now — run <code>insika new <%= t.name %></code>.</p>
+          <% end %>
+        </article>
+      <% end %>
+    </div>
+  </details>
+<% end %>
+
 <details class="card newfile"<%== " open" if @agents.empty? %>>
   <summary>+ new agent</summary>
   <form method="post" action="/studio/agents">
