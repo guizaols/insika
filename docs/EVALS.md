@@ -286,11 +286,17 @@ persona case is testing. See `examples/agent-tester/qa_scheduled.rb` for the ful
 loop: `schedule` (RFC-0037) fires the QA agent, it calls `run_persona_eval`, then
 `save_artifact` publishes the quality report.
 
-**Known gap**: a golden case has no tenant field, so in a multi-tenant deployment
-`run_persona_eval` can run ANY store's persona case, not just the calling QA agent's
-own — GoldenStore isn't tenant-partitioned yet. Harmless for a single-tenant
-deployment (today's only real one); a real gap the day a deployment hosts more than
-one tenant's cases side by side.
+**Tenant isolation.** A golden case carries a `tenant` (`platform` — the
+single-tenant default — unless the case declares one, the same convention
+`save_artifact` uses for its own binding tenant). `run_persona_eval` only ever
+lists or runs cases in the *calling* agent's own tenant: a case authored for
+another tenant is invisible, not merely refused — the model cannot even learn
+its id from the enum, and running it by a guessed id gets the same "unknown or
+invalid" error a nonexistent id would (the two must not be distinguishable).
+This is what makes "one QA agent per store" (the C3.2 plan) an actual boundary
+in a deployment where several stores' persona cases live in the same
+`GoldenStore` — without it, `qa-store-a` could enumerate and run
+`qa-store-b`'s persona and read its `knows` in the transcript.
 
 ## Running
 

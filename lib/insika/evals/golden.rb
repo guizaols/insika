@@ -15,7 +15,13 @@ module Insika
     # A case is ONE of two shapes: `turns:` (a scripted replay, RFC-0008) or
     # `persona:` (a conversation the Simulator GENERATES, RFC-0014 §3.1). A persona
     # case is `simulated?` — the replay Runner skips it, and the Simulator drives it.
-    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, :persona, keyword_init: true) do
+    #
+    # `tenant` (C3.1): which tenant authored this case — "platform" (the
+    # single-tenant default, like `save_artifact`'s own binding_tenant) unless the
+    # case declares one. `run_persona_eval` uses it to keep a QA agent from ever
+    # running (or even seeing) another tenant's persona case in the same store.
+    Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, :persona, :tenant,
+                        keyword_init: true) do
       # The user messages to replay, in order. Empty for a persona case: a generated
       # conversation has no scripted turns.
       def user_turns = turns.map { |t| t["user"] }
@@ -111,9 +117,11 @@ module Insika
         end
 
         reference = normalize_reference(raw["reference"], id: id, source: source)
+        tenant = presence(raw["tenant"]) || "platform"
 
         Golden.new(id: id, agent: agent, turns: turns, expect: expect,
-                   requires: requires, reference: reference, source: source, persona: persona)
+                   requires: requires, reference: reference, source: source, persona: persona,
+                   tenant: tenant)
       end
 
       # `persona:` (RFC-0014 §3.1) is the alternative shape to `turns:`: the

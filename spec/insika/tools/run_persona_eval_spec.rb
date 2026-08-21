@@ -83,14 +83,14 @@ RSpec.describe Insika::Tools::RunPersonaEval do
   end
   let(:runtime) { FakeGraphRuntime.new(llm) { |_m| ["aqui estão algumas opções reais", nil] } }
 
-  def seed_case(id: "case-1", agent: "loja")
+  def seed_case(id: "case-1", agent: "loja", tenant: nil)
     golden_store.write(
-      { "id" => id, "agent" => agent,
+      { "id" => id, "agent" => agent, "tenant" => tenant,
         "persona" => { "goal" => "achar um presente", "style" => "curto",
                        "opens_with" => "oi, queria um presente",
                        "knows" => { "orcamento" => "100" }, "max_turns" => 5 },
         "expect" => { "policy" => "investigate_first", "rubric" => "descobre o objetivo antes de recomendar",
-                     "min_score" => 0.7 } }
+                     "min_score" => 0.7 } }.compact
     )
   end
 
@@ -140,7 +140,7 @@ RSpec.describe Insika::Tools::RunPersonaEval do
     end
 
     it "charges the persona + judge spend to the CALLING agent, never the target" do
-      seed_case
+      seed_case(tenant: "acme")
       bound(tool, agent: "qa", tenant: "acme").execute(case_id: "case-1")
       # persona: 10 + 5 = 15 · judge: 20 + 8 + 2 (cached) + 0 = 30 · total 45
       expect(budget_ledger.current(tenant: "acme", agent: "qa")[:daily]).to eq(45)
@@ -200,6 +200,34 @@ RSpec.describe Insika::Tools::RunPersonaEval do
       seed_case
       result = bound(tool(settings_store: bare_settings)).execute(case_id: "case-1")
       expect(result[:error]).to match(/no judge configured/)
+    end
+  end
+
+  describe "tenant isolation (C3.1)" do
+    it "the enumerated case_id only lists the CALLING agent's own tenant" do
+      seed_case(id: "case-1", tenant: "acme")
+      seed_case(id: "case-2", tenant: "other")
+      schema = bound(tool, tenant: "acme").params_schema
+      enum = schema.dig(:properties, :case_id, :enum) || schema.dig("properties", "case_id", "enum")
+      expect(enum).to eq(["case-1"])
+    end
+
+    it "a case with no declared tenant belongs to 'platform' (the single-tenant default)" do
+      seed_case(id: "case-1")
+      schema = bound(tool, tenant: nil).params_schema
+      enum = schema.dig(:properties, :case_id, :enum) || schema.dig("properties", "case_id", "enum")
+      expect(enum).to eq(["case-1"])
+    end
+
+    it "refuses another tenant's case with the SAME wording an unknown id gets (no leak)" do
+      seed_case(id: "case-1", tenant: "other")
+      not_found = bound(tool, tenant: "acme").execute(case_id: "nope")[:error]
+      wrong_tenant = bound(tool, tenant: "acme").execute(case_id: "case-1")[:error]
+      # Same template, each echoing only the id the CALLER already typed — never
+      # a hint that "case-1" exists, just belongs to somebody else.
+      expect(wrong_tenant).to eq("unknown or invalid persona case 'case-1'")
+      expect(not_found).to eq("unknown or invalid persona case 'nope'")
+      expect(runtime.calls).to be_empty
     end
   end
 

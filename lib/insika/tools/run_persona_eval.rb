@@ -27,6 +27,13 @@ module Insika
     # limiter, exactly as if a customer had sent those messages). A hard cap on
     # the calling agent skips the run — visibly, in the tool result — before a
     # cent is spent.
+    #
+    # TENANT ISOLATION: a persona case belongs to a tenant (Golden#tenant,
+    # "platform" by default); this tool only ever lists/runs cases in the
+    # CALLING agent's own tenant (calling_tenant, read off turn_context, never
+    # the model). One QA agent per store (the C3.2 plan) is what makes this
+    # meaningful -- without it, "qa-store-a" could enumerate and run
+    # "qa-store-b"'s persona and read its `knows` in the transcript.
     class RunPersonaEval < RubyLLM::Tool
       description "Run an authored simulated-customer persona case, in-process, against " \
                   "its target agent and score the whole conversation with the configured " \
@@ -36,7 +43,10 @@ module Insika
 
       def name = "run_persona_eval"
 
-      # golden_store: Evals::GoldenStore — where authored persona cases live.
+      # golden_store: Evals::GoldenStore — where authored persona cases live,
+      #               scoped to the CALLING agent's own tenant (never the
+      #               model's — see `calling_tenant`). A case authored for
+      #               another tenant is invisible here, not merely undocumented.
       # profiles:     ProfileSource — resolves both the target agent (the
       #               case's `agent:`) and the CALLING agent (turn_context, for
       #               the budget check).
@@ -88,7 +98,12 @@ module Insika
 
       def execute(case_id:)
         golden = @golden_store.find(case_id.to_s)
-        return { error: "unknown or invalid persona case '#{case_id}'" } unless golden&.simulated?
+        # The SAME error, whether the case does not exist or exists under another
+        # tenant — a QA agent must not be able to tell the two apart (that
+        # distinction is itself a leak: "case exists, just not yours").
+        unless golden&.simulated? && golden.tenant == calling_tenant
+          return { error: "unknown or invalid persona case '#{case_id}'" }
+        end
 
         target = @profiles[golden.agent]
         return { error: "persona case '#{case_id}' targets unknown agent '#{golden.agent}'" } unless target
@@ -138,10 +153,20 @@ module Insika
       end
 
       # -> [String] every case this tool can run: a valid, SIMULATED (persona:)
-      # golden. A scripted (turns:) case has nothing to simulate — the CLI
-      # skips it too.
+      # golden belonging to the CALLING agent's own tenant. A scripted (turns:)
+      # case has nothing to simulate — the CLI skips it too — and a case outside
+      # `calling_tenant` is not merely un-runnable, it never appears at all (the
+      # model cannot even learn another tenant's case ids from the enum).
       def case_ids
-        @golden_store.ids.select { |id| @golden_store.find(id)&.simulated? }
+        @golden_store.for_tenant(calling_tenant).select(&:simulated?).map(&:id)
+      end
+
+      # The CALLING agent's tenant — never the model's, never the target's. The
+      # same "declared command tenant, 'platform' is the single-tenant default"
+      # rule `save_artifact`'s `binding_tenant` uses. Every persona-case
+      # read/list/run in this tool is scoped to it.
+      def calling_tenant
+        Insika::Coercion.presence(turn_context&.dig(:command_tenant)) || "platform"
       end
 
       # settings["evals"] -> the configured judge panel, scoped to this
