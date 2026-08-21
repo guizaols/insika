@@ -39,10 +39,13 @@ RUN wget -q "https://github.com/benbjohnson/litestream/releases/download/v${LITE
 
 WORKDIR /app
 # The Gemfile consumes the gemspec (gemspec directive), which requires
-# lib/insika/version.rb — copy both before bundle install. The gemspec's `files`
-# glob-fallback covers the .git-less build context.
+# lib/insika/version.rb AND lib/insika/packaging.rb (RFC-0036's domain-payload
+# boundary) — copy all three before bundle install, or evaluating the gemspec
+# fails with "cannot load such file". The gemspec's `files` glob-fallback
+# covers the .git-less build context.
 COPY Gemfile Gemfile.lock insika.gemspec ./
 COPY lib/insika/version.rb lib/insika/version.rb
+COPY lib/insika/packaging.rb lib/insika/packaging.rb
 RUN bundle install && \
     rm -rf "${BUNDLE_PATH}"/cache/*.gem && \
     (find "${BUNDLE_PATH}"/gems \( -name "*.c" -o -name "*.o" \) -delete || true)
