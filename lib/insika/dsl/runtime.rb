@@ -118,6 +118,7 @@ module Insika
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
+        import_mcp_declarations(c)
         # `run_persona_eval` (C3.1): the SAME registration `config/deployment.rb`
         # does for its own graph — see `Wiring::Graph.register_persona_eval_tool`.
         # One implementation, both roots; this one just already has its
@@ -151,6 +152,30 @@ module Insika
                                                 task_store: graph.task_store, executor: graph.executor,
                                                 workflow_registry: graph.workflow_registry
                                               ))
+      end
+
+      # Upserts every DSL-declared `mcp` instance into the McpStore at boot
+      # (RFC-0040 PR3). Code is the TEMPLATE — transport/command/args/url/
+      # description always follow the declaration — but `enabled` and the
+      # credentials (`env`/`headers`) are the operator's once the instance
+      # exists: an already-present record's own values are re-sent verbatim
+      # instead of the DSL's, so a Studio/CLI/API edit made after boot is never
+      # clobbered by the next restart (motor-vs-forja: the store's DATA wins).
+      def import_mcp_declarations(c)
+        declared = Array(@definition.mcp_instances)
+        return if declared.empty?
+
+        mcp_store = c[:mcp_store]
+        declared.each do |decl|
+          attrs = decl.dup
+          existing = mcp_store.get_raw(attrs[:name])
+          if existing
+            attrs[:enabled] = existing["enabled"]
+            attrs[:env] = existing["env"]
+            attrs[:headers] = existing["headers"]
+          end
+          mcp_store.upsert(attrs)
+        end
       end
 
       def build_components(backend, spine)

@@ -56,7 +56,7 @@ module Insika
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
                      channels: nil, logger: nil, token_store: nil, outcome_store: nil,
-                     executor: nil, db_path: nil, tool_registry: nil)
+                     executor: nil, db_path: nil, tool_registry: nil, mcp_store: nil)
         @command_bus = command_bus
         @event_stream = event_stream
         @session_store = session_store
@@ -109,6 +109,12 @@ module Insika
         # eval-profile swap list). Read-only use (names/side_effect?) — same
         # constitutional footing as the profile source. nil = the view omits it.
         @tool_registry = tool_registry
+        # RFC-0040 PR3: the durable MCP instance CRUD (GET/PUT/DELETE
+        # /v1/mcp[/:name]) — a direct store read/Command surface, same footing
+        # as @profiles/@outcome_store. nil = the routes 404 (parity — a
+        # deployment that never wires an McpStore never exposes MCP config
+        # over HTTP, same as one that skips provisioning).
+        @mcp_store = mcp_store
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -186,6 +192,14 @@ module Insika
           handle_list_outcomes(req)
         in ["POST", ["v1", "tools", "manifest"]]
           handle_import_tools(req)
+        in ["GET", ["v1", "mcp"]] if @mcp_store
+          handle_list_mcp
+        in ["GET", ["v1", "mcp", name]] if @mcp_store
+          handle_read_mcp(name)
+        in ["PUT", ["v1", "mcp"]] if @mcp_store
+          handle_upsert_mcp(req)
+        in ["DELETE", ["v1", "mcp", name]] if @mcp_store
+          handle_delete_mcp(req, name)
         in ["POST", ["v1", "mcp", name, "import"]]
           handle_import_mcp_tools(req, name)
         in ["POST", ["v1", "agents"]] if @provisioner
@@ -443,18 +457,61 @@ module Insika
         json_response(200, dispatch_with_timeout(command))
       end
 
-      # POST /v1/mcp/:name/import — LIVE MCP ingestion. Same
+      # GET /v1/mcp — every configured MCP instance, MASKED (@mcp_store.all
+      # already masks — never plaintext over the wire). A direct store read,
+      # not a Command (constitutional rule at the top of this file); the
+      # generic route gate already confined this to the operator (not a
+      # TENANT_SURFACES entry), same footing as GET /v1/agents/:id.
+      def handle_list_mcp
+        json_response(200, { instances: @mcp_store.all })
+      end
+
+      # GET /v1/mcp/:name — one instance, MASKED. Missing -> 404.
+      def handle_read_mcp(name)
+        record = @mcp_store.get(name)
+        raise Insika::NotFoundError, "MCP instance '#{name}' not found" if record.nil?
+
+        json_response(200, record)
+      end
+
+      # PUT /v1/mcp — create/edit an instance (RFC-0040 PR3, the CLI/DSL/Studio
+      # config surfaces share this ONE seam: the `:upsert_mcp` Command already
+      # registered on the bus). Per-key secret reconciliation (the `__OCULTO__`
+      # sentinel round-trips: preserves; a new string replaces; "" clears) —
+      # same contract as `Insika::McpJson`. 200 { the MASKED upserted record }.
+      def handle_upsert_mcp(req)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        command = Insika::Command.build(:upsert_mcp, parse_body(req), transport: :http)
+        json_response(200, dispatch_with_timeout(command))
+      end
+
+      # DELETE /v1/mcp/:name — removes an instance (`:delete_mcp`). Idempotent
+      # (200 { existed: false } on a name that was never there — never a 404;
+      # deleting a thing that is already gone is not an error). The name comes
+      # from the ROUTE (data), not the body.
+      def handle_delete_mcp(req, name)
+        gate = gateway_gate(req)
+        return gate if gate
+
+        command = Insika::Command.build(:delete_mcp, { name: name }, transport: :http)
+        json_response(200, dispatch_with_timeout(command))
+      end
+
+      # POST /v1/mcp/:name/import — kept as the RFC-0040 PR2 alias for the
+      # "Refresh tools" action (the route predates the live registry; the name
+      # stuck). Dispatches :refresh_mcp_tools — LIVE connect + tools/list +
+      # write McpStore#tools_cache, never the retired ingestor snapshot. Same
       # Bearer as provisioning (gateway_token, fail-closed): it's an authoring
-      # surface. Discovers the tools of the MCP instance `:name` (via a client injectable
-      # at the composition root) and ingests them as data-tools (reuses :import_tools:
-      # upsert + hot reload). Dispatches :import_mcp_tools -> 200 { per-tool report
-      # + instance }. Missing instance -> 404; disabled/no-url -> 422; per-tool
-      # failure isolated in `errors[]` (R4). The name comes from the ROUTE (data), not the body.
+      # surface. Missing instance -> 404; disabled -> 422; a transport failure
+      # surfaces as whatever #call's rescue maps it to. The name comes from the
+      # ROUTE (data), not the body.
       def handle_import_mcp_tools(req, name)
         gate = gateway_gate(req)
         return gate if gate
 
-        command = Insika::Command.build(:import_mcp_tools, { name: name }, transport: :http)
+        command = Insika::Command.build(:refresh_mcp_tools, { name: name }, transport: :http)
         json_response(200, dispatch_with_timeout(command))
       end
 

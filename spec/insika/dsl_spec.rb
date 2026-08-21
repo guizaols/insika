@@ -704,4 +704,81 @@ RSpec.describe Insika::DSL do
         .to raise_error(Insika::Error)
     end
   end
+
+  # MCP instances (RFC-0040 PR3): global to the graph's ONE McpStore, not any
+  # one agent — so both a system-level `mcp` and one nested inside a member
+  # `agent { … }` block are in scope, and the DECLARATION (code) is the
+  # template but the STORE'S OWN `enabled`/credentials win once the instance
+  # already exists (motor-vs-forja: an operator's Studio/CLI/API edit must
+  # survive the next restart).
+  describe "mcp declarations" do
+    it "a standalone Insika.agent { mcp … } upserts the instance at boot" do
+      definition = Insika.agent("assistant") do
+        model "m"
+        mcp "tavily", transport: :http, url: "https://mcp.tavily.com/mcp",
+            headers: { "Authorization" => "Bearer key" }
+      end
+
+      record = definition.runtime.component(:mcp_store).get_raw("tavily")
+      expect(record["transport"]).to eq("http")
+      expect(record["url"]).to eq("https://mcp.tavily.com/mcp")
+      expect(record["headers"]).to eq({ "Authorization" => "Bearer key" })
+      expect(record["enabled"]).to be(true)
+    end
+
+    it "rejects a duplicate mcp name within one agent" do
+      expect do
+        Insika.agent("a") do
+          model "m"
+          mcp("dup", url: "https://x")
+          mcp("dup", url: "https://y")
+        end
+      end.to raise_error(ArgumentError, /duplicate mcp instance/)
+    end
+
+    it "rejects a duplicate mcp name within one system block" do
+      expect do
+        Insika.system do
+          agent("a") { model "m" }
+          mcp("dup", url: "https://x")
+          mcp("dup", url: "https://y")
+        end
+      end.to raise_error(ArgumentError, /duplicate mcp instance/)
+    end
+
+    it "a name declared both inside a member agent and at system level is not an error — system level wins" do
+      system = Insika.system do
+        agent("a") { model "m"; mcp("shared", url: "https://agent-level") }
+        mcp("shared", url: "https://system-level")
+      end
+
+      expect(system.runtime.component(:mcp_store).get_raw("shared")["url"]).to eq("https://system-level")
+    end
+
+    it "on an already-existing instance, the STORE keeps enabled/credentials; code updates the rest" do
+      backend = Insika::Stores::Memory.new
+      Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: backend))
+                      .upsert("name" => "tavily", "transport" => "http", "url" => "https://old",
+                              "headers" => { "Authorization" => "Bearer operator-set" }, "enabled" => false)
+
+      system = Insika.embed(backend: backend) do
+        agent("assistant") do
+          model "m"
+          mcp "tavily", transport: :http, url: "https://new-from-code",
+              headers: { "Authorization" => "Bearer from-code" }, enabled: true
+        end
+      end
+
+      record = system.runtime.component(:mcp_store).get_raw("tavily")
+      expect(record["url"]).to eq("https://new-from-code") # code is the template
+      expect(record["enabled"]).to be(false)                # store's own value wins
+      expect(record["headers"]).to eq({ "Authorization" => "Bearer operator-set" }) # store's own value wins
+    end
+
+    it "with no declarations at all, boot does not touch the McpStore" do
+      backend = Insika::Stores::Memory.new
+      Insika.embed(backend: backend) { agent("solo") { model "m" } }.runtime
+      expect(Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: backend)).names).to eq([])
+    end
+  end
 end
