@@ -2,47 +2,57 @@
 
 module Insika
   # DYNAMIC tool registry: composes the CODE registry (base, built at boot,
-  # immutable) with the DATA-DEFINED tools from the ToolStore. Drop-in for ToolRegistry —
-  # the Executor/ToolCatalog/ToolEnvelope only use entries/resolve/side_effect?.,
+  # immutable), the DATA-DEFINED tools from the ToolStore, and — optionally —
+  # the LIVE MCP tools from Insika::McpToolRegistry (RFC-0040 PR2). Drop-in
+  # for ToolRegistry — the Executor/ToolCatalog/ToolEnvelope only use
+  # entries/resolve/side_effect?.
   #
   # Rules:
-  #   - COLLISION: the base (code) ALWAYS wins — a data-tool cannot hijack
-  #     the name of a code tool (security, R3). The authoring Command also
+  #   - COLLISION: the base (code) ALWAYS wins — a data-tool or an MCP tool
+  #     cannot hijack the name of a code tool (security, R3); a data-tool
+  #     also wins over an MCP tool of the same name (an operator-authored
+  #     definition over a server's own naming). The authoring Command also
   #     refuses to create with a colliding name (code_tool?), but the defense stays here.
   #   - HOT: `reload` re-reads the store and swaps the dynamic index atomically — a
   #     new/edited data-tool takes effect on the next turn without a restart, mirroring
-  #     SkillCatalog.reload. An in-flight turn has already captured the index.
-  # PARITY: empty ToolStore ⇒ entries/resolve/side_effect? identical to the
-  #     pure base. The base (config/wiring.rb) does not even use the overlay — zero regression.
+  #     SkillCatalog.reload. An in-flight turn has already captured the index. MCP
+  #     entries need no such reload — they read McpStore#tools_cache fresh every call
+  #     (no I/O, so there is nothing to memoize-then-invalidate).
+  # PARITY: empty ToolStore + no mcp_registry ⇒ entries/resolve/side_effect? identical
+  #     to the pure base. The base (config/wiring.rb) does not even use the overlay — zero regression.
   #
-  # The data-tools enter as NORMAL Registry::Entry (optional: false) — they obey
-  # the same per-agent allow/deny as code tools; exposure is the operator's
-  # (the /tools matrix), not automatic just because they are "data-defined".
+  # The data-tools and MCP tools enter as NORMAL Registry::Entry (optional:
+  # false) — they obey the same per-agent allow/deny as code tools; exposure
+  # is the operator's (the /tools matrix), not automatic just because they
+  # are "data-defined" or MCP-discovered.
   class OverlayToolRegistry
-    def initialize(base:, tool_store:, http:, egress: Insika::EgressGuard, egress_options: {}, event_stream: nil)
+    def initialize(base:, tool_store:, http:, egress: Insika::EgressGuard, egress_options: {}, event_stream: nil,
+                   mcp_registry: nil)
       @base = base
       @tool_store = tool_store
       @http = http
       @egress = egress
       @egress_options = egress_options
       @event_stream = event_stream
+      @mcp_registry = mcp_registry
     end
 
-    # Base + dynamic, except dynamic ones that collide with the base (base wins).
+    # Base + dynamic + mcp, except any that collide with something higher in
+    # the precedence (base > data-tools > mcp).
     def entries
-      @base.entries + dynamic.reject { |e| code_tool?(e.name) }
+      @base.entries + dynamic.reject { |e| code_tool?(e.name) } + mcp_entries
     end
 
     def names
-      (@base.names + dynamic.map(&:name)).uniq
+      (@base.names + dynamic.map(&:name) + mcp_entries.map(&:name)).uniq
     end
 
-    # -> instance (base wins) | raise NotFoundError.
+    # -> instance (base wins, then data-tools) | raise NotFoundError.
     def resolve(name)
       key = name.to_s
       return @base.resolve(key) if code_tool?(key)
 
-      entry = dynamic.find { |e| e.name == key }
+      entry = dynamic.find { |e| e.name == key } || mcp_entries.find { |e| e.name == key }
       raise Insika::NotFoundError, "'#{name}' not registered in #{self.class}" unless entry
 
       entry.factory.call
@@ -53,7 +63,7 @@ module Insika
       key = name.to_s
       return @base.side_effect?(key) if code_tool?(key)
 
-      entry = dynamic.find { |e| e.name == key }
+      entry = dynamic.find { |e| e.name == key } || mcp_entries.find { |e| e.name == key }
       entry ? !!entry.metadata[:side_effect] : false
     end
 
@@ -70,6 +80,16 @@ module Insika
 
     def dynamic
       @dynamic ||= build_dynamic
+    end
+
+    # No I/O (McpToolRegistry#entries only reads McpStore#tools_cache) ->
+    # recomputed fresh every call, unlike `dynamic` (nothing to reload).
+    # Drops anything already claimed by the base or a data-tool.
+    def mcp_entries
+      return [] unless @mcp_registry
+
+      claimed = @base.names + dynamic.map(&:name)
+      @mcp_registry.entries.reject { |e| claimed.include?(e.name) }
     end
 
     def build_dynamic

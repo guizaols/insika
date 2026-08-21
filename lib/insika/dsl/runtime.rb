@@ -159,9 +159,12 @@ module Insika
         provider_store = Insika::LLMProviderStore.new(config_store: config_store)
         tool_store = Insika::ToolStore.new(config_store: config_store)
         skill_store = Insika::SkillStore.new(config_store: config_store)
+        mcp_store = Insika::McpStore.new(config_store: config_store)
+        mcp_tool_registry = Insika::McpToolRegistry.new(mcp_store: mcp_store)
         tool_registry = Insika::OverlayToolRegistry.new(
           base: spine.code_tool_registry, tool_store: tool_store,
-          http: Insika::HttpClient.new, event_stream: spine.event_stream
+          http: Insika::HttpClient.new, event_stream: spine.event_stream,
+          mcp_registry: mcp_tool_registry
         )
         {
           backend: backend, config_store: config_store,
@@ -170,7 +173,7 @@ module Insika
           agent_file_store: Insika::AgentFileStore.new(config_store: config_store),
           skill_store: skill_store, tool_store: tool_store,
           system_file_store: Insika::SystemFileStore.new(config_store: config_store),
-          mcp_store: Insika::McpStore.new(config_store: config_store),
+          mcp_store: mcp_store, mcp_tool_registry: mcp_tool_registry,
           tool_trace_store: Insika::ToolTraceStore.new(store: backend),
           context_trace_store: Insika::ContextTraceStore.new(store: backend),
           # the per-AGENT cache-hit series (the Studio agent-detail card).
@@ -233,6 +236,7 @@ module Insika
         bus.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))
         bus.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: c[:mcp_store], event_stream: es))
         bus.register(:delete_mcp, Insika::Commands::DeleteMcp.new(mcp_store: c[:mcp_store], event_stream: es))
+        bus.register(:refresh_mcp_tools, Insika::Commands::RefreshMcpTools.new(mcp_registry: c[:mcp_tool_registry], event_stream: es))
         bus.register(:write_system_file, Insika::Commands::WriteSystemFile.new(system_file_store: c[:system_file_store], event_stream: es))
         bus.register(:delete_system_file, Insika::Commands::DeleteSystemFile.new(system_file_store: c[:system_file_store], event_stream: es))
         bus.register(:restore_system_file, Insika::Commands::RestoreSystemFile.new(system_file_store: c[:system_file_store], event_stream: es))
