@@ -24,7 +24,7 @@ reporter = Insika.agent("reporter") do
 
   # The per-agent allowlist IS the switch for save_artifact: without this line
   # the model never even sees the tool.
-  tools_allow %w[save_artifact]
+  tools %w[save_artifact]
 
   # A recurring turn — the engine's tick fires it (RFC-0037 half of this
   # example). `session_mode: "new"` = a fresh session per run (the report
