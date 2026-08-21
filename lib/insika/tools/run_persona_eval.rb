@@ -14,12 +14,18 @@ module Insika
     #
     # SAFETY is DERIVED, never a flag: the target's reachable side-effect tools
     # are computed from the live registry (Evals::EvalProfile), the same way
-    # the CLI derives them. There is no swap wired here — an eval profile that
-    # actually swaps a reachable side-effect tool for a fake is future work
-    # (Evals::EvalProfile.registry exists for it, unused so far) — so a target
-    # that has ANY reachable side-effect tool is REFUSED outright, with the
-    # offending names. A read-only target needs no swap: Simulator::Safety's
-    # own "side_effect_tools.empty?" branch already allows it.
+    # the CLI derives them. A read-only target needs no swap:
+    # Simulator::Safety's own "side_effect_tools.empty?" branch allows it
+    # directly. A target that DOES reach a side-effect tool gets the REAL
+    # swap (Evals::EvalProfile.registry — RFC-0014's own overlay, wired here):
+    # every one of those tools resolves to a Simulator::DryRunTool for the
+    # duration of this ONE simulated conversation, run through a THROWAWAY
+    # Executor+Bus built fresh per call (`shadow_runtime`) — sharing every
+    # OTHER collaborator of the real graph (guardrails, policy, context
+    # assembly, skills/prompts, the real session/task/checkpoint stores), so
+    # the target is tested as faithfully as `--staging` ever was, minus the
+    # one write. Needs the real `graph:` (see `initialize`) — a caller that
+    # does not have one (an old-style double) falls back to refusing outright.
     #
     # BUDGET: the persona model + judge model calls are the cost of running the
     # eval, charged to the CALLING agent's turn (never the target's — the
@@ -55,21 +61,34 @@ module Insika
       #               from (the same registry a real turn resolves tools on).
       # runtime:      anything answering `#chat(message, session_id:, agent:)`
       #               (raises Insika::Error on failure) — Evals::GraphTransport's
-      #               contract. In practice the DSL::Runtime the tool is wired
-      #               into (its own graph, its own credentials).
+      #               contract. Used AS-IS for a read-only target; a target
+      #               with a reachable side-effect tool needs `graph:` instead
+      #               (this alone cannot swap anything).
+      # graph:        the real Wiring::Graph::Result — ONLY consulted to build
+      #               the throwaway swapped-registry Executor+Bus
+      #               (`shadow_runtime`) when the target has a reachable
+      #               side-effect tool. nil (an old-style double) = that case
+      #               refuses outright, same as before this existed.
       # settings_store: where the platform `utility_model` (persona) and the
       #               judge panel (`evals.judges`) are configured.
       # budget_ledger: WS2 counters — read before the run (skip on a hard cap),
       #               written after (persona + judge spend only).
+      # llm:          this graph's own RubyLLM::Context, if it has one (a
+      #               DSL-built graph's own credentials) — the persona/judge
+      #               calls' preferred source, ahead of `runtime.llm`
+      #               (kept for the existing double-based specs) and the
+      #               process-wide RubyLLM constant.
       def initialize(golden_store:, profiles:, tool_registry:, runtime:, settings_store:,
-                     budget_ledger: nil, event_stream: nil)
+                     graph: nil, budget_ledger: nil, event_stream: nil, llm: nil)
         @golden_store = golden_store
         @profiles = profiles
         @tool_registry = tool_registry
         @runtime = runtime
+        @graph = graph
         @settings_store = settings_store
         @budget_ledger = budget_ledger
         @event_stream = event_stream
+        @llm = llm
         super()
       end
 
@@ -109,7 +128,7 @@ module Insika
         return { error: "persona case '#{case_id}' targets unknown agent '#{golden.agent}'" } unless target
 
         derived = Insika::Evals::EvalProfile.side_effect_tools(target, @tool_registry)
-        return refuse_side_effects(golden.agent, derived) unless derived.empty?
+        return refuse_side_effects(golden.agent, derived) if !derived.empty? && @graph.nil?
 
         skip = budget_skip
         return skip if skip
@@ -130,13 +149,15 @@ module Insika
 
       def refuse_side_effects(agent, derived)
         { error: "target agent '#{agent}' exposes side-effect tool(s) (#{derived.join(', ')}) — " \
-                 "run_persona_eval only runs against agents with no reachable side-effect tool " \
-                 "(no swap is wired here yet)" }
+                 "run_persona_eval needs the real graph (no swap available for this caller)" }
       end
 
       def run_and_score(golden, derived, persona_ask, judge, meter)
-        transport = Insika::Evals::GraphTransport.new(runtime: @runtime, event_stream: @event_stream)
-        safety = Insika::Evals::Simulator::Safety.new(side_effect_tools: derived)
+        runtime = derived.empty? ? @runtime : shadow_runtime(derived)
+        transport = Insika::Evals::GraphTransport.new(runtime: runtime, event_stream: @event_stream)
+        safety = Insika::Evals::Simulator::Safety.new(
+          side_effect_tools: derived, eval_profile: !derived.empty?, swapped_tools: derived
+        )
         simulator = Insika::Evals::Simulator.new(transport: transport, ask: persona_ask, safety: safety)
 
         conv = "eval-#{golden.id}-#{SecureRandom.hex(4)}" # a fresh session every run (never reused)
@@ -150,6 +171,44 @@ module Insika
         { case: golden.id, agent: golden.agent, stop: run.stop.to_s, turns: run.turns,
           score: verdict&.score, pass: verdict&.pass, reason: verdict&.reason,
           transcript: run.transcript.map { |m| { role: m[:role], text: m[:text] } } }
+      end
+
+      # A THROWAWAY Executor+Bus, built fresh for THIS call, over the SAME
+      # session/task/checkpoint stores, guardrails, policy engine, context
+      # assembly, skills/prompts and capabilities as the real graph — the
+      # ONLY thing different is the tool registry, which resolves every name
+      # in `derived` to a Simulator::DryRunTool (Evals::EvalProfile.registry)
+      # and everything else exactly as the real one does. Never persisted
+      # anywhere NEW: the simulated turn's session/task rows land in the
+      # SAME stores a `--staging` run's already do (RunPersonaEval's own
+      # never-reused `conv` id is what keeps it from colliding with a real
+      # customer session, same as before this existed).
+      def shadow_runtime(derived)
+        overlay = Insika::Evals::EvalProfile.registry(@tool_registry, side_effect_tools: derived)
+        executor = Insika::Executor.new(
+          context_builder: @graph.context_builder, policy_engine: @graph.policy_engine,
+          middleware: @graph.middleware, hooks: @graph.hooks,
+          tool_registry: overlay, skill_catalog: @graph.skill_catalog, profiles: @graph.profiles,
+          session_store: @graph.session_store, task_store: @graph.task_store,
+          checkpoint_store: @graph.checkpoint_store, event_stream: @graph.event_stream,
+          workflow_registry: @graph.workflow_registry, pending_action_store: @graph.pending_action_store,
+          capability_registry: @graph.capability_registry,
+          tool_catalog: Insika::ToolCatalog.new(tool_registry: overlay),
+          memory_store: @graph.memory_store, settings_store: @settings_store,
+          delegation_store: @graph.delegation_store, channel_delivery: @graph.channel_delivery,
+          llm: llm_context
+        )
+        bus = Insika::CommandBus.new
+        bus.register(:send_message, Insika::Commands::SendMessage.new(
+                                       profiles: @graph.profiles, session_store: @graph.session_store,
+                                       task_store: @graph.task_store, executor: executor,
+                                       inbound_log: @graph.inbound_log, contact_store: @graph.contact_store,
+                                       followup_store: @graph.followup_store, store: @graph.backend
+                                     ))
+        shadow = @graph.dup
+        shadow.bus = bus
+        shadow.executor = executor
+        Insika::Wiring::GraphChat.new(graph: shadow)
       end
 
       # -> [String] every case this tool can run: a valid, SIMULATED (persona:)
@@ -189,8 +248,13 @@ module Insika
         metered_factory(meter).call(model, nil)
       end
 
+      # The explicit `llm:` wins (the real wiring passes it — see
+      # `Wiring::Graph.register_persona_eval_tool`); `@runtime.llm` is the
+      # fallback the existing double-based specs rely on (a fake `runtime`
+      # answering `#llm` with no `graph:` at all). nil = the process-wide
+      # RubyLLM constant.
       def llm_context
-        @runtime.respond_to?(:llm) ? @runtime.llm : nil
+        @llm || (@runtime.respond_to?(:llm) ? @runtime.llm : nil)
       end
 
       # ->(model, provider) { ask } — a RubyLLM chat (this graph's own

@@ -596,14 +596,19 @@ module Insika
       # assembled by the time a caller has it to pass here, so `GraphChat.new`
       # needs no laziness of its own (the tool's own factory block is what is
       # lazy — this method just registers it).
-      def register_persona_eval_tool(graph, golden_store:, settings_store:)
+      # `llm:` — the caller's own RubyLLM::Context, when it has one
+      # (DSL::Runtime does; config/deployment.rb does not, and reads the
+      # process-wide RubyLLM constant like the rest of that root already
+      # does). Forwarded as-is so the tool's OWN persona/judge calls spend
+      # the right credentials instead of silently defaulting to nil.
+      def register_persona_eval_tool(graph, golden_store:, settings_store:, llm: nil)
         graph.code_tool_registry.register("run_persona_eval", optional: true) do
           require "ruby_llm"
           require_relative "../tools/run_persona_eval"
           Insika::Tools::RunPersonaEval.new(
             golden_store: golden_store, profiles: graph.profiles, tool_registry: graph.tool_registry,
-            runtime: GraphChat.new(graph: graph), settings_store: settings_store,
-            budget_ledger: graph.budget_ledger, event_stream: graph.event_stream
+            runtime: GraphChat.new(graph: graph), graph: graph, settings_store: settings_store,
+            budget_ledger: graph.budget_ledger, event_stream: graph.event_stream, llm: llm
           )
         end
       end
