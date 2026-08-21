@@ -1213,14 +1213,17 @@ RSpec.describe Studio::App do
     end
 
     it "evals?agent= narrows the case list" do
+      # Long, distinctive ids on purpose: a short one like "g1"/"g2" can
+      # coincidentally appear as a substring of the page's own random CSRF
+      # token, making `not_to include` flaky independent of golden data.
       goldens = [
-        { id: "g1", agent: "bia", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } },
-        { id: "g2", agent: "chef", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } }
+        { id: "golden-bia-01", agent: "bia", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } },
+        { id: "golden-chef-01", agent: "chef", turns: [{ "user" => "hi" }], expect: { "rubric" => "r" } }
       ]
       app, = build_app(agents: [profile("bia"), profile("chef")], goldens: goldens)
       body = login(app).get("/evals?agent=bia").body
-      expect(body).to include("g1")
-      expect(body).not_to include("g2")
+      expect(body).to include("golden-bia-01")
+      expect(body).not_to include("golden-chef-01")
     end
 
     it "funnel?agent= shows only that agent's declaration" do
