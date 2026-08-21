@@ -379,9 +379,13 @@ held client, which does its own discovery on first use regardless of whether
    - `DELETE /v1/mcp/:name` — remove (idempotent).
    - `POST /v1/mcp/:name/import` — refresh (connect live, list tools, cache).
 
-5. **Studio** — the `/studio/mcp` panel (create/edit/delete). A
-   transport-aware form, a "Test connection" button and an "Import JSON"
-   textarea are RFC-0040 PR4, not yet shipped.
+5. **Studio** — the `/studio/mcp` panel (create/edit/delete). The form is
+   transport-aware (stdio shows command/args/env, http/sse shows
+   url/headers); each instance shows a status chip ("N tool(s)", "untested",
+   "stdio disabled", or "off") and its discovered tools from `tools_cache`; a
+   "Test connection" button dispatches the same `refresh_mcp_tools` seam as
+   `insika mcp test`; an "Import JSON" box takes a `mcpServers` document and
+   fans it out into one `upsert_mcp` per entry.
 
 ## Making it appear — and enter the tool-loop
 

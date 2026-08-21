@@ -21,6 +21,7 @@ RSpec.describe Studio::App do
       when :send_message then { task_id: "task-1" }
       when :set_skill_agents then { name: "x", enabled_for: [], skipped_all: [] }
       when :write_agent_file, :write_skill then { updated_at: "2026-07-12T00:00:00Z" }
+      when :refresh_mcp_tools then { instance: command.payload[:name], tools: [] }
       else { ok: true }
       end
     end
@@ -2654,6 +2655,131 @@ RSpec.describe Studio::App do
     csrf = csrf_from(client.get("/mcp").body)
     client.post("/mcp/delete", params: { "name" => "tavily", "_csrf" => csrf })
     expect(client.get("/agents").body).to include("Restart recommended")
+  end
+
+  # --- MCP form (RFC-0040 PR4: transport-aware, test connection, JSON import) --
+
+  it "the MCP form is transport-aware and lists discovered tools with an 'ok' status chip" do
+    # tools_cache is only writable via #set_tools_cache (upsert always
+    # preserves whatever was already there) — build_app's plain #upsert
+    # seeding can't express it, so this test wires its own store.
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
+    mcp_store.upsert("name" => "tavily", "transport" => "http", "url" => "https://mcp.tavily.com/mcp", "enabled" => true)
+    mcp_store.set_tools_cache("tavily", [{ "name" => "search", "description" => "web search" }])
+    app = Class.new(Studio::App)
+    app.configure(command_bus: BusDouble.new([]), profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: nil, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
+    body = login(app).get("/mcp").body
+    expect(body).to include('data-controller="transport-fields"')
+    expect(body).to include('data-transport-fields-target="stdio"')
+    expect(body).to include('data-transport-fields-target="http"')
+    expect(body).to include("<code>search</code>")
+    expect(body).to include("web search")
+    expect(body).to include("1 tool(s)")
+  end
+
+  it "an enabled instance with no cached tools shows 'untested'" do
+    app, = build_app(mcp_instances: [{ "name" => "tavily", "transport" => "http", "url" => "https://x", "enabled" => true }])
+    expect(login(app).get("/mcp").body).to include("untested")
+  end
+
+  it "an enabled stdio instance without the INSIKA_MCP_STDIO gate shows 'stdio disabled'" do
+    prior = ENV.delete("INSIKA_MCP_STDIO")
+    app, = build_app(mcp_instances: [{ "name" => "fs", "transport" => "stdio", "command" => "npx", "enabled" => true }])
+    expect(login(app).get("/mcp").body).to include("stdio disabled")
+  ensure
+    ENV["INSIKA_MCP_STDIO"] = prior
+  end
+
+  it "the bundle registers the transport-fields controller" do
+    app, = build_app
+    js = Client.new(app).get("/assets/dist/application.js").body
+    expect(js).to include("transport-fields")
+  end
+
+  # Real bus + a fake registry (never touches the network) — RefreshMcpTools
+  # is the exact seam the CLI's `mcp test`/`refresh` and /v1/mcp/:name/import
+  # already share.
+  McpRegistryDouble = Struct.new(:by_name) do # by_name: { instance_name => [tools] | Exception }
+    def refresh(name)
+      result = by_name[name]
+      raise result if result.is_a?(Exception)
+
+      result || []
+    end
+  end
+
+  def build_mcp_test_app(registry_results, mcp_instances: [{ "name" => "tavily" }])
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
+    mcp_instances.each { |m| mcp_store.upsert(m) }
+    es = Insika::EventStream.new
+    real = Insika::CommandBus.new
+    real.register(:refresh_mcp_tools,
+                  Insika::Commands::RefreshMcpTools.new(mcp_registry: McpRegistryDouble.new(registry_results), event_stream: es))
+    bus = StudioRecordingBus.new(real)
+    app = Class.new(Studio::App)
+    app.configure(command_bus: bus, profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: es, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
+    app
+  end
+
+  it "Test connection dispatches refresh_mcp_tools and flashes the discovered tool count" do
+    app = build_mcp_test_app({ "tavily" => [{ "name" => "search" }, { "name" => "extract" }] })
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    res = client.post("/mcp/test", params: { "name" => "tavily", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(client.get("/mcp").body).to include("connected, 2 tool(s)")
+  end
+
+  it "Test connection surfaces a transport failure as a red flash, not a 500" do
+    app = build_mcp_test_app({ "tavily" => RuntimeError.new("connection refused") })
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    res = client.post("/mcp/test", params: { "name" => "tavily", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(client.get("/mcp").body).to include("connection refused")
+  end
+
+  def build_mcp_import_app(mcp_instances: [])
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
+    mcp_instances.each { |m| mcp_store.upsert(m) }
+    es = Insika::EventStream.new
+    real = Insika::CommandBus.new
+    real.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: mcp_store, event_stream: es))
+    bus = StudioRecordingBus.new(real)
+    app = Class.new(Studio::App)
+    app.configure(command_bus: bus, profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: es, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
+    [app, mcp_store]
+  end
+
+  it "Import JSON fans a mcpServers document out into upsert_mcp, one dispatch per entry" do
+    app, mcp_store = build_mcp_import_app
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    json = { "mcpServers" => {
+      "tavily" => { "url" => "https://mcp.tavily.com/mcp" },
+      "fs" => { "command" => "npx", "args" => ["-y", "server-filesystem"] }
+    } }.to_json
+    res = client.post("/mcp/import", params: { "json" => json, "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(mcp_store.names).to contain_exactly("tavily", "fs")
+    expect(mcp_store.get("fs")["transport"]).to eq("stdio")
+    expect(client.get("/mcp").body).to include("Imported 2 MCP instance(s)") # one-shot flash — check before it's consumed
+    expect(client.get("/agents").body).to include("Restart recommended")
+  end
+
+  it "Import JSON with invalid JSON flashes an error, not a 500" do
+    app, = build_mcp_import_app
+    client = login(app)
+    csrf = csrf_from(client.get("/mcp").body)
+    res = client.post("/mcp/import", params: { "json" => "not json", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    expect(client.get("/mcp").body).to include("Invalid JSON")
   end
 
   it "restart-ack does not open-redirect (external back is ignored)" do

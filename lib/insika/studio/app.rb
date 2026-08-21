@@ -759,6 +759,45 @@ module Studio
           end
           r.redirect("/studio/mcp")
         end
+        # "Test connection" (RFC-0040 PR4): connects LIVE via the same
+        # :refresh_mcp_tools Command the CLI's `insika mcp test`/`refresh` and
+        # the /v1/mcp/:name/import route use — writes tools_cache either way,
+        # `test` vs `refresh` is purely a CLI naming distinction, moot here
+        # since the instance card already displays the cache persistently.
+        # Rescues StandardError, not just Insika::Error: a transport failure
+        # is the ruby_llm-mcp gem's own error class, and turning it into a
+        # clean flash instead of a 500 is this caller's job (same discipline
+        # as the CLI's `mcp_run`) — no restart banner, nothing durable changed
+        # except the tools_cache display.
+        r.post "test" do
+          check_csrf!
+          name = presence(r.params["name"])
+          begin
+            tools = dispatch(:refresh_mcp_tools, { name: name })[:tools]
+            flash["notice"] = "MCP instance '#{name}': connected, #{tools.size} tool(s)."
+          rescue StandardError => e
+            flash["error"] = "MCP instance '#{name}': #{e.message}"
+          end
+          r.redirect("/studio/mcp")
+        end
+        # "Import JSON" (RFC-0040 PR4): the same `mcpServers` document CLI's
+        # `insika mcp import` and Claude Desktop/Cursor already use. Studio
+        # never writes a store directly (constitutional rule) — `import_mcp_json`
+        # fans the document out into the SAME :upsert_mcp Command a single
+        # instance save would use, one dispatch per entry.
+        r.post "import" do
+          check_csrf!
+          begin
+            records = import_mcp_json(r.params["json"].to_s)
+            flash["notice"] = "Imported #{records.size} MCP instance(s): #{records.map { |rec| rec["name"] }.join(", ")}."
+            self.class.mark_restart_needed!
+          rescue JSON::ParserError
+            flash["error"] = "Invalid JSON."
+          rescue Insika::ValidationError, Insika::NotFoundError => e
+            flash["error"] = e.message
+          end
+          r.redirect("/studio/mcp")
+        end
       end
 
       # --- Global system files -------------------------------------
@@ -1999,6 +2038,35 @@ end
 
     # mcp_patch moved to Studio::Forms.
 
+    # Bulk `mcpServers` JSON import, routed through the bus (RFC-0040 PR4):
+    # gives Insika::McpJson.import the `#upsert` duck-type it expects while
+    # every actual write still goes through :upsert_mcp — the adapter's
+    # block closes over `self` (the App instance), so `dispatch` resolves
+    # normally regardless of its own visibility. -> [Hash] masked records.
+    def import_mcp_json(json)
+      dispatcher = method(:dispatch)
+      adapter = Object.new
+      adapter.define_singleton_method(:upsert) { |attrs| dispatcher.call(:upsert_mcp, attrs) }
+      Insika::McpJson.import(json, mcp_store: adapter)
+    end
+
+    # Connection/discovery status chip for an ENABLED instance (RFC-0040
+    # PR4) — durable state read from the record, not a live probe: "N
+    # tool(s)" means the last refresh cached that many, not that the server
+    # is reachable RIGHT NOW (only "Test connection" tells you that; a failed
+    # attempt surfaces as a flash, not a chip — McpStore holds no "last
+    # error" field to persist). -> [label, pill_css_class].
+    def mcp_status(record)
+      if record["transport"] == "stdio" && !Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_MCP_STDIO"))
+        return ["stdio disabled", "err"]
+      end
+
+      tools = Array(record["tools_cache"])
+      return ["untested", ""] if tools.empty?
+
+      ["#{tools.size} tool(s)", "ok"]
+    end
+
     # --- System-files ----------------------------------------------
 
     def render_system_files
@@ -2702,10 +2770,13 @@ end
     # forms: resubmitting without touching preserves the real secret in the store).
     def secret_sentinel = Insika::SecretMasking::SENTINEL
 
-    # An MCP instance's env (already MASKED) -> "KEY=value" text per line,
-    # for the textarea. Sorts by key (stable across renders).
+    # An MCP instance's env/headers (already MASKED) -> "KEY=value" text per
+    # line, for the textarea. Sorts by key (stable across renders).
     def env_lines(env)
       (env || {}).sort.map { |k, v| "#{k}=#{v}" }.join("\n")
     end
+
+    # An MCP instance's args (stdio argv) -> one token per line, for the textarea.
+    def list_lines(list) = Array(list).join("\n")
   end
 end
