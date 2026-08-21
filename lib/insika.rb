@@ -210,6 +210,10 @@ require_relative "insika/mcp_tool_ingestor"
 # require "ruby_llm/mcp" itself is LAZY, inside .for — this require_relative only
 # loads the thin factory (see spec/insika/load_guard_spec.rb).
 require_relative "insika/mcp_client"
+# insika/mcp_live_tool (< RubyLLM::Tool) is NOT required here — McpToolRegistry
+# require_relative's it lazily on the 1st instance (turn time), same as
+# OverlayToolRegistry does for tools/data_defined_tool.
+require_relative "insika/mcp_tool_registry"
 require_relative "insika/system_file_store"
 require_relative "insika/recovery"
 require_relative "insika/command_bus"
@@ -293,6 +297,7 @@ require_relative "insika/commands/delete_data_tool"
 require_relative "insika/commands/restore_data_tool"
 require_relative "insika/commands/import_tools"
 require_relative "insika/commands/import_mcp_tools"
+require_relative "insika/commands/refresh_mcp_tools"
 require_relative "insika/event_stream"
 require_relative "insika/task_actor"
 require_relative "insika/queue_policy"

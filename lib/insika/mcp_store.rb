@@ -17,8 +17,13 @@ module Insika
   # preserves the value; a new string replaces it; "" clears it (see
   # Insika::SecretMasking, the same pattern as the LLM api_keys).
   #
-  # Current scope: durable config CRUD (the instances UI) + the shape
-  # Insika::McpClient.for reads. Live tool execution is later runtime work.
+  # Also holds `tools_cache` — the last live discovery result
+  # (Insika::McpToolRegistry#refresh writes it; `entries`/Studio/doctor read
+  # it for cheap display; tool EXECUTION never depends on it, see RFC-0040
+  # PR2). Not a credential -> never masked.
+  #
+  # Durable config CRUD (the instances UI) + the shape
+  # Insika::McpClient.for/Insika::McpToolRegistry read.
   class McpStore
     include Coercion
 
@@ -51,6 +56,20 @@ module Insika
       names.filter_map { |n| raw(n) }
     end
 
+    # System-written cache of the instance's discovered tools (RFC-0040 PR2):
+    # Insika::McpToolRegistry#refresh connects live and writes the result here
+    # for cheap display (Studio/doctor/`entries`) — execution never reads it
+    # back, only the live client. NOT a credential -> never masked. -> the
+    # MASKED record (mirrors upsert's return).
+    def set_tools_cache(name, tools)
+      existing = raw(name)
+      raise Insika::NotFoundError, "MCP instance '#{name}' not found" if existing.nil?
+
+      record = existing.merge("tools_cache" => normalize_tools_cache(tools))
+      @cs.put(SCOPE, name, record)
+      mask(record)
+    end
+
     # Upsert with per-key secret reconciliation. `attrs`
     # (string|symbol keys):
     #   name (required), transport, command, args ([String, ...]), url,
@@ -72,7 +91,10 @@ module Insika
         "description" => presence(h[:description]),
         "enabled" => h.fetch(:enabled, true) ? true : false,
         "env" => reconcile_hash(h[:env], existing && existing["env"]),
-        "headers" => reconcile_hash(h[:headers], existing && existing["headers"])
+        "headers" => reconcile_hash(h[:headers], existing && existing["headers"]),
+        # editing an instance's connection details doesn't change its discovered
+        # tools -> preserved across upsert; only set_tools_cache writes it.
+        "tools_cache" => (existing && existing["tools_cache"]) || []
       }
       @cs.put(SCOPE, name, record)
       mask(record)
@@ -112,6 +134,18 @@ module Insika
     end
 
     def http_like?(transport) = %w[http sse].include?(transport.to_s)
+
+    # -> [{"name","description","inputSchema"}] string-keyed, dropping any
+    # entry without a name (nothing to register a Registry::Entry under).
+    def normalize_tools_cache(tools)
+      Array(tools).filter_map do |t|
+        h = stringify_hash(t)
+        name = presence(h["name"])
+        next nil if name.nil?
+
+        { "name" => name, "description" => h["description"].to_s, "inputSchema" => h["inputSchema"] || {} }
+      end
+    end
 
     # Each env/headers value becomes the sentinel (or disappears if empty) — never leaks plaintext.
     def mask(record)

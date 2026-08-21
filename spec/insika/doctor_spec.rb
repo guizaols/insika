@@ -139,6 +139,22 @@ RSpec.describe Insika::Doctor do
       expect(finding.severity).to eq(:error)
       expect(finding).not_to be_fixable
     end
+
+    it "flags a data-tool in an mcp:* group as a legacy snapshot (RFC-0040 PR2), alongside the ok finding" do
+      config_store.put("tools", "search", { "definition" => {
+                          "name" => "search", "description" => "d",
+                          "parameters" => { "type" => "object", "properties" => {}, "required" => [] },
+                          "request" => { "method" => "POST", "url" => "https://a.test", "headers" => {},
+                                         "query" => {}, "body" => nil },
+                          "response" => { "extract" => "body_raw", "path" => nil },
+                          "secret_headers" => [], "side_effect" => true, "timeout" => nil,
+                          "group" => "mcp:tavily"
+                        }, "updated_at" => "2026-01-01T00:00:00Z", "history" => [] })
+      findings = doctor(tool_store: tool_store).run.findings.select { |f| f.check == "data-tools" }
+
+      expect(findings.map(&:severity)).to include(:ok, :info)
+      expect(findings.map(&:message).join).to match(/search.*mcp:tavily.*LIVE/)
+    end
   end
 
   describe "mcp check (RFC-0040)" do

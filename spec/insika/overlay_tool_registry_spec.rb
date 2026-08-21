@@ -103,4 +103,47 @@ RSpec.describe Insika::OverlayToolRegistry do
     expect { ov.names }.not_to raise_error
     expect(ov.names).to eq(base.names)
   end
+
+  describe "with a live mcp_registry (RFC-0040 PR2)" do
+    FakeMcpEntry = Struct.new(:name, :plugin, :metadata, :factory)
+    FakeMcpRegistry = Struct.new(:list) do
+      def entries = list
+    end
+
+    def mcp_entry(name)
+      FakeMcpEntry.new(name, "mcp:fs", { optional: false, side_effect: true, group: "mcp:fs", tags: [] },
+                       -> { :"#{name}_instance" })
+    end
+
+    it "merges mcp entries in when nothing else claims the name" do
+      mcp = FakeMcpRegistry.new([mcp_entry("list_files")])
+      ov = described_class.new(base: base, tool_store: store, http: http, mcp_registry: mcp)
+
+      expect(ov.names).to contain_exactly("menu", "calc", "list_files")
+      expect(ov.side_effect?("list_files")).to be(true)
+      expect(ov.resolve("list_files")).to eq(:list_files_instance)
+    end
+
+    it "the base (code tool) wins over an mcp tool of the same name" do
+      mcp = FakeMcpRegistry.new([mcp_entry("menu")])
+      ov = described_class.new(base: base, tool_store: store, http: http, mcp_registry: mcp)
+
+      expect(ov.names.count("menu")).to eq(1)
+      expect(ov.resolve("menu")).to be_a(FakeCodeTool)
+    end
+
+    it "a data-tool wins over an mcp tool of the same name" do
+      store.write(def_attrs(name: "cep"))
+      overlay_with_store = described_class.new(base: base, tool_store: store, http: http,
+                                                mcp_registry: FakeMcpRegistry.new([mcp_entry("cep")]))
+      overlay_with_store.reload
+
+      expect(overlay_with_store.resolve("cep")).to be_a(Insika::Tools::DataDefinedTool)
+    end
+
+    it "without mcp_registry, behaves exactly like before (parity)" do
+      ov = described_class.new(base: base, tool_store: store, http: http, mcp_registry: nil)
+      expect(ov.names).to eq(base.names)
+    end
+  end
 end
