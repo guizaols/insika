@@ -24,9 +24,15 @@ RSpec.describe Insika::Tools::RunPersonaEval do
   # Stands in for the graph's own RubyLLM::Context (`runtime.llm`). One script
   # per model, so the persona and the judge get independent, deterministic replies.
   class FakeLLM
-    def initialize(scripts) = @scripts = scripts
+    attr_reader :calls
 
-    def chat(model:, provider:, assume_model_exists:)
+    def initialize(scripts)
+      @scripts = scripts
+      @calls = []
+    end
+
+    def chat(model:, provider: nil, assume_model_exists: false)
+      @calls << { model: model, provider: provider, assume_model_exists: assume_model_exists }
       FakeRawChat.new(@scripts.fetch(model))
     end
   end
@@ -137,6 +143,24 @@ RSpec.describe Insika::Tools::RunPersonaEval do
       bound(tool).execute(case_id: "case-1")
       convs = runtime.calls.map { |c| c[:session_id] }
       expect(convs.uniq.length).to eq(convs.length)
+    end
+
+    # Regression: RubyLLM raises ArgumentError on `assume_model_exists: true`
+    # with no `provider` — a real failure this suite's own fakes could not
+    # catch (they accepted any args) until caught live against round1. The
+    # judge panel's settings shape always carries a provider (so
+    # assume_model_exists is safe there); `utility_model` is a bare ref with
+    # no companion provider setting anywhere in the schema, so it must NOT
+    # get the same treatment.
+    it "asks the persona's model bare (no provider/assume_model_exists) but the judge's WITH BOTH when configured" do
+      settings_store.update("evals" => { "judges" => [{ "model" => "judge-model", "provider" => "deepseek" }] })
+      seed_case
+      bound(tool).execute(case_id: "case-1")
+
+      persona_call = llm.calls.find { |c| c[:model] == "persona-model" }
+      judge_call = llm.calls.find { |c| c[:model] == "judge-model" }
+      expect(persona_call).to include(provider: nil, assume_model_exists: false)
+      expect(judge_call).to include(provider: "deepseek", assume_model_exists: true)
     end
 
     it "charges the persona + judge spend to the CALLING agent, never the target" do

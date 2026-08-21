@@ -84,7 +84,7 @@ RSpec.describe Insika::Wiring::GraphChat do
           Msg.new(content: '{"score": 0.9, "reason": "handled it well"}', input_tokens: 2, output_tokens: 2)
         })
       }
-      allow(RubyLLM).to receive(:chat) { |model:, provider:, assume_model_exists:| raw_chats.fetch(model) }
+      allow(RubyLLM).to receive(:chat) { |model:, provider: nil, assume_model_exists: false| raw_chats.fetch(model) }
 
       tool = graph.code_tool_registry.entries.find { |e| e.name == "run_persona_eval" }.factory.call
       result = tool.execute(case_id: "case-1")
@@ -156,7 +156,7 @@ RSpec.describe Insika::Wiring::GraphChat do
           Msg.new(content: '{"score": 1.0, "reason": "confirmou o pedido"}', input_tokens: 1, output_tokens: 1)
         })
       }
-      allow(RubyLLM).to receive(:chat) { |model:, provider:, assume_model_exists:| raw_chats.fetch(model) }
+      allow(RubyLLM).to receive(:chat) { |model:, provider: nil, assume_model_exists: false| raw_chats.fetch(model) }
 
       tool = graph.code_tool_registry.entries.find { |e| e.name == "run_persona_eval" }.factory.call
       result = tool.execute(case_id: "case-1")

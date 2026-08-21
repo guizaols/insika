@@ -261,10 +261,23 @@ module Insika
       # credentials, temperature 0) whose every `#ask` lands its Message in
       # `sink` before handing back the text. Same shape as
       # JudgePanel.ruby_llm_ask, except it does not throw the usage away.
+      # `assume_model_exists` is passed ONLY alongside an explicit `provider`
+      # (the judge panel's own shape — `settings["evals"]["judges"]` always
+      # carries one) — RubyLLM raises ArgumentError on `assume_model_exists:
+      # true` with no provider. The persona's own model (the platform
+      # `utility_model`, a bare ref with no companion provider setting
+      # anywhere in the schema) needs the OPPOSITE: no provider, no
+      # assume_model_exists, so RubyLLM resolves it from its own registry —
+      # exactly how a bare model ref already works everywhere else this
+      # codebase reaches for `utility_model`.
       def metered_factory(sink)
         lambda do |model, provider|
-          chat = (llm_context || RubyLLM).chat(model: model, provider: provider, assume_model_exists: true)
-                                          .with_temperature(0)
+          kwargs = { model: model }
+          if provider
+            kwargs[:provider] = provider
+            kwargs[:assume_model_exists] = true
+          end
+          chat = (llm_context || RubyLLM).chat(**kwargs).with_temperature(0)
           lambda do |prompt|
             msg = chat.ask(prompt)
             sink << msg
