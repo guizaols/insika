@@ -103,12 +103,25 @@ end
 # The provider keys the panel needs. Called by both panels (rubric and pairwise) —
 # the pairwise one can be asked for with `--no-judge`, and an unconfigured provider
 # would surface as every comparison coming back `unknown`.
+#
+# Generic over every provider RubyLLM ships, never one line per vendor to
+# remember to add: each provider class declares its own `configuration_options`
+# (most need just `<x>_api_key`/`<x>_api_base`; Bedrock/Vertex AI need several) —
+# an env var of the SAME name, upcased, sets it. A judge is any
+# `provider/model` RubyLLM can reach (e.g. OpenRouter: one key, many vendors'
+# models — "openrouter/anthropic/claude-3.5-haiku" — the natural way to build a
+# panel of genuinely different models without a key per vendor; see
+# docs/EVALS.md "who grades: a panel, not a voice"). A future `ruby_llm` with a
+# new provider widens this for free.
 def configure_ruby_llm
   require "ruby_llm"
   RubyLLM.configure do |c|
-    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
-    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
-    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+    RubyLLM::Provider.providers.each_value do |provider_class|
+      provider_class.configuration_options.each do |option|
+        value = ENV[option.to_s.upcase]
+        c.public_send("#{option}=", value) if value && c.respond_to?("#{option}=")
+      end
+    end
   end
 end
 
