@@ -175,8 +175,8 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_data_tools check_mcp check_prompt_files check_relay_channel
-                    check_web_widget check_skill_eager check_skill_drift check_shadow_parity
+                    check_admin_token check_web_concurrency check_data_tools check_mcp check_prompt_files
+                    check_relay_channel check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_harvest check_schedules check_guardrail_corpora]
@@ -341,6 +341,23 @@ module Insika
 
       [Finding.new(check: "admin-token", severity: :warn,
                    message: "ADMIN_TOKEN unset — /studio is fail-closed (login denied) and the gateway has no fallback token", fix: nil)]
+    end
+
+    # WEB_CONCURRENCY>1 is a legitimate config (docs/DEPLOY.md "The process
+    # model") — but it silently drops per-worker session guarantees
+    # (FIFO/collect/steer) unless the operator has sticky routing per session in
+    # front, and nothing else in the deployment surfaces that drift. This is
+    # exactly how a staging service ended up at N=4 unnoticed and leaked a reply
+    # across sessions. The engine cannot see whether sticky routing exists, so
+    # this warns rather than errors — N>1 stays a valid choice.
+    def check_web_concurrency
+      n = @env["WEB_CONCURRENCY"].to_i
+      return [ok("web-concurrency", "WEB_CONCURRENCY=1 (default) — session semantics hold cluster-wide")] if n <= 1
+
+      [Finding.new(check: "web-concurrency", severity: :warn,
+                   message: "WEB_CONCURRENCY=#{n} — per-session FIFO/collect/steer only hold on the worker " \
+                            "that owns the session; make sure sticky routing per session sits in front, or " \
+                            "accept per-worker best-effort (docs/DEPLOY.md \"The process model\")", fix: nil)]
     end
 
     # the soak envelope (a deployment-side file). Absent is :info — not every
