@@ -70,7 +70,7 @@ RSpec.describe "the domain boundary " do
 
   describe "the selection is the boundary" do
     it "ships only lib/ + docs/ + the four root files" do
-      allowed = ->(f) { f.start_with?("lib/", "docs/") || %w[README.md LICENSE CHANGELOG.md bin/insika].include?(f) }
+      allowed = ->(f) { f.start_with?("lib/", "docs/") || %w[README.md LICENSE CHANGELOG.md bin/insika bin/insika-router].include?(f) }
       expect(payload).to all(satisfy(&allowed))
     end
 

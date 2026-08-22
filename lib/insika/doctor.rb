@@ -361,18 +361,34 @@ module Insika
       n = @env["WEB_CONCURRENCY"].to_i
       return [ok("web-concurrency", "WEB_CONCURRENCY=1 (default) — session semantics hold cluster-wide")] if n <= 1
 
+      if router_detected?
+        return [ok("web-concurrency", "WEB_CONCURRENCY=#{n} behind a detected insika-router " \
+                                       "(RFC-0043) — sticky routing satisfies the precondition")]
+      end
+
       if Insika::Coercion.present?(@env["RAILWAY_ENVIRONMENT_NAME"])
         return [Finding.new(check: "web-concurrency", severity: :error,
                              message: "WEB_CONCURRENCY=#{n} on Railway — Railway does not support sticky " \
                                       "sessions (docs.railway.com/deployments/scaling), so per-session " \
                                       "FIFO/collect/steer WILL break across workers with no way to fix it " \
-                                      "at the routing layer; set WEB_CONCURRENCY=1", fix: nil)]
+                                      "at the routing layer; set WEB_CONCURRENCY=1, or run insika-router " \
+                                      "(RFC-0043) in front of N local workers instead", fix: nil)]
       end
 
       [Finding.new(check: "web-concurrency", severity: :warn,
                    message: "WEB_CONCURRENCY=#{n} — per-session FIFO/collect/steer only hold on the worker " \
-                            "that owns the session; make sure sticky routing per session sits in front, or " \
-                            "accept per-worker best-effort (docs/DEPLOY.md \"The process model\")", fix: nil)]
+                            "that owns the session; make sure sticky routing per session sits in front (e.g. " \
+                            "insika-router, RFC-0043 — set INSIKA_ROUTER_BACKENDS/_DNS), or accept " \
+                            "per-worker best-effort (docs/DEPLOY.md \"The process model\")", fix: nil)]
+    end
+
+    # A router is "detected", not verified — the doctor cannot see whether a
+    # process at these addresses actually runs `insika-router`, only that the
+    # operator configured one (RFC-0043 §4). Same precedent as every other
+    # env-based capability check in this file.
+    def router_detected?
+      Insika::Coercion.present?(@env["INSIKA_ROUTER_BACKENDS"]) ||
+        Insika::Coercion.present?(@env["INSIKA_ROUTER_BACKENDS_DNS"])
     end
 
     # the soak envelope (a deployment-side file). Absent is :info — not every

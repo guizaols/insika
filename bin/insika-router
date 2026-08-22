@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# `insika-router` — RFC-0043's session-sticky router. A standalone Async/
+# Falcon process that sits in front of N engine backends and routes each
+# request to the SAME backend every time its session id resolves to (a
+# ketama-style consistent hash ring), so `WEB_CONCURRENCY=1`-per-worker's
+# session guarantees (FIFO/collect/steer, docs/DEPLOY.md "The process model")
+# hold at N>1 capacity without touching the engine itself.
+#
+# Entirely OPT-IN: an operator happy with one worker never runs this. Two
+# backend-discovery modes, picked by which env var is set (never both):
+#
+#   INSIKA_ROUTER_BACKENDS=http://host-a:9292,http://host-b:9292
+#     static list — the Railway shape (N local Falcon workers on known ports).
+#   INSIKA_ROUTER_BACKENDS_DNS=insika-headless.default.svc.cluster.local
+#     one hostname, re-resolved on INSIKA_ROUTER_DNS_INTERVAL (default 15s) —
+#     the Kubernetes shape (a headless Service, one record per ready pod).
+#     Requires INSIKA_ROUTER_BACKEND_PORT (the engine port on every pod).
+#
+# See docs/ROUTER.md for both deploy shapes end to end.
+
+require "async"
+require "async/http/server"
+require "async/http/endpoint"
+require "protocol/rack"
+
+require_relative "../lib/insika/env_schema"
+require_relative "../lib/insika/router"
+
+module Insika
+  module CLI
+    module Router
+      module_function
+
+      def main
+        Insika::EnvSchema.reconcile_legacy!
+        pool = build_pool
+        app = Insika::Router::App.new(
+          pool: pool,
+          body_max_bytes: (Insika::EnvSchema.read("INSIKA_ROUTER_BODY_MAX_BYTES") || Insika::Router::App::DEFAULT_BODY_MAX_BYTES).to_i,
+          backend_timeout: (Insika::EnvSchema.read("INSIKA_ROUTER_BACKEND_TIMEOUT") || 10).to_i
+        )
+
+        host = Insika::EnvSchema.read("INSIKA_ROUTER_HOST") || "0.0.0.0"
+        port = (Insika::EnvSchema.read("INSIKA_ROUTER_PORT") || 9090).to_i
+        endpoint = Async::HTTP::Endpoint.parse("http://#{host}:#{port}")
+
+        banner(pool, host, port)
+        Async do |task|
+          pool.start_polling(task)
+          Async::HTTP::Server.new(Protocol::Rack::Adapter.new(app), endpoint).run
+        end
+      end
+
+      def build_pool
+        static = Insika::EnvSchema.read("INSIKA_ROUTER_BACKENDS")
+        dns = Insika::EnvSchema.read("INSIKA_ROUTER_BACKENDS_DNS")
+        if static.nil? == dns.nil?
+          abort "insika-router: set exactly one of INSIKA_ROUTER_BACKENDS or INSIKA_ROUTER_BACKENDS_DNS"
+        end
+
+        if static
+          Insika::Router::BackendPool.new(static: static.split(",").map(&:strip))
+        else
+          port = Insika::EnvSchema.read("INSIKA_ROUTER_BACKEND_PORT")
+          abort "insika-router: INSIKA_ROUTER_BACKEND_PORT is required with INSIKA_ROUTER_BACKENDS_DNS" if port.nil?
+
+          Insika::Router::BackendPool.new(
+            dns: dns, dns_port: port.to_i,
+            dns_interval: (Insika::EnvSchema.read("INSIKA_ROUTER_DNS_INTERVAL") || 15).to_i
+          )
+        end
+      end
+
+      def banner(pool, host, port)
+        puts "\e[1mInsika Router\e[0m — session-sticky proxy (RFC-0043)"
+        puts "  http://#{host}:#{port}/up   → health (also this process's own liveness)"
+        mode = pool.dns? ? "dns" : "static"
+        puts "  backends (#{mode}): #{pool.backends.join(', ')}"
+        puts "  Ctrl-C to stop."
+      end
+    end
+  end
+end
+
+Insika::CLI::Router.main

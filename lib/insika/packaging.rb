@@ -72,7 +72,7 @@ module Insika
         tracked = `git ls-files -z 2>/dev/null`.split("\x0")
         if tracked.empty?
           tracked = Dir.glob("{lib,docs}/**/*", File::FNM_DOTMATCH).reject { |f| File.directory?(f) } +
-                    %w[README.md LICENSE CHANGELOG.md bin/insika]
+                    %w[README.md LICENSE CHANGELOG.md bin/insika bin/insika-router]
         end
         tracked.select { |file| payload_path?(file) }.reject { |file| excluded?(file) }
       end
@@ -80,7 +80,7 @@ module Insika
 
     # -> bool: is this repo-relative path part of the payload selection?
     def payload_path?(file)
-      file.start_with?("lib/", "docs/") || %w[README.md LICENSE CHANGELOG.md bin/insika].include?(file)
+      file.start_with?("lib/", "docs/") || %w[README.md LICENSE CHANGELOG.md bin/insika bin/insika-router].include?(file)
     end
 
     # -> bool: is this file in the never-ship set?

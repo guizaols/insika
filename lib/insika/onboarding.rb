@@ -48,6 +48,7 @@ module Insika
       "architecture" => "docs/ARCHITECTURE.md",
       "running-local" => "docs/RUNNING-LOCAL.md",
       "deploy" => "docs/DEPLOY.md",
+      "router" => "docs/ROUTER.md",
       "embedding" => "docs/EMBEDDING.md",
       "sandbox" => "docs/SANDBOX.md",
       "benchmark" => "docs/BENCHMARK.md",
