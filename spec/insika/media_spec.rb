@@ -162,19 +162,24 @@ RSpec.describe Insika::Media do
                             { model: "whisper-1", language: nil, prompt: "Ocean Drop, tênis" }]])
     end
 
-    it "fetch_and_transcribe passes prompt: to the provider only when present" do
+    it "fetch_and_transcribe passes prompt: to the provider only when present, via a tempfile PATH" do
       require "ruby_llm"
       allow(described_class).to receive(:fetch_binary).and_return("bytes")
-      audio_double = double("attachment")
-      allow(RubyLLM::Attachment).to receive(:new).and_return(audio_double)
       transcription = double("transcription", text: "oi")
-      expect(RubyLLM::Transcription).to receive(:transcribe)
-        .with(audio_double, model: "whisper-1", assume_model_exists: true, prompt: "Ocean Drop")
-        .and_return(transcription)
+      sent_path = nil
+      allow(RubyLLM::Transcription).to receive(:transcribe) do |path, **kwargs|
+        sent_path = path
+        expect(kwargs).to eq(model: "whisper-1", prompt: "Ocean Drop")
+        expect(File.binread(path)).to eq("bytes")
+        transcription
+      end
 
       result = described_class.fetch_and_transcribe("https://cdn.example.com/voz.ogg", model: "whisper-1",
                                                      language: nil, prompt: "Ocean Drop")
       expect(result).to eq("oi")
+      # the tempfile is cleaned up by the time the block returns — a real path
+      # RubyLLM could re-read past the call would leak a file per transcription.
+      expect(File.exist?(sent_path)).to be(false)
     end
   end
 
