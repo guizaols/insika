@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# RFC-0040 PR3 — one parser shared by the CLI/API/Studio config surfaces.
+# One parser shared by the CLI/API/Studio config surfaces.
 RSpec.describe Insika::McpJson do
   let(:config_store) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
   let(:mcp_store) { Insika::McpStore.new(config_store: config_store) }

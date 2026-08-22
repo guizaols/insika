@@ -104,7 +104,7 @@ RSpec.describe Insika::OverlayToolRegistry do
     expect(ov.names).to eq(base.names)
   end
 
-  describe "with a live mcp_registry (RFC-0040 PR2)" do
+  describe "with a live mcp_registry" do
     FakeMcpEntry = Struct.new(:name, :plugin, :metadata, :factory)
     FakeMcpRegistry = Struct.new(:list) do
       def entries = list

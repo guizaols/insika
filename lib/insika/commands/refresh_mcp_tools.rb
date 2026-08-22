@@ -4,8 +4,8 @@ require "time"
 
 module Insika
   module Commands
-    # Control command: LIVE re-discovery of an MCP instance's tools
-    # (RFC-0040 PR2). Delegates to McpToolRegistry#refresh (connect +
+    # Control command: LIVE re-discovery of an MCP instance's tools.
+    # Delegates to McpToolRegistry#refresh (connect +
     # tools/list + write McpStore#tools_cache) — TOOL EXECUTION never reads
     # that cache; this command only refreshes what `entries`/Studio/doctor
     # display. The CLI verb / API route / Studio button that call it are

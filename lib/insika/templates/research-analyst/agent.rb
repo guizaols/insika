@@ -3,7 +3,7 @@
 # ---
 # title: Research Analyst
 # trail: Advanced
-# description: Insika.system fan-out — three specialist subagents research different angles of a topic in parallel, the lead delegates and synthesizes (RFC-0010).
+# description: Insika.system fan-out — three specialist subagents research different angles of a topic in parallel, the lead delegates and synthesizes.
 # capabilities: subagents, delegation, system
 # ---
 #

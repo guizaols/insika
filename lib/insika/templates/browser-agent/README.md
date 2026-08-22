@@ -1,6 +1,6 @@
 # browser-agent
 
-**MCP trail (stdio).** A live MCP tool-loop over stdio (RFC-0040): the
+**MCP trail (stdio).** A live MCP tool-loop over stdio: the
 engine spawns [Playwright's MCP server](https://github.com/microsoft/playwright-mcp)
 (`npx @playwright/mcp@latest`) as a child process and wires its browser
 tools straight into the agent's tool-loop. No API key beyond your LLM

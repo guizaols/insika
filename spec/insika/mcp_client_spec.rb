@@ -3,7 +3,7 @@
 require "spec_helper"
 
 # Insika::McpClient — the seam between an McpStore record and a live
-# RubyLLM::MCP::Client (RFC-0040). Builds only: `for` never starts the
+# RubyLLM::MCP::Client. Builds only: `for` never starts the
 # client, so these specs never spawn a process or touch the network.
 RSpec.describe Insika::McpClient do
   AllowEgress = Class.new { def violation(*, **) = nil }.new

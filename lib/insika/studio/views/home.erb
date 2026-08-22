@@ -1,73 +1,112 @@
-<%# Overview home (T3): stat cards + activity chart + recent conversations.
-   All from data the Studio already reads; charts are inline SVG (geometry via
-   attributes, fill via stylesheet — CSP-safe, no inline style). %>
-<header class="page-head">
-  <div>
-    <h1>Overview<span class="sub">at a glance</span></h1>
+<%# Overview home: stat cards + activity chart + recent
+    conversations, all LIVE over the existing SSE channel (live_home_controller
+    subscribes to /studio/events; the server-rendered numbers are its baseline).
+    Charts are inline SVG (geometry via attributes, fill via stylesheet —
+    CSP-safe, no inline style). %>
+<div data-controller="live-home" data-live-home-active-value="<%= @active_now %>">
+  <header class="page-head">
+    <div>
+      <h1>Overview<span class="sub">at a glance</span></h1>
+    </div>
+    <div class="head-actions">
+      <%== agent_filter_form("/studio/home", @agent) %>
+      <%# "active now" — conversations touched in the last 5 minutes (the same
+          number render_home computes). The ring spins while anything is hot;
+          the ago label tracks the last event the page has seen. %>
+      <span class="live-badge<%= @active_now.positive? ? " hot" : "" %>" title="conversations touched in the last 5 minutes">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="6.5"/></svg>
+        <b class="tnum" data-live-home-target="count"><%= @active_now %></b> active now
+        <span class="live-ago muted" data-live-home-target="ago"></span>
+      </span>
+      <a class="btn primary" href="/studio/playground">Open playground →</a>
+    </div>
+  </header>
+
+  <div class="stat-cards">
+    <% [["conversations", "Conversations", @conv_trend],
+        ["messages", "Messages", @msg_trend],
+        ["agents", "Agents", nil],
+        ["skills", "Skills", nil],
+        ["tools", "Tools", nil],
+        ["providers", "LLM providers", nil]].each do |key, label, trend| %>
+      <div class="stat-card">
+        <div class="stat-num tnum"><%= @counts[key] %></div>
+        <div class="stat-label"><%= label %><% if trend && !trend.zero? %>
+          <span class="trend <%= trend.positive? ? "up" : "down" %>" title="vs yesterday"><%= trend.positive? ? "+" : "−" %><%= trend.abs %></span>
+        <% end %></div>
+      </div>
+    <% end %>
   </div>
-  <div class="head-actions">
-    <%== agent_filter_form("/studio/home", @agent) %>
-    <span class="pill <%= @active_now.positive? ? "ok online" : "info" %> plain"><%= @active_now %> active now</span>
-    <a class="btn primary" href="/studio/playground">Open playground →</a>
-  </div>
-</header>
 
-<div class="stat-cards">
-  <% [["conversations", "Conversations"], ["messages", "Messages"], ["agents", "Agents"],
-      ["skills", "Skills"], ["tools", "Tools"], ["providers", "LLM providers"]].each do |key, label| %>
-    <div class="stat-card">
-      <div class="stat-num"><%= @counts[key] %></div>
-      <div class="stat-label"><%= label %></div>
-    </div>
-  <% end %>
-</div>
+  <div class="home-grid">
+    <section class="card home-activity">
+      <div class="section-head">
+        <h2>Activity</h2>
+        <span class="muted">conversations touched · last 14 days</span>
+      </div>
+      <%# 24h sparkline: area-fill + 1.5px line over the hourly
+          series; same session scan, finer buckets. Geometry via attributes,
+          colors via classes — CSP-safe like the barchart below. %>
+      <% s_max = [@activity_24h.map(&:last).max || 0, 1].max %>
+      <% s_n = @activity_24h.size %>
+      <% s_pts = @activity_24h.each_with_index.map do |(_t, c), i|
+           [i * (480.0 / (s_n - 1)), 44.0 - (c.to_f / s_max) * 36.0]
+         end %>
+      <% s_line = s_pts.map { |x, y| format("%.1f,%.1f", x, y) }.join(" ") %>
+      <div class="sparkline-strip">
+        <div class="sparkline-meta">
+          <b class="tnum"><%= @activity_24h.sum { |_t, c| c } %></b> conversations · last 24h
+        </div>
+        <svg class="sparkline" viewBox="0 0 480 48" preserveAspectRatio="none" role="img"
+             aria-label="conversations per hour, last 24 hours">
+          <polygon class="spark-area" points="<%= s_line %> 480,48 0,48"/>
+          <polyline class="spark-line" points="<%= s_line %>" vector-effect="non-scaling-stroke"/>
+        </svg>
+      </div>
+      <% max = [@activity.map(&:last).max || 0, 1].max %>
+      <svg class="barchart" viewBox="0 0 700 176" preserveAspectRatio="none" role="img" aria-label="conversations per day, last 14 days">
+        <% n = @activity.size; slot = 700.0 / n; bw = slot * 0.58 %>
+        <% @activity.each_with_index do |(d, c), i| %>
+          <% h = (c.to_f / max) * 150.0; x = (i * slot) + ((slot - bw) / 2.0); y = 160.0 - h %>
+          <rect class="bar<%== ' bar-empty' if c.zero? %>" x="<%= format('%.1f', x) %>" y="<%= format('%.1f', c.zero? ? 157.0 : y) %>"
+                width="<%= format('%.1f', bw) %>" height="<%= format('%.1f', c.zero? ? 3.0 : [h, 3.0].max) %>" rx="2">
+            <title><%= d.strftime('%b %-d') %> · <%= c %> conversation<%= 's' unless c == 1 %></title>
+          </rect>
+        <% end %>
+        <line class="barchart-axis-line" x1="0" y1="160" x2="700" y2="160" />
+      </svg>
+      <div class="barchart-axis">
+        <span><%= @activity.first&.first&.strftime('%b %-d') %></span>
+        <span class="peak">peak <%= max %>/day</span>
+        <span><%= @activity.last&.first&.strftime('%b %-d') %></span>
+      </div>
+    </section>
 
-<div class="home-grid">
-  <section class="card home-activity">
-    <div class="section-head">
-      <h2>Activity</h2>
-      <span class="muted">conversations touched · last 14 days</span>
-    </div>
-    <% max = [@activity.map(&:last).max || 0, 1].max %>
-    <svg class="barchart" viewBox="0 0 700 176" preserveAspectRatio="none" role="img" aria-label="conversations per day, last 14 days">
-      <% n = @activity.size; slot = 700.0 / n; bw = slot * 0.58 %>
-      <% @activity.each_with_index do |(d, c), i| %>
-        <% h = (c.to_f / max) * 150.0; x = (i * slot) + ((slot - bw) / 2.0); y = 160.0 - h %>
-        <rect class="bar<%== ' bar-empty' if c.zero? %>" x="<%= format('%.1f', x) %>" y="<%= format('%.1f', c.zero? ? 157.0 : y) %>"
-              width="<%= format('%.1f', bw) %>" height="<%= format('%.1f', c.zero? ? 3.0 : [h, 3.0].max) %>" rx="2">
-          <title><%= d.strftime('%b %-d') %> · <%= c %> conversation<%= 's' unless c == 1 %></title>
-        </rect>
-      <% end %>
-      <line class="barchart-axis-line" x1="0" y1="160" x2="700" y2="160" />
-    </svg>
-    <div class="barchart-axis">
-      <span><%= @activity.first&.first&.strftime('%b %-d') %></span>
-      <span class="peak">peak <%= max %>/day</span>
-      <span><%= @activity.last&.first&.strftime('%b %-d') %></span>
-    </div>
-  </section>
-
-  <section class="card home-recent">
-    <div class="section-head">
-      <h2>Recent conversations</h2>
-      <a class="muted" href="/studio/chats">all →</a>
-    </div>
-    <% if @recent.empty? %>
-      <div class="empty">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div>
-    <% else %>
-      <ul class="convo-rail">
-        <% @recent.each do |s| %>
-          <li>
-            <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
-              <span class="avatar sm <%= avatar_class(s.id) %>"><%= s.id[0, 2].upcase %></span>
-              <span class="convo-main">
-                <span class="convo-id mono"><%= s.id[0, 20] %></span>
-                <span class="convo-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></span>
-              </span>
-            </a>
-          </li>
+    <section class="card home-recent">
+      <div class="section-head">
+        <h2>Recent conversations</h2>
+        <a class="muted" href="/studio/chats">all →</a>
+      </div>
+      <% cutoff = Time.now - (5 * 60) %>
+      <ul class="convo-rail" data-live-home-target="list">
+        <% if @recent.empty? %>
+          <li data-live-home-target="placeholder"><div class="empty">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div></li>
+        <% else %>
+          <% @recent.each do |s| %>
+            <% fresh = (t = parse_time(s.updated_at)) && t >= cutoff %>
+            <li data-session-id="<%= s.id %>">
+              <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
+                <span class="avatar sm <%= avatar_class(s.id) %>"><%= s.id[0, 2].upcase %></span>
+                <span class="convo-main">
+                  <span class="convo-id mono"><%= s.id[0, 20] %></span>
+                  <span class="convo-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></span>
+                </span>
+                <span class="presence<%= " present" if fresh %>" title="touched in the last 5 minutes"></span>
+              </a>
+            </li>
+          <% end %>
         <% end %>
       </ul>
-    <% end %>
-  </section>
+    </section>
+  </div>
 </div>

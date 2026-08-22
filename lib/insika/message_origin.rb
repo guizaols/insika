@@ -18,7 +18,7 @@ module Insika
   # Reading a transcript without that distinction is not a rounding error. The first
   # refinement run over real traffic reported `repetition ×219` on one agent: every
   # one of them the engine reading its own injected fragment back and calling it a
-  # customer repeating themselves (PR #133). That was filtered by a REGEX on the
+  # customer repeating themselves. That was filtered by a REGEX on the
   # leading tag, labelled in the code as a heuristic standing in for this field.
   #
   # ABSENT is the common case and stays valid forever: a message with no origin is

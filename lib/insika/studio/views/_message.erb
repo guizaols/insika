@@ -1,48 +1,61 @@
-<%# Shared transcript bubble/tool-card — one visual language for the
-    playground history, the optimistic echo and the read-only session viewer.
-    Locals: m = stored message hash {"role","content","at"}; prev = the message before
-    it in the thread, or nil (used only to spot a steered message). `content` may be a
-    String or a structured payload (rendered as pretty JSON, never #inspect).
+<%# Shared transcript bubble/tool-chip — one visual language for the
+    playground history, the optimistic echo and the read-only session viewer
+    (transcript as product). Locals: m = stored message hash
+    {"role","content","at"}; prev = the message before it in the thread, or nil
+    (used only to spot a steered message). `content` may be a String or a
+    structured payload (rendered as pretty JSON, never #inspect).
     Assistant bubbles carry data-controller="markdown" (markdown.js re-escapes
-    before markup — safe under the strict CSP). %>
+    before markup — safe under the strict CSP). The markup contract here is
+    mirrored by live_transcript_controller.js — change both or neither. %>
 <% role = m["role"].to_s %>
 <% at = short_time(m["at"]) %>
 <% if role == "tool" %>
   <% artifact_url = artifact_link_in(m["content"]) %>
   <% if artifact_url %>
-    <p class="artifact-chip">📄 <a class="btn sm" href="<%= artifact_url %>" target="_blank" rel="noopener">open artifact</a></p>
+    <p class="artifact-chip"><%== chip_icon(:artifact) %><a class="btn sm" href="<%= artifact_url %>" target="_blank" rel="noopener">open artifact</a></p>
   <% end %>
   <details class="toolcard result">
-    <summary><span class="arrow">←</span><strong>tool result</strong><% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></summary>
+    <summary><%== chip_icon(:result) %><strong>tool result</strong><% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></summary>
     <pre><%= message_content(m["content"]) %></pre>
   </details>
 <% else %>
+  <%# `role` says where a message sits; `origin` says who wrote it, and the two
+      come apart (the engine delivering a subagent result as a "user" turn, a
+      guardrail's canned reply, a human operator after a handoff). Shown only
+      when it is NOT the natural producer for the role — otherwise every bubble
+      would carry a label that says nothing. %>
+  <% origin = Insika::MessageOrigin.origin_of(m) unless Insika::MessageOrigin.customer?(m) || Insika::MessageOrigin.agent?(m) %>
+  <%# STEERED: a customer message sitting right after a tool result arrived
+      while the turn was running and was appended at a tool-batch boundary. Derived
+      from position, not from a field — a steered message declares no origin, and it
+      is right not to: a person typed it. Nothing else in the engine ever puts a user
+      message after a tool result. Without the marker an operator reads two customer
+      messages in one turn with no explanation. %>
+  <% steered = role == "user" && prev && prev["role"].to_s == "tool" %>
+  <% calls = Array(m["tool_calls"]) %>
+  <%# A tool-call step with no prose renders no bubble at all — only its chips.
+      An empty bubble would be noise between "the model spoke" and "it called". %>
+  <% show_bubble = !(m["content"].to_s.empty? && calls.any?) %>
   <div class="msg <%= role %>">
-    <div class="who"><%= role[0, 1].upcase %></div>
-    <div class="bubble">
-      <%# `role` says where a message sits; `origin` says who wrote it, and the two
-          come apart (the engine delivering a subagent result as a "user" turn, a
-          guardrail's canned reply, a human operator after a handoff). Shown only
-          when it is NOT the natural producer for the role — otherwise every bubble
-          would carry a label that says nothing. %>
-      <% origin = Insika::MessageOrigin.origin_of(m) unless Insika::MessageOrigin.customer?(m) || Insika::MessageOrigin.agent?(m) %>
-      <%# STEERED: a customer message sitting right after a tool result arrived
-          while the turn was running and was appended at a tool-batch boundary. Derived
-          from position, not from a field — a steered message declares no origin, and it
-          is right not to: a person typed it. Nothing else in the engine ever puts a user
-          message after a tool result. Without the marker an operator reads two customer
-          messages in one turn with no explanation. %>
-      <% steered = role == "user" && prev && prev["role"].to_s == "tool" %>
-      <div class="role-tag"><%= role %><% if origin %> · <span class="origin"><%= origin %></span><% end %><% if steered %> · <span class="origin">steered</span><% end %><% unless at.empty? %> · <time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></div>
-      <% unless m["content"].to_s.empty? && Array(m["tool_calls"]).any? %>
-        <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
-      <% end %>
-      <% Array(m["tool_calls"]).each do |tc| %>
-        <details class="toolcard">
-          <summary><span class="arrow">→</span><strong><%= tc["name"] %></strong></summary>
-          <pre><%= message_content(tc["arguments"]) %></pre>
-        </details>
-      <% end %>
+    <div class="msg-meta">
+      <span class="msg-role"><%= role %></span>
+      <% if origin %><span class="origin"><%= origin %></span><% end %>
+      <% if steered %><span class="origin">steered</span><% end %>
+      <% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %>
     </div>
+    <% if show_bubble %>
+      <div class="bubble">
+        <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
+      </div>
+    <% end %>
   </div>
+  <%# Tool calls render BETWEEN bubbles (chips), not inside them — the same
+      reading order the live SSE stream shows: prose → call → result. %>
+  <% calls.each do |tc| %>
+    <% preview = message_content(tc["arguments"]).to_s.gsub(/\s+/, " ").strip %>
+    <details class="toolcard call">
+      <summary><%== chip_icon(:call) %><strong><%= tc["name"] %></strong><span class="chip-sub"><%= preview[0, 60] %><%== "…" if preview.size > 60 %></span></summary>
+      <pre><%= message_content(tc["arguments"]) %></pre>
+    </details>
+  <% end %>
 <% end %>

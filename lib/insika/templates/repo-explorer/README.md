@@ -1,6 +1,6 @@
 # repo-explorer
 
-**MCP trail (http).** A live MCP tool-loop over Streamable HTTP (RFC-0040):
+**MCP trail (http).** A live MCP tool-loop over Streamable HTTP:
 the agent calls a real, running MCP server's tools — not a snapshot, not a
 hand-rolled HTTP wrapper. The default target is
 [DeepWiki's public MCP server](https://mcp.deepwiki.com/mcp), which needs

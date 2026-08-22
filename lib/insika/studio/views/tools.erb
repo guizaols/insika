@@ -1,5 +1,10 @@
-<%# Tools — drill-down (T2): [data tools + agents] master | agent tool matrix.
-   @sel_agent (from ?a=) drives the detail; data tools link to their editor page. %>
+<%# Tools — miller columns: [data tools + agents] master |
+    agent tool matrix in a turbo-frame. Master rows for agents frame-navigate
+    (?a=) with the URL advancing; data-tool rows keep full-page navigation to
+    their standalone editor. @sel_agent (from ?a=) drives the detail. %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
 <div class="drill" data-controller="list-filter">
   <aside class="drill-pane drill-master">
     <div class="drill-pane-head">
@@ -25,6 +30,7 @@
       <% @agents.each do |a| %>
         <a class="drill-item<%== ' active' if @sel_agent && @sel_agent.id == a.id %>"
            href="/studio/tools?a=<%= Rack::Utils.escape(a.id) %>"
+           data-turbo-frame="tool-detail" data-turbo-action="advance"
            data-list-filter-target="item" data-filter-text="<%= a.id %>">
           <div class="drill-item-name"><span class="txt"><%= a.id %></span>
             <span class="pill plain"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size}" %></span>
@@ -34,8 +40,12 @@
       <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
     </nav>
   </aside>
-
-  <section class="drill-pane drill-detail">
+<% end %>
+  <turbo-frame id="tool-detail" class="drill-pane drill-detail">
+    <% if frame_only %>
+      <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+      <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+    <% end %>
     <% if @sel_agent.nil? %>
       <div class="drill-empty">
         <div>
@@ -86,5 +96,7 @@
         </form>
       </div>
     <% end %>
-  </section>
+  </turbo-frame>
+<% unless frame_only %>
 </div>
+<% end %>

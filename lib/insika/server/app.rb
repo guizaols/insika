@@ -105,7 +105,7 @@ module Insika
         @executor = executor
         @db_path = db_path
         # The deployment's EFFECTIVE tool registry, so the capability view can
-        # answer what the agent can reach that can WRITE (RFC-0014: the derived
+        # answer what the agent can reach that can WRITE (the derived
         # eval-profile swap list). Read-only use (names/side_effect?) — same
         # constitutional footing as the profile source. nil = the view omits it.
         @tool_registry = tool_registry

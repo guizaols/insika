@@ -26,7 +26,7 @@ reporter = Insika.agent("reporter") do
   # the model never even sees the tool.
   tools %w[save_artifact]
 
-  # A recurring turn — the engine's tick fires it (RFC-0037 half of this
+  # A recurring turn — the engine's tick fires it (half of this
   # example). `session_mode: "new"` = a fresh session per run (the report
   # shape); the overrides raise the chat-time ceilings a real report needs.
   schedule "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",

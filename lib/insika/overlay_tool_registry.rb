@@ -3,7 +3,7 @@
 module Insika
   # DYNAMIC tool registry: composes the CODE registry (base, built at boot,
   # immutable), the DATA-DEFINED tools from the ToolStore, and — optionally —
-  # the LIVE MCP tools from Insika::McpToolRegistry (RFC-0040 PR2). Drop-in
+  # the LIVE MCP tools from Insika::McpToolRegistry. Drop-in
   # for ToolRegistry — the Executor/ToolCatalog/ToolEnvelope only use
   # entries/resolve/side_effect?.
   #

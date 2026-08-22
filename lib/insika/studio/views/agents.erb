@@ -1,96 +1,80 @@
+<%# Agents — miller columns: master list | detail frame. A row
+    click loads the detail beside the list (no full page load) and advances the
+    URL. The detail pane's landing state hosts the template gallery and the
+    create form; both submit to the top window so the fresh master list
+    renders with the new agent in it. %>
 <header class="page-head">
   <h1>Agents<span class="sub"><%= @agents.size %> configured · one agent each</span></h1>
   <a class="btn primary" href="/studio/playground">Open playground →</a>
 </header>
 
-<% if @agents.empty? %>
-  <div class="empty">No agents yet. Create your first agent below (id + model), then give it an identity on its detail page.</div>
-<% else %>
-  <div data-controller="list-filter">
-    <div class="filter-bar">
-      <input type="search" class="filter-input" placeholder="Filter agents by id, model or provider…" aria-label="Filter agents"
-             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+<div class="drill" data-controller="list-filter">
+  <%== render("_agents_master", locals: { active_id: nil, show_outcomes: true }) %>
+
+  <turbo-frame id="agent-detail" class="drill-pane drill-detail">
+    <div class="drill-pane-head">
+      <div class="title">
+        <strong>Pick an agent</strong>
+        <span class="count">select on the left, or start a new one below</span>
+      </div>
     </div>
-  <div class="agent-grid">
-    <% @agents.each do |a| %>
-      <article class="card agent" data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>">
-        <a class="agent-head" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">
-          <span class="avatar <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
-          <div>
-            <div class="agent-id"><%= a.id %></div>
-            <div class="muted mono"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
+    <div class="drill-pane-body">
+      <% if @templates&.any? %>
+        <div class="section">
+          <div class="section-head">
+            <h2>From template</h2>
+            <p class="muted">Example agents shipped in the gem — pick one to see a working pattern, then edit it like any agent.</p>
           </div>
-          <% if a.memory %><span class="pill info">memory</span><% end %>
-          <% if (latest = @latest_outcomes&.dig(a.id)) %>
-            <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
-                  title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
-          <% end %>
-        </a>
-        <dl class="agent-meta">
-          <div><dt>tools</dt><dd><%= a.tools_allow.nil? ? "all" : a.tools_allow.size %></dd></div>
-          <div><dt>skills</dt><dd><%= a.skills.nil? ? "all" : Array(a.skills).size %></dd></div>
-          <div><dt>prompts</dt><dd><%= Array(a.prompt_files).size %></dd></div>
-        </dl>
-        <div class="agent-actions">
-          <a class="btn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>">Edit</a>
-          <a class="btn ghost" href="/studio/playground?agent=<%= Rack::Utils.escape(a.id) %>">Test</a>
+          <div class="template-grid">
+            <% @templates.each do |t| %>
+              <article class="card template">
+                <div class="template-head">
+                  <strong><%= t.title %></strong>
+                  <span class="pill info"><%= t.trail %></span>
+                </div>
+                <p class="muted"><%= t.description %></p>
+                <% if t.capabilities.any? %>
+                  <p class="mono muted template-caps"><%= t.capabilities.join(" · ") %></p>
+                <% end %>
+                <% if t.studio? %>
+                  <form method="post" action="/studio/agents/from_template/<%= Rack::Utils.escape(t.name) %>" data-turbo-frame="_top">
+                    <%== csrf_tag %>
+                    <button type="submit" class="btn" data-turbo-submits-with="Creating…">Create</button>
+                  </form>
+                <% else %>
+                  <p class="muted">CLI-only for now — run <code>insika new <%= t.name %></code>.</p>
+                <% end %>
+              </article>
+            <% end %>
+          </div>
         </div>
-      </article>
-    <% end %>
-  </div>
-    <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
-  </div>
-<% end %>
-
-<% if @templates&.any? %>
-  <details class="card newfile">
-    <summary>+ from template</summary>
-    <p class="muted matrix-hint">Example agents shipped in the gem (RFC-0039) — pick one to see a working pattern, then edit it like any agent.</p>
-    <div class="template-grid">
-      <% @templates.each do |t| %>
-        <article class="card template">
-          <div class="template-head">
-            <strong><%= t.title %></strong>
-            <span class="pill info"><%= t.trail %></span>
-          </div>
-          <p class="muted"><%= t.description %></p>
-          <% if t.capabilities.any? %>
-            <p class="mono muted template-caps"><%= t.capabilities.join(" · ") %></p>
-          <% end %>
-          <% if t.studio? %>
-            <form method="post" action="/studio/agents/from_template/<%= Rack::Utils.escape(t.name) %>">
-              <%== csrf_tag %>
-              <button type="submit" class="btn" data-turbo-submits-with="Creating…">Create</button>
-            </form>
-          <% else %>
-            <p class="muted">CLI-only for now — run <code>insika new <%= t.name %></code>.</p>
-          <% end %>
-        </article>
       <% end %>
-    </div>
-  </details>
-<% end %>
 
-<details class="card newfile"<%== " open" if @agents.empty? %>>
-  <summary>+ new agent</summary>
-  <form method="post" action="/studio/agents">
-    <%== csrf_tag %>
-    <div class="grid-2">
-      <label>id <span class="muted">(unique slug, e.g. demo)</span>
-        <input type="text" name="id" placeholder="demo" required>
-      </label>
-      <label>model
-        <input type="text" name="model" placeholder="deepseek-v4-flash" required>
-      </label>
+      <div class="section">
+        <div class="section-head">
+          <h2>New agent</h2>
+          <p class="muted">id + model — give it an identity on its detail page.</p>
+        </div>
+        <form method="post" action="/studio/agents" data-turbo-frame="_top">
+          <%== csrf_tag %>
+          <div class="grid-2">
+            <label>id <span class="muted">(unique slug, e.g. demo)</span>
+              <input type="text" name="id" placeholder="demo" required>
+            </label>
+            <label>model
+              <input type="text" name="model" placeholder="deepseek-v4-flash" required>
+            </label>
+          </div>
+          <label>provider <span class="muted">(optional)</span>
+            <input type="text" name="provider" placeholder="deepseek">
+          </label>
+          <label class="check">
+            <input type="checkbox" name="memory" value="1" checked>
+            cross-session memory (the agent remembers across conversations)
+          </label>
+          <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create agent</button></div>
+        </form>
+      </div>
     </div>
-    <label>provider <span class="muted">(optional)</span>
-      <input type="text" name="provider" placeholder="deepseek">
-    </label>
-    <label class="check">
-      <input type="checkbox" name="memory" value="1" checked>
-      cross-session memory (the agent remembers across conversations)
-    </label>
-    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create agent</button></div>
-  </form>
-</details>
+  </turbo-frame>
+</div>

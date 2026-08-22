@@ -194,7 +194,7 @@ require_relative "insika/evals/runner"
 require_relative "insika/evals/report"
 require_relative "insika/evals/baseline"
 require_relative "insika/evals/transport"
-# simulated users (RFC-0014 PR2): the persona data + the conversation driver.
+# simulated users: the persona data + the conversation driver.
 # Pure — the persona model is an injected ask, the target rides the Transport.
 require_relative "insika/evals/persona"
 require_relative "insika/evals/simulator"
@@ -307,7 +307,7 @@ require_relative "insika/commands/restore_data_tool"
 require_relative "insika/commands/import_tools"
 require_relative "insika/commands/import_mcp_tools"
 require_relative "insika/commands/refresh_mcp_tools"
-# the demo seed (RFC-none/OSS onboarding): one bundled agent + golden
+# the demo seed (OSS onboarding): one bundled agent + golden
 # set + the Seeder that populates every loop's stores at once, and its bus
 # adapter for `insika demo:seed` and the Studio's "Seed demo data" button.
 require_relative "insika/demo/agent_attrs"

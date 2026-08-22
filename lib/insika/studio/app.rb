@@ -287,7 +287,7 @@ module Studio
             # whole grid (a store scan per card would be n scans). Series live
             # on the agent detail — one agent's periods, not n charts here.
             @latest_outcomes = insika[:outcome_store]&.latest_per_agent
-            # "New from template" gallery (RFC-0039) — cheap (frontmatter
+            # "New from template" gallery — cheap (frontmatter
             # parse only, no evaluation) so it's safe on every render.
             @templates = Insika::Templates.all
             view("agents")
@@ -309,8 +309,8 @@ module Studio
           end
         end
 
-        # /studio/agents/from_template/:name — "New from template" gallery
-        # (RFC-0039). Must be declared BEFORE the generic `r.on String do |id|`
+        # /studio/agents/from_template/:name — "New from template" gallery.
+        # Must be declared BEFORE the generic `r.on String do |id|`
         # below, or Roda would treat "from_template" as an agent id.
         r.on "from_template", String do |name|
           r.post do
@@ -758,10 +758,13 @@ module Studio
           r.get { render_mcp }
           r.post do
             check_csrf!
-            with_flash("MCP instance saved.") do
-              dispatch(:upsert_mcp, mcp_patch(r))
+            name = nil
+            result = with_flash("MCP instance saved.") do
+              payload = mcp_patch(r)
+              name = payload[:name]
+              dispatch(:upsert_mcp, payload)
             end
-            r.redirect("/studio/mcp")
+            r.redirect(mcp_path(result ? name : presence(r.params["name"])))
           end
         end
         r.post "delete" do
@@ -771,7 +774,7 @@ module Studio
           end
           r.redirect("/studio/mcp")
         end
-        # "Test connection" (RFC-0040 PR4): connects LIVE via the same
+        # "Test connection": connects LIVE via the same
         # :refresh_mcp_tools Command the CLI's `insika mcp test`/`refresh` and
         # the /v1/mcp/:name/import route use — writes tools_cache either way,
         # `test` vs `refresh` is purely a CLI naming distinction, moot here
@@ -789,9 +792,9 @@ module Studio
           rescue StandardError => e
             flash["error"] = "MCP instance '#{name}': #{e.message}"
           end
-          r.redirect("/studio/mcp")
+          r.redirect(mcp_path(name))
         end
-        # "Import JSON" (RFC-0040 PR4): the same `mcpServers` document CLI's
+        # "Import JSON": the same `mcpServers` document CLI's
         # `insika mcp import` and Claude Desktop/Cursor already use. Studio
         # never writes a store directly (constitutional rule) — `import_mcp_json`
         # fans the document out into the SAME :upsert_mcp Command a single
@@ -851,6 +854,10 @@ module Studio
       end
 
       # --- History: read-only viewer of a session ------------------
+      # Three zones: conversation list | transcript |
+      # metadata margin. The master column is the same recent-sessions list
+      # the chats index renders; rows frame-navigate, so a Turbo-Frame request
+      # renders the two right zones alone.
       r.on "sessions" do
         r.on String do |sid|
           sid = utf8(sid)
@@ -858,6 +865,8 @@ module Studio
             @session = insika[:session_store]&.find(sid)
             next_404 unless @session
 
+            # master column: recent conversations, current one active
+            @sessions = recent_sessions(limit: 60)
             # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
@@ -866,7 +875,11 @@ module Studio
             # the stage history — the session's outcomes folded
             # into the agent's declared stages (unmapped kinds render raw).
             @stage_history = stage_history_for(sid)
-            view("session")
+            if turbo_frame?("session-detail")
+              render("session", locals: { frame_only: true }, layout: false)
+            else
+              view("session", locals: { frame_only: false })
+            end
           end
         end
       end
@@ -1350,6 +1363,16 @@ end
 
     def authenticated? = session["auth"] == true
 
+    # Is this request a Turbo frame navigation targeting `id`? Turbo sends
+    # `Turbo-Frame: <id>` on every frame fetch (links with data-turbo-frame,
+    # form submits inside a frame — including the GET after a 303 redirect).
+    # The miller-column routes render their DETAIL pane alone for such a
+    # request and the full two-column shell otherwise — the
+    # standard Rails check, spelled for Roda. Non-matching frame ids and plain
+    # browser hits both take the full page, so refresh/deep links always render
+    # the whole screen.
+    def turbo_frame?(id) = request.env["HTTP_TURBO_FRAME"] == id.to_s
+
     # Is the given nav href the current page? Robust to whether request.path
     # carries the "/studio" mount prefix (it does under serve_real/config.ru, it
     # doesn't in specs) — strip it from both sides, then exact- or prefix-match
@@ -1552,7 +1575,15 @@ end
       # the agent's schedule rows (declaration + runtime state) —
       # the card shows next fire and the last run/skip alongside the editor.
       @schedules = insika[:schedule_store]&.for_agent(tenant: Insika::ScheduleEngine.tenant_for(@agent), agent: id) || []
-      view("agent_detail")
+      # the master column: the detail page IS the shell when
+      # visited directly; only a frame request renders the pane alone.
+      @agents = insika[:profile_source].all.sort_by(&:id)
+      @latest_outcomes = insika[:outcome_store]&.latest_per_agent
+      if turbo_frame?("agent-detail")
+        render("agent_detail", locals: { frame_only: true }, layout: false)
+      else
+        view("agent_detail", locals: { frame_only: false })
+      end
     end
 
     # A generation param off the profile (string-keyed by AgentProfile.build). Used
@@ -1805,7 +1836,13 @@ end
       # default to the first agent so the pane is useful on landing.
       sel = request.params["a"]
       @sel_agent = (sel && @agents.find { |a| a.id == sel }) || @agents.first
-      view("tools")
+      # Miller columns: the master rows frame-navigate (?a=),
+      # so a Turbo-Frame request renders just the detail pane.
+      if turbo_frame?("tool-detail")
+        render("tools", locals: { frame_only: true }, layout: false)
+      else
+        view("tools", locals: { frame_only: false })
+      end
     end
 
     # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
@@ -1935,7 +1972,8 @@ end
     # data the Studio already reads (one scan of the session store); no new
     # metrics pipeline. `active_now` = sessions touched in the last 5 minutes.
     # `?agent=` narrows every number to one agent (the sessions stamp their
-    # author in `vars["agent"]`).
+    # author in `vars["agent"]`). The live layer (live_home_controller) only
+    # repaints what this renders — it never computes its own baseline.
     def render_home
       ps = insika[:profile_source]
       @agent = presence(request.params["agent"])
@@ -1954,6 +1992,15 @@ end
       @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
       @activity = activity_by_day(sessions, days: 14, now: now)
+      # 24h sparkline: conversations touched per hour, oldest
+      # first — the same session scan, bucketed finer.
+      @activity_24h = activity_by_hour(sessions, hours: 24, now: now)
+      # Trend affordances on the traffic stat cards: today vs yesterday from
+      # the 14-day series (config counts — agents/skills/tools/providers —
+      # have no daily shape and honestly show no trend).
+      today, yesterday = @activity.last(2).map(&:last)
+      @conv_trend = today - yesterday.to_i
+      @msg_trend = message_delta(sessions, now)
       @persistence = insika.dig(:config, :persistence)
       view("home")
     end
@@ -1985,6 +2032,32 @@ end
       (0...days).to_a.reverse.map { |i| d = today - i; [d, buckets[d]] }
     end
 
+    # [[hour_start, count], …] — one bucket per hour over the last `hours`,
+    # oldest first, each bucket labeled by its starting hour. Feeds the 24h
+    # sparkline; a session counts in the hour it was last
+    # touched — the same reading "conversations touched" the daily chart uses.
+    def activity_by_hour(sessions, hours:, now:)
+      floor = Time.utc(now.year, now.month, now.day, now.hour) - (hours - 1) * 3600
+      buckets = Hash.new(0)
+      sessions.each do |s|
+        t = parse_time(s.updated_at) or next
+        h = Time.utc(t.year, t.month, t.day, t.hour)
+        buckets[h] += 1 if h >= floor
+      end
+      (0...hours).map { |i| [floor + i * 3600, buckets[floor + i * 3600]] }
+    end
+
+    # Messages in sessions touched today vs yesterday (the delta the messages
+    # stat card shows). A conversation's whole message count lands in the day
+    # it was last updated — coarse, but it is the same data the card counts.
+    def message_delta(sessions, now)
+      today = now.to_date
+      sum = ->(date) do
+        sessions.sum { |s| (t = parse_time(s.updated_at)) && t.to_date == date ? Array(s.messages).size : 0 }
+      end
+      sum.call(today) - sum.call(today - 1)
+    end
+
     # --- History -------------------------------------------------------------
 
     # Recent conversations (all agents — the Session doesn't stamp the agent that
@@ -2014,7 +2087,9 @@ end
 
     def session_preview(session)
       last = Array(session.messages).reverse.find { |m| %w[user assistant].include?(m["role"]) }
-      last && last["content"].to_s
+      # Structured content previews as JSON (message_content), never #inspect —
+      # a hashrocket in a filter-text attribute is exactly the leak this guards.
+      last && message_content(last["content"])
     end
 
     # --- Settings + LLM providers ----------------------------------
@@ -2042,12 +2117,36 @@ end
 
     def render_mcp
       @instances = insika[:mcp_store] ? insika[:mcp_store].all.sort_by { |m| m["name"].to_s } : []
-      view("mcp")
+      # Miller columns (RFC-0041 PR4): ?i= selects the instance whose editor
+      # fills the detail pane. Absent = the first instance (the pane is useful
+      # on landing, same convention as the tools matrix); "?i=" (empty) = the
+      # empty state, which hosts the new/import forms — the master's "+ new"
+      # link points there. A Turbo-Frame request renders the pane alone.
+      raw = request.params["i"]
+      @selected_mcp = if raw.nil?
+                        @instances.first
+                      else
+                        @instances.find { |m| m["name"] == raw }
+                      end
+      if turbo_frame?("mcp-detail")
+        render("mcp", locals: { frame_only: true }, layout: false)
+      else
+        view("mcp", locals: { frame_only: false })
+      end
+    end
+
+    # Where an MCP write redirects back to: the miller shell with the touched
+    # instance still selected, so a frame submit lands on the saved editor
+    # rather than the empty state. A deleted instance falls back to the shell.
+    def mcp_path(name = nil)
+      return "/studio/mcp" if Insika::Coercion.blank?(name)
+
+      "/studio/mcp?i=#{Rack::Utils.escape(name)}"
     end
 
     # mcp_patch moved to Studio::Forms.
 
-    # Bulk `mcpServers` JSON import, routed through the bus (RFC-0040 PR4):
+    # Bulk `mcpServers` JSON import, routed through the bus:
     # gives Insika::McpJson.import the `#upsert` duck-type it expects while
     # every actual write still goes through :upsert_mcp — the adapter's
     # block closes over `self` (the App instance), so `dispatch` resolves
@@ -2059,8 +2158,8 @@ end
       Insika::McpJson.import(json, mcp_store: adapter)
     end
 
-    # Connection/discovery status chip for an ENABLED instance (RFC-0040
-    # PR4) — durable state read from the record, not a live probe: "N
+    # Connection/discovery status chip for an ENABLED instance -
+    # durable state read from the record, not a live probe: "N
     # tool(s)" means the last refresh cached that many, not that the server
     # is reachable RIGHT NOW (only "Test connection" tells you that; a failed
     # attempt surfaces as a flash, not a chip — McpStore holds no "last
@@ -2201,7 +2300,7 @@ end
 
 # The case as the YAML an operator edits — the same shape `evals/golden/**` holds,
 # so there is one format to learn and a pull request can review what was authored.
-# A SIMULATED case (RFC-0014) carries `persona:` instead of `turns:` — the two
+# A SIMULATED case carries `persona:` instead of `turns:` — the two
 # shapes are the same YAML, and dropping either key would silently change what
 # the case tests.
 def golden_yaml(golden)
@@ -2735,11 +2834,11 @@ end
       anchor ? "#{base}##{anchor}" : base
     end
 
-    # "New from template" (RFC-0039): evaluates the template (same isolated
+    # "New from template": evaluates the template (same isolated
     # eval the CLI's `insika new` never even needs, since it just copies
     # files — this is the OTHER door) and imports every pack through the
     # SAME PackImporter a hand-written pack would use — E2's byte-identical
-    # promise. mcp_instances ride separately (RFC-0040: never part of a
+    # promise. mcp_instances ride separately (never part of a
     # pack, McpStore is its own store) — each dispatched as its own
     # :upsert_mcp, the same Command a Studio-authored instance would use
     # (Studio never writes a store directly). -> { agent_id: }, the

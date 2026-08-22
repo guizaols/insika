@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# The Simulator (RFC-0014 PR2): a simulated customer talks to the target agent
+# The Simulator: a simulated customer talks to the target agent
 # until `max_turns` or a stop marker. Pure over the injected seams — a fake
 # transport for the target and a scripted ask for the persona — so the loop and
 # the safety gate are testable offline.
@@ -135,7 +135,7 @@ RSpec.describe Insika::Evals::Simulator do
       expect { sim.run(persona: persona, agent: "loja", conv: "sim-1") }.not_to raise_error
     end
 
-    # RFC-0014: a bare `eval_profile: true` on a target with a KNOWN side-effect
+    # A bare `eval_profile: true` on a target with a KNOWN side-effect
     # tool is a trust-me flag — the profile must declare it swaps that tool.
     it "refuses a bare eval profile that does not swap the derived side-effect tools" do
       agent = FakeAgentTransport.new { ["ok"] }

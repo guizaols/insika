@@ -574,7 +574,7 @@ module Studio
       }
     end
 
-    # MCP instance from the form (RFC-0040 PR4 — transport-aware, but the
+    # MCP instance from the form (transport-aware, but the
     # form always submits every field regardless of which the JS shows;
     # McpStore stores them all either way). `env`/`headers` come as
     # "KEY=value" lines, `args` as one argv token per line (CSP forbids

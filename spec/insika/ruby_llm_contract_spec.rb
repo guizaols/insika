@@ -99,7 +99,7 @@ RSpec.describe "RubyLLM boundary contract" do
 
     # Order is the load-bearing part: the callback has to fire for the assistant
     # message BEFORE the gem runs the tools, or a halted turn would lose the lead-in
-    # `halt_when` exists to deliver (PR #130).
+    # `halt_when` exists to deliver.
     it "fires for the assistant message before the tool loop runs" do
       source = RubyLLM::Chat.instance_method(:complete_once).source_location
       body = File.readlines(source.first)[(source.last - 1), 16].join

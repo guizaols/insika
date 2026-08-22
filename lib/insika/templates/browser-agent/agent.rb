@@ -3,13 +3,13 @@
 # ---
 # title: Browser Agent
 # trail: MCP
-# description: Live MCP tool-loop over stdio (RFC-0040) — navigates and summarizes a real webpage via Playwright's MCP server. Requires Node.js/npm and INSIKA_MCP_STDIO=1.
+# description: Live MCP tool-loop over stdio — navigates and summarizes a real webpage via Playwright's MCP server. Requires Node.js/npm and INSIKA_MCP_STDIO=1.
 # capabilities: mcp, stdio
 # env: INSIKA_MCP_STDIO
 # requires: Node.js and npm (npx spawns the MCP server as a child process)
 # ---
 #
-# browser-agent — a live MCP tool-loop over STDIO (RFC-0040): the agent
+# browser-agent — a live MCP tool-loop over STDIO: the agent
 # drives a real, sandboxed browser through Playwright's MCP server
 # (@playwright/mcp, no API key). stdio is arbitrary command execution by
 # config, so it needs the operator's explicit opt-in (INSIKA_MCP_STDIO=1)

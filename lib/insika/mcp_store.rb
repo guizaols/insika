@@ -5,7 +5,7 @@ module Insika
   # record per instance in the ConfigStore (scope "mcp"), keyed by the name slug
   # (`tavily`, `github`, ...). Holds transport/command/args/url, the `enabled`
   # flag, and two credential Hashes: `env` (stdio child-process environment) and
-  # `headers` (http/sse request headers) — see RFC-0040. `env` used to double as
+  # `headers` (http/sse request headers). `env` used to double as
   # "HTTP headers" for http/sse instances; a record written under that old
   # meaning is migrated ON READ (see `migrate_legacy_headers!`), never rewritten
   # silently (`insika doctor` flags it so the operator re-saves it explicitly).
@@ -19,8 +19,8 @@ module Insika
   #
   # Also holds `tools_cache` — the last live discovery result
   # (Insika::McpToolRegistry#refresh writes it; `entries`/Studio/doctor read
-  # it for cheap display; tool EXECUTION never depends on it, see RFC-0040
-  # PR2). Not a credential -> never masked.
+  # it for cheap display; tool EXECUTION never depends on it.
+  # Not a credential -> never masked.
   #
   # Durable config CRUD (the instances UI) + the shape
   # Insika::McpClient.for/Insika::McpToolRegistry read.
@@ -56,7 +56,7 @@ module Insika
       names.filter_map { |n| raw(n) }
     end
 
-    # System-written cache of the instance's discovered tools (RFC-0040 PR2):
+    # System-written cache of the instance's discovered tools:
     # Insika::McpToolRegistry#refresh connects live and writes the result here
     # for cheap display (Studio/doctor/`entries`) — execution never reads it
     # back, only the live client. NOT a credential -> never masked. -> the
@@ -104,7 +104,7 @@ module Insika
     def delete(name) = @cs.delete(SCOPE, name.to_s)
 
     # -> [String] names of http/sse instances still stored under the pre-
-    # RFC-0040 meaning of `env` (`insika doctor`'s "mcp" check; `raw`/`all_raw`
+    # Meaning of `env` (`insika doctor`'s "mcp" check; `raw`/`all_raw`
     # already read them correctly — this is only to flag the ones that still
     # need a re-save so the stored record itself catches up).
     def legacy_header_names
@@ -115,7 +115,7 @@ module Insika
 
     def raw(name) = migrate_legacy_headers(@cs.get(SCOPE, name.to_s))
 
-    # A record written before RFC-0040 used `env` as HTTP headers for an
+    # A record written before used `env` as HTTP headers for an
     # http/sse instance. On READ ONLY (never rewritten silently — `insika
     # doctor` flags it via `legacy_header_names` so the operator re-saves it
     # explicitly), an http/sse record with `env` set and no `headers` yet is
