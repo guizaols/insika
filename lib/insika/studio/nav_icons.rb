@@ -33,5 +33,16 @@ module Studio
       %(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ) +
         %(stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">#{NAV_ICONS[key]}</svg>)
     end
+
+    # Transcript event-chip icons: a tool call, a result, a
+    # skill, an artifact, a guardrail — each reuses a nav icon (same inline-SVG
+    # grammar, CSP-safe). Sized by the chip CSS, colored per kind.
+    CHIP_ICONS = { call: :tools, result: :approvals, skill: :skills,
+                   artifact: :artifacts, guardrail: :system }.freeze
+
+    def chip_icon(kind)
+      key = CHIP_ICONS[kind]
+      key ? %(<span class="chip-ic">#{nav_icon(key)}</span>) : ""
+    end
   end
 end

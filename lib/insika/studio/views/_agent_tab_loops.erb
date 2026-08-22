@@ -1,0 +1,54 @@
+<!-- ── Automatic loops ─────────────────────────────────────────────────────── -->
+<section class="section" id="loops" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Automatic loops</h2>
+    <p class="muted">each loop runs on its own worker fiber when this agent declares it — no cron, no restart. The buttons ask for a pass NOW, without waiting for the window; the loops that need a human (facts, skills, edits) always stop at the gate.</p>
+  </div>
+
+  <% distill_on = Insika::Coercion.truthy?((@agent.distill || {})["enabled"]) %>
+  <% harvest_on = Insika::Coercion.truthy?((@agent.harvest || {})["enabled"]) %>
+  <div class="card">
+    <div class="section-head">
+      <h3>Distillation <span class="muted">— idle conversations → fact proposals</span></h3>
+      <span class="pill <%= distill_on ? 'ok' : 'info' %>"><%= distill_on ? "active · idle #{(@agent.distill["idle_hours"] || 6)}h" : "off" %></span>
+    </div>
+    <p class="muted">Proposals land on the <a href="/studio/facts" data-turbo-frame="_top">Facts page</a> — nothing is ever applied without your click. Runs automatically on the engine's window.</p>
+    <% if distill_on && insika[:command_bus].registered?(:run_distillation) %>
+      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/distill" class="actions">
+        <%== csrf_tag %>
+        <button type="submit" class="primary" data-turbo-submits-with="Distilling…">Run distillation now</button>
+        <span class="muted">the due sessions (idle, long enough, undistilled)</span>
+      </form>
+    <% end %>
+  </div>
+
+  <div class="card">
+    <div class="section-head">
+      <h3>Harvest <span class="muted">— idle traffic → skill candidates</span></h3>
+      <span class="pill <%= harvest_on ? 'ok' : 'info' %>"><%= harvest_on ? "active · idle #{(@agent.harvest["idle_hours"] || 24)}h" : "off" %></span>
+    </div>
+    <p class="muted">Candidates are double-gated and promoted by a human on the <a href="/studio/harvest?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Harvest page</a>. Runs automatically on the engine's window.</p>
+    <% if harvest_on && insika[:command_bus].registered?(:run_harvest) %>
+      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/harvest" class="actions">
+        <%== csrf_tag %>
+        <button type="submit" class="primary" data-turbo-submits-with="Mining…">Run harvest now</button>
+        <span class="muted">mines one window of this agent's finished traffic</span>
+      </form>
+    <% end %>
+  </div>
+
+  <div class="card">
+    <div class="section-head">
+      <h3>Refinement <span class="muted">— traffic → ranked findings</span></h3>
+      <span class="pill info"><%= @agent.refinement ? "configured · #{(@agent.refinement["mode"] || "report")}" : "report-only" %></span>
+    </div>
+    <p class="muted">A run reads this agent's own traffic and records what broke, ranked. It never edits the agent unless <span class="mono">auto_apply</span> is declared. Results on the <a href="/studio/refinement?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Refinement page</a>.</p>
+    <% if insika[:command_bus].registered?(:run_refinement) %>
+      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/refinement" class="actions">
+        <%== csrf_tag %>
+        <button type="submit" class="primary" data-turbo-submits-with="Reading traffic…">Run refinement now</button>
+        <span class="muted">no model call — the collector reads stores only</span>
+      </form>
+    <% end %>
+  </div>
+</section>
