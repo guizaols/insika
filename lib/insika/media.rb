@@ -99,17 +99,33 @@ module Insika
       end
     end
 
+    # A file PATH, not bytes and not an Attachment: `RubyLLM::Transcription.
+    # transcribe` hands its argument to the PROVIDER's own `transcribe`, and the
+    # two shapes in this gem disagree — Gemini wraps it in `Attachment.new`
+    # itself (a raw byte String there is misread as a Pathname and blows up on
+    # any embedded null byte, which real audio has), while the DEFAULT
+    # `Provider#transcribe` (OpenAI, Mistral) calls `File.expand_path` on it
+    # directly and cannot take bytes/IO/Attachment at all. A tempfile is the
+    # one shape both accept. `assume_model_exists` is deliberately NOT passed:
+    # RubyLLM raises ArgumentError when it's true without an explicit
+    # `provider` (see ModelSelection#assume_model_exists?), and `stt_model` here
+    # is a bare ref like `utility_model` elsewhere — the registry resolves it.
     def self.fetch_and_transcribe(url, model:, language:, prompt: nil)
       require "net/http"
       require "uri"
       require "ruby_llm" # lazy — the core loads without it (load-guard)
+      require "tempfile"
 
       bytes = fetch_binary(url)
-      audio = RubyLLM::Attachment.new(bytes)
-      options = { model: model, assume_model_exists: true }
+      options = { model: model }
       options[:language] = language if language
       options[:prompt] = prompt if prompt
-      RubyLLM::Transcription.transcribe(audio, **options).text
+      Tempfile.create(["insika-media-", File.extname(filename_for(url).to_s)]) do |file|
+        file.binmode
+        file.write(bytes)
+        file.flush
+        RubyLLM::Transcription.transcribe(file.path, **options).text
+      end
     end
 
     # An inbound URL -> a RubyLLM::Attachment over bytes WE fetched (egress-
@@ -227,8 +243,12 @@ module Insika
 
           cfg = Insika::Coercion.deep_stringify(config || {})
           model = Insika::Coercion.presence(cfg["model"]) || image_model(context)
+          # `assume_model_exists` is deliberately NOT passed: RubyLLM raises
+          # ArgumentError when it's true without an explicit `provider` (see
+          # ModelSelection#assume_model_exists?), and `model` here is a bare
+          # ref like `utility_model` elsewhere — the registry resolves it.
           api = context || RubyLLM
-          image = api.paint(prompt.to_s, model: model, assume_model_exists: true,
+          image = api.paint(prompt.to_s, model: model,
                                           size: presence(cfg["size"]) || DEFAULT_IMAGE_SIZE,
                                           with: source_attachments(cfg), mask: mask_attachment(cfg))
           data = image.respond_to?(:data) ? image.data : nil

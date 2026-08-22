@@ -305,6 +305,29 @@ RSpec.describe "RubyLLM boundary contract" do
     end
   end
 
+  # `assume_model_exists: true` with no `provider` raised silently past every
+  # mocked Media spec (media_spec.rb stubbed RubyLLM::Transcription.transcribe
+  # and RubyLLM.paint directly, so neither call ever reached Models.resolve) —
+  # `Media.fetch_and_transcribe` and `Media::Output.generate_image` both did
+  # this until a live run against real audio/PDFs surfaced it. This is the
+  # guard: the bare-ref path (no provider — `stt_model`/image `model` are
+  # refs like `utility_model` elsewhere) must NOT set `assume_model_exists`.
+  describe "assume_model_exists requires an explicit provider" do
+    it "Models.resolve raises ArgumentError when assume_exists is true with no provider" do
+      expect { RubyLLM::Models.resolve("whisper-1", assume_exists: true) }
+        .to raise_error(ArgumentError, /provider/i)
+    end
+
+    it "resolves a known model fine with no provider and no assume_exists" do
+      previous = RubyLLM.config.openai_api_key
+      RubyLLM.configure { |c| c.openai_api_key = "spec-only" }
+
+      expect { RubyLLM::Models.resolve("whisper-1") }.not_to raise_error
+    ensure
+      RubyLLM.configure { |c| c.openai_api_key = previous }
+    end
+  end
+
   it "with_thinking takes effort: (the reasoning effort levels)" do
     keywords = RubyLLM::Chat.instance_method(:with_thinking).parameters.select { |k, _| k == :key }.map(&:last)
     expect(keywords).to include(:effort)
