@@ -2,7 +2,7 @@
 
 module Insika
   module Evals
-    # SIMULATED USERS (RFC-0014 PR2). Two models talking: the target agent
+    # SIMULATED USERS. Two models talking: the target agent
     # (reached through the same Transport seam as the Runner) and the simulated
     # customer (a cheap model — the platform utility_model — playing a `Persona`).
     #

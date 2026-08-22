@@ -12,8 +12,8 @@ module Insika
     # A curated behavior case, loaded from a data file (evals/golden/<agent>/*.yml).
     # Data, not code — same spirit as tools-as-data. See evals/README.md for the format.
     #
-    # A case is ONE of two shapes: `turns:` (a scripted replay, RFC-0008) or
-    # `persona:` (a conversation the Simulator GENERATES, RFC-0014 §3.1). A persona
+    # A case is ONE of two shapes: `turns:` (a scripted replay) or
+    # `persona:` (a conversation the Simulator GENERATES). A persona
     # case is `simulated?` — the replay Runner skips it, and the Simulator drives it.
     #
     # `tenant` (C3.1): which tenant authored this case — "platform" (the
@@ -26,7 +26,7 @@ module Insika
       # conversation has no scripted turns.
       def user_turns = turns.map { |t| t["user"] }
 
-      # The simulated customer (RFC-0014 §3.1). nil for a scripted case.
+      # The simulated customer. nil for a scripted case.
       def simulated? = !persona.nil?
 
       def opens_with = persona ? persona.opens_with : user_turns.first
@@ -124,7 +124,7 @@ module Insika
                    tenant: tenant)
       end
 
-      # `persona:` (RFC-0014 §3.1) is the alternative shape to `turns:`: the
+      # `persona:` is the alternative shape to `turns:`: the
       # conversation is GENERATED, not replayed. Malformed is REFUSED — a persona
       # without `knows` or `max_turns` would simulate nothing. The PersonaLoader
       # already prefixes its messages with the source path; the case id is added

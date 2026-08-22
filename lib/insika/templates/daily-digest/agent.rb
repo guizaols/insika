@@ -3,7 +3,7 @@
 # ---
 # title: Daily Digest
 # trail: Always-on
-# description: A recurring schedule (RFC-0037) plus save_artifact (RFC-0038) build and publish a self-contained HTML report — no store, fake in-memory numbers only.
+# description: A recurring schedule plus save_artifact build and publish a self-contained HTML report — no store, fake in-memory numbers only.
 # capabilities: schedule, save_artifact, skill
 # ---
 #
@@ -38,7 +38,7 @@ reporter = Insika.agent("reporter") do
   # line the model never even sees the tool.
   tools %w[save_artifact]
 
-  # A recurring turn — the engine's tick fires it (RFC-0037). session_mode:
+  # A recurring turn — the engine's tick fires it. session_mode:
   # "new" = a fresh session per run (the report shape); the overrides raise
   # the chat-time ceilings a real report needs.
   schedule "daily_report", cron: "0 22 * * *", tz: "America/Sao_Paulo",

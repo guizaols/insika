@@ -99,7 +99,7 @@ APP = Insika::Server::App.new(
   pending_action_store: W::PENDING_ACTION_STORE,
   provisioner: W::PACK_IMPORTER,
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — what `requires` resolves against
-  tool_registry: W::TOOL_REGISTRY, # ...and the derived side-effect set (RFC-0014)
+  tool_registry: W::TOOL_REGISTRY, # ...and the derived side-effect set
   config: { gateway_token: TOKEN }
 )
 

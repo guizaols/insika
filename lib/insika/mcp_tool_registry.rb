@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # LIVE MCP tools (RFC-0040 PR2) — kills the McpToolIngestor snapshot.
+  # LIVE MCP tools — kills the McpToolIngestor snapshot.
   #
   # `entries` is CHEAP: it reads only McpStore#tools_cache (no I/O), the same
   # contract the ToolStore-backed dynamic entries already give

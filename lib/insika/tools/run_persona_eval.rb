@@ -10,14 +10,14 @@ module Insika
     # persona case (Evals::GoldenStore) and run it, in-process, against the
     # case's declared target agent — the same Simulator + Judge machinery
     # `insika evals:simulate` drives over HTTP, minus the CLI and the network
-    # hop (RFC-0014 PR2, the C3.1 plan).
+    # hop.
     #
     # SAFETY is DERIVED, never a flag: the target's reachable side-effect tools
     # are computed from the live registry (Evals::EvalProfile), the same way
     # the CLI derives them. A read-only target needs no swap:
     # Simulator::Safety's own "side_effect_tools.empty?" branch allows it
     # directly. A target that DOES reach a side-effect tool gets the REAL
-    # swap (Evals::EvalProfile.registry — RFC-0014's own overlay, wired here):
+    # swap (Evals::EvalProfile.registry — own overlay, wired here):
     # every one of those tools resolves to a Simulator::DryRunTool for the
     # duration of this ONE simulated conversation, run through a THROWAWAY
     # Executor+Bus built fresh per call (`shadow_runtime`) — sharing every

@@ -140,7 +140,7 @@ RSpec.describe Insika::Doctor do
       expect(finding).not_to be_fixable
     end
 
-    it "flags a data-tool in an mcp:* group as a legacy snapshot (RFC-0040 PR2), alongside the ok finding" do
+    it "flags a data-tool in an mcp:* group as a legacy snapshot, alongside the ok finding" do
       config_store.put("tools", "search", { "definition" => {
                           "name" => "search", "description" => "d",
                           "parameters" => { "type" => "object", "properties" => {}, "required" => [] },
@@ -157,7 +157,7 @@ RSpec.describe Insika::Doctor do
     end
   end
 
-  describe "mcp check (RFC-0040)" do
+  describe "mcp check" do
     let(:mcp_store) { Insika::McpStore.new(config_store: config_store) }
 
     it "is skipped when no mcp_store is injected" do
@@ -171,7 +171,7 @@ RSpec.describe Insika::Doctor do
       expect(finding.severity).to eq(:ok)
     end
 
-    it "warns on an http instance still storing credentials under the pre-RFC-0040 'env'" do
+    it "warns on an http instance still storing credentials under the 'env'" do
       config_store.put("mcp", "legacy",
                        { "name" => "legacy", "transport" => "http", "url" => "https://x",
                          "env" => { "Authorization" => "Bearer old" }, "enabled" => true })

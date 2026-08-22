@@ -45,8 +45,8 @@ Every link below is raw markdown — the same files the human-facing site render
 - [Facts](https://raw.githubusercontent.com/guizaols/insika/main/docs/FACTS.md): distilling finished customer conversations into proposed facts — human-gated in the Studio (approve/reject/dismiss, the latch), written to memory via CAS, nothing ever applied automatically.
 - [Harvest](https://raw.githubusercontent.com/guizaols/insika/main/docs/HARVEST.md): mining SKILLS from real traffic — the negative list, the evidence-ledger grounding filter, the double gate (eval replay + conversion baseline), snapshot-first promotion and the append-only log, all behind a human approval.
 - [Releasing](https://raw.githubusercontent.com/guizaols/insika/main/docs/RELEASING.md): how the `insika` gem is cut and how the install is proven from outside the repo before publishing.
-- [The /v1 API](https://raw.githubusercontent.com/guizaols/insika/main/docs/API.md): the frozen compatibility contract — the surface, the additive-only rule, the `Insika-Version` gate (RFC-0036).
-- [The domain-free core](https://raw.githubusercontent.com/guizaols/insika/main/docs/domain.md): what the gem ships, what a deployment declares, and how to clear the built-in pt-BR corpus (RFC-0036).
+- [The /v1 API](https://raw.githubusercontent.com/guizaols/insika/main/docs/API.md): the frozen compatibility contract — the surface, the additive-only rule, the `Insika-Version` gate.
+- [The domain-free core](https://raw.githubusercontent.com/guizaols/insika/main/docs/domain.md): what the gem ships, what a deployment declares, and how to clear the built-in pt-BR corpus.
 
 ## Proof
 

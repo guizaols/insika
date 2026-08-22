@@ -87,7 +87,7 @@ module Insika
       # A GENERATED (simulated) conversation as the judge reads it: the transcript
       # is already interleaved [{ role: "user"|"assistant", text: }] — map it to the
       # same customer/assistant lines a replay produces, so pairwise compares like
-      # for like (RFC-0014: a simulated run can be compared against the incumbent).
+      # for like (a simulated run can be compared against the incumbent).
       def self.transcript_text(messages)
         Array(messages).map do |m|
           role = m[:role].to_s == "user" ? "customer" : "assistant"

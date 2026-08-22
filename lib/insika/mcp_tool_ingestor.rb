@@ -81,7 +81,7 @@ module Insika
 
     private
 
-    # `headers` (RFC-0040: an http/sse instance's credentials — `env` reads
+    # `headers` (an http/sse instance's credentials — `env` reads
     # as `headers` for these transports via McpStore's migration-on-read, see
     # McpStore#migrate_legacy_headers) -> literal HTTP headers (header-NAME ->
     # value; the value carries its own scheme, e.g. "Bearer xxx" — no magic

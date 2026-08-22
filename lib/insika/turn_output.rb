@@ -33,7 +33,7 @@ module Insika
   #   answer; the fragment is still on the stream as `:intermediate` for whoever is
   #   debugging it.
   #
-  # `halt_when` (PR #130) is the one case where narration IS the turn: the tool
+  # `halt_when` is the one case where narration IS the turn: the tool
   # already answered the customer, and the model's lead-in ("vou te inscrever
   # agora") is all the turn is worth. That text is retained and published by the
   # Executor's halt branch — see #halt_text.

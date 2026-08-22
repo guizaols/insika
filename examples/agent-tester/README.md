@@ -1,6 +1,6 @@
 # agent-tester
 
-Simulate a customer against your own agent (RFC-0014 PR2). A persona model — the
+Simulate a customer against your own agent. A persona model — the
 cheap platform `utility_model` — plays a customer whose **only** facts are the
 persona's `knows`, and the target agent answers until the persona's `max_turns` or a
 stop marker (`<<goal_met>>` / `<<gave_up>>`).
@@ -35,7 +35,7 @@ Prints the generated transcript and the judge's verdict on the whole conversatio
 
 `agent_tester.rb` above is a one-off script. `qa_scheduled.rb` wires the SAME
 Simulator + Judge as a tool (`run_persona_eval`, C3.1) a scheduled QA agent
-calls on its own — the Scheduler (RFC-0037) + Artifacts (RFC-0038) + Simulator
+calls on its own — the Scheduler + Artifacts + Simulator
 in one flow:
 
 ```bash

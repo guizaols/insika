@@ -1,8 +1,8 @@
 # daily-digest
 
 **Always-on trail.** The report pipeline in one file: a recurring
-`schedule` (RFC-0037 — the engine's own tick fires it), a `save_artifact`
-tool (RFC-0038 — the report destination), and a store-free skill describing
+`schedule` (the engine's own tick fires it), a `save_artifact`
+tool (the report destination), and a store-free skill describing
 *how* to build the report. No database, no store content — the day's
 numbers are fake, inline text.
 

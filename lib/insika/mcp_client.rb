@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Insika
-  # Builds a live MCP client for an McpStore record (RFC-0040). The ONE seam
+  # Builds a live MCP client for an McpStore record. The ONE seam
   # between Insika and the transport gem: `ruby_llm-mcp` speaks stdio,
   # Streamable HTTP and SSE with the full lifecycle (initialize handshake,
   # session-id, notifications) — Insika stops maintaining its own protocol

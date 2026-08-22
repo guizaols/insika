@@ -177,7 +177,7 @@ RSpec.describe Insika::EventStream do
     expect(stream.emit(evt)).to be_nil
   end
 
-  # RFC-0014: the in-process eval transport collects a turn's :tool_call events
+  # The in-process eval transport collects a turn's :tool_call events
   # AFTER the turn returned, without ever blocking (the queue is read-only in a
   # cooperative reactor, so a non-empty dequeue never waits).
   it "drain_nonblocking returns what is already queued and never blocks" do
