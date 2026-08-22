@@ -119,6 +119,7 @@ module Insika
         routes: h[:routes],
         stuck_signal: h[:stuck_signal],
         outputs: h[:outputs],
+        stt_prompt: h[:stt_prompt],
         briefing_fields: h[:briefing_fields],
         # grounding profile data — a plain Hash read with string keys
         # by Insika::Grounding.parse per turn; nil round-trips as nil (= off).

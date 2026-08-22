@@ -391,6 +391,13 @@ module Insika
       #           tts:   { model: "tts-1", voice: "alloy" }
       def outputs(hash) = (@config[:outputs] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # STT vocabulary hint (WS9): domain words (product names, brand terms)
+      # the transcriber should expect on THIS agent's voice notes — passed
+      # straight through to the Whisper-family provider's `prompt:`. Falls
+      # back to INSIKA_STT_PROMPT (deployment default) when unset.
+      #   stt_prompt "Ocean Drop, tênis, boné trucker, chinelo"
+      def stt_prompt(text) = @config[:stt_prompt] = text.to_s
+
       # The engine's "Tool discipline" block in the system prompt (retry a
       # weak/empty tool result with a different approach before giving up).
       # ON by default — this setter exists to turn it OFF:

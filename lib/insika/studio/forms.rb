@@ -52,6 +52,7 @@ module Studio
         reliability: reliability_patch(r),
         routes: json_patch(r, "routes"),
         outputs: json_patch(r, "outputs"),
+        stt_prompt: presence(r.params["stt_prompt"]),
         metadata: json_patch(r, "metadata") || {},
         alerts: alerts_patch(r),
         edge_stream: edge_stream_patch(r),

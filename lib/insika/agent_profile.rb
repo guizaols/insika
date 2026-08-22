@@ -128,6 +128,12 @@ module Insika
     #                                   event the consumer acts on). Same opt-in as
     #                                   `memory`. What "stuck" MEANS is the consumer's call
     #                                   (escalation via CRM/operator), never the engine's.
+    :stt_prompt,                     # STT vocabulary hint (WS9): domain words
+    #                                   (product names, brand terms) the transcriber should
+    #                                   expect on this agent's voice notes — passed straight
+    #                                   through to the Whisper-family provider's `prompt:`.
+    #                                   nil/absent = the deployment default (INSIKA_STT_PROMPT
+    #                                   env) or nothing. OPERATOR config, never customer input.
     :outputs,                         # generated-media output policy (WS9, saída):
     #                                   { "image" => { "model" => …, "size" => "1024x1024" },
     #                                   "tts" => { "model" => "tts-1", "voice" => "alloy",
@@ -306,7 +312,7 @@ module Insika
                     params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
-outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
+outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil,
                       followup: nil, distill: nil, harvest: nil, schedules: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
@@ -343,6 +349,9 @@ outputs: nil, briefing_fields: nil, grounding: nil, funnel: nil,
         routes: Coercion.deep_stringify(routes),
         stuck_signal: stuck_signal,
         outputs: Coercion.deep_stringify(outputs),
+        # plain vocabulary string, like `base_prompt` — no deep_stringify (not
+        # a Hash/Array). "" round-trips as nil (Coercion.presence).
+        stt_prompt: Coercion.presence(stt_prompt),
         # Flat [String] — same discipline as capabilities_declared: a
         # symbol/string mix would be a silent miss in the provider's known-set.
         briefing_fields: normalize_briefing_fields(briefing_fields),

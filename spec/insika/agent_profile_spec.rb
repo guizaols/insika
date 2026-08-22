@@ -52,6 +52,18 @@ RSpec.describe Insika::AgentProfile do
       expect(on.stuck_signal).to be(true)
     end
 
+    it "stt_prompt: nil/absent = the deployment default (parity); blank normalizes to nil" do
+      expect(profile.stt_prompt).to be_nil
+      blank = described_class.build(id: "a", model: "m", stt_prompt: "  ")
+      expect(blank.stt_prompt).to be_nil
+    end
+
+    it "stt_prompt round-trips the agent's vocabulary hint" do
+      with_prompt = described_class.build(id: "a", model: "m",
+                                          stt_prompt: "Ocean Drop, tênis, boné trucker")
+      expect(with_prompt.stt_prompt).to eq("Ocean Drop, tênis, boné trucker")
+    end
+
     it "alerts is normalized to string keys (the shape the AlertDispatcher reads)" do
       profile = described_class.build(id: "a", model: "m",
                                       alerts: { webhook: "https://ops.example.com/alerts" })

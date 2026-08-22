@@ -977,7 +977,7 @@ TENANT_SURFACES = [
         parts = payload[:parts] || payload["parts"]
         if parts && !Insika::Media.well_formed?(parts)
           raise Insika::ValidationError,
-                "malformed content part — each part must be {type: text|image|audio} with text/url"
+                "malformed content part — each part must be {type: text|image|audio|document} with text/url"
         end
         # WS9: the only declared message source is "voice" (pre-transcribed
         # audio) — a consumer that writes prose here is told so, not silently.

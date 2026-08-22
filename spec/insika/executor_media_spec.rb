@@ -164,6 +164,92 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     expect(failed.executions.last.error["stage"]).to eq("media")
   end
 
+  describe "#media_transcribe (STT vocabulary prompt, RFC-0042)" do
+    it "resolves the agent profile's stt_prompt over the deployment env default" do
+      executor = build_executor
+      with_prompt = Insika::AgentProfile.build(id: "a", model: "m", stt_prompt: "Ocean Drop, tênis")
+      state = Insika::TurnState.new(task: nil, profile: with_prompt, turn: 1, message: "")
+      allow(Insika::Media).to receive(:default_transcriber).and_return(->(_url) { "ok" })
+
+      executor.send(:media_transcribe, "https://cdn.example.com/voz.ogg", state)
+
+      expect(Insika::Media).to have_received(:default_transcriber)
+        .with(stt_model: nil, stt_language: nil, stt_prompt: "Ocean Drop, tênis")
+    end
+
+    it "falls back to INSIKA_STT_PROMPT when the profile sets none" do
+      executor = build_executor
+      state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "")
+      allow(Insika::Media).to receive(:default_transcriber).and_return(->(_url) { "ok" })
+      original = ENV["INSIKA_STT_PROMPT"]
+      begin
+        ENV["INSIKA_STT_PROMPT"] = "deployment default"
+        executor.send(:media_transcribe, "https://cdn.example.com/voz.ogg", state)
+      ensure
+        ENV["INSIKA_STT_PROMPT"] = original
+      end
+
+      expect(Insika::Media).to have_received(:default_transcriber)
+        .with(stt_model: nil, stt_language: nil, stt_prompt: "deployment default")
+    end
+
+    it "an injected @media seam bypasses default_transcriber entirely (specs/consumers stay untouched)" do
+      executor = build_executor(media: ->(_url) { "transcribed" })
+      state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "")
+      expect(Insika::Media).not_to receive(:default_transcriber)
+
+      expect(executor.send(:media_transcribe, "https://cdn.example.com/voz.ogg", state)).to eq("transcribed")
+    end
+  end
+
+  # RFC-0042: documents ride the SAME attachments array as images, capped
+  # separately (a prescription, not an archive).
+  it "a DOCUMENT part attaches to the ask and is deposited as ctx.document_url" do
+    attachment = Object.new
+    executor = build_executor
+    allow(executor).to receive(:media_attachment).and_return(attachment)
+    state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "olha")
+    state.turn_context = { chat_id: "s1" }
+    t = task("olha essa receita", parts: [{ "type" => "document", "url" => "https://cdn.example.com/receita.pdf" }])
+
+    executor.send(:run_media_stage, t, state)
+
+    expect(state.media_attachments).to eq([attachment])
+    expect(state.turn_context[:document_url]).to eq("https://cdn.example.com/receita.pdf")
+    expect(executor).to have_received(:media_attachment)
+      .with("https://cdn.example.com/receita.pdf", max_bytes: Insika::Media::MAX_DOCUMENT_BYTES)
+  end
+
+  it "a document PAST the cap fails the turn at :media" do
+    executor = build_executor
+    allow(Insika::Media).to receive(:url_attachment)
+      .and_raise(Insika::MediaError, "media exceeds #{Insika::Media::MAX_DOCUMENT_BYTES} bytes")
+    run(executor, task("olha", parts: [{ "type" => "document", "url" => "https://cdn.example.com/huge.pdf" }]),
+        FakeChat.new)
+
+    failed = task_store.find("t-1")
+    expect(failed.status).to eq(:failed)
+    expect(failed.executions.last.error["stage"]).to eq("media")
+  end
+
+  it "an image AND a document in the same turn: both attach, ctx carries both URLs" do
+    executor = build_executor
+    allow(executor).to receive(:media_attachment).and_return(Object.new)
+    state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "aqui")
+    state.turn_context = { chat_id: "s1" }
+    t = task("aqui", parts: [
+               { "type" => "image", "url" => "https://cdn.example.com/foto.png" },
+               { "type" => "document", "url" => "https://cdn.example.com/nota.pdf" }
+             ])
+
+    executor.send(:run_media_stage, t, state)
+
+    expect(state.media_attachments.size).to eq(2)
+    expect(state.image_attachments.size).to eq(1) # the default edit source, documents excluded
+    expect(state.turn_context[:image_url]).to eq("https://cdn.example.com/foto.png")
+    expect(state.turn_context[:document_url]).to eq("https://cdn.example.com/nota.pdf")
+  end
+
   it "source: voice WITHOUT parts marks the turn (a consumer's own transcription)" do
     executor = build_executor
     chat = FakeChat.new

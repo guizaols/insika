@@ -1031,6 +1031,7 @@ RSpec.describe Studio::App do
                           "reliability_breaker_cooldown" => "300",
                           "routes" => '{ "shopping": "browse", "default": "shopping" }',
                           "outputs" => '{ "image": { "model": "gpt-image-1" } }',
+                          "stt_prompt" => "Ocean Drop, tênis, boné trucker",
                           "metadata" => '{ "store_id": "acme" }',
                           "alerts_webhook" => "https://ops.example.com/hook",
                           "edge_thinking" => "1")
@@ -1044,6 +1045,7 @@ RSpec.describe Studio::App do
       )
       expect(payload[:routes]).to eq("shopping" => "browse", "default" => "shopping")
       expect(payload[:outputs]).to eq("image" => { "model" => "gpt-image-1" })
+      expect(payload[:stt_prompt]).to eq("Ocean Drop, tênis, boné trucker")
       expect(payload[:metadata]).to eq("store_id" => "acme")
       expect(payload[:alerts]).to eq("webhook" => "https://ops.example.com/hook")
       expect(payload[:edge_stream]).to eq("thinking" => true, "intermediate" => false)

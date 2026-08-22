@@ -281,6 +281,22 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
+    it "the stt_prompt knob is DATA on the pack (RFC-0042)" do
+      dsl = Insika.agent("bia5b") do
+        model "deepseek-chat"
+        stt_prompt "Ocean Drop, tênis, boné trucker"
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia5b", model: "deepseek-chat",
+                  stt_prompt: "Ocean Drop, tênis, boné trucker",
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      from_dsl = import_and_read(dsl.to_pack)
+      expect(from_dsl.stt_prompt).to eq("Ocean Drop, tênis, boné trucker")
+      expect(from_dsl).to eq(import_and_read(hand))
+    end
+
     it "the briefing_fields knob is DATA on the pack " do
       dsl = Insika.agent("bia6") do
         model "deepseek-chat"

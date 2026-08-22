@@ -403,6 +403,9 @@
         <label>outputs <span class="muted">— WS9 JSON: generated media the agent may produce (blank = none)</span>
           <textarea name="outputs" rows="3" spellcheck="false" class="mono" placeholder='{ "image": { "model": "gpt-image-1" } }'><%= agent_json(@agent.outputs) %></textarea>
         </label>
+        <label>STT vocabulary prompt <span class="muted">— domain words (products, brands) expected in this agent's voice notes (blank = deployment default)</span>
+          <input type="text" name="stt_prompt" value="<%= @agent.stt_prompt %>" placeholder="Ocean Drop, tênis, boné trucker, chinelo">
+        </label>
         <div class="grid-2">
           <label>alerts webhook <span class="muted">(budget_warning / breaker_open / delivery_failed)</span>
             <input type="text" name="alerts_webhook" value="<%= @agent.alerts && @agent.alerts["webhook"] %>" placeholder="https://ops.example.com/insika-alerts">

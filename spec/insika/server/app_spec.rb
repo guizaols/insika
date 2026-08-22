@@ -326,6 +326,33 @@ RSpec.describe Insika::Server::App do
       expect(bus.dispatched).to be_empty
     end
 
+    it "a well-formed DOCUMENT content part is accepted (RFC-0042: additive to the contract)" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, = call(app, "POST", "/v1/messages?stream=false",
+                     body: '{"agent":"sales","message":"","parts":' \
+                          '[{"type":"document","url":"https://cdn.example.com/receita.pdf"}]}')
+
+      expect(status).to eq(200)
+      expect(bus.dispatched.last.payload[:parts]).to eq(
+        [{ type: "document", url: "https://cdn.example.com/receita.pdf" }]
+      )
+    end
+
+    it "a DOCUMENT part without url is a MALFORMED content part (422)" do
+      bus = ServerBusDouble.new { { task_id: "t-1" } }
+      stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
+      app = build_app(bus: bus, event_stream: stream)
+
+      status, = call(app, "POST", "/v1/messages?stream=false",
+                     body: '{"agent":"sales","message":"oi","parts":[{"type":"document"}]}')
+
+      expect(status).to eq(422)
+      expect(bus.dispatched).to be_empty
+    end
+
     it "a MALFORMED content part is refused BEFORE dispatch (422)" do
       bus = ServerBusDouble.new { { task_id: "t-1" } }
       stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
