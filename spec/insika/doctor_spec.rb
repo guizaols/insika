@@ -599,6 +599,31 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  # A staging service drifted to WEB_CONCURRENCY=4 with nobody noticing, and a
+  # reply leaked across sessions (per-worker FIFO/collect/steer, docs/DEPLOY.md).
+  # This check is the only thing that would have caught it before traffic did.
+  describe "web-concurrency check" do
+    def concurrency_finding(env)
+      described_class.new(env: env).run.findings.find { |f| f.check == "web-concurrency" }
+    end
+
+    it "is ok when unset (the documented default)" do
+      finding = concurrency_finding({})
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "is ok at exactly 1" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "1")
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "warns above 1 — session semantics are per-worker without sticky routing" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4")
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("WEB_CONCURRENCY=4", "sticky routing")
+    end
+  end
+
   # The widget is the one PUBLIC channel, so its misconfigurations cost money rather
   # than merely failing — and the 503 it answers reads to an operator as "broken"
   # unless something says which half is missing.
