@@ -633,6 +633,31 @@ RSpec.describe Insika::Doctor do
       finding = concurrency_finding("WEB_CONCURRENCY" => "1", "RAILWAY_ENVIRONMENT_NAME" => "production")
       expect(finding.severity).to eq(:ok)
     end
+
+    # RFC-0043: a detected insika-router satisfies the precondition the warn/
+    # error states exist to enforce — on Railway too, since the router is
+    # what makes N>1 finally safe there (N local workers behind it).
+    it "is ok above 1 when INSIKA_ROUTER_BACKENDS is set" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4", "INSIKA_ROUTER_BACKENDS" => "http://a:9292,http://b:9292")
+      expect(finding.severity).to eq(:ok)
+      expect(finding.message).to include("insika-router")
+    end
+
+    it "is ok above 1 when INSIKA_ROUTER_BACKENDS_DNS is set" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4", "INSIKA_ROUTER_BACKENDS_DNS" => "insika-headless")
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "still errors on Railway without a router configured" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4", "RAILWAY_ENVIRONMENT_NAME" => "production")
+      expect(finding.severity).to eq(:error)
+    end
+
+    it "a router is ok even on Railway" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4", "RAILWAY_ENVIRONMENT_NAME" => "production",
+                                     "INSIKA_ROUTER_BACKENDS" => "http://a:9292,http://b:9292")
+      expect(finding.severity).to eq(:ok)
+    end
   end
 
   # The widget is the one PUBLIC channel, so its misconfigurations cost money rather

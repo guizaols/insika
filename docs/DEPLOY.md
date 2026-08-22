@@ -62,7 +62,9 @@ contract:
    explicitly do not support sticky sessions — so N>1 there is not "per-worker
    best-effort," it is a guaranteed cross-session leak the first time two
    requests for the same session land on different workers. See the Railway
-   section below; `insika doctor` errors on `WEB_CONCURRENCY>1` there.
+   section below; `insika doctor` errors on `WEB_CONCURRENCY>1` there — unless
+   [`insika-router`](ROUTER.md) is in front, RFC-0043's session-sticky proxy,
+   which is what makes N>1 safe on Railway too (N local workers behind it).
 3. **Recovery is part of boot, in every wiring.** Every worker boots through
    `Server::Boot`, which runs recovery **before the listen**. The per-record
    sweeps (undelivered outbox records, undelivered delegation results) run in
@@ -226,15 +228,18 @@ healthcheck, and a restart policy.
    without a volume, SQLite is ephemeral and recovery resumes nothing after a
    redeploy.
 3. **Vars**: `DEEPSEEK_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `CONSUMER_INTERNAL_URL`,
-   `INSIKA_EGRESS_HOSTS`. **Leave `WEB_CONCURRENCY` at its default of 1.** Railway's
-   own docs say it "does not support sticky sessions" and randomly distributes
-   traffic across replicas/workers — there is no way on this platform to satisfy
-   the "sticky routing per session in front" precondition item 2 of the process
-   model requires, at any layer (Railway replicas or Falcon's own `--count`
-   workers within one container). Raising it here is not a throughput knob, it
-   is a guaranteed way to leak a reply across sessions the first time two
-   requests for the same session land on different workers — `insika doctor`
-   errors on this combination for exactly that reason.
+   `INSIKA_EGRESS_HOSTS`. **Leave `WEB_CONCURRENCY` at its default of 1** unless
+   you run [`insika-router`](ROUTER.md) in front. Railway's own docs say it
+   "does not support sticky sessions" and randomly distributes traffic across
+   replicas/workers — there is no way on this platform to satisfy the "sticky
+   routing per session in front" precondition item 2 of the process model
+   requires, at any layer (Railway replicas or Falcon's own `--count` workers
+   within one container). Raising `WEB_CONCURRENCY` without a router in front
+   is not a throughput knob, it is a guaranteed way to leak a reply across
+   sessions the first time two requests for the same session land on different
+   workers — `insika doctor` errors on this combination for exactly that
+   reason. `insika-router` (RFC-0043) is the fix: N local Falcon workers
+   behind one sticky proxy, still one Railway replica.
 4. The healthcheck hits `/up`.
 5. Point your consumer at the service's public URL, with a matching API token
    (see [RUNNING-LOCAL.md](RUNNING-LOCAL.md)).
@@ -313,6 +318,12 @@ per pod + **sticky-by-agent** routing (shard by tenant), or **LiteFS**, or an
 optional **Postgres** adapter. **Litestream** (above) for backup/DR from day one —
 orthogonal to topology.
 
+For the *session-routing* half specifically — as opposed to the storage
+topology above — see [`insika-router`](ROUTER.md) (RFC-0043): N pods behind a
+headless `Service`, one `insika-router` Deployment in front doing the
+consistent-hash routing ingress-nginx's own `upstream-hash-by` cannot (it
+hashes nginx variables, never a field parsed out of a POST body).
+
 ---
 
 ## Measuring performance / load
@@ -364,6 +375,8 @@ DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh 4 24
 
 ## See also
 
+- [ROUTER.md](ROUTER.md) — `insika-router`, the session-sticky proxy for
+  scaling past one worker (RFC-0043).
 - [RUNNING-LOCAL.md](RUNNING-LOCAL.md) — run the engine locally, single-process.
 - [Security](SECURITY.md) — tokens, egress, strict config.
 - [BENCHMARK.md](BENCHMARK.md) — the neutral, key-free engine benchmark.

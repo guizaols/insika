@@ -44,7 +44,7 @@ Gem::Specification.new do |spec|
   # never-ship set. The domain-boundary spec pins this exact list.
   spec.files = Insika::Packaging.payload_files(__dir__)
   spec.bindir = "bin"
-  spec.executables = ["insika"]
+  spec.executables = ["insika", "insika-router"]
   spec.require_paths = ["lib"]
 
   # Runtime = what a turn and `serve` need. OpenTelemetry stays
