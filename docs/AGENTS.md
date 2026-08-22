@@ -70,6 +70,23 @@ injected text as the customer repeating themselves. See
 ## The AgentProfile
 
 A profile is built through one front door — `AgentProfile.build(id:, model: nil, …)`.
+`model`/`provider` are a straight pass-through to [RubyLLM](https://rubyllm.com) — Insika
+keeps no allowlist of "supported" models. Whatever RubyLLM's installed version
+reaches, an agent can name: today that's 13 provider adapters (Anthropic, OpenAI,
+Gemini, DeepSeek, Bedrock, Vertex AI, Azure, Mistral, xAI, OpenRouter,
+Perplexity, Ollama, GPUStack) and every model each one exposes — see
+[rubyllm.com/available-models](https://rubyllm.com/available-models/) for the
+current, live catalog. Upgrading the `ruby_llm` gem is the only thing that ever
+widens this list; no Insika code changes with it.
+
+Wire a provider's credentials once in the Studio's **Settings → LLM providers**
+(or `POST /v1/settings`) — `api` is any slug RubyLLM recognizes, and
+`LLMConfigurator` applies it by reflection (`<api>_api_key=`, `<api>_api_base=`),
+so a provider RubyLLM doesn't expose an accessor for is skipped, never a hard
+error. To *restrict* which models an agent may use — the opposite direction —
+declare `model_policy: { allow: [refs] }` on its profile (exact `"provider/model"`
+refs or a `"provider/*"` wildcard); absent means no fence, every configured
+model is fair game.
 A prompt file is **text**. Passing a structured value where the markdown belongs —
 a `{"content": …}` wrapper in a pack, or a store entry read and written back — is
 rejected, not coerced: `to_s` on a Hash produces Ruby's `#inspect`, and a prompt made
