@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# agent-tester — simulate a customer against your own agent (RFC-0014 PR2).
+# agent-tester — simulate a customer against your own agent.
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/agent-tester/agent_tester.rb
 #

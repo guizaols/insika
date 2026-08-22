@@ -3,7 +3,7 @@
 require "spec_helper"
 require "insika/mcp_live_tool" # the registry loads it lazily; explicit in the test
 
-# One live MCP tool call (RFC-0040 PR2). name/description/params_schema come
+# One live MCP tool call. name/description/params_schema come
 # from the cached descriptor; #execute is the only thing that reaches the
 # client, and — like every tool in this codebase — never raises.
 RSpec.describe Insika::McpLiveTool do

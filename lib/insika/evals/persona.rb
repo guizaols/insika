@@ -3,7 +3,7 @@
 module Insika
   module Evals
     # A SIMULATED CUSTOMER — the data that turns a scripted case into a
-    # generated conversation (RFC-0014 PR2). Pure data: goal, style, the opening
+    # generated conversation. Pure data: goal, style, the opening
     # message, the ONLY facts the persona may assert, and a hard turn cap. The
     # persona is played by a model (the cheap utility_model) with this as its whole
     # instruction; the anti-invention rule below is the soul of the feature — a

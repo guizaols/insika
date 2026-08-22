@@ -3,7 +3,7 @@
 require "yaml"
 
 module Insika
-  # Template gallery (RFC-0039): example agents shipped INSIDE the gem
+  # Template gallery: example agents shipped INSIDE the gem
   # (`lib/insika/templates/<name>/{agent.rb,README.md}`), one DSL file per
   # template that is BOTH doors — `insika new <name>` copies it for the user
   # to run and edit, and this module `evaluate`s the same file to hand its
@@ -62,7 +62,7 @@ module Insika
     # from leaking into the next one evaluated in the same process; a
     # top-level CONSTANT would still leak (Ruby scopes constant assignment
     # lexically, not by `self`) — wave-1 templates simply don't declare any
-    # (the conformance spec, RFC-0039 E3, would catch a future one that did).
+    # (the conformance spec, would catch a future one that did).
     def evaluate(name)
       path = agent_path(name)
       raise Insika::NotFoundError, "template '#{name}' not found" unless File.file?(path)

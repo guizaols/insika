@@ -188,7 +188,7 @@ RSpec.describe Insika::Evals::Pairwise do
     expect(seen).to be_empty
   end
 
-  # RFC-0014 PR2: a GENERATED (simulated) transcript maps to the same
+  # A GENERATED (simulated) transcript maps to the same
   # customer/assistant lines a replay produces, so a simulated run can be compared
   # against the incumbent like for like.
   describe ".transcript_text" do

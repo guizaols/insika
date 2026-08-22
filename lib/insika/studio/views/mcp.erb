@@ -1,3 +1,13 @@
+<%# MCP — miller columns: instances master | editor detail.
+    ?i= selects the instance whose editor fills the detail pane; nil shows the
+    empty state with the new/import forms. Master rows and the editor form
+    frame-navigate (mcp-detail); create/import/delete submit to the top window
+    so the master list re-renders with the change. Credentials never come back
+    in plaintext — each value shows as the sentinel; keeping it preserves the
+    secret, changing it replaces, clearing the line removes it. %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
 <header class="page-head">
   <div>
     <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>mcp</span></nav>
@@ -5,48 +15,68 @@
   </div>
 </header>
 
-<p class="muted matrix-hint">MCP server instances (durable config). Credentials never come back in plaintext — each value shows as <code><%= secret_sentinel %></code>; keeping it preserves the secret, changing it replaces, clearing the line removes it.</p>
-
-<% if @instances.empty? %>
-  <div class="empty">No MCP instances. Add one below (e.g. <code>tavily</code>) to expose an MCP server to your agents' tools, or paste a <code>mcpServers</code> JSON document.</div>
-<% else %>
-  <div data-controller="list-filter">
-    <div class="filter-bar">
-      <input type="search" class="filter-input" placeholder="Filter by name, transport (stdio/http/sse) or status…" aria-label="Filter MCP instances"
-             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+<div class="drill" data-controller="list-filter">
+  <aside class="drill-pane drill-master">
+    <div class="drill-pane-head">
+      <div class="title"><strong>MCP <span class="count"><%= @instances.size %></span></strong></div>
+      <a class="btn primary btn-sm" href="/studio/mcp?i=" data-turbo-frame="mcp-detail" data-turbo-action="advance">+ new</a>
     </div>
-
-    <% @instances.each do |m| %>
-      <div class="card promptfile" data-list-filter-target="item" data-filter-text="<%= mcp_filter_text(m) %>">
-        <div class="promptfile-head">
-          <strong class="mono"><%= m["name"] %>
-            <% if m["enabled"] %>
-              <span class="pill ok">on</span>
-              <% status_label, status_cls = mcp_status(m) %>
+    <div class="drill-search">
+      <input type="search" class="filter-input" placeholder="Filter by name, transport or status…" aria-label="Filter MCP instances"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+    </div>
+    <nav class="drill-pane-body drill-list" aria-label="MCP instances">
+      <% if @instances.empty? %>
+        <div class="empty">No MCP instances. Create one on the right (e.g. <code>tavily</code>) to expose an MCP server to your agents' tools.</div>
+      <% else %>
+        <% @instances.each do |m| %>
+          <% status_label, status_cls = m["enabled"] ? mcp_status(m) : ["off", "warn"] %>
+          <a class="drill-item<%== ' active' if @selected_mcp && @selected_mcp["name"] == m["name"] %>"
+             href="/studio/mcp?i=<%= Rack::Utils.escape(m["name"]) %>"
+             data-turbo-frame="mcp-detail" data-turbo-action="advance"
+             data-list-filter-target="item" data-filter-text="<%= mcp_filter_text(m) %>">
+            <div class="drill-item-name">
+              <span class="txt"><%= m["name"] %></span>
               <span class="pill <%= status_cls %>"><%= status_label %></span>
-            <% else %>
-              <span class="pill warn">off</span>
-            <% end %>
-          </strong>
-          <div class="row-actions">
-            <form method="post" action="/studio/mcp/test">
-              <%== csrf_tag %>
-              <input type="hidden" name="name" value="<%= m["name"] %>">
-              <button type="submit" class="ghost" data-turbo-submits-with="Testing…">Test connection</button>
-            </form>
-            <form method="post" action="/studio/mcp/delete" data-turbo-confirm="Remove MCP instance &quot;<%= m["name"] %>&quot;? Agents stop seeing its tools next turn.">
-              <%== csrf_tag %>
-              <input type="hidden" name="name" value="<%= m["name"] %>">
-              <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
-            </form>
-          </div>
+            </div>
+            <div class="drill-item-sub"><%= m["transport"] %><%== " · #{m['url']}" if m["url"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></div>
+          </a>
+        <% end %>
+        <div class="empty" data-list-filter-target="empty" hidden>No MCP instances match your filter.</div>
+      <% end %>
+    </nav>
+  </aside>
+<% end %>
+  <turbo-frame id="mcp-detail" class="drill-pane drill-detail">
+    <% if frame_only %>
+      <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+      <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+    <% end %>
+    <% if @selected_mcp %>
+      <% m = @selected_mcp %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <strong class="mono"><%= m["name"] %></strong>
+          <span class="count"><%= m["transport"] %><%== " · #{m['description']}" if m["description"].to_s != "" %></span>
         </div>
-
+        <div class="head-actions">
+          <form method="post" action="/studio/mcp/test">
+            <%== csrf_tag %>
+            <input type="hidden" name="name" value="<%= m["name"] %>">
+            <button type="submit" class="btn btn-sm" data-turbo-submits-with="Testing…">Test connection</button>
+          </form>
+          <form method="post" action="/studio/mcp/delete" data-turbo-frame="_top" data-turbo-confirm="Remove MCP instance &quot;<%= m["name"] %>&quot;? Agents stop seeing its tools next turn.">
+            <%== csrf_tag %>
+            <input type="hidden" name="name" value="<%= m["name"] %>">
+            <button type="submit" class="btn btn-sm danger" data-turbo-submits-with="Removing…">Remove</button>
+          </form>
+        </div>
+      </div>
+      <div class="drill-pane-body">
         <% tools = Array(m["tools_cache"]) %>
         <% if tools.any? %>
-          <details class="mcp-tools-details">
-            <summary><%= tools.size %> tool(s) · show</summary>
+          <details class="mcp-tools-details" open>
+            <summary><%= tools.size %> tool(s) · live cache</summary>
             <ul class="mcp-tools muted">
               <% tools.each do |t| %>
                 <li><code><%= t["name"] %></code><% if presence(t["description"]) %> — <%= t["description"] %><% end %></li>
@@ -55,99 +85,100 @@
           </details>
         <% end %>
 
-        <details class="mcp-edit">
-          <summary>Edit configuration</summary>
-          <form method="post" action="/studio/mcp" data-controller="transport-fields">
-            <%== csrf_tag %>
-            <input type="hidden" name="name" value="<%= m["name"] %>">
-            <div class="grid-2">
-              <label>transport
-                <select name="transport" data-transport-fields-target="select" data-action="change->transport-fields#sync">
-                  <% %w[stdio http sse].each do |t| %>
-                    <option value="<%= t %>"<%== " selected" if m["transport"] == t %>><%= t %></option>
-                  <% end %>
-                </select>
-              </label>
-              <label class="check">
-                <input type="checkbox" name="enabled" value="1"<%== " checked" if m["enabled"] %>>
-                enabled
-              </label>
-            </div>
-            <label data-transport-fields-target="stdio">command <span class="muted">(stdio)</span>
-              <input type="text" name="command" value="<%= m["command"] %>" placeholder="npx -y @modelcontextprotocol/server-...">
+        <form class="mcp-edit" method="post" action="/studio/mcp" data-controller="transport-fields">
+          <%== csrf_tag %>
+          <input type="hidden" name="name" value="<%= m["name"] %>">
+          <div class="grid-2">
+            <label>transport
+              <select name="transport" data-transport-fields-target="select" data-action="change->transport-fields#sync">
+                <% %w[stdio http sse].each do |t| %>
+                  <option value="<%= t %>"<%== " selected" if m["transport"] == t %>><%= t %></option>
+                <% end %>
+              </select>
             </label>
-            <label data-transport-fields-target="stdio">args <span class="muted">(stdio, one argv token per line)</span>
-              <textarea name="args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"><%= list_lines(m["args"]) %></textarea>
+            <label class="check">
+              <input type="checkbox" name="enabled" value="1"<%== " checked" if m["enabled"] %>>
+              enabled
             </label>
-            <label data-transport-fields-target="http">url <span class="muted">(http/sse)</span>
-              <input type="text" name="url" value="<%= m["url"] %>" placeholder="https://mcp.example.com">
+          </div>
+          <label data-transport-fields-target="stdio">command <span class="muted">(stdio)</span>
+            <input type="text" name="command" value="<%= m["command"] %>" placeholder="npx -y @modelcontextprotocol/server-...">
+          </label>
+          <label data-transport-fields-target="stdio">args <span class="muted">(stdio, one argv token per line)</span>
+            <textarea name="args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"><%= list_lines(m["args"]) %></textarea>
+          </label>
+          <label data-transport-fields-target="http">url <span class="muted">(http/sse)</span>
+            <input type="text" name="url" value="<%= m["url"] %>" placeholder="https://mcp.example.com">
+          </label>
+          <label>description
+            <input type="text" name="description" value="<%= m["description"] %>">
+          </label>
+          <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
+            <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
+          </label>
+          <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
+            <textarea name="headers" rows="4"><%= env_lines(m["headers"]) %></textarea>
+          </label>
+          <div class="actions">
+            <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save instance</button>
+          </div>
+        </form>
+      </div>
+    <% else %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <strong>Pick an instance</strong>
+          <span class="count">select on the left, or add one below</span>
+        </div>
+      </div>
+      <div class="drill-pane-body">
+        <form method="post" action="/studio/mcp" data-controller="transport-fields" data-turbo-frame="_top">
+          <%== csrf_tag %>
+          <div class="grid-2">
+            <label>name <span class="muted">(slug)</span>
+              <input type="text" name="name" placeholder="tavily" required>
             </label>
-            <label>description
-              <input type="text" name="description" value="<%= m["description"] %>">
+            <label>transport
+              <select name="transport" data-transport-fields-target="select" data-action="change->transport-fields#sync">
+                <% %w[stdio http sse].each do |t| %><option value="<%= t %>"><%= t %></option><% end %>
+              </select>
             </label>
-            <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
-              <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
-            </label>
-            <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
-              <textarea name="headers" rows="4"><%= env_lines(m["headers"]) %></textarea>
-            </label>
-            <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save instance</button></div>
-          </form>
-        </details>
+          </div>
+          <label class="check">
+            <input type="checkbox" name="enabled" value="1" checked>
+            enabled
+          </label>
+          <label data-transport-fields-target="stdio">command <span class="muted">(stdio)</span>
+            <input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-...">
+          </label>
+          <label data-transport-fields-target="stdio">args <span class="muted">(stdio, one argv token per line)</span>
+            <textarea name="args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"></textarea>
+          </label>
+          <label data-transport-fields-target="http">url <span class="muted">(http/sse)</span>
+            <input type="text" name="url" placeholder="https://mcp.example.com">
+          </label>
+          <label>description
+            <input type="text" name="description">
+          </label>
+          <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
+            <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
+          </label>
+          <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
+            <textarea name="headers" rows="4" placeholder="Authorization=Bearer tvly-…"></textarea>
+          </label>
+          <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create instance</button></div>
+        </form>
+
+        <form method="post" action="/studio/mcp/import" data-turbo-frame="_top">
+          <%== csrf_tag %>
+          <label>mcpServers JSON <span class="muted">(paste a <code>{"mcpServers": {...}}</code> document — the same format Claude Desktop/Cursor use)</span>
+            <textarea name="json" rows="8" placeholder='{"mcpServers": {"tavily": {"url": "https://mcp.tavily.com/mcp", "headers": {"Authorization": "Bearer …"}}}}'></textarea>
+          </label>
+          <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Importing…">Import</button></div>
+        </form>
       </div>
     <% end %>
-
-    <div class="empty" data-list-filter-target="empty" hidden>No MCP instances match your filter.</div>
-  </div>
+  </turbo-frame>
+<% unless frame_only %>
+</div>
 <% end %>
-
-<details class="card newfile">
-  <summary>+ new MCP instance</summary>
-  <form method="post" action="/studio/mcp" data-controller="transport-fields">
-    <%== csrf_tag %>
-    <div class="grid-2">
-      <label>name <span class="muted">(slug)</span>
-        <input type="text" name="name" placeholder="tavily" required>
-      </label>
-      <label>transport
-        <select name="transport" data-transport-fields-target="select" data-action="change->transport-fields#sync">
-          <% %w[stdio http sse].each do |t| %><option value="<%= t %>"><%= t %></option><% end %>
-        </select>
-      </label>
-    </div>
-    <label class="check">
-      <input type="checkbox" name="enabled" value="1" checked>
-      enabled
-    </label>
-    <label data-transport-fields-target="stdio">command <span class="muted">(stdio)</span>
-      <input type="text" name="command" placeholder="npx -y @modelcontextprotocol/server-...">
-    </label>
-    <label data-transport-fields-target="stdio">args <span class="muted">(stdio, one argv token per line)</span>
-      <textarea name="args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"></textarea>
-    </label>
-    <label data-transport-fields-target="http">url <span class="muted">(http/sse)</span>
-      <input type="text" name="url" placeholder="https://mcp.example.com">
-    </label>
-    <label>description
-      <input type="text" name="description">
-    </label>
-    <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
-      <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
-    </label>
-    <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
-      <textarea name="headers" rows="4" placeholder="Authorization=Bearer tvly-…"></textarea>
-    </label>
-    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create instance</button></div>
-  </form>
-</details>
-
-<details class="card newfile">
-  <summary>+ import JSON</summary>
-  <form method="post" action="/studio/mcp/import">
-    <%== csrf_tag %>
-    <label>mcpServers JSON <span class="muted">(paste a <code>{"mcpServers": {...}}</code> document — the same format Claude Desktop/Cursor use)</span>
-      <textarea name="json" rows="8" placeholder='{"mcpServers": {"tavily": {"url": "https://mcp.tavily.com/mcp", "headers": {"Authorization": "Bearer …"}}}}'></textarea>
-    </label>
-    <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Importing…">Import</button></div>
-  </form>
-</details>

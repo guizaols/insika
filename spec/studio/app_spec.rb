@@ -294,12 +294,17 @@ RSpec.describe Studio::App do
 
     def initialize(app) = (@mock = Rack::MockRequest.new(app); @cookie = nil)
 
-    def get(path) = capture(@mock.get(path, headers))
+    def get(path, frame: nil) = capture(@mock.get(path, headers(frame)))
     def post(path, params: {}) = capture(@mock.post(path, headers.merge(params: params)))
 
     private
 
-    def headers = @cookie ? { "HTTP_COOKIE" => @cookie } : {}
+    # `frame` simulates a Turbo frame fetch: Turbo sends `Turbo-Frame: <id>` on
+    # every frame navigation (the miller-column row links, RFC-0041 PR4).
+    def headers(frame = nil)
+      h = @cookie ? { "HTTP_COOKIE" => @cookie } : {}
+      frame ? h.merge("HTTP_TURBO_FRAME" => frame) : h
+    end
 
     def capture(res)
       if (sc = res.headers["set-cookie"])
@@ -2073,6 +2078,117 @@ RSpec.describe Studio::App do
     expect(body).to include("trufa")
   end
 
+  # --- RFC-0041: visual parity — motion, transcript, live home, master-detail --
+
+  it "the layout declares the view-transition meta and the chip-icon sprite" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('<meta name="view-transition" content="same-origin">')
+    # one sprite, one source of truth: the transcript chips (ERB partial + the
+    # live SSE controller) clone from it
+    expect(body).to include('id="chip-icons"')
+    expect(body).to include('data-kind="call"')
+    expect(body).to include('data-kind="result"')
+  end
+
+  it "the transcript renders role-labeled bubbles, chips between them and margin markers" do
+    sess = StoredSession.new(id: "sess-parity", updated_at: "t",
+                             vars: { "agent" => "bia" },
+                             messages: [
+                               { "role" => "user", "content" => "oi", "at" => "2026-08-22T10:00:00Z" },
+                               { "role" => "assistant", "content" => "", "at" => "2026-08-22T10:00:05Z",
+                                 "tool_calls" => [{ "id" => "c1", "name" => "search_products",
+                                                    "arguments" => { "q" => "trufa" } }] },
+                               { "role" => "tool", "content" => "found", "at" => "2026-08-22T10:00:07Z" },
+                               { "role" => "assistant", "content" => "Achei!", "at" => "2026-08-22T10:00:09Z" }
+                             ])
+    app, = build_app(sessions: { "sess-parity" => sess })
+    body = login(app).get("/sessions/sess-parity").body
+    # bubbles carry the label row, not the avatar circle
+    expect(body).to include('class="msg user"')
+    expect(body).to include("msg-meta")
+    expect(body).not_to include('class="who"')
+    # tool traffic renders as chips BETWEEN bubbles
+    expect(body).to include('class="toolcard call"')
+    expect(body).to include("chip-sub")
+    # margin markers: session + agent + shape, from data the view already has
+    expect(body).to include("marker-row")
+    expect(body).to include("ghost-pill")
+    expect(body).to match(/agent · bia/)
+  end
+
+  it "home renders the live layer, the 24h sparkline and the trend affordances" do
+    sess = StoredSession.new(id: "s-live", updated_at: Time.now.utc.iso8601,
+                             vars: { "agent" => "bia" },
+                             messages: [{ "role" => "user", "content" => "oi" },
+                                        { "role" => "assistant", "content" => "olá" }])
+    app, = build_app(sessions: { "s-live" => sess })
+    body = login(app).get("/home").body
+    # the live-home island: badge, feed, presence dots over the existing SSE
+    expect(body).to include('data-controller="live-home"')
+    expect(body).to include('data-live-home-target="count"')
+    expect(body).to include('data-live-home-active-value="1"')
+    expect(body).to include("live-badge")
+    expect(body).to include("presence")
+    # 24h sparkline + trend deltas
+    expect(body).to include('class="sparkline"')
+    expect(body).to include("last 24h")
+    expect(body).to match(/class="trend (up|down)"/)
+  end
+
+  it "agents: a frame request renders the detail pane alone; a plain hit renders the shell" do
+    app, = build_app
+    client = login(app)
+    full = client.get("/agents/bia").body
+    expect(full).to include("app-shell")
+    expect(full).to include('<turbo-frame id="agent-detail"')
+    pane = client.get("/agents/bia", frame: "agent-detail").body
+    expect(pane).to include('<turbo-frame id="agent-detail"')
+    expect(pane).not_to include("app-shell")
+    # the master rows frame-navigate with the URL advancing
+    expect(full).to include('data-turbo-frame="agent-detail"')
+    expect(full).to include('data-turbo-action="advance"')
+  end
+
+  it "tools: a frame request renders the detail pane alone" do
+    app, = build_app
+    client = login(app)
+    pane = client.get("/tools?a=bia", frame: "tool-detail").body
+    expect(pane).to include('<turbo-frame id="tool-detail"')
+    expect(pane).not_to include("app-shell")
+  end
+
+  it "mcp: a frame request renders the detail pane alone, and ?i= selects the instance" do
+    app, = build_app(mcp_instances: [{ "name" => "alpha" }, { "name" => "zeta" }])
+    client = login(app)
+    full = client.get("/mcp").body
+    expect(full).to include('<turbo-frame id="mcp-detail"')
+    expect(full).to include("alpha", "zeta")
+    pane = client.get("/mcp?i=zeta", frame: "mcp-detail").body
+    expect(pane).to include('<turbo-frame id="mcp-detail"')
+    expect(pane).not_to include("app-shell")
+    # the selected instance's editor, not the landing default (alpha)
+    expect(pane).to include('value="zeta"')
+  end
+
+  it "session: a frame request renders the transcript zones alone; the master lists conversations" do
+    sess = StoredSession.new(id: "sess-frame", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-frame" => sess })
+    client = login(app)
+    full = client.get("/sessions/sess-frame").body
+    expect(full).to include("app-shell")
+    expect(full).to include('data-turbo-frame="session-detail"')
+    pane = client.get("/sessions/sess-frame", frame: "session-detail").body
+    expect(pane).to include('<turbo-frame id="session-detail"')
+    expect(pane).not_to include("app-shell")
+  end
+
+  it "a frame request for an unknown frame id still renders the full page" do
+    app, = build_app
+    body = login(app).get("/agents/bia", frame: "some-other-frame").body
+    expect(body).to include("app-shell")
+  end
+
   it "the detail's history lists the recent conversations" do
     sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-abc123456789" => sess })
@@ -2501,8 +2617,8 @@ RSpec.describe Studio::App do
   it "stamps each avatar with a deterministic hue class (the id's fingerprint)" do
     app, = build_app
     body = login(app).get("/agents").body
-    expect(body).to include(%(class="avatar avatar-h#{"bia".bytes.sum % 10}"))
-    expect(body).to include(%(class="avatar avatar-h#{"chef".bytes.sum % 10}"))
+    expect(body).to include(%(class="avatar sm avatar-h#{"bia".bytes.sum % 10}"))
+    expect(body).to include(%(class="avatar sm avatar-h#{"chef".bytes.sum % 10}"))
   end
 
   it "the sidebar shows the environment identity chip" do
@@ -2626,7 +2742,7 @@ RSpec.describe Studio::App do
     expect(body).to include("Create agent")
   end
 
-  # --- Template gallery (RFC-0039) -----------------------------------------
+  # --- Template gallery -----------------------------------------
   # A REAL Insika.embed graph — the full authoring command surface
   # (create_agent/write_data_tool/upsert_mcp/…) registered exactly as a real
   # deployment would, not a hand-picked subset of doubles. `seed` is thrown
@@ -2712,7 +2828,7 @@ RSpec.describe Studio::App do
     expect(login(app).get("/mcp").body).to include("No MCP instances")
   end
 
-  # --- MCP form (RFC-0040 PR4: transport-aware, test connection, JSON import) --
+  # --- MCP form (transport-aware, test connection, JSON import) --
 
   it "the MCP form is transport-aware and lists discovered tools with an 'ok' status chip" do
     # tools_cache is only writable via #set_tools_cache (upsert always
@@ -2734,7 +2850,7 @@ RSpec.describe Studio::App do
     expect(body).to include("1 tool(s)")
   end
 
-  it "the MCP list is filterable and each instance's tools/edit form sit behind a collapsed disclosure" do
+  it "the MCP list is filterable and the detail pane hosts the tools cache + transport-aware editor" do
     cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
     mcp_store = Insika::McpStore.new(config_store: cfg)
     mcp_store.upsert("name" => "zeta", "transport" => "http", "url" => "https://x", "enabled" => true)
@@ -2749,9 +2865,14 @@ RSpec.describe Studio::App do
     expect(body).to include('data-list-filter-target="query"')
     expect(body).to include('data-filter-text="alpha http on enabled 1 tool(s)"')
     expect(body.index("alpha")).to be < body.index("zeta") # sorted, not insertion order
+    # the tools cache renders as a disclosure on the selected instance's pane
     expect(body).to include('class="mcp-tools-details"')
+    # the editor form is the pane's primary content (transport-aware)
     expect(body).to include('class="mcp-edit"')
-    expect(body).to include("<summary>Edit configuration</summary>")
+    expect(body).to include('data-controller="transport-fields"')
+    # miller columns: master rows frame-navigate with the URL advancing
+    expect(body).to include('data-turbo-frame="mcp-detail"')
+    expect(body).to include('data-turbo-action="advance"')
   end
 
   it "an enabled instance with no cached tools shows 'untested'" do
@@ -3019,7 +3140,7 @@ it "opens a case as the same YAML the corpus files hold" do
   expect(body).to include("Consults the coupon by tool.")
 end
 
-# RFC-0014: a SIMULATED case (persona) is a first-class case in the Studio — it
+# A SIMULATED case (persona) is a first-class case in the Studio — it
 # renders, is marked simulated, and round-trips through the store as persona, not
 # as an empty script.
 it "renders a simulated (persona) case and round-trips its persona key" do

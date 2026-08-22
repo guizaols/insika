@@ -1,0 +1,38 @@
+<!-- ── Agent skills ──────────────────────────────────────────────────────── -->
+<section class="section" id="skills" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Skills</h2>
+    <p class="muted">which catalog skills this agent may load (<code>load_skill</code>).</p>
+  </div>
+  <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/skills" data-controller="toggle-counter">
+    <%== csrf_tag %>
+    <div class="matrix-topline">
+      <% if @all_skills.empty? %>
+        <span class="muted">No skills in the catalog yet — create one under <a href="/studio/skills/new" data-turbo-frame="_top">skills → new</a>.</span>
+      <% else %>
+        <span class="count-badge mono" data-toggle-counter-target="count"><%= @agent_skills.nil? ? "all" : "#{@agent_skills.size}/#{@all_skills.size} on" %></span>
+        <label class="switch" title="open allowlist — every catalog skill flows through">
+          <input type="checkbox" name="all_skills" value="1"<%== " checked" if @agent_skills.nil? %>
+                 data-toggle-counter-target="all" data-action="change->toggle-counter#update">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-label">all skills</span>
+        </label>
+      <% end %>
+    </div>
+    <% unless @all_skills.empty? %>
+      <div class="check-grid tool-grid" data-toggle-counter-target="grid">
+        <% @all_skills.sort_by(&:name).each do |s| %>
+          <label class="check tool-check">
+            <input type="checkbox" name="skills[]" value="<%= s.name %>"<%== " checked" if @agent_skills&.include?(s.name) %>
+                   data-toggle-counter-target="tool" data-locked="false" data-action="change->toggle-counter#update">
+            <span class="mono"><%= s.name %></span>
+          </label>
+        <% end %>
+      </div>
+    <% end %>
+    <div class="actions">
+      <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save skills</button>
+      <a class="btn ghost" href="/studio/tools" data-turbo-frame="_top">Edit tools →</a>
+    </div>
+  </form>
+</section>

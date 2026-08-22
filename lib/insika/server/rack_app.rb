@@ -60,7 +60,7 @@ module Insika
           provisioner: Insika::PackImporter.new(bus: @graph.bus, profiles: @graph.profiles),
           # GET /v1/agents/:id — the read-only capability view a case's `requires`
           # resolves against (and the derived side-effect set an eval profile must
-          # cover, RFC-0014).
+          # cover).
           profiles: @graph.profiles,
           tool_registry: @graph.tool_registry,
           # the OSS onboarding surface (start.md + models.json + docs).
@@ -78,7 +78,7 @@ module Insika
           config: { gateway_token: @token, tenancy: tenancy }.merge(@config),
           token_store: store,
           outcome_store: @graph.outcome_store,
-          # GET/PUT/DELETE /v1/mcp[/:name] — the config surface (RFC-0040 PR3).
+          # GET/PUT/DELETE /v1/mcp[/:name] — the config surface.
           mcp_store: @rt.component(:mcp_store),
           # a 500's error_ref must be findable in the process log.
           logger: $stdout

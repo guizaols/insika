@@ -70,7 +70,7 @@ module Insika
         score_prompt(prompt, golden.min_score || DEFAULT_MIN_SCORE)
       end
 
-      # A whole CONVERSATION (a simulated run, RFC-0014 §3.1) scored against the
+      # A whole CONVERSATION (a simulated run) scored against the
       # rubric — the transcript, not its last turn. `transcript` is
       # [{ role: "user"|"assistant", text: }] in order. -> Verdict, or nil without
       # a rubric. Same panel, same rules as `score`: the rubric that scores a

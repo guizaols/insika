@@ -6,7 +6,7 @@ module Insika
   # The de-facto `mcpServers` JSON format every MCP client (Claude Desktop,
   # Cursor, ...) already uses — one parser shared by all three PR3 config
   # surfaces (CLI `insika mcp import`, the API `/v1/mcp` PUT, Studio's "Import
-  # JSON" textarea). RFC-0040 PR3.
+  # JSON" textarea).
   #
   #   {
   #     "mcpServers": {

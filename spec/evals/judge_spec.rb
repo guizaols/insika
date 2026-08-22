@@ -132,7 +132,7 @@ RSpec.describe Insika::Evals::Judge do
     end
   end
 
-  # RFC-0014 PR2: a SIMULATED run is judged on the WHOLE conversation, not its
+  # A SIMULATED run is judged on the WHOLE conversation, not its
   # last turn — a rubric about the exchange ("does it discover the objective
   # before recommending?") is unanswerable from the last reply alone.
   describe "#score_conversation" do

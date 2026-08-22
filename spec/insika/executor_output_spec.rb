@@ -134,7 +134,7 @@ RSpec.describe "Insika::Executor turn output" do
     end
   end
 
-  # PR #130. A data-tool with `halt_when` already answered the customer, so the turn
+  # A data-tool with `halt_when` already answered the customer, so the turn
   # is worth exactly the model's lead-in — which under this mechanism is intermediate
   # text. It is the one case where narration IS the turn, and the halt branch
   # publishes it deliberately.

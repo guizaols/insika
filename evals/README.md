@@ -19,7 +19,7 @@ evals/
     transport.rb        SSE reducer + HttpTransport + GraphTransport + A2ATransport
     runner.rb           replay driver (orchestration; injected transport + judge)
     judge.rb            LLM-judge — rubric scoring over an injected ask
-    persona.rb          the simulated customer (RFC-0014 PR2): data + prompt
+    persona.rb          the simulated customer: data + prompt
     simulator.rb        the conversation driver: persona ↔ target, safety gate
   golden/<agent>/*.yml  the curated cases (DATA, not code)
   run.rb                CLI entrypoint
@@ -246,7 +246,7 @@ The real store set — tool names grounded in each store's `TOOLS.md`
 
 ## Simulated users — conversations the agent never had
 
-A `persona:` case (RFC-0014 PR2) is the alternative shape to `turns:`: instead of
+A `persona:` case is the alternative shape to `turns:`: instead of
 replaying a script, the **Simulator** generates the conversation. A persona model
 (the cheap `utility_model`) plays a customer with the persona as its whole
 instruction — and one hard rule: it may only assert what the persona's `knows`

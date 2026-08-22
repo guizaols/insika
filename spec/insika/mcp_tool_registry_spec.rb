@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# LIVE MCP tools (RFC-0040 PR2) — kills the snapshot. `entries` is cheap
+# LIVE MCP tools — kills the snapshot. `entries` is cheap
 # (McpStore#tools_cache only); `refresh` is the only thing that connects;
 # execution (the factory) never depends on the cache and never breaks turn
 # ASSEMBLY on a downed server — only that tool's own call.

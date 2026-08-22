@@ -778,7 +778,7 @@ RSpec.describe Insika::Server::App do
       expect(json_body(body)["tools"]).to be_nil
     end
 
-    # RFC-0014: the capability view also answers the DERIVED side-effect set — the
+    # The capability view also answers the DERIVED side-effect set — the
     # list a simulated run's eval profile must swap. It is computed from the
     # deployment's own registry (a data-tool's non-GET method is a side effect),
     # so the client never hand-maintains it.
@@ -1014,7 +1014,7 @@ RSpec.describe Insika::Server::App do
     end
   end
 
-  # RFC-0040 PR3 — the CLI/DSL/Studio config surfaces all ride these same
+  # The CLI/DSL/Studio config surfaces all ride these same
   # routes over HTTP. GET is a direct store read (MASKED, never a Command,
   # constitutional rule); PUT/DELETE ride the `:upsert_mcp`/`:delete_mcp`
   # Commands already registered on the bus by every composition root.

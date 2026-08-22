@@ -119,7 +119,7 @@ module Deploy
     }.compact
     # MCP instances (durable config, masked credentials) — created here
     # (rather than by its usual spot below, with SYSTEM_FILE_STORE) so
-    # TOOL_REGISTRY can fold in its LIVE tools (RFC-0040 PR2).
+    # TOOL_REGISTRY can fold in its LIVE tools.
     MCP_STORE = Insika::McpStore.new(config_store: CONFIG_STORE)
     # `entries` is cheap (McpStore#tools_cache, no I/O) — `refresh` (below,
     # wired to :refresh_mcp_tools) is the only thing that connects live.
@@ -150,7 +150,7 @@ module Deploy
 
     # Global system files, applied to ALL agents (injected by the Prompt
     # provider before the identity). MCP_STORE is defined earlier, alongside
-    # TOOL_REGISTRY (RFC-0040 PR2).
+    # TOOL_REGISTRY.
     SYSTEM_FILE_STORE  = Insika::SystemFileStore.new(config_store: CONFIG_STORE)
 
     # Catalogs with a Store overlay: disk = seed, Store = authored (wins). reload
@@ -461,7 +461,7 @@ module Deploy
     # all agents.
     BUS.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_mcp, Insika::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
-    # LIVE re-discovery (RFC-0040 PR2) — connects, lists, writes
+    # LIVE re-discovery — connects, lists, writes
     # MCP_STORE#tools_cache; TOOL_REGISTRY's live tools (MCP_TOOL_REGISTRY,
     # wired above) never depend on this cache to execute.
     BUS.register(:refresh_mcp_tools, Insika::Commands::RefreshMcpTools.new(mcp_registry: MCP_TOOL_REGISTRY, event_stream: EVENT_STREAM))
@@ -483,7 +483,7 @@ module Deploy
     IMPORT_TOOLS = Insika::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
     BUS.register(:import_tools, IMPORT_TOOLS)
 
-    # RETIRED (RFC-0040 PR2): this SNAPSHOT path froze each MCP tool as an
+    # RETIRED: this SNAPSHOT path froze each MCP tool as an
     # HTTP data-tool via a minimal JSON-RPC client with no real MCP lifecycle.
     # MCP_TOOL_REGISTRY (above, folded into TOOL_REGISTRY) replaces it with
     # LIVE execution over real transports (stdio/Streamable HTTP/SSE) — the

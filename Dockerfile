@@ -39,7 +39,7 @@ RUN wget -q "https://github.com/benbjohnson/litestream/releases/download/v${LITE
 
 WORKDIR /app
 # The Gemfile consumes the gemspec (gemspec directive), which requires
-# lib/insika/version.rb AND lib/insika/packaging.rb (RFC-0036's domain-payload
+# lib/insika/version.rb AND lib/insika/packaging.rb (domain-payload
 # boundary) — copy all three before bundle install, or evaluating the gemspec
 # fails with "cannot load such file". The gemspec's `files` glob-fallback
 # covers the .git-less build context.

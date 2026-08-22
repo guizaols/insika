@@ -1,192 +1,245 @@
-<header class="page-head">
-  <div>
-    <nav class="crumbs"><a href="/studio/chats">chats</a> / <span>session</span></nav>
-    <h1>Session
-      <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @session.id %>">
-        <span class="mono"><%= @session.id[0, 16] %></span>
-        <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy" aria-label="Copy full session id">copy id</button>
-      </span>
-      <span class="sub"><%= Array(@session.messages).size %> message(s) · updated <%= @session.updated_at %></span>
-    </h1>
-  </div>
-  <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
-</header>
-
-<% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
-<% fields = briefing["fields"] || {} %>
-<% next_step = briefing["next_step"] %>
-<% if fields.any? || next_step %>
-  <div class="card">
-    <div class="trace-head">
-      <h2>Briefing</h2>
-      <span class="muted">this conversation's working state — read-only, written by the agent</span>
+<%# Session viewer — three zones: conversation list |
+    transcript | metadata margin. The master column is the same
+    recent-conversations list the chats index renders; rows frame-navigate
+    (session-detail) with the URL advancing, so refresh/deep-link render the
+    same screen. The transcript itself is the product: role-labeled bubbles,
+    tool chips between them, thinking collapsed, session markers in the
+    margin (top-right ghost pills). %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
+  <header class="page-head">
+    <div>
+      <nav class="crumbs"><a href="/studio/chats">chats</a> / <span>session</span></nav>
+      <h1>Session
+        <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @session.id %>">
+          <span class="mono"><%= @session.id[0, 16] %></span>
+          <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy" aria-label="Copy full session id">copy id</button>
+        </span>
+        <span class="sub"><%= Array(@session.messages).size %> message(s) · updated <%= @session.updated_at %></span>
+      </h1>
     </div>
-    <% fields.sort.each do |name, value| %>
-      <div class="kv"><span><%= name %></span><div><%= value %></div></div>
-    <% end %>
-    <% if next_step %>
-      <div class="kv"><span>next step</span><div><%= next_step %></div></div>
-    <% end %>
-  </div>
+    <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
+  </header>
+
+  <div class="drill" data-controller="list-filter">
+    <aside class="drill-pane drill-master">
+      <div class="drill-pane-head">
+        <div class="title"><strong>Conversations <span class="count"><%= @sessions.size %></span></strong></div>
+      </div>
+      <div class="drill-search">
+        <input type="search" class="filter-input" placeholder="Filter conversations…" aria-label="Filter conversations"
+               data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      </div>
+      <nav class="drill-pane-body drill-list" aria-label="conversations">
+        <% @sessions.each do |s| %>
+          <a class="drill-item<%== ' active' if s.id == @session.id %>"
+             href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>"
+             data-turbo-frame="session-detail" data-turbo-action="advance"
+             data-list-filter-target="item" data-filter-text="<%= s.id %> <%= session_preview(s) %>">
+            <div class="drill-item-name"><span class="txt mono"><%= s.id[0, 18] %></span></div>
+            <div class="drill-item-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></div>
+          </a>
+        <% end %>
+      </nav>
+    </aside>
 <% end %>
+    <turbo-frame id="session-detail" class="drill-pane drill-detail session-pane">
+      <div class="session-columns">
+        <%# ── Center: the transcript ───────────────────────────────────── %>
+        <section class="session-transcript" aria-label="transcript">
+          <%# Session markers in the margin: start, agent,
+              shape — ghost pills, right-aligned, from data the view already
+              has. %>
+          <% first_at = Array(@session.messages).first&.[]("at") %>
+          <% marker_agent = session_agent(@session) %>
+          <div class="marker-row">
+            <% unless short_time(first_at).empty? %><span class="ghost-pill">session · <%= short_time(first_at) %></span><% end %>
+            <% unless marker_agent.empty? %><span class="ghost-pill">agent · <%= marker_agent %></span><% end %>
+            <span class="ghost-pill"><%= Array(@session.messages).size %> messages</span>
+          </div>
 
-<% ctx_traces = @context_traces || [] %>
-<% unless ctx_traces.empty? %>
-  <div class="card tooltrace">
-    <div class="trace-head">
-      <h2>Context</h2>
-      <span class="muted">tokens by category per turn (estimated) — no content stored</span>
-    </div>
-    <% ctx_traces.each do |c| %>
-      <div class="trace-turn">
-        <div class="turn-label">turn <%= c["turn"] %> · <%= c["at"] %></div>
-        <%# Skills injected by context (triggers/skills_eager) leave NO tool call in
-            the transcript, so this card is the only record that they were active.
-            The names live in the body, but the count belongs in the SUMMARY: the
-            card is collapsed, and "was the skill on?" is the question an operator
-            asks on every single turn. %>
-        <% skills = Array((c["categories"] || {}).dig("skilltrigger", "labels")).uniq %>
-        <details class="trace-item ok">
-          <summary>
-            <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
-            <strong>context</strong>
-            <%# the prefix cache-hit of the turn + the first block
-                whose bytes changed vs the previous turn (PII-free category id). %>
-            <% cache = c["cache"] %>
-            <% if cache && cache["hit_pct"] %><span class="badge"><%= cache["hit_pct"] %>% cached</span><% end %>
-            <% if cache && cache["invalidation_reason"] %>
-              <span class="lat">broke: <%= cache["invalidation_reason"] %></span>
-            <% end %>
-            <% unless skills.empty? %>
-              <span class="badge">skills <%= skills.length %></span>
-            <% end %>
-            <% unless Array(c["evicted"]).empty? %>
-              <span class="lat">evicted: <%= Array(c["evicted"]).join(", ") %></span>
-            <% end %>
-          </summary>
-          <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
-            <div class="kv"><span><%= name %></span>
-              <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %><%== " · identity" if cat["layer"] == "identity" %>
-                <%# WHICH skills the turn injected AND WHY — the only after-the-fact %>
-                <%# record of activation once the bodies arrive by context instead of a %>
-                <%# tool call. The reason is the half the operator was missing: a name %>
-                <%# alone does not say whether they triggered it or the agent always has it. %>
-                <% labels = Array(cat["labels"]).uniq %>
-                <% unless labels.empty? %>
-                  <br><span class="lat"><%= labels.map { |l| skill_label(l) }.join(", ") %></span>
+          <% if Array(@session.messages).empty? %>
+            <div class="empty">This session has no messages.</div>
+          <% else %>
+            <div class="thread">
+              <%# A skill loaded by the model shows up here on its own: load_skill is a tool,
+                  so its body is a persisted `role: tool` message. A skill injected by CONTEXT
+                  (triggers/skills_eager) is part of the system prompt — never a message — so
+                  the thread had no trace of it at all. Synthesized from the context trace so
+                  both activation paths read the same way in the transcript.
+
+                  Placed by TIME, not by counting turns: every message of a turn is persisted
+                  together at the end of it, and the context stage always runs before that, so
+                  each entry lands at the top of its own turn. Ordinal counting would drift on
+                  a steered message (one that joins a turn already running). A message with no
+                  `at` (older sessions) simply flushes nothing. %>
+              <% pending = (@context_traces || [])
+                           .select { |c| Array((c["categories"] || {}).dig("skilltrigger", "labels")).any? }
+                           .sort_by { |c| c["at"].to_s } %>
+              <% Array(@session.messages).each_with_index do |m, i| %>
+                <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
+                  <% pending.shift %>
+                  <% labels = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
+                  <details class="toolcard skill">
+                    <summary><%== chip_icon(:skill) %><strong>skills · <%= skill_mode(labels) %> (<%= labels.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
+                    <pre><%= labels.map { |l| skill_label(l) }.join("\n") %></pre>
+                  </details>
+                <% end %>
+                <%# `prev` is what makes a STEERED message visible: a customer message that lands
+                    right after a tool result arrived mid-run. See _message.erb. %>
+                <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+              <% end %>
+            </div>
+          <% end %>
+        </section>
+
+        <%# ── Right margin: the session's metadata ──────────────────────── %>
+        <aside class="session-margin" aria-label="session metadata">
+          <% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
+          <% fields = briefing["fields"] || {} %>
+          <% next_step = briefing["next_step"] %>
+          <% if fields.any? || next_step %>
+            <div class="card">
+              <div class="trace-head">
+                <h2>Briefing</h2>
+              </div>
+              <% fields.sort.each do |name, value| %>
+                <div class="kv"><span><%= name %></span><div><%= value %></div></div>
+              <% end %>
+              <% if next_step %>
+                <div class="kv"><span>next step</span><div><%= next_step %></div></div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <% ctx_traces = @context_traces || [] %>
+          <% unless ctx_traces.empty? %>
+            <div class="card tooltrace">
+              <div class="trace-head">
+                <h2>Context</h2>
+                <span class="muted">tokens by category per turn (estimated)</span>
+              </div>
+              <% ctx_traces.each do |c| %>
+                <div class="trace-turn">
+                  <div class="turn-label">turn <%= c["turn"] %> · <%= c["at"] %></div>
+                  <%# Skills injected by context (triggers/skills_eager) leave NO tool call in
+                      the transcript, so this card is the only record that they were active.
+                      The names live in the body, but the count belongs in the SUMMARY: the
+                      card is collapsed, and "was the skill on?" is the question an operator
+                      asks on every single turn. %>
+                  <% skills = Array((c["categories"] || {}).dig("skilltrigger", "labels")).uniq %>
+                  <details class="trace-item ok">
+                    <summary>
+                      <span class="badge"><%= c["used"] %> / <%= c["cap"] %></span>
+                      <strong>context</strong>
+                      <%# the prefix cache-hit of the turn + the first block
+                          whose bytes changed vs the previous turn (PII-free category id). %>
+                      <% cache = c["cache"] %>
+                      <% if cache && cache["hit_pct"] %><span class="badge"><%= cache["hit_pct"] %>% cached</span><% end %>
+                      <% if cache && cache["invalidation_reason"] %>
+                        <span class="lat">broke: <%= cache["invalidation_reason"] %></span>
+                      <% end %>
+                      <% unless skills.empty? %>
+                        <span class="badge">skills <%= skills.length %></span>
+                      <% end %>
+                      <% unless Array(c["evicted"]).empty? %>
+                        <span class="lat">evicted: <%= Array(c["evicted"]).join(", ") %></span>
+                      <% end %>
+                    </summary>
+                    <% (c["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
+                      <div class="kv"><span><%= name %></span>
+                        <div><%= cat["tokens"] %> tokens · <%= cat["fragments"] %> fragment(s)<%== " · pinned" if (cat["pinned"] || 0).positive? %><%== " · identity" if cat["layer"] == "identity" %>
+                          <%# WHICH skills the turn injected AND WHY — the only after-the-fact %>
+                          <%# record of activation once the bodies arrive by context instead of a %>
+                          <%# tool call. The reason is the half the operator was missing: a name %>
+                          <%# alone does not say whether they triggered it or the agent always has it. %>
+                          <% labels = Array(cat["labels"]).uniq %>
+                          <% unless labels.empty? %>
+                            <br><span class="lat"><%= labels.map { |l| skill_label(l) }.join(", ") %></span>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                    <% tools = c["tools"] || {} %>
+                    <div class="kv"><span>tools</span>
+                      <div><%= tools["tokens"] %> tokens · <%= tools["count"] %> tool schema(s)</div>
+                    </div>
+                  </details>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <% traces = @tool_traces || {} %>
+          <% unless traces.empty? %>
+            <div class="card tooltrace">
+              <div class="trace-head">
+                <h2>Tool calls</h2>
+                <span class="muted">debug — args + response, masked</span>
+              </div>
+              <% traces.keys.sort.each do |turn| %>
+                <div class="trace-turn">
+                  <div class="turn-label">turn <%= turn %></div>
+                  <% traces[turn].each do |t| %>
+                    <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
+                      <summary>
+                        <span class="badge"><%= t["ok"] ? "ok" : "error" %></span>
+                        <strong><%= t["tool"] %></strong>
+                        <span class="lat"><%= t["ms"] %>ms</span>
+                        <span class="at"><%= t["at"] %></span>
+                      </summary>
+                      <div class="kv"><span>args</span>
+                        <div class="copywrap" data-controller="clipboard">
+                          <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
+                          <pre data-clipboard-target="source"><%= t["args"] %></pre>
+                        </div>
+                      </div>
+                      <div class="kv"><span>response</span>
+                        <div class="copywrap" data-controller="clipboard">
+                          <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
+                          <pre data-clipboard-target="source"><%= t["result"] %></pre>
+                        </div>
+                      </div>
+                    </details>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <%# the session's stage history — outcomes folded to the agent's
+              declared stages (unmapped kinds render the raw outcome: the hole is visible).
+              Without a declaration the block renders the raw outcomes. %>
+          <% history = @stage_history || {} %>
+          <% unless history.empty? %>
+            <div class="card">
+              <div class="trace-head">
+                <h2>Stage history</h2>
+                <span class="muted">
+                  <% if history[:declaration] %>
+                    <%= history[:declaration].stages.join(" → ") %> · outcome funnel
+                  <% else %>
+                    no funnel declared — raw outcomes
+                  <% end %>
+                </span>
+              </div>
+              <div class="kv">
+                <% history[:rows].each do |row| %>
+                  <% if row[:stage] %>
+                    <span><%= row[:outcome] %></span>
+                    <div>→ <strong><%= row[:stage] %></strong> <span class="lat"><%= row[:at] %></span></div>
+                  <% else %>
+                    <span><%= row[:outcome] %></span>
+                    <div><span class="lat">not a declared stage</span> <span class="lat"><%= row[:at] %></span></div>
+                  <% end %>
                 <% end %>
               </div>
             </div>
           <% end %>
-          <% tools = c["tools"] || {} %>
-          <div class="kv"><span>tools</span>
-            <div><%= tools["tokens"] %> tokens · <%= tools["count"] %> tool schema(s)</div>
-          </div>
-        </details>
+        </aside>
       </div>
-    <% end %>
+    </turbo-frame>
+<% unless frame_only %>
   </div>
 <% end %>
-
-<% traces = @tool_traces || {} %>
-<% unless traces.empty? %>
-  <div class="card tooltrace">
-    <div class="trace-head">
-      <h2>Tool calls</h2>
-      <span class="muted">debug — args + response, masked</span>
-    </div>
-    <% traces.keys.sort.each do |turn| %>
-      <div class="trace-turn">
-        <div class="turn-label">turn <%= turn %></div>
-        <% traces[turn].each do |t| %>
-          <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
-            <summary>
-              <span class="badge"><%= t["ok"] ? "ok" : "error" %></span>
-              <strong><%= t["tool"] %></strong>
-              <span class="lat"><%= t["ms"] %>ms</span>
-              <span class="at"><%= t["at"] %></span>
-            </summary>
-            <div class="kv"><span>args</span>
-              <div class="copywrap" data-controller="clipboard">
-                <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
-                <pre data-clipboard-target="source"><%= t["args"] %></pre>
-              </div>
-            </div>
-            <div class="kv"><span>response</span>
-              <div class="copywrap" data-controller="clipboard">
-                <button type="button" class="copy-btn" data-clipboard-target="button" data-action="clipboard#copy">copy</button>
-                <pre data-clipboard-target="source"><%= t["result"] %></pre>
-              </div>
-            </div>
-          </details>
-        <% end %>
-      </div>
-    <% end %>
-  </div>
-<% end %>
-
-<%# the session's stage history — outcomes folded to the agent's
-    declared stages (unmapped kinds render the raw outcome: the hole is visible).
-    Without a declaration the block renders the raw outcomes. %>
-<% history = @stage_history || {} %>
-<% unless history.empty? %>
-  <div class="card">
-    <div class="trace-head">
-      <h2>Stage history</h2>
-      <span class="muted">
-        <% if history[:declaration] %>
-          <%= history[:declaration].stages.join(" → ") %> · outcome funnel
-        <% else %>
-          no funnel declared — raw outcomes
-        <% end %>
-      </span>
-    </div>
-    <div class="kv">
-      <% history[:rows].each do |row| %>
-        <% if row[:stage] %>
-          <span><%= row[:outcome] %></span>
-          <div>→ <strong><%= row[:stage] %></strong> <span class="lat"><%= row[:at] %></span></div>
-        <% else %>
-          <span><%= row[:outcome] %></span>
-          <div><span class="lat">not a declared stage</span> <span class="lat"><%= row[:at] %></span></div>
-        <% end %>
-      <% end %>
-    </div>
-  </div>
-<% end %>
-
-<div class="card transcript">
-  <% if Array(@session.messages).empty? %>
-    <div class="empty">This session has no messages.</div>
-  <% else %>
-    <div class="thread">
-      <%# A skill loaded by the model shows up here on its own: load_skill is a tool,
-          so its body is a persisted `role: tool` message. A skill injected by CONTEXT
-          (triggers/skills_eager) is part of the system prompt — never a message — so
-          the thread had no trace of it at all. Synthesized from the context trace so
-          both activation paths read the same way in the transcript.
-
-          Placed by TIME, not by counting turns: every message of a turn is persisted
-          together at the end of it, and the context stage always runs before that, so
-          each entry lands at the top of its own turn. Ordinal counting would drift on
-          a steered message (one that joins a turn already running). A message with no
-          `at` (older sessions) simply flushes nothing. %>
-      <% pending = (@context_traces || [])
-                   .select { |c| Array((c["categories"] || {}).dig("skilltrigger", "labels")).any? }
-                   .sort_by { |c| c["at"].to_s } %>
-      <% Array(@session.messages).each_with_index do |m, i| %>
-        <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
-          <% pending.shift %>
-          <% labels = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
-          <details class="toolcard skill">
-            <summary><span class="arrow">↑</span><strong>skills · <%= skill_mode(labels) %> (<%= labels.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
-            <pre><%= labels.map { |l| skill_label(l) }.join("\n") %></pre>
-          </details>
-        <% end %>
-        <%# `prev` is what makes a STEERED message visible: a customer message that lands
-            right after a tool result arrived mid-run. See _message.erb. %>
-        <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
-      <% end %>
-    </div>
-  <% end %>
-</div>

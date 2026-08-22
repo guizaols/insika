@@ -104,7 +104,7 @@ module Insika
       def api_key(value) = @runtime[:api_key] = value.to_s
       def api_base(value) = @runtime[:api_base] = value.to_s
 
-      # Declares an MCP server instance (RFC-0040 PR3): global to the graph, not
+      # Declares an MCP server instance: global to the graph, not
       # any one agent — gated per agent through `tools_allow_groups` on the
       # group `mcp:<name>`, same as any other tool group. `Insika::DSL::Runtime`
       # upserts it into the McpStore at boot; the MOTOR-VS-FORJA rule applies —
@@ -236,7 +236,7 @@ module Insika
       end
 
       # --- mcp ---------------------------------------------------------------
-      # Declares an MCP server instance (RFC-0040 PR3) — see
+      # Declares an MCP server instance — see
       # Insika::DSL::SystemBuilder#mcp for the transport/lifecycle doc; identical
       # shape here for a standalone `Insika.agent { … }` script, or one member
       # agent of a system, that wants one.
@@ -246,7 +246,7 @@ module Insika
       # (isolation default) and no `tools_allow_groups` at all, so
       # Policy::ToolAllowlist#allowed_names resolves an EMPTY allowlist and the
       # agent could never call the MCP tool it just declared (found writing the
-      # RFC-0039 MCP templates — no existing spec exercised this path end to
+      # MCP templates — no existing spec exercised this path end to
       # end). Same "auto-added to the allowlist" contract `data_tool` already
       # gives its own tool name; `deny_tools` has no group-string equivalent
       # yet, so a whole MCP group cannot be denied by name today.

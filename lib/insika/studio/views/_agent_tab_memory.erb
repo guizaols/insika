@@ -1,0 +1,51 @@
+<!-- ── Agent memory (tenant = id) ────────────────────────────────────────── -->
+<section class="section" id="memory" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Memory</h2>
+    <p class="muted">facts and notes the agent reads each turn (tenant <code><%= @agent.id %></code>).</p>
+  </div>
+  <div class="card">
+    <h3>Facts</h3>
+    <% if @facts.empty? %>
+      <p class="muted">No facts.</p>
+    <% else %>
+      <ul class="kv">
+        <% @facts.each do |f| %>
+          <li>
+            <span class="k mono"><%= f.key %></span>
+            <span class="v"><%= f.value %></span>
+            <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/forget" data-turbo-confirm="Forget &quot;<%= f.key %>&quot;? The agent loses this fact from the next turn on.">
+              <%== csrf_tag %>
+              <input type="hidden" name="key" value="<%= f.key %>">
+              <button type="submit" class="ghost danger" data-turbo-submits-with="Forgetting…">Forget</button>
+            </form>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+    <form class="inline-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/fact">
+      <%== csrf_tag %>
+      <input type="text" name="key" placeholder="key (e.g. customer_name)" required>
+      <input type="text" name="value" placeholder="value" required>
+      <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save fact</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Notes <span class="muted">(recent)</span></h3>
+    <% if @notes.empty? %>
+      <p class="muted">No notes.</p>
+    <% else %>
+      <ul class="notes">
+        <% @notes.each do |n| %>
+          <li><span class="muted mono"><%= n.created_at %></span> <%= n.text %></li>
+        <% end %>
+      </ul>
+    <% end %>
+    <form class="inline-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/memory/note">
+      <%== csrf_tag %>
+      <input type="text" name="text" placeholder="free-form note…" required>
+      <button type="submit" class="primary" data-turbo-submits-with="Adding…">Add note</button>
+    </form>
+  </div>
+</section>

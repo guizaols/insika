@@ -69,7 +69,7 @@ module Insika
           evals:baseline <sub>      the accepted state per agent: show | import | export
           evals:simulate --persona F --target <agent|url>
                                     generate a simulated conversation against an
-                                    agent (RFC-0014): a persona model talks to the
+                                    agent: a persona model talks to the
                                     target until max_turns or a stop marker; the
                                     transcript is scored by the judge panel.
                                     Requires --staging or --eval-profile (a simulated
@@ -85,7 +85,7 @@ module Insika
           mcp import FILE.json      upsert every entry of a `mcpServers` JSON document
           mcp test NAME             connect live, list its tools, print them (or the error)
           mcp refresh NAME          same as test, plus caches the result for display
-          new --list                the template gallery (RFC-0039): trail + one-line description
+          new --list                the template gallery: trail + one-line description
           new <template> [dir]      copy a template (default dir: ./<template>) and print the run line
           version                   print the engine version
           help                      show this help
@@ -302,7 +302,7 @@ end
 
 # insika evals:simulate --persona F --target <agent|url> [--staging|--eval-profile]
 #
-# Generates a SIMULATED conversation (RFC-0014 PR2): a persona model (the cheap
+# Generates a SIMULATED conversation: a persona model (the cheap
 # utility_model) plays a customer with the persona as its whole instruction — and
 # one hard rule: it may ONLY assert what the persona's `knows` contains. The
 # target agent answers over the same Transport the replay uses (HttpTransport
@@ -405,7 +405,7 @@ rescue Insika::Evals::PersonaLoader::InvalidPersona, Insika::Evals::GoldenLoader
   exit 2
 end
 
-# --persona: a case YAML carrying a `persona:` key (the RFC-0014 alternative
+# --persona: a case YAML carrying a `persona:` key (the alternative
 # shape). A case without turns but with a persona is the only thing this CLI
 # drives — a scripted case has nothing to simulate.
 def load_sim_persona(path)
@@ -701,7 +701,7 @@ end
 
     # Shared by `test`/`refresh` — both connect live and list tools
     # (Insika::McpToolRegistry#refresh always writes tools_cache; `test` differs
-    # only in what it prints, per RFC-0040 PR3). Exits 1 (not 2) on a
+    # only in what it prints). Exits 1 (not 2) on a
     # connection/transport failure — the instance is configured correctly, the
     # SERVER is unreachable, which is a finding, not a usage error. Rescues
     # StandardError, not just Insika::Error: the registry's docstring is
@@ -721,7 +721,7 @@ end
       exit 1
     end
 
-    # insika new --list | insika new <template> [dir]  (RFC-0039)
+    # insika new --list | insika new <template> [dir]
     def new_from_template(argv)
       if argv.first == "--list"
         new_list
