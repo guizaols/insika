@@ -8,6 +8,21 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Added
+
+- **Demo data** — `insika demo:seed` (and a matching "Seed demo data" button
+  under Studio Settings) provisions a bundled `demo-store` agent and writes
+  enough realistic data to see every loop working at once: a funnel with a
+  frozen baseline, follow-ups in all four states, refinement runs across the
+  lifecycle, pending and resolved approvals, distillation proposals and a
+  memory fact, and a golden set with a mixed-result baseline. One code path
+  (`Insika::Demo::Seeder`) behind both front doors, same discipline as every
+  other Studio button. Fixed two pre-existing gaps this surfaced: `config.ru`
+  never wired `proposal_store`/`budget_ledger` into the Studio (the Facts page
+  and the funnel's spend pill were unreachable in production), and
+  `scripts/serve_real.rb` never wired the outcome/funnel/follow-up/proposal
+  stores at all.
+
 ## [0.3.0] - 2026-08-19
 
 The proof-and-consultant wave: shadow parity against a frozen criterion, the

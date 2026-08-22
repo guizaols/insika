@@ -730,6 +730,26 @@ module Studio
             r.redirect("/studio/settings?s=llm")
           end
         end
+
+        # Demo data (OSS onboarding): populates the bundled "demo-store" agent
+        # so Funnels/Followups/Refinement/Approvals/Distillation/Evals all show
+        # real data at once. Same command the CLI's `insika demo:seed` runs —
+        # the Studio never seeds anything itself (constitutional rule).
+        r.post "seed-demo-data" do
+          check_csrf!
+          begin
+            result = dispatch(:seed_demo_data, { force: r.params["force"] == "1" })
+            flash["notice"] = if result[:seeded]
+                                 "Seeded '#{result[:agent]}': " +
+                                   result[:counts].map { |k, v| "#{v} #{k}" }.join(", ") + "."
+                               else
+                                 "Already seeded (#{result[:reason]}) — check 'reseed' to seed again."
+                               end
+          rescue Insika::ValidationError, Insika::NotFoundError => e
+            flash["error"] = e.message
+          end
+          r.redirect("/studio/settings?s=demo")
+        end
       end
 
       # --- MCP: instances with masked credentials ------------------
@@ -2003,12 +2023,13 @@ end
     # same keys; a bogus ?cfg= falls back to the first group.
     CONFIG_SECTIONS = %w[model guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
 
-    SETTINGS_SECTIONS = %w[general models edge evals llm].freeze
+    SETTINGS_SECTIONS = %w[general models edge evals llm demo].freeze
     def render_settings
       store = insika[:settings_store]
       @settings = store ? store.get : Insika::SettingsStore::DEFAULTS
       @providers = insika[:llm_provider_store] ? insika[:llm_provider_store].all : []
       @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
+      @persistence = insika[:config][:persistence].to_s
       view("settings")
     end
 

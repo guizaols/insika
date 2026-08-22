@@ -109,6 +109,10 @@ Studio::App.configure(
   # mutations (cancel, force-revoke) dispatch bus commands.
   followup_store: W::GRAPH.followup_store,
   contact_store: W::GRAPH.contact_store,
+  budget_ledger: W::GRAPH.budget_ledger, # the funnel card's spend pill
+  # the Facts (wiki) page reads the proposal store directly;
+  # its mutations dispatch :resolve_proposal on the bus.
+  proposal_store: W::GRAPH.proposal_store,
   # the Harvest page reads the harvest store + the two
   # pre-registered artifacts (criterion, negative list) directly; its
   # mutations dispatch :run_harvest / :gate_harvest / :promote_harvest /

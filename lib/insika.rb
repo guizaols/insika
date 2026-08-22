@@ -299,6 +299,13 @@ require_relative "insika/commands/restore_data_tool"
 require_relative "insika/commands/import_tools"
 require_relative "insika/commands/import_mcp_tools"
 require_relative "insika/commands/refresh_mcp_tools"
+# the demo seed (RFC-none/OSS onboarding): one bundled agent + golden
+# set + the Seeder that populates every loop's stores at once, and its bus
+# adapter for `insika demo:seed` and the Studio's "Seed demo data" button.
+require_relative "insika/demo/agent_attrs"
+require_relative "insika/demo/golden_cases"
+require_relative "insika/demo/seeder"
+require_relative "insika/commands/seed_demo_data"
 require_relative "insika/event_stream"
 require_relative "insika/task_actor"
 require_relative "insika/queue_policy"

@@ -116,6 +116,7 @@ markdown). Public and on by default when you `serve`; opt-in in production
 - [Refinement](docs/REFINEMENT.md) — read an agent's own traffic back as a ranked report of what broke.
 - [Facts](docs/FACTS.md) — distill finished customer conversations into proposed facts; a human approves them into memory (nothing is ever applied automatically).
 - [Harvest](docs/HARVEST.md) — mine real traffic for SKILL proposals; the negative list, the evidence-ledger grounding filter and the double gate hold every proposal to a human approval and the append-only log (nothing is ever applied automatically).
+- [Demo data](docs/DEMO.md) — `insika demo:seed` populates one agent with a funnel, follow-ups, refinement runs, approvals, facts and evals all at once, so a fresh instance shows every loop working before you build your own.
 
 All of the above is also browsable, searchable and cross-linked at
 **[guizaols.github.io/insika](https://guizaols.github.io/insika/)** — the same files,

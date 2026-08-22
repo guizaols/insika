@@ -117,6 +117,16 @@ Studio::App.configure(
   refinement_store: W::REFINEMENT_STORE,
   # eval cases: the rubric is authored here (writes go through :write_golden).
   golden_store: W::GOLDEN_STORE,
+  # WS7/Funnel/Follow-ups/Facts — these were never promoted onto Deploy::Wiring
+  # (unlike config.ru), so this local boot rendered them permanently empty even
+  # with real data folded/proposed. Read from the shared SPINE, same instances
+  # config.ru wires.
+  outcome_store: W::SPINE.outcome_store,
+  funnel_store: W::SPINE.funnel_store,
+  followup_store: W::SPINE.followup_store,
+  contact_store: W::SPINE.contact_store,
+  budget_ledger: W::SPINE.budget_ledger,
+  proposal_store: W::SPINE.proposal_store,
   # the parity page (nav row only when a shadow channel is registered).
   shadow_pair_store: W::SPINE.shadow_pair_store,
   parity_criterion: PARITY_CRITERION,

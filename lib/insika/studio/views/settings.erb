@@ -5,7 +5,8 @@
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
      ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
      ["evals",   "Evals", "who grades a rubric, and how a panel agrees"],
-     ["llm",     "LLM providers", "keys, base URL, models per provider"]
+     ["llm",     "LLM providers", "keys, base URL, models per provider"],
+     ["demo",    "Demo data", "see every loop working at once"]
    ] %>
 <div class="drill">
   <aside class="drill-pane drill-master">
@@ -118,6 +119,43 @@
         <label>tolerance <span class="muted">(max score drop before it's a regression)</span><input type="text" name="tolerance" value="<%= @settings.dig("evals", "tolerance") %>" inputmode="decimal" placeholder="0.05"></label>
       </div>
     </form>
+  </div>
+
+<% elsif @section == "demo" %>
+  <div class="drill-pane-head">
+    <div class="title"><strong>Demo data</strong></div>
+  </div>
+  <div class="drill-pane-body">
+    <p class="muted">
+      Populates the bundled <span class="mono">demo-store</span> agent with enough data
+      to see every loop working at once: a funnel with a frozen baseline, follow-ups in
+      all four states, refinement runs across the lifecycle, pending + resolved
+      approvals, distillation proposals/facts, and a golden set with a baseline.
+      The same seed the CLI's <span class="mono">insika demo:seed</span> runs.
+    </p>
+    <p class="muted">
+      This instance is currently <strong><%= @persistence.empty? ? "unknown" : @persistence %></strong>.
+      Seeding writes into <strong>this</strong> store — only fine to run against a scratch
+      or ephemeral instance, never against a store with real tenant data.
+    </p>
+    <form method="post" action="/studio/settings/seed-demo-data" class="actions"
+          data-turbo-confirm="Seed the demo-store agent into this <%= @persistence.empty? ? 'store' : @persistence %> instance?">
+      <%== csrf_tag %>
+      <label class="check">
+        <input type="checkbox" name="force" value="1">
+        reseed (append another batch) even if demo-store already exists
+      </label>
+      <button type="submit" class="primary" data-turbo-submits-with="Seeding…">Seed demo data</button>
+    </form>
+    <p class="muted">
+      Afterwards, open
+      <a href="/studio/funnel?agent=demo-store">Funnel</a>,
+      <a href="/studio/followups?agent=demo-store">Follow-ups</a>,
+      <a href="/studio/refinement?agent=demo-store">Refinement</a>,
+      <a href="/studio/approvals">Approvals</a>,
+      <a href="/studio/facts">Facts</a> and
+      <a href="/studio/evals?agent=demo-store">Evals</a>.
+    </p>
   </div>
 
     <% else %>
