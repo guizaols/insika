@@ -239,6 +239,48 @@ healthcheck, and a restart policy.
 5. Point your consumer at the service's public URL, with a matching API token
    (see [RUNNING-LOCAL.md](RUNNING-LOCAL.md)).
 
+## Kubernetes
+
+Same contract as Railway, for the same reason, verified against
+ingress-nginx's own docs: **run one pod, `WEB_CONCURRENCY=1`.** Scale
+vertically (bigger pod) for now.
+
+Why a standard K8s setup does not get you out of this: the session id lives
+in the **JSON body** of `POST /v1/responses` (the `user` field), not in a
+header, cookie, or URL segment. That rules out every sticky-routing
+mechanism K8s gives you for free:
+
+- A vanilla `Service` (`ClusterIP`) load-balances across pod endpoints with
+  no notion of session at all — same failure mode as Railway's replicas,
+  one layer down.
+- `Service.spec.sessionAffinity: ClientIP` does not help either: the caller
+  is the consumer's own backend (achei-b2b, a server-to-server call), not
+  the end customer's browser, so many different customers' sessions arrive
+  from the same source IP and would collide on the same pod instead of
+  spreading — the opposite of what you want, and it still does not restore
+  a real per-session guarantee.
+- ingress-nginx's `nginx.ingress.kubernetes.io/upstream-hash-by` (the
+  standard sticky/consistent-hash annotation) hashes on nginx *variables* —
+  headers, cookies, `$request_uri`, client IP — not on a field parsed out of
+  a POST body. Reaching into the JSON body needs a custom Lua/OpenResty
+  snippet (or an Envoy filter) that parses the request and extracts `user`
+  before hashing. That is real, unbuilt engineering work, not a K8s
+  annotation to flip.
+
+If real horizontal throughput is ever needed, two paths get there, neither
+of them "just add replicas":
+1. **Build the body-aware sticky layer** above (Lua/Envoy consistent-hash on
+   the `user` field) in front of N pods, each still `WEB_CONCURRENCY=1`.
+2. **Move the session id into the URL**, the way the web widget transport
+   already does (`POST /api/widget/sessions/:token/messages` carries the
+   session token in the path) — that surface, unlike `/v1/responses`, *is*
+   sticky-routable today with a plain `upstream-hash-by: $request_uri`, no
+   custom scripting required.
+
+Neither is urgent while a single pod's throughput is enough — this section
+exists so scaling this deployment does not silently reintroduce the same
+cross-session leak the Railway incident above already found once.
+
 ## Backup / DR — Litestream (opt-in, configurable)
 
 A single volume is the **one point of total loss** between a pilot and production
