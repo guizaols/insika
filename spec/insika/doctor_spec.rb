@@ -622,6 +622,17 @@ RSpec.describe Insika::Doctor do
       expect(finding.severity).to eq(:warn)
       expect(finding.message).to include("WEB_CONCURRENCY=4", "sticky routing")
     end
+
+    it "errors above 1 on Railway — Railway has no sticky sessions at all" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "4", "RAILWAY_ENVIRONMENT_NAME" => "production")
+      expect(finding.severity).to eq(:error)
+      expect(finding.message).to include("WEB_CONCURRENCY=4", "Railway", "does not support sticky")
+    end
+
+    it "is still ok at 1 on Railway" do
+      finding = concurrency_finding("WEB_CONCURRENCY" => "1", "RAILWAY_ENVIRONMENT_NAME" => "production")
+      expect(finding.severity).to eq(:ok)
+    end
   end
 
   # The widget is the one PUBLIC channel, so its misconfigurations cost money rather

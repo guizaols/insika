@@ -348,11 +348,26 @@ module Insika
     # (FIFO/collect/steer) unless the operator has sticky routing per session in
     # front, and nothing else in the deployment surfaces that drift. This is
     # exactly how a staging service ended up at N=4 unnoticed and leaked a reply
-    # across sessions. The engine cannot see whether sticky routing exists, so
-    # this warns rather than errors — N>1 stays a valid choice.
+    # across sessions. The engine cannot see whether sticky routing exists off
+    # Railway, so that case only warns — N>1 stays a valid choice for an
+    # operator who put a real sticky proxy in front. On Railway it is not a
+    # valid choice TODAY: Railway's own docs say it "does not support sticky
+    # sessions" and randomly distributes traffic — there is no way to satisfy
+    # the precondition on this platform, so this errors instead of warning.
+    # RAILWAY_ENVIRONMENT_NAME is injected into every Railway deployment
+    # (docs.railway.com/variables/reference), so its presence is a reliable
+    # "are we on Railway" signal.
     def check_web_concurrency
       n = @env["WEB_CONCURRENCY"].to_i
       return [ok("web-concurrency", "WEB_CONCURRENCY=1 (default) — session semantics hold cluster-wide")] if n <= 1
+
+      if Insika::Coercion.present?(@env["RAILWAY_ENVIRONMENT_NAME"])
+        return [Finding.new(check: "web-concurrency", severity: :error,
+                             message: "WEB_CONCURRENCY=#{n} on Railway — Railway does not support sticky " \
+                                      "sessions (docs.railway.com/deployments/scaling), so per-session " \
+                                      "FIFO/collect/steer WILL break across workers with no way to fix it " \
+                                      "at the routing layer; set WEB_CONCURRENCY=1", fix: nil)]
+      end
 
       [Finding.new(check: "web-concurrency", severity: :warn,
                    message: "WEB_CONCURRENCY=#{n} — per-session FIFO/collect/steer only hold on the worker " \
@@ -725,7 +740,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       base + legacy
     end
 
-    # RFC-0040 PR2: a data-tool in an `mcp:*` group was ingested by the
+    # A data-tool in an `mcp:*` group was ingested by the
     # RETIRED snapshot path (McpToolIngestor) — the live registry now serves
     # that same MCP instance's tools directly. Still executes fine (never
     # removed automatically), just a duplicate worth cleaning up.
@@ -736,7 +751,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
                            "this frozen copy still works but duplicates it, safe to remove.")
     end
 
-    # RFC-0040: an http/sse instance whose credentials still sit under `env`
+    # An http/sse instance whose credentials still sit under `env`
     # (the pre-RFC meaning) is READ as `headers` (McpStore#raw), but the
     # record on disk is unchanged until the operator re-saves it — flag it so
     # it doesn't linger silently. A stdio instance that is enabled but
