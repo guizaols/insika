@@ -1,5 +1,13 @@
 # frozen_string_literal: true
 
+# Templates under lib/insika/templates/*/agent.rb open with a bare
+# `require "insika"` (the line a standalone `ruby agent.rb` run needs) and
+# Templates.evaluate instance_evals that same source in-process — so this
+# file's own directory must be on $LOAD_PATH, or that require raises
+# LoadError whenever nothing else already activated the "insika" gem
+# (no Bundler.setup, no globally installed gem).
+$LOAD_PATH.unshift(__dir__) unless $LOAD_PATH.include?(__dir__)
+
 require_relative "insika/version"
 require_relative "insika/errors"
 # the payload selection + the domain-boundary audit yardstick.
