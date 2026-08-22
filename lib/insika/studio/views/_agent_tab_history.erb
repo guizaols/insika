@@ -1,0 +1,24 @@
+<!-- ── History ───────────────────────────────────────────────────────────── -->
+<section class="section" id="history" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>History</h2>
+    <p class="muted">recent conversations (all agents — a session doesn't stamp its author).</p>
+  </div>
+  <% if @recent_sessions.empty? %>
+    <div class="empty">No conversations yet. Start one in the <a href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">playground</a>.</div>
+  <% else %>
+    <div class="card">
+      <ul class="history">
+        <% @recent_sessions.each do |s| %>
+          <li>
+            <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>" data-turbo-frame="_top">
+              <span class="mono"><%= s.id[0, 12] %></span>
+            </a>
+            <span class="muted"><%= Array(s.messages).size %> msg · <%= s.updated_at %></span>
+            <% if (p = session_preview(s)) %><span class="preview muted"><%= p[0, 80] %></span><% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</section>

@@ -1,0 +1,43 @@
+<%# Master column of the Agents miller shell (RFC-0041 PR4) — rendered by the
+    index (agents.erb) and the detail (agent_detail.erb). Rows target the
+    agent-detail turbo-frame with data-turbo-action="advance": the detail
+    loads beside the list while the URL moves, so refresh/deep-link render the
+    same screen. Locals: active_id lights the current row (nil on the index);
+    show_outcomes renders the last-outcome pills (index only — the detail's
+    outcomes tab is THAT agent's series, so foreign pills would blur it). %>
+<aside class="drill-pane drill-master">
+  <div class="drill-pane-head">
+    <div class="title"><strong>Agents <span class="count"><%= @agents.size %></span></strong></div>
+    <a class="btn primary btn-sm" href="/studio/agents" data-turbo-frame="_top">+ new</a>
+  </div>
+  <div class="drill-search">
+    <input type="search" class="filter-input" placeholder="Filter agents by id, model or provider…" aria-label="Filter agents"
+           data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+  </div>
+  <nav class="drill-pane-body drill-list" aria-label="agents">
+    <% active_id = defined?(active_id) ? active_id : nil %>
+    <% show_outcomes = defined?(show_outcomes) ? show_outcomes : false %>
+    <% if @agents.empty? %>
+      <div class="empty">No agents yet. Create your first agent from the pane on the right.</div>
+    <% else %>
+      <% @agents.each do |a| %>
+        <a class="drill-item<%== ' active' if a.id == active_id %>"
+           href="/studio/agents/<%= Rack::Utils.escape(a.id) %>"
+           data-turbo-frame="agent-detail" data-turbo-action="advance"
+           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>">
+          <div class="drill-item-name">
+            <span class="avatar sm <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
+            <span class="txt"><%= a.id %></span>
+            <% if a.memory %><span class="pill plain">mem</span><% end %>
+            <% if show_outcomes && (latest = @latest_outcomes&.dig(a.id)) %>
+              <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
+                    title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
+            <% end %>
+          </div>
+          <div class="drill-item-sub"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
+    <% end %>
+  </nav>
+</aside>

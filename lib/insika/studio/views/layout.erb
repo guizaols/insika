@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <%# Turbo 8 Drive routes same-origin visits through the View Transitions API
+      when this meta is present; browsers without support degrade
+      to the plain swap. The CSS owns the actual transition (application.css,
+      ::view-transition-*), including the prefers-reduced-motion kill switch. %>
+  <meta name="view-transition" content="same-origin">
   <meta name="csp-nonce" content="<%= csp_nonce %>">
   <title>Insika Studio</title>
   <link rel="icon" type="image/svg+xml" href="<%= asset_path("favicon.svg") %>">
@@ -10,6 +15,15 @@
   <script type="module" src="<%= asset_path("application.js") %>" defer></script>
 </head>
 <body>
+  <%# Chip-icon sprite: one source of truth for transcript event
+      chips — the ERB partial renders chip_icon() from the same nav_icons.rb set,
+      and live_transcript_controller.js clones from this template, so live and
+      replayed transcripts can never drift apart. %>
+  <template id="chip-icons" aria-hidden="true">
+    <% Studio::NavIcons::CHIP_ICONS.each do |kind, icon| %>
+      <span data-kind="<%= kind %>" class="chip-ic"><%== nav_icon(icon) %></span>
+    <% end %>
+  </template>
   <% if authenticated? %>
     <div class="app-shell">
       <aside class="sidebar">

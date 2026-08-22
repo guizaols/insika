@@ -1,0 +1,25 @@
+<!-- ── Cache  ─────────────────────────────────────────────────── -->
+<section class="section" id="cache" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Cache</h2>
+    <p class="muted">prefix cache-hit per turn (provider-reported) — the invalidation reason names the first block whose bytes changed vs the previous turn.</p>
+  </div>
+  <div class="card">
+    <% if @cache_series.empty? %>
+      <p class="muted">No turns recorded.</p>
+    <% else %>
+      <ul class="kv">
+        <% @cache_series.last(20).reverse.each do |c| %>
+          <li>
+            <span class="k mono"><%= c["at"] %></span>
+            <span class="v">
+              <%== c["hit_pct"].nil? ? "—" : "#{c['hit_pct']}% cached" %>
+              · <%= c["cached_tokens"] %>/<%= c["prompt_tokens"] %> tokens
+              <% if c["invalidation_reason"] %><span class="lat">broke: <%= c["invalidation_reason"] %></span><% end %>
+            </span>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </div>
+</section>

@@ -1,0 +1,108 @@
+<!-- ── Prompts / identity (drill: file list | editor, like skills) ────────── -->
+<section class="section" id="prompts" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Prompts <span class="pill info plain"><%= @prompt_files.size %></span></h2>
+    <p class="muted">the agent's own identity (store-backed, versioned). Empty = uses the deployment default.</p>
+  </div>
+
+  <div class="drill" data-controller="list-filter">
+    <aside class="drill-pane drill-master">
+      <div class="drill-pane-head">
+        <div class="title"><strong>Prompt files <span class="count"><%= @prompt_files.size %></span></strong></div>
+        <a class="btn primary btn-sm" href="<%= agent_path(@agent.id) %>/prompts/new#prompts" data-turbo-action="advance">+ new</a>
+      </div>
+      <div class="drill-search">
+        <input type="search" class="filter-input" placeholder="Search prompts…" aria-label="Filter prompts"
+               data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      </div>
+      <nav class="drill-pane-body drill-list" aria-label="prompt files">
+        <% if @prompt_files.empty? %>
+          <div class="empty">No prompt files yet — create the first one.</div>
+        <% else %>
+          <% @prompt_files.each do |pf| %>
+            <a class="drill-item<%== ' active' if @prompt_selected == pf[:name] %>"
+               href="<%= agent_path(@agent.id) %>/prompts/<%= Rack::Utils.escape(pf[:name]) %>#prompts"
+               data-turbo-action="advance"
+               data-list-filter-target="item" data-filter-text="<%= pf[:name] %>">
+              <div class="drill-item-name"><span class="txt"><%= pf[:name] %></span></div>
+              <div class="drill-item-sub"><%= pf[:versions].size %> version<%= 's' unless pf[:versions].size == 1 %></div>
+            </a>
+          <% end %>
+          <div class="empty" data-list-filter-target="empty" hidden>No prompts match your filter.</div>
+        <% end %>
+      </nav>
+    </aside>
+
+    <section class="drill-pane drill-detail">
+      <% if @prompt_selected.nil? %>
+        <div class="drill-empty">
+          <div>
+            <h2>Prompts</h2>
+            <p>Pick a prompt file on the left to edit it — or <a href="<%= agent_path(@agent.id) %>/prompts/new#prompts" data-turbo-action="advance">create a new one</a>.</p>
+          </div>
+        </div>
+      <% else %>
+        <% new = @prompt_selected == "" %>
+        <% pf = new ? nil : @prompt_files.find { |f| f[:name] == @prompt_selected } %>
+        <div class="drill-pane-head">
+          <div class="title">
+            <strong class="mono"><%= new ? "New prompt file" : @prompt_selected %></strong>
+          </div>
+          <button type="submit" form="prompt-form" class="btn primary" data-turbo-submits-with="Saving…"><%= new ? "Create prompt" : "Save prompt" %></button>
+        </div>
+        <div class="drill-pane-body">
+          <form id="prompt-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts" data-controller="dirty-guard">
+            <%== csrf_tag %>
+            <% if new %>
+              <label>file name <span class="muted">(e.g. <code>IDENTITY.md</code>)</span>
+                <input type="text" name="file" placeholder="IDENTITY.md" required>
+              </label>
+            <% else %>
+              <input type="hidden" name="file" value="<%= @prompt_selected %>">
+            <% end %>
+            <label>content <span class="muted">(markdown — the agent's identity/voice)</span></label>
+            <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
+              <textarea name="content" data-code-editor-target="source" rows="18"><%= new ? "" : (pf ? pf[:content] : "") %></textarea>
+            </div>
+          </form>
+
+          <% if !new && pf %>
+            <% unless pf[:versions].empty? %>
+              <div class="drill-section">
+                <div class="drill-section-head">
+                  <h3>Versions</h3>
+                  <span class="muted">store-backed history — restore replaces the current content.</span>
+                </div>
+                <ul class="versions-list">
+                  <% pf[:versions].each_with_index do |v, i| %>
+                    <li>
+                      <span class="muted mono"><%= v["at"] %></span>
+                      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/restore">
+                        <%== csrf_tag %>
+                        <input type="hidden" name="file" value="<%= pf[:name] %>">
+                        <input type="hidden" name="version" value="<%= i %>">
+                        <button type="submit" class="ghost">Restore</button>
+                      </form>
+                    </li>
+                  <% end %>
+                </ul>
+              </div>
+            <% end %>
+
+            <div class="drill-section">
+              <div class="drill-section-head">
+                <h3>Remove</h3>
+                <span class="muted">deletes the file and drops it from <code>prompt_files</code> — the agent falls back to the deployment default.</span>
+              </div>
+              <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/delete" data-turbo-confirm="Remove prompt file &quot;<%= pf[:name] %>&quot;? This can't be undone.">
+                <%== csrf_tag %>
+                <input type="hidden" name="file" value="<%= pf[:name] %>">
+                <div class="actions"><button type="submit" class="danger" data-turbo-submits-with="Removing…">Remove this file</button></div>
+              </form>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </section>
+  </div>
+</section>
