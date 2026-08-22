@@ -7,7 +7,7 @@ module Insika
   # The pack's DATA (D7): a `sku` regex for the SKU shape. The engine only
   # APPLIES it — it never guesses what a SKU looks like. No NLP, no LLM, no gem.
   #
-  # REVIEW-DECISION (rfc-0029 v2): grounding is **SKU-only**. The techspec's
+  # REVIEW-DECISION: grounding is **SKU-only**. The techspec's
   # name half (name_keys indexing ledger lines to flag names) cannot flag
   # anything: a name found in the text that also came from the ledger is grounded
   # by construction, and detecting a name that matches NO ledger line needs a

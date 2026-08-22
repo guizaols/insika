@@ -27,7 +27,7 @@ RSpec.describe Insika::GoldenStore do
     expect(golden.min_score).to eq(0.7)
   end
 
-  # RFC-0014: a SIMULATED case is one of two shapes — the persona must survive
+  # A SIMULATED case is one of two shapes — the persona must survive
   # the store AND the YAML export, or it would silently stop being simulated and
   # replay as an empty script.
   it "round-trips a persona case (simulated) through the store and out to YAML" do

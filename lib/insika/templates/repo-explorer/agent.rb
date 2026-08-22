@@ -3,11 +3,11 @@
 # ---
 # title: Repo Explorer
 # trail: MCP
-# description: Live MCP tool-loop over http (RFC-0040) — answers questions about any public GitHub repo via a keyless public MCP server. Point MCP_URL at any other MCP server instead.
+# description: Live MCP tool-loop over http — answers questions about any public GitHub repo via a keyless public MCP server. Point MCP_URL at any other MCP server instead.
 # capabilities: mcp, http
 # ---
 #
-# repo-explorer — a live MCP tool-loop over HTTP (RFC-0040): the agent calls
+# repo-explorer — a live MCP tool-loop over HTTP: the agent calls
 # a real MCP server's tools (read_wiki_structure, read_wiki_contents,
 # ask_question) to answer questions about a public GitHub repo. The default
 # target is DeepWiki's public, keyless MCP server — swap MCP_URL for any

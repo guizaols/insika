@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# qa_scheduled — the QA loop in one file: a scheduled QA agent (RFC-0037) that
+# qa_scheduled — the QA loop in one file: a scheduled QA agent that
 # runs an authored persona case against a SIBLING agent, in-process
 # (`run_persona_eval`, C3.1), and publishes the verdict as an artifact
-# (`save_artifact`, RFC-0038). The Simulator (A1) + the Scheduler (A2) + Artifacts
+# (`save_artifact`). The Simulator (A1) + the Scheduler (A2) + Artifacts
 # (A3) in one flow — see docs/EVALS.md "run_persona_eval".
 #
 #   DEEPSEEK_API_KEY=sk-... ruby examples/agent-tester/qa_scheduled.rb
@@ -60,7 +60,7 @@ system = Insika.system do
     PROMPT
     tools %w[run_persona_eval save_artifact]
 
-    # The recurring half (RFC-0037) — the engine's tick fires it. A weekly
+    # The recurring half — the engine's tick fires it. A weekly
     # cadence is a reasonable default for a report this cheap (one persona
     # turn + one judge call); see docs/EVALS.md for the cost shape.
     schedule "weekly_qa", cron: "0 9 * * 1", tz: "America/Sao_Paulo",

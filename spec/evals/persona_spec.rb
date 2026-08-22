@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# The simulated customer (RFC-0014 PR2). The persona is the WHOLE instruction a
+# The simulated customer. The persona is the WHOLE instruction a
 # model plays the customer with; validation is the guardrail — a persona without
 # `knows` or `max_turns` would simulate nothing.
 RSpec.describe Insika::Evals::PersonaLoader do

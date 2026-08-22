@@ -291,7 +291,7 @@ RSpec.describe "bin/insika" do
       end
     end
 
-    # RFC-0014 safety: --eval-profile must DERIVE the target's side-effect tools
+    # Safety: --eval-profile must DERIVE the target's side-effect tools
     # (from the store's registry here) and refuse a swap that does not cover them —
     # a bare `--eval-profile` on a write-capable agent is the trust-me flag the
     # docs promise is not what happens.

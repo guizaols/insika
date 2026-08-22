@@ -3,7 +3,7 @@
 require "ruby_llm"
 
 module Insika
-  # One live MCP tool (RFC-0040 PR2). `name`/`description`/`params_schema`
+  # One live MCP tool. `name`/`description`/`params_schema`
   # come from the CACHED descriptor (McpStore#tools_cache — no I/O to build
   # this instance, same cost as any other tool the registry hands out).
   # `#execute` is the only thing that touches the network, calling through

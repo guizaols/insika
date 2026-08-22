@@ -154,8 +154,8 @@ module Insika
                                               ))
       end
 
-      # Upserts every DSL-declared `mcp` instance into the McpStore at boot
-      # (RFC-0040 PR3). Code is the TEMPLATE — transport/command/args/url/
+      # Upserts every DSL-declared `mcp` instance into the McpStore at boot.
+      # Code is the TEMPLATE — transport/command/args/url/
       # description always follow the declaration — but `enabled` and the
       # credentials (`env`/`headers`) are the operator's once the instance
       # exists: an already-present record's own values are re-sent verbatim
