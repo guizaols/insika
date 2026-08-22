@@ -37,6 +37,7 @@ module Insika
       when "evals:export" then evals_export(argv)
       when "evals:baseline" then evals_baseline(argv)
       when "evals:simulate" then evals_simulate(argv)
+      when "demo:seed" then demo_seed(argv)
       when "mcp" then mcp(argv)
       when "new" then new_from_template(argv)
       when "version", "--version", "-v" then puts "insika #{Insika::VERSION}"
@@ -75,6 +76,9 @@ module Insika
                                     run must not write for real); --eval-profile is
                                     verified against the target's derived
                                     side-effect tools (--eval-tools).
+          demo:seed [--force]       populate the "demo-store" agent with enough data to see
+                                    every Studio loop at once (funnel+baseline, follow-ups,
+                                    refinement runs, approvals, distillation, evals+baseline)
           mcp list                  the configured MCP instances
           mcp add --name N [...]    add/edit an instance (see mcp add --help)
           mcp remove NAME           delete an instance
@@ -762,6 +766,58 @@ end
       env_flags = "#{env_flags} " unless env_flags.empty?
       puts "  #{env_flags}DEEPSEEK_API_KEY=sk-... ruby #{dest}/agent.rb"
       puts "\nRequires: #{entry.requires}" if entry.requires
+    end
+
+    # insika demo:seed [--force]
+    #
+    # Populates the "demo-store" agent with enough data to see every Studio
+    # loop working at once: a funnel with a frozen baseline, follow-ups in
+    # all four states, refinement runs across the lifecycle, pending +
+    # resolved approvals, distillation proposals/facts, and a golden set
+    # with a baseline (Insika::Demo::Seeder — the same object the Studio's
+    # "Seed demo data" button dispatches). Safe against a live volume: it
+    # only ever touches the demo agent's own records, and is a no-op on a
+    # second run unless --force asks for another batch.
+    def demo_seed(argv)
+      opts = { force: false }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika demo:seed [--force]"
+        o.on("--force", "seed again even if the demo agent already exists") { opts[:force] = true }
+      end.parse!(argv)
+
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      profiles = Insika::StoredProfileSource.new(config_store: config_store)
+      seeder = Insika::Demo::Seeder.new(
+        profiles: profiles, store: backend,
+        session_store: Insika::SessionStore.new(store: backend),
+        task_store: Insika::TaskStore.new(store: backend),
+        outcome_store: Insika::OutcomeStore.new(store: backend),
+        funnel_store: Insika::FunnelStore.new(store: backend),
+        followup_store: Insika::FollowupStore.new(store: backend),
+        refinement_store: Insika::RefinementStore.new(store: backend),
+        pending_action_store: Insika::PendingActionStore.new(store: backend),
+        proposal_store: Insika::ProposalStore.new(store: backend),
+        memory_store: Insika::MemoryStore.new(store: backend),
+        golden_store: Insika::GoldenStore.new(config_store: config_store),
+        baseline_store: Insika::BaselineStore.new(config_store: config_store),
+        event_stream: Insika::EventStream.new
+      )
+      result = seeder.seed!(force: opts[:force])
+
+      unless result[:seeded]
+        warn "insika demo:seed: already seeded (#{result[:reason]}) — pass --force to seed again."
+        return
+      end
+
+      puts "seeded demo agent '#{result[:agent]}':"
+      result[:counts].each { |area, n| puts "  #{area}: #{n}" }
+      puts "\nOpen /studio/funnel?agent=#{result[:agent]} (also /studio/followups, " \
+           "/studio/refinement, /studio/approvals, /studio/harvest, /studio/evals) in " \
+           "whichever Studio instance points at this INSIKA_DB."
+    rescue Insika::Error => e
+      warn "insika demo:seed: #{e.message}"
+      exit 2
     end
 
     # -- helpers -------------------------------------------------------

@@ -535,6 +535,23 @@ module Insika
         # code path; the engine keeps the automatic pass when the root does
         # not pass a runner here (nil = the command is not on the bus).
         bus.register(:run_distillation, run_distillation) if run_distillation
+        # the demo seed's ONE path — the CLI's `insika demo:seed` builds
+        # the same Insika::Demo::Seeder itself (no executor, no bus, from
+        # Graph.spine alone), and the Studio's "Seed demo data" button
+        # dispatches this bus command; nothing else writes the demo agent.
+        config_store = Insika::ConfigStore.new(store: spine.backend)
+        demo_seeder = Insika::Demo::Seeder.new(
+          profiles: profiles, store: spine.backend, session_store: spine.session_store,
+          task_store: spine.task_store, outcome_store: spine.outcome_store,
+          funnel_store: spine.funnel_store, followup_store: spine.followup_store,
+          refinement_store: spine.refinement_store, pending_action_store: spine.pending_action_store,
+          proposal_store: spine.proposal_store, memory_store: spine.memory_store,
+          golden_store: Insika::GoldenStore.new(config_store: config_store),
+          baseline_store: Insika::BaselineStore.new(config_store: config_store),
+          event_stream: spine.event_stream
+        )
+        bus.register(:seed_demo_data,
+                     Insika::Commands::SeedDemoData.new(seeder: demo_seeder, event_stream: spine.event_stream))
         bus
       end
 
