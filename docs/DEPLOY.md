@@ -57,7 +57,12 @@ contract:
    worker that holds the session's actor. The engine does **not** promise them
    across workers. A deploy that needs those semantics for a session must route
    that session's traffic to one worker (sticky routing) — or accept per-worker
-   best-effort.
+   best-effort. **On Railway there is no sticky-routing option at any layer** —
+   confirmed against Railway's own docs, which distribute traffic randomly and
+   explicitly do not support sticky sessions — so N>1 there is not "per-worker
+   best-effort," it is a guaranteed cross-session leak the first time two
+   requests for the same session land on different workers. See the Railway
+   section below; `insika doctor` errors on `WEB_CONCURRENCY>1` there.
 3. **Recovery is part of boot, in every wiring.** Every worker boots through
    `Server::Boot`, which runs recovery **before the listen**. The per-record
    sweeps (undelivered outbox records, undelivered delegation results) run in
@@ -221,7 +226,15 @@ healthcheck, and a restart policy.
    without a volume, SQLite is ephemeral and recovery resumes nothing after a
    redeploy.
 3. **Vars**: `DEEPSEEK_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `CONSUMER_INTERNAL_URL`,
-   `INSIKA_EGRESS_HOSTS` (and `WEB_CONCURRENCY` to match your plan/CPU).
+   `INSIKA_EGRESS_HOSTS`. **Leave `WEB_CONCURRENCY` at its default of 1.** Railway's
+   own docs say it "does not support sticky sessions" and randomly distributes
+   traffic across replicas/workers — there is no way on this platform to satisfy
+   the "sticky routing per session in front" precondition item 2 of the process
+   model requires, at any layer (Railway replicas or Falcon's own `--count`
+   workers within one container). Raising it here is not a throughput knob, it
+   is a guaranteed way to leak a reply across sessions the first time two
+   requests for the same session land on different workers — `insika doctor`
+   errors on this combination for exactly that reason.
 4. The healthcheck hits `/up`.
 5. Point your consumer at the service's public URL, with a matching API token
    (see [RUNNING-LOCAL.md](RUNNING-LOCAL.md)).
