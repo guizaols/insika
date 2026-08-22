@@ -31,10 +31,15 @@ module Insika
                   :message_source,     # WS9: how the turn's message entered (:voice when it came
                   #                      from a transcribed audio part; nil = typed). Rides the
                   #                      terminal event additively.
-                   :media_attachments,  # WS9: the ask's attachments (image parts); nil = none.
-                  #                      The provider bills them; usage flows like any ask.
-                  #                      The first image URL also lands on turn_context[:image_url]
-                  #                      for data/HTTP tools (`{{ctx.image_url}}`).
+                   :media_attachments,  # WS9: the ask's attachments (image + document parts);
+                  #                      nil = none. The provider bills them; usage flows like
+                  #                      any ask. The first URL of each kind also lands on
+                  #                      turn_context (`{{ctx.image_url}}` / `{{ctx.document_url}}`).
+                  :image_attachments,  # WS9: the IMAGE subset of media_attachments (nil = no
+                  #                      inbound image this turn). The default edit SOURCE for
+                  #                      generate_image (RFC-0042) — kept separate from
+                  #                      media_attachments because that one may also hold a
+                  #                      document, which is never a paint(with:) source.
                   :output_parts,       # WS9 (saída): media the turn GENERATED, as additive
                   #                      parts ({ type:, mime_type:, base64:, model: }). Rides
                   #                      the terminal event (output_parts) and the /v1/responses

@@ -1383,10 +1383,11 @@ module Insika
     #
     # Content parts on the command -> a turn: audio parts are transcribed (the
     # text enters the message marked `source: :voice` — the consumer's signal
-    # the person SPOKE), image parts become the ask's attachments (the model
-    # sees them; the provider bills them — usage flows) and the first URL is
-    # deposited as `ctx.image_url` for data/HTTP tools. The engine transports
-    # media, never meaning: no speech/vision logic beyond the call itself.
+    # the person SPOKE), image and document parts become the ask's attachments
+    # (the model sees them; the provider bills them — usage flows) and the
+    # first URL of each kind is deposited as `ctx.image_url` / `ctx.document_url`
+    # for data/HTTP tools. The engine transports media, never meaning: no
+    # speech/vision logic beyond the call itself.
     def run_media_stage(task, state)
       # a consumer that pre-transcribed voice text labels it `source: voice`;
       # the marker rides the turn even when there are no audio PARTS left.
@@ -1397,18 +1398,31 @@ module Insika
 
       voice = Insika::Media.audio_parts(parts)
       if voice.any?
-        text = voice.map { |p| media_transcribe(p.url) }.reject(&:empty?).join(" ")
+        text = voice.map { |p| media_transcribe(p.url, state) }.reject(&:empty?).join(" ")
         state.message = [state.message.to_s, text].reject(&:empty?).join("\n")
         state.message_source = :voice
       end
 
       images = Insika::Media.image_parts(parts)
       if images.any?
-        state.media_attachments = images.map { |p| media_attachment(p.url) }
+        state.image_attachments = images.map { |p| media_attachment(p.url) }
+        state.media_attachments = state.image_attachments
         # First image URL for data tools (`{{ctx.image_url}}`) — photo analysis
         # outside the prompt. The model still sees the attachment; the tool
         # gets the original URL (its own egress applies when it fetches).
         state.turn_context = (state.turn_context || {}).merge(image_url: images.first.url)
+      end
+
+      # Documents (a prescription, a recipe, an invoice) ride the SAME
+      # attachments array as images — RubyLLM's `ask(with:)` takes both, and
+      # the attachment content-sniffs PDF magic bytes when the URL has no
+      # extension — capped separately (MAX_DOCUMENT_BYTES) since a document
+      # is not a photo.
+      documents = Insika::Media.document_parts(parts)
+      if documents.any?
+        doc_attachments = documents.map { |p| media_attachment(p.url, max_bytes: Insika::Media::MAX_DOCUMENT_BYTES) }
+        state.media_attachments = Array(state.media_attachments) + doc_attachments
+        state.turn_context = (state.turn_context || {}).merge(document_url: documents.first.url)
       end
 
       # A media-only turn (a voice note with no caption) is legitimate — the
@@ -1424,41 +1438,30 @@ module Insika
     # The STT seam: the injected transcriber (specs), else the default
     # (fetch + RubyLLM::Transcription — lazy require). A failed transcription
     # fails the turn loudly (MediaError -> :media): a voice message that was
-    # not heard must not become a hallucinated one.
-    def media_transcribe(url)
-      transcriber = @media || (@default_transcriber ||= Insika::Media.default_transcriber(
+    # not heard must not become a hallucinated one. The default is rebuilt
+    # PER CALL (never memoized) because its vocabulary `prompt:` is resolved
+    # from THIS turn's profile — a memoized seam would freeze the first
+    # agent's prompt (or its absence) for every agent sharing the executor.
+    def media_transcribe(url, state)
+      transcriber = @media || Insika::Media.default_transcriber(
         stt_model: Insika::EnvSchema.read("INSIKA_STT_MODEL"),
-        stt_language: Insika::EnvSchema.read("INSIKA_STT_LANGUAGE")
-      ))
+        stt_language: Insika::EnvSchema.read("INSIKA_STT_LANGUAGE"),
+        stt_prompt: resolved_stt_prompt(state.profile)
+      )
       transcriber.call(url)
     end
 
-    # An image part -> the ask's attachment. RubyLLM required lazily (load-guard).
-    #
-    # The bytes come through OUR fetch (`Media.fetch_binary`), which is
-    # egress-guarded — the URL is CONSUMER input, so a private/metadata target
-    # fails the turn loudly at :media — and SIZE-CAPPED. Handing the raw URL to
-    # `RubyLLM::Attachment` instead left the fetch to the gem, whose
-    # `fetch_content` reads the whole response with no ceiling: a hostile URL
-    # answering an endless body grows this process until it dies. An io-like
-    # source (StringIO) is the branch of Attachment that takes bytes we already
-    # hold; the provider then gets base64 rather than the URL, which every
-    # vision provider accepts.
-    def media_attachment(url)
-      require "ruby_llm"
-      require "stringio"
-
-      bytes = Insika::Media.fetch_binary(url, max_bytes: Insika::Media::MAX_IMAGE_BYTES)
-      RubyLLM::Attachment.new(StringIO.new(bytes), filename: media_filename(url))
+    # Resolution order (RFC-0042): the agent profile's own vocabulary hint
+    # (it knows its catalog) beats the deployment-wide default, which beats
+    # nothing (no prompt: kwarg at all).
+    def resolved_stt_prompt(profile)
+      Insika::Coercion.presence(profile&.stt_prompt) || Insika::EnvSchema.read("INSIKA_STT_PROMPT")
     end
 
-    # The URL's basename, for the attachment's mime sniff (".png" -> image/png;
-    # a URL with no filename falls back to the content sniff RubyLLM does).
-    def media_filename(url)
-      name = File.basename(URI.parse(url).path.to_s)
-      name.empty? ? nil : name
-    rescue URI::InvalidURIError
-      nil
+    # An image/document part -> the ask's attachment (Insika::Media.url_attachment
+    # — egress-guarded, size-capped fetch; the caller picks the ceiling).
+    def media_attachment(url, max_bytes: Insika::Media::MAX_IMAGE_BYTES)
+      Insika::Media.url_attachment(url, max_bytes: max_bytes)
     end
 
     # --- WS4 intent routing --------------------------------------------

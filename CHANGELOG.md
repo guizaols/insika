@@ -10,6 +10,17 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Media parity (RFC-0042)** — three transport gaps closed, all additive:
+  `generate_image` can now EDIT as well as generate — `source_image_urls`
+  (or, absent those, the turn's own inbound photo by default) ride
+  `RubyLLM.paint(with:)`, an optional `mask_url` rides `paint(mask:)`; a
+  fourth inbound part type, `document` (`{ "type": "document", "url": … }`,
+  capped at 10 MB), attaches to the ask like an image and deposits
+  `{{ctx.document_url}}` for data tools; and audio transcription now carries
+  a vocabulary `prompt:` (per-agent `stt_prompt`, falling back to the
+  deployment-wide `INSIKA_STT_PROMPT`) so domain terms (product names, brand
+  terms) transcribe correctly instead of phonetically. Text-to-image and
+  plain audio transcription stay byte-identical when neither feature is used.
 - **Demo data** — `insika demo:seed` (and a matching "Seed demo data" button
   under Studio Settings) provisions a bundled `demo-store` agent and writes
   enough realistic data to see every loop working at once: a funnel with a

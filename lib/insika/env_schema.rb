@@ -120,6 +120,7 @@ module Insika
       spec(name: "INSIKA_TICK_STALE_AFTER", type: :integer, description: "Seconds a :queued/:running task must sit untouched before the tick sweeps it (default 900). Must exceed the largest turn_timeout of the deployment."),
       spec(name: "INSIKA_STT_MODEL", description: "Model used to transcribe audio message parts (WS9). Unset -> RubyLLM's default transcription model."),
       spec(name: "INSIKA_STT_LANGUAGE", description: "Language hint for the transcription of audio message parts (WS9)."),
+      spec(name: "INSIKA_STT_PROMPT", description: "Deployment-wide vocabulary hint (product names, brand terms) for audio transcription (WS9). Overridden per agent by the profile's stt_prompt."),
       spec(name: "INSIKA_TENANCY", enum: %w[single_tenant multi_tenant], description: "single_tenant (default: one operator credential) or multi_tenant (per-tenant + operator tokens resolved from the store)."),
       spec(name: "INSIKA_ONBOARDING", type: :boolean, description: "Expose the public onboarding surface (/start.md, /models.json, /docs) in production (opt-in)."),
       spec(name: "INSIKA_RELAY_TOKEN", secret: true, description: "Bearer the relay consumer sends us. Unset -> the relay channel is not mounted."),

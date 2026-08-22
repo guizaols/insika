@@ -62,6 +62,23 @@ RSpec.describe Insika::Server::Responses do
       expect(out[:parts]).to eq([{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }])
     end
 
+    # RFC-0042: document is additive to the multimodal input contract, same
+    # shape discipline as audio/image.
+    it "input with ONLY a document part (no caption) is accepted, message empty" do
+      body = { model: "openclaw:a", user: "c",
+               input: [{ "type" => "document", "url" => "https://cdn.example.com/receita.pdf" }] }
+      out = described_class.parse_request(body, req)
+
+      expect(out[:message]).to eq("")
+      expect(out[:parts]).to eq([{ "type" => "document", "url" => "https://cdn.example.com/receita.pdf" }])
+    end
+
+    it "input as an array with a MALFORMED document part is refused (422)" do
+      body = { model: "openclaw:a", user: "c", input: [{ "type" => "document" }] } # no url
+      expect { described_class.parse_request(body, req) }
+        .to raise_error(Insika::ValidationError, /malformed content part/)
+    end
+
     it "input with only EMPTY text parts is still empty (a part is not a loophole)" do
       body = { model: "openclaw:a", user: "c", input: [{ "type" => "text", "text" => "   " }] }
       expect { described_class.parse_request(body, req) }

@@ -57,9 +57,10 @@ RSpec.describe "Insika::Executor + media output (WS9, saída)" do
     )
   end
 
-  def task(message, channel: nil, id: "t-1")
+  def task(message, channel: nil, parts: nil, id: "t-1")
     payload = { agent: "a", message: message }
     payload[:channel] = channel if channel
+    payload[:parts] = parts if parts
     task_store.create(command: Insika::Command.build(:send_message, payload).to_h,
                       session_id: "s1", id: id)
   end
@@ -171,6 +172,91 @@ RSpec.describe "Insika::Executor + media output (WS9, saída)" do
     data = completed(executor)
     expect(data[:output_parts].map { |p| p["type"] }).to eq(%w[image audio])
     expect(data[:usage]).to include(media: 2, input_tokens: 5, output_tokens: 3)
+  end
+
+  # RFC-0042 PR1: generate_image can EDIT — explicit source_image_urls, or
+  # (absent those) the turn's own inbound photo, ride the seam's config.
+  describe "image editing" do
+    def capturing_seams(base)
+      captured = {}
+      seams = base.merge(
+        image: lambda do |prompt, config|
+          captured[:config] = config
+          base[:image].call(prompt, config)
+        end
+      )
+      [seams, captured]
+    end
+
+    it "explicit source_image_urls ride the config as source_urls" do
+      wired, captured = capturing_seams(seams)
+      executor = build_executor(media_output: wired)
+      chat = FakeChat.new
+      chat.script = proc do
+        tool = chat.tools.find { |t| t.is_a?(Insika::Tools::GenerateImage) }
+        tool.execute(prompt: "put this shirt on the model",
+                     source_image_urls: ["https://cdn.example.com/produto.png"])
+        emit_chunk("pronto")
+      end
+
+      run(executor, task("edita essa foto", channel: { capabilities: %w[image_output] }), chat)
+
+      expect(captured[:config]["source_urls"]).to eq(["https://cdn.example.com/produto.png"])
+      expect(captured[:config]).not_to have_key("source_attachments")
+    end
+
+    it "no explicit URLs, but the turn carries an inbound photo: it becomes the default edit source" do
+      wired, captured = capturing_seams(seams)
+      executor = build_executor(media_output: wired)
+      allow(executor).to receive(:media_attachment).and_return(:the_inbound_attachment)
+      chat = FakeChat.new
+      chat.script = proc do
+        tool = chat.tools.find { |t| t.is_a?(Insika::Tools::GenerateImage) }
+        tool.execute(prompt: "coloca esse tênis no meu pé")
+        emit_chunk("pronto")
+      end
+
+      run(executor,
+          task("", channel: { capabilities: %w[image_output] },
+               parts: [{ "type" => "image", "url" => "https://cdn.example.com/pe.png" }]), chat)
+
+      expect(captured[:config]["source_attachments"]).to eq([:the_inbound_attachment])
+    end
+
+    it "explicit source_image_urls win over the turn's own inbound photo" do
+      wired, captured = capturing_seams(seams)
+      executor = build_executor(media_output: wired)
+      allow(executor).to receive(:media_attachment).and_return(:the_inbound_attachment)
+      chat = FakeChat.new
+      chat.script = proc do
+        tool = chat.tools.find { |t| t.is_a?(Insika::Tools::GenerateImage) }
+        tool.execute(prompt: "usa essa outra foto", source_image_urls: ["https://cdn.example.com/outra.png"])
+        emit_chunk("pronto")
+      end
+
+      run(executor,
+          task("", channel: { capabilities: %w[image_output] },
+               parts: [{ "type" => "image", "url" => "https://cdn.example.com/pe.png" }]), chat)
+
+      expect(captured[:config]["source_urls"]).to eq(["https://cdn.example.com/outra.png"])
+      expect(captured[:config]).not_to have_key("source_attachments")
+    end
+
+    it "no sources at all (plain generation): the config carries neither key — byte-identical" do
+      wired, captured = capturing_seams(seams)
+      executor = build_executor(media_output: wired)
+      chat = FakeChat.new
+      chat.script = proc do
+        tool = chat.tools.find { |t| t.is_a?(Insika::Tools::GenerateImage) }
+        tool.execute(prompt: "a red sofa")
+        emit_chunk("pronto")
+      end
+
+      run(executor, task("desenha um sofá", channel: { capabilities: %w[image_output] }), chat)
+
+      expect(captured[:config]).not_to have_key("source_urls")
+      expect(captured[:config]).not_to have_key("source_attachments")
+    end
   end
 
   it "a turn that generates nothing carries no output_parts (parity)" do

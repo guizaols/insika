@@ -53,7 +53,7 @@ module Insika
         if raw.is_a?(Array)
           unless Insika::Media.well_formed?(raw)
             raise Insika::ValidationError,
-                  "malformed content part — each part must be {type: text|image|audio} with text/url"
+                  "malformed content part — each part must be {type: text|image|audio|document} with text/url"
           end
 
           normalized = Insika::Media.parts(raw).map do |p|
