@@ -490,6 +490,20 @@ def local_side_effect_tools(agent)
   Insika::Evals::EvalProfile.side_effect_tools(profile, registry)
 end
 
+# One place for the CLI's provider keys. A judge panel is only as multi-model
+# as the keys this block wires: a settings panel pointing at OpenRouter models
+# silently 401'd here while the engine (LlmConfigurator) knew the key all along.
+def configure_eval_llm!
+  require "ruby_llm"
+  RubyLLM.configure do |c|
+    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
+    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
+    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
+    c.openrouter_api_key = ENV["OPENROUTER_API_KEY"] if ENV["OPENROUTER_API_KEY"]
+    c.gemini_api_key = ENV["GEMINI_API_KEY"] if ENV["GEMINI_API_KEY"]
+  end
+end
+
 # The persona MODEL — the cheap side that plays the customer. Defaults to the
 # platform `utility_model` (the same setting the judges and the moderator read);
 # --persona-model overrides. Refuses when neither is set: never guess a model to
@@ -498,12 +512,7 @@ def build_persona_ask(opts, settings)
   model = opts[:persona_model] || settings["utility_model"]
   abort "insika evals:simulate: no persona model — set the platform utility_model or pass --persona-model" if model.to_s.empty?
 
-  require "ruby_llm"
-  RubyLLM.configure do |c|
-    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
-    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
-    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
-  end
+  configure_eval_llm!
   # ruby_llm_ask runs with assume_model_exists, which requires an explicit
   # provider — a bare model id (e.g. a platform utility_model outside the
   # RubyLLM registry) aborted every simulated run before this fallback.
@@ -519,12 +528,7 @@ def build_sim_judge(opts, settings)
            end
   return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
 
-  require "ruby_llm"
-  RubyLLM.configure do |c|
-    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
-    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
-    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
-  end
+  configure_eval_llm!
   Insika::Evals::JudgePanel.build(settings["evals"] || {}, overrides: {
                                     "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
                                   })&.first
@@ -540,12 +544,7 @@ def build_sim_pairwise(opts, settings)
            end
   return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
 
-  require "ruby_llm"
-  RubyLLM.configure do |c|
-    c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
-    c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
-    c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
-  end
+  configure_eval_llm!
   Insika::Evals::JudgePanel.pairwise(settings["evals"] || {}, overrides: {
                                        "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
                                      })&.first
