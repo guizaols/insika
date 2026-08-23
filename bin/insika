@@ -343,6 +343,7 @@ def evals_simulate(argv)
     o.on("--judge-model MODEL", "score the transcript's rubric with this model") { |v| opts[:judge_model] = v }
     o.on("--judge-provider PROVIDER", "provider for the judge model") { |v| opts[:judge_provider] = v }
     o.on("--pairwise", "compare the simulated transcript against the case's `reference:`") { opts[:pairwise] = true }
+    o.on("--conv ID", "conversation id (default: sim-<case id>-<random>, unique per run)") { |v| opts[:conv] = v }
     o.on("--out FILE", "write the JSON report here") { |v| opts[:out] = v }
   end.parse!(argv)
 
@@ -367,7 +368,11 @@ def evals_simulate(argv)
 
   transport = build_sim_transport(opts)
   simulator = Insika::Evals::Simulator.new(transport: transport, ask: ask, safety: safety)
-  conv = "sim-#{golden.id}"
+  # Unique per run: two runs sharing a conv share the deployment SESSION, so the
+  # second inherits the first's history — including across the A/B arms of a
+  # paired comparison, which it silently invalidates.
+  require "securerandom"
+  conv = opts[:conv] || "sim-#{golden.id}-#{SecureRandom.hex(4)}"
   run = simulator.run(persona: golden.persona, agent: target_agent, conv: conv)
 
   verdict = judge && judge.score_conversation(
