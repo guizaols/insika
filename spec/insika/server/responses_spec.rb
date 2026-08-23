@@ -62,7 +62,7 @@ RSpec.describe Insika::Server::Responses do
       expect(out[:parts]).to eq([{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }])
     end
 
-    # RFC-0042: document is additive to the multimodal input contract, same
+    # Document is additive to the multimodal input contract, same
     # shape discipline as audio/image.
     it "input with ONLY a document part (no caption) is accepted, message empty" do
       body = { model: "openclaw:a", user: "c",

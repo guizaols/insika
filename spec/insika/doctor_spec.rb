@@ -634,7 +634,7 @@ RSpec.describe Insika::Doctor do
       expect(finding.severity).to eq(:ok)
     end
 
-    # RFC-0043: a detected insika-router satisfies the precondition the warn/
+    # A detected insika-router satisfies the precondition the warn/
     # error states exist to enforce — on Railway too, since the router is
     # what makes N>1 finally safe there (N local workers behind it).
     it "is ok above 1 when INSIKA_ROUTER_BACKENDS is set" do

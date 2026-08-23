@@ -68,6 +68,18 @@ module Insika
       self
     end
 
+    # Appends roots at the END — lowest precedence, so a workspace skill always
+    # overrides a same-named one shipped by a plugin. This is how
+    # the plugin Loader's `skill_dirs` reach the catalog at boot; reloads only
+    # when something new actually arrived.
+    def add_roots(dirs)
+      added = Array(dirs).map { |d| File.expand_path(d.to_s) } - @roots.map { |r| File.expand_path(r) }
+      return self if added.empty?
+
+      @roots.concat(added)
+      reload
+    end
+
     # Per-agent allowlist: nil -> all | [] -> none | [names] -> subset. `agent`
     # selects WHICH body each allowed name resolves to (see #find); the allowlist is
     # by NAME either way, so specializing a skill never touches the allowlist.

@@ -20,7 +20,7 @@ RSpec.describe Insika::Router::HashRing do
     expect { described_class.new([]) }.to raise_error(ArgumentError)
   end
 
-  describe "ring stability (RFC-0043 §6.2 — adding/removing one backend remaps ~1/N)" do
+  describe "ring stability (adding/removing one backend remaps ~1/N)" do
     it "adding one backend to N remaps roughly 1/(N+1) of the key space" do
       before = described_class.new(%w[a b c d])
       after = described_class.new(%w[a b c d e])

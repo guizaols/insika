@@ -164,7 +164,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     expect(failed.executions.last.error["stage"]).to eq("media")
   end
 
-  describe "#media_transcribe (STT vocabulary prompt, RFC-0042)" do
+  describe "#media_transcribe (STT vocabulary prompt)" do
     it "resolves the agent profile's stt_prompt over the deployment env default" do
       executor = build_executor
       with_prompt = Insika::AgentProfile.build(id: "a", model: "m", stt_prompt: "Ocean Drop, tênis")
@@ -202,7 +202,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     end
   end
 
-  # RFC-0042: documents ride the SAME attachments array as images, capped
+  # Documents ride the SAME attachments array as images, capped
   # separately (a prescription, not an archive).
   it "a DOCUMENT part attaches to the ask and is deposited as ctx.document_url" do
     attachment = Object.new

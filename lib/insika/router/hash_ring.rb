@@ -4,7 +4,7 @@ require "zlib"
 
 module Insika
   module Router
-    # Ketama-style consistent hash ring (RFC-0043 §3.2). Each backend gets
+    # Ketama-style consistent hash ring. Each backend gets
     # `replicas` virtual points on a 0..2**32-1 circle (CRC32 of "backend#i");
     # a key's owner is the first point clockwise from CRC32(key). Removing or
     # adding one backend only remaps the ~1/N of the space that belonged to

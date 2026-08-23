@@ -300,7 +300,7 @@ RSpec.describe Studio::App do
     private
 
     # `frame` simulates a Turbo frame fetch: Turbo sends `Turbo-Frame: <id>` on
-    # every frame navigation (the miller-column row links, RFC-0041 PR4).
+    # every frame navigation (the miller-column row links).
     def headers(frame = nil)
       h = @cookie ? { "HTTP_COOKIE" => @cookie } : {}
       frame ? h.merge("HTTP_TURBO_FRAME" => frame) : h
@@ -2080,7 +2080,7 @@ RSpec.describe Studio::App do
     expect(body).to include("trufa")
   end
 
-  # --- RFC-0041: visual parity — motion, transcript, live home, master-detail --
+  # --- Visual parity — motion, transcript, live home, master-detail --
 
   it "the layout declares the view-transition meta and the chip-icon sprite" do
     app, = build_app

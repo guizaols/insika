@@ -5,7 +5,7 @@ require_relative "hash_ring"
 
 module Insika
   module Router
-    # Backend discovery + the ring it feeds (RFC-0043 §3.4). Two modes:
+    # Backend discovery + the ring it feeds. Two modes:
     #
     #   static — a fixed list, resolved once (the Railway shape: N local
     #     Falcon workers on known ports inside one container).

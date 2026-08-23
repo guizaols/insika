@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# RFC-0043 — Session-sticky router. NOT required by `require "insika"` (like
+# Session-sticky router. NOT required by `require "insika"` (like
 # server/ and the Studio, it pulls in async-http and is only needed by an
 # operator who actually runs `bin/insika-router`): the engine's serving path
 # (`insika serve` / `DSL::ServerBoot` / `WEB_CONCURRENCY=1`) is completely

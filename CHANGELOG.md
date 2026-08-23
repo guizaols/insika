@@ -10,7 +10,19 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
-- **Media parity (RFC-0042)** — three transport gaps closed, all additive:
+- **Plugin loading is on in every root** — `Server::Boot`'s `load_plugins`
+  step was a no-op in both composition roots, so the tested
+  `Insika::Plugin::Loader` never ran outside the `insika-code`
+  example. It now runs at boot in the minimal wiring, the demo deployment
+  and DSL-run agents, via a shared `Wiring::Graph.load_plugins`. Discovery
+  roots: announced gems (default-enabled), `INSIKA_PLUGIN_DIR` (workspace)
+  and the repo's `plugins/` — the latter two gated by `INSIKA_PLUGINS`,
+  with `INSIKA_PLUGINS_DISABLED` as the absolute veto. Plugin skills and
+  prompts join the catalogs at the lowest precedence (a workspace or
+  authored skill still wins). The dead `OPENCLAW_PLUGIN_DIR` env spec
+  (nothing ever read it) is replaced by the three new keys.
+
+- **Media parity** — three transport gaps closed, all additive:
   `generate_image` can now EDIT as well as generate — `source_image_urls`
   (or, absent those, the turn's own inbound photo by default) ride
   `RubyLLM.paint(with:)`, an optional `mask_url` rides `paint(mask:)`; a

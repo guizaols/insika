@@ -326,7 +326,7 @@ RSpec.describe Insika::Server::App do
       expect(bus.dispatched).to be_empty
     end
 
-    it "a well-formed DOCUMENT content part is accepted (RFC-0042: additive to the contract)" do
+    it "a well-formed DOCUMENT content part is accepted (additive to the contract)" do
       bus = ServerBusDouble.new { { task_id: "t-1" } }
       stream = ServerEventStreamDouble.new([event(:task_completed, { content: "" })])
       app = build_app(bus: bus, event_stream: stream)

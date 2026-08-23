@@ -2,7 +2,7 @@
 
 module Insika
   module Router
-    # Session-key extraction (RFC-0043 §3.1), matched to the routes that
+    # Session-key extraction, matched to the routes that
     # actually carry production traffic in `Server::App` today. The RFC's own
     # sketch of a path-based `/api/widget/sessions/:token/…` route was written
     # from memory and does not match what `server/app.rb` implements — the
