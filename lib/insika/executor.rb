@@ -1451,7 +1451,7 @@ module Insika
       transcriber.call(url)
     end
 
-    # Resolution order (RFC-0042): the agent profile's own vocabulary hint
+    # Resolution order: the agent profile's own vocabulary hint
     # (it knows its catalog) beats the deployment-wide default, which beats
     # nothing (no prompt: kwarg at all).
     def resolved_stt_prompt(profile)

@@ -10,11 +10,11 @@ require_relative "proxy_body"
 
 module Insika
   module Router
-    # The standalone Rack/Async app (RFC-0043 §3): session-key extraction →
+    # The standalone Rack/Async app: session-key extraction →
     # consistent-hash pick → proxy, on the same Async/Falcon stack the engine
     # already runs on. A request whose key has no live owner (nothing found,
     # or the ring itself is empty) round-robins; a request whose chosen
-    # backend is unreachable answers the RFC-0021 retry envelope — it is NOT
+    # backend is unreachable answers the retry envelope — it is NOT
     # retried against a different backend (§3.5): that backend may already
     # hold a durable, at-most-once claim on the task this request names.
     class App

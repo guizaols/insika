@@ -30,6 +30,16 @@ module Insika
       self
     end
 
+    # Parity with SkillCatalog#add_roots: plugin prompt dirs join at the END
+    # (lowest precedence — a workspace prompt beats a plugin's same-named one).
+    def add_roots(dirs)
+      added = Array(dirs).map { |d| File.expand_path(d.to_s) } - @roots.map { |r| File.expand_path(r) }
+      return self if added.empty?
+
+      @roots.concat(added)
+      reload
+    end
+
     private
 
     def load_all

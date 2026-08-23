@@ -18,7 +18,7 @@ RSpec.describe Insika::Router::App do
 
   # client_factory double: records every request it received, keyed by the
   # backend it was built for, and answers a queued response (or raises the
-  # queued error — simulating an unreachable backend, RFC-0043 §3.5).
+  # queued error — simulating an unreachable backend).
   class RouterFakeClientFactory
     Call = Struct.new(:backend, :request)
 
@@ -127,8 +127,8 @@ RSpec.describe Insika::Router::App do
     end
   end
 
-  describe "backend unavailable (RFC-0043 §3.5)" do
-    it "answers the RFC-0021 retry envelope instead of trying another backend" do
+  describe "backend unavailable" do
+    it "answers the retry envelope instead of trying another backend" do
       pool = RouterFakePool.new(%w[http://a:9292 http://b:9292])
       factory = RouterFakeClientFactory.new
       factory.respond("http://a:9292", Errno::ECONNREFUSED.new)
@@ -155,7 +155,7 @@ RSpec.describe Insika::Router::App do
     end
   end
 
-  describe "oversized body (RFC-0043 §5 — a bounded peek, not a bounded forward)" do
+  describe "oversized body (a bounded peek, not a bounded forward)" do
     it "skips session-key extraction past body_max_bytes but still forwards the WHOLE body" do
       pool = RouterFakePool.new(%w[http://a:9292 http://b:9292])
       factory = RouterFakeClientFactory.new

@@ -97,7 +97,7 @@ module Insika
       # briefing_fields.
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
-    ].freeze
+    ] # NOT frozen: load_plugins appends plugin providers at boot (pre-listen)
 
     GRAPH = Graph.build(
       spine: SPINE, profiles: PROFILES,
@@ -205,12 +205,17 @@ module Insika
 
     # Named steps consumed by Server::Boot. The graph above is built EAGERLY at
     # require (shortcut constants); the steps expose the SEQUENCE Boot orchestrates.
-    # `load_plugins`/`build_stores` are no-ops at the base — the "recovery before the
-    # listen" guarantee comes from `recovery.run` running inside Boot, before `run APP`.
-    # NB: when this no-op becomes a real Insika::Plugin::Loader.new, the registries
-    # hash MUST include `capabilities: CAPABILITY_REGISTRY` — the missing key is safe
-    # (the loader ignores capabilities), but without it no plugin can register one.
-    def self.load_plugins = nil
+    # `build_stores` is a no-op at the base — the "recovery before the listen"
+    # guarantee comes from `recovery.run` running inside Boot, before `run APP`.
+    #
+    # `load_plugins` is REAL: announced gems + INSIKA_PLUGIN_DIR + the repo's
+    # bundled plugins/ (the latter two gated by INSIKA_PLUGINS), registered into
+    # the graph built above — see Wiring::Graph.load_plugins for why post-build
+    # registration is safe.
+    def self.load_plugins
+      Graph.load_plugins(GRAPH, bundled_root: File.join(ROOT, "plugins"))
+    end
+
     def self.build_stores = nil
     def self.recovery = RECOVERY
 

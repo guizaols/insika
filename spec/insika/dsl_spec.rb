@@ -281,7 +281,7 @@ RSpec.describe Insika::DSL do
       expect(from_dsl).to eq(import_and_read(hand))
     end
 
-    it "the stt_prompt knob is DATA on the pack (RFC-0042)" do
+    it "the stt_prompt knob is DATA on the pack" do
       dsl = Insika.agent("bia5b") do
         model "deepseek-chat"
         stt_prompt "Ocean Drop, tênis, boné trucker"
@@ -721,7 +721,7 @@ RSpec.describe Insika::DSL do
     end
   end
 
-  # MCP instances (RFC-0040 PR3): global to the graph's ONE McpStore, not any
+  # MCP instances: global to the graph's ONE McpStore, not any
   # one agent — so both a system-level `mcp` and one nested inside a member
   # `agent { … }` block are in scope, and the DECLARATION (code) is the
   # template but the STORE'S OWN `enabled`/credentials win once the instance

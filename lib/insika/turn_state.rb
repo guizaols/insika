@@ -37,7 +37,7 @@ module Insika
                   #                      turn_context (`{{ctx.image_url}}` / `{{ctx.document_url}}`).
                   :image_attachments,  # WS9: the IMAGE subset of media_attachments (nil = no
                   #                      inbound image this turn). The default edit SOURCE for
-                  #                      generate_image (RFC-0042) — kept separate from
+                  #                      generate_image — kept separate from
                   #                      media_attachments because that one may also hold a
                   #                      document, which is never a paint(with:) source.
                   :output_parts,       # WS9 (saída): media the turn GENERATED, as additive

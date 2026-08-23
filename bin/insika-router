@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# `insika-router` — RFC-0043's session-sticky router. A standalone Async/
+# `insika-router` — session-sticky router. A standalone Async/
 # Falcon process that sits in front of N engine backends and routes each
 # request to the SAME backend every time its session id resolves to (a
 # ketama-style consistent hash ring), so `WEB_CONCURRENCY=1`-per-worker's
@@ -74,7 +74,7 @@ module Insika
       end
 
       def banner(pool, host, port)
-        puts "\e[1mInsika Router\e[0m — session-sticky proxy (RFC-0043)"
+        puts "\e[1mInsika Router\e[0m — session-sticky proxy"
         puts "  http://#{host}:#{port}/up   → health (also this process's own liveness)"
         mode = pool.dns? ? "dns" : "static"
         puts "  backends (#{mode}): #{pool.backends.join(', ')}"
