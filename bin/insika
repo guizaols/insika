@@ -499,7 +499,11 @@ def build_persona_ask(opts, settings)
     c.openai_api_key = ENV["OPENAI_API_KEY"] if ENV["OPENAI_API_KEY"]
     c.openai_api_base = ENV["OPENAI_API_BASE"] if ENV["OPENAI_API_BASE"]
   end
-  Insika::Evals::JudgePanel.ruby_llm_ask(model, nil)
+  # ruby_llm_ask runs with assume_model_exists, which requires an explicit
+  # provider — a bare model id (e.g. a platform utility_model outside the
+  # RubyLLM registry) aborted every simulated run before this fallback.
+  provider = ENV["EVAL_PERSONA_PROVIDER"] || settings["default_provider"]
+  Insika::Evals::JudgePanel.ruby_llm_ask(model, provider)
 end
 
 def build_sim_judge(opts, settings)
