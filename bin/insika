@@ -395,7 +395,12 @@ def evals_simulate(argv)
   report = { "simulated" => true, "at" => at, "id" => golden.id, "agent" => golden.agent,
              "conv" => conv, "stop" => run.stop.to_s, "turns" => run.turns, "error" => run.error,
              "persona" => golden.persona.to_h, "transcript" => run.transcript }
-  report["judge"] = { "score" => verdict.score, "pass" => verdict.pass, "reason" => verdict.reason } if verdict
+  if verdict
+    report["judge"] = { "score" => verdict.score, "pass" => verdict.pass, "reason" => verdict.reason }
+    # A split panel must be visible in the report (the whole point of a panel
+    # over a lone judge): one entry per judge model, in settings order.
+    report["judge"]["judges"] = verdict.judges if verdict.judges
+  end
   report["pairwise"] = { "outcome" => pairwise.outcome, "vs" => pairwise.vs, "reason" => pairwise.reason } if pairwise
   puts simulate_markdown(report, verdict, pairwise)
   if opts[:out]
