@@ -221,6 +221,11 @@ insika evals:simulate --persona persona.yml --target loja-chocolates --staging
 - `--persona-model` — the model playing the customer (default: the platform
   `utility_model`). The judge that scores the transcript comes from the same
   panel configuration as a replay.
+- `--conv` — the conversation id. The default is unique per run
+  (`sim-<case id>-<random>`), because two runs on the same conv share the
+  deployment session: the second inherits the first's history — including
+  across the arms of an A/B comparison — and the grade stops measuring the
+  agent. Pass `--conv` only when continuing a session is the point.
 
 Every simulated run is **`simulated: true`** — the transcript carries the flag end to
 end, so a report never mixes a generated conversation with real traffic. A simulated

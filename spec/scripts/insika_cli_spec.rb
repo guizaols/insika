@@ -5,6 +5,7 @@ require "open3"
 require "tmpdir"
 require "json"
 require "fileutils"
+require "securerandom"
 
 # Integration proof of the `insika` CLI (— "config estrito +
 # doctor --fix"). Shells out to the real binary so the exit codes and the
@@ -345,6 +346,37 @@ RSpec.describe "bin/insika" do
                           "--target", "https://a2a.example.com", "--eval-profile")
         expect(out).to match(/declare the swap list explicitly/)
         expect(status.exitstatus).to eq(1)
+      end
+    end
+
+    # Two runs on the same conv share the deployment SESSION — the second
+    # inherits the first's history (including across A/B arms), which silently
+    # invalidates a paired comparison. The default conv must be unique per run.
+    # (The target is unreachable on purpose: the transport error still yields a
+    # report, and the conv is minted before any turn runs.)
+    def simulate_report_conv(dir, persona, *extra)
+      out_file = File.join(dir, "report-#{SecureRandom.hex(2)}.json")
+      run("evals:simulate", "--persona", persona, "--target", "loja", "--staging",
+          "--out", out_file, *extra,
+          env: { "EVAL_PERSONA_MODEL" => "fake-model", "INSIKA_URL" => "http://127.0.0.1:1" })
+      JSON.parse(File.read(out_file))["conv"]
+    end
+
+    it "mints a unique conv per run (a shared conv shares the session and contaminates a paired grid)" do
+      Dir.mktmpdir do |dir|
+        persona = persona_file(dir)
+        first  = simulate_report_conv(dir, persona)
+        second = simulate_report_conv(dir, persona)
+        expect(first).to match(/\Asim-loja-sim-\h{8}\z/)
+        expect(second).to match(/\Asim-loja-sim-\h{8}\z/)
+        expect(first).not_to eq(second)
+      end
+    end
+
+    it "--conv pins the conversation id when continuing a session is the point" do
+      Dir.mktmpdir do |dir|
+        conv = simulate_report_conv(dir, persona_file(dir), "--conv", "sim-continued")
+        expect(conv).to eq("sim-continued")
       end
     end
   end
