@@ -15,7 +15,7 @@
       <input type="search" class="filter-input" placeholder="Filter agents…" aria-label="Filter agents"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
     </div>
-    <nav class="drill-pane-body drill-list" aria-label="tools and agents">
+    <nav class="drill-pane-body drill-list" aria-label="tools and agents" data-controller="active-link">
       <% unless @data_tool_names.empty? %>
         <div class="drill-group-label">Data tools · HTTP, editable</div>
         <% @data_tool_names.sort.each do |name| %>
@@ -31,7 +31,8 @@
         <a class="drill-item<%== ' active' if @sel_agent && @sel_agent.id == a.id %>"
            href="/studio/tools?a=<%= Rack::Utils.escape(a.id) %>"
            data-turbo-frame="tool-detail" data-turbo-action="advance"
-           data-list-filter-target="item" data-filter-text="<%= a.id %>">
+           data-list-filter-target="item" data-filter-text="<%= a.id %>"
+           data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-name"><span class="txt"><%= a.id %></span>
             <span class="pill plain"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size}" %></span>
           </div>

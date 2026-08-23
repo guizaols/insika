@@ -14,7 +14,7 @@
     <input type="search" class="filter-input" placeholder="Filter agents by id, model or provider…" aria-label="Filter agents"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
   </div>
-  <nav class="drill-pane-body drill-list" aria-label="agents">
+  <nav class="drill-pane-body drill-list" aria-label="agents" data-controller="active-link">
     <% active_id = defined?(active_id) ? active_id : nil %>
     <% show_outcomes = defined?(show_outcomes) ? show_outcomes : false %>
     <% if @agents.empty? %>
@@ -24,7 +24,8 @@
         <a class="drill-item<%== ' active' if a.id == active_id %>"
            href="/studio/agents/<%= Rack::Utils.escape(a.id) %>"
            data-turbo-frame="agent-detail" data-turbo-action="advance"
-           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>">
+           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>"
+           data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-name">
             <span class="avatar sm <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
             <span class="txt"><%= a.id %></span>

@@ -36,16 +36,21 @@
         <a class="btn btn-sm" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Test in playground</a>
       </div>
       <div class="drill-pane-body">
-        <div class="tabs-page" data-controller="tabs">
+        <div class="tabs-page" data-controller="tabs" data-tabs-default-value="<%= @active_tab %>">
           <nav class="subnav" aria-label="agent sections">
-            <a href="#config" data-tabs-target="tab">config</a>
-            <a href="#prompts" data-tabs-target="tab">prompts</a>
-            <a href="#skills" data-tabs-target="tab">skills</a>
-            <a href="#memory" data-tabs-target="tab">memory</a>
-            <a href="#outcomes" data-tabs-target="tab">outcomes</a>
-            <a href="#loops" data-tabs-target="tab">loops</a>
-            <a href="#cache" data-tabs-target="tab">cache</a>
-            <a href="#history" data-tabs-target="tab">history</a>
+            <%# data-turbo="false": these are plain in-page hash links. Without
+                the opt-out, Turbo intercepts them as frame navigations (they sit
+                inside turbo-frame#agent-detail), dropping the #fragment and
+                re-fetching the frame instead of letting the browser set
+                location.hash — which is the only thing tabs_controller reads. %>
+            <a href="#config" data-tabs-target="tab" data-turbo="false">config</a>
+            <a href="#prompts" data-tabs-target="tab" data-turbo="false">prompts</a>
+            <a href="#skills" data-tabs-target="tab" data-turbo="false">skills</a>
+            <a href="#memory" data-tabs-target="tab" data-turbo="false">memory</a>
+            <a href="#outcomes" data-tabs-target="tab" data-turbo="false">outcomes</a>
+            <a href="#loops" data-tabs-target="tab" data-turbo="false">loops</a>
+            <a href="#cache" data-tabs-target="tab" data-turbo="false">cache</a>
+            <a href="#history" data-tabs-target="tab" data-turbo="false">history</a>
           </nav>
 
           <%== render("_agent_tab_config") %>
