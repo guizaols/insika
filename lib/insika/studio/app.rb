@@ -1543,6 +1543,18 @@ end
 
     def render_agent_detail
       id = @agent.id
+      # Which subnav tab the frame should land on. Selecting a prompt file or
+      # a config group is a real navigation (advances the frame + history),
+      # which reconnects the `tabs` Stimulus controller — but Turbo's history
+      # push drops the URL fragment (it rewrites the frame's src to the fetch
+      # response's URL, which never carries one), so `location.hash` is gone
+      # by the time it reconnects. Without this, every such click falls back
+      # to the tabs' first tab ("config") instead of staying put.
+      @active_tab = if !@prompt_selected.nil?
+        "prompts"
+      elsif request.params["cfg"]
+        "config"
+      end
       @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
       store = insika[:agent_file_store]
       @prompt_files = Array(@agent.prompt_files).map do |name|
