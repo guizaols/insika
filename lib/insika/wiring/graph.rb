@@ -361,6 +361,49 @@ module Insika
         )
       end
 
+      # The boot step behind every root's `load_plugins` (Server::Boot's first
+      # named step). Discovers plugin manifests, validates them, requires the
+      # entries and registers their contributions into the ALREADY-BUILT graph —
+      # which is safe by construction: every seam the Loader touches resolves at
+      # turn time (registries and hooks by name, the middleware stack and the
+      # provider list per call, the catalogs on reload), and the step runs
+      # single-fiber before the server accepts connections.
+      #
+      # Roots, highest precedence first (duplicate id -> first root wins):
+      #   1. workspace  — INSIKA_PLUGIN_DIR (the operator's override spot);
+      #   2. gems       — whatever called Insika::Plugin.announce (default-enabled);
+      #   3. bundled    — `bundled_root` (the repo's plugins/; requires enabling).
+      # INSIKA_PLUGINS enables workspace/bundled ids; INSIKA_PLUGINS_DISABLED is
+      # the absolute veto (deny wins, like every allowlist in the engine).
+      def load_plugins(graph, env: ENV, bundled_root: nil)
+        announced = Insika::Plugin.announced_roots
+        workspace = Insika::EnvSchema.read("INSIKA_PLUGIN_DIR", env)
+        roots = ([workspace] + announced + [bundled_root]).compact.map { |d| File.expand_path(d.to_s) }
+
+        result = Insika::Plugin::Loader.new(
+          roots: roots,
+          registries: {
+            tools: graph.code_tool_registry, workflows: graph.workflow_registry,
+            policies: graph.policy_registry, capabilities: graph.capability_registry,
+            channels: graph.channel_registry, hooks: graph.hooks,
+            middleware: graph.middleware, context_providers: graph.context_providers
+          },
+          enabled: plugin_csv(Insika::EnvSchema.read("INSIKA_PLUGINS", env)),
+          disabled: plugin_csv(Insika::EnvSchema.read("INSIKA_PLUGINS_DISABLED", env)),
+          announced_roots: announced, event_stream: graph.event_stream
+        ).load_all
+
+        # Plugin knowledge joins at the LOWEST precedence: an operator's
+        # workspace/authored skill always beats a same-named plugin one.
+        graph.skill_catalog.add_roots(result[:skill_dirs])
+        graph.prompt_catalog.add_roots(result[:prompt_dirs])
+        result
+      end
+
+      def plugin_csv(value)
+        value.to_s.split(",").map(&:strip).reject(&:empty?)
+      end
+
       # The CORE command surface every root needs — turn essentials + the operator
       # controls (pause/approve) the Studio dispatches. Registering pause_task/
       # approve_action HERE is the crux of: it retires the config.ru:28-34 patch.

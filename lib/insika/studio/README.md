@@ -39,7 +39,7 @@ npm run watch        # continuous rebuild in dev
 
 Strict CSP `'self'` (no `unsafe-inline`): all JS/CSS comes from the same-origin bundle.
 
-## Motion (RFC-0041 PR1)
+## Motion
 
 `layout.erb` declares `<meta name="view-transition" content="same-origin">`.
 Turbo 8 Drive then routes same-origin visits through the View Transitions API —
@@ -48,7 +48,7 @@ a ~160ms cross-fade, the sidebar pinned via `view-transition-name` so it reads
 as fixed chrome, and a `prefers-reduced-motion` kill switch. Browsers without
 support degrade to the plain swap.
 
-## Miller columns / master-detail (RFC-0041 PR4)
+## Miller columns / master-detail
 
 Agents, Tools, MCP and the session viewer render a two-column drill whose
 detail pane IS a `<turbo-frame>`. The pattern, end to end:

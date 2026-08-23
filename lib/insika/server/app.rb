@@ -109,7 +109,7 @@ module Insika
         # eval-profile swap list). Read-only use (names/side_effect?) — same
         # constitutional footing as the profile source. nil = the view omits it.
         @tool_registry = tool_registry
-        # RFC-0040 PR3: the durable MCP instance CRUD (GET/PUT/DELETE
+        # The durable MCP instance CRUD (GET/PUT/DELETE
         # /v1/mcp[/:name]) — a direct store read/Command surface, same footing
         # as @profiles/@outcome_store. nil = the routes 404 (parity — a
         # deployment that never wires an McpStore never exposes MCP config
@@ -474,7 +474,7 @@ module Insika
         json_response(200, record)
       end
 
-      # PUT /v1/mcp — create/edit an instance (RFC-0040 PR3, the CLI/DSL/Studio
+      # PUT /v1/mcp — create/edit an instance (the CLI/DSL/Studio
       # config surfaces share this ONE seam: the `:upsert_mcp` Command already
       # registered on the bus). Per-key secret reconciliation (the `__OCULTO__`
       # sentinel round-trips: preserves; a new string replaces; "" clears) —
@@ -499,7 +499,7 @@ module Insika
         json_response(200, dispatch_with_timeout(command))
       end
 
-      # POST /v1/mcp/:name/import — kept as the RFC-0040 PR2 alias for the
+      # POST /v1/mcp/:name/import — kept as the alias for the
       # "Refresh tools" action (the route predates the live registry; the name
       # stuck). Dispatches :refresh_mcp_tools — LIVE connect + tools/list +
       # write McpStore#tools_cache, never the retired ingestor snapshot. Same
@@ -528,8 +528,8 @@ module Insika
       # (a client: it never reads a store) can tell "this case cannot run here" from
       # "this case failed". Deliberately NOT the profile: the prompt,
       # the model and the guardrail config are none of the caller's business. Just the
-      # three facts a case declares `requires` against — plus the side-effect set
-      # (RFC-0014), which is what an eval profile must swap.
+      # three facts a case declares `requires` against — plus the side-effect set,
+      # which is what an eval profile must swap.
       #
       # `tools` is the DECLARED allowlist, and `null` means the agent has an open one
       # (every registered tool) — the client reads that as "cannot rule anything out"

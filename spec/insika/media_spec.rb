@@ -150,7 +150,7 @@ RSpec.describe Insika::Media do
     end
   end
 
-  describe "STT vocabulary prompt (RFC-0042)" do
+  describe "STT vocabulary prompt" do
     it "default_transcriber forwards stt_prompt to fetch_and_transcribe" do
       calls = []
       allow(described_class).to receive(:fetch_and_transcribe) { |url, **kwargs| calls << [url, kwargs]; "ok" }
@@ -189,7 +189,7 @@ RSpec.describe Insika::Media do
       expect(seams.keys).to eq(%i[image tts])
     end
 
-    describe ".generate_image (RFC-0042: text-to-image + editing)" do
+    describe ".generate_image (text-to-image + editing)" do
       def fake_image
         img = Object.new
         def img.data = "QUJD"

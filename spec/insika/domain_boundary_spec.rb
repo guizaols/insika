@@ -51,7 +51,7 @@ RSpec.describe "the domain boundary " do
     "lib/insika/studio/views/_agent_tab_config.erb" => "the agent config form's EXAMPLE placeholder — the default cancel-keyword " \
                                                        "('não quero mais contato') shown as the field's hint, data-like like the " \
                                                        "docs' neutral references, not engine vocabulary (was agent_detail.erb " \
-                                                       "until the RFC-0041 tab-partials split)"
+                                                       "until the tab-partials split)"
   }.freeze
 
   DOMAIN_DIRS = %w[deploy/ packs/ examples/ plugins/ evals/ scripts/ spec/].freeze
@@ -135,7 +135,7 @@ RSpec.describe "the domain boundary " do
   end
 
   # Found live (2026-08-21): a Railway/Docker build failed on `bundle install`
-  # with "cannot load such file -- lib/insika/packaging" — RFC-0036 added a
+  # with "cannot load such file -- lib/insika/packaging" — added a
   # require_relative to the gemspec but the Dockerfile's builder stage (which
   # COPYs only Gemfile*/insika.gemspec + a few lib/insika/*.rb files BEFORE
   # `bundle install`, for layer caching) was never updated to match. Bundler

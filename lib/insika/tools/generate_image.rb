@@ -15,7 +15,7 @@ module Insika
     # default. The image is an envelope part, never part of the answer text;
     # the provider's tokens are merged into the turn's usage like any ask.
     #
-    # RFC-0042: also EDITS — `source_image_urls` (or, absent that, the turn's
+    # Also EDITS — `source_image_urls` (or, absent that, the turn's
     # own inbound photo) rides `paint(with:)`; `mask_url` rides `paint(mask:)`.
     # What the edit MEANS (a try-on, a mockup) is the skill's business; this
     # tool only transports the bytes.

@@ -131,16 +131,34 @@ keyword is itself an error rather than being silently ignored.
 
 ### Discovery and enabling
 
+The loader runs **at boot, in every composition root** — the server wirings and
+a DSL-run agent alike — single-threaded, before the first request is accepted.
+A plugin therefore either exists for the whole life of the process or not at
+all; there is no half-loaded state a turn can observe.
+
 Plugins come from three kinds of root, and they differ in **who has to say yes**:
 
 | Root | How it is found | Enabled by default |
 |---|---|---|
 | **Gem** | the gem calls `Insika::Plugin.announce(__dir__)` when its `lib/` loads | **yes** — installing it is the consent |
-| **Workspace** | a directory in the deployment's plugin roots | no — must be listed in `enabled:` |
-| **Bundled** | `plugins/` in this repo | no — must be listed in `enabled:` |
+| **Workspace** | the directory named by `INSIKA_PLUGIN_DIR` | no — list the id in `INSIKA_PLUGINS` |
+| **Bundled** | `plugins/` in this repo | no — list the id in `INSIKA_PLUGINS` |
 
-`disabled:` is an absolute veto: an id listed there never loads, even if it is
-also in `enabled:` (deny wins, the same rule as every allowlist in the engine).
+```sh
+INSIKA_PLUGIN_DIR=/srv/insika/plugins   # workspace root to scan
+INSIKA_PLUGINS=weather,acme             # ids to enable from workspace/bundled roots
+INSIKA_PLUGINS_DISABLED=insika-code     # ids that never load, no matter what
+```
+
+`INSIKA_PLUGINS_DISABLED` is an absolute veto: an id listed there never loads,
+even if it is enabled or shipped by an installed gem (deny wins, the same rule
+as every allowlist in the engine).
+
+When two roots ship the same `id`, precedence is workspace → gems → bundled:
+the first root wins, so an operator's local copy always overrides an installed
+one. Skills and prompts a plugin ships join the catalogs at the **lowest**
+precedence for the same reason — a workspace or Studio-authored skill beats a
+plugin's same-named one.
 
 A gem announces itself explicitly — Insika never scans the load path or your
 installed gems:
@@ -172,6 +190,33 @@ config_schema:
 
 The manifest is committed; the secret is not. This mirrors how data tools handle
 `{{secret.*}}`.
+
+## Why it is built this way
+
+Five decisions carry the whole design; knowing them explains every behavior
+above.
+
+1. **Data before code.** Most agent runtimes make code the unit of extension
+   and a restart the price of every integration. Insika inverts that: tier 1
+   (data tools, MCP imports, skills) covers most integrations hot, with no
+   deploy, and tier 2 exists only for what genuinely needs to run in-process.
+   A smaller code-plugin surface is a feature — less to audit, less to break.
+2. **Manifest before code.** Discovery never executes anything: the manifest is
+   read, validated, and gated first, and only then is the entry `require`d.
+   You can inventory, enable, and veto plugins without running them.
+3. **Contracts are the public API.** Anything addressable by name — tools,
+   workflows, capabilities, channels — must be declared in `contracts`, and an
+   undeclared registration is ignored with a warning. A plugin cannot quietly
+   widen its surface between versions, and a channel cannot mount a route
+   nobody asked for.
+4. **Announce, never scan.** A gem opts in with one explicit
+   `Insika::Plugin.announce` call; Insika never walks the load path or your
+   installed gems looking for candidates. What loads is exactly what was
+   announced or configured — auditable from the boot log alone.
+5. **One bad plugin never takes the deployment down.** Registration is staged
+   and committed atomically; a raise inside `register(api)` rolls back
+   everything that plugin staged and boot continues. Enablement is explicit,
+   and deny wins.
 
 ## Publishing a plugin
 

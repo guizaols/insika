@@ -127,6 +127,11 @@ module Insika
           graph, golden_store: Insika::GoldenStore.new(config_store: c[:config_store]),
           settings_store: c[:settings_store], llm: @llm
         )
+        # Same boot step the server roots run: an installed `insika-plugin-*`
+        # gem (or INSIKA_PLUGIN_DIR) extends a DSL-run agent too — a plugin
+        # works everywhere or it is not a plugin. No bundled root here: the DSL
+        # runs outside the repo checkout.
+        Insika::Wiring::Graph.load_plugins(graph)
         graph
       end
 
@@ -231,7 +236,7 @@ module Insika
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),
           Insika::Context::Providers::Memory.new(store: spine.memory_store),
           Insika::Context::Providers::Session.new(session_store: spine.session_store)
-        ].freeze
+        ] # NOT frozen: load_plugins appends plugin providers at boot
       end
 
       # The runtime-authoring surface a pack import needs (create_agent +

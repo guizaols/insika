@@ -190,7 +190,7 @@ module Deploy
       Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
-    ].freeze
+    ] # NOT frozen: load_plugins appends plugin providers at boot (pre-listen)
 
     # DYNAMIC profiles: persisted in the ConfigStore, editable at runtime by the
     # Studio (create/update/delete_agent). The Executor and the turn Commands resolve
@@ -539,8 +539,14 @@ module Deploy
     )
 
     # Named steps consumed by Server::Boot, same contract as config/wiring.rb.
-    # The graph above is built EAGERLY at require -> plugins/stores are no-ops.
-    def self.load_plugins = nil
+    # The graph above is built EAGERLY at require; `load_plugins` registers into
+    # it afterwards (safe — see Wiring::Graph.load_plugins). Code-plugin tools
+    # land in the base REGISTRY, so the overlay (TOOL_REGISTRY) composes them
+    # exactly like the hand-registered ones.
+    def self.load_plugins
+      Insika::Wiring::Graph.load_plugins(GRAPH, bundled_root: File.join(Deploy::ROOT, "plugins"))
+    end
+
     def self.build_stores = nil
     def self.recovery = RECOVERY
 

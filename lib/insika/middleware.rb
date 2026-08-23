@@ -26,6 +26,15 @@ module Insika
       @middlewares = middlewares
     end
 
+    # Appends a link at the END (innermost). This is the plugin Loader's
+    # registration seam ("collections that respond to <<") — it runs at boot,
+    # single-fiber, before the server accepts connections, so appending here
+    # never races a turn.
+    def <<(middleware)
+      @middlewares << middleware
+      self
+    end
+
     def call(state, &terminal)
       chain = @middlewares.reverse.reduce(terminal) do |nxt, mw|
         proc { |s| mw.call(s, &nxt) }

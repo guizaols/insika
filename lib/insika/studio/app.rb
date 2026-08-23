@@ -2129,7 +2129,7 @@ end
 
     def render_mcp
       @instances = insika[:mcp_store] ? insika[:mcp_store].all.sort_by { |m| m["name"].to_s } : []
-      # Miller columns (RFC-0041 PR4): ?i= selects the instance whose editor
+      # Miller columns: ?i= selects the instance whose editor
       # fills the detail pane. Absent = the first instance (the pane is useful
       # on landing, same convention as the tools matrix); "?i=" (empty) = the
       # empty state, which hosts the new/import forms — the master's "+ new"

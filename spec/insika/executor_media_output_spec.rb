@@ -174,7 +174,7 @@ RSpec.describe "Insika::Executor + media output (WS9, saída)" do
     expect(data[:usage]).to include(media: 2, input_tokens: 5, output_tokens: 3)
   end
 
-  # RFC-0042 PR1: generate_image can EDIT — explicit source_image_urls, or
+  # Generate_image can EDIT — explicit source_image_urls, or
   # (absent those) the turn's own inbound photo, ride the seam's config.
   describe "image editing" do
     def capturing_seams(base)
