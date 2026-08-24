@@ -101,7 +101,7 @@ RSpec.describe Insika::Commands::BackfillKnowledge do
 
       result = handler.call(cmd(agent: "store-support"))
 
-      expect(result).to eq(backfilled: true, sessions: 1, concepts: 1, dropped: clean_drops)
+      expect(result).to eq(backfilled: true, sessions: 1, concepts: 1, conflicts: 0, dropped: clean_drops)
       stored = knowledge.get("store-support", "cep-13-campinas")
       expect(stored).to include("provenance: \"observed\"")
       expect(stored).to include("sess_1")
@@ -124,6 +124,37 @@ RSpec.describe Insika::Commands::BackfillKnowledge do
       seed_task
 
       expect(handler.call(cmd(agent: "store-support"))).to eq(backfilled: false, skipped: "no_sessions")
+    end
+
+    it "counts a conflict and emits :knowledge_conflict when two sightings contradict" do
+      seed_session(id: "acme:sess_1", messages: 3)
+      seed_task(session_id: "acme:sess_1", at: "2026-08-10T00:00:00Z")
+      seed_session(id: "acme:sess_2", messages: 3)
+      seed_task(session_id: "acme:sess_2", at: "2026-08-11T00:00:00Z")
+
+      # resolve_sessions is newest-first: sess_2 ("b") writes first (:new), then
+      # sess_1 ("a totally different claim") differs from the stored body -> :contradicting.
+      bodies = ["b", "a totally different claim"]
+      dropped = clean_drops
+      extractor = Class.new do
+        define_method(:initialize) { |b| @bodies = b; @i = -1 }
+        define_method(:extract) do |prompt:, max_concepts: 10|
+          @i += 1
+          { concepts: [{ "name" => "cep-13-campinas", "description" => "d", "type" => "fact", "body" => @bodies[@i] }],
+            dropped: dropped.dup, cost: nil }
+        end
+      end.new(bodies)
+      extractor_factory = Class.new { define_method(:initialize) { |e| @e = e }; define_method(:call) { |_c| @e } }.new(extractor)
+      consolidator = Class.new { define_method(:resolve) { |existing_body:, new_body:| { verdict: :contradicting } } }.new
+      consolidator_factory = Class.new { define_method(:initialize) { |c| @c = c }; define_method(:call) { |_c| @c } }.new(consolidator)
+
+      handler = described_class.new(profiles: { "store-support" => profile }, knowledge_store: knowledge,
+                                    session_store: session_store, task_store: tasks, event_stream: stream,
+                                    extractor_factory: extractor_factory, consolidator_factory: consolidator_factory)
+
+      result = handler.call(cmd(agent: "store-support"))
+      expect(result).to eq(backfilled: true, sessions: 2, concepts: 1, conflicts: 1, dropped: clean_drops)
+      expect(events.map(&:type)).to include(:knowledge_conflict)
     end
   end
 end

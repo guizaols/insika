@@ -439,8 +439,10 @@ message content, never a customer identifier. This is the one write path in
 the engine where a model-authored field is rejected outright rather than
 merely validated: `provenance`, `confidence`, `sources` and the timestamps are
 stamped by the engine, so a model cannot self-assign trust it did not earn or
-smuggle a scope into a store-wide record. Events carry names and counts only —
-a concept's content never enters the stream.
+smuggle a scope into a store-wide record. A repeat sighting that contradicts
+what's on record is never silently merged — the conservative default when
+the engine cannot tell is to flag it for a human, not to guess. Events carry
+names and counts only — a concept's content never enters the stream.
 
 ## See also
 

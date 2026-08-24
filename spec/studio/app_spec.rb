@@ -176,7 +176,7 @@ RSpec.describe Studio::App do
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
                  proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
-                 negative_list: nil)
+                 negative_list: nil, knowledge_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -258,6 +258,8 @@ RSpec.describe Studio::App do
         # pre-registered artifacts directly.
         harvest_store: harvest_store, harvest_criterion: harvest_criterion,
         negative_list: negative_list,
+        # the Knowledge page reads the store directly.
+        knowledge_store: knowledge_store,
         session_secret: "x" * 64
     )
      [app, bus]
@@ -4101,6 +4103,88 @@ end
       app, = build_app
       body = login(app).get("/home").body
       expect(body).to include("Harvest")
+    end
+  end
+
+  describe "Knowledge page " do
+    def knowledge_app(concepts: {}, agents: nil)
+      store = Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new)
+      concepts.each do |(agent, name), body|
+        store.write(agent, name,
+                    Insika::Knowledge::Concept.render(
+                      name: name, description: "d", type: "fact", body: body,
+                      provenance: "observed", confidence: 0.6, sources: ["sess_1"], occurrences: 1,
+                      created_at: "2026-08-24T00:00:00Z", updated_at: "2026-08-24T00:00:00Z"
+                    ))
+      end
+      agents ||= [profile("store-support"), profile("chef")]
+      build_app(agents: agents, knowledge_store: store)
+    end
+
+    it "lists an agent's concepts, scoped — never another agent's" do
+      app, = knowledge_app(concepts: { ["store-support", "cep-13"] => "b",
+                                      ["chef", "receita-x"] => "other store's concept" })
+      body = login(app).get("/knowledge?agent=store-support").body
+      expect(body).to include("cep-13")
+      expect(body).not_to include("receita-x")
+    end
+
+    it "flags a conflicting concept with a badge and the conflict filter narrows to it" do
+      app, = knowledge_app(concepts: {
+                             ["store-support", "cep-13"] => "b\n\n## Contradiction\n\nsomething else",
+                             ["store-support", "clean"] => "no conflict here"
+                           })
+      body = login(app).get("/knowledge?agent=store-support").body
+      expect(body).to include("conflict")
+      expect(body).to include("clean")
+
+      filtered = login(app).get("/knowledge?agent=store-support&status=conflict").body
+      expect(filtered).to include("cep-13")
+      expect(filtered).not_to include("clean")
+    end
+
+    it "the write POST dispatches :write_concept and redirects to the concept's own page" do
+      app, bus = knowledge_app
+      client = login(app)
+      csrf = csrf_from(client.get("/knowledge/new?agent=store-support").body)
+      content = "---\nname: novo\ndescription: d\ntype: fact\nprovenance: policy\nconfidence: 1.0\n" \
+                "sources: []\noccurrences: 1\ncreated_at: \"2026-08-24T00:00:00Z\"\nupdated_at: \"2026-08-24T00:00:00Z\"\n" \
+                "---\n\nbody\n"
+      res = client.post("/knowledge", params: { "agent" => "store-support", "name" => "novo",
+                                               "content" => content, "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/knowledge/novo")
+      expect(bus.last(:write_concept).payload).to include(agent: "store-support", name: "novo")
+    end
+
+    it "the delete POST dispatches :delete_concept and redirects to the index" do
+      app, bus = knowledge_app(concepts: { ["store-support", "cep-13"] => "b" })
+      client = login(app)
+      csrf = csrf_from(client.get("/knowledge?agent=store-support").body)
+      res = client.post("/knowledge/cep-13/delete", params: { "agent" => "store-support", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/knowledge")
+      expect(bus.last(:delete_concept).payload).to include(agent: "store-support", name: "cep-13")
+    end
+
+    it "the restore POST dispatches :restore_concept with the version index" do
+      app, bus = knowledge_app(concepts: { ["store-support", "cep-13"] => "b" })
+      client = login(app)
+      csrf = csrf_from(client.get("/knowledge/cep-13?agent=store-support").body)
+      res = client.post("/knowledge/cep-13/restore",
+                        params: { "agent" => "store-support", "version" => "0", "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/knowledge/cep-13")
+      expect(bus.last(:restore_concept).payload).to include(agent: "store-support", name: "cep-13", version: "0")
+    end
+
+    it "without a knowledge_store everything renders empty and nothing raises" do
+      app, = build_app(agents: [profile("chef")])
+      body = login(app).get("/knowledge?agent=chef").body
+      expect(body).to include("No knowledge")
+    end
+
+    it "the nav row is present" do
+      app, = build_app
+      body = login(app).get("/home").body
+      expect(body).to include("Knowledge")
     end
   end
 end

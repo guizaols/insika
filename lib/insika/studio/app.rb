@@ -99,7 +99,8 @@ module Studio
                     proposal_store: nil,
                     harvest_store: nil, harvest_criterion: nil, negative_list: nil,
                     channel_registry: nil,
-                    artifact_store: nil, artifact_signing: nil)
+                    artifact_store: nil, artifact_signing: nil,
+                    knowledge_store: nil)
         @insika = {
           command_bus: command_bus, profile_source: profile_source,
           event_stream: event_stream, config: config,
@@ -171,7 +172,11 @@ module Studio
           # artifact_signing is a { key:, ttl:, base_url: } Hash when a signing
           # key is configured (nil = no signed surface). nil stores = the
           # pages render their empty states.
-          artifact_store: artifact_store, artifact_signing: artifact_signing
+          artifact_store: artifact_store, artifact_signing: artifact_signing,
+          # the Knowledge page reads the store directly (list/edit/
+          # conflict filter); its mutations (write/delete/restore) dispatch
+          # bus commands. nil = the page renders its empty state.
+          knowledge_store: knowledge_store
         }.freeze
         secret = session_secret || derive_secret(config[:admin_token])
         plugin :sessions, key: "insika.studio", secret: secret,
@@ -1138,6 +1143,77 @@ end
         end
       end
 
+      # --- Knowledge: concepts learned from finished conversations --
+      # Reads the KnowledgeStore directly (the Studio's constitutional split);
+      # every mutation — write (including an operator's hand-authored concept
+      # or a `provenance: policy` promotion), delete, restore — dispatches a
+      # bus command. Single-agent-scoped like Harvest, not shared like Skills:
+      # the store is a real per-agent (+ optional tenant) partition.
+      r.on "knowledge" do
+        r.is do
+          r.get { render_knowledge }
+          r.post do
+            check_csrf!
+            agent = presence(r.params["agent"])
+            name = presence(r.params["name"])
+            tenant = presence(r.params["tenant"])
+            with_flash("Concept saved.") do
+              dispatch(:write_concept, { agent: agent, name: name, tenant: tenant,
+                                        content: r.params["content"].to_s }.compact)
+            end
+            r.redirect(knowledge_path(agent, name, tenant))
+          end
+        end
+
+        r.get "new" do
+          @agents = insika[:profile_source].ids.sort
+          @agent = presence(r.params["agent"]) || @agents.first
+          @tenant = presence(r.params["tenant"])
+          load_knowledge_master(agent: @agent, tenant: @tenant)
+          @selected = ""
+          @concept_content = new_concept_template
+          view("knowledge")
+        end
+
+        r.on String do |name|
+          name = utf8(name)
+          r.is do
+            r.get do
+              @agents = insika[:profile_source].ids.sort
+              @agent = presence(r.params["agent"]) || @agents.first
+              @tenant = presence(r.params["tenant"])
+              load_knowledge_master(agent: @agent, tenant: @tenant)
+              @selected = name
+              @concept_content = concept_source(@agent, name, tenant: @tenant)
+              @selected_concept = Insika::Knowledge::Concept.parse(@concept_content)
+              @concept_versions = insika[:knowledge_store]&.versions(@agent, name, tenant: @tenant)
+              view("knowledge")
+            end
+          end
+
+          r.post "delete" do
+            check_csrf!
+            agent = presence(r.params["agent"])
+            tenant = presence(r.params["tenant"])
+            with_flash("Concept removed.") do
+              dispatch(:delete_concept, { agent: agent, name: name, tenant: tenant }.compact)
+            end
+            r.redirect("/studio/knowledge?agent=#{Rack::Utils.escape(agent.to_s)}")
+          end
+
+          r.post "restore" do
+            check_csrf!
+            agent = presence(r.params["agent"])
+            tenant = presence(r.params["tenant"])
+            with_flash("Version restored.") do
+              dispatch(:restore_concept, { agent: agent, name: name, tenant: tenant,
+                                          version: r.params["version"] }.compact)
+            end
+            r.redirect(knowledge_path(agent, name, tenant))
+          end
+        end
+      end
+
       # --- Facts: the human gate on distilled proposals  --------
       # Reads ProposalStore directly (the Studio's constitutional split — reads
       # hit the stores, mutations go through the bus); the ONLY mutation — the
@@ -1350,6 +1426,9 @@ end
           # the Harvest page — the human gate on mined skills
           # (gate, promote, reject, rollback; the append-only promotion log).
           ["Harvest", "/studio/harvest", :harvest],
+          # the Knowledge page — concepts the engine extracted from
+          # finished conversations; edit, delete, resolve a conflict.
+          ["Knowledge", "/studio/knowledge", :knowledge],
           ["Tasks", "/studio/tasks", :tasks],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
@@ -2579,6 +2658,73 @@ end
       @negative = insika[:negative_list]
       @filter = presence(request.params["agent"])
       view("harvest")
+    end
+
+    # --- Knowledge index -------------------------------------------------
+
+    # Master data for the Knowledge drill-down: every concept of ONE agent
+    # (+ optional tenant), parsed for the list columns (type/confidence/
+    # occurrences/updated_at). A record that fails to parse (corrupted by a
+    # hand edit) still shows by name, blank elsewhere, rather than vanishing.
+    def load_knowledge_master(agent:, tenant: nil)
+      @status ||= "all"
+      store = insika[:knowledge_store]
+      names = agent && store ? store.names(agent, tenant: tenant) : []
+      concepts = names.filter_map do |n|
+        Insika::Knowledge::Concept.parse(store.get(agent, n, tenant: tenant)) ||
+          { name: n, description: "", type: "", confidence: 0.0, occurrences: 0, updated_at: "", body: "" }
+      end.sort_by { |c| c[:name] }
+      @all_count = concepts.size
+      @conflict_count = concepts.count { |c| concept_conflict?(c) }
+      @concepts = @status == "conflict" ? concepts.select { |c| concept_conflict?(c) } : concepts
+    end
+
+    def render_knowledge
+      @agents = insika[:profile_source].ids.sort
+      @agent = presence(request.params["agent"]) || @agents.first
+      @tenant = presence(request.params["tenant"])
+      @status = presence(request.params["status"]) || "all"
+      load_knowledge_master(agent: @agent, tenant: @tenant)
+      # Auto-open the first concept (drill-down convention), respecting the
+      # active filter — the empty state only shows with nothing left to see.
+      @selected = @concepts.first&.dig(:name)
+      @concept_content = @selected ? concept_source(@agent, @selected, tenant: @tenant) : nil
+      @selected_concept = @concept_content && Insika::Knowledge::Concept.parse(@concept_content)
+      @concept_versions = @selected && insika[:knowledge_store]&.versions(@agent, @selected, tenant: @tenant)
+      view("knowledge")
+    end
+
+    # Raw content for the editor — the complete concept markdown, straight
+    # from the store (unlike a skill, there is no disk fallback to
+    # reconstruct: a concept only ever exists in the store).
+    def concept_source(agent, name, tenant: nil)
+      insika[:knowledge_store]&.get(agent, name, tenant: tenant) || new_concept_template(name)
+    end
+
+    # An operator authoring a concept by hand starts as curated content, not
+    # a claim to earn trust for — `provenance: policy`, full confidence, no
+    # sources (nothing extracted it).
+    def new_concept_template(name = "my-concept")
+      Insika::Knowledge::Concept.render(
+        name: name, description: "one sentence about what this concept says", type: "fact",
+        body: "The durable claim, in your own words.",
+        provenance: "policy", confidence: 1.0, sources: [], occurrences: 1,
+        created_at: Time.now.utc.iso8601, updated_at: Time.now.utc.iso8601
+      )
+    end
+
+    # A concept is flagged "conflict" status by the marker its own body
+    # carries (§3.5) — no extra store field, the marker IS the flag.
+    def concept_conflict?(parsed)
+      parsed && parsed[:body].to_s.include?(Insika::Knowledge::CONTRADICTION_HEADING)
+    end
+
+    # The redirect/link target after a knowledge write or restore — back to
+    # the concept's own detail pane when a name is known, else the index.
+    def knowledge_path(agent, name, tenant)
+      q = "agent=#{Rack::Utils.escape(agent.to_s)}"
+      q += "&tenant=#{Rack::Utils.escape(tenant)}" if tenant
+      name ? "/studio/knowledge/#{Rack::Utils.escape(name)}?#{q}" : "/studio/knowledge?#{q}"
     end
 
     # The evidence excerpt for a candidate — the origin sessions' messages at

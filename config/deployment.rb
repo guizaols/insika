@@ -475,6 +475,11 @@ module Deploy
     BUS.register(:delete_data_tool, Insika::Commands::DeleteDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
     BUS.register(:restore_data_tool, Insika::Commands::RestoreDataTool.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM))
 
+    # Learned knowledge: the Studio's write/delete/restore path for a concept.
+    BUS.register(:write_concept, Insika::Commands::WriteConcept.new(knowledge_store: GRAPH.knowledge_store, event_stream: EVENT_STREAM))
+    BUS.register(:delete_concept, Insika::Commands::DeleteConcept.new(knowledge_store: GRAPH.knowledge_store, event_stream: EVENT_STREAM))
+    BUS.register(:restore_concept, Insika::Commands::RestoreConcept.new(knowledge_store: GRAPH.knowledge_store, event_stream: EVENT_STREAM))
+
     # BATCH ingestion via manifest: upsert of the data-tools in a
     # standard format (JSON Schema) + declarative binding, hot (no restart). The
     # manifest's `{{secret.*}}`/`{{env.*}}` resolve from the DEPLOYMENT's ENV (the

@@ -1031,6 +1031,7 @@ end
       return "knowledge:backfill: skipped (#{result[:skipped]})" unless result[:backfilled]
 
       head = "knowledge:backfill: #{result[:concepts]} concept(s) learned from #{result[:sessions]} session(s)"
+      head += " — #{result[:conflicts]} conflict(s), needs a human" if result[:conflicts].to_i.positive?
       dropped = result[:dropped].reject { |_k, v| v.to_i.zero? }
       dropped.empty? ? head : "#{head} — dropped: #{dropped.map { |k, v| "#{k}: #{v}" }.join(', ')}"
     end

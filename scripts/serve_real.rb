@@ -127,6 +127,7 @@ Studio::App.configure(
   contact_store: W::SPINE.contact_store,
   budget_ledger: W::SPINE.budget_ledger,
   proposal_store: W::SPINE.proposal_store,
+  knowledge_store: W::SPINE.knowledge_store,
   # the parity page (nav row only when a shadow channel is registered).
   shadow_pair_store: W::SPINE.shadow_pair_store,
   parity_criterion: PARITY_CRITERION,

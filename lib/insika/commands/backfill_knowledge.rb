@@ -16,7 +16,7 @@ module Insika
       DEFAULT_MIN_MESSAGES = 2
 
       def initialize(profiles:, knowledge_store:, session_store:, task_store:,
-                     settings_store: nil, event_stream:, extractor_factory: nil)
+                     settings_store: nil, event_stream:, extractor_factory: nil, consolidator_factory: nil)
         @profiles = ProfileSource.coerce(profiles)
         @knowledge_store = knowledge_store
         @session_store = session_store
@@ -24,11 +24,13 @@ module Insika
         @settings_store = settings_store
         @extractor_factory = extractor_factory ||
                              ->(config) { Knowledge::ExtractorFactory.build(config, utility_model: utility_model) }
+        @consolidator_factory = consolidator_factory ||
+                                ->(config) { Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model) }
         @event_stream = event_stream
       end
 
       # payload: { agent:, since?: ISO8601 }
-      # -> { backfilled: true, sessions: N, concepts: N, dropped: {...} }
+      # -> { backfilled: true, sessions: N, concepts: N, conflicts: N, dropped: {...} }
       #  | { backfilled: false, skipped: "disabled|no_model|no_sessions" }
       def call(command)
         p = AgentPayload.symbolize(command.payload)
@@ -42,19 +44,30 @@ module Insika
         extractor = @extractor_factory.call(config)
         return skip("no_model") if extractor.nil?
 
+        # Same resolved model as the extractor. nil (unresolvable) is still
+        # meaningful: Knowledge.write_concept's conservative default.
+        consolidator = @consolidator_factory.call(config)
+
         sessions = resolve_sessions(agent, p)
         return skip("no_sessions") if sessions.empty?
 
         concepts = 0
+        conflicts = 0
         dropped = Hash.new(0)
         sessions.each do |s|
           result = extractor.extract(prompt: build_prompt(config, s[:messages]))
-          result[:concepts].each { |c| write_concept(profile, s[:id], c) && concepts += 1 }
+          result[:concepts].each do |c|
+            case write_concept(profile, s[:id], c, consolidator)[:verdict]
+            when :new, :related then concepts += 1
+            when :contradicting then conflicts += 1
+            end
+          end
           result[:dropped].each { |k, v| dropped[k] += v }
         end
 
-        emit(:knowledge_backfilled, agent: agent, sessions: sessions.size, concepts: concepts, dropped: dropped.to_h)
-        { backfilled: true, sessions: sessions.size, concepts: concepts, dropped: dropped.to_h }
+        emit(:knowledge_backfilled, agent: agent, sessions: sessions.size, concepts: concepts,
+                                    conflicts: conflicts, dropped: dropped.to_h)
+        { backfilled: true, sessions: sessions.size, concepts: concepts, conflicts: conflicts, dropped: dropped.to_h }
       end
 
       private
@@ -106,11 +119,16 @@ module Insika
         redacted
       end
 
-      def write_concept(profile, session_id, concept)
-        rendered = Knowledge.stamp_and_render(concept, session_id: session_id)
-        @knowledge_store.write(profile.id, concept["name"], rendered)
-        emit(:knowledge_learned, name: concept["name"], type: concept["type"], agent: profile.id)
-        true
+      def write_concept(profile, session_id, concept, consolidator)
+        outcome = Knowledge.write_concept(store: @knowledge_store, agent_id: profile.id, concept: concept,
+                                          session_id: session_id, consolidator: consolidator)
+        case outcome[:verdict]
+        when :new, :related
+          emit(:knowledge_learned, name: outcome[:name], type: outcome[:type], agent: profile.id)
+        when :contradicting
+          emit(:knowledge_conflict, name: outcome[:name], agent: profile.id)
+        end
+        outcome
       end
 
       def utility_model

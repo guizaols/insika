@@ -714,13 +714,15 @@ knowledge extract: true,
           # model:  "<ref — absent = the platform utility_model>"
 ```
 
-Only extraction ships today: the model proposes `name`/`description`/`type`/
-`body`, the engine stamps `provenance`/`confidence`/`sources`/timestamps
-itself (a model-authored one of those is dropped, never trusted), redacts the
-body for PII, and writes the concept. Nothing is injected into a turn's prompt
-yet, and writing an existing concept name overwrites it rather than merging
-sightings — see [Knowledge](KNOWLEDGE.md#the-honest-limits) for what's not
-here yet.
+The model proposes `name`/`description`/`type`/`body`; the engine stamps
+`provenance`/`confidence`/`sources`/timestamps itself (a model-authored one
+of those is dropped, never trusted) and redacts the body for PII. Writing a
+concept name that already exists never blindly overwrites: the engine
+decides same claim (bump the evidence), related claim (merge, one extra
+model call), or contradicting claim (never merged — appended under a
+heading, confidence drops, a human resolves it in the Studio's Knowledge
+page). Nothing is injected into a turn's prompt yet — see
+[Knowledge](KNOWLEDGE.md#whats-not-here-yet) for what's not here.
 
 ## Delegation (subagents)
 
