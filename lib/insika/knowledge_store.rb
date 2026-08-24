@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "time"
 
 module Insika
@@ -84,6 +85,21 @@ module Insika
       raise Insika::ValidationError, "version #{index} does not exist" if i.negative? || i >= hist.length
 
       write(agent_id, name, hist[i]["content"], tenant: tenant)
+    end
+
+    # Writes one `<dir>/<name>.md` per concept — the storage format IS the
+    # export format, so this is a dump, not a converter: each file is the
+    # concept's content, byte for byte, directly consumable by okf-gem
+    # (`OKF::Bundle`) or graphify. Unlike a lossy re-serialization (YAML.dump
+    # on a curated corpus, say), re-exporting the same store is idempotent —
+    # no `force` guard needed, there is nothing here to lose. -> [paths].
+    def export_dir(agent_id, dir, tenant: nil)
+      FileUtils.mkdir_p(dir)
+      names(agent_id, tenant: tenant).map do |name|
+        path = File.join(dir, "#{name}.md")
+        File.write(path, get(agent_id, name, tenant: tenant))
+        path
+      end
     end
 
     private

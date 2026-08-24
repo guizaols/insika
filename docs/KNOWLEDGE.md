@@ -19,12 +19,13 @@ Knowledge is that loop. After a turn completes, the engine can extract durable
 **concepts** from it — facts, procedures, policies, objections — and persist
 them for the agent (never a customer, never a session) to build on.
 
-**What ships today: extraction, consolidation, retrieval, and a Studio
-page.** The engine writes what it learns, decides whether a repeat sighting
-confirms, merges with, or contradicts what it already knew, retrieves the
-concepts relevant to a turn's message back into the prompt, and an operator
-can see, edit and resolve all of it in the Studio. Only export and the
-optional FTS5 index remain — see [What's not here yet](#whats-not-here-yet).
+**What ships today: extraction, consolidation, retrieval, export, and a
+Studio page.** The engine writes what it learns, decides whether a repeat
+sighting confirms, merges with, or contradicts what it already knew,
+retrieves the concepts relevant to a turn's message back into the prompt,
+and an operator can see, edit and resolve all of it in the Studio. Only the
+optional FTS5 index remains, deferred with a measured trigger — see
+[What's not here yet](#whats-not-here-yet).
 
 ## The concept format
 
@@ -257,10 +258,21 @@ Past roughly a thousand concepts it becomes a real, measurable cost again —
 that specific, numeric point is the trigger for building `Index::FTS5`, not
 a guess made in advance.
 
+## Export
+
+```
+insika knowledge:export --agent store-support --out ./export [--tenant loja-a]
+```
+
+Writes one `<name>.md` per concept — the storage format IS the export
+format, so this is a dump, not a converter (same discipline as Facts/
+Harvest's own append-only records): each file is the concept's markdown,
+byte for byte, directly consumable by okf-gem (`OKF::Bundle`) or graphify.
+Re-running it is safe — nothing here is lossy, so there is no `--force` to
+reason about. A `--format graphml` flag is a follow-up, not a requirement.
+
 ## What's not here yet
 
-- **Export** — `insika knowledge:export`, one markdown file per concept, for
-  the same OKF-compatible tooling Skills already round-trips through.
 - **The optional FTS5 index** — `knowledge.index: "fts5"` is accepted but
   falls back to `Index::Scan`. Deliberately not built yet: `Scan` was
   measured (above), not assumed, and it comfortably meets this feature's

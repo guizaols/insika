@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 # LEARNED concepts (concept markdown in the durable Store), scoped per agent
 # and optional tenant.
@@ -41,6 +42,45 @@ RSpec.describe Insika::KnowledgeStore do
 
     expect(store.versions("acme", "cep-13").map { |h| h["content"] }).to eq([concept_md("cep-13", "v1")])
     expect(store.get("acme", "cep-13")).to eq(concept_md("cep-13", "v2"))
+  end
+
+  it "export_dir writes one <name>.md per concept, byte for byte (a dump, not a converter)" do
+    store.write("acme", "cep-13", concept_md("cep-13", "v1"))
+    store.write("acme", "frete-gratis", concept_md("frete-gratis", "v2"))
+
+    Dir.mktmpdir do |dir|
+      paths = store.export_dir("acme", dir)
+
+      expect(paths.map { |p| File.basename(p) }).to contain_exactly("cep-13.md", "frete-gratis.md")
+      expect(File.read(File.join(dir, "cep-13.md"))).to eq(concept_md("cep-13", "v1"))
+      expect(File.read(File.join(dir, "frete-gratis.md"))).to eq(concept_md("frete-gratis", "v2"))
+    end
+  end
+
+  it "export_dir creates the destination directory, and is idempotent (safe to re-run)" do
+    store.write("acme", "cep-13", concept_md("cep-13"))
+
+    Dir.mktmpdir do |base|
+      dir = File.join(base, "nested", "export")
+      store.export_dir("acme", dir)
+      expect { store.export_dir("acme", dir) }.not_to raise_error
+      expect(File.read(File.join(dir, "cep-13.md"))).to eq(concept_md("cep-13"))
+    end
+  end
+
+  it "export_dir scopes by agent and tenant, and returns [] for an empty scope" do
+    store.write("acme", "cep-13", concept_md("cep-13"))
+    store.write("acme", "loja-a-only", concept_md("loja-a-only"), tenant: "loja-a")
+
+    Dir.mktmpdir do |dir|
+      expect(store.export_dir("zeta", dir)).to eq([])
+      expect(store.export_dir("acme", dir).map { |p| File.basename(p) }).to eq(["cep-13.md"])
+    end
+
+    Dir.mktmpdir do |dir|
+      paths = store.export_dir("acme", dir, tenant: "loja-a")
+      expect(paths.map { |p| File.basename(p) }).to eq(["loja-a-only.md"])
+    end
   end
 
   it "delete -> bool; restore reverts to an old version" do

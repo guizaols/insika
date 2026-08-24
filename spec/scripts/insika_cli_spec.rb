@@ -254,6 +254,49 @@ RSpec.describe "bin/insika" do
     end
   end
 
+  describe "knowledge:export" do
+    def concept_md(name, body: "b")
+      Insika::Knowledge::Concept.render(
+        name: name, description: "d", type: "fact", body: body,
+        provenance: "observed", confidence: 0.6, sources: ["sess_1"], occurrences: 1,
+        created_at: "2026-08-24T00:00:00Z", updated_at: "2026-08-24T00:00:00Z"
+      )
+    end
+
+    it "writes one <name>.md per concept, byte for byte" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        store = Insika::KnowledgeStore.new(store: Insika::Stores::SQLite.new(path: db))
+        store.write("acme", "cep-13-campinas", concept_md("cep-13-campinas", body: "ships from Campinas"))
+        out_dir = File.join(dir, "export")
+
+        out, status = run("knowledge:export", "--agent", "acme", "--out", out_dir, env: { "INSIKA_DB" => db })
+
+        expect(status).to be_success
+        expect(out).to match(/exported 1 concept\(s\)/)
+        expect(File.read(File.join(out_dir, "cep-13-campinas.md"))).to eq(concept_md("cep-13-campinas", body: "ships from Campinas"))
+      end
+    end
+
+    it "an agent with no concepts exports zero, without error" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        Insika::Stores::SQLite.new(path: db) # just create the file
+        out, status = run("knowledge:export", "--agent", "ghost", "--out", File.join(dir, "export"),
+                          env: { "INSIKA_DB" => db })
+
+        expect(status).to be_success
+        expect(out).to match(/exported 0 concept\(s\)/)
+      end
+    end
+
+    it "without --agent aborts" do
+      out, status = run("knowledge:export")
+      expect(out).to match(/--agent is required/)
+      expect(status.exitstatus).to eq(1)
+    end
+  end
+
   describe "evals:simulate" do
     def persona_file(dir, overrides = {})
       path = File.join(dir, "persona.yml")
