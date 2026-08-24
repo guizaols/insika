@@ -128,7 +128,11 @@ module Insika
         # tools gated by a parsed policy AND both stores present. nil = never
         # wired (parity).
         contact_store: contact_store,
-        followup_store: followup_store
+        followup_store: followup_store,
+        # the builder wires the load_knowledge system tool gated by
+        # @knowledge_store + profile.knowledge["retrieve"]. nil = never
+        # wired (parity — the write path above stays unaffected either way).
+        knowledge_store: knowledge_store
       )
       # Stage-3-tail tool assembly (capability resolution, instantiation,
       # injection, dedup join, ToolEnvelope wrap) — extracted collaborator.
@@ -2670,11 +2674,13 @@ module Insika
 
     # Stage 6 (factory): the ONLY point that touches the gem. lazy require,
     # confined — not covered by unit (factory line). It also loads the system
-    # builtins (load_skill/tool_search/remember) that the ChatBuilder assembles at
-    # stage 5 — lazy, so the core installs without ruby_llm.
+    # builtins (load_skill/load_knowledge/tool_search/remember) that the
+    # ChatBuilder assembles at stage 5 — lazy, so the core installs without
+    # ruby_llm.
     def create_chat(profile, state)
       require "ruby_llm"
       require_relative "tools/load_skill"
+      require_relative "tools/load_knowledge"
       require_relative "tools/tool_search"
       require_relative "tools/remember"
       require_relative "tools/subagent"

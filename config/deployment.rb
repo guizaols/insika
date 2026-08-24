@@ -188,6 +188,7 @@ module Deploy
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store),
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
     ] # NOT frozen: load_plugins appends plugin providers at boot (pre-listen)

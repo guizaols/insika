@@ -103,6 +103,7 @@ require_relative "insika/context/providers/skill"
 require_relative "insika/context/providers/skill_trigger"
 require_relative "insika/context/providers/tool_search"
 require_relative "insika/context/providers/memory"
+require_relative "insika/context/providers/knowledge"
 require_relative "insika/context/providers/session"
 require_relative "insika/context/providers/briefing"
 # the cache-prefix hash chain + the per-agent cache-hit series.

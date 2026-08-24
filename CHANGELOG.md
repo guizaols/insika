@@ -10,6 +10,20 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Knowledge retrieval** — with `knowledge: {retrieve: true}`, every turn
+  the engine now searches the agent's learned concepts for the ones
+  relevant to the customer's message (`Insika::Knowledge::Index::Scan` —
+  pure term overlap × confidence × recency, no embeddings, no network call)
+  and injects the top few as a level-1 `<knowledge>` block (name/
+  description/confidence/provenance, new `Context::Priority::KNOWLEDGE =
+  77`, between skills and memory), expanding one hop through a concept's
+  `[[links]]`. A `load_knowledge` tool — outside `tools_allow`, wired
+  exactly like `load_skill` — loads a concept's full body on demand;
+  calling it fires `:knowledge_retrieved`, the adoption metric that
+  actually matters (a concept sitting unread in the prompt taught nothing).
+  `knowledge.index: "fts5"` is accepted but falls back to the built-in scan
+  index (not built yet).
+
 - **Knowledge consolidation + the Studio page** — a repeat concept name no
   longer blindly overwrites. The engine now decides same claim (bumps
   occurrences/sources/confidence — `min(0.95, 0.5 + 0.1 × distinct_sources)`,

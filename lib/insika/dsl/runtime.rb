@@ -235,6 +235,7 @@ module Insika
           Insika::Context::Providers::SkillTrigger.new(catalog: c[:skill_catalog]),
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),
           Insika::Context::Providers::Memory.new(store: spine.memory_store),
+          Insika::Context::Providers::Knowledge.new(store: spine.knowledge_store),
           Insika::Context::Providers::Session.new(session_store: spine.session_store)
         ] # NOT frozen: load_plugins appends plugin providers at boot
       end

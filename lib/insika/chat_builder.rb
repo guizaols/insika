@@ -15,7 +15,7 @@ module Insika
     def initialize(tool_registry:, skill_catalog:, checkpoint_store:, event_stream:,
                    hooks:, tool_catalog: nil, memory_store: nil, subagent_runner: nil,
                    tool_trace_store: nil, media_runner: nil, session_store: nil,
-                   contact_store: nil, followup_store: nil)
+                   contact_store: nil, followup_store: nil, knowledge_store: nil)
       @tool_registry = tool_registry
       @skill_catalog = skill_catalog
       @checkpoint_store = checkpoint_store
@@ -23,6 +23,10 @@ module Insika
       @hooks = hooks
       @tool_catalog = tool_catalog
       @memory_store = memory_store
+      # load_knowledge is the knowledge-read system tool — wired only with
+      # @knowledge_store present AND profile.knowledge["retrieve"] (a double
+      # gate, like remember). nil = never wired (parity).
+      @knowledge_store = knowledge_store
       # only to trace load_skill, which is not enveloped — nil = no trace (parity).
       @tool_trace_store = tool_trace_store
       # the object exposing #run_subagent (the Executor). nil = the
@@ -102,6 +106,15 @@ module Insika
       if @memory_store && state.profile.memory
         tools << Tools::Remember.new(@memory_store, state.tenant,
                                      event_stream: @event_stream, state: state)
+      end
+
+      # load_knowledge is a system default (outside the allowlist), like
+      # load_skill — wired only with @knowledge_store present AND the
+      # profile's opt-in (double gate, like remember). Reads the same
+      # (agent, tenant) scope the Knowledge context provider searches.
+      if @knowledge_store && Coercion.truthy?(state.profile.knowledge&.dig("retrieve"))
+        tools << Tools::LoadKnowledge.new(@knowledge_store, state.profile.id, tenant: state.tenant,
+                                          trace_recorder: @tool_trace_store, state: state)
       end
 
       # update_briefing / set_next_step are the briefing-write system tools
@@ -362,9 +375,16 @@ module Insika
         # under concurrency `after_tool_result` labelled every result with whichever
         # call started last.
         state.current_tool_name = tool_call.name.to_s
-        if state.current_tool_name == "load_skill"
+        case state.current_tool_name
+        when "load_skill"
           args = tool_call.arguments || {}
           emit.call(:skill_activated, { name: args["name"] || args[:name] })
+        when "load_knowledge"
+          # The adoption risk is the model never calling this tool, not what
+          # it injects — so the metric here is retrieval CALLS, tracked at
+          # the same point :skill_activated is.
+          args = tool_call.arguments || {}
+          emit.call(:knowledge_retrieved, { name: args["name"] || args[:name], agent: state.profile.id })
         else
           emit.call(:tool_call, { name: tool_call.name, arguments: tool_call.arguments })
         end

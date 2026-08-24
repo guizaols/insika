@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "insika/tools/load_skill" # the Executor loads them lazily in create_chat; explicit here in the test
+require "insika/tools/load_knowledge"
 require "insika/tools/tool_search"
 require "insika/tools/remember"
 require "insika/tools/stuck_signal"
@@ -233,6 +234,52 @@ RSpec.describe Insika::ChatBuilder do
     end
   end
 
+  describe "#configure_chat — system load_knowledge" do
+    let(:kstore) { Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new) }
+
+    def builder_with_knowledge
+      described_class.new(tool_registry: inert, skill_catalog: skill_catalog,
+                          checkpoint_store: inert, event_stream: event_stream, hooks: Insika::Hooks.new,
+                          knowledge_store: kstore)
+    end
+
+    def knowledge_state(knowledge:)
+      profile = Insika::AgentProfile.build(id: "a", model: "gpt", knowledge: knowledge)
+      st = Insika::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st.tenant = "acme"
+      st
+    end
+
+    it "wires load_knowledge when @knowledge_store + profile.knowledge['retrieve']" do
+      builder_with_knowledge.configure_chat(chat, knowledge_state(knowledge: { "retrieve" => true }))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(true)
+    end
+
+    it "load_knowledge is never wrapped (direct instance)" do
+      builder_with_knowledge.configure_chat(chat, knowledge_state(knowledge: { "retrieve" => true }))
+      lt = chat.tools.find { |t| t.is_a?(Insika::Tools::LoadKnowledge) }
+      expect(lt).not_to be_a(Insika::ToolEnvelope)
+    end
+
+    it "profile.knowledge without retrieve: no load_knowledge (parity)" do
+      builder_with_knowledge.configure_chat(chat, knowledge_state(knowledge: { "extract" => true }))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(false)
+    end
+
+    it "profile.knowledge nil: no load_knowledge (parity)" do
+      builder_with_knowledge.configure_chat(chat, knowledge_state(knowledge: nil))
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(false)
+    end
+
+    it "without @knowledge_store: no load_knowledge even with retrieve:true (parity)" do
+      builder.configure_chat(chat, knowledge_state(knowledge: { "retrieve" => true })) # builder without knowledge_store
+      expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(false)
+    end
+  end
+
   describe "#configure_chat — system signal_stuck (WS5)" do
     def stuck_state(on:)
       profile = Insika::AgentProfile.build(id: "a", model: "gpt", stuck_signal: on)
@@ -438,6 +485,15 @@ RSpec.describe Insika::ChatBuilder do
 
       expect(sink.map { |e| e[:type] }).to eq([:skill_activated])
       expect(sink.first[:data]).to eq({ name: "cardapio" })
+    end
+
+    it "emits :knowledge_retrieved (not :tool_call) for load_knowledge" do
+      sink = []
+      builder.wire_callbacks(chat, state, recording_emit(sink))
+      chat.fire_tool_call(name: "load_knowledge", arguments: { "name" => "cep-13-campinas" })
+
+      expect(sink.map { |e| e[:type] }).to eq([:knowledge_retrieved])
+      expect(sink.first[:data]).to eq({ name: "cep-13-campinas", agent: "a" })
     end
 
     it "aborts with TimeoutError(stage: :tool_limit) when exceeding max_tool_calls" do

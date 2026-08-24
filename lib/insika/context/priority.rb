@@ -20,6 +20,8 @@ module Insika
       PROMPT_REF   = 90  # Prompt Catalog guardrails/refs (Prompt) — pinned
       SKILL_BODY   = 85  # <active_skill> trigger-matched body (SkillTrigger)
       SKILL        = 80  # <available_skills> level 1 (Skill)
+      KNOWLEDGE    = 77  # <knowledge> top-K learned concepts (Knowledge) —
+                         #   below curated skills, above a single conversation's memory
       MEMORY       = 75  # <memory> read path (Memory)
       TOOL_SEARCH  = 70  # <available_tools> level 1 (ToolSearch)
       BRIEFING     = 65  # <briefing> session working state (Briefing) — D5:

@@ -26,6 +26,7 @@ into a deterministic prompt:
 | **Skills** | `<available_skills>` | 80 | identity | Level-1 skill list, minus whatever is already eager — see [Skills](SKILLS.md). |
 | **Tool search** | `<available_tools>` | 70 | identity | Level-1 list of deferred tools — see [Tools](TOOLS.md). |
 | **Skill trigger** | `<active_skill>` | 85 | volatile | Level-2 bodies: the agent's `skills_eager` set, plus the ones whose `triggers:` match the message — see [Skills](SKILLS.md). |
+| **Knowledge** | `<knowledge>` | 77 | volatile | Level-1 top-K learned concepts for the turn's message (+ one-hop `[[links]]`), only if `knowledge.retrieve` is on. Cuttable — see [Knowledge](KNOWLEDGE.md). |
 | **Memory** | `<memory>` | 75 | volatile | Durable facts + recent notes, only if `memory` is on. Cuttable. |
 | **Briefing** | `<briefing>` | 65 | volatile | The session's working state (known fields, still-missing list, next step) — only if the pack declared `briefing_fields`. Cuttable. |
 | **Session** | history | 60–79 | volatile | The running transcript; priority scales with recency. |
@@ -41,7 +42,8 @@ cacheable prefix byte-stable (see the prefix cache below).
 - The cap is `profile.limits[:context_budget]`, **default 8000 tokens**.
 - To fit the budget, the builder cuts **non-pinned** fragments
   lowest-priority-first (ties broken by oldest history first). Under pressure you
-  lose old history, then the memory block, then request context — **the pinned
+  lose request context first, then old history, then briefing, then memory, then
+  learned knowledge, then the skill/tool-search level-1 lists — **the pinned
   identity is never truncated**.
 - A **pinned** fragment (the identity) that *alone* exceeds the budget raises an
   error — the turn fails rather than shipping a truncated identity.
