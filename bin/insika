@@ -69,10 +69,11 @@ module Insika
                                     the recovery path for post-turn extraction: replays
                                     the agent's stored sessions through the same
                                     extractor a live turn uses
-          knowledge:export --agent ID [--out DIR] [--tenant T]
+          knowledge:export --agent ID [--out DIR] [--tenant T] [--format md|graphml]
                                     writes one <name>.md per learned concept under DIR —
                                     a dump, not a converter (the storage format IS the
-                                    export format), for okf-gem/graphify tooling
+                                    export format), for okf-gem/graphify tooling; --format
+                                    graphml writes one knowledge.graphml graph file instead
           soak   --run | --verify FILE | --preflight   the 72h soak
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
@@ -1047,21 +1048,36 @@ end
     # format, so this is a dump, not a converter, for okf-gem/graphify to
     # read directly. Safe to re-run: unlike evals:export's YAML.dump, there
     # is nothing lossy here to guard with --force.
+    KNOWLEDGE_EXPORT_FORMATS = %w[md graphml].freeze
+
     def knowledge_export(argv)
-      opts = { out: "." }
+      opts = { out: ".", format: "md" }
       OptionParser.new do |o|
         o.banner = "Usage: insika knowledge:export --agent ID [options]"
         o.on("--agent ID", "agent whose concepts to export (required)") { |v| opts[:agent] = v }
         o.on("--out DIR", "destination directory (default: current directory)") { |v| opts[:out] = v }
         o.on("--tenant T", "explicit tenant scope (default: none)") { |v| opts[:tenant] = v }
+        o.on("--format FORMAT", "md (default, one file per concept) | graphml (one graph file)") { |v| opts[:format] = v }
       end.parse!(argv)
 
       abort "insika knowledge:export: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+      unless KNOWLEDGE_EXPORT_FORMATS.include?(opts[:format])
+        abort "insika knowledge:export: --format must be #{KNOWLEDGE_EXPORT_FORMATS.join(' or ')} (got #{opts[:format].inspect})"
+      end
 
       backend = Insika::Wiring::Graph.backend_from_env
       store = Insika::KnowledgeStore.new(store: backend)
-      paths = store.export_dir(opts[:agent], opts[:out], tenant: Insika::Coercion.presence(opts[:tenant]))
-      puts "exported #{paths.size} concept(s) to #{opts[:out]}"
+      tenant = Insika::Coercion.presence(opts[:tenant])
+
+      if opts[:format] == "graphml"
+        FileUtils.mkdir_p(opts[:out])
+        path = File.join(opts[:out], "knowledge.graphml")
+        File.write(path, store.export_graphml(opts[:agent], tenant: tenant))
+        puts "exported the concept graph to #{path}"
+      else
+        paths = store.export_dir(opts[:agent], opts[:out], tenant: tenant)
+        puts "exported #{paths.size} concept(s) to #{opts[:out]}"
+      end
     end
 
     def run_failed?(result)

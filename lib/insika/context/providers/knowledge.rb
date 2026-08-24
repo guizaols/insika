@@ -64,7 +64,7 @@ module Insika
           known = matches.map { |c| c[:name] }
           discovered = []
           matches.each do |concept|
-            link_names(concept[:body]).each do |name|
+            Insika::Knowledge::Concept.links(concept[:body]).each do |name|
               next if known.include?(name) || discovered.any? { |d| d[:name] == name }
 
               found = fetch(request, name)
@@ -72,10 +72,6 @@ module Insika
             end
           end
           discovered.first(top_k)
-        end
-
-        def link_names(body)
-          body.to_s.scan(/\[\[([^\]]+)\]\]/).flatten.map(&:strip).reject(&:empty?).uniq
         end
 
         def fetch(request, name)

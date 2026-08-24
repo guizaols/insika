@@ -212,6 +212,14 @@ module Insika
         yaml = frontmatter.map { |k, v| "#{k}: #{v.to_json}" }.join("\n")
         "---\n#{yaml}\n---\n\n#{body}\n"
       end
+
+      # `[[name]]` references inside a concept's body — the whole "graph"
+      # layers 1+2 support: plain text, resolved lazily by name, never a
+      # stored structure of its own. Shared by retrieval's one-hop expansion
+      # and the GraphML export, so the two readings of "a link" never drift.
+      def links(body)
+        body.to_s.scan(/\[\[([^\]]+)\]\]/).flatten.map(&:strip).reject(&:empty?).uniq
+      end
     end
 
     # The model's raw concepts, filtered into data the caller stamps with
@@ -608,6 +616,64 @@ module Insika
         rescue ArgumentError
           1.0 # unparseable/blank timestamp -> neutral weight, never excluded
         end
+      end
+    end
+
+    # The follow-up export shape (§5): one combined graph instead of one
+    # file per concept — nodes are concepts (name/type/description/
+    # confidence/provenance as node data), edges are `[[links]]` resolved
+    # against the SAME export set (a link to a concept outside the scope is
+    # dropped, never a dangling edge). Directly consumable by Gephi/yEd/
+    # graphify. No new dependency: hand-built and hand-escaped XML, the same
+    # zero-dependency discipline the rest of this feature keeps.
+    module GraphmlExport
+      module_function
+
+      # concepts: [Concept.parse output, ...]. -> String (one .graphml document).
+      def build(concepts)
+        names = concepts.map { |c| c[:name] }
+        nodes = concepts.map { |c| node(c) }.join("\n")
+        edges = concepts.flat_map { |c| edges_for(c, names) }.join("\n")
+        <<~XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+            <key id="name" for="node" attr.name="name" attr.type="string"/>
+            <key id="type" for="node" attr.name="type" attr.type="string"/>
+            <key id="description" for="node" attr.name="description" attr.type="string"/>
+            <key id="confidence" for="node" attr.name="confidence" attr.type="double"/>
+            <key id="provenance" for="node" attr.name="provenance" attr.type="string"/>
+            <graph id="knowledge" edgedefault="directed">
+          #{nodes}
+          #{edges}
+            </graph>
+          </graphml>
+        XML
+      end
+
+      def node(concept)
+        <<~NODE.chomp
+              <node id="#{escape(concept[:name])}">
+                <data key="name">#{escape(concept[:name])}</data>
+                <data key="type">#{escape(concept[:type])}</data>
+                <data key="description">#{escape(concept[:description])}</data>
+                <data key="confidence">#{concept[:confidence]}</data>
+                <data key="provenance">#{escape(concept[:provenance])}</data>
+              </node>
+        NODE
+      end
+
+      def edges_for(concept, known_names)
+        Concept.links(concept[:body]).select { |name| known_names.include?(name) }.map do |target|
+          %(    <edge source="#{escape(concept[:name])}" target="#{escape(target)}"/>)
+        end
+      end
+
+      # The five XML predefined entities — no library needed for this subset.
+      # Order matters: `&` first, or every other substitution's own `&` gets
+      # re-escaped.
+      def escape(text)
+        text.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
+            .gsub('"', "&quot;").gsub("'", "&apos;")
       end
     end
   end

@@ -83,6 +83,28 @@ RSpec.describe Insika::KnowledgeStore do
     end
   end
 
+  it "export_graphml builds one combined graph, edges resolved against the same scope" do
+    linked_body = "b [[frete-gratis]]"
+    store.write("acme", "cep-13", "---\nname: cep-13\ndescription: d\n---\n#{linked_body}\n")
+    store.write("acme", "frete-gratis", concept_md("frete-gratis"))
+
+    xml = store.export_graphml("acme")
+
+    expect(xml).to include('<node id="cep-13">', '<node id="frete-gratis">')
+    expect(xml).to include('<edge source="cep-13" target="frete-gratis"/>')
+  end
+
+  it "export_graphml scopes by agent and tenant" do
+    store.write("acme", "cep-13", concept_md("cep-13"))
+    store.write("acme", "loja-a-only", concept_md("loja-a-only"), tenant: "loja-a")
+
+    expect(store.export_graphml("zeta")).not_to include("<node ")
+    default_scope = store.export_graphml("acme")
+    expect(default_scope).to include('<node id="cep-13">')
+    expect(default_scope).not_to include("loja-a-only")
+    expect(store.export_graphml("acme", tenant: "loja-a")).to include('<node id="loja-a-only">')
+  end
+
   it "delete -> bool; restore reverts to an old version" do
     store.write("acme", "cep-13", concept_md("cep-13", "v1"))
     store.write("acme", "cep-13", concept_md("cep-13", "v2"))

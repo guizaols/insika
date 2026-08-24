@@ -102,6 +102,16 @@ module Insika
       end
     end
 
+    # -> String (one GraphML document — the whole scope as a graph, §5's
+    # follow-up export shape). A record that fails to parse (a hand edit
+    # gone wrong) is skipped rather than breaking the whole export.
+    def export_graphml(agent_id, tenant: nil)
+      concepts = names(agent_id, tenant: tenant).filter_map do |name|
+        Knowledge::Concept.parse(get(agent_id, name, tenant: tenant))
+      end
+      Knowledge::GraphmlExport.build(concepts)
+    end
+
     private
 
     def scope_for(agent_id, tenant)

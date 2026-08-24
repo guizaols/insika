@@ -290,6 +290,31 @@ RSpec.describe "bin/insika" do
       end
     end
 
+    it "--format graphml writes one knowledge.graphml graph file" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        store = Insika::KnowledgeStore.new(store: Insika::Stores::SQLite.new(path: db))
+        store.write("acme", "cep-13", concept_md("cep-13", body: "b [[frete-gratis]]"))
+        store.write("acme", "frete-gratis", concept_md("frete-gratis"))
+        out_dir = File.join(dir, "export")
+
+        out, status = run("knowledge:export", "--agent", "acme", "--out", out_dir, "--format", "graphml",
+                          env: { "INSIKA_DB" => db })
+
+        expect(status).to be_success
+        expect(out).to match(%r{exported the concept graph to .*knowledge\.graphml})
+        xml = File.read(File.join(out_dir, "knowledge.graphml"))
+        expect(xml).to include('<node id="cep-13">', '<node id="frete-gratis">',
+                               '<edge source="cep-13" target="frete-gratis"/>')
+      end
+    end
+
+    it "an unknown --format aborts" do
+      out, status = run("knowledge:export", "--agent", "acme", "--format", "bogus")
+      expect(out).to match(/--format must be md or graphml/)
+      expect(status.exitstatus).to eq(1)
+    end
+
     it "without --agent aborts" do
       out, status = run("knowledge:export")
       expect(out).to match(/--agent is required/)

@@ -14,7 +14,10 @@ it is released. Entries land with the pull request that makes the change.
   under a directory (`KnowledgeStore#export_dir`). The storage format IS the
   export format, so it's a dump, not a converter, directly consumable by
   okf-gem/graphify. Idempotent — nothing here is lossy, so there's no
-  `--force` to reason about.
+  `--force` to reason about. `--format graphml` writes one combined
+  `knowledge.graphml` instead — a node per concept, an edge per `[[link]]`
+  resolved against the same export set (a dangling link is dropped, never a
+  broken edge) — hand-built, hand-escaped XML, no new dependency.
 
 - **Knowledge retrieval** — with `knowledge: {retrieve: true}`, every turn
   the engine now searches the agent's learned concepts for the ones
