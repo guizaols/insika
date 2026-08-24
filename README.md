@@ -80,6 +80,16 @@ served — no secrets) and **`GET /docs`** + **`GET /docs/<name>.md`** (these do
 markdown). Public and on by default when you `serve`; opt-in in production
 (`INSIKA_ONBOARDING=1`).
 
+Three more paste-prompts cover the steps after that, served and structured the same way
+(one file each under `docs/prompts/`):
+
+```
+Read http://localhost:9292/docs/add-tool.md then add a currency tool to my agent
+Read http://localhost:9292/docs/diagnose-turn.md — this turn failed, investigate
+Read http://localhost:9292/docs/run-examples.md then run every example for me
+Read http://localhost:9292/docs/go-live.md then take this agent to production
+```
+
 ## Docs by goal
 
 **Understand the idea**
