@@ -10,6 +10,21 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Knowledge consolidation + the Studio page** — a repeat concept name no
+  longer blindly overwrites. The engine now decides same claim (bumps
+  occurrences/sources/confidence — `min(0.95, 0.5 + 0.1 × distinct_sources)`,
+  no model call), related claim (one extra model call merges the two
+  bodies — `Insika::Knowledge::Consolidator`/`ConsolidatorFactory`), or
+  contradicting claim (never merged — appended under a `## Contradiction`
+  heading, confidence dropped to `0.4`, `:knowledge_conflict` emitted). No
+  consolidator configured, or an unusable answer, defaults to contradicting —
+  the conservative choice. `/studio/knowledge` (single-agent-scoped like
+  Harvest) lists every concept with a conflict filter, the same CodeMirror
+  editor Skills uses (also how an operator hand-promotes `provenance:
+  observed` to `policy`), version history/restore, and delete — all through
+  three new bus commands (`write_concept`/`delete_concept`/`restore_concept`,
+  wired through every composition root).
+
 - **Knowledge, layer 1 (extraction)** — the engine can now learn durable
   **concepts** (facts, procedures, policies, objections) from finished
   conversations, opt-in per agent via `knowledge extract: true`. After a turn
@@ -22,9 +37,9 @@ it is released. Entries land with the pull request that makes the change.
   scoped per agent/tenant like `MemoryStore`, versioned like `SkillStore`).
   Emits `:knowledge_learned` (name/type/agent only, never content). The
   recovery path is `insika knowledge:backfill --agent ID [--since DATE]`,
-  replaying stored sessions through the same extractor. No consolidation, no
-  retrieval into a turn's prompt yet — see `docs/KNOWLEDGE.md` for what's
-  shipped and what's still planned.
+  replaying stored sessions through the same extractor. No retrieval into a
+  turn's prompt yet — see `docs/KNOWLEDGE.md` for what's shipped and what's
+  still planned.
 
 - **Plugin loading is on in every root** — `Server::Boot`'s `load_plugins`
   step was a no-op in both composition roots, so the tested

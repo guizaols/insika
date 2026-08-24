@@ -119,7 +119,10 @@ Studio::App.configure(
   # :reject_harvest / :rollback_harvest on the bus.
   harvest_store: W::GRAPH.harvest_store,
   harvest_criterion: W::HARVEST_CRITERION,
-  negative_list: W::HARVEST_NEGATIVE
+  negative_list: W::HARVEST_NEGATIVE,
+  # the Knowledge page reads the store directly; its
+  # mutations (write/delete/restore) dispatch bus commands.
+  knowledge_store: W::GRAPH.knowledge_store
 )
 
 # OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.

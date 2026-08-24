@@ -67,27 +67,110 @@ module Insika
 
     module_function
 
-    # Stamps a model-proposed concept (a Hash with "name"/"description"/
-    # "type"/"body") with the fields the model never supplies — provenance,
-    # confidence, sources, occurrences, timestamps — and renders it as the
-    # complete concept markdown, ready for `KnowledgeStore#write`. The ONE
-    # place a concept's body is redacted (RFC's PII rule: every write goes
-    # through this, so a caller cannot forget).
+    # The layer-2 confidence formula: more independent sightings, more
+    # confidence, never certainty. `confidence_for(1)` is the first-sighting
+    # value PR 1 hardcoded (0.6) — spelled out here as the formula's own
+    # degenerate case, not a separate constant to keep in sync.
+    CONFIDENCE_BASE = 0.5
+    CONFIDENCE_STEP = 0.1
+    CONFIDENCE_CAP = 0.95
+    def confidence_for(distinct_sources) = [CONFIDENCE_CAP, CONFIDENCE_BASE + (CONFIDENCE_STEP * distinct_sources)].min
+
+    # A contradiction is never silently resolved into a confidence climb —
+    # it is a flat drop, regardless of how confirmed the concept was before.
+    CONTRADICTION_CONFIDENCE = 0.4
+    CONTRADICTION_HEADING = "## Contradiction"
+
+    # The ONE entry point every write path uses (the Executor's terminal
+    # hook, the backfill CLI, and a Studio-authored concept). Decides
+    # new/same/related/contradicting when `concept:<name>` already exists,
+    # and stamps the result — the model never gets to (RFC's "provenance
+    # only as ids" rule). The ONE place a concept's body is redacted (every
+    # write goes through this, so a caller cannot forget).
     #
-    # Layer 1 only: every write is treated as a first sighting — one source,
-    # the layer-2 confidence formula (`min(0.95, 0.5 + 0.1 x distinct_sources)`)
-    # evaluated at distinct_sources = 1. Consolidating repeat sightings
-    # (merged sources/occurrences, a real confidence climb) is layer 2 — not
-    # this method's job.
-    def stamp_and_render(concept, session_id:)
-      body, = Insika::Safety::Detectors.redact(concept["body"].to_s)
+    # store:        KnowledgeStore.
+    # concept:      {"name","description","type","body"} — the extractor's
+    #               candidate; body not yet redacted.
+    # consolidator: Consolidator | nil. nil = the conservative default: a
+    #               differing body is always `:contradicting` (never
+    #               silently overwritten) rather than spending a model call
+    #               to guess.
+    # -> { verdict: :new | :same | :related | :contradicting, name:, type: }
+    def write_concept(store:, agent_id:, concept:, session_id:, tenant: nil, consolidator: nil)
+      name = concept["name"].to_s
+      redacted_body, = Insika::Safety::Detectors.redact(concept["body"].to_s)
+      current = store.get(agent_id, name, tenant: tenant)
+
+      if current.nil?
+        store.write(agent_id, name, first_sighting(concept, redacted_body, session_id), tenant: tenant)
+        return { verdict: :new, name: name, type: concept["type"].to_s }
+      end
+
+      existing = Concept.parse(current)
+      if same_claim?(existing[:body], redacted_body)
+        store.write(agent_id, name, bump(existing, session_id), tenant: tenant)
+        return { verdict: :same, name: existing[:name], type: existing[:type] }
+      end
+
+      resolution = consolidator && consolidator.resolve(existing_body: existing[:body], new_body: redacted_body)
+      if resolution && resolution[:verdict] == :related
+        store.write(agent_id, name, merge(existing, resolution[:merged_body], session_id), tenant: tenant)
+        { verdict: :related, name: existing[:name], type: existing[:type] }
+      else
+        store.write(agent_id, name, contradict(existing, redacted_body, session_id), tenant: tenant)
+        { verdict: :contradicting, name: existing[:name], type: existing[:type] }
+      end
+    end
+
+    def first_sighting(concept, redacted_body, session_id)
       now = Time.now.utc.iso8601
       Concept.render(
-        name: concept["name"], description: concept["description"], type: concept["type"], body: body,
-        provenance: "observed", confidence: 0.6, sources: [session_id.to_s], occurrences: 1,
+        name: concept["name"], description: concept["description"], type: concept["type"], body: redacted_body,
+        provenance: "observed", confidence: confidence_for(1), sources: [session_id.to_s], occurrences: 1,
         created_at: now, updated_at: now
       )
     end
+
+    # Same claim, reworded or reconfirmed: the body stays (no operator edit
+    # is silently discarded by a repeat sighting), only the evidence grows.
+    def bump(existing, session_id)
+      sources = (existing[:sources] + [session_id.to_s]).uniq
+      Concept.render(
+        name: existing[:name], description: existing[:description], type: existing[:type], body: existing[:body],
+        provenance: "observed", confidence: confidence_for(sources.size), sources: sources,
+        occurrences: existing[:occurrences] + 1, created_at: existing[:created_at], updated_at: Time.now.utc.iso8601
+      )
+    end
+
+    # Related claim: the consolidator's merged text replaces the body — the
+    # only branch where a second model call decided the wording.
+    def merge(existing, merged_body, session_id)
+      sources = (existing[:sources] + [session_id.to_s]).uniq
+      Concept.render(
+        name: existing[:name], description: existing[:description], type: existing[:type], body: merged_body,
+        provenance: "observed", confidence: confidence_for(sources.size), sources: sources,
+        occurrences: existing[:occurrences] + 1, created_at: existing[:created_at], updated_at: Time.now.utc.iso8601
+      )
+    end
+
+    # Contradicting claim: never overwritten. The new claim joins the body
+    # under a heading a human resolves in the Studio; occurrences do NOT
+    # bump (a conflict is not a confirmation), but the sighting still joins
+    # `sources` for the audit trail.
+    def contradict(existing, new_body, session_id)
+      sources = (existing[:sources] + [session_id.to_s]).uniq
+      body = "#{existing[:body]}\n\n#{CONTRADICTION_HEADING}\n\n#{new_body}"
+      Concept.render(
+        name: existing[:name], description: existing[:description], type: existing[:type], body: body,
+        provenance: "observed", confidence: CONTRADICTION_CONFIDENCE, sources: sources,
+        occurrences: existing[:occurrences], created_at: existing[:created_at], updated_at: Time.now.utc.iso8601
+      )
+    end
+
+    # Normalized equality (strip/downcase/collapse whitespace) — cheap and
+    # deterministic, no model call spent confirming a reworded repeat.
+    def same_claim?(a, b) = normalize_claim(a) == normalize_claim(b)
+    def normalize_claim(text) = text.to_s.strip.downcase.gsub(/\s+/, " ")
 
     # The concept format: markdown with a YAML frontmatter block, parsed and
     # rendered with the SAME split `SkillCatalog#parse_content` uses, so the
@@ -284,6 +367,126 @@ module Insika
           llm.chat(model: model, provider: provider, assume_model_exists: true)
              .with_temperature(0).ask(prompt)
         end
+      end
+    end
+
+    # The "second LLM call" §3.5 describes — spent ONLY when a concept name
+    # already exists AND the new sighting's body differs from the stored one
+    # (the cheap same-claim check in `Knowledge.write_concept` already
+    # handled the identical-reworded case without a call). ONE call decides
+    # AND merges together: `Workflow::Schema` cannot express "merged_body
+    # required only if verdict==related", so the schema only requires
+    # `verdict` and a Ruby check afterward treats a missing/oversized
+    # `merged_body` on a "related" answer as unusable.
+    #
+    # `resolve` never raises: any parse/schema failure — or simply not being
+    # configured — resolves to `{verdict: :contradicting}`, the safe default
+    # when the engine cannot tell. A guess that risks merging two genuinely
+    # different claims into one confident-sounding lie is the worse failure
+    # mode; a conflict a human has to look at is not.
+    class Consolidator
+      class Unusable < Insika::ValidationError; end
+
+      DEFAULT_PROMPT = <<~PROMPT.freeze
+        You are comparing two claims about the SAME concept in a store's
+        knowledge base — an existing one already on record, and a new one
+        just observed in a conversation.
+
+        Answer with a single JSON object and NOTHING else. No prose, no fences.
+
+        - If the two claims are COMPATIBLE — they can be combined into one
+          coherent statement without losing or inventing anything either one
+          said — answer {"verdict": "related", "merged_body": "<the merged
+          claim, in your own words, max 2000 chars>"}.
+        - If they state genuinely DIFFERENT things and merging would hide a
+          real change or disagreement, answer {"verdict": "contradicting"}.
+
+        When unsure, prefer "contradicting" — a human resolves it; a wrong
+        merge would state something nobody actually confirmed.
+      PROMPT
+
+      VERDICT_SCHEMA = Insika::Workflow::Schema.coerce({
+        "type" => "object",
+        "properties" => {
+          "verdict" => { "type" => "string" },
+          "merged_body" => { "type" => "string" }
+        },
+        "required" => ["verdict"]
+      })
+
+      MAX_MERGED_BODY = 2000
+
+      attr_reader :model
+
+      def initialize(ask:, model: "utility_model")
+        @ask = ask
+        @model = model.to_s
+      end
+
+      # -> { verdict: :related, merged_body: String } | { verdict: :contradicting }
+      def resolve(existing_body:, new_body:)
+        answer = @ask.call(prompt_for(existing_body, new_body))
+        parsed = parse(text_of(answer))
+        raise Unusable, "not a JSON object" unless VERDICT_SCHEMA.call(parsed).success?
+
+        classify(parsed)
+      rescue Unusable
+        { verdict: :contradicting }
+      end
+
+      private
+
+      def classify(parsed)
+        return { verdict: :contradicting } unless parsed["verdict"].to_s == "related"
+
+        merged = parsed["merged_body"].to_s
+        return { verdict: :contradicting } if merged.strip.empty? || merged.length > MAX_MERGED_BODY
+
+        { verdict: :related, merged_body: merged }
+      end
+
+      def text_of(answer) = (answer.respond_to?(:content) ? answer.content : answer).to_s
+
+      def parse(raw)
+        body = raw.strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
+        parsed = JSON.parse(body)
+        raise Unusable, "the consolidator's answer is not an object" unless parsed.is_a?(Hash)
+
+        parsed
+      rescue JSON::ParserError
+        raise Unusable, "the consolidator's answer is not valid JSON"
+      end
+
+      def prompt_for(existing_body, new_body)
+        <<~PROMPT
+          #{DEFAULT_PROMPT}
+
+          ## Existing claim
+
+          #{existing_body}
+
+          ## New claim
+
+          #{new_body}
+        PROMPT
+      end
+    end
+
+    # Resolves WHICH model consolidates — the same slot the extractor uses
+    # (a deployment names one `knowledge.model`, not two). Reuses
+    # `ExtractorFactory`'s ref-parsing and lazy ruby_llm ask builder rather
+    # than duplicating them (both live in this same module).
+    module ConsolidatorFactory
+      module_function
+
+      # config: the agent's `knowledge` hash. -> Consolidator | nil
+      def build(config, utility_model: nil, ask_factory: nil, llm: nil)
+        ref = Coercion.presence(config && config["model"]) || Coercion.presence(utility_model)
+        return nil if ref.nil?
+
+        provider, model = ExtractorFactory.split_ref(ref)
+        factory = ask_factory || ->(m, p) { ExtractorFactory.ruby_llm_ask(m, p, llm: llm) }
+        Consolidator.new(ask: factory.call(model, provider), model: ref)
       end
     end
   end

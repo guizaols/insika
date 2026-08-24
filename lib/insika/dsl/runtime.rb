@@ -273,6 +273,9 @@ module Insika
         bus.register(:write_data_tool, Insika::Commands::WriteDataTool.new(tool_store: c[:tool_store], registry: c[:tool_registry], tool_catalog: c[:tool_catalog], event_stream: es))
         bus.register(:delete_data_tool, Insika::Commands::DeleteDataTool.new(tool_store: c[:tool_store], registry: c[:tool_registry], tool_catalog: c[:tool_catalog], event_stream: es))
         bus.register(:restore_data_tool, Insika::Commands::RestoreDataTool.new(tool_store: c[:tool_store], registry: c[:tool_registry], tool_catalog: c[:tool_catalog], event_stream: es))
+        bus.register(:write_concept, Insika::Commands::WriteConcept.new(knowledge_store: graph.knowledge_store, event_stream: es))
+        bus.register(:delete_concept, Insika::Commands::DeleteConcept.new(knowledge_store: graph.knowledge_store, event_stream: es))
+        bus.register(:restore_concept, Insika::Commands::RestoreConcept.new(knowledge_store: graph.knowledge_store, event_stream: es))
       end
 
       # --- RubyLLM configuration ------------------------------------------

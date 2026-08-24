@@ -2490,7 +2490,12 @@ module Insika
       extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model)
       return unless extractor
 
-      run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor) }
+      # Same resolved model as the extractor — a deployment names one
+      # knowledge model, not two. nil consolidator (no model resolvable) is
+      # still meaningful: write_concept's conservative default.
+      consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model)
+
+      run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator) }
       return run.call unless @supervised
 
       turn_parent.async do |t|
@@ -2499,16 +2504,30 @@ module Insika
       end
     end
 
-    def run_knowledge_extraction(task, profile, config, new_messages, extractor)
+    def run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator)
       prompt = knowledge_prompt(config, new_messages)
       result = extractor.extract(prompt: prompt)
       result[:concepts].each do |concept|
-        rendered = Knowledge.stamp_and_render(concept, session_id: task.session_id)
-        @knowledge_store.write(profile.id, concept["name"], rendered)
-        emit(:knowledge_learned, { name: concept["name"], type: concept["type"], agent: profile.id }, task: task)
+        outcome = Knowledge.write_concept(
+          store: @knowledge_store, agent_id: profile.id, concept: concept, session_id: task.session_id,
+          tenant: task_tenant(task), consolidator: consolidator
+        )
+        emit_knowledge_event(outcome, profile, task)
       end
     rescue StandardError
       nil # best-effort: extraction never re-fails an already-committed turn.
+    end
+
+    # :new/:related taught the agent something; :contradicting needs a
+    # human; :same is a silent reinforcement (no event — a popular concept
+    # would otherwise spam the stream every time it's confirmed).
+    def emit_knowledge_event(outcome, profile, task)
+      case outcome[:verdict]
+      when :new, :related
+        emit(:knowledge_learned, { name: outcome[:name], type: outcome[:type], agent: profile.id }, task: task)
+      when :contradicting
+        emit(:knowledge_conflict, { name: outcome[:name], agent: profile.id }, task: task)
+      end
     end
 
     def knowledge_prompt(config, new_messages)

@@ -19,10 +19,11 @@ Knowledge is that loop. After a turn completes, the engine can extract durable
 **concepts** from it — facts, procedures, policies, objections — and persist
 them for the agent (never a customer, never a session) to build on.
 
-**What ships today (layer 1): extraction only.** The engine writes what it
-learns; nothing is injected into a turn's prompt yet, and nothing merges two
-sightings of the same concept together. Retrieval and consolidation are
-planned — see [What's not here yet](#whats-not-here-yet).
+**What ships today: extraction + consolidation, and a Studio page.** The
+engine writes what it learns, decides whether a repeat sighting confirms,
+merges with, or contradicts what it already knew, and an operator can see,
+edit and resolve all of it in the Studio. Nothing is injected into a turn's
+prompt yet — see [What's not here yet](#whats-not-here-yet).
 
 ## The concept format
 
@@ -104,6 +105,46 @@ insika knowledge:backfill --agent store-support --since 2026-08-01T00:00:00Z
 replays the agent's stored sessions through the same extractor a live turn
 uses.
 
+## Consolidation — what happens on a repeat sighting
+
+Writing a concept name that already exists is never a blind overwrite. The
+engine compares the new sighting against what is on record and picks one of
+three outcomes:
+
+- **Same claim, reworded or reconfirmed** — a cheap, deterministic check
+  (no model call): occurrences go up, the new session id joins `sources`,
+  confidence climbs (`min(0.95, 0.5 + 0.1 × distinct sources)` — more
+  independent sightings, more confidence, never certainty). The body itself
+  is untouched, so an operator's edit is never silently discarded by a
+  repeat sighting.
+- **Related claim** — the two bodies say compatible things that combine into
+  one coherent statement. A second model call (the only place this feature
+  spends a second call, and only when a name already exists) merges them;
+  the result bumps occurrences/sources/confidence the same way a same-claim
+  sighting does.
+- **Contradicting claim** — the two bodies say genuinely different things.
+  **Never merged, never silently overwritten.** The new claim is appended
+  under a `## Contradiction` heading, confidence drops to a flat `0.4`, and
+  a `:knowledge_conflict` event fires. A human resolves it in the Studio by
+  editing the concept directly — there is no separate "resolve" action,
+  because resolving IS editing the markdown to say what's actually true.
+
+When no model is configured for consolidation (or its answer is unusable),
+the engine defaults to the conservative outcome — contradicting. A concept
+this feature is unsure about becomes a human's problem, never a guess that
+looks confident and might be wrong.
+
+## The Studio page
+
+`/studio/knowledge` — single-agent-scoped like Harvest (`?agent=`), not
+shared like Skills, because a concept only ever belongs to one store. A
+drill-down list (name, type, confidence, occurrences, updated_at) with a
+conflict filter (`?status=conflict`) and the same CodeMirror markdown editor
+Skills uses, version history and restore, and delete. Editing the raw
+markdown is also how an operator promotes `provenance: observed` to `policy`
+— there is no separate "promote" button, the field is just another line in
+the file.
+
 ## External knowledge over MCP
 
 A native knowledge base is not the only shape this can take. Mounting a
@@ -127,11 +168,10 @@ one, and it is worth measuring (calls per conversation), not assuming.
 - **Best-effort extraction, re-scan recovery.** Same discipline as Facts: no
   queue, no exactly-once claim. A concept is re-derivable from the session
   transcript, so a missed extraction is recoverable, never lost.
-- **One sighting, one write.** Writing a concept that already exists
-  overwrites its content (the old version moves into version history) rather
-  than merging the two sightings — treating every write as if it were the
-  first. Detecting the same claim seen twice vs. a genuine contradiction is
-  layer 2, not implemented yet.
+- **Consolidation trusts the same model that extracts.** The "related vs.
+  contradicting" call is a model judgment, not a proof — the conservative
+  default (contradicting, when unsure) bounds the failure mode to "a human
+  looks at it," never "two different claims silently became one wrong one."
 - **Precision is a forge audit.** The engine guarantees the gates (schema,
   key-stripping, PII redaction, type allowlist); it cannot guarantee the
   model's judgment about what is worth remembering. That is tuned per store,
@@ -142,14 +182,11 @@ one, and it is worth measuring (calls per conversation), not assuming.
 
 ## What's not here yet
 
-- **Consolidation** — merging repeat sightings of the same concept, raising
-  confidence with independent evidence, and flagging genuine contradictions
-  for a human to resolve in the Studio, instead of silently overwriting.
 - **Retrieval** — matching a turn's message against the agent's concepts and
   injecting the relevant few (`<knowledge>`, below skills and above memory in
   the context priority ladder — see [Context](CONTEXT.md)) plus a
   `load_knowledge` tool for the full body.
 - **Export** — `insika knowledge:export`, one markdown file per concept, for
   the same OKF-compatible tooling Skills already round-trips through.
-- **A Studio page** — list, edit, delete, filter by conflict, the same
-  markdown editor Skills uses.
+- **Decay** — recency is a ranking tiebreak once retrieval ships; a real
+  confidence decay curve is a later, evidence-driven addition, not a default.

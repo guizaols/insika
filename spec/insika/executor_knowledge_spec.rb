@@ -88,6 +88,29 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     expect(event_stream.types).not_to include(:knowledge_learned)
   end
 
+  it "a contradicting sighting never overwrites — it emits :knowledge_conflict instead of :knowledge_learned" do
+    knowledge_store.write("acme", "cep-13-campinas",
+                          Insika::Knowledge::Concept.render(
+                            name: "cep-13-campinas", description: "d", type: "fact", body: "b",
+                            provenance: "observed", confidence: 0.6, sources: ["sess-0"], occurrences: 1,
+                            created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z"
+                          ))
+    stub_extractor(concepts: [{ "name" => "cep-13-campinas", "description" => "d", "type" => "fact",
+                               "body" => "a totally different claim" }], dropped: {}, cost: nil)
+    consolidator = instance_double(Insika::Knowledge::Consolidator, resolve: { verdict: :contradicting })
+    allow(Insika::Knowledge::ConsolidatorFactory).to receive(:build).and_return(consolidator)
+    executor = build_executor
+
+    executor.send(:finalize_knowledge_extraction, task_for, profile, long_messages)
+
+    stored = knowledge_store.get("acme", "cep-13-campinas")
+    expect(stored).to include("## Contradiction")
+    expect(stored).to include("confidence: 0.4")
+    expect(event_stream.types).not_to include(:knowledge_learned)
+    conflict = event_stream.events.find { |e| e.type == :knowledge_conflict }
+    expect(conflict.data).to eq(name: "cep-13-campinas", agent: "acme")
+  end
+
   it "swallows an extraction failure — never re-fails an already-committed turn" do
     fake = instance_double(Insika::Knowledge::Extractor)
     allow(fake).to receive(:extract).and_raise(StandardError, "boom")

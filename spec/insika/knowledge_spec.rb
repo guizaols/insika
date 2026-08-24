@@ -57,20 +57,138 @@ RSpec.describe Insika::Knowledge do
     end
   end
 
-  describe ".stamp_and_render" do
-    it "stamps provenance/confidence/sources/occurrences the model never supplies, and redacts the body" do
-      rendered = described_class.stamp_and_render(
-        { "name" => "leaks-a-cpf", "description" => "d", "type" => "fact",
-          "body" => "the customer's CPF is 123.456.789-00" },
-        session_id: "sess_42"
+  describe ".confidence_for" do
+    it "the layer-2 formula: more distinct sources, more confidence, capped at 0.95" do
+      expect(described_class.confidence_for(1)).to eq(0.6)
+      expect(described_class.confidence_for(2)).to eq(0.7)
+      expect(described_class.confidence_for(10)).to eq(0.95) # capped, never certainty
+    end
+  end
+
+  describe ".write_concept" do
+    let(:store) { Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new) }
+
+    def concept_with(overrides = {})
+      { "name" => "cep-13", "description" => "d", "type" => "fact", "body" => "b" }.merge(overrides)
+    end
+
+    it "a new name is a first sighting — stamped, redacted, confidence 0.6, occurrences 1" do
+      outcome = described_class.write_concept(
+        store: store, agent_id: "acme",
+        concept: concept_with("body" => "the customer's CPF is 123.456.789-00"),
+        session_id: "sess_1"
       )
-      parsed = described_class::Concept.parse(rendered)
+      expect(outcome).to eq(verdict: :new, name: "cep-13", type: "fact")
+      parsed = described_class::Concept.parse(store.get("acme", "cep-13"))
       expect(parsed[:provenance]).to eq("observed")
       expect(parsed[:confidence]).to eq(0.6)
-      expect(parsed[:sources]).to eq(["sess_42"])
+      expect(parsed[:sources]).to eq(["sess_1"])
       expect(parsed[:occurrences]).to eq(1)
       expect(parsed[:body]).not_to include("123.456.789-00")
       expect(parsed[:body]).to include("REDACTED")
+    end
+
+    it "the SAME claim reworded bumps occurrences/confidence/sources, body untouched, no model call" do
+      described_class.write_concept(store: store, agent_id: "acme", concept: concept_with("body" => "  B  "),
+                                    session_id: "sess_1")
+      consolidator = instance_double(Insika::Knowledge::Consolidator)
+      expect(consolidator).not_to receive(:resolve)
+
+      outcome = described_class.write_concept(store: store, agent_id: "acme", concept: concept_with("body" => "b"),
+                                              session_id: "sess_2", consolidator: consolidator)
+
+      expect(outcome[:verdict]).to eq(:same)
+      parsed = described_class::Concept.parse(store.get("acme", "cep-13"))
+      expect(parsed[:body]).to eq("B") # the FIRST wording survives, never silently replaced
+      expect(parsed[:occurrences]).to eq(2)
+      expect(parsed[:sources]).to eq(%w[sess_1 sess_2])
+      expect(parsed[:confidence]).to eq(0.7)
+    end
+
+    it "a related claim merges via the consolidator, bumping like a same-claim sighting" do
+      described_class.write_concept(store: store, agent_id: "acme", concept: concept_with, session_id: "sess_1")
+      consolidator = instance_double(Insika::Knowledge::Consolidator,
+                                     resolve: { verdict: :related, merged_body: "the merged claim" })
+
+      outcome = described_class.write_concept(store: store, agent_id: "acme",
+                                              concept: concept_with("body" => "a related but different claim"),
+                                              session_id: "sess_2", consolidator: consolidator)
+
+      expect(outcome[:verdict]).to eq(:related)
+      parsed = described_class::Concept.parse(store.get("acme", "cep-13"))
+      expect(parsed[:body]).to eq("the merged claim")
+      expect(parsed[:occurrences]).to eq(2)
+      expect(parsed[:confidence]).to eq(0.7)
+    end
+
+    it "a contradicting claim is NEVER silently overwritten: appended under a heading, confidence drops, occurrences unchanged" do
+      described_class.write_concept(store: store, agent_id: "acme", concept: concept_with, session_id: "sess_1")
+      consolidator = instance_double(Insika::Knowledge::Consolidator, resolve: { verdict: :contradicting })
+
+      outcome = described_class.write_concept(store: store, agent_id: "acme",
+                                              concept: concept_with("body" => "the opposite claim"),
+                                              session_id: "sess_2", consolidator: consolidator)
+
+      expect(outcome[:verdict]).to eq(:contradicting)
+      parsed = described_class::Concept.parse(store.get("acme", "cep-13"))
+      expect(parsed[:body]).to eq("b\n\n## Contradiction\n\nthe opposite claim")
+      expect(parsed[:occurrences]).to eq(1) # unchanged — a conflict is not a confirmation
+      expect(parsed[:confidence]).to eq(0.4)
+      expect(parsed[:sources]).to eq(%w[sess_1 sess_2]) # the sighting still joins the audit trail
+    end
+
+    it "without a consolidator, a differing body defaults to contradicting (never a silent overwrite)" do
+      described_class.write_concept(store: store, agent_id: "acme", concept: concept_with, session_id: "sess_1")
+
+      outcome = described_class.write_concept(store: store, agent_id: "acme",
+                                              concept: concept_with("body" => "something else entirely"),
+                                              session_id: "sess_2", consolidator: nil)
+
+      expect(outcome[:verdict]).to eq(:contradicting)
+    end
+  end
+
+  describe Insika::Knowledge::Consolidator do
+    def clean_answer(verdict, merged_body: nil)
+      h = { "verdict" => verdict }
+      h["merged_body"] = merged_body if merged_body
+      JSON.generate(h)
+    end
+
+    it "a related verdict with a merged body" do
+      consolidator = described_class.new(ask: ->(_prompt) { clean_answer("related", merged_body: "merged") })
+      expect(consolidator.resolve(existing_body: "a", new_body: "b")).to eq(verdict: :related, merged_body: "merged")
+    end
+
+    it "a contradicting verdict" do
+      consolidator = described_class.new(ask: ->(_prompt) { clean_answer("contradicting") })
+      expect(consolidator.resolve(existing_body: "a", new_body: "b")).to eq(verdict: :contradicting)
+    end
+
+    it "a related verdict WITHOUT a usable merged_body falls back to contradicting (never a guessed merge)" do
+      consolidator = described_class.new(ask: ->(_prompt) { clean_answer("related") })
+      expect(consolidator.resolve(existing_body: "a", new_body: "b")).to eq(verdict: :contradicting)
+
+      oversized = described_class.new(ask: ->(_prompt) { clean_answer("related", merged_body: "x" * 2001) })
+      expect(oversized.resolve(existing_body: "a", new_body: "b")).to eq(verdict: :contradicting)
+    end
+
+    it "prose, invalid JSON, or a missing verdict all fall back to contradicting — never raises" do
+      [->(_p) { "I think these are related." }, ->(_p) { "{not json" }, ->(_p) { "{}" }].each do |ask|
+        consolidator = described_class.new(ask: ask)
+        expect(consolidator.resolve(existing_body: "a", new_body: "b")).to eq(verdict: :contradicting)
+      end
+    end
+  end
+
+  describe Insika::Knowledge::ConsolidatorFactory do
+    let(:ask_factory) { ->(_model, _provider) { ->(_prompt) { "{}" } } }
+
+    it "resolves the config's model ref first, else the platform utility_model, else nil" do
+      expect(described_class.build({ "model" => "deepseek-v4-flash" }, utility_model: "u",
+                                   ask_factory: ask_factory).model).to eq("deepseek-v4-flash")
+      expect(described_class.build({}, utility_model: "u", ask_factory: ask_factory).model).to eq("u")
+      expect(described_class.build({}, utility_model: nil, ask_factory: ask_factory)).to be_nil
     end
   end
 

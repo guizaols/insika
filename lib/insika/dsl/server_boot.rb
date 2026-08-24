@@ -127,6 +127,9 @@ module Insika
           harvest_store: @graph.harvest_store,
           harvest_criterion: harvest_criterion,
           negative_list: harvest_negative_list,
+          # the Knowledge page reads the store directly; its
+          # mutations (write/delete/restore) dispatch bus commands.
+          knowledge_store: @graph.knowledge_store,
           # the Artifacts tab reads the report store; the signing
           # config (nil without INSIKA_ARTIFACT_SIGNING_KEY) decides whether a
           # signed sharing link exists at all.
