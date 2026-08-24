@@ -22,7 +22,13 @@ it is released. Entries land with the pull request that makes the change.
   calling it fires `:knowledge_retrieved`, the adoption metric that
   actually matters (a concept sitting unread in the prompt taught nothing).
   `knowledge.index: "fts5"` is accepted but falls back to the built-in scan
-  index (not built yet).
+  index — deliberately not built yet: `scripts/bench_knowledge_index.rb`
+  measured `Index::Scan` at hundreds of milliseconds per search before a
+  read-cache fix (re-parsing a concept's frontmatter on every search was
+  ~90% of the cost, not the store I/O); after the fix it's sub-1.5ms at the
+  concept counts this feature targets, and building the SQLite adapter is
+  deferred to a real, documented latency trigger (~1000 concepts/agent)
+  instead of being built speculatively.
 
 - **Knowledge consolidation + the Studio page** — a repeat concept name no
   longer blindly overwrites. The engine now decides same claim (bumps

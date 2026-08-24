@@ -231,13 +231,41 @@ one, and it is worth measuring (calls per conversation), not assuming.
   design (§14.4's call): revisit only with evidence that retrieval, not
   extraction, is the bottleneck.
 
+## Index::Scan's performance, measured not assumed
+
+`Index::Scan` keeps a read cache per instance (the context provider holds
+one for the whole process, never rebuilt per turn): a concept's YAML
+frontmatter is parsed once and reused until that concept's own record
+`updated_at` changes, so a write invalidates itself for free. Reproduce
+these numbers with:
+
+```bash
+bundle exec ruby scripts/bench_knowledge_index.rb
+```
+
+| concepts/agent | p50 | p95 |
+|---|---|---|
+| 50 | 0.28 ms | 0.47 ms |
+| 200 | 1.17 ms | 1.56 ms |
+| 1000 | 6.4 ms | 8.0 ms |
+| 5000 | 35.6 ms | 41.3 ms |
+
+At the scale this feature targets for the first year — hundreds of concepts
+per agent — a warm-cache search costs a bit over a millisecond, close to
+the engine's own documented per-turn overhead (see [Benchmark](BENCHMARK.md)).
+Past roughly a thousand concepts it becomes a real, measurable cost again —
+that specific, numeric point is the trigger for building `Index::FTS5`, not
+a guess made in advance.
+
 ## What's not here yet
 
 - **Export** — `insika knowledge:export`, one markdown file per concept, for
   the same OKF-compatible tooling Skills already round-trips through.
 - **The optional FTS5 index** — `knowledge.index: "fts5"` is accepted but
-  falls back to `Index::Scan`; a SQLite `MATCH`/`bm25()` index is a
-  drop-in swap for a deployment whose concept count actually needs it,
-  not a default.
+  falls back to `Index::Scan`. Deliberately not built yet: `Scan` was
+  measured (above), not assumed, and it comfortably meets this feature's
+  target scale. A deployment whose concept count is heading past ~1000 per
+  agent is the evidence that would justify building the SQLite
+  `MATCH`/`bm25()` adapter — not before.
 - **Decay** — recency is a ranking tiebreak today; a real confidence decay
   curve is a later, evidence-driven addition, not a default.

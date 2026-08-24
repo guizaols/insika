@@ -11,6 +11,15 @@ module Insika
       class Knowledge < ContextProvider
         def initialize(store:)
           @store = store
+          # One Index PER TYPE, built once and reused for every agent/turn —
+          # never per call. This provider instance itself lives for the
+          # process's lifetime (built once at boot, see wiring), so an
+          # Index rebuilt fresh each call would throw away its own read
+          # cache (Index::Scan's dominant cost is re-parsing YAML
+          # frontmatter; measured, not assumed) on every single turn.
+          # Keyed by the config's `index` string so a future FTS5 agent
+          # gets its own instance, never Scan's.
+          @indexes = Hash.new { |h, index_name| h[index_name] = Insika::Knowledge::Index.build({ "index" => index_name }, store: @store) }
         end
 
         # Per-agent opt-in (`knowledge.retrieve`), like Memory's `profile.memory`.
@@ -23,7 +32,7 @@ module Insika
           return [] unless config
 
           top_k = positive_int(config["top_k"]) || 5
-          index = Insika::Knowledge::Index.build(config, store: @store)
+          index = @indexes[config["index"].to_s]
           matches = index.search(request.profile.id, tenant: request.tenant,
                                  query: request.message.to_s, top_k: top_k)
           return [] if matches.empty?

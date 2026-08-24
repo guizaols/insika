@@ -37,6 +37,16 @@ module Insika
       record(agent_id, name, tenant)&.fetch("content", nil)
     end
 
+    # -> {"content" =>, "updated_at" =>} | nil. Cheap by design (no YAML
+    # frontmatter parse) — `updated_at` is the raw record's OWN timestamp,
+    # written on every upsert, so a caller can use it as a memoization key
+    # (Index::Scan's read cache) without re-parsing content that has not
+    # changed since the last read.
+    def meta(agent_id, name, tenant: nil)
+      rec = record(agent_id, name, tenant)
+      rec && { "content" => rec["content"], "updated_at" => rec["updated_at"] }
+    end
+
     # -> [String] concept names for the scope, lexicographic order.
     def names(agent_id, tenant: nil)
       @store.list(scope_for(agent_id, tenant), KEY_PREFIX).map { |k| k.delete_prefix(KEY_PREFIX) }
@@ -93,7 +103,12 @@ module Insika
         history = [{ "content" => current["content"], "at" => current["updated_at"] }] + history
         history = history.first(HISTORY_MAX)
       end
-      { "content" => content, "updated_at" => Time.now.utc.iso8601, "history" => history }
+      # Microsecond precision ON PURPOSE (MemoryStore's own rule): `updated_at`
+      # is Index::Scan's cache-invalidation key — second precision collides
+      # for two writes in the same second (a backfill, a rapid consolidation),
+      # and a collision there means a stale cached concept survives a real
+      # write until the next search that lands in a different second.
+      { "content" => content, "updated_at" => Time.now.utc.iso8601(6), "history" => history }
     end
   end
 end

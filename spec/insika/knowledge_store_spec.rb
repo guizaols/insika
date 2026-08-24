@@ -18,6 +18,23 @@ RSpec.describe Insika::KnowledgeStore do
     expect(store.all("acme").keys).to contain_exactly("cep-13", "frete-gratis")
   end
 
+  it "meta -> {content:, updated_at:} without needing a parse; nil for a missing concept" do
+    store.write("acme", "cep-13", concept_md("cep-13"))
+    meta = store.meta("acme", "cep-13")
+
+    expect(meta["content"]).to eq(concept_md("cep-13"))
+    expect { Time.iso8601(meta["updated_at"]) }.not_to raise_error
+    expect(store.meta("acme", "missing")).to be_nil
+  end
+
+  it "meta always reflects the latest write, matching get" do
+    store.write("acme", "cep-13", concept_md("cep-13", "v1"))
+    store.write("acme", "cep-13", concept_md("cep-13", "v2"))
+
+    expect(store.meta("acme", "cep-13")["content"]).to eq(store.get("acme", "cep-13"))
+    expect(store.meta("acme", "cep-13")["content"]).to eq(concept_md("cep-13", "v2"))
+  end
+
   it "overwriting pushes the old version into bounded history" do
     store.write("acme", "cep-13", concept_md("cep-13", "v1"))
     store.write("acme", "cep-13", concept_md("cep-13", "v2"))

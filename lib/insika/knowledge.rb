@@ -521,6 +521,17 @@ module Insika
 
         def initialize(store:)
           @store = store
+          # Read cache: parsing a concept's YAML frontmatter dominates search
+          # cost (measured: ~90% of it, not the store I/O) — re-parsing it on
+          # every search for a concept nothing wrote to since the last read
+          # is pure waste. Keyed by (agent, tenant, name); a cached entry is
+          # valid only while `updated_at` (the record's own timestamp, read
+          # WITHOUT parsing — KnowledgeStore#meta) still matches, so a write
+          # invalidates itself for free. One instance is meant to survive
+          # across turns (the context provider holds it), fibers included:
+          # a plain Hash is safe here the same way a closure-local counter is
+          # elsewhere in the engine — MRI fibers do not preempt mid-statement.
+          @cache = {}
         end
 
         # -> [{name:, description:, type:, confidence:, provenance:, sources:,
@@ -531,7 +542,7 @@ module Insika
           return [] if terms.empty?
 
           candidates = @store.names(agent_id, tenant: tenant).filter_map do |name|
-            Concept.parse(@store.get(agent_id, name, tenant: tenant))
+            cached_concept(agent_id, name, tenant)
           end
           scored = candidates.each_with_index.filter_map do |concept, idx|
             score = score_of(concept, terms)
@@ -542,6 +553,19 @@ module Insika
         end
 
         private
+
+        def cached_concept(agent_id, name, tenant)
+          meta = @store.meta(agent_id, name, tenant: tenant)
+          return nil unless meta
+
+          key = [agent_id, tenant, name]
+          hit = @cache[key]
+          return hit[:concept] if hit && hit[:updated_at] == meta["updated_at"]
+
+          concept = Concept.parse(meta["content"])
+          @cache[key] = { updated_at: meta["updated_at"], concept: concept }
+          concept
+        end
 
         # Punctuation stripped (a customer's "...Campinas?" must match the
         # concept "campinas") and terms under 3 chars dropped — short
