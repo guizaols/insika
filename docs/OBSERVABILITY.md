@@ -56,6 +56,7 @@ something that left no task of its own behind:
 | `:knowledge_learned` | `name`, `type`, `agent` | a turn's transcript taught the agent a new concept, or a related sighting merged into an existing one — name and type only, never the body |
 | `:knowledge_conflict` | `name`, `agent` | a repeat sighting contradicted what's on record — never merged, appended under a heading, needs a human in the Studio |
 | `:knowledge_deleted` | `name`, `agent` | an operator removed a concept from the Studio |
+| `:knowledge_retrieved` | `name`, `agent` | the model called `load_knowledge` — the adoption signal (retrieval calls per conversation), not the `<knowledge>` injection itself |
 | `:knowledge_backfilled` | `agent`, `sessions`, `concepts`, `conflicts`, `dropped{}` | the recovery re-scan (`insika knowledge:backfill`) finished replaying an agent's stored sessions |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at

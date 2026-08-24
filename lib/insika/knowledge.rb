@@ -479,7 +479,6 @@ module Insika
     module ConsolidatorFactory
       module_function
 
-      # config: the agent's `knowledge` hash. -> Consolidator | nil
       def build(config, utility_model: nil, ask_factory: nil, llm: nil)
         ref = Coercion.presence(config && config["model"]) || Coercion.presence(utility_model)
         return nil if ref.nil?
@@ -487,6 +486,104 @@ module Insika
         provider, model = ExtractorFactory.split_ref(ref)
         factory = ask_factory || ->(m, p) { ExtractorFactory.ruby_llm_ask(m, p, llm: llm) }
         Consolidator.new(ask: factory.call(model, provider), model: ref)
+      end
+    end
+
+    # Retrieval's index: a PORT with two adapters, selected by config —
+    # the same "config over code" shape `Sandbox.provider_for` uses. Unlike
+    # Sandbox (a security boundary, so an unknown value is a loud error),
+    # an unrecognized or not-yet-built index name degrades to `Scan` rather
+    # than failing the turn: retrieval is a quality feature, never a boot
+    # blocker (RFC §3.7's own described FTS5-absent fallback).
+    module Index
+      module_function
+
+      # config: the agent's `knowledge` hash. -> an object responding to
+      # #search(agent_id, tenant:, query:, top_k:).
+      def build(config, store:)
+        case (config && config["index"]).to_s
+        when "fts5" then Scan.new(store: store) # PR 4 — not built yet, same fallback
+        else Scan.new(store: store)
+        end
+      end
+
+      # Pure Ruby term-overlap search over one agent's concepts — no SQL, no
+      # embeddings. Mirrors `ToolCatalog#search`'s tokenizer/scoring shape
+      # (case-insensitive substring match, name weighted over description),
+      # extended per RFC §3.7 with a body tier and a confidence × recency
+      # multiplier. Correct on every backend; at the scale that matters (a
+      # few hundred concepts per agent) this is sub-millisecond.
+      class Scan
+        NAME_WEIGHT = 3
+        DESCRIPTION_WEIGHT = 2
+        BODY_WEIGHT = 1
+        RECENCY_HALF_LIFE_DAYS = 30.0
+
+        def initialize(store:)
+          @store = store
+        end
+
+        # -> [{name:, description:, type:, confidence:, provenance:, sources:,
+        #      occurrences:, body:}, ...] sorted by score desc, ties by store
+        # enumeration order. Excludes zero-overlap concepts entirely.
+        def search(agent_id, query:, tenant: nil, top_k: 5)
+          terms = tokenize(query)
+          return [] if terms.empty?
+
+          candidates = @store.names(agent_id, tenant: tenant).filter_map do |name|
+            Concept.parse(@store.get(agent_id, name, tenant: tenant))
+          end
+          scored = candidates.each_with_index.filter_map do |concept, idx|
+            score = score_of(concept, terms)
+            [concept, score, idx] if score.positive?
+          end
+          scored.sort_by { |_concept, score, idx| [-score, idx] }
+                .first(top_k).map(&:first)
+        end
+
+        private
+
+        # Punctuation stripped (a customer's "...Campinas?" must match the
+        # concept "campinas") and terms under 3 chars dropped — short
+        # function words ("o", "de", "a") substring-match almost anything and
+        # would turn every query into a false positive.
+        MIN_TERM_LENGTH = 3
+
+        def tokenize(query)
+          query.to_s.downcase.split(/\s+/)
+               .map { |t| t.gsub(/[^\p{Alnum}]/, "") }
+               .reject { |t| t.length < MIN_TERM_LENGTH }
+        end
+
+        def score_of(concept, terms)
+          name = concept[:name].to_s.downcase
+          description = concept[:description].to_s.downcase
+          body = concept[:body].to_s.downcase
+          term_score = terms.sum do |term|
+            (name.include?(term) ? NAME_WEIGHT : 0) +
+              (description.include?(term) ? DESCRIPTION_WEIGHT : 0) +
+              (body.include?(term) ? BODY_WEIGHT : 0)
+          end
+          return 0 if term_score.zero?
+
+          term_score * confidence_of(concept) * recency_weight(concept[:updated_at])
+        end
+
+        def confidence_of(concept)
+          c = concept[:confidence]
+          c.positive? ? c : 0.1 # a zero/blank confidence still ranks, just last among ties
+        end
+
+        # Smooth decay, no hard cutoff: a concept sighted 30 days ago still
+        # ranks, just below one confirmed yesterday. `Time.now` is safe here
+        # (this is engine runtime code, not a Workflow script).
+        def recency_weight(updated_at)
+          at = Time.iso8601(updated_at.to_s)
+          days = [(Time.now.utc - at) / 86_400.0, 0].max
+          1.0 / (1.0 + (days / RECENCY_HALF_LIFE_DAYS))
+        rescue ArgumentError
+          1.0 # unparseable/blank timestamp -> neutral weight, never excluded
+        end
       end
     end
   end

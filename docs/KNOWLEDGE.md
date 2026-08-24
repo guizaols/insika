@@ -19,11 +19,12 @@ Knowledge is that loop. After a turn completes, the engine can extract durable
 **concepts** from it — facts, procedures, policies, objections — and persist
 them for the agent (never a customer, never a session) to build on.
 
-**What ships today: extraction + consolidation, and a Studio page.** The
-engine writes what it learns, decides whether a repeat sighting confirms,
-merges with, or contradicts what it already knew, and an operator can see,
-edit and resolve all of it in the Studio. Nothing is injected into a turn's
-prompt yet — see [What's not here yet](#whats-not-here-yet).
+**What ships today: extraction, consolidation, retrieval, and a Studio
+page.** The engine writes what it learns, decides whether a repeat sighting
+confirms, merges with, or contradicts what it already knew, retrieves the
+concepts relevant to a turn's message back into the prompt, and an operator
+can see, edit and resolve all of it in the Studio. Only export and the
+optional FTS5 index remain — see [What's not here yet](#whats-not-here-yet).
 
 ## The concept format
 
@@ -51,9 +52,9 @@ The model only ever writes `name`, `description`, `type` and `body`. Every
 other field — `provenance`, `confidence`, `sources`, `occurrences`, the
 timestamps — is stamped by the engine; an extraction answer that tries to
 supply one of those is rejected outright (the same discipline Facts applies
-to a model-authored scope). `[[links]]` inside the body are plain text today —
-resolving them into a real graph is a retrieval-time feature, not stored
-structure.
+to a model-authored scope). `[[links]]` inside the body are plain text stored
+as-is; retrieval resolves them lazily by name at read time (below) — that one
+hop is the entire "graph," never a stored structure of its own.
 
 **`provenance` is not decoration.** Everything the extractor writes is
 `provenance: observed` — a claim learned from what people said in
@@ -71,16 +72,20 @@ absent = the feature is off for that agent, byte-identical engine:
 ```ruby
 agent = Insika.agent("store-support") do
   instructions "…"
-  knowledge extract: true,
-            types: %w[fact policy objection]  # what the extractor may emit
+  knowledge extract: true, retrieve: true,
+            types: %w[fact policy objection],  # what the extractor may emit
+            top_k: 5                            # concepts injected per turn (default 5)
   # prompt: "<what counts as a concept for THIS store>" — the pack-authored
   #   half; absent = the engine's generic prompt. `model:` (absent = the
-  #   platform utility_model) names the extractor explicitly.
+  #   platform utility_model) names the extractor AND the consolidator.
+  # index: "scan" (default, the only one built) | "fts5" (accepted, falls
+  #   back to "scan" — the optional SQLite index isn't built yet).
 end
 ```
 
-`retrieve`, `top_k` and `index` are reserved for the retrieval layer below —
-setting them today has no effect.
+`extract` and `retrieve` are independent switches: an agent can learn without
+recalling (write-only, inspected by hand), or recall without learning
+(curate every concept by hand in the Studio, `provenance: policy`).
 
 ## The write path
 
@@ -145,6 +150,45 @@ markdown is also how an operator promotes `provenance: observed` to `policy`
 — there is no separate "promote" button, the field is just another line in
 the file.
 
+## Retrieval — what reaches a turn's prompt
+
+With `knowledge.retrieve` on, every turn the engine searches the agent's
+concepts for the ones relevant to the customer's message (pure term overlap —
+no embeddings, no network call) and injects the top few as a level-1
+`<knowledge>` block, the same progressive-disclosure shape Skills uses:
+
+```
+<knowledge>
+  <concept name="cep-13-campinas" confidence="0.60" provenance="observed">CEPs 13xxx-13999 ship from the Campinas DC, 1-2 business days.</concept>
+</knowledge>
+
+If the customer's question needs more than the summary above, call
+`load_knowledge("name")` FIRST — before any other lookup for that topic.
+This is learned from past conversations, not official policy: never state
+a `provenance="observed"` concept to the customer as a guarantee.
+```
+
+Only `name`/`description`/`confidence`/`provenance` are shown — the same
+"summary now, body on demand" shape a skill's level-1 list uses. A `load_knowledge`
+tool (outside `tools_allow`, wired only when `retrieve` is on — same as
+`load_skill`) fetches one concept's complete body. Calling it fires
+`:knowledge_retrieved` — this, not the injection itself, is what the
+adoption metric tracks (see [the honest limits](#the-honest-limits)): a
+concept sitting unread in the prompt taught the agent nothing.
+
+**One hop through `[[links]]`.** A matched concept's body may reference
+`[[other-concept-name]]`; retrieval resolves those names against the store
+and injects them too (capped at `top_k` again), so a concept that names its
+neighbor arrives with it. No transitive walk — one level, deliberately, the
+same reasoning a skill's declared `companions:` uses.
+
+**Where it sits, and what gets cut first.** `<knowledge>` sits at priority 77
+— below curated skills (80), above a single conversation's memory (75): a
+human's playbook always outranks what the engine inferred, and what the
+engine inferred outranks one customer's chat facts. Never pinned; under
+budget pressure it goes before skills but survives longer than memory,
+briefing, history and request context — see [Context](CONTEXT.md).
+
 ## External knowledge over MCP
 
 A native knowledge base is not the only shape this can take. Mounting a
@@ -176,17 +220,24 @@ one, and it is worth measuring (calls per conversation), not assuming.
   key-stripping, PII redaction, type allowlist); it cannot guarantee the
   model's judgment about what is worth remembering. That is tuned per store,
   the same way a Harvest or Facts prompt is.
-- **Nothing is retrieved yet.** A concept sits in the store, visible to the
-  operator, and is not injected into any turn's prompt until the retrieval
-  layer ships.
+- **Retrieval quality is not adoption.** Injecting the right concept proves
+  nothing if the model never reads it — measure `:knowledge_retrieved`
+  (retrieval calls per conversation), not just whether the block appeared.
+  The explicit, ordered instruction in the block exists because a softer
+  "when to use" wording measured close to zero calls in practice.
+- **Term overlap, not understanding.** `Index::Scan` matches words, not
+  meaning — a concept phrased very differently from the customer's words
+  will not surface even if it answers the question. No embeddings by
+  design (§14.4's call): revisit only with evidence that retrieval, not
+  extraction, is the bottleneck.
 
 ## What's not here yet
 
-- **Retrieval** — matching a turn's message against the agent's concepts and
-  injecting the relevant few (`<knowledge>`, below skills and above memory in
-  the context priority ladder — see [Context](CONTEXT.md)) plus a
-  `load_knowledge` tool for the full body.
 - **Export** — `insika knowledge:export`, one markdown file per concept, for
   the same OKF-compatible tooling Skills already round-trips through.
-- **Decay** — recency is a ranking tiebreak once retrieval ships; a real
-  confidence decay curve is a later, evidence-driven addition, not a default.
+- **The optional FTS5 index** — `knowledge.index: "fts5"` is accepted but
+  falls back to `Index::Scan`; a SQLite `MATCH`/`bm25()` index is a
+  drop-in swap for a deployment whose concept count actually needs it,
+  not a default.
+- **Decay** — recency is a ranking tiebreak today; a real confidence decay
+  curve is a later, evidence-driven addition, not a default.

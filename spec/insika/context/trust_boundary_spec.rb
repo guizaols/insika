@@ -33,7 +33,7 @@ RSpec.describe "Context — trust boundary" do
   describe "Priority ladder (single contract)" do
     it "identity/guardrails at the top; turn injection (REQUEST) at the bottom" do
       p = Insika::Context::Priority
-      ladder = [p::IDENTITY, p::PROMPT_REF, p::SKILL_BODY, p::SKILL, p::MEMORY, p::TOOL_SEARCH, p::REQUEST]
+      ladder = [p::IDENTITY, p::PROMPT_REF, p::SKILL_BODY, p::SKILL, p::KNOWLEDGE, p::MEMORY, p::TOOL_SEARCH, p::REQUEST]
       expect(ladder).to eq(ladder.sort.reverse)      # strictly decreasing
       expect(p::REQUEST).to eq(ladder.min)           # turn injection = the most cuttable
       expect(p::IDENTITY).to eq(ladder.max)          # identity = the highest
@@ -48,7 +48,7 @@ RSpec.describe "Context — trust boundary" do
       # above the turn's own <request_context>
       expect(p::BRIEFING).to be > p::REQUEST
       # and the whole ladder (with briefing) stays strictly decreasing
-      ladder = [p::IDENTITY, p::PROMPT_REF, p::SKILL_BODY, p::SKILL, p::MEMORY,
+      ladder = [p::IDENTITY, p::PROMPT_REF, p::SKILL_BODY, p::SKILL, p::KNOWLEDGE, p::MEMORY,
                 p::TOOL_SEARCH, p::BRIEFING, p::REQUEST]
       expect(ladder).to eq(ladder.sort.reverse)
     end
