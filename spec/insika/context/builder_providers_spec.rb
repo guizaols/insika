@@ -39,10 +39,10 @@ RSpec.describe "ContextBuilder + real providers" do
     catalog = Insika::SkillCatalog.new(@dir)
     # tool_persistence off: parity characterization of the assembly order —
     # the engine discipline block has its own coverage in prompt_spec.
-    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "", skills: nil,
-                                         tool_persistence: false)
+    profile = Insika::AgentProfile.build(id: "a", model: "m", base_prompt: "", prompt_files: [soul],
+                                         skills: nil, tool_persistence: false)
     providers = [
-      Insika::Context::Providers::Prompt.new(base: "Base.", files: [soul]),
+      Insika::Context::Providers::Prompt.new(base: "Base."),
       Insika::Context::Providers::Skill.new(catalog: catalog)
     ]
 

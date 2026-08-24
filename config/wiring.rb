@@ -83,7 +83,7 @@ module Insika
 
     CONTEXT_PROVIDERS = [
       Insika::Context::Providers::Request.new,
-      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
+      Insika::Context::Providers::Prompt.new(base: "", catalog: PROMPT_CATALOG),
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       # Deterministic activation: injects the BODY of a skill whose `triggers:`
       # match the message. Inert for skills without triggers (returns []).

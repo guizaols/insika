@@ -176,14 +176,14 @@ module Deploy
     )
 
     # OpenClaw-style prompts become the IDENTITY (pinned) via the Prompt provider.
-    # IDENTITY_FILES is the deployment DEFAULT (used by an agent WITHOUT its own
-    # prompt_files). An agent with `profile.prompt_files` reads its content from the
-    # AGENT_FILE_STORE (its own identity), not these.
+    # `demo`'s own `prompt_files` below point here — there is no deployment-wide
+    # fallback identity: an agent without its own prompt_files/base_prompt refuses
+    # to run (Prompt#call) rather than inherit another agent's persona.
     IDENTITY_FILES = %w[IDENTITY.md SOUL.md TOOLS.md].map { |f| File.join(Deploy::AGENT_DIR, f) }
 
     CONTEXT_PROVIDERS = [
       Insika::Context::Providers::Request.new,
-      Insika::Context::Providers::Prompt.new(base: "", files: IDENTITY_FILES, catalog: PROMPT_CATALOG, agent_files: AGENT_FILE_STORE, system_files: SYSTEM_FILE_STORE),
+      Insika::Context::Providers::Prompt.new(base: "", catalog: PROMPT_CATALOG, agent_files: AGENT_FILE_STORE, system_files: SYSTEM_FILE_STORE),
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
@@ -204,6 +204,7 @@ module Deploy
     unless PROFILE_SOURCE.fetch("demo")
       PROFILE_SOURCE.put(Insika::AgentProfile.build(
                            id: "demo", model: Deploy::MODEL, provider: :deepseek,
+                           prompt_files: IDENTITY_FILES,
                            tools_allow: %w[menu calc current_time], skills: %w[pedido],
                            policies: %i[tool_allowlist skill_allowlist], memory: true,
                            limits: { tool_timeout: Integer(ENV.fetch("TOOL_TIMEOUT", "30")),

@@ -39,7 +39,7 @@ RSpec.describe Insika::Context::Providers::Prompt do
     files = [soul, missing]
     base = "Instruções base."
 
-    frag = described_class.new(base: base, files: files).call(request).first
+    frag = described_class.new(base: base).call(request(profile(prompt_files: files))).first
 
     expect(frag.content).to eq(with_discipline(phase0_build(base, files)))
     expect(frag.content).to eq(with_discipline("Instruções base.\n\nVocê é o assistente."))
@@ -57,8 +57,8 @@ RSpec.describe Insika::Context::Providers::Prompt do
       expect(frag.content).to eq("id")
     end
 
-    it "never substitutes an empty identity (no discipline-only fragment)" do
-      expect(described_class.new(base: "", files: []).call(request)).to eq([])
+    it "never substitutes the discipline block for a missing identity — it still raises" do
+      expect { described_class.new(base: "").call(request) }.to raise_error(Insika::ContextError)
     end
 
     it "a profile stub without the flag reads ON (defensive respond_to?)" do
@@ -78,8 +78,8 @@ RSpec.describe Insika::Context::Providers::Prompt do
     expect(frag.pinned).to be(true)
   end
 
-  it "empty identity -> no identity fragment" do
-    expect(described_class.new(base: "", files: []).call(request)).to eq([])
+  it "empty identity -> refuses to run (ContextError), not a silent empty turn" do
+    expect { described_class.new(base: "").call(request) }.to raise_error(Insika::ContextError, /no identity/)
   end
 
   it "required? == true" do
@@ -119,27 +119,26 @@ RSpec.describe Insika::Context::Providers::Prompt do
     end
   end
 
-  # PER-AGENT identity. profile.prompt_files wins over the
-  # wiring files; the content comes from the AgentFileStore (or from disk, compat).
+  # PER-AGENT identity, from profile.prompt_files/base_prompt ONLY — there is
+  # no wiring-level fallback an agent can inherit instead of declaring its own.
   describe "per-agent identity" do
     let(:agent_files) do
       Insika::AgentFileStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
     end
 
-    it "without prompt_files: uses the wiring files (parity — no regression)" do
-      soul = File.join(@dir, "SOUL.md")
-      File.write(soul, "Identidade default do deployment.")
-      provider = described_class.new(base: "base", files: [soul], agent_files: agent_files)
+    it "without prompt_files or base_prompt: refuses to run rather than borrow anyone else's" do
+      provider = described_class.new(base: "", agent_files: agent_files)
 
-      frag = provider.call(request(profile(prompt_files: []))).first
-      expect(frag.content).to eq(with_discipline("base\n\nIdentidade default do deployment."))
+      expect { provider.call(request(profile(prompt_files: []))) }.to raise_error(Insika::ContextError)
     end
 
-    it "with prompt_files: reads the agent's content from the Store, NOT the wiring files" do
-      wiring_soul = File.join(@dir, "SOUL.md")
-      File.write(wiring_soul, "IDENTIDADE DA BIA")             # wiring default
+    # Regression: a `copilot` data agent provisioned without its own identity
+    # inherited the deployment's demo persona byte for byte (confirmed live,
+    # 2026-08-24) — this is the bug that made the fallback unacceptable.
+    it "with prompt_files: reads the agent's OWN content from the Store, never another agent's" do
+      agent_files.write("demo", "SOUL.md", "IDENTIDADE DA BIA")   # a DIFFERENT agent's identity
       agent_files.write("chef", "IDENTITY.md", "Sou o Chef, especialista em massas.")
-      provider = described_class.new(base: "", files: [wiring_soul], agent_files: agent_files)
+      provider = described_class.new(base: "", agent_files: agent_files)
 
       frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md]))).first
       expect(frag.content).to eq(with_discipline("Sou o Chef, especialista em massas.")) # its own, not Bia's

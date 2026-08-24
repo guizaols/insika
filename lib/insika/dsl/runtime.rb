@@ -228,7 +228,7 @@ module Insika
         [
           Insika::Context::Providers::Request.new,
           Insika::Context::Providers::Prompt.new(
-            base: "", files: [], catalog: c[:prompt_catalog],
+            base: "", catalog: c[:prompt_catalog],
             agent_files: c[:agent_file_store], system_files: c[:system_file_store]
           ),
           Insika::Context::Providers::Skill.new(catalog: c[:skill_catalog]),

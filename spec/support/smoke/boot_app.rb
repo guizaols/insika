@@ -38,7 +38,7 @@ middleware        = Insika::MiddlewareStack.new([])
 
 providers = [
   Insika::Context::Providers::Request.new,
-  Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: prompt_catalog),
+  Insika::Context::Providers::Prompt.new(base: "", catalog: prompt_catalog),
   Insika::Context::Providers::Skill.new(catalog: skill_catalog),
   Insika::Context::Providers::Session.new(session_store: session_store)
 ]
@@ -47,9 +47,10 @@ policy_engine   = Insika::Policy::Engine.new(policy_registry: policy_registry, e
 
 # "smoke": pure chat. "approver": requires approval of the `charge` tool (02).
 profiles = {
-  "smoke" => Insika::AgentProfile.build(id: "smoke", model: "fake", policies: [], skills: []),
+  "smoke" => Insika::AgentProfile.build(id: "smoke", model: "fake", base_prompt: "smoke test agent",
+                                        policies: [], skills: []),
   "approver" => Insika::AgentProfile.build(
-    id: "approver", model: "fake", skills: [], tools_allow: ["charge"],
+    id: "approver", model: "fake", base_prompt: "smoke test agent", skills: [], tools_allow: ["charge"],
     policies: %i[tool_allowlist approval_required], approvals_required: ["charge"]
   )
 }
