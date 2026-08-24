@@ -134,6 +134,7 @@ require_relative "insika/outbox_store"
 require_relative "insika/shadow_pair_store"
 require_relative "insika/inbound_log"
 require_relative "insika/memory_store"
+require_relative "insika/knowledge_store"
 # the operator-mutation audit trail. After memory_store (no
 # mutual deps). Pure stdlib — `load_guard_spec` stays green.
 require_relative "insika/memory_audit_store"
@@ -296,6 +297,12 @@ require_relative "insika/commands/promote_harvest"
 require_relative "insika/commands/rollback_harvest"
 require_relative "insika/commands/reject_harvest"
 require_relative "insika/harvest_engine"
+# post-turn learning — the extractor (pure, injected ask) and the
+# concept format itself (markdown + YAML frontmatter, the SkillCatalog
+# split). The provider touch stays inside ExtractorFactory's lazy ask
+# (load_guard stays green).
+require_relative "insika/knowledge"
+require_relative "insika/commands/backfill_knowledge"
 require_relative "insika/commands/upsert_mcp"
 require_relative "insika/commands/delete_mcp"
 require_relative "insika/commands/write_system_file"

@@ -16,6 +16,14 @@ while paying for the text of only the ones it opens.
 
 See [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/skills/) for a runnable one.
 
+**Skills vs. Knowledge.** They share a format — YAML frontmatter over a
+Markdown body, progressive loading — which makes them easy to confuse. A
+skill is **curated**: a human writes it, and it is canonical until a human
+changes it. A [Knowledge](KNOWLEDGE.md) concept is **learned**: the engine
+extracts it from finished conversations, it is `provenance: observed`, and it
+sits below skills in the context priority ladder — earned trust, not
+authored trust.
+
 ## Format
 
 ```markdown
@@ -281,4 +289,5 @@ reading the doctor:
 - [Agents](AGENTS.md) — the skills allowlist.
 - [Tools](TOOLS.md) — `load_skill` and deferred-tool progressive disclosure.
 - [Plugins](PLUGINS.md) — shipping skills inside a plugin, and the two extension tiers.
+- [Knowledge](KNOWLEDGE.md) — the learned counterpart: engine-extracted concepts, same format, earned trust.
 - [`examples/skills/`](https://github.com/guizaols/insika/tree/main/examples/skills/) — progressive loading, runnable.

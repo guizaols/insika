@@ -57,6 +57,7 @@ module Insika
       "refinement" => "docs/REFINEMENT.md",
       "facts" => "docs/FACTS.md",
       "harvest" => "docs/HARVEST.md",
+      "knowledge" => "docs/KNOWLEDGE.md",
       "loadtest" => "docs/LOADTEST.md",
       "releasing" => "docs/RELEASING.md",
       # the /v1 compatibility contract and the domain-free map.

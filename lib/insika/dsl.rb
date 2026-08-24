@@ -314,6 +314,14 @@ module Insika
       #           miner: { model: "deepseek-v4-flash", window: { last_sessions: 200 } }
       def harvest(hash) = (@config[:harvest] ||= {}).merge!(hash.transform_keys(&:to_s))
 
+      # The post-turn knowledge declaration: after a turn completes, the
+      # engine may extract durable CONCEPTS (facts, procedures, policies,
+      # objections) from it and persist them for later turns to retrieve.
+      # Pack data — merges, so repeated calls accumulate (like budget).
+      # `prompt`/`model` are pack-authored keys the DSL passes through.
+      #   knowledge extract: true, retrieve: true, types: %w[fact policy]
+      def knowledge(hash) = (@config[:knowledge] ||= {}).merge!(hash.transform_keys(&:to_s))
+
       # A recurring schedule: one declaration per call,
       # named — a turn the ENGINE fires on its own tick, nobody has to
       # remember. `cron` (5 fields) or `every` (plain interval), a tz for

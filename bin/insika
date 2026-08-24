@@ -32,6 +32,7 @@ module Insika
       when "harvest" then harvest(argv)
       when "harvest:negative" then harvest_negative_import(argv)
       when "harvest:criterion" then harvest_criterion_check(argv)
+      when "knowledge:backfill" then knowledge_backfill(argv)
       when "soak"    then exit(Insika::Soak::Runner.main(argv, stdout: $stdout, stderr: $stderr))
       when "evals:import" then evals_import(argv)
       when "evals:export" then evals_export(argv)
@@ -63,6 +64,10 @@ module Insika
                                     seed the profile's negative list from a rules file
           harvest:criterion check --file F
                                     strict-load the frozen conversion criterion
+          knowledge:backfill --agent ID [--since ISO8601] [--json]
+                                    the recovery path for post-turn extraction: replays
+                                    the agent's stored sessions through the same
+                                    extractor a live turn uses
           soak   --run | --verify FILE | --preflight   the 72h soak
           evals:import [--dir D]    load the golden corpus into the store (editable in Studio)
           evals:export [--dir D]    write the stored cases back out as YAML
@@ -972,6 +977,62 @@ end
     rescue Insika::Error => e
       warn "insika harvest:criterion check: #{e.message}"
       exit 1
+    end
+
+    # insika knowledge:backfill --agent ID [--since ISO8601] [--json]
+    #
+    # the recovery path (RFC's "re-scan, not a queue"): replays the agent's
+    # stored sessions through the SAME extractor a live turn's terminal hook
+    # uses. Writes nothing but the concepts themselves.
+    def knowledge_backfill(argv)
+      opts = { json: false }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika knowledge:backfill --agent ID [options]"
+        o.on("--agent ID", "agent whose sessions to replay (required)") { |v| opts[:agent] = v }
+        o.on("--since ISO8601", "replay only sessions with turns from this instant on") { |v| opts[:since] = v }
+        o.on("--json", "emit the summary as JSON") { opts[:json] = true }
+      end.parse!(argv)
+
+      abort "insika knowledge:backfill: --agent is required" if Insika::Coercion.blank?(opts[:agent])
+
+      result = begin
+        run_knowledge_backfill(opts)
+      rescue Insika::Error, ArgumentError => e
+        warn "insika knowledge:backfill: #{e.message}"
+        exit 2
+      end
+      if opts[:json]
+        require "json"
+        puts JSON.pretty_generate(result)
+      else
+        puts knowledge_backfill_report(result)
+      end
+    end
+
+    # Builds the handler over the real durable backend — same "no app boot"
+    # rule as `doctor`/`harvest`: no DEEPSEEK, no seeding, no reactor.
+    def run_knowledge_backfill(opts)
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      profiles = Insika::StoredProfileSource.new(config_store: config_store)
+      handler = Insika::Commands::BackfillKnowledge.new(
+        profiles: profiles,
+        knowledge_store: Insika::KnowledgeStore.new(store: backend),
+        session_store: Insika::SessionStore.new(store: backend),
+        task_store: Insika::TaskStore.new(store: backend),
+        settings_store: Insika::SettingsStore.new(config_store: config_store),
+        event_stream: Insika::EventStream.new
+      )
+      handler.call(Insika::Command.build(:backfill_knowledge,
+                                         { agent: opts[:agent], since: opts[:since] }.compact, transport: :cli))
+    end
+
+    def knowledge_backfill_report(result)
+      return "knowledge:backfill: skipped (#{result[:skipped]})" unless result[:backfilled]
+
+      head = "knowledge:backfill: #{result[:concepts]} concept(s) learned from #{result[:sessions]} session(s)"
+      dropped = result[:dropped].reject { |_k, v| v.to_i.zero? }
+      dropped.empty? ? head : "#{head} — dropped: #{dropped.map { |k, v| "#{k}: #{v}" }.join(', ')}"
     end
 
     def run_failed?(result)

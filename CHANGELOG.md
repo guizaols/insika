@@ -10,6 +10,22 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Knowledge, layer 1 (extraction)** — the engine can now learn durable
+  **concepts** (facts, procedures, policies, objections) from finished
+  conversations, opt-in per agent via `knowledge extract: true`. After a turn
+  completes, off the critical path, the platform `utility_model` proposes
+  candidate concepts; the engine schema-validates the answer, drops any
+  model-authored `provenance`/`confidence`/`sources` (stamped by the engine
+  instead — every extracted concept is `provenance: observed`, never
+  `policy`), redacts the body for PII, and persists it as a markdown+
+  frontmatter record in the new `KnowledgeStore` (`Insika::KnowledgeStore`,
+  scoped per agent/tenant like `MemoryStore`, versioned like `SkillStore`).
+  Emits `:knowledge_learned` (name/type/agent only, never content). The
+  recovery path is `insika knowledge:backfill --agent ID [--since DATE]`,
+  replaying stored sessions through the same extractor. No consolidation, no
+  retrieval into a turn's prompt yet — see `docs/KNOWLEDGE.md` for what's
+  shipped and what's still planned.
+
 - **Plugin loading is on in every root** — `Server::Boot`'s `load_plugins`
   step was a no-op in both composition roots, so the tested
   `Insika::Plugin::Loader` never ran outside the `insika-code`

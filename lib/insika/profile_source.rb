@@ -150,6 +150,9 @@ module Insika
         # harvest declaration — a plain Hash read with string keys
         # by the miner/engine/doctor; nil round-trips as nil (= loop off).
         harvest: h[:harvest],
+        # knowledge declaration — a plain Hash read with string keys
+        # by the extractor/engine/doctor; nil round-trips as nil (= loop off).
+        knowledge: h[:knowledge],
         # schedules declaration — an Array of Hashes read with string
         # keys by the ScheduleEngine/doctor/Studio; nil round-trips as nil.
         schedules: h[:schedules]

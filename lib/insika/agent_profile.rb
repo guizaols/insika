@@ -264,6 +264,19 @@ module Insika
                                      # rule (D4). nil/absent = the loop is off (parity).
                                      # Shape-validated by the command/engine/doctor, never here.
                                      # Deep-stringified like the other free-form hashes.
+    :knowledge,                       # the post-turn learning declaration — pack
+                                   # data, exactly like distill/harvest:
+                                   # { "extract" => true, "retrieve" => true,
+                                   #   "model" => "<ref — absent = the platform
+                                   #       utility_model>", "top_k" => 5,
+                                   #   "index" => "scan", "types" => ["fact", …] }.
+                                   # The ENGINE extracts concepts after the turn and
+                                   # stamps their provenance/confidence/sources;
+                                   # the model only names concepts (same D1
+                                   # discipline as distill). nil/absent = the
+                                   # loop is off (parity). Shape-validated by
+                                   # the extractor/doctor, never here.
+                                   # Deep-stringified like the other free-form hashes.
     :schedules                       # the recurring-schedule declarations — pack
                                      # data, exactly like followup/distill:
                                      # [ { "id" => "daily_report",
@@ -313,7 +326,7 @@ module Insika
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
 outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil,
-                      followup: nil, distill: nil, harvest: nil, schedules: nil)
+                      followup: nil, distill: nil, harvest: nil, knowledge: nil, schedules: nil)
       new(
         id: id, model: model, provider: provider, base_prompt: base_prompt,
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
@@ -375,6 +388,10 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
         harvest: Coercion.deep_stringify(harvest),
+        # knowledge is profile DATA, deep-stringified like the other
+        # free-form hashes; shape-validated by the extractor/doctor
+        # (never here — the refinement precedent). nil = off (parity).
+        knowledge: Coercion.deep_stringify(knowledge),
         # schedules is profile DATA, deep-stringified like the other
         # free-form hashes (an ARRAY of declarations); parsed into
         # Insika::Schedule entries by the engine/doctor/Studio (shape-validated
