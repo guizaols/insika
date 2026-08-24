@@ -10,6 +10,12 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **`insika knowledge:export`** — writes one `<name>.md` per learned concept
+  under a directory (`KnowledgeStore#export_dir`). The storage format IS the
+  export format, so it's a dump, not a converter, directly consumable by
+  okf-gem/graphify. Idempotent — nothing here is lossy, so there's no
+  `--force` to reason about.
+
 - **Knowledge retrieval** — with `knowledge: {retrieve: true}`, every turn
   the engine now searches the agent's learned concepts for the ones
   relevant to the customer's message (`Insika::Knowledge::Index::Scan` —
