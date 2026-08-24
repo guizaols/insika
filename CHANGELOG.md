@@ -8,6 +8,17 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`insika harvest`/`knowledge:backfill` never wired the CLI's provider
+  keys** — both build their own miner/extractor `ask` outside a full app
+  boot (no `LlmConfigurator`), so `RubyLLM.config` was empty and a real run
+  raised `RubyLLM::ConfigurationError` on the first live call, no matter how
+  the agent was configured. Found running `knowledge:backfill` against real
+  staging traffic for the first time. `configure_eval_llm!` (added for
+  `evals:simulate`, PR #190) is now `configure_cli_llm!` and both commands
+  call it before building their factory.
+
 ### Added
 
 - **`insika knowledge:export`** — writes one `<name>.md` per learned concept

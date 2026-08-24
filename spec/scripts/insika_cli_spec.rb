@@ -254,6 +254,67 @@ RSpec.describe "bin/insika" do
     end
   end
 
+  describe "knowledge:backfill" do
+    it "without --agent aborts" do
+      out, status = run("knowledge:backfill")
+      expect(out).to match(/--agent is required/)
+      expect(status.exitstatus).to eq(1)
+    end
+
+    it "on an unknown agent exits 2 with the name" do
+      out, status = run("knowledge:backfill", "--agent", "ghost")
+      expect(out).to match(/not configured/)
+      expect(status.exitstatus).to eq(2)
+    end
+
+    it "on an agent without a knowledge declaration reports skipped (disabled)" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        profiles = Insika::StoredProfileSource.new(config_store: cs)
+        profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m"))
+
+        out, status = run("knowledge:backfill", "--agent", "store-support", env: { "INSIKA_DB" => db })
+        expect(out).to match(/skipped \(disabled\)/)
+        expect(status).to be_success
+      end
+    end
+
+    # Real regression: extract: true with no "provider/model" ref anywhere
+    # (agent knowledge.model, no platform utility_model) skips "no_model"
+    # rather than crashing — caught live against agent-store-cacau-show on
+    # staging, where knowledge:backfill first raised a RubyLLM::ConfigurationError
+    # (the CLI never called configure_cli_llm!, PR fixed here) and then, once
+    # keys were wired, needed a "provider/model" ref (a bare "deepseek-chat"
+    # cannot resolve with assume_model_exists: true).
+    it "with extract: true but no resolvable model reports skipped (no_model)" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        profiles = Insika::StoredProfileSource.new(config_store: cs)
+        profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m",
+                                                knowledge: { "extract" => true }))
+
+        out, status = run("knowledge:backfill", "--agent", "store-support", env: { "INSIKA_DB" => db })
+        expect(out).to match(/skipped \(no_model\)/)
+        expect(status).to be_success
+      end
+    end
+
+    it "--json emits the skip reason as JSON" do
+      Dir.mktmpdir do |dir|
+        db = File.join(dir, "cli.db")
+        cs = Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))
+        profiles = Insika::StoredProfileSource.new(config_store: cs)
+        profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m"))
+
+        out, status = run("knowledge:backfill", "--agent", "store-support", "--json", env: { "INSIKA_DB" => db })
+        expect(JSON.parse(out)).to eq("backfilled" => false, "skipped" => "disabled")
+        expect(status).to be_success
+      end
+    end
+  end
+
   describe "knowledge:export" do
     def concept_md(name, body: "b")
       Insika::Knowledge::Concept.render(
