@@ -62,7 +62,13 @@ module Insika
       "releasing" => "docs/RELEASING.md",
       # the /v1 compatibility contract and the domain-free map.
       "api" => "docs/API.md",
-      "domain" => "docs/domain.md"
+      "domain" => "docs/domain.md",
+      # copy-paste journeys for the developer's coding agent (README "Or let your
+      # coding agent build it").
+      "run-examples" => "docs/prompts/RUN-EXAMPLES.md",
+      "add-tool" => "docs/prompts/ADD-TOOL.md",
+      "diagnose-turn" => "docs/prompts/DIAGNOSE-TURN.md",
+      "go-live" => "docs/prompts/GO-LIVE.md"
     }.freeze
 
     # Repo-relative path to the start.md template.

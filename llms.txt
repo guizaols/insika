@@ -22,6 +22,15 @@ Every link below is raw markdown — the same files the human-facing site render
 - [Running locally](https://raw.githubusercontent.com/guizaols/insika/main/docs/RUNNING-LOCAL.md): boot the engine, the control UI, pointing a Responses client at it, wiring tools to your own backend.
 - [Onboarding prompt](https://raw.githubusercontent.com/guizaols/insika/main/docs/onboarding/start.md): the skill-structured prompt a coding agent follows to build a first agent (served live at `/start.md`).
 
+## Paste-prompts for your coding agent
+
+One file per journey, same shape as the onboarding prompt — point Claude Code/Codex/Cursor at the URL (a running instance serves each at `GET /docs/<name>.md`) or paste the text:
+
+- [Add a tool or skill](https://raw.githubusercontent.com/guizaols/insika/main/docs/prompts/ADD-TOOL.md): pick data tool vs code tool vs MCP vs skill, wire the allowlist, prove it with one turn.
+- [Diagnose a failed turn](https://raw.githubusercontent.com/guizaols/insika/main/docs/prompts/DIAGNOSE-TURN.md): read tasks/events/transcript, map symptom to mechanism, fix one thing.
+- [Run every example](https://raw.githubusercontent.com/guizaols/insika/main/docs/prompts/RUN-EXAMPLES.md): run `examples/` one at a time and explain what each demonstrates.
+- [Go live](https://raw.githubusercontent.com/guizaols/insika/main/docs/prompts/GO-LIVE.md): mint the two tokens, volume + `WEB_CONCURRENCY=1`, deploy, prove one authenticated turn, close the backup hole.
+
 ## Core concepts
 
 - [Agents](https://raw.githubusercontent.com/guizaols/insika/main/docs/AGENTS.md): the AgentProfile, its five access layers, and creating or editing agents at runtime via UI, pack import, or `POST /v1/agents`.
