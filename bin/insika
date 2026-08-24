@@ -506,10 +506,12 @@ def local_side_effect_tools(agent)
   Insika::Evals::EvalProfile.side_effect_tools(profile, registry)
 end
 
-# One place for the CLI's provider keys. A judge panel is only as multi-model
-# as the keys this block wires: a settings panel pointing at OpenRouter models
-# silently 401'd here while the engine (LlmConfigurator) knew the key all along.
-def configure_eval_llm!
+# One place for the CLI's provider keys. Every synchronous CLI command that
+# builds its own extractor/miner/judge ask (no full app boot, so LlmConfigurator
+# never ran) calls this first — a judge panel is only as multi-model as the keys
+# this block wires: a settings panel pointing at OpenRouter models silently
+# 401'd here while the engine (LlmConfigurator) knew the key all along.
+def configure_cli_llm!
   require "ruby_llm"
   RubyLLM.configure do |c|
     c.deepseek_api_key = ENV["DEEPSEEK_API_KEY"] if ENV["DEEPSEEK_API_KEY"]
@@ -528,7 +530,7 @@ def build_persona_ask(opts, settings)
   model = opts[:persona_model] || settings["utility_model"]
   abort "insika evals:simulate: no persona model — set the platform utility_model or pass --persona-model" if model.to_s.empty?
 
-  configure_eval_llm!
+  configure_cli_llm!
   # ruby_llm_ask runs with assume_model_exists, which requires an explicit
   # provider — a bare model id (e.g. a platform utility_model outside the
   # RubyLLM registry) aborted every simulated run before this fallback.
@@ -544,7 +546,7 @@ def build_sim_judge(opts, settings)
            end
   return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
 
-  configure_eval_llm!
+  configure_cli_llm!
   Insika::Evals::JudgePanel.build(settings["evals"] || {}, overrides: {
                                     "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
                                   })&.first
@@ -560,7 +562,7 @@ def build_sim_pairwise(opts, settings)
            end
   return nil if models.reject { |m| (m["model"] || m[:model]).to_s.empty? }.empty?
 
-  configure_eval_llm!
+  configure_cli_llm!
   Insika::Evals::JudgePanel.pairwise(settings["evals"] || {}, overrides: {
                                        "judge_model" => opts[:judge_model], "judge_provider" => opts[:judge_provider]
                                      })&.first
@@ -1018,6 +1020,7 @@ end
     # Builds the handler over the real durable backend — same "no app boot"
     # rule as `doctor`/`harvest`: no DEEPSEEK, no seeding, no reactor.
     def run_knowledge_backfill(opts)
+      configure_cli_llm!
       backend = Insika::Wiring::Graph.backend_from_env
       config_store = Insika::ConfigStore.new(store: backend)
       profiles = Insika::StoredProfileSource.new(config_store: config_store)
@@ -1089,6 +1092,7 @@ end
     # Builds the handler over the real durable backend — same "no app boot" rule as
     # `doctor`: no DEEPSEEK, no seeding, no reactor.
     def run_harvest(opts)
+      configure_cli_llm!
       backend = Insika::Wiring::Graph.backend_from_env
       config_store = Insika::ConfigStore.new(store: backend)
       profiles = Insika::StoredProfileSource.new(config_store: config_store)
