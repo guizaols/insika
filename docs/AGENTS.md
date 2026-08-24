@@ -699,6 +699,29 @@ conversion "not worse" check against the RFC-0032 frozen baseline), and lands
 a skill **only after a human approves** — snapshot-first, append-only
 promotion log, deterministic rollback. Nothing is ever applied automatically.
 
+## Knowledge from finished conversations
+
+`knowledge` configures the post-turn learning loop documented in
+[Knowledge](KNOWLEDGE.md): after a turn completes, the engine extracts durable
+**concepts** — facts, procedures, policies, objections — and persists them for
+the agent, separate from any one customer's memory. Pack data, `distill:`'s
+shape, and absent = off for that agent:
+
+```ruby
+knowledge extract: true,
+          types: %w[fact policy objection]  # what the extractor may emit
+          # prompt: "<what counts as a concept for THIS store>" (the forge's half)
+          # model:  "<ref — absent = the platform utility_model>"
+```
+
+Only extraction ships today: the model proposes `name`/`description`/`type`/
+`body`, the engine stamps `provenance`/`confidence`/`sources`/timestamps
+itself (a model-authored one of those is dropped, never trusted), redacts the
+body for PII, and writes the concept. Nothing is injected into a turn's prompt
+yet, and writing an existing concept name overwrites it rather than merging
+sightings — see [Knowledge](KNOWLEDGE.md#the-honest-limits) for what's not
+here yet.
+
 ## Delegation (subagents)
 
 An agent can delegate to **subagents**: named child agents it may invoke as a

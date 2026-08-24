@@ -415,6 +415,33 @@ RSpec.describe Insika::AgentProfile do
     end
   end
 
+  describe "knowledge (— the post-turn learning declaration)" do
+    it "nil/absent -> nil = the loop is off for that agent (parity)" do
+      expect(described_class.build(id: "a", model: "m").knowledge).to be_nil
+    end
+
+    it "deep-stringifies the declaration (symbol keys from the DSL round-trip)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        knowledge: { extract: true, retrieve: true, types: %w[fact policy] }
+      )
+      expect(profile.knowledge).to eq("extract" => true, "retrieve" => true, "types" => %w[fact policy])
+    end
+
+    it "round-trips through to_h (persistence)" do
+      profile = described_class.build(
+        id: "a", model: "m",
+        knowledge: { "extract" => true, "model" => "deepseek-v4-flash" }
+      )
+      expect(profile.to_h[:knowledge]).to eq("extract" => true, "model" => "deepseek-v4-flash")
+    end
+
+    it "a profile without a knowledge declaration sees nil (no shape validation here)" do
+      plain = described_class.build(id: "a", model: "m")
+      expect(plain.knowledge).to be_nil
+    end
+  end
+
   describe "metadata + store_id (turn context)" do
     it "default = {} (agent without metadata)" do
       profile = described_class.build(id: "a", model: "m")

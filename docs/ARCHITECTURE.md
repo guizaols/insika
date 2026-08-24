@@ -319,6 +319,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |
+| Post-turn learning (facts, skills, knowledge — extracted from finished conversations) | `lib/insika/distill.rb`, `lib/insika/harvest.rb`, `lib/insika/knowledge.rb`, `lib/insika/knowledge_store.rb`; the per-turn hook lives in `Executor#persist_turn`, next to `finalize_delegation` |
 | Evals (cases, judges, gate) | `lib/insika/evals/*`, `lib/insika/golden_store.rb`; `evals/run.rb` is the CLI |
 | HTTP/SSE surface | `lib/insika/server/*` |
 

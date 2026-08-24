@@ -90,6 +90,11 @@ module Insika
         # no pack declares distill) so the wiki, the engine and the LGPD
         # purges always have a store.
         proposal_store      = Insika::ProposalStore.new(store: backend)
+        # concepts extracted from finished turns. Built
+        # unconditionally (empty and free when no pack declares knowledge)
+        # so the extractor, the Studio and the LGPD purges always have a
+        # store.
+        knowledge_store      = Insika::KnowledgeStore.new(store: backend)
         # refinement RUNS (reports over real traffic). Runtime data,
         # same backend as sessions/tasks — the collector and the command that write it
         # are the root's business (deployment-only, like the memory commands).
@@ -132,6 +137,7 @@ module Insika
           followup_store: followup_store,
           schedule_store: schedule_store,
           proposal_store: proposal_store,
+          knowledge_store: knowledge_store,
           artifact_store: artifact_store,
           code_tool_registry: code_tool_registry,
           workflow_registry: workflow_registry, policy_registry: policy_registry,
@@ -209,6 +215,9 @@ module Insika
         # parity). The base graph wires it over the same backend the context
         # trace uses.
         model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
+        # the per-turn extraction hook (nil = the loop is off,
+        # parity). Gated per-agent by `profile.knowledge`.
+        knowledge_store: spine.knowledge_store,
         **executor_extra
       )
 
@@ -348,6 +357,7 @@ module Insika
           followup_store: spine.followup_store,
           schedule_store: spine.schedule_store,
           proposal_store: spine.proposal_store,
+          knowledge_store: spine.knowledge_store,
           token_store: spine.token_store, budget_ledger: spine.budget_ledger,
           circuit_state: spine.circuit_state,
           channel_registry: spine.channel_registry, channel_delivery: channel_delivery,
@@ -608,6 +618,7 @@ module Insika
         :token_store, :budget_ledger, :circuit_state, :outbox_store, :shadow_pair_store,
         :inbound_log, :outcome_store, :funnel_store,
         :contact_store, :followup_store, :schedule_store, :proposal_store,
+        :knowledge_store,
         :artifact_store,
         :code_tool_registry, :workflow_registry, :policy_registry, :capability_registry, :hooks,
         :channel_registry, keyword_init: true
@@ -625,6 +636,7 @@ module Insika
         :contact_store, :followup_store, :proposal_store,
         :schedule_store,
         :harvest_store,
+        :knowledge_store,
         :artifact_store,
         :channel_registry, :channel_delivery,
         :code_tool_registry, :tool_registry, :workflow_registry, :policy_registry, :capability_registry,

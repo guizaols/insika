@@ -15,7 +15,8 @@ RSpec.describe "Insika ProfileSource" do
       alerts: { webhook: "https://ops.example.com/alerts" },
       stuck_signal: true,
       stt_prompt: "Ocean Drop, tênis, boné trucker",
-      limits: { tool_timeout: 30, turn_timeout: 120 }
+      limits: { tool_timeout: 30, turn_timeout: 120 },
+      knowledge: { extract: true, model: "deepseek-v4-flash" }
     )
   end
 
@@ -57,6 +58,7 @@ RSpec.describe "Insika ProfileSource" do
       expect(got.alerts).to eq("webhook" => "https://ops.example.com/alerts")
       expect(got.stuck_signal).to be(true) # WS5 opt-in survives the JSON round-trip
       expect(got.stt_prompt).to eq("Ocean Drop, tênis, boné trucker") # Vocabulary hint
+      expect(got.knowledge).to eq("extract" => true, "model" => "deepseek-v4-flash")
       # limits gets the defaults on build (merge)
       expect(got.limits[:max_tool_calls]).to eq(Insika::AgentProfile::DEFAULT_LIMITS[:max_tool_calls])
     end

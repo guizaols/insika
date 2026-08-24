@@ -53,6 +53,8 @@ something that left no task of its own behind:
 | `:harvest_gated` | `run_id`, `candidate_id`, `agent`, `eval_passed`, `conversion_passed`, `reason` | the double gate's verdict on one candidate — ids and verdicts only |
 | `:skill_promoted` | `agent`, `skill`, `candidate_id`, `snapshot_ref`, `promotion_ref`, `approver` | a human approved a mined skill — it is live for the store, with the snapshot for rollback |
 | `:skill_rolled_back` | `snapshot_ref`, `skill`, `agent`, `operator` | the snapshot was restored — the promotion row carries the `rolled_back_at` stamp |
+| `:knowledge_learned` | `name`, `type`, `agent` | a turn's transcript taught the agent one durable concept — name and type only, never the body |
+| `:knowledge_backfilled` | `agent`, `sessions`, `concepts`, `dropped{}` | the recovery re-scan (`insika knowledge:backfill`) finished replaying an agent's stored sessions |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at
 (`alerts.webhook` on the profile): each only fires when something durable did

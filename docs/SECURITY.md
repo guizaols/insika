@@ -428,6 +428,20 @@ product claim the origin sessions' evidence ledger did not see. Events and the
 promotion log carry ids, refs and verdicts only — a skill body never enters
 the stream.
 
+### Learned knowledge is redacted before it is stored
+
+The [Knowledge](KNOWLEDGE.md) loop writes **concepts** extracted from finished
+conversations — store-scoped, not customer-scoped, but written from real
+transcript text, so the write path is deliberately conservative: a concept's
+body goes through the same PII/secret redactor the output guardrail uses
+before it is ever persisted, and `sources` holds session ids only — never
+message content, never a customer identifier. This is the one write path in
+the engine where a model-authored field is rejected outright rather than
+merely validated: `provenance`, `confidence`, `sources` and the timestamps are
+stamped by the engine, so a model cannot self-assign trust it did not earn or
+smuggle a scope into a store-wide record. Events carry names and counts only —
+a concept's content never enters the stream.
+
 ## See also
 
 - [Agents](AGENTS.md) — the five access layers per agent.

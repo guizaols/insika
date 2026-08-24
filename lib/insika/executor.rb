@@ -22,7 +22,8 @@ module Insika
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
-                    contact_store: nil, followup_store: nil, model_visible_trace_store: nil)
+                    contact_store: nil, followup_store: nil, model_visible_trace_store: nil,
+                    knowledge_store: nil)
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -98,6 +99,10 @@ module Insika
       # the platform layer of the queue policy (nil = per-agent and
       # defaults only, which is `followup` with no window — today's behavior).
       @settings_store = settings_store
+      # LEARNED concepts, extracted from a turn's transcript after it
+      # completes. nil = the loop is off (parity — every write path below is
+      # skipped, zero allocations). Gated per-agent by `profile.knowledge`.
+      @knowledge_store = knowledge_store
       # RubyLLM glue (stages 5-7): chat assembly delegated to ChatBuilder. Its
       # optional deps tool_catalog (Tool Search) and memory_store (cross-session
       # memory) matter only to it — nil = parity (deferred
@@ -2415,6 +2420,12 @@ module Insika
       # has to travel out of band. Same terminal hook, next door to the delegation
       # one, for the same reason: it fires for a fresh turn and a recovered one.
       finalize_channel_delivery(task, content, state, timing)
+
+      # extracts durable concepts from this turn, off the critical
+      # path — the user already has the answer above. Same terminal hook,
+      # next door to the other two, for the same reason: it fires for a fresh
+      # turn and a recovered one.
+      finalize_knowledge_extraction(task, profile, new_messages)
     end
 
     # Records the answer in the outbox and dispatches it. The discriminator is the
@@ -2455,6 +2466,76 @@ module Insika
       dispatch_chain(deliveries.map(&:id))
     rescue Insika::Error
       nil
+    end
+
+    # Turns whose combined transcript slice is this trivially short skip
+    # extraction entirely ("ok thanks" exchanges) — no new config surface,
+    # just avoids a wasted utility-model call.
+    KNOWLEDGE_MIN_CHARS = 200
+
+    # No-op without a knowledge store, without the profile's opt-in
+    # (`knowledge.extract`), without a usable model, or for a trivially short
+    # turn. Otherwise dispatches the extraction off the critical path — the
+    # SAME `dispatch_chain` shape: inline when non-supervised (tests, CLI,
+    # boot sweep), a child of the turn supervisor when serving (survives the
+    # request's own disconnect). Best-effort: any failure is swallowed here,
+    # never re-fails an already-committed turn.
+    def finalize_knowledge_extraction(task, profile, new_messages)
+      return unless @knowledge_store
+
+      config = Coercion.deep_stringify(profile.knowledge)
+      return unless config && Coercion.truthy?(config["extract"])
+      return if knowledge_transcript(new_messages).length < KNOWLEDGE_MIN_CHARS
+
+      extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model)
+      return unless extractor
+
+      run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor) }
+      return run.call unless @supervised
+
+      turn_parent.async do |t|
+        t.annotate("knowledge:#{task.id}")
+        run.call
+      end
+    end
+
+    def run_knowledge_extraction(task, profile, config, new_messages, extractor)
+      prompt = knowledge_prompt(config, new_messages)
+      result = extractor.extract(prompt: prompt)
+      result[:concepts].each do |concept|
+        rendered = Knowledge.stamp_and_render(concept, session_id: task.session_id)
+        @knowledge_store.write(profile.id, concept["name"], rendered)
+        emit(:knowledge_learned, { name: concept["name"], type: concept["type"], agent: profile.id }, task: task)
+      end
+    rescue StandardError
+      nil # best-effort: extraction never re-fails an already-committed turn.
+    end
+
+    def knowledge_prompt(config, new_messages)
+      base = Coercion.presence(config["prompt"]) || Knowledge::DEFAULT_PROMPT
+      <<~PROMPT
+        #{base.rstrip}
+
+        ## The conversation
+
+        #{knowledge_transcript(new_messages)}
+      PROMPT
+    end
+
+    # Redacted (RFC's PII rule applies to what reaches the model too, not
+    # just what gets persisted).
+    def knowledge_transcript(new_messages)
+      redacted, = Insika::Safety::Detectors.redact(
+        new_messages.each_with_index.map { |m, i| "[#{i}] #{m['role'] || m[:role]}: #{m['content'] || m[:content]}" }
+                    .join("\n")
+      )
+      redacted
+    end
+
+    def utility_model
+      return nil unless @settings_store
+
+      @settings_store.get["utility_model"]
     end
 
     # ONE supervisor fiber for the whole chain. Sequential deliver
