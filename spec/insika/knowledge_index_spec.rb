@@ -78,6 +78,27 @@ RSpec.describe Insika::Knowledge::Index do
       expect(index.search("acme", query: "campinas", top_k: 2).size).to eq(2)
     end
 
+    it "the read cache never returns stale content after a write, on a REUSED instance" do
+      seed("cep-13-campinas", description: "old wording")
+      reused = index # the same Scan instance across both searches — this is
+      #                what the context provider holds across turns.
+
+      first = reused.search("acme", query: "campinas")
+      expect(first.first[:description]).to eq("old wording")
+
+      seed("cep-13-campinas", description: "new wording, rewritten")
+      second = reused.search("acme", query: "campinas")
+      expect(second.first[:description]).to eq("new wording, rewritten")
+    end
+
+    it "a cache hit for an UNCHANGED concept still returns correct, cache-equivalent data" do
+      seed("cep-13-campinas")
+      reused = index
+      first = reused.search("acme", query: "campinas")
+      second = reused.search("acme", query: "campinas") # served from cache, nothing rewritten
+      expect(second).to eq(first)
+    end
+
     it "scoping is per agent — one agent's concepts never match another's search" do
       seed("cep-13-campinas")
       expect(index.search("acme", query: "campinas").map { |c| c[:name] }).to eq(["cep-13-campinas"])

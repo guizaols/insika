@@ -53,6 +53,20 @@ RSpec.describe Insika::Context::Providers::Knowledge do
     expect(f.content).not_to include("the full body, not injected") # level 1 only — description, never body
   end
 
+  it "reuses ONE index instance across calls (never rebuilt per turn — it holds the read cache)" do
+    provider = described_class.new(store: store)
+    seed("cep-13-campinas", description: "d", body: "b")
+    req = request(knowledge: { "retrieve" => true, "index" => "scan" })
+
+    provider.call(req)
+    first_index = provider.instance_variable_get(:@indexes)["scan"]
+    provider.call(req)
+    second_index = provider.instance_variable_get(:@indexes)["scan"]
+
+    expect(second_index).to be_a(Insika::Knowledge::Index::Scan)
+    expect(second_index).to equal(first_index)
+  end
+
   it "labels carry name and reason for the audit trail" do
     seed("cep-13-campinas", description: "d", body: "b")
     frags = described_class.new(store: store).call(request(knowledge: { "retrieve" => true }))
