@@ -8,12 +8,16 @@ module Insika
       # a WRONG agent, not a degraded one. prompt_refs: priority 90 pinned
       # fragments, from the PromptCatalog (catalog defaults to nil).
       #
-      # PER-AGENT identity. `profile.prompt_files` (file names)
-      # wins over the wiring's `files:` — this fixes the limitation of a new
-      # agent inheriting the previous persona's prompt. The content comes from `agent_files`
-      # (AgentFileStore, lives in the Store), with a File.read fallback
-      # for on-disk paths (compat/seed). Without prompt_files -> uses the wiring's
-      # `files:` (deployment default; byte-for-byte parity).
+      # PER-AGENT identity, from `profile.prompt_files`/`base_prompt` only — an
+      # agent that declares neither has no identity here, and there is no
+      # deployment-wide fallback file to borrow one from. A shared fallback
+      # (a prior design: an agent without prompt_files silently inherited a
+      # wiring-level default) is exactly how a real deployment answered as the
+      # WRONG business: a `copilot` data agent provisioned without its own
+      # identity inherited the deployment's demo persona ("Bia, Pizzaria do
+      # Zé") byte for byte, confirmed live. An agent never wears another
+      # agent's identity — `@base`/`system_files` stay legitimate (the same
+      # generic content for every agent, never one agent's specific persona).
       class Prompt < ContextProvider
         # Engine-owned execution discipline, appended AFTER the agent's identity.
         # The one behavior every reference harness bakes into its base prompt
@@ -28,11 +32,12 @@ module Insika
           "query, use a synonym or broader term, drop a secondary filter — before telling " \
           "the user you found nothing. Do not narrate the retries. Then conclude.\n" \
           "- Tool error: read the error, fix the arguments or try another path; never " \
-          "repeat the exact same call."
+          "repeat the exact same call.\n" \
+          "- A URL in a tool result (e.g. a `url` field): quote it byte-for-byte. Never " \
+          "construct, guess, or rewrite the domain, host, or path."
 
-        def initialize(base: "", files: [], catalog: nil, agent_files: nil, system_files: nil)
+        def initialize(base: "", catalog: nil, agent_files: nil, system_files: nil)
           @base = base
-          @files = Array(files)
           @catalog = catalog
           @agent_files = agent_files
           @system_files = system_files
@@ -43,12 +48,18 @@ module Insika
         def layer = :identity
 
         def call(request)
-          fragments = []
           identity = build_identity(request.profile)
-          unless identity.empty?
-            fragments << ContextFragment.build(content: identity, placement: :system,
-                                               priority: Context::Priority::IDENTITY, source: id, pinned: true)
+          if identity.empty?
+            raise ContextError.new(
+              "agent '#{request.profile&.id}' has no identity of its own (no base_prompt, " \
+              "no prompt_files) — refusing to run rather than answer with no identity or " \
+              "another agent's",
+              provider: id
+            )
           end
+
+          fragments = [ContextFragment.build(content: identity, placement: :system,
+                                             priority: Context::Priority::IDENTITY, source: id, pinned: true)]
           fragments.concat(ref_fragments(request.profile))
           fragments
         end
@@ -59,10 +70,9 @@ module Insika
         # A SINGLE fragment preserves the internal base->files order (sorting
         # acts only BETWEEN fragments) and guarantees byte-for-byte parity.
         #
-        # profile.prompt_files (names) wins over @files (wiring): an agent with
-        # its own identity does not inherit the deployment's. Each source resolves
-        # via AgentFileStore (per agent) OR File.read (on-disk path) — in that
-        # order. Without prompt_files, falls back to the wiring's @files.
+        # profile.prompt_files: each source resolves via AgentFileStore (per
+        # agent) OR File.read (on-disk path) — in that order. No other agent's
+        # files are ever read for this one; there is no wiring-level fallback.
         def build_identity(profile)
           parts = [@base]
           parts.concat(system_parts) # global system files, for EVERY agent
@@ -73,15 +83,11 @@ module Insika
           # NO identity at all, and a chatty model answered plausibly enough to hide
           # it. Additive to prompt_files, not exclusive: an agent may carry both.
           parts << profile&.base_prompt.to_s
-          sources = Array(profile&.prompt_files)
-          if sources.empty?
-            @files.each { |f| parts << File.read(f, encoding: "UTF-8") if File.exist?(f) }
-          else
-            sources.each { |src| parts << read_source(profile&.id, src.to_s) }
-          end
+          Array(profile&.prompt_files).each { |src| parts << read_source(profile&.id, src.to_s) }
           identity = parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
           # Discipline rides an EXISTING identity, never substitutes one: an
-          # agent with no identity at all must stay detectably empty.
+          # empty identity here is fatal (`call` raises), not silently patched
+          # with the engine's own boilerplate.
           return identity if identity.empty? || !tool_persistence?(profile)
 
           "#{identity}\n\n#{TOOL_PERSISTENCE}"

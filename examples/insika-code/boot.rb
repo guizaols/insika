@@ -142,7 +142,7 @@ module InsikaCodeApp
 
     CONTEXT_PROVIDERS = [
       Insika::Context::Providers::Request.new,
-      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: PROMPT_CATALOG),
+      Insika::Context::Providers::Prompt.new(base: "", catalog: PROMPT_CATALOG),
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)

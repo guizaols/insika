@@ -23,7 +23,7 @@ RSpec.describe "smoke E2E: cross-session memory",:smoke do
   # REAL ContextBuilder with the Memory provider (+ Prompt for the base identity).
   let(:context_builder) do
     providers = [
-      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: nil),
+      Insika::Context::Providers::Prompt.new(base: "", catalog: nil),
       Insika::Context::Providers::Memory.new(store: memory)
     ]
     Insika::ContextBuilder.new(providers: providers, event_stream: event_stream, hooks: Insika::Hooks.new)

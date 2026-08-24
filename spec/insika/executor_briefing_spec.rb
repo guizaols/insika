@@ -21,7 +21,7 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
   # Session provider seeds history — the assembled system is what the model sees.
   let(:context_builder) do
     providers = [
-      Insika::Context::Providers::Prompt.new(base: "", files: [], catalog: nil),
+      Insika::Context::Providers::Prompt.new(base: "", catalog: nil),
       Insika::Context::Providers::Briefing.new(session_store: session_store),
       Insika::Context::Providers::Session.new(session_store: session_store)
     ]
