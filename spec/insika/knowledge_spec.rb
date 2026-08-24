@@ -55,6 +55,61 @@ RSpec.describe Insika::Knowledge do
       expect(parsed[:body]).to eq("the body")
       expect(parsed[:confidence]).to eq(0.6)
     end
+
+    describe ".links" do
+      it "extracts [[name]] references, stripped, deduped, order preserved" do
+        body = "See [[frete-gratis]] and also [[ frete-gratis ]] plus [[cep-13]]."
+        expect(described_class.links(body)).to eq(%w[frete-gratis cep-13])
+      end
+
+      it "no links -> []" do
+        expect(described_class.links("plain text, no brackets")).to eq([])
+        expect(described_class.links(nil)).to eq([])
+      end
+    end
+  end
+
+  describe Insika::Knowledge::GraphmlExport do
+    def concept(name, description: "d", type: "fact", body: "b", confidence: 0.6, provenance: "observed")
+      { name: name, description: description, type: type, body: body,
+        confidence: confidence, provenance: provenance }
+    end
+
+    it "builds a well-formed document with one node per concept and its attributes" do
+      xml = described_class.build([concept("cep-13", description: "CEPs 13xxx", confidence: 0.6)])
+
+      expect(xml).to start_with('<?xml version="1.0" encoding="UTF-8"?>')
+      expect(xml).to include('<node id="cep-13">')
+      expect(xml).to include("<data key=\"name\">cep-13</data>")
+      expect(xml).to include("<data key=\"type\">fact</data>")
+      expect(xml).to include("<data key=\"description\">CEPs 13xxx</data>")
+      expect(xml).to include("<data key=\"confidence\">0.6</data>")
+      expect(xml).to include("<data key=\"provenance\">observed</data>")
+      expect(xml.scan("<node ").size).to eq(1)
+    end
+
+    it "an edge per [[link]] that resolves within the export set — a dangling link is dropped" do
+      xml = described_class.build([
+        concept("cep-13", body: "b [[frete-gratis]] [[ghost]]"),
+        concept("frete-gratis")
+      ])
+      expect(xml).to include('<edge source="cep-13" target="frete-gratis"/>')
+      expect(xml).not_to include("ghost") # the dangling link never becomes an edge
+      expect(xml.scan("<edge ").size).to eq(1)
+    end
+
+    it "escapes XML-significant characters in text fields" do
+      xml = described_class.build([concept("x", description: %(A & B <tag> "quoted" 'single'))])
+      expect(xml).to include("A &amp; B &lt;tag&gt; &quot;quoted&quot; &apos;single&apos;")
+      expect(xml).not_to include("<tag>") # the raw, unescaped angle brackets never survive
+    end
+
+    it "no concepts -> no node/edge elements, still a well-formed shell" do
+      xml = described_class.build([])
+      expect(xml).to include("<graph id=\"knowledge\"")
+      expect(xml).not_to include("<node ")
+      expect(xml).not_to include("<edge ")
+    end
   end
 
   describe ".confidence_for" do

@@ -269,7 +269,14 @@ format, so this is a dump, not a converter (same discipline as Facts/
 Harvest's own append-only records): each file is the concept's markdown,
 byte for byte, directly consumable by okf-gem (`OKF::Bundle`) or graphify.
 Re-running it is safe — nothing here is lossy, so there is no `--force` to
-reason about. A `--format graphml` flag is a follow-up, not a requirement.
+reason about.
+
+`--format graphml` writes one combined `knowledge.graphml` instead: a node
+per concept (`name`/`type`/`description`/`confidence`/`provenance` as node
+data) and an edge per `[[link]]` that resolves to another concept in the
+same export — a link to a concept outside the scope is dropped, never a
+dangling edge. Hand-built, hand-escaped XML (no new dependency), directly
+openable in Gephi, yEd, or graphify.
 
 ## What's not here yet
 
