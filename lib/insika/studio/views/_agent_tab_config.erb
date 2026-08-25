@@ -64,6 +64,17 @@
       <label>agent_token_ceiling <span class="muted">(tokens/window; blank = platform, 0 = off)</span>
         <input type="text" name="agent_token_ceiling" value="<%= @agent.limits[:agent_token_ceiling] %>" inputmode="numeric" placeholder="inherit platform edge">
       </label>
+      <label>queue_mode <span class="muted">(burst policy: followup | collect | steer | interrupt; blank = platform/default followup)</span>
+        <select name="queue_mode">
+          <option value=""<%== " selected" if @agent.limits[:queue_mode].nil? %>>— inherit</option>
+          <% %w[followup collect steer interrupt].each do |mode| %>
+            <option value="<%= mode %>"<%== " selected" if @agent.limits[:queue_mode].to_s == mode %>><%= mode %></option>
+          <% end %>
+        </select>
+      </label>
+      <label>steer_max_messages <span class="muted">(messages ONE running turn may absorb; blank = default 5, 0 = never steer)</span>
+        <input type="text" name="steer_max_messages" value="<%= @agent.limits[:steer_max_messages] %>" inputmode="numeric" placeholder="5">
+      </label>
     </div>
     <label class="check">
       <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>

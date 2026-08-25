@@ -30,6 +30,21 @@ module Studio
           limits[field.to_sym] = v
         end
       end
+      # Burst policy (QueuePolicy). Opt-in keys, same convention as the edge
+      # overrides above: blank DELETES (inherit platform / DEFAULTS — followup,
+      # steer_max 5); an explicit value pins it for this agent. steer_max 0 is
+      # a legitimate "never steer" and is stored, not deleted.
+      if (qm = presence(r.params["queue_mode"]))
+        unless Insika::QueuePolicy::MODES.map(&:to_s).include?(qm)
+          raise Insika::ValidationError, "queue_mode must be one of: #{Insika::QueuePolicy::MODES.join(', ')}"
+        end
+
+        limits[:queue_mode] = qm
+      else
+        limits.delete(:queue_mode)
+      end
+      smm = edge_int(r.params["steer_max_messages"], "steer_max_messages")
+      smm.nil? ? limits.delete(:steer_max_messages) : limits[:steer_max_messages] = smm
       {
         id: @agent.id,
         model: presence(r.params["model"]),

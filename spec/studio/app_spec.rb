@@ -811,6 +811,45 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:limits]).not_to have_key(:chat_rate_limit)
   end
 
+  # Burst policy (QueuePolicy) — same opt-in convention as the edge overrides.
+  it "config writes queue_mode/steer_max_messages; 0 = never steer; blank DELETES" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "queue_mode" => "steer", "steer_max_messages" => "3", "_csrf" => csrf
+                })
+    limits = bus.last(:update_agent).payload[:limits]
+    expect(limits[:queue_mode]).to eq("steer")
+    expect(limits[:steer_max_messages]).to eq(3)
+
+    # 0 é "nunca steerar" — valor legítimo, armazenado (não confundir com blank).
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "queue_mode" => "steer", "steer_max_messages" => "0", "_csrf" => csrf
+                })
+    expect(bus.last(:update_agent).payload[:limits][:steer_max_messages]).to eq(0)
+
+    # Blank limpa os dois: herda platform/DEFAULTS (followup, max 5).
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
+    limits = bus.last(:update_agent).payload[:limits]
+    expect(limits).not_to have_key(:queue_mode)
+    expect(limits).not_to have_key(:steer_max_messages)
+  end
+
+  it "config recusa queue_mode desconhecida com flash de erro" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    res = client.post("/agents/bia/config", params: {
+                        "model" => "x", "queue_mode" => "turbo", "_csrf" => csrf
+                      })
+    expect(res.status).to eq(302)
+    expect(client.get(res.headers["location"]).body).to include("queue_mode must be one of")
+    expect(bus.types).not_to include(:update_agent)
+  end
+
   # config v2 surfacing -------------------------------------------
 
   it "config with a blank model clears it (inherit the platform default)" do
