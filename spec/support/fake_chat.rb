@@ -25,6 +25,8 @@ class FakeChat
   # serial default). The real Chat exposes it as #concurrency; the contract spec
   # pins that the keyword exists there too.
   attr_reader :concurrency
+  # how many times #complete was driven (the steer overflow round).
+  attr_reader :completes
   # script: proc run in the chat's context during #ask (may call
   # emit_chunk/fire_tool_call/fire_tool_result). final_content: content of the final
   # response. model: optional stub read by ChatBuilder's provider check (R3);
@@ -45,6 +47,7 @@ class FakeChat
     @asked = nil
     @script = nil
     @final_content = "final"
+    @completes = 0
   end
 
   def with_instructions(text)
@@ -123,6 +126,18 @@ class FakeChat
   def ask(message, with: nil, &on_chunk)
     @asked = message
     @attachments = with
+    round(&on_chunk)
+  end
+
+  # The gem's `Chat#complete`: another model step on the history AS IT IS, with no
+  # new user message. The steer overflow round goes through here — `ask(nil)` would
+  # append an empty user message after the injected ones, which providers refuse.
+  def complete(&on_chunk)
+    @completes += 1
+    round(&on_chunk)
+  end
+
+  private def round(&on_chunk)
     @on_chunk = on_chunk
     @streamed = +""
     if @script

@@ -1285,6 +1285,13 @@ module Insika
         response = @hooks.around(:agent, state) do |s|
           result = @reliability ? run_reliable_ask(task, s, filter, timing)
                                 : run_single_ask(task, s, filter, timing)
+          # A steered message that no tool batch absorbed (a text-only turn: the
+          # injector only drains at a tool boundary) is still in the mailbox when
+          # RubyLLM's loop returns. ONE extra round, in the SAME turn, answers the
+          # burst coherently -- without it the release would spawn a follow-up
+          # whose answer has no delivery channel under request/response.
+          # Read AFTER it: the extra round replaces both the response and `asked`.
+          absorb_steer_overflow(task, s, timing, result)
           output = result[:output]
           asked = result[:asked]
           result[:response]
@@ -1660,7 +1667,39 @@ module Insika
     def wire_chat_output(task, state, output)
       chat = state.chat
       chat.after_message { |message| output.message_ended(message) } if chat.respond_to?(:after_message)
-      install_steer_injector(task, state)
+      state.steer_injector = install_steer_injector(task, state)
+    end
+
+    # The extra round for a steered message that never met a tool boundary (a
+    # text-only turn closes no batch, so `SteerInjector` never got its cue). The
+    # burst is appended to the history and the model answers ALL of it in one go,
+    # inside the SAME turn — without this the release would spawn a follow-up whose
+    # answer has no delivery channel under request/response.
+    #
+    # Skipped when the turn HALTED: there is no next model step by construction.
+    # `release_steered` (execute's ensure) stays the fallback there, as it is for a
+    # failed or cancelled turn, and for a transport that cannot `complete`.
+    #
+    # At most one extra round: if the model ignores the burst, the turn ends anyway.
+    def absorb_steer_overflow(task, state, timing, result)
+      injector = state.steer_injector
+      return unless injector && state.chat.respond_to?(:complete)
+      return unless state.actor&.user_messages_posted&.positive?
+      return if halted?(result[:response])
+      return if injector.absorb_pending!.zero?
+
+      # TWO provider round trips now. Bank the first one's tokens BEFORE the response
+      # is replaced — stage 6's merge only sees whatever `result[:response]` ends up
+      # being, so without this the extra round silently erases the first round's cost
+      # from the terminal usage and from the EdgeLimiter's budget.
+      state.usage = merge_usage(with_model_source(usage_of(result[:response]), state.model_selection),
+                                state.usage)
+      # COMPLETE, not `ask(nil)`: the messages are already in the history, and an
+      # ask with no text appends an EMPTY user message after them — which is both a
+      # duplicate turn-opener and something providers refuse outright.
+      extra = state.chat.complete(&turn_chunk_handler(task, state, result[:output], timing))
+      result[:response] = extra
+      result[:asked] = extra
     end
 
     # The ask itself, chunk-by-chunk (WS3 attempts and the plain path share it).
@@ -1670,19 +1709,7 @@ module Insika
     # :ttft on EVERY content chunk (3 chunks = 3 insika.ttft frames); the spec
     # passed because FakeChat emits a single chunk.
     def ask_on(task, state, chat, output, timing)
-      public_thinking = state.profile.stream_public?(:thinking)
-      ttft_sent = false
-      each_chunk = lambda do |chunk|
-        emit_thinking(chunk, task, public: public_thinking)
-        next unless chunk.content
-
-        timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
-        unless ttft_sent
-          emit_ttft(task, timing) if timing
-          ttft_sent = true
-        end
-        output.push(chunk.content)
-      end
+      each_chunk = turn_chunk_handler(task, state, output, timing)
       # WS9: image parts ride the ask as attachments (only then — a chat whose
       # ask has no `with:` keeps working, and the plain path is byte-identical).
       # An image with no caption asks with NIL, not "": an empty text part is a
@@ -1693,6 +1720,25 @@ module Insika
         chat.ask(text, with: state.media_attachments, &each_chunk)
       else
         chat.ask(state.message, &each_chunk)
+      end
+    end
+
+    # The per-round chunk sink. Built FRESH per round: `ttft_sent` is that round's
+    # own bookkeeping, and the steer overflow round is a second round on the same
+    # chat.
+    def turn_chunk_handler(task, state, output, timing)
+      public_thinking = state.profile.stream_public?(:thinking)
+      ttft_sent = false
+      lambda do |chunk|
+        emit_thinking(chunk, task, public: public_thinking)
+        next unless chunk.content
+
+        timing&.mark(:first_token) # first-write-wins -> the PROVIDER's TTFB
+        unless ttft_sent
+          emit_ttft(task, timing) if timing
+          ttft_sent = true
+        end
+        output.push(chunk.content)
       end
     end
 

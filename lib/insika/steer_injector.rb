@@ -69,14 +69,32 @@ module Insika
       inject! if @seen >= @expected
     end
 
+    # Tail-appends whatever is in the mailbox right now and reports how many. Called
+    # at a batch boundary (#inject!) and ONCE MORE by the Executor when the run ended
+    # with a message no boundary ever arrived for (a text-only turn closes no batch) —
+    # the append, the running count and the `:turn_steered` event belong in one place
+    # either way.
+    def absorb_pending!
+      texts = @actor.take_user_messages!
+      return 0 if texts.empty?
+
+      texts.each { |text| @chat.add_message(role: :user, content: @policy.frame(text)) }
+      @injected += texts.size
+      # Counts only, never content — the text is already in the transcript, which is the
+      # surface that is allowed to carry it. `task_id`/`session_id` are the event's meta.
+      @emit.call(:turn_steered, { count: texts.size, total: @injected })
+      texts.size
+    end
+
     private
 
     def open_batch(message)
       calls = field(message, :tool_calls)
       size = calls.respond_to?(:size) ? calls.size : 0
       # A message with no tool call is the model talking, not a batch: leave any
-      # pending message where it is (the turn is about to end, and the Executor
-      # releases it as a follow-up turn rather than answering it half-way).
+      # pending message where it is. The turn is about to end, and the Executor
+      # absorbs it there in ONE extra round (#absorb_pending!) — a text-only turn
+      # closes no batch, and answering it half-way is not an option.
       return @expected = nil if size.zero?
 
       @expected = size
@@ -88,14 +106,7 @@ module Insika
       @expected = nil
       return if @halted # nothing will read it: leave it in the mailbox
 
-      texts = @actor.take_user_messages!
-      return if texts.empty?
-
-      texts.each { |text| @chat.add_message(role: :user, content: @policy.frame(text)) }
-      @injected += texts.size
-      # Counts only, never content — the text is already in the transcript, which is the
-      # surface that is allowed to carry it. `task_id`/`session_id` are the event's meta.
-      @emit.call(:turn_steered, { count: texts.size, total: @injected })
+      absorb_pending!
     end
 
     def halt?(result) = defined?(RubyLLM::Tool::Halt) && result.is_a?(RubyLLM::Tool::Halt)

@@ -109,16 +109,45 @@ RSpec.describe "Insika::Executor + the steer door" do
     end
   end
 
-  # a message nothing read is a message a PERSON typed. It becomes the next turn
-  # rather than evaporating, which is `followup` arrived at late.
-  it "releases a message the run never absorbed as a follow-up turn" do
+  # A message nothing read is a message a PERSON typed. A text-only turn closes no
+  # tool batch, so no boundary ever arrives — and the burst is absorbed by ONE extra
+  # round in the SAME turn instead of being released. Release would spawn a
+  # follow-up, and a follow-up's answer has no delivery channel under
+  # request/response: that is the four-messages-one-reply bug, exactly.
+  it "absorbs a steered message in a text-only turn via an extra round (no release)" do
     executor = build_executor(profiles: { "a" => steering })
 
     Sync do |top|
-      # A turn with no tool call at all: no batch ever closes, so no boundary arrives.
-      # It takes its time so the message really lands mid-run.
       chat = FakeChat.new
       chat.script = proc { Async::Task.current.sleep(0.05) }
+      spawn_turn(executor, chat: chat)
+      top.sleep(0.02)
+      running_actor(executor, "t1").post(:user_message, "1234567")
+      top.sleep(0.2)
+
+      expect(task_store.each_id.to_a).to eq(["t1"]) # no follow-up was born
+      # COMPLETE, not a second ask: the burst is already in the history, and asking
+      # again would append an empty user message after it.
+      expect(chat.completes).to eq(1)
+      expect(chat.asked).to eq("queria saber do pedido")
+      expect(event_stream.types).not_to include(:turn_steer_released)
+      expect(event_stream.types).to include(:turn_steered)
+      expect(session_store.find("s1").messages.map { |m| m["content"] }).to include("1234567")
+      stop_serving(executor)
+    end
+  end
+
+  # The one case the extra round CANNOT cover: `halt_when` means there is no next
+  # model step, so the message goes out as a follow-up turn (the old behaviour, kept).
+  it "releases steered messages when the turn ends in halt (no extra round can run)" do
+    executor = build_executor(profiles: { "a" => steering })
+
+    Sync do |top|
+      chat = FakeChat.new
+      chat.script = proc do
+        Async::Task.current.sleep(0.05)
+        chat.halt_with!("user asked to stop")
+      end
       spawn_turn(executor, chat: chat)
       top.sleep(0.02)
       running_actor(executor, "t1").post(:user_message, "1234567")

@@ -119,6 +119,12 @@ module Insika
     # rules the run started under.
     attr_accessor :queue_policy
 
+    # Internal: the run's SteerInjector, or nil when steering is off (or the chat
+    # cannot host the boundary). Rebuilt per ATTEMPT — a WS3 fallback builds a new
+    # chat, and the injector belongs to the chat it appends to. The Executor reaches
+    # for it at the end of stage 6 to absorb whatever no tool boundary took.
+    attr_accessor :steer_injector
+
     # Internal: true when this turn re-enters the pipeline via
     # resume_task/recovery. The EdgeLimiter reads it to NEVER re-count or block a
     # turn that was already admitted — a crash/pause under a saturated window must
