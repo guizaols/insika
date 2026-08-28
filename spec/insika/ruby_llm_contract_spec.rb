@@ -28,6 +28,7 @@ RSpec.describe "RubyLLM boundary contract" do
     before_tool_call: "ChatBuilder#wire_callbacks",
     after_tool_result: "ChatBuilder#wire_callbacks",
     ask: "Executor#run_agent",
+    complete: "Executor#absorb_steer_overflow (the steer overflow round)",
     messages: "Executor#recorded_turn_messages",
     model: "ChatBuilder#anthropic_provider?",
     with_temperature: "ModelSelection#apply_params",
@@ -192,6 +193,16 @@ RSpec.describe "RubyLLM boundary contract" do
     it "add_message appends to the same list provider_completion sends" do
       source = RubyLLM::Chat.instance_method(:add_message).source_location
       expect(File.readlines(source.first)[(source.last - 1), 5].join).to include("messages <<")
+    end
+
+    # The overflow round completes the chat instead of asking, and the reason is
+    # right here: `ask` ALWAYS adds a user message first, so `ask(nil)` would append
+    # an empty one after the injected burst. `complete` runs the model on the
+    # history as it stands, which is the whole point.
+    it "ask always adds a user message, and complete is the round that does not" do
+      source = RubyLLM::Chat.instance_method(:ask).source_location
+      expect(File.readlines(source.first)[(source.last - 1), 4].join).to include("add_message role: :user")
+      expect(RubyLLM::Chat.instance_method(:complete).parameters.map(&:first)).not_to include(:req)
     end
   end
 
@@ -398,7 +409,7 @@ RSpec.describe "RubyLLM boundary contract" do
   # neither fails this spec, and the fix is to check the gem before the double.
   describe "spec/support/fake_chat.rb" do
     SCAFFOLDING = %i[
-      asked instructions model=
+      asked completes instructions model=
       script script= final_content final_content=
       fire_tool_call fire_tool_result fire_tool_result_message fire_end_message
       emit_chunk emit_thinking
