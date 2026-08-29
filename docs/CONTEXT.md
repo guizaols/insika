@@ -1,7 +1,7 @@
 ---
 title: Context
-parent: Build an agent
-nav_order: 4
+parent: Core concepts
+nav_order: 5
 permalink: /context/
 ---
 
@@ -90,16 +90,16 @@ conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
 
-Facts carry **provenance metadata** (RFC-0031): every fact record stores `origin`
+Facts carry **provenance metadata**: every fact record stores `origin`
 (who wrote it — `"engine"`, `"operator"`, `"legacy"` or `"distilled"`),
 `created_at` / `updated_at` timestamps, and an optional `expires_at` (ISO8601) —
 **an expired fact is never injected**, even before the daily sweep prunes it. The
 Studio Customers drill reads and edits the same cell the next turn reads (injection
 unchanged), and every operator mutation lands in the content-free audit trail
 (digests, never values). The sweep honors the `memory_ttl_days` setting on its own
-knob — see [Security](SECURITY.md#memory-and-the-right-to-be-forgotten-lgpd-rfc-0031).
+knob — see [Security](SECURITY.md#memory-and-the-right-to-be-forgotten-lgpd).
 
-An **approved distilled fact** (RFC-0034 — see [Facts](FACTS.md)) lands in the
+An **approved distilled fact** (see [Facts](FACTS.md)) lands in the
 same cell this provider injects, stamped `distilled:<session_ref>` — approved on
 the Studio Facts page, never applied automatically.
 
@@ -167,7 +167,7 @@ Two distinct caching mechanisms — don't conflate them:
 Cache accounting surfaces as `cached_tokens` (reads) and `cache_creation_tokens`
 (writes), visible in telemetry and the Studio tokens chip.
 
-### The two layers (RFC-0030)
+### The two layers
 
 The system block is partitioned into two cache layers:
 

@@ -1,13 +1,13 @@
 ---
 title: The domain-free core
-parent: Operate & prove it
-nav_order: 9
+parent: Reference
+nav_order: 1
 permalink: /domain/
 ---
 
 # The domain-free core — what ships, what a deployment declares, and how to clear it
 
-The engine is domain-free by construction (RFC-0036): the gem carries no store
+The engine is domain-free by construction: the gem carries no store
 vocabulary, no persona, and no fixed conversation language. This page is the
 removability map — for every artifact that could make a deployment look like
 "the Brazilian store harness", here is what ships, what the doctor reports, and
@@ -90,7 +90,7 @@ metadata domain: "e-commerce-pt-BR"
 ```
 
 - **Outcome funnel** — `funnel:` on the profile (see
-  [Outcomes](AGENTS.md#outcomes--business-results-over-real-traffic-ws7)).
+  [Outcomes](OUTCOMES.md#outcomes--business-results-over-real-traffic)).
   Vocabulary note: in the gem and the doctor output it is an **outcome
   funnel**, never "conversion" — the stage names are the deployment's, and a
   bare install shows no funnel and no stage names at all.

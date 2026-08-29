@@ -1,11 +1,11 @@
 ---
 title: Router
 parent: Ship it
-nav_order: 3.5
+nav_order: 4
 permalink: /router/
 ---
 
-# Session-sticky router (RFC-0043)
+# Session-sticky router
 
 `insika-router` is a standalone proxy that lets you run **N engine backends**
 (`WEB_CONCURRENCY=1` each) and get the same per-session guarantees a single
@@ -161,7 +161,7 @@ until the next resolve — capacity added a few seconds late, never wrong.
 
 ## A runnable smoke test
 
-The shape below is what the acceptance criteria in RFC-0043 §6 were verified
+The shape below is what the router's acceptance criteria were verified
 against: two fake backends and the router in front, run entirely in-process.
 
 ```ruby

@@ -1,7 +1,7 @@
 ---
 title: Running locally
-parent: Build an agent
-nav_order: 8
+parent: Start here
+nav_order: 2
 permalink: /running-local/
 ---
 
@@ -122,7 +122,7 @@ prompt files, skills, and one data-tool per file:
 > **Data-tool URLs must be literal on the pack path.** The pack import does not
 > resolve `{{env.*}}` — bake the backend base URL into each `tools/*.json` at
 > generation time. (Only the *manifest* path resolves `{{env.*}}`.) See
-> [Tools](TOOLS.md#the-one-gotcha-env-templating-is-manifest-only).
+> [Tools](TOOLS.md#the-one-gotcha-envsecret-templating-is-manifest-only).
 
 Provision it (runs as a client against the live server; the internal token comes
 from the environment, never disk):

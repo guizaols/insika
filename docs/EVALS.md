@@ -1,7 +1,7 @@
 ---
 title: Evals
-parent: Operate & prove it
-nav_order: 4
+parent: Improve
+nav_order: 1
 permalink: /evals/
 ---
 
@@ -288,7 +288,7 @@ is spent; a soft cap just runs (the ledger's own alert already warns).
 Each run gets a **fresh session** (`eval-<case>-<random>`), never a reused one — a
 reused session lets the target agent "remember" earlier runs, which is not what a
 persona case is testing. See `examples/agent-tester/qa_scheduled.rb` for the full
-loop: `schedule` (RFC-0037) fires the QA agent, it calls `run_persona_eval`, then
+loop: `schedule` fires the QA agent, it calls `run_persona_eval`, then
 `save_artifact` publishes the quality report.
 
 **Tenant isolation.** A golden case carries a `tenant` (`platform` — the
@@ -298,7 +298,7 @@ lists or runs cases in the *calling* agent's own tenant: a case authored for
 another tenant is invisible, not merely refused — the model cannot even learn
 its id from the enum, and running it by a guessed id gets the same "unknown or
 invalid" error a nonexistent id would (the two must not be distinguishable).
-This is what makes "one QA agent per store" (the C3.2 plan) an actual boundary
+This is what makes "one QA agent per store" an actual boundary
 in a deployment where several stores' persona cases live in the same
 `GoldenStore` — without it, `qa-store-a` could enumerate and run
 `qa-store-b`'s persona and read its `knows` in the transcript.
@@ -360,7 +360,7 @@ not a regression.
 The same gate machinery guards the two automated loops — [Refinement](REFINEMENT.md)
 (cloned-agent replay of a proposed edit) and [Harvest](HARVEST.md) (cloned-agent
 replay of a mined skill). **Judges are mandatory for those gates** in exactly three
-shapes, the P18 lesson: a gate without a recorded baseline refuses, an all-red
+shapes: a gate without a recorded baseline refuses, an all-red
 baseline refuses, and a baseline recorded WITH judge scores, replayed with no judge
 configured, refuses — a rubric'd case with no verdict reads as a pass, so the
 candidate would beat a measurement it never took. A store with no golden cases cannot

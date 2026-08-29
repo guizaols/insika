@@ -1,6 +1,6 @@
 ---
 title: Embedding
-parent: Ship it
+parent: Integrate
 nav_order: 4
 permalink: /embedding/
 ---

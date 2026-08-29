@@ -1,7 +1,7 @@
 ---
 title: Artifacts
-parent: Operate & prove it
-nav_order: 9
+parent: Operate
+nav_order: 3
 permalink: /artifacts/
 ---
 

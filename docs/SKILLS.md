@@ -1,7 +1,7 @@
 ---
 title: Skills
-parent: Build an agent
-nav_order: 3
+parent: Core concepts
+nav_order: 4
 permalink: /skills/
 ---
 

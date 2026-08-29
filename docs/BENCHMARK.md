@@ -1,7 +1,7 @@
 ---
 title: Benchmark
-parent: Operate & prove it
-nav_order: 2
+parent: Operate
+nav_order: 6
 permalink: /benchmark/
 ---
 

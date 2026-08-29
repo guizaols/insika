@@ -1,6 +1,6 @@
 ---
 title: Observability
-parent: Operate & prove it
+parent: Operate
 nav_order: 1
 permalink: /observability/
 ---
@@ -36,20 +36,20 @@ something that left no task of its own behind:
 | `:turn_steered` | `task_id`, `count`, `total` | a message arrived mid-run and was appended to the turn in flight |
 | `:turn_steer_released` | `task_id`, `released_as`, `count` | the run could not absorb it, so it became the turn `released_as` |
 | `:turn_interrupted` | `task_id`, `replaced_by` | the turn was abandoned mid-run, and which turn replaced it |
-| `:turn_stuck` | `task_id`, `agent`, `reason`, `message` | the agent declared it could not proceed (`signal_stuck`, WS5) — the deterministic signal a consumer escalates on |
+| `:turn_stuck` | `task_id`, `agent`, `reason`, `message` | the agent declared it could not proceed (`signal_stuck`) — the deterministic signal a consumer escalates on |
 | `:channel_delivered` | `channel`, `outbox_id`, `status`, `attempts`, `error` | the answer reached the platform (or did not) — the turn completing says nothing about that |
-| `:delivery_failed` | `channel`, `outbox_id`, `status`, `attempts`, `error` | a delivery exhausted its bounded retries — the alert face of the row above (WS6) |
-| `:budget_warning` | `agent`, `tenant`, `window`, `spent`, `cap` | a calendar budget crossed its threshold (`alert_at` or a soft cap) — once per window (WS2) |
-| `:breaker_open` | `agent`, `ref`, `tenant` | the reliability circuit breaker tripped for a `(tenant, provider/model)` — further turns fail fast until the cooldown (WS3/WS6) |
-| `:provider_failure` | `agent`, `ref`, `error`, `kind` | one attempt against `ref` failed and spent a retry — emitted with or without a circuit breaker (WS3) |
-| `:provider_fallback` | `agent`, `from`, `to`, `error`, `kind` | the turn ROTATED mid-flight to the next node of the fallback chain, and the error that caused it (WS3) |
-| `:ttft` | `task_id`, `session_id`, `ttft_ms` | the provider's time-to-first-token on the streaming envelope — only under `INSIKA_TURN_TIMING`, once per turn (WS6) |
-| `:distillation_completed` | `session_ref`, `agent`, `proposals`, `dropped{}`, `deduped`, `cost{}` | a session's traffic was distilled into N proposals (RFC-0034) — counts and ids only, never a fact value |
+| `:delivery_failed` | `channel`, `outbox_id`, `status`, `attempts`, `error` | a delivery exhausted its bounded retries — the alert face of the row above |
+| `:budget_warning` | `agent`, `tenant`, `window`, `spent`, `cap` | a calendar budget crossed its threshold (`alert_at` or a soft cap) — once per window |
+| `:breaker_open` | `agent`, `ref`, `tenant` | the reliability circuit breaker tripped for a `(tenant, provider/model)` — further turns fail fast until the cooldown |
+| `:provider_failure` | `agent`, `ref`, `error`, `kind` | one attempt against `ref` failed and spent a retry — emitted with or without a circuit breaker |
+| `:provider_fallback` | `agent`, `from`, `to`, `error`, `kind` | the turn ROTATED mid-flight to the next node of the fallback chain, and the error that caused it |
+| `:ttft` | `task_id`, `session_id`, `ttft_ms` | the provider's time-to-first-token on the streaming envelope — only under `INSIKA_TURN_TIMING`, once per turn |
+| `:distillation_completed` | `session_ref`, `agent`, `proposals`, `dropped{}`, `deduped`, `cost{}` | a session's traffic was distilled into N proposals — counts and ids only, never a fact value |
 | `:proposal_approved` | `proposal_id`, `status`, `operator` | a human approved a distilled fact on the Facts page — written to memory via CAS |
 | `:proposal_rejected` | `proposal_id`, `status`, `operator` | a human rejected it (the reason is on the proposal record, not in the event) |
 | `:proposal_dismissed` | `proposal_id`, `status`, `operator` | a human dismissed it — the tuple is latched, never proposed again |
 | `:proposal_stale` | `proposal_id`, `status`, `operator` | the CAS lost: the fact moved after distillation — re-presented with both values on the wiki, never silently overwritten |
-| `:harvest_mined` | `agent`, `run_id`, `candidates`, `rejected{}`, `cost{}` | a mining pass finished (RFC-0035) — counts and rule ids only, never a skill body |
+| `:harvest_mined` | `agent`, `run_id`, `candidates`, `rejected{}`, `cost{}` | a mining pass finished — counts and rule ids only, never a skill body |
 | `:harvest_gated` | `run_id`, `candidate_id`, `agent`, `eval_passed`, `conversion_passed`, `reason` | the double gate's verdict on one candidate — ids and verdicts only |
 | `:skill_promoted` | `agent`, `skill`, `candidate_id`, `snapshot_ref`, `promotion_ref`, `approver` | a human approved a mined skill — it is live for the store, with the snapshot for rollback |
 | `:skill_rolled_back` | `snapshot_ref`, `skill`, `agent`, `operator` | the snapshot was restored — the promotion row carries the `rolled_back_at` stamp |

@@ -1,7 +1,7 @@
 ---
 title: Prompt — run every example
-parent: Build an agent
-nav_order: 10
+parent: Reference
+nav_order: 2
 permalink: /run-examples/
 layout: default
 render_with_liquid: false

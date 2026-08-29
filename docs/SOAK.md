@@ -1,7 +1,7 @@
 ---
 title: Soak
-parent: Operate & prove it
-nav_order: 4
+parent: Operate
+nav_order: 5
 permalink: /soak/
 ---
 

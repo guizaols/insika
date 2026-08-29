@@ -1,11 +1,11 @@
 ---
 title: Templates
-parent: Build an agent
-nav_order: 9
+parent: Integrate
+nav_order: 6
 permalink: /templates/
 ---
 
-# Templates (RFC-0039)
+# Templates
 
 Example agents shipped **inside the gem** — `lib/insika/templates/<name>/`,
 one DSL file per template. `insika new <name>` copies it for you to run and
@@ -50,7 +50,7 @@ import into a running store exists.
 
 `repo-explorer` (http) and `browser-agent` (stdio) are not showcases for
 one MCP vendor — they demonstrate exactly how to plug **any** MCP server
-into an agent (RFC-0040). Each ships with a working, keyless default so
+into an agent. Each ships with a working, keyless default so
 `insika new` + the run line works with zero setup, but the server is a
 config value:
 
@@ -104,7 +104,7 @@ the convention every other file in the gem follows):
    not by `self` — it would leak. Use a local variable (closures see it
    fine from inside a `do...end` block) — every wave-1 template does.
 
-**Engine-only rules** (RFC-0039 §2.6, enforced by the E3 lint below):
+**Engine-only rules** (enforced by the lint below):
 provider-agnostic (one provider key), zero tenant/store data, external
 calls only to keyless public APIs, every tool/mcp group covered by an
 explicit allowlist.

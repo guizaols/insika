@@ -1,7 +1,7 @@
 ---
 title: Architecture
-parent: Understand the idea
-nav_order: 2
+parent: Start here
+nav_order: 3
 permalink: /architecture/
 ---
 

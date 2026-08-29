@@ -1,7 +1,7 @@
 ---
 title: Harvest
-parent: Operate & prove it
-nav_order: 7
+parent: Improve
+nav_order: 6
 permalink: /harvest/
 ---
 
@@ -44,7 +44,7 @@ filters, each drop counted and logged:
    regex; phrases match case/accent-folded at word boundaries. Every rejected
    candidate is logged with the rule id.
 2. **The grounding filter** — every product reference in a proposal must be
-   in the union of the origin sessions' evidence ids (RFC-0029's ledger).
+   in the union of the origin sessions' evidence ids (the evidence ledger).
    A store without `grounding.matcher.sku` does not mine at all: product
    claims that cannot be verified are blocked by refusal, not by prompt.
 3. **Dedup** — an open `(agent, name)` tuple or a skill the store already has.
@@ -59,11 +59,10 @@ regression disqualifies** — the gate is a veto, never a score to argue with.
 Judges are mandatory in exactly the shapes the refinement gate already
 refuses: no recorded baseline, an all-red baseline, and a judged baseline
 replayed with no judge (a rubric'd case with no verdict would count as a
-pass — the P18 lesson, see [Evals](EVALS.md)).
+pass, see [Evals](EVALS.md)).
 
 The conversion gate is the second ruler: the store's funnel metric over the
-criterion's window, compared to the **frozen baseline** (the RFC-0032
-`freeze_funnel_baseline`). Outcome is evidence — this gate can only say "the
+criterion's window, compared to the **frozen baseline** (`freeze_funnel_baseline`). Outcome is evidence — this gate can only say "the
 store is measurably worse than the accepted state" or "there is nothing to
 compare against". It refuses on missing data, never passes: no frozen
 baseline, no criterion, no funnel store, a fold that has not converged — each

@@ -1,7 +1,7 @@
 ---
 title: Prompt — diagnose a failed turn
-parent: Build an agent
-nav_order: 12
+parent: Reference
+nav_order: 4
 permalink: /diagnose-turn/
 layout: default
 render_with_liquid: false

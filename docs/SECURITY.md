@@ -171,7 +171,7 @@ LLM calls**. A *resumed* turn is never re-counted.
 > `0` to explicitly disable. A malformed value in the Studio raises a validation
 > error rather than silently disabling a production limit.
 
-See [Agents §Layer 4](AGENTS.md#layer-4-edge-limits-flood-and-spend-control).
+See [Agents §Layer 4](POLICY.md#layer-4-edge-limits-flood-and-spend-control).
 
 ## Guardrails
 
@@ -203,7 +203,7 @@ Strictness selects the detector categories (`low` = injection only; `medium`
 (default) and `high` add sexual and abuse). Safe-reply lookup falls back per
 category: the agent's category reply → the agent's default → the builtin
 category → the builtin default. All of it is editable in the Studio Configuration
-form. See [Agents §Layer 3](AGENTS.md#layer-3-guardrails-content-safety).
+form. See [Agents §Layer 3](POLICY.md#layer-3-guardrails-content-safety).
 
 ## Human approval
 
@@ -367,7 +367,7 @@ rotated key or a typo never takes the whole service down. The `insika doctor`
 command runs the same checks on demand against a live database. See
 [Deploy](DEPLOY.md#strict-config-and-insika-doctor).
 
-## Memory and the right to be forgotten (LGPD, RFC-0031)
+## Memory and the right to be forgotten (LGPD)
 
 Memory is scoped per **`(tenant, customer)`** — the cell `"memory:<tenant>:<customer>"`
 is the isolation boundary. A query against one tenant never touches another's
@@ -394,7 +394,7 @@ forgotten or aged out. Three operations enforce the right to be forgotten:
   outbox deliveries). The operator-mutation audit store records a digest-free line
   ("a purge happened, with N records") — content-free by construction.
 
-### Distilled facts are personal data (RFC-0034)
+### Distilled facts are personal data
 
 The distillation loop ([Facts](FACTS.md)) writes **proposals** — a distilled
 fact's name and value are personal data, and they are treated like the rest of
@@ -402,7 +402,7 @@ the memory footprint: `forget_customer` deletes the person's proposals (every
 status), `delete_tenant_data` deletes a tenant's, and the `retention_days`
 sweep ages them out with the transcripts they were distilled from. Provenance
 holds: an approved fact is written with `origin: "distilled:<session_ref>"`
-(the RFC-0031 closed set gains one spelling, never an open string). Events and
+(the closed set gains one spelling, never an open string). Events and
 audit carry ids and counts only — a fact value never enters the stream, the
 ledger or a log; the evidence excerpt is a link read from the transcript at
 request time, never a copy.
@@ -412,7 +412,7 @@ deployment (in `single_tenant` the bare cell is the designed customer shape), an
 never the session-marked cells. See [Context](CONTEXT.md#memory) and
 [Deploy](DEPLOY.md#strict-config-and-insika-doctor).
 
-### Harvest candidates are derived data (RFC-0035)
+### Harvest candidates are derived data
 
 The harvest loop ([Harvest](HARVEST.md)) writes **candidates** — a mined skill
 proposal is behavior instructions, the same trust level as any skill content,

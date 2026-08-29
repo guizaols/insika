@@ -1,7 +1,7 @@
 ---
 title: The /v1 API
-parent: Build an agent
-nav_order: 9
+parent: Integrate
+nav_order: 1
 permalink: /api/
 ---
 
@@ -9,7 +9,7 @@ permalink: /api/
 
 The HTTP surface is the drop-in OpenAI-Responses-compatible contract: a client
 that speaks `/v1` today speaks it tomorrow. This page is the WRITTEN promise
-(RFC-0036 C6) — the mechanical half is the version gate in the server, and the
+— the mechanical half is the version gate in the server, and the
 two cannot drift (a spec pins the gate's version to the date below).
 
 ## The surface
@@ -38,8 +38,8 @@ field is a BREAKING change and requires, together, all three:
 
 1. a new `Insika-Version` entry in the server's known-versions gate (an
    unknown value is refused with 400 before auth — fail-closed);
-2. a route branch that serves both vintages (a compatibility branch, per
-   RFC-0016 A5), so an old client keeps working while the new shape rolls;
+2. a route branch that serves both vintages (a compatibility branch), so
+   an old client keeps working while the new shape rolls;
 3. a new `**Frozen as of:**` line below.
 
 Additive changes need none of the three.

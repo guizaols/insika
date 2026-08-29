@@ -1,7 +1,7 @@
 ---
 title: Load test
-parent: Operate & prove it
-nav_order: 3
+parent: Operate
+nav_order: 4
 permalink: /loadtest/
 ---
 

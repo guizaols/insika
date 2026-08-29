@@ -1,7 +1,7 @@
 ---
 title: Workflows
-parent: Build an agent
-nav_order: 5
+parent: Core concepts
+nav_order: 6
 permalink: /workflows/
 ---
 

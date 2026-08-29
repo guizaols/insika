@@ -63,7 +63,7 @@ contract:
    best-effort," it is a guaranteed cross-session leak the first time two
    requests for the same session land on different workers. See the Railway
    section below; `insika doctor` errors on `WEB_CONCURRENCY>1` there — unless
-   [`insika-router`](ROUTER.md) is in front, RFC-0043's session-sticky proxy,
+   [`insika-router`](ROUTER.md), the session-sticky proxy, is in front,
    which is what makes N>1 safe on Railway too (N local workers behind it).
 3. **Recovery is part of boot, in every wiring.** Every worker boots through
    `Server::Boot`, which runs recovery **before the listen**. The per-record
@@ -125,7 +125,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_RELAY_TOKEN` | — | **mounts the relay channel** at `POST /channels/relay/events`, and is the Bearer it requires. Empty = the route does not exist (`404`). See [Channels](CHANNELS.md) |
 | `INSIKA_RELAY_DELIVER_URL` | — | your callback; the engine POSTs each reply there. Goes through the egress guard |
 | `INSIKA_RELAY_DELIVER_TOKEN` | — | Bearer the engine sends **to** your callback (optional) |
-| `INSIKA_RELAY_DELIVERY` | `at_end` | how the relay flushes the outbox: `at_end` (one POST) or `progressive` (one POST per balloon — [RFC-0027](CHANNELS.md#delivery-policy)) |
+| `INSIKA_RELAY_DELIVERY` | `at_end` | how the relay flushes the outbox: `at_end` (one POST) or `progressive` (one POST per balloon — [delivery policy](CHANNELS.md#delivery-policy)) |
 | `INSIKA_WIDGET_ORIGINS` | — | exact-match origins allowed to embed the [web widget](CHANNELS.md#the-web-widget), comma-separated. No wildcards. **Half the switch**: with `INSIKA_WIDGET_AGENTS` unset, nothing is mounted (`404`) |
 | `INSIKA_WIDGET_AGENTS` | — | agent ids a widget visitor may address, comma-separated. The other half of the switch. **A chat rate limit is also required** or the widget answers `503` |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |
@@ -238,7 +238,7 @@ healthcheck, and a restart policy.
    is not a throughput knob, it is a guaranteed way to leak a reply across
    sessions the first time two requests for the same session land on different
    workers — `insika doctor` errors on this combination for exactly that
-   reason. `insika-router` (RFC-0043) is the fix: N local Falcon workers
+   reason. `insika-router` is the fix: N local Falcon workers
    behind one sticky proxy, still one Railway replica.
 4. The healthcheck hits `/up`.
 5. Point your consumer at the service's public URL, with a matching API token
@@ -361,7 +361,7 @@ optional **Postgres** adapter. **Litestream** (above) for backup/DR from day one
 orthogonal to topology.
 
 For the *session-routing* half specifically — as opposed to the storage
-topology above — see [`insika-router`](ROUTER.md) (RFC-0043): N pods behind a
+topology above — see [`insika-router`](ROUTER.md): N pods behind a
 headless `Service`, one `insika-router` Deployment in front doing the
 consistent-hash routing ingress-nginx's own `upstream-hash-by` cannot (it
 hashes nginx variables, never a field parsed out of a POST body).
@@ -418,7 +418,7 @@ DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh 4 24
 ## See also
 
 - [ROUTER.md](ROUTER.md) — `insika-router`, the session-sticky proxy for
-  scaling past one worker (RFC-0043).
+  scaling past one worker.
 - [RUNNING-LOCAL.md](RUNNING-LOCAL.md) — run the engine locally, single-process.
 - [Security](SECURITY.md) — tokens, egress, strict config.
 - [BENCHMARK.md](BENCHMARK.md) — the neutral, key-free engine benchmark.

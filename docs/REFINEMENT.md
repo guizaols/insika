@@ -1,7 +1,7 @@
 ---
 title: Refinement
-parent: Operate & prove it
-nav_order: 5
+parent: Improve
+nav_order: 2
 permalink: /refinement/
 ---
 

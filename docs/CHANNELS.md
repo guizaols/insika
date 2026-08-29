@@ -1,7 +1,7 @@
 ---
 title: Channels
-parent: Build an agent
-nav_order: 6
+parent: Integrate
+nav_order: 2
 permalink: /channels/
 ---
 
@@ -176,14 +176,14 @@ again.
 ## Relay or the drop-in API?
 
 If you already own your messaging platform, you can reach the engine two ways: the
-drop-in [`POST /v1/responses`](/architecture/) — you hold an SSE connection for the
+drop-in [`POST /v1/responses`](ARCHITECTURE.md) — you hold an SSE connection for the
 whole turn and read the answer off it — or the relay, where the engine acks in
 milliseconds and POSTs the answer to you when it exists.
 
 The instinct is that streaming gets the customer their reply sooner, and that the
 relay trades that away. **For the default relay it does not, and the reason is
 structural:** the engine publishes `:content` as the ANSWER, whole, after the
-turn's hooks ([what crosses the edge](/architecture/#what-crosses-the-edge)).
+turn's hooks ([what crosses the edge](ARCHITECTURE.md#what-crosses-the-edge)).
 During the turn the stream carries tool activity; the text arrives in one piece at
 the end. Measured on a real store agent, the text frames span **0 ms** — there is
 nothing to deliver progressively. That is the `:at_end` fact, true of `/v1/responses`
@@ -204,7 +204,7 @@ That last row is the one that cannot be had the other way. `/v1/responses` answe
 the request it was given, so a message that arrives while a turn is running is a
 second turn — the engine has no way to tell you "this joined the previous one". The
 relay's `merged` / `steered` acks exist precisely to say that, which is why
-[the inbound queue](/agents/#queue_mode--when-a-message-arrives-while-the-agent-is-busy)
+[the inbound queue](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy)
 is only reachable from here.
 
 **Measured, so you can judge it rather than take our word:** same agent, same
@@ -282,7 +282,7 @@ answers, and **they are four different facts**:
 answer two or three times.** That is the one contract mistake that is visible to
 the end user, so it is worth a line of code: only deliver for a `202`.
 
-`merged` and `steered` come from the [inbound queue](/agents/#queue_mode--when-a-message-arrives-while-the-agent-is-busy)
+`merged` and `steered` come from the [inbound queue](AGENTS.md#queue_mode--when-a-message-arrives-while-the-agent-is-busy)
 (`limits[:queue_mode]`). They only ever occur if you turned that on for the agent;
 with the default `followup` you will only see `202` and `duplicate`.
 
@@ -312,7 +312,7 @@ short backoff, and then the delivery is marked `failed` and stops.
 `content` is the turn's **answer** — one message, whole. The model's narration on
 the way to an answer ("vou verificar o cardápio…") does not come through here; it
 stays internal unless the agent opts in. That contract is
-[the edge contract](/architecture/#what-crosses-the-edge), and it is why you can
+[the edge contract](ARCHITECTURE.md#what-crosses-the-edge), and it is why you can
 forward `content` straight to the customer.
 
 ### Delivery policy
@@ -379,7 +379,7 @@ your side: you already have the customer's conversation, and `GET /v1/tasks/:id`
 tells you the turn's terminal state.
 
 A turn that **failed** delivers nothing — an error string is not an answer. Watch
-`GET /v1/tasks/:id` or the [event stream](/observability/) for those.
+`GET /v1/tasks/:id` or the [event stream](OBSERVABILITY.md) for those.
 
 ## Setting up the relay
 
@@ -397,7 +397,7 @@ INSIKA_RELAY_DELIVERY=progressive               # optional; "at_end" (the defaul
 without a credential — a public inbound route with an LLM behind it is a money
 faucet, so it fails closed by construction.
 
-The delivery POST goes through the same [egress guard](/security/#egress-the-ssrf-boundary) as
+The delivery POST goes through the same [egress guard](SECURITY.md#egress-the-ssrf-boundary) as
 data-tools: **https only**, and private/loopback destinations blocked. For local
 development, where your consumer is on `localhost`:
 
@@ -415,7 +415,7 @@ A runnable consumer in ~40 lines lives in
 
 ## Shadow mode
 
-Shadow mode (RFC-0025) lets one channel run every turn **end to end and deliver
+Shadow mode lets one channel run every turn **end to end and deliver
 nothing** — the experiment that answers "can we replace the incumbent?" before
 any customer is handed over. The incumbent keeps answering; the engine records
 what it *would* have answered, and the two replies are judged pairwise against a
@@ -470,7 +470,7 @@ redirect its own conversation.
 ## Writing your own channel
 
 A channel is a plain object — no base class. Register it from a plugin
-(see [Plugins](/plugins/)) with `contracts: { channels: [<id>] }` in the manifest,
+(see [Plugins](PLUGINS.md)) with `contracts: { channels: [<id>] }` in the manifest,
 and it mounts under `/channels/<id>/`.
 
 Two members are always there; the rest of the object decides which shape you get.
@@ -536,8 +536,8 @@ command carries `transport: "channel:<id>"`.
 
 ## See also
 
-- [Security](/security/) — the tokens, the egress guard, and why the rate limit
+- [Security](SECURITY.md) — the tokens, the egress guard, and why the rate limit
   matters for anything public.
-- [Agents](/agents/) — `limits[:queue_mode]`, which is what produces `merged` and
+- [Agents](AGENTS.md) — `limits[:queue_mode]`, which is what produces `merged` and
   `steered`.
-- [Observability](/observability/) — the event stream and OpenTelemetry.
+- [Observability](OBSERVABILITY.md) — the event stream and OpenTelemetry.
