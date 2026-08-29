@@ -8,8 +8,42 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-29
+
+The pre-1.0 consolidation: MCP servers as first-class tools, a template gallery,
+the knowledge layer (extract → consolidate → retrieve → export), a session-sticky
+router for N>1 capacity, and the Studio brought to visual parity. The `/v1`
+contract is unchanged. The version jumps from 0.3 to 0.7 to say what the code
+already says — the surface is the 1.0 surface; what remains is operational proof,
+not features.
+
 ### Fixed
 
+- **An agent's identity never falls back to another agent's.** An agent with
+  neither `prompt_files` nor `base_prompt` silently inherited the deployment-wide
+  default identity, so one agent could answer as another's persona (seen live,
+  deterministic, previously misdiagnosed as a concurrency bug). It now raises
+  `Insika::ContextError` and aborts the turn instead.
+- **A text-only turn absorbs a burst of messages instead of leaking a follow-up.**
+  Steering only drained the mailbox at a tool-batch boundary; a turn with no tool
+  calls never had one, so a customer who sent four messages in a row got one
+  answer that only saw the first. The executor now runs one extra round in the
+  same turn when the mailbox is not empty.
+- **The turn supervisor starts at boot, not on the first served turn** — a
+  deployment whose only agents are scheduled never fired tick/alert/distill
+  workers until unrelated traffic arrived.
+- **Every Linux/Docker build was failing** on two independent packaging gaps:
+  `Gemfile.lock` only listed `arm64-darwin` (#185), and the Dockerfile's builder
+  stage did not copy `lib/insika/packaging.rb`, which the gemspec requires (#184;
+  a spec now parses the Dockerfile against the gemspec's `require_relative`s).
+- **MCP**: `refresh` reused a permanently broken memoized client, so an edited
+  server config needed a full process restart; and ruby_llm-mcp sent a
+  spec-invalid `Origin` header (URL with a path) that Origin-checking servers
+  (GitHub, Grafana, Metabase) rejected on every request — now stripped.
+- **Media**: STT and image-generation calls always raised past the RubyLLM
+  boundary (raw bytes where a path was expected, `assume_model_exists` with no
+  provider). Found live-validating against real audio/PDF fixtures; a contract
+  spec now guards the boundary.
 - **`insika harvest`/`knowledge:backfill` never wired the CLI's provider
   keys** — both build their own miner/extractor `ask` outside a full app
   boot (no `LlmConfigurator`), so `RubyLLM.config` was empty and a real run
@@ -21,6 +55,43 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **MCP servers are first-class tools** (#178–#182). `Insika::McpClient` builds a
+  real stdio/http/sse client (ruby_llm-mcp, lazy-loaded) from an `McpStore`
+  record; `McpToolRegistry` executes live through it, merged into the overlay
+  registry as a third source (base > data-tools > mcp) so allowlists, traces,
+  budgets and checkpoints work unchanged. Config surfaces: JSON import/export in
+  the `mcpServers` format, `insika mcp list|add|remove|import|test|refresh`, the
+  `mcp` DSL declaration (which auto-grants `mcp:<name>` on the agent's allowlist),
+  `/v1/mcp`, and a transport-aware `/studio/mcp` page with per-instance status and
+  "Test connection". stdio is arbitrary command execution by config and stays
+  behind `INSIKA_MCP_STDIO=1`.
+- **Template gallery** (#183). Six example agents ship inside the gem
+  (`lib/insika/templates/<name>/agent.rb` + README) — one DSL file is both doors:
+  `insika new` copies it, the Studio gallery instantiates it. Starter
+  (travel-planner, keyless public APIs), Advanced (research-analyst fan-out),
+  Always-on (daily-digest: schedule + artifact), Teams (review-panel) and more.
+- **Session-sticky router** — `insika-router`, a standalone Async/Falcon proxy that
+  runs N engine backends (`WEB_CONCURRENCY=1` each) behind a consistent-hash ring
+  keyed on the session id, so per-session FIFO/collect/steer guarantees hold at
+  N>1 capacity with no change to the executor. Static (Railway) and DNS
+  (Kubernetes headless Service) backend discovery; an unreachable backend answers
+  the retry envelope. Opt-in.
+- **Studio visual parity** — view transitions and motion (CSS only, reduced-motion
+  aware), the transcript as product (mono label rows, tool calls as pill chips,
+  three-zone session viewer), a live home over `/studio/events`, master-detail
+  lists.
+- **`queue_mode` and `steer_max_messages` editable per agent** in the Studio
+  Config form — operations can switch steering on/off without touching the store.
+  Blank inherits the platform default; `steer_max_messages: 0` never steers.
+- **Paste-prompt journeys for coding agents** — four skill-shaped prompts under
+  `docs/prompts/`, served at `GET /docs/<name>.md` next to `start.md`:
+  run-examples, add-tool, diagnose-turn and go-live.
+- **`run_persona_eval` swaps side-effect tools instead of refusing** — a target
+  agent with a reachable POST tool gets a throwaway executor whose registry
+  resolves every side-effect name to a recorder, sharing every other collaborator
+  of the real graph.
+- **`examples/analytics`** — MCP wired to a real, key-authenticated server
+  (OpenSEO over http, bearer via `OPENSEO_API_KEY`).
 - **`insika knowledge:export`** — writes one `<name>.md` per learned concept
   under a directory (`KnowledgeStore#export_dir`). The storage format IS the
   export format, so it's a dump, not a converter, directly consumable by
