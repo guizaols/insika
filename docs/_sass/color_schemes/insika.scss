@@ -1,0 +1,32 @@
+// Insika's colour scheme for Just the Docs.
+//
+// Selected by `color_scheme: insika` in _config.yml; the theme picks the file up
+// by name and needs no other wiring. This file only maps the palette tokens from
+// _sass/custom/setup.scss onto the theme's own `!default` variables — anything
+// that is not a theme variable belongs in _sass/custom/custom.scss.
+//
+// The palette is warm stone with a terracotta accent: the name is Zulu for the
+// pillar that carries a structure, and the docs should read like one — quiet
+// neutrals, a single load-bearing colour. It is deliberately unlike the blue and
+// purple that every other Ruby docs site defaults to.
+
+$color-scheme: insika;
+
+$body-background-color: $white;
+$body-heading-color: $ink-900;
+$body-text-color: $ink-700;
+$link-color: $terracotta-100;
+$nav-child-link-color: $ink-700;
+$sidebar-color: $stone-050;
+$border-color: $stone-200;
+$base-button-color: $stone-100;
+$btn-primary-color: $terracotta-100;
+$code-background-color: $stone-100;
+$feedback-color: darken($sidebar-color, 3%);
+$table-background-color: $white;
+$search-background-color: $white;
+$search-result-preview-color: $ink-500;
+
+// The theme ships accessible-pygments; github-light is the one that sits calmly
+// on a warm background instead of fighting it.
+@import "./vendor/accessible-pygments/github-light";

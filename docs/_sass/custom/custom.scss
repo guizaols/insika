@@ -1,0 +1,199 @@
+// Insika's own styling on top of Just the Docs.
+//
+// Everything that is NOT one of the theme's `!default` variables lives here;
+// the palette itself is in _sass/color_schemes/insika.scss. Kept deliberately
+// small: the theme already handles layout, search and responsiveness, and every
+// rule below exists because a specific page needed it.
+//
+// IMPORTANT: these pages are read in three places — this site, GitHub, and the
+// raw-markdown API (`GET /docs/<name>.md`). Styling is therefore driven by
+// kramdown attribute lists (`{: .card-grid }`) on ORDINARY markdown, never by
+// raw HTML blocks: a list still reads as a list everywhere else.
+
+// ---------------------------------------------------------------------------
+// Typography
+// ---------------------------------------------------------------------------
+
+// The theme's 1.6 content line-height is tight for pages this long.
+.main-content {
+  line-height: 1.65;
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+  }
+
+  // A rule above every h2 turns a long page into visible sections. h2 is the
+  // level the search index already uses as a landmark, so it is the honest one
+  // to draw.
+  h2 {
+    padding-top: $sp-5;
+    margin-top: $sp-7;
+    border-top: $border $border-color;
+  }
+
+  h2:first-of-type {
+    margin-top: $sp-4;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  // Inline code appears in nearly every sentence here (env vars, method names).
+  // A tinted chip separates it from prose without shouting.
+  p > code,
+  li > code,
+  td > code,
+  h2 > code,
+  h3 > code,
+  h4 > code {
+    padding: 0.12em 0.32em;
+    background-color: $stone-100;
+    border: $border $stone-200;
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
+
+  blockquote {
+    margin-left: 0;
+    padding: $sp-2 $sp-4;
+    border-left: 3px solid $terracotta-000;
+    background-color: $stone-050;
+    color: $ink-700;
+
+    > :first-child { margin-top: 0; }
+    > :last-child { margin-bottom: 0; }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Home hero
+// ---------------------------------------------------------------------------
+
+// `{: .hero-tagline }` on the one line under the h1.
+.hero-tagline {
+  max-width: 34rem;
+  margin-bottom: $sp-6;
+  color: $ink-700;
+  font-size: $font-size-6;
+  font-weight: 300;
+  line-height: 1.45;
+}
+
+// ---------------------------------------------------------------------------
+// Card grid
+// ---------------------------------------------------------------------------
+
+// `{: .card-grid }` on a markdown list whose items read
+// `**[Title](page.md)** — what the page answers.`
+//
+// The em dash is the split point: the bold link becomes the card title and the
+// remainder becomes the card's body. No HTML in the markdown, so GitHub and the
+// raw-markdown API still see a plain, readable list.
+.main-content ul.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: $sp-3;
+  margin: $sp-5 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    margin: 0;
+    padding: $sp-4;
+    border: $border $border-color;
+    border-radius: 6px;
+    background-color: $body-background-color;
+    line-height: 1.5;
+    transition: border-color 150ms ease, background-color 150ms ease;
+
+    &::before { content: none; }
+
+    &:hover {
+      border-color: $terracotta-000;
+      background-color: $stone-050;
+    }
+
+    // The bold-wrapped link is the card's title.
+    > strong {
+      display: block;
+      margin-bottom: $sp-1;
+      font-size: $font-size-5;
+      font-weight: 600;
+
+      > a {
+        color: $body-heading-color;
+        text-decoration: none;
+        background-image: none;
+
+        &:hover { color: $terracotta-100; }
+      }
+    }
+
+    color: $ink-500;
+    font-size: $font-size-4;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+
+.site-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+// The sidebar is six sections deep; a hairline between top-level entries makes
+// the grouping legible at a glance instead of one 40-item column.
+.site-nav > .nav-list > .nav-list-item + .nav-list-item {
+  border-top: $border $border-color;
+}
+
+.nav-list .nav-list-item .nav-list-link.active {
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 $terracotta-100;
+}
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+// Reference tables here are wide (env var, default, meaning). Zebra striping
+// and a tinted header make a 20-row table scannable.
+.main-content table {
+  th {
+    background-color: $stone-100;
+    font-size: $font-size-3;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  tbody tr:nth-child(even) {
+    background-color: $stone-050;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Site title
+// ---------------------------------------------------------------------------
+
+// _includes/title.html puts the pillar mark inline before the wordmark.
+.site-title {
+  display: inline-flex;
+  align-items: center;
+  gap: $sp-2;
+}
+
+.site-title-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+
+  svg {
+    width: 1.05em;
+    height: 1.05em;
+    fill: $terracotta-100;
+
+    .shaft { fill: $terracotta-000; }
+  }
+}

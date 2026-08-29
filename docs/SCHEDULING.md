@@ -1,7 +1,7 @@
 ---
 title: Schedules
-parent: Operate & prove it
-nav_order: 8
+parent: Operate
+nav_order: 2
 permalink: /schedules/
 ---
 

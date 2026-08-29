@@ -1,17 +1,17 @@
 ---
 title: Demo data
-parent: Operate & prove it
-nav_order: 10
+parent: Start here
+nav_order: 4
 permalink: /demo/
 ---
 
 # Demo data — see every loop working at once
 
 Most of what makes Insika worth looking at only shows up after data has
-accumulated: a [funnel](AGENTS.md#the-outcome-funnel-rfc-0032) with a frozen
+accumulated: a [funnel](OUTCOMES.md#the-outcome-funnel) with a frozen
 baseline needs weeks of folded outcomes, a [refinement](REFINEMENT.md)
 proposal needs a run that actually found something, an
-[approval](AGENTS.md#layer-2-policies-and-approvals) needs a tool call
+[approval](POLICY.md#layer-2-policies-and-approvals) needs a tool call
 someone is waiting on. A fresh instance shows none of that — every one of
 those pages renders its empty state, which makes it hard to tell "nothing
 happened yet" from "this doesn't work."
@@ -24,10 +24,10 @@ realistic-looking data to see every loop at once.
 
 | Page | What you'll see |
 |------|------------------|
-| [Funnel](AGENTS.md#the-outcome-funnel-rfc-0032) — `/studio/funnel?agent=demo-store` | 40 days of folded outcomes (`greeted → browsing → cart_started → checkout_started → purchased`) and a **frozen baseline** |
-| [Follow-ups](AGENTS.md#follow-ups--the-seller-who-comes-back-rfc-0033) — `/studio/followups?agent=demo-store` | one record in each state: `pending`, `fired` (one per arm, so the A/B card has something to compare), `cancelled`, `blocked` |
+| [Funnel](OUTCOMES.md#the-outcome-funnel) — `/studio/funnel?agent=demo-store` | 40 days of folded outcomes (`greeted → browsing → cart_started → checkout_started → purchased`) and a **frozen baseline** |
+| [Follow-ups](OUTCOMES.md#follow-ups--the-seller-who-comes-back) — `/studio/followups?agent=demo-store` | one record in each state: `pending`, `fired` (one per arm, so the A/B card has something to compare), `cancelled`, `blocked` |
 | [Refinement](REFINEMENT.md) — `/studio/refinement?agent=demo-store` | four runs across the lifecycle: `awaiting_approval`, `applied`, `rejected` (gate failed), `no_findings` |
-| [Approvals](AGENTS.md#layer-2-policies-and-approvals) — `/studio/approvals` | two pending tool calls waiting on a human, one already resolved |
+| [Approvals](POLICY.md#layer-2-policies-and-approvals) — `/studio/approvals` | two pending tool calls waiting on a human, one already resolved |
 | [Facts](FACTS.md) — `/studio/facts` | three distillation proposals (`pending`, `approved` — with the resulting memory fact, `rejected`) |
 | [Evals](EVALS.md) — `/studio/evals?agent=demo-store` | six golden cases and a baseline run with a mix of passes and one failure |
 

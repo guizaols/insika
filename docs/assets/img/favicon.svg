@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Insika">
+  <!-- A pillar seen head-on: capital, shaft, base. It doubles as the "I" of
+       Insika, which is why the shaft is centred and the slabs overhang. -->
+  <rect x="3" y="3" width="18" height="3.6" rx="1" fill="#a8431e"/>
+  <rect x="8.7" y="7.6" width="6.6" height="8.8" fill="#c2542a"/>
+  <rect x="3" y="17.4" width="18" height="3.6" rx="1" fill="#a8431e"/>
+</svg>

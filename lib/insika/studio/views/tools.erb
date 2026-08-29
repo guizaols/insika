@@ -22,7 +22,7 @@
           <% dropped = @dropped_tool_names.include?(name) %>
           <a class="drill-item drill-item-sm" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>"
              <%== %( title="its definition is invalid — no agent can call it until it is fixed") if dropped %>>
-            <div class="drill-item-name"><span class="txt"><%= name %></span><span class="pill plain">data</span><% if dropped %> <span class="pill locked">dropped</span><% end %></div>
+            <div class="drill-item-name"><span class="txt" title="<%= name %>"><%= name %></span><span class="pill plain">data</span><% if dropped %> <span class="pill locked">dropped</span><% end %></div>
           </a>
         <% end %>
       <% end %>
@@ -33,7 +33,7 @@
            data-turbo-frame="tool-detail" data-turbo-action="advance"
            data-list-filter-target="item" data-filter-text="<%= a.id %>"
            data-active-link-target="item" data-action="click->active-link#select">
-          <div class="drill-item-name"><span class="txt"><%= a.id %></span>
+          <div class="drill-item-name"><span class="txt" title="<%= a.id %>"><%= a.id %></span>
             <span class="pill plain"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size}" %></span>
           </div>
         </a>

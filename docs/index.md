@@ -8,7 +8,7 @@ permalink: /
 {: .fs-9 }
 
 Your agent is the idea. Insika is what holds it up in production.
-{: .fs-6 .fw-300 }
+{: .hero-tagline }
 
 [Build your first agent](RUNNING-LOCAL.md){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View on GitHub](https://github.com/guizaols/insika){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -60,9 +60,12 @@ secrets), `GET /docs` and `GET /docs/<name>.md`. Public and on by default when y
 
 ## Where to go next
 
-- **[Understand the idea](understand.md)** — why a runtime rather than a DIY loop, and how a turn actually runs.
-- **[Build an agent](build.md)** — agents, tools, skills, context, and the local loop.
-- **[Ship it](ship.md)** — security, confined execution, deployment.
-- **[Operate & prove it](operate.md)** — observability, the benchmark, load testing, evals, refinement.
+- **[Start here](start-here.md)** — why a runtime, getting one running, and what a turn actually does.
+- **[Core concepts](core-concepts.md)** — agents, limits, tools, skills, context, workflows.
+- **[Integrate](integrate.md)** — the API, channels, media, embedding, plugins, templates.
+- **[Ship it](ship.md)** — security, confined execution, deployment, scaling past one worker.
+- **[Operate](operate.md)** — observability, schedules, artifacts, load and soak testing.
+- **[Improve](improve.md)** — evals, refinement, outcomes, and the three learning loops.
+{: .card-grid }
 
 Pre-release: APIs may still change and nothing is tagged yet. Licensed MIT.

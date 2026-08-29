@@ -33,35 +33,53 @@ One file per journey, same shape as the onboarding prompt — point Claude Code/
 
 ## Core concepts
 
-- [Agents](https://raw.githubusercontent.com/guizaols/insika/main/docs/AGENTS.md): the AgentProfile, its five access layers, and creating or editing agents at runtime via UI, pack import, or `POST /v1/agents`.
-- [Tools](https://raw.githubusercontent.com/guizaols/insika/main/docs/TOOLS.md): code tools, data-defined tools, MCP import, manifests, and egress troubleshooting.
+- [Agents](https://raw.githubusercontent.com/guizaols/insika/main/docs/AGENTS.md): the AgentProfile and every key on it — creating and editing agents at runtime via the UI, a pack import, or `POST /v1/agents`.
+- [Limits and policy](https://raw.githubusercontent.com/guizaols/insika/main/docs/POLICY.md): the five access layers — allowed tools, approvals, content-safety guardrails, edge limits on flood and spend, and reasoning.
+- [Tools](https://raw.githubusercontent.com/guizaols/insika/main/docs/TOOLS.md): code tools, data-defined tools, MCP servers, manifests, and egress troubleshooting.
 - [Skills](https://raw.githubusercontent.com/guizaols/insika/main/docs/SKILLS.md): the SKILL.md format and progressive, on-demand loading.
 - [Context](https://raw.githubusercontent.com/guizaols/insika/main/docs/CONTEXT.md): what fills a turn's prompt, the token budget and eviction, cross-session memory.
-- [Workflows](https://raw.githubusercontent.com/guizaols/insika/main/docs/WORKFLOWS.md): deterministic orchestration of several agents — the five agentic-workflow patterns (sequential, routing, parallel fan-out/fan-in, evaluator-optimizer, orchestrator-workers), schema-validated I/O, durable runs, and when to let the model choose instead.
-- [Channels](https://raw.githubusercontent.com/guizaols/insika/main/docs/CHANNELS.md): how people reach the agent — the two channels that ship with the engine: the web widget (one `<script>` tag on your site, no backend of yours, with a mandatory rate limit behind it because it is public), and the relay (you keep your own WhatsApp/Slack/app integration and the engine only runs the turn — two routes, an envelope, `event_id` dedup and at-most-once delivery). The engine deliberately does not speak WhatsApp or Slack itself; the relay is the answer for those, and a channel of your own is a plugin.
-- [Plugins](https://raw.githubusercontent.com/guizaols/insika/main/docs/PLUGINS.md): the two extension tiers — config-only (data tools, MCP, skills) and code (a gem with a manifest that registers tools, policies, middleware or context providers).
+- [Workflows](https://raw.githubusercontent.com/guizaols/insika/main/docs/WORKFLOWS.md): deterministic orchestration of several agents — the five agentic-workflow patterns, schema-validated I/O, durable runs, and when to let the model choose instead.
 - [Architecture](https://raw.githubusercontent.com/guizaols/insika/main/docs/ARCHITECTURE.md): the turn pipeline, the tool-loop, checkpoint recovery, the fiber concurrency model, composition roots.
 
-## Operate in production
+## Integrate
 
-- [Security](https://raw.githubusercontent.com/guizaols/insika/main/docs/SECURITY.md): the security features — content-safety guardrails, egress guard, approvals, edge limits, secret handling.
-- [Sandbox](https://raw.githubusercontent.com/guizaols/insika/main/docs/SANDBOX.md): the confined-execution primitive for untrusted tool code.
-- [Deploy](https://raw.githubusercontent.com/guizaols/insika/main/docs/DEPLOY.md): containerized deploy under Falcon, durable SQLite volume, tokens and environment.
-- [Embedding](https://raw.githubusercontent.com/guizaols/insika/main/docs/EMBEDDING.md): mounting Insika into an existing Ruby app — `Insika.embed(backend:)` for a graph that owns its store and credentials, `Insika::Server.rack_app` for the router, and what the process still owns (signals, the reactor, the Studio).
-- [Observability](https://raw.githubusercontent.com/guizaols/insika/main/docs/OBSERVABILITY.md): the event stream, plus opt-in OpenTelemetry — turns as traces and metrics, attribute conventions, dashboard recipes.
-- [Evals](https://raw.githubusercontent.com/guizaols/insika/main/docs/EVALS.md): the quality harness — a case as YAML data (deterministic assertions plus a rubric a judge scores), cases in the store or the corpus, a panel of distinct judge models with aggregate/min_agreement, and the baseline gate.
-- [Refinement](https://raw.githubusercontent.com/guizaols/insika/main/docs/REFINEMENT.md): reading an agent's own production traffic back as a ranked failure report — the findings, the window, the privacy rules, and why there is no scheduler.
-- [Facts](https://raw.githubusercontent.com/guizaols/insika/main/docs/FACTS.md): distilling finished customer conversations into proposed facts — human-gated in the Studio (approve/reject/dismiss, the latch), written to memory via CAS, nothing ever applied automatically.
-- [Harvest](https://raw.githubusercontent.com/guizaols/insika/main/docs/HARVEST.md): mining SKILLS from real traffic — the negative list, the evidence-ledger grounding filter, the double gate (eval replay + conversion baseline), snapshot-first promotion and the append-only log, all behind a human approval.
-- [Knowledge](https://raw.githubusercontent.com/guizaols/insika/main/docs/KNOWLEDGE.md): extracting durable concepts (facts, procedures, policies, objections) from finished conversations into a per-agent knowledge base — the concept format, provenance stamping, PII redaction, the best-effort write path with a re-scan recovery CLI, and what's not shipped yet (retrieval, consolidation, export).
-- [Releasing](https://raw.githubusercontent.com/guizaols/insika/main/docs/RELEASING.md): how the `insika` gem is cut and how the install is proven from outside the repo before publishing.
 - [The /v1 API](https://raw.githubusercontent.com/guizaols/insika/main/docs/API.md): the frozen compatibility contract — the surface, the additive-only rule, the `Insika-Version` gate.
-- [The domain-free core](https://raw.githubusercontent.com/guizaols/insika/main/docs/domain.md): what the gem ships, what a deployment declares, and how to clear the built-in pt-BR corpus.
+- [Channels](https://raw.githubusercontent.com/guizaols/insika/main/docs/CHANNELS.md): how people reach the agent: the web widget (one `<script>` tag, no backend of yours, rate-limited because it is public) and the relay (you keep your own WhatsApp/Slack integration and the engine only runs the turn). The engine deliberately does not speak WhatsApp or Slack itself.
+- [Media](https://raw.githubusercontent.com/guizaols/insika/main/docs/MEDIA.md): photos, voice notes and documents as additive content parts on the message contract; generated images handed back the same way.
+- [Embedding](https://raw.githubusercontent.com/guizaols/insika/main/docs/EMBEDDING.md): mounting Insika into an existing Ruby app — `Insika.embed(backend:)` for a graph that owns its store and credentials, `Insika::Server.rack_app` for the router, and what the process still owns.
+- [Plugins](https://raw.githubusercontent.com/guizaols/insika/main/docs/PLUGINS.md): the two extension tiers — config-only (data tools, MCP, skills) and code (a gem with a manifest that registers tools, policies, middleware or context providers).
+- [Templates](https://raw.githubusercontent.com/guizaols/insika/main/docs/TEMPLATES.md): the example agents shipped inside the gem — `insika new <name>` or one Studio click gets a running, editable app.
 
-## Proof
+## Ship it
 
-- [Benchmark](https://raw.githubusercontent.com/guizaols/insika/main/docs/BENCHMARK.md): the neutral, provider-free engine benchmark — methodology, numbers, and how to rerun it without an API key.
+- [Security](https://raw.githubusercontent.com/guizaols/insika/main/docs/SECURITY.md): content-safety guardrails, the egress guard, approvals, edge limits, secret handling, and the privacy obligations that come with memory.
+- [Sandbox](https://raw.githubusercontent.com/guizaols/insika/main/docs/SANDBOX.md): the confined-execution primitive for untrusted tool code.
+- [Deploy](https://raw.githubusercontent.com/guizaols/insika/main/docs/DEPLOY.md): containerized deploy under Falcon, a durable SQLite volume, tokens and environment, and the process model.
+- [Router](https://raw.githubusercontent.com/guizaols/insika/main/docs/ROUTER.md): `insika-router`, the session-sticky proxy that keeps per-session FIFO, steer and the SSE watch intact across N workers.
+- [Releasing](https://raw.githubusercontent.com/guizaols/insika/main/docs/RELEASING.md): how the gem is cut and how the install is proven from outside the repo before publishing.
+
+## Operate
+
+- [Observability](https://raw.githubusercontent.com/guizaols/insika/main/docs/OBSERVABILITY.md): the event stream, plus opt-in OpenTelemetry — turns as traces and metrics, attribute conventions, dashboard recipes.
+- [Schedules](https://raw.githubusercontent.com/guizaols/insika/main/docs/SCHEDULING.md): recurring turns the engine fires on its own tick — one turn per claim window, no catch-up after downtime.
+- [Artifacts](https://raw.githubusercontent.com/guizaols/insika/main/docs/ARTIFACTS.md): a report the agent can hand you a URL to — the `save_artifact` tool, the routes, the expiring signed link.
 - [Load test](https://raw.githubusercontent.com/guizaols/insika/main/docs/LOADTEST.md): load-testing the engine end-to-end and comparing data topologies.
+- [Soak](https://raw.githubusercontent.com/guizaols/insika/main/docs/SOAK.md): the long-running stability run and what it is meant to catch.
+- [Benchmark](https://raw.githubusercontent.com/guizaols/insika/main/docs/BENCHMARK.md): the neutral, provider-free engine benchmark — methodology, numbers, and how to rerun it without an API key.
+
+## Improve
+
+- [Evals](https://raw.githubusercontent.com/guizaols/insika/main/docs/EVALS.md): the quality harness — a case as YAML data (deterministic assertions plus a rubric a judge scores), a panel of distinct judge models, and the baseline gate.
+- [Refinement](https://raw.githubusercontent.com/guizaols/insika/main/docs/REFINEMENT.md): reading an agent's own production traffic back as a ranked failure report — the findings, the window, the privacy rules.
+- [Outcomes and follow-ups](https://raw.githubusercontent.com/guizaols/insika/main/docs/OUTCOMES.md): the outcome funnel over real traffic and its frozen baseline, plus the follow-up tool that lets an agent come back on a promise it made.
+- [Knowledge](https://raw.githubusercontent.com/guizaols/insika/main/docs/KNOWLEDGE.md): extracting durable concepts from finished conversations into a per-agent knowledge base — the concept format, provenance stamping, PII redaction, and what is not shipped yet.
+- [Facts](https://raw.githubusercontent.com/guizaols/insika/main/docs/FACTS.md): distilling finished customer conversations into proposed facts — human-gated in the Studio, written to memory via CAS, nothing ever applied automatically.
+- [Harvest](https://raw.githubusercontent.com/guizaols/insika/main/docs/HARVEST.md): mining SKILLS from real traffic — the negative list, the evidence-ledger grounding filter, the double gate, snapshot-first promotion, all behind a human approval.
+
+## Reference
+
+- [The domain-free core](https://raw.githubusercontent.com/guizaols/insika/main/docs/domain.md): what the gem ships, what a deployment declares, and how to clear the built-in pt-BR corpus.
+- [Demo data](https://raw.githubusercontent.com/guizaols/insika/main/docs/DEMO.md): `insika demo:seed` — one agent populated with a funnel, follow-ups, refinement runs, approvals, facts and evals so a fresh instance shows every loop working.
 
 ## Optional
 

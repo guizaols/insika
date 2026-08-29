@@ -1,7 +1,7 @@
 ---
 title: Prompt — go live
-parent: Ship it
-nav_order: 6
+parent: Reference
+nav_order: 5
 permalink: /go-live/
 layout: default
 render_with_liquid: false

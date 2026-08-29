@@ -1,7 +1,7 @@
 ---
 title: Prompt — add a tool or skill
-parent: Build an agent
-nav_order: 11
+parent: Reference
+nav_order: 3
 permalink: /add-tool/
 layout: default
 render_with_liquid: false

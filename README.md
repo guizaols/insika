@@ -92,42 +92,64 @@ Read http://localhost:9292/docs/go-live.md then take this agent to production
 
 ## Docs by goal
 
-**Understand the idea**
+The groups below are the same six the [site](https://guizaols.github.io/insika/)
+navigates by.
+
+**Start here**
 
 - [Why Insika](docs/WHY.md) — a runtime vs a DIY loop, an assembled framework, or a hosted gateway.
+- [Running locally](docs/RUNNING-LOCAL.md) — the local demo, the control UI, wiring tools to your own backend.
 - [Architecture](docs/ARCHITECTURE.md) — the turn pipeline, the tool-loop, checkpoint recovery, composition roots, diagrams.
+- [Demo data](docs/DEMO.md) — `insika demo:seed` populates one agent with a funnel, follow-ups, refinement runs, approvals, facts and evals at once, so a fresh instance shows every loop working before you build your own.
 
-**Build an agent**
+**Core concepts**
 
-- [Agents](docs/AGENTS.md) — the AgentProfile and its five access layers; create and edit at runtime.
+- [Agents](docs/AGENTS.md) — the AgentProfile and every key on it; create and edit at runtime.
+- [Limits and policy](docs/POLICY.md) — the five layers: allowed tools, approvals, guardrails, edge limits, reasoning.
 - [Tools](docs/TOOLS.md) — code vs data vs MCP tools, manifests, egress troubleshooting.
 - [Skills](docs/SKILLS.md) — the SKILL.md format and progressive loading.
 - [Context](docs/CONTEXT.md) — what fills a turn's prompt; budget, eviction, memory.
 - [Workflows](docs/WORKFLOWS.md) — deterministic orchestration of several agents: the five patterns, and when to let the model choose instead.
-- [Channels](docs/CHANNELS.md) — how people reach the agent: a widget on your site in one `<script>` tag, or keep your own WhatsApp/Slack stack (relay).
-- [Plugins](docs/PLUGINS.md) — the two extension tiers: config-only, or a gem the engine loads.
-- [Running locally](docs/RUNNING-LOCAL.md) — the local demo, the control UI, wiring tools to your own backend.
-- [Templates](docs/TEMPLATES.md) — example agents shipped in the gem: `insika new <name>` or a Studio click gets you a running, editable app in one command.
 - [examples/](examples/) — one small runnable project per capability.
+
+**Integrate**
+
+- [The /v1 API](docs/API.md) — the frozen compatibility contract: the surface, the additive-only rule, the version gate.
+- [Channels](docs/CHANNELS.md) — how people reach the agent: a widget on your site in one `<script>` tag, or keep your own WhatsApp/Slack stack (relay).
+- [Media](docs/MEDIA.md) — photos, voice notes and documents through the message contract; generated images back out.
+- [Embedding](docs/EMBEDDING.md) — mount Insika into the Ruby app you already have: `Insika.embed(backend:)` and a Rack app for your router.
+- [Plugins](docs/PLUGINS.md) — the two extension tiers: config-only, or a gem the engine loads.
+- [Templates](docs/TEMPLATES.md) — example agents shipped in the gem: `insika new <name>` or a Studio click gets you a running, editable app in one command.
 
 **Ship it**
 
 - [Security](docs/SECURITY.md) — guardrails, egress, approvals, edge limits, secrets.
 - [Sandbox](docs/SANDBOX.md) — the confined-execution primitive.
-- [Deploy](docs/DEPLOY.md) — Falcon, a durable SQLite volume, tokens.
-- [Embedding](docs/EMBEDDING.md) — mount Insika into the Ruby app you already have: `Insika.embed(backend:)` and a Rack app for your router.
+- [Deploy](docs/DEPLOY.md) — Falcon, a durable SQLite volume, tokens, the process model.
+- [Router](docs/ROUTER.md) — the session-sticky proxy that keeps per-session guarantees past one worker.
+- [Releasing](docs/RELEASING.md) — how the gem is cut, and the install proof that runs before it is published.
 
-**Operate & prove it**
+**Operate**
 
-- [Observability](docs/OBSERVABILITY.md) — OpenTelemetry (opt-in): turns as traces and metrics, the attribute convention, dashboard recipes.
-- [Benchmark](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
+- [Observability](docs/OBSERVABILITY.md) — the event stream, plus opt-in OpenTelemetry: turns as traces and metrics, the attribute convention, dashboard recipes.
+- [Schedules](docs/SCHEDULING.md) — recurring turns the engine fires on its own tick, with no cron on another box.
+- [Artifacts](docs/ARTIFACTS.md) — a report the agent can hand you a URL to.
 - [Load test](docs/LOADTEST.md) — load-testing and data topology.
+- [Soak](docs/SOAK.md) — the long run that finds what a short one cannot.
+- [Benchmark](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
+
+**Improve**
+
 - [Evals](docs/EVALS.md) — the cases that grade an agent: rubrics, the judge panel, and the pre-merge gate.
 - [Refinement](docs/REFINEMENT.md) — read an agent's own traffic back as a ranked report of what broke.
+- [Outcomes and follow-ups](docs/OUTCOMES.md) — what the traffic was worth in business terms, and the tool that comes back on a promise.
+- [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path (retrieval and consolidation are not shipped yet).
 - [Facts](docs/FACTS.md) — distill finished customer conversations into proposed facts; a human approves them into memory (nothing is ever applied automatically).
 - [Harvest](docs/HARVEST.md) — mine real traffic for SKILL proposals; the negative list, the evidence-ledger grounding filter and the double gate hold every proposal to a human approval and the append-only log (nothing is ever applied automatically).
-- [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path (retrieval and consolidation are not shipped yet).
-- [Demo data](docs/DEMO.md) — `insika demo:seed` populates one agent with a funnel, follow-ups, refinement runs, approvals, facts and evals all at once, so a fresh instance shows every loop working before you build your own.
+
+**Reference**
+
+- [The domain-free core](docs/domain.md) — what the gem ships, what a deployment declares, and how to clear it.
 
 All of the above is also browsable, searchable and cross-linked at
 **[guizaols.github.io/insika](https://guizaols.github.io/insika/)** — the same files,

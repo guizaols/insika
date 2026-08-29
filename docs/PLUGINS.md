@@ -1,7 +1,7 @@
 ---
 title: Plugins
-parent: Build an agent
-nav_order: 7
+parent: Integrate
+nav_order: 5
 permalink: /plugins/
 ---
 

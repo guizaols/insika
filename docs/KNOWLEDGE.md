@@ -1,7 +1,7 @@
 ---
 title: Knowledge
-parent: Operate & prove it
-nav_order: 8
+parent: Improve
+nav_order: 4
 permalink: /knowledge/
 ---
 
@@ -229,7 +229,7 @@ one, and it is worth measuring (calls per conversation), not assuming.
 - **Term overlap, not understanding.** `Index::Scan` matches words, not
   meaning — a concept phrased very differently from the customer's words
   will not surface even if it answers the question. No embeddings by
-  design (§14.4's call): revisit only with evidence that retrieval, not
+  design: revisit only with evidence that retrieval, not
   extraction, is the bottleneck.
 
 ## Index::Scan's performance, measured not assumed

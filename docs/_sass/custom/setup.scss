@@ -1,0 +1,26 @@
+// Insika's palette tokens.
+//
+// This file is the ONE place the raw colours are written. It lives in
+// custom/setup rather than in the colour scheme because Just the Docs imports
+// it before every scheme it compiles — including its own stock light and dark
+// stylesheets, which also pull in _sass/custom/custom.scss and would otherwise
+// fail on an undefined variable.
+//
+// _sass/color_schemes/insika.scss maps these onto the theme's own variables.
+
+// Warm neutrals. The greys carry a little red so that text on the off-white
+// sidebar does not read as blue-grey next to the terracotta accent.
+$ink-900: #16191d !default; // headings
+$ink-700: #3d4148 !default; // body copy
+$ink-500: #6b6a68 !default; // muted
+$stone-050: #faf8f5 !default; // sidebar
+$stone-100: #f6f3ef !default; // code blocks, table stripes
+$stone-200: #e8e2d9 !default; // borders
+
+// The single accent. #a8431e clears 4.5:1 on both #fff and the sidebar, which
+// the lighter, prettier terracottas do not — links are the one thing here that
+// cannot trade contrast for warmth.
+$terracotta-000: #c2542a !default;
+$terracotta-100: #a8431e !default;
+$terracotta-200: #8a3617 !default;
+$terracotta-300: #6b2911 !default;

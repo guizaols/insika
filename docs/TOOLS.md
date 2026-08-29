@@ -1,7 +1,7 @@
 ---
 title: Tools
-parent: Build an agent
-nav_order: 2
+parent: Core concepts
+nav_order: 3
 permalink: /tools/
 ---
 
@@ -197,7 +197,7 @@ backend, not of whoever calls it. Every agent sharing the tool gets the same val
 > there **preserves** it — the form carries the stored values through instead of
 > replacing the record with only what it shows.
 
-## Evidence: the lean envelope and grounding (RFC-0029)
+## Evidence: the lean envelope and grounding
 
 A catalog tool returns products; the model should only ever quote the ones the tool
 actually returned — the store dies of a SKU the model invented. `evidence` is the
@@ -275,7 +275,7 @@ reload, no restart):
 3. **Manifest** — `POST /v1/tools/manifest`. Partial failure is isolated: one
    malformed tool becomes an `errors[]` entry; only a structural manifest error
    fails the whole request. The response reports `{ version, created, updated, errors }`.
-4. ~~MCP ingestion~~ — retired (RFC-0040 PR2). An MCP server's tools are no
+4. ~~MCP ingestion~~ — retired. An MCP server's tools are no
    longer written into this store at all; see [MCP servers](#mcp-servers).
 
 ### The one gotcha: env/secret templating is manifest-only

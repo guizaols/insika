@@ -37,7 +37,7 @@
              data-list-filter-target="item" data-filter-text="<%= mcp_filter_text(m) %>"
              data-active-link-target="item" data-action="click->active-link#select">
             <div class="drill-item-name">
-              <span class="txt"><%= m["name"] %></span>
+              <span class="txt" title="<%= m["name"] %>"><%= m["name"] %></span>
               <span class="pill <%= status_cls %>"><%= status_label %></span>
             </div>
             <div class="drill-item-sub"><%= m["transport"] %><%== " · #{m['url']}" if m["url"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></div>

@@ -1,7 +1,7 @@
 ---
 title: Facts
-parent: Operate & prove it
-nav_order: 6
+parent: Improve
+nav_order: 5
 permalink: /facts/
 ---
 
@@ -92,7 +92,7 @@ visible — the operator's edit always wins, never a silent overwrite.
 ## Provenance
 
 An approved fact is written with `origin: "distilled:<session_ref>"` — the
-RFC-0031 provenance discipline: `"engine"` (the `remember` tool), `"operator"`
+The provenance discipline: `"engine"` (the `remember` tool), `"operator"`
 (Studio edits), `"legacy"`, and `"distilled"` (+ the session that produced it).
 The Closed loop reads the same cell every later turn injects, and the
 distillation ledger suppresses re-proposing a fact that is already applied with

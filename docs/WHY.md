@@ -1,6 +1,6 @@
 ---
 title: Why Insika
-parent: Understand the idea
+parent: Start here
 nav_order: 1
 permalink: /why/
 ---
