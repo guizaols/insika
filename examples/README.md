@@ -27,6 +27,7 @@ DEEPSEEK_API_KEY=sk-... ruby examples/<name>/<file>.rb
 | [scheduled-report/](scheduled-report/) | Recurring schedule (`schedule`) + `save_artifact` | `ruby examples/scheduled-report/report_agent.rb` |
 
 | [agentic-workflows/](agentic-workflows/) | The five composition patterns: sequential, routing, parallel, evaluator, delegation | `ruby examples/agentic-workflows/sequential.rb` |
+| [analytics/](analytics/) | MCP over http against a real, **key-authenticated** server ([OpenSEO](https://github.com/every-app/open-seo)) | `ruby examples/analytics/seo_agent.rb` |
 
 Plus the flagship:
 
