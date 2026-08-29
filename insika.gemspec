@@ -25,10 +25,10 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 3.3"
 
   spec.metadata = {
-    "homepage_uri" => spec.homepage,
+    "homepage_uri" => "https://guizaols.github.io/insika/",
     "source_code_uri" => spec.homepage,
     "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
-    "documentation_uri" => "https://guizaols.github.io/insika/",
+    "documentation_uri" => "https://guizaols.github.io/insika/start-here/",
     "rubygems_mfa_required" => "true"
   }
 
