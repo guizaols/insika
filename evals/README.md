@@ -44,11 +44,11 @@ needs a live provider key on the server + the target agents provisioned.
 ```bash
 # 1. boot the engine (dev): DEEPSEEK_API_KEY=… ruby scripts/serve_real.rb
 # 2. provision the target agent(s) from the real packs (client; POST /v1/agents):
-INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+INSIKA_URL=http://localhost:9292 INSIKA_GATEWAY_TOKEN=local-demo \
 INSIKA_INTERNAL_API_TOKEN=… \
   bundle exec ruby scripts/import_pack.rb openclaw/workspace/agent-store-<id>
 # 3. run the evals:
-OPENCLAW_GATEWAY_TOKEN=local-demo \
+INSIKA_GATEWAY_TOKEN=local-demo \
   ruby evals/run.rb --base-url http://localhost:9292 --mode both
 ```
 
@@ -66,7 +66,7 @@ runs at temperature 0 and, on a borderline case, a `--quorum` takes the median o
 samples. An unparseable judge reply scores 0 (fails) — never a silent pass.
 
 ```bash
-DEEPSEEK_API_KEY=… OPENCLAW_GATEWAY_TOKEN=local-demo \
+DEEPSEEK_API_KEY=… INSIKA_GATEWAY_TOKEN=local-demo \
   ruby evals/run.rb --judge-model deepseek-v4-flash --quorum 3 --mode eval
 ```
 

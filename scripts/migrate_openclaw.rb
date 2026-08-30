@@ -48,7 +48,7 @@
 #   import <pack-dir>
 #       Delegates to scripts/import_pack.rb (Insika::Pack.from_dir →
 #       POST /v1/agents). Same env as import_pack.rb (INSIKA_URL,
-#       OPENCLAW_GATEWAY_TOKEN, INSIKA_INTERNAL_API_TOKEN).
+#       INSIKA_GATEWAY_TOKEN, INSIKA_INTERNAL_API_TOKEN).
 #
 # Railway volume (documented recipe; the volume is just a source of state dirs):
 #   railway link   # the OpenClaw gateway project/service

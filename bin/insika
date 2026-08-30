@@ -337,7 +337,7 @@ def evals_simulate(argv)
   require "fileutils"
   require "time"
   opts = { base_url: ENV["INSIKA_URL"] || "http://localhost:9292",
-           token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo",
+           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo",
            timeout: 120, persona_model: ENV["EVAL_PERSONA_MODEL"],
            judge_model: ENV["EVAL_JUDGE_MODEL"], judge_provider: ENV["EVAL_JUDGE_PROVIDER"] }
   OptionParser.new do |o|
@@ -345,7 +345,7 @@ def evals_simulate(argv)
     o.on("--persona FILE", "the persona YAML — a case with a `persona:` key (required)") { |v| opts[:persona] = v }
     o.on("--target T", "agent id (over --base-url) or an A2A http(s) URL (required)") { |v| opts[:target] = v }
     o.on("--base-url URL", "deployment base URL (default #{opts[:base_url]})") { |v| opts[:base_url] = v }
-    o.on("--token T", "gateway token (default OPENCLAW_GATEWAY_TOKEN/local-demo)") { |v| opts[:token] = v }
+    o.on("--token T", "gateway token (default INSIKA_GATEWAY_TOKEN/local-demo)") { |v| opts[:token] = v }
     o.on("--timeout N", Integer, "per-turn read timeout, and the A2A poll budget in seconds (default 120)") { |v| opts[:timeout] = v }
     o.on("--staging", "the target is a staging deployment (side effects acceptable)") { opts[:staging] = true }
     o.on("--eval-profile", "the target runs an eval profile (side-effect tools swapped for fakes)") { opts[:eval_profile] = true }

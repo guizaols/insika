@@ -62,7 +62,7 @@ whole surface answers `503`, never open by omission.
 | `INSIKA_DB` | — (ephemeral memory) | SQLite path → config + execution survive a restart |
 | `BIND` | `http://localhost:9292` | host:port |
 | `ADMIN_TOKEN` | `local-demo` | token for `/studio` |
-| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for the whole `/v1` + `/a2a` surface |
+| `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for the whole `/v1` + `/a2a` surface |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
 
 With persistence:
@@ -128,7 +128,7 @@ Provision it (runs as a client against the live server; the internal token comes
 from the environment, never disk):
 
 ```bash
-INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=local-demo \
+INSIKA_URL=http://localhost:9292 INSIKA_GATEWAY_TOKEN=local-demo \
   bundle exec ruby scripts/import_pack.rb /path/to/pack
 ```
 

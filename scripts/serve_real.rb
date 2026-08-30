@@ -71,8 +71,8 @@ APP = Insika::Server::App.new(
     agents: -> { W::PROFILE_SOURCE.all.map { |p| { id: p.id, model: p.model, provider: p.provider } } }
   ),
   # gateway_token: Bearer for /v1/responses + /v1/agents (drop-in for the OpenClaw
-  # gateway). The consumer sends OPENCLAW_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
-  config: { gateway_token: ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN),
+  # gateway). The consumer sends INSIKA_GATEWAY_TOKEN; in the demo it falls back to ADMIN_TOKEN.
+  config: { gateway_token: ENV.fetch("INSIKA_GATEWAY_TOKEN", ADMIN_TOKEN),
             public_url: ENV["INSIKA_PUBLIC_URL"] },
   #   GET /v1/vitals: in-flight count + SQLite bytes.
   executor: W::EXECUTOR, db_path: ENV["INSIKA_DB"]

@@ -6,7 +6,7 @@
 #
 # The operator control UI lives in the Studio (cookie-auth, under /studio). The
 # server surface is transport-only: /v1/responses and /v1/agents use the
-# gateway_token (OPENCLAW_GATEWAY_TOKEN, falls back to ADMIN_TOKEN).
+# gateway_token (INSIKA_GATEWAY_TOKEN, falls back to ADMIN_TOKEN).
 #
 # Run:
 #   bundle exec falcon serve --bind http://0.0.0.0:$PORT --count $WEB_CONCURRENCY
@@ -32,9 +32,9 @@ W = Deploy::Wiring
 # — no longer patched in here.
 
 # fail-closed: without ADMIN_TOKEN, /studio denies login. The gateway falls back to
-# ADMIN_TOKEN when OPENCLAW_GATEWAY_TOKEN is not set (serve_real parity).
+# ADMIN_TOKEN when INSIKA_GATEWAY_TOKEN is not set (serve_real parity).
 ADMIN_TOKEN   = ENV["ADMIN_TOKEN"].to_s
-GATEWAY_TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", ADMIN_TOKEN)
+GATEWAY_TOKEN = ENV.fetch("INSIKA_GATEWAY_TOKEN", ADMIN_TOKEN)
 
 # WS1: "single_tenant" (default) keeps the gateway token as the only
 # credential; "multi_tenant" resolves per-tenant + operator tokens from the

@@ -72,10 +72,10 @@ module Insika
 
     # Prefixes the engine fully OWNS: an unknown key under one of these is a typo, not
     # a foreign var. INSIKA_ (current) and HARNESS_ (legacy, still honored during the
-    # deprecation window). Deliberately NOT OPENCLAW_ (shared with the OpenClaw gateway
-    # product, which sets its own OPENCLAW_HOME/_STATE_DIR/… — the engine merely borrows
-    # 3 names for interop), nor LITESTREAM_ (the sidecar owns it), nor OTEL_ (the
-    # OpenTelemetry SDK owns its env).
+    # deprecation window). Deliberately NOT OPENCLAW_ (the OpenClaw gateway product
+    # sets its own OPENCLAW_HOME/_STATE_DIR/… on the same host; the engine reads none
+    # of them), nor LITESTREAM_ (the sidecar owns it), nor OTEL_ (the OpenTelemetry
+    # SDK owns its env).
     OWNED_PREFIXES = [PREFIX, LEGACY_PREFIX].freeze
 
     BOOLEANS = %w[1 0 true false yes no on off].freeze
@@ -142,8 +142,7 @@ module Insika
       spec(name: "INSIKA_ROUTER_BACKEND_TIMEOUT", type: :integer, description: "`insika-router`'s connect/read timeout to a backend, in seconds (default 10)."),
       spec(name: "INSIKA_ROUTER_HOST", description: "bind address for `insika-router` itself (default 0.0.0.0)."),
       spec(name: "INSIKA_ROUTER_PORT", type: :integer, description: "listen port for `insika-router` itself (default 9090)."),
-      spec(name: "OPENCLAW_GATEWAY_TOKEN", secret: true, description: "Bearer for /v1 + /a2a (falls back to ADMIN_TOKEN)."),
-      spec(name: "OPENCLAW_AGENTS_DIR", type: :path, description: "Directory of OpenClaw-style agent packs."),
+      spec(name: "INSIKA_GATEWAY_TOKEN", secret: true, description: "Bearer for /v1 + /a2a (falls back to ADMIN_TOKEN when unset)."),
       spec(name: "INSIKA_PLUGIN_DIR", type: :path, description: "Workspace plugin root (directories with insika.plugin.yml). Loaded at boot; ids still need INSIKA_PLUGINS."),
       spec(name: "INSIKA_PLUGINS", type: :csv, description: "Plugin ids to enable from the workspace/bundled roots. Announced gems are enabled by installing them."),
       spec(name: "INSIKA_PLUGINS_DISABLED", type: :csv, description: "Plugin ids that never load — the absolute veto, wins over INSIKA_PLUGINS and over an announced gem."),

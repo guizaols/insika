@@ -8,7 +8,7 @@
 #
 # Usage:
 #   INSIKA_URL=http://localhost:9292 \
-#   OPENCLAW_GATEWAY_TOKEN=local-demo \
+#   INSIKA_GATEWAY_TOKEN=local-demo \
 #   INSIKA_INTERNAL_API_TOKEN=<the consumer's internal token> \
 #   bundle exec ruby scripts/import_pack.rb /path/to/pack
 #
@@ -22,7 +22,7 @@ require "uri"
 
 dir = ARGV[0] or abort("usage: import_pack.rb <pack-dir>")
 base   = ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292"
-token  = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
+token  = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 secret = ENV["INSIKA_INTERNAL_API_TOKEN"]
 
 pack = Insika::Pack.from_dir(dir)

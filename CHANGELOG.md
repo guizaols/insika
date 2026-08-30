@@ -8,6 +8,14 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Changed
+
+- **`INSIKA_GATEWAY_TOKEN` replaces `OPENCLAW_GATEWAY_TOKEN`** as the Bearer for
+  `/v1` + `/a2a`. Hard rename, no alias: the old name was a leftover of the
+  OpenClaw migration and is now a foreign var the engine ignores. Update the
+  variable on every deployment before upgrading. The dead `OPENCLAW_AGENTS_DIR`
+  env spec (nothing read it) is gone.
+
 ### Fixed
 
 - **Docker image shipped without `docs/`, so `GET /start.md` was a 500 with

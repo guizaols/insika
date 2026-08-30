@@ -25,14 +25,14 @@ frame different domains (SaaS support, banking, generic shop).
 ```bash
 # keyless: the deterministic block cases (no benign, no judge)
 ruby scripts/serve_eval.rb &                       # seeds `example-agent`, guardrails on
-OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
+INSIKA_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
   --base-url http://localhost:9292 --agent example-agent \
   --golden-dir evals/golden/safety --mode eval
 
 # full: add a key for the benign cases + the LLM-judge
 set -a; . ./.env.local; set +a
 ruby scripts/serve_eval.rb &
-OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
+INSIKA_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
   --base-url http://localhost:9292 --agent example-agent \
   --golden-dir evals/golden/safety --judge-model deepseek-v4-flash --mode eval
 ```

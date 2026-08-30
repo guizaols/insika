@@ -12,7 +12,7 @@
 #
 # Usage:
 #   INSIKA_URL=http://localhost:9292 \
-#   OPENCLAW_GATEWAY_TOKEN=xxx \
+#   INSIKA_GATEWAY_TOKEN=xxx \
 #   bundle exec ruby scripts/loadtest.rb \
 #     --agents bia,my-store --concurrency 16 --iterations 3 \
 #     --message "hi, how are you?"
@@ -35,7 +35,7 @@
 #
 # Environment:
 #   INSIKA_URL                base URL of the engine        (default: http://localhost:9292)
-#   OPENCLAW_GATEWAY_TOKEN     Bearer for /v1/responses; falls back to ADMIN_TOKEN, then "local-demo"
+#   INSIKA_GATEWAY_TOKEN     Bearer for /v1/responses; falls back to ADMIN_TOKEN, then "local-demo"
 
 require "net/http"
 require "uri"
@@ -106,7 +106,7 @@ rescue ArgumentError, TypeError
   abort "loadtest: --#{key} must be a positive integer (got #{raw.inspect})"
 end
 
-TOKEN = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
+TOKEN = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 base = (ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
 BASE_URLS = (args["ports"] ? args["ports"].split(",").map { |p| "http://localhost:#{p.strip}" } : [base])
 AGENTS = (args["agents"] || "bia").split(",").map(&:strip).reject(&:empty?)
