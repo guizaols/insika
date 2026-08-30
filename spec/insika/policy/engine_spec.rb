@@ -107,6 +107,38 @@ RSpec.describe Insika::Policy::Engine do
     expect(order).to eq(%w[B A])
   end
 
+  # The end-to-end shape of the bug this guards: the engine runs only the
+  # policies the profile names, so a declared allowlist with `policies: []`
+  # used to resolve to EVERY candidate tool.
+  describe "a declared tools_allow enforces without naming the policy" do
+    ToolEntry = Struct.new(:name, :metadata)
+
+    def real_registry
+      { "tool_allowlist" => Insika::Policy::Builtin::ToolAllowlist.new }
+    end
+
+    def allowlist_request(**over)
+      Insika::Policy::PolicyRequest.new(
+        profile: Insika::AgentProfile.build(id: "a", model: "m", policies: [], **over),
+        command: nil, context: nil,
+        candidate_tools: [ToolEntry.new("x", { optional: false, group: nil }),
+                          ToolEntry.new("y", { optional: false, group: nil })],
+        candidate_skills: []
+      )
+    end
+
+    it "resolves to exactly the allowed tool, not every candidate" do
+      res = engine(real_registry).decide(allowlist_request(tools_allow: ["x"]))
+      expect(res.allowed_tools.map(&:name)).to eq(["x"])
+      expect(res.audit.map { |a| a[:policy] }).to eq(["tool_allowlist"])
+    end
+
+    it "honors a declared tools_deny the same way" do
+      res = engine(real_registry).decide(allowlist_request(tools_deny: ["y"]))
+      expect(res.allowed_tools.map(&:name)).to eq(["x"])
+    end
+  end
+
   it "aggregates skills (intersection/union) analogous to tools" do
     reg = { "A" => policy(D.allow(allow_skills: %w[s1 s2])), "B" => policy(D.allow(allow_skills: %w[s2])) }
     res = engine(reg).decide(request(%w[A B], skills: [SkillC.new("s1"), SkillC.new("s2")]))

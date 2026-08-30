@@ -74,6 +74,13 @@ module Insika
 
     def delete(id) = @cs.delete(SCOPE, id.to_s)
 
+    # The STORED records, unbuilt (string keys, straight off the JSON
+    # round-trip). `all` runs every record through AgentProfile.build, which
+    # normalizes — and repairs — what it reads, so a caller that needs to judge
+    # the truth ON DISK (the doctor) cannot use it: a repaired-on-read profile
+    # is indistinguishable there from a well-formed record.
+    def all_raw = @cs.all(SCOPE)
+
     private
 
     # Rebuilds the AgentProfile from the record (the JSON round-trip turns symbols

@@ -179,7 +179,8 @@ module Insika
                     check_relay_channel check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
-                    check_harvest check_schedules check_guardrail_corpora]
+                    check_harvest check_schedules check_guardrail_corpora
+                    check_tool_allowlist_policy]
 
     def safe(check)
       Array(send(check))
@@ -868,6 +869,46 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     # harmless but useless — every claim passes and the audit reads zero. A
     # warning, never an error: the pack owns matcher quality; the engine refuses
     # only uncompileable data.
+    # A stored agent that declares `tools_allow` / `tools_deny` /
+    # `tools_allow_groups` but does not name the `tool_allowlist` policy. Only
+    # that policy applies the lists, and the Policy::Engine runs ONLY the
+    # policies a profile names — so as written on disk the lists are inert and
+    # the model receives every registered tool (hundreds of schemas, tens of
+    # thousands of tokens, per request).
+    #
+    # AgentProfile.build now adds the policy whenever a list is declared, so a
+    # live turn off this record is already safe. The record itself stays wrong
+    # until something re-saves it, and anything that reads the stored shape
+    # directly — an older engine, a pack export, an operator auditing the
+    # Studio form — still sees an allowlist that does nothing. That is why this
+    # reads the RAW record and not `all`.
+    def check_tool_allowlist_policy
+      return [] unless @profile_source.respond_to?(:all_raw)
+
+      records = @profile_source.all_raw
+      bad = records.select { |r| tool_lists_declared?(r) && !names_tool_allowlist?(r) }
+      return [ok("tool-allowlist", "#{records.length} stored agent(s): every declared tool list names the policy")] if bad.empty?
+
+      bad.map do |r|
+        Finding.new(check: "tool-allowlist", severity: :error, fix: nil,
+                    message: "agent '#{r["id"]}' declares a tool allow/deny list but its policies " \
+                             "(#{Array(r["policies"]).join(", ").then { |p| p.empty? ? "none" : p }}) " \
+                             "do not include tool_allowlist — as stored, the list is never applied and " \
+                             "the model receives every registered tool. The engine repairs this when it " \
+                             "loads the agent; re-save it (Studio, or the pack) so the stored policies " \
+                             "match the intent.")
+      end
+    end
+
+    # Presence, not emptiness, for the two nil-able lists: `tools_allow: []`
+    # means "no tools" and is as much a declaration as a list of names.
+    # `tools_deny` has no nil state, so only a non-empty one counts.
+    def tool_lists_declared?(raw)
+      !raw["tools_allow"].nil? || !raw["tools_allow_groups"].nil? || !Array(raw["tools_deny"]).empty?
+    end
+
+    def names_tool_allowlist?(raw) = Array(raw["policies"]).any? { |p| p.to_s == "tool_allowlist" }
+
     def check_grounding
       return [] unless @profile_source
 
