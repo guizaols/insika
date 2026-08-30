@@ -101,6 +101,24 @@ RSpec.describe Insika::ContextBuilder do
       expect(second).to eq(first)
     end
 
+    it ":tail renders after ALL history — last thing before the current user message" do
+      # Two providers, the tail produced FIRST: placement decides, not production
+      # order (a recitation ahead of the history would not be a recitation).
+      tail = provider(id: "T", fragments: [
+                        frag({ role: :user, content: "<recitation>" }, placement: :tail, source: "T")
+                      ])
+      hist = provider(id: "H", fragments: [
+                        frag({ role: "user", content: "hi" }, placement: :history, source: "H"),
+                        frag({ role: "assistant", content: "oi" }, placement: :history, source: "H")
+                      ])
+      pkg = build([tail, hist])
+
+      expect(pkg.history.last).to eq({ role: :user, content: "<recitation>" })
+      expect(pkg.history.size).to eq(3)
+      # and the context trace sees it last, too.
+      expect(pkg.fragments.last.placement).to eq(:tail)
+    end
+
     it "history in chronological (production) order, priority does not reorder" do
       p = provider(id: "P", fragments: [
                      frag({ n: 1 }, placement: :history, priority: 10, source: "P"),

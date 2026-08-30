@@ -108,6 +108,14 @@ DEFAULT_LIMITS = {
 
 `build` merges your overrides over these — you set only the deltas.
 
+`max_tool_calls` is announced before it kills. At **10 / 5 / 2** calls remaining
+the engine appends a short user message at the next tool-batch boundary
+("2 tool calls left — consolidate what you already have and answer now"), so a
+long turn converges on an answer instead of dying with `stage: :tool_limit` and
+delivering nothing. It is a `user` message, never a system one: the system prefix
+stays byte-stable and `prompt_caching` keeps hitting. Each threshold fires at
+most once per turn and emits `:tool_budget_warned` on the event stream.
+
 `max_tool_repeat` is the loop guard: the same tool called with **identical
 arguments** that many times in a row gets ONE in-turn warning (a user message at
 the next tool-batch boundary: "you already ran this, answer with what you

@@ -67,6 +67,48 @@ No script, no external fetch, no forms. The model writes HTML with **inline
 SVG** for charts — that is a skill instruction (palette, tables, pure-SVG bars),
 not engine code. A "real" charting need is a plugin.
 
+## Reasoning effort on a report turn
+
+A report turn is not one shape of work — it plans, then it mines, then it
+writes. `thinking` is one value per agent for the whole turn, so an agent set to
+`high` pays deliberation on every one of the 30–50 tool calls a real report
+makes, and that is where the 300 s turn timeout gets spent.
+
+Split the phases across agents instead, which the engine already supports today:
+
+```ruby
+Insika.system do
+  # The miners: one narrow question each, no judgement to make.
+  agent("sales_miner") do
+    model "deepseek-v4-flash"
+    params thinking: "low"
+    tools %w[query_sales]
+    instructions "Answer ONE question about sales from the store data. Numbers, no prose."
+  end
+
+  # The orchestrator: it plans the report and writes it. This is the turn
+  # that deserves the deliberation.
+  agent("reporter") do
+    model "deepseek-v4-flash"
+    params thinking: "high"
+    tools %w[save_artifact]
+    subagents "sales_miner"
+    instructions "Plan the report, call spawn_subagents ONCE for every number you need, then write the page and save_artifact it."
+  end
+end
+```
+
+Two things make this work: a child inherits the *environment* (model, thinking)
+only as a **default**, so its own `params thinking:` wins; and `spawn_subagents`
+runs the children in parallel, so wall-clock is the slowest miner rather than
+the sum. Each child also mines in its own isolated context, which is what keeps
+the orchestrator's context from filling with raw rows.
+
+Measure it before reaching for anything cleverer: the numbers that matter are
+the turn's wall-clock, the timeout rate, and the judge score on the same report.
+Per-phase effort *inside* a single turn is a real idea, but it is only worth
+building once this recipe is shown not to be enough.
+
 ## Limits and retention
 
 - **Size cap** — `INSIKA_ARTIFACT_MAX_BYTES` (default 1 MB): an artifact is a

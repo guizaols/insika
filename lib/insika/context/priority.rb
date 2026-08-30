@@ -17,6 +17,9 @@ module Insika
     # the injected block.
     module Priority
       IDENTITY     = 100 # IDENTITY/SOUL (Prompt) — pinned
+      RECITATION   = 95  # <recitation> the goal restated at the TAIL of context
+                         #   (Briefing). Never cut: it is two lines, and the one
+                         #   turn it gets evicted is the long turn that needed it.
       PROMPT_REF   = 90  # Prompt Catalog guardrails/refs (Prompt) — pinned
       SKILL_BODY   = 85  # <active_skill> trigger-matched body (SkillTrigger)
       SKILL        = 80  # <available_skills> level 1 (Skill)
