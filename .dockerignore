@@ -8,8 +8,15 @@ node_modules
 lib/insika/studio/assets/src
 lib/insika/studio/test
 spec
-docs
 tmp
+# docs/ ships: the onboarding surface reads docs/onboarding/start.md, docs/prompts
+# and docs/*.md at runtime (GET /start.md, /docs/<name>.md). Only the Jekyll
+# build output and the internal notes stay out.
+docs/_site
+docs/.jekyll-cache
+docs/internal
+docs/harness_handoff
+docs/techspec
 log
 *.log
 

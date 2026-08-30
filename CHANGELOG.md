@@ -8,6 +8,16 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker image shipped without `docs/`, so `GET /start.md` was a 500 with
+  `INSIKA_ONBOARDING=1`.** `.dockerignore` excluded the whole tree; the onboarding
+  surface reads `docs/onboarding/start.md`, `docs/prompts/` and the public
+  `docs/*.md` from disk at request time. Only the Jekyll build output and the
+  internal notes are excluded now, and a spec asserts `.dockerignore` never drops
+  a file `Insika::Onboarding` serves. Found on the first Railway deploy with
+  onboarding on; the gem was never affected (its payload keeps `docs/`).
+
 ## [0.7.0] - 2026-08-29
 
 The pre-1.0 consolidation: MCP servers as first-class tools, a template gallery,
