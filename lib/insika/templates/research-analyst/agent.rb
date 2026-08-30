@@ -12,6 +12,12 @@
 # of a business idea, IN PARALLEL (each in its own isolated context), then
 # the lead synthesizes one recommendation.
 #
+# Reasoning effort is split by ROLE, not spread evenly: the specialists answer
+# one narrow question each (`thinking: "low"`), the lead plans the delegation
+# and weighs three answers against each other (`thinking: "high"`). A child
+# inherits the environment as a DEFAULT only, so its own `params` wins. See
+# docs/ARTIFACTS.md, "Reasoning effort on a report turn".
+#
 #   DEEPSEEK_API_KEY=sk-... ruby research-analyst/agent.rb "a subscription box for specialty coffee"
 #   DEEPSEEK_API_KEY=sk-... ruby research-analyst/agent.rb --serve
 require "insika"
@@ -21,19 +27,23 @@ team = Insika.system do
 
   agent("market") do
     model "deepseek-v4-flash"
+    params thinking: "low"
     instructions "Research the MARKET angle of a business idea: audience, demand, competitors. Three sentences."
   end
   agent("technical") do
     model "deepseek-v4-flash"
+    params thinking: "low"
     instructions "Research the TECHNICAL/OPERATIONAL angle of a business idea: what it takes to build and run it. Three sentences."
   end
   agent("risk") do
     model "deepseek-v4-flash"
+    params thinking: "low"
     instructions "Research the RISK angle of a business idea: what could make it fail. Three sentences."
   end
 
   agent "analyst" do
     model "deepseek-v4-flash"
+    params thinking: "high"
     instructions <<~PROMPT
       You are a research LEAD with no expertise of your own — never answer
       from your own knowledge. Given a business idea, call spawn_subagents

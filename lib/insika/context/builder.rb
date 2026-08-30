@@ -151,13 +151,17 @@ module Insika
       identity, volatile = system_frags.partition { |f| (f.layer || :volatile) == :identity }
       system_frags = sort_canonical(identity) + sort_canonical(volatile)
       history_frags = fragments.select { |f| f.placement == :history } # production order (chronological)
+      # :tail renders after ALL history — the last thing before the current user
+      # message. Attention is strongest at the end of the context, so the goal
+      # restated here survives a 30-call turn that the head prompt no longer does.
+      tail_frags = fragments.select { |f| f.placement == :tail }
       tool_frags = fragments.select { |f| f.placement == :tool_context }
 
       system = system_frags.map(&:content).join("\n\n")
-      history = history_frags.map(&:content)
+      history = history_frags.map(&:content) + tail_frags.map(&:content)
       tool_context = tool_frags.empty? ? nil : tool_frags.map(&:content).join("\n\n")
 
-      canonical = system_frags + history_frags + tool_frags
+      canonical = system_frags + history_frags + tail_frags + tool_frags
       ContextPackage.new(
         system: system, history: history, tool_context: tool_context,
         fragments: canonical, budget: { cap: cap, used: canonical.sum(&:tokens), evicted: evicted }

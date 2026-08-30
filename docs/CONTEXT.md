@@ -28,9 +28,10 @@ into a deterministic prompt:
 | **Skill trigger** | `<active_skill>` | 85 | volatile | Level-2 bodies: the agent's `skills_eager` set, plus the ones whose `triggers:` match the message — see [Skills](SKILLS.md). |
 | **Knowledge** | `<knowledge>` | 77 | volatile | Level-1 top-K learned concepts for the turn's message (+ one-hop `[[links]]`), only if `knowledge.retrieve` is on. Cuttable — see [Knowledge](KNOWLEDGE.md). |
 | **Memory** | `<memory>` | 75 | volatile | Durable facts + recent notes, only if `memory` is on. Cuttable. |
-| **Briefing** | `<briefing>` | 65 | volatile | The session's working state (known fields, still-missing list, next step) — only if the pack declared `briefing_fields`. Cuttable. |
+| **Briefing** | `<briefing>` | 65 | volatile | The session's working state — the *known* fields only. Only if the pack declared `briefing_fields`. Cuttable. |
 | **Session** | history | 60–79 | volatile | The running transcript; priority scales with recency. |
 | **Request** | `<request_context>` | 40 | volatile | Turn variables + tenant. Most cuttable; sits last. |
+| **Briefing (tail)** | `<recitation>` | 95 | volatile | The still-missing list + next step, rendered **after the whole history** as a `user` message — the last thing the model reads before the current message. |
 
 The ordering is deliberate: the render order is **identity layer first, volatile
 layer after** — nothing volatile can sit above the cache boundary, whatever its
@@ -121,18 +122,36 @@ pack:
 briefing_fields "size", "budget", "delivery_day"
 ```
 
-With fields declared, the turn's `:system` context gains a `<briefing>` block
-(priority 65 — below identity/skill/memory so it never breaks the cacheable
+With fields declared, the briefing renders in **two places**, and the split is
+deliberate.
+
+The durable half — what is already known — sits in the `:system` context
+(priority 65: below identity/skill/memory so it never breaks the cacheable
 prefix, above the turn's own `<request_context>`):
 
 ```
 <briefing>
 known:
   size: M
-still missing: budget, delivery_day
-next step: send the payment link tomorrow at 10
 </briefing>
 ```
+
+The half that is a *goal* — what is still missing and the agreed next step — is
+**recited at the tail**, after the whole history, as the last thing the model
+reads before the current user message:
+
+```
+<recitation>
+still missing: budget, delivery_day
+next step: send the payment link tomorrow at 10
+</recitation>
+```
+
+Attention is strongest at the end of the context: a goal stated only at the top
+is the first thing a 30-call turn forgets. So the recitation was **moved** there,
+not copied — the head never repeats it, and the turn pays for it once. It rides
+as a `user` message, like every other engine append inside a turn, so the system
+prefix stays byte-stable and the cache breakpoint at its end keeps hitting.
 
 The `still missing` list is the point: the *model* sees which declared fields are
 still unanswered, so it stops re-asking for something already given. Stored keys

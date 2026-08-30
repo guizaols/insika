@@ -59,36 +59,59 @@ RSpec.describe Insika::Context::Providers::Briefing do
     expect(frags.first.content).not_to include("size: L")
   end
 
-  it "renders known + still missing + next step in the exact block shape" do
+  it "splits into a durable HEAD block and a tail recitation" do
     briefing = { "fields" => { "size" => "M", "budget" => "400" },
                  "next_step" => "send the payment link tomorrow at 10" }
-    frags = described_class.new(session_store: sessions)
-                            .call(request(briefing: briefing, declared: %w[size budget delivery_day]))
+    head, tail = described_class.new(session_store: sessions)
+                                 .call(request(briefing: briefing, declared: %w[size budget delivery_day]))
 
-    expect(frags.size).to eq(1)
-    f = frags.first
-    expect([f.placement, f.priority, f.pinned]).to eq([:system, Insika::Context::Priority::BRIEFING, false])
-    expect(f.source).to eq("briefing")
-    expect(f.content).to eq(<<~BLOCK.strip)
+    expect([head.placement, head.priority, head.pinned]).to eq([:system, Insika::Context::Priority::BRIEFING, false])
+    expect(head.source).to eq("briefing")
+    expect(head.content).to eq(<<~BLOCK.strip)
       <briefing>
       known:
         size: M
         budget: 400
+      </briefing>
+    BLOCK
+
+    expect([tail.placement, tail.priority, tail.pinned]).to eq([:tail, Insika::Context::Priority::RECITATION, false])
+    expect(tail.source).to eq("briefing")
+    expect(tail.content[:role]).to eq(:user)
+    expect(tail.content[:content]).to eq(<<~BLOCK.strip)
+      <recitation>
       still missing: delivery_day
       next step: send the payment link tomorrow at 10
-      </briefing>
+      </recitation>
     BLOCK
   end
 
-  it "all-missing renders the missing list alone" do
+  it "the head never duplicates the recitation (no missing/next step in <briefing>)" do
+    briefing = { "fields" => { "size" => "M" }, "next_step" => "close the order" }
+    head, = described_class.new(session_store: sessions)
+                            .call(request(briefing: briefing, declared: %w[size budget]))
+    expect(head.content).not_to include("still missing")
+    expect(head.content).not_to include("next step")
+  end
+
+  it "all-missing renders the recitation alone — no head block at all" do
     frags = described_class.new(session_store: sessions)
                             .call(request(briefing: { "fields" => {}, "next_step" => nil },
                                           declared: %w[size budget]))
-    expect(frags.first.content).to eq(<<~BLOCK.strip)
-      <briefing>
+    expect(frags.size).to eq(1)
+    expect(frags.first.placement).to eq(:tail)
+    expect(frags.first.content[:content]).to eq(<<~BLOCK.strip)
+      <recitation>
       still missing: size, budget
-      </briefing>
+      </recitation>
     BLOCK
+  end
+
+  it "everything known and no next step -> head only, no recitation" do
+    briefing = { "fields" => { "size" => "M" }, "next_step" => nil }
+    frags = described_class.new(session_store: sessions)
+                            .call(request(briefing: briefing, declared: %w[size]))
+    expect(frags.map(&:placement)).to eq([:system])
   end
 
   it "does not render stored keys that are NOT in the declaration (pack edited its schema)" do

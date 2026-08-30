@@ -70,7 +70,7 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
     expect(ev.data).to eq(kind: "field", field: "size", value: "M")
   end
 
-  it "turn 2: the assembled context system renders the <briefing> block from the store" do
+  it "turn 2: the head <briefing> renders in the system, the recitation LAST in the history" do
     session_store.update_briefing("s1", field: "size", value: "M")
 
     chat = FakeChat.new
@@ -79,7 +79,11 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
 
     expect(chat.instructions).to include("<briefing>")
     expect(chat.instructions).to include("  size: M")
-    expect(chat.instructions).to include("still missing: budget")
+    # the recitation MOVED out of the head — it is not duplicated there.
+    expect(chat.instructions).not_to include("still missing")
+    last = chat.messages.last
+    expect(last[:role]).to eq(:user)
+    expect(last[:content]).to include("<recitation>", "still missing: budget")
   end
 
   it "the briefing survives beyond the transcript — a RESUME re-reads it from the store" do
@@ -106,7 +110,8 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
     end
 
     expect(task_store.find("t3").status).to eq(:completed)
-    expect(chat.instructions).to include("<briefing>", "  size: M", "still missing: budget")
+    expect(chat.instructions).to include("<briefing>", "  size: M")
+    expect(chat.messages.last[:content]).to include("<recitation>", "still missing: budget")
   end
 
   it "parity: an agent without briefing_fields gets neither the tools nor the block" do

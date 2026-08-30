@@ -31,6 +31,15 @@ in the Playground — the artifact lands on the Artifacts tab either way.
 - The **numbers** are not. Swap the literal string in `agent.rb` for a
   `data_tool` against your own sales API and nothing else changes.
 
+## When the report needs real data
+
+One agent doing 30–50 tool calls at one reasoning effort is how a report turn
+hits the 300 s timeout. The recipe is to split the phases across agents —
+`thinking: "low"` miners fanned out with `spawn_subagents`, a `thinking: "high"`
+orchestrator that plans and writes. See
+[Artifacts](https://github.com/guizaols/insika/blob/main/docs/ARTIFACTS.md), "Reasoning effort on a report turn",
+and the `research-analyst` template for the fan-out shape.
+
 ## Edit it
 
 The skill's instructions are the actual report spec — change the palette,

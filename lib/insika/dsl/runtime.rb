@@ -236,6 +236,10 @@ module Insika
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),
           Insika::Context::Providers::Memory.new(store: spine.memory_store),
           Insika::Context::Providers::Knowledge.new(store: spine.knowledge_store),
+          # Session briefing: read path. Inert for agents without briefing_fields.
+          # Before Session, so the durable head renders above the transcript and
+          # the tail recitation lands after it.
+          Insika::Context::Providers::Briefing.new(session_store: spine.session_store),
           Insika::Context::Providers::Session.new(session_store: spine.session_store)
         ] # NOT frozen: load_plugins appends plugin providers at boot
       end

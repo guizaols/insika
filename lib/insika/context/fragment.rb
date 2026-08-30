@@ -3,7 +3,10 @@
 module Insika
   # Unit of context produced by a provider.
   # SHARED type (Insika::, not Insika::Context::).
-  #   placement: :system | :history | :tool_context
+  #   placement: :system | :history | :tail | :tool_context
+  #              :tail renders AFTER the whole history, i.e. as the last thing
+  #              the model reads before the current user message. Its content is
+  #              a message Hash ({role:, content:}), like a :history fragment.
   #   priority:  Integer; higher = more important (survives cuts)
   #   tokens:    Integer | nil; estimated by the Builder when nil
   #   source:    String — provider id (audit)
