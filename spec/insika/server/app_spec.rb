@@ -692,7 +692,7 @@ RSpec.describe Insika::Server::App do
   end
 
   describe "POST /v1/responses (OpenAI Responses adapter)" do
-    def responses_body(agent: "openclaw:bia", user: "chat-1", input: "oi")
+    def responses_body(agent: "insika:bia", user: "chat-1", input: "oi")
       JSON.generate(model: agent, user: user, stream: true, input: input)
     end
 
@@ -743,7 +743,7 @@ RSpec.describe Insika::Server::App do
     it "invalid request (no user) -> 422" do
       app = build_app(config: { gateway_token: "tok" })
       env = Rack::MockRequest.env_for("/v1/responses", method: "POST",
-                                      input: JSON.generate(model: "openclaw:bia", input: "x"))
+                                      input: JSON.generate(model: "insika:bia", input: "x"))
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
       status, = app.call(env)
       expect(status).to eq(422)

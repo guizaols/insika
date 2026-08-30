@@ -154,7 +154,7 @@ def run_turn(base_url, agent, idx)
   req["Authorization"] = "Bearer #{TOKEN}"
   req["Content-Type"] = "application/json"
   req["Accept"] = "text/event-stream"
-  req.body = JSON.generate(model: "openclaw:#{agent}", user: user, stream: true, input: message)
+  req.body = JSON.generate(model: "insika:#{agent}", user: user, stream: true, input: message)
 
   t0 = mono
   ttfb = nil
@@ -221,7 +221,7 @@ if args.key?("dry-run")
   sample = URI.join(BASE_URLS.first + "/", "v1/responses")
   sample_user = USERS ? USERS.first : (SAME_USER ? "loadtest-#{AGENTS.first}" : "loadtest-#{AGENTS.first}-0")
   sample_msg = MESSAGES ? MESSAGES.first : MESSAGE
-  body = JSON.generate(model: "openclaw:#{AGENTS.first}", user: sample_user,
+  body = JSON.generate(model: "insika:#{AGENTS.first}", user: sample_user,
                        stream: true, input: sample_msg)
   masked = TOKEN.length > 8 ? "#{TOKEN[0, 4]}…#{TOKEN[-2, 2]}" : "***"
   puts "-" * 60

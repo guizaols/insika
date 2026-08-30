@@ -140,7 +140,7 @@ def send_turn(message)
   req["Authorization"] = "Bearer #{TOKEN}"
   req["Content-Type"] = "application/json"
   req["Accept"] = "text/event-stream"
-  req.body = JSON.generate(model: "openclaw:#{AGENT}", user: SESSION, stream: true, input: message)
+  req.body = JSON.generate(model: "insika:#{AGENT}", user: SESSION, stream: true, input: message)
 
   parser = SSEParser.new
   http_for(uri).request(req) do |res|

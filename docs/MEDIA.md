@@ -87,7 +87,7 @@ receive it (`channel.capabilities` on the request):
 
 ```bash
 curl -X POST /v1/responses -H "Authorization: Bearer $TOKEN" -d '{
-  "model": "openclaw:store-support", "user": "chat-7",
+  "model": "insika:store-support", "user": "chat-7",
   "input": "manda a foto do sofá da promoção",
   "channel": { "capabilities": ["image_output", "audio_output"] }
 }'

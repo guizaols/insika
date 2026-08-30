@@ -18,24 +18,24 @@ RSpec.describe Insika::Server::Responses do
   def ev(type, data = {}) = Insika::Event.new(type: type, data: data, meta: { task_id: "t" })
 
   describe ".parse_request" do
-    it "extracts the agent from model 'openclaw:<agent>', user, and string input" do
-      body = { model: "openclaw:agent-store-x", user: "chat-1", stream: true, input: "oi" }
+    it "extracts the agent from model 'insika:<agent>', user, and string input" do
+      body = { model: "insika:agent-store-x", user: "chat-1", stream: true, input: "oi" }
       out = described_class.parse_request(body, req)
       expect(out).to eq(agent: "agent-store-x", user: "chat-1", message: "oi")
     end
 
-    it "falls back to the X-Openclaw-Agent header when the model has no agent" do
-      out = described_class.parse_request({ user: "c", input: "x" }, req("HTTP_X_OPENCLAW_AGENT" => "agent-y"))
+    it "falls back to the X-Insika-Agent header when the model has no agent" do
+      out = described_class.parse_request({ user: "c", input: "x" }, req("HTTP_X_INSIKA_AGENT" => "agent-y"))
       expect(out[:agent]).to eq("agent-y")
     end
 
     it "input as an array of parts -> joins the texts" do
-      body = { model: "openclaw:a", user: "c", input: [{ text: "linha1" }, { "text" => "linha2" }] }
+      body = { model: "insika:a", user: "c", input: [{ text: "linha1" }, { "text" => "linha2" }] }
       expect(described_class.parse_request(body, req)[:message]).to eq("linha1\nlinha2")
     end
 
     it "input as an array with a MALFORMED part is refused (422)" do
-      body = { model: "openclaw:a", user: "c",
+      body = { model: "insika:a", user: "c",
                input: [{ text: "linha1" }, { "type" => "image" }] } # image without url
       expect { described_class.parse_request(body, req) }
         .to raise_error(Insika::ValidationError, /malformed content part/)
@@ -44,9 +44,9 @@ RSpec.describe Insika::Server::Responses do
     it "validates missing agent/user/input" do
       expect { described_class.parse_request({ user: "c", input: "x" }, req) }
         .to raise_error(Insika::ValidationError, /agent/)
-      expect { described_class.parse_request({ model: "openclaw:a", input: "x" }, req) }
+      expect { described_class.parse_request({ model: "insika:a", input: "x" }, req) }
         .to raise_error(Insika::ValidationError, /user/)
-      expect { described_class.parse_request({ model: "openclaw:a", user: "c", input: "  " }, req) }
+      expect { described_class.parse_request({ model: "insika:a", user: "c", input: "  " }, req) }
         .to raise_error(Insika::ValidationError, /input/)
     end
 
@@ -54,7 +54,7 @@ RSpec.describe Insika::Server::Responses do
     # input array carries ONE audio part and no text at all. Joining only the
     # text parts made that "input empty" — a 422 before the turn existed.
     it "input with ONLY a media part (a voice note) is accepted, message empty" do
-      body = { model: "openclaw:a", user: "c",
+      body = { model: "insika:a", user: "c",
                input: [{ "type" => "audio", "url" => "https://cdn.example.com/v.ogg" }] }
       out = described_class.parse_request(body, req)
 
@@ -65,7 +65,7 @@ RSpec.describe Insika::Server::Responses do
     # Document is additive to the multimodal input contract, same
     # shape discipline as audio/image.
     it "input with ONLY a document part (no caption) is accepted, message empty" do
-      body = { model: "openclaw:a", user: "c",
+      body = { model: "insika:a", user: "c",
                input: [{ "type" => "document", "url" => "https://cdn.example.com/receita.pdf" }] }
       out = described_class.parse_request(body, req)
 
@@ -74,27 +74,27 @@ RSpec.describe Insika::Server::Responses do
     end
 
     it "input as an array with a MALFORMED document part is refused (422)" do
-      body = { model: "openclaw:a", user: "c", input: [{ "type" => "document" }] } # no url
+      body = { model: "insika:a", user: "c", input: [{ "type" => "document" }] } # no url
       expect { described_class.parse_request(body, req) }
         .to raise_error(Insika::ValidationError, /malformed content part/)
     end
 
     it "input with only EMPTY text parts is still empty (a part is not a loophole)" do
-      body = { model: "openclaw:a", user: "c", input: [{ "type" => "text", "text" => "   " }] }
+      body = { model: "insika:a", user: "c", input: [{ "type" => "text", "text" => "   " }] }
       expect { described_class.parse_request(body, req) }
         .to raise_error(Insika::ValidationError, /input empty/)
     end
 
     it "forwards the channel's declared capabilities (WS9, saída — additive)" do
       out = described_class.parse_request(
-        { model: "openclaw:a", user: "c", input: "oi",
+        { model: "insika:a", user: "c", input: "oi",
           channel: { capabilities: %w[image_output audio_output] } }, req
       )
       expect(out[:channel]).to eq(capabilities: %w[image_output audio_output])
     end
 
     it "channel absent -> no channel key (parity)" do
-      out = described_class.parse_request({ model: "openclaw:a", user: "c", input: "oi" }, req)
+      out = described_class.parse_request({ model: "insika:a", user: "c", input: "oi" }, req)
       expect(out).not_to have_key(:channel)
     end
   end

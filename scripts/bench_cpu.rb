@@ -50,7 +50,7 @@ def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 # A turn-shaped request envelope (the kind the engine parses off /v1/responses
 # and serializes back). Deliberately mid-size: a short history + tool defs + vars.
 REQUEST = {
-  "model" => "openclaw:bia",
+  "model" => "insika:bia",
   "stream" => true,
   "user" => "loadtest-bia-42",
   "messages" => Array.new(8) do |i|

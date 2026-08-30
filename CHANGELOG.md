@@ -10,6 +10,10 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Changed
 
+- **The `/v1/responses` wire names are insika-native**: the agent arrives as
+  `model: "insika:<agent>"` and the fallback header is `X-Insika-Agent`. Hard
+  rename, no alias — a consumer still sending `openclaw:<agent>` gets
+  "model/agent missing". Update every `/v1` consumer together with this upgrade.
 - **`INSIKA_GATEWAY_TOKEN` replaces `OPENCLAW_GATEWAY_TOKEN`** as the Bearer for
   `/v1` + `/a2a`. Hard rename, no alias: the old name was a leftover of the
   OpenClaw migration and is now a foreign var the engine ignores. Update the
