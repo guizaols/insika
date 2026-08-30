@@ -512,6 +512,23 @@ RSpec.describe Insika::ChatBuilder do
       expect { chat.fire_tool_call(name: "t50") }.to raise_error(Insika::TimeoutError)
     end
 
+    # TurnBudget is unit-tested in turn_budget_spec; here only the wiring:
+    # wire_callbacks must deliver the gem's three callbacks to it, so the model
+    # is told the budget is running out instead of only meeting the abort.
+    it "announces the tool budget at the batch boundary before the ceiling kills the turn" do
+      sink = []
+      builder.wire_callbacks(chat, state(limits: { max_tool_calls: 3, max_tool_repeat: 0 }),
+                             recording_emit(sink))
+
+      chat.fire_tool_call(name: "lookup", arguments: { "q" => "x" })
+      chat.fire_tool_result_message("ok")
+
+      notices = chat.messages.select { |m| m[:role] == :user }
+      expect(notices.size).to eq(1)
+      expect(notices.first[:content]).to include("2 tool calls left", "do not start new work")
+      expect(sink.map { |e| e[:type] }).to include(:tool_budget_warned)
+    end
+
     # the detector is unit-tested in loop_detector_spec; here only the
     # wiring: wire_callbacks must deliver the gem's three callbacks to it.
     it "intervenes once, then aborts the stubborn repeat as :tool_limit" do

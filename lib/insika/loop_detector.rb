@@ -50,9 +50,7 @@ module Insika
       @streak = 0
       @intervened = false  # the ONE warning of this turn has been delivered
       @pending = false     # detection fired; waiting for the batch boundary
-      @expected = nil      # tool calls announced by the batch in flight
-      @seen = 0
-      @halted = false
+      @batch = ToolBatch.new
     end
 
     # From ChatBuilder's before_tool_call. Raises BEFORE the call executes once
@@ -80,41 +78,21 @@ module Insika
 
     # From ChatBuilder's after_tool_result, with the RAW result — the only place
     # a Tool::Halt is still recognizable (SteerInjector's comment applies here).
-    def tool_result(result)
-      @halted = true if defined?(RubyLLM::Tool::Halt) && result.is_a?(RubyLLM::Tool::Halt)
-    end
+    def tool_result(result) = @batch.halt!(result)
 
     # RubyLLM after_message. An assistant message carrying tool calls OPENS a
     # batch; the Nth tool result CLOSES it — the one boundary where appending
-    # is valid.
+    # is valid (ToolBatch owns that arithmetic; TurnBudget follows the same rule).
     def message_ended(message)
-      role = field(message, :role).to_s
-      return open_batch(message) if role == "assistant"
-      return unless role == "tool" && @expected
-
-      @seen += 1
-      intervene! if @seen >= @expected
+      intervene! if @batch.closed?(message)
     end
 
     private
 
-    def open_batch(message)
-      calls = field(message, :tool_calls)
-      size = calls.respond_to?(:size) ? calls.size : 0
-      # No tool call = the model talking; the turn is ending and a pending
-      # warning is moot — the loop resolved itself.
-      return @expected = nil if size.zero?
-
-      @expected = size
-      @seen = 0
-      @halted = false
-    end
-
     def intervene!
-      @expected = nil
       return unless @pending
       @pending = false
-      return if @halted # nothing will read it (halt_when): drop, never deliver
+      return if @batch.halted? # nothing will read it (halt_when): drop, never deliver
 
       @intervened = true
       name, = @last
@@ -131,13 +109,6 @@ module Insika
       when Array then value.map { |v| canonical(v) }
       else value
       end
-    end
-
-    def field(message, name)
-      return message.public_send(name) if message.respond_to?(name)
-      return message[name] || message[name.to_s] if message.respond_to?(:[])
-
-      nil
     end
   end
 end

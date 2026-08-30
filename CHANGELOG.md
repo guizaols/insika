@@ -8,7 +8,29 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Added
+
+- **The tool budget is announced before it kills.** `max_tool_calls` was
+  enforced but silent: the model met the ceiling only when the turn died with
+  `stage: :tool_limit`, having delivered nothing. At **10 / 5 / 2** calls
+  remaining the engine now appends a short, escalating notice at the next
+  tool-batch boundary and emits `:tool_budget_warned`. It is a `user` message,
+  never a system one, so the cacheable system prefix stays byte-stable.
+  Verified live (DeepSeek): a turn asking for 30 lookups on a budget of 20 used
+  to die at `tool_limit`; it now stops at 18 and answers with what it has. The
+  turn's counter, the notices and the abort are one object (`TurnBudget`), and
+  the batch-boundary arithmetic it shares with the loop detector moved into
+  `ToolBatch`.
+
 ### Changed
+
+- **The briefing recites the goal at the TAIL of the context.** `<briefing>`
+  used to carry known facts, the still-missing list and the next step in one
+  `:system` block at the top. The goal half was **moved** (not copied) into a
+  new `<recitation>` block rendered after the whole history, as the last thing
+  the model reads before the current message — attention is strongest at the
+  end, and a goal stated only at the top is the first thing a 30-call turn
+  forgets. New `:tail` fragment placement; the head keeps the durable facts.
 
 - **The `/v1/responses` wire names are insika-native**: the agent arrives as
   `model: "insika:<agent>"` and the fallback header is `X-Insika-Agent`. Hard
@@ -19,6 +41,13 @@ it is released. Entries land with the pull request that makes the change.
   OpenClaw migration and is now a foreign var the engine ignores. Update the
   variable on every deployment before upgrading. The dead `OPENCLAW_AGENTS_DIR`
   env spec (nothing read it) is gone.
+
+### Fixed
+
+- **A DSL agent could write its briefing and never read it back.** The
+  `Insika.agent`/`Insika.system` runtime wired every context provider except
+  `Briefing`, so `update_briefing` / `set_next_step` persisted state that never
+  reached a prompt. Now wired, before `Session`, like `config/wiring.rb`.
 
 ### Fixed
 
