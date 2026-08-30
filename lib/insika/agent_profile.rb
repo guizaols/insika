@@ -333,7 +333,9 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         tools_deny: Array(tools_deny), tools_allow_groups: tools_allow_groups, skills: skills,
         skills_eager: skills_eager,
         context_providers: context_providers, workflows_allow: workflows_allow,
-        policies: Array(policies), prompt_refs: Array(prompt_refs),
+        policies: normalize_policies(policies, tools_allow: tools_allow, tools_deny: tools_deny,
+                                     tools_allow_groups: tools_allow_groups),
+        prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
         capabilities: capabilities,
         # opt-in like capabilities: nil => NONE. Array-normalize a present value so
@@ -398,6 +400,29 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         # THERE, never here). nil/[] = the feature is off (parity).
         schedules: normalize_schedules(schedules)
       )
+    end
+
+    # Declaring a tool allow/deny list IS opting into it. The list is only ever
+    # applied by the builtin `tool_allowlist` policy, and the Policy::Engine runs
+    # ONLY the policies a profile names — so a profile with `tools_allow: [a, b]`
+    # and no policies sent EVERY registered tool to the model, silently. A
+    # declared allowlist that does nothing is the failure mode; same rule as the
+    # "mcp:<name>" group auto-added to `tools_allow_groups` by the DSL.
+    #
+    # Presence, not emptiness, is the trigger for the two nil-able lists:
+    # `tools_allow: []` means "no tools" and must enforce just as hard.
+    # `tools_deny` has no nil state (it defaults to []), so only a non-empty
+    # deny list counts as a declaration.
+    #
+    # Appended, never prepended: profile-declared policies keep their order. The
+    # engine intersects allows and unions denies, so position changes only the
+    # audit order, not the outcome.
+    def self.normalize_policies(policies, tools_allow:, tools_deny:, tools_allow_groups:)
+      names = Array(policies)
+      declared = !tools_allow.nil? || !tools_allow_groups.nil? || !Array(tools_deny).empty?
+      return names unless declared && names.none? { |n| n.to_s == "tool_allowlist" }
+
+      names + ["tool_allowlist"]
     end
 
     # nil/absent -> nil; a single Hash -> [Hash]; else an Array of Hashes —
