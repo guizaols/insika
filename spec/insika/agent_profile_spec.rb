@@ -130,8 +130,55 @@ RSpec.describe Insika::AgentProfile do
         id: "a", model: "m", tools_deny: "x", policies: "p", prompt_refs: "r"
       )
       expect(profile.tools_deny).to eq(["x"])
-      expect(profile.policies).to eq(["p"])
+      # the declared deny list also opts the profile into tool_allowlist
+      expect(profile.policies).to eq(["p", "tool_allowlist"])
       expect(profile.prompt_refs).to eq(["r"])
+    end
+  end
+
+  # Declaring a tool list IS opting into the policy that applies it. Without
+  # this, a profile with `tools_allow: [...]` and no policies sent every
+  # registered tool to the model, silently.
+  describe "tool_allowlist implicit opt-in" do
+    it "adds the policy when tools_allow is declared and policies is empty" do
+      profile = described_class.build(id: "a", model: "m", tools_allow: %w[x y])
+      expect(profile.policies).to eq(["tool_allowlist"])
+    end
+
+    it "adds it for an EMPTY tools_allow too ([] = no tools, and that must enforce)" do
+      profile = described_class.build(id: "a", model: "m", tools_allow: [])
+      expect(profile.policies).to eq(["tool_allowlist"])
+    end
+
+    it "adds it for tools_deny alone" do
+      profile = described_class.build(id: "a", model: "m", tools_deny: ["x"])
+      expect(profile.policies).to eq(["tool_allowlist"])
+    end
+
+    it "adds it for tools_allow_groups alone" do
+      profile = described_class.build(id: "a", model: "m", tools_allow_groups: ["mcp:crm"])
+      expect(profile.policies).to eq(["tool_allowlist"])
+    end
+
+    it "appends, keeping the profile-declared order" do
+      profile = described_class.build(id: "a", model: "m", tools_allow: ["x"],
+                                      policies: %w[approval_required skill_allowlist])
+      expect(profile.policies).to eq(%w[approval_required skill_allowlist tool_allowlist])
+    end
+
+    it "does not duplicate one already declared (string or symbol)" do
+      as_string = described_class.build(id: "a", model: "m", tools_allow: ["x"],
+                                        policies: ["tool_allowlist"])
+      as_symbol = described_class.build(id: "a", model: "m", tools_allow: ["x"],
+                                        policies: [:tool_allowlist])
+      expect(as_string.policies).to eq(["tool_allowlist"])
+      expect(as_symbol.policies).to eq([:tool_allowlist])
+    end
+
+    it "leaves policies untouched when no list is declared (tools_deny defaults to [])" do
+      expect(described_class.build(id: "a", model: "m").policies).to eq([])
+      expect(described_class.build(id: "a", model: "m", policies: ["approval_required"]).policies)
+        .to eq(["approval_required"])
     end
   end
 
