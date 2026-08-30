@@ -512,6 +512,17 @@ RSpec.describe Insika::DSL do
     it "imports the agent into the runtime's ProfileSource" do
       expect(agent.runtime.graph.profiles.fetch("assistant")).to be_a(Insika::AgentProfile)
     end
+
+    # The DSL runtime wires the SAME context providers as config/wiring.rb. The
+    # briefing was missing here, so a DSL agent could WRITE its briefing through
+    # update_briefing and never read a word of it back.
+    it "wires the Briefing provider, before Session" do
+      providers = agent.runtime.graph.context_builder.instance_variable_get(:@providers)
+      briefing = providers.index { |p| p.is_a?(Insika::Context::Providers::Briefing) }
+      session = providers.index { |p| p.is_a?(Insika::Context::Providers::Session) }
+      expect(briefing).not_to be_nil
+      expect(briefing).to be < session
+    end
   end
 
   # Multi-agent DSL: the shape every agentic-workflow pattern needs. The claim

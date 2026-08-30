@@ -332,20 +332,29 @@ module Insika
     end
 
     # RubyLLM's additive callbacks become events. load_skill becomes
-    # :skill_activated. Adds the max_tool_calls counter: the loop is RubyLLM's;
-    # here we only count and abort.
+    # :skill_activated. Hangs the turn's TurnBudget on them: the loop is
+    # RubyLLM's; here we only count, warn and abort.
     def wire_callbacks(chat, state, emit)
-      # Per-TURN counter: safe as a closure local even under concurrent tool calls
-      # (MRI fibers do not preempt between the read and the write). The per-CALL
-      # correlation is NOT — it lives in fiber storage behind TurnState, because
-      # each call gets its own fiber once tool concurrency is on.
-      tool_calls = 0
-      max_tool_calls = state.profile.limits[:max_tool_calls] || 50
+      # The turn's ONE tool-call counter. Safe as a closure-held object even
+      # under concurrent tool calls (MRI fibers do not preempt between the read
+      # and the write). The per-CALL correlation is NOT — it lives in fiber
+      # storage behind TurnState, because each call gets its own fiber once tool
+      # concurrency is on.
+      #
+      # It counts, warns at 10/5/2 calls remaining, and raises the
+      # `stage: :tool_limit` abort — the guard-rail that used to be inline here.
+      # Announcing the budget needs #add_message at the batch boundary; a chat
+      # without it (smoke shim, minimal double) still gets the count and the
+      # abort, just no notice.
+      budget = Insika::TurnBudget.new(
+        chat: chat, max: state.profile.limits[:max_tool_calls] || 50, emit: emit
+      )
 
       # the loop detector. Needs #after_message + #add_message for the
       # batch-boundary intervention; a chat without them (smoke shim, minimal
       # double) stays bounded by max_tool_calls alone — never half-wired.
-      detector = if %i[after_message add_message].all? { |m| chat.respond_to?(m) }
+      appendable = %i[after_message add_message].all? { |m| chat.respond_to?(m) }
+      detector = if appendable
                    repeat = state.profile.limits[:max_tool_repeat] || Insika::AgentProfile::DEFAULT_LIMITS[:max_tool_repeat]
                    Insika::LoopDetector.new(chat: chat, limit: repeat, emit: emit) if repeat >= 2
                  end
@@ -355,11 +364,7 @@ module Insika
         state.current_tool_call = tool_call
         # max_tool_calls guard-rail: stays inline (not as a registered hook)
         # because Hooks is shared across turns and has no unregister.
-        tool_calls += 1
-        if tool_calls > max_tool_calls
-          raise Insika::TimeoutError.new("tool call limit exceeded (#{max_tool_calls})",
-                                           stage: :tool_limit)
-        end
+        budget.tool_call
 
         # AFTER the count, BEFORE the call runs — a post-warning
         # repeat raises here, so the stubborn loop pays for no extra call.
@@ -394,13 +399,19 @@ module Insika
         # the RAW result — the only place a Tool::Halt (halt_when) is
         # still recognizable, and a halted batch must receive no intervention.
         detector&.tool_result(result)
+        budget.tool_result(result)
         result = @hooks.run_after(:tool, result)
         emit.call(:tool_result, { name: state.current_tool_name, result: result.to_s })
       end
 
-      # the intervention appends at the batch boundary (the Nth tool
-      # result closing) — never between two tool results of one batch.
-      chat.after_message { |message| detector.message_ended(message) } if detector
+      # both appends land at the batch boundary (the Nth tool result closing) —
+      # never between two tool results of one batch.
+      return unless appendable
+
+      chat.after_message do |message|
+        detector&.message_ended(message)
+        budget.message_ended(message)
+      end
     end
   end
 end
