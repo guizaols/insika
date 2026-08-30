@@ -155,4 +155,22 @@ RSpec.describe "the domain boundary " do
                         "gemspec require_relative's #{missing.join(', ')} but the Dockerfile builder stage " \
                         "never COPYs it before `bundle install` — add `COPY <file> <file>` there"
   end
+
+  # Found live (2026-08-30): the first Railway deploy with INSIKA_ONBOARDING=1
+  # answered GET /start.md with a 500 — `.dockerignore` left the whole docs/
+  # tree out of the image, and the onboarding surface reads start.md and the
+  # public docs from disk at request time. The gem ships them (Packaging keeps
+  # docs/), but a Dockerfile `COPY . .` only ships what .dockerignore lets through.
+  it ".dockerignore keeps every file the onboarding surface reads at runtime" do
+    ignored = File.readlines(File.expand_path("../../.dockerignore", __dir__), chomp: true)
+                  .map(&:strip).reject { |l| l.empty? || l.start_with?("#") }
+    needed = [Insika::Onboarding::TEMPLATE, *Insika::Onboarding::PUBLIC_DOCS.values]
+
+    dropped = needed.select do |path|
+      ignored.any? { |pattern| path == pattern || path.start_with?("#{pattern}/") }
+    end
+    expect(dropped).to be_empty,
+                       ".dockerignore excludes #{dropped.join(', ')} — GET /start.md and /docs/<name>.md " \
+                       "read these from disk in the container; narrow the pattern instead"
+  end
 end
