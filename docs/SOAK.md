@@ -88,7 +88,7 @@ insika soak --dry-run --envelope soak-envelope.md
 # every precondition, and nothing else
 insika soak --preflight --envelope soak-envelope.md
 
-# the run itself (INSIKA_URL + OPENCLAW_GATEWAY_TOKEN, like loadtest.rb)
+# the run itself (INSIKA_URL + INSIKA_GATEWAY_TOKEN, like loadtest.rb)
 INSIKA_URL=https://<target> insika soak --run --envelope soak-envelope.md --out soak-out/
 
 # resume after a short outage (the gap is recorded and counts against the window)

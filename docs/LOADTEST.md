@@ -67,7 +67,7 @@ frame that carries it.
 
 ```bash
 INSIKA_URL=http://localhost:9292 \
-OPENCLAW_GATEWAY_TOKEN=xxx \
+INSIKA_GATEWAY_TOKEN=xxx \
 bundle exec ruby scripts/loadtest.rb \
   --agents demo,my-store --concurrency 16 --iterations 3 \
   --message "hi, how are you?"
@@ -95,14 +95,14 @@ Runs against a local server **or** a remote one (e.g. Railway) — just point
 | Env | Default | Meaning |
 |-----|---------|---------|
 | `INSIKA_URL` | `http://localhost:9292` | base URL of the engine |
-| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for `/v1/responses` |
+| `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for `/v1/responses` |
 | `DEEPSEEK_API_KEY` | — | must be configured **on the server** for real turns (not read by the client) |
 
 Use `--dry-run` to sanity-check your flags/URL/token before firing real traffic
 (and to confirm the request body without needing a running server):
 
 ```bash
-INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
+INSIKA_URL=http://localhost:9292 INSIKA_GATEWAY_TOKEN=xxx \
   bundle exec ruby scripts/loadtest.rb --agents demo --concurrency 16 --dry-run
 ```
 
@@ -133,7 +133,7 @@ DEEPSEEK_API_KEY=sk-... ./scripts/loadtest-local.sh [WORKERS] [CONCURRENCY]
 | Env | Default | Meaning |
 |-----|---------|---------|
 | `DEEPSEEK_API_KEY` | — (required) | real turns hit the provider; also auto-sourced from `.env.local` |
-| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for the sweep |
+| `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN`, then `local-demo` | Bearer for the sweep |
 | `PORT` | `9299` | bind port for the local Falcon |
 | `AGENT` | `demo` | agent id to load |
 
@@ -178,7 +178,7 @@ gateway, and diff the two reports. This is the shadow comparison the pilot needs
 
 - The OpenClaw checkout containing `scripts/loadtest-gateway.mjs` and Node installed.
 - A **bearer token accepted by both** sides. For the engine that is
-  `OPENCLAW_GATEWAY_TOKEN` (see DEPLOY.md); point the gateway run at its own token.
+  `INSIKA_GATEWAY_TOKEN` (see DEPLOY.md); point the gateway run at its own token.
 - **The same agent id provisioned on both** sides (e.g. `demo`) so `model:
   openclaw:<agent>` resolves on each. On the engine, provision via
   `scripts/import_pack.rb`.

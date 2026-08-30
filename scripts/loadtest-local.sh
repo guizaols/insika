@@ -15,7 +15,7 @@
 #
 # Environment:
 #   DEEPSEEK_API_KEY         required — real turns hit the provider
-#   OPENCLAW_GATEWAY_TOKEN   Bearer for the sweep (falls back to ADMIN_TOKEN, then local-demo)
+#   INSIKA_GATEWAY_TOKEN   Bearer for the sweep (falls back to ADMIN_TOKEN, then local-demo)
 #   PORT                     bind port for the local Falcon (default: 9299)
 #   AGENT                    agent id to load (default: bia)
 set -u
@@ -32,7 +32,7 @@ WORKERS="${1:-4}"
 CONC="${2:-16}"
 PORT="${PORT:-9299}"
 AGENT="${AGENT:-bia}"
-TOKEN="${OPENCLAW_GATEWAY_TOKEN:-${ADMIN_TOKEN:-local-demo}}"
+TOKEN="${INSIKA_GATEWAY_TOKEN:-${ADMIN_TOKEN:-local-demo}}"
 
 case "$WORKERS$CONC" in
   *[!0-9]*)
@@ -68,7 +68,7 @@ wait_up() {
 boot() {
   count="$1"; LOG="$WORK/falcon-$count.log"
   echo "=== booting Falcon --count $count (port $PORT, db $DB) ==="
-  ( cd "$REPO" && INSIKA_DB="$DB" OPENCLAW_GATEWAY_TOKEN="$TOKEN" ADMIN_TOKEN="$TOKEN" \
+  ( cd "$REPO" && INSIKA_DB="$DB" INSIKA_GATEWAY_TOKEN="$TOKEN" ADMIN_TOKEN="$TOKEN" \
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" RUBY_YJIT_ENABLE=1 \
       bundle exec falcon serve --bind "http://0.0.0.0:$PORT" --count "$count" \
       >"$LOG" 2>&1 ) & PID=$!
@@ -76,7 +76,7 @@ boot() {
 }
 
 sweep() {
-  INSIKA_URL="http://localhost:$PORT" OPENCLAW_GATEWAY_TOKEN="$TOKEN" \
+  INSIKA_URL="http://localhost:$PORT" INSIKA_GATEWAY_TOKEN="$TOKEN" \
     bundle exec ruby "$REPO/scripts/loadtest.rb" --agents "$AGENT" --concurrency "$CONC" --iterations 2
 }
 

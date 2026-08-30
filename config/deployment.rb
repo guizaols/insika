@@ -320,7 +320,7 @@ module Deploy
         Insika::Evals::HttpTransport.new(
           base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
                     "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
-          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+          token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
       # The judges the OPERATOR configured (`settings["evals"]`), through the one
@@ -336,7 +336,7 @@ module Deploy
         Insika::Evals::HttpCapabilities.new(
           base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
                     "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
-          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+          token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
@@ -395,14 +395,14 @@ module Deploy
         Insika::Evals::HttpTransport.new(
           base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
                     "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
-          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+          token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
       capabilities_factory: lambda {
         Insika::Evals::HttpCapabilities.new(
           base_url: Insika::Coercion.presence(ENV["INSIKA_PUBLIC_URL"]) ||
                     "http://127.0.0.1:#{ENV.fetch('PORT', 9292)}",
-          token: ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
+          token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }

@@ -27,7 +27,7 @@ The layers, from the edge inward:
 ## The Bearer gate
 
 The `/v1` and `/a2a` surface answers only with
-`Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>` (which falls back to `ADMIN_TOKEN`).
+`Authorization: Bearer <INSIKA_GATEWAY_TOKEN>` (which falls back to `ADMIN_TOKEN`).
 The check runs in the router, **before** any dispatch, against an **allowlist** of
 public routes — so a route added later is closed until someone deliberately publishes
 it. Only these answer without a token:

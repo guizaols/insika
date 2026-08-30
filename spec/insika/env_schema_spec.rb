@@ -22,17 +22,17 @@ RSpec.describe Insika::EnvSchema do
       expect(findings.first.key).to eq("HARNESS_EGRES_ALLOW_HTTP")
     end
 
-    it "does NOT flag foreign namespaces (OPENCLAW_ shared, LITESTREAM_, RAILWAY_, PORT)" do
+    it "does NOT flag foreign namespaces (OPENCLAW_, LITESTREAM_, RAILWAY_, PORT)" do
       env = {
-        "OPENCLAW_HOME" => "/x", "OPENCLAW_STATE_DIR" => "/y", # OpenClaw product owns these
+        "OPENCLAW_HOME" => "/x", "OPENCLAW_GATEWAY_TOKEN" => "old", # OpenClaw product owns these
         "LITESTREAM_REPLICA_URL" => "s3://b", "RAILWAY_PROJECT_ID" => "z", "PORT" => "3000"
       }
       expect(described_class.validate(env)).to be_empty
     end
 
-    it "still validates the 3 OPENCLAW_ keys the engine DOES know (no unknown, but typed)" do
-      # a known OPENCLAW_ key is never 'unknown'; foreign OPENCLAW_ keys are ignored.
-      expect(described_class.validate({ "OPENCLAW_GATEWAY_TOKEN" => "tok" })).to be_empty
+    it "knows INSIKA_GATEWAY_TOKEN as a typed secret" do
+      expect(described_class.validate({ "INSIKA_GATEWAY_TOKEN" => "tok" })).to be_empty
+      expect(described_class.known_specs.find { |sp| sp.name == "INSIKA_GATEWAY_TOKEN" }.secret?).to be(true)
     end
 
     it "flags a non-integer INSIKA_PORT" do

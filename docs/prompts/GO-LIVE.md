@@ -40,7 +40,7 @@ convenience only:
 | Token | Gates | Rotating it |
 |---|---|---|
 | `ADMIN_TOKEN` | `/studio` login (the operator — just you) | safe, independent |
-| `OPENCLAW_GATEWAY_TOKEN` | Bearer for `/v1/responses` + `/v1/agents` (your API consumers) | both sides together, same step |
+| `INSIKA_GATEWAY_TOKEN` | Bearer for `/v1/responses` + `/v1/agents` (your API consumers) | both sides together, same step |
 
 Generate each: `ruby -rsecurerandom -e 'puts SecureRandom.hex(24)'`. Set them as
 platform env vars. **Never** write either into a file, a commit, or your own output.
@@ -77,7 +77,7 @@ Any Docker host, same contract:
 ```bash
 docker build -t insika .
 docker run -p 9292:9292 -v insika-data:/data \
-  -e DEEPSEEK_API_KEY=... -e ADMIN_TOKEN=... -e OPENCLAW_GATEWAY_TOKEN=... \
+  -e DEEPSEEK_API_KEY=... -e ADMIN_TOKEN=... -e INSIKA_GATEWAY_TOKEN=... \
   insika
 ```
 
@@ -92,7 +92,7 @@ In order, each with evidence:
 
 ```bash
 curl -N https://<host>/v1/responses \
-  -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  -H "Authorization: Bearer $INSIKA_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"<agent-id>","user":"go-live-check","input":"hello"}'
 ```

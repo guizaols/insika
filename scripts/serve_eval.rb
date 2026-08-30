@@ -15,15 +15,15 @@
 # block with NO LLM call; the social-engineering case needs the moderator (a key).
 #
 # Usage:
-#   set -a; . ./.env.local; set +a        # DEEPSEEK_API_KEY + OPENCLAW_GATEWAY_TOKEN
+#   set -a; . ./.env.local; set +a        # DEEPSEEK_API_KEY + INSIKA_GATEWAY_TOKEN
 #   ruby scripts/serve_eval.rb            # serves on http://localhost:9292
 #
 # Then, in another shell — the generic OSS safety suite (keyless block cases):
-#   OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
+#   INSIKA_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
 #     --base-url http://localhost:9292 --agent example-agent \
 #     --golden-dir evals/golden/safety --mode eval
 # …or the pt-BR store reference with the judge:
-#   OPENCLAW_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
+#   INSIKA_GATEWAY_TOKEN=local-demo ruby evals/run.rb \
 #     --base-url http://localhost:9292 --agent loja-cosmeticos \
 #     --judge-model deepseek-v4-flash --quorum 3 --mode eval
 #
@@ -38,7 +38,7 @@ require "async/http/endpoint"
 require "protocol/rack"
 
 W = Deploy::Wiring
-TOKEN = ENV.fetch("OPENCLAW_GATEWAY_TOKEN", "local-demo")
+TOKEN = ENV.fetch("INSIKA_GATEWAY_TOKEN", "local-demo")
 
 # Platform utility_model (#18): the cheap model the guardrail moderator falls back
 # to when an agent opts in with `moderator: "on"`. Idempotent — only seeds when the

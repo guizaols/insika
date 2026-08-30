@@ -50,7 +50,7 @@ module Insika
 
         Environment:
           INSIKA_URL              base URL of the engine (default: http://localhost:9292)
-          OPENCLAW_GATEWAY_TOKEN  Bearer; falls back to ADMIN_TOKEN, then "local-demo"
+          INSIKA_GATEWAY_TOKEN  Bearer; falls back to ADMIN_TOKEN, then "local-demo"
       TXT
 
       # Poisson inter-arrival seconds: `-mean * Math.log(1.0 - rand)`. Seeded,
@@ -345,7 +345,7 @@ module Insika
 
       private
 
-      def resolve_token(env) = env["OPENCLAW_GATEWAY_TOKEN"] || env["ADMIN_TOKEN"] || "local-demo"
+      def resolve_token(env) = env["INSIKA_GATEWAY_TOKEN"] || env["ADMIN_TOKEN"] || "local-demo"
 
       def install_traps
         %w[INT TERM].each { |sig| Signal.trap(sig) { @stop_reason = "interrupted" } }

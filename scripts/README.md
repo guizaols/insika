@@ -45,7 +45,7 @@ and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
   ruby scripts/migrate_openclaw.rb analyze  <state-dir>
   ruby scripts/migrate_openclaw.rb convert  <state-dir> --agent <id> --out <pack-dir>
   ruby scripts/migrate_openclaw.rb sessions <state-dir> --archive <safe-dir-outside-the-repo>
-  INSIKA_URL=<url> OPENCLAW_GATEWAY_TOKEN=<token> \
+  INSIKA_URL=<url> INSIKA_GATEWAY_TOKEN=<token> \
     ruby scripts/migrate_openclaw.rb import <pack-dir>
   ```
 

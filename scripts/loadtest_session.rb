@@ -35,7 +35,7 @@
 #   # local — engine serving a deployment on :9292 (the default URL):
 #   bundle exec ruby scripts/loadtest_session.rb --mode stream --levels 1,10
 #   # Railway — point the SAME script at the deployed service:
-#   INSIKA_URL=https://<service>.up.railway.app OPENCLAW_GATEWAY_TOKEN=... \
+#   INSIKA_URL=https://<service>.up.railway.app INSIKA_GATEWAY_TOKEN=... \
 #     bundle exec ruby scripts/loadtest_session.rb --mode both
 #   # web — the real production ingress (a consumer app on :3000, engine on :9292):
 #   bundle exec ruby scripts/loadtest_session.rb --surface web \
@@ -63,7 +63,7 @@
 #
 # Environment:
 #   INSIKA_URL                base URL of the engine (overridden by --url)
-#   OPENCLAW_GATEWAY_TOKEN    Bearer for /v1/responses; falls back to ADMIN_TOKEN,
+#   INSIKA_GATEWAY_TOKEN    Bearer for /v1/responses; falls back to ADMIN_TOKEN,
 #                             then "local-demo"
 #
 # Notes:
@@ -162,7 +162,7 @@ rescue ArgumentError, TypeError
   abort "loadtest_session: --gap must be a non-negative integer (got #{args['gap'].inspect})"
 end
 
-TOKEN = ENV["OPENCLAW_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
+TOKEN = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 BASE = (args["url"] || ENV["INSIKA_URL"] || ENV["HARNESS_URL"] ||
         (SURFACE == "web" ? "http://localhost:3000" : "http://localhost:9292")).sub(%r{/$}, "")
 

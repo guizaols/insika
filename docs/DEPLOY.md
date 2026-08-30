@@ -25,7 +25,7 @@ is durable SQLite (WAL) at `INSIKA_DB`; mount a volume and point it inside.
 docker build -t insika .
 docker run -p 9292:9292 -v insika-data:/data \
   -e DEEPSEEK_API_KEY=sk-... \
-  -e OPENCLAW_GATEWAY_TOKEN=change-me \
+  -e INSIKA_GATEWAY_TOKEN=change-me \
   insika
 curl localhost:9292/up      # {"status":"ok"}
 ```
@@ -115,7 +115,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
 | `INSIKA_TICK_INTERVAL` | `60` | seconds between tick passes — outbox drain + stale recovery sweep (process model, item 5). `0` disables |
 | `INSIKA_TICK_STALE_AFTER` | `900` | seconds a `:queued`/`:running` task must sit untouched before the tick sweeps it. Must exceed the largest `turn_timeout` of the deployment |
-| `OPENCLAW_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
+| `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
@@ -157,7 +157,7 @@ values (the API token falling back to `ADMIN_TOKEN` is a dev convenience only):
 - **`ADMIN_TOKEN`** — the `/studio` login (cookie auth). This is the **operator**
   surface (just you). Rotating it is **safe and independent**: change it, redeploy,
   log in with the new value. It does not affect any API consumer.
-- **`OPENCLAW_GATEWAY_TOKEN`** — the Bearer for `/v1/responses` and `/v1/agents`.
+- **`INSIKA_GATEWAY_TOKEN`** — the Bearer for `/v1/responses` and `/v1/agents`.
   This is the **contract with your API consumers**. Rotating it means **changing
   both sides together** (or the integration breaks): update the runtime var **and**
   each consumer's token in the same step.
@@ -227,7 +227,7 @@ healthcheck, and a restart policy.
 2. **Volume**: mount it at `/data` (the default `INSIKA_DB` points there) —
    without a volume, SQLite is ephemeral and recovery resumes nothing after a
    redeploy.
-3. **Vars**: `DEEPSEEK_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `CONSUMER_INTERNAL_URL`,
+3. **Vars**: `DEEPSEEK_API_KEY`, `INSIKA_GATEWAY_TOKEN`, `CONSUMER_INTERNAL_URL`,
    `INSIKA_EGRESS_HOSTS`. **Leave `WEB_CONCURRENCY` at its default of 1** unless
    you run [`insika-router`](ROUTER.md) in front. Railway's own docs say it
    "does not support sticky sessions" and randomly distributes traffic across
@@ -402,7 +402,7 @@ cache hits, P50/P95, error rate. Runs against local or a remote deployment. See
 [LOADTEST.md](LOADTEST.md).
 
 ```bash
-INSIKA_URL=http://localhost:9292 OPENCLAW_GATEWAY_TOKEN=xxx \
+INSIKA_URL=http://localhost:9292 INSIKA_GATEWAY_TOKEN=xxx \
   bundle exec ruby scripts/loadtest.rb --agents assistant --concurrency 16 --iterations 3
 ```
 
