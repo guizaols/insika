@@ -245,7 +245,7 @@ module Insika
           "  agent:    #{@agent}",
           "  shape:    #{@envelope[:turns_per_hour]} turns/h poisson, #{@envelope[:session_turns]}-turn sessions, " \
           "cap #{@envelope[:concurrency_cap]}, #{@envelope[:duration_hours]}h (#{@envelope[:warmup_hours]}h warmup)",
-          "  sample:   POST #{URI.join(target_url + '/', 'v1/responses')} model=openclaw:#{@agent} user=soak-1",
+          "  sample:   POST #{URI.join(target_url + '/', 'v1/responses')} model=insika:#{@agent} user=soak-1",
           "  out:      #{@out}/"
         ]
         unless @envelope.calibrated?
@@ -489,7 +489,7 @@ module Insika
           req["Authorization"] = "Bearer #{@token}"
           req["Content-Type"] = "application/json"
           req["Accept"] = "text/event-stream"
-          req.body = JSON.generate(model: "openclaw:#{agent}", user: user, stream: true, input: message)
+          req.body = JSON.generate(model: "insika:#{agent}", user: user, stream: true, input: message)
 
           t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           ttfb = nil

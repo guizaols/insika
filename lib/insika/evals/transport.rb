@@ -135,7 +135,7 @@ module Insika
         req["Authorization"] = "Bearer #{@token}"
         req["Content-Type"] = "application/json"
         req["Accept"] = "text/event-stream"
-        req.body = JSON.generate(model: "openclaw:#{agent}", user: conv, stream: true, input: message)
+        req.body = JSON.generate(model: "insika:#{agent}", user: conv, stream: true, input: message)
 
         t0 = mono
         ttfb = nil

@@ -165,7 +165,7 @@ RSpec.describe "Insika.embed" do
 
       env = Rack::MockRequest.env_for(
         "/ai/v1/responses", method: "POST",
-        input: JSON.generate(model: "openclaw:support", user: "chat-1", stream: true, input: "oi")
+        input: JSON.generate(model: "insika:support", user: "chat-1", stream: true, input: "oi")
       )
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
 
@@ -207,7 +207,7 @@ RSpec.describe "Insika.embed" do
 
       env = Rack::MockRequest.env_for(
         "/ai/v1/responses", method: "POST",
-        input: JSON.generate(model: "openclaw:support", user: "chat-2", stream: true, input: "oi")
+        input: JSON.generate(model: "insika:support", user: "chat-2", stream: true, input: "oi")
       )
       env["HTTP_AUTHORIZATION"] = "Bearer tok"
       status, _headers, body = app.call(env) # no reactor, starts a turn: 500

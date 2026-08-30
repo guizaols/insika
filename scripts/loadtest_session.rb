@@ -42,7 +42,7 @@
 #     --widget-id <widget-id> --mode stream --levels 1,10
 #
 # Flags:
-#   --agent ID          agent id (sent as model: "openclaw:<id>")  (default: demo)
+#   --agent ID          agent id (sent as model: "insika:<id>")  (default: demo)
 #   --surface S         engine | web                               (default: engine)
 #                         engine = hits the insika directly (POST /v1/responses +
 #                                  /v1/messages?stream=false)
@@ -213,7 +213,7 @@ if args.key?("dry-run")
          "body: #{JSON.generate(content: FLOW.first[1])}"
     puts "  steer mode: steps 2..7 fired #{GAP}ms apart (no verdict on this surface)"
   else
-    sample = JSON.generate(model: "openclaw:#{AGENT}", user: "ltss-s-#{RUN_ID}-0-0",
+    sample = JSON.generate(model: "insika:#{AGENT}", user: "ltss-s-#{RUN_ID}-0-0",
                            stream: true, input: FLOW.first[1])
     puts "sample request:"
     puts "  POST #{URI.join(BASE + '/', 'v1/responses')}"
@@ -263,7 +263,7 @@ end
 # timing carried by a response.* frame (same extraction as scripts/loadtest.rb).
 def post_sse(user, message)
   r = post(URI.join(BASE + "/", "v1/responses"),
-           { model: "openclaw:#{AGENT}", user: user, stream: true, input: message },
+           { model: "insika:#{AGENT}", user: user, stream: true, input: message },
            accept: "text/event-stream")
   return r unless r[:ok]
 

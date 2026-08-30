@@ -80,7 +80,7 @@ Runs against a local server **or** a remote one (e.g. Railway) — just point
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--agents a,b,c` | `demo` | comma-separated agent ids (mapped to `model: openclaw:<agent>`) |
+| `--agents a,b,c` | `demo` | comma-separated agent ids (mapped to `model: insika:<agent>`) |
 | `--concurrency N` | `8` | concurrent turns per wave |
 | `--iterations N` | `1` | number of waves per agent |
 | `--message TEXT` | greeting | user message sent every turn |
@@ -158,30 +158,18 @@ the engine, once at the gateway (its `/v1/responses` speaks the same protocol).
 Keep `--agents`, `--concurrency`, `--iterations` and `--message` identical, and use
 matching agents on both sides. Compare the printed TTFB/total/cache/error lines.
 
-### 4b. Reuse OpenClaw's `loadtest-gateway.mjs` unmodified
+### 4b. Comparing against an OpenClaw gateway
 
-`loadtest.rb` is the Ruby port of OpenClaw's `loadtest-gateway.mjs`. You do **not**
-need to change that script to point it at the engine — because the engine is a
-drop-in for the gateway, you only change **where it points**:
+The engine speaks its own wire names (`model: insika:<agent>`, header
+`X-Insika-Agent`), so OpenClaw's `loadtest-gateway.mjs` cannot be pointed at it
+unmodified. For a shadow comparison, run `loadtest.rb` (section 4a) against each
+side with identical `--agents`, `--concurrency`, `--iterations` and `--message`,
+and diff the reports. What you still need in hand:
 
-```bash
-# In the OpenClaw checkout, run its gateway loadtest against the HARNESS:
-OPENCLAW_GATEWAY_URL=http://localhost:9292 \
-OPENCLAW_GATEWAY_TOKEN=<same bearer the engine accepts> \
-node scripts/loadtest-gateway.mjs --agents demo --concurrency 16 --iterations 3
-```
-
-Then run the exact same command with `OPENCLAW_GATEWAY_URL` pointing at the real
-gateway, and diff the two reports. This is the shadow comparison the pilot needs.
-
-**What the operator must have in hand** (this repo does not vendor OpenClaw):
-
-- The OpenClaw checkout containing `scripts/loadtest-gateway.mjs` and Node installed.
-- A **bearer token accepted by both** sides. For the engine that is
-  `INSIKA_GATEWAY_TOKEN` (see DEPLOY.md); point the gateway run at its own token.
-- **The same agent id provisioned on both** sides (e.g. `demo`) so `model:
-  openclaw:<agent>` resolves on each. On the engine, provision via
-  `scripts/import_pack.rb`.
+- A bearer token accepted by each side — `INSIKA_GATEWAY_TOKEN` for the engine
+  (see DEPLOY.md), the gateway's own token for the gateway run.
+- **The same agent id provisioned on both** sides (e.g. `demo`). On the engine,
+  provision via `scripts/import_pack.rb`.
 - The **same provider** (or an equivalent-latency one) behind each, otherwise you
   are comparing providers, not engines.
 - Both endpoints reachable from where you run the client, warmed up (hit `/up` on

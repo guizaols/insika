@@ -30,7 +30,7 @@ RSpec.describe "scripts/loadtest_session.rb" do
     expect(out).to include("turns/mode=77")
     %w[greeting cep_invalid cep_valid search_corporal search_maos search_perfume faq_pagamento]
       .each { |step| expect(out).to include(step) }
-    expect(out).to include("openclaw:demo")
+    expect(out).to include("insika:demo")
   end
 
   it "rejects an unknown mode" do

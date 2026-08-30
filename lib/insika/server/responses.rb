@@ -12,9 +12,9 @@ module Insika
     # OpenAI Responses SSE frame (or nil for events with no counterpart). Follows the
     # constitutional rule: no business logic, no store access here.
     #
-    # Request: { model: "openclaw:<agent>", user: "<chat.id>", stream: true,
+    # Request: { model: "insika:<agent>", user: "<chat.id>", stream: true,
     #            input: "<string with already-composed blocks>" } + header
-    # X-Openclaw-Agent (agent fallback). The `input` enters VERBATIM as the
+    # X-Insika-Agent (agent fallback). The `input` enters VERBATIM as the
     # turn's message — the blocks (<memoria>/<dados_conhecidos>/directives) already come
     # composed by the consumer (the engine does not interpret them).
     module Responses
@@ -32,8 +32,8 @@ module Insika
       # gets that filtered structurally instead of by a regex on the leading tag.
       # Omitted = a customer typed it, which is what every turn meant before.
       def parse_request(body, req)
-        agent = body[:model].to_s.sub(/\Aopenclaw:/, "")
-        agent = req.get_header("HTTP_X_OPENCLAW_AGENT").to_s if agent.empty?
+        agent = body[:model].to_s.sub(/\Ainsika:/, "")
+        agent = req.get_header("HTTP_X_INSIKA_AGENT").to_s if agent.empty?
         raise Insika::ValidationError, "model/agent missing" if agent.strip.empty?
 
         user = body[:user].to_s
