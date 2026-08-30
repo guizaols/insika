@@ -376,6 +376,59 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "tool-allowlist check (a declared list that names no policy is inert)" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+
+    def finding(**over)
+      described_class.new(env: {}, **over).run.findings.find { |f| f.check == "tool-allowlist" }
+    end
+
+    # Written straight to the store: AgentProfile.build REPAIRS this state, so
+    # a record in it can only come from an older engine or an external import —
+    # which is exactly what the check is for.
+    def store_raw(id, **fields)
+      cs.put("agents", id, { "id" => id, "model" => "m" }.merge(fields))
+    end
+
+    it "errors on a stored agent with tools_allow and no tool_allowlist policy" do
+      store_raw("loja", "tools_allow" => %w[x y], "policies" => [])
+
+      f = finding(profile_source: profiles)
+
+      expect(f.severity).to eq(:error)
+      expect(f.message).to include("agent 'loja'", "tool_allowlist", "every registered tool")
+    end
+
+    it "errors on a declared tools_deny alone, and on tools_allow_groups alone" do
+      store_raw("a", "tools_deny" => ["x"], "policies" => [])
+      store_raw("b", "tools_allow_groups" => ["mcp:crm"], "policies" => [])
+
+      bad = described_class.new(env: {}, profile_source: profiles)
+            .run.findings.select { |f| f.check == "tool-allowlist" }
+
+      expect(bad.map(&:severity)).to eq(%i[error error])
+    end
+
+    it "is silent for a healthy agent (the policy is named)" do
+      store_raw("loja", "tools_allow" => ["x"], "policies" => ["tool_allowlist"])
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "is silent for an agent that declares no tool list at all" do
+      store_raw("loja", "policies" => [])
+
+      expect(finding(profile_source: profiles).severity).to eq(:ok)
+    end
+
+    it "is skipped without a stored profile source" do
+      expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("tool-allowlist")
+      expect(described_class.new(env: {}, profile_source: Insika::StaticProfileSource.new)
+             .run.findings.map(&:check)).not_to include("tool-allowlist")
+    end
+  end
+
   describe "grounding check (— a matcher that matches nothing is useless)" do
     let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
     let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
