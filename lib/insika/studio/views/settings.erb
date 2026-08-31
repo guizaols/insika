@@ -43,6 +43,17 @@
             <label>Memory TTL (days)<input type="text" name="memory_ttl_days" value="<%= @settings["memory_ttl_days"] %>" inputmode="numeric" placeholder="blank = off"></label>
           </div>
           <p class="muted">Memory TTL: how many days a customer memory cell lives before the daily sweep prunes it (per-fact <code>expires_at</code> overrides always win). Editing here sets the platform default for <strong>every</strong> cell; a per-tenant map authored in the settings record is replaced by this save.</p>
+          <hr>
+          <label class="check">
+            <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
+            in-session compaction — summarize old turns past the threshold
+          </label>
+          <div class="grid-2">
+            <label>keep_last <span class="muted">(messages kept verbatim)</span><input type="text" name="compaction_keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric"></label>
+            <label>compact_after <span class="muted">(uncompacted messages that trigger it)</span><input type="text" name="compaction_compact_after" value="<%= @settings.dig("compaction", "compact_after") %>" inputmode="numeric"></label>
+          </div>
+          <label>compaction model <span class="muted">(blank = the platform utility_model)</span><input type="text" name="compaction_model" value="<%= @settings.dig("compaction", "model") %>" placeholder="deepseek-v4-flash"></label>
+          <p class="muted">When a session's uncompacted transcript grows past <code>compact_after</code> messages, everything but the last <code>keep_last</code> is summarized by the cheap model into one <code>&lt;conversation_summary&gt;</code> fragment; the tail stays verbatim and the boundary is stable (the prompt cache holds after it). Runs post-turn, off the critical path.</p>
         </form>
       </div>
 

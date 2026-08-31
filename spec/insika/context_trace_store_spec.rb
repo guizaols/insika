@@ -28,6 +28,20 @@ RSpec.describe Insika::ContextTraceStore do
     expect(got.first["tools"]).to eq({ "count" => 9, "tokens" => 1_200 })
   end
 
+  # RFC-0044: {upto, runs} — the compaction state the turn was built over.
+  # Counts only, like everything else here; the summary text never lands.
+  describe "compaction" do
+    it "keeps upto/runs, symbol or string keys in, numbers coerced" do
+      store.record(session_id: "s", entry: entry(compaction: { upto: "21", "runs" => 2 }))
+      expect(store.for_session("s").first["compaction"]).to eq("upto" => 21, "runs" => 2)
+    end
+
+    it "absent (an uncompacted session) -> no compaction key" do
+      store.record(session_id: "s", entry: entry)
+      expect(store.for_session("s").first).not_to have_key("compaction")
+    end
+  end
+
   # {name, reason}: the reason is what makes the card answer "which one did I
   # trigger", and it has to survive the JSON round-trip through the store.
   describe "activation labels" do

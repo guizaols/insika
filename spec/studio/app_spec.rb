@@ -2282,16 +2282,29 @@ RSpec.describe Studio::App do
     res = client.get("/settings")
     expect(res.status).to eq(200)
     expect(res.body).to include('name="turn_timeout"')
-    # the compaction form is gone while nothing consumes the key.
-    expect(res.body).not_to include("compaction")
+    # the compaction form is back now that the engine consumes the key (RFC-0044).
+    expect(res.body).to include('name="compaction_enabled"', 'name="compaction_keep_last"',
+                                'name="compaction_compact_after"', 'name="compaction_model"')
     csrf = csrf_from(res.body)
     client.post("/settings", params: {
-                  "streaming" => "1", "turn_timeout" => "300", "_csrf" => csrf
+                  "streaming" => "1", "turn_timeout" => "300", "_csrf" => csrf,
+                  "compaction_enabled" => "1", "compaction_keep_last" => "10",
+                  "compaction_compact_after" => "30", "compaction_model" => ""
                 })
     patch = bus.last(:update_settings).payload[:patch]
     expect(patch["streaming"]).to be(true)
     expect(patch["turn_timeout"]).to eq(300)
-    expect(patch).not_to have_key("compaction")
+    # native types on the compaction hash too; blank model -> nil (utility_model).
+    expect(patch["compaction"]).to eq("enabled" => true, "keep_last" => 10,
+                                      "compact_after" => 30, "model" => nil)
+  end
+
+  it "settings without the compaction checkbox disables it (the form is authoritative)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    client.post("/settings", params: { "turn_timeout" => "90", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["compaction"]["enabled"]).to be(false)
   end
 
   it "settings without the streaming checkbox sends streaming=false" do

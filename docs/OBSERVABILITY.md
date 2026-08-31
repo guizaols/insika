@@ -149,6 +149,7 @@ knows its outcome.
 | `insika.tool.duration` | histogram | `s` | a `tool_call`/`tool_result` pair completes |
 | `insika.cache.hit_rate` | histogram | `%` | a turn reported billed prompt tokens (see below) |
 | `insika.tool.loop_intervened` | counter | `{intervention}` | the loop detector delivered its one-shot warning |
+| `insika.context.compacted` | counter | `{compaction}` | an in-session compaction was persisted (RFC-0044) |
 
 `insika.tool.duration` is deliberately **not** recorded for data-tools: those are a
 single point-in-time event, so there is no measured duration to report. A tool left
@@ -165,6 +166,12 @@ recipe below still works and answers the fleet-wide version of the question.
 `insika.tool.loop_intervened` counts deliveries of the loop detector's one
 warning per turn (see [Agents](AGENTS.md) `max_tool_repeat`), labelled with
 `insika.tool`. It counts interventions, not repeats: a turn contributes at most 1.
+
+`insika.context.compacted` counts persisted in-session compactions
+(`:context_compacted` — see [Context](CONTEXT.md)), labelled with
+`insika.agent` and `insika.model` (the summarizer's model, not the turn's). It
+fires post-turn, after the turn span already closed, so it deliberately rides
+its own labels rather than the open-turn set.
 
 ## Attribute reference
 

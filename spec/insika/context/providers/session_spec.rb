@@ -188,6 +188,70 @@ RSpec.describe Insika::Context::Providers::Session do
     end
   end
 
+  # RFC-0044 — the read half of in-session compaction: the persisted boundary
+  # splits the stored transcript into ONE summary fragment + the verbatim tail.
+  describe "compaction (RFC-0044)" do
+    def compacted_session(messages: 6, upto: 4, summary: "resumo antigo")
+      session_store.create(id: "s1")
+      messages.times { |i| session_store.append_messages("s1", { role: :user, content: "m#{i}" }) }
+      session_store.set_compaction("s1", summary: summary, upto: upto, model: "flash")
+      session_store.find("s1")
+    end
+
+    it "renders the summary as the FIRST fragment + only the tail verbatim" do
+      session = compacted_session
+
+      frags = provider.call(request(session: session))
+
+      expect(frags.first.source).to eq("compaction")
+      expect(frags.first.priority).to eq(Insika::Context::Priority::COMPACTION)
+      expect(frags.first.placement).to eq(:history)
+      expect(frags.first.content[:role]).to eq("user")
+      expect(frags.first.content[:content])
+        .to eq("<conversation_summary>\nresumo antigo\n</conversation_summary>")
+      expect(frags.drop(1).map { |f| f.content[:content] }).to eq(%w[m4 m5])
+    end
+
+    it "the verbatim tail keeps the normal recency ramp from HISTORY_BASE" do
+      frags = provider.call(request(session: compacted_session))
+      expect(frags.drop(1).map(&:priority)).to eq([60, 61])
+    end
+
+    it "a checkpoint resume replays its own tape — never rewritten by the boundary" do
+      session = compacted_session
+      cp = checkpoint([{ "role" => "user", "content" => "do checkpoint" }])
+
+      frags = provider.call(request(session: session, checkpoint: cp))
+
+      expect(frags.map { |f| f.content[:content] }).to eq(["do checkpoint"])
+    end
+
+    it "explicit vars[:history] is the caller's contract — never rewritten either" do
+      compacted_session
+      frags = provider.call(request(session: session_store.find("s1"),
+                                    vars: { history: [{ role: :user, content: "explícito" }] }))
+
+      expect(frags.map { |f| f.content[:content] }).to eq(["explícito"])
+    end
+
+    it "upto clamped to the transcript size (defensive: summary alone, no tail)" do
+      session = compacted_session(messages: 3, upto: 3)
+      frags = provider.call(request(session: session))
+      expect(frags.size).to eq(1)
+      expect(frags.first.source).to eq("compaction")
+    end
+
+    it "a session without compaction state passes through byte-identical (parity)" do
+      session_store.create(id: "s1")
+      session_store.append_messages("s1", { role: :user, content: "m0" })
+
+      frags = provider.call(request(session: session_store.find("s1")))
+
+      expect(frags.size).to eq(1)
+      expect(frags.first.source).to eq(provider.id)
+    end
+  end
+
   it "read failure with a requested session -> ContextError" do
     exploding = Class.new do
       def find(_id) = raise Insika::StoreError, "backend caiu"
