@@ -2078,7 +2078,14 @@ end
         "providers" => insika[:llm_provider_store] ? insika[:llm_provider_store].all.size : 0,
         "MCP servers" => insika[:mcp_store] ? insika[:mcp_store].all.size : 0
       }
-      now = Time.now
+      # UTC, deliberately: sessions stamp `updated_at` with `Time.now.utc.iso8601`,
+      # and every bucket below is keyed by a calendar part (date, hour) of that
+      # stamp. A LOCAL `now` mixes two clocks — on a UTC-3 host, from 21:00 local
+      # onward "today" is already tomorrow in UTC, so the day buckets stopped
+      # matching and the 24h floor was built three hours in the future, silently
+      # emptying both charts. Instant comparisons (`cutoff`) never had the bug;
+      # calendar arithmetic did.
+      now = Time.now.utc
       cutoff = now - (5 * 60)
       @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
@@ -2089,8 +2096,11 @@ end
       # Trend affordances on the traffic stat cards: today vs yesterday from
       # the 14-day series (config counts — agents/skills/tools/providers —
       # have no daily shape and honestly show no trend).
-      today, yesterday = @activity.last(2).map(&:last)
-      @conv_trend = today - yesterday.to_i
+      # `@activity` is OLDEST FIRST and ends at today, so the last pair reads
+      # [yesterday, today]. Destructured the other way round it reported a
+      # first-conversation-of-the-day as "−1", every day.
+      yesterday, today = @activity.last(2).map(&:last)
+      @conv_trend = today.to_i - yesterday.to_i
       @msg_trend = message_delta(sessions, now)
       @persistence = insika.dig(:config, :persistence)
       view("home")
@@ -2113,11 +2123,14 @@ end
     end
 
     # [[Date, count], …] — one bucket per day over the window, most-recent last.
+    # `now` is UTC (render_home) and so is every `t` — see #utc_time. Both sides
+    # of the bucket key must be read off the same clock or the join silently
+    # misses.
     def activity_by_day(sessions, days:, now:)
       today = now.to_date
       buckets = Hash.new(0)
       sessions.each do |s|
-        t = parse_time(s.updated_at) or next
+        t = utc_time(s.updated_at) or next
         buckets[t.to_date] += 1
       end
       (0...days).to_a.reverse.map { |i| d = today - i; [d, buckets[d]] }
@@ -2131,7 +2144,7 @@ end
       floor = Time.utc(now.year, now.month, now.day, now.hour) - (hours - 1) * 3600
       buckets = Hash.new(0)
       sessions.each do |s|
-        t = parse_time(s.updated_at) or next
+        t = utc_time(s.updated_at) or next
         h = Time.utc(t.year, t.month, t.day, t.hour)
         buckets[h] += 1 if h >= floor
       end
@@ -2144,9 +2157,18 @@ end
     def message_delta(sessions, now)
       today = now.to_date
       sum = ->(date) do
-        sessions.sum { |s| (t = parse_time(s.updated_at)) && t.to_date == date ? Array(s.messages).size : 0 }
+        sessions.sum { |s| (t = utc_time(s.updated_at)) && t.to_date == date ? Array(s.messages).size : 0 }
       end
       sum.call(today) - sum.call(today - 1)
+    end
+
+    # A stamp read for its CALENDAR parts, always in UTC. `Time.parse` honours
+    # whatever offset the string carries — ours are `Z`, but a record written by
+    # anything else would otherwise bucket by its own zone. `getutc`, not `utc`:
+    # the latter mutates the receiver.
+    def utc_time(value)
+      t = parse_time(value)
+      t&.getutc
     end
 
     # --- History -------------------------------------------------------------

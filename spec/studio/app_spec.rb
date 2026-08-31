@@ -2179,6 +2179,33 @@ RSpec.describe Studio::App do
     expect(body).to match(/class="trend (up|down)"/)
   end
 
+  # The home charts bucket by CALENDAR parts (date, hour) of a stamp the engine
+  # writes in UTC. Reading `Time.now` local mixed two clocks: on a UTC-3 host,
+  # from 21:00 local onward "today" was already tomorrow in UTC, so the day
+  # buckets missed every session and the 24h floor landed three hours in the
+  # future. The charts emptied for three hours a day and nobody could tell.
+  it "home buckets in UTC even when the host's local date is a day behind" do
+    local_evening = Time.new(2026, 8, 30, 21, 15, 0, "-03:00") # == 2026-08-31T00:15Z
+    allow(Time).to receive(:now).and_return(local_evening)
+    sess = StoredSession.new(id: "s-utc", updated_at: "2026-08-31T00:10:00Z",
+                             vars: { "agent" => "bia" },
+                             messages: [{ "role" => "user", "content" => "oi" },
+                                        { "role" => "assistant", "content" => "olá" }])
+    app, = build_app(sessions: { "s-utc" => sess })
+    body = login(app).get("/home").body
+
+    # today's conversation and its messages both counted -> both cards trend up.
+    # The conversations card is the one that used to read "−1" on the day's
+    # first conversation: the 14-day series is oldest-first, and the last pair
+    # was destructured as [today, yesterday] instead of [yesterday, today].
+    expect(body).to include('<span class="trend up" title="vs yesterday">+1')
+    expect(body).to include('<span class="trend up" title="vs yesterday">+2')
+    expect(body).not_to include('class="trend down"')
+    # and it lands in the newest 24h bucket, not below a floor set in the future
+    expect(body).to include('class="sparkline"')
+    expect(body).to match(/<rect[^>]*class="bar"/)
+  end
+
   it "agents: a frame request renders the detail pane alone; a plain hit renders the shell" do
     app, = build_app
     client = login(app)
