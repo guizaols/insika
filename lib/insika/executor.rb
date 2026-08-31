@@ -1038,6 +1038,11 @@ module Insika
                          tokens: estimate_tools_tokens(state.allowed_tools) },
                 fingerprints: fingerprints,
                 cache: { invalidation_reason: reason } }
+      # the compaction state this turn was BUILT over (RFC-0044) —
+      # {upto, runs}, counts only; the summary fragment itself already shows
+      # as the trace's own "compaction" category via its fragment source.
+      compaction = state.session.respond_to?(:compaction) ? state.session.compaction : nil
+      entry[:compaction] = { upto: compaction["upto"], runs: compaction["runs"] } if compaction
       # Park the SANITIZED entry (string keys) — the stage-8 stamp merges into
       # it and re-records the same key; a raw entry would add a SECOND "cache"
       # key that sanitize would then ignore (the symbol one wins).
@@ -2476,6 +2481,12 @@ module Insika
       # next door to the other two, for the same reason: it fires for a fresh
       # turn and a recovered one.
       finalize_knowledge_extraction(task, profile, new_messages)
+
+      # in-session compaction (RFC-0044): when the uncompacted
+      # transcript crossed the threshold this turn, summarize the old prefix
+      # with the cheap model and move the boundary — off the critical path,
+      # same terminal hook, same best-effort discipline as the other three.
+      finalize_compaction(task, profile)
     end
 
     # Records the answer in the outbox and dispatches it. The discriminator is the
@@ -2605,6 +2616,59 @@ module Insika
       return nil unless @settings_store
 
       @settings_store.get["utility_model"]
+    end
+
+    # in-session compaction (RFC-0044). Platform-gated
+    # (Settings compaction.enabled — parity when off), planned over the
+    # POST-append transcript (persist_turn already wrote this turn's messages),
+    # dispatched off the critical path — the SAME shape as
+    # finalize_knowledge_extraction: inline when non-supervised, a child of the
+    # turn supervisor when serving. Best-effort: any failure leaves the session
+    # record untouched and the next turn re-plans.
+    def finalize_compaction(task, profile)
+      return unless task.session_id && @settings_store
+
+      config = Coercion.deep_stringify(@settings_store.get["compaction"])
+      return unless config && Coercion.truthy?(config["enabled"])
+
+      session = @session_store.find(task.session_id)
+      return unless session
+
+      state = session.respond_to?(:compaction) ? session.compaction : nil
+      plan = Insika::Compaction.plan(messages: session.messages, state: state, config: config)
+      return unless plan
+
+      # compaction.model -> platform utility_model -> inert (never a guess);
+      # `insika doctor` warns on enabled-with-no-model. @llm rides along so a
+      # deployment (or spec) that injects its LLM seam covers this call too.
+      summarizer = Compaction::SummarizerFactory.build(config, utility_model: utility_model, llm: @llm)
+      return unless summarizer
+
+      run = lambda { run_compaction(task, profile, session, state, plan, config, summarizer) }
+      return run.call unless @supervised
+
+      turn_parent.async do |t|
+        t.annotate("compaction:#{task.id}")
+        run.call
+      end
+    end
+
+    def run_compaction(task, profile, session, state, plan, config, summarizer)
+      prompt = Insika::Compaction.prompt(messages: session.messages, plan: plan,
+                                         previous: state && state["summary"],
+                                         base: config["prompt"])
+      result = summarizer.summarize(prompt: prompt)
+      updated = @session_store.set_compaction(task.session_id, summary: result[:summary],
+                                              upto: plan.upto, model: summarizer.model)
+      # counts and ids only — the summary text never enters the stream. Feeds
+      # the insika.context.compacted counter (Telemetry::Recorder).
+      emit(:context_compacted,
+           { task_id: task.id, agent: profile.id, from: plan.from, upto: plan.upto,
+             messages: plan.count, runs: updated.compaction && updated.compaction["runs"],
+             model: summarizer.model, cost: result[:cost] },
+           task: task)
+    rescue StandardError
+      nil # best-effort: compaction never re-fails an already-committed turn.
     end
 
     # ONE supervisor fiber for the whole chain. Sequential deliver

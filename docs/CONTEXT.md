@@ -54,14 +54,37 @@ cacheable prefix byte-stable (see the prefix cache below).
 > returns empty turns, raise `context_budget` (e.g. to `60000`) before looking
 > anywhere else. See [Agents](AGENTS.md#default-limits).
 
-### Compaction is not wired — except the mechanical dedupe
+### In-session compaction (opt-in, platform Settings)
 
-There is a settings stub for LLM-summarization compaction (`enabled: false`,
-`keep_last`, a reserved utility-model slot), but **nothing consumes it today**
-— and the Studio no longer shows a form for it, so the setting cannot be
-switched on by accident. Size is managed purely by hard budget eviction.
-Do not rely on compaction to shrink a bloated agent: tune `context_budget` and
-keep the identity lean.
+When enabled (Studio → Settings → General, or the `compaction` settings hash),
+the engine summarizes old turns *inside* the session instead of losing them to
+eviction:
+
+- **Trigger:** after a turn commits, if the session's *uncompacted* message
+  count exceeds `compact_after` (default 40), everything but the last
+  `keep_last` messages (default 20) is summarized by a cheap model
+  (`compaction.model`, falling back to the platform `utility_model`; neither
+  set = the feature is inert and `insika doctor` warns). Runs off the critical
+  path — the customer already has the answer.
+- **Read path:** the Session provider replaces the compacted prefix with ONE
+  history fragment — a `user` message wrapped in `<conversation_summary>` tags,
+  priority 59 (one step below the oldest verbatim message), source
+  `compaction` (its own category in the context trace). The tail stays
+  verbatim and the boundary is **stable** between compactions, so the prompt
+  cache holds after it.
+- **What survives:** the default prompt orders the summary to preserve customer
+  facts (sizes, CEP, order numbers), the assistant's commitments, the still-open
+  questions and the decisions already made; on re-compaction the previous
+  summary is folded in, so a fact from turn 3 survives every later batch.
+  A platform `compaction.prompt` replaces the default wholesale.
+- **Scope:** store-sourced history only — a checkpoint resume replays its own
+  tape and an explicit `history` is the caller's contract; neither is
+  rewritten. Observability: the `:context_compacted` event, the
+  `insika.context.compacted` counter and `{upto, runs}` in the context trace.
+
+Compaction does not replace the budget: eviction stays as the hard backstop
+for a single oversized turn. Tune `context_budget` and keep the identity lean
+regardless.
 
 One cheap half **is** wired, opt-in per agent: `tool_output_compression` (DSL
 `tool_output_compression`, or `"tool_output_compression": true` in the pack).

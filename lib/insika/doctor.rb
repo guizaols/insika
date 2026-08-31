@@ -179,7 +179,7 @@ module Insika
                     check_relay_channel check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
-                    check_harvest check_schedules check_guardrail_corpora
+                    check_compaction check_harvest check_schedules check_guardrail_corpora
                     check_tool_allowlist_policy]
 
     def safe(check)
@@ -1302,6 +1302,27 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     def distill_counts
       { pending: @proposal_store.pending(limit: 10_000).size,
         stale: @proposal_store.stale(limit: 10_000).size }
+    end
+
+    # the in-session compaction check (RFC-0044): platform-gated,
+    # so ONE line — enabled with no resolvable model (no compaction.model, no
+    # platform utility_model) can never run; the warn is the same "declared
+    # but dead" signal as check_distill's (the engine never guesses a model).
+    def check_compaction
+      return [] unless @settings_store
+
+      settings = @settings_store.get
+      config = settings["compaction"] || {}
+      return [ok("compaction", "in-session compaction off")] unless Coercion.truthy?(config["enabled"])
+
+      if Coercion.presence(config["model"]).nil? && Coercion.presence(settings["utility_model"]).nil?
+        [Finding.new(check: "compaction", severity: :warn, fix: nil,
+                     message: "in-session compaction is enabled but has no model slot — it will " \
+                              "never run (set compaction.model or the platform utility_model).")]
+      else
+        [ok("compaction", "in-session compaction on — keep_last #{config['keep_last']}, " \
+                          "compact_after #{config['compact_after']}")]
+      end
     end
 
     # the harvest check — per profile WITH a harvest hash:

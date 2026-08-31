@@ -52,6 +52,16 @@ RSpec.describe "Context — trust boundary" do
                 p::TOOL_SEARCH, p::BRIEFING, p::REQUEST]
       expect(ladder).to eq(ladder.sort.reverse)
     end
+
+    it "COMPACTION sits at 59 — one step below the oldest verbatim message, above REQUEST" do
+      p = Insika::Context::Priority
+      expect(p::COMPACTION).to eq(59)
+      # the summary is the "oldest unit": under budget it drops BEFORE any
+      # verbatim history message (RFC-0044)…
+      expect(p::COMPACTION).to be < p::HISTORY_BASE
+      # …but after the turn's own <request_context>.
+      expect(p::COMPACTION).to be > p::REQUEST
+    end
   end
 
   describe "assemble" do

@@ -80,8 +80,18 @@ module Insika
         "tools" => { "count" => int(tools[:count] || tools["count"]),
                      "tokens" => int(tools[:tokens] || tools["tokens"]) },
         "fingerprints" => fingerprints_of(e[:fingerprints] || e["fingerprints"]),
-        "cache" => cache_of(e[:cache] || e["cache"])
+        "cache" => cache_of(e[:cache] || e["cache"]),
+        "compaction" => compaction_of(e[:compaction] || e["compaction"])
       }.compact
+    end
+
+    # { upto, runs } — present only when the session was compacted (RFC-0044).
+    # Counts only, like everything else here; the summary text never lands.
+    def compaction_of(raw)
+      return nil unless raw.is_a?(Hash)
+
+      { "upto" => int(raw[:upto] || raw["upto"]),
+        "runs" => int(raw[:runs] || raw["runs"]) }
     end
 
     # { name => sha256-hex }; names stringified, non-strings
