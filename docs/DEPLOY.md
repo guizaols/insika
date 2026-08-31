@@ -203,7 +203,10 @@ text rather than a serialized object** (a file whose content is a stringified Ha
 serves a mangled prompt on every turn while looking perfectly healthy — present,
 non-empty, and the agent still answers), **a prompt file that outgrew a prompt**
 (WARN past ~6 000 estimated tokens or 600 lines — the LLM-generated pack shape
-that costs 20%+ extra tokens per turn for no better instruction-following), and
+that costs 20%+ extra tokens per turn for no better instruction-following),
+**in-session compaction enabled with no model slot** (WARN — neither
+`compaction.model` nor the platform `utility_model` is set, so it can never run;
+see [Context](CONTEXT.md)), and
 **skill drift** — a shared skill whose
 body names one store, a prompt file routing to a skill the agent cannot load, a broken
 companion pair, a stale `eager:` key (see
