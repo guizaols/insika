@@ -32,9 +32,10 @@ All three land on the **same** config-over-code import path — they differ only
 ergonomics, not in what they produce.
 
 - **DSL** — `Insika.agent("id") { … }` builds an agent definition and imports it
-  into the durable store. Best for code-defined agents and examples. The DSL
-  auto-enables the tool- and skill-allowlist policies. `model` is optional — a nil
-  model resolves the platform `default_model` at turn start.
+  into the durable store. Best for code-defined agents and examples. The DSL also
+  names the **skill**-allowlist policy for you (the tool one is implied by any
+  declared tool list, on every path). `model` is optional — a nil model resolves
+  the platform `default_model` at turn start.
 - **API** — `POST /v1/agents` with a definition (a "pack": an agent config plus its
   prompt files, skills, and data-tools). The import is **idempotent** and
   **authoritative** — what leaves the definition leaves the agent, so a
@@ -389,6 +390,16 @@ The same three-state rule governs tools, skills, context providers, and workflow
 
 For tools, a paired deny list (`tools_deny`) **always wins**, and
 `tools_allow_groups` unions a per-group allowlist on top of `tools_allow`.
+
+**Declaring a list is opting into it.** The lists are applied by one policy, the
+builtin `tool_allowlist`, and the policy engine runs only the policies a profile
+names — so declaring `tools_allow` without naming that policy used to mean the
+model got *every* registered tool. The engine now adds `tool_allowlist` for you
+the moment any of `tools_allow`, `tools_deny` or `tools_allow_groups` is
+declared, on every creation path. Presence is the trigger, not content:
+`tools_allow: []` means "no tools" and enforces just as hard. If a stored agent
+predates this, `insika doctor` names it — the engine repairs it on read, but the
+stored record stays wrong until you re-save it.
 
 Three capabilities invert the default — `nil`/absent means **OFF**, not "all":
 `subagents`, `memory`, and `guardrails` (each defaults to off or a conservative
