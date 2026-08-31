@@ -25,7 +25,9 @@ authoring writes (`:golden_written`, `:agent_file_written`, …), queue bookkeep
 channel delivery (`:channel_delivered` — see [Channels](CHANNELS.md))
 travel the same stream and are **ignored** by the bridge: they open no span and
 touch no instrument, because they are not part of a turn's latency or cost. Any
-other subscriber still sees them.
+other subscriber still sees them. The one mid-turn event the bridge does consume
+is `:tool_loop_intervened` — it feeds the `insika.tool.loop_intervened` counter
+(no span: the intervention is a fact about the turn, not a timed operation).
 
 They are worth subscribing to even so, because each is the ONLY record of
 something that left no task of its own behind:
@@ -145,11 +147,24 @@ knows its outcome.
 | `insika.cost` | counter | `{USD}` | the turn's model is priced (see below) |
 | `insika.tool.calls` | counter | `{call}` | a tool call completes |
 | `insika.tool.duration` | histogram | `s` | a `tool_call`/`tool_result` pair completes |
+| `insika.cache.hit_rate` | histogram | `%` | a turn reported billed prompt tokens (see below) |
+| `insika.tool.loop_intervened` | counter | `{intervention}` | the loop detector delivered its one-shot warning |
 
 `insika.tool.duration` is deliberately **not** recorded for data-tools: those are a
 single point-in-time event, so there is no measured duration to report. A tool left
 open by a mid-turn failure is not counted as a completed call either — its span is
 closed, but a failed call must not inflate the success histogram.
+
+`insika.cache.hit_rate` is the same arithmetic the Studio's per-agent series uses:
+cache **reads** over the whole **billed** prompt (fresh input + cache reads + cache
+writes), always in `[0,100]`. A turn with no billed prompt tokens records nothing —
+absence is not a 0% hit. It is recorded per turn on the terminal event, so it
+carries the turn labels (`insika.agent`, `insika.model`, …); the token-counter
+recipe below still works and answers the fleet-wide version of the question.
+
+`insika.tool.loop_intervened` counts deliveries of the loop detector's one
+warning per turn (see [Agents](AGENTS.md) `max_tool_repeat`), labelled with
+`insika.tool`. It counts interventions, not repeats: a turn contributes at most 1.
 
 ## Attribute reference
 
@@ -267,7 +282,14 @@ climbing while `input` stays flat.
 
 **Cache hit ratio**
 `insika.tokens` filtered to `insika.token.type="cached"` over the same counter
-filtered to `input`. This is the number that moves your bill.
+filtered to `input`. This is the number that moves your bill. For the per-turn
+distribution (does every turn hit, or do fleet averages hide cold agents?), chart
+`insika.cache.hit_rate` — p50 by `insika.agent`; a healthy agent sits near 100.
+
+**Loop interventions**
+`insika.tool.loop_intervened`, rate, grouped by `insika.agent` and `insika.tool`.
+Any sustained non-zero rate means one tool keeps being retried with identical
+arguments — fix the tool's contract or the prompt, not the detector.
 
 **Spend per tenant**
 `insika.cost`, rate (or `increase` over a billing window), grouped by

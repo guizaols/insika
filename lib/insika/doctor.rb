@@ -723,24 +723,57 @@ module Insika
 # the mangled prompt on every turn, and nothing else would ever say so: the file is
 # present, non-empty, and the agent answers — worse than a crash. Found on the pilot
 # by an `insika refine` report, three weeks after the fact.
+#
+# The same sweep also WARNS (never errors) on a file that outgrew a prompt.
+# Merchant packs are LLM-generated (generate-merchant-pack), and generated prose
+# bloats: the pilot's 28 KB AGENTS.md is the local example, and the ETH Zurich
+# instruction-file study puts the cost of that shape at 20%+ extra tokens per
+# turn for no extra instruction-following. The thresholds are deliberately
+# generous — a hand-written file never meets them; only the generated shape does.
 def check_prompt_files
   return [] unless @agent_file_store
 
   agents = @agent_file_store.agents
-  wrapped = agents.flat_map do |agent|
-    @agent_file_store.list(agent).filter_map do |name|
-      next unless wrapped_content?(@agent_file_store.read(agent, name))
-
-      Finding.new(check: "prompt-files", severity: :error, fix: nil,
-                  message: "agent '#{agent}' file '#{name}' holds a serialized object, not text — " \
-                           "the model receives `{\"content\" => …}` on one line, escapes and all. " \
-                           "Recover the markdown from inside the wrapper and write it back.")
+  wrapped = []
+  oversized = []
+  agents.each do |agent|
+    @agent_file_store.list(agent).each do |name|
+      content = @agent_file_store.read(agent, name)
+      if wrapped_content?(content)
+        wrapped << Finding.new(check: "prompt-files", severity: :error, fix: nil,
+                               message: "agent '#{agent}' file '#{name}' holds a serialized object, not text — " \
+                                        "the model receives `{\"content\" => …}` on one line, escapes and all. " \
+                                        "Recover the markdown from inside the wrapper and write it back.")
+      elsif (finding = oversized_prompt(agent, name, content))
+        oversized << finding
+      end
     end
   end
-  return wrapped if wrapped.any?
+  return wrapped + oversized if wrapped.any? || oversized.any?
 
   total = agents.sum { |a| @agent_file_store.list(a).length }
   [ok("prompt-files", "#{total} prompt file(s) across #{agents.length} agent(s): all text")]
+end
+
+# WARN thresholds for one prompt file. ~6 000 estimated tokens (~24 KB) or 600
+# lines: the pilot's generated 28 KB / 292-line AGENTS.md trips the token bar,
+# every hand-written demo file stays far under both. Estimate = chars/4, the
+# same yardstick as Insika::TokenEstimator — cheap and honest about being ±15%.
+PROMPT_FILE_WARN_TOKENS = 6_000
+PROMPT_FILE_WARN_LINES = 600
+
+def oversized_prompt(agent, name, content)
+  text = content.to_s
+  tokens = Insika::TokenEstimator.estimate(text)
+  lines = text.lines.count
+  return nil if tokens <= PROMPT_FILE_WARN_TOKENS && lines <= PROMPT_FILE_WARN_LINES
+
+  Finding.new(check: "prompt-files", severity: :warn, fix: nil,
+              message: "agent '#{agent}' file '#{name}' is ~#{tokens} tokens over #{lines} line(s) " \
+                       "(threshold: #{PROMPT_FILE_WARN_TOKENS} tokens / #{PROMPT_FILE_WARN_LINES} lines) — " \
+                       "a prompt this large costs 20%+ more tokens on every turn for no better " \
+                       "instruction-following. Trim it, or split the reference material into skills " \
+                       "the agent loads on demand.")
 end
 
 # Cheap and specific: Ruby's inspect of a Hash whose first key is a string. A real

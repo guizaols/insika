@@ -485,6 +485,30 @@ and gets the URL back; the tenant is bound from the turn, never a parameter the
 model types. See [Artifacts](ARTIFACTS.md) for the tool contract, the serving
 routes, the signed link and the retention/LGPD reach.
 
+## The usage report — `insika tools:report`
+
+The per-session trace answers "what did this conversation call"; nothing used to
+answer "what does this agent carry and never use". The report aggregates the
+stored traces per agent (tasks → sessions → `tool_traces`, the same read the
+Studio does) and flags three shapes:
+
+- **`never_called`** — in `tools_allow`, zero calls in any stored trace. Dead
+  weight: its schema ships on every request and buys nothing.
+- **`error_rate`** — over 30% conventional errors (the trace's `ok` flag) inside
+  the window (default 14 days). Either the tool is broken or the model cannot
+  hold its contract.
+- **`stale`** — called at some point, but not once inside the window.
+
+```bash
+insika tools:report                        # every stored agent
+insika tools:report --agent store-support  # one agent
+insika tools:report --days 30 --json       # wider window, machine-readable
+```
+
+Read-only by design: the report names candidates, the **operator** removes — a
+flagged tool may still be the one a rare but critical flow needs. Counts are
+"at least", never exact: the trace keeps a capped tail per session.
+
 ## See also
 
 - [Agents](AGENTS.md) — allowlists, groups, and per-agent tool exposure.
