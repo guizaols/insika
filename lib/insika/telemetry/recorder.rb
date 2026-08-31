@@ -40,7 +40,8 @@ module Insika
       # and units are part of the documented contract (docs/OBSERVABILITY.md) —
       # renaming one breaks every dashboard built on it.
       class Instruments
-        attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration
+        attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration,
+                    :cache_hit_rate, :loop_intervened
 
         def initialize(meter)
           @turns = meter.create_counter("insika.turns", unit: "{turn}",
@@ -55,6 +56,10 @@ module Insika
                                                                   description: "Tool invocations")
           @tool_duration = meter.create_histogram("insika.tool.duration", unit: "s",
                                                                          description: "Wall time of a tool call")
+          @cache_hit_rate = meter.create_histogram("insika.cache.hit_rate", unit: "%",
+                                                                            description: "Prompt-cache hit rate of a turn (cached / billed prompt tokens)")
+          @loop_intervened = meter.create_counter("insika.tool.loop_intervened", unit: "{intervention}",
+                                                                                 description: "Loop-detector warnings delivered to the model")
         end
       end
 
@@ -73,6 +78,7 @@ module Insika
         when :tool_call      then start_tool(meta, data)
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
+        when :tool_loop_intervened then count_loop(meta, data)
         when :task_completed then finish_turn(meta, data, :ok)
         when :task_failed    then finish_turn(meta, data, :error)
         when :task_cancelled then finish_turn(meta, data, :cancelled)
@@ -166,6 +172,35 @@ module Insika
         @instruments.turns.add(1, attributes: labels)
         @instruments.turn_duration.record(seconds, attributes: labels) if seconds
         count_usage(turn, usage)
+        count_cache_hit(turn, usage)
+      end
+
+      # Same arithmetic as the Executor's per-agent series (stamp_cache_hit):
+      # the billed prompt is fresh input + cache reads + cache writes, and the
+      # hit rate is reads over the whole billed prompt — always in [0,100]. A
+      # turn with no billed prompt tokens (no usage, usage without the fields)
+      # records nothing: absence is not a 0% hit.
+      def count_cache_hit(turn, usage)
+        return unless usage
+
+        billed = usage[:input_tokens].to_i + usage[:cached_tokens].to_i +
+                 usage[:cache_creation_tokens].to_i
+        return unless billed.positive?
+
+        rate = (usage[:cached_tokens].to_i * 100.0) / billed
+        base = turn.labels.merge(attrs("insika.model" => usage[:model]&.to_s))
+        @instruments.cache_hit_rate.record(rate, attributes: base)
+      end
+
+      # The loop detector delivered its one-shot warning (`:tool_loop_intervened`,
+      # counts and the tool name, never arguments). An orphan event (no open turn)
+      # is ignored, like every other consumer of this stream.
+      def count_loop(meta, data)
+        return unless @instruments
+
+        turn = @turns[meta[:task_id]] or return
+        labels = turn.labels.merge(attrs("insika.tool" => data[:name]&.to_s))
+        @instruments.loop_intervened.add(1, attributes: labels)
       end
 
       # Tokens ride ONE counter split by `insika.token.type` (instead of four
