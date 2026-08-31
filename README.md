@@ -143,7 +143,7 @@ navigates by.
 - [Evals](docs/EVALS.md) — the cases that grade an agent: rubrics, the judge panel, and the pre-merge gate.
 - [Refinement](docs/REFINEMENT.md) — read an agent's own traffic back as a ranked report of what broke.
 - [Outcomes and follow-ups](docs/OUTCOMES.md) — what the traffic was worth in business terms, and the tool that comes back on a promise.
-- [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path (retrieval and consolidation are not shipped yet).
+- [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path.
 - [Facts](docs/FACTS.md) — distill finished customer conversations into proposed facts; a human approves them into memory (nothing is ever applied automatically).
 - [Harvest](docs/HARVEST.md) — mine real traffic for SKILL proposals; the negative list, the evidence-ledger grounding filter and the double gate hold every proposal to a human approval and the append-only log (nothing is ever applied automatically).
 
@@ -176,5 +176,6 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Vulnerabilities go through
 
 ## Status
 
-Pre-release — APIs may still change, nothing is tagged yet
-([CHANGELOG.md](CHANGELOG.md)). Licensed **MIT** ([LICENSE](LICENSE)).
+Pre-1.0 — published on [RubyGems](https://rubygems.org/gems/insika); APIs may
+still change between minor versions ([CHANGELOG.md](CHANGELOG.md)). Licensed
+**MIT** ([LICENSE](LICENSE)).

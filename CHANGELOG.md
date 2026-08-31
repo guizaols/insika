@@ -8,6 +8,16 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-31
+
+The post-consolidation hardening wave: the last two OpenClaw-era names are gone
+from the wire (**breaking** — `insika:<agent>` / `X-Insika-Agent` and
+`INSIKA_GATEWAY_TOKEN`, no aliases), and the engine learned to manage its own
+long conversations — in-session compaction (RFC-0044), a tool budget that warns
+before it kills, goal recitation at the tail of the context, and a tool-usage
+audit report. Update `/v1` consumers and the gateway-token variable together
+with this upgrade.
+
 ### Added
 
 - **In-session compaction (RFC-0044).** When a session's uncompacted
@@ -106,9 +116,6 @@ it is released. Entries land with the pull request that makes the change.
   `Insika.agent`/`Insika.system` runtime wired every context provider except
   `Briefing`, so `update_briefing` / `set_next_step` persisted state that never
   reached a prompt. Now wired, before `Session`, like `config/wiring.rb`.
-
-### Fixed
-
 - **Docker image shipped without `docs/`, so `GET /start.md` was a 500 with
   `INSIKA_ONBOARDING=1`.** `.dockerignore` excluded the whole tree; the onboarding
   surface reads `docs/onboarding/start.md`, `docs/prompts/` and the public
