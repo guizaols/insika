@@ -44,6 +44,17 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- **Declaring a tool allow/deny list now opts the profile into the policy.** The
+  lists are applied by exactly one policy — the builtin `tool_allowlist` — and
+  the policy engine runs only the policies a profile *names*. So an agent with
+  `tools_allow: ["a", "b"]` and no `policies` sent **every registered tool** to
+  the model, silently: 508 tools / 52 405 tokens of schemas per request against
+  an allowlist of 2, observed on a real run. `tools_deny` was ignored the same
+  way. `AgentProfile.build` now appends `tool_allowlist` whenever `tools_allow`,
+  `tools_deny` or `tools_allow_groups` is declared — presence, not emptiness, so
+  `tools_allow: []` still means "no tools". A stored record left in the old
+  state is repaired on read but stays wrong on disk, so `doctor` gained a
+  `tool-allowlist` **error** naming each agent to re-save.
 - **A DSL agent could write its briefing and never read it back.** The
   `Insika.agent`/`Insika.system` runtime wired every context provider except
   `Briefing`, so `update_briefing` / `set_next_step` persisted state that never

@@ -18,13 +18,19 @@ matters, and editable hot.
 ## Layer 1: Tools (what it can call)
 
 `tools_allow` / `tools_deny` / `tools_allow_groups` decide which tools enter the
-turn's tool-loop, enforced by the tool-allowlist policy. See [Tools](TOOLS.md)
-for how tools are defined and registered, and [`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/).
+turn's tool-loop, enforced by the builtin `tool_allowlist` policy — which the
+engine adds for you the moment any of the three is declared, so you never have to
+name it in `policies` (see [Agents](AGENTS.md#the-allowlist-convention)). See
+[Tools](TOOLS.md) for how tools are defined and registered, and
+[`examples/data-tool/`](https://github.com/guizaols/insika/tree/main/examples/data-tool/).
 
 ## Layer 2: Policies and approvals
 
-Policies are named entries evaluated before the turn runs. Builtins cover
-tool-, skill-, and workflow-allowlisting, plus **`ApprovalRequired`** — which
+Policies are named entries evaluated before the turn runs. **Only the policies a
+profile names run** — which is why `tool_allowlist` is added implicitly by a
+declared tool list; an allowlist nobody applies is worse than no allowlist.
+Builtins cover tool-, skill-, and workflow-allowlisting, plus
+**`ApprovalRequired`** — which
 does not allow or deny but *tags* a tool as needing human approval. Set
 `approvals_required: [tool names]`; the gate then fires when the model tries to
 call that tool, suspending the turn until an operator approves it in the Studio.
