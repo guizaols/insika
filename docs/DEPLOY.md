@@ -187,6 +187,9 @@ insika doctor            # colored report; exits != 0 on any error
 insika doctor --json     # machine-readable (CI / monitoring)
 insika doctor --fix      # applies the safe autofixes and re-diagnoses
 insika env               # lists known keys + current values (secrets masked)
+insika tools:report      # tool audit over the stored traces: never-called
+                         # allowlisted tools, error rate > 30%, stale tools —
+                         # read-only, the operator removes ([--agent ID] [--days N] [--json])
 ```
 
 Checks: env (the schema above), settings schema version (a pending migration →
@@ -198,7 +201,10 @@ engine repairs it on read, but as stored the list is inert — see
 [Agents](AGENTS.md#the-allowlist-convention)), **prompt files that hold
 text rather than a serialized object** (a file whose content is a stringified Hash
 serves a mangled prompt on every turn while looking perfectly healthy — present,
-non-empty, and the agent still answers), and **skill drift** — a shared skill whose
+non-empty, and the agent still answers), **a prompt file that outgrew a prompt**
+(WARN past ~6 000 estimated tokens or 600 lines — the LLM-generated pack shape
+that costs 20%+ extra tokens per turn for no better instruction-following), and
+**skill drift** — a shared skill whose
 body names one store, a prompt file routing to a skill the agent cannot load, a broken
 companion pair, a stale `eager:` key (see
 [Skills](SKILLS.md#drift-guards)). Settings-schema migrations are **explicit**

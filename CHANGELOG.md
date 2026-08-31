@@ -10,6 +10,27 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **`insika tools:report` — the tool audit.** The per-session trace never
+  aggregated, so "which tools does this agent carry and never use?" had no
+  answer. The new CLI report reads the stored traces per agent (tasks →
+  sessions → `tool_traces`) and flags allowlisted-but-never-called tools,
+  tools over 30% errors in the window, and tools not called in N days
+  (default 14). Read-only — the operator removes. `--agent`, `--days`,
+  `--json`. See [Tools](docs/TOOLS.md).
+
+- **Two series promoted to OTEL metrics.** `insika.cache.hit_rate` (histogram,
+  `%` — cache reads over the billed prompt, per turn, same arithmetic as the
+  Studio's per-agent series) and `insika.tool.loop_intervened` (counter — the
+  loop detector's one-shot warning, labelled by tool). Both computed in the
+  telemetry bridge from events that already existed: zero cost when OTEL is
+  off, no engine change. See [Observability](docs/OBSERVABILITY.md).
+
+- **The doctor warns on a prompt file that outgrew a prompt.** The
+  `prompt-files` sweep now WARNs (never errors) past ~6 000 estimated tokens
+  or 600 lines, with the actual counts — the LLM-generated merchant-pack
+  shape that costs 20%+ extra tokens per turn. Corrupted-wrapper detection
+  is unchanged.
+
 - **The tool budget is announced before it kills.** `max_tool_calls` was
   enforced but silent: the model met the ceiling only when the turn died with
   `stage: :tool_limit`, having delivered nothing. At **10 / 5 / 2** calls

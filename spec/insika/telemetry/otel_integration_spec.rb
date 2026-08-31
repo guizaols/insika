@@ -111,6 +111,21 @@ RSpec.describe "Insika::Telemetry — real OTEL metrics boundary", if: OTEL_METR
     expect(duration.data_points.first.sum).to eq(4.0)
   end
 
+  it "exports the cache-hit histogram and the loop-intervention counter" do
+    recorder.record(ev(:task_started, { agent: "bia" }))
+    recorder.record(ev(:tool_loop_intervened, { name: "search", streak: 3 }))
+    recorder.record(ev(:task_completed, { usage: { model: "m", input_tokens: 50, cached_tokens: 50 } }))
+
+    hit = snapshot("insika.cache.hit_rate")
+    expect(hit.unit).to eq("%")
+    expect(hit.data_points.first.sum).to eq(50.0)
+
+    loops = snapshot("insika.tool.loop_intervened")
+    expect(loops.unit).to eq("{intervention}")
+    expect(loops.data_points.first.value).to eq(1)
+    expect(loops.data_points.first.attributes).to include("insika.tool" => "search")
+  end
+
   it "exports tokens split by type and the estimated cost in USD" do
     recorder.record(ev(:task_started, { agent: "bia" }))
     recorder.record(ev(:task_completed, { usage: { model: "m", input_tokens: 1_000_000, output_tokens: 8 } }))
