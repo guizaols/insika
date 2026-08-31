@@ -1344,6 +1344,37 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "in-session compaction (RFC-0044)" do
+    def compaction_findings
+      doctor.run.findings.select { |f| f.check == "compaction" }
+    end
+
+    it "off (the default) -> one ok" do
+      findings = compaction_findings
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("compaction off")
+    end
+
+    it "enabled with the platform utility_model -> ok naming the thresholds" do
+      settings_store.update("utility_model" => "flash", "compaction" => { "enabled" => true })
+      findings = compaction_findings
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings.first.message).to include("keep_last 20", "compact_after 40")
+    end
+
+    it "an explicit compaction.model resolves without the platform utility_model" do
+      settings_store.update("compaction" => { "enabled" => true, "model" => "custom" })
+      expect(compaction_findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "enabled with NO model slot -> warn (declared but dead)" do
+      settings_store.update("compaction" => { "enabled" => true })
+      findings = compaction_findings
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to include("no model slot")
+    end
+  end
+
   describe "harvest " do
     let(:p_backend) { Insika::Stores::Memory.new }
     let(:harvest_store) { Insika::HarvestStore.new(store: p_backend) }

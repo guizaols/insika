@@ -14,8 +14,8 @@ module Insika
         end
 
         def call(request)
-          messages = transcript_for(request)
-          return [] if messages.nil? || messages.empty?
+          messages, compaction = transcript_for(request)
+          return [] if messages.nil? || (messages.empty? && compaction.nil?)
 
           # A3/C3 opt-in: identical tool results in the transcript collapse to a
           # back-reference (the cheap half of compaction). CHANGES WHAT THE MODEL
@@ -28,7 +28,7 @@ module Insika
           # the fragment level means the budget cut (apply_budget) drops a whole
           # tool cycle atomically — a tool_use is NEVER seeded without its result
           # (which providers reject), without touching apply_budget itself.
-          eviction_units(messages).each_with_index.map do |unit, idx|
+          fragments = eviction_units(messages).each_with_index.map do |unit, idx|
             ContextFragment.build(
               # single message stays a Hash (compat with existing fragments); a
               # multi-message cycle is an Array (seed_history flattens it back).
@@ -39,6 +39,7 @@ module Insika
               source: id
             )
           end
+          compaction ? [compaction_fragment(compaction)] + fragments : fragments
         end
 
         private
@@ -90,15 +91,50 @@ module Insika
         end
 
         # Precedence: checkpoint -> explicit history -> store.
-        # The first present source wins; no merge.
+        # The first present source wins; no merge. -> [messages, compaction|nil].
+        # The compaction state (RFC-0044) applies to the STORE source only: a
+        # checkpoint resume replays the checkpoint's own tape (which already
+        # contains whatever summary the original turn saw) and an explicit
+        # vars[:history] is the caller's contract — neither is rewritten.
         def transcript_for(request)
-          return request.checkpoint.messages if request.checkpoint
+          return [request.checkpoint.messages, nil] if request.checkpoint
 
           explicit = explicit_history(request)
-          return explicit if explicit
-          return session_messages(request.session) if request.session
+          return [explicit, nil] if explicit
+          return compacted_session_messages(request.session) if request.session
 
-          nil
+          [nil, nil]
+        end
+
+        # Splits the stored transcript at the persisted compaction boundary:
+        # messages[0...upto] are represented by the summary, messages[upto..]
+        # stay verbatim. `upto` is clamped to the transcript size (defensive —
+        # the store is append-only, so it should never outrun it).
+        def compacted_session_messages(session)
+          fresh = fresh_session(session)
+          return [[], nil] if fresh.nil?
+
+          messages = fresh.messages || []
+          state = fresh.respond_to?(:compaction) ? fresh.compaction : nil
+          upto = state ? state["upto"].to_i : 0
+          return [messages, nil] unless upto.positive? && Coercion.present?(state["summary"])
+
+          [messages.drop([upto, messages.size].min), state]
+        end
+
+        # The compacted prefix as ONE history fragment, rendered FIRST (the
+        # Builder keeps history in production order). role "user" because it is
+        # provider-agnostic (a mid-history "system" message is not). Priority
+        # COMPACTION (59): the "oldest unit" — under budget it drops before any
+        # verbatim message. source "compaction" -> its own context-trace category.
+        def compaction_fragment(state)
+          ContextFragment.build(
+            content: { role: "user",
+                       content: "<conversation_summary>\n#{state['summary']}\n</conversation_summary>" },
+            placement: :history,
+            priority: Context::Priority::COMPACTION,
+            source: "compaction"
+          )
         end
 
         # Source 2 (explicit history): the handler passes it in request.vars[:history].
@@ -111,8 +147,8 @@ module Insika
         # CONDITIONAL requiredness: when a session is requested, a read
         # failure becomes a ContextError (aborts the turn); the base required?
         # does not receive the request, so the behavior lives here.
-        def session_messages(session)
-          @session_store.find(session.id)&.messages || []
+        def fresh_session(session)
+          @session_store.find(session.id)
         rescue StandardError => e # read failure (exception/StoreError)
           raise ContextError.new("Session provider failed with a requested session: #{e.message}",
                                  provider: id)

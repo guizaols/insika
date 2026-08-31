@@ -10,6 +10,20 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **In-session compaction (RFC-0044).** When a session's uncompacted
+  transcript grows past `compact_after` messages (default 40), everything but
+  the last `keep_last` (default 20) is summarized by a cheap model
+  (`compaction.model` → platform `utility_model`) into one
+  `<conversation_summary>` history fragment; the tail stays verbatim and the
+  boundary is stable between compactions, so the prompt cache holds after it.
+  Runs post-turn, off the critical path, best-effort; persisted on the session
+  record with a monotonic boundary. Opt-in via the long-reserved Settings
+  `compaction` hash (the Studio general form is back), `insika doctor` warns
+  when it is enabled with no model, and every compaction is observable:
+  `:context_compacted` event, `insika.context.compacted` counter, `{upto,
+  runs}` + its own category in the context trace. See
+  [Context](docs/CONTEXT.md).
+
 - **`insika tools:report` — the tool audit.** The per-session trace never
   aggregated, so "which tools does this agent carry and never use?" had no
   answer. The new CLI report reads the stored traces per agent (tasks →

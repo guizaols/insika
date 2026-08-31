@@ -256,6 +256,46 @@ RSpec.describe Insika::SessionStore do
     end
   end
 
+  describe "compaction (RFC-0044 — the persisted boundary)" do
+    before { sessions.create(id: "s") }
+
+    it "a fresh session reads as compaction nil (old records need no migration)" do
+      expect(sessions.find("s").compaction).to be_nil
+    end
+
+    it "#set_compaction persists summary/upto/model, stamps at, and counts runs" do
+      sessions.set_compaction("s", summary: "resumo", upto: 12, model: "flash")
+      state = sessions.find("s").compaction
+      expect(state).to include("summary" => "resumo", "upto" => 12, "runs" => 1, "model" => "flash")
+      expect(state["at"]).not_to be_nil
+    end
+
+    it "runs increments across compactions; upto moves forward" do
+      sessions.set_compaction("s", summary: "a", upto: 10)
+      sessions.set_compaction("s", summary: "b", upto: 20)
+      expect(sessions.find("s").compaction).to include("summary" => "b", "upto" => 20, "runs" => 2)
+    end
+
+    it "upto is MONOTONIC: a stale write (same or lower boundary) is a no-op" do
+      sessions.set_compaction("s", summary: "a", upto: 10)
+      sessions.set_compaction("s", summary: "stale", upto: 10)
+      sessions.set_compaction("s", summary: "staler", upto: 3)
+      expect(sessions.find("s").compaction).to include("summary" => "a", "upto" => 10, "runs" => 1)
+    end
+
+    it "nil model is omitted (compact), the summary is utf8-scrubbed" do
+      sessions.set_compaction("s", summary: "ok\xC3", upto: 1)
+      state = sessions.find("s").compaction
+      expect(state).not_to have_key("model")
+      expect(state["summary"].valid_encoding?).to be(true)
+    end
+
+    it "raises NotFoundError on a nonexistent session" do
+      expect { sessions.set_compaction("nope", summary: "x", upto: 1) }
+        .to raise_error(Insika::NotFoundError)
+    end
+  end
+
   describe "#delete" do
     it "returns true and removes an existing session" do
       sessions.create(id: "s")

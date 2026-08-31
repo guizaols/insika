@@ -30,7 +30,14 @@ module Insika
       "max_retries" => 2,
       "turn_timeout" => 120,
       "tool_timeout" => 30,
-      "compaction" => { "enabled" => false, "keep_last" => 20 },
+      # In-session compaction (RFC-0044): when a session's UNCOMPACTED
+      # transcript grows past `compact_after` messages, everything but the
+      # last `keep_last` is summarized (model -> compaction.model, else the
+      # platform utility_model) into one history fragment. `prompt` replaces
+      # the engine default wholesale (the distill convention). enabled: false
+      # = parity (nothing runs). Additive keys — reads overlay DEFAULTS.
+      "compaction" => { "enabled" => false, "keep_last" => 20,
+                        "compact_after" => 40, "model" => nil },
       # Data lifecycle (WS8, phase 2): the RETENTION window in days. The
       # tick's Retention sweep purges sessions (+traces), terminal tasks
       # (+checkpoints), memory cells and outcomes older than this. nil/0 =
