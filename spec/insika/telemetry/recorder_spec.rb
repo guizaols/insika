@@ -275,6 +275,41 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(meter["insika.tool.duration"].points).to be_empty # point-in-time event
     end
 
+    # — the cache-hit histogram. Same arithmetic as the Executor's
+    # per-agent series: cached over the whole billed prompt (fresh + reads +
+    # writes), so the rate is always in [0,100] and a full hit is 100, not "—".
+    it "records the turn's cache-hit rate over the billed prompt" do
+      start
+      recorder.record(ev(:task_completed,
+                         { usage: { model: "m", input_tokens: 60, cached_tokens: 30,
+                                    cache_creation_tokens: 10 } }))
+      expect(meter["insika.cache.hit_rate"].points)
+        .to eq([[30.0, { "insika.agent" => "bia", "insika.tenant" => "loja-42",
+                         "insika.command" => "send_message", "insika.model" => "m" }]])
+      expect(meter["insika.cache.hit_rate"].unit).to eq("%")
+    end
+
+    it "a turn with no billed prompt tokens records no hit rate (absence, not 0%)" do
+      start
+      recorder.record(ev(:task_completed, {}))
+      expect(meter["insika.cache.hit_rate"].points).to be_empty
+    end
+
+    # — the loop-detector counter. The event carries counts and the
+    # tool name, never arguments; the metric inherits exactly that.
+    it "counts a loop intervention with the turn labels and the tool name" do
+      start
+      recorder.record(ev(:tool_loop_intervened, { name: "search", streak: 3 }))
+      expect(meter["insika.tool.loop_intervened"].points)
+        .to eq([[1, { "insika.agent" => "bia", "insika.tenant" => "loja-42",
+                      "insika.command" => "send_message", "insika.tool" => "search" }]])
+    end
+
+    it "an orphan loop event (no open turn) counts nothing" do
+      recorder.record(ev(:tool_loop_intervened, { name: "search", streak: 3 }, task_id: "ghost"))
+      expect(meter["insika.tool.loop_intervened"].points).to be_empty
+    end
+
     it "an unfinished tool (turn failed mid-way) is not counted as a completed call" do
       start
       recorder.record(ev(:tool_call, { name: "search" }))

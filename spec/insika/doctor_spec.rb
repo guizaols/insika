@@ -304,6 +304,24 @@ RSpec.describe Insika::Doctor do
     it "is skipped without the store" do
       expect(described_class.new(env: {}).run.findings.map(&:check)).not_to include("prompt-files")
     end
+
+    # An LLM-generated pack file that outgrew a prompt (the pilot's 28 KB
+    # AGENTS.md): present, valid text, and 20%+ extra tokens on every turn.
+    # WARN, never error — size is a smell, not corruption.
+    it "warns (not errors) on a file past the token threshold, with the counts" do
+      files.write("loja", "AGENTS.md", "linha de prompt gerado\n" * 1_200) # ~6900 tokens
+      finding = described_class.new(env: {}, agent_file_store: files).run
+                               .findings.find { |f| f.check == "prompt-files" }
+      expect(finding.severity).to eq(:warn)
+      expect(finding.message).to include("agent 'loja' file 'AGENTS.md'", "tokens", "skills")
+    end
+
+    it "stays quiet on a hand-written-sized file" do
+      files.write("bia", "IDENTITY.md", "# Sou a Bia\n" * 100)
+      finding = described_class.new(env: {}, agent_file_store: files).run
+                               .findings.find { |f| f.check == "prompt-files" }
+      expect(finding.severity).to eq(:ok)
+    end
   end
 
   # Eagerness moved from the frontmatter to the agent. Both halves of that move fail

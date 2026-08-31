@@ -32,6 +32,7 @@ module Insika
       when "harvest" then harvest(argv)
       when "harvest:negative" then harvest_negative_import(argv)
       when "harvest:criterion" then harvest_criterion_check(argv)
+      when "tools:report" then tools_report(argv)
       when "knowledge:backfill" then knowledge_backfill(argv)
       when "knowledge:export" then knowledge_export(argv)
       when "soak"    then exit(Insika::Soak::Runner.main(argv, stdout: $stdout, stderr: $stderr))
@@ -65,6 +66,11 @@ module Insika
                                     seed the profile's negative list from a rules file
           harvest:criterion check --file F
                                     strict-load the frozen conversion criterion
+          tools:report [--agent ID] [--days N] [--json]
+                                    tool usage per agent over the stored traces:
+                                    allowlisted-but-never-called, error rate > 30%
+                                    in the window, and stale (not called in N days).
+                                    Read-only — the operator removes
           knowledge:backfill --agent ID [--since ISO8601] [--json]
                                     the recovery path for post-turn extraction: replays
                                     the agent's stored sessions through the same
@@ -1160,6 +1166,41 @@ end
 
       n = window["last_sessions"] || Insika::Refinement::EvidenceCollector::DEFAULT_WINDOW
       "last #{n} session(s)"
+    end
+
+    # insika tools:report [--agent ID] [--days N] [--json]
+    #
+    # The tool audit: reads the SAME durable backend as `doctor` (tasks →
+    # sessions → tool_traces), no app boot. Read-only — it names never-called
+    # allowlisted tools, high-error tools and stale tools; the operator removes.
+    def tools_report(argv)
+      opts = { json: false, days: Insika::ToolUsageReport::WINDOW_DAYS }
+      OptionParser.new do |o|
+        o.banner = "Usage: insika tools:report [--agent ID] [--days N] [--json]"
+        o.on("--agent ID", "narrow the report to one stored agent") { |v| opts[:agent] = v }
+        o.on("--days N", Integer, "window for error-rate and staleness (default #{opts[:days]})") { |v| opts[:days] = v }
+        o.on("--json", "emit the report as JSON") { opts[:json] = true }
+      end.parse!(argv)
+
+      backend = Insika::Wiring::Graph.backend_from_env
+      config_store = Insika::ConfigStore.new(store: backend)
+      report = Insika::ToolUsageReport.new(
+        task_store: Insika::TaskStore.new(store: backend),
+        tool_trace_store: Insika::ToolTraceStore.new(store: backend),
+        profile_source: Insika::StoredProfileSource.new(config_store: config_store)
+      ).generate(days: opts[:days], agent: opts[:agent])
+
+      if opts[:agent] && report.agents.empty?
+        warn "insika tools:report: no stored agent '#{opts[:agent]}'"
+        exit 2
+      end
+
+      if opts[:json]
+        require "json"
+        puts JSON.pretty_generate(report.to_h)
+      else
+        puts report.to_s
+      end
     end
 
     # Config stores over the real durable backend — no app boot / no DEEPSEEK.
