@@ -44,6 +44,18 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- **The Studio home charts went blank for three hours every day.** The activity
+  buckets key on calendar parts (date, hour) of `updated_at`, which the engine
+  writes in UTC, but `render_home` read `Time.now` in the host's local zone. On a
+  UTC-3 host, from 21:00 local onward "today" was already tomorrow in UTC: the
+  14-day chart matched no session and the 24h sparkline's floor was set three
+  hours in the future, dropping the newest buckets. Stamps are now read through
+  one `utc_time` helper and `now` is UTC. Instant comparisons (`active_now`)
+  never had the bug — only the calendar arithmetic did.
+- **The Conversations trend showed "−1" for the day's first conversation.** The
+  14-day series is oldest-first and ends at today, so its last pair reads
+  `[yesterday, today]`; it was destructured the other way round, inverting the
+  sign on every conversations delta. The Messages card was always correct.
 - **Declaring a tool allow/deny list now opts the profile into the policy.** The
   lists are applied by exactly one policy — the builtin `tool_allowlist` — and
   the policy engine runs only the policies a profile *names*. So an agent with
