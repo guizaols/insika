@@ -192,7 +192,10 @@ insika env               # lists known keys + current values (secrets masked)
 Checks: env (the schema above), settings schema version (a pending migration →
 `--fix` applies it), a missing platform `default_model` (`--fix` seeds it from
 `DEEPSEEK_MODEL`), durable vs ephemeral backend, LLM provider configured,
-`ADMIN_TOKEN` set, data-tool definitions still valid, **prompt files that hold
+`ADMIN_TOKEN` set, data-tool definitions still valid, **a stored agent whose
+declared tool allow/deny list does not name the `tool_allowlist` policy** (the
+engine repairs it on read, but as stored the list is inert — see
+[Agents](AGENTS.md#the-allowlist-convention)), **prompt files that hold
 text rather than a serialized object** (a file whose content is a stringified Hash
 serves a mangled prompt on every turn while looking perfectly healthy — present,
 non-empty, and the agent still answers), and **skill drift** — a shared skill whose
