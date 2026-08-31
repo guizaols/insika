@@ -310,6 +310,22 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(meter["insika.tool.loop_intervened"].points).to be_empty
     end
 
+    # RFC-0044 — the compaction counter. It fires post-turn (usually after
+    # task_completed already closed the span), so it rides its OWN labels
+    # (agent + the summarizer's model), never the open-turn set.
+    it "counts a persisted compaction by agent and summarizer model" do
+      recorder.record(ev(:context_compacted,
+                         { agent: "bia", model: "flash", from: 0, upto: 21, runs: 1 }))
+      expect(meter["insika.context.compacted"].points)
+        .to eq([[1, { "insika.agent" => "bia", "insika.model" => "flash" }]])
+      expect(meter["insika.context.compacted"].unit).to eq("{compaction}")
+    end
+
+    it "a compaction with NO open turn still counts (post-terminal by design)" do
+      recorder.record(ev(:context_compacted, { agent: "bia", model: "flash" }, task_id: "ghost"))
+      expect(meter["insika.context.compacted"].points.size).to eq(1)
+    end
+
     it "an unfinished tool (turn failed mid-way) is not counted as a completed call" do
       start
       recorder.record(ev(:tool_call, { name: "search" }))

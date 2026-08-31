@@ -14,6 +14,20 @@ RSpec.describe Insika::SettingsStore do
       expect(merged["streaming"]).to be(false)
       expect(merged["request_timeout"]).to eq(120) # untouched default
     end
+
+    # RFC-0044: compact_after/model are ADDITIVE keys inside the compaction
+    # hash — a record authored before them still reads the new defaults
+    # (deep merge), so no numbered migration is due.
+    it "compaction defaults: off, keep_last 20, compact_after 40, no model" do
+      expect(store.get["compaction"])
+        .to eq("enabled" => false, "keep_last" => 20, "compact_after" => 40, "model" => nil)
+    end
+
+    it "an old-shaped compaction record gains the new keys from the defaults" do
+      config_store.put("settings", "general", { "compaction" => { "enabled" => true } })
+      expect(store.get["compaction"])
+        .to eq("enabled" => true, "keep_last" => 20, "compact_after" => 40, "model" => nil)
+    end
   end
 
   describe "schema versioning (— no silent config compat)" do

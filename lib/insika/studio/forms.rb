@@ -461,6 +461,17 @@ module Studio
       # per-tenant map in the record — the view says so.
       v = presence(r.params["memory_ttl_days"])
       patch["memory_ttl_days"] = v.nil? ? nil : Integer(v)
+      # In-session compaction (RFC-0044). The checkbox is authoritative on
+      # this form (unchecked = disable); the numbers keep their stored value
+      # when cleared (deep_merge — the defaults backstop a fresh record);
+      # model blank = nil = the platform utility_model.
+      compaction = { "enabled" => r.params["compaction_enabled"] == "1",
+                     "model" => presence(r.params["compaction_model"]) }
+      %w[keep_last compact_after].each do |f|
+        v = presence(r.params["compaction_#{f}"])
+        compaction[f] = Integer(v) if v
+      end
+      patch["compaction"] = compaction
       patch
     end
 

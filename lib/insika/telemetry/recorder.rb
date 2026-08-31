@@ -41,7 +41,7 @@ module Insika
       # renaming one breaks every dashboard built on it.
       class Instruments
         attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration,
-                    :cache_hit_rate, :loop_intervened
+                    :cache_hit_rate, :loop_intervened, :context_compacted
 
         def initialize(meter)
           @turns = meter.create_counter("insika.turns", unit: "{turn}",
@@ -60,6 +60,8 @@ module Insika
                                                                             description: "Prompt-cache hit rate of a turn (cached / billed prompt tokens)")
           @loop_intervened = meter.create_counter("insika.tool.loop_intervened", unit: "{intervention}",
                                                                                  description: "Loop-detector warnings delivered to the model")
+          @context_compacted = meter.create_counter("insika.context.compacted", unit: "{compaction}",
+                                                                                description: "In-session compactions persisted (RFC-0044)")
         end
       end
 
@@ -79,6 +81,7 @@ module Insika
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
         when :tool_loop_intervened then count_loop(meta, data)
+        when :context_compacted then count_compaction(data)
         when :task_completed then finish_turn(meta, data, :ok)
         when :task_failed    then finish_turn(meta, data, :error)
         when :task_cancelled then finish_turn(meta, data, :cancelled)
@@ -201,6 +204,16 @@ module Insika
         turn = @turns[meta[:task_id]] or return
         labels = turn.labels.merge(attrs("insika.tool" => data[:name]&.to_s))
         @instruments.loop_intervened.add(1, attributes: labels)
+      end
+
+      # A compaction persisted (`:context_compacted`, RFC-0044) — counted by
+      # agent/model, INDEPENDENT of any open turn: it fires post-turn, usually
+      # after task_completed already closed the span.
+      def count_compaction(data)
+        return unless @instruments
+
+        labels = attrs("insika.agent" => data[:agent]&.to_s, "insika.model" => data[:model]&.to_s)
+        @instruments.context_compacted.add(1, attributes: labels)
       end
 
       # Tokens ride ONE counter split by `insika.token.type` (instead of four

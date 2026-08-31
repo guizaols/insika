@@ -32,6 +32,9 @@ module Insika
                          #   pinned prefix), above the turn's own <request_context>.
       HISTORY_MAX  = 79  # history ceiling by recency (Session)
       HISTORY_BASE = 60  # history base; +idx up to the ceiling (Session)
+      COMPACTION   = 59  # <conversation_summary> the compacted prefix (RFC-0044)
+                         #   — one step below the oldest verbatim message: under
+                         #   budget it is the "oldest unit" and drops first.
       REQUEST      = 40  # <request_context> — turn injection, the most cuttable
     end
   end

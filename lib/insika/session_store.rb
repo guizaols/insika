@@ -23,11 +23,11 @@ module Insika
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
-                          :created_at, :updated_at, :briefing, :evidence) do
+                          :created_at, :updated_at, :briefing, :evidence, :compaction) do
       # Trailing members with defaults: an old record without the "briefing" /
-      # "evidence" keys reads as empty/nil without a migration.
+      # "evidence" / "compaction" keys reads as empty/nil without a migration.
       def initialize(id:, messages:, vars:, memory_refs:, created_at:, updated_at:,
-                     briefing: nil, evidence: nil)
+                     briefing: nil, evidence: nil, compaction: nil)
         super
       end
     end
@@ -150,6 +150,35 @@ module Insika
       to_session(record)
     end
 
+    # -> Session. Persists the in-session compaction state (RFC-0044): the
+    # summary of messages[0...upto] plus the boundary. `upto` is MONOTONIC —
+    # a write that does not move the boundary forward is a no-op (a stale
+    # double-write from a racing worker can never move it backwards). `runs`
+    # counts compactions over the session's lifetime (the trace reports it).
+    #
+    # CONCURRENCY NOTE: an unlocked RMW (read -> mutate -> set), like
+    # update_briefing — and safe for the same reason: nothing in the
+    # read/mutate/set path suspends, so no other writer can interleave
+    # mid-RMW. The LLM call that produced the summary happened BEFORE this
+    # method; only the plain write lives here.
+    def set_compaction(id, summary:, upto:, model: nil)
+      record = fetch!(id)
+      current = record["compaction"]
+      upto = Integer(upto)
+      return to_session(record) if current && upto <= current["upto"].to_i
+
+      record["compaction"] = {
+        "summary" => Coercion.utf8(summary.to_s),
+        "upto" => upto,
+        "runs" => (current ? current["runs"].to_i : 0) + 1,
+        "model" => Coercion.presence(model.to_s),
+        "at" => timestamp
+      }.compact
+      record["updated_at"] = timestamp
+      @store.set(SCOPE, key_for(id), record)
+      to_session(record)
+    end
+
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
       @store.delete(SCOPE, key_for(id))
@@ -189,7 +218,8 @@ module Insika
         created_at: record["created_at"],
         updated_at: record["updated_at"],
         briefing: record["briefing"] || { "fields" => {}, "next_step" => nil },
-        evidence: record["evidence"]
+        evidence: record["evidence"],
+        compaction: record["compaction"]
       )
     end
 
