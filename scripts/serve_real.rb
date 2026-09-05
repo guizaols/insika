@@ -61,6 +61,7 @@ APP = Insika::Server::App.new(
   # /v1/agents. Always exposed in serve real (the gateway needs it).
   provisioner: W::PACK_IMPORTER,
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
+  settings_store: W::SETTINGS_STORE, # POST /v1/conversations/:id/seed, gated by evals.seeding
   # Onboarding surface: start.md + models.json + docs. Always on in
   # the full local demo — it's the "build my first agent" front door. Reports the
   # platform models AND the demo's served agents (their ids ARE the /v1/responses
