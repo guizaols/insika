@@ -490,7 +490,7 @@
         </label>
         <label class="check">
           <input type="checkbox" name="prompt_caching" value="1"<%== " checked" if @agent.prompt_caching %>>
-          prompt caching <span class="muted">— Anthropic breakpoint; ON requires a byte-stable system prompt</span>
+          prompt caching <span class="muted">— Anthropic breakpoint at the identity layer; memory/knowledge render below it</span>
         </label>
         <label class="check">
           <input type="checkbox" name="tool_output_compression" value="1"<%== " checked" if @agent.tool_output_compression %>>

@@ -58,14 +58,54 @@ RSpec.describe Insika::ChatBuilder do
         FakeChat.new.tap { |c| c.model = Struct.new(:provider).new("anthropic") }
       end
 
-      it "sets ONE system cache breakpoint when caching is on and provider is Anthropic" do
+      it "sets ONE system cache breakpoint when caching is on, provider is Anthropic and the system has no split" do
         c = anthropic_chat
         builder.configure_chat(c, state(system: "SOUL", prompt_caching: true))
         raw = c.instructions
         expect(raw).to be_a(RubyLLM::Content::Raw)
+        expect(raw.value.size).to eq(1)
         block = raw.value.first
         expect(block[:text]).to eq("SOUL")
         expect(block[:cache_control]).to eq(type: "ephemeral")
+      end
+
+      def package(identity:, volatile:)
+        Insika::ContextPackage.new(system: [identity, volatile].reject(&:empty?).join("\n\n"),
+                                   system_identity: identity, system_volatile: volatile,
+                                   history: [], tool_context: nil, fragments: [], budget: {})
+      end
+
+      def state_with(pkg, prompt_caching:)
+        State.new(context: pkg, allowed_tools: [], allowed_skills: [],
+                  profile: ProfileStub.new("gpt", nil, {}, prompt_caching, nil, "a"), task: task)
+      end
+
+      it "emits TWO blocks with a volatile layer: the breakpoint on the identity text only" do
+        c = anthropic_chat
+        builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: true))
+        blocks = c.instructions.value
+        expect(blocks.size).to eq(2)
+        expect(blocks[0]).to eq(type: "text", text: "SOUL", cache_control: { type: "ephemeral" })
+        expect(blocks[1]).to eq(type: "text", text: "memory: ana")
+      end
+
+      it "an empty volatile layer emits one block, byte-identical to the no-split shape" do
+        c = anthropic_chat
+        builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: ""), prompt_caching: true))
+        expect(c.instructions.value).to eq([{ type: "text", text: "SOUL", cache_control: { type: "ephemeral" } }])
+      end
+
+      it "a hook that rewrote `system` alone wins: one block over the new text, no stale layers" do
+        c = anthropic_chat
+        pkg = package(identity: "SOUL", volatile: "memory: ana").with(system: "REPLACED")
+        builder.configure_chat(c, state_with(pkg, prompt_caching: true))
+        expect(c.instructions.value).to eq([{ type: "text", text: "REPLACED", cache_control: { type: "ephemeral" } }])
+      end
+
+      it "a split package on a NON-Anthropic provider stays a plain joined string" do
+        c = FakeChat.new.tap { |ch| ch.model = Struct.new(:provider).new("openai") }
+        builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: true))
+        expect(c.instructions).to eq("SOUL\n\nmemory: ana")
       end
 
       it "uses a plain string when caching is on but the provider is NOT Anthropic" do

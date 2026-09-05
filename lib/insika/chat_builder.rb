@@ -62,8 +62,7 @@ module Insika
 
     # Assembles the chat with the context (stage 2) and the Resolution's tools (stage 3).
     def configure_chat(chat, state)
-      system = state.context.system.to_s
-      apply_instructions(chat, system, state) unless system.empty?
+      apply_instructions(chat, state.context, state) unless state.context.system.to_s.empty?
 
       tools = Array(state.allowed_tools).dup
 
@@ -263,30 +262,58 @@ module Insika
                          ))
     end
 
-    # R3: opt-in Anthropic prompt caching. When the agent enables
-    # prompt_caching AND the resolved provider is Anthropic, wrap the system in
-    # the provider's native Content helper with cache: true — ONE breakpoint at
-    # the END of the system block. By Anthropic's prefix order
-    # (tools -> system -> messages), a breakpoint on the last system block caches
-    # tools + system together and is immune to history eviction (messages come
-    # after it). RubyLLM::Content::Raw is Anthropic-specific: build_system_content
-    # emits its blocks verbatim, so the cache_control rides along.
+    # Opt-in Anthropic prompt caching. When the agent enables prompt_caching
+    # AND the resolved provider is Anthropic, the system goes on the wire as TWO
+    # text blocks: the identity layer (prompt, skills, tool index) with the
+    # cache breakpoint at its end, then the volatile layer (memory, knowledge,
+    # briefing, request) plain. By Anthropic's prefix order
+    # (tools -> system -> messages) the breakpoint caches tools + identity
+    # together, immune to history eviction (messages come after it) AND to a
+    # memory fact or knowledge hit changing between turns (those bytes sit below
+    # the breakpoint, so they never enter the cached prefix). An empty volatile
+    # layer emits ONE block — byte-identical to the pre-split shape.
+    # RubyLLM::Content::Raw is Anthropic-specific: build_system_content emits
+    # its blocks verbatim, so the cache_control rides along.
     #
     # Any other case (caching off, or a non-Anthropic provider) uses the plain
     # string — OpenAI caches its prefix on its own; the Raw shape would confuse
     # non-Anthropic providers. The gem only supports MANUAL caching, and only for
     # Anthropic.
     #
-    # PRE-AUDIT (why this is opt-in): the system must be BYTE-STABLE between turns
-    # for a read hit. A context provider that injects volatile content into
-    # :system (timestamps, per-turn data) makes every turn a paid cache WRITE
-    # with no hit — worse than off. Enable only for stable-system agents.
-    def apply_instructions(chat, system, state)
+    # What still breaks a read hit: a context provider that declares
+    # `layer :identity` and emits per-turn bytes (a timestamp, request data).
+    # The doctor's cache-layers check flags exactly that; the Studio cache tab
+    # shows it as `broke: <category>`.
+    def apply_instructions(chat, context, state)
       if state.profile.prompt_caching && anthropic_provider?(chat)
-        chat.with_instructions(RubyLLM::Providers::Anthropic::Content.new(system, cache: true))
+        chat.with_instructions(RubyLLM::Providers::Anthropic::Content.new(parts: cache_blocks(context)))
       else
-        chat.with_instructions(system)
+        chat.with_instructions(context.system.to_s)
       end
+    end
+
+    # [{type:, text:, cache_control:?}] — identity block with the breakpoint,
+    # volatile block plain. Empty texts are skipped (Anthropic rejects an empty
+    # text block). `system` is authoritative: a package without the split (a
+    # custom builder's Struct) or one whose `system` was rewritten alone (an
+    # after_prompt hook doing `pkg.with(system: …)`) reads as all-identity —
+    # one block over the whole text, never bytes the hook did not put there.
+    def cache_blocks(context)
+      identity, volatile = system_layers(context)
+      blocks = []
+      blocks << { type: "text", text: identity, cache_control: { type: "ephemeral" } } unless identity.empty?
+      blocks << { type: "text", text: volatile } unless volatile.empty?
+      blocks
+    end
+
+    def system_layers(context)
+      system = context.system.to_s
+      return [system, ""] unless context.respond_to?(:system_volatile)
+
+      identity = context.system_identity.to_s
+      volatile = context.system_volatile.to_s
+      joined = [identity, volatile].reject(&:empty?).join("\n\n")
+      joined == system ? [identity, volatile] : [system, ""]
     end
 
     # The RESOLVED provider (chat.model.provider is the slug string, e.g.
