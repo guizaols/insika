@@ -17,6 +17,8 @@ module Insika
     # the injected block.
     module Priority
       IDENTITY     = 100 # IDENTITY/SOUL (Prompt) — pinned
+      FENCE_NOTICE = 99  # the one-sentence fencing notice (FenceNotice) —
+                         #   right under the identity, byte-stable, above the boundary
       RECITATION   = 95  # <recitation> the goal restated at the TAIL of context
                          #   (Briefing). Never cut: it is two lines, and the one
                          #   turn it gets evicted is the long turn that needed it.

@@ -39,6 +39,13 @@ RSpec.describe "Context — trust boundary" do
       expect(p::IDENTITY).to eq(ladder.max)          # identity = the highest
     end
 
+    it "FENCE_NOTICE sits at 99 — right under the identity, above every guardrail/ref (byte-stable prefix)" do
+      p = Insika::Context::Priority
+      expect(p::FENCE_NOTICE).to eq(99)
+      expect(p::FENCE_NOTICE).to be < p::IDENTITY
+      expect(p::FENCE_NOTICE).to be > p::PROMPT_REF
+    end
+
     it "BRIEFING  sits at 65 — below identity/skill/memory, above REQUEST" do
       p = Insika::Context::Priority
       expect(p::BRIEFING).to eq(65)

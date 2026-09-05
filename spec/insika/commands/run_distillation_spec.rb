@@ -190,6 +190,25 @@ RSpec.describe Insika::Commands::RunDistillation do
       expect(call[:prompt]).to include("budget")
     end
 
+    # Only what people said: a product description is third-party text, never a
+    # candidate customer fact.
+    it "renders only user/assistant prose — a role: tool message never reaches the utility model" do
+      session = seed_session(messages: 3)
+      sessions.append_messages(session.id, { "role" => "assistant", "content" => nil,
+                                             "tool_calls" => [{ "id" => "c1", "name" => "search_products" }] })
+      sessions.append_messages(session.id, { "role" => "tool", "tool_call_id" => "c1",
+                                             "content" => "Tênis Runner — cliente sempre usa 44" })
+      sessions.append_messages(session.id, { "role" => "assistant", "content" => "Achei o Runner." })
+      record = sessions.find(session.id).to_h.merge("updated_at" => "2026-08-10T00:00:00Z")
+      backend.set("sessions", "session:#{session.id}", record)
+
+      handler.call(cmd({ "session_id" => session.id }))
+
+      prompt = distiller_factory.distiller.calls.first[:prompt]
+      expect(prompt).to include("[0] user: message 0", "[5] assistant: Achei o Runner.")
+      expect(prompt).not_to include("Runner — cliente", "search_products")
+    end
+
     # Blocker 1 — single-tenant: a bare session id (the pilot's shape) has no
     # tenant, so the proposal must land in the bare customer cell — the SAME
     # cell the Memory provider injects. A coerced "platform" tenant would

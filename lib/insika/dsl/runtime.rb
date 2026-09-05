@@ -231,6 +231,7 @@ module Insika
             base: "", catalog: c[:prompt_catalog],
             agent_files: c[:agent_file_store], system_files: c[:system_file_store]
           ),
+          Insika::Context::Providers::FenceNotice.new,
           Insika::Context::Providers::Skill.new(catalog: c[:skill_catalog]),
           Insika::Context::Providers::SkillTrigger.new(catalog: c[:skill_catalog]),
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),

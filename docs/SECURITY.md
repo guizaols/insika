@@ -205,6 +205,27 @@ category: the agent's category reply → the agent's default → the builtin
 category → the builtin default. All of it is editable in the Studio Configuration
 form. See [Agents §Layer 3](POLICY.md#layer-3-guardrails-content-safety).
 
+## Third-party text is data (fencing)
+
+The input guardrail covers what the **customer** types. What a **tool** returns,
+what a **fact** in `<memory>` says and what a learned `<knowledge>` concept
+describes are third-party text too — a merchant's product description, a review,
+an FAQ body — and the model reads them byte for byte. Per-agent `fencing` (opt-in
+this release) runs one sanitizer at the one seam every tool result passes on its
+way to the model, and on the memory/knowledge blocks: NFKC normalization,
+invisible and control characters removed, transcript- and tool-call-shaped tags
+(`<system>`, `<assistant>`, `<tool_result>`, `<|im_start|>`) and copies of the
+engine's own labels (`</fact>`, `</memory>`) replaced by `[removed]`, a forged
+`assistant:` turn marker after a blank line defused, each string capped. A fixed
+sentence under the identity tells the model those blocks are material, never
+instructions. Errors the engine authors pass untouched.
+
+Independent of the flag: an evidence tool's `line`/`caption` are always
+sanitized, and the memory distiller and knowledge extractor read **only
+user/assistant text** — a product description can never become a customer fact.
+`insika doctor` warns when a customer-facing agent (behind the relay or the
+widget) has `fencing` off. See [Agents §fencing](AGENTS.md#fencing--third-party-text-is-data-never-instructions).
+
 ## Human approval
 
 Some tool calls should not happen unattended. Mark them with
