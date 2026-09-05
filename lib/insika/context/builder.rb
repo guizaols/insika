@@ -5,12 +5,28 @@ require "time"
 
 module Insika
   # Builder output, consumed by the Executor in stage 5.
-  #   system:       String (final concatenation for with_instructions)
-  #   history:      [{role:, content:}] (for seeding the chat)
-  #   tool_context: String | nil
-  #   fragments:    [ContextFragment] post-cut, in canonical order (audit)
-  #   budget:       { cap:, used:, evicted: [source] }
-  ContextPackage = Data.define(:system, :history, :tool_context, :fragments, :budget)
+  #   system:          String (final concatenation for with_instructions)
+  #   system_identity: String — the identity layer alone (prompt, skills, tool
+  #                    index: byte-stable across turns). The cache breakpoint
+  #                    sits at the end of THIS text.
+  #   system_volatile: String — the volatile layer alone (memory, knowledge,
+  #                    briefing, request: may change every turn). "" when none.
+  #                    system == identity + "\n\n" + volatile when both present.
+  #   history:         [{role:, content:}] (for seeding the chat)
+  #   tool_context:    String | nil
+  #   fragments:       [ContextFragment] post-cut, in canonical order (audit)
+  #   budget:          { cap:, used:, evicted: [source] }
+  #
+  # A package built by hand (a custom builder, a spec) may pass only `system`:
+  # it then reads as all-identity with an empty volatile layer — one block on
+  # the wire, byte-identical to the pre-split behaviour.
+  ContextPackage = Data.define(:system, :history, :tool_context, :fragments, :budget,
+                               :system_identity, :system_volatile) do
+    def initialize(system:, history:, tool_context:, fragments:, budget:,
+                   system_identity: system, system_volatile: "")
+      super
+    end
+  end
 
   # Stage 2 of the pipeline: the Runtime NEVER builds the prompt — it asks the
   # Builder for the package. Implements selection -> fan-out production ->
@@ -157,13 +173,16 @@ module Insika
       tail_frags = fragments.select { |f| f.placement == :tail }
       tool_frags = fragments.select { |f| f.placement == :tool_context }
 
+      system_identity = sort_canonical(identity).map(&:content).join("\n\n")
+      system_volatile = sort_canonical(volatile).map(&:content).join("\n\n")
       system = system_frags.map(&:content).join("\n\n")
       history = history_frags.map(&:content) + tail_frags.map(&:content)
       tool_context = tool_frags.empty? ? nil : tool_frags.map(&:content).join("\n\n")
 
       canonical = system_frags + history_frags + tail_frags + tool_frags
       ContextPackage.new(
-        system: system, history: history, tool_context: tool_context,
+        system: system, system_identity: system_identity, system_volatile: system_volatile,
+        history: history, tool_context: tool_context,
         fragments: canonical, budget: { cap: cap, used: canonical.sum(&:tokens), evicted: evicted }
       )
     end

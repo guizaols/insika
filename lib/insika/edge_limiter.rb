@@ -263,12 +263,15 @@ module Insika
 
     # Appends the note to the assembled system prompt: the real Data package is
     # immutable (with), the specs' minimal Struct is mutable — both duck-typed.
+    # The note is per-turn data, so it also lands in the volatile layer — below
+    # the cache breakpoint, never inside the cached identity prefix.
     def inject_budget_note(state, note)
       ctx = state.context
       return if ctx.nil?
 
       if ctx.respond_to?(:with)
-        state.context = ctx.with(system: "#{ctx.system}\n\n#{note}")
+        volatile = [ctx.system_volatile, note].reject { |s| s.to_s.empty? }.join("\n\n")
+        state.context = ctx.with(system: "#{ctx.system}\n\n#{note}", system_volatile: volatile)
       elsif ctx.respond_to?(:system=)
         ctx.system = "#{ctx.system}\n\n#{note}"
       end
