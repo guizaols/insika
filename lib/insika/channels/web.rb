@@ -155,8 +155,9 @@ module Insika
       # path — `POST /messages` with an unknown id is a 404, not a new conversation.
       def mint_session_id = "#{@id}:#{SecureRandom.hex(16)}"
 
-      # Turn Event -> SSE frame | nil. Four frames, which is the whole widget
-      # protocol: what to type, what to say while a tool runs, and how it ended.
+      # Turn Event -> SSE frame | nil. Five frames, which is the whole widget
+      # protocol: what to type, what to say while a tool runs, what to show
+      # (a presentation tool's cards), and how it ended.
       #
       # `:intermediate` and `:thinking` are deliberately absent. `:content` is the
       # ANSWER — the model's narration on the way there is internal, and a
@@ -165,6 +166,8 @@ module Insika
         case event.type
         when :content        then sse("delta", { delta: event.data[:delta].to_s })
         when :tool_call      then sse("working", { name: event.data[:name].to_s })
+        when :ui             then sse("ui", { component: event.data[:component].to_s, title: event.data[:title],
+                                              items: Array(event.data[:items]) })
         when :task_completed then sse("done", {})
         when :task_failed    then sse("error", { message: event.data[:message].to_s })
         when :task_cancelled then sse("error", { message: "task cancelled" })

@@ -55,10 +55,13 @@ module Insika
       raise Insika::ValidationError, "tool '#{name}' already exists" if create_only && existing
 
       final = definition.to_h
-      final["request"]["headers"] = reconcile_secret_headers(
-        final["request"]["headers"], definition.secret_headers,
-        existing&.dig("definition", "request", "headers")
-      )
+      # A presentation tool makes no request — nothing to reconcile.
+      if final["request"]
+        final["request"]["headers"] = reconcile_secret_headers(
+          final["request"]["headers"], definition.secret_headers,
+          existing&.dig("definition", "request", "headers")
+        )
+      end
 
       rec = build_record(final, existing)
       @cs.put(SCOPE, name, rec)
@@ -109,6 +112,8 @@ module Insika
     def mask_definition(definition)
       secret = definition["secret_headers"] || []
       return definition if secret.empty?
+
+      return definition unless definition["request"]
 
       headers = (definition.dig("request", "headers") || {}).each_with_object({}) do |(k, v), acc|
         acc[k] = secret.include?(k) ? SecretMasking.mask(v) : v

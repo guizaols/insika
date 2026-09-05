@@ -35,7 +35,8 @@ module Insika
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
     :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when,
-    :evidence                       # Insika::Evidence::Spec | nil
+    :evidence,                      # Insika::Evidence::Spec | nil
+    :presentation                   # { component:, ids:, max: } | nil — a UI tool, no HTTP
   )
 
   class ToolDefinition
@@ -73,9 +74,9 @@ module Insika
     # Builds + validates. Raises Insika::ValidationError. Accepts keyword args
     # (already-normalized symbol keys); use from_h for a raw Hash from the store/UI.
     # `parameters` accepts JSON Schema (Hash) OR the legacy flat array.
-    def self.build(name:, description:, request:, parameters: nil, response: nil,
+    def self.build(name:, description:, request: nil, parameters: nil, response: nil,
                    secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil,
-                   halt_when: nil, evidence: nil)
+                   halt_when: nil, evidence: nil, presentation: nil)
       name = name.to_s
       raise Insika::ValidationError, "name must match #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
@@ -83,15 +84,21 @@ module Insika
       raise Insika::ValidationError, "description is required" if desc.empty?
 
       schema = normalize_params(parameters)
-      req = normalize_request(request, top_level_names(schema))
+      # A tool is EITHER an HTTP call or a presentation — never both, never neither.
+      if request && presentation
+        raise Insika::ValidationError, "a tool declares either 'request' or 'presentation', not both"
+      end
+
+      pres = normalize_presentation(presentation, schema)
+      req = pres ? nil : normalize_request(request || {}, top_level_names(schema))
       resp = normalize_response(response)
       if resp[:extract] == "evidence_envelope" && evidence.nil?
         raise Insika::ValidationError,
               "extract 'evidence_envelope' requires an 'evidence' declaration"
       end
 
-      method = req[:method]
-      effect = side_effect.nil? ? !IDEMPOTENT.include?(method) : (side_effect ? true : false)
+      method = req && req[:method]
+      effect = side_effect.nil? ? !(method.nil? || IDEMPOTENT.include?(method)) : (side_effect ? true : false)
 
       new(
         name: name, description: desc, parameters: schema, request: req, response: resp,
@@ -99,7 +106,8 @@ module Insika
         timeout: timeout.nil? ? nil : Integer(timeout),
         group: normalize_group(group), tags: normalize_tags(tags),
         halt_when: normalize_halt_when(halt_when),
-        evidence: Insika::Evidence::Spec.parse(evidence)
+        evidence: Insika::Evidence::Spec.parse(evidence),
+        presentation: pres
       )
     end
 
@@ -108,11 +116,50 @@ module Insika
       h = deep_symbolize(hash)
       build(
         name: h[:name], description: h[:description], parameters: h[:parameters],
-        request: h[:request] || {}, response: h[:response],
+        request: h[:request], response: h[:response],
         secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout],
-        group: h[:group], tags: h[:tags], halt_when: h[:halt_when], evidence: h[:evidence]
+        group: h[:group], tags: h[:tags], halt_when: h[:halt_when], evidence: h[:evidence],
+        presentation: h[:presentation]
       )
     end
+
+    # PRESENTATION: a tool whose job is to SHOW something, not to fetch it. The model
+    # picks ids, the engine validates them against the session's evidence ledger and
+    # joins the cards an evidence tool already returned (Tools::Present). No HTTP.
+    #
+    #   "presentation" => { "component" => "product_cards",   # what the channel renders
+    #                       "ids" => "product_ids",           # the array:string param
+    #                       "max" => 8 }                      # 1..16, the attachment cap
+    #
+    # -> { component:, ids:, max: } | nil
+    def self.normalize_presentation(raw, schema)
+      return nil if raw.nil?
+
+      h = deep_symbolize(raw)
+      raise Insika::ValidationError, "presentation must be an object" unless h.is_a?(Hash)
+
+      component = h[:component].to_s
+      unless NAME_RE.match?(component)
+        raise Insika::ValidationError, "presentation.component must match #{NAME_RE.inspect}"
+      end
+
+      ids = h[:ids].to_s
+      prop = (schema["properties"] || {})[ids]
+      unless prop.is_a?(Hash) && prop["type"] == "array" && prop.dig("items", "type") == "string"
+        raise Insika::ValidationError,
+              "presentation.ids must name a declared array:string parameter (got #{ids.inspect})"
+      end
+
+      max = h[:max].nil? ? Insika::Evidence::MAX_ATTACHMENTS : Integer(h[:max], exception: false)
+      unless max.is_a?(Integer) && max.between?(1, Insika::Evidence::MAX_ATTACHMENTS)
+        raise Insika::ValidationError, "presentation.max must be 1..#{Insika::Evidence::MAX_ATTACHMENTS}"
+      end
+
+      { component: component, ids: ids, max: max }
+    end
+    private_class_method :normalize_presentation
+
+    def presentation? = !presentation.nil?
 
     # Group: enablement label by DATA (not name convention),
     # target of AgentProfile's `tools_allow_groups`. Trimmed; empty/nil -> nil.
@@ -414,7 +461,7 @@ module Insika
       h = {
         "name" => name, "description" => description,
         "parameters" => parameters,
-        "request" => request.transform_keys(&:to_s),
+        "request" => request&.transform_keys(&:to_s),
         "response" => response.transform_keys(&:to_s),
         "secret_headers" => secret_headers,
         "side_effect" => side_effect, "timeout" => timeout,
@@ -424,6 +471,7 @@ module Insika
       # present only when declared — a tool without evidence is byte-identical
       # to today (no declaration, no envelope processing).
       h["evidence"] = evidence.to_h if evidence
+      h["presentation"] = presentation.transform_keys(&:to_s) if presentation
       h
     end
 

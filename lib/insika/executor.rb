@@ -2516,7 +2516,11 @@ module Insika
 
       # the hoarded evidence attachments ride the channel delivery
       # (additive outbox payload key — the channel contract widens, nothing breaks).
-      attachments = state.respond_to?(:evidence_attachments) ? state.evidence_attachments : nil
+      # When the model SELECTED cards with a presentation tool this turn, the
+      # selection is what rides — in call order, each card stamped with the
+      # component and title of the call that picked it. No selection = every
+      # hoarded card, as before.
+      attachments = delivery_attachments(state)
       deliveries = @channel_delivery.record_balloons(
         task: task, channel_id: channel_id, content: content,
         progressive: @channel_delivery.progressive?(channel_id),
@@ -2528,6 +2532,17 @@ module Insika
       dispatch_chain(deliveries.map(&:id))
     rescue Insika::Error
       nil
+    end
+
+    def delivery_attachments(state)
+      presentations = state.respond_to?(:presentations) ? Array(state.presentations) : []
+      if presentations.empty?
+        return state.respond_to?(:evidence_attachments) ? state.evidence_attachments : nil
+      end
+
+      presentations.flat_map do |p|
+        Array(p["items"]).map { |item| item.merge("component" => p["component"], "title" => p["title"]).compact }
+      end
     end
 
     # Turns whose combined transcript slice is this trivially short skip

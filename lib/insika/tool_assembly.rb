@@ -58,14 +58,13 @@ module Insika
     # capability alias.
     def assemble_tool_instances(allowed, state)
       names = state.respond_to?(:capability_names) ? (state.capability_names || {}) : {}
-      ctx = state.respond_to?(:turn_context) ? state.turn_context : nil
-      return instantiate_tools(allowed, ctx) if names.empty?
+      return instantiate_tools(allowed, state) if names.empty?
 
       # Dedup by the ENTRY NAME (registry key = impl_name) BEFORE
       # instantiating — the INSTANCE's `.name` (RubyLLM) is not the registration
       # name.
       direct = Array(allowed).reject { |e| e.respond_to?(:name) && names.key?(e.name.to_s) }
-      instantiate_tools(direct, ctx) + capability_tool_instances(names, ctx)
+      instantiate_tools(direct, state) + capability_tool_instances(names, state)
     end
 
     # Envelopes each allowed tool (per-call timeout + side-effect recording).
@@ -105,10 +104,10 @@ module Insika
     # Real Engine -> Entries (respond to factory); fakes -> ready instances.
     # `turn_context` is deposited into the instances that expose it
     # (data-tools); the rest ignore it (parity).
-    def instantiate_tools(allowed, turn_context = nil)
+    def instantiate_tools(allowed, state = nil)
       Array(allowed).map do |t|
         tool = t.respond_to?(:factory) ? t.factory.call : t
-        inject_turn_context(tool, turn_context)
+        inject_turn_context(tool, state)
         tool
       end
     end
@@ -116,22 +115,28 @@ module Insika
     # seam: deposits the turn context into the freshly created instance
     # (same idea as `remember`, which receives tenant/state) BEFORE the
     # ToolEnvelope. Duck-typed: only what exposes `turn_context=` (DataDefinedTool)
-    # receives it. nil (a state with no turn_context, e.g. a test stub) -> no-op.
-    def inject_turn_context(tool, turn_context)
-      return if turn_context.nil?
+    # receives it; a tool that exposes `turn_state=` (a presentation tool, which
+    # reads the ledger and the hoarded cards) receives the state itself. nil (a
+    # state with no turn_context, e.g. a test stub) -> no-op.
+    def inject_turn_context(tool, state)
+      return if state.nil?
 
-      tool.turn_context = turn_context if tool.respond_to?(:turn_context=)
+      tool.turn_state = state if tool.respond_to?(:turn_state=)
+      ctx = state.respond_to?(:turn_context) ? state.turn_context : nil
+      return if ctx.nil?
+
+      tool.turn_context = ctx if tool.respond_to?(:turn_context=)
     end
 
     # impl_name -> Capability::ResolvedTool(capability_name:), STILL without
     # ToolEnvelope (the call site's wrap_tools wraps the whole set — same
     # order impl -> ResolvedTool -> ToolEnvelope). entry already validated in
     # resolve_capabilities.
-    def capability_tool_instances(names, turn_context = nil)
+    def capability_tool_instances(names, state = nil)
       names.map do |impl_name, capability_name|
         entry = @tool_registry.entries.find { |e| e.name == impl_name }
         tool = entry.factory.call
-        inject_turn_context(tool, turn_context)
+        inject_turn_context(tool, state)
         Capability::ResolvedTool.new(tool, capability_name: capability_name,
                                            impl_name: impl_name)
       end

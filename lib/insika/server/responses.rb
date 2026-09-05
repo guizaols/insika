@@ -161,6 +161,15 @@ module Insika
           # Studio + the trace. Explicit (not a fall-through) to keep the closed
           # catalog honest.
           nil
+        when :ui
+          # A presentation tool's selection: what the customer should SEE alongside
+          # the answer. Namespaced like `insika.intermediate` — no OpenAI Responses
+          # counterpart, unknown to strict clients, safely ignored. `items` are the
+          # cards the engine validated and joined (id/url/caption); `dropped` is what
+          # the model asked for and could not be shown, with the reason.
+          sse("insika.ui", { type: "insika.ui", component: event.data[:component].to_s,
+                             title: event.data[:title], items: Array(event.data[:items]),
+                             count: event.data[:count].to_i, dropped: Array(event.data[:dropped]) })
         when :ttft
           # the live TTFB signal (WS6, INSIKA_TURN_TIMING opt-in): the provider's
           # ms-to-first-token, emitted when the first content chunk arrives.
