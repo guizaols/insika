@@ -174,6 +174,10 @@ module Insika
     # nil = concurrency off: no gate, no overhead, serial execution unchanged.
     attr_accessor :tool_gate
 
+    # Turns of one session already run serially through SessionActor. This gate
+    # prevents overlapping writes within a parallel batch of the current turn.
+    attr_accessor :side_effect_gate
+
     # parallel tool calls, resolved PER TURN and read by ChatBuilder
     # (whether to hand the gem `concurrency:`) and ToolAssembly (the gate's size).
     #

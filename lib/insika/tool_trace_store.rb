@@ -52,7 +52,7 @@ module Insika
         "ok" => ok?(e["result"]),
         "args" => clip(mask(e["args"])), "result" => clip(mask(e["result"])),
         "ms" => e["ms"], "at" => e["at"].to_s
-      }
+      }.tap { |trace| trace["gate"] = e["gate"].to_s if e["gate"] }
     end
 
     # Conventional tool error = Hash with key "error"/:error (everything else is ok).

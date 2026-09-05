@@ -734,3 +734,10 @@ output and is served as untrusted. See [Artifacts](ARTIFACTS.md).
 - [Security](SECURITY.md) — guardrails, sandbox, approvals, edge limits.
 - [Architecture](ARCHITECTURE.md) — how a turn actually runs.
 - [`examples/`](https://github.com/guizaols/insika/tree/main/examples/) — one runnable project per capability.
+
+## Review before enabling writes
+
+Does each ID come from the server? Declare `evidence` on the lookup tool and
+`requires_evidence` on the write tool so the engine enforces session provenance.
+Mark writes as `side_effect` so parallel batches serialize them and recovery skips
+completed calls. See [Tools](TOOLS.md#provenance-checking-ids-before-a-write).

@@ -47,6 +47,7 @@ module Insika
       # envelope's duck-typed resolution checks this FIRST — a data-tool declares
       # its evidence on its definition, never in the registry metadata.
       def evidence = @definition.evidence
+      def requires_evidence = @definition.requires_evidence
 
       # FULL (nested) JSON Schema straight into RubyLLM's params_schema — it is what
       # the providers serialize (OpenAI/Anthropic/Gemini/Bedrock prefer

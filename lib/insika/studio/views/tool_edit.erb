@@ -62,7 +62,7 @@
   <div class="grid-2">
     <label>response
       <select name="extract">
-        <% [["body_raw", "raw body"], ["json_path", "JSON field"], ["status", "status only"]].each do |v, lbl| %>
+        <% [["body_raw", "raw body"], ["json_path", "JSON field"], ["status", "status only"], ["evidence_envelope", "evidence envelope"]].each do |v, lbl| %>
           <option value="<%= v %>"<%== " selected" if @form[:extract] == v %>><%= lbl %></option>
         <% end %>
       </select>
@@ -71,6 +71,10 @@
       <input type="text" name="path" value="<%= @form[:path] %>" placeholder="localidade">
     </label>
   </div>
+
+  <label>requires_evidence <span class="muted">(parameter names, comma-separated; each ID must first be returned by a tool in this conversation)</span>
+    <input type="text" name="requires_evidence" value="<%= @form[:requires_evidence] %>" placeholder="product_id">
+  </label>
 
   <label>timeout <span class="muted">(seconds, optional)</span>
     <input type="number" name="timeout" value="<%= @form[:timeout] %>" min="1" placeholder="30">

@@ -387,7 +387,7 @@ module Studio
     # record on write, so anything missing here is erased — a save that only fixed a
     # typo in the description would silently drop them (the class of bug already
     # paid for once). `stored` carries them through untouched.
-    UNEDITED_TOOL_FIELDS = %w[group tags halt_when evidence presentation].freeze
+    UNEDITED_TOOL_FIELDS = %w[group tags halt_when evidence presentation side_effect].freeze
 
     # :write_data_tool payload from the form. nested request/response;
     # headers/query as "key=value" per line (same idiom as the MCP env —
@@ -411,6 +411,11 @@ module Studio
           path: presence(r.params["path"])
         },
         secret_headers: split_list(r.params["secret_headers"]),
+        requires_evidence: if r.params.key?("requires_evidence")
+                             split_list(r.params["requires_evidence"]).then { |names| names.empty? ? nil : names }
+                           else
+                             (stored || {})["requires_evidence"]
+                           end,
         timeout: presence(r.params["timeout"])
       )
       # A presentation tool makes no request: the form's HTTP fields are blank and

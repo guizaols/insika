@@ -122,4 +122,16 @@ RSpec.describe Insika::ToolUsageReport do
     expect(h["days"]).to eq(14)
     expect(h["rows"].first).to include("agent" => "bia", "tool" => "x", "kind" => "never_called")
   end
+  it "reports blocked calls distinctly from served calls" do
+    store_agent("shop", tools_allow: ["write"])
+    turn("shop", "s1", at: now)
+    trace_store.record(session_id: "s1", entry: {
+      tool: "write", gate: "provenance", result: { "status" => "blocked" }, at: now.iso8601
+    })
+    row = report.rows.find { |r| r.kind == "blocked" }
+    expect(row.tool).to eq("write")
+    expect(row.detail).to include("provenance", "1")
+    expect(report.rows.map(&:kind)).not_to include("error_rate")
+  end
+
 end
