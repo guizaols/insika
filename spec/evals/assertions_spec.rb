@@ -70,6 +70,83 @@ RSpec.describe Insika::Evals::Assertions do
     end
   end
 
+  # The call/reply graders — each its own Check, so the report names the one that
+  # failed. One pass and one fail per grader.
+  describe "the call graders" do
+    def calls(*names) = names.map { |n| { "name" => n, "status" => "ok" } }
+
+    it "never_calls: fails naming the tool that was called" do
+      pass = described_class.evaluate(golden("never_calls" => ["search_products"]), result(tool_calls: calls("add_to_cart")))
+      fail = described_class.evaluate(golden("never_calls" => ["search_products"]), result(tool_calls: calls("search_products")))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.map(&:name)).to eq(["never_calls:search_products"])
+      expect(fail.failures.first.detail).to eq("called search_products")
+    end
+
+    it "calls_one_of: at least one of the listed tools" do
+      pass = described_class.evaluate(golden("calls_one_of" => %w[search_products list_categories]), result(tool_calls: calls("list_categories")))
+      fail = described_class.evaluate(golden("calls_one_of" => %w[search_products list_categories]), result(tool_calls: calls("add_to_cart")))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.map(&:name)).to eq(["calls_one_of"])
+      expect(fail.failures.first.detail).to include("saw: add_to_cart")
+    end
+
+    it "first_tool: the first call's name" do
+      pass = described_class.evaluate(golden("first_tool" => "search_products"), result(tool_calls: calls("search_products", "add_to_cart")))
+      fail = described_class.evaluate(golden("first_tool" => "search_products"), result(tool_calls: calls("add_to_cart", "search_products")))
+      none = described_class.evaluate(golden("first_tool" => "search_products"), result(tool_calls: []))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.first.detail).to eq("first call was add_to_cart")
+      expect(none.failures.first.detail).to eq("first call was none")
+    end
+
+    it "max_tool_calls: a ceiling on the turn's calls" do
+      pass = described_class.evaluate(golden("max_tool_calls" => 2), result(tool_calls: calls("a", "b")))
+      fail = described_class.evaluate(golden("max_tool_calls" => 1), result(tool_calls: calls("a", "b")))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.map(&:name)).to eq(["max_tool_calls:1"])
+      expect(fail.failures.first.detail).to eq("2 call(s): a, b")
+    end
+
+    it "blocked_gates: each tool:gate pair appears among the BLOCKED calls" do
+      blocked = [{ "name" => "add_to_cart", "status" => "blocked", "gate" => "provenance" }]
+      pass = described_class.evaluate(golden("blocked_gates" => ["add_to_cart:provenance"]), result(tool_calls: blocked))
+      ran = described_class.evaluate(golden("blocked_gates" => ["add_to_cart:provenance"]), result(tool_calls: calls("add_to_cart")))
+      other = described_class.evaluate(golden("blocked_gates" => ["add_to_cart:provenance"]),
+                                       result(tool_calls: [{ "name" => "add_to_cart", "status" => "blocked", "gate" => "budget" }]))
+      expect(pass.pass?).to be(true)
+      expect(ran.failures.first.detail).to eq("not held (blocked: none)")
+      expect(other.failures.first.detail).to eq("not held (blocked: add_to_cart:budget)")
+    end
+
+    it "a BLOCKED call is not a tool_error (the tool never ran)" do
+      blocked = [{ "name" => "add_to_cart", "status" => "blocked", "gate" => "provenance" }]
+      r = described_class.evaluate(golden("must_not" => ["tool_error"]), result(tool_calls: blocked))
+      expect(r.pass?).to be(true)
+      expect(result(tool_calls: blocked).blocked_tools).to eq(blocked)
+    end
+  end
+
+  describe "the reply graders (case-insensitive substrings over the published answer)" do
+    it "reply_includes / reply_omits, each naming the substring" do
+      text = "O frete para 01311-000 sai por R$ 20."
+      pass = described_class.evaluate(golden("reply_includes" => ["FRETE"], "reply_omits" => ["SKU-1"]), result(output_text: text))
+      fail = described_class.evaluate(golden("reply_includes" => ["cupom"], "reply_omits" => ["01311-000"]), result(output_text: text))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.map(&:name)).to eq(["reply_includes:cupom", "reply_omits:01311-000"])
+      expect(fail.failures.map(&:detail)).to eq(["missing from the reply", "present in the reply"])
+    end
+
+    it "the report names the grader that failed" do
+      r = described_class.evaluate(golden("tools_called" => ["add_to_cart"], "never_calls" => ["search_products"], "reply_omits" => ["SKU-1"]),
+                                   result(output_text: "adicionei o SKU-1", tool_calls: [{ "name" => "add_to_cart" }, { "name" => "search_products" }]))
+      md = Insika::Evals::Report.to_markdown([r], at: "2026-01-01T00:00:00Z")
+      expect(md).to include("❌ never_calls:search_products: called search_products")
+      expect(md).to include("❌ reply_omits:SKU-1: present in the reply")
+      expect(md).not_to include("tool:add_to_cart")
+    end
+  end
+
   it "turns a transport/turn error into a single failing check" do
     r = described_class.evaluate(golden("tools_called" => ["x"]), result(error: "timeout"))
     expect(r.pass?).to be(false)

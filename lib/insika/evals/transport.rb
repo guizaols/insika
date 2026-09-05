@@ -22,6 +22,11 @@ module Insika
     # different facts, and a budget that confuses them stops being a budget.
     TurnOutcome = Struct.new(:result, :ttfb, :total, :usage, keyword_init: true)
 
+    # The deployment answered the seed with a refusal (403: `evals.seeding` is off
+    # there). Its own class so the Runner can SKIP the case with the reason — a
+    # different fact from a seed that failed (409, 5xx, network), which fails it.
+    class SeedRefused < Insika::Error; end
+
     # Pure reduction of the /v1/responses SSE stream. Kept separate from the HTTP so
     # it's testable offline with canned frames (server/responses.rb is the producer).
     module Sse
@@ -47,9 +52,11 @@ module Insika
 
       # [payload] -> { output_text:, tool_calls:, usage:, error: }. Maps the Responses
       # frames (see server/responses.rb#frame_for): text deltas accumulate; each
-      # function_call item contributes a tool NAME (this stream carries no per-tool
-      # status — that lives in the ToolTraceStore, an in-process enrichment); a
-      # `response.failed` sets the turn error.
+      # function_call `added` item opens a tool call (name + arguments); its `done`
+      # item closes it with how the call ended (status ok/error/blocked + the gate
+      # that held it). An older deployment sends `added` only, and the entries keep
+      # `status: nil` — the shape widened, nothing moved. A `response.failed` sets
+      # the turn error.
       def reduce(payloads)
         text = +""
         tools = []
@@ -61,7 +68,21 @@ module Insika
             text << o["delta"].to_s
           when "response.output_item.added"
             item = o["item"] || {}
-            tools << { "name" => item["name"].to_s, "status" => nil } if item["type"] == "function_call"
+            next unless item["type"] == "function_call"
+
+            entry = { "name" => item["name"].to_s, "status" => nil }
+            (args = arguments_of(item["arguments"])) && (entry["arguments"] = args)
+            tools << entry
+          when "response.output_item.done"
+            item = o["item"] || {}
+            next unless item["type"] == "function_call"
+
+            # Closes the FIRST still-open call of that name: the calls of one batch
+            # run concurrently and their `done` frames arrive in completion order.
+            entry = tools.find { |t| t["name"] == item["name"].to_s && t["status"].nil? }
+            entry ||= (tools << { "name" => item["name"].to_s, "status" => nil }).last
+            entry["status"] = item["status"].to_s
+            entry["gate"] = item["gate"].to_s if item["gate"]
           when "response.completed"
             usage = o.dig("response", "usage")
           when "response.failed"
@@ -69,6 +90,18 @@ module Insika
           end
         end
         { output_text: text, tool_calls: tools, usage: usage, error: error }
+      end
+
+      # The item's `arguments` is a JSON string on the wire (the OpenAI shape); the
+      # graders want the Hash. Anything unparseable stays the raw string — the call
+      # happened, and a report should still show what it saw. nil when absent.
+      def arguments_of(raw)
+        return nil if raw.nil?
+        return raw unless raw.is_a?(String)
+
+        JSON.parse(raw)
+      rescue JSON::ParserError
+        raw
       end
     end
 
@@ -168,6 +201,42 @@ module Insika
         failure(e.class.to_s, t0)
       end
 
+      # Loads a case's `state:` into the conversation BEFORE its first turn —
+      # `POST /v1/conversations/:conv/seed`, the same Bearer as the turn, so the
+      # seeded session is the one the turn continues. The body is the state mapping
+      # (+ `customer` when the turns will carry one). A 403 is the deployment
+      # refusing to seed (`evals.seeding` off) -> SeedRefused, which the Runner
+      # turns into a skip; anything else that is not 2xx is an error that fails the
+      # case — a seed that did not land must never let the case run empty and pass.
+      def seed(conv, state, customer: nil)
+        uri = URI.join("#{@base}/", "v1/conversations/#{URI.encode_www_form_component(conv)}/seed")
+        req = Net::HTTP::Post.new(uri)
+        req["Authorization"] = "Bearer #{@token}"
+        req["Content-Type"] = "application/json"
+        body = Insika::Coercion.deep_stringify(state)
+        body["customer"] = customer if customer
+        req.body = JSON.generate(body)
+
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http.read_timeout = @timeout
+        http.open_timeout = 10
+        res = http.start { http.request(req) }
+        code = res.code.to_i
+        return true if code.between?(200, 299)
+
+        message = begin
+          JSON.parse(res.body.to_s).dig("error", "message")
+        rescue JSON::ParserError
+          nil
+        end
+        raise SeedRefused, "HTTP 403#{" #{message}" if message}" if code == 403
+
+        raise Insika::Error, "HTTP #{code}#{" #{message}" if message}"
+      rescue SystemCallError, IOError, Net::OpenTimeout, Net::ReadTimeout => e
+        raise Insika::Error, e.class.to_s
+      end
+
       private
 
       def failure(msg, t0)
@@ -214,6 +283,20 @@ module Insika
         ensure
           sub&.close
         end
+      end
+
+      # In-process seeding: the SAME `seed_session` command the HTTP route dispatches,
+      # on the graph's own bus — no route, no gate (there is no tenant token to
+      # protect here; whoever holds the graph already holds everything). A runtime
+      # that exposes no graph cannot seed, and says so as an error the Runner fails
+      # the case with.
+      def seed(conv, state, customer: nil)
+        bus = @runtime.graph.bus if @runtime.respond_to?(:graph) && @runtime.graph
+        raise Insika::Error, "transport cannot seed state: the runtime exposes no graph" if bus.nil?
+
+        payload = { id: conv, state: state }
+        payload[:customer] = customer if customer
+        bus.dispatch(Insika::Command.build(:seed_session, payload, transport: :internal))
       end
 
       private

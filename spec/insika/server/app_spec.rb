@@ -577,11 +577,87 @@ RSpec.describe Insika::Server::App do
       expect(json_body(resp)["error"]["retryable"]).to be(false)
     end
 
-    it "the ONLY 403 is the WS1 operator-surface gate (tenant principal on an operator route)" do
+    it "the only 403s are the WS1 operator-surface gate and the eval seeding gate" do
       source = File.read(File.expand_path("../../../lib/insika/server/app.rb", __dir__))
-      # exactly one deliberate 403: the tenant-vs-operator surface boundary.
-      expect(source.scan(/\b403\b/).size).to eq(1)
+      # exactly two deliberate 403s: the tenant-vs-operator surface boundary, and
+      # the seed route while `evals.seeding` is off. Anything else is a bug.
+      expect(source.scan(/\b403\b/).size).to eq(2)
       expect(source).to include('auth_error(403, "operator surface")')
+      expect(source).to include('auth_error(403, "seeding is off (settings evals.seeding)")')
+    end
+  end
+
+  # POST /v1/conversations/:id/seed — the snapshot an eval case starts from. Gated
+  # twice: the gateway Bearer like every /v1 route, and the platform setting
+  # `evals.seeding` (off = 403, fail-closed; no settings store at all = off).
+  describe "POST /v1/conversations/:id/seed" do
+    Seeded = Struct.new(:id) do
+      def to_h = { "id" => id, "messages" => [] }
+    end
+
+    def settings(seeding:)
+      store = Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+      store.update("evals" => { "seeding" => seeding })
+      store
+    end
+
+    def seed_app(bus, seeding: true, settings_store: settings(seeding: seeding))
+      described_class.new(command_bus: bus, event_stream: ServerEventStreamDouble.new,
+                          session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
+                          settings_store: settings_store, config: { sync_timeout: 0.05, gateway_token: TOKEN })
+    end
+
+    let(:state) { { evidence: { ids: ["SKU-1"] }, memory: { facts: { size: "38" } } } }
+
+    it "with the setting on: dispatches :seed_session with the id, the state and the customer -> 200 {session}" do
+      bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
+      status, _h, resp = call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed",
+                              body: JSON.generate(state.merge(customer: "c-9")))
+
+      expect(status).to eq(200)
+      expect(json_body(resp)["session"]["id"]).to eq("eval-c1")
+      command = bus.dispatched.first
+      expect(command.type).to eq(:seed_session)
+      expect(command.payload).to eq(id: "eval-c1", state: state, customer: "c-9")
+      expect(command.meta[:transport]).to eq(:http)
+    end
+
+    it "without a customer the payload carries none" do
+      bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
+      call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed", body: JSON.generate(state))
+
+      expect(bus.dispatched.first.payload).to eq(id: "eval-c1", state: state)
+    end
+
+    it "with the setting off -> 403, nothing reaches the bus" do
+      bus = ServerBusDouble.new
+      status, _h, resp = call(seed_app(bus, seeding: false), "POST", "/v1/conversations/eval-c1/seed",
+                              body: JSON.generate(state))
+
+      expect(status).to eq(403)
+      expect(json_body(resp)["error"]["message"]).to include("evals.seeding")
+      expect(bus.dispatched).to be_empty
+    end
+
+    it "with no settings store at all -> 403 (fail-closed)" do
+      bus = ServerBusDouble.new
+      status, = call(seed_app(bus, settings_store: nil), "POST", "/v1/conversations/eval-c1/seed", body: "{}")
+
+      expect(status).to eq(403)
+      expect(bus.dispatched).to be_empty
+    end
+
+    it "needs the gateway Bearer like every /v1 route" do
+      status, = call(seed_app(ServerBusDouble.new), "POST", "/v1/conversations/eval-c1/seed", body: "{}", auth: nil)
+      expect(status).to eq(401)
+    end
+
+    it "a conversation that already has messages -> 409 (ConflictError)" do
+      bus = ServerBusDouble.new { raise Insika::ConflictError, "session eval-c1 already has 2 message(s)" }
+      status, _h, resp = call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed", body: JSON.generate(state))
+
+      expect(status).to eq(409)
+      expect(json_body(resp)["error"]["class"]).to eq("Insika::ConflictError")
     end
   end
 

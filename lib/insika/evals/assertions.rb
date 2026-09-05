@@ -13,14 +13,27 @@ module Insika
     # offline without a server.
     #
     #   output_text: the final assistant text (for content checks)
-    #   tool_calls:  [{ "name" =>, "status" => }] captured from the stream's tool events
+    #   tool_calls:  [{ "name" =>, "arguments" =>, "status" =>, "gate" => }] captured
+    #                from the stream's tool events. `arguments` (a Hash) and
+    #                `status` ("ok" | "error" | "blocked", with `gate` naming what
+    #                held a blocked call) arrive from the item frames; an older
+    #                deployment sends names only and they stay nil.
     #   error:       transport/turn error string, or nil on a clean turn
     TurnResult = Struct.new(:output_text, :tool_calls, :error, keyword_init: true) do
       def tool_names = Array(tool_calls).map { |t| (t["name"] || t[:name]).to_s }
 
-      # A tool call whose status is anything but a success ("ok"/2xx/"success").
+      # A tool call whose status is anything but a success ("ok"/2xx/"success"). A
+      # BLOCKED call is not an error: the tool never ran, a gate held it — that is
+      # the `blocked_gates` grader's business, not `must_not: tool_error`'s.
       def errored_tools
-        Array(tool_calls).reject { |t| Assertions.ok_status?(t["status"] || t[:status]) }
+        Array(tool_calls).reject do |t|
+          status = t["status"] || t[:status]
+          Assertions.ok_status?(status) || status.to_s == "blocked"
+        end
+      end
+
+      def blocked_tools
+        Array(tool_calls).select { |t| (t["status"] || t[:status]).to_s == "blocked" }
       end
     end
 
@@ -144,8 +157,8 @@ module Insika
         # NOT `Array(turns)`: TurnResult is a Struct, so Array() would explode a single
         # one into its members and hand the policy checks three strings.
         conversation = turns.nil? || turns.empty? ? [result] : turns
-        checks = tool_checks(golden, result) + must_not_checks(golden, result) +
-                 policy_checks(golden, conversation)
+        checks = tool_checks(golden, result) + call_checks(golden, result) + reply_checks(golden, result) +
+                 must_not_checks(golden, result) + policy_checks(golden, conversation)
         CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
                        rubric: golden.rubric, judge: nil)
       end
@@ -160,6 +173,55 @@ module Insika
           present = names.include?(t[:name])
           Check.new(name: "tool:#{t[:name]}", pass: present,
                     detail: present ? "called" : "expected but not called (saw: #{names.join(', ')})")
+        end
+      end
+
+      # The graders over the turn's CALLS. Each is its own Check, so the report names
+      # the one that failed instead of "tool checks failed". All read the LAST turn,
+      # like `tools_called`.
+      def call_checks(golden, result)
+        names = result.tool_names
+        checks = golden.never_calls.map do |name|
+          hit = names.include?(name)
+          Check.new(name: "never_calls:#{name}", pass: !hit, detail: hit ? "called #{name}" : "not called")
+        end
+
+        unless golden.calls_one_of.empty?
+          hit = golden.calls_one_of & names
+          checks << Check.new(name: "calls_one_of", pass: !hit.empty?,
+                              detail: hit.empty? ? "none of #{golden.calls_one_of.join(', ')} called (saw: #{names.join(', ')})"
+                                                 : "called #{hit.join(', ')}")
+        end
+
+        if (first = golden.first_tool)
+          checks << Check.new(name: "first_tool:#{first}", pass: names.first == first,
+                              detail: "first call was #{names.first || 'none'}")
+        end
+
+        if (max = golden.max_tool_calls)
+          checks << Check.new(name: "max_tool_calls:#{max}", pass: names.size <= max,
+                              detail: "#{names.size} call(s): #{names.join(', ')}")
+        end
+
+        blocked = result.blocked_tools.map { |t| "#{t['name'] || t[:name]}:#{t['gate'] || t[:gate]}" }
+        checks + golden.blocked_gates.map do |pair|
+          held = blocked.include?(pair)
+          Check.new(name: "blocked_gates:#{pair}", pass: held,
+                    detail: held ? "held" : "not held (blocked: #{blocked.empty? ? 'none' : blocked.join(', ')})")
+        end
+      end
+
+      # Case-insensitive substrings over the PUBLISHED answer. `reply_omits` is where
+      # an internal id, a CPF or a raw tag leaking into the customer's text is pinned —
+      # the negative half of `reply_includes`.
+      def reply_checks(golden, result)
+        text = result.output_text.to_s.downcase
+        golden.reply_includes.map do |s|
+          hit = text.include?(s.downcase)
+          Check.new(name: "reply_includes:#{s}", pass: hit, detail: hit ? "present" : "missing from the reply")
+        end + golden.reply_omits.map do |s|
+          hit = text.include?(s.downcase)
+          Check.new(name: "reply_omits:#{s}", pass: !hit, detail: hit ? "present in the reply" : "absent")
         end
       end
 

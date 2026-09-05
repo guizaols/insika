@@ -58,6 +58,31 @@ RSpec.describe Insika::Server::App do
       expect(status3).to eq(403)
     end
 
+    # The seed route is a TENANT surface (the eval runs under the same token as the
+    # turn), and the id is namespaced exactly like /v1/responses does — so the
+    # seeded session is the one the tenant's turn continues.
+    it "a tenant can seed a conversation under its own namespace when evals.seeding is on" do
+      settings = Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: backend))
+      settings.update("evals" => { "seeding" => true })
+      seeded = Struct.new(:id) { def to_h = { "id" => id } }
+      bus = ServerBusDouble.new { |c| seeded.new(c.payload[:id]) }
+      app = described_class.new(
+        command_bus: bus, event_stream: ServerEventStreamDouble.new,
+        session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
+        token_store: token_store, settings_store: settings,
+        config: { sync_timeout: 0.05, gateway_token: "op-sekret", tenancy: "multi_tenant" }
+      )
+
+      status, _h, resp = call(app, "POST", "/v1/conversations/chat-1/seed",
+                              body: JSON.generate(evidence: { ids: ["SKU-1"] }), auth: tenant_a.token)
+
+      expect(status).to eq(200)
+      expect(json_body(resp)["session"]["id"]).to eq("loja-a:chat-1")
+      command = bus.dispatched.first
+      expect(command.payload[:id]).to eq("loja-a:chat-1")
+      expect(command.meta[:tenant]).to eq("loja-a")
+    end
+
     it "a revoked token 401s for ITS tenant only; the other tenant keeps working" do
       bus = ServerBusDouble.new
       app = build_tenant_app(bus: bus)

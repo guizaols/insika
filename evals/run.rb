@@ -55,6 +55,7 @@ OptionParser.new do |o|
   o.on("--golden-dir DIR", "golden set dir (default evals/golden)") { |v| opts[:golden_dir] = v }
   o.on("--source SRC", %w[auto store dir], "where cases come from (default auto)") { |v| opts[:source] = v }
   o.on("--agent ID", "only run goldens for this agent") { |v| opts[:agent] = v }
+  o.on("--id GLOB", "only run cases whose id matches (shell glob, e.g. cart-*)") { |v| opts[:id] = v }
   o.on("--conv-map FILE", "JSON map golden.id -> conversation id (e.g. real Chat UUIDs)") { |v| opts[:conv_map] = v }
   o.on("--mode MODE", %w[eval perf both], "eval | perf | both (default eval)") { |v| opts[:mode] = v }
   o.on("--out FILE", "write the JSON report here (default evals/reports/<ts>.json)") { |v| opts[:out] = v }
@@ -150,6 +151,7 @@ end
 settings = eval_settings
 goldens, source = load_goldens(opts)
 goldens = goldens.select { |g| g.agent == opts[:agent] } if opts[:agent]
+goldens = goldens.select { |g| File.fnmatch?(opts[:id], g.id) } if opts[:id]
 abort "eval: no goldens found in #{source}" if goldens.empty?
 
 conv_map = opts[:conv_map] ? JSON.parse(File.read(opts[:conv_map])) : {}

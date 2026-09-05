@@ -21,6 +21,7 @@ two cannot drift (a spec pins the gate's version to the date below).
 | `POST /v1/agents` | provisioning by definition/pack (idempotent, authoritative) |
 | `GET/DELETE /v1/agents` | list / remove agents |
 | `POST /v1/sessions` | create a session explicitly |
+| `POST /v1/conversations/:id/seed` | load a snapshot (evidence ids, memory, history, briefing) into a conversation before its first turn — the precondition a [snapshot eval](EVALS.md#state--a-case-starts-from-a-snapshot) starts from. Same Bearer as `/v1/responses`; answers `403` unless the platform setting `evals.seeding` is on, `409` when the conversation already has messages |
 | `POST /v1/outcomes` | record a business outcome (`conversion`, `escalation`, any label) |
 | `GET /v1/outcomes` | last outcome per agent + the per-day series |
 | `POST /v1/commands/...` | operator commands (`forget_customer`, `delete_tenant_data`, the follow-up mutations) |

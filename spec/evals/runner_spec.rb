@@ -41,6 +41,72 @@ RSpec.describe Insika::Evals::Runner do
     expect(t.seen.first[:conv]).to eq("eval-c")
   end
 
+  # `state:` — the snapshot goes into the conversation BEFORE turn 1, on the same
+  # conv id the turns continue. A transport that cannot seed skips the case with
+  # the reason (never a silent pass against an empty state).
+  describe "a seeded case" do
+    class SeedingFakeTransport < FakeTransport
+      attr_reader :seeds
+
+      def initialize(refuse: nil, &script)
+        super(&script)
+        @seeds = []
+        @refuse = refuse
+      end
+
+      def seed(conv, state, customer: nil)
+        @seeds << { conv: conv, state: state, customer: customer, before_turns: seen.size }
+        raise @refuse if @refuse
+      end
+    end
+
+    let(:state) { { "evidence" => { "ids" => ["SKU-1"] } } }
+    let(:seeded) { golden("state" => state, "expect" => { "tools_called" => ["add_to_cart"] }) }
+
+    it "seeds the conversation with the case's state before turn 1" do
+      t = SeedingFakeTransport.new { ok_result([{ "name" => "add_to_cart" }]) }
+      rc = described_class.new(transport: t).run_case(seeded)
+
+      expect(rc.result.pass?).to be(true)
+      expect(t.seeds).to eq([{ conv: "eval-c", state: state, customer: nil, before_turns: 0 }])
+      expect(t.seen.first[:conv]).to eq("eval-c")
+    end
+
+    it "an unseeded case never calls seed" do
+      t = SeedingFakeTransport.new { ok_result }
+      described_class.new(transport: t).run_case(golden)
+      expect(t.seeds).to be_empty
+    end
+
+    it "a transport without #seed -> SKIPPED with the reason, no turn spent" do
+      t = FakeTransport.new { ok_result }
+      rc = described_class.new(transport: t).run_case(seeded)
+
+      expect(rc.result.skipped?).to be(true)
+      expect(rc.result.skipped).to eq("transport cannot seed state")
+      expect(rc.result.pass?).to be(false)
+      expect(t.seen).to be_empty
+    end
+
+    it "a deployment that refuses seeding (403) -> SKIPPED with the reason, never a false pass" do
+      t = SeedingFakeTransport.new(refuse: Insika::Evals::SeedRefused.new("HTTP 403 seeding is off")) { ok_result }
+      rc = described_class.new(transport: t).run_case(seeded)
+
+      expect(rc.result.skipped).to eq("deployment refuses seeding — HTTP 403 seeding is off")
+      expect(t.seen).to be_empty
+    end
+
+    it "a seed that FAILS (409, network) fails the case as a turn error" do
+      t = SeedingFakeTransport.new(refuse: Insika::Error.new("HTTP 409 already has 2 message(s)")) { ok_result }
+      rc = described_class.new(transport: t).run_case(seeded)
+
+      expect(rc.result.skipped?).to be(false)
+      expect(rc.result.pass?).to be(false)
+      expect(rc.result.error).to eq("seed failed: HTTP 409 already has 2 message(s)")
+      expect(t.seen).to be_empty
+    end
+  end
+
   it "replays multi-turn IN ORDER under one conv id and asserts on the LAST turn" do
     g = golden("turns" => [{ "user" => "oi" }, { "user" => "qual o frete?" }],
                "expect" => { "tools_called" => ["shipping_quote"] })

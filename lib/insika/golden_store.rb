@@ -148,6 +148,9 @@ module Insika
       # when present. A case that lost its reference in a round-trip would stop being
       # compared against the incumbent and the report would look identical.
       h["reference"] = golden.reference unless golden.reference.empty?
+      # And `state`: a snapshot case that lost its snapshot would replay from an
+      # empty conversation and fail for a reason that has nothing to do with the agent.
+      h["state"] = golden.state unless golden.state.empty?
       # `tenant` follows the same omit-when-default rule: "platform" is the
       # loader's own default, so leaving it out reproduces the same case; an
       # explicit tenant is a case's isolation boundary and must never round-trip away.

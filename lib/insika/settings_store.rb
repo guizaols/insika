@@ -85,7 +85,12 @@ module Insika
         "aggregate" => "median",
         "min_agreement" => 0.5,
         "quorum" => 1,
-        "tolerance" => 0.05
+        "tolerance" => 0.05,
+        # seeding -> opens POST /v1/conversations/:id/seed, the route a snapshot eval
+        #            loads a case's `state:` through. OFF by default: a seeded
+        #            conversation is a fabricated precondition, and production must
+        #            not accept one under the tenant token. The doctor warns when on.
+        "seeding" => false
       },
       # Edge limits — the platform layer of the EdgeLimiter.
       # nil/0 = off (opt-in). chat_rate_limit = turn attempts per chat per

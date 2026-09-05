@@ -18,6 +18,10 @@ module Insika
         @graph = graph
       end
 
+      # The graph this seam speaks for — an eval transport reaches its bus and
+      # event stream through here.
+      attr_reader :graph
+
       # One turn, in-process -> the assistant's text. `agent:` is REQUIRED —
       # this seam has no notion of "the default agent" (that is a DSL::Runtime
       # concept, filled in by its own caller before delegating here). Raises
