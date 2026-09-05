@@ -33,6 +33,8 @@ module Insika
       # or an empty/ill-formed path. All at ingestion, never at the turn.
       def self.parse(raw)
         return nil if raw.nil? || raw == false
+        # A data tool hands the envelope its definition's evidence — already a Spec.
+        return raw if raw.is_a?(Spec)
 
         h = raw.is_a?(String) ? { "kind" => raw } : Coercion.deep_stringify(raw)
         h = h.is_a?(Hash) ? h : {}
