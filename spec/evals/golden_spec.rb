@@ -90,7 +90,8 @@ RSpec.describe Insika::Evals::GoldenLoader do
     it "exposes each grader from expect, empty/nil when absent" do
       g = build("expect" => { "never_calls" => ["search_products"], "calls_one_of" => %w[a b], "first_tool" => "a",
                               "max_tool_calls" => 2, "reply_includes" => ["frete"], "reply_omits" => ["SKU-1"],
-                              "blocked_gates" => ["add_to_cart:provenance"] })
+                              "blocked_gates" => ["add_to_cart:provenance"], "ui_components" => ["product_cards"],
+                              "no_ui" => true })
       expect(g.never_calls).to eq(["search_products"])
       expect(g.calls_one_of).to eq(%w[a b])
       expect(g.first_tool).to eq("a")
@@ -98,11 +99,15 @@ RSpec.describe Insika::Evals::GoldenLoader do
       expect(g.reply_includes).to eq(["frete"])
       expect(g.reply_omits).to eq(["SKU-1"])
       expect(g.blocked_gates).to eq(["add_to_cart:provenance"])
+      expect(g.ui_components).to eq(["product_cards"])
+      expect(g.no_ui?).to be(true)
 
       bare = build
       expect(bare.never_calls).to eq([])
       expect(bare.first_tool).to be_nil
       expect(bare.max_tool_calls).to be_nil
+      expect(bare.ui_components).to eq([])
+      expect(bare.no_ui?).to be(false)
     end
 
     it "refuses a max_tool_calls that is not a non-negative integer, and a blocked_gates entry without its gate" do

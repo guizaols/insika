@@ -112,6 +112,11 @@ module Insika
     # Lazy require: DataDefinedTool inherits from RubyLLM::Tool (pulls in the gem) -> kept
     # out of insika.rb load-time, loaded on the 1st instance (turn time).
     def build_tool(definition)
+      if definition.presentation?
+        require_relative "tools/present"
+        return Insika::Tools::Present.new(definition: definition, event_stream: @event_stream)
+      end
+
       require_relative "tools/data_defined_tool"
       Insika::Tools::DataDefinedTool.new(
         definition: definition, http: @http, egress: @egress,

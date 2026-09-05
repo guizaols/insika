@@ -180,7 +180,8 @@ module Insika
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
-                    check_tool_allowlist_policy check_fencing check_eval_seeding]
+                    check_tool_allowlist_policy check_fencing check_eval_seeding
+                    check_presentation_tools]
 
     def safe(check)
       Array(send(check))
@@ -942,6 +943,50 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     end
 
     def names_tool_allowlist?(raw) = Array(raw["policies"]).any? { |p| p.to_s == "tool_allowlist" }
+
+    # A stored agent that allows a PRESENTATION tool but no tool declaring
+    # `evidence`. The presentation tool shows only cards an evidence tool returned
+    # this session, so with no evidence tool in reach every call drops every id —
+    # the model keeps asking to show products and nothing ever appears. Silent
+    # unless a presentation tool exists. Data tools only: a code tool's evidence
+    # lives in registry metadata the doctor does not read.
+    def check_presentation_tools
+      return [] unless @tool_store && @profile_source
+
+      raws = @tool_store.all_raw
+      presenting = raws.select { |r| r["presentation"] }.map { |r| r["name"].to_s }
+      return [] if presenting.empty?
+
+      evidence = raws.select { |r| r["evidence"] }.map { |r| r["name"].to_s }
+      bad = @profile_source.all.filter_map do |profile|
+        allowed = allowed_data_tools(profile, raws)
+        shows = presenting & allowed
+        next if shows.empty? || !(evidence & allowed).empty?
+
+        Finding.new(check: "presentation-tools", severity: :warn, fix: nil,
+                    message: "agent '#{profile.id}' allows #{shows.join(', ')} but no tool declaring " \
+                             "evidence — a presentation tool can only show cards an evidence tool " \
+                             "returned this session, so every call would drop every id. Allow the " \
+                             "search tool that declares `evidence`, or drop the presentation tool.")
+      end
+      return bad unless bad.empty?
+
+      [ok("presentation-tools", "#{presenting.length} presentation tool(s): every agent that shows cards " \
+                                "also allows an evidence tool")]
+    end
+
+    # The data tools a profile may call, by the allowlist's own rules: nil lists =
+    # all; otherwise names ∪ groups; deny wins.
+    def allowed_data_tools(profile, raws)
+      names = profile.tools_allow.nil? ? nil : Array(profile.tools_allow).map(&:to_s)
+      groups = profile.tools_allow_groups.nil? ? nil : Array(profile.tools_allow_groups).map(&:to_s)
+      allowed = if names.nil? && groups.nil?
+                  raws.map { |r| r["name"].to_s }
+                else
+                  Array(names) | raws.select { |r| Array(groups).include?(r["group"].to_s) }.map { |r| r["name"].to_s }
+                end
+      allowed - Array(profile.tools_deny).map(&:to_s)
+    end
 
     def check_grounding
       return [] unless @profile_source

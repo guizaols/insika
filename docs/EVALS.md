@@ -98,6 +98,8 @@ check, and the report names the one that failed.
 | `reply_includes: [substrings]` | each appears in the published answer (case-insensitive) |
 | `reply_omits: [substrings]` | none appears — where an internal id, a CPF or a raw tag leaking into the customer's text is pinned |
 | `blocked_gates: ["tool:gate"]` | each pair appears among the turn's blocked calls |
+| `ui_components: [names]` | a presentation tool showed at least one card of each component (the `insika.ui` frames) |
+| `no_ui: true` | the turn showed nothing — the negative of `ui_components` |
 | `must_not: [detectors]` | the negative detectors (`pii_leak`, `tool_error`, …); a blocked call is not a tool error |
 
 **Every positive has a negative.** A case that only says `tools_called: [add_to_cart]`

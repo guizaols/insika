@@ -149,15 +149,21 @@ Content-Type: application/json
 { "agent": "support", "session_id": "web:8f3c…", "message": "cadê meu pedido?" }
 ```
 
-The reply is SSE on that same connection — four frame types, and an unknown one is
+The reply is SSE on that same connection — five frame types, and an unknown one is
 safe to ignore:
 
 ```
 event: delta     data: {"delta":"Seu pedido "}     the answer, token by token
 event: working   data: {"name":"order_status"}     a tool is running
+event: ui        data: {"component":"product_cards","title":"…","items":[{"id","url","caption"}]}
+                                                   a presentation tool picked cards to show
 event: done      data: {}                          the turn ended
 event: error     data: {"message":"…"}             it ended badly
 ```
+
+The shipped widget renders `ui` as a plain list of caption + link under the
+conversation; a host page that wants real cards restyles or replaces that — the
+protocol is the frame. See [presentation tools](TOOLS.md#presentation-tools-the-model-picks-ids-the-engine-shows-the-cards).
 
 **The engine issues the session id and the client never proposes one.** `POST
 /messages` with an id nobody minted is a `404`, never a new conversation: on an
@@ -314,6 +320,13 @@ the way to an answer ("vou verificar o cardápio…") does not come through here
 stays internal unless the agent opts in. That contract is
 [the edge contract](ARCHITECTURE.md#what-crosses-the-edge), and it is why you can
 forward `content` straight to the customer.
+
+The last balloon may also carry `attachments`: `[{ "type", "url", "caption", "id" }]`,
+the cards an evidence tool returned (see [Evidence](TOOLS.md#evidence-the-lean-envelope-and-grounding)).
+When the turn called a **presentation tool**, the list is exactly the cards the model
+selected, in call order, each also carrying the `component` and `title` of that call;
+otherwise it is every card the turn's evidence tools returned. Ignore the key and
+nothing changes.
 
 ### Delivery policy
 

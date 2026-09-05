@@ -33,7 +33,7 @@
   </label>
 
   <label>url <span class="muted">(https; use <code>{{param}}</code>)</span>
-    <input type="text" name="url" value="<%= @form[:url] %>" placeholder="https://viacep.com.br/ws/{{cep}}/json" required>
+    <input type="text" name="url" value="<%= @form[:url] %>" placeholder="https://viacep.com.br/ws/{{cep}}/json"<%== " required" unless @form[:presentation] %>>
   </label>
 
   <label>parameters <span class="muted">(one per line: <code>name | type | required|optional | description</code> — type is <code>string</code>/<code>number</code>/<code>integer</code>/<code>boolean</code> or <code>array:string</code>. For a list of objects or a nested object, paste a full <strong>JSON Schema</strong> instead: any text starting with <code>{</code> is read as one.)</span>

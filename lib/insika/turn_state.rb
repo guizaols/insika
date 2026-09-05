@@ -61,9 +61,13 @@ module Insika
                   #                      context via an evidence-declared tool (the envelope
                   #                      appends; the validator/enforcer read it). Built per
                   #                      turn by the Executor; nil = no session/no evidence.
-                  :evidence_attachments, # [ {type, url, caption} ] hoarded by the
+                  :evidence_attachments, # [ {type, url, caption, id} ] hoarded by the
                   #                      envelope this turn; read by the Executor at stage 8
                   #                      for the channel delivery. Reset per turn.
+                  :presentations,      # [ {component, title, items: [{id,url,caption}]} ] —
+                  #                      what a presentation tool SELECTED this turn, in call
+                  #                      order. Non-empty = the channel delivery sends these
+                  #                      instead of every hoarded card. Reset per turn.
                   :fence_max_chars,    # per-leaf cap the ToolEnvelope applies when the
                   #                      agent has `fencing` on — the platform's
                   #                      `fencing.max_chars`, set per turn by the Executor.
@@ -202,6 +206,7 @@ module Insika
       @output_parts = []
       @channel_capabilities = []
       @evidence_attachments = []
+      @presentations = []
       # Fiber storage is INHERITED by fibers created later, so a turn spawned from
       # inside a tool call (a subagent child) would start out carrying its
       # parent's correlation. Clearing at turn start keeps a child from keying its

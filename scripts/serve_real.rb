@@ -62,6 +62,7 @@ APP = Insika::Server::App.new(
   provisioner: W::PACK_IMPORTER,
   profiles: W::PROFILE_SOURCE, # GET /v1/agents/:id — read-only capability view (evals)
   settings_store: W::SETTINGS_STORE, # POST /v1/conversations/:id/seed, gated by evals.seeding
+  channels: W::CHANNEL_REGISTRY, # /channels/:id/* — the relay and the widget, when their env mounts them
   # Onboarding surface: start.md + models.json + docs. Always on in
   # the full local demo — it's the "build my first agent" front door. Reports the
   # platform models AND the demo's served agents (their ids ARE the /v1/responses
