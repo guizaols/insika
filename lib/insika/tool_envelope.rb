@@ -12,6 +12,10 @@ module Insika
   # The tool loop belongs to RubyLLM; this is a decorator over the instances —
   # the Executor never drives roundtrips.
   class ToolEnvelope < SimpleDelegator
+    PROVENANCE_INSTRUCTION = "This value was not returned by any tool in this conversation. " \
+                             "Find it with a tool that returns it — a search or a lookup by id — " \
+                             "then call this tool again with an id from that result."
+
     # The tool timeout's OWN class: distinct from Async::TimeoutError so that
     # the rescue below NEVER swallows the TURN timeout (which uses the default of
     # with_timeout). Without this, a turn overflowing while the fiber is inside a
@@ -21,12 +25,13 @@ module Insika
     private_constant :ToolTimeout
 
     def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:,
-                   skip_side_effects: [], trace_recorder: nil)
+                   skip_side_effects: [], trace_recorder: nil, event_stream: nil)
       super(tool)
       @state = state
       @checkpoint_store = checkpoint_store
       @tool_registry = tool_registry
       @timeout = timeout
+      @event_stream = event_stream
       @skip_side_effects = Array(skip_side_effects) # ids already completed in the interrupted turn
       @trace_recorder = trace_recorder # duck-type: #record(session_id:, entry:). nil = no trace.
     end
@@ -40,6 +45,13 @@ module Insika
       # the model, keeping the tool-use protocol intact.
       call_id = correlation_id
       return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
+
+      started = monotonic
+      if (blocked = provenance_block(args))
+        trace(call_id, args, blocked, started)
+        emit_blocked(blocked)
+        return blocked
+      end
 
       # Approval gate: a tool marked `approval` suspends the turn in
       # :waiting until the operator resolves it. Delegates to the coordinator (the
@@ -83,7 +95,43 @@ module Insika
     # wall-clock the model waited. No gate (the default, serial) = straight through.
     def with_gate(&)
       gate = @state.respond_to?(:tool_gate) ? @state.tool_gate : nil
-      gate ? gate.acquire(&) : yield
+      return yield unless gate
+
+      serial = @state.respond_to?(:side_effect_gate) ? @state.side_effect_gate : nil
+      return gate.acquire(&) unless side_effect? && serial
+
+      # Backends may read-modify-write. Serialize writes before taking a slot,
+      # so queued writes cannot keep independent reads from running.
+      serial.acquire { gate.acquire(&) }
+    end
+
+    def provenance_block(args)
+      tool = __getobj__
+      requirement = tool.respond_to?(:requires_evidence) ? tool.requires_evidence : nil
+      return unless requirement
+
+      ledger = @state.respond_to?(:evidence_ledger) ? @state.evidence_ledger : nil
+      known = ledger ? ledger.ids : []
+      requirement.fetch("params").each do |param|
+        value = args.key?(param) ? args[param] : args[param.to_sym]
+        values = value.is_a?(Array) ? value : [value]
+        values = [nil] if values.empty? && !ledger
+        values.each do |id|
+          next if ledger && known.include?(id.to_s)
+
+          return { "status" => "blocked", "gate" => "provenance", "param" => param,
+                   "value" => id.to_s, "instruction" => PROVENANCE_INSTRUCTION }
+        end
+      end
+      nil
+    end
+
+    def emit_blocked(result)
+      @event_stream&.emit(Insika::Event.new(
+        type: :tool_blocked,
+        data: { name: real_name, gate: result["gate"], param: result["param"] },
+        meta: { task_id: @state.task.id, session_id: @state.task.session_id }
+      ))
     end
 
     # Records the call for debugging in the Studio (name + model args + result +
@@ -96,6 +144,7 @@ module Insika
         session_id: @state.task.session_id,
         entry: { "turn" => @state.turn, "tool" => real_name, "call_id" => call_id.to_s,
                  "args" => args, "result" => result,
+                 "gate" => result.is_a?(Hash) ? result["gate"] : nil,
                  "ms" => started ? ((monotonic - started) * 1000).round : nil,
                  "at" => Time.now.utc.iso8601 }
       )

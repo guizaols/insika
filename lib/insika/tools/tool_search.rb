@@ -21,7 +21,7 @@ module Insika
       def name = "tool_search"
 
       def initialize(catalog, deferred_allowed, chat, tool_registry:, event_stream:,
-                     checkpoint_store:, state:)
+                     checkpoint_store:, state:, trace_recorder: nil)
         @catalog = catalog
         @deferred_allowed = Array(deferred_allowed).map(&:to_s)
         @chat = chat
@@ -29,6 +29,7 @@ module Insika
         @event_stream = event_stream
         @checkpoint_store = checkpoint_store
         @state = state
+        @trace_recorder = trace_recorder
         @promoted = [] # names already promoted IN THIS chat — idempotency
         super()
       end
@@ -59,7 +60,8 @@ module Insika
           @promoted << entry.name
           ToolEnvelope.new(tool, state: @state, checkpoint_store: @checkpoint_store,
                                  tool_registry: @tool_registry, timeout: timeout,
-                                 skip_side_effects: Array(@state.skip_side_effects))
+                                 skip_side_effects: Array(@state.skip_side_effects),
+                                 event_stream: @event_stream, trace_recorder: @trace_recorder)
         rescue Insika::NotFoundError
           nil
         end

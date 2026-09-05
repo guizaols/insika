@@ -138,4 +138,15 @@ RSpec.describe "Insika::Telemetry — real OTEL metrics boundary", if: OTEL_METR
     expect(cost.unit).to eq("{USD}")
     expect(cost.data_points.first.value).to eq(1.0)
   end
+  it "counts provenance blocks without putting argument values in metric labels" do
+    recorder.record(ev(:task_started, { agent: "shop" }))
+    recorder.record(ev(:tool_blocked, { name: "write", gate: "provenance", param: "id" }))
+    blocks = snapshot("insika.tool.blocked")
+    expect(blocks.unit).to eq("{call}")
+    expect(blocks.data_points.first.value).to eq(1)
+    expect(blocks.data_points.first.attributes).to include(
+      "insika.agent" => "shop", "insika.tool" => "write", "insika.gate" => "provenance")
+    expect(blocks.data_points.first.attributes.keys).not_to include("value", "insika.session_id")
+  end
+
 end

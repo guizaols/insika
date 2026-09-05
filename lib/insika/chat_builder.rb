@@ -85,7 +85,8 @@ module Insika
         tools << Tools::ToolSearch.new(@tool_catalog, deferred_allowed, chat,
                                        tool_registry: @tool_registry,
                                        checkpoint_store: @checkpoint_store,
-                                       event_stream: @event_stream, state: state)
+                                       event_stream: @event_stream, state: state,
+                                       trace_recorder: @tool_trace_store)
       end
 
       # load_skill is a system default (outside the allowlist), otherwise

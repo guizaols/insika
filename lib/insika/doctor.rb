@@ -180,7 +180,7 @@ module Insika
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
-                    check_tool_allowlist_policy]
+                    check_tool_allowlist_policy check_provenance]
 
     def safe(check)
       Array(send(check))
@@ -941,6 +941,27 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     end
 
     def names_tool_allowlist?(raw) = Array(raw["policies"]).any? { |p| p.to_s == "tool_allowlist" }
+
+    def check_provenance
+      return [] unless @tool_store && @profile_source.respond_to?(:all_raw)
+
+      tools = @tool_store.all_raw
+      @profile_source.all_raw.filter_map do |raw|
+        allowed = tools.select do |tool|
+          name = tool["name"]
+          unrestricted = raw["tools_allow"].nil? && raw["tools_allow_groups"].nil?
+          (unrestricted || Array(raw["tools_allow"]).include?(name) ||
+            Array(raw["tools_allow_groups"]).include?(tool["group"])) &&
+            !Array(raw["tools_deny"]).include?(name)
+        end
+        gated = allowed.select { |tool| tool["requires_evidence"] }
+        next if gated.empty? || allowed.any? { |tool| tool["evidence"] }
+
+        Finding.new(check: "provenance", severity: :warn, fix: nil,
+                    message: "agent '#{raw["id"]}' allows #{gated.map { |t| t["name"] }.join(', ')} " \
+                             "with requires_evidence but no stored evidence tool — verify that an allowed code tool supplies evidence")
+      end
+    end
 
     def check_grounding
       return [] unless @profile_source

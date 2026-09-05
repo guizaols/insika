@@ -41,7 +41,7 @@ module Insika
       # renaming one breaks every dashboard built on it.
       class Instruments
         attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration,
-                    :cache_hit_rate, :loop_intervened, :context_compacted
+                    :cache_hit_rate, :loop_intervened, :context_compacted, :tool_blocked
 
         def initialize(meter)
           @turns = meter.create_counter("insika.turns", unit: "{turn}",
@@ -60,6 +60,8 @@ module Insika
                                                                             description: "Prompt-cache hit rate of a turn (cached / billed prompt tokens)")
           @loop_intervened = meter.create_counter("insika.tool.loop_intervened", unit: "{intervention}",
                                                                                  description: "Loop-detector warnings delivered to the model")
+          @tool_blocked = meter.create_counter("insika.tool.blocked", unit: "{call}",
+                                               description: "Tool calls blocked before execution")
           @context_compacted = meter.create_counter("insika.context.compacted", unit: "{compaction}",
                                                                                 description: "In-session compactions persisted (RFC-0044)")
         end
@@ -81,6 +83,7 @@ module Insika
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
         when :tool_loop_intervened then count_loop(meta, data)
+        when :tool_blocked then count_blocked(meta, data)
         when :context_compacted then count_compaction(data)
         when :task_completed then finish_turn(meta, data, :ok)
         when :task_failed    then finish_turn(meta, data, :error)
@@ -204,6 +207,15 @@ module Insika
         turn = @turns[meta[:task_id]] or return
         labels = turn.labels.merge(attrs("insika.tool" => data[:name]&.to_s))
         @instruments.loop_intervened.add(1, attributes: labels)
+      end
+
+      def count_blocked(meta, data)
+        return unless @instruments
+
+        turn = @turns[meta[:task_id]] or return
+        labels = turn.labels.merge(attrs("insika.tool" => data[:name]&.to_s,
+                                         "insika.gate" => data[:gate]&.to_s))
+        @instruments.tool_blocked.add(1, attributes: labels)
       end
 
       # A compaction persisted (`:context_compacted`, RFC-0044) — counted by

@@ -35,7 +35,8 @@ module Insika
   ToolDefinition = Data.define(
     :name, :description, :parameters, :request, :response,
     :secret_headers, :side_effect, :timeout, :group, :tags, :halt_when,
-    :evidence                       # Insika::Evidence::Spec | nil
+    :evidence,                      # Insika::Evidence::Spec | nil
+    :requires_evidence              # { "params" => [String] } | nil
   )
 
   class ToolDefinition
@@ -75,7 +76,7 @@ module Insika
     # `parameters` accepts JSON Schema (Hash) OR the legacy flat array.
     def self.build(name:, description:, request:, parameters: nil, response: nil,
                    secret_headers: nil, side_effect: nil, timeout: nil, group: nil, tags: nil,
-                   halt_when: nil, evidence: nil)
+                   halt_when: nil, evidence: nil, requires_evidence: nil)
       name = name.to_s
       raise Insika::ValidationError, "name must match #{NAME_RE.inspect}" unless NAME_RE.match?(name)
 
@@ -99,7 +100,8 @@ module Insika
         timeout: timeout.nil? ? nil : Integer(timeout),
         group: normalize_group(group), tags: normalize_tags(tags),
         halt_when: normalize_halt_when(halt_when),
-        evidence: Insika::Evidence::Spec.parse(evidence)
+        evidence: Insika::Evidence::Spec.parse(evidence),
+        requires_evidence: normalize_requires_evidence(requires_evidence, top_level_names(schema))
       )
     end
 
@@ -110,9 +112,22 @@ module Insika
         name: h[:name], description: h[:description], parameters: h[:parameters],
         request: h[:request] || {}, response: h[:response],
         secret_headers: h[:secret_headers], side_effect: h[:side_effect], timeout: h[:timeout],
-        group: h[:group], tags: h[:tags], halt_when: h[:halt_when], evidence: h[:evidence]
+        group: h[:group], tags: h[:tags], halt_when: h[:halt_when], evidence: h[:evidence],
+        requires_evidence: h[:requires_evidence]
       )
     end
+
+    def self.normalize_requires_evidence(value, param_names)
+      return nil if value.nil?
+
+      params = value.is_a?(Hash) ? deep_symbolize(value)[:params] : value
+      unless params.is_a?(Array) && !params.empty? && params.all? { |p| param_names.include?(p.to_s) }
+        raise Insika::ValidationError, "requires_evidence needs a non-empty list of declared top-level parameters"
+      end
+
+      { "params" => params.map(&:to_s).uniq }
+    end
+    private_class_method :normalize_requires_evidence
 
     # Group: enablement label by DATA (not name convention),
     # target of AgentProfile's `tools_allow_groups`. Trimmed; empty/nil -> nil.
@@ -424,6 +439,7 @@ module Insika
       # present only when declared — a tool without evidence is byte-identical
       # to today (no declaration, no envelope processing).
       h["evidence"] = evidence.to_h if evidence
+      h["requires_evidence"] = requires_evidence if requires_evidence
       h
     end
 

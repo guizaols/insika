@@ -29,9 +29,11 @@ module Insika
     Spec = Data.define(:kind, :items_path, :attachments_path) do
       PATH_RE = /\A[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*\z/
 
-      # String | Hash | nil -> Spec | nil. Raises ValidationError on a blank kind
+      # String | Hash | Spec | nil -> Spec | nil. Raises ValidationError on a blank kind
       # or an empty/ill-formed path. All at ingestion, never at the turn.
       def self.parse(raw)
+        return raw if raw.is_a?(self)
+
         return nil if raw.nil? || raw == false
 
         h = raw.is_a?(String) ? { "kind" => raw } : Coercion.deep_stringify(raw)

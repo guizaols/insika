@@ -348,4 +348,27 @@ RSpec.describe Insika::ToolDefinition do
       end
     end
   end
+  describe "requires_evidence" do
+    it "normalizes sugar and full form and round-trips through JSON" do
+      sugar = described_class.build(**valid_attrs(requires_evidence: ["cep"]))
+      full = described_class.build(**valid_attrs(requires_evidence: { "params" => ["cep"] }))
+      expect(sugar.requires_evidence).to eq({ "params" => ["cep"] })
+      expect(full).to eq(sugar)
+      expect(described_class.from_h(JSON.parse(JSON.generate(sugar.to_h)))).to eq(sugar)
+    end
+
+    it "defaults to no gate, preserving the existing persisted shape" do
+      definition = described_class.build(**valid_attrs)
+      expect(definition.requires_evidence).to be_nil
+      expect(definition.to_h).not_to have_key("requires_evidence")
+    end
+
+    [[], {}, { params: [] }, ["unknown"], "cep", { params: "cep" }, [nil]].each do |invalid|
+      it "rejects invalid declaration #{invalid.inspect}" do
+        expect { described_class.build(**valid_attrs(requires_evidence: invalid)) }
+          .to raise_error(Insika::ValidationError, /requires_evidence/)
+      end
+    end
+  end
+
 end

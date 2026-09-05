@@ -206,4 +206,66 @@ RSpec.describe "tool concurrency" do
       expect(results).to eq(%w[ok ok ok])
     end
   end
+  describe "side effects share one serial gate" do
+    def write_assembly
+      Insika::ToolAssembly.new(tool_registry: FakeToolRegistry.new(side_effect_names: ["write"]),
+                               capability_registry: nil, event_stream: SpyEventStream.new,
+                               checkpoint_store: Insika::CheckpointStore.new(store: Insika::Stores::Memory.new),
+                               tool_trace_store: nil)
+    end
+
+    def batch_tool(name, &body)
+      Class.new do
+        define_method(:name) { name }
+        define_method(:call) { |_args| body.call }
+      end.new
+    end
+
+    [nil, 1].each do |cap|
+      it "allocates no serial gate at concurrency #{cap.inspect}" do
+        st = state(concurrency: cap)
+        write_assembly.wrap_tools([], st)
+        expect(st.side_effect_gate).to be_nil
+      end
+    end
+
+    it "runs two writes in order while reads overlap and queued writes hold no slots" do
+      active = []
+      observed = []
+      build = ->(name, id) do
+        batch_tool(name) do
+          observed << [id, active.dup]
+          active << id
+          Async::Task.current.sleep(0.02)
+          active.delete(id)
+          id
+        end
+      end
+      st = state(concurrency: 4)
+      tools = [build.call("write", "w1"), build.call("write", "w2"),
+               *3.times.map { |i| build.call("read", "r#{i}") }]
+      envs = write_assembly.wrap_tools(tools, st)
+      result = Sync { envs.map { |env| Async { env.call({}) } }.map(&:wait) }
+      expect(result).to eq(%w[w1 w2 r0 r1 r2])
+      expect(observed.assoc("w2").last).not_to include("w1")
+      expect(observed.assoc("r2").last).to include("w1", "r0", "r1")
+    end
+
+    it "keeps separate sessions independent" do
+      active = 0
+      peak = 0
+      tool = batch_tool("write") do
+        active += 1
+        peak = [peak, active].max
+        Async::Task.current.sleep(0.02)
+        active -= 1
+      end
+      envs = %w[t1 t2].map do |id|
+        write_assembly.wrap_tools([tool], state(concurrency: 4, task_id: id)).first
+      end
+      Sync { envs.map { |env| Async { env.call({}) } }.each(&:wait) }
+      expect(peak).to eq(2)
+    end
+  end
+
 end
