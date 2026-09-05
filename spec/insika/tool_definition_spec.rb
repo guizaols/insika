@@ -348,4 +348,60 @@ RSpec.describe Insika::ToolDefinition do
       end
     end
   end
+
+
+  # A PRESENTATION tool: the model picks ids, the engine shows cards. No HTTP.
+  describe "presentation (a UI tool, no request)" do
+    def present_attrs(**over)
+      { name: "present_products", description: "Show product cards",
+        parameters: [{ name: "product_ids", type: "array:string" }, { name: "title", type: "string", required: false }],
+        presentation: { component: "product_cards", ids: "product_ids", max: 8 } }.merge(over)
+    end
+
+    it "builds without a request: normalized spec, no side effect, request nil" do
+      d = described_class.build(**present_attrs)
+      expect(d.presentation).to eq(component: "product_cards", ids: "product_ids", max: 8)
+      expect(d.presentation?).to be(true)
+      expect(d.request).to be_nil
+      expect(d.side_effect).to be(false)
+    end
+
+    it "to_h carries presentation and no request; from_h round-trips" do
+      h = described_class.build(**present_attrs).to_h
+      expect(h["presentation"]).to eq("component" => "product_cards", "ids" => "product_ids", "max" => 8)
+      expect(h["request"]).to be_nil
+      expect(described_class.from_h(h)).to eq(described_class.build(**present_attrs))
+    end
+
+    it "refuses both request and presentation, and neither" do
+      both = present_attrs(request: { url: "https://a.test" })
+      expect { described_class.build(**both) }.to raise_error(Insika::ValidationError, /either 'request' or 'presentation'/)
+      expect { described_class.build(name: "x", description: "d") }.to raise_error(Insika::ValidationError, /url is required/)
+    end
+
+    it "ids must name a declared array:string parameter" do
+      missing = present_attrs(presentation: { component: "c", ids: "skus" })
+      expect { described_class.build(**missing) }.to raise_error(Insika::ValidationError, /presentation.ids/)
+      scalar = present_attrs(presentation: { component: "c", ids: "title" })
+      expect { described_class.build(**scalar) }.to raise_error(Insika::ValidationError, /array:string/)
+    end
+
+    it "max is 1..16 and defaults to the attachment cap; component follows NAME_RE" do
+      expect(described_class.build(**present_attrs(presentation: { component: "c", ids: "product_ids" })).presentation[:max])
+        .to eq(Insika::Evidence::MAX_ATTACHMENTS)
+      [0, 17, "many"].each do |bad|
+        expect { described_class.build(**present_attrs(presentation: { component: "c", ids: "product_ids", max: bad })) }
+          .to raise_error(Insika::ValidationError, /presentation.max/)
+      end
+      expect { described_class.build(**present_attrs(presentation: { component: "Product Cards", ids: "product_ids" })) }
+        .to raise_error(Insika::ValidationError, /presentation.component/)
+    end
+
+    it "a plain data tool is untouched: presentation nil, no key in to_h" do
+      d = described_class.build(**valid_attrs)
+      expect(d.presentation).to be_nil
+      expect(d.presentation?).to be(false)
+      expect(d.to_h).not_to have_key("presentation")
+    end
+  end
 end

@@ -123,7 +123,7 @@ RSpec.describe Insika::Evidence::Processor do
         "items" => [{ "id" => "A", "line" => "x" }],
         "attachments" => [{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }]
       })
-      expect(attachments).to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }])
+      expect(attachments).to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis", "id" => "A" }])
     end
 
     it "drops malformed attachments (no url, non-hash) and caps at MAX_ATTACHMENTS" do
@@ -253,5 +253,30 @@ RSpec.describe Insika::EvidenceLedger do
       expect(lean_tokens).to be < fat_tokens
       expect(lean_tokens).to be < fat_tokens / 2
     end
+  end
+end
+
+# A card carries the id of the product it stands for — what a presentation tool
+# joins on. Paired by position with the items of the same payload; a card that
+# names its own id keeps it.
+RSpec.describe "Insika::Evidence attachments carry ids" do
+  let(:spec) { Insika::Evidence::Spec.parse("products") }
+
+  it "stamps the item id at the same position on a card that has none" do
+    _, cards = Insika::Evidence::Processor.build(spec, {
+      "items" => [{ "id" => "A", "line" => "a" }, { "id" => "B", "line" => "b" }],
+      "attachments" => [{ "url" => "https://cdn/a" }, { "url" => "https://cdn/b", "id" => "OWN" }, { "url" => "https://cdn/c" }]
+    })
+    expect(cards.map { |c| c["id"] }).to eq(["A", "OWN", nil])
+    expect(cards.last).not_to have_key("id")
+  end
+
+  it "valid_attachments keeps id/component/title when present, never invents them" do
+    kept = Insika::Evidence.valid_attachments([{ "url" => "https://x", "id" => "A", "component" => "product_cards",
+                                                 "title" => "Hidratantes" }]).first
+    expect(kept).to eq("type" => "", "url" => "https://x", "caption" => nil, "id" => "A",
+                       "component" => "product_cards", "title" => "Hidratantes")
+    bare = Insika::Evidence.valid_attachments([{ "url" => "https://x", "id" => "  ", "title" => "" }]).first
+    expect(bare).to eq("type" => "", "url" => "https://x", "caption" => nil)
   end
 end

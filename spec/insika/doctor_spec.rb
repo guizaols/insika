@@ -1698,4 +1698,56 @@ RSpec.describe Insika::Doctor do
       expect(empty).to include("domain: 0 artifacts")
     end
   end
+
+
+  describe "presentation-tools check (a presentation tool with no evidence tool in reach shows nothing)" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+    let(:tool_store) { Insika::ToolStore.new(config_store: cs) }
+
+    def finding(**over)
+      described_class.new(env: {}, tool_store: tool_store, profile_source: profiles, **over)
+                     .run.findings.find { |f| f.check == "presentation-tools" }
+    end
+
+    def store_agent(id, **fields)
+      cs.put("agents", id, { "id" => id, "model" => "m", "policies" => ["tool_allowlist"] }.merge(fields))
+    end
+
+    before do
+      tool_store.write({ name: "present_products", description: "show",
+                       parameters: [{ name: "product_ids", type: "array:string" }],
+                       presentation: { component: "product_cards", ids: "product_ids" } })
+      tool_store.write({ name: "search_products", description: "search", group: "catalog",
+                       parameters: [{ name: "q" }], request: { url: "https://a.test/{{q}}" },
+                       response: { extract: "evidence_envelope" }, evidence: "products" })
+      tool_store.write({ name: "cep", description: "cep", parameters: [{ name: "cep" }],
+                       request: { url: "https://a.test/{{cep}}" } })
+    end
+
+    it "warns on an agent that allows the presentation tool but no evidence tool" do
+      store_agent("loja", "tools_allow" => %w[present_products cep])
+      f = finding
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("agent 'loja'", "present_products", "evidence")
+    end
+
+    it "is ok when the evidence tool is allowed too — by name, by group, or by an open allowlist" do
+      store_agent("a", "tools_allow" => %w[present_products search_products])
+      store_agent("b", "tools_allow" => %w[present_products], "tools_allow_groups" => ["catalog"])
+      store_agent("c")
+      expect(finding.severity).to eq(:ok)
+    end
+
+    it "deny wins: an allowed evidence tool that is denied does not count" do
+      store_agent("loja", "tools_allow" => %w[present_products search_products], "tools_deny" => ["search_products"])
+      expect(finding.severity).to eq(:warn)
+    end
+
+    it "is silent when no presentation tool exists, or the agent does not allow one" do
+      tool_store.delete("present_products")
+      store_agent("loja", "tools_allow" => ["cep"])
+      expect(finding).to be_nil
+    end
+  end
 end

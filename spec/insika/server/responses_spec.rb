@@ -238,4 +238,18 @@ RSpec.describe Insika::Server::Responses do
     expect(joined).not_to include("task_started") # skipped event
     expect(joined).not_to include("vou saudar o cliente") # reasoning stays internal
   end
+
+
+  # A presentation tool's selection is its own namespaced frame — cards are not
+  # text, and a strict client ignores an `insika.*` type.
+  it ":ui -> insika.ui with component, title, items, count and dropped" do
+    frame = described_class.frame_for(ev(:ui, { component: "product_cards", title: "Pra você",
+                                                items: [{ "id" => "A", "url" => "https://cdn/a", "caption" => "A" }],
+                                                count: 1, dropped: [{ "id" => "Z", "reason" => "unknown" }] }))
+    expect(frame).to include("event: insika.ui")
+    data = JSON.parse(frame[/data: (.*)/, 1])
+    expect(data).to eq("type" => "insika.ui", "component" => "product_cards", "title" => "Pra você",
+                       "items" => [{ "id" => "A", "url" => "https://cdn/a", "caption" => "A" }],
+                       "count" => 1, "dropped" => [{ "id" => "Z", "reason" => "unknown" }])
+  end
 end

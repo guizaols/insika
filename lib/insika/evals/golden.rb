@@ -63,6 +63,11 @@ module Insika
       def reply_omits = Array(expect["reply_omits"]).map(&:to_s)
       # "tool:gate" pairs that must appear among the turn's BLOCKED calls.
       def blocked_gates = Array(expect["blocked_gates"]).map(&:to_s)
+      # UI components a presentation tool must have shown (`insika.ui` frames with
+      # at least one card), and its negative: `no_ui: true` pins a turn that shows
+      # nothing.
+      def ui_components = Array(expect["ui_components"]).map(&:to_s)
+      def no_ui? = expect["no_ui"] == true
 
       def state = self[:state] || {}
       def seeded? = !state.empty?

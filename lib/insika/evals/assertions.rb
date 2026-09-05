@@ -18,9 +18,17 @@ module Insika
     #                `status` ("ok" | "error" | "blocked", with `gate` naming what
     #                held a blocked call) arrive from the item frames; an older
     #                deployment sends names only and they stay nil.
+    #   ui:          [{ "component" =>, "count" => }] — one per presentation call
+    #                (the `insika.ui` frames); nil/[] when the turn showed nothing
     #   error:       transport/turn error string, or nil on a clean turn
-    TurnResult = Struct.new(:output_text, :tool_calls, :error, keyword_init: true) do
+    TurnResult = Struct.new(:output_text, :tool_calls, :ui, :error, keyword_init: true) do
       def tool_names = Array(tool_calls).map { |t| (t["name"] || t[:name]).to_s }
+
+      # Components that actually put a card in front of the customer (count > 0).
+      def shown_components
+        Array(ui).select { |u| (u["count"] || u[:count]).to_i.positive? }
+                 .map { |u| (u["component"] || u[:component]).to_s }
+      end
 
       # A tool call whose status is anything but a success ("ok"/2xx/"success"). A
       # BLOCKED call is not an error: the tool never ran, a gate held it — that is
@@ -158,7 +166,7 @@ module Insika
         # one into its members and hand the policy checks three strings.
         conversation = turns.nil? || turns.empty? ? [result] : turns
         checks = tool_checks(golden, result) + call_checks(golden, result) + reply_checks(golden, result) +
-                 must_not_checks(golden, result) + policy_checks(golden, conversation)
+                 ui_checks(golden, result) + must_not_checks(golden, result) + policy_checks(golden, conversation)
         CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
                        rubric: golden.rubric, judge: nil)
       end
@@ -223,6 +231,22 @@ module Insika
           hit = text.include?(s.downcase)
           Check.new(name: "reply_omits:#{s}", pass: !hit, detail: hit ? "present in the reply" : "absent")
         end
+      end
+
+      # The graders over what the turn SHOWED. `ui_components` pins that a presentation
+      # tool put at least one card of that component in front of the customer;
+      # `no_ui` is its negative — a turn that must answer in text alone.
+      def ui_checks(golden, result)
+        shown = result.shown_components
+        checks = golden.ui_components.map do |component|
+          hit = shown.include?(component)
+          Check.new(name: "ui_components:#{component}", pass: hit,
+                    detail: hit ? "shown" : "not shown (ui: #{shown.empty? ? 'none' : shown.join(', ')})")
+        end
+        return checks unless golden.no_ui?
+
+        checks << Check.new(name: "no_ui", pass: shown.empty?,
+                            detail: shown.empty? ? "nothing shown" : "shown: #{shown.join(', ')}")
       end
 
       # `must_not` detectors. "tool_error" is special (inspects statuses); the rest

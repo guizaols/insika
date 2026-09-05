@@ -10,6 +10,22 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Presentation tools** — a data tool declared with `presentation` instead of
+  `request` (`{ "component", "ids", "max" }`). The model passes ids; the engine keeps
+  the ones the session's evidence ledger saw, joins the cards the evidence tool
+  hoarded this turn, caps at `max`, records the selection and emits `:ui`
+  (`insika.ui` on `/v1/responses`, the `ui` frame on the web channel, a plain list in
+  the shipped widget). The model gets back `shown` + `dropped` with a reason
+  (`unknown` / `no_card` / `max`). A turn that made a presentation call delivers
+  exactly the selected cards as the outbox `attachments`, each stamped with
+  `component`/`title`; a turn without one delivers every hoarded card, as before.
+  Evidence attachments now carry the `id` of the item they stand for. Evals gain the
+  `ui_components` / `no_ui` graders; `insika doctor` gains `presentation-tools`
+  (an agent allowing a presentation tool but no evidence tool would show nothing).
+- The Studio tool form now preserves `evidence` and `presentation` on save (only
+  `group`/`tags`/`halt_when` were carried through before, so re-saving an evidence
+  tool from the form dropped its declaration).
+
 - **Fencing** — per-agent `fencing` flag (DSL `fencing true`, Studio checkbox,
   `fencing` in the agent payload). When on, every tool result (after the evidence
   reshape), every `<memory>` fact/note and every `<knowledge>` concept pass one

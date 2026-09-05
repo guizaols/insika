@@ -70,6 +70,13 @@ module Insika
     # model): [{ "type" => "card"|"image", "url" => String, "caption" => String|nil }].
     # Entries without a String url, or beyond MAX_ATTACHMENTS, are DROPPED — never
     # a turn failure (the card is a channel nicety, not the answer).
+    #
+    # Three OPTIONAL keys survive when present: `id` (the product the card stands
+    # for — what a presentation tool joins on), and `component`/`title` (stamped
+    # by a presentation call so the channel knows what it is rendering). Absent =
+    # absent; a card with none of them is byte-identical to before.
+    OPTIONAL_KEYS = %w[id component title].freeze
+
     def self.valid_attachments(list)
       Array(list).filter_map do |entry|
         next unless entry.is_a?(Hash)
@@ -79,9 +86,14 @@ module Insika
 
         caption = Coercion.presence(entry["caption"] || entry[:caption])
         caption &&= Insika::Fence.sanitize_text(caption)
-        { "type" => (entry["type"] || entry[:type]).to_s,
-          "url" => url[0, URL_MAX],
-          "caption" => caption }
+        card = { "type" => (entry["type"] || entry[:type]).to_s,
+                 "url" => url[0, URL_MAX],
+                 "caption" => caption }
+        OPTIONAL_KEYS.each do |k|
+          v = Coercion.presence(entry[k] || entry[k.to_sym])
+          card[k] = v.to_s if v
+        end
+        card
       end.first(MAX_ATTACHMENTS)
     end
 
@@ -112,6 +124,13 @@ module Insika
           end
           lean = { "items" => lean_items }
           attachments = Insika::Evidence.valid_attachments(SchemaGuard.dig(raw, spec.attachments_path))
+          # Items and attachments come from the SAME payload, one card per item in
+          # order — so a card that names no id of its own takes the id of the item at
+          # its position. That id is what a presentation tool later joins on.
+          attachments.each_with_index do |card, i|
+            item_id = lean_items.dig(i, "id")
+            card["id"] = item_id if card["id"].nil? && !item_id.to_s.empty?
+          end
           [lean, attachments]
         end
       end
