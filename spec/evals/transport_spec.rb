@@ -26,6 +26,50 @@ RSpec.describe Insika::Evals::Sse do
     expect(r[:error]).to be_nil
   end
 
+  # The item frames now say MORE: `added` carries the call's arguments, `done`
+  # carries how it ended (status + the gate that held a blocked call).
+  it "fills each call's arguments, status and gate from the added/done item frames" do
+    raw = stream(
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "search_products", arguments: { "q" => "chocolate" } })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "search_products", result: "…", status: "ok" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "add_to_cart", arguments: { "id" => "999" } })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "add_to_cart", result: "…", status: "blocked", gate: "provenance" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "shipping_quote", arguments: {} })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "shipping_quote", result: "…", status: "error" })),
+      Insika::Server::Responses.frame_for(Ev.new(:task_completed, {}))
+    )
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:tool_calls]).to eq([
+      { "name" => "search_products", "arguments" => { "q" => "chocolate" }, "status" => "ok" },
+      { "name" => "add_to_cart", "arguments" => { "id" => "999" }, "status" => "blocked", "gate" => "provenance" },
+      { "name" => "shipping_quote", "arguments" => {}, "status" => "error" }
+    ])
+  end
+
+  it "closes the FIRST still-open call of that name when two calls of one batch run concurrently" do
+    raw = stream(
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "search_products", arguments: { "q" => "a" } })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "search_products", arguments: { "q" => "b" } })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "search_products", result: "…", status: "error" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "search_products", result: "…", status: "ok" }))
+    )
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:tool_calls].map { |t| t["status"] }).to eq(%w[error ok])
+  end
+
+  it "an older stream (added frames only, no arguments) still reduces to names with status nil" do
+    raw = 'event: response.output_item.added' \
+          "\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"name\":\"shipping_quote\"}}\n\n"
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:tool_calls]).to eq([{ "name" => "shipping_quote", "status" => nil }])
+  end
+
+  it "a done frame with no matching added frame still records the call" do
+    raw = Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "x", result: "…", status: "ok" }))
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:tool_calls]).to eq([{ "name" => "x", "status" => "ok" }])
+  end
+
   it "surfaces a response.failed as the turn error" do
     raw = Insika::Server::Responses.frame_for(Ev.new(:task_failed, { message: "boom" }))
     r = described_class.reduce(described_class.payloads(raw))
@@ -97,6 +141,35 @@ end
 
 # A2ATransport: the same Simulator drives a REMOTE A2A agent through the outbound
 # client — a thin wrapper, nothing else.
+# In-process seeding: the same `seed_session` command the HTTP route dispatches,
+# on the graph's own bus.
+RSpec.describe Insika::Evals::GraphTransport, "#seed" do
+  SeedBusDouble = Struct.new(:dispatched) do
+    def dispatch(command) = (dispatched << command) && { ok: true }
+  end
+  SeedGraphDouble = Struct.new(:bus, :event_stream)
+  SeedRuntimeDouble = Struct.new(:graph) do
+    def chat(*) = "ok"
+  end
+
+  it "dispatches :seed_session with the conv as the id and the case's state" do
+    bus = SeedBusDouble.new([])
+    t = described_class.new(runtime: SeedRuntimeDouble.new(SeedGraphDouble.new(bus, nil)))
+    t.seed("sim-1", { "evidence" => { "ids" => ["SKU-1"] } })
+
+    command = bus.dispatched.first
+    expect(command.type).to eq(:seed_session)
+    expect(command.payload).to eq(id: "sim-1", state: { "evidence" => { "ids" => ["SKU-1"] } })
+    expect(command.meta[:transport]).to eq(:internal)
+  end
+
+  it "a runtime with no graph cannot seed, and says so" do
+    bare = Class.new { def chat(*) = "ok" }.new
+    expect { described_class.new(runtime: bare).seed("sim-1", { "evidence" => {} }) }
+      .to raise_error(Insika::Error, /cannot seed state/)
+  end
+end
+
 RSpec.describe Insika::Evals::A2ATransport do
   class EvalA2AFakeClient
     attr_reader :seen

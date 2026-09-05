@@ -422,6 +422,13 @@ module Insika
         bus = Insika::CommandBus.new
         bus.register(:create_session,
                      Insika::Commands::CreateSession.new(session_store: spine.session_store, event_stream: spine.event_stream))
+        # A snapshot loaded into a conversation before its first turn — what an eval
+        # case declares as `state:`. The HTTP route and the in-process eval transport
+        # both dispatch this one command.
+        bus.register(:seed_session,
+                     Insika::Commands::SeedSession.new(session_store: spine.session_store,
+                                                       memory_store: spine.memory_store,
+                                                       event_stream: spine.event_stream))
         bus.register(:cancel_task,
                      Insika::Commands::CancelTask.new(task_store: spine.task_store, executor: executor))
         bus.register(:pause_task,

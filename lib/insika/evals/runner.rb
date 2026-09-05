@@ -66,6 +66,26 @@ module Insika
         # consumer needing a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
         # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
         conv = @conv_map[golden.id] || "eval-#{golden.id}"
+        if golden.seeded?
+          # The snapshot goes in BEFORE turn 1 — on the same conversation id the turns
+          # continue. A transport that cannot seed (A2A: a remote agent has no seed
+          # route) SKIPS the case with the reason, never runs it against an empty
+          # state and passes. A deployment that refuses seeding (the setting is off)
+          # is the same outcome: skipped and reported, which is what the `requires`
+          # discipline already promises for anything the deployment lacks.
+          unless @transport.respond_to?(:seed)
+            return RunCase.new(result: Assertions.skip(golden, "transport cannot seed state"), timings: [])
+          end
+
+          begin
+            @transport.seed(conv, golden.state)
+          rescue SeedRefused => e
+            return RunCase.new(result: Assertions.skip(golden, "deployment refuses seeding — #{e.message}"), timings: [])
+          rescue Insika::Error => e
+            failed = TurnResult.new(output_text: "", tool_calls: [], error: "seed failed: #{e.message}")
+            return RunCase.new(result: Assertions.evaluate(golden, failed), timings: [])
+          end
+        end
         turns = []
         timings = []
         spent = []

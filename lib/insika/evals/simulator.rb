@@ -95,10 +95,19 @@ module Insika
         @safety = safety
       end
 
-      # Runs one simulated conversation. -> SimulatedRun.
-      def run(persona:, agent:, conv:)
+      # Runs one simulated conversation. -> SimulatedRun. `state` is the case's
+      # snapshot (Golden#state), loaded into the conversation before the persona's
+      # opening line — a simulated customer can start from "already saw three
+      # products" too. Empty/nil = the conversation starts empty, as before.
+      def run(persona:, agent:, conv:, state: nil)
         reason = @safety.refusal
         raise UnsafeTarget, reason if reason
+
+        if state && !state.empty?
+          raise Insika::Error, "transport cannot seed state" unless @transport.respond_to?(:seed)
+
+          @transport.seed(conv, state)
+        end
 
         transcript = []
         message = persona.opens_with

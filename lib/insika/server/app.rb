@@ -56,8 +56,13 @@ module Insika
                      config:, pending_action_store: nil, a2a: nil, provisioner: nil,
                      workflow_registry: nil, onboarding: nil, profiles: nil,
                      channels: nil, logger: nil, token_store: nil, outcome_store: nil,
-                     executor: nil, db_path: nil, tool_registry: nil, mcp_store: nil)
+                     executor: nil, db_path: nil, tool_registry: nil, mcp_store: nil,
+                     settings_store: nil)
         @command_bus = command_bus
+        # READ for one gate: `POST /v1/conversations/:id/seed` answers only while
+        # the platform setting `evals.seeding` is on. nil = no settings = seeding
+        # off (fail-closed — the base wiring has no SettingsStore and cannot seed).
+        @settings_store = settings_store
         @event_stream = event_stream
         @session_store = session_store
         @task_store = task_store
@@ -132,6 +137,8 @@ module Insika
         error_response(422, e)
       rescue Insika::NotFoundError => e
         error_response(404, e)
+      rescue Insika::ConflictError => e
+        error_response(409, e) # the write contradicts existing state (a seed on a used conversation)
       rescue Async::TimeoutError => e
         error_response(504, e) # synchronous control request exceeded the ceiling
       rescue StandardError => e
@@ -186,6 +193,8 @@ module Insika
           handle_trigger_workflow(req, name)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
+        in ["POST", ["v1", "conversations", id, "seed"]]
+          handle_seed(req, id)
         in ["POST", ["v1", "outcomes"]] if @outcome_store
           handle_record_outcome(req)
         in ["GET", ["v1", "outcomes"]] if @outcome_store
@@ -427,6 +436,35 @@ module Insika
                               tenant: tenant)
       end
 
+      # POST /v1/conversations/:id/seed — loads the snapshot an eval case starts from
+      # (its `state:` — evidence ids, memory facts/notes, history, briefing fields)
+      # into the conversation BEFORE its first turn. Body = the state mapping, plus an
+      # optional `customer` (the memory scope the turns will carry). Same Bearer as
+      # /v1/responses and the same id namespacing for a tenant, so the seeded session
+      # IS the one the turn continues. 200 {session}; 409 when the conversation
+      # already has messages (seeding a used one is a test bug, not a merge).
+      #
+      # Refused (auth error) unless the platform setting `evals.seeding` is on. A seeded
+      # conversation is a fabricated precondition written under the tenant token:
+      # right on the machine running snapshot evals, wrong in production — so the
+      # default is off and the doctor warns while it is on.
+      def handle_seed(req, id)
+        return auth_error(403, "seeding is off (settings evals.seeding)") unless seeding_enabled?
+
+        body = parse_body(req)
+        tenant = req_tenant(req)
+        payload = { id: scoped_session_id(tenant, id), state: body.except(:customer) }
+        (customer = Insika::Coercion.presence(body[:customer])) && (payload[:customer] = customer)
+        command = Insika::Command.build(:seed_session, payload, transport: :http, tenant: tenant)
+        session = dispatch_with_timeout(command)
+        json_response(200, { session: session.to_h })
+      end
+
+      def seeding_enabled?
+        settings = @settings_store&.get
+        settings.is_a?(Hash) && (settings["evals"] || {})["seeding"] == true
+      end
+
       # POST /v1/agents — provisions (upserts) an agent from a standardized
       # PACK. Same Bearer as /v1/responses (gateway_token,
       # fail-closed). The consumer (GatewayClient/ProvisionStore) sends the pack as
@@ -625,6 +663,7 @@ TENANT_SURFACES = [
         ["POST", ["v1", "sessions"]],
         ["POST", ["v1", "messages"]],
         ["POST", ["v1", "responses"]],
+        ["POST", ["v1", "conversations", nil, "seed"]],
         ["POST", ["v1", "outcomes"]],
         ["GET", ["v1", "outcomes"]],
         ["POST", ["v1", "workflows", nil]],

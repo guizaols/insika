@@ -71,6 +71,7 @@ APP = Insika::Server::App.new(
   onboarding: ONBOARDING, # nil unless INSIKA_ONBOARDING -> onboarding routes 404
   channels: W::CHANNEL_REGISTRY, # /channels/:id/events (empty registry -> 404)
   mcp_store: W::MCP_STORE, # GET/PUT/DELETE /v1/mcp[/:name]
+  settings_store: W::SETTINGS_STORE, # POST /v1/conversations/:id/seed, gated by evals.seeding
   config: { gateway_token: GATEWAY_TOKEN, public_url: ENV["INSIKA_PUBLIC_URL"],
             tenancy: TENANCY },
   # WS1: only multi_tenant hands the token store to the edge.

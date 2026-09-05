@@ -42,6 +42,71 @@ expect:
 Turns replay **in order** under one conversation, so a case can build context ("what
 about the shipping?" after "I want the 70% bar"); the assertions run on the last turn.
 
+### State — a case starts from a snapshot
+
+Every case above starts from an **empty** conversation. To test "the customer already
+saw three products and says *add the second one*", such a case would first have to
+replay the search turn — which makes it depend on the model's first answer, costs a
+turn, and cannot reproduce a messy state (a contradiction from six turns ago, a
+stored preference). `state:` is the precondition, loaded into the conversation
+**before turn 1**:
+
+```yaml
+id: loja-chocolates-add-seen
+agent: loja-chocolates
+state:
+  evidence: { ids: ["SKU-70-DARK"] }                  # -> the session evidence ledger
+  memory:   { facts: { size: "38" }, notes: ["prefers dark"] }   # -> the memory cell the turn reads
+  history:                                              # -> the transcript (stamped origin: engine)
+    - { role: user, content: "quero um presente" }
+    - { role: assistant, content: "tenho três opções: …" }
+  briefing: { fields: { cep: "01311-000" } }            # -> the session briefing
+turns:
+  - user: "adiciona esse último que você mostrou no carrinho"
+expect:
+  tools_called: [add_to_cart]
+  never_calls: [search_products]
+  reply_omits: ["SKU-70-DARK"]
+```
+
+Only those four keys; anything else is refused at load. A persona case may carry
+`state` too — the simulated customer then starts from it.
+
+The eval stays a **client**: the runner never writes a store. Seeding goes through
+`POST /v1/conversations/:id/seed` (same Bearer as the turn, same id namespacing for a
+tenant), and the deployment accepts it **only while the platform setting
+`evals.seeding` is on** — off by default, because a seeded conversation is a
+fabricated precondition, and the doctor warns while it is on. With the setting off
+a seeded case is **skipped** with the reason, never run against an empty state and
+passed. A conversation that already has messages answers `409`: seeding a used one is
+a test bug, not a merge.
+
+#### Graders — what a turn's calls and reply are checked against
+
+The turn's SSE stream reports each tool call with its arguments and how it ended
+(`ok`, `error`, or `blocked` plus the gate that held it), so the deterministic
+layer can check more than "was the tool called". All optional; each is its own
+check, and the report names the one that failed.
+
+| Key | Checks |
+|-----|--------|
+| `tools_called: [name, name?]` | each required tool was called (`?` = optional, never fails) |
+| `never_calls: [names]` | none of these was called — the negative every `tools_called` needs |
+| `calls_one_of: [names]` | at least one of these was called |
+| `first_tool: name` | the first call's name |
+| `max_tool_calls: N` | a ceiling on the turn's calls |
+| `reply_includes: [substrings]` | each appears in the published answer (case-insensitive) |
+| `reply_omits: [substrings]` | none appears — where an internal id, a CPF or a raw tag leaking into the customer's text is pinned |
+| `blocked_gates: ["tool:gate"]` | each pair appears among the turn's blocked calls |
+| `must_not: [detectors]` | the negative detectors (`pii_leak`, `tool_error`, …); a blocked call is not a tool error |
+
+**Every positive has a negative.** A case that only says `tools_called: [add_to_cart]`
+passes an agent that also re-searched, or that echoed the SKU to the customer. Pin
+what a correct turn does *not* do — `never_calls`, `reply_omits`, `max_tool_calls` —
+in the same case. Snapshot cases graded this way turned out more stable and cheaper
+than simulated users for the same behaviors; keep the simulator for the conversations
+a snapshot cannot express.
+
 ### `requires` — a case that cannot run here is skipped, not failed
 
 Deployments differ. Some stores have order tracking wired, some do not; some run

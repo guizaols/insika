@@ -161,7 +161,7 @@ module Insika
         simulator = Insika::Evals::Simulator.new(transport: transport, ask: persona_ask, safety: safety)
 
         conv = "eval-#{golden.id}-#{SecureRandom.hex(4)}" # a fresh session every run (never reused)
-        run = simulator.run(persona: golden.persona, agent: golden.agent, conv: conv)
+        run = simulator.run(persona: golden.persona, agent: golden.agent, conv: conv, state: golden.state)
         verdict = judge.score_conversation(
           rubric: golden.rubric, transcript: run.transcript, policy: golden.policy,
           min_score: golden.min_score || Insika::Evals::Judge::DEFAULT_MIN_SCORE
