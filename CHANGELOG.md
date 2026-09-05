@@ -40,6 +40,17 @@ it is released. Entries land with the pull request that makes the change.
 - `insika doctor` `fencing` check — warns when an agent reachable through an
   inbound channel (relay, widget) has `fencing` off, naming what is unsanitized.
 
+### Fixed
+
+- A **data tool declaring `evidence` failed at the envelope on every live call**
+  ("evidence processing failed: evidence.kind is required"): the envelope re-parsed
+  the definition's already-parsed evidence spec and read it as an empty declaration.
+  `Evidence::Spec.parse` now accepts a spec as is. Code tools (a Hash reader) were
+  unaffected, which is why the suite was green.
+- `scripts/serve_real.rb` now hands the channel registry to the edge, so the relay
+  and the widget mount in the local demo server when their env is set (they answered
+  404 there while working under `config.ru`).
+
 ### Changed
 
 - The memory distiller and the knowledge extractor read **only user/assistant

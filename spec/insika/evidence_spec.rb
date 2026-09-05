@@ -32,6 +32,15 @@ RSpec.describe Insika::Evidence::Spec do
       expect(spec.to_h).to eq("kind" => "products", "items" => "items", "attachments" => "attachments")
     end
 
+    # The data-tool path: DataDefinedTool#evidence IS the definition's parsed Spec,
+    # and the envelope parses whatever the tool hands it. Re-parsing a Spec used to
+    # read as an empty declaration ("evidence.kind is required") — so every data
+    # tool declaring evidence failed at the envelope, live, on every call.
+    it "accepts an already-parsed Spec and returns it as is" do
+      spec = described_class.parse("products")
+      expect(described_class.parse(spec)).to equal(spec)
+    end
+
     it "raises on a missing kind" do
       expect { described_class.parse({}) }.to raise_error(Insika::ValidationError, /kind/)
       expect { described_class.parse({ "kind" => "  " }) }.to raise_error(Insika::ValidationError, /kind/)
