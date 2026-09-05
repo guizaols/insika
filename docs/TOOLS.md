@@ -234,6 +234,42 @@ the session's evidence ledger. There is no "lean but not evidence" mode.
   directly and declares `evidence` in its registry metadata, or exposes an
   `evidence` reader. No declaration = today's tool behavior, byte for byte.
 
+### Provenance: checking IDs before a write
+
+Declare `requires_evidence` on a data-defined tool to accept only IDs previously
+returned by an `evidence` tool in the same session:
+
+```json
+{ "requires_evidence": ["product_id"] }
+```
+
+The full form is `{ "requires_evidence": { "params": ["product_id"] } }`.
+The list must be non-empty and name declared top-level parameters. Scalar values
+and every element of an array are converted to strings and compared exactly:
+`SKU-1` and `sku-1` are different IDs. IDs typed by a customer do not count.
+The ledger includes earlier turns and results already returned in the current turn.
+
+An unknown ID returns `status: "blocked"`, `gate: "provenance"`, the parameter,
+the value, and an instruction to search or look it up before retrying. The backend
+is never called and no operator approval is requested. A missing ledger blocks the
+call too. Omit the declaration to keep the existing behavior; MCP tools do not
+support this declaration.
+
+The Studio tool editor exposes `requires_evidence`. Blocked calls appear in session
+traces and `insika tools:report`, emit `tool_blocked` with name/gate/parameter only,
+and increment `insika.tool.blocked`. `insika doctor` warns when an agent allows a
+gated data tool without an allowed data tool declaring `evidence`.
+
+### Side effects in parallel batches
+
+With `limits.tool_concurrency > 1`, tools marked `side_effect` execute one at a time
+within a session. Reads still run concurrently, including while a write is running.
+A queued write holds no concurrency slot. Different sessions remain independent;
+backend rules such as quantity limits remain the backend's responsibility.
+
+The per-tool timeout starts after both gates are acquired. Trace duration includes
+queueing time, so it measures how long the model waited, not just backend execution.
+
 ### Grounding: policing claims against the ledger
 
 With the ledger fed, the pack declares how claims are policed — data on the agent,

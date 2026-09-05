@@ -91,4 +91,10 @@ RSpec.describe Insika::ToolStore do
     expect(store.delete("cep")).to be(true)
     expect(store.delete("cep")).to be(false)
   end
+  it "persists and restores requires_evidence through the tool store" do
+    store.write(def_attrs(requires_evidence: ["cep"]))
+    expect(Insika::ToolDefinition.from_h(store.get_raw("cep")).requires_evidence)
+      .to eq("params" => ["cep"])
+  end
+
 end
