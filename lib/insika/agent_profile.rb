@@ -83,6 +83,16 @@ module Insika
     #                                   THE MODEL SEES: an older full result is only the first
     #                                   occurrence; a model that wants an older detail re-calls
     #                                   the tool. Cheap half of compaction for bloated histories.
+    :fencing,                         # third-party text is sanitized before the model reads
+    #                                   it: nil/false = OFF (parity — bytes reach the model
+    #                                   as-is); true = ON. Same opt-in as `memory`. When ON,
+    #                                   every tool result (after the evidence reshape), every
+    #                                   <memory> fact/note and every <knowledge> concept pass
+    #                                   Insika::Fence (NFKC, invisible/control characters out,
+    #                                   transcript- and tool-call-shaped tags removed, forged
+    #                                   turn markers defused, per-leaf cap), and the FenceNotice
+    #                                   sentence rides under the identity. Default OFF this
+    #                                   release: the goldens were baselined on unfenced bytes.
     :params,                          # LLM generation params: a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
     #                                   stage 5. {} = provider defaults (parity).
@@ -324,7 +334,7 @@ module Insika
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil, tool_persistence: nil, tool_output_compression: nil,
-                    params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
+                   fencing: nil, params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
                      budget: nil, reliability: nil, alerts: nil, routes: nil, stuck_signal: nil,
 outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil,
@@ -345,7 +355,7 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
         tools_deferred: tools_deferred, memory: memory,
         prompt_caching: prompt_caching, tool_persistence: tool_persistence,
-        tool_output_compression: tool_output_compression,
+        tool_output_compression: tool_output_compression, fencing: fencing,
         # The free-form hashes arrive with symbol keys (internal build) OR string
         # keys (StoredProfileSource JSON round-trip). Normalize to string keys ONCE
         # here — the single front door every profile passes through — so no reader

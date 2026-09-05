@@ -41,7 +41,7 @@ module Insika
                  expand_links(matches, request, top_k).map { |c| [c, "one-hop link"] }
 
           [ContextFragment.build(
-            content: format_block(hits), placement: :system,
+            content: format_block(hits, Insika::Fence.enabled?(request.profile)), placement: :system,
             priority: Context::Priority::KNOWLEDGE, source: id,
             labels: hits.map { |c, reason| { "name" => c[:name], "reason" => reason } }
           )]
@@ -84,10 +84,13 @@ module Insika
         # lesson the knowledge-adoption experiment drew: a polite "when to
         # use" scored near zero; an explicit, ordered rule naming the tool
         # held up. Present only when there is something to point at.
-        def format_block(hits)
+        # Fenced: name and description are learned text (an extractor wrote them
+        # from a conversation) — sanitized before they enter the block.
+        def format_block(hits, fenced)
+          clean = fenced ? ->(s) { Insika::Fence.sanitize_text(s.to_s) } : ->(s) { s }
           entries = hits.map do |c, _reason|
-            %(  <concept name="#{c[:name]}" confidence="#{format('%.2f', c[:confidence])}" ) +
-              %(provenance="#{c[:provenance]}">#{c[:description]}</concept>)
+            %(  <concept name="#{clean.call(c[:name])}" confidence="#{format('%.2f', c[:confidence])}" ) +
+              %(provenance="#{c[:provenance]}">#{clean.call(c[:description])}</concept>)
           end.join("\n")
 
           <<~BLOCK.strip

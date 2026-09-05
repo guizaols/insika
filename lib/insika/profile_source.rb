@@ -115,6 +115,7 @@ module Insika
         # only a stored explicit false turns the discipline block off.
         tool_persistence: h[:tool_persistence],
         tool_output_compression: h[:tool_output_compression],
+        fencing: h[:fencing],
         # params/model_policy: the resolver tolerates string keys from
         # the JSON round-trip (ModelResolver#normalize_params / ModelPolicy), so no
         # re-symbolization needed here.

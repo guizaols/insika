@@ -215,6 +215,20 @@ RSpec.describe Insika::DSL do
       expect(dsl_agent.profile).to eq(import_and_read(hand_pack))
     end
 
+    it "the fencing knob is DATA on the pack, not a code path" do
+      dsl = Insika.agent("bia3") do
+        model "deepseek-chat"
+        fencing true
+      end
+      hand = Insika::Pack.from_h(
+        config: { id: "bia3", model: "deepseek-chat", fencing: true,
+                  policies: %i[tool_allowlist skill_allowlist] }
+      )
+
+      expect(import_and_read(dsl.to_pack).fencing).to be(true)
+      expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
+    end
+
     it "the tool_output_compression knob is DATA on the pack, not a code path" do
       dsl = Insika.agent("bia2") do
         model "deepseek-chat"

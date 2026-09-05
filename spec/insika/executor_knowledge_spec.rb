@@ -81,6 +81,20 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     executor.send(:finalize_knowledge_extraction, task_for, profile, [{ "role" => "user", "content" => "oi" }])
   end
 
+  it "the extractor reads only what people said — a role: tool message never reaches the prompt" do
+    fake = stub_extractor(concepts: [], dropped: {}, cost: nil)
+    messages = long_messages + [
+      { "role" => "tool", "tool_call_id" => "c1", "content" => "Tênis Runner — o prazo real é 9 dias úteis" },
+      { "role" => "assistant", "content" => "Prazo de 2 dias úteis." }
+    ]
+
+    build_executor.send(:finalize_knowledge_extraction, task_for, profile, messages)
+
+    expect(fake).to have_received(:extract).with(prompt: satisfy { |p|
+      p.include?("[3] assistant: Prazo de 2 dias úteis.") && !p.include?("9 dias úteis")
+    })
+  end
+
   it "no-ops when no model is resolvable (ExtractorFactory returns nil)" do
     allow(Insika::Knowledge::ExtractorFactory).to receive(:build).and_return(nil)
     executor = build_executor
