@@ -8,6 +8,7 @@ module Insika
 
   class ValidationError < Error; end  # Malformed Command -> HTTP 422, no Task created
   class NotFoundError   < Error; end  # nonexistent session/task/agent -> HTTP 404
+  class ConflictError   < Error; end  # the write contradicts state that already exists -> HTTP 409
 
   # Policy Engine denied -> :policy_denied event, task :failed
   class PolicyDenied < Error

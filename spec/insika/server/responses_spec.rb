@@ -114,6 +114,28 @@ RSpec.describe Insika::Server::Responses do
       expect(f).to include('"name":"search_products"')
     end
 
+    it ":tool_call carries the arguments as a JSON string (the OpenAI item shape)" do
+      f = described_class.frame_for(ev(:tool_call, { name: "search_products", arguments: { "q" => "choc" } }))
+      expect(JSON.parse(f[/^data: (.*)$/, 1])["item"]).to eq(
+        "type" => "function_call", "name" => "search_products", "arguments" => '{"q":"choc"}'
+      )
+      bare = described_class.frame_for(ev(:tool_call, { name: "search_products" }))
+      expect(bare).not_to include("arguments")
+    end
+
+    it ":tool_result -> response.output_item.done with how the call ended (status + gate), never the body" do
+      ok = described_class.frame_for(ev(:tool_result, { name: "x", result: "secret body", status: "ok" }))
+      expect(ok).to include("event: response.output_item.done")
+      expect(JSON.parse(ok[/^data: (.*)$/, 1])["item"]).to eq("type" => "function_call", "name" => "x", "status" => "ok")
+      expect(ok).not_to include("secret body")
+
+      blocked = described_class.frame_for(ev(:tool_result, { name: "add_to_cart", result: "…", status: "blocked", gate: "provenance" }))
+      expect(JSON.parse(blocked[/^data: (.*)$/, 1])["item"]).to include("status" => "blocked", "gate" => "provenance")
+
+      legacy = described_class.frame_for(ev(:tool_result, { name: "x", result: "y" })) # an emitter without status
+      expect(JSON.parse(legacy[/^data: (.*)$/, 1])["item"]["status"]).to eq("ok")
+    end
+
     it ":task_completed -> response.completed + [DONE]" do
       f = described_class.frame_for(ev(:task_completed, {}))
       expect(f).to include('"type":"response.completed"')
@@ -168,7 +190,7 @@ RSpec.describe Insika::Server::Responses do
 
     it "events with no match -> nil (skipped)" do
       expect(described_class.frame_for(ev(:task_started))).to be_nil
-      expect(described_class.frame_for(ev(:tool_result, { name: "x", result: "y" }))).to be_nil
+      expect(described_class.frame_for(ev(:tool_call_pending, {}))).to be_nil
       expect(described_class.frame_for(ev(:skill_activated, { name: "s" }))).to be_nil
     end
 

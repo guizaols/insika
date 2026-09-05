@@ -484,7 +484,7 @@ RSpec.describe Insika::ChatBuilder do
 
       expect(sink.map { |e| e[:type] }).to eq(%i[tool_call tool_result])
       expect(sink.first[:data]).to eq({ name: "lookup", arguments: { "q" => "x" } })
-      expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado" })
+      expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado", status: "ok" })
     end
 
     # The:tool_result label used to be a closure local shared by

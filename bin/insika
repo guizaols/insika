@@ -390,7 +390,7 @@ def evals_simulate(argv)
   # paired comparison, which it silently invalidates.
   require "securerandom"
   conv = opts[:conv] || "sim-#{golden.id}-#{SecureRandom.hex(4)}"
-  run = simulator.run(persona: golden.persona, agent: target_agent, conv: conv)
+  run = simulator.run(persona: golden.persona, agent: target_agent, conv: conv, state: golden.state)
 
   verdict = judge && judge.score_conversation(
     rubric: golden.rubric, transcript: run.transcript, policy: golden.policy,

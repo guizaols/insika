@@ -1345,6 +1345,23 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  # evals.seeding opens the seed route: a fabricated conversation state written
+  # under the tenant token. Right while running snapshot evals, wrong in production.
+  describe "eval-seeding" do
+    def seeding_findings = doctor(env: {}).run.findings.select { |f| f.check == "eval-seeding" }
+
+    it "off (the default) -> ok" do
+      expect(seeding_findings.map(&:severity)).to eq([:ok])
+    end
+
+    it "on -> ONE warn naming the route and how to turn it off" do
+      settings_store.update("evals" => { "seeding" => true })
+      findings = seeding_findings
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to include("/v1/conversations/:id/seed", "turn it off")
+    end
+  end
+
   # fencing: a customer-facing agent (reachable through an inbound channel)
   # with `fencing` off reads third-party bytes as-is — a warn that says so.
   describe "fencing (customer-facing agents)" do
