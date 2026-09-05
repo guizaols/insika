@@ -263,6 +263,55 @@ grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
 - Grounding is **independent of the guardrails opt-in**: an agent with guardrails
   off and `grounding.mode: :flag` still gets the check.
 
+## Presentation tools: the model picks ids, the engine shows the cards
+
+Attachments used to be a side effect of evidence: every card a search returned rode
+the channel delivery, all of them, and the model had no way to say "show these three,
+not the ten I searched". Deployments compensated with inline markers in the text,
+parsed by regex on their side — which is where most of the hallucinated ids came
+from. A **presentation tool** is the engine's answer: a tool whose job is to *show*,
+declared like a data tool but with `presentation` instead of `request`.
+
+```jsonc
+{ "name": "present_products",
+  "description": "Show product cards to the customer. Pass only ids a search returned.",
+  "parameters": [{ "name": "product_ids", "type": "array:string" },
+                 { "name": "title", "type": "string", "required": false }],
+  "presentation": { "component": "product_cards",   // what the channel renders
+                    "ids": "product_ids",           // the array:string parameter
+                    "max": 8 } }                    // 1..16 (the attachment cap; default 16)
+```
+
+Exactly one of `request` / `presentation`; `ids` must name a declared `array:string`
+parameter; `component` follows the tool-name rule. Stored, exported and edited like
+any data tool. When the model calls it the engine, deterministically and with no HTTP:
+
+1. keeps only ids the session's **evidence ledger** has seen — the rest are dropped
+   with reason `unknown` (an id the model invented, or the customer typed);
+2. joins each kept id to the card an evidence tool hoarded **this turn** (cards now
+   carry the `id` of the item they stand for); a known id with no card is dropped
+   with reason `no_card`;
+3. truncates to `max` — the overflow is dropped with reason `max`;
+4. records the selection on the turn and emits `:ui` on the stream (published as
+   `insika.ui` on `/v1/responses`, as the `ui` frame on the web channel);
+5. answers the model `{ "shown": [ids], "dropped": [{ "id", "reason" }] }` — plus one
+   instruction when nothing could be shown ("name the products in text or search
+   again").
+
+**Delivery.** When a turn made a presentation call, the outbox `attachments` are
+*exactly the presented cards*, in call order, each stamped with the call's `component`
+and `title`. A turn with no presentation call delivers every hoarded card, as before —
+a pack that declares no presentation tool sees no change.
+
+A presentation tool can only show what an evidence tool returned, so an agent that
+allows one and no tool declaring `evidence` would drop every id on every call;
+`insika doctor` warns about it (`presentation-tools`). The line that tells the model
+*when* to show cards ("show cards with present_products, ids only") is the pack's.
+
+Not here: partial rendering while arguments stream, per-component enrichment (price
+today, stock — the card is what the evidence tool returned), and a second component
+such as suggestion chips (same mechanism, when a channel asks for it).
+
 ## Registering a tool
 
 A tool appears in the Studio panel and enters an agent's tool-loop when it is

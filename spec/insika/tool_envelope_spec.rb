@@ -305,7 +305,7 @@ RSpec.describe Insika::ToolEnvelope do
       expect(result).to eq("items" => [{ "id" => "SKU-1", "line" => "Tênis Runner 42" }])
       expect(ledger.ids).to eq(["SKU-1"])
       expect(st.evidence_attachments)
-        .to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis" }])
+        .to eq([{ "type" => "card", "url" => "https://cdn/x.png", "caption" => "Tênis", "id" => "SKU-1" }])
     end
 
     it "declared evidence via the registry entry metadata (code-tool path, D4 path 2)" do

@@ -146,4 +146,19 @@ RSpec.describe Insika::OverlayToolRegistry do
       expect(ov.names).to eq(base.names)
     end
   end
+
+
+  describe "a presentation definition" do
+    before do
+      store.write({ name: "present_products", description: "show cards",
+                  parameters: [{ name: "product_ids", type: "array:string" }],
+                  presentation: { component: "product_cards", ids: "product_ids" } })
+      overlay.reload
+    end
+
+    it "resolves to Tools::Present (no HTTP), never a side effect" do
+      expect(overlay.resolve("present_products")).to be_a(Insika::Tools::Present)
+      expect(overlay.side_effect?("present_products")).to be(false)
+    end
+  end
 end

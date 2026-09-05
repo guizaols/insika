@@ -80,6 +80,18 @@ RSpec.describe Insika::Evals::Sse do
     r = described_class.payloads("event: x\ndata: [DONE]\n\n")
     expect(r).to be_empty
   end
+
+  it "collects each insika.ui frame as a shown component with its count" do
+    raw = stream(
+      Insika::Server::Responses.frame_for(Ev.new(:ui, { component: "product_cards", title: nil, items: [{ "id" => "A" }],
+                                                        count: 1, dropped: [] })),
+      Insika::Server::Responses.frame_for(Ev.new(:content, { delta: "olha" })),
+      Insika::Server::Responses.frame_for(Ev.new(:task_completed, {}))
+    )
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:ui]).to eq([{ "component" => "product_cards", "count" => 1 }])
+    expect(r[:output_text]).to eq("olha")
+  end
 end
 
 # GraphTransport: the in-process seam — the DSL runtime's chat, wrapped as a

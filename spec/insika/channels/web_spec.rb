@@ -202,6 +202,14 @@ RSpec.describe Insika::Channels::Web do
       expect(channel.frame_for(ev(:intermediate, { delta: "let me check", public: true }))).to be_nil
       expect(channel.frame_for(ev(:task_started))).to be_nil
     end
+
+    it ":ui -> the `ui` frame: component, title and the cards to render" do
+      frame = channel.frame_for(ev(:ui, { component: "product_cards", title: "Pra você",
+                                          items: [{ "id" => "A", "url" => "https://cdn/a", "caption" => "A" }],
+                                          count: 1, dropped: [] }))
+      expect(frame).to eq(%(event: ui\ndata: {"component":"product_cards","title":"Pra você",) +
+                          %("items":[{"id":"A","url":"https://cdn/a","caption":"A"}]}\n\n))
+    end
   end
 
   describe "asset" do

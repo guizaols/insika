@@ -60,12 +60,17 @@ module Insika
       def reduce(payloads)
         text = +""
         tools = []
+        ui = []
         usage = nil
         error = nil
         payloads.each do |o|
           case o["type"]
           when "response.output_text.delta"
             text << o["delta"].to_s
+          when "insika.ui"
+            # A presentation tool's selection — the component and how many cards it
+            # showed. The `ui_components`/`no_ui` graders read this.
+            ui << { "component" => o["component"].to_s, "count" => o["count"].to_i }
           when "response.output_item.added"
             item = o["item"] || {}
             next unless item["type"] == "function_call"
@@ -89,7 +94,7 @@ module Insika
             error = o.dig("response", "error", "message") || "response.failed"
           end
         end
-        { output_text: text, tool_calls: tools, usage: usage, error: error }
+        { output_text: text, tool_calls: tools, ui: ui, usage: usage, error: error }
       end
 
       # The item's `arguments` is a JSON string on the wire (the OpenAI shape); the
@@ -193,8 +198,8 @@ module Insika
 
         reduced = Sse.reduce(Sse.payloads(buffer))
         TurnOutcome.new(
-          result: TurnResult.new(output_text: reduced[:output_text],
-                                 tool_calls: reduced[:tool_calls], error: reduced[:error]),
+          result: TurnResult.new(output_text: reduced[:output_text], tool_calls: reduced[:tool_calls],
+                                 ui: reduced[:ui], error: reduced[:error]),
           ttfb: ttfb, total: (mono - t0) * 1000.0, usage: reduced[:usage]
         )
       rescue StandardError => e
@@ -268,16 +273,18 @@ module Insika
 
       def turn(agent:, conv:, message:)
         t0 = mono
-        sub = @event_stream&.subscribe(types: [:tool_call])
+        sub = @event_stream&.subscribe(types: %i[tool_call ui])
         begin
           text = @runtime.chat(message, session_id: conv, agent: agent)
+          tools, ui = drain(sub)
           TurnOutcome.new(
-            result: TurnResult.new(output_text: text.to_s, tool_calls: drain_tools(sub), error: nil),
+            result: TurnResult.new(output_text: text.to_s, tool_calls: tools, ui: ui, error: nil),
             ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
           )
         rescue Insika::Error => e
+          tools, ui = drain(sub)
           TurnOutcome.new(
-            result: TurnResult.new(output_text: "", tool_calls: drain_tools(sub), error: e.message),
+            result: TurnResult.new(output_text: "", tool_calls: tools, ui: ui, error: e.message),
             ttfb: nil, total: (mono - t0) * 1000.0, usage: nil
           )
         ensure
@@ -301,12 +308,18 @@ module Insika
 
       private
 
-      # The same shape an HTTP replay produces: [{ "name" =>, "status" => nil }]
-      # (the stream carries no per-tool status — that lives in the trace store).
-      def drain_tools(sub)
-        return [] if sub.nil?
+      # The same shapes an HTTP replay produces: tools as [{ "name" =>, "status" => nil }]
+      # (the stream carries no per-tool status — that lives in the trace store), ui as
+      # [{ "component" =>, "count" => }]. -> [tools, ui]
+      def drain(sub)
+        return [[], []] if sub.nil?
 
-        sub.drain_nonblocking.map { |ev| { "name" => ev.data[:name].to_s, "status" => nil } }
+        events = sub.drain_nonblocking
+        tools = events.select { |ev| ev.type == :tool_call }
+                      .map { |ev| { "name" => ev.data[:name].to_s, "status" => nil } }
+        ui = events.select { |ev| ev.type == :ui }
+                   .map { |ev| { "component" => ev.data[:component].to_s, "count" => ev.data[:count].to_i } }
+        [tools, ui]
       end
     end
 

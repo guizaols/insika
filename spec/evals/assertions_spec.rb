@@ -9,8 +9,8 @@ RSpec.describe Insika::Evals::Assertions do
     Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }], "expect" => expect })
   end
 
-  def result(output_text: "ok", tool_calls: [], error: nil)
-    Insika::Evals::TurnResult.new(output_text: output_text, tool_calls: tool_calls, error: error)
+  def result(output_text: "ok", tool_calls: [], ui: [], error: nil)
+    Insika::Evals::TurnResult.new(output_text: output_text, tool_calls: tool_calls, ui: ui, error: error)
   end
 
   describe "tools_called" do
@@ -178,6 +178,30 @@ RSpec.describe Insika::Evals::Assertions do
       expect(h["failed"]).to eq(1)
       expect(h["judge_pending"]).to eq(1)
       expect(Insika::Evals::Report.to_markdown(results, at: "2026-07-19T00:00:00Z")).to include("2/3 passed")
+    end
+  end
+
+
+  # What the turn SHOWED: the `insika.ui` frames a presentation tool produced.
+  describe "ui graders" do
+    def shown(*components) = components.map { |c| { "component" => c, "count" => 1 } }
+
+    it "ui_components: each component must have shown at least one card" do
+      pass = described_class.evaluate(golden("ui_components" => ["product_cards"]), result(ui: shown("product_cards")))
+      none = described_class.evaluate(golden("ui_components" => ["product_cards"]), result)
+      empty = described_class.evaluate(golden("ui_components" => ["product_cards"]),
+                                       result(ui: [{ "component" => "product_cards", "count" => 0 }]))
+      expect(pass.pass?).to be(true)
+      expect(none.failures.first.name).to eq("ui_components:product_cards")
+      expect(none.failures.first.detail).to eq("not shown (ui: none)")
+      expect(empty.pass?).to be(false)
+    end
+
+    it "no_ui: the turn showed nothing" do
+      pass = described_class.evaluate(golden("no_ui" => true), result)
+      fail = described_class.evaluate(golden("no_ui" => true), result(ui: shown("product_cards")))
+      expect(pass.pass?).to be(true)
+      expect(fail.failures.first.detail).to eq("shown: product_cards")
     end
   end
 end

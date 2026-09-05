@@ -1980,7 +1980,7 @@ end
         secret_headers: Array(t["secret_headers"]).join(", "),
         body: req["body"].to_s,
         extract: resp["extract"] || "body_raw", path: resp["path"].to_s,
-        timeout: t["timeout"]
+        timeout: t["timeout"], presentation: t["presentation"]
       }
     end
 

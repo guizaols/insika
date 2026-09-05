@@ -10,6 +10,22 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- **Presentation tools** — a data tool declared with `presentation` instead of
+  `request` (`{ "component", "ids", "max" }`). The model passes ids; the engine keeps
+  the ones the session's evidence ledger saw, joins the cards the evidence tool
+  hoarded this turn, caps at `max`, records the selection and emits `:ui`
+  (`insika.ui` on `/v1/responses`, the `ui` frame on the web channel, a plain list in
+  the shipped widget). The model gets back `shown` + `dropped` with a reason
+  (`unknown` / `no_card` / `max`). A turn that made a presentation call delivers
+  exactly the selected cards as the outbox `attachments`, each stamped with
+  `component`/`title`; a turn without one delivers every hoarded card, as before.
+  Evidence attachments now carry the `id` of the item they stand for. Evals gain the
+  `ui_components` / `no_ui` graders; `insika doctor` gains `presentation-tools`
+  (an agent allowing a presentation tool but no evidence tool would show nothing).
+- The Studio tool form now preserves `evidence` and `presentation` on save (only
+  `group`/`tags`/`halt_when` were carried through before, so re-saving an evidence
+  tool from the form dropped its declaration).
+
 - **Fencing** — per-agent `fencing` flag (DSL `fencing true`, Studio checkbox,
   `fencing` in the agent payload). When on, every tool result (after the evidence
   reshape), every `<memory>` fact/note and every `<knowledge>` concept pass one
@@ -23,6 +39,17 @@ it is released. Entries land with the pull request that makes the change.
   re-baseline.
 - `insika doctor` `fencing` check — warns when an agent reachable through an
   inbound channel (relay, widget) has `fencing` off, naming what is unsanitized.
+
+### Fixed
+
+- A **data tool declaring `evidence` failed at the envelope on every live call**
+  ("evidence processing failed: evidence.kind is required"): the envelope re-parsed
+  the definition's already-parsed evidence spec and read it as an empty declaration.
+  `Evidence::Spec.parse` now accepts a spec as is. Code tools (a Hash reader) were
+  unaffected, which is why the suite was green.
+- `scripts/serve_real.rb` now hands the channel registry to the edge, so the relay
+  and the widget mount in the local demo server when their env is set (they answered
+  404 there while working under `config.ru`).
 
 ### Changed
 

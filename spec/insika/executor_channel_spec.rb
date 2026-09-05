@@ -294,4 +294,42 @@ RSpec.describe "Insika::Executor channel delivery" do
       expect(executor(channel_delivery: nil).recover_channel_deliveries).to eq(dispatched: [])
     end
   end
+
+
+  # the model SELECTED cards with a presentation tool: the outbox carries
+  # the selection, in call order, each card stamped with its component/title. No
+  # selection = every hoarded card, as before.
+  describe "presentation selects the delivered attachments" do
+    def card(id) = { "type" => "card", "url" => "https://cdn/#{id}", "caption" => "P#{id}", "id" => id }
+
+    def run_with_state(presentations:)
+      exec = executor
+      allow(exec).to receive(:build_turn_state).and_wrap_original do |m, *args|
+        m.call(*args).tap do |st|
+          st.evidence_attachments.concat(%w[A B C].map { |id| card(id) })
+          st.presentations.concat(presentations)
+        end
+      end
+      session_store.create(id: "relay:551", vars: { "channel" => "relay", "external_id" => "551" })
+      command = Insika::Command.build(:send_message, { agent: "support", message: "oi", session_id: "relay:551" },
+                                      transport: :"channel:relay").to_h
+      task = task_store.create(command: command, session_id: "relay:551")
+      allow(exec).to receive(:create_chat) { FakeChat.new.tap { |c| c.final_content = "olha esses" } }
+      Sync { exec.spawn(task, profile: profile) }
+      channel.sent.first[:payload]["attachments"]
+    end
+
+    it "no presentation call -> every hoarded card rides (today's behaviour)" do
+      expect(run_with_state(presentations: [])).to eq(%w[A B C].map { |id| card(id) })
+    end
+
+    it "a presentation call -> exactly its items, stamped with component and title" do
+      selection = [{ "component" => "product_cards", "title" => "Pra você",
+                     "items" => [card("C"), card("A")] }]
+      expect(run_with_state(presentations: selection)).to eq([
+        card("C").merge("component" => "product_cards", "title" => "Pra você"),
+        card("A").merge("component" => "product_cards", "title" => "Pra você")
+      ])
+    end
+  end
 end
