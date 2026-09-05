@@ -417,6 +417,12 @@ module Insika
       # SEES: repeated identical tool results collapse to a back-reference.
       def tool_output_compression(on = true) = @config[:tool_output_compression] = on
 
+      # Third-party text is sanitized before the model reads it (tool results,
+      # memory, knowledge) and a one-sentence notice names those blocks as data.
+      # Opt-in this release — the goldens were baselined on unfenced bytes:
+      #   fencing true
+      def fencing(on = true) = @config[:fencing] = on
+
       # Content-safety guardrails — opt-in and configurable per agent.
       # Pure config-over-code: the hash is stored on the profile and consumed by
       # Safety::Config.from_profile. Merges, so repeated calls accumulate.

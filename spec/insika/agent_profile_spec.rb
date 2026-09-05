@@ -39,6 +39,7 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.limits).to eq(described_class::DEFAULT_LIMITS)
       expect(profile.prompt_caching).to be_nil # R3: opt-in, off by default
       expect(profile.tool_output_compression).to be_nil # A3/C3: opt-in, off by default
+      expect(profile.fencing).to be_nil # opt-in this release, off by default (goldens baselined unfenced)
       expect(profile.budget).to be_nil # WS2: no budget (parity)
       expect(profile.reliability).to be_nil # WS3: plain single ask (parity)
       expect(profile.alerts).to be_nil # WS6: no webhook (parity)

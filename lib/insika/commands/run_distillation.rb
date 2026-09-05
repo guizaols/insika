@@ -148,8 +148,8 @@ module Insika
         !applied.nil? && applied.value == value && applied.origin.to_s.start_with?("distilled:")
       end
 
-      # The prompt gets the transcript slice (masked through the
-      # output filter first — the   redaction rule), the
+      # The prompt gets the transcript slice (user/assistant only, masked
+      # through the output filter — the redaction rule), the
       # customer's CURRENT facts (so the model can avoid re-proposing applied
       # facts), and the answer rules (the pack prompt or DEFAULT_PROMPT).
       def build_prompt(config, session, baseline)
@@ -169,12 +169,9 @@ module Insika
         PROMPT
       end
 
-      def render_transcript(messages)
-        redacted, = Insika::Safety::Detectors.redact(
-          messages.each_with_index.map { |m, i| "[#{i}] #{m['role']}: #{m['content']}" }.join("\n")
-        )
-        redacted
-      end
+      # Only what people said — a `role: tool` message (a product description,
+      # a search result) is never a candidate customer fact.
+      def render_transcript(messages) = Insika::SpokenTranscript.render(messages)
 
       def utility_model
         return nil unless @settings_store

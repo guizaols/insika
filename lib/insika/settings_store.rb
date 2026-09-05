@@ -38,6 +38,10 @@ module Insika
       # = parity (nothing runs). Additive keys — reads overlay DEFAULTS.
       "compaction" => { "enabled" => false, "keep_last" => 20,
                         "compact_after" => 40, "model" => nil },
+      # Fencing (per-agent `fencing` flag): the cap on ONE string leaf of a tool
+      # result after sanitizing. Platform-wide — the leaf size is a context-budget
+      # concern, not a persona one. Additive key — reads overlay DEFAULTS.
+      "fencing" => { "max_chars" => 12_000 },
       # Data lifecycle (WS8, phase 2): the RETENTION window in days. The
       # tick's Retention sweep purges sessions (+traces), terminal tasks
       # (+checkpoints), memory cells and outcomes older than this. nil/0 =

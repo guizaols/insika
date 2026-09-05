@@ -27,7 +27,7 @@ module Insika
 
           # priority MEMORY (75): between skills (80) and deferred tools (70) in
           # the sacrifice order. pinned false (cuttable under a tight budget).
-          [ContextFragment.build(content: format_block(facts, notes),
+          [ContextFragment.build(content: format_block(facts, notes, Insika::Fence.enabled?(request.profile)),
                                  placement: :system, priority: Context::Priority::MEMORY, source: id)]
         end
 
@@ -54,9 +54,13 @@ module Insika
         end
 
         # Passive <memory> (no instruction — the HOW of writing lives in the `remember` tool).
-        def format_block(facts, notes)
-          lines = facts.map { |f| %(  <fact key="#{f.key}">#{f.value}</fact>) }
-          lines += notes.map { |n| "  <note>#{n.text}</note>" }
+        # Fenced: keys, values and notes are sanitized before they enter the block
+        # — they are model- or customer-authored, and a value carrying `</fact>` or
+        # a forged turn marker would otherwise reach the model as-is.
+        def format_block(facts, notes, fenced)
+          clean = fenced ? ->(s) { Insika::Fence.sanitize_text(s) } : ->(s) { s }
+          lines = facts.map { |f| %(  <fact key="#{clean.call(f.key)}">#{clean.call(f.value)}</fact>) }
+          lines += notes.map { |n| "  <note>#{clean.call(n.text)}</note>" }
           <<~BLOCK.strip
             <memory>
             #{lines.join("\n")}

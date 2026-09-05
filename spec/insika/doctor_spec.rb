@@ -844,6 +844,7 @@ RSpec.describe Insika::Doctor do
   describe "check_cache_layers " do
     BUILTINS = [
       Insika::Context::Providers::Request, Insika::Context::Providers::Prompt,
+      Insika::Context::Providers::FenceNotice,
       Insika::Context::Providers::Skill, Insika::Context::Providers::SkillTrigger,
       Insika::Context::Providers::ToolSearch, Insika::Context::Providers::Memory,
       Insika::Context::Providers::Session
@@ -1341,6 +1342,49 @@ RSpec.describe Insika::Doctor do
 
     it "no profile_source -> nothing reported" do
       expect(distill_findings).to be_empty
+    end
+  end
+
+  # fencing: a customer-facing agent (reachable through an inbound channel)
+  # with `fencing` off reads third-party bytes as-is — a warn that says so.
+  describe "fencing (customer-facing agents)" do
+    def source(*agents)
+      Insika::StaticProfileSource.new(agents.to_h do |a|
+        [a[:id], Insika::AgentProfile.build(id: a[:id], model: "m", fencing: a[:fencing])]
+      end)
+    end
+
+    def fencing_findings(env:, profiles:)
+      doctor(env: env, profile_source: profiles).run.findings.select { |f| f.check == "fencing" }
+    end
+
+    it "no inbound channel -> silent (nothing is customer-facing)" do
+      expect(fencing_findings(env: {}, profiles: source({ id: "a" }))).to be_empty
+    end
+
+    it "no profile_source -> silent" do
+      expect(doctor(env: { "INSIKA_RELAY_TOKEN" => "t" }).run.findings.select { |f| f.check == "fencing" }).to be_empty
+    end
+
+    it "relay mounted (any agent is addressable) + fencing off -> ONE warn naming the agents and what is unsanitized" do
+      findings = fencing_findings(env: { "INSIKA_RELAY_TOKEN" => "t", "INSIKA_RELAY_DELIVER_URL" => "https://x.example" },
+                                  profiles: source({ id: "a" }, { id: "b", fencing: true }, { id: "c" }))
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to match(/agent\(s\) a, c:/)
+      expect(findings.first.message).to include("<memory>", "tool results", "fencing true")
+    end
+
+    it "widget mounted -> only the agents in INSIKA_WIDGET_AGENTS are customer-facing" do
+      findings = fencing_findings(env: { "INSIKA_WIDGET_ORIGINS" => "https://shop.example", "INSIKA_WIDGET_AGENTS" => "shop" },
+                                  profiles: source({ id: "shop" }, { id: "internal" }))
+      expect(findings.map(&:severity)).to eq([:warn])
+      expect(findings.first.message).to match(/agent\(s\) shop:/)
+      expect(findings.first.message).not_to include("internal")
+    end
+
+    it "every exposed agent fenced -> ok" do
+      findings = fencing_findings(env: { "INSIKA_RELAY_TOKEN" => "t" }, profiles: source({ id: "a", fencing: true }))
+      expect(findings.map(&:severity)).to eq([:ok])
     end
   end
 

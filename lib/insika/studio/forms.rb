@@ -77,6 +77,7 @@ module Studio
         # unchecked box saves an explicit false — both spellings of ON collapse.
         tool_persistence: r.params["tool_persistence"] == "1",
         tool_output_compression: r.params["tool_output_compression"] == "1",
+        fencing: r.params["fencing"] == "1",
         subagents: list_patch(r, "subagents"),
         capabilities: list_patch(r, "capabilities"),
         tools_deferred: list_patch(r, "tools_deferred"),

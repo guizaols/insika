@@ -78,6 +78,7 @@ module Insika
         next if url.empty?
 
         caption = Coercion.presence(entry["caption"] || entry[:caption])
+        caption &&= Insika::Fence.sanitize_text(caption)
         { "type" => (entry["type"] || entry[:type]).to_s,
           "url" => url[0, URL_MAX],
           "caption" => caption }
@@ -106,7 +107,8 @@ module Insika
           items = SchemaGuard.dig(raw, spec.items_path) || []
           lean_items = items.first(MAX_ITEMS).map do |item|
             { "id" => (item["id"] || item[:id]).to_s,
-              "line" => Coercion.utf8((item["line"] || item[:line]).to_s)[0, LINE_MAX] }
+              # the line is what the model reads: always sanitized (cheap), then truncated.
+              "line" => Insika::Fence.sanitize_text((item["line"] || item[:line]).to_s)[0, LINE_MAX] }
           end
           lean = { "items" => lean_items }
           attachments = Insika::Evidence.valid_attachments(SchemaGuard.dig(raw, spec.attachments_path))

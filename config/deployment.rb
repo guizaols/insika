@@ -184,6 +184,7 @@ module Deploy
     CONTEXT_PROVIDERS = [
       Insika::Context::Providers::Request.new,
       Insika::Context::Providers::Prompt.new(base: "", catalog: PROMPT_CATALOG, agent_files: AGENT_FILE_STORE, system_files: SYSTEM_FILE_STORE),
+      Insika::Context::Providers::FenceNotice.new,
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
