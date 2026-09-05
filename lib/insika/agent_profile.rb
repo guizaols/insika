@@ -57,13 +57,15 @@ module Insika
     :prompt_caching,                  # Anthropic prompt caching (R3): nil/false = OFF
     #                                   (parity); true = ON. Same opt-in as `memory`. When ON
     #                                   AND the resolved provider is Anthropic, ChatBuilder sets
-    #                                   ONE cache breakpoint at the end of the system block
-    #                                   (caches tools+system by the tools->system->messages
-    #                                   prefix order; immune to history eviction). PRE-AUDIT:
-    #                                   the system prompt MUST be byte-stable between turns —
-    #                                   a context provider injecting volatile content into
-    #                                   :system turns every turn into a paid cache WRITE with
-    #                                   no read hit. Enable only for stable-system agents.
+    #                                   the cache breakpoint at the end of the IDENTITY layer
+    #                                   of the system (prompt, skills, tool index); memory,
+    #                                   knowledge and briefing render below it as a second
+    #                                   block, so a per-turn change there never re-writes the
+    #                                   cached prefix. Immune to history eviction too
+    #                                   (tools->system->messages prefix order). What still
+    #                                   costs a WRITE every turn: a provider declaring
+    #                                   `layer :identity` while emitting per-turn bytes —
+    #                                   the doctor's cache-layers check flags it.
     :tool_persistence,                # the engine's "Tool discipline" block in the system
     #                                   prompt (retry weak/empty tool results with a different
     #                                   approach before giving up). THE ONE OPT-OUT FIELD:

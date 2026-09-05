@@ -6,8 +6,9 @@ require "async"
 #   + E2 — the acceptance gate, end-to-end through the REAL Executor
 # and the REAL ContextBuilder. Turn 1 then turn 2: the prefix fingerprint of
 # the identity categories is byte-stable (E1's discard condition), a mutated
-# volatile category names itself as the invalidation reason, and the provider-
-# reported cached_tokens stamp the trace entry and the agent's cache series
+# volatile category is NOT an invalidation (the breakpoint sits above it), a
+# mutated identity category names itself, and the provider-reported
+# cached_tokens stamp the trace entry and the agent's cache series
 # (CacheSeriesStore) after stage 8.
 RSpec.describe "Insika::Executor — layered identity cache " do
   let(:backend) { Insika::Stores::Memory.new }
@@ -118,7 +119,7 @@ RSpec.describe "Insika::Executor — layered identity cache " do
     expect(second.dig("cache", "invalidation_reason")).to be_nil
   end
 
-  it "E2's 'the reason is right': a mutated volatile category names itself" do
+  it "a mutated volatile category (memory) moves its own digest, not the prefix — no invalidation" do
     run_turn(build_executor, chat, task_id: "t1")
     memory_holder[:fact] = "<memory>cliente: maria</memory>"
     run_turn(build_executor, chat, task_id: "t2")
@@ -127,7 +128,35 @@ RSpec.describe "Insika::Executor — layered identity cache " do
     first, second = entries
     expect(second["fingerprints"]["prompt"]).to eq(first["fingerprints"]["prompt"])
     expect(second["fingerprints"]["memory"]).not_to eq(first["fingerprints"]["memory"])
-    expect(second.dig("cache", "invalidation_reason")).to eq("memory")
+    expect(second["fingerprints"]["prefix"]).to eq(first["fingerprints"]["prefix"])
+    expect(second.dig("cache", "invalidation_reason")).to be_nil
+  end
+
+  it "E2's 'the reason is right': a mutated identity category names itself" do
+    prompt_holder = { text: "você é a Bia" }
+    id_prov = Class.new(Insika::ContextProvider) do
+      define_method(:id) { "Insika::Context::Providers::Prompt" }
+      define_method(:layer) { :identity }
+      define_method(:call) do |_req|
+        [Insika::ContextFragment.build(content: prompt_holder[:text], placement: :system,
+                                       source: id, priority: 100, pinned: true, tokens: 20)]
+      end
+    end.new
+    executor = Insika::Executor.new(
+      context_builder: Insika::ContextBuilder.new(providers: [id_prov], event_stream: event_stream),
+      policy_engine: NullPolicyEngine.new, middleware: PassthroughMiddleware.new,
+      hooks: NullHooks.new, tool_registry: FakeToolRegistry.new,
+      skill_catalog: Insika::SkillCatalog.new([]), profiles: {}, checkpoint_store: checkpoint_store,
+      task_store: task_store, session_store: session_store, event_stream: event_stream,
+      context_trace_store: context_trace_store
+    )
+    run_turn(executor, chat, task_id: "t1")
+    prompt_holder[:text] = "você é a Bia, versão 2"
+    run_turn(executor, chat, task_id: "t2")
+
+    first, second = context_trace_store.for_session("s1")
+    expect(second["fingerprints"]["prefix"]).not_to eq(first["fingerprints"]["prefix"])
+    expect(second.dig("cache", "invalidation_reason")).to eq("prompt")
   end
 
   it "the trace categories carry the layer stamped by the Builder" do
@@ -171,7 +200,7 @@ RSpec.describe "Insika::Executor — layered identity cache " do
     expect(context_trace_store.for_session("s1").first.dig("cache", "hit_pct")).to eq(100)
   end
 
-  it "E2 vanished category: a block that leaves names itself, not the cumulative prefix" do
+  it "a vanished volatile category: the digest leaves the map, the prefix and the reason stay put" do
     run_turn(build_executor, chat, task_id: "t1")
     memory_holder[:fact] = "" # memory provider now emits nothing -> category gone
     run_turn(build_executor, chat, task_id: "t2")
@@ -180,7 +209,8 @@ RSpec.describe "Insika::Executor — layered identity cache " do
     first, second = entries
     expect(second["fingerprints"]["prompt"]).to eq(first["fingerprints"]["prompt"])
     expect(second["fingerprints"]).not_to have_key("memory")
-    expect(second.dig("cache", "invalidation_reason")).to eq("memory")
+    expect(second["fingerprints"]["prefix"]).to eq(first["fingerprints"]["prefix"])
+    expect(second.dig("cache", "invalidation_reason")).to be_nil
   end
 
   it "the series is decoupled: wired without a context trace store, it still records" do

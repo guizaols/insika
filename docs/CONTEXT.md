@@ -202,9 +202,13 @@ Two distinct caching mechanisms — don't conflate them:
   **under** the identity boundary, keeping the cacheable prefix byte-stable.
   Anything that injects volatile content high in the system block breaks the cache.
 - **Manual cache breakpoints (opt-in).** With `prompt_caching` on **and** a
-  provider that supports explicit cache control, the builder sets one cache
-  breakpoint at the end of the system block. Only enable this for a byte-stable
-  system — a volatile system turns every turn into a paid cache *write*.
+  provider that supports explicit cache control, the system goes on the wire as
+  two text blocks: the identity layer with the cache breakpoint at its end, then
+  the volatile layer plain. A memory fact or a knowledge hit changing between
+  turns never re-writes the cached prefix. Safe for agents with `memory` and
+  `knowledge` on; what still costs a cache *write* every turn is a provider that
+  declares `layer :identity` while emitting per-turn bytes (`insika doctor`
+  flags it as `cache-layers`).
 
 Cache accounting surfaces as `cached_tokens` (reads) and `cache_creation_tokens`
 (writes), visible in telemetry and the Studio tokens chip.
