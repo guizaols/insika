@@ -156,6 +156,23 @@ RSpec.describe Insika::ContextBuilder do
       expect(pkg.fragments.map(&:content)).to eq(%w[a2 a1 b1 b2])
     end
 
+    it "the package carries each layer on its own: system == identity + volatile, each in canonical sort" do
+      id_prov = provider(id: "ID", fragments: [frag("lo", source: "ID", priority: 10), frag("hi", source: "ID", priority: 90)],
+                         layer: :identity)
+      mem_prov = provider(id: "Memory", fragments: [frag("m2", source: "Memory", priority: 1), frag("m1", source: "Memory", priority: 99)],
+                          layer: :volatile)
+      pkg = build([id_prov, mem_prov])
+      expect(pkg.system_identity).to eq("hi\n\nlo")
+      expect(pkg.system_volatile).to eq("m1\n\nm2")
+      expect(pkg.system).to eq("#{pkg.system_identity}\n\n#{pkg.system_volatile}")
+    end
+
+    it "a package built with only `system` reads as all-identity with an empty volatile layer" do
+      pkg = Insika::ContextPackage.new(system: "S", history: [], tool_context: nil, fragments: [], budget: {})
+      expect(pkg.system_identity).to eq("S")
+      expect(pkg.system_volatile).to eq("")
+    end
+
     it "E1 byte-stability half: different messages leave the joined identity bytes == (volatile above the boundary would fail)" do
       id_prov = provider(id: "ID", fragments: [frag("persona", source: "ID", priority: 100)], layer: :identity)
       mem_prov = provider(id: "Memory", fragments: [frag("mem", source: "Memory", priority: 75)], layer: :volatile)
