@@ -460,3 +460,11 @@ is a worker respawn — the event a platform metrics API cannot see.
 module — no separate install, no separate versioning. When Insika extracts its
 subsystems into gems it becomes `insika-otel`; because the bridge is already a
 pure event-stream consumer with a single gem boundary, that cut lands clean.
+
+### Blocked tool calls
+
+`tool_blocked` carries `name`, `gate`, and `param`, with task/session correlation
+in event metadata. It never carries the rejected value. The `insika.tool.blocked`
+counter (unit `{call}`) uses the turn's agent/tenant/command labels plus
+`insika.tool` and `insika.gate`. Session traces keep the `gate` field alongside the
+masked result; `insika tools:report` lists blocked calls separately from errors.

@@ -486,4 +486,82 @@ RSpec.describe Insika::ToolEnvelope do
       expect(recorder.entries.map { |e| e["call_id"] }).to contain_exactly("call-A", "call-B")
     end
   end
+  describe "provenance before writes" do
+    let(:session_store) { Insika::SessionStore.new(store: backend) }
+    let(:ledger) { Insika::EvidenceLedger.new(store: session_store, session_id: "s1") }
+    let(:events) { SpyEventStream.new }
+    let(:recorder) { Insika::ToolTraceStore.new(store: backend) }
+    let(:tool) do
+      Class.new(EnvEchoTool) do
+        def requires_evidence = { "params" => ["product_id"] }
+      end.new
+    end
+    let(:st) do
+      state_for(session_id: "s1").tap { |s| s.evidence_ledger = ledger }
+    end
+    let(:env) do
+      described_class.new(tool, state: st, checkpoint_store: checkpoint_store,
+                          tool_registry: FakeToolRegistry.new(side_effect_names: ["echo"]),
+                          timeout: 60, trace_recorder: recorder, event_stream: events)
+    end
+
+    before { session_store.create(id: "s1") }
+
+    it "blocks an unknown id without writing or asking for approval and records the gate" do
+      st.requires_approval = ["echo"]
+      st.approval_coordinator = double("coordinator")
+      expect(st.approval_coordinator).not_to receive(:request_approval)
+      result = Sync { env.call({ "product_id" => "999999" }) }
+      expect(result).to eq("status" => "blocked", "gate" => "provenance",
+                           "param" => "product_id", "value" => "999999",
+                           "instruction" => described_class::PROVENANCE_INSTRUCTION)
+      expect(tool.calls).to be_empty
+      expect(checkpoint_store.side_effects("t", turn: 1)).to be_empty
+      expect(recorder.for_session("s1").first).to include("gate" => "provenance", "ok" => true)
+      event = events.events.find { |e| e.type == :tool_blocked }
+      expect(event.data).to eq(name: "echo", gate: "provenance", param: "product_id")
+      expect(event.meta).to include(task_id: "t", session_id: "s1")
+    end
+
+    it "accepts ids returned this turn, including numeric scalars" do
+      ledger.record(["42"])
+      expect(Sync { env.call({ product_id: 42 }) }).to eq("echoed")
+      expect(tool.calls.size).to eq(1)
+    end
+
+    it "accepts ids persisted by an earlier turn" do
+      ledger.record(["SKU-1"]).flush!
+      st.evidence_ledger = Insika::EvidenceLedger.new(store: session_store, session_id: "s1")
+      expect(Sync { env.call({ "product_id" => "SKU-1" }) }).to eq("echoed")
+    end
+
+    it "does not accept ids from another session" do
+      session_store.create(id: "other")
+      Insika::EvidenceLedger.new(store: session_store, session_id: "other").record(["SKU-1"]).flush!
+      expect(Sync { env.call({ "product_id" => "SKU-1" }) }).to include("gate" => "provenance")
+      expect(tool.calls).to be_empty
+    end
+
+    it "checks every array element and compares case-sensitive strings" do
+      ledger.record(["SKU-1", "SKU-2"])
+      expect(Sync { env.call({ "product_id" => ["SKU-1", "sku-2"] }) })
+        .to include("value" => "sku-2", "gate" => "provenance")
+      expect(tool.calls).to be_empty
+      expect(Sync { env.call({ "product_id" => ["SKU-1", "SKU-2"] }) }).to eq("echoed")
+    end
+
+    it "fails closed without a ledger" do
+      st.evidence_ledger = nil
+      expect(Sync { env.call({ "product_id" => "SKU-1" }) }).to include("gate" => "provenance")
+      expect(tool.calls).to be_empty
+    end
+
+    it "blocks missing or nil values instead of treating them as an empty list" do
+      [{}, { "product_id" => nil }].each do |args|
+        expect(Sync { env.call(args) }).to include("gate" => "provenance", "value" => "")
+      end
+      expect(tool.calls).to be_empty
+    end
+  end
+
 end

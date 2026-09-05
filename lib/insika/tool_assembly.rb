@@ -77,7 +77,7 @@ module Insika
         ToolEnvelope.new(tool, state: state, checkpoint_store: @checkpoint_store,
                                tool_registry: @tool_registry, timeout: timeout,
                                skip_side_effects: skip_side_effects,
-                               trace_recorder: @tool_trace_store)
+                               trace_recorder: @tool_trace_store, event_stream: @event_stream)
       end
     end
 
@@ -98,7 +98,10 @@ module Insika
       return unless state.respond_to?(:tool_gate) && state.respond_to?(:tool_concurrency)
 
       cap = state.tool_concurrency
-      state.tool_gate = cap ? Async::Semaphore.new(cap) : nil
+      state.tool_gate = cap && cap > 1 ? Async::Semaphore.new(cap) : nil
+      if state.respond_to?(:side_effect_gate=)
+        state.side_effect_gate = state.tool_gate ? Async::Semaphore.new(1) : nil
+      end
     end
 
     # Real Engine -> Entries (respond to factory); fakes -> ready instances.

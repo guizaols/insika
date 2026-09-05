@@ -72,7 +72,7 @@ module Insika
         stats = tool_stats(sessions[id] || [], cutoff)
         never_called_rows(id, record, stats) +
           error_rate_rows(id, stats, days) +
-          stale_rows(id, stats)
+          stale_rows(id, stats) + blocked_rows(id, stats, days)
       end
 
       Report.new(generated_at: now.iso8601, days: days,
@@ -100,7 +100,7 @@ module Insika
     # tool name -> { calls:, errors:, window_calls:, window_errors:, last_at: }
     # over every stored trace entry of the agent's sessions.
     def tool_stats(session_ids, cutoff)
-      stats = Hash.new { |h, k| h[k] = { calls: 0, errors: 0, window_calls: 0, window_errors: 0, last_at: nil } }
+      stats = Hash.new { |h, k| h[k] = { calls: 0, errors: 0, window_calls: 0, window_errors: 0, blocked: Hash.new(0), last_at: nil } }
       session_ids.each do |sid|
         @tool_trace_store.for_session(sid).each do |entry|
           s = stats[entry["tool"].to_s]
@@ -113,6 +113,7 @@ module Insika
 
           s[:window_calls] += 1
           s[:window_errors] += 1 if error
+          s[:blocked][entry["gate"]] += 1 if entry["gate"]
         end
       end
       stats
@@ -139,6 +140,15 @@ module Insika
         Row.new(agent: agent, tool: tool, kind: "error_rate",
                 detail: "#{s[:window_errors]}/#{s[:window_calls]} call(s) errored in the last " \
                         "#{days} day(s) (#{(rate * 100).round}%)")
+      end
+    end
+
+    def blocked_rows(agent, stats, days)
+      stats.flat_map do |tool, s|
+        s[:blocked].map do |gate, count|
+          Row.new(agent: agent, tool: tool, kind: "blocked",
+                  detail: "#{count} call(s) blocked by #{gate} in the last #{days} day(s)")
+        end
       end
     end
 

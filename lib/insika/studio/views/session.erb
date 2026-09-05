@@ -185,7 +185,7 @@
                   <% traces[turn].each do |t| %>
                     <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
                       <summary>
-                        <span class="badge"><%= t["ok"] ? "ok" : "error" %></span>
+                        <span class="badge"><%= t["gate"] ? "blocked: #{t["gate"]}" : (t["ok"] ? "ok" : "error") %></span>
                         <strong><%= t["tool"] %></strong>
                         <span class="lat"><%= t["ms"] %>ms</span>
                         <span class="at"><%= t["at"] %></span>

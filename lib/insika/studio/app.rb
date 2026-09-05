@@ -1976,6 +1976,7 @@ end
         name: t["name"].to_s, description: t["description"].to_s,
         method: req["method"] || "GET", url: req["url"].to_s,
         parameters: params_text(t["parameters"]),
+        requires_evidence: Array(t.dig("requires_evidence", "params")).join(", "),
         query: env_lines(req["query"]), headers: env_lines(req["headers"]),
         secret_headers: Array(t["secret_headers"]).join(", "),
         body: req["body"].to_s,

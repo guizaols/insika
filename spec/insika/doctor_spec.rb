@@ -1750,4 +1750,38 @@ RSpec.describe Insika::Doctor do
       expect(finding).to be_nil
     end
   end
+
+  describe "provenance configuration" do
+    let(:tools) { Insika::ToolStore.new(config_store: config_store) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
+
+    before do
+      tools.write({ name: "write", description: "Write an item", parameters: [{ name: "id", type: "string" }],
+                  request: { method: "POST", url: "https://example.test" }, requires_evidence: ["id"] })
+      tools.write({ name: "search", description: "Find items", request: { url: "https://example.test" },
+                  evidence: "items", group: "lookup" })
+    end
+
+    def findings(**attrs)
+      config_store.put("agents", "shop", { "id" => "shop" }.merge(attrs.transform_keys(&:to_s)))
+      doctor(tool_store: tools, profile_source: profiles).run.findings.select { |f| f.check == "provenance" }
+    end
+
+    it "warns when the agent has no allowed evidence source" do
+      expect(findings(tools_allow: ["write"]).map(&:severity)).to eq([:warn])
+    end
+
+    it "stays silent when an evidence tool is allowed directly, by group, or by default" do
+      expect(findings(tools_allow: %w[write search])).to be_empty
+      expect(findings(tools_allow: ["write"], tools_allow_groups: ["lookup"])).to be_empty
+      expect(findings).to be_empty
+    end
+
+    it "honors deny lists and an explicitly empty allowlist" do
+      expect(findings(tools_deny: ["search"]).map(&:severity)).to eq([:warn])
+      expect(findings(tools_allow: [])).to be_empty
+      expect(findings(tools_deny: ["write", "search"])).to be_empty
+    end
+  end
+
 end

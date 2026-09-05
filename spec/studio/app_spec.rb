@@ -1730,6 +1730,29 @@ RSpec.describe Studio::App do
     expect(p["tags"]).to eq(%w[crm retail])
   end
 
+  it "edits provenance parameters and preserves evidence on form save" do
+    tool = data_tool(evidence: "items", requires_evidence: ["cep"], side_effect: true)
+    app, bus = build_app(data_tools: [tool])
+    client = login(app)
+    page = client.get("/tools/def/cep").body
+    expect(page).to include('name="requires_evidence"', 'value="cep"')
+    client.post("/tools/def/cep", params: {
+      "name" => "cep", "description" => "Lookup", "method" => "GET",
+      "url" => "https://example.test", "parameters" => "cep | string | required | ID",
+      "requires_evidence" => "cep", "_csrf" => csrf_from(page)
+    })
+    payload = bus.last(:write_data_tool).payload
+    expect(payload[:requires_evidence]).to eq(["cep"])
+    expect(payload["evidence"]).to eq(Insika::Evidence::Spec.parse("items").to_h)
+    expect(payload["side_effect"]).to be(true)
+
+    client.post("/tools/def/cep", params: {
+      "name" => "cep", "description" => "Lookup", "method" => "GET",
+      "url" => "https://example.test", "requires_evidence" => "", "_csrf" => csrf_from(page)
+    })
+    expect(bus.last(:write_data_tool).payload[:requires_evidence]).to be_nil
+  end
+
   it "POST /tools/def/:name/delete dispatches :delete_data_tool" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)
