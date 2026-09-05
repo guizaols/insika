@@ -913,6 +913,7 @@ module Insika
       stamp_customer_session(task, profile)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
+      state.fence_max_chars = fence_max_chars if Insika::Fence.enabled?(profile)
       # resolved for the RUN, not per message, so what the turn accepts cannot
       # change under it. Same cost as the EdgeLimiter's per-turn resolution. Only for a
       # SESSION turn: steering needs a session to arrive through, and resolving here for a
@@ -2602,20 +2603,22 @@ module Insika
       PROMPT
     end
 
-    # Redacted (RFC's PII rule applies to what reaches the model too, not
-    # just what gets persisted).
-    def knowledge_transcript(new_messages)
-      redacted, = Insika::Safety::Detectors.redact(
-        new_messages.each_with_index.map { |m, i| "[#{i}] #{m['role'] || m[:role]}: #{m['content'] || m[:content]}" }
-                    .join("\n")
-      )
-      redacted
-    end
+    # Only what people said, PII-redacted — a `role: tool` message is
+    # third-party text and never a source of a learned concept.
+    def knowledge_transcript(new_messages) = Insika::SpokenTranscript.render(new_messages)
 
     def utility_model
       return nil unless @settings_store
 
       @settings_store.get["utility_model"]
+    end
+
+    # `Settings fencing.max_chars`, the per-leaf cap the envelope applies for a
+    # fenced agent. One settings read per fenced turn, like the queue policy.
+    def fence_max_chars
+      config = @settings_store && Coercion.deep_stringify(@settings_store.get["fencing"])
+      n = config && config["max_chars"].to_i
+      n && n.positive? ? n : Insika::Fence::DEFAULT_MAX_CHARS
     end
 
     # in-session compaction (RFC-0044). Platform-gated

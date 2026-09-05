@@ -64,6 +64,9 @@ module Insika
                   :evidence_attachments, # [ {type, url, caption} ] hoarded by the
                   #                      envelope this turn; read by the Executor at stage 8
                   #                      for the channel delivery. Reset per turn.
+                  :fence_max_chars,    # per-leaf cap the ToolEnvelope applies when the
+                  #                      agent has `fencing` on — the platform's
+                  #                      `fencing.max_chars`, set per turn by the Executor.
                   :context_trace_entry  # the sanitized trace entry parked at
                   #                      prepare_turn (fingerprints + invalidation_reason);
                   #                      the stage-8 stamp merges the cache-hit fields into

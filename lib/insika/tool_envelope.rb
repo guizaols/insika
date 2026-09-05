@@ -61,6 +61,7 @@ module Insika
       # on the ledger, hoard the attachments. No evidence = the result passes
       # through untouched (one nil-check — parity).
       result = process_evidence(result)
+      result = fence(result)
       record_side_effect!(call_id) if side_effect?
       trace(call_id, args, result, started)
       result
@@ -140,6 +141,20 @@ module Insika
 
       @checkpoint_store.record_side_effect(@state.task.id, turn: @state.turn,
                                                            tool_call_id: call_id)
+    end
+
+    # ----   fencing ----------------------------------------------
+
+    # After the evidence reshape (the lean envelope is already the shape the
+    # model reads): every String leaf sanitized, keys and non-strings untouched,
+    # each leaf capped at the platform's `fencing.max_chars`. Off = bytes
+    # identical to today. An error hash is engine-authored — never touched.
+    def fence(result)
+      return result unless Insika::Fence.enabled?(@state.profile)
+      return result if result.is_a?(Hash) && (result[:error] || result["error"])
+
+      max = @state.respond_to?(:fence_max_chars) ? @state.fence_max_chars : nil
+      Insika::Fence.sanitize_value(result, max_chars: max || Insika::Fence::DEFAULT_MAX_CHARS)
     end
 
     # ----   evidence ---------------------------------------------

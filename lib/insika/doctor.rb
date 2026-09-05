@@ -180,7 +180,7 @@ module Insika
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
-                    check_tool_allowlist_policy]
+                    check_tool_allowlist_policy check_fencing]
 
     def safe(check)
       Array(send(check))
@@ -836,6 +836,7 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     # identity block bills a cache write every turn).
     IDENTITY_BUILTINS = %w[
       Insika::Context::Providers::Prompt
+      Insika::Context::Providers::FenceNotice
       Insika::Context::Providers::Skill
       Insika::Context::Providers::ToolSearch
     ].freeze
@@ -1323,6 +1324,30 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
         [ok("compaction", "in-session compaction on — keep_last #{config['keep_last']}, " \
                           "compact_after #{config['compact_after']}")]
       end
+    end
+
+    # A customer-facing agent — one reachable through an inbound channel: any
+    # agent when the relay is mounted (the event names the agent), the listed
+    # ones for the widget — with `fencing` off reads third-party bytes as-is.
+    # A warning, never an error: the default is off this release on purpose
+    # (the goldens were baselined unfenced), so the message says exactly what
+    # is unsanitized today. No inbound channel = nothing customer-facing = silent.
+    def check_fencing
+      return [] unless @profile_source
+
+      relay = Insika::Coercion.present?(@env["INSIKA_RELAY_TOKEN"])
+      widget = @env["INSIKA_WIDGET_AGENTS"].to_s.split(",").map(&:strip).reject(&:empty?)
+      return [] unless relay || widget.any?
+
+      exposed = @profile_source.all.select { |p| relay || widget.include?(p.id.to_s) }
+      unfenced = exposed.reject { |p| Insika::Fence.enabled?(p) }.map(&:id)
+      return [ok("fencing", "fencing on for every agent behind an inbound channel")] if unfenced.empty?
+
+      [Finding.new(check: "fencing", severity: :warn, fix: nil,
+                   message: "agent(s) #{unfenced.join(', ')}: reachable through an inbound channel with " \
+                            "`fencing` off — tool results, <memory> facts and <knowledge> concepts reach " \
+                            "the model byte-for-byte (invisible characters, forged turn markers and " \
+                            "transcript-shaped tags included). Set `fencing true` on the agent.")]
     end
 
     # the harvest check — per profile WITH a harvest hash:
