@@ -206,7 +206,10 @@ non-empty, and the agent still answers), **a prompt file that outgrew a prompt**
 that costs 20%+ extra tokens per turn for no better instruction-following),
 **in-session compaction enabled with no model slot** (WARN — neither
 `compaction.model` nor the platform `utility_model` is set, so it can never run;
-see [Context](CONTEXT.md)), and
+see [Context](CONTEXT.md)), **eval seeding left on** (WARN — `evals.seeding`
+opens `POST /v1/conversations/:id/seed`, which writes a fabricated conversation
+state under the tenant token; fine while running snapshot evals, off in
+production — see [Evals](EVALS.md#state--a-case-starts-from-a-snapshot)), and
 **skill drift** — a shared skill whose
 body names one store, a prompt file routing to a skill the agent cannot load, a broken
 companion pair, a stale `eager:` key (see

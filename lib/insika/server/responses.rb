@@ -95,7 +95,7 @@ module Insika
       end
 
       # Turn Event -> OpenAI Responses SSE frame | nil (event with no
-      # counterpart: :task_started, :tool_result, :skill_activated, ...).
+      # counterpart: :task_started, :skill_activated, ...).
       # Terminal events emit the final frame + `[DONE]` (close the stream).
       def frame_for(event)
         case event.type
@@ -103,9 +103,21 @@ module Insika
           sse("response.output_text.delta",
               { type: "response.output_text.delta", delta: event.data[:delta].to_s })
         when :tool_call
-          sse("response.output_item.added",
-              { type: "response.output_item.added",
-                item: { type: "function_call", name: event.data[:name].to_s } })
+          item = { type: "function_call", name: event.data[:name].to_s }
+          # The call's arguments, as the OpenAI item carries them (a JSON string).
+          # Absent when the emitter had none to report.
+          (args = event.data[:arguments]) && (item[:arguments] = args.is_a?(String) ? args : JSON.generate(args))
+          sse("response.output_item.added", { type: "response.output_item.added", item: item })
+        when :tool_result
+          # How the call ENDED — ok / error / blocked (+ the gate that held it). Until
+          # this frame the stream carried tool NAMES only, so nothing outside the
+          # process could tell "the tool ran" from "a gate refused it" or "it errored".
+          # The result body itself stays inside: it is the model's input, not the
+          # consumer's answer.
+          item = { type: "function_call", name: event.data[:name].to_s,
+                   status: (event.data[:status] || "ok").to_s }
+          (gate = event.data[:gate]) && (item[:gate] = gate.to_s)
+          sse("response.output_item.done", { type: "response.output_item.done", item: item })
         when :task_completed
           completed(event) + done
         when :task_failed

@@ -80,6 +80,8 @@ module Insika
           outcome_store: @graph.outcome_store,
           # GET/PUT/DELETE /v1/mcp[/:name] — the config surface.
           mcp_store: @rt.component(:mcp_store),
+          # POST /v1/conversations/:id/seed answers only while `evals.seeding` is on.
+          settings_store: @rt.component(:settings_store),
           # a 500's error_ref must be findable in the process log.
           logger: $stdout
         )

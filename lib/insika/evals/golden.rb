@@ -20,8 +20,16 @@ module Insika
     # single-tenant default, like `save_artifact`'s own binding_tenant) unless the
     # case declares one. `run_persona_eval` uses it to keep a QA agent from ever
     # running (or even seeing) another tenant's persona case in the same store.
+    #
+    # `state`: the snapshot the conversation starts from — evidence ids, memory
+    # facts and notes, prior history, briefing fields — loaded into the session
+    # BEFORE turn 1. It is how a case tests "the customer already saw three products
+    # and says 'add the second one'" without replaying the search turn: no dependence
+    # on the model's first answer, one turn cheaper, and a messy state (a
+    # contradiction from six turns ago) becomes reproducible. {} = the case starts
+    # empty, as every case did before the key existed.
     Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, :persona, :tenant,
-                        keyword_init: true) do
+                        :state, keyword_init: true) do
       # The user messages to replay, in order. Empty for a persona case: a generated
       # conversation has no scripted turns.
       def user_turns = turns.map { |t| t["user"] }
@@ -43,6 +51,21 @@ module Insika
 
       # Names of the negative assertions to run (e.g. "pii_leak", "tool_error").
       def must_not = Array(expect["must_not"]).map(&:to_s)
+
+      # The graders over the turn's CALLS and its published REPLY — each optional,
+      # each deterministic. Every positive has a negative: `never_calls` pins what a
+      # correct turn does NOT do, which `tools_called` alone can never say.
+      def never_calls = Array(expect["never_calls"]).map(&:to_s)
+      def calls_one_of = Array(expect["calls_one_of"]).map(&:to_s)
+      def first_tool = GoldenLoader.presence(expect["first_tool"])
+      def max_tool_calls = expect["max_tool_calls"]
+      def reply_includes = Array(expect["reply_includes"]).map(&:to_s)
+      def reply_omits = Array(expect["reply_omits"]).map(&:to_s)
+      # "tool:gate" pairs that must appear among the turn's BLOCKED calls.
+      def blocked_gates = Array(expect["blocked_gates"]).map(&:to_s)
+
+      def state = self[:state] || {}
+      def seeded? = !state.empty?
 
       # How much the agent should ask before acting. nil = the store
       # has no opinion and only the rubric decides.
@@ -111,6 +134,8 @@ module Insika
         raise InvalidGolden, "#{source}: 'expect' must be a mapping (case '#{id}')" unless expect.is_a?(Hash)
 
         validate_policy!(expect["policy"], id: id, source: source)
+        validate_graders!(expect, id: id, source: source)
+        state = normalize_state(raw["state"], id: id, source: source)
         requires = raw["requires"] || {}
         unless requires.is_a?(Hash)
           raise InvalidGolden, "#{source}: 'requires' must be a mapping (case '#{id}')"
@@ -121,7 +146,7 @@ module Insika
 
         Golden.new(id: id, agent: agent, turns: turns, expect: expect,
                    requires: requires, reference: reference, source: source, persona: persona,
-                   tenant: tenant)
+                   tenant: tenant, state: state)
       end
 
       # `persona:` is the alternative shape to `turns:`: the
@@ -172,6 +197,65 @@ module Insika
           raise InvalidGolden, "#{where}: #{e.message}"
         end
         { "role" => role, "text" => text }.merge(origin ? { "origin" => origin } : {})
+      end
+
+      STATE_KEYS = %w[evidence memory history briefing].freeze
+
+      # state: the snapshot a case starts from. Absent -> {}. Only the four known
+      # keys, each in its own shape — a typo'd key (`evidences:`) would seed nothing
+      # and the case would go on passing against the wrong precondition. Refused at
+      # LOAD, not at seed time: a case that half-seeds is a hole in the net.
+      def normalize_state(raw, id:, source:)
+        return {} if raw.nil?
+
+        where = "#{source}: state (case '#{id}')"
+        raise InvalidGolden, "#{where} must be a mapping" unless raw.is_a?(Hash)
+
+        unknown = raw.keys.map(&:to_s) - STATE_KEYS
+        unless unknown.empty?
+          raise InvalidGolden, "#{where}: unknown key(s) #{unknown.join(', ')} — known: #{STATE_KEYS.join(', ')}"
+        end
+
+        state = raw.compact
+        mapping_with!(state["evidence"], "ids", Array, "#{where}.evidence")
+        mapping_with!(state["memory"], "facts", Hash, "#{where}.memory")
+        mapping_with!(state["memory"], "notes", Array, "#{where}.memory")
+        mapping_with!(state["briefing"], "fields", Hash, "#{where}.briefing")
+        history = state["history"]
+        unless history.nil? || (history.is_a?(Array) && history.all? { |m| history_message?(m) })
+          raise InvalidGolden, "#{where}.history must be [{ role: user|assistant, content: '…' }]"
+        end
+
+        state
+      end
+
+      def mapping_with!(value, key, type, where)
+        return if value.nil?
+        raise InvalidGolden, "#{where} must be a mapping" unless value.is_a?(Hash)
+        return if value[key].nil? || value[key].is_a?(type)
+
+        raise InvalidGolden, "#{where}.#{key} must be #{type == Array ? 'a list' : 'a mapping'}"
+      end
+
+      def history_message?(message)
+        message.is_a?(Hash) && %w[user assistant].include?(message["role"].to_s) &&
+          !presence(message["content"]).nil?
+      end
+
+      # The graders with a shape to get wrong: a non-integer `max_tool_calls` would
+      # compare against nil and pass; a `blocked_gates` entry without its gate would
+      # never match anything and pass. Refused at load, like `policy`.
+      def validate_graders!(expect, id:, source:)
+        max = expect["max_tool_calls"]
+        unless max.nil? || (max.is_a?(Integer) && max >= 0)
+          raise InvalidGolden, "#{source}: max_tool_calls must be a non-negative integer (case '#{id}')"
+        end
+
+        Array(expect["blocked_gates"]).each do |pair|
+          next if pair.to_s.match?(/\A[^:\s]+:[^:\s]+\z/)
+
+          raise InvalidGolden, "#{source}: blocked_gates entries are 'tool:gate' (got #{pair.inspect}, case '#{id}')"
+        end
       end
 
       # A typo'd policy must not silently mean "no policy" — the case would go on

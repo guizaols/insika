@@ -180,7 +180,7 @@ module Insika
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
-                    check_tool_allowlist_policy check_fencing]
+                    check_tool_allowlist_policy check_fencing check_eval_seeding]
 
     def safe(check)
       Array(send(check))
@@ -1324,6 +1324,23 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
         [ok("compaction", "in-session compaction on — keep_last #{config['keep_last']}, " \
                           "compact_after #{config['compact_after']}")]
       end
+    end
+
+    # `evals.seeding` opens POST /v1/conversations/:id/seed: a snapshot written
+    # into a real conversation under the tenant token, before its first turn. Right
+    # on the machine running snapshot evals; wrong left on in production, where any
+    # consumer holding the token could write a customer's history. A warning, not
+    # an error — the operator may be running the evals right now.
+    def check_eval_seeding
+      return [] unless @settings_store
+
+      on = ((@settings_store.get["evals"] || {})["seeding"]) == true
+      return [ok("eval-seeding", "evals.seeding off — conversations cannot be seeded")] unless on
+
+      [Finding.new(check: "eval-seeding", severity: :warn, fix: nil,
+                   message: "evals.seeding is ON — POST /v1/conversations/:id/seed accepts a fabricated " \
+                            "conversation state under the tenant token. Fine while running snapshot " \
+                            "evals; turn it off (Studio > Settings, or `update_settings`) in production.")]
     end
 
     # A customer-facing agent — one reachable through an inbound channel: any

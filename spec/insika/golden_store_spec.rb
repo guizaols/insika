@@ -27,6 +27,17 @@ RSpec.describe Insika::GoldenStore do
     expect(golden.min_score).to eq(0.7)
   end
 
+  # A snapshot case that lost its `state` in the round-trip would replay from an
+  # empty conversation and fail for a reason unrelated to the agent.
+  it "round-trips a case's state through the store" do
+    state = { "evidence" => { "ids" => ["SKU-1"] }, "history" => [{ "role" => "user", "content" => "oi" }] }
+    store.write(a_case.merge("state" => state))
+
+    expect(store.find("loja-cupom").state).to eq(state)
+    store.write(a_case) # an unseeded case round-trips with no state key at all
+    expect(store.find("loja-cupom").seeded?).to be(false)
+  end
+
   # A SIMULATED case is one of two shapes — the persona must survive
   # the store AND the YAML export, or it would silently stop being simulated and
   # replay as an empty script.
