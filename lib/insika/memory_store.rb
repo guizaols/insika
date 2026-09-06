@@ -42,6 +42,18 @@ module Insika
     # ids live in a different namespace in practice.
     SESSION_TAG = "chat"
 
+    # The ONE memory-cell rule, read by the turn (Executor) and by whoever
+    # writes a cell the turn must find (SeedSession): a customer -> the
+    # "[tenant:]customer" cell; otherwise the tenant's cell; otherwise the marked
+    # per-session cell "chat:<session id>" (nil for a one-shot turn with no
+    # session — the store applies _default).
+    def self.scope_for(tenant:, customer:, session_id:)
+      return [tenant, customer].compact.join(":") if customer
+      return tenant if tenant
+
+      "#{SESSION_TAG}:#{session_id}" if session_id
+    end
+
     Fact = Data.define(:key, :value, :origin, :created_at, :updated_at, :expires_at)
     Note = Data.define(:id, :text, :created_at)
 

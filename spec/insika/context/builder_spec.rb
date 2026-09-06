@@ -61,6 +61,15 @@ RSpec.describe Insika::ContextBuilder do
       expect(pkg.system).to eq("a")
     end
 
+    # FenceNotice's case: its own flag is the opt-in; an agent allowlisted before
+    # the provider existed must not get the sanitizer without the notice.
+    it "allowlisted? false -> runs under an allowlist that does not name it" do
+      own_flag = provider(id: "N", fragments: [frag("n", source: "N")])
+      own_flag.define_singleton_method(:allowlisted?) { false }
+      pkg = build([pa, pb, own_flag], profile(context_providers: ["A"]))
+      expect(pkg.system).to eq("a\n\nn")
+    end
+
     it "enabled_for? false -> does not run even with nil allowlist" do
       off = provider(id: "C", fragments: [frag("c", source: "C")], enabled: false)
       pkg = build([pa, off])

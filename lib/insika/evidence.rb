@@ -87,7 +87,7 @@ module Insika
         next if url.empty?
 
         caption = Coercion.presence(entry["caption"] || entry[:caption])
-        caption &&= Insika::Fence.sanitize_text(caption)
+        caption &&= Coercion.utf8(caption)
         card = { "type" => (entry["type"] || entry[:type]).to_s,
                  "url" => url[0, URL_MAX],
                  "caption" => caption }
@@ -121,19 +121,28 @@ module Insika
           items = SchemaGuard.dig(raw, spec.items_path) || []
           lean_items = items.first(MAX_ITEMS).map do |item|
             { "id" => (item["id"] || item[:id]).to_s,
-              # the line is what the model reads: always sanitized (cheap), then truncated.
-              "line" => Insika::Fence.sanitize_text((item["line"] || item[:line]).to_s)[0, LINE_MAX] }
+              # the line is what the model reads: truncated here; sanitized by the
+              # envelope's fence when the agent has `fencing` on (bytes as-is when off).
+              "line" => Coercion.utf8((item["line"] || item[:line]).to_s)[0, LINE_MAX] }
           end
           lean = { "items" => lean_items }
-          attachments = Insika::Evidence.valid_attachments(SchemaGuard.dig(raw, spec.attachments_path))
-          # Items and attachments come from the SAME payload, one card per item in
-          # order — so a card that names no id of its own takes the id of the item at
-          # its position. That id is what a presentation tool later joins on.
-          attachments.each_with_index do |card, i|
-            item_id = lean_items.dig(i, "id")
-            card["id"] = item_id if card["id"].nil? && !item_id.to_s.empty?
+          cards = stamp_ids(items, SchemaGuard.dig(raw, spec.attachments_path))
+          [lean, Insika::Evidence.valid_attachments(cards)]
+        end
+
+        # Items and attachments come from the SAME payload, one card per item in
+        # order — so a card that names no id of its own takes the id of the item at
+        # its position. That id is what a presentation tool later joins on. Stamped
+        # on the RAW list, before malformed cards are dropped: pairing after the
+        # drop would shift every later card onto the wrong product.
+        def stamp_ids(items, cards)
+          Array(cards).each_with_index.map do |card, i|
+            next card unless card.is_a?(Hash) && (card["id"] || card[:id]).nil?
+
+            item = items[i]
+            id = item.is_a?(Hash) ? (item["id"] || item[:id]).to_s : ""
+            id.empty? ? card : card.merge("id" => id)
           end
-          [lean, attachments]
         end
       end
     end
@@ -148,12 +157,24 @@ module Insika
     # Oldest-evicted cap: a session that outlives it needs a real cap or the row
     # grows forever.
     MAX_IDS = 1_000
+    # Cards kept per session, one per id, newest wins — enough for the last few
+    # searches, so "show me the second one" a turn later still has a card to show.
+    MAX_CARDS = 64
 
     def initialize(store: nil, session_id: nil)
       @store = store
       @session_id = session_id
       @ids = []
+      @cards = []
       @ungrounded = 0
+    end
+
+    # -> one card per id (newest wins), capped. Shared by the ledger and the
+    # session store so both keep the same set.
+    def self.merge_cards(*lists)
+      lists.flatten.compact
+           .each_with_object({}) { |c, h| h[c["id"]] = c if c.is_a?(Hash) && c["id"] }
+           .values.last(MAX_CARDS)
     end
 
     # The in-memory accumulator (the envelope appends, the validator/enforcer
@@ -170,6 +191,19 @@ module Insika
       (session_ids + @ids).uniq.last(MAX_IDS)
     end
 
+    # The cards an evidence tool returned alongside its items, hoarded for the
+    # presentation tool. Only cards with an id are kept (nothing to join on
+    # otherwise). Persisted with the ids on flush.
+    def record_cards(cards)
+      @cards.concat(Array(cards).select { |c| c.is_a?(Hash) && c["id"] })
+      self
+    end
+
+    # -> the session's cards (persisted) + this turn's, one per id, newest wins.
+    def cards
+      self.class.merge_cards(session_evidence["cards"], @cards)
+    end
+
     attr_reader :ungrounded
 
     def ungrounded_count(claim)
@@ -184,9 +218,11 @@ module Insika
     def flush!
       return self unless @store && @session_id
 
-      @store.append_evidence(@session_id, ids: @ids, ungrounded: @ungrounded)
+      @store.append_evidence(@session_id, ids: @ids, ungrounded: @ungrounded, cards: @cards)
       @ids = []
+      @cards = []
       @ungrounded = 0
+      @session_evidence = nil
       self
     rescue Insika::Error
       self
@@ -195,12 +231,20 @@ module Insika
     private
 
     def session_ids
-      return [] unless @store && @session_id
+      Array(session_evidence["ids"]).map(&:to_s)
+    end
 
-      session = @store.find(@session_id)
-      Array(session&.evidence&.fetch("ids", [])).map(&:to_s)
-    rescue Insika::NotFoundError
-      []
+    # Read ONCE per ledger (= per turn): a batch of gated calls must not re-read
+    # the session row for each. `flush!` forgets it, so the next read sees what
+    # it just appended.
+    def session_evidence
+      return {} unless @store && @session_id
+
+      @session_evidence ||= begin
+        @store.find(@session_id)&.evidence || {}
+      rescue Insika::NotFoundError
+        {}
+      end
     end
   end
 end

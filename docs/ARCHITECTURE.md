@@ -177,64 +177,65 @@ The order is not arbitrary:
 
 ## The tool-loop
 
-Stage 6 is the single agent interaction. RubyLLM owns the reason→act→observe loop;
-the engine wraps each tool the model may call in a **ToolEnvelope** that enforces
-the per-tool timeout, records side-effects for checkpointing, skips
-already-completed side-effects on resume, and fires the approval gate.
+Stage 6 is the agent interaction. RubyLLM owns the reason→act→observe loop;
+`ToolEnvelope` adds provenance, approval, concurrency, timeout, evidence processing,
+fencing, traces and side-effect checkpoints around registered tools.
 
-When a step contains several tool calls they are executed **one at a time**, unless
-the agent raised `limits[:tool_concurrency]` — then the batch runs on the turn's
-reactor with at most that many in flight, one fiber per call, and the envelope's
-shared semaphore is the cap. A turn with an approval-required tool always runs
-serially. See [Tools](TOOLS.md#parallel-tool-calls) for what that changes.
+Calls run serially unless `limits[:tool_concurrency]` permits parallel execution.
+Marked side effects acquire a serial gate before the shared concurrency slot,
+so writes in one session cannot overlap and queued writes leave slots for reads.
+Turns exposing approval-required tools run serially. See
+[Tools](TOOLS.md#parallel-tool-calls) for limits and timeout behavior.
 
 ```mermaid
 flowchart TD
-  ask[chat.ask -> model] --> dec{tool call?}
+  ask[chat.ask → model] --> dec{tool call?}
   dec -->|no| done[final content]
-  dec -->|yes| env[ToolEnvelope]
-  env --> appr{approval<br/>required?}
-  appr -->|yes| suspend[[suspend turn<br/>await operator]]
-  suspend --> appr
-  appr -->|no / approved| kind{tool kind}
-  kind -->|code| ruby[Ruby class<br/>in-process / sandbox]
-  kind -->|data / MCP| egress[EgressGuard] --> http[(external HTTP)]
-  ruby --> obs[result -> back to model]
-  http --> obs
-  obs --> ask
+  dec -->|yes| env[ToolEnvelope: skip completed side effects on resume]
+  env --> prov{declared evidence IDs known?}
+  prov -->|no| blocked[blocked: provenance]
+  blocked --> ask
+  prov -->|yes / undeclared| appr[approval gate]
+  appr --> gates[side-effect serial gate → shared concurrency slot → timeout]
+  gates --> kind{tool kind}
+  kind -->|code| ruby[Ruby / sandbox]
+  kind -->|HTTP data| http[EgressGuard → HTTP]
+  kind -->|MCP| mcp[live MCP client]
+  kind -->|presentation| cards[select turn or session evidence cards → UI event]
+  ruby --> result[evidence reshape → fencing → checkpoint and trace]
+  http --> result
+  mcp --> result
+  cards --> result
+  result --> ask
 ```
 
-A **data tool** is config, not code (see [Tools](TOOLS.md)): its result comes back
-to the model exactly like a code tool's, but it went out over HTTP through the
-egress guard. A tool exception is caught and returned *to the model* as an error
-result — it does not crash the turn. Side-effecting tools (POST and friends) are
-recorded in the checkpoint so a resume does not re-run them.
+HTTP data tools and presentation tools are both stored definitions. Presentation
+runs in-process; MCP remains a live server call (HTTP/SSE or stdio). HTTP egress
+is checked before a request. Tool errors reach the model as error results so it
+can recover; a provenance refusal reports `blocked` without contacting the backend
+or asking an operator. Completed side effects are recorded for resume.
 
 ## Ingesting tools: manifest and MCP
 
-Tools become data in the store through two runtime paths, both hot (no restart):
+Data definitions and MCP instances have separate stores. Both are hot config:
 
 ```mermaid
 flowchart TD
-  subgraph manifest [Manifest path]
-    m["POST /v1/tools/manifest"] --> sub["substitute<br/>{{env.*}} / {{secret.*}}"]
-    sub --> val1[validate each tool]
-  end
-  subgraph mcp [MCP path]
-    srv[(MCP server<br/>HTTP transport)] --> ing[MCP ingestor]
-    ing --> conv[each tool → HTTP data tool<br/>JSON-RPC tools/call]
-    conv --> val2[validate]
-  end
-  val1 --> store[(ToolStore)]
-  val2 --> store
-  store --> cat[reload catalog + registry]
-  cat --> loop[available in the tool-loop]
+  manifest[POST /v1/tools/manifest] --> substitute[resolve env / secret placeholders]
+  substitute --> validate[validate HTTP or presentation definition]
+  validate --> store[(ToolStore)]
+  store --> data[DataToolRegistry]
+  config[MCP instance configuration] --> mcpstore[(McpStore)]
+  mcpstore --> live[McpToolRegistry → live server tools]
+  data --> catalog[effective registry and catalog]
+  live --> catalog
+  catalog --> policy[agent allowlist → tool-loop]
 ```
 
-The manifest path is the **only** one that resolves `{{env.*}}` (at ingestion);
-every other write path requires a literal URL. Partial failure on the manifest
-path is isolated — one malformed tool is reported in `errors[]` while the rest
-import. See [Tools](TOOLS.md#registering-a-tool).
+Only manifest ingestion resolves `{{env.*}}` and `{{secret.*}}`; other data-tool
+write paths require literal values. One malformed manifest tool is reported in
+`errors[]` while valid entries import. MCP tools are never converted to stored
+HTTP data tools. See [Tools](TOOLS.md#registering-a-tool).
 
 ## Durability: checkpoints and resume
 
@@ -316,7 +317,7 @@ validator as the after-task hook, so both roots enforce content safety identical
 | Recovery | `lib/insika/recovery.rb` |
 | Inbound queue (one turn at a time per session, and what happens to a message that arrives while one is running) | `lib/insika/session_actor.rb`, `lib/insika/queue_policy.rb`, `lib/insika/steer_injector.rb` |
 | Channels (a way in and out for people; the reply that travels after the turn ends) | `lib/insika/channel_registry.rb`, `lib/insika/channels/*`, `lib/insika/channel_delivery.rb`, `lib/insika/outbox_store.rb`, `lib/insika/inbound_log.rb` |
-| Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `tool_manifest.rb`, `mcp_tool_ingestor.rb` |
+| Tools (data/manifest/MCP) | `lib/insika/tool_definition.rb`, `lib/insika/tool_manifest.rb`, `lib/insika/mcp_tool_registry.rb`, `lib/insika/tools/present.rb` |
 | Plugin loading (boot) | `lib/insika/plugin.rb`, `lib/insika/plugin/loader.rb` |
 | Refinement (traffic → report) | `lib/insika/refinement/*`, `lib/insika/refinement_store.rb` |
 | Post-turn learning (facts, skills, knowledge — extracted from finished conversations) | `lib/insika/distill.rb`, `lib/insika/harvest.rb`, `lib/insika/knowledge.rb`, `lib/insika/knowledge_store.rb`; the per-turn hook lives in `Executor#persist_turn`, next to `finalize_delegation` |

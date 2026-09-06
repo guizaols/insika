@@ -8,6 +8,11 @@ module Insika
     def id = self.class.name       # override for a stable name
     def required? = false          # true -> failure aborts the turn
     def enabled_for?(_profile) = true
+    # Whether the profile's `context_providers` allowlist applies. false for a
+    # provider whose OWN flag is the opt-in (FenceNotice: `fencing` on ships the
+    # notice together with the sanitizer — an agent allowlisted before the
+    # provider existed must not get one half without the other).
+    def allowlisted? = true
     def call(_request) = []        # -> [ContextFragment]; may do IO
     # which cache layer the output belongs to.
     #   :identity -> changes only on deploy/config edit (the cacheable prefix);

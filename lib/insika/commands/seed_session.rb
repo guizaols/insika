@@ -12,7 +12,8 @@ module Insika
     #
     #   history:  [{ role:, content: }] -> the transcript, stamped `origin: engine`
     #             (nobody typed these; a report must not read them as the customer)
-    #   evidence: { ids: [] }              -> the session evidence ledger
+    #   evidence: { ids: [], cards: [] }   -> the session evidence ledger (cards
+    #             carry an `id`; a presentation tool shows them)
     #   memory:   { facts: {}, notes: [] } -> the memory cell THIS turn will read
     #   briefing: { fields: {} }           -> the session briefing
     #
@@ -34,7 +35,7 @@ module Insika
         state = Coercion.deep_stringify(p[:state] || {})
         raise Insika::ValidationError, "state must be a Hash" unless state.is_a?(Hash)
 
-        tenant = AgentPayload.presence(p[:tenant]) || command.meta[:tenant]
+        tenant = command.meta[:tenant] # the same source the turn reads — never the payload
         customer = AgentPayload.presence(p[:customer])
 
         session = @session_store.find(id) || @session_store.create(id: id, vars: {})
@@ -77,10 +78,13 @@ module Insika
 
       def seed_evidence(id, evidence)
         return if evidence.nil?
-        raise Insika::ValidationError, "state.evidence must be { ids: [] }" unless evidence.is_a?(Hash)
+        raise Insika::ValidationError, "state.evidence must be { ids: [], cards: [] }" unless evidence.is_a?(Hash)
 
         ids = Array(evidence["ids"]).map(&:to_s).reject(&:empty?)
-        @session_store.append_evidence(id, ids: ids, ungrounded: 0) unless ids.empty?
+        cards = Insika::Evidence.valid_attachments(evidence["cards"]).select { |c| c["id"] }
+        # a card's id counts as seen: the card came from a search the case declares
+        ids = (ids + cards.map { |c| c["id"] }).uniq
+        @session_store.append_evidence(id, ids: ids, ungrounded: 0, cards: cards) unless ids.empty?
       end
 
       def seed_memory(scope, memory)
@@ -104,14 +108,10 @@ module Insika
         fields.each { |field, value| @session_store.update_briefing(id, field: field, value: value) }
       end
 
-      # The SAME cell the turn will read (the Executor's memory scope rule): a
-      # customer -> "[tenant:]customer"; no customer -> the tenant's cell, or the
-      # marked per-session cell "chat:<id>" when there is no tenant either. Seeding
+      # The SAME cell the turn will read — one rule, MemoryStore.scope_for. Seeding
       # any other cell would pass the case against a memory the model never sees.
       def memory_scope(tenant, customer, session_id)
-        return [tenant, customer].compact.join(":") if customer
-
-        tenant || "#{MemoryStore::SESSION_TAG}:#{session_id}"
+        MemoryStore.scope_for(tenant: tenant, customer: customer, session_id: session_id)
       end
     end
   end

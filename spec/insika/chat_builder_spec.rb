@@ -483,8 +483,23 @@ RSpec.describe Insika::ChatBuilder do
       chat.fire_tool_result("resultado")
 
       expect(sink.map { |e| e[:type] }).to eq(%i[tool_call tool_result])
-      expect(sink.first[:data]).to eq({ name: "lookup", arguments: { "q" => "x" } })
-      expect(sink.last[:data]).to eq({ name: "lookup", result: "resultado", status: "ok" })
+      expect(sink.first[:data]).to eq({ name: "lookup", arguments: { "q" => "x" }, call_id: "call_1" })
+      expect(sink.last[:data]).to eq({ name: "lookup", call_id: "call_1", result: "resultado", status: "ok" })
+    end
+
+    # "blocked" is what a GATE did to the call, not a word a tool's own answer may
+    # use: a data tool reporting a held order is a call that RAN.
+    it ":tool_result says blocked only for the envelope's gate refusal, never for a tool's own status" do
+      sink = []
+      builder.wire_callbacks(chat, state, recording_emit(sink))
+      chat.fire_tool_call(name: "get_order")
+      chat.fire_tool_result({ "status" => "blocked", "gate" => "fraud_review" })
+      expect(sink.last[:data]).to include(status: "ok")
+      expect(sink.last[:data]).not_to have_key(:gate)
+
+      chat.fire_tool_call(name: "add_to_cart", id: "call_2")
+      chat.fire_tool_result(Insika::ToolEnvelope::Blocked[{ "status" => "blocked", "gate" => "provenance" }])
+      expect(sink.last[:data]).to include(status: "blocked", gate: "provenance", call_id: "call_2")
     end
 
     # The:tool_result label used to be a closure local shared by

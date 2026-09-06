@@ -24,6 +24,13 @@ module Insika
     ToolTimeout = Class.new(StandardError)
     private_constant :ToolTimeout
 
+    # A gate's refusal. A plain Hash subclass: it reaches the model exactly as the
+    # `{status:, gate:, ...}` it always was, and the engine's own readers (the
+    # :tool_result outcome, the trace) recognize a refusal by CLASS — a data tool
+    # answering `{"status":"blocked","gate":"fraud_review"}` for a held order is
+    # not one, whatever keys it happens to use.
+    class Blocked < Hash; end
+
     def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:,
                    skip_side_effects: [], trace_recorder: nil, event_stream: nil)
       super(tool)
@@ -113,25 +120,41 @@ module Insika
 
       ledger = @state.respond_to?(:evidence_ledger) ? @state.evidence_ledger : nil
       known = ledger ? ledger.ids : []
+      optional = optional_params(tool)
       requirement.fetch("params").each do |param|
         value = args.key?(param) ? args[param] : args[param.to_sym]
+        # A parameter the schema marks optional and the model left out carries no
+        # id to ground — nothing to check (a REQUIRED one left out is still a
+        # block: the write would run without the id the gate exists for).
+        next if value.nil? && ledger && optional.include?(param)
+
         values = value.is_a?(Array) ? value : [value]
         values = [nil] if values.empty? && !ledger
         values.each do |id|
           next if ledger && known.include?(id.to_s)
 
-          return { "status" => "blocked", "gate" => "provenance", "param" => param,
-                   "value" => id.to_s, "instruction" => PROVENANCE_INSTRUCTION }
+          return Blocked[{ "status" => "blocked", "gate" => "provenance", "param" => param,
+                           "value" => id.to_s, "instruction" => PROVENANCE_INSTRUCTION }]
         end
       end
       nil
     end
 
+    # The wrapped tool's top-level parameters NOT in the schema's `required`
+    # (DataDefinedTool exposes its definition's schema; a code tool exposes none
+    # -> every declared parameter is treated as required).
+    def optional_params(tool)
+      return [] unless tool.respond_to?(:params_schema) && (schema = tool.params_schema).is_a?(Hash)
+
+      (schema["properties"] || {}).keys.map(&:to_s) - Array(schema["required"]).map(&:to_s)
+    end
+
     def emit_blocked(result)
+      task = @state.task # nil on a one-shot turn, like `trace` already assumes
       @event_stream&.emit(Insika::Event.new(
         type: :tool_blocked,
         data: { name: real_name, gate: result["gate"], param: result["param"] },
-        meta: { task_id: @state.task.id, session_id: @state.task.session_id }
+        meta: task ? { task_id: task.id, session_id: task.session_id } : {}
       ))
     end
 
@@ -145,7 +168,7 @@ module Insika
         session_id: @state.task.session_id,
         entry: { "turn" => @state.turn, "tool" => real_name, "call_id" => call_id.to_s,
                  "args" => args, "result" => result,
-                 "gate" => result.is_a?(Hash) ? result["gate"] : nil,
+                 "gate" => result.is_a?(Blocked) ? result["gate"] : nil,
                  "ms" => started ? ((monotonic - started) * 1000).round : nil,
                  "at" => Time.now.utc.iso8601 }
       )
@@ -202,8 +225,19 @@ module Insika
       return result unless Insika::Fence.enabled?(@state.profile)
       return result if result.is_a?(Hash) && (result[:error] || result["error"])
 
-      max = @state.respond_to?(:fence_max_chars) ? @state.fence_max_chars : nil
-      Insika::Fence.sanitize_value(result, max_chars: max || Insika::Fence::DEFAULT_MAX_CHARS)
+      max = (@state.respond_to?(:fence_max_chars) && @state.fence_max_chars) || Insika::Fence::DEFAULT_MAX_CHARS
+      return Insika::Fence.sanitize_value(result, max_chars: max) unless lean_evidence?(result)
+
+      # A lean evidence result: the LINES are third-party text, the IDS are keys.
+      # The ledger recorded the ids byte-exact and a presentation or a write joins
+      # on them, so NFKC must not touch them (a fullwidth digit in a SKU would
+      # stop matching the moment the model repeated it).
+      items = result["items"].map { |i| i.merge("line" => Insika::Fence.sanitize_text(i["line"].to_s, max_chars: max)) }
+      result.merge("items" => items)
+    end
+
+    def lean_evidence?(result)
+      evidence_spec && result.is_a?(Hash) && result["items"].is_a?(Array)
     end
 
     # ----   evidence ---------------------------------------------
@@ -268,6 +302,8 @@ module Insika
 
       @state.evidence_attachments ||= []
       @state.evidence_attachments.concat(attachments)
+      ledger = @state.respond_to?(:evidence_ledger) ? @state.evidence_ledger : nil
+      ledger.record_cards(attachments) if ledger.respond_to?(:record_cards)
     end
   end
 end

@@ -54,32 +54,51 @@ stored preference). `state:` is the precondition, loaded into the conversation
 ```yaml
 id: loja-chocolates-add-seen
 agent: loja-chocolates
+requires:
+  tools: [add_to_cart]
 state:
-  evidence: { ids: ["SKU-70-DARK"] }                  # -> the session evidence ledger
-  memory:   { facts: { size: "38" }, notes: ["prefers dark"] }   # -> the memory cell the turn reads
-  history:                                              # -> the transcript (stamped origin: engine)
-    - { role: user, content: "quero um presente" }
-    - { role: assistant, content: "tenho três opções: …" }
-  briefing: { fields: { cep: "01311-000" } }            # -> the session briefing
+  evidence:
+    ids: ["SKU-70-DARK"]
+    cards:
+      - { type: card, url: "https://shop.example/70", id: "SKU-70-DARK", caption: "Dark chocolate" }
+  memory: { facts: { preference: "dark chocolate" }, notes: [] }
+  history:
+    - { role: user, content: "quero chocolate amargo" }
+    - { role: assistant, content: "O chocolate 70% é SKU-70-DARK." }
+  briefing: { fields: { cep: "01311-000" } }
 turns:
-  - user: "adiciona esse último que você mostrou no carrinho"
+  - user: "adiciona uma unidade desse chocolate 70% no carrinho"
 expect:
   tools_called: [add_to_cart]
   never_calls: [search_products]
   reply_omits: ["SKU-70-DARK"]
 ```
 
-Only those four keys; anything else is refused at load. A persona case may carry
-`state` too — the simulated customer then starts from it.
+Only those four `state` keys are accepted by the case loader. A persona case may
+carry `state` too. Adapt the tool names, arguments and briefing fields to the agent.
 
-The eval stays a **client**: the runner never writes a store. Seeding goes through
+The evidence ledger is a runtime precondition, not a list shown to the model:
+include the relevant product and ID in `history` or the user's request. `cards`
+seeds the cards a search would have returned (each needs a `url` and an `id`; the
+id counts as seen), so a presentation case needs no lookup in the turn.
+
+With the HTTP transport, the eval stays a **client**: the runner never writes a
+store. Seeding goes through
 `POST /v1/conversations/:id/seed` (same Bearer as the turn, same id namespacing for a
 tenant), and the deployment accepts it **only while the platform setting
 `evals.seeding` is on** — off by default, because a seeded conversation is a
 fabricated precondition, and the doctor warns while it is on. With the setting off
-a seeded case is **skipped** with the reason, never run against an empty state and
-passed. A conversation that already has messages answers `409`: seeding a used one is
-a test bug, not a merge.
+the replay Runner **skips** seeded cases with a reason; it also skips when its
+transport has no seed support. Other seed errors fail the replay. In-process
+`GraphTransport` dispatches `seed_session` directly and bypasses `evals.seeding`;
+it needs a runtime exposing the graph. The persona
+Simulator surfaces seed refusal as an error instead of the Runner's skip result.
+
+A session with messages returns `409`. Replays default to `eval-<case-id>`; pass
+`--conv-map FILE` with a JSON mapping such as
+`{"loja-chocolates-add-seen":"eval-add-seen-run-2"}` to use a fresh ID on reruns.
+Seeded memory may share a tenant cell even with fresh IDs; see
+[the seed API](API.md#seeding-an-eval-conversation) for scope and payload details.
 
 #### Graders — what a turn's calls and reply are checked against
 
@@ -105,9 +124,16 @@ check, and the report names the one that failed.
 **Every positive has a negative.** A case that only says `tools_called: [add_to_cart]`
 passes an agent that also re-searched, or that echoed the SKU to the customer. Pin
 what a correct turn does *not* do — `never_calls`, `reply_omits`, `max_tool_calls` —
-in the same case. Snapshot cases graded this way turned out more stable and cheaper
-than simulated users for the same behaviors; keep the simulator for the conversations
-a snapshot cannot express.
+in the same case. Snapshots avoid the model calls needed to reconstruct the setup;
+use the simulator when later customer messages need to branch on the replies.
+
+`tools_called` confirms an attempted call, not a successful backend mutation.
+Arguments are collected for inspection; there is no generic argument or cart-state
+grader. `blocked_gates` needs completion statuses from the HTTP transport. The
+in-process `GraphTransport` records tool names and UI events, but not completion
+statuses or arguments. Neither transport counts `load_skill` / `load_knowledge` as
+tool calls. `ui_components` requires a nonempty selection; `no_ui`
+accepts absent UI events and events with zero items.
 
 ### `requires` — a case that cannot run here is skipped, not failed
 
@@ -336,14 +362,11 @@ The model only sees `case_id`, enumerated with the ids the tool can actually run
 (never a free string it could invent) — every **simulated** case in the store, the same
 `persona:` shape as above.
 
-**Safety is derived here too, but there is no swap yet.** The tool computes the
-target's reachable side-effect tools (`Evals::EvalProfile`, the same derivation the CLI
-uses) and **refuses outright** — naming the tools — if that list is non-empty. Unlike
-the CLI, nothing here actually swaps a side-effect tool for a dry-run: `Evals::
-EvalProfile.registry` (the overlay) exists for exactly that, but nothing calls it yet.
-So `run_persona_eval` only runs against **read-only** target agents today; wiring the
-overlay into an in-process turn (so a target WITH a write tool can be tested safely) is
-follow-up work, not something this tool claims to do.
+**Side effects are replaced for local graph runs.** The tool derives the target's
+reachable side-effect tools and builds a throwaway executor with recorder tools
+under those names. Read-only tools and the other graph collaborators are shared.
+If side effects are reachable but no graph was supplied, it refuses the run.
+This substitution prevents real writes; it does not prove a backend mutation.
 
 **Budget**: the persona model + judge model calls are the cost of running the eval,
 charged to the **calling** agent's own turn — never the target's (the target's own

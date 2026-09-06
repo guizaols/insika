@@ -39,7 +39,7 @@ module Insika
               source: id
             )
           end
-          compaction ? [compaction_fragment(compaction)] + fragments : fragments
+          compaction ? [compaction_fragment(compaction, request)] + fragments : fragments
         end
 
         private
@@ -127,10 +127,14 @@ module Insika
         # provider-agnostic (a mid-history "system" message is not). Priority
         # COMPACTION (59): the "oldest unit" — under budget it drops before any
         # verbatim message. source "compaction" -> its own context-trace category.
-        def compaction_fragment(state)
+        # Fenced when the agent has `fencing` on: the summary is model-written from
+        # customer text, and the notice promises the model this block is material.
+        def compaction_fragment(state, request)
+          summary = state["summary"].to_s
+          summary = Insika::Fence.sanitize_text(summary) if Insika::Fence.enabled?(request.profile)
           ContextFragment.build(
             content: { role: "user",
-                       content: "<conversation_summary>\n#{state['summary']}\n</conversation_summary>" },
+                       content: "<conversation_summary>\n#{summary}\n</conversation_summary>" },
             placement: :history,
             priority: Context::Priority::COMPACTION,
             source: "compaction"

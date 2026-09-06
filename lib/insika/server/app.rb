@@ -453,7 +453,10 @@ module Insika
 
         body = parse_body(req)
         tenant = req_tenant(req)
-        payload = { id: scoped_session_id(tenant, id), state: body.except(:customer) }
+        # the conversation id as the TURN will send it in `user` — the path
+        # segment arrives percent-encoded (the eval transport encodes "loja:c1").
+        conv = URI.decode_www_form_component(id)
+        payload = { id: scoped_session_id(tenant, conv), state: body.except(:customer) }
         (customer = Insika::Coercion.presence(body[:customer])) && (payload[:customer] = customer)
         command = Insika::Command.build(:seed_session, payload, transport: :http, tenant: tenant)
         session = dispatch_with_timeout(command)

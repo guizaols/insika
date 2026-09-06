@@ -14,11 +14,12 @@ module Insika
     ROLES = %w[user assistant].freeze
 
     # -> String, PII-redacted (what reaches the utility model follows the same
-    # redaction rule as what gets persisted).
+    # redaction rule as what gets persisted). Messages are store records: string
+    # keys, like everything at the persistence boundary.
     def render(messages)
       lines = Array(messages).each_with_index.filter_map do |m, i|
-        role = (m["role"] || m[:role]).to_s
-        content = (m["content"] || m[:content]).to_s
+        role = m["role"].to_s
+        content = m["content"].to_s
         next unless ROLES.include?(role) && !content.strip.empty?
 
         "[#{i}] #{role}: #{content}"

@@ -1970,19 +1970,8 @@ module Insika
     # indistinguishable from a single-tenant customer ref, and the Studio drill
     # must not list conversations as customers with a Forget button.
     def memory_tenant(task)
-      customer = command_customer(task)
-      return command_tenant(task) || session_scope(task.session_id) if customer.nil?
-
-      [command_tenant(task), customer].compact.join(":")
-    end
-
-    # The marked per-session scope : "chat:<session id>" -> cell
-    # "memory:chat:<session id>". nil for a one-shot turn (no session) — the
-    # MemoryStore applies _default.
-    def session_scope(session_id)
-      return nil if session_id.nil?
-
-      "#{MemoryStore::SESSION_TAG}:#{session_id}"
+      MemoryStore.scope_for(tenant: command_tenant(task), customer: command_customer(task),
+                            session_id: task.session_id)
     end
 
     # WS8 +  : stamp the customer (WS8 — the `forget_customer`

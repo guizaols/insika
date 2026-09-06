@@ -395,12 +395,17 @@ module Studio
     # `stored` = the definition being edited (nil when creating).
     def tool_patch(r, stored = nil)
       preserved = (stored || {}).slice(*UNEDITED_TOOL_FIELDS).compact
+      method = presence(r.params["method"]) || "GET"
+      # A stored side_effect describes the stored method. When the method changes
+      # (a GET turned POST) it is dropped so the store re-derives it — the write
+      # gate and the resume skip both read it.
+      preserved.delete("side_effect") unless method == (stored || {}).dig("request", "method")
       patch = preserved.merge(
         name: presence(r.params["name"]),
         description: r.params["description"].to_s,
         parameters: parse_parameters(r.params["parameters"]),
         request: {
-          method: presence(r.params["method"]) || "GET",
+          method: method,
           url: r.params["url"].to_s,
           headers: parse_kv_lines(r.params["headers"]),
           query: parse_kv_lines(r.params["query"]),
