@@ -9,6 +9,10 @@ RSpec.describe Insika::Context::Providers::FenceNotice do
     Insika::ContextRequest.new(session: nil, message: "oi", profile: prof, tenant: nil, vars: {}, checkpoint: nil)
   end
 
+  it "is not governed by the context_providers allowlist (the fencing flag is the opt-in)" do
+    expect(described_class.new.allowlisted?).to be(false)
+  end
+
   it "fencing off (the default) -> not enabled, produces nothing" do
     expect(described_class.new.enabled_for?(profile)).to be(false)
   end

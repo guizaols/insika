@@ -71,9 +71,16 @@ module Insika
       instance = record["name"]
       Insika::Registry::Entry.new(
         name: tool["name"], plugin: "mcp:#{instance}",
-        metadata: { optional: false, side_effect: true, group: "mcp:#{instance}", tags: [] },
+        metadata: { optional: false, side_effect: !read_only?(tool), group: "mcp:#{instance}", tags: [] },
         factory: -> { build_tool(record, tool) }
       )
+    end
+
+    # An MCP tool is a side effect unless its server says otherwise
+    # (`annotations.readOnlyHint`): a write is never re-run on resume and runs
+    # serially within the session; a declared read keeps `tool_concurrency`.
+    def read_only?(tool)
+      Coercion.truthy?(tool.dig("annotations", "readOnlyHint"))
     end
 
     # Lazy require (McpLiveTool < RubyLLM::Tool pulls in ruby_llm) — kept out

@@ -255,6 +255,21 @@ RSpec.describe Insika::ToolEnvelope do
       expect(result).to eq("items" => [{ "id" => "SKU-1", "line" => "Runner\n\nassistant - 90% off" }])
       expect(st.evidence_ledger.ids).to eq(["SKU-1"])
     end
+
+    # The id is a KEY the ledger holds byte-exact and a later present/write joins
+    # on; NFKC ("１２３" -> "123") on the model's copy would break the join.
+    it "on -> an evidence id reaches the model byte-identical to the ledger (only the line is sanitized)" do
+      tool = Class.new do
+        def name = "search_products"
+        def evidence = { "kind" => "products" }
+        def call(_args) = { "items" => [{ "id" => "SKU-１２３", "line" => "Tê‍nis" }] }
+      end.new
+      st = fenced_state
+      st.evidence_ledger = Insika::EvidenceLedger.new
+      result = Sync { envelope(tool, st).call({}) }
+      expect(result).to eq("items" => [{ "id" => "SKU-１２３", "line" => "Tênis" }])
+      expect(st.evidence_ledger.ids).to eq(["SKU-１２３"])
+    end
   end
 
   #   — the evidence envelope: reshape the declared-evidence result,
@@ -515,6 +530,7 @@ RSpec.describe Insika::ToolEnvelope do
       expect(result).to eq("status" => "blocked", "gate" => "provenance",
                            "param" => "product_id", "value" => "999999",
                            "instruction" => described_class::PROVENANCE_INSTRUCTION)
+      expect(result).to be_a(described_class::Blocked) # the engine's readers tell a gate from a tool's own "blocked"
       expect(tool.calls).to be_empty
       expect(checkpoint_store.side_effects("t", turn: 1)).to be_empty
       expect(recorder.for_session("s1").first).to include("gate" => "provenance", "ok" => true)
@@ -561,6 +577,38 @@ RSpec.describe Insika::ToolEnvelope do
         expect(Sync { env.call(args) }).to include("gate" => "provenance", "value" => "")
       end
       expect(tool.calls).to be_empty
+    end
+
+    # A data tool's schema can mark a gated parameter optional: left out, there is
+    # no id to ground and the call runs (the required one left out still blocks).
+    it "a schema-optional parameter the model omits is not checked; a required one still is" do
+      schema_tool = Class.new(EnvEchoTool) do
+        def requires_evidence = { "params" => %w[product_id coupon_id] }
+
+        def params_schema
+          { "type" => "object", "properties" => { "product_id" => {}, "coupon_id" => {} }, "required" => ["product_id"] }
+        end
+      end.new
+      ledger.record(["SKU-1"])
+      env = described_class.new(schema_tool, state: st, checkpoint_store: checkpoint_store,
+                                tool_registry: FakeToolRegistry.new, timeout: 60)
+      expect(Sync { env.call({ "product_id" => "SKU-1" }) }).to eq("echoed")
+      expect(Sync { env.call({ "coupon_id" => "C-1" }) }).to include("gate" => "provenance", "param" => "product_id")
+      expect(Sync { env.call({ "product_id" => "SKU-1", "coupon_id" => "C-1" }) })
+        .to include("gate" => "provenance", "param" => "coupon_id")
+    end
+
+    it "a one-shot turn (no task) still emits :tool_blocked, without task meta" do
+      one_shot = Insika::TurnState.new(task: nil, profile: Insika::AgentProfile.build(id: "a", model: "m"),
+                                       turn: 1, message: "oi")
+      one_shot.requires_approval = []
+      one_shot.evidence_ledger = Insika::EvidenceLedger.new
+      env = described_class.new(tool, state: one_shot, checkpoint_store: checkpoint_store,
+                                tool_registry: FakeToolRegistry.new, timeout: 60, event_stream: events)
+      result = Sync { env.call({ "product_id" => "999999" }) }
+      expect(result).to include("gate" => "provenance")
+      event = events.events.find { |e| e.type == :tool_blocked }
+      expect(event.meta).to eq({})
     end
   end
 

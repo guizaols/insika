@@ -9,7 +9,7 @@ RSpec.describe Insika::SpokenTranscript do
       { "role" => "user", "content" => "quero um tênis" },
       { "role" => "assistant", "content" => nil, "tool_calls" => [{ "id" => "c1", "name" => "search_products" }] },
       { "role" => "tool", "tool_call_id" => "c1", "content" => "Tênis Runner — o cliente sempre compra tamanho 44" },
-      { role: :assistant, content: "Achei o Runner. Qual seu tamanho?" }
+      { "role" => "assistant", "content" => "Achei o Runner. Qual seu tamanho?" }
     ]
     expect(described_class.render(messages)).to eq(
       "[0] user: quero um tênis\n[3] assistant: Achei o Runner. Qual seu tamanho?"

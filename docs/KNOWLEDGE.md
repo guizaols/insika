@@ -27,6 +27,13 @@ and an operator can see, edit and resolve all of it in the Studio. Only the
 optional FTS5 index remains, deferred with a measured trigger — see
 [What's not here yet](#whats-not-here-yet).
 
+Extraction reads only nonblank `user` and `assistant` text, retaining original
+message indexes. Direct tool payloads are excluded regardless of `fencing`;
+assistant paraphrases can still reach the extractor. The names and descriptions
+in the injected `<knowledge>` block are sanitized when
+[fencing](AGENTS.md#fencing--third-party-text-is-data-never-instructions) is on.
+The full body returned by `load_knowledge` is not fenced.
+
 ## The concept format
 
 One concept is one record — a markdown document with a YAML frontmatter

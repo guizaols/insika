@@ -23,6 +23,7 @@ into a deterministic prompt:
 | Provider | Block | Priority | Layer | Notes |
 |----------|-------|:--------:|-------|-------|
 | **Identity** | system | **100 — pinned** | identity | The agent's prompt files (global system files first). Never cut. |
+| **Fence notice** | system | **99 — pinned** | identity | Fixed instruction to treat contextual material as data; only with `fencing` on. |
 | **Skills** | `<available_skills>` | 80 | identity | Level-1 skill list, minus whatever is already eager — see [Skills](SKILLS.md). |
 | **Tool search** | `<available_tools>` | 70 | identity | Level-1 list of deferred tools — see [Tools](TOOLS.md). |
 | **Skill trigger** | `<active_skill>` | 85 | volatile | Level-2 bodies: the agent's `skills_eager` set, plus the ones whose `triggers:` match the message — see [Skills](SKILLS.md). |
@@ -106,10 +107,10 @@ budget first.
 With `memory` enabled, an agent gains a built-in `remember` tool for durable
 facts, and those facts (plus recent notes) are injected back into the prompt on
 later turns — **including turns in a different session**. Memory is scoped per
-agent, per `(tenant, customer)` when the message carries a `customer`, and per
-session otherwise — a session's own memory lives in a marked `memory:chat:<session id>`
-cell, never a bare one, so the Customers drill cannot read a conversation as a
-customer. This is distinct from *session history*, which is the transcript of one
+`(tenant, customer)` when the message carries a `customer`. Without a customer,
+it uses the tenant's cell; without either, it uses the session's marked
+`memory:chat:<session id>` cell. A fresh session therefore does not isolate
+memory when it still carries the same tenant. This is distinct from *session history*, which is the transcript of one
 conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
@@ -174,7 +175,7 @@ Attention is strongest at the end of the context: a goal stated only at the top
 is the first thing a 30-call turn forgets. So the recitation was **moved** there,
 not copied — the head never repeats it, and the turn pays for it once. It rides
 as a `user` message, like every other engine append inside a turn, so the system
-prefix stays byte-stable and the cache breakpoint at its end keeps hitting.
+identity prefix stays byte-stable.
 
 The `still missing` list is the point: the *model* sees which declared fields are
 still unanswered, so it stops re-asking for something already given. Stored keys
@@ -194,21 +195,21 @@ turns and resumes — a resumed conversation re-opens with the briefing intact.
 
 ## The provider prefix cache
 
-Two distinct caching mechanisms — don't conflate them:
+A stable prefix makes provider caching possible; eligibility, expiry and reported
+savings still depend on the provider.
 
-- **Automatic server-side prefix cache.** Some providers prefix-cache a stable
-  system prefix automatically, at no cost to configure. This works **only because**
-  the engine renders the system in two layers (below) and the volatile half sits
-  **under** the identity boundary, keeping the cacheable prefix byte-stable.
-  Anything that injects volatile content high in the system block breaks the cache.
-- **Manual cache breakpoints (opt-in).** With `prompt_caching` on **and** a
-  provider that supports explicit cache control, the system goes on the wire as
-  two text blocks: the identity layer with the cache breakpoint at its end, then
-  the volatile layer plain. A memory fact or a knowledge hit changing between
-  turns never re-writes the cached prefix. Safe for agents with `memory` and
-  `knowledge` on; what still costs a cache *write* every turn is a provider that
-  declares `layer :identity` while emitting per-turn bytes (`insika doctor`
-  flags it as `cache-layers`).
+- **Automatic prefix caching** needs no Insika flag. The identity-first render
+  order keeps changing memory and request data below the stable prefix.
+- **Explicit cache breakpoints** are opt-in via `"prompt_caching": true` on
+  the agent profile and applied only when the resolved provider is `anthropic`. With both system layers present,
+  Insika sends two text blocks: identity with `cache_control`, then volatile text
+  without it. With no volatile text there is one block; with no identity there is
+  no breakpoint. Other providers receive a plain system string.
+
+Custom context builders and hooks must keep `system_identity`, `system_volatile`
+and their joined `system` consistent. Without a split, or after a hook replaces
+only `system`, the chat builder falls back to treating the whole system as identity.
+That fallback cannot protect a volatile suffix from cache invalidation.
 
 Cache accounting surfaces as `cached_tokens` (reads) and `cache_creation_tokens`
 (writes), visible in telemetry and the Studio tokens chip.
@@ -219,13 +220,14 @@ The system block is partitioned into two cache layers:
 
 - **Identity** — bytes that change only on deploy/config edit: the persona
   prompt (`Prompt`), the level-1 skill list (`Skill`) and the deferred-tool
-  catalog (`ToolSearch`). This is the cacheable prefix.
+  catalog (`ToolSearch`), the fixed tool-discipline instructions and, when enabled,
+  the fencing notice. This is the cacheable prefix.
 - **Volatile** — bytes that may change per turn: memory, session history,
   triggered skill bodies, the `<request_context>`. Everything else.
 
 The layer is a **provider-class contract**, not profile data: `ContextProvider`
 declares `def layer = :volatile` (conservative — nothing gets pinned by
-accident) and the three identity builtins override to `:identity`. A pack does
+accident) and the identity providers override to `:identity`. A pack does
 not set it — a pack reorganizes *which content goes into the Prompt provider vs
 the volatile providers*. The Builder stamps the layer on every fragment at
 production, and the render order is **identity first, volatile after** — a
@@ -240,13 +242,14 @@ output must be byte-stable across turns).
 
 ### The observable cache: fingerprints and the invalidation reason
 
-Each turn, the Executor hashes the rendered prefix into a PII-free fingerprint
-chain — one SHA-256 per system category in render order, one for the tool
-schemas, one cumulative `prefix` — and compares it against the previous turn's
-entry. The **invalidation reason** is the first category whose bytes changed (or
-vanished); a turn whose prefix held reports nothing. History is deliberately
-excluded: a new user message is a divergence every turn, which would be noise,
-not a reason.
+Each turn, the Executor hashes the rendered identity and tool schemas into
+SHA-256 fingerprints and a cumulative `prefix`. The invalidation reason names
+the first changed part of that stable prefix. Volatile system categories have
+separate diagnostic digests: changes to memory, knowledge or request context do
+not report an identity-prefix invalidation. History is excluded.
+
+These fingerprints explain local prompt changes; they do not prove a provider
+cache hit. Use the provider's token accounting for that.
 
 The Studio surfaces it in two places: the **session Context card** shows the
 turn's cache-hit percentage and the `broke: <category>` line (plus the
@@ -255,9 +258,8 @@ cache tab with the per-agent hit series over time. The per-agent series lives
 in its own capped store, because a session does not stamp its author — the
 per-session trace cannot answer "cache-hit over time for *this* agent".
 
-With the prefix stable by construction, the existing `prompt_caching` breakpoint
-sits on bytes that stay put — the first (write) turn of a deployment pays the
-cache write once, every subsequent turn reads.
+A stable identity can be reused while the provider cache remains eligible and valid.
+A changed tool schema still invalidates the local prefix fingerprint.
 
 ## The volume
 

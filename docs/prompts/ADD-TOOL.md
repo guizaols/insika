@@ -30,6 +30,7 @@ with one turn. Nothing more.
 | The need | The kind | Where it lives |
 |---|---|---|
 | Call an external HTTP API | **data tool** (`data_tool` in the DSL block) | a row in SQLite, editable at runtime |
+| Show selected evidence cards | **presentation data tool** (`presentation`, no `request`) | the tool store; see [Tools](../TOOLS.md#presentation-tools-the-model-picks-ids-the-engine-shows-the-cards) |
 | Logic must run in-process | **code tool** (a Ruby class `< RubyLLM::Tool`) | the deployment image |
 | Adopt a whole external MCP server | **`mcp` instance** | durable config; its tools appear tagged `mcp:<name>` |
 | Teach a procedure (no data fetching) | **skill** (`skill "name", description:, instructions:`) | loads on demand via `load_skill` |
@@ -78,6 +79,12 @@ RULES:
   verbatim and arguments are checked against it at call time.
 - Author the FINAL url: the HTTP client does not follow redirects, and the egress guard
   cleared that host only.
+- For a write that accepts catalog IDs, declare `requires_evidence` for those
+  parameters and ensure an allowed lookup declares `evidence`. Mark the write
+  `side_effect: true`; the engine serializes marked writes within a session.
+- For presentation, follow the [card contract](../TOOLS.md#presentation-tools-the-model-picks-ids-the-engine-shows-the-cards):
+  pass known IDs to the presentation tool. Look up again if their cards are absent
+  from the session ledger or current information is needed.
 - Do not add a second capability "while we're here".
 
 ## Step 3 — Make sure it enters the tool-loop
@@ -96,8 +103,11 @@ instead of fighting it.
 ## Step 4 — Prove it with ONE turn
 
 Run one `reply()` whose message forces the call ("how many BRL is 1 USD right now?").
-The reply must use what the tool returned — if the model answers from imagination, the
-tool did not run: re-check Step 3 before touching the prompt.
+Inspect the trace to confirm the call and result; the reply alone is not proof.
+For a gated write, also verify that an unknown ID is blocked before any backend
+request. For presentation, verify the selected `insika.ui` items. Use
+[snapshot eval assertions](../EVALS.md#graders--what-a-turns-calls-and-reply-are-checked-against)
+when the flow needs a repeatable precondition.
 
 ## Step 5 — Self-check
 

@@ -63,10 +63,11 @@ module Insika
       assemble(fragments, cap, evicted)
     end
 
-    # Step 1: selection — enabled_for? AND the profile allowlist.
+    # Step 1: selection — enabled_for? AND the profile allowlist (for the
+    # providers the allowlist governs; see ContextProvider#allowlisted?).
     def select_providers(profile)
       @providers.select do |p|
-        p.enabled_for?(profile) && Allowlist.allows?(profile.context_providers, p.id)
+        p.enabled_for?(profile) && (!p.allowlisted? || Allowlist.allows?(profile.context_providers, p.id))
       end
     end
 

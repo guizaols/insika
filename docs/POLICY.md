@@ -34,7 +34,10 @@ Builtins cover tool-, skill-, and workflow-allowlisting, plus
 does not allow or deny but *tags* a tool as needing human approval. Set
 `approvals_required: [tool names]`; the gate then fires when the model tries to
 call that tool, suspending the turn until an operator approves it in the Studio.
-See [Security](SECURITY.md#human-approval).
+A data tool's `requires_evidence` check runs before this approval gate; an unknown
+ID is blocked without asking the operator. See
+[Tools](TOOLS.md#provenance-checking-ids-before-a-write) and
+[Security](SECURITY.md#human-approval).
 
 ## Layer 3: Guardrails (content safety)
 

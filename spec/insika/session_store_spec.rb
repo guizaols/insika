@@ -239,6 +239,18 @@ RSpec.describe Insika::SessionStore do
         expect(session.evidence["ids"].first).to eq("SKU-6")
       end
 
+      it "keeps the cards one per id (newest wins) and leaves the key absent until a card arrives" do
+        card = ->(id, url) { { "type" => "card", "url" => url, "caption" => nil, "id" => id } }
+        session = sessions.append_evidence("s", ids: %w[A], ungrounded: 0)
+        expect(session.evidence).not_to have_key("cards")
+
+        sessions.append_evidence("s", ids: [], ungrounded: 0, cards: [card.call("A", "https://cdn/a1")])
+        session = sessions.append_evidence("s", ids: [], ungrounded: 0,
+                                                cards: [card.call("B", "https://cdn/b"), card.call("A", "https://cdn/a2")])
+        # newest content wins; an id keeps its first position (so `last(MAX)` evicts the oldest ids)
+        expect(session.evidence["cards"]).to eq([card.call("A", "https://cdn/a2"), card.call("B", "https://cdn/b")])
+      end
+
       it "appends cleanly to an old record that never had the key" do
         backend.set("sessions", "session:legacy3", { "id" => "legacy3", "messages" => [],
                                                       "vars" => {}, "memory_refs" => [],

@@ -25,15 +25,17 @@ authoring writes (`:golden_written`, `:agent_file_written`, …), queue bookkeep
 channel delivery (`:channel_delivered` — see [Channels](CHANNELS.md))
 travel the same stream and are **ignored** by the bridge: they open no span and
 touch no instrument, because they are not part of a turn's latency or cost. Any
-other subscriber still sees them. The one mid-turn event the bridge does consume
-is `:tool_loop_intervened` — it feeds the `insika.tool.loop_intervened` counter
-(no span: the intervention is a fact about the turn, not a timed operation).
+other subscriber still sees them. Additional events feed counters without opening
+spans: `:tool_loop_intervened`, `:tool_blocked` and `:context_compacted`.
 
 They are worth subscribing to even so, because each is the ONLY record of
 something that left no task of its own behind:
 
 | Event | Data | What it answers |
 |---|---|---|
+| `:tool_blocked` | `name`, `gate`, `param` | a provenance gate refused a call before execution; no rejected value in this event |
+| `:ui` | `component`, `title`, `items`, `count`, `dropped` | the presentation selection, including customer-facing card content; see [API](API.md#tool-and-presentation-sse-events) |
+| `:session_seeded` | `session_id`, `tenant`, `keys` | an eval snapshot was loaded; no snapshot contents |
 | `:turn_coalesced` | `task_id`, `merged`, `arrivals[]` | the fragments a customer typed in a row arrived as separate messages, and when |
 | `:turn_steered` | `task_id`, `count`, `total` | a message arrived mid-run and was appended to the turn in flight |
 | `:turn_steer_released` | `task_id`, `released_as`, `count` | the run could not absorb it, so it became the turn `released_as` |
@@ -70,8 +72,9 @@ and correct while the customer got nothing, because delivery is a separate,
 retried, out-of-band step. `status: "failed"` means the reply is sitting in the
 outbox and the customer is still waiting.
 
-Counts, ids and times only — never message content. The text lives in the
-transcript, which is the surface that is allowed to carry it.
+Operational audit events use metadata rather than transcript bodies. Presentation
+`:ui` events intentionally contain customer-facing card content; tool-call events
+can contain arguments. Do not treat the whole event stream as content-free.
 
 The bridge speaks the standard the market already runs on: point any OTLP backend
 at Insika and a real turn shows up as a full trace, next to counters and histograms
@@ -81,6 +84,14 @@ you can chart without touching a span.
 backend config, no vendor file. It ships a stable set of attribute and instrument
 names, and the recipes below tell you what to chart against them — in whatever you
 already run.
+
+### Blocked tool calls
+
+`tool_blocked` carries `name`, `gate`, and `param`, with task/session correlation
+in event metadata. It never carries the rejected value. The `insika.tool.blocked`
+counter (unit `{call}`) uses the turn's agent/tenant/command labels plus
+`insika.tool` and `insika.gate`. Session traces keep the `gate` field alongside the
+masked result; `insika tools:report` lists blocked calls separately from errors.
 
 ## Contents
 
@@ -145,6 +156,7 @@ knows its outcome.
 | `insika.turn.duration` | histogram | `s` | same, when both timestamps are known |
 | `insika.tokens` | counter | `{token}` | the turn reported usage |
 | `insika.cost` | counter | `{USD}` | the turn's model is priced (see below) |
+| `insika.tool.blocked` | counter | `{call}` | a `tool_blocked` gate refusal |
 | `insika.tool.calls` | counter | `{call}` | a tool call completes |
 | `insika.tool.duration` | histogram | `s` | a `tool_call`/`tool_result` pair completes |
 | `insika.cache.hit_rate` | histogram | `%` | a turn reported billed prompt tokens (see below) |
@@ -291,7 +303,10 @@ climbing while `input` stays flat.
 `insika.tokens` filtered to `insika.token.type="cached"` over the same counter
 filtered to `input`. This is the number that moves your bill. For the per-turn
 distribution (does every turn hit, or do fleet averages hide cold agents?), chart
-`insika.cache.hit_rate` — p50 by `insika.agent`; a healthy agent sits near 100.
+`insika.cache.hit_rate` — p50 by `insika.agent`. Compare with that agent's baseline:
+cache eligibility, expiry and changing history affect the ratio. The
+[identity-prefix fingerprint](CONTEXT.md#the-observable-cache-fingerprints-and-the-invalidation-reason)
+explains identity/tool-schema changes; volatile category digests are separate.
 
 **Loop interventions**
 `insika.tool.loop_intervened`, rate, grouped by `insika.agent` and `insika.tool`.
@@ -460,11 +475,3 @@ is a worker respawn — the event a platform metrics API cannot see.
 module — no separate install, no separate versioning. When Insika extracts its
 subsystems into gems it becomes `insika-otel`; because the bridge is already a
 pure event-stream consumer with a single gem boundary, that cut lands clean.
-
-### Blocked tool calls
-
-`tool_blocked` carries `name`, `gate`, and `param`, with task/session correlation
-in event metadata. It never carries the rejected value. The `insika.tool.blocked`
-counter (unit `{call}`) uses the turn's agent/tenant/command labels plus
-`insika.tool` and `insika.gate`. Session traces keep the `gate` field alongside the
-masked result; `insika tools:report` lists blocked calls separately from errors.

@@ -64,10 +64,28 @@ RSpec.describe Insika::Evals::Sse do
     expect(r[:tool_calls]).to eq([{ "name" => "shipping_quote", "status" => nil }])
   end
 
-  it "a done frame with no matching added frame still records the call" do
-    raw = Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "x", result: "…", status: "ok" }))
+  # load_skill / load_knowledge end with a :tool_result but are never announced
+  # as a :tool_call — the in-process transport does not count them, so neither
+  # does the HTTP replay (`max_tool_calls: 1` must grade the same on both).
+  it "a done frame with no added frame (a system tool) is not a tool call" do
+    raw = Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "load_skill", result: "…", status: "ok" }))
     r = described_class.reduce(described_class.payloads(raw))
-    expect(r[:tool_calls]).to eq([{ "name" => "x", "status" => "ok" }])
+    expect(r[:tool_calls]).to eq([])
+  end
+
+  it "pairs added/done by call_id, so two same-named calls finishing out of order keep their own status" do
+    raw = stream(
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "add_to_cart", arguments: { "id" => "A" }, call_id: "c1" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_call, { name: "add_to_cart", arguments: { "id" => "B" }, call_id: "c2" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "add_to_cart", result: "…", status: "blocked",
+                                                                 gate: "provenance", call_id: "c2" })),
+      Insika::Server::Responses.frame_for(Ev.new(:tool_result, { name: "add_to_cart", result: "…", status: "ok", call_id: "c1" }))
+    )
+    r = described_class.reduce(described_class.payloads(raw))
+    expect(r[:tool_calls]).to eq([
+      { "name" => "add_to_cart", "arguments" => { "id" => "A" }, "status" => "ok" },
+      { "name" => "add_to_cart", "arguments" => { "id" => "B" }, "status" => "blocked", "gate" => "provenance" }
+    ])
   end
 
   it "surfaces a response.failed as the turn error" do

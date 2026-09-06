@@ -15,6 +15,7 @@ module Insika
 
         def layer = :identity
         def enabled_for?(profile) = Insika::Fence.enabled?(profile)
+        def allowlisted? = false # the `fencing` flag is the opt-in, not the allowlist
 
         def call(_request)
           [ContextFragment.build(content: NOTICE, placement: :system, pinned: true,

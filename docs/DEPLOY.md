@@ -188,7 +188,7 @@ insika doctor --json     # machine-readable (CI / monitoring)
 insika doctor --fix      # applies the safe autofixes and re-diagnoses
 insika env               # lists known keys + current values (secrets masked)
 insika tools:report      # tool audit over the stored traces: never-called
-                         # allowlisted tools, error rate > 30%, stale tools —
+                         # allowlisted tools, error rate > 30%, stale tools, gate refusals —
                          # read-only, the operator removes ([--agent ID] [--days N] [--json])
 ```
 
@@ -209,7 +209,12 @@ that costs 20%+ extra tokens per turn for no better instruction-following),
 see [Context](CONTEXT.md)), **eval seeding left on** (WARN — `evals.seeding`
 opens `POST /v1/conversations/:id/seed`, which writes a fabricated conversation
 state under the tenant token; fine while running snapshot evals, off in
-production — see [Evals](EVALS.md#state--a-case-starts-from-a-snapshot)), and
+production — see [Evals](EVALS.md#state--a-case-starts-from-a-snapshot)),
+**provenance and presentation tools without an allowed evidence data tool**
+(WARN — the check only sees stored data declarations; verify any code-tool source),
+**fencing off for agents exposed by relay/widget environment configuration**,
+**cache-layer declarations** (known volatile providers marked identity are errors;
+custom identity providers need a byte-stability review), and
 **skill drift** — a shared skill whose
 body names one store, a prompt file routing to a skill the agent cannot load, a broken
 companion pair, a stale `eager:` key (see

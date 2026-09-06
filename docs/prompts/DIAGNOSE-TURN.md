@@ -43,6 +43,9 @@ text), roughly **when**, and expected vs. actual. Reproduce once locally if chea
 | turn completed, customer got nothing | delivery is separate from the turn: check `channel_delivered` / `delivery_failed` | [Channels](../CHANNELS.md) |
 | freshly created agent returns empty turns | persona overflows the default `context_budget` (8000) | [Context](../CONTEXT.md) |
 | tool never called (or "missing") | not registered OR not allowed (`tools_allow`) | [Tools](../TOOLS.md) § troubleshooting |
+| `tool_blocked` with `gate: provenance` | ID absent from session evidence; look up before retrying | [Tools](../TOOLS.md#provenance-checking-ids-before-a-write) |
+| presentation shows no cards | inspect dropped IDs: `unknown`, `no_card`, `max`; a known ID may have no retained card | [API](../API.md#tool-and-presentation-sse-events) |
+| cache reuse dropped | compare identity/tool-schema fingerprints with provider cache token accounting | [Context](../CONTEXT.md#the-provider-prefix-cache) |
 | identical `tool_call` repeated, then abort | the `max_tool_repeat` loop guard | [Agents](../AGENTS.md) § limits |
 | model gave up after one empty result | `tool_persistence` off (it is ON by default) | same |
 | `turn_stuck` event | the agent declared it cannot proceed — escalation signal, not a bug | [Agents](../AGENTS.md) § stuck |

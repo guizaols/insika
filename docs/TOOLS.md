@@ -12,10 +12,10 @@ kinds, and the distinction that matters is **who can change one at runtime**:
 
 | | **Code tool** | **Data tool** | **MCP tool** |
 |---|---|---|---|
-| What | a Ruby class (`< RubyLLM::Tool`) | an HTTP call described by config, no Ruby | an MCP server's tool, called LIVE |
+| What | a Ruby class (`< RubyLLM::Tool`) | an HTTP call or card presentation described by config | an MCP server's tool, called LIVE |
 | Lives | in the deployment image | as a row in SQLite | on the MCP server, behind a live client |
 | Editable at runtime | no (shipped in the image) | **yes** (DSL / API / manifest / Studio) | **yes** — enable/edit the *instance* (DSL / CLI / API / JSON import / Studio); the server owns its own tools |
-| Reach for it when | logic must run in-process (file edit, shell, subagent) | calling an external HTTP API | adopting a whole external MCP server's toolset |
+| Reach for it when | logic must run in-process (file edit, shell, subagent) | calling an HTTP API or selecting evidence cards | adopting a whole external MCP server's toolset |
 
 **MCP tools are not data tools.** Configuring an enabled MCP **instance** (any
 surface below) is enough — its tools appear automatically, tagged
@@ -120,7 +120,7 @@ once, at ingestion — see the gotcha below before reaching for it:
   (`object/array/string/number/integer/boolean`); `oneOf`/`anyOf`/`allOf`/`$ref`/
   `if`/`then`/`else` are forbidden (not every provider supports them).
 - `side_effect` defaults from the method (GET/HEAD → false, else true) and drives
-  checkpoint/replay semantics (a completed side-effecting tool is not re-run on
+  serial execution within a session and checkpoint/replay semantics (a completed side-effecting tool is not re-run on
   resume — see [Architecture](ARCHITECTURE.md#durability-checkpoints-and-resume)).
 
 ### `halt_when`: when the answer is already out
@@ -199,12 +199,10 @@ backend, not of whoever calls it. Every agent sharing the tool gets the same val
 
 ## Evidence: the lean envelope and grounding
 
-A catalog tool returns products; the model should only ever quote the ones the tool
-actually returned — the store dies of a SKU the model invented. `evidence` is the
-declaration that makes "no claim without a tool ID" an engine rule instead of a
-prompt convention. One declaration does **both** jobs: the engine strips the result
-down to what the model sees (the lean envelope) **and** records every returned id on
-the session's evidence ledger. There is no "lean but not evidence" mode.
+An `evidence` declaration reshapes a tool result into a lean list and records its
+IDs in the session ledger. The ledger supplies the write gate, presentation tools
+and optional output grounding below. Declaring evidence alone does not prevent
+unsupported claims in the final answer.
 
 ```jsonc
 { "name": "search_products",
@@ -226,10 +224,15 @@ the session's evidence ledger. There is no "lean but not evidence" mode.
   never a null. A malformed evidence result becomes `{ "error": … }` back to the
   model — a correctable tool answer, exactly like a malformed call.
 - **Attachments** are the optional second half: `[{ "type": "card"|"image",
-  "url": "…", "caption": "…" }]` (≤ 16, url ≤ 500 chars, malformed dropped). They
+  "url": "…", "caption": "…", "id": "…" }]` (≤ 16, url ≤ 500 chars, malformed dropped). They
   **never** reach the model context or the transcript — they ride the channel
   delivery as an additive `attachments` key on the outbox payload, and the channel
-  (or its consumer) decides what a card looks like.
+  (or its consumer) decides what a card looks like. Supply an explicit `id` when
+  cards are not one-to-one with items in the same order. Without one, an attachment
+  takes its item's ID at the original position, before malformed cards are dropped.
+- Lean `line` passes through the tool-result sanitizer only when `fencing` is on.
+  Attachment captions are normalized to UTF-8 but are not fenced. See
+  [Fencing](AGENTS.md#fencing--third-party-text-is-data-never-instructions).
 - A **code tool** opts in the same way: it either returns `{ items, attachments }`
   directly and declares `evidence` in its registry metadata, or exposes an
   `evidence` reader. No declaration = today's tool behavior, byte for byte.
@@ -247,7 +250,12 @@ The full form is `{ "requires_evidence": { "params": ["product_id"] } }`.
 The list must be non-empty and name declared top-level parameters. Scalar values
 and every element of an array are converted to strings and compared exactly:
 `SKU-1` and `sku-1` are different IDs. IDs typed by a customer do not count.
-The ledger includes earlier turns and results already returned in the current turn.
+The ledger includes earlier turns and completed evidence results in the current
+turn, capped at the latest 1,000 distinct IDs. Every declared parameter the call
+carries must pass before any write occurs; a parameter the schema marks optional
+and the model leaves out has nothing to check, a required one left out blocks.
+Search first, then write in a later batch: a search and write in the same parallel
+batch have no dependency ordering guarantee.
 
 An unknown ID returns `status: "blocked"`, `gate: "provenance"`, the parameter,
 the value, and an instruction to search or look it up before retrying. The backend
@@ -263,7 +271,10 @@ gated data tool without an allowed data tool declaring `evidence`.
 ### Side effects in parallel batches
 
 With `limits.tool_concurrency > 1`, tools marked `side_effect` execute one at a time
-within a session. Reads still run concurrently, including while a write is running.
+within the session's runtime. Unmarked tools still run concurrently, including
+while a write is running. MCP tools are marked `side_effect: true` unless the server
+annotates them `readOnlyHint`; a read-only `POST` data tool needs an explicit
+`"side_effect": false` to keep its concurrency.
 A queued write holds no concurrency slot. Different sessions remain independent;
 backend rules such as quantity limits remain the backend's responsibility.
 
@@ -301,12 +312,9 @@ grounding mode: :flag, matcher: { sku: '\b[A-Z]{2,4}\d{4,8}\b' }
 
 ## Presentation tools: the model picks ids, the engine shows the cards
 
-Attachments used to be a side effect of evidence: every card a search returned rode
-the channel delivery, all of them, and the model had no way to say "show these three,
-not the ten I searched". Deployments compensated with inline markers in the text,
-parsed by regex on their side — which is where most of the hallucinated ids came
-from. A **presentation tool** is the engine's answer: a tool whose job is to *show*,
-declared like a data tool but with `presentation` instead of `request`.
+A **presentation tool** selects which evidence cards to show. Declare it with
+`presentation` instead of `request`; it runs in-process and is always
+`side_effect: false`. The model supplies IDs, never card URLs or captions.
 
 ```jsonc
 { "name": "present_products",
@@ -319,29 +327,35 @@ declared like a data tool but with `presentation` instead of `request`.
 ```
 
 Exactly one of `request` / `presentation`; `ids` must name a declared `array:string`
-parameter; `component` follows the tool-name rule. Stored, exported and edited like
-any data tool. When the model calls it the engine, deterministically and with no HTTP:
+parameter; `component` follows the tool-name rule. Create it through the DSL,
+manifest or API. The Studio form preserves an existing `presentation` declaration
+on save but does not expose its fields. Requested IDs are deduplicated in order
+and compared case-sensitively. The engine then:
 
 1. keeps only ids the session's **evidence ledger** has seen — the rest are dropped
    with reason `unknown` (an id the model invented, or the customer typed);
-2. joins each kept id to the card an evidence tool hoarded **this turn** (cards now
-   carry the `id` of the item they stand for); a known id with no card is dropped
-   with reason `no_card`;
+2. joins each kept id to the card an evidence tool returned **this session** — this
+   turn's first, then the last 64 the ledger kept (cards carry the `id` of the item
+   they stand for); a known id with no card is dropped with reason `no_card`;
 3. truncates to `max` — the overflow is dropped with reason `max`;
 4. records the selection on the turn and emits `:ui` on the stream (published as
    `insika.ui` on `/v1/responses`, as the `ui` frame on the web channel);
-5. answers the model `{ "shown": [ids], "dropped": [{ "id", "reason" }] }` — plus one
+5. answers the model with `shown` (IDs) and `dropped` (objects with `id` and `reason`) — plus one
    instruction when nothing could be shown ("name the products in text or search
    again").
 
 **Delivery.** When a turn made a presentation call, the outbox `attachments` are
 *exactly the presented cards*, in call order, each stamped with the call's `component`
 and `title`. A turn with no presentation call delivers every hoarded card, as before —
-a pack that declares no presentation tool sees no change.
+a pack that declares no presentation tool sees no change. An empty selection also
+suppresses that fallback: it emits `count: 0` and delivers no cards from that call.
+An earlier turn's ID can be shown without a fresh lookup while its card remains
+in the session's 64-card ledger. IDs and cards have separate caps: a known ID can
+still return `no_card`. Cards are stored snapshots, not a stock or price refresh.
 
-A presentation tool can only show what an evidence tool returned, so an agent that
-allows one and no tool declaring `evidence` would drop every id on every call;
-`insika doctor` warns about it (`presentation-tools`). The line that tells the model
+A presentation tool needs an evidence source to populate the session's cards.
+`insika doctor` warns when an agent allows presentation without an allowed evidence
+data tool (`presentation-tools`); it cannot verify a code-tool evidence source. The line that tells the model
 *when* to show cards ("show cards with present_products, ids only") is the pack's.
 
 Not here: partial rendering while arguments stream, per-component enrichment (price
@@ -352,7 +366,7 @@ such as suggestion chips (same mechanism, when a channel asks for it).
 
 A tool appears in the Studio panel and enters an agent's tool-loop when it is
 **registered** in the catalog **and** allowed by the agent's policy allowlist.
-Four ways to write a data tool into the store — all **hot** (registry and catalog
+Three ways to write a data tool into the store — all **hot** (registry and catalog
 reload, no restart):
 
 1. **DSL** — `data_tool(name:, …)` in a `Insika.agent { … }` block.
@@ -360,8 +374,6 @@ reload, no restart):
 3. **Manifest** — `POST /v1/tools/manifest`. Partial failure is isolated: one
    malformed tool becomes an `errors[]` entry; only a structural manifest error
    fails the whole request. The response reports `{ version, created, updated, errors }`.
-4. ~~MCP ingestion~~ — retired. An MCP server's tools are no
-   longer written into this store at all; see [MCP servers](#mcp-servers).
 
 ### The one gotcha: env/secret templating is manifest-only
 
@@ -383,7 +395,7 @@ at turn time, not ingestion).
 An MCP **instance** is durable config — transport, target, credentials, an
 `enabled` flag — held in its own store, separate from data tools. Once an
 instance is enabled, its tools appear in the catalog automatically (group
-`mcp:<instance>`, `side_effect: true`), and every call goes straight to the
+`mcp:<instance>`, `side_effect: true` unless annotated `readOnlyHint`), and every call goes straight to the
 server through a live, held client — the runtime never converts an MCP tool
 into a stored data tool.
 
@@ -490,9 +502,10 @@ held client, which does its own discovery on first use regardless of whether
 A model can ask for several tools in one step. By default the engine runs them one
 at a time. Set `limits[:tool_concurrency]` above 1 (see
 [Agents](AGENTS.md#tool_concurrency--parallel-tool-calls)) and the calls in that
-batch run concurrently, **at most N in flight**, on the turn's own reactor — so
-the wall-clock of a batch of slow data tools approaches the slowest call rather
-than their sum. The cap covers every enveloped tool of the turn, including the
+batch run concurrently, **at most N in flight**, on the turn's own reactor.
+Tools marked `side_effect` still execute one at a time per session; queued writes
+acquire that serial gate before taking a shared concurrency slot. See
+[Side effects](#side-effects-in-parallel-batches). The cap covers every enveloped tool, including the
 ones `tool_search` promotes mid-turn.
 
 It applies only to what the *model* fans out. Two primitives already parallelize
@@ -519,7 +532,7 @@ Turning it on changes three things, all of them worth knowing before you do:
 Approvals and concurrency are mutually exclusive per turn — the approval gate wins
 and the turn goes serial. That is a deadlock avoided, not a preference.
 
-## Egress: the SSRF guard (and its silent failure)
+## Egress: the SSRF guard
 
 Data tools make outbound HTTP, so every call passes through the **EgressGuard**, a
 Server-Side Request Forgery defense. The default posture is **strict: public
@@ -531,17 +544,10 @@ Server-Side Request Forgery defense. The default posture is **strict: public
 | `INSIKA_EGRESS_ALLOW_HTTP=1` | permit plain `http` — **loopback dev only** |
 | `INSIKA_EGRESS_ALLOW_PRIVATE=1` | permit private/loopback IPs — **dev only** |
 
-> ⚠️ **Egress failures are silent.** When a tool targets a blocked host (e.g. a
-> plain-`http` localhost backend without the opt-ins), the guard turns the block
-> into a `{ error: … }` returned **to the model** — the request never leaves the
-> process, yet the stream still emits a tool call, so the model narrates a
-> plausible failure and the conversation *looks* like it worked. You will not see
-> an exception.
->
-> **Always verify by the trace, never by the reply:** open the Studio session
-> viewer — a healthy call shows the request, args, and the backend's `200`; a
-> missing or errored call is almost always egress (host not in the allowlist, or
-> `http`/private without the opt-in).
+An egress rejection returns `{ error: … }` to the model without making the HTTP
+request. Inspect the session trace for the actual error; a plausible reply does
+not prove the backend ran. Provenance refusals instead report `status: "blocked"`
+and `gate: "provenance"`.
 
 Egress is **orthogonal** to registration and allowlisting: a tool can be
 registered, allowed, offered to the model, and still blocked at call time.
@@ -556,8 +562,9 @@ Work down this checklist:
    `data-tools` check is the only place that says so.
 2. **Allowed for this agent?** In `tools_allow` (or an allowed group), and not in
    `tools_deny`?
-3. **Egress?** If it *appears and is called* but "fails", open the trace — a
-   blocked call is ~99% egress.
+3. **Call refused or failed?** Inspect the trace. For `gate: "provenance"`, look up
+   the ID through an evidence tool before retrying. For an error, check its message
+   for schema, egress, timeout or backend failures.
 4. **URL literal?** For non-manifest tools, an unresolved `{{env.*}}` would have
    422'd at import — re-check the definition.
 
@@ -575,7 +582,7 @@ routes, the signed link and the retention/LGPD reach.
 The per-session trace answers "what did this conversation call"; nothing used to
 answer "what does this agent carry and never use". The report aggregates the
 stored traces per agent (tasks → sessions → `tool_traces`, the same read the
-Studio does) and flags three shapes:
+Studio does) and flags four shapes:
 
 - **`never_called`** — in `tools_allow`, zero calls in any stored trace. Dead
   weight: its schema ships on every request and buys nothing.
@@ -583,6 +590,8 @@ Studio does) and flags three shapes:
   the window (default 14 days). Either the tool is broken or the model cannot
   hold its contract.
 - **`stale`** — called at some point, but not once inside the window.
+- **`blocked`** — gate refusals in the window, counted by gate. These do not count
+  as conventional tool errors.
 
 ```bash
 insika tools:report                        # every stored agent
