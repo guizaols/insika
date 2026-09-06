@@ -199,6 +199,11 @@ module Insika
           llm: llm_context
         )
         bus = Insika::CommandBus.new
+        # a golden with `state:` seeds through the same bus the turn runs on
+        bus.register(:seed_session, Insika::Commands::SeedSession.new(
+                                       session_store: @graph.session_store, memory_store: @graph.memory_store,
+                                       event_stream: @graph.event_stream
+                                     ))
         bus.register(:send_message, Insika::Commands::SendMessage.new(
                                        profiles: @graph.profiles, session_store: @graph.session_store,
                                        task_store: @graph.task_store, executor: executor,

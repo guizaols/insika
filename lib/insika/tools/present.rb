@@ -72,13 +72,17 @@ module Insika
       #   unknown — the ledger never saw the id (the model made it up, or the
       #             customer typed it); no ledger on the state reads as unknown too —
       #             a check that cannot verify does not pass.
-      #   no_card — the id is known but no evidence tool hoarded a card for it
-      #             this turn (a text-only search result).
+      #   no_card — the id is known but no evidence tool returned a card for it
+      #             this session (a text-only search result, or a seed of ids alone).
       #   max     — beyond the declared cap.
+      # Cards come from this turn first, then from the ledger (the last few
+      # searches of the session) — "show me the second one" a turn later works.
       def select(ids, max)
-        known = @state.respond_to?(:evidence_ledger) ? Array(@state.evidence_ledger&.ids) : []
-        cards = @state.respond_to?(:evidence_attachments) ? Array(@state.evidence_attachments) : []
-        by_id = cards.each_with_object({}) { |c, h| h[c["id"]] ||= c if c["id"] }
+        ledger = @state.respond_to?(:evidence_ledger) ? @state.evidence_ledger : nil
+        known = Array(ledger&.ids)
+        turn_cards = @state.respond_to?(:evidence_attachments) ? Array(@state.evidence_attachments) : []
+        session_cards = ledger.respond_to?(:cards) ? Array(ledger.cards) : []
+        by_id = (turn_cards + session_cards).each_with_object({}) { |c, h| h[c["id"]] ||= c if c["id"] }
 
         shown = []
         dropped = []

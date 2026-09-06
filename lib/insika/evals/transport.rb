@@ -60,6 +60,7 @@ module Insika
       def reduce(payloads)
         text = +""
         tools = []
+        by_id = {}
         ui = []
         usage = nil
         error = nil
@@ -78,14 +79,19 @@ module Insika
             entry = { "name" => item["name"].to_s, "status" => nil }
             (args = arguments_of(item["arguments"])) && (entry["arguments"] = args)
             tools << entry
+            (id = item["call_id"]) && (by_id[id] = entry)
           when "response.output_item.done"
             item = o["item"] || {}
             next unless item["type"] == "function_call"
 
-            # Closes the FIRST still-open call of that name: the calls of one batch
-            # run concurrently and their `done` frames arrive in completion order.
-            entry = tools.find { |t| t["name"] == item["name"].to_s && t["status"].nil? }
-            entry ||= (tools << { "name" => item["name"].to_s, "status" => nil }).last
+            # Paired by call_id. An older engine's frames carry none: then the FIRST
+            # still-open call of that name (a batch runs concurrently and its `done`
+            # frames arrive in completion order). No `added` at all = a system tool
+            # the engine reports the end of but never announced (load_skill): not a
+            # tool call here, exactly as it is not one in the in-process transport.
+            entry = by_id[item["call_id"]] || tools.find { |t| t["name"] == item["name"].to_s && t["status"].nil? }
+            next unless entry
+
             entry["status"] = item["status"].to_s
             entry["gate"] = item["gate"].to_s if item["gate"]
           when "response.completed"

@@ -54,6 +54,20 @@ RSpec.describe Insika::McpToolRegistry do
       expect(entry.metadata).to include(optional: false, side_effect: true, group: "mcp:fs")
     end
 
+    # The server's own hint is the only thing that can say an MCP tool is a
+    # read: a declared read keeps tool_concurrency instead of the serial write slot.
+    it "a tool annotated readOnlyHint is not a side effect" do
+      seed
+      mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "inputSchema" => {},
+                                         "annotations" => { "readOnlyHint" => true } },
+                                       { "name" => "write_file", "inputSchema" => {},
+                                         "annotations" => { "readOnlyHint" => false } }])
+      registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { raise "never called" })
+
+      expect(registry.entries.map { |e| [e.name, e.metadata[:side_effect]] })
+        .to eq([["list_files", false], ["write_file", true]])
+    end
+
     it "excludes a disabled instance's cached tools" do
       seed(enabled: false)
       mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }])

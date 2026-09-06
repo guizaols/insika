@@ -87,7 +87,9 @@ In order, each with evidence:
 
 1. `curl https://<host>/up` → `{"status":"ok"}`.
 2. `bin/insika doctor` against the deployed volume (or via the platform's shell) —
-   relay its findings verbatim; fix errors before continuing.
+   relay its findings verbatim; fix errors before continuing. Check evidence sources
+   for gated writes/presentation, review the fencing warning, and leave
+   `evals.seeding` off after snapshot evals. See [Deploy](../DEPLOY.md#strict-config-and-insika-doctor).
 3. One authenticated turn:
 
 ```bash

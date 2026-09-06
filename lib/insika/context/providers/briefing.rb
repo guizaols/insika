@@ -47,8 +47,9 @@ module Insika
 
           missing = declared.reject { |name| Coercion.present?(fields[name]) }
           next_step = briefing["next_step"]
+          fenced = Insika::Fence.enabled?(request.profile)
 
-          [head_fragment(declared, fields), tail_fragment(missing, next_step)].compact
+          [head_fragment(declared, fields, fenced), tail_fragment(missing, next_step, fenced)].compact
         end
 
         private
@@ -70,9 +71,9 @@ module Insika
         # teaches the model nothing and still costs a cache invalidation).
         # Stored keys NOT in the declaration are never rendered (they stay in the
         # store and reappear if the pack re-declares them).
-        def head_fragment(declared, fields)
+        def head_fragment(declared, fields, fenced)
           known = declared.filter_map do |name|
-            "  #{name}: #{flatten(fields[name])}" if Coercion.present?(fields[name])
+            "  #{name}: #{flatten(fields[name], fenced)}" if Coercion.present?(fields[name])
           end
           return nil if known.empty?
 
@@ -98,10 +99,10 @@ module Insika
         # A `user` message, like every other engine append inside a turn
         # (LoopDetector, TurnBudget): the system prefix stays byte-stable, so the
         # cache breakpoint at its end keeps hitting.
-        def tail_fragment(missing, next_step)
+        def tail_fragment(missing, next_step, fenced)
           lines = []
           lines << "still missing: #{missing.join(', ')}" unless missing.empty?
-          lines << "next step: #{flatten(next_step)}" if Coercion.present?(next_step)
+          lines << "next step: #{flatten(next_step, fenced)}" if Coercion.present?(next_step)
           return nil if lines.empty?
 
           block = <<~BLOCK.strip
@@ -115,9 +116,11 @@ module Insika
         end
 
         # utf8 the value and flatten newlines/whitespace so a value can never
-        # break the block's line structure.
-        def flatten(value)
-          Coercion.utf8(value.to_s).gsub(/\s+/, " ").strip
+        # break the block's line structure. Fenced (agent's `fencing` on): a stored
+        # value is customer- or model-authored — the same sanitizer memory gets.
+        def flatten(value, fenced)
+          s = fenced ? Insika::Fence.sanitize_text(value.to_s) : Coercion.utf8(value.to_s)
+          s.gsub(/\s+/, " ").strip
         end
       end
     end

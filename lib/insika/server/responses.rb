@@ -104,6 +104,10 @@ module Insika
               { type: "response.output_text.delta", delta: event.data[:delta].to_s })
         when :tool_call
           item = { type: "function_call", name: event.data[:name].to_s }
+          # The provider's call id, as the OpenAI item carries it: `added` and `done`
+          # are TWO frames of ONE call, and a consumer pairs them by this. Absent when
+          # the emitter had none.
+          (id = event.data[:call_id]) && (item[:call_id] = id.to_s)
           # The call's arguments, as the OpenAI item carries them (a JSON string).
           # Absent when the emitter had none to report.
           (args = event.data[:arguments]) && (item[:arguments] = args.is_a?(String) ? args : JSON.generate(args))
@@ -113,9 +117,11 @@ module Insika
           # this frame the stream carried tool NAMES only, so nothing outside the
           # process could tell "the tool ran" from "a gate refused it" or "it errored".
           # The result body itself stays inside: it is the model's input, not the
-          # consumer's answer.
+          # consumer's answer. Same `call_id` as the `added` frame — a consumer that
+          # counts calls counts `added`, not both.
           item = { type: "function_call", name: event.data[:name].to_s,
                    status: (event.data[:status] || "ok").to_s }
+          (id = event.data[:call_id]) && (item[:call_id] = id.to_s)
           (gate = event.data[:gate]) && (item[:gate] = gate.to_s)
           sse("response.output_item.done", { type: "response.output_item.done", item: item })
         when :task_completed

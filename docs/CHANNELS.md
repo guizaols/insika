@@ -153,17 +153,19 @@ The reply is SSE on that same connection — five frame types, and an unknown on
 safe to ignore:
 
 ```
-event: delta     data: {"delta":"Seu pedido "}     the answer, token by token
+event: delta     data: {"delta":"Seu pedido chegou."}  the published answer
 event: working   data: {"name":"order_status"}     a tool is running
-event: ui        data: {"component":"product_cards","title":"…","items":[{"id","url","caption"}]}
+event: ui        data: {"component":"product_cards","title":"Chocolate","items":[{"id":"SKU-1","url":"https://shop.example/1","caption":"Dark chocolate"}]}
                                                    a presentation tool picked cards to show
 event: done      data: {}                          the turn ended
 event: error     data: {"message":"…"}             it ended badly
 ```
 
 The shipped widget renders `ui` as a plain list of caption + link under the
-conversation; a host page that wants real cards restyles or replaces that — the
-protocol is the frame. See [presentation tools](TOOLS.md#presentation-tools-the-model-picks-ids-the-engine-shows-the-cards).
+conversation (only an `http(s)` url becomes a link; any other scheme renders as
+text); a host page that wants real cards restyles or replaces that — the
+protocol is the frame. An empty selection sends `items: []`. Unlike `/v1/responses`,
+the web frame omits `count` and `dropped`. See [presentation tools](TOOLS.md#presentation-tools-the-model-picks-ids-the-engine-shows-the-cards).
 
 **The engine issues the session id and the client never proposes one.** `POST
 /messages` with an id nobody minted is a `404`, never a new conversation: on an
@@ -321,12 +323,14 @@ stays internal unless the agent opts in. That contract is
 [the edge contract](ARCHITECTURE.md#what-crosses-the-edge), and it is why you can
 forward `content` straight to the customer.
 
-The last balloon may also carry `attachments`: `[{ "type", "url", "caption", "id" }]`,
+The last balloon may also carry `attachments`: objects with `type`, `url`, `caption`
+and an optional `id`,
 the cards an evidence tool returned (see [Evidence](TOOLS.md#evidence-the-lean-envelope-and-grounding)).
 When the turn called a **presentation tool**, the list is exactly the cards the model
 selected, in call order, each also carrying the `component` and `title` of that call;
-otherwise it is every card the turn's evidence tools returned. Ignore the key and
-nothing changes.
+otherwise it is every card the turn's evidence tools returned. An empty presentation
+selection suppresses that automatic fallback. Ignore the key if the consumer only
+supports text.
 
 ### Delivery policy
 

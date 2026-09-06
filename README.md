@@ -18,7 +18,9 @@ deployment.
 - **Drop-in `/v1/responses`** — SSE streaming and usage, the shape existing clients already speak.
 - **Durable & resumable** — every turn checkpoints; a crash resumes without repeating side-effects.
 - **Agents as data** — agents, prompts, skills and tools are editable at runtime (UI or API), no redeploy.
-- **Tools & skills** — code tools, data-defined tools, MCP import; skills load on demand.
+- **Tools & skills** — code, HTTP data and live MCP tools; skills load on demand.
+- **Evidence-backed actions** — ID checks before writes, serial side effects per session, and selected evidence cards ([Tools](docs/TOOLS.md)).
+- **Snapshot evals** — seed a case's starting state and check calls, refusals, replies and cards ([Evals](docs/EVALS.md)).
 - **Safe by default** — content-safety guardrails, an egress guard, confined execution, approvals, edge limits.
 - **Observable** — an event stream, per-session tool-call traces, optional OpenTelemetry.
 - **~0.4 ms of engine per turn** — p50 overhead on a neutral, key-free benchmark you can rerun yourself ([methodology](docs/BENCHMARK.md)).
@@ -106,7 +108,7 @@ navigates by.
 
 - [Agents](docs/AGENTS.md) — the AgentProfile and every key on it; create and edit at runtime.
 - [Limits and policy](docs/POLICY.md) — the five layers: allowed tools, approvals, guardrails, edge limits, reasoning.
-- [Tools](docs/TOOLS.md) — code vs data vs MCP tools, manifests, egress troubleshooting.
+- [Tools](docs/TOOLS.md) — code, HTTP, MCP and presentation tools; evidence gates and serial writes.
 - [Skills](docs/SKILLS.md) — the SKILL.md format and progressive loading.
 - [Context](docs/CONTEXT.md) — what fills a turn's prompt; budget, eviction, memory.
 - [Workflows](docs/WORKFLOWS.md) — deterministic orchestration of several agents: the five patterns, and when to let the model choose instead.
@@ -140,7 +142,7 @@ navigates by.
 
 **Improve**
 
-- [Evals](docs/EVALS.md) — the cases that grade an agent: rubrics, the judge panel, and the pre-merge gate.
+- [Evals](docs/EVALS.md) — snapshot cases, tool/UI assertions, rubrics, the judge panel and the pre-merge gate.
 - [Refinement](docs/REFINEMENT.md) — read an agent's own traffic back as a ranked report of what broke.
 - [Outcomes and follow-ups](docs/OUTCOMES.md) — what the traffic was worth in business terms, and the tool that comes back on a promise.
 - [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path.
