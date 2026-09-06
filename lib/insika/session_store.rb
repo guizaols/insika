@@ -101,12 +101,15 @@ module Insika
     # appends this turn's evidence (ids + ungrounded delta) to the
     # session record. RMW like append_messages — the SessionActor serializes
     # same-session turns; the copy is in the method comment.
-    def append_evidence(id, ids:, ungrounded:)
+    def append_evidence(id, ids:, ungrounded:, cards: [])
       record = fetch!(id)
       ev = record["evidence"] ||= { "ids" => [], "ungrounded" => 0 }
       fresh = (ev["ids"] + Array(ids).map(&:to_s).reject(&:empty?)).uniq.last(EvidenceLedger::MAX_IDS)
       ev["ids"] = fresh
       ev["ungrounded"] = ev["ungrounded"].to_i + ungrounded.to_i
+      # the cards those ids came with (one per id, newest wins) — what a
+      # presentation tool joins on in a LATER turn. Absent until a card arrives.
+      ev["cards"] = EvidenceLedger.merge_cards(ev["cards"], cards) unless Array(cards).empty?
       record["updated_at"] = timestamp
       @store.set(SCOPE, key_for(id), record)
       to_session(record)

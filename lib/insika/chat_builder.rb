@@ -419,7 +419,7 @@ module Insika
           args = tool_call.arguments || {}
           emit.call(:knowledge_retrieved, { name: args["name"] || args[:name], agent: state.profile.id })
         else
-          emit.call(:tool_call, { name: tool_call.name, arguments: tool_call.arguments })
+          emit.call(:tool_call, { name: tool_call.name, arguments: tool_call.arguments, call_id: tool_call.id }.compact)
         end
       end
 
@@ -429,7 +429,8 @@ module Insika
         detector&.tool_result(result)
         budget.tool_result(result)
         result = @hooks.run_after(:tool, result)
-        emit.call(:tool_result, { name: state.current_tool_name, result: result.to_s }.merge(tool_outcome(result)))
+        emit.call(:tool_result, { name: state.current_tool_name, call_id: state.current_tool_call&.id,
+                                  result: result.to_s }.compact.merge(tool_outcome(result)))
       end
 
       # both appends land at the batch boundary (the Nth tool result closing) —
@@ -444,15 +445,13 @@ module Insika
 
     # How the call ENDED, for the :tool_result event (the edge publishes it and the
     # evals grade it): the envelope's `{error:}` -> "error"; a gate that held the
-    # call `{status: "blocked", gate:}` -> "blocked" + which gate; anything else
-    # ran -> "ok". Read off the RAW result, before it is stringified for the event.
+    # call (ToolEnvelope::Blocked) -> "blocked" + which gate; anything else ran ->
+    # "ok" — including a tool whose OWN answer happens to say "blocked". Read off
+    # the RAW result, before it is stringified for the event.
     def tool_outcome(result)
+      return { status: "blocked", gate: result["gate"]&.to_s }.compact if result.is_a?(Insika::ToolEnvelope::Blocked)
       return { status: "ok" } unless result.is_a?(Hash)
       return { status: "error" } if result.key?(:error) || result.key?("error")
-
-      if (result[:status] || result["status"]).to_s == "blocked"
-        return { status: "blocked", gate: (result[:gate] || result["gate"])&.to_s }.compact
-      end
 
       { status: "ok" }
     end

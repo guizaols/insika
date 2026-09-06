@@ -123,6 +123,14 @@ RSpec.describe Insika::Server::Responses do
       expect(bare).not_to include("arguments")
     end
 
+    # `added` and `done` are two frames of ONE call: the consumer pairs (and counts) them by call_id.
+    it "both item frames carry the provider's call_id when the emitter has one" do
+      added = described_class.frame_for(ev(:tool_call, { name: "x", call_id: "call_9" }))
+      done = described_class.frame_for(ev(:tool_result, { name: "x", result: "…", status: "ok", call_id: "call_9" }))
+      expect(JSON.parse(added[/^data: (.*)$/, 1])["item"]).to include("call_id" => "call_9")
+      expect(JSON.parse(done[/^data: (.*)$/, 1])["item"]).to include("call_id" => "call_9")
+    end
+
     it ":tool_result -> response.output_item.done with how the call ended (status + gate), never the body" do
       ok = described_class.frame_for(ev(:tool_result, { name: "x", result: "secret body", status: "ok" }))
       expect(ok).to include("event: response.output_item.done")

@@ -135,7 +135,7 @@ module Insika
 
     def http_like?(transport) = %w[http sse].include?(transport.to_s)
 
-    # -> [{"name","description","inputSchema"}] string-keyed, dropping any
+    # -> [{"name","description","inputSchema"[,"annotations"]}] string-keyed, dropping any
     # entry without a name (nothing to register a Registry::Entry under).
     def normalize_tools_cache(tools)
       Array(tools).filter_map do |t|
@@ -143,7 +143,10 @@ module Insika
         name = presence(h["name"])
         next nil if name.nil?
 
-        { "name" => name, "description" => h["description"].to_s, "inputSchema" => h["inputSchema"] || {} }
+        cached = { "name" => name, "description" => h["description"].to_s, "inputSchema" => h["inputSchema"] || {} }
+        # the server's own hints (readOnlyHint decides side_effect at registration)
+        cached["annotations"] = h["annotations"] if h["annotations"].is_a?(Hash)
+        cached
       end
     end
 

@@ -83,6 +83,21 @@ RSpec.describe Insika::Tools::Present do
     expect(out["dropped"]).to eq([{ "id" => "A", "reason" => "unknown" }])
   end
 
+  # "me mostra o segundo" a turn later: nothing hoarded THIS turn, the card is on
+  # the session ledger (flushed with the ids by the search that returned it).
+  it "shows a card the session ledger kept from an earlier turn" do
+    sessions = Insika::SessionStore.new(store: Insika::Stores::Memory.new)
+    sessions.create(id: "s1")
+    sessions.append_evidence("s1", ids: %w[A], ungrounded: 0, cards: [card("A")])
+    st = state(known: [], cards: [])
+    st.evidence_ledger = Insika::EvidenceLedger.new(store: sessions, session_id: "s1")
+
+    out = tool(st).execute(product_ids: %w[A B])
+    expect(out["shown"]).to eq(%w[A])
+    expect(out["dropped"]).to eq([{ "id" => "B", "reason" => "unknown" }])
+    expect(st.presentations.first["items"]).to eq([card("A")])
+  end
+
   it "never raises: a state with nothing on it is an error the model can read" do
     t = described_class.new(definition: definition, event_stream: nil)
     expect(t.execute(product_ids: %w[A])["dropped"]).to eq([{ "id" => "A", "reason" => "unknown" }])

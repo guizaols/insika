@@ -622,6 +622,15 @@ RSpec.describe Insika::Server::App do
       expect(command.meta[:transport]).to eq(:http)
     end
 
+    # The eval transport percent-encodes the conversation id into the path; the
+    # turn sends it raw in `user`. Both must land on the same session.
+    it "decodes a percent-encoded conversation id (the turn's `user` is the raw one)" do
+      bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
+      call(seed_app(bus), "POST", "/v1/conversations/loja-a%3Aeval-c1/seed", body: JSON.generate(state))
+
+      expect(bus.dispatched.first.payload[:id]).to eq("loja-a:eval-c1")
+    end
+
     it "without a customer the payload carries none" do
       bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
       call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed", body: JSON.generate(state))

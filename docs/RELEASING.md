@@ -19,12 +19,10 @@ is invisible to it. Do not publish on rspec alone.
 3. Every new `lib/` file is **tracked in git**. The gemspec's `files` come from
    `git ls-files`: an untracked file builds without a warning and the installed
    gem fails at `require` — this is exactly the failure this proof exists to catch.
-4. **Owed for the next minor after the fencing release:** flip the `fencing`
-   default to ON (`AgentProfile.build` `fencing: nil` reads OFF today). Before the
-   flip, run the golden suite with `fencing true` on one store agent and record
-   the delta in `evals/internal/BASELINE.md` — the goldens were baselined on
-   unfenced bytes, and a flipped default without that number is an unmeasured
-   behaviour change. Then move the `fencing` entry in `CHANGELOG.md` to **Changed**.
+4. If changing the `fencing` default (currently off), first run the deployment's
+   golden cases with it enabled, retain the comparison report, and document the
+   behavior change in `CHANGELOG.md`. A default change needs evaluation evidence;
+   a scheduled version number alone is not the release gate.
 
 ## Cut the gem
 

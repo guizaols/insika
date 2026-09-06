@@ -38,6 +38,10 @@ decides; the engine never applies its own proposal.
 5. Approved facts join the customer's memory cell and are injected by the
    Memory provider on the next turn of any session of that customer.
 
+The extraction transcript contains only nonblank `user` and `assistant` text,
+with original message indexes preserved. Tool payloads are excluded regardless
+of `fencing`; an assistant's repetition of tool text can still be included.
+
 ## Enabling it — the `distill:` block
 
 Distillation is pack data on the agent, exactly like `refinement:` or

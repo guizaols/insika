@@ -1753,6 +1753,25 @@ RSpec.describe Studio::App do
     expect(bus.last(:write_data_tool).payload[:requires_evidence]).to be_nil
   end
 
+  # The stored side_effect described the stored method. A GET turned POST must be
+  # re-derived by the store, or the write skips the gate and re-runs on resume.
+  it "drops the stored side_effect when the form changes the HTTP method" do
+    tool = data_tool(name: "cart", side_effect: false)
+    app, bus = build_app(data_tools: [tool])
+    client = login(app)
+    csrf = csrf_from(client.get("/tools/def/cart").body)
+
+    client.post("/tools/def/cart", params: {
+      "name" => "cart", "description" => "Add", "method" => "GET", "url" => "https://app.test/cart", "_csrf" => csrf
+    })
+    expect(bus.last(:write_data_tool).payload["side_effect"]).to be(false)
+
+    client.post("/tools/def/cart", params: {
+      "name" => "cart", "description" => "Add", "method" => "POST", "url" => "https://app.test/cart", "_csrf" => csrf
+    })
+    expect(bus.last(:write_data_tool).payload).not_to have_key("side_effect")
+  end
+
   it "POST /tools/def/:name/delete dispatches :delete_data_tool" do
     app, bus = build_app(data_tools: [data_tool(name: "cep")])
     client = login(app)

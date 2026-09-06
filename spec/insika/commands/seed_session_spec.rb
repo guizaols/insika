@@ -49,6 +49,16 @@ RSpec.describe Insika::Commands::SeedSession do
     expect(event_stream.events.map(&:type)).to eq([:session_seeded])
   end
 
+  # A snapshot can carry the cards a search would have returned, so a case can
+  # grade a presentation without a lookup in the turn. A card's id counts as seen.
+  it "seeds evidence cards with their ids (a presentation tool can show them)" do
+    card = { "type" => "card", "url" => "https://cdn/p2", "caption" => "Kit", "id" => "p2" }
+    session = seed(id: "eval-c2", state: { "evidence" => { "ids" => %w[p1], "cards" => [card, { "caption" => "no url" }] } })
+
+    expect(session.evidence["ids"]).to eq(%w[p1 p2])
+    expect(session.evidence["cards"]).to eq([card])
+  end
+
   # No tenant, no customer -> the marked per-session cell, exactly where the
   # Executor reads memory for a plain turn on this session.
   it "writes memory into the session cell when there is no tenant and no customer" do

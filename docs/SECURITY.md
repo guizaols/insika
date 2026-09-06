@@ -207,24 +207,29 @@ form. See [Agents §Layer 3](POLICY.md#layer-3-guardrails-content-safety).
 
 ## Third-party text is data (fencing)
 
-The input guardrail covers what the **customer** types. What a **tool** returns,
-what a **fact** in `<memory>` says and what a learned `<knowledge>` concept
-describes are third-party text too — a merchant's product description, a review,
-an FAQ body — and the model reads them byte for byte. Per-agent `fencing` (opt-in
-this release) runs one sanitizer at the one seam every tool result passes on its
-way to the model, and on the memory/knowledge blocks: NFKC normalization,
-invisible and control characters removed, transcript- and tool-call-shaped tags
-(`<system>`, `<assistant>`, `<tool_result>`, `<|im_start|>`) and copies of the
-engine's own labels (`</fact>`, `</memory>`) replaced by `[removed]`, a forged
-`assistant:` turn marker after a blank line defused, each string capped. A fixed
-sentence under the identity tells the model those blocks are material, never
-instructions. Errors the engine authors pass untouched.
+Input guardrails cover the incoming message. The opt-in `fencing` flag also
+sanitizes ordinary tool result strings, memory text and the injected knowledge
+names/descriptions, and places a
+fixed notice under the identity. It reduces known markup and Unicode tricks;
+it does not make arbitrary third-party instructions safe.
 
-Independent of the flag: an evidence tool's `line`/`caption` are always
-sanitized, and the memory distiller and knowledge extractor read **only
-user/assistant text** — a product description can never become a customer fact.
-`insika doctor` warns when a customer-facing agent (behind the relay or the
-widget) has `fencing` off. See [Agents §fencing](AGENTS.md#fencing--third-party-text-is-data-never-instructions).
+The user/assistant-only extraction filter applies even when fencing is off.
+Attachment captions and `load_knowledge` bodies are not fenced. The extraction
+filter excludes direct tool messages,
+but assistant paraphrases can still become extraction input. See
+[Agents](AGENTS.md#fencing--third-party-text-is-data-never-instructions) for the
+exact scope, exceptions, default and size cap.
+
+## Write provenance and serial execution
+
+A data tool's `requires_evidence` gate checks IDs against the session ledger
+before approval or backend execution. A known ID proves a prior lookup; it does
+not authorize access or establish current stock, price or quantity limits.
+Those checks remain the backend's responsibility.
+
+Tools marked `side_effect` execute one at a time within a session, including in
+parallel batches. This is not a cross-session or distributed backend lock.
+See [Tools](TOOLS.md#provenance-checking-ids-before-a-write).
 
 ## Human approval
 
@@ -263,7 +268,7 @@ defense-in-depth: without it, `ALLOW_PRIVATE` opens *any* private destination.
 > the request never leaves the process, and the conversation *looks* fine. Verify
 > tool health by the Studio session **trace** (a healthy call shows the backend's
 > `200`), never by the model's reply. Full detail in
-> [Tools §Egress](TOOLS.md#egress-the-ssrf-guard-and-its-silent-failure).
+> [Tools §Egress](TOOLS.md#egress-the-ssrf-guard).
 
 ## Sandbox: confined execution
 
