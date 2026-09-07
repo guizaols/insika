@@ -8,6 +8,14 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-07
+
+The commerce-agent wave: the engine now enforces what the prompt used to ask for —
+a write names only IDs a lookup returned, the model picks which cards to show and
+the engine shows them, third-party text can be fenced before the model reads it,
+and an eval case can start from a seeded snapshot. Additive on the wire: `/v1`
+gains frames and keys, none change meaning.
+
 ### Added
 
 - **Write provenance** — `requires_evidence` on HTTP data tools checks declared
@@ -33,8 +41,10 @@ it is released. Entries land with the pull request that makes the change.
 - **Fencing** — opt-in per agent through the DSL, payload or Studio. Sanitizes
   ordinary tool result strings, memory text and injected knowledge summaries, and adds a fixed
   identity-layer notice. The tool-string cap `fencing.max_chars` defaults to 12,000; the agent flag
-  defaults to off. Doctor warns for unfenced agents exposed by relay/widget env
-  configuration. See [Agents](docs/AGENTS.md#fencing--third-party-text-is-data-never-instructions).
+  defaults to off — and stays off in this release: flipping the default waits for the
+  golden-case comparison with fencing on ([Releasing](docs/RELEASING.md), gate 4).
+  Doctor warns for unfenced agents exposed by relay/widget env configuration.
+  See [Agents](docs/AGENTS.md#fencing--third-party-text-is-data-never-instructions).
 
 ### Changed
 
@@ -69,6 +79,8 @@ it is released. Entries land with the pull request that makes the change.
 - `POST /v1/conversations/:id/seed` decodes a percent-encoded conversation id.
 - Widget `ui` cards link only `http(s)` urls.
 - The evidence ledger reads the session row once per turn, not once per gated call.
+- Studio reads its templates as UTF-8 regardless of the process locale: a host with
+  no `LANG` answered 500 on the login page (found by the release install proof).
 
 
 ## [0.8.0] - 2026-08-31
