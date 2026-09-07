@@ -45,8 +45,11 @@ module Studio
     }.freeze
 
     # Plugins that do NOT depend on the secret (loaded at class definition).
+    # The templates are UTF-8 ("Signing in…"). Tilt reads them in the PROCESS
+    # locale, and a host with no LANG (a bare container, a systemd unit) reads
+    # US-ASCII and 500s on the login page — found by the release install proof.
     plugin :render, views: File.expand_path("views", __dir__), engine: "erb",
-                    layout: "layout", escape: true
+                    layout: "layout", escape: true, template_opts: { default_encoding: "UTF-8" }
     plugin :hash_branches
     plugin :h
 

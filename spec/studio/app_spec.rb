@@ -1619,6 +1619,12 @@ RSpec.describe Studio::App do
       response: { extract: "json_path", path: "localidade" } }.merge(over)
   end
 
+  # A host with no LANG reads files as US-ASCII; the views carry UTF-8 ("…") and
+  # the login page 500'd there. The template encoding is pinned, not inherited.
+  it "reads its templates as UTF-8 regardless of the process locale" do
+    expect(described_class.render_opts[:template_opts]).to include(default_encoding: "UTF-8")
+  end
+
   it "matrix lists the data-tools, marks them with a badge and links the editor" do
     app, = build_app(data_tools: [data_tool(name: "cep")],
                      tools: [SkillEntry.new(name: "cep", description: "Consulta cep"),
