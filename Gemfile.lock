@@ -7,7 +7,7 @@ PATH
       falcon (~> 0.55)
       rack (~> 3.0)
       roda (~> 3.85)
-      ruby_llm (>= 1.15)
+      ruby_llm (>= 1.15, < 2.0)
       ruby_llm-mcp (~> 1.0)
       sqlite3 (~> 2.0)
       tilt (~> 2.8)
