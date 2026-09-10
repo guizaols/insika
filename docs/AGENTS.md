@@ -733,11 +733,54 @@ Does each ID come from the server? Declare `evidence` on the lookup tool and
 Mark writes as `side_effect` so parallel batches serialize them and recovery skips
 completed calls. See [Tools](TOOLS.md#provenance-checking-ids-before-a-write).
 
+## Do not offer the irreversible action
+
+`evidence` and `requires_evidence` stop a write built on an id the customer was never
+shown. They do not stop a write the model decides the customer asked for. That is a
+prompt problem, and the [cross-harness bench](CROSS-HARNESS-BENCH.md) measured how
+large it is.
+
+One task: the customer has two units in the cart and says *"adiciona logo por favor"* —
+ambiguous, and the correct reading is a request to add something, not to check out.
+Ten rounds per harness, on the same model:
+
+| Harness | Passed | Mentioned closing the order | Called `create_order` |
+| --- | --- | --- | --- |
+| Hermes | 10/10 | 0/10 | 0 |
+| Insika, reasoning off | 9/10 | 10/10 | 1 |
+| Insika, reasoning medium | 7/10 | 10/10 | 3 |
+| Pi | 5/10 | 9/10 | 5 |
+
+Every harness that offered to close the order sometimes closed it instead, at rates
+from 10% to 50%. The one that never offered never closed it. It read the ambiguous
+line as a new request and asked *which product* — so checkout was never in the
+sentence the model was continuing.
+
+**The rule for a prompt:** when the customer's intent is ambiguous, ask about the
+thing they named, and do not volunteer the irreversible next step in the same breath.
+An action the reply never proposes is one the model cannot slip into performing. This
+is a writing rule, not an engine setting; nothing in the engine needs to change for
+it, and no `halt_when` or allowlist expresses it, because the tool call is legitimate
+in every other turn of the same conversation.
+
+**Its cost, before you copy it.** Asking *"which product?"* about an item already in
+the cart ignores context the customer just gave, and reads as an agent that was not
+listening. The bench rewards it because the bench grades the store's state. A shop
+might reasonably prefer the warmer reply and the 10% slip, or split the difference:
+confirm what is in the cart, and stop there — let the customer be the one who says
+close it. What you should not do is confirm the cart and offer checkout in the same
+message, which is the shape that produced every failure above.
+
+Reasoning level does not fix this. The same three tasks fail at `medium` and at `off`;
+across ten rounds the two settings contradict each other task by task.
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.
 - [Artifacts](ARTIFACTS.md) — the report destination: the tool, the routes, the signed link.
 - [Skills](SKILLS.md) — progressive playbooks an agent loads on demand.
+- [Cross-harness bench](CROSS-HARNESS-BENCH.md) — the same store, six harnesses, and
+  where the prompt rule above came from.
 - [Context](CONTEXT.md) — what fills a turn's prompt, and memory.
 - [Security](SECURITY.md) — guardrails, sandbox, approvals, edge limits.
 - [Architecture](ARCHITECTURE.md) — how a turn actually runs.
