@@ -109,6 +109,13 @@ work. The rest of any real turn's latency is the provider.
 ## Publication rule
 
 **Any public claim about the engine's performance must reference this suite.**
-Numbers produced against a specific provider, deployment, or competitor are not
-publishable — they are neither neutral nor reproducible. If a claim cannot be
-reproduced by running `scripts/bench.rb`, it does not go in public materials.
+Performance numbers produced against a specific provider, deployment, or competitor
+are not publishable — they are neither neutral nor reproducible. If a performance
+claim cannot be reproduced by running `scripts/bench.rb`, it does not go in public
+materials.
+
+The rule is about **performance**, which is what this suite measures. Claims about
+what an agent *gets right* live in a different suite with a different contract: the
+[cross-harness bench](CROSS-HARNESS-BENCH.md) needs a provider key, because a
+commerce conversation cannot be stubbed, and it names other harnesses. It carries its
+own publication rule, which is stricter about the rows it did not write.
