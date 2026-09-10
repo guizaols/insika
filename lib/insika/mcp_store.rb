@@ -94,10 +94,41 @@ module Insika
         "headers" => reconcile_hash(h[:headers], existing && existing["headers"]),
         # editing an instance's connection details doesn't change its discovered
         # tools -> preserved across upsert; only set_tools_cache writes it.
-        "tools_cache" => (existing && existing["tools_cache"]) || []
+        "tools_cache" => (existing && existing["tools_cache"]) || [],
+        # WHAT EACH TOOL MEANS to the engine: which of its results are evidence,
+        # and which of its parameters may only carry an id some tool returned.
+        # A server describes what its tools DO; only the deployment can say what
+        # they are worth trusting with. An edit that does not mention them keeps
+        # what is there — the same rule `env` and `headers` follow.
+        "tool_overrides" => (h.key?(:tools) ? tool_overrides(h[:tools]) : nil) ||
+                            (existing && existing["tool_overrides"]) || {}
       }
       @cs.put(SCOPE, name, record)
       mask(record)
+    end
+
+    # { "add_to_cart" => { "requires_evidence" => ["product_id"] },
+    #   "search_products" => { "evidence" => { "kind" => "products", … } } }
+    #
+    # Refused HERE, never at the turn: an `evidence:` typo that survived to turn
+    # time would extract nothing and the gate below it would block every write.
+    def tool_overrides(raw)
+      return nil if raw.nil?
+      raise Insika::ValidationError, "mcp tools must be a mapping of tool name -> overrides" unless raw.is_a?(Hash)
+
+      Coercion.deep_stringify(raw).to_h do |tool, over|
+        raise Insika::ValidationError, "mcp tools['#{tool}'] must be a mapping" unless over.is_a?(Hash)
+
+        unknown = over.keys - %w[evidence requires_evidence]
+        unless unknown.empty?
+          raise Insika::ValidationError,
+                "mcp tools['#{tool}']: unknown key(s) #{unknown.join(", ")} — known: evidence, requires_evidence"
+        end
+
+        params = Array(over["requires_evidence"]).map(&:to_s).reject(&:empty?)
+        [tool.to_s, { "evidence" => over["evidence"] && Insika::Evidence::Spec.parse(over["evidence"]).to_h,
+                      "requires_evidence" => (params unless params.empty?) }.compact]
+      end
     end
 
     # -> bool (did it exist?).

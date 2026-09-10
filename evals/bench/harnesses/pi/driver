@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+// Pi's translation of "a turn". `pi -p --mode json` is one message in and one answer
+// out; --session-id carries the conversation, so turn two continues turn one.
+//
+// The store's tools reach Pi through the bench's own bridge extension, because Pi
+// ships no MCP by design. Tool calls are still read from the STORE's log, like every
+// other entrant.
+const { spawnSync } = require("node:child_process");
+const { readFileSync } = require("node:fs");
+const { createHash } = require("node:crypto");
+
+const STORE = (process.env.BENCH_STORE_MCP || "").replace(/\/mcp$/, "");
+const SCORECARD = (process.env.BENCH_SCORECARD || "A").toUpperCase();
+const input = JSON.parse(readFileSync(0, "utf8"));
+const digest = createHash("sha1").update(input.conv).digest("hex");
+const uuid = [digest.slice(0, 8), digest.slice(8, 12), "5" + digest.slice(13, 16),
+              "a" + digest.slice(17, 20), digest.slice(20, 32)].join("-");
+
+async function calls(since) {
+  const res = await fetch(`${STORE}/admin/calls?since=${since}`);
+  return res.json();
+}
+
+(async () => {
+  const answer = { output_text: "", tool_calls: [], error: null, usage: null };
+  let mark = 0;
+  try {
+    mark = (await calls(0)).count;
+  } catch (e) {
+    answer.error = `store call log unreachable: ${e.message}`;
+    process.stdout.write(JSON.stringify(answer) + "\n");
+    return;
+  }
+
+  const run = spawnSync("pi", [
+    "-p", input.message,
+    "--mode", "json",
+    "--provider", "openrouter",
+    "--model", process.env.BENCH_MODEL || "deepseek/deepseek-v4-flash",
+    "--append-system-prompt", "/prompt/AGENTS.md",
+    // Reasoning at the level production runs. Every entrant is set to the same
+    // one: a harness thinking harder than another is not a harness difference.
+    "--thinking", process.env.BENCH_REASONING || "medium",
+    "-e", "/etc/bench/mcp-bridge.js",
+    // Scorecard A is the store's ten tools for everyone; Pi's own read/bash/edit/write
+    // are what scorecard B measures. The bridge's tools are extension tools, so they
+    // survive --no-builtin-tools.
+    ...(SCORECARD === "A" ? ["--no-builtin-tools"] : []),
+    "--session-id", uuid
+  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: "/work" });
+
+  // --mode json is NDJSON: one object per line, the conversation among them. The
+  // answer is the last assistant text block, and the last usage reported with it.
+  const texts = [];
+  for (const line of (run.stdout || "").split("\n")) {
+    if (!line.startsWith("{")) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    const messages = Array.isArray(event.messages) ? event.messages : [event];
+    for (const message of messages) {
+      if (message?.role !== "assistant") continue;
+      for (const block of message.content || []) {
+        if (block.type === "text" && block.text?.trim()) texts.push(block.text.trim());
+      }
+      const u = message.usage;
+      if (u) {
+        answer.usage = { input_tokens: u.input, output_tokens: u.output,
+                         total_tokens: u.totalTokens ?? (u.input || 0) + (u.output || 0) };
+      }
+    }
+  }
+  answer.output_text = texts[texts.length - 1] || "";
+
+  if (!answer.output_text) {
+    answer.error = `pi exited ${run.status} with no answer: ${(run.stderr || out).trim().split("\n").slice(-2).join(" ").slice(0, 300)}`;
+  }
+
+  try {
+    const log = await calls(mark);
+    answer.tool_calls = log.calls.map((c) => ({ name: c.name.replace(/^store__/, ""), status: c.status }));
+  } catch (e) {
+    answer.error ||= `store call log unreachable after the turn: ${e.message}`;
+  }
+
+  process.stdout.write(JSON.stringify(answer) + "\n");
+})();

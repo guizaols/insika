@@ -37,8 +37,13 @@ module Insika
       # rubric alone decides, and inventing a default here would be inventing an
       # opinion for someone else's store.
       POLICY_INSTRUCTIONS = {
-        "ask_once" => "This store allows AT MOST ONE question per reply. Two questions in " \
-                      "one message is a failure even if the content is otherwise good.",
+        # %<max>s is the store's number, not ours. Stated to the judge in the same
+        # words and with the same threshold the deterministic layer uses — a judge
+        # told "at most one" while the counter allows two grades a different rule.
+        "ask_once" => "This store allows AT MOST %<max>s question(s) per reply. One more " \
+                      "than that in a single message is a failure even if the content is " \
+                      "otherwise good. A greeting formula that asks nothing the assistant " \
+                      "needs (\"tudo bem?\", \"how are you?\") is courtesy, not a question.",
         "investigate_first" => "This store wants the objective established BEFORE acting: on a " \
                                "vague request the assistant should ask (once or twice, not a " \
                                "form), not search immediately.",
@@ -66,7 +71,8 @@ module Insika
         rubric = golden.rubric.to_s.strip
         return nil if rubric.empty?
 
-        prompt = build_prompt(rubric, golden.user_turns, result.output_text.to_s, golden.policy)
+        prompt = build_prompt(rubric, golden.user_turns, result.output_text.to_s, golden.policy,
+                              golden.respond_to?(:policy_options) ? golden.policy_options : {})
         score_prompt(prompt, golden.min_score || DEFAULT_MIN_SCORE)
       end
 
@@ -75,11 +81,12 @@ module Insika
       # [{ role: "user"|"assistant", text: }] in order. -> Verdict, or nil without
       # a rubric. Same panel, same rules as `score`: the rubric that scores a
       # scripted replay scores a generated one.
-      def score_conversation(rubric:, transcript:, policy: nil, min_score: DEFAULT_MIN_SCORE)
+      def score_conversation(rubric:, transcript:, policy: nil, policy_options: {},
+                             min_score: DEFAULT_MIN_SCORE)
         rubric = rubric.to_s.strip
         return nil if rubric.empty?
 
-        prompt = conversation_prompt(rubric, transcript, policy)
+        prompt = conversation_prompt(rubric, transcript, policy, policy_options)
         score_prompt(prompt, min_score)
       end
 
@@ -102,7 +109,7 @@ module Insika
       # user turn and every assistant reply interleaved. A rubric about the whole
       # exchange ("does it discover the objective before recommending?") is
       # unanswerable from the last reply alone.
-      def conversation_prompt(rubric, transcript, policy)
+      def conversation_prompt(rubric, transcript, policy, policy_options = {})
         lines = Array(transcript).map do |m|
           role = m[:role].to_s == "user" ? "customer" : "assistant"
           "#{role}: #{m[:text].to_s.strip}"
@@ -114,7 +121,7 @@ module Insika
 
           RUBRIC:
           #{rubric}
-          #{policy_clause(policy)}
+          #{policy_clause(policy, policy_options)}
           CONVERSATION (in order):
           #{lines}
 
@@ -144,14 +151,14 @@ module Insika
       # much this store wants the agent to ask before acting is a per-store decision,
       # and a judge that is not TOLD it will guess — half the time wrongly. The
       # deterministic half is `Assertions.policy_checks`; this is the other half.
-      def build_prompt(rubric, user_turns, reply, policy = nil)
+      def build_prompt(rubric, user_turns, reply, policy = nil, policy_options = {})
         <<~PROMPT
           You are a strict QA judge for a customer-service AI assistant. Judge the
           ASSISTANT REPLY against the RUBRIC — nothing else.
 
           RUBRIC:
           #{rubric}
-          #{policy_clause(policy)}
+          #{policy_clause(policy, policy_options)}
           CONVERSATION (user turns, in order):
           #{user_turns.map { |t| "- #{t}" }.join("\n")}
 
@@ -164,10 +171,12 @@ module Insika
         PROMPT
       end
 
-      def policy_clause(policy)
+      def policy_clause(policy, policy_options = {})
         instruction = POLICY_INSTRUCTIONS[policy.to_s]
         return "" unless instruction
 
+        instruction = format(instruction, max: (policy_options || {}).fetch("max", 1)) if
+          instruction.include?("%<max>s")
         "\nSTORE POLICY (weigh this as part of the rubric):\n#{instruction}\n"
       end
 

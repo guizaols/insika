@@ -443,6 +443,31 @@ held client, which does its own discovery on first use regardless of whether
    `enabled` flag and its credentials are the **operator's** — a Studio/CLI/API
    edit made after boot is never clobbered back by the next restart.
 
+   The **first** boot after a declaration also lists the server's tools, because
+   until they are listed the agent is offered none of them and answers out of its
+   own head instead. A server that cannot be listed (stdio behind a closed gate, a
+   host that is down) does not stop the boot — it is warned about by name, and the
+   agent runs without those tools until `insika mcp refresh <name>` succeeds.
+
+   **What the deployment trusts each tool with** — a server describes what its tools
+   *do*; only the deployment can say which of its answers are evidence and which
+   parameter may only ever carry an id something already returned:
+
+   ```ruby
+   mcp "store", transport: :http, url: ENV.fetch("STORE_MCP"),
+       tools: {
+         # the store's own field names: no server renames them for us
+         "search_products" => { evidence: { kind: "products", items: "products",
+                                            id: "product_id", line: "line" } },
+         # a write that may only take an id the customer was actually shown
+         "add_to_cart" => { requires_evidence: ["product_id"] }
+       }
+   ```
+
+   Both are refused at ingestion, never at the turn: an `evidence:` typo that
+   survived would extract nothing and the gate below it would block every write.
+   A tool nobody names here behaves exactly as it did before.
+
 2. **CLI** — `insika mcp list | add | remove | import <file.json> | test <name> |
    refresh <name>`. `add` takes `--name`, `--transport`, `--command`/`--arg`
    (repeatable) or `--url`/`--header "Name: value"` (repeatable)/`--env

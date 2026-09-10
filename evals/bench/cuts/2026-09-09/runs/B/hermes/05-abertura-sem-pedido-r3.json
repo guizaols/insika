@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-09T17:44:32Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 10029,
+    "case_ms_p95": 10029,
+    "turn_ms_p50": 10029,
+    "turn_ms_p95": 10029,
+    "tokens_measured": 0
+  },
+  "cases": [
+    {
+      "id": "05-abertura-sem-pedido",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "exit 137",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: exit 137"
+        }
+      ],
+      "perf": {
+        "ms": 10029,
+        "turn_ms": [
+          10029
+        ],
+        "turns": 1
+      }
+    }
+  ]
+}

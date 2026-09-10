@@ -1,0 +1,1 @@
+{ "mcpServers": { "store": { "type": "http", "url": "http://store:8931/mcp" } } }

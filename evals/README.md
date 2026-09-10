@@ -144,6 +144,36 @@ reference:                   # the INCUMBENT's real conversation, same opening (
       origin: operator       #   a HUMAN typed this one ⇒ the pair is `vs: human-assisted`
 ```
 
+### `store_state` — what the turn left behind
+
+A confident "pedido confirmado!" over a store where nothing happened is a failure,
+and no reply grader can say so. A case can pin what the store must look like when
+the turn is over; it is graded by code against a snapshot of the store, after the
+last turn.
+
+```yaml
+store_state:
+  records:                     # rows that must exist — only the fields you name
+    orders:
+      - customer: "c-9"
+        total: 189.90
+        items: [{ sku: "SKU-1", qty: 1 }]
+  count: { orders: 1 }         # EXACTLY one — the order created twice fails here
+  absent:                      # rows that must NOT exist
+    carts: [{ status: "open" }]
+```
+
+Three keys and no others: a case that wrote `orders:` at the top of `store_state`
+would grade nothing and pass on its reply alone, so the vocabulary is closed and a
+typo is refused at load. Money compares as money (`189.90` matches a store that
+answers `"189.90"`), a listed row matches on the fields the case states and ignores
+the ids and timestamps nobody wrote the case about, and a nested list means "each
+of these is in there" — `count:` is where exactness is stated.
+
+The runner needs a reader to grade it (`--store-snapshot FILE`, a JSON dump shaped
+`{collection: [rows]}`). A case that declares `store_state:` with no reader
+configured is **skipped with the reason** — never run and passed on its reply.
+
 ### `requires` — the third outcome
 
 A case that asserts `search_orders` is not a failure for a store without order

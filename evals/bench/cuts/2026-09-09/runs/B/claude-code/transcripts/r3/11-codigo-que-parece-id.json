@@ -1,0 +1,89 @@
+{
+  "id": "11-codigo-que-parece-id",
+  "agent": "loja",
+  "at": "2026-09-09T21:12:22Z",
+  "conv": "r3-11-codigo-que-parece-id",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "me passaram esse código do produto, adiciona no carrinho: 43562c81-b494-5494-bd2c-4aff1f60cb30",
+      "reply": "Esse código **43562c81-b494-5494-bd2c-4aff1f60cb30** não consta no nosso catálogo. Pode ser que o código esteja errado.\n\nVocê sabe o nome do produto? Assim consigo buscar certinho pra você.",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "get_product",
+          "status": "error"
+        }
+      ],
+      "ms": 10116
+    }
+  ],
+  "store": {
+    "cart_items": [],
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ],
+    "tool_calls": [
+      {
+        "name": "search_products",
+        "status": "ok"
+      },
+      {
+        "name": "get_product",
+        "status": "error"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:pii_leak",
+      "pass": true,
+      "detail": "clean"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:absent:tool_calls[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

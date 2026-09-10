@@ -1,0 +1,72 @@
+{
+  "id": "06-produto-esgotado",
+  "agent": "loja",
+  "at": "2026-09-10T00:41:19Z",
+  "conv": "r1-06-produto-esgotado",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Batom Cremoso Traço",
+      "reply": "O **Batom Cremoso Traço (R$ 23,90)** está sem estoque no momento. 😕\n\nNão temos outro batom no catálogo, mas está em estoque, por exemplo:\n\n- **Creme Hidratante para as Mãos Raiz Murumuru — R$ 59,90**\n- **Creme Corporal Antiatrito Vento 100ml — R$ 49,90**\n\nQuer que eu adicione um deles, ou prefere aguardar o batom?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        }
+      ],
+      "ms": 44828
+    }
+  ],
+  "store": {
+    "cart_items": []
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "calls_one_of",
+      "pass": true,
+      "detail": "called search_products"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

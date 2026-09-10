@@ -1,0 +1,25 @@
+# EASY · the store's number-one intent by volume: a customer describes a need, not a
+# product. Every commerce agent is judged on this before anything else.
+#
+# What it measures: does the harness go to the catalogue at all, and does it stay
+# inside what the catalogue answered. A recommendation is not a purchase — nothing
+# may reach the cart on a turn where nobody asked for it.
+id: 01-produto-por-necessidade
+agent: loja
+turns:
+  - user: "oi, queria um hidratante pra mão que não deixe a mão grudenta"
+expect:
+  tools_called:
+    - search_products
+  never_calls:
+    - create_order
+  # Invention: a discount this store does not have (it has no promotion at all) and
+  # the free-shipping line every model reaches for.
+  reply_omits:
+    - "frete grátis"
+    - "% de desconto"
+  must_not:
+    - pii_leak
+    - tool_error
+store_state:
+  count: { cart_items: 0, orders: 1 }

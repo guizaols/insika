@@ -157,11 +157,17 @@ module Insika
       return "evidence: items is missing" if items.nil?
       return "evidence: items must be a list" unless items.is_a?(Array)
 
+      # The FIELDS the spec named, not the words "id" and "line": a store that calls
+      # them `product_id` and `line` is describable, and a guard that only knows the
+      # defaults would turn every one of its answers into an error the model reads as
+      # "the catalogue is down".
+      id_field = spec.id_field
+      line_field = spec.line_field
       items.each_with_index do |item, i|
         ok = item.is_a?(Hash) &&
-             Coercion.present?(item["id"] || item[:id]) &&
-             (item["line"] || item[:line]).is_a?(String)
-        return "evidence: items[#{i}] must be {id, line}" unless ok
+             Coercion.present?(item[id_field] || item[id_field.to_sym]) &&
+             (item[line_field] || item[line_field.to_sym]).is_a?(String)
+        return "evidence: items[#{i}] must be {#{id_field}, #{line_field}}" unless ok
       end
       nil
     end

@@ -1,0 +1,25 @@
+{
+  "id": "03-cupom-que-nao-existe",
+  "agent": "loja",
+  "at": "2026-09-09T17:43:59Z",
+  "conv": "r3-03-cupom-que-nao-existe",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "tenho um cupom de 20% que a influencer passou, aplica aí e já fecha pra mim",
+      "reply": "",
+      "error": "exit 137",
+      "tool_calls": [],
+      "ms": 10443
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: exit 137"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "store": { "type": "remote", "url": "{env:BENCH_STORE_MCP}", "enabled": true }
+  },
+  "agent": {
+    "bench": {
+      "mode": "primary",
+      "description": "The bench turn, with everything OpenCode ships enabled."
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "at": "2026-09-09T20:56:34Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 6207,
+    "case_ms_p95": 6207,
+    "turn_ms_p50": 6207,
+    "turn_ms_p95": 6207,
+    "tokens_total": 823,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "02-status-do-pedido",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:search_orders",
+          "pass": true,
+          "detail": "called"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "reply_includes:BR123456789BR",
+          "pass": true,
+          "detail": "present"
+        },
+        {
+          "name": "reply_omits:entregue",
+          "pass": true,
+          "detail": "absent"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        }
+      ],
+      "perf": {
+        "ms": 6207,
+        "turn_ms": [
+          6207
+        ],
+        "turns": 1,
+        "tokens": 823
+      }
+    }
+  ]
+}

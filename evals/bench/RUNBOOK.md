@@ -1,0 +1,130 @@
+# Cut 3 runbook
+
+Cut 3 ran on 2026-09-09 and is published in `cuts/2026-09-09/`; the results are in
+`README.md`. This file stays as the recipe for the next cut — it is what a fresh
+session needs to run one and not repeat the false starts it took to get here.
+
+## The one command
+
+```bash
+cd ~/projetos/tedi/insika/evals/bench
+cp .env.example .env && $EDITOR .env     # OPENROUTER_API_KEY, BENCH_MODEL=deepseek/deepseek-v4-flash
+docker compose build                     # six images, every version pinned
+bash cut3.sh                             # ~4-5h, ~$6, resumable
+```
+
+`cut3.sh` is idempotent: `run.sh` skips any cell whose report JSON is already on disk.
+If the machine OOMs (it has, twice), relaunch the same command and only the in-flight
+cell is lost.
+
+## What it runs
+
+| Cut | Prompt | Tasks | Cells |
+| --- | --- | --- | --- |
+| guarded A + B | `prompt/AGENTS.md` | all 12 | 432 |
+| unguarded A + B | `prompt/AGENTS-unguarded.md` | 08, 11, 12 | 108 |
+
+12 tasks x 3 rounds x 6 harnesses x 2 scorecards, then the three tasks the unguarded
+prompt stops pre-solving. 540 cells, 648 LLM turns.
+
+## Reasoning — the setting the whole table hangs on
+
+**Every entrant runs reasoning at `medium`**, because that is what production runs:
+the store agents in the OpenClaw panel show *"Nível de raciocínio deste agente: Padrão
+do sistema (Médio)"* on `deepseek/deepseek-v4-flash`.
+
+| Harness | How it is set |
+| --- | --- |
+| openclaw | `reasoningDefault: "medium"` on the bench agent; `"reasoning": true` on the model (capability, not usage — production separates the two and the bench used to conflate them) |
+| pi | `--thinking medium` |
+| opencode | `--variant medium` |
+| insika | `param :thinking, "medium"` |
+| hermes | already medium — its OpenRouter plugin hardcodes `{"enabled": true, "effort": "medium"}` when nothing is configured |
+| claude-code | `MAX_THINKING_TOKENS=4096` — see below |
+
+`BENCH_REASONING` overrides the level for pi, opencode and insika. OpenClaw and Hermes
+are config-side and would need editing.
+
+Do not cross this with the scorecards. Reasoning is a deployment variable, not a bench
+axis; crossing it is 8 combinations and ~1500 cells. Publish one setting, name it in
+the table, and let anyone who wants the other one re-run — the bench is reproducible.
+
+## claude-code — resolved 2026-09-09
+
+The probe below ran 5/5 with `MAX_THINKING_TOKENS=4096` and answered normally every
+time, so `harnesses/claude-code/Dockerfile` now ships that budget instead of `0` and
+the row is at parity with the other five. The earlier empty-answer failure (26 of 30
+cells returning nothing, a 10% score that measured the shim and not the harness) did
+not reproduce.
+
+If the real cut brings the empty answers back, fall back to `MAX_THINKING_TOKENS=0`
+and dagger the row the way Pi's bridge is daggered: *"runs with thinking off because
+this model, through the Anthropic-shaped endpoint, returns no visible text with
+thinking on."* Recorded, not hidden.
+
+The probe, for re-running it:
+
+```bash
+docker compose up -d store claude-code
+docker compose exec -T store wait-ready
+for i in 1 2 3 4 5; do
+  docker compose exec -T -e MAX_THINKING_TOKENS=4096 claude-code sh -lc \
+    "claude -p 'responda apenas: ok' --model \$BENCH_MODEL --output-format stream-json --verbose 2>/dev/null" \
+    | node -e "let t=[];require('readline').createInterface({input:process.stdin}).on('line',l=>{if(!l.startsWith('{'))return;let e;try{e=JSON.parse(l)}catch{return};if(e.type==='assistant')for(const b of (e.message.content||[]))if(b.type==='text'&&b.text.trim())t.push(b.text.trim())}).on('close',()=>console.log(t.length?t.at(-1):'VAZIO'))"
+done
+```
+
+## What cut 3 added to the traps
+
+6. **A refused run is JSON too.** `reasoningDefault` is reasoning *visibility*
+   (`on|off|stream`); the thinking level is `thinkingDefault`. Typed into the wrong
+   key, OpenClaw rejects the whole config and runs no turn — and the adapter used to
+   read `finalAssistantVisibleText` off the `{"ok":false}` error and report an empty
+   answer. Seventy-two cells scored a harness that never ran. The adapter now errors;
+   when adding an entrant, check that a refused run cannot look like a bad one.
+7. **`docker ps -aq` is the wrong probe for "the name is free".** The daemon holds the
+   container name after the container stops being listed, so the wait passes and
+   `compose up` still dies on "name already in use". `run.sh` retries the `up`.
+8. **A dead scorecard used to be silent.** `run.sh` runs under `set -e`; `cut3.sh` now
+   checks each card's exit status instead of walking on and printing `CUT3 COMPLETO`.
+
+## Traps already paid for — do not re-discover them
+
+1. **`for p in $GLOB`** lets the shell expand the pattern against the CURRENT directory
+   before `run.sh` prefixes it. `*.yml` became `compose.yml` and the bench ran one task
+   that does not exist. Fixed with `set -f` + `read -ra`.
+2. **`compose down` returns before the containers are gone**, and the next `up` dies on
+   the name it is about to reuse. Fixed with a wait on the project label.
+3. **Anonymisation residue breaks tasks, not just prose.** An order number from the pre-anonymisation fixture survived in task
+   02 and the order-number generator, and the task failed on the store while looking
+   exactly like a harness that could not read an order. There is now a spec
+   (`bench_tasks_spec.rb`) asserting every order number a customer types exists in the
+   fixture.
+4. **Host memory, not Docker.** The containers total ~350 MB in a 7.7 GiB VM; the Mac
+   itself runs out. Pruning images will not help. Close what you can and use the
+   resumability.
+5. **The bench store must be rebuilt** after any `store/server.rb` change
+   (`docker compose build store`) — the seed is a mount, the code is not.
+
+## After the run
+
+```bash
+mkdir -p cuts/$(date +%F)
+cp -R runs runs-unguarded REPORT.md REPORT-unguarded.md cuts/$(date +%F)/
+# plus any arm or probe root the cut produced: runs-reasoning-off, runs-probe-*
+./viewer.rb --runs cuts/$(date +%F)     # the page the team reads
+```
+
+`runs/`, `REPORT.md` and `bench.html` are gitignored working output; `cuts/<date>/` is
+the published record and IS tracked. Then rewrite the results sections of `README.md`
+against the new tables.
+
+Before any public push, check that the history is clean. The tree is anonymised — the
+fixture store is a pseudonym and its one customer is fabricated — but a branch whose
+history predates that anonymisation still carries the real catalogue, and a push takes
+the history with it. Squashing onto a fresh branch off `main` is what removes it, and
+it works precisely because the final tree is already clean:
+
+```bash
+git log -p main..HEAD | grep -icE '<the merchant name>'   # must be 0
+```

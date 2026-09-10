@@ -131,10 +131,47 @@ RSpec.describe "Insika::Evals policy checks" do
     end
   end
 
+  # The rule quoted at the top of this file is ONE store's, down to the punctuation.
+  # Another store greets its customers, and there "tudo bem? como posso ajudar?" is one
+  # question and a courtesy — measured across six harnesses on the same greeting, max 1
+  # failed every reply that says it and passed every reply that does not, which grades
+  # a greeting habit rather than the rule. So the number belongs to the store.
+  describe "the store's own threshold" do
+    GREETING = "Oi! Tudo bem? Como posso te ajudar?"
+
+    it "fails the greeting at the strict store's 1" do
+      r = evaluate({ "policy" => "ask_once" }, [turn(GREETING)])
+      expect(r.checks.find { |c| c.name == "policy:ask_once" }.pass).to be(false)
+    end
+
+    it "passes it where the store allows a courtesy" do
+      r = evaluate({ "policy" => { "ask_once" => { "max" => 2 } } }, [turn(GREETING)])
+      expect(r.checks.find { |c| c.name == "policy:ask_once" }.pass).to be(true)
+    end
+
+    it "still catches the form, which is what the rule is for" do
+      form = "Claro! Qual seu nome? Qual o número do pedido? E qual o motivo da troca?"
+      r = evaluate({ "policy" => { "ask_once" => { "max" => 2 } } }, [turn(form)])
+      check = r.checks.find { |c| c.name == "policy:ask_once" }
+      expect(check.pass).to be(false)
+      expect(check.detail).to include("3 questions (max 2)")
+    end
+
+    it "refuses a policy declared with more than one name" do
+      expect { golden({ "policy" => { "ask_once" => {}, "act_fast" => {} } }) }
+        .to raise_error(Insika::Evals::GoldenLoader::InvalidGolden, /ONE name/)
+    end
+  end
+
   describe "a typo'd policy" do
     it "is refused at load time instead of quietly checking nothing" do
       expect { golden({ "policy" => "ask_onc" }) }
         .to raise_error(Insika::Evals::GoldenLoader::InvalidGolden, /unknown policy "ask_onc".*ask_once/m)
+    end
+
+    it "is refused in the parameterised form too" do
+      expect { golden({ "policy" => { "ask_onc" => { "max" => 2 } } }) }
+        .to raise_error(Insika::Evals::GoldenLoader::InvalidGolden, /unknown policy "ask_onc"/)
     end
   end
 end

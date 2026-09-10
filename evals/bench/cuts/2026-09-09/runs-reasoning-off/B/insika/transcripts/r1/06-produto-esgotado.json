@@ -1,0 +1,52 @@
+{
+  "id": "06-produto-esgotado",
+  "agent": "loja",
+  "at": "2026-09-10T01:05:03Z",
+  "conv": "r1-06-produto-esgotado",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Batom Cremoso Traço",
+      "reply": "Que pena, o **Batom Cremoso Traço** está sem estoque no momento 😕\n\nPosso buscar uma opção parecida pra você? Alguma cor ou tipo de batom que você curte?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        }
+      ],
+      "ms": 7723
+    }
+  ],
+  "store": {
+    "cart_items": []
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "calls_one_of",
+      "pass": true,
+      "detail": "called search_products"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

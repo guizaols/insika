@@ -12,7 +12,15 @@ module Insika
       module_function
 
       # -> Hash ready for JSON. `at` is an ISO-8601 string stamped by the caller.
-      def to_h(results, at:)
+      #
+      # `perf` is what each case COST, keyed by case id: `{"ms" =>, "turns" =>,
+      # "tokens" =>, "cached" =>}`. Optional, because the answer to "did it pass" must
+      # not depend on anyone having measured the clock — but a cross-harness table
+      # without it is a table about correctness only, and a merchant asks how long the
+      # customer waited before asking anything else. Wall clock is measured by the
+      # RUNNER around the turn, never self-reported: it is the one column every
+      # entrant can be held to.
+      def to_h(results, at:, perf: nil)
         passed = results.count(&:pass?)
         skipped = results.count(&:skipped?)
         {
@@ -27,17 +35,22 @@ module Insika
           # Absent (not an empty tally) when nothing was compared — a run with no
           # pairwise is the normal one, and a zeroed block reads like every case tied.
           "pairwise" => pairwise_summary(results),
+          "perf" => perf_summary(perf),
           "cases" => results.map do |r|
             {
               "id" => r.id, "agent" => r.agent, "pass" => r.pass?,
               "skipped" => r.skipped,
               "judge_pending" => r.judge_pending?, "error" => r.error,
-              "checks" => r.checks.map { |c| { "name" => c.name, "pass" => c.pass, "detail" => c.detail } },
+              "checks" => r.checks.map do |c|
+                { "name" => c.name, "pass" => c.pass, "detail" => c.detail,
+                  "skipped" => (true if c.skipped?) }.compact
+              end,
               "judge" => (r.judge && { "score" => r.judge.score, "pass" => r.judge.pass, "reason" => r.judge.reason }),
               "pairwise" => (r.pairwise && { "outcome" => r.pairwise.outcome, "vs" => r.pairwise.vs,
                                              "reason" => r.pairwise.reason, "judges" => r.pairwise.judges,
-                                             "order_dependent" => r.pairwise.order_dependent })
-            }
+                                             "order_dependent" => r.pairwise.order_dependent }),
+              "perf" => perf&.[](r.id)
+            }.compact
           end
         }.compact
       end
@@ -57,8 +70,36 @@ module Insika
           "outcomes" => counts }
       end
 
-      def to_json(results, at:)
-        JSON.pretty_generate(to_h(results, at: at))
+      # nil when nothing was timed — an absent block, never a zeroed one: "nobody
+      # measured" and "it took no time" are different facts, and a table that confuses
+      # them publishes a harness as instant.
+      def perf_summary(perf)
+        measured = Array(perf&.values).select { |v| v["ms"] }
+        return nil if measured.empty?
+
+        case_ms = measured.map { |v| v["ms"].to_f }.sort
+        turn_ms = measured.flat_map { |v| Array(v["turn_ms"]) }.compact.sort
+        tokens = measured.filter_map { |v| v["tokens"] }
+        { "cases_measured" => measured.size,
+          "case_ms_p50" => percentile(case_ms, 50), "case_ms_p95" => percentile(case_ms, 95),
+          "turn_ms_p50" => percentile(turn_ms, 50), "turn_ms_p95" => percentile(turn_ms, 95),
+          # Absent rather than zero when no provider reported usage — most rival
+          # harnesses will not, and a zero there reads as free.
+          "tokens_total" => (tokens.sum unless tokens.empty?),
+          "tokens_measured" => tokens.size }.compact
+      end
+
+      def percentile(sorted, p)
+        return nil if sorted.empty?
+
+        r = (p / 100.0) * (sorted.length - 1)
+        lo = sorted[r.floor]
+        hi = sorted[r.ceil]
+        (lo + ((hi - lo) * (r - r.floor))).round
+      end
+
+      def to_json(results, at:, perf: nil)
+        JSON.pretty_generate(to_h(results, at: at, perf: perf))
       end
 
       PAIRWISE_MARK = { "better" => "🟢", "comparable" => "🟡", "worse" => "🔴",
@@ -85,8 +126,8 @@ module Insika
       end
 
       # Human summary. One line per case; failing checks nested underneath.
-      def to_markdown(results, at:)
-        h = to_h(results, at: at)
+      def to_markdown(results, at:, perf: nil)
+        h = to_h(results, at: at, perf: perf)
         lines = ["# Eval report — #{at}", "",
                  "**#{h['passed']}/#{h['total'] - h['skipped']} passed** · #{h['failed']} failed" \
                  "#{" · #{h['skipped']} skipped" if h['skipped'].positive?}" \
@@ -99,13 +140,24 @@ module Insika
             next
           end
 
-          lines << "- #{r.pass? ? '✅' : '❌'} `#{r.id}` (#{r.agent})#{'  ⏳ judge pending' if r.judge_pending?}"
+          took = perf&.dig(r.id, "ms")
+          lines << "- #{r.pass? ? '✅' : '❌'} `#{r.id}` (#{r.agent})" \
+                   "#{" · #{(took / 1000.0).round(1)}s" if took}" \
+                   "#{'  ⏳ judge pending' if r.judge_pending?}"
           r.failures.each { |c| lines << "    - ❌ #{c.name}: #{c.detail}" }
+          # A grader the transport could not feed. Printed even on a passing case:
+          # "passed" over checks nobody could run is the claim this line prevents.
+          r.skipped_checks.each { |c| lines << "    - ⏭️ #{c.name}: #{c.detail}" }
           if r.judge
             v = r.judge
             lines << "    - #{v.pass ? '✅' : '❌'} judge: #{v.score} — #{v.reason}"
           end
           lines << "    - #{pairwise_line(r.pairwise)}" if r.pairwise
+        end
+        if (summary = h["perf"])
+          lines << "" << "**time** (#{summary['cases_measured']} case(s)): " \
+                   "case p50/p95 #{summary['case_ms_p50']} / #{summary['case_ms_p95']} ms · " \
+                   "turn p50/p95 #{summary['turn_ms_p50']} / #{summary['turn_ms_p95']} ms"
         end
         lines.concat(pairwise_block(h["pairwise"])) if h["pairwise"]
         "#{lines.join("\n")}\n"

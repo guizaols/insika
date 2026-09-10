@@ -205,3 +205,92 @@ RSpec.describe Insika::Evals::Assertions do
     end
   end
 end
+
+
+# The `store_state:` graders — the half of a commerce case no reply can prove.
+RSpec.describe Insika::Evals::Assertions do
+  def bench_case(store_state)
+    Insika::Evals::GoldenLoader.build({ "id" => "bench", "agent" => "bia", "turns" => [{ "user" => "compra" }],
+                                        "expect" => {}, "store_state" => store_state })
+  end
+
+  def clean = Insika::Evals::TurnResult.new(output_text: "pedido feito", tool_calls: [], error: nil)
+
+  def evaluate(store_state, snapshot, **opts)
+    described_class.evaluate(bench_case(store_state), clean, store: snapshot, **opts)
+  end
+
+  let(:one_order) do
+    { "orders" => [{ "id" => "o-1", "customer" => "c-9", "total" => 189.90,
+                     "items" => [{ "sku" => "SKU-1", "qty" => 1 }] }] }
+  end
+
+  it "a named record matches on the fields the case states, ignoring the rest of the row" do
+    r = evaluate({ "records" => { "orders" => [{ "customer" => "c-9", "total" => 189.9,
+                                                 "items" => [{ "sku" => "SKU-1", "qty" => 1 }] }] } }, one_order)
+    expect(r.pass?).to be(true)
+  end
+
+  it "a record nobody created fails with what was there instead" do
+    r = evaluate({ "records" => { "orders" => [{ "customer" => "c-OTHER" }] } }, one_order)
+    expect(r.pass?).to be(false)
+    expect(r.failures.first.name).to eq("store_state:orders[0]")
+    expect(r.failures.first.detail).to include("no row of 1 in orders matches")
+  end
+
+  # The duplicate side effect: the order created twice. Only `count:` sees it.
+  it "a count mismatch fails and names the collection" do
+    twice = { "orders" => one_order["orders"] * 2 }
+    r = evaluate({ "count" => { "orders" => 1 } }, twice)
+    expect(r.failures.first.name).to eq("store_state:count:orders")
+    expect(r.failures.first.detail).to eq("expected 1, saw 2")
+  end
+
+  it "an absent row that exists fails, and one that does not is clean" do
+    fails = evaluate({ "absent" => { "orders" => [{ "customer" => "c-9" }] } }, one_order)
+    passes = evaluate({ "absent" => { "orders" => [{ "customer" => "c-9" }] } }, { "orders" => [] })
+    expect(fails.failures.first.name).to eq("store_state:absent:orders[0]")
+    expect(passes.pass?).to be(true)
+  end
+
+  it "money compares as money, whatever the store answers in" do
+    r = evaluate({ "records" => { "orders" => [{ "total" => 189.9 }] } },
+                 { "orders" => [{ "total" => "189.90" }] })
+    expect(r.pass?).to be(true)
+  end
+
+  it "a store nobody could read fails with the reason, never passes" do
+    r = evaluate({ "count" => { "orders" => 1 } }, nil, store_error: "Insika::Error: no store snapshot on disk")
+    expect(r.pass?).to be(false)
+    expect(r.failures.first.detail).to include("no store snapshot on disk")
+  end
+end
+
+# A harness that cannot report tool calls: its tool-shaped graders are SKIPPED,
+# because an empty list would satisfy `never_calls` and fail `tools_called` — two
+# opposite verdicts about a harness nobody measured.
+RSpec.describe Insika::Evals::Assertions do
+  def unmeasured(expect)
+    g = Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }],
+                                            "expect" => expect })
+    described_class.evaluate(g, Insika::Evals::TurnResult.new(output_text: "claro, R$ 20", tool_calls: [], error: nil),
+                             tools_reported: false)
+  end
+
+  it "skips the graders that read tool calls, on both sides" do
+    r = unmeasured({ "tools_called" => ["shipping_quote"], "never_calls" => ["add_to_cart"],
+                     "max_tool_calls" => 2, "must_not" => ["tool_error"] })
+    expect(r.checks.map(&:name)).to include("tool:shipping_quote", "never_calls:add_to_cart",
+                                            "max_tool_calls:2", "must_not:tool_error")
+    expect(r.checks).to all(be_skipped)
+    expect(r.pass?).to be(true)
+  end
+
+  it "still grades what the harness DID say" do
+    r = unmeasured({ "tools_called" => ["shipping_quote"], "reply_includes" => ["r$ 20"],
+                     "reply_omits" => ["cpf"] })
+    graded = r.checks.reject(&:skipped?).map(&:name)
+    expect(graded).to contain_exactly("reply_includes:r$ 20", "reply_omits:cpf")
+    expect(r.pass?).to be(true)
+  end
+end

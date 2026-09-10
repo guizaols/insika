@@ -175,4 +175,59 @@ RSpec.describe Insika::McpToolRegistry do
       expect(calls).to eq(1)
     end
   end
+
+  # WHAT THE DEPLOYMENT TRUSTS EACH TOOL WITH, stored beside the instance and handed
+  # to the tool the registry builds. Refused at ingestion, kept across an edit that
+  # does not mention it — the same rule env and headers already follow.
+  describe "per-tool overrides" do
+    let(:store) { Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
+
+    it "stores an evidence spec and a provenance requirement" do
+      store.upsert(name: "s", transport: "http", url: "https://x/mcp",
+                   tools: { "search_products" => { evidence: { kind: "products", items: "products",
+                                                               id: "product_id", line: "name" } },
+                            "add_to_cart" => { requires_evidence: ["product_id"] } })
+
+      over = store.get_raw("s")["tool_overrides"]
+      expect(over["search_products"]["evidence"]).to eq("kind" => "products", "items" => "products",
+                                                        "attachments" => "attachments",
+                                                        "id" => "product_id", "line" => "name")
+      expect(over["add_to_cart"]).to eq("requires_evidence" => ["product_id"])
+    end
+
+    it "an edit that does not mention them keeps them" do
+      store.upsert(name: "s", transport: "http", url: "https://x/mcp",
+                   tools: { "add_to_cart" => { requires_evidence: ["product_id"] } })
+      store.upsert(name: "s", transport: "http", url: "https://y/mcp")
+
+      expect(store.get_raw("s")["tool_overrides"]["add_to_cart"]).to eq("requires_evidence" => ["product_id"])
+    end
+
+    it "refuses an unknown key and a malformed evidence spec at ingestion" do
+      expect do
+        store.upsert(name: "s", transport: "http", url: "https://x/mcp", tools: { "t" => { evidences: {} } })
+      end.to raise_error(Insika::ValidationError, /unknown key/)
+      expect do
+        store.upsert(name: "s", transport: "http", url: "https://x/mcp",
+                     tools: { "t" => { evidence: { items: "products" } } })
+      end.to raise_error(Insika::ValidationError, /kind is required/)
+    end
+
+    it "hands each built tool its own overrides and nothing else's" do
+      store.upsert(name: "s", transport: "http", url: "https://x/mcp",
+                   tools: { "add_to_cart" => { requires_evidence: ["product_id"] } })
+      store.set_tools_cache("s", [
+                              { "name" => "add_to_cart", "description" => "",
+                                "inputSchema" => { "type" => "object",
+                                                   "properties" => { "product_id" => { "type" => "string" } } } },
+                              { "name" => "view_cart", "description" => "", "inputSchema" => {} }
+                            ])
+
+      registry = described_class.new(mcp_store: store)
+      built = registry.entries.to_h { |e| [e.name, e.factory.call] }
+
+      expect(built["add_to_cart"].requires_evidence).to eq("params" => ["product_id"])
+      expect(built["view_cart"].requires_evidence).to be_nil
+    end
+  end
 end

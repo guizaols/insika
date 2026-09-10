@@ -1,0 +1,154 @@
+# The bench environment. The reason it is containerised is not isolation, it is
+# RESET: every task must start from the same store, and cut 2 is 10 tasks x 6
+# harnesses x 3 rounds x 2 scorecards = 360 restorations. A throwaway volume makes that `down -v && up`; on the
+# host it is a hand-rolled script whose first silent contamination (task 4 passes
+# because task 3 already created the order) invalidates the whole table.
+#
+# BENCH_PROMPT_FILE selects which shared prompt every entrant is mounted: the store's
+# own (the default) or prompt/AGENTS-unguarded.md, the same file with the provenance
+# rule removed. One variable, six mounts, because six copies would drift.
+#
+# Every image pins an EXACT version. This bench ages in weeks; without pinning
+# nobody can reproduce it and nobody can contest it, which are the same property.
+# The OpenRouter key enters by env, never into an image.
+name: insika-bench
+
+services:
+  # The store under test: catalogue, FAQ, cart, orders over MCP, seeded from
+  # `seed/store.json`. Identical for every harness — no entrant gets a privileged
+  # path, ours included. Its state is in memory and dies with the container, which is
+  # what makes the reset between tasks free and total.
+  store:
+    build: ./store
+    image: insika-bench-store:1.0.0
+    volumes:
+      - ./seed:/seed:ro
+    ports:
+      - "8931:8931"
+    healthcheck:
+      test: ["CMD", "wait-ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Our entry. Same MCP store, same model, same system prompt as everyone else in
+  # scorecard A; whatever it ships with in scorecard B.
+  insika:
+    # Built from the repo root, because our entry runs the engine from source.
+    build:
+      context: ../..
+      dockerfile: evals/bench/harnesses/insika/Dockerfile
+    image: insika-bench-insika:local
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+      INSIKA_DB: /data/insika.db
+      BENCH_MODEL: ${BENCH_MODEL:?set BENCH_MODEL — one model, identical for all}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/prompt/AGENTS.md:ro
+      - insika-data:/data
+    command: ["sleep", "infinity"]
+
+  # OpenClaw, as the deployment we know runs it: pinned 2026.8.1, its own embedded
+  # agent (`agent --local`), the same MCP store and, in scorecard A, the same ten
+  # tools — its own sixty-four are what scorecard B measures.
+  openclaw:
+    build: ./harnesses/openclaw
+    image: insika-bench-openclaw:2026.8.1
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/oc/workspace/bench/AGENTS.md:ro
+    command: ["sleep", "infinity"]
+
+  # Claude Code, pinned, pointed at OpenRouter through ANTHROPIC_BASE_URL — it speaks
+  # the Anthropic Messages shape and OpenRouter serves one, which is how it runs the
+  # same model as everyone else. Thinking is off, as it is for every other entrant.
+  claude-code:
+    build: ./harnesses/claude-code
+    image: insika-bench-claude-code:2.1.266
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      ANTHROPIC_AUTH_TOKEN: ${OPENROUTER_API_KEY:?}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+      BENCH_MODEL: ${BENCH_MODEL:?}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/prompt/AGENTS.md:ro
+    command: ["sleep", "infinity"]
+
+  # Hermes, pinned to its latest published release. Python; `hermes -z` is the turn
+  # and AGENTS.md in the working directory is the system prompt, the same file
+  # everyone else is given. Its own built-in toolsets are disabled for scorecard A.
+  hermes:
+    build: ./harnesses/hermes
+    image: insika-bench-hermes:0.19.0
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+      BENCH_MODEL: ${BENCH_MODEL:?}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/work/AGENTS.md:ro
+    command: ["sleep", "infinity"]
+
+  # Pi, pinned. It ships no MCP by design, so the store reaches it through the
+  # bench's own bridge extension — an asymmetry recorded beside its row, because that
+  # tool layer is ours and every other entrant's came from its vendor.
+  pi:
+    build: ./harnesses/pi
+    image: insika-bench-pi:0.84.1
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+      BENCH_MODEL: ${BENCH_MODEL:?}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/prompt/AGENTS.md:ro
+    command: ["sleep", "infinity"]
+
+  # OpenCode, pinned. OpenRouter is a first-class provider in its catalogue and the
+  # store is a remote MCP server in its config; `opencode run --format json` is the
+  # turn. Scorecard A gives it the store's ten tools and nothing else; scorecard B is
+  # the same binary with its own read/write/bash/task surface left on.
+  opencode:
+    build: ./harnesses/opencode
+    image: insika-bench-opencode:1.18.30
+    depends_on:
+      store: { condition: service_healthy }
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?}
+      BENCH_STORE_MCP: http://store:8931/mcp
+      BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+      BENCH_MODEL: ${BENCH_MODEL:?}
+    volumes:
+      - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/work/AGENTS.md:ro
+    command: ["sleep", "infinity"]
+
+  # A RIVAL ENTRY looks exactly like this. Copy the block, pin the version, and
+  # write `harnesses/<name>/driver` — that adapter is the harness's own translation
+  # of "a turn", and writing it is what a bench entry costs.
+  #
+  # <name>:
+  #   image: <registry>/<harness>:<exact version>
+  #   depends_on:
+  #     store: { condition: service_healthy }
+  #   environment:
+  #     OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?}
+  #     BENCH_MODEL: ${BENCH_MODEL:?}
+  #     BENCH_STORE_MCP: http://store:8931/mcp
+
+volumes:
+  insika-data:

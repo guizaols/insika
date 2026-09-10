@@ -1,0 +1,25 @@
+{
+  "id": "02-status-do-pedido",
+  "agent": "loja",
+  "at": "2026-09-09T17:43:42Z",
+  "conv": "r3-02-status-do-pedido",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "oi, queria saber do meu pedido SV-100237",
+      "reply": "",
+      "error": "exit 137",
+      "tool_calls": [],
+      "ms": 1781
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: exit 137"
+    }
+  ]
+}

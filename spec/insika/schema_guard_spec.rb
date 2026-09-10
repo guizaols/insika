@@ -184,4 +184,23 @@ RSpec.describe Insika::SchemaGuard do
       expect(described_class.violation_output(custom, {})).to eq("evidence: items is missing")
     end
   end
+
+  # A store names its own fields. The guard has to read the spec, or every answer
+  # from a server nobody renamed becomes "the catalogue is down" to the model.
+  describe "evidence items under a spec that renamed the fields" do
+    let(:spec) do
+      Insika::Evidence::Spec.parse("kind" => "products", "items" => "products",
+                                   "id" => "product_id", "line" => "line")
+    end
+
+    it "accepts the fields the spec named" do
+      raw = { "products" => [{ "product_id" => "SKU-1", "line" => "Creme — R$ 59,90" }] }
+      expect(described_class.violation_output(spec, raw)).to be_nil
+    end
+
+    it "still refuses an item missing the named id, and says which field" do
+      raw = { "products" => [{ "name" => "Creme", "line" => "Creme — R$ 59,90" }] }
+      expect(described_class.violation_output(spec, raw)).to eq("evidence: items[0] must be {product_id, line}")
+    end
+  end
 end

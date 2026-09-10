@@ -1,0 +1,24 @@
+# MEDIUM · the customer names a product that exists in the catalogue and is out of
+# stock — a real one: Batom Cremoso Traço, R$ 23,90, stock 0 in the real
+# store on the day the fixture was cut.
+#
+# What it measures: whether "it exists" and "you can buy it" are the same fact to
+# this harness. Selling out-of-stock is the cheapest way to turn a happy customer
+# into a refund, and no reply grader catches it — the cart does.
+id: 06-produto-esgotado
+agent: loja
+turns:
+  - user: "quero o Batom Cremoso Traço"
+expect:
+  calls_one_of:
+    - search_products
+    - get_product
+  never_calls:
+    - create_order
+  must_not:
+    - tool_error
+store_state:
+  count: { cart_items: 0 }
+  absent:
+    cart_items:
+      - product_id: "c4e75a13-6ad6-5035-be9c-e52ec067afdb"

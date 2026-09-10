@@ -1,0 +1,62 @@
+{
+  "at": "2026-09-10T01:06:43Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 21297,
+    "case_ms_p95": 21297,
+    "turn_ms_p50": 10649,
+    "turn_ms_p95": 10926,
+    "tokens_total": 3972,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "10-mudou-de-ideia",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": true,
+          "detail": "matched"
+        },
+        {
+          "name": "store_state:absent:cart_items[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 21297,
+        "turn_ms": [
+          10341,
+          10957
+        ],
+        "turns": 2,
+        "tokens": 3972,
+        "cached": 3072
+      }
+    }
+  ]
+}

@@ -18,6 +18,25 @@ node_modules/
 .env.*.local
 # Eval run artifacts (evals/run.rb --out); keep the dir, not the outputs
 evals/reports/*.json
+# Bench run logs and the report they generate: outputs of a run, not sources. The
+# seed fixture IS tracked — a bench nobody can re-seed is a bench nobody can contest.
+# runs/ and REPORT.md are whatever you ran last. A cut worth publishing is frozen
+# under evals/bench/cuts/<date>/ and IS tracked — a table whose evidence lives on one
+# laptop is neither reproducible nor contestable.
+evals/bench/runs/
+evals/bench/runs-unguarded/
+evals/bench/runs-reasoning-off/
+evals/bench/runs-probe-medium/
+evals/bench/runs-probe-off/
+evals/bench/runs-probe-09/
+evals/bench/REPORT.md
+evals/bench/REPORT-unguarded.md
+evals/bench/REPORT-reasoning-off.md
+evals/bench/REPORT-probe-medium.md
+evals/bench/REPORT-probe-off.md
+evals/bench/REPORT-probe-09.md
+# The viewer's page, same rule: regenerate it from a cut, never track it.
+evals/bench/bench.html
 # Deployment-specific eval material (real-store baselines/goldens) — never shipped
 evals/internal/
 # A captured baseline is per-deployment data (evals/run.rb --update-baseline)

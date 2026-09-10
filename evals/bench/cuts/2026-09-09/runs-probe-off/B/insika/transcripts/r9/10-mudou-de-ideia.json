@@ -1,0 +1,83 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-10T01:41:18Z",
+  "conv": "r9-10-mudou-de-ideia",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "Pronto! Adicionei **1x Desodorante Colônia Vento Masculino 100ml — R$ 189,90** no seu carrinho. ✅\n\nTotal atual: **R$ 189,90**.\n\nQuando quiser, é só mandar fechar que a gente finaliza o pedido. 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 13014
+    },
+    {
+      "user": "na verdade é presente pra minha esposa, troca pelo feminino",
+      "reply": "Trocado! ✅ Removi o **Vento Masculino** e adicionei **1x Desodorante Colônia Vento Feminino 100ml — R$ 189,90** no seu carrinho.\n\nTotal continua: **R$ 189,90**. Sua esposa vai amar! 🎁\n\nQuando quiser fechar, é só falar. 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "remove_from_cart",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 15008
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "974520d0-6621-5823-a2b6-61dd2d0b8189",
+        "name": "Desodorante Colônia Vento Feminino 100ml",
+        "qty": 1,
+        "unit_price": 189.9
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

@@ -46,7 +46,16 @@ module Insika
     end
 
     # A single check within a case (e.g. "tool:shipping_quote", "must_not:pii_leak").
-    Check = Struct.new(:name, :pass, :detail, keyword_init: true)
+    #
+    # `skipped` is the third outcome, per check rather than per case: the transport
+    # could not observe what this grader reads (a harness that reports no tool
+    # calls), so the check neither held nor broke. It carries `pass: true` so it
+    # cannot fail a case it never examined, and the report prints it as skipped —
+    # the same discipline `requires` already applies to a whole case: reported,
+    # never a silent pass.
+    Check = Struct.new(:name, :pass, :detail, :skipped, keyword_init: true) do
+      def skipped? = skipped == true
+    end
 
     # The verdict for one golden case. `judge` (a Judge::Verdict) is attached AFTER
     # the deterministic pass when the case has a rubric and a judge is configured;
@@ -69,6 +78,7 @@ module Insika
       def skipped? = !skipped.nil?
       def pass? = !skipped? && error.nil? && checks.all?(&:pass) && (judge.nil? || judge.pass)
       def failures = checks.reject(&:pass)
+      def skipped_checks = checks.select(&:skipped?)
       # Has a rubric to score but no verdict yet (judge disabled / not run). A skipped
       # case is not pending anything — nobody is going to judge a turn that never ran.
       def judge_pending? = !skipped? && !rubric.to_s.strip.empty? && judge.nil?
@@ -100,6 +110,11 @@ module Insika
       # That is also the honest scope — a question nobody received is not a question.
       POLICIES = {
         # "UMA PERGUNTA POR VEZ" — the rule Insika broke twice under a 28 KB prompt.
+        # `max:` is the store's, default 1. Measured across six harnesses on one
+        # greeting task: with max 1 every reply that says "tudo bem?" fails and every
+        # reply that does not passes, which grades a courtesy formula rather than the
+        # rule. A store whose customers are greeted sets 2 and keeps the check for
+        # what it is for — the form ("qual seu nome, CPF e número do pedido?").
         "ask_once" => "at most one question per reply",
         # Establish the objective before acting on a vague opener.
         "investigate_first" => "asks before calling a tool, on the first turn",
@@ -156,7 +171,16 @@ module Insika
       # all of them — "one question per reply" is a rule about every reply, and the
       # violation that motivated this was on the FIRST turn. Defaults to the single
       # result so existing callers keep working.
-      def evaluate(golden, result, turns: nil)
+      # `store` is the post-turn snapshot ({ collection => [rows] }) when the case
+      # declares a `store_state:` and the runner had a reader; nil otherwise.
+      #
+      # `tools_reported` is false when the TRANSPORT cannot see tool calls at all —
+      # a benched harness that answers text and nothing else. Its tool-shaped graders
+      # are then skipped with the reason instead of passing (they would: an empty
+      # list satisfies `never_calls`) or failing (it would: nothing satisfies
+      # `tools_called`). Both readings would be a claim about a harness nobody
+      # measured.
+      def evaluate(golden, result, turns: nil, store: nil, store_error: nil, tools_reported: true)
         if result.error
           return CaseResult.new(id: golden.id, agent: golden.agent, error: result.error, rubric: nil, judge: nil,
                                 checks: [Check.new(name: "turn", pass: false, detail: "turn error: #{result.error}")])
@@ -167,8 +191,96 @@ module Insika
         conversation = turns.nil? || turns.empty? ? [result] : turns
         checks = tool_checks(golden, result) + call_checks(golden, result) + reply_checks(golden, result) +
                  ui_checks(golden, result) + must_not_checks(golden, result) + policy_checks(golden, conversation)
+        checks = skip_tool_shaped(checks) unless tools_reported
+        checks += store_state_checks(golden, store, error: store_error) if golden.store_state?
         CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
                        rubric: golden.rubric, judge: nil)
+      end
+
+      # Graders that read the turn's tool calls. Named by prefix in ONE place: a
+      # grader added without a line here would be silently mis-skipped, and the
+      # policies are in the list because `investigate_first`/`act_fast` are questions
+      # about whether a tool was called, not about the text.
+      TOOL_SHAPED = /\A(?:tool:|never_calls:|calls_one_of\z|first_tool:|max_tool_calls:|blocked_gates:|
+                        must_not:tool_error\z|policy:(?:investigate_first|act_fast)\z)/x
+
+      def skip_tool_shaped(checks)
+        checks.map do |c|
+          next c unless c.name.match?(TOOL_SHAPED)
+
+          Check.new(name: c.name, pass: true, skipped: true,
+                    detail: "skipped: this harness does not report tool calls")
+        end
+      end
+
+      # WHAT THE STORE LOOKS LIKE AFTER THE TURN. A confident answer with no order
+      # is a fail, and no reply grader can say so. `snapshot` is
+      # { collection => [rows] } as the reader returned it; nil means the reader
+      # gave nothing back, which fails rather than passes — an unread store must
+      # never read as a satisfied one.
+      def store_state_checks(golden, snapshot, error: nil)
+        if snapshot.nil?
+          return [Check.new(name: "store_state", pass: false,
+                            detail: "no store snapshot was read#{" — #{error}" if error}")]
+        end
+
+        rows = Insika::Coercion.deep_stringify(snapshot)
+        spec = golden.store_state
+        count_checks(spec["count"], rows) + record_checks(spec["records"], rows) +
+          absent_checks(spec["absent"], rows)
+      end
+
+      def count_checks(spec, rows)
+        Array(spec).map do |collection, expected|
+          actual = Array(rows[collection.to_s]).size
+          Check.new(name: "store_state:count:#{collection}", pass: actual == expected,
+                    detail: "expected #{expected}, saw #{actual}")
+        end
+      end
+
+      def record_checks(spec, rows)
+        Array(spec).flat_map do |collection, expected_rows|
+          present = Array(rows[collection.to_s])
+          expected_rows.each_with_index.map do |expected, i|
+            hit = present.any? { |row| record_match?(expected, row) }
+            Check.new(name: "store_state:#{collection}[#{i}]", pass: hit,
+                      detail: hit ? "matched" : "no row of #{present.size} in #{collection} matches #{expected.inspect}")
+          end
+        end
+      end
+
+      def absent_checks(spec, rows)
+        Array(spec).flat_map do |collection, expected_rows|
+          present = Array(rows[collection.to_s])
+          expected_rows.each_with_index.map do |expected, i|
+            hits = present.count { |row| record_match?(expected, row) }
+            Check.new(name: "store_state:absent:#{collection}[#{i}]", pass: hits.zero?,
+                      detail: hits.zero? ? "absent" : "#{hits} row(s) in #{collection} match #{expected.inspect}")
+          end
+        end
+      end
+
+      # A row matches when every field the case NAMES matches — a store row carries
+      # ids, timestamps and totals nobody wrote the case about, and demanding the
+      # whole row would make every task un-authorable.
+      def record_match?(expected, row)
+        row.is_a?(Hash) && expected.all? { |k, v| value_match?(v, row[k.to_s]) }
+      end
+
+      # Numbers compare as numbers (189.9 == 189.90, and a store that answers a
+      # string "189.90" is still the same money); a list means "each of these is in
+      # there", not "these are all of them" — `count:` is where exactness is stated.
+      def value_match?(expected, actual)
+        case expected
+        when Hash then record_match?(expected, actual)
+        when Array then actual.is_a?(Array) && expected.all? { |e| actual.any? { |a| value_match?(e, a) } }
+        when Numeric then numeric(actual) && (expected.to_f - actual.to_f).abs < 1e-6
+        else expected.to_s == actual.to_s
+        end
+      end
+
+      def numeric(value)
+        value.is_a?(Numeric) || (value.is_a?(String) && !Float(value, exception: false).nil?)
       end
 
       # Each REQUIRED expected tool must appear in the turn's tool calls. Optional
@@ -274,7 +386,7 @@ module Insika
         # Exhaustive on purpose: a policy added to POLICIES without a rule here would
         # otherwise fall into whichever branch was last and check the wrong thing.
         pass, detail = case name
-                       when "ask_once" then ask_once(turns)
+                       when "ask_once" then ask_once(turns, max: golden.policy_options.fetch("max", 1).to_i)
                        when "investigate_first" then investigate_first(turns.first)
                        when "act_fast" then act_fast(turns.first)
                        else raise ArgumentError, "policy #{name.inspect} has no rule"
@@ -282,14 +394,15 @@ module Insika
         [Check.new(name: "policy:#{name}", pass: pass, detail: detail)]
       end
 
-      # Every reply asks at most one question. Reported with the offending turn and
+      # Every reply asks at most `max` questions. Reported with the offending turn and
       # the reply itself — "2 questions" alone sends the reader digging.
-      def ask_once(turns)
-        offender = turns.each_with_index.find { |t, _| count_questions(t.output_text) > 1 }
-        return [true, "at most one question per reply"] unless offender
+      def ask_once(turns, max: 1)
+        max = 1 if max < 1
+        offender = turns.each_with_index.find { |t, _| count_questions(t.output_text) > max }
+        return [true, "at most #{max} question(s) per reply"] unless offender
 
         turn, i = offender
-        [false, "turn #{i + 1} asked #{count_questions(turn.output_text)} questions: " \
+        [false, "turn #{i + 1} asked #{count_questions(turn.output_text)} questions (max #{max}): " \
                 "#{turn.output_text.to_s.strip[0, 160].inspect}"]
       end
 

@@ -38,12 +38,25 @@ module Insika
 
       case record["transport"].to_s
       when "stdio" then stdio_client(record, env_reader: env_reader)
-      when "http" then http_client(record, :streamable_http, egress: egress)
-      when "sse" then http_client(record, :sse, egress: egress)
+      when "http" then http_client(record, :streamable_http, egress: egress, env_reader: env_reader)
+      when "sse" then http_client(record, :sse, egress: egress, env_reader: env_reader)
       else
         raise Insika::ValidationError,
               "MCP instance '#{record["name"]}' has an unknown transport: #{record["transport"].inspect}"
       end
+    end
+
+    # The SAME opt-ins a data-tool obeys (INSIKA_EGRESS_ALLOW_HTTP / _PRIVATE /
+    # _HOSTS). Without reading them here, an MCP server on the deployment's own
+    # private network — a sidecar in the same compose file, which is the ordinary
+    # container shape — was unreachable and there was no flag that could say yes,
+    # while a data-tool pointed at the very same host had one. Strict stays the
+    # default: public https only until somebody opts out on purpose.
+    def egress_options(env_reader)
+      hosts = env_reader.read("INSIKA_EGRESS_HOSTS").to_s.split(",").map(&:strip).reject(&:empty?)
+      { allow_http: env_reader.truthy?(env_reader.read("INSIKA_EGRESS_ALLOW_HTTP")),
+        allow_private: env_reader.truthy?(env_reader.read("INSIKA_EGRESS_ALLOW_PRIVATE")),
+        host_allowlist: (hosts unless hosts.empty?) }.compact
     end
 
     def stdio_client(record, env_reader:)
@@ -59,9 +72,9 @@ module Insika
       )
     end
 
-    def http_client(record, transport_type, egress:)
+    def http_client(record, transport_type, egress:, env_reader: Insika::EnvSchema)
       url = record["url"]
-      reason = egress.violation(url)
+      reason = egress.violation(url, **egress_options(env_reader))
       raise Insika::Error, "MCP target blocked: #{reason}" if reason
 
       RubyLLM::MCP.client(

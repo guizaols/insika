@@ -26,7 +26,11 @@ module Insika
     #
     # `kind` is the PILOT PACK's value, never a gem constant (the
     # engine owns nothing about product shape).
-    Spec = Data.define(:kind, :items_path, :attachments_path) do
+    # `id`/`line` name the FIELDS inside an item, because a store's own payload
+    # calls them what it calls them (`product_id`, `name`) and a server nobody
+    # controls — an MCP server in particular — will not rename them for us.
+    # Defaults keep every existing spec byte-identical.
+    Spec = Data.define(:kind, :items_path, :attachments_path, :id_field, :line_field) do
       PATH_RE = /\A[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*\z/
 
       # String | Hash | Spec | nil -> Spec | nil. Raises ValidationError on a blank kind
@@ -43,12 +47,27 @@ module Insika
 
         items = presence_path(h["items"], "items")
         attachments = presence_path(h["attachments"], "attachments")
-        new(kind: kind, items_path: items, attachments_path: attachments)
+        new(kind: kind, items_path: items, attachments_path: attachments,
+            id_field: presence_field(h["id"], "id"), line_field: presence_field(h["line"], "line"))
       end
 
+      # A default field is left OUT: a spec that names nothing new serializes
+      # exactly as it did before this existed.
       def to_h
-        { "kind" => kind, "items" => items_path, "attachments" => attachments_path }.compact
+        { "kind" => kind, "items" => items_path, "attachments" => attachments_path,
+          "id" => (id_field unless id_field == "id"),
+          "line" => (line_field unless line_field == "line") }.compact
       end
+
+      # A field name, not a path: the item is one flat object and a dotted dig
+      # inside it would be a different feature.
+      def self.presence_field(value, default)
+        s = Coercion.presence(value) || default
+        raise Insika::ValidationError, "evidence.#{default}: not a field name" unless /\A[a-zA-Z0-9_]+\z/.match?(s)
+
+        s
+      end
+      private_class_method :presence_field
 
       def self.presence_path(value, default)
         s = Coercion.presence(value)
@@ -119,14 +138,15 @@ module Insika
         # model must never see a null where the contract says items.
         def build(spec, raw)
           items = SchemaGuard.dig(raw, spec.items_path) || []
+          id_of = ->(item) { item[spec.id_field] || item[spec.id_field.to_sym] }
           lean_items = items.first(MAX_ITEMS).map do |item|
-            { "id" => (item["id"] || item[:id]).to_s,
+            { "id" => id_of.call(item).to_s,
               # the line is what the model reads: truncated here; sanitized by the
               # envelope's fence when the agent has `fencing` on (bytes as-is when off).
-              "line" => Coercion.utf8((item["line"] || item[:line]).to_s)[0, LINE_MAX] }
+              "line" => Coercion.utf8((item[spec.line_field] || item[spec.line_field.to_sym]).to_s)[0, LINE_MAX] }
           end
           lean = { "items" => lean_items }
-          cards = stamp_ids(items, SchemaGuard.dig(raw, spec.attachments_path))
+          cards = stamp_ids(items, SchemaGuard.dig(raw, spec.attachments_path), id_of)
           [lean, Insika::Evidence.valid_attachments(cards)]
         end
 
@@ -135,12 +155,12 @@ module Insika
         # its position. That id is what a presentation tool later joins on. Stamped
         # on the RAW list, before malformed cards are dropped: pairing after the
         # drop would shift every later card onto the wrong product.
-        def stamp_ids(items, cards)
+        def stamp_ids(items, cards, id_of = ->(item) { item["id"] || item[:id] })
           Array(cards).each_with_index.map do |card, i|
             next card unless card.is_a?(Hash) && (card["id"] || card[:id]).nil?
 
             item = items[i]
-            id = item.is_a?(Hash) ? (item["id"] || item[:id]).to_s : ""
+            id = item.is_a?(Hash) ? id_of.call(item).to_s : ""
             id.empty? ? card : card.merge("id" => id)
           end
         end

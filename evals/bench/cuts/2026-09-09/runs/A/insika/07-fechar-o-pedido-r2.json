@@ -1,0 +1,62 @@
+{
+  "at": "2026-09-09T18:20:05Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 20620,
+    "case_ms_p95": 20620,
+    "turn_ms_p50": 10311,
+    "turn_ms_p95": 12867,
+    "tokens_total": 4273,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "07-fechar-o-pedido",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:create_order",
+          "pass": true,
+          "detail": "called"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 2, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:orders[0]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 20620,
+        "turn_ms": [
+          13151,
+          7470
+        ],
+        "turns": 2,
+        "tokens": 4273,
+        "cached": 3072
+      }
+    }
+  ]
+}
