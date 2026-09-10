@@ -1,0 +1,3 @@
+#!/bin/sh
+# The truth, for the grader. Not an MCP tool: nothing an agent can call may read it.
+exec ruby -rnet/http -e 'print Net::HTTP.get(URI("http://127.0.0.1:8931/admin/dump"))'

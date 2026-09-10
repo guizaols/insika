@@ -1,0 +1,25 @@
+{
+  "id": "07-fechar-o-pedido",
+  "agent": "loja",
+  "at": "2026-09-09T18:14:14Z",
+  "conv": "r1-07-fechar-o-pedido",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas",
+      "reply": "",
+      "error": "exit 137",
+      "tool_calls": [],
+      "ms": 9170
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: exit 137"
+    }
+  ]
+}

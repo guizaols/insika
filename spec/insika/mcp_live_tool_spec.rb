@@ -56,4 +56,79 @@ RSpec.describe Insika::McpLiveTool do
                                client_for: -> { raise "connection refused" })
     expect(tool.execute).to eq(error: "MCP instance 'fs' tool 'x' failed: connection refused")
   end
+
+  # WHAT THE DEPLOYMENT TRUSTS A TOOL WITH. A server describes what its tools do; it
+  # cannot say which of its results are evidence or which parameters may only carry
+  # an id something already returned — only the deployment can, so those come from
+  # the instance's configuration and the envelope reads them off the tool like any
+  # other.
+  describe "the per-tool overrides" do
+    let(:search) do
+      { "name" => "search_products", "description" => "busca",
+        "inputSchema" => { "type" => "object", "properties" => { "query" => { "type" => "string" } } } }
+    end
+    let(:add) do
+      { "name" => "add_to_cart", "description" => "adiciona",
+        "inputSchema" => { "type" => "object", "properties" => { "product_id" => { "type" => "string" } } } }
+    end
+
+    def tool(descriptor, overrides, result: nil)
+      client = Object.new
+      live = Object.new
+      live.define_singleton_method(:execute) { |**| result }
+      client.define_singleton_method(:tool) { |_n| live }
+      described_class.new(instance_name: "store", tool: descriptor, overrides: overrides,
+                          client_for: -> { client })
+    end
+
+    it "carries an evidence spec that names the store's own field names" do
+      spec = tool(search, { "evidence" => { "kind" => "products", "items" => "products",
+                                            "id" => "product_id", "line" => "name" } }).evidence
+      expect(spec.kind).to eq("products")
+      expect([spec.items_path, spec.id_field, spec.line_field]).to eq(%w[products product_id name])
+    end
+
+    it "carries a provenance requirement the envelope can gate on" do
+      expect(tool(add, { "requires_evidence" => ["product_id"] }).requires_evidence)
+        .to eq({ "params" => ["product_id"] })
+    end
+
+    it "refuses a requirement naming a parameter the tool does not declare" do
+      expect { tool(add, { "requires_evidence" => ["sku"] }) }
+        .to raise_error(Insika::ValidationError, /declared top-level parameters/)
+    end
+
+    it "a tool nobody configured answers neither, exactly as before" do
+      plain = tool(search, {})
+      expect(plain.evidence).to be_nil
+      expect(plain.requires_evidence).to be_nil
+    end
+
+    # MCP answers in text. Only a tool someone declared evidence for is parsed, so
+    # every other tool's bytes reach the model unchanged.
+    it "parses the result into an object only when there is evidence to extract" do
+      body = JSON.generate("products" => [{ "product_id" => "SKU-1", "name" => "Creme" }])
+      extracted = tool(search, { "evidence" => { "kind" => "products", "items" => "products" } }, result: body)
+      plain = tool(search, {}, result: body)
+
+      expect(extracted.execute(query: "creme")).to eq("products" => [{ "product_id" => "SKU-1", "name" => "Creme" }])
+      expect(plain.execute(query: "creme")).to eq(body)
+    end
+
+    # The gem hands back its own content object, not a String — the shape that made
+    # a working store read to the model as "the catalogue is down".
+    it "reads the text out of the gem's content object too" do
+      body = JSON.generate("products" => [{ "product_id" => "SKU-1" }])
+      content = Object.new
+      content.define_singleton_method(:text) { body }
+      out = tool(search, { "evidence" => { "kind" => "products", "items" => "products" } }, result: content)
+                .execute(query: "creme")
+      expect(out).to eq("products" => [{ "product_id" => "SKU-1" }])
+    end
+
+    it "text that is not JSON stays the text it was" do
+      out = tool(search, { "evidence" => { "kind" => "products" } }, result: "nada encontrado").execute(query: "x")
+      expect(out).to eq("nada encontrado")
+    end
+  end
 end

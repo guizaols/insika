@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+// Claude Code's translation of "a turn". `claude -p` is one message in and one
+// answer out; the session is carried by a --session-id derived from the conversation
+// id, so a two-turn task resumes rather than starting over.
+//
+// It is pointed at OpenRouter through ANTHROPIC_BASE_URL, which is how it gets the
+// same model as everyone else — Claude Code speaks the Anthropic Messages shape and
+// OpenRouter serves one.
+//
+// Tool calls come from the STORE's log, like every entrant: it is the only source
+// that is not a harness reporting on itself.
+const { spawnSync } = require("node:child_process");
+const { readFileSync, existsSync, writeFileSync, mkdirSync } = require("node:fs");
+const { createHash } = require("node:crypto");
+
+const STORE = (process.env.BENCH_STORE_MCP || "").replace(/\/mcp$/, "");
+const SCORECARD = (process.env.BENCH_SCORECARD || "A").toUpperCase();
+const MARKERS = "/tmp/bench-sessions";
+const input = JSON.parse(readFileSync(0, "utf8"));
+
+// A stable UUID per conversation: the same id on turn two is what makes --resume
+// find the session the first turn created.
+const digest = createHash("sha1").update(input.conv).digest("hex");
+const uuid = [digest.slice(0, 8), digest.slice(8, 12), "5" + digest.slice(13, 16),
+              "a" + digest.slice(17, 20), digest.slice(20, 32)].join("-");
+
+const STORE_TOOLS = ["search_products", "get_product", "search_faq", "search_orders", "search_voucher",
+                     "view_cart", "add_to_cart", "remove_from_cart", "create_order", "call_support"];
+
+async function calls(since) {
+  const res = await fetch(`${STORE}/admin/calls?since=${since}`);
+  return res.json();
+}
+
+(async () => {
+  const answer = { output_text: "", tool_calls: [], error: null, usage: null };
+  let mark = 0;
+  try {
+    mark = (await calls(0)).count;
+  } catch (e) {
+    answer.error = `store call log unreachable: ${e.message}`;
+    process.stdout.write(JSON.stringify(answer) + "\n");
+    return;
+  }
+
+  mkdirSync(MARKERS, { recursive: true });
+  const marker = `${MARKERS}/${uuid}`;
+  const resuming = existsSync(marker);
+
+  const args = [
+    "-p", input.message,
+    "--model", process.env.BENCH_MODEL || "deepseek/deepseek-v4-flash",
+    "--mcp-config", "/etc/bench/mcp.json",
+    "--append-system-prompt", readFileSync("/prompt/AGENTS.md", "utf8"),
+    // Scorecard A gives every entrant the same ten tools. Claude Code's own file and
+    // shell tools are what scorecard B measures — and with them on, nothing is
+    // allowlisted, so the permission prompt has to be waived or every turn stalls.
+    ...(SCORECARD === "A"
+      ? ["--allowedTools", STORE_TOOLS.map((t) => `mcp__store__${t}`).join(","),
+         "--disallowedTools", "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit"]
+      : ["--dangerously-skip-permissions"]),
+    "--output-format", "stream-json", "--verbose",
+    resuming ? "--resume" : "--session-id", uuid
+  ];
+
+  const run = spawnSync("claude", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: "/work" });
+  writeFileSync(marker, "");
+
+  // The last assistant text is the answer; `result` alone has come back empty on a
+  // turn that plainly answered, so the stream is the honest source.
+  let texts = [];
+  for (const line of (run.stdout || "").split("\n")) {
+    if (!line.startsWith("{")) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    if (event.type === "assistant") {
+      for (const block of event.message?.content || []) {
+        if (block.type === "text" && block.text.trim()) texts.push(block.text.trim());
+      }
+    } else if (event.type === "result") {
+      const u = event.usage || {};
+      answer.usage = { input_tokens: u.input_tokens, output_tokens: u.output_tokens,
+                       total_tokens: (u.input_tokens || 0) + (u.output_tokens || 0) };
+      if (event.is_error) answer.error = String(event.result || event.terminal_reason || "claude error");
+      if (!texts.length && event.result) texts.push(String(event.result).trim());
+    }
+  }
+  answer.output_text = texts[texts.length - 1] || "";
+  if (!answer.output_text && !answer.error) {
+    answer.error = `claude exited ${run.status} with no answer: ${(run.stderr || "").trim().split("\n").slice(-2).join(" ").slice(0, 300)}`;
+  }
+
+  try {
+    const log = await calls(mark);
+    answer.tool_calls = log.calls.map((c) => ({ name: c.name.replace(/^store__/, ""), status: c.status }));
+  } catch (e) {
+    answer.error ||= `store call log unreachable after the turn: ${e.message}`;
+  }
+
+  process.stdout.write(JSON.stringify(answer) + "\n");
+})();

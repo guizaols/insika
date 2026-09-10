@@ -1,0 +1,85 @@
+{
+  "id": "02-status-do-pedido",
+  "agent": "loja",
+  "at": "2026-09-09T21:09:57Z",
+  "conv": "r3-02-status-do-pedido",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "oi, queria saber do meu pedido SV-100237",
+      "reply": "Oi! Encontrei seu pedido **SV-100237**:\n\n📦 **Status:** Enviado 🚚\n**Total:** R$ 94,80\n**Código de rastreio:** BR123456789BR\n\nSeu pedido saiu pra entrega! Se precisar de mais alguma coisa, é só falar 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_orders",
+          "status": "ok"
+        }
+      ],
+      "ms": 5327
+    }
+  ],
+  "store": {
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ],
+    "cart_items": []
+  },
+  "checks": [
+    {
+      "name": "tool:search_orders",
+      "pass": true,
+      "detail": "called"
+    },
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "reply_includes:BR123456789BR",
+      "pass": true,
+      "detail": "present"
+    },
+    {
+      "name": "reply_omits:entregue",
+      "pass": true,
+      "detail": "absent"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    }
+  ]
+}

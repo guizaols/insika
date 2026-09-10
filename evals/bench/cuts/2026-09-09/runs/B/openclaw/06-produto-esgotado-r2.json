@@ -1,0 +1,60 @@
+{
+  "at": "2026-09-10T00:47:18Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 18506,
+    "case_ms_p95": 18506,
+    "turn_ms_p50": 18506,
+    "turn_ms_p95": 18506,
+    "tokens_total": 99274,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "06-produto-esgotado",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "calls_one_of",
+          "pass": true,
+          "detail": "called search_products"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:absent:cart_items[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 18506,
+        "turn_ms": [
+          18506
+        ],
+        "turns": 1,
+        "tokens": 99274
+      }
+    }
+  ]
+}

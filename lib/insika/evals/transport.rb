@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require "open3"
 require_relative "assertions"
 
 module Insika
@@ -326,6 +327,205 @@ module Insika
         ui = events.select { |ev| ev.type == :ui }
                    .map { |ev| { "component" => ev.data[:component].to_s, "count" => ev.data[:count].to_i } }
         [tools, ui]
+      end
+    end
+
+    # Drives a turn through an EXTERNAL agent runtime — a rival harness in a
+    # container — so the same corpus can be replayed against something that is not
+    # Insika and the answers land in the same TurnResult the graders already read.
+    #
+    # The protocol is one JSON object each way, per turn:
+    #
+    #   in  (stdin):  {"agent": "...", "conv": "...", "message": "..."}
+    #   out (stdout): {"output_text": "...", "tool_calls": [...], "error": null,
+    #                  "usage": {...}}
+    #
+    # `command` is an argv array, never a shell string: the message is customer text
+    # and must not be able to reach a shell. The adapter that speaks this protocol
+    # lives with the harness under test, not here — every rival has its own idea of
+    # what a turn is, and that translation is exactly what a bench entry costs.
+    #
+    # A harness whose adapter cannot report which tools were called says so ONCE, at
+    # construction (`reports_tool_calls: false`), and the Runner skips its tool-shaped
+    # graders with the reason. Otherwise a missing `tool_calls` is read as "this turn
+    # called nothing", which is a claim, not an absence.
+    #
+    # Timeout kills the child process; a container it started keeps running, which is
+    # the compose file's business (`--rm` and a per-run project name) rather than
+    # something to reimplement here.
+    class DriverTransport
+      def initialize(command:, timeout: 300, reports_tool_calls: true, env: {})
+        raise ArgumentError, "command must be an argv array" unless command.is_a?(Array) && !command.empty?
+
+        @command = command.map(&:to_s)
+        @timeout = timeout
+        @reports_tool_calls = reports_tool_calls
+        @env = env.transform_keys(&:to_s).transform_values(&:to_s)
+      end
+
+      def reports_tool_calls? = @reports_tool_calls
+
+      def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      def turn(agent:, conv:, message:)
+        t0 = mono
+        out, err, status = run_driver(JSON.generate(agent: agent, conv: conv, message: message))
+        return failure(err, t0) if status.nil? || !status.success?
+
+        answer = last_json_object(out)
+        return failure("driver wrote no JSON object#{" (stderr: #{tail(err)})" if err}", t0) if answer.nil?
+
+        TurnOutcome.new(
+          result: TurnResult.new(output_text: answer["output_text"].to_s,
+                                 tool_calls: normalize_tool_calls(answer["tool_calls"]),
+                                 ui: [], error: presence(answer["error"])),
+          ttfb: nil, total: (mono - t0) * 1000.0, usage: answer["usage"]
+        )
+      rescue StandardError => e
+        failure("#{e.class}: #{e.message}", t0)
+      end
+
+      private
+
+      # -> [stdout, stderr-or-reason, status]. status nil = it never finished.
+      def run_driver(input)
+        Open3.popen3(@env, *@command) do |stdin, stdout, stderr, wait_thr|
+          stdin.write(input)
+          stdin.close
+          out = +""
+          err = +""
+          readers = [Thread.new { out << stdout.read }, Thread.new { err << stderr.read }]
+
+          if wait_thr.join(@timeout).nil?
+            kill(wait_thr.pid)
+            readers.each(&:kill)
+            return [out, "driver timed out after #{@timeout}s", nil]
+          end
+
+          readers.each(&:join)
+          status = wait_thr.value
+          [out, status.success? ? err : "exit #{status.exitstatus}#{" — #{tail(err)}" if presence(err)}", status]
+        end
+      end
+
+      def kill(pid)
+        Process.kill("KILL", pid)
+      rescue Errno::ESRCH, Errno::EPERM
+        nil
+      end
+
+      # The driver's answer is the LAST JSON object it printed: an adapter that logs
+      # to stdout is the normal case, and refusing to read past its chatter would
+      # turn every such harness into an entry-gate failure it does not deserve.
+      def last_json_object(out)
+        out.to_s.each_line.reverse_each do |line|
+          parsed = begin
+            JSON.parse(line)
+          rescue JSON::ParserError
+            nil
+          end
+          return parsed if parsed.is_a?(Hash)
+        end
+        nil
+      end
+
+      # Adapters report tool calls in whichever shape their harness has: a bare name,
+      # or an object. Both become the shape the graders read.
+      def normalize_tool_calls(raw)
+        Array(raw).filter_map do |call|
+          case call
+          when String then { "name" => call, "status" => nil }
+          when Hash
+            name = (call["name"] || call[:name]).to_s
+            next if name.empty?
+
+            entry = { "name" => name, "status" => presence(call["status"]) }
+            (args = call["arguments"]) && (entry["arguments"] = args)
+            (gate = presence(call["gate"])) && (entry["gate"] = gate)
+            entry
+          end
+        end
+      end
+
+      def presence(value)
+        s = value.to_s.strip
+        s.empty? ? nil : s
+      end
+
+      def tail(text) = text.to_s.strip.lines.last(3).join.strip
+
+      def failure(msg, t0)
+        TurnOutcome.new(result: TurnResult.new(output_text: "", tool_calls: [], ui: [], error: msg.to_s),
+                        ttfb: nil, total: (mono - t0) * 1000.0, usage: nil)
+      end
+    end
+
+    # WHAT THE STORE HOLDS, for the `store_state:` graders. The bench dumps the
+    # store to one JSON file ({ collection => [rows] }) after the turn and points
+    # the runner at it; the file is re-read on every call, so the same reader serves
+    # a whole run as the dump is rewritten between tasks.
+    #
+    # Deliberately a file and not an MCP client: the harnesses under test reach the
+    # store over MCP and nothing else, but the GRADER is not a harness — reading the
+    # dumped truth is stricter than asking the same surface the agent could have
+    # confused, and it costs no per-store tool mapping.
+    class JsonStoreReader
+      def initialize(path)
+        @path = path
+      end
+
+      def read(collection)
+        snapshot = JSON.parse(File.read(@path))
+        raise Insika::Error, "#{@path}: expected a mapping of collection -> rows" unless snapshot.is_a?(Hash)
+
+        Array(snapshot[collection.to_s])
+      rescue Errno::ENOENT
+        raise Insika::Error, "#{@path}: no store snapshot on disk"
+      rescue JSON::ParserError => e
+        raise Insika::Error, "#{@path}: #{e.message}"
+      end
+    end
+
+    # The store, asked for its own state by running a command — `docker compose exec
+    # store dump-state`, or whatever a given store answers with. Preferred over the
+    # file reader for a benched harness: the dump then happens AFTER the turn, outside
+    # the window the runner is timing, so the store's own latency never lands in the
+    # harness's column.
+    #
+    # The dump is read ONCE per case and cached, because a case asks for several
+    # collections and dumping twice would report two different stores. `forget` is how
+    # the Runner opens a new case; a reader nobody resets would grade every case
+    # against the first one.
+    class CommandStoreReader
+      def initialize(command:, timeout: 60)
+        raise ArgumentError, "command must be an argv array" unless command.is_a?(Array) && !command.empty?
+
+        @command = command.map(&:to_s)
+        @timeout = timeout
+        @snapshot = nil
+      end
+
+      def forget = @snapshot = nil
+
+      def read(collection)
+        @snapshot ||= dump
+        Array(@snapshot[collection.to_s])
+      end
+
+      private
+
+      def dump
+        out, err, status = Open3.capture3(*@command)
+        raise Insika::Error, "store dump exited #{status.exitstatus}: #{err.to_s.strip.lines.last}" unless status.success?
+
+        parsed = JSON.parse(out)
+        raise Insika::Error, "store dump is not a mapping of collection -> rows" unless parsed.is_a?(Hash)
+
+        parsed
+      rescue JSON::ParserError => e
+        raise Insika::Error, "store dump is not JSON: #{e.message}"
+      rescue SystemCallError => e
+        raise Insika::Error, "store dump could not run: #{e.message}"
       end
     end
 

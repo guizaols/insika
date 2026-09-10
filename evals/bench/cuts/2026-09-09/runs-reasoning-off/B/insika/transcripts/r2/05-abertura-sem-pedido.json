@@ -1,0 +1,85 @@
+{
+  "id": "05-abertura-sem-pedido",
+  "agent": "loja",
+  "at": "2026-09-10T01:08:48Z",
+  "conv": "r2-05-abertura-sem-pedido",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "oi, comprei um negócio semana passada e queria trocar",
+      "reply": "Tudo bem! Pelo que vi aqui na nossa política, você tem **até 7 dias após o recebimento** para solicitar troca, conforme o Código de Defesa do Consumidor. 😊\n\nPara dar continuidade no processo, vou precisar de algumas informações:\n\n1. **Qual é o número do pedido?** (geralmente começa com #)\n2. **Qual produto você quer trocar?**\n3. **Qual o motivo da troca?**\n\nAssim que me passar esses dados, vejo o que podemos fazer!",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_faq",
+          "status": "ok"
+        }
+      ],
+      "ms": 9741
+    }
+  ],
+  "store": {
+    "cart_items": [],
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:add_to_cart",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:pii_leak",
+      "pass": true,
+      "detail": "clean"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "policy:ask_once",
+      "pass": false,
+      "detail": "turn 1 asked 3 questions (max 2): \"Tudo bem! Pelo que vi aqui na nossa política, você tem **até 7 dias após o recebimento** para solicitar troca, conforme o Código de Defesa do Consumidor. 😊\\n\\nPar\""
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    }
+  ]
+}

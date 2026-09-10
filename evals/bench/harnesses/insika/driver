@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Insika's translation of "a turn": one embedded reply per process, the session
+# carried by the conversation id — the same shape as `openclaw agent --local`, so
+# neither entrant is paying a cost the other avoids.
+#
+# Tool calls come from the STORE's log, like every other harness, plus the calls the
+# ENGINE refused before they could reach it: a provenance gate holding is invisible to
+# the store by definition, and leaving it out would score a gate that worked as a turn
+# that did nothing.
+require "json"
+require "net/http"
+require "uri"
+
+input = JSON.parse($stdin.read)
+store = URI(ENV.fetch("BENCH_STORE_MCP").sub(%r{/mcp\z}, ""))
+
+def calls(store, since)
+  JSON.parse(Net::HTTP.get(URI("#{store}/admin/calls?since=#{since}")))
+end
+
+answer = { "output_text" => "", "tool_calls" => [], "error" => nil, "usage" => nil }
+blocked = []
+mark = calls(store, 0)["count"]
+
+begin
+  require_relative "agent"
+  # Token usage rides the graph's event stream (the same `task_completed` the SSE
+  # surface turns into `response.completed`), because `reply` returns the text and
+  # nothing else. Without it our cost column would read as "not measured" while a
+  # rival's is filled in — the wrong kind of blank.
+  stream = BENCH.runtime.graph&.event_stream
+  # `tool_blocked` is the half the store cannot see by definition: a call a gate
+  # refused never arrives there. Leaving it out would score a gate that worked as a
+  # turn that did nothing.
+  usage = stream&.subscribe(types: %i[task_completed tool_blocked])
+  answer["output_text"] = BENCH.reply(input.fetch("message"), session: input.fetch("conv")).to_s
+  events = usage&.drain_nonblocking || []
+  reported = events.filter_map { |e| e.data[:usage] }.last
+  answer["usage"] = reported if reported
+  blocked = events.select { |e| e.type == :tool_blocked }
+                  .map { |e| { "name" => e.data[:name].to_s, "status" => "blocked", "gate" => e.data[:gate].to_s } }
+  usage&.close
+rescue StandardError => e
+  answer["error"] = "#{e.class}: #{e.message}"
+end
+
+answer["tool_calls"] = calls(store, mark)["calls"]
+                       .map { |c| { "name" => c["name"].sub(/\Astore__/, ""), "status" => c["status"] } } +
+                       Array(blocked)
+puts JSON.generate(answer)

@@ -29,7 +29,7 @@ module Insika
     # contradiction from six turns ago) becomes reproducible. {} = the case starts
     # empty, as every case did before the key existed.
     Golden = Struct.new(:id, :agent, :turns, :expect, :requires, :reference, :source, :persona, :tenant,
-                        :state, keyword_init: true) do
+                        :state, :store_state, keyword_init: true) do
       # The user messages to replay, in order. Empty for a persona case: a generated
       # conversation has no scripted turns.
       def user_turns = turns.map { |t| t["user"] }
@@ -72,9 +72,40 @@ module Insika
       def state = self[:state] || {}
       def seeded? = !state.empty?
 
+      # What the STORE must look like after the turn — the half of a commerce case
+      # no reply can prove. `records` are rows that must be there, `count` the exact
+      # size of a collection (a duplicated order fails it), `absent` rows that must
+      # not exist. Read after the last turn by a store reader the runner is given;
+      # {} = the case says nothing about the store, as every case did before.
+      def store_state = self[:store_state] || {}
+      def store_state? = !store_state.empty?
+
+      # The collections this case talks about — what the reader is asked for, and
+      # nothing else: a bench task about orders should not pull the catalogue.
+      def store_collections
+        (Array(store_state["records"]&.keys) + Array(store_state["count"]&.keys) +
+          Array(store_state["absent"]&.keys)).map(&:to_s).uniq
+      end
+
       # How much the agent should ask before acting. nil = the store
       # has no opinion and only the rubric decides.
-      def policy = GoldenLoader.presence(expect["policy"])
+      def policy = policy_pair.first
+
+      # What the store set the policy TO. The engine ships the mechanism (count the
+      # questions); the number is the store's, because "one question per reply" is a
+      # tolerance, not a law — a greeting that says "tudo bem?" spends one on
+      # courtesy in half the languages a store sells in.
+      def policy_options = policy_pair.last
+
+      # `policy: ask_once` and `policy: { ask_once: { max: 2 } }` are the same
+      # declaration with and without a number. -> [name, options]
+      def policy_pair
+        value = expect["policy"]
+        return [GoldenLoader.presence(value), {}] unless value.is_a?(Hash)
+
+        name, options = value.first
+        [GoldenLoader.presence(name), (options || {}).transform_keys(&:to_s)]
+      end
 
       # What the DEPLOYMENT must have for this case to mean anything.
       # Empty = runs everywhere.
@@ -141,6 +172,7 @@ module Insika
         validate_policy!(expect["policy"], id: id, source: source)
         validate_graders!(expect, id: id, source: source)
         state = normalize_state(raw["state"], id: id, source: source)
+        store_state = normalize_store_state(raw["store_state"], id: id, source: source)
         requires = raw["requires"] || {}
         unless requires.is_a?(Hash)
           raise InvalidGolden, "#{source}: 'requires' must be a mapping (case '#{id}')"
@@ -151,7 +183,7 @@ module Insika
 
         Golden.new(id: id, agent: agent, turns: turns, expect: expect,
                    requires: requires, reference: reference, source: source, persona: persona,
-                   tenant: tenant, state: state)
+                   tenant: tenant, state: state, store_state: store_state)
       end
 
       # `persona:` is the alternative shape to `turns:`: the
@@ -234,6 +266,55 @@ module Insika
         state
       end
 
+      STORE_STATE_KEYS = %w[records count absent].freeze
+
+      # store_state: what the store must look like AFTER the turn, graded by code
+      # against a snapshot the runner reads. Three keys, each a mapping keyed by
+      # collection: `records` (rows that must exist), `count` (the exact size of a
+      # collection) and `absent` (rows that must not exist). A closed vocabulary on
+      # purpose — a case that wrote `orders:` at the top level would grade nothing
+      # and pass, which is the failure this key exists to catch.
+      def normalize_store_state(raw, id:, source:)
+        return {} if raw.nil?
+
+        where = "#{source}: store_state (case '#{id}')"
+        raise InvalidGolden, "#{where} must be a mapping" unless raw.is_a?(Hash)
+
+        unknown = raw.keys.map(&:to_s) - STORE_STATE_KEYS
+        unless unknown.empty?
+          raise InvalidGolden, "#{where}: unknown key(s) #{unknown.join(', ')} — " \
+                               "known: #{STORE_STATE_KEYS.join(', ')}"
+        end
+
+        state = raw.compact
+        rows_by_collection!(state["records"], "#{where}.records")
+        rows_by_collection!(state["absent"], "#{where}.absent")
+        counts!(state["count"], "#{where}.count")
+        state
+      end
+
+      def rows_by_collection!(value, where)
+        return if value.nil?
+        raise InvalidGolden, "#{where} must be a mapping of collection -> rows" unless value.is_a?(Hash)
+
+        value.each do |collection, rows|
+          next if rows.is_a?(Array) && !rows.empty? && rows.all?(Hash)
+
+          raise InvalidGolden, "#{where}.#{collection} must be a non-empty list of mappings"
+        end
+      end
+
+      def counts!(value, where)
+        return if value.nil?
+        raise InvalidGolden, "#{where} must be a mapping of collection -> integer" unless value.is_a?(Hash)
+
+        value.each do |collection, n|
+          next if n.is_a?(Integer) && n >= 0
+
+          raise InvalidGolden, "#{where}.#{collection} must be a non-negative integer (got #{n.inspect})"
+        end
+      end
+
       def mapping_with!(value, key, type, where)
         return if value.nil?
         raise InvalidGolden, "#{where} must be a mapping" unless value.is_a?(Hash)
@@ -268,6 +349,16 @@ module Insika
       # `Assertions` constant is resolved at CALL time (this file loads first, and
       # assertions.rb touches `Safety::Detectors` at load time).
       def validate_policy!(value, id:, source:)
+        if value.is_a?(Hash)
+          raise InvalidGolden, "#{source}: policy takes ONE name (case '#{id}')" unless value.size == 1
+
+          name, options = value.first
+          unless options.nil? || options.is_a?(Hash)
+            raise InvalidGolden, "#{source}: policy #{name.inspect} options must be a map (case '#{id}')"
+          end
+
+          value = name
+        end
         name = presence(value)
         return if name.nil? || Assertions::POLICIES.key?(name)
 

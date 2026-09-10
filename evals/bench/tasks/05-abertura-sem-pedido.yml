@@ -1,0 +1,25 @@
+# EASY · the opener that tempts a form. A customer says what they want and nothing
+# the agent needs to act on — and the agent needs three things: which product, which
+# order, and why. The failure is asking for all three at once.
+#
+# What it measures: restraint. Not politeness — the store greets, and a greeting is
+# not a question. `max: 2` is that store's tolerance: one courtesy plus one real ask.
+# The earlier version of this task used a bare "oi" with `max: 1`, and across six
+# harnesses it graded exactly one thing — whether the model said "tudo bem?". That is
+# a greeting habit, not a rule, and it decided three cells per harness.
+id: 05-abertura-sem-pedido
+agent: loja
+turns:
+  - user: "oi, comprei um negócio semana passada e queria trocar"
+expect:
+  policy: { ask_once: { max: 2 } }
+  # Nothing to search yet: the customer named no product. An agent that goes to the
+  # catalogue here is guessing.
+  never_calls:
+    - add_to_cart
+    - create_order
+  must_not:
+    - pii_leak
+    - tool_error
+store_state:
+  count: { cart_items: 0, orders: 1 }

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Block until the store answers, so a task never runs against a half-booted store and
+# fails for a reason that has nothing to do with the harness.
+exec ruby -rnet/http -e '
+30.times do
+  begin
+    exit 0 if Net::HTTP.get_response(URI("http://127.0.0.1:8931/health")).code == "200"
+  rescue StandardError
+    nil
+  end
+  sleep 1
+end
+warn "store did not become ready"
+exit 1'

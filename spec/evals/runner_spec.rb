@@ -259,3 +259,108 @@ RSpec.describe Insika::Evals::Runner do
     end
   end
 end
+
+
+# The bench half of the Runner: a store to grade against, and a transport that
+# cannot see tool calls.
+RSpec.describe Insika::Evals::Runner do
+  class BenchFakeTransport
+    def initialize(reports_tool_calls: true, &script)
+      @script = script
+      @reports = reports_tool_calls
+    end
+
+    def reports_tool_calls? = @reports
+
+    def turn(agent:, conv:, message:)
+      Insika::Evals::TurnOutcome.new(result: @script.call(message), ttfb: nil, total: 1.0, usage: nil)
+    end
+  end
+
+  # Answers rows per collection; raises when built with one.
+  class FakeStoreReader
+    attr_reader :asked
+
+    def initialize(rows = {}, raising: nil)
+      @rows = rows
+      @raising = raising
+      @asked = []
+    end
+
+    def read(collection)
+      @asked << collection
+      raise Insika::Error, @raising if @raising
+
+      @rows[collection.to_s] || []
+    end
+  end
+
+  def bench_golden(store_state, expect = {})
+    Insika::Evals::GoldenLoader.build({ "id" => "bench", "agent" => "bia", "turns" => [{ "user" => "compra" }],
+                                        "expect" => expect, "store_state" => store_state })
+  end
+
+  def answered(text = "pronto", tools = [])
+    Insika::Evals::TurnResult.new(output_text: text, tool_calls: tools, error: nil)
+  end
+
+  it "grades the store after the turn, asking only for the collections the case names" do
+    reader = FakeStoreReader.new({ "orders" => [{ "total" => 189.9 }] })
+    rc = described_class.new(transport: BenchFakeTransport.new { answered }, store_reader: reader)
+                        .run_case(bench_golden({ "count" => { "orders" => 1 } }))
+    expect(rc.result.pass?).to be(true)
+    expect(reader.asked).to eq(["orders"])
+  end
+
+  # The claim the bench exists to make: a confident reply over a store that never
+  # changed is a failure, not a pass.
+  it "a confident answer with no order fails" do
+    reader = FakeStoreReader.new({ "orders" => [] })
+    rc = described_class.new(transport: BenchFakeTransport.new { answered("pedido confirmado!") },
+                             store_reader: reader)
+                        .run_case(bench_golden({ "count" => { "orders" => 1 } }))
+    expect(rc.result.pass?).to be(false)
+    expect(rc.result.failures.first.detail).to eq("expected 1, saw 0")
+  end
+
+  it "a case that needs a store with no reader configured is skipped, never run and passed" do
+    rc = described_class.new(transport: BenchFakeTransport.new { answered })
+                        .run_case(bench_golden({ "count" => { "orders" => 1 } }))
+    expect(rc.result).to be_skipped
+    expect(rc.result.skipped).to include("no store reader")
+  end
+
+  it "a reader that raises fails the case with the reason instead of killing the run" do
+    reader = FakeStoreReader.new(raising: "no store snapshot on disk")
+    rc = described_class.new(transport: BenchFakeTransport.new { answered }, store_reader: reader)
+                        .run_case(bench_golden({ "count" => { "orders" => 1 } }))
+    expect(rc.result.pass?).to be(false)
+    expect(rc.result.failures.first.detail).to include("no store snapshot on disk")
+  end
+
+  it "a transport that reports no tool calls skips the tool graders and grades the rest" do
+    transport = BenchFakeTransport.new(reports_tool_calls: false) { answered("pedido feito") }
+    g = Insika::Evals::GoldenLoader.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "compra" }],
+                                            "expect" => { "tools_called" => ["create_order"],
+                                                          "reply_includes" => ["pedido"] } })
+    rc = described_class.new(transport: transport).run_case(g)
+    expect(rc.result.pass?).to be(true)
+    expect(rc.result.skipped_checks.map(&:name)).to eq(["tool:create_order"])
+  end
+
+  # What the case SAW, carried out of the runner: a verdict alone cannot be argued
+  # with, and the reply behind a cell that passed is where the next task comes from.
+  it "carries every turn and the store it left behind" do
+    reader = FakeStoreReader.new({ "orders" => [{ "total" => 10 }] })
+    transport = BenchFakeTransport.new { |m| answered("resposta a #{m}", [{ "name" => "search_products" }]) }
+    g = Insika::Evals::GoldenLoader.build({ "id" => "two", "agent" => "bia",
+                                            "turns" => [{ "user" => "oi" }, { "user" => "e o frete?" }],
+                                            "expect" => {}, "store_state" => { "count" => { "orders" => 1 } } })
+
+    rc = described_class.new(transport: transport, store_reader: reader).run_case(g)
+
+    expect(rc.turns.map(&:output_text)).to eq(["resposta a oi", "resposta a e o frete?"])
+    expect(rc.turns.first.tool_names).to eq(["search_products"])
+    expect(rc.store).to eq({ "orders" => [{ "total" => 10 }] })
+  end
+end

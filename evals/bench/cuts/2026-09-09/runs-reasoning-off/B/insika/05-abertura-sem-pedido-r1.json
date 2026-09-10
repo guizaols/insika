@@ -1,0 +1,71 @@
+{
+  "at": "2026-09-10T01:04:49Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 9262,
+    "case_ms_p95": 9262,
+    "turn_ms_p50": 9262,
+    "turn_ms_p95": 9262,
+    "tokens_total": 1871,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "05-abertura-sem-pedido",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:add_to_cart",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:pii_leak",
+          "pass": true,
+          "detail": "clean"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "policy:ask_once",
+          "pass": false,
+          "detail": "turn 1 asked 3 questions (max 2): \"Oi! 😊 Tudo bem?\\n\\nPelo que vi aqui, você pode solicitar troca em até **7 dias após o recebimento** — e como foi semana passada, deve estar dentro do prazo sim!\\n\\n\""
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        }
+      ],
+      "perf": {
+        "ms": 9262,
+        "turn_ms": [
+          9262
+        ],
+        "turns": 1,
+        "tokens": 1871,
+        "cached": 1280
+      }
+    }
+  ]
+}

@@ -88,7 +88,9 @@ module Insika
     # discipline as OverlayToolRegistry#build_tool for data-tools.
     def build_tool(record, tool)
       require_relative "mcp_live_tool"
-      Insika::McpLiveTool.new(instance_name: record["name"], tool: tool, client_for: -> { client_for(record) })
+      Insika::McpLiveTool.new(instance_name: record["name"], tool: tool,
+                              overrides: record.dig("tool_overrides", tool["name"]) || {},
+                              client_for: -> { client_for(record) })
     end
 
     # A started, MEMOIZED client for `record` — one real connection per

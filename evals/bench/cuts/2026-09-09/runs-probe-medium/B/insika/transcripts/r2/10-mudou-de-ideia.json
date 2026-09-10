@@ -1,0 +1,83 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-10T01:19:12Z",
+  "conv": "r2-10-mudou-de-ideia",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "O **Desodorante Colônia Vento Masculino 100ml** foi adicionado ao seu carrinho — **R$ 189,90**.\n\nQuer mais alguma coisa ou já pode fechar o pedido? 🙂",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 11495
+    },
+    {
+      "user": "na verdade é presente pra minha esposa, troca pelo feminino",
+      "reply": "**Desodorante Colônia Vento Feminino 100ml** já está no carrinho — **R$ 189,90**.\n\nSua esposa vai gostar! Quer fechar o pedido ou precisa de mais alguma coisa? 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "remove_from_cart",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 24349
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "974520d0-6621-5823-a2b6-61dd2d0b8189",
+        "name": "Desodorante Colônia Vento Feminino 100ml",
+        "qty": 1,
+        "unit_price": 189.9
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

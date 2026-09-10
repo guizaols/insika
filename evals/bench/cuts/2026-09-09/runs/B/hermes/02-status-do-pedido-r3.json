@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-09T17:43:42Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 1781,
+    "case_ms_p95": 1781,
+    "turn_ms_p50": 1781,
+    "turn_ms_p95": 1781,
+    "tokens_measured": 0
+  },
+  "cases": [
+    {
+      "id": "02-status-do-pedido",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "exit 137",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: exit 137"
+        }
+      ],
+      "perf": {
+        "ms": 1781,
+        "turn_ms": [
+          1781
+        ],
+        "turns": 1
+      }
+    }
+  ]
+}

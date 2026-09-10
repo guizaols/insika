@@ -122,13 +122,13 @@ module Insika
       # `agent { }` block that needs it instead, where `Builder#mcp` auto-adds
       # "mcp:<name>" to THAT agent's `tools_allow_groups` (below).
       def mcp(name, transport: nil, command: nil, args: nil, url: nil,
-              headers: nil, env: nil, description: nil, enabled: true)
+              headers: nil, env: nil, description: nil, enabled: true, tools: nil)
         n = name.to_s
         raise ArgumentError, "duplicate mcp instance in system: #{n}" if @mcp_instances.any? { |m| m[:name] == n }
 
         @mcp_instances << { name: n, transport: transport&.to_s, command: command, args: args,
                              url: url, headers: headers, env: env, description: description,
-                             enabled: enabled }
+                             enabled: enabled, tools: tools }
         n
       end
     end
@@ -251,13 +251,13 @@ module Insika
       # gives its own tool name; `deny_tools` has no group-string equivalent
       # yet, so a whole MCP group cannot be denied by name today.
       def mcp(name, transport: nil, command: nil, args: nil, url: nil,
-              headers: nil, env: nil, description: nil, enabled: true)
+              headers: nil, env: nil, description: nil, enabled: true, tools: nil)
         n = name.to_s
         raise ArgumentError, "duplicate mcp instance in agent: #{n}" if @mcp_instances.any? { |m| m[:name] == n }
 
         @mcp_instances << { name: n, transport: transport&.to_s, command: command, args: args,
                              url: url, headers: headers, env: env, description: description,
-                             enabled: enabled }
+                             enabled: enabled, tools: tools }
         group = "mcp:#{n}"
         (@config[:tools_allow_groups] ||= []) << group unless Array(@config[:tools_allow_groups]).include?(group)
         n

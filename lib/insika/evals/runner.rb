@@ -19,7 +19,11 @@ module Insika
       # cache, carried separately because it is the number that explains a total.
       # Only the refinement gate reads them (records a run's cost); the
       # report and the exit code are untouched.
-      RunCase = Struct.new(:result, :timings, :tokens, :cached, keyword_init: true)
+      # `turns` and `store` are what the case actually SAW: every turn's reply and
+      # tool calls, and the store as it stood afterwards. The verdict alone says a
+      # cell failed; only these say what the harness answered, and a cross-harness
+      # table is unreadable without being able to go and look.
+      RunCase = Struct.new(:result, :timings, :tokens, :cached, :turns, :store, keyword_init: true)
 
       # judge: an Evals::Judge (optional). When set, a case with a rubric whose turn
       # ran cleanly gets a subjective verdict attached on top of the deterministic pass.
@@ -35,12 +39,18 @@ module Insika
       # pairwise: an Evals::Pairwise (optional). Only cases carrying a
       # `reference:` are compared, and the verdict never touches pass/fail — it is the
       # answer to "can we replace it", reported beside the suite's own verdict.
-      def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil, pairwise: nil)
+      #
+      # store_reader: how a case's `store_state:` is graded — anything answering
+      # `#read(collection)` with the collection's rows. Only the cases that declare a
+      # `store_state:` ask for it; a case that declares one with no reader configured
+      # is SKIPPED with the reason, never run and passed on its reply alone.
+      def initialize(transport:, judge: nil, conv_map: {}, capabilities: nil, pairwise: nil, store_reader: nil)
         @transport = transport
         @judge = judge
         @conv_map = conv_map || {}
         @capabilities = capabilities
         @pairwise = pairwise
+        @store_reader = store_reader
       end
 
       # [Golden] -> [RunCase]. Each RunCase carries the CaseResult (for the report) +
@@ -62,9 +72,16 @@ module Insika
         skip = skip_reason(golden)
         return RunCase.new(result: Assertions.skip(golden, skip), timings: []) if skip
 
+        if golden.store_state? && @store_reader.nil?
+          return RunCase.new(result: Assertions.skip(golden, "no store reader configured for `store_state`"),
+                             timings: [])
+        end
+
         # A backend that resolves state from a pre-existing conversation (e.g. a
         # consumer needing a real Chat UUID as X-Chat-Id) supplies it via conv_map; otherwise the
         # synthetic "eval-<id>" keeps the adapter's own multi-turn continuation.
+        # A reader that caches its snapshot is opening a new case now.
+        @store_reader.forget if @store_reader.respond_to?(:forget)
         conv = @conv_map[golden.id] || "eval-#{golden.id}"
         if golden.seeded?
           # The snapshot goes in BEFORE turn 1 — on the same conversation id the turns
@@ -101,7 +118,10 @@ module Insika
         last = turns.last
         # Tool/content assertions read the last turn (unchanged); the policy checks
         # read every turn — "one question per reply" is a rule about each of them.
-        result = Assertions.evaluate(golden, last, turns: turns)
+        # The store is read AFTER the last turn: what the conversation left behind.
+        store, store_error = read_store(golden) if golden.store_state? && last.error.nil?
+        result = Assertions.evaluate(golden, last, turns: turns, store: store, store_error: store_error,
+                                     tools_reported: tools_reported?)
         # Subjective layer: only when a judge is configured, the case has a rubric, and
         # the turn ran cleanly (nothing to judge on an errored turn).
         result.judge = @judge.score(golden: golden, result: last) if @judge && result.rubric && result.error.nil?
@@ -110,10 +130,30 @@ module Insika
         # comparison for a reason that has nothing to do with the agent.
         result.pairwise = @pairwise.compare(golden: golden, turns: turns) if @pairwise && result.error.nil?
         RunCase.new(result: result, timings: timings, tokens: sum_tokens(spent),
-                    cached: sum_tokens(cached))
+                    cached: sum_tokens(cached), turns: turns, store: store)
       end
 
       private
+
+      # Does the transport see tool calls at all? Only a benched harness answers no
+      # (an adapter that can report the text and nothing else). Anything that does
+      # not answer the question is assumed to report them, which is what every
+      # transport in the engine does.
+      def tools_reported?
+        return true unless @transport.respond_to?(:reports_tool_calls?)
+
+        @transport.reports_tool_calls?
+      end
+
+      # -> [{ collection => [rows] }, nil] or [nil, why]. A reader that raises fails
+      # the store graders WITH the reason rather than killing the run: one unreadable
+      # cell of a bench table must not throw away the other thirty-nine, and a store
+      # nobody could read is never a store that matched.
+      def read_store(golden)
+        [golden.store_collections.to_h { |c| [c, Array(@store_reader.read(c))] }, nil]
+      rescue StandardError => e
+        [nil, "#{e.class}: #{e.message}"]
+      end
 
       # nil when NO turn reported usage; otherwise the sum of the ones that did. A
       # partially-metered case is reported as what was actually measured, low rather

@@ -180,7 +180,33 @@ module Insika
             attrs[:headers] = existing["headers"]
           end
           mcp_store.upsert(attrs)
+          list_tools_once(c, attrs[:name])
         end
+      end
+
+      # A CODE-DECLARED server whose tools were never listed offers the agent
+      # NOTHING: the registry's `entries` reads the cached descriptors, so an empty
+      # cache means the model is never told those tools exist and answers out of its
+      # own head instead — silently, which is the worst shape a missing tool can
+      # take (a bench run caught exactly that: an agent with no catalogue invented
+      # one). So the FIRST boot lists them.
+      #
+      # A failure to list does NOT stop the boot — a stdio server behind a closed
+      # gate and a server that is momentarily down are both ordinary, and a
+      # deployment that refuses to start over either would be worse than the problem.
+      # It is said out loud instead, naming the consequence, because the failure this
+      # exists to end is the silent one.
+      #
+      # Only when the cache is empty. A later boot is free, and an operator who
+      # refreshed by hand is not overruled.
+      def list_tools_once(c, name)
+        record = c[:mcp_store].get_raw(name.to_s)
+        return unless record && record["enabled"] && Array(record["tools_cache"]).empty?
+
+        c[:mcp_tool_registry].refresh(name.to_s)
+      rescue StandardError => e
+        warn "insika: mcp \"#{name}\" was declared in code but its tools could not be listed " \
+             "(#{e.message}). The agent runs WITHOUT them until `insika mcp refresh #{name}` succeeds."
       end
 
       def build_components(backend, spine)

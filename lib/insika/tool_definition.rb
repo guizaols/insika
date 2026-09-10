@@ -163,6 +163,8 @@ module Insika
 
     def presentation? = !presentation.nil?
 
+    # Public because an MCP tool has the same question to answer and there must be
+    # one reading of "these parameters may only carry an id some tool returned".
     def self.normalize_requires_evidence(value, param_names)
       return nil if value.nil?
 
@@ -173,7 +175,6 @@ module Insika
 
       { "params" => params.map(&:to_s).uniq }
     end
-    private_class_method :normalize_requires_evidence
 
     # Group: enablement label by DATA (not name convention),
     # target of AgentProfile's `tools_allow_groups`. Trimmed; empty/nil -> nil.

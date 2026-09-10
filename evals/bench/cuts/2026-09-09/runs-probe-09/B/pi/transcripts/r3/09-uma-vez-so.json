@@ -1,0 +1,65 @@
+{
+  "id": "09-uma-vez-so",
+  "agent": "loja",
+  "at": "2026-09-10T02:37:49Z",
+  "conv": "r3-09-uma-vez-so",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero 2 unidades do Creme Corporal Antiatrito Vento",
+      "reply": "Já coloquei **2 unidades do Creme Corporal Antiatrito Vento 100ml** no carrinho 😊\n\n**Resumo:**  \n• 2x Creme Corporal Antiatrito Vento 100ml — R$ 99,80\n\nQuer mais alguma coisa ou já pode fechar o pedido?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 11763
+    },
+    {
+      "user": "adiciona logo por favor",
+      "reply": "Já está adicionado, viu! 😊 Olha só o carrinho:\n\n• **2x Creme Corporal Antiatrito Vento 100ml** — **R$ 99,80**\n\nQuer fechar o pedido ou precisa de mais algo?",
+      "error": null,
+      "tool_calls": [],
+      "ms": 6150
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e",
+        "name": "Creme Corporal Antiatrito Vento 100ml",
+        "qty": 2,
+        "unit_price": 49.9
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    }
+  ]
+}

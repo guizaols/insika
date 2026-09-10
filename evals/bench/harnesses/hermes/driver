@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Hermes's translation of "a turn".
+
+`hermes -z` is one prompt in and the final answer out, with nothing else on stdout,
+which is exactly the protocol's shape. A second turn resumes the conversation by name
+(`--continue <conv>`); the first one creates it.
+
+Tool calls come from the STORE's log, like every entrant: it is the only source that
+is not a harness reporting on itself. Token counts come from Hermes's own
+`--usage-file`, which it writes even when the run fails.
+
+Registering the store and, for scorecard A, stripping the built-in toolsets back to
+it are done by `setup`, which the runner calls once per container AFTER the store is
+healthy and BEFORE the clock starts — see harnesses/hermes/setup.
+"""
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+
+STORE = os.environ.get("BENCH_STORE_MCP", "").removesuffix("/mcp")
+MODEL = os.environ.get("BENCH_MODEL", "deepseek/deepseek-v4-flash")
+SEEN = "/tmp/bench-sessions"
+USAGE = "/tmp/hermes-usage.json"
+def calls(since):
+    with urllib.request.urlopen(f"{STORE}/admin/calls?since={since}", timeout=30) as r:
+        return json.load(r)
+
+
+def main():
+    payload = json.load(sys.stdin)
+    answer = {"output_text": "", "tool_calls": [], "error": None, "usage": None}
+    try:
+        mark = calls(0)["count"]
+    except Exception as e:  # noqa: BLE001 - the reason is what the report needs
+        answer["error"] = f"store call log unreachable: {e}"
+        print(json.dumps(answer))
+        return
+
+    os.makedirs(SEEN, exist_ok=True)
+    marker = os.path.join(SEEN, payload["conv"].replace("/", "_"))
+    argv = ["hermes", "-z", payload["message"], "--provider", "openrouter", "-m", MODEL,
+            "--yolo", "--accept-hooks", "--usage-file", USAGE]
+    # A named session, so turn two continues turn one instead of starting over.
+    argv += ["--continue", payload["conv"]] if os.path.exists(marker) else []
+
+    run = subprocess.run(argv, capture_output=True, text=True, cwd="/work", check=False)
+    open(marker, "w").close()
+
+    answer["output_text"] = (run.stdout or "").strip()
+    if not answer["output_text"]:
+        tail = " ".join((run.stderr or "").strip().splitlines()[-2:])[:300]
+        answer["error"] = f"hermes exited {run.returncode} with no answer: {tail}"
+
+    try:
+        with open(USAGE) as f:
+            report = json.load(f)
+        tokens = report.get("tokens") or report
+        answer["usage"] = {k: tokens[k] for k in ("input_tokens", "output_tokens", "total_tokens")
+                           if isinstance(tokens.get(k), int)} or None
+    except Exception:  # noqa: BLE001 - no usage file is "the provider did not say"
+        pass
+
+    try:
+        log = calls(mark)
+        answer["tool_calls"] = [{"name": c["name"].removeprefix("store__"), "status": c["status"]}
+                                for c in log["calls"]]
+    except Exception as e:  # noqa: BLE001
+        answer["error"] = answer["error"] or f"store call log unreachable after the turn: {e}"
+
+    print(json.dumps(answer))
+
+
+main()

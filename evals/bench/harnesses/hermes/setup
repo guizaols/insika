@@ -1,0 +1,19 @@
+#!/bin/sh
+# Once per container, before the clock starts. Both steps need the store's address,
+# which only exists at run time, and neither belongs inside a timed turn.
+#
+# - `hermes mcp add` registers the store. Without it Hermes runs with no catalogue at
+#   all and says so politely to the customer — which reads like a harness failing a
+#   commerce task when it is a harness nobody plugged in. It asks "enable all 10
+#   tools?" on a pipe as well as on a tty, and an unanswered prompt registers nothing.
+# - Scorecard A disables the twenty-odd built-in toolsets Hermes ships enabled. They
+#   are what scorecard B measures.
+set -e
+cd /work
+# `yes`, not `echo y`: a single line leaves the prompt unanswered and it cancels.
+yes | hermes mcp add store --url "$BENCH_STORE_MCP" >/dev/null 2>&1 || true
+if [ "${BENCH_SCORECARD:-A}" = "A" ]; then
+  hermes tools disable web browser terminal file code_execution vision image_gen tts \
+    skills todo memory session_search clarify delegation cronjob computer_use >/dev/null 2>&1 || true
+fi
+hermes tools list 2>&1 | tail -3

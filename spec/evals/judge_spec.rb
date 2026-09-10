@@ -79,7 +79,19 @@ RSpec.describe Insika::Evals::Judge do
       prompt = prompt_for("rubric" => "x", "policy" => "ask_once")
 
       expect(prompt).to include("STORE POLICY")
-      expect(prompt).to include("AT MOST ONE question per reply")
+      expect(prompt).to include("AT MOST 1 question(s) per reply")
+    end
+
+    # A judge told "at most one" while the counter allows two grades a different
+    # rule, and the two verdicts then disagree on the same reply.
+    it "carries the store's own threshold, not the engine's default" do
+      prompt = prompt_for("rubric" => "x", "policy" => { "ask_once" => { "max" => 2 } })
+
+      expect(prompt).to include("AT MOST 2 question(s) per reply")
+    end
+
+    it "tells the judge a greeting formula is not a question" do
+      expect(prompt_for("rubric" => "x", "policy" => "ask_once")).to include("courtesy, not a question")
     end
 
     it "says nothing when the store has no opinion — a default would invent one" do

@@ -87,4 +87,45 @@ RSpec.describe Insika::McpClient do
     expect(headers).not_to have_key("Origin")
     expect(headers["Authorization"]).to eq("Bearer x")
   end
+
+  # The gap a cross-harness bench found: an MCP server on the deployment's own
+  # private network (a sidecar in the same compose file) was blocked with no flag
+  # that could say yes, while a data-tool pointed at the same host had one.
+  describe "the egress opt-ins" do
+    RecordingEgress = Class.new do
+      attr_reader :seen
+
+      def violation(_url, **options)
+        @seen = options
+        nil
+      end
+    end
+
+    def env(values)
+      Class.new do
+        define_method(:read) { |name| values[name] }
+        define_method(:truthy?) { |v| Insika::EnvSchema.truthy?(v) }
+      end.new
+    end
+
+    let(:record) { { "name" => "store", "transport" => "http", "url" => "http://store:8931/mcp" } }
+
+    it "passes the same env opt-ins a data-tool obeys" do
+      egress = RecordingEgress.new
+      described_class.for(record, egress: egress,
+                                  env_reader: env("INSIKA_EGRESS_ALLOW_HTTP" => "true",
+                                                  "INSIKA_EGRESS_ALLOW_PRIVATE" => "1",
+                                                  "INSIKA_EGRESS_HOSTS" => "store, localhost"))
+
+      expect(egress.seen).to eq(allow_http: true, allow_private: true,
+                                host_allowlist: %w[store localhost])
+    end
+
+    it "stays strict when nobody opted out" do
+      egress = RecordingEgress.new
+      described_class.for(record, egress: egress, env_reader: env({}))
+
+      expect(egress.seen).to eq(allow_http: false, allow_private: false)
+    end
+  end
 end

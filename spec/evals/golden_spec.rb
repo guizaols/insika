@@ -145,3 +145,40 @@ RSpec.describe Insika::Evals::GoldenLoader do
     expect(goldens).to all(have_attributes(rubric: be_a(String), agent: a_string_matching(/\A[a-z-]+\z/)))
   end
 end
+
+
+# `store_state:` — what the store must look like after the turn.
+RSpec.describe Insika::Evals::GoldenLoader do
+  def build(store_state)
+    described_class.build({ "id" => "bench-order", "agent" => "bia", "turns" => [{ "user" => "compra" }],
+                            "expect" => {}, "store_state" => store_state })
+  end
+
+  it "accepts records, count and absent, and names the collections it will read" do
+    g = build({ "records" => { "orders" => [{ "total" => 189.9 }] },
+                "count" => { "orders" => 1 },
+                "absent" => { "carts" => [{ "status" => "open" }] } })
+    expect(g.store_state?).to be(true)
+    expect(g.store_collections).to contain_exactly("orders", "carts")
+  end
+
+  it "a case with no store_state says nothing about the store" do
+    g = described_class.build({ "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }], "expect" => {} })
+    expect(g.store_state?).to be(false)
+    expect(g.store_collections).to be_empty
+  end
+
+  # The reason the vocabulary is closed: `orders:` written at the top level would
+  # grade nothing and the task would pass on its reply alone.
+  it "refuses an unknown key inside store_state" do
+    expect { build({ "orders" => [{ "total" => 1 }] }) }
+      .to raise_error(described_class::InvalidGolden, /unknown key\(s\) orders/)
+  end
+
+  it "refuses a count that is not a non-negative integer, and rows that are not mappings" do
+    expect { build({ "count" => { "orders" => "one" } }) }
+      .to raise_error(described_class::InvalidGolden, /count.orders must be a non-negative integer/)
+    expect { build({ "records" => { "orders" => [] } }) }
+      .to raise_error(described_class::InvalidGolden, /records.orders must be a non-empty list/)
+  end
+end

@@ -183,12 +183,13 @@ judge is told the rule instead of guessing it.
 
 ```yaml
 expect:
-  policy: ask_once
+  policy: ask_once                    # the strict reading: one question, full stop
+  policy: { ask_once: { max: 2 } }    # a store that greets its customers
 ```
 
 | policy | the check | the judge is told |
 |---|---|---|
-| `ask_once` | no reply asks more than one question | two questions in one message is a failure |
+| `ask_once` | no reply asks more than `max` questions (default 1) | at most `max` per reply, and a greeting formula is courtesy rather than a question |
 | `investigate_first` | turn 1 asks something and calls no tool | ask on a vague request, don't search immediately |
 | `act_fast` | turn 1 calls a tool | asking what a search would answer is a failure |
 
@@ -200,6 +201,16 @@ Question counting is deliberately crude: a run of `?` counts once, and URLs are 
 so a tracking link's query string is not read as the agent asking something. It is a
 policy signal, not grammar — and crude was enough to catch an agent breaking a rule
 written in its own prompt, twice, with no model in the loop.
+
+**`max` is the store's, and it matters more than it looks.** The default of 1 comes from
+a real store's rule, quoted down to the punctuation: *"Máximo 1 pergunta principal por
+mensagem = 1 ponto de interrogação no fim"*. A store that greets its customers spends
+one of those on courtesy — measured across six harnesses answering the same "oi", `max:
+1` failed every reply containing "tudo bem?" and passed every reply without it, and
+nothing else. That grades a greeting habit, not the rule the policy exists for, which is
+the form: *"qual seu nome? qual o número do pedido? e o motivo?"*. Set `max` to what
+your store actually tolerates; the judge is told the same number, so the two halves
+never grade different rules.
 
 ### `reference` — compared against the system you want to replace
 

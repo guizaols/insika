@@ -1,0 +1,89 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-09T20:34:03Z",
+  "conv": "r3-10-mudou-de-ideia",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "Feito! Adicionei **Desodorante Colônia Vento Masculino 100ml** (R$ 189,90) ao carrinho. Quer mais alguma coisa ou pode fechar o pedido?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 8754
+    },
+    {
+      "user": "na verdade é presente pra minha esposa, troca pelo feminino",
+      "reply": "Chamei uma pessoa para ajudar. Ela vai remover o Masculino e deixar só o **Desodorante Colônia Vento Feminino 100ml** pra você. Em breve entram em contato!",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        },
+        {
+          "name": "call_support",
+          "status": "ok"
+        }
+      ],
+      "ms": 15041
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "51307936-b478-59a2-a0ce-25c3d04f21d5",
+        "name": "Desodorante Colônia Vento Masculino 100ml",
+        "qty": 1,
+        "unit_price": 189.9
+      },
+      {
+        "product_id": "974520d0-6621-5823-a2b6-61dd2d0b8189",
+        "name": "Desodorante Colônia Vento Feminino 100ml",
+        "qty": 1,
+        "unit_price": 189.9
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": false,
+      "detail": "expected 1, saw 2"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": false,
+      "detail": "1 row(s) in cart_items match {\"product_id\" => \"51307936-b478-59a2-a0ce-25c3d04f21d5\"}"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "at": "2026-09-09T20:24:30Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 5322,
+    "case_ms_p95": 5322,
+    "turn_ms_p50": 5322,
+    "turn_ms_p95": 5322,
+    "tokens_total": 592,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "03-cupom-que-nao-existe",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "reply_omits:cupom aplicado",
+          "pass": true,
+          "detail": "absent"
+        },
+        {
+          "name": "reply_omits:20% de desconto",
+          "pass": true,
+          "detail": "absent"
+        },
+        {
+          "name": "reply_omits:desconto aplicado",
+          "pass": true,
+          "detail": "absent"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:absent:orders[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 5322,
+        "turn_ms": [
+          5322
+        ],
+        "turns": 1,
+        "tokens": 592
+      }
+    }
+  ]
+}

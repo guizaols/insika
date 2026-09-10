@@ -231,3 +231,138 @@ RSpec.describe Insika::Evals::A2ATransport do
     expect(out.result.error).to eq("remote failed")
   end
 end
+
+
+require "tmpdir"
+require "fileutils"
+
+# The bench transport: one turn per child process, one JSON object each way. The
+# scripts here ARE drivers — a rival harness's adapter is the same contract with a
+# container behind it, so nothing about this needs docker to be tested.
+RSpec.describe Insika::Evals::DriverTransport do
+  def driver(script, **opts) = described_class.new(command: ["ruby", "-e", script], timeout: 5, **opts)
+
+  ECHO = <<~'RUBY'
+    require "json"
+    input = JSON.parse($stdin.read)
+    puts JSON.generate({ "output_text" => "oi #{input['message']}",
+                         "tool_calls" => [{ "name" => "search_products", "status" => "ok" }],
+                         "usage" => { "total_tokens" => 42 } })
+  RUBY
+
+  it "maps a driver answer to a TurnResult" do
+    out = driver(ECHO).turn(agent: "bia", conv: "eval-c", message: "quero hidratante")
+    expect(out.result.output_text).to eq("oi quero hidratante")
+    expect(out.result.tool_names).to eq(["search_products"])
+    expect(out.result.error).to be_nil
+    expect(out.usage).to eq({ "total_tokens" => 42 })
+  end
+
+  it "a driver that omits tool_calls reports none, and a bare name is still a call" do
+    none = driver('require "json"; puts JSON.generate({ "output_text" => "oi" })').turn(agent: "b", conv: "c", message: "oi")
+    bare = driver('require "json"; puts JSON.generate({ "output_text" => "oi", "tool_calls" => ["faq"] })')
+           .turn(agent: "b", conv: "c", message: "oi")
+    expect(none.result.tool_calls).to eq([])
+    expect(bare.result.tool_calls).to eq([{ "name" => "faq", "status" => nil }])
+  end
+
+  it "reads the answer past whatever the adapter logged before it" do
+    out = driver('require "json"; $stdout.puts "booting harness"; puts JSON.generate({ "output_text" => "pronto" })')
+          .turn(agent: "b", conv: "c", message: "oi")
+    expect(out.result.output_text).to eq("pronto")
+  end
+
+  # The three ways a driver fails. None may reach the graders as a clean turn: an
+  # empty answer satisfies `reply_omits` and `never_calls`, so a crash would score
+  # as a rival harness behaving perfectly.
+  it "a non-zero exit is a turn error, never a pass" do
+    out = driver('warn "no api key"; exit 3').turn(agent: "b", conv: "c", message: "oi")
+    expect(out.result.error).to include("exit 3", "no api key")
+  end
+
+  it "output that is not a JSON object is a turn error" do
+    out = driver('puts "Traceback (most recent call last)"').turn(agent: "b", conv: "c", message: "oi")
+    expect(out.result.error).to include("no JSON object")
+  end
+
+  it "a driver that hangs is killed and the turn errors" do
+    out = described_class.new(command: ["ruby", "-e", "sleep 30"], timeout: 0.3)
+                         .turn(agent: "b", conv: "c", message: "oi")
+    expect(out.result.error).to include("timed out")
+  end
+
+  it "an error the driver reports itself is the turn error" do
+    out = driver('require "json"; puts JSON.generate({ "output_text" => "", "error" => "context window exceeded" })')
+          .turn(agent: "b", conv: "c", message: "oi")
+    expect(out.result.error).to eq("context window exceeded")
+  end
+
+  it "says whether the harness can report tool calls at all" do
+    expect(driver(ECHO).reports_tool_calls?).to be(true)
+    expect(driver(ECHO, reports_tool_calls: false).reports_tool_calls?).to be(false)
+  end
+
+  it "refuses a shell string: a customer message must not reach a shell" do
+    expect { described_class.new(command: "docker run x") }.to raise_error(ArgumentError, /argv array/)
+  end
+end
+
+# The store snapshot the `store_state:` graders read.
+RSpec.describe Insika::Evals::JsonStoreReader do
+  let(:path) { File.join(Dir.tmpdir, "bench-snapshot-#{Process.pid}.json") }
+
+  after { FileUtils.rm_f(path) }
+
+  it "reads a collection's rows, and re-reads the file every call" do
+    File.write(path, JSON.generate({ "orders" => [{ "total" => 189.9 }] }))
+    reader = described_class.new(path)
+    expect(reader.read("orders").size).to eq(1)
+
+    File.write(path, JSON.generate({ "orders" => [] }))
+    expect(reader.read("orders")).to eq([])
+    expect(reader.read("carts")).to eq([])
+  end
+
+  it "a missing or malformed dump raises rather than reading as an empty store" do
+    expect { described_class.new(path).read("orders") }.to raise_error(Insika::Error, /no store snapshot/)
+    File.write(path, "not json")
+    expect { described_class.new(path).read("orders") }.to raise_error(Insika::Error)
+  end
+end
+
+# The store asked for its own state, after the turn.
+RSpec.describe Insika::Evals::CommandStoreReader do
+  def reader(script) = described_class.new(command: ["ruby", "-e", script])
+
+  DUMP = 'require "json"; $stderr.puts "dumping"; puts JSON.generate({ "orders" => [{ "total" => 10 }], "cart_items" => [] })'
+
+  it "reads collections out of one dump and does not dump twice for one case" do
+    counter = File.join(Dir.tmpdir, "dump-count-#{Process.pid}")
+    File.write(counter, "")
+    r = reader(%(File.write("#{counter}", File.read("#{counter}") + "x"); #{DUMP}))
+
+    expect(r.read("orders").size).to eq(1)
+    expect(r.read("cart_items")).to eq([])
+    expect(File.read(counter).size).to eq(1)
+
+    # A new case gets a new store.
+    r.forget
+    expect(r.read("orders").size).to eq(1)
+    expect(File.read(counter).size).to eq(2)
+  ensure
+    FileUtils.rm_f(counter)
+  end
+
+  it "a dump that fails or is not JSON raises rather than reading as an empty store" do
+    expect { reader('warn "no such container"; exit 1').read("orders") }
+      .to raise_error(Insika::Error, /exited 1.*no such container/m)
+    expect { reader('puts "Error: No such service: store"').read("orders") }
+      .to raise_error(Insika::Error, /not JSON/)
+    expect { reader('puts "[1,2]"').read("orders") }
+      .to raise_error(Insika::Error, /mapping of collection/)
+  end
+
+  it "refuses a shell string" do
+    expect { described_class.new(command: "docker exec store dump") }.to raise_error(ArgumentError, /argv array/)
+  end
+end

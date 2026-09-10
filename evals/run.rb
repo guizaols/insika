@@ -21,6 +21,7 @@ require "optparse"
 require "time"
 require "json"
 require "fileutils"
+require "shellwords"
 # The harness itself lives in the engine now (`Insika::Evals`) — one
 # evaluator, three callers: this CLI, the refinement gate, and the Studio. This file
 # is the CLI: flags, wiring, exit code.
@@ -46,7 +47,16 @@ opts = {
   # gating.
   baseline: nil,
   tolerance: 0.05,
-  update_baseline: false
+  update_baseline: false,
+  # Cross-harness bench: replay the corpus through an EXTERNAL agent runtime instead
+  # of a running insika. `driver` is the command that speaks one turn of the driver
+  # protocol on stdin/stdout (see Evals::DriverTransport); `store_snapshot` is the
+  # dumped store the `store_state:` graders read after each case.
+  driver: nil,
+  driver_no_tools: false,
+  store_snapshot: nil,
+  store_dump: nil,
+  transcripts: nil
 }
 
 OptionParser.new do |o|
@@ -67,6 +77,11 @@ OptionParser.new do |o|
   o.on("--min-agreement F", Float, "fraction of judges that must pass (default 0.5)") { |v| opts[:min_agreement] = v }
   o.on("--no-judge", "disable the LLM-judge (rubric cases stay judge_pending)") { opts[:judge_model] = nil }
   o.on("--pairwise", "compare cases with a `reference:` against the incumbent (2 calls/judge/case)") { opts[:pairwise] = true }
+  o.on("--driver CMD", "replay through an external harness: the command speaking the driver protocol") { |v| opts[:driver] = v }
+  o.on("--driver-no-tools", "this harness cannot report tool calls (its tool graders are skipped, not passed)") { opts[:driver_no_tools] = true }
+  o.on("--store-snapshot FILE", "JSON dump of the store ({collection: [rows]}) the `store_state:` graders read") { |v| opts[:store_snapshot] = v }
+  o.on("--store-dump CMD", "command that prints the store as JSON — read after the turn, outside the timing") { |v| opts[:store_dump] = v }
+  o.on("--transcripts DIR", "write what each case actually saw (replies, tool calls, the store) here") { |v| opts[:transcripts] = v }
   o.on("--baseline FILE", "gate against this baseline (blocks on regressions only)") { |v| opts[:baseline] = v }
   o.on("--tolerance F", Float, "max judge-score drop before it's a regression (default 0.05)") { |v| opts[:tolerance] = v }
   o.on("--update-baseline", "write the current run as the baseline and don't gate") { opts[:update_baseline] = true }
@@ -155,7 +170,25 @@ goldens = goldens.select { |g| File.fnmatch?(opts[:id], g.id) } if opts[:id]
 abort "eval: no goldens found in #{source}" if goldens.empty?
 
 conv_map = opts[:conv_map] ? JSON.parse(File.read(opts[:conv_map])) : {}
-transport = Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
+# A driver replaces the HTTP transport entirely: the target is a rival harness in a
+# container, not a deployment of ours, so there is no /v1 to read capabilities from
+# either and `requires` resolves to "unresolved" — the case runs and the report says so.
+driver_command = opts[:driver] ? Shellwords.split(opts[:driver]) : nil
+transport = if driver_command
+              Insika::Evals::DriverTransport.new(command: driver_command, timeout: opts[:timeout],
+                                                 reports_tool_calls: !opts[:driver_no_tools])
+            else
+              Insika::Evals::HttpTransport.new(base_url: opts[:base_url], token: opts[:token], timeout: opts[:timeout])
+            end
+# Two ways to read the store: a file somebody else wrote, or a command that asks it.
+# The command is the one a bench wants — it runs after the turn, so the store's own
+# latency never lands in the harness's time.
+store_reader =
+  if opts[:store_dump]
+    Insika::Evals::CommandStoreReader.new(command: Shellwords.split(opts[:store_dump]))
+  elsif opts[:store_snapshot]
+    Insika::Evals::JsonStoreReader.new(opts[:store_snapshot])
+  end
 judge, judge_models = build_judge(opts, settings)
 judge_note = judge ? "judges=#{judge_models.join('+')}" : "judge=off"
 
@@ -174,32 +207,67 @@ if opts[:pairwise]
 
   judge_note += " | pairwise=#{with_reference} case(s)"
 end
-puts "eval -> #{opts[:base_url]} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
+target = driver_command ? "driver #{driver_command.first}" : opts[:base_url]
+puts "eval -> #{target} | #{goldens.size} case(s) from #{source} | mode=#{opts[:mode]} | #{judge_note}"
 
 # What the deployment HAS, per agent — what a case's `requires` resolves against
 # Same base_url and token as the replay; an unreachable or older
 # deployment answers nil and the case RUNS, warned about below.
-capabilities = Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
+capabilities = driver_command ? nil : Insika::Evals::HttpCapabilities.new(base_url: opts[:base_url], token: opts[:token])
 runcases = Insika::Evals::Runner.new(transport: transport, judge: judge, conv_map: conv_map,
-                                     capabilities: capabilities, pairwise: pairwise).run(goldens)
+                                     capabilities: capabilities, pairwise: pairwise,
+                                     store_reader: store_reader).run(goldens)
 results = runcases.map(&:result)
 
 # A case that declared requirements, was not skipped, and was not resolved either:
 # it ran unchecked. Say so once, rather than letting the run look fully gated.
-unresolved = goldens.select(&:requirements?).map(&:agent).uniq.reject { |a| capabilities.for(a) }
+unresolved = goldens.select(&:requirements?).map(&:agent).uniq.reject { |a| capabilities&.for(a) }
 unless unresolved.empty?
   warn "eval: could not read /v1/agents for #{unresolved.join(', ')} — cases with `requires` ran unchecked"
 end
 at = Time.now.utc.iso8601
 
+# WHAT THE CASE SAW, not just how it was scored. A cross-harness table is only
+# arguable if the reply behind a cell can be read — and the reply behind a cell that
+# PASSED is where the next task comes from.
+if opts[:transcripts]
+  FileUtils.mkdir_p(opts[:transcripts])
+  goldens.zip(runcases).each do |golden, rc|
+    turns = Array(rc.turns).each_with_index.map do |turn, i|
+      { "user" => golden.user_turns[i], "reply" => turn.output_text, "error" => turn.error,
+        "tool_calls" => turn.tool_calls, "ms" => rc.timings.dig(i, :total)&.round }
+    end
+    File.write(File.join(opts[:transcripts], "#{golden.id}.json"), JSON.pretty_generate(
+                 "id" => golden.id, "agent" => golden.agent, "at" => at,
+                 "conv" => conv_map[golden.id] || "eval-#{golden.id}",
+                 "pass" => rc.result.pass?, "skipped" => rc.result.skipped,
+                 "turns" => turns, "store" => rc.store,
+                 "checks" => rc.result.checks.map { |c| { "name" => c.name, "pass" => c.pass, "detail" => c.detail } }
+               ))
+  end
+  puts "transcripts: #{opts[:transcripts]}"
+end
+
+# What each case COST, for the report. Wall clock measured around the turn by the
+# runner, never self-reported by the target — it is the one number every entrant in a
+# cross-harness run can be held to. A case with no timing (skipped) is absent rather
+# than zero.
+perf = runcases.each_with_object({}) do |rc, acc|
+  next if rc.timings.empty?
+
+  totals = rc.timings.map { |t| t[:total].to_f }
+  acc[rc.result.id] = { "ms" => totals.sum.round, "turn_ms" => totals.map(&:round),
+                        "turns" => totals.size, "tokens" => rc.tokens, "cached" => rc.cached }.compact
+end
+
 # --- eval verdict ---------------------------------------------------------------
 if %w[eval both].include?(opts[:mode])
   puts
-  puts Insika::Evals::Report.to_markdown(results, at: at)
+  puts Insika::Evals::Report.to_markdown(results, at: at, perf: perf)
 
   out = opts[:out] || File.join(__dir__, "reports", "#{at.tr(':', '-')}.json")
   FileUtils.mkdir_p(File.dirname(out))
-  File.write(out, Insika::Evals::Report.to_json(results, at: at))
+  File.write(out, Insika::Evals::Report.to_json(results, at: at, perf: perf))
   puts "report: #{out}"
 end
 

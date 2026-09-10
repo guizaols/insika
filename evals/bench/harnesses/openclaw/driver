@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+// OpenClaw's translation of "a turn". One process per turn; the session is carried by
+// --session-key, so a two-turn task continues where it left off.
+//
+// `openclaw agent --local` runs the embedded agent with the configured provider: no
+// gateway daemon, nothing listening between turns except the store.
+//
+// OpenClaw's --json reports the reply and the token usage but not which tools it
+// called, so the calls come from the STORE's own log — the same source for every
+// entrant, and the only one that is not a harness reporting on itself. A call a
+// provenance gate refused never reaches the store; OpenClaw has no such gate, so
+// there is nothing to add here.
+const { spawnSync } = require("node:child_process");
+const { readFileSync, copyFileSync } = require("node:fs");
+
+const STORE = (process.env.BENCH_STORE_MCP || "").replace(/\/mcp$/, "");
+const SCORECARD = (process.env.BENCH_SCORECARD || "A").toUpperCase();
+const input = JSON.parse(readFileSync(0, "utf8"));
+
+// The config is chosen per scorecard and installed where OPENCLAW_HOME expects it:
+// A allowlists the store's ten tools, B is the same file without the allowlist, so
+// OpenClaw's own toolset rides along with the store's.
+copyFileSync(`/etc/bench/openclaw-${SCORECARD.toLowerCase()}.json`, "/oc/openclaw.json");
+
+async function calls(since) {
+  const res = await fetch(`${STORE}/admin/calls?since=${since}`);
+  return res.json();
+}
+
+(async () => {
+  const answer = { output_text: "", tool_calls: [], error: null, usage: null };
+  let mark = 0;
+  try {
+    mark = (await calls(0)).count;
+  } catch (e) {
+    answer.error = `store call log unreachable: ${e.message}`;
+    process.stdout.write(JSON.stringify(answer) + "\n");
+    return;
+  }
+
+  const run = spawnSync("openclaw", [
+    "agent", "--local", "--json",
+    "--agent", "bench",
+    "--session-key", `agent:bench:${input.conv}`,
+    "--message", input.message
+  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
+  // The result is one pretty-printed JSON object; openclaw logs around it, so take
+  // the outermost object rather than a line.
+  const out = run.stdout || "";
+  const start = out.indexOf("{");
+  let parsed = null;
+  if (start !== -1) {
+    try { parsed = JSON.parse(out.slice(start)); } catch { parsed = null; }
+  }
+
+  if (parsed === null) {
+    answer.error = `openclaw exited ${run.status} without a JSON result: ` +
+                   (run.stderr || out).trim().split("\n").slice(-2).join(" ").slice(0, 400);
+  } else if (parsed.ok === false || !parsed.meta) {
+    // A refused run is JSON too. `{"ok":false,"error":{...}}` parses cleanly, and
+    // reading finalAssistantVisibleText off it yields "" — which the graders score as
+    // a harness that answered nothing rather than one that never ran. That is how an
+    // invalid config (thinkingDefault typed as reasoningDefault) published 72 cells
+    // as a 33% score instead of a broken row.
+    const e = parsed.error || {};
+    answer.error = `openclaw refused the run: ${e.message || JSON.stringify(parsed).slice(0, 300)}`;
+  } else {
+    const meta = parsed.meta || {};
+    answer.output_text = String(meta.finalAssistantVisibleText ??
+                                (parsed.payloads || []).map((p) => p.text).filter(Boolean).join("\n"));
+    const usage = (meta.agentMeta || {}).usage;
+    if (usage) answer.usage = { total_tokens: usage.total, input_tokens: usage.input, output_tokens: usage.output };
+    if (meta.aborted) answer.error = `aborted (${meta.stopReason || "unknown"})`;
+  }
+
+  // The store namespaces MCP tools as `store__<name>`; the graders speak the bare
+  // name, and stripping the namespace is the adapter's job, not the corpus's.
+  try {
+    const log = await calls(mark);
+    answer.tool_calls = log.calls.map((c) => ({ name: c.name.replace(/^store__/, ""), status: c.status }));
+  } catch (e) {
+    answer.error ||= `store call log unreachable after the turn: ${e.message}`;
+  }
+
+  process.stdout.write(JSON.stringify(answer) + "\n");
+})();

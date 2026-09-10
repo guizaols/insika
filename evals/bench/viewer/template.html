@@ -1,0 +1,410 @@
+<title>Cross-Harness Commerce Bench</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#eef1f4; --surface:#ffffff; --surface-2:#f6f8f9;
+  --ink:#151a1f; --muted:#5f6d7a; --faint:#8a97a3;
+  --line:#d5dce2; --line-soft:#e5eaee;
+  --copper:#a2542b; --copper-soft:#f0e0d5;
+  --pass:#2a6b4e; --pass-bg:#e2efe8;
+  --fail:#ad3527; --fail-bg:#f7e3e0;
+  --shadow:0 1px 2px rgba(20,30,40,.06),0 6px 18px rgba(20,30,40,.05);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#101418; --surface:#181d23; --surface-2:#1f252c;
+  --ink:#e4e9ed; --muted:#98a5b1; --faint:#6d7a86;
+  --line:#2c343d; --line-soft:#232a31;
+  --copper:#d98a58; --copper-soft:#3a2a20;
+  --pass:#63b48d; --pass-bg:#1c3229;
+  --fail:#e2796a; --fail-bg:#37211e;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+}}
+:root[data-theme="dark"]{
+  --paper:#101418; --surface:#181d23; --surface-2:#1f252c;
+  --ink:#e4e9ed; --muted:#98a5b1; --faint:#6d7a86;
+  --line:#2c343d; --line-soft:#232a31;
+  --copper:#d98a58; --copper-soft:#3a2a20;
+  --pass:#63b48d; --pass-bg:#1c3229;
+  --fail:#e2796a; --fail-bg:#37211e;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.55; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:32px 24px 96px}
+h1,h2,h3,.eyebrow,.tab,th{font-family:Archivo,system-ui,sans-serif}
+.mono,code,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums}
+
+/* masthead */
+header.mast{display:flex; flex-wrap:wrap; gap:20px 32px; align-items:flex-end; justify-content:space-between; padding-bottom:20px; border-bottom:2px solid var(--ink)}
+h1{font-size:29px; font-weight:700; letter-spacing:-.018em; margin:0; text-wrap:balance}
+.sub{color:var(--muted); font-size:14px; margin:6px 0 0; max-width:62ch}
+.mast-figs{display:flex; gap:26px}
+.fig{text-align:right}
+.fig b{display:block; font-family:"IBM Plex Mono",monospace; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.1}
+.fig span{display:block; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); margin-top:3px; font-family:Archivo,sans-serif; font-weight:600}
+
+.eyebrow{font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--faint); font-weight:600; margin:0 0 10px}
+
+/* controls */
+.controls{display:flex; flex-wrap:wrap; gap:22px; margin:24px 0 8px; align-items:flex-start}
+.group{display:flex; flex-direction:column; gap:7px}
+.tabs{display:flex; flex-wrap:wrap; gap:0; border:1px solid var(--line); border-radius:7px; overflow:hidden; background:var(--surface)}
+.tab{appearance:none; border:0; border-right:1px solid var(--line); background:transparent; color:var(--muted);
+  font-size:12.5px; font-weight:600; padding:7px 13px; cursor:pointer; white-space:nowrap; font-family:Archivo,sans-serif}
+.tab:last-child{border-right:0}
+.tab:hover{background:var(--surface-2); color:var(--ink)}
+.tab[aria-pressed="true"]{background:var(--ink); color:var(--paper)}
+.tab:focus-visible{outline:2px solid var(--copper); outline-offset:-2px}
+
+/* matrix */
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); margin-top:18px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13px}
+th,td{text-align:center; padding:0; border-bottom:1px solid var(--line-soft)}
+thead th{
+  font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600;
+  padding:13px 5px; border-bottom:1px solid var(--line); vertical-align:bottom; white-space:nowrap; background:transparent;
+}
+thead th.task{cursor:pointer; border-radius:5px 5px 0 0}
+thead th.task:hover{background:var(--copper-soft); color:var(--copper)}
+thead th.task span{display:block; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink); font-weight:600; letter-spacing:0}
+th.rowhead{text-align:left; padding:10px 14px; font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap; letter-spacing:0; text-transform:none}
+tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
+td.cell{padding:3px}
+td.summary{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--muted); padding:0 12px; white-space:nowrap}
+td.summary.lead{color:var(--ink); font-weight:600}
+.sq{
+  width:100%; min-width:42px; height:34px; border:1px solid transparent; border-radius:5px; cursor:pointer;
+  font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums;
+  display:flex; align-items:center; justify-content:center; background:var(--surface-2); color:var(--faint);
+}
+.sq:hover{border-color:var(--copper)}
+.sq:focus-visible{outline:2px solid var(--copper); outline-offset:1px}
+.sq.full{background:var(--pass-bg); color:var(--pass); font-weight:600}
+.sq.part{background:var(--fail-bg); color:var(--fail); font-weight:600}
+.sq.none{background:var(--fail); color:#fff; font-weight:600}
+.sq.sel{box-shadow:0 0 0 2px var(--copper); border-color:var(--copper)}
+.legend{display:flex; flex-wrap:wrap; gap:16px; padding:11px 14px; border-top:1px solid var(--line-soft); font-size:11.5px; color:var(--muted)}
+.key{display:inline-flex; align-items:center; gap:6px}
+.chip{width:13px; height:13px; border-radius:3px; display:inline-block}
+
+/* detail */
+.detail{margin-top:34px}
+.detail-head{display:flex; flex-wrap:wrap; gap:10px 18px; align-items:baseline; justify-content:space-between; margin-bottom:12px}
+h2{font-size:19px; font-weight:600; letter-spacing:-.01em; margin:0}
+h2 .mono{font-size:17px; color:var(--copper)}
+.hint{font-size:12.5px; color:var(--faint)}
+.rounds{display:flex; flex-direction:column; gap:14px}
+.round{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--pass); border-radius:8px; box-shadow:var(--shadow); overflow:hidden}
+.round.bad{border-left-color:var(--fail)}
+.round-head{display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line-soft); background:var(--surface-2)}
+.who{font-family:Archivo,sans-serif; font-weight:600; font-size:14px}
+.verdict{font-family:Archivo,sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:2.5px 8px; border-radius:20px}
+.verdict.ok{background:var(--pass-bg); color:var(--pass)}
+.verdict.no{background:var(--fail-bg); color:var(--fail)}
+.meta{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; display:flex; gap:14px}
+.fails{padding:10px 16px; border-bottom:1px solid var(--line-soft); display:flex; flex-direction:column; gap:6px}
+.failrow{font-size:12.5px; color:var(--muted)}
+.failrow b{font-family:"IBM Plex Mono",monospace; font-weight:600; color:var(--fail); font-size:12px}
+.turns{padding:14px 16px; display:flex; flex-direction:column; gap:14px}
+.turn{display:grid; grid-template-columns:74px 1fr; gap:12px; align-items:start}
+.role{font-family:Archivo,sans-serif; font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:var(--faint); padding-top:3px}
+.said{max-width:66ch}
+.said.cust{color:var(--muted); font-style:italic}
+.said p{margin:0 0 .5em}
+.said p:last-child{margin-bottom:0}
+.said strong{font-weight:600; color:var(--ink)}
+.tools{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px}
+.tool{font-family:"IBM Plex Mono",monospace; font-size:11px; padding:1.5px 7px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line-soft); color:var(--muted)}
+.tool.err{background:var(--fail-bg); border-color:var(--fail-bg); color:var(--fail)}
+.empty{padding:30px 16px; text-align:center; color:var(--faint); font-size:13.5px}
+footer{margin-top:44px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; color:var(--faint); max-width:70ch}
+footer code{font-size:11.5px}
+@media (max-width:640px){
+  .wrap{padding:22px 14px 70px}
+  h1{font-size:23px}
+  .mast-figs{gap:18px}
+  .turn{grid-template-columns:1fr; gap:4px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <h1>Cross-Harness Commerce Bench</h1>
+      <p class="sub">Six agent harnesses, the same twelve customer conversations, the same MCP store and the same model. Graded on the store's own state — never on what a harness says about itself. Pick a square to read what was actually said.</p>
+    </div>
+    <div class="mast-figs">
+      <div class="fig"><b id="fig-cells">—</b><span>cells</span></div>
+      <div class="fig"><b id="fig-rate">—</b><span>passed</span></div>
+      <div class="fig"><b id="fig-tok">—</b><span>tok/success</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="group">
+      <p class="eyebrow">Cut</p>
+      <div class="tabs" id="tabs-cut"></div>
+    </div>
+    <div class="group">
+      <p class="eyebrow">Scorecard</p>
+      <div class="tabs" id="tabs-card"></div>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="scroll"><table id="matrix"></table></div>
+    <div class="legend">
+      <span class="key"><i class="chip" style="background:var(--pass-bg);border:1px solid var(--pass)"></i> every round passed</span>
+      <span class="key"><i class="chip" style="background:var(--fail-bg);border:1px solid var(--fail)"></i> some rounds failed</span>
+      <span class="key"><i class="chip" style="background:var(--fail)"></i> every round failed</span>
+      <span class="key">Click a square for one harness · click a task id for every harness on it</span>
+    </div>
+  </section>
+
+  <section class="detail">
+    <div class="detail-head">
+      <h2 id="detail-title">—</h2>
+      <p class="hint" id="detail-hint"></p>
+    </div>
+    <div class="rounds" id="rounds"></div>
+  </section>
+
+  <footer>
+    Cut 3, run 2026-09-09 on <code>deepseek/deepseek-v4-flash</code> at reasoning <code>medium</code>, three rounds per cell.
+    <strong>Scorecard A</strong> is parity — same tools, same model, same prompt, none of anyone's own layer.
+    <strong>Scorecard B</strong> is each harness as it ships. The <em>unguarded</em> cut removes the rules the shared prompt was
+    supplying to tasks 08, 11 and 12; the probes are single-harness arms at ten rounds. Every cell here is one JSON file in
+    <code>evals/bench/cuts/2026-09-09/</code>, and the store fixture is a pseudonymous shop with a fabricated customer.
+  </footer>
+</div>
+
+<script type="application/json" id="bench-data">__DATA__</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById("bench-data").textContent);
+  var cells = DATA.cells;
+
+  var CUT_LABEL = {
+    "guarded": "Guarded", "unguarded": "Unguarded",
+    "reasoning-off": "Reasoning off", "probe-medium": "Probe · medium",
+    "probe-off": "Probe · off", "probe-09": "Probe · task 09"
+  };
+  var CUT_ORDER = ["guarded", "unguarded", "reasoning-off", "probe-medium", "probe-off", "probe-09"];
+  var HARNESS_ORDER = ["insika", "hermes", "pi", "openclaw", "opencode", "claude-code"];
+
+  var state = { cut: "guarded", card: "B", task: "09-uma-vez-so", harness: null };
+
+  function uniq(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
+  function inScope() {
+    return cells.filter(function (c) { return c.cut === state.cut && c.card === state.card; });
+  }
+  function sortH(a) {
+    return a.slice().sort(function (x, y) {
+      var i = HARNESS_ORDER.indexOf(x), j = HARNESS_ORDER.indexOf(y);
+      return (i < 0 ? 99 : i) - (j < 0 ? 99 : j);
+    });
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (m) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m];
+    });
+  }
+  // The replies are markdown-ish: bold for product names and prices, blank lines for
+  // paragraphs. Rendering those two is the difference between reading a conversation
+  // and reading a wire format; nothing else in them needs a parser.
+  function say(text) {
+    return esc(text).split(/\n{2,}/).map(function (p) {
+      return "<p>" + p.replace(/\n/g, "<br>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") + "</p>";
+    }).join("");
+  }
+  function fmt(n) { return n == null ? "—" : n.toLocaleString("en-US"); }
+  function secs(ms) { return ms == null ? "—" : (ms / 1000).toFixed(1) + "s"; }
+
+  function renderTabs() {
+    var cutsPresent = CUT_ORDER.filter(function (k) {
+      return cells.some(function (c) { return c.cut === k; });
+    });
+    document.getElementById("tabs-cut").innerHTML = cutsPresent.map(function (k) {
+      return '<button class="tab" data-kind="cut" data-v="' + k + '" aria-pressed="' +
+        (state.cut === k) + '">' + esc(CUT_LABEL[k] || k) + "</button>";
+    }).join("");
+
+    var cards = uniq(cells.filter(function (c) { return c.cut === state.cut; })
+      .map(function (c) { return c.card; })).sort();
+    document.getElementById("tabs-card").innerHTML = cards.map(function (k) {
+      return '<button class="tab" data-kind="card" data-v="' + k + '" aria-pressed="' +
+        (state.card === k) + '">' + esc(k) + "</button>";
+    }).join("");
+  }
+
+  function renderFigures(scope) {
+    var pass = scope.filter(function (c) { return c.pass; });
+    var tok = pass.reduce(function (s, c) { return s + (c.tok || 0); }, 0);
+    document.getElementById("fig-cells").textContent = scope.length;
+    document.getElementById("fig-rate").textContent = scope.length
+      ? Math.round(100 * pass.length / scope.length) + "%" : "—";
+    document.getElementById("fig-tok").textContent = pass.length
+      ? fmt(Math.round(tok / pass.length)) : "—";
+  }
+
+  function renderMatrix(scope) {
+    var harnesses = sortH(uniq(scope.map(function (c) { return c.harness; })));
+    var tasks = uniq(scope.map(function (c) { return c.task; })).sort();
+    var head = '<thead><tr><th class="rowhead">Harness</th>' +
+      tasks.map(function (t) {
+        return '<th class="task" data-task="' + esc(t) + '" title="' + esc(t) +
+          '" tabindex="0" role="button"><span>' + esc(t.slice(0, 2)) + "</span></th>";
+      }).join("") +
+      '<th>Rate</th><th>p50</th><th>Tok/success</th></tr></thead>';
+
+    var body = harnesses.map(function (h) {
+      var mine = scope.filter(function (c) { return c.harness === h; });
+      var ok = mine.filter(function (c) { return c.pass; });
+      var times = mine.map(function (c) { return c.ms || 0; }).sort(function (a, b) { return a - b; });
+      var p50 = times.length ? times[Math.floor(times.length / 2)] : null;
+      var tokAvg = ok.length
+        ? Math.round(ok.reduce(function (s, c) { return s + (c.tok || 0); }, 0) / ok.length) : null;
+      var lead = ok.length === mine.length ? " lead" : "";
+
+      return "<tr>" +
+        '<th class="rowhead">' + esc(h) + "</th>" +
+        tasks.map(function (t) {
+          var cs = mine.filter(function (c) { return c.task === t; });
+          if (!cs.length) return '<td class="cell"></td>';
+          var p = cs.filter(function (c) { return c.pass; }).length;
+          var cls = p === cs.length ? "full" : (p === 0 ? "none" : "part");
+          var sel = (state.task === t && (state.harness === h || state.harness === null)) ? " sel" : "";
+          return '<td class="cell"><button class="sq ' + cls + sel + '" data-task="' + esc(t) +
+            '" data-harness="' + esc(h) + '" title="' + esc(h + " · " + t + " · " + p + "/" + cs.length) +
+            '">' + p + "/" + cs.length + "</button></td>";
+        }).join("") +
+        '<td class="summary' + lead + '">' + Math.round(100 * ok.length / mine.length) + "%</td>" +
+        '<td class="summary">' + secs(p50) + "</td>" +
+        '<td class="summary">' + fmt(tokAvg) + "</td>" +
+        "</tr>";
+    }).join("");
+
+    document.getElementById("matrix").innerHTML = head + "<tbody>" + body + "</tbody>";
+  }
+
+  function renderDetail(scope) {
+    var title = document.getElementById("detail-title");
+    var hint = document.getElementById("detail-hint");
+    var host = document.getElementById("rounds");
+
+    var picked = scope.filter(function (c) {
+      return c.task === state.task && (state.harness === null || c.harness === state.harness);
+    });
+    if (!picked.length) {
+      title.textContent = "Nothing selected";
+      hint.textContent = "";
+      host.innerHTML = '<p class="empty">This cut has no cells for that square. Pick another.</p>';
+      return;
+    }
+
+    picked.sort(function (a, b) {
+      var i = HARNESS_ORDER.indexOf(a.harness), j = HARNESS_ORDER.indexOf(b.harness);
+      return (i - j) || (a.round - b.round);
+    });
+
+    title.innerHTML = state.harness
+      ? esc(state.harness) + ' on <span class="mono">' + esc(state.task) + "</span>"
+      : 'Every harness on <span class="mono">' + esc(state.task) + "</span>";
+    hint.textContent = picked.length + " cell" + (picked.length === 1 ? "" : "s") +
+      " · scorecard " + state.card + " · " + (CUT_LABEL[state.cut] || state.cut).toLowerCase();
+
+    host.innerHTML = picked.map(function (c) {
+      var fails = c.fails && c.fails.length
+        ? '<div class="fails">' + c.fails.map(function (f) {
+            return '<div class="failrow"><b>' + esc(f.n) + "</b>" +
+              (f.d ? " — " + esc(f.d) : "") + "</div>";
+          }).join("") + "</div>"
+        : "";
+
+      var turns = (c.turns || []).map(function (t) {
+        var tools = (t.t || []).length
+          ? '<div class="tools">' + t.t.map(function (x) {
+              return '<span class="tool' + (x.indexOf(":") > -1 ? " err" : "") + '">' + esc(x) + "</span>";
+            }).join("") + "</div>"
+          : "";
+        var reply = t.r && String(t.r).trim()
+          ? say(t.r)
+          : '<p style="color:var(--fail)">' + esc(t.e || "no visible answer") + "</p>";
+        return '<div class="turn"><div class="role">Customer</div><div class="said cust">' +
+          say(t.u) + "</div></div>" +
+          '<div class="turn"><div class="role">' + esc(c.harness) + "</div><div class=\"said\">" +
+          reply + tools + "</div></div>";
+      }).join("");
+
+      return '<article class="round' + (c.pass ? "" : " bad") + '">' +
+        '<div class="round-head">' +
+          '<span class="who">' + esc(c.harness) + "</span>" +
+          '<span class="verdict ' + (c.pass ? "ok" : "no") + '">' + (c.pass ? "passed" : "failed") + "</span>" +
+          '<span class="mono" style="font-size:11.5px;color:var(--faint)">round ' + c.round + "</span>" +
+          '<span class="meta"><span>' + secs(c.ms) + "</span><span>" + fmt(c.tok) + " tok</span><span>" +
+            (c.nchecks - (c.fails ? c.fails.length : 0)) + "/" + c.nchecks + " checks</span></span>" +
+        "</div>" + fails +
+        '<div class="turns">' + turns + "</div>" +
+        "</article>";
+    }).join("");
+  }
+
+  function render() {
+    var scope = inScope();
+    // A cut may not carry the selected card or task; fall back rather than blank out.
+    if (!scope.length) {
+      var cards = uniq(cells.filter(function (c) { return c.cut === state.cut; }).map(function (c) { return c.card; })).sort();
+      if (cards.length) { state.card = cards[0]; scope = inScope(); }
+    }
+    var tasks = uniq(scope.map(function (c) { return c.task; })).sort();
+    if (tasks.indexOf(state.task) < 0) { state.task = tasks[0]; state.harness = null; }
+    var hs = uniq(scope.map(function (c) { return c.harness; }));
+    if (state.harness && hs.indexOf(state.harness) < 0) state.harness = null;
+
+    renderTabs();
+    renderFigures(scope);
+    renderMatrix(scope);
+    renderDetail(scope);
+  }
+
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest(".tab");
+    if (tab) {
+      state[tab.dataset.kind] = tab.dataset.v;
+      if (tab.dataset.kind === "cut") state.harness = null;
+      render();
+      return;
+    }
+    var sq = e.target.closest(".sq");
+    if (sq) {
+      var same = state.task === sq.dataset.task && state.harness === sq.dataset.harness;
+      state.task = sq.dataset.task;
+      state.harness = same ? null : sq.dataset.harness;
+      render();
+      document.querySelector(".detail").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    var th = e.target.closest("th.task");
+    if (th) {
+      state.task = th.dataset.task;
+      state.harness = null;
+      render();
+      document.querySelector(".detail").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var th = e.target.closest("th.task");
+    if (th) { e.preventDefault(); th.click(); }
+  });
+
+  render();
+})();
+</script>
