@@ -61,6 +61,21 @@
   },
   "checks": [
     {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
+      "name": "tool:remove_from_cart@turn2",
+      "pass": false,
+      "detail": "turn 2 called search_products, add_to_cart, call_support"
+    },
+    {
+      "name": "tool:add_to_cart@turn2",
+      "pass": true,
+      "detail": "called on turn 2"
+    },
+    {
       "name": "never_calls:create_order",
       "pass": true,
       "detail": "not called"
@@ -69,6 +84,11 @@
       "name": "must_not:tool_error",
       "pass": true,
       "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
     },
     {
       "name": "store_state:count:cart_items",

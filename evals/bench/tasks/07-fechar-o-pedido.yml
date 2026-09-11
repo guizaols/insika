@@ -10,15 +10,23 @@ id: 07-fechar-o-pedido
 agent: loja
 turns:
   - user: "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas"
+    tools_called: [add_to_cart]
   - user: "isso mesmo, pode fechar o pedido"
+    tools_called: [create_order]
 expect:
-  # The call graders read the LAST turn only, so this names what closing looks like;
-  # that the two items were added at all is proven by the order below, which is the
-  # stronger statement anyway.
+  # The case-level call grader reads the LAST turn, so this names what closing looks
+  # like; each turn above pins its own call, and the order below proves the items.
   tools_called:
     - create_order
   must_not:
     - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
 store_state:
   records:
     orders:

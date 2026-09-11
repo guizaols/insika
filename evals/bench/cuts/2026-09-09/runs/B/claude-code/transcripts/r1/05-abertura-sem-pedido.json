@@ -62,6 +62,11 @@
       "detail": "no tool errors"
     },
     {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
       "name": "policy:ask_once",
       "pass": true,
       "detail": "at most 2 question(s) per reply"

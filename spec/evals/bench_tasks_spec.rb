@@ -28,6 +28,15 @@ RSpec.describe "the cross-harness bench tasks" do
     end
   end
 
+  # One store, one vocabulary: the words a reply uses to claim a mutation are the
+  # store's, copied into every task so the engine never has to know Portuguese. A
+  # task whose copy drifted would grade the same reply differently from its siblings.
+  it "every task checks for phantom actions with the same claims map" do
+    expect(tasks.map(&:must_not)).to all(include("phantom_action"))
+    expect(tasks.map(&:claims).uniq.size).to eq(1)
+    expect(tasks.first.claims.keys).to contain_exactly("add_to_cart", "remove_from_cart", "create_order")
+  end
+
   # A bench task that does not look at the store is a golden case in the wrong folder.
   it "every task pins what the store looks like afterwards" do
     expect(tasks.reject(&:store_state?)).to be_empty

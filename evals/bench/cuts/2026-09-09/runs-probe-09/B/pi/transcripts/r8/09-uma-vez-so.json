@@ -40,6 +40,11 @@
   },
   "checks": [
     {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
       "name": "never_calls:create_order",
       "pass": false,
       "detail": "called create_order"
@@ -48,6 +53,11 @@
       "name": "must_not:tool_error",
       "pass": true,
       "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
     },
     {
       "name": "store_state:count:cart_items",

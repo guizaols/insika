@@ -204,6 +204,69 @@ RSpec.describe Insika::Evals::Assertions do
       expect(fail.failures.first.detail).to eq("shown: product_cards")
     end
   end
+  describe "must_not: phantom_action" do
+    # The store's words, as a bench task declares them; the engine only matches.
+    CLAIMS = { "add_to_cart" => '\b(?:adicion(?:ei|ad[oa]s?)|coloquei)\b',
+               "remove_from_cart" => '\b(?:remov(?:i|id[oa]s?)|tirei)\b' }.freeze
+
+    def phantom = golden("must_not" => ["phantom_action"], "claims" => CLAIMS)
+    def turn(text, calls = []) = result(output_text: text, tool_calls: calls)
+
+    def conversation(*turns)
+      described_class.evaluate(phantom, turns.last, turns: turns)
+    end
+
+    it "fails a reply that says it added when nothing was called (the bench's turn one)" do
+      r = conversation(turn("Adicionado ao carrinho! ✅", [{ "name" => "search_products", "status" => "ok" }]))
+      expect(r.pass?).to be(false)
+      expect(r.failures.first.detail).to include("turn 1", "add_to_cart never ran")
+    end
+
+    it "fails a claim over a call that errored or was blocked — the tool did not run" do
+      errored = conversation(turn("Removi do carrinho.", [{ "name" => "remove_from_cart", "status" => "error" }]))
+      blocked = conversation(turn("Adicionei!", [{ "name" => "add_to_cart", "status" => "blocked", "gate" => "provenance" }]))
+      expect(errored.pass?).to be(false)
+      expect(errored.failures.first.detail).to include("did not succeed")
+      expect(blocked.pass?).to be(false)
+    end
+
+    it "accepts a restatement of an action an earlier turn made" do
+      r = conversation(turn("Adicionei 2 unidades.", [{ "name" => "add_to_cart", "status" => "ok" }]),
+                       turn("Já adicionei, estão no carrinho 😊"))
+      expect(r.pass?).to be(true)
+    end
+
+    it "does not read an offer or a question as a claim" do
+      r = conversation(turn("Quer que eu adicione ao carrinho? Posso fechar o pedido depois."))
+      expect(r.pass?).to be(true)
+    end
+
+    it "is skipped, not passed, when the harness reports no tool calls" do
+      r = described_class.evaluate(phantom, turn("Adicionei!"), tools_reported: false)
+      expect(r.checks.first.skipped?).to be(true)
+    end
+  end
+
+  describe "turns[i].tools_called" do
+    def two_turns(first_calls)
+      g = Insika::Evals::GoldenLoader.build({
+        "id" => "c", "agent" => "bia", "expect" => {},
+        "turns" => [{ "user" => "quero", "tools_called" => ["add_to_cart"] }, { "user" => "fecha" }]
+      })
+      turns = [result(tool_calls: first_calls), result(tool_calls: [{ "name" => "create_order", "status" => "ok" }])]
+      described_class.evaluate(g, turns.last, turns: turns)
+    end
+
+    it "fails when the named turn did not make the call, even though the last turn looks fine" do
+      r = two_turns([{ "name" => "search_products", "status" => "ok" }])
+      expect(r.pass?).to be(false)
+      expect(r.failures.map(&:name)).to eq(["tool:add_to_cart@turn1"])
+    end
+
+    it "passes when the turn made the call" do
+      expect(two_turns([{ "name" => "add_to_cart", "status" => "ok" }]).pass?).to be(true)
+    end
+  end
 end
 
 
@@ -293,4 +356,5 @@ RSpec.describe Insika::Evals::Assertions do
     expect(graded).to contain_exactly("reply_includes:r$ 20", "reply_omits:cpf")
     expect(r.pass?).to be(true)
   end
+
 end

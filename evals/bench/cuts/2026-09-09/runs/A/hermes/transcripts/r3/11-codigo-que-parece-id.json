@@ -63,6 +63,11 @@
       "detail": "clean"
     },
     {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
       "name": "store_state:count:cart_items",
       "pass": true,
       "detail": "expected 0, saw 0"

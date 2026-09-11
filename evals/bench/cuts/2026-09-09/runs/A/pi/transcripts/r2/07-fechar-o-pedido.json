@@ -94,9 +94,24 @@
       "detail": "called"
     },
     {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
+      "name": "tool:create_order@turn2",
+      "pass": true,
+      "detail": "called on turn 2"
+    },
+    {
       "name": "must_not:tool_error",
       "pass": true,
       "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
     },
     {
       "name": "store_state:count:orders",

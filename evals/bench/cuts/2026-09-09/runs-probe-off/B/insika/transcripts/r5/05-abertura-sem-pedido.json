@@ -67,6 +67,11 @@
       "detail": "no tool errors"
     },
     {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
       "name": "policy:ask_once",
       "pass": false,
       "detail": "turn 1 asked 3 questions (max 2): \"Olá! Tudo bem? Pode trocar sim, desde que esteja dentro do prazo de 7 dias após o recebimento, viu?\\n\\nVocê tem o número do pedido pra eu dar uma olhada?\""
