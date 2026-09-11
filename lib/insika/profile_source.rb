@@ -104,6 +104,7 @@ module Insika
         prompt_refs: h[:prompt_refs] || [],
         limits: symbolize_limits(h[:limits]),
         approvals_required: h[:approvals_required],
+        customer_confirm: h[:customer_confirm],
         capabilities: h[:capabilities],
         # subagents: allowlist of child ids; build re-normalizes to
         # [String]. nil round-trips as nil (opt-in: NONE).

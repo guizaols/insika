@@ -513,4 +513,21 @@ RSpec.describe Insika::AgentProfile do
       expect(profile.store_id).to be_nil
     end
   end
+
+  describe "customer_confirm" do
+    it "nil/empty -> nil (off); names trimmed and uniq; round-trips through to_h" do
+      expect(described_class.build(id: "a", model: "m").customer_confirm).to be_nil
+      expect(described_class.build(id: "a", model: "m", customer_confirm: []).customer_confirm).to be_nil
+      p = described_class.build(id: "a", model: "m", customer_confirm: [" create_order", "create_order", :delete_customer])
+      expect(p.customer_confirm).to eq(%w[create_order delete_customer])
+      expect(p.to_h[:customer_confirm]).to eq(%w[create_order delete_customer])
+    end
+
+    it "a tool cannot be both customer-confirmed and operator-approved" do
+      expect { described_class.build(id: "a", model: "m", customer_confirm: ["create_order"], approvals_required: ["create_order"]) }
+        .to raise_error(Insika::ValidationError, /overlap.*create_order/)
+      expect(described_class.build(id: "a", model: "m", customer_confirm: ["create_order"], approvals_required: ["refund"]).customer_confirm)
+        .to eq(["create_order"])
+    end
+  end
 end

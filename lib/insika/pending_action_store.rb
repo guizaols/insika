@@ -20,18 +20,30 @@ module Insika
 
     STATUSES = %i[pending approved rejected].freeze
 
-    PendingAction = Data.define(:id, :task_id, :turn, :tool, :args,
+    # Who resolves the action: the OPERATOR in the Studio (the turn suspended and
+    # waits) or the CUSTOMER on the next message (the turn ended with a question).
+    # Absent on a stored row = operator, so rows written before `kind` keep meaning.
+    OPERATOR = "operator"
+    CUSTOMER = "customer"
+
+    PendingAction = Data.define(:id, :task_id, :session_id, :turn, :tool, :args, :kind,
                                 :status, :requested_at, :resolved_by, :resolved_at)
+
+    # One row per (session, tool) for a customer hold: a crash-and-re-execute of the
+    # holding turn rewrites the same row instead of leaving two open.
+    def self.confirmation_id(session_id, tool) = "confirm:#{session_id}:#{tool}"
 
     def initialize(store:)
       @store = store
     end
 
     # -> PendingAction (:pending). `args` is the Hash of the tool call's arguments.
-    def create(task_id:, turn:, tool:, args: {}, id: SecureRandom.uuid)
+    def create(task_id:, turn:, tool:, args: {}, id: SecureRandom.uuid, kind: OPERATOR, session_id: nil)
       record = {
         "id" => id.to_s,
         "task_id" => task_id.to_s,
+        "session_id" => session_id&.to_s,
+        "kind" => kind.to_s,
         "turn" => turn,
         "tool" => tool.to_s,
         "args" => deep_stringify(args),
@@ -52,29 +64,31 @@ module Insika
 
     # -> [PendingAction] :pending for the task (recovery/UI). O(n) scan — single-node,
     # like TaskStore#running_or_interrupted.
-    def open_for(task_id)
+    def open_for(task_id, kind: nil)
       id = task_id.to_s
-      @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
-        record = @store.get(SCOPE, key)
-        next if record.nil?
+      scan_open(kind).select { |pa| pa.task_id == id }
+    end
 
-        pa = to_pending(record)
-        pa if pa.status == :pending && pa.task_id == id
-      end
+    # -> [PendingAction] :pending for the session — the customer's holds live here,
+    # keyed by the conversation rather than the task that held them.
+    def open_for_session(session_id, kind: nil)
+      id = session_id.to_s
+      scan_open(kind).select { |pa| pa.session_id == id }
+    end
+
+    # Customer holds of a session that an EARLIER task created and nothing
+    # resolved: the next message did not agree, so the engine rejects them.
+    # -> [PendingAction] the ones it expired.
+    def expire_customer_holds(session_id:, except_task_id:)
+      keep = except_task_id.to_s
+      open_for_session(session_id, kind: CUSTOMER).reject { |pa| pa.task_id == keep }
+                                                 .map { |pa| resolve(pa.id, decision: :rejected, operator: "engine:expired") }
     end
 
     # -> [PendingAction] every :pending across all tasks — the approvals inbox
     # (Studio). Single O(n) scan (vs. open_for per task = O(n·m)); the
     # UI resolves task context afterwards via TaskStore#find.
-    def all_open
-      @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
-        record = @store.get(SCOPE, key)
-        next if record.nil?
-
-        pa = to_pending(record)
-        pa if pa.status == :pending
-      end
-    end
+    def all_open(kind: nil) = scan_open(kind)
 
     # -> resolved PendingAction. Only resolves :pending: a double resolution
     # or an invalid decision -> ValidationError; absent -> NotFoundError.
@@ -101,13 +115,26 @@ module Insika
 
     def key_for(id) = "#{KEY_PREFIX}#{id}"
 
+    def scan_open(kind)
+      wanted = kind&.to_s
+      @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
+        record = @store.get(SCOPE, key)
+        next if record.nil?
+
+        pa = to_pending(record)
+        pa if pa.status == :pending && (wanted.nil? || pa.kind == wanted)
+      end
+    end
+
     def to_pending(record)
       PendingAction.new(
         id: record["id"],
         task_id: record["task_id"],
+        session_id: record["session_id"],
         turn: record["turn"],
         tool: record["tool"],
         args: record["args"],
+        kind: record["kind"] || OPERATOR,
         status: record["status"].to_sym,
         requested_at: record["requested_at"],
         resolved_by: record["resolved_by"],

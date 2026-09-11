@@ -157,6 +157,7 @@ knows its outcome.
 | `insika.tokens` | counter | `{token}` | the turn reported usage |
 | `insika.cost` | counter | `{USD}` | the turn's model is priced (see below) |
 | `insika.tool.blocked` | counter | `{call}` | a `tool_blocked` gate refusal |
+| `insika.confirmation` | counter | `{hold}` | a customer confirmation is requested, confirmed, cancelled or expires (`insika.outcome`) |
 | `insika.tool.calls` | counter | `{call}` | a tool call completes |
 | `insika.tool.duration` | histogram | `s` | a `tool_call`/`tool_result` pair completes |
 | `insika.cache.hit_rate` | histogram | `%` | a turn reported billed prompt tokens (see below) |

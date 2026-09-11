@@ -167,6 +167,11 @@ module Insika
     # by the coordinator for await(:approval)).
     attr_accessor :requires_approval, :approval_coordinator, :actor
 
+    # Customer confirmation: the store a `customer_confirm` call is held in by the
+    # ToolEnvelope and resolved from by confirm_pending/cancel_pending. nil = the
+    # deployment has no PendingActionStore (a hold then fails loud, like approval).
+    attr_accessor :pending_action_store
+
     # Internal: the turn's shared in-flight cap for tool calls —
     # ONE Async::Semaphore(tool_concurrency), installed by ToolAssembly#wrap_tools
     # and acquired by every ToolEnvelope, INCLUDING the ones tool_search promotes

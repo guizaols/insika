@@ -776,6 +776,13 @@ message, which is the shape that produced every failure above.
 Reasoning level does not fix this. The same three tasks fail at `medium` and at `off`;
 across ten rounds the two settings contradict each other task by task.
 
+**The engine's alternative.** If the shop wants the warmer reply *and* zero slips,
+take the write out of the same turn as the offer: declare the tool under
+[`customer_confirm`](TOOLS.md#customer-confirmation-a-write-the-conversation-approves).
+The model may then propose closing the order as freely as it likes — the engine holds
+the call, the reply asks, and only the customer's next message runs it. The cost moves
+from the wording to the conversation: one extra turn on every legitimate close.
+
 ## See also
 
 - [Tools](TOOLS.md) — define, register, and troubleshoot tools.

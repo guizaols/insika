@@ -181,7 +181,7 @@ module Insika
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
                     check_tool_allowlist_policy check_fencing check_eval_seeding
-                    check_presentation_tools check_provenance]
+                    check_presentation_tools check_provenance check_customer_confirm]
 
     def safe(check)
       Array(send(check))
@@ -1007,6 +1007,31 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
                     message: "agent '#{raw["id"]}' allows #{gated.map { |t| t["name"] }.join(', ')} " \
                              "with requires_evidence but no stored evidence tool — verify that an allowed code tool supplies evidence")
       end
+    end
+
+    # `customer_confirm` names tools; one the agent denies, or leaves out of an
+    # explicit allowlist, is a hold that can never happen. An allowlist carrying an
+    # `mcp:` entry is not explicit about tool NAMES (the server contributes them),
+    # so it is not judged.
+    def check_customer_confirm
+      return [] unless @profile_source
+
+      findings = @profile_source.all.flat_map do |profile|
+        names = profile.respond_to?(:customer_confirm) ? Array(profile.customer_confirm) : []
+        next [] if names.empty?
+
+        allow = profile.tools_allow
+        explicit = !allow.nil? && Array(allow).none? { |a| a.to_s.start_with?("mcp:") }
+        dead = names.select do |name|
+          Array(profile.tools_deny).include?(name) || (explicit && !Array(allow).include?(name))
+        end
+        next [] if dead.empty?
+
+        [Finding.new(check: "customer_confirm", severity: :warn, fix: nil,
+                     message: "agent '#{profile.id}' lists #{dead.join(', ')} under customer_confirm but does " \
+                              "not allow the tool — the hold can never happen")]
+      end
+      findings.empty? ? [ok("customer_confirm", "customer_confirm: every held tool is allowed")] : findings
     end
 
     def check_grounding
