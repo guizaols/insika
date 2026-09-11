@@ -132,7 +132,9 @@ block after the agent's identity in the system prompt: a weak or empty tool
 result means *try again with a different approach — a rephrased query, a
 synonym, a broader term — before telling the user you found nothing* (and don't
 narrate the retries); a tool error means *read it and fix the arguments*, never
-repeat the exact same call. Without it, a search that returns 0 results reads as
+repeat the exact same call; and an action is *reported as done only after its
+tool call returned success* — never before the call, never over a failed or
+blocked one. Without it, a search that returns 0 results reads as
 final and the model answers "I couldn't find it" when a synonym one call away
 would have.
 
