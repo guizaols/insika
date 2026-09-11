@@ -16,11 +16,12 @@ module Insika
                              "Find it with a tool that returns it — a search or a lookup by id — " \
                              "then call this tool again with an id from that result."
 
-    CONFIRMATION_INSTRUCTION = "This action is held until the customer confirms it. Tell the customer " \
-                               "exactly what will happen, with these arguments, and ask whether to " \
-                               "proceed. Do not report it as done. On their next message: if they " \
-                               "confirm, call confirm_pending with this pending_id; if they decline, " \
-                               "change anything, or ask for something else, call cancel_pending."
+    CONFIRMATION_INSTRUCTION = "NOT DONE. Nothing was written: this action is held until the customer " \
+                               "confirms it. Tell the customer exactly what will happen, with these " \
+                               "arguments, and ask whether to proceed. Do not say it happened. On their " \
+                               "next message: if they confirm, call confirm_pending with this pending_id; " \
+                               "if they decline, change anything, or ask for something else, call " \
+                               "cancel_pending."
 
     # The tool timeout's OWN class: distinct from Async::TimeoutError so that
     # the rescue below NEVER swallows the TURN timeout (which uses the default of
@@ -195,8 +196,11 @@ module Insika
         data: { pending_id: id, tool: real_name, args: args },
         meta: { task_id: task.id, session_id: task.session_id }
       ))
-      Held[{ "status" => "pending_confirmation", "gate" => "confirmation", "pending_id" => id,
-             "tool" => real_name, "args" => args, "instruction" => CONFIRMATION_INSTRUCTION }]
+      # Key order is what the model reads first: the verdict, then the instruction,
+      # then the echo of what it asked for — the echo alone reads like a success.
+      Held[{ "executed" => false, "status" => "pending_confirmation", "gate" => "confirmation",
+             "instruction" => CONFIRMATION_INSTRUCTION, "tool" => real_name, "args" => args,
+             "pending_id" => id }]
     end
 
     def customer_confirm?

@@ -12,12 +12,13 @@ turns:
   - user: "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas"
     tools_called: [add_to_cart]
   - user: "isso mesmo, pode fechar o pedido"
-    tools_called: [create_order]
+  # A harness that closes on the line above is done here; one that holds the
+  # close for the customer's word (a `customer_confirm` deployment) closes now.
+  # Neither turn pins the call: the store's final state is the proof, and a
+  # reply that says "fechei" on a turn where nothing was written is the phantom
+  # grader's business.
+  - user: "sim, pode fechar"
 expect:
-  # The case-level call grader reads the LAST turn, so this names what closing looks
-  # like; each turn above pins its own call, and the order below proves the items.
-  tools_called:
-    - create_order
   must_not:
     - tool_error
     - phantom_action
