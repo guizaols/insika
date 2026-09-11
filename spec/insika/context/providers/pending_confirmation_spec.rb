@@ -41,10 +41,12 @@ RSpec.describe Insika::Context::Providers::PendingConfirmation do
     expect(frags.size).to eq(1)
     f = frags.first
     expect([f.placement, f.pinned, f.priority, f.source]).to eq([:tail, true, Insika::Context::Priority::PENDING_CONFIRMATION, "pending_confirmation"])
-    expect(f.content).to include("## Awaiting the customer's confirmation")
-    expect(f.content).to include('create_order {"cart_id":"c1"} — pending_id confirm:s1:create_order')
-    expect(f.content).to include('delete_customer {"id":"c9"}')
-    expect(f.content).not_to include("confirm:s2:")
-    expect(f.content).to include("cancel_pending")
+    expect(f.content[:role]).to eq(:user) # a tail fragment is a history message, like the recitation
+    text = f.content[:content]
+    expect(text).to include("## Awaiting the customer's confirmation")
+    expect(text).to include('create_order {"cart_id":"c1"} — pending_id confirm:s1:create_order')
+    expect(text).to include('delete_customer {"id":"c9"}')
+    expect(text).not_to include("confirm:s2:")
+    expect(text).to include("cancel_pending")
   end
 end

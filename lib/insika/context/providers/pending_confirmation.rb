@@ -32,8 +32,10 @@ module Insika
           open = @store.open_for_session(session.id, kind: PendingActionStore::CUSTOMER)
           return [] if open.empty?
 
-          [ContextFragment.build(content: render(open), placement: :tail, pinned: true,
-                                 priority: Context::Priority::PENDING_CONFIRMATION, source: id)]
+          # A tail fragment IS a history message ({role:, content:}), like the
+          # Briefing's recitation — the Builder appends it after the transcript.
+          [ContextFragment.build(content: { role: :user, content: render(open) }, placement: :tail,
+                                 pinned: true, priority: Context::Priority::PENDING_CONFIRMATION, source: id)]
         end
 
         private
