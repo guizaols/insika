@@ -107,6 +107,7 @@ require_relative "insika/context/providers/memory"
 require_relative "insika/context/providers/knowledge"
 require_relative "insika/context/providers/session"
 require_relative "insika/context/providers/briefing"
+require_relative "insika/context/providers/pending_confirmation"
 # the cache-prefix hash chain + the per-agent cache-hit series.
 # Both are referenced by the Executor at runtime, so they load before it.
 require_relative "insika/prefix_fingerprint"

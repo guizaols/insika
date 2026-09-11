@@ -423,6 +423,12 @@ module Insika
       #   fencing true
       def fencing(on = true) = @config[:fencing] = on
 
+      # Tools the CUSTOMER confirms. The call is held, the reply asks, and the
+      # next message decides through confirm_pending / cancel_pending. Unlike an
+      # operator approval the turn ENDS instead of suspending.
+      #   customer_confirm "create_order"
+      def customer_confirm(*names) = @config[:customer_confirm] = names.flatten.map(&:to_s)
+
       # Content-safety guardrails — opt-in and configurable per agent.
       # Pure config-over-code: the hash is stored on the profile and consumed by
       # Safety::Config.from_profile. Merges, so repeated calls accumulate.

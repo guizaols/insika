@@ -44,6 +44,10 @@ BENCH = Insika.agent("bench") do
     # third-party text. (b_fencing off = the bisection's "what if not")
     fencing true if b_fencing
     tool_persistence false unless b_persistence
+    # Closing the order is the one write the customer cannot take back, so the
+    # deployment holds it for their word: the model proposes, the engine records
+    # the hold, the reply asks, and the next message confirms or cancels it.
+    customer_confirm "create_order"
 
     # What the deployment trusts each tool with. The server describes what its tools
     # DO; only we can say which of its answers are evidence and which parameter may

@@ -132,7 +132,9 @@ block after the agent's identity in the system prompt: a weak or empty tool
 result means *try again with a different approach — a rephrased query, a
 synonym, a broader term — before telling the user you found nothing* (and don't
 narrate the retries); a tool error means *read it and fix the arguments*, never
-repeat the exact same call. Without it, a search that returns 0 results reads as
+repeat the exact same call; and an action is *reported as done only after its
+tool call returned success* — never before the call, never over a failed or
+blocked one. Without it, a search that returns 0 results reads as
 final and the model answers "I couldn't find it" when a synonym one call away
 would have.
 
@@ -773,6 +775,13 @@ message, which is the shape that produced every failure above.
 
 Reasoning level does not fix this. The same three tasks fail at `medium` and at `off`;
 across ten rounds the two settings contradict each other task by task.
+
+**The engine's alternative.** If the shop wants the warmer reply *and* zero slips,
+take the write out of the same turn as the offer: declare the tool under
+[`customer_confirm`](TOOLS.md#customer-confirmation-a-write-the-conversation-approves).
+The model may then propose closing the order as freely as it likes — the engine holds
+the call, the reply asks, and only the customer's next message runs it. The cost moves
+from the wording to the conversation: one extra turn on every legitimate close.
 
 ## See also
 

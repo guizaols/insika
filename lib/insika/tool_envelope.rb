@@ -16,6 +16,13 @@ module Insika
                              "Find it with a tool that returns it — a search or a lookup by id — " \
                              "then call this tool again with an id from that result."
 
+    CONFIRMATION_INSTRUCTION = "NOT DONE. Nothing was written: this action is held until the customer " \
+                               "confirms it. Tell the customer exactly what will happen, with these " \
+                               "arguments, and ask whether to proceed. Do not say it happened. On their " \
+                               "next message: if they confirm, call confirm_pending with this pending_id; " \
+                               "if they decline, change anything, or ask for something else, call " \
+                               "cancel_pending."
+
     # The tool timeout's OWN class: distinct from Async::TimeoutError so that
     # the rescue below NEVER swallows the TURN timeout (which uses the default of
     # with_timeout). Without this, a turn overflowing while the fiber is inside a
@@ -30,6 +37,11 @@ module Insika
     # answering `{"status":"blocked","gate":"fraud_review"}` for a held order is
     # not one, whatever keys it happens to use.
     class Blocked < Hash; end
+
+    # A call held for the customer's confirmation. Same Hash-subclass trick as
+    # Blocked, and a different class on purpose: nothing was refused and nothing
+    # ran — the next customer message decides, through confirm_pending.
+    class Held < Hash; end
 
     def initialize(tool, state:, checkpoint_store:, tool_registry:, timeout:,
                    skip_side_effects: [], trace_recorder: nil, event_stream: nil)
@@ -46,7 +58,16 @@ module Insika
     # Entry point that RubyLLM invokes (Tool#call in the pinned version).
     # A timeout overflow returns to the MODEL as a serialized error — it does
     # not bring down the turn.
-    def call(args)
+    def call(args) = run(args, hold: true)
+
+    # The confirmed re-run of a held call (Tools::ConfirmPending): every check but
+    # the hold itself — provenance, approval, fencing, evidence, the side-effect
+    # record and the trace all still apply to the write.
+    def call_confirmed(args) = run(args, hold: false)
+
+    private
+
+    def run(args, hold:)
       # A non-idempotent tool call ALREADY COMPLETED in the interrupted
       # turn -> respond with a marker, NEVER re-execute. The marker returns to
       # the model, keeping the tool-use protocol intact.
@@ -58,6 +79,14 @@ module Insika
         trace(call_id, args, blocked, started)
         emit_blocked(blocked)
         return blocked
+      end
+
+      # Customer confirmation: the call is recorded and returned to the model as
+      # held; the turn goes on to ask. After the provenance gate (an id the customer
+      # never saw is not put to them as real) and before approval.
+      if hold && (held = confirmation_hold(args))
+        trace(call_id, args, held, started)
+        return held
       end
 
       # Approval gate: a tool marked `approval` suspends the turn in
@@ -89,8 +118,6 @@ module Insika
       trace(call_id, args, err, started)
       err
     end
-
-    private
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -149,6 +176,39 @@ module Insika
       (schema["properties"] || {}).keys.map(&:to_s) - Array(schema["required"]).map(&:to_s)
     end
 
+    def confirmation_hold(args)
+      return unless customer_confirm?
+
+      store = @state.respond_to?(:pending_action_store) ? @state.pending_action_store : nil
+      task = @state.task
+      if store.nil? || task.nil? || task.session_id.nil?
+        # Fail loud, never run: a write that needs the customer's word and has
+        # nowhere to wait for it is a misconfiguration, not a pass.
+        missing = store.nil? ? "no PendingActionStore" : "no session"
+        raise Insika::Error, "tool '#{real_name}' needs the customer's confirmation but the turn has #{missing} to hold it in"
+      end
+
+      id = PendingActionStore.confirmation_id(task.session_id, real_name)
+      store.create(id: id, task_id: task.id, session_id: task.session_id, turn: @state.turn,
+                   tool: real_name, args: args || {}, kind: PendingActionStore::CUSTOMER)
+      @event_stream&.emit(Insika::Event.new(
+        type: :confirmation_requested,
+        data: { pending_id: id, tool: real_name, args: args },
+        meta: { task_id: task.id, session_id: task.session_id }
+      ))
+      # Key order is what the model reads first: the verdict, then the instruction,
+      # then the echo of what it asked for — the echo alone reads like a success.
+      Held[{ "executed" => false, "status" => "pending_confirmation", "gate" => "confirmation",
+             "instruction" => CONFIRMATION_INSTRUCTION, "tool" => real_name, "args" => args,
+             "pending_id" => id }]
+    end
+
+    def customer_confirm?
+      profile = @state.respond_to?(:profile) ? @state.profile : nil
+      list = profile.respond_to?(:customer_confirm) ? profile.customer_confirm : nil
+      Array(list).include?(real_name)
+    end
+
     def emit_blocked(result)
       task = @state.task # nil on a one-shot turn, like `trace` already assumes
       @event_stream&.emit(Insika::Event.new(
@@ -168,7 +228,7 @@ module Insika
         session_id: @state.task.session_id,
         entry: { "turn" => @state.turn, "tool" => real_name, "call_id" => call_id.to_s,
                  "args" => args, "result" => result,
-                 "gate" => result.is_a?(Blocked) ? result["gate"] : nil,
+                 "gate" => result.is_a?(Blocked) || result.is_a?(Held) ? result["gate"] : nil,
                  "ms" => started ? ((monotonic - started) * 1000).round : nil,
                  "at" => Time.now.utc.iso8601 }
       )

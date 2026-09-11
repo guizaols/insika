@@ -7,6 +7,7 @@ require "insika/tools/tool_search"
 require "insika/tools/remember"
 require "insika/tools/stuck_signal"
 require "insika/tools/update_briefing"
+require "insika/tools/confirm_pending"
 require "insika/tools/schedule_followup"
 
 RSpec.describe Insika::ChatBuilder do
@@ -274,6 +275,35 @@ RSpec.describe Insika::ChatBuilder do
     end
   end
 
+  describe "#configure_chat — confirm_pending / cancel_pending" do
+    def confirm_state(customer_confirm:, store:)
+      profile = Insika::AgentProfile.build(id: "a", model: "gpt", customer_confirm: customer_confirm)
+      st = Insika::TurnState.new(task: TaskStub.new("t", "s"), profile: profile, turn: 1, message: "oi")
+      st.context = Ctx.new("SOUL")
+      st.allowed_tools = []
+      st.allowed_skills = []
+      st.pending_action_store = store
+      st
+    end
+
+    let(:pending) { Insika::PendingActionStore.new(store: Insika::Stores::Memory.new) }
+
+    it "wires both, unwrapped, only with a PendingActionStore on the state AND profile.customer_confirm" do
+      builder.configure_chat(chat, confirm_state(customer_confirm: ["create_order"], store: pending))
+      names = chat.tools.map { |t| t.name.to_s }
+      expect(names).to include("confirm_pending", "cancel_pending")
+      expect(chat.tools.select { |t| t.is_a?(Insika::ToolEnvelope) }).to be_empty
+
+      chat.tools.clear
+      builder.configure_chat(chat, confirm_state(customer_confirm: nil, store: pending))
+      expect(chat.tools.map { |t| t.name.to_s }).not_to include("confirm_pending")
+
+      chat.tools.clear
+      builder.configure_chat(chat, confirm_state(customer_confirm: ["create_order"], store: nil))
+      expect(chat.tools.map { |t| t.name.to_s }).not_to include("confirm_pending")
+    end
+  end
+
   describe "#configure_chat — system load_knowledge" do
     let(:kstore) { Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new) }
 
@@ -500,6 +530,10 @@ RSpec.describe Insika::ChatBuilder do
       chat.fire_tool_call(name: "add_to_cart", id: "call_2")
       chat.fire_tool_result(Insika::ToolEnvelope::Blocked[{ "status" => "blocked", "gate" => "provenance" }])
       expect(sink.last[:data]).to include(status: "blocked", gate: "provenance", call_id: "call_2")
+
+      chat.fire_tool_call(name: "create_order", id: "call_3")
+      chat.fire_tool_result(Insika::ToolEnvelope::Held[{ "status" => "pending_confirmation", "gate" => "confirmation" }])
+      expect(sink.last[:data]).to include(status: "held", gate: "confirmation", call_id: "call_3")
     end
 
     # The:tool_result label used to be a closure local shared by

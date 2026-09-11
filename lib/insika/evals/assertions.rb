@@ -32,11 +32,12 @@ module Insika
 
       # A tool call whose status is anything but a success ("ok"/2xx/"success"). A
       # BLOCKED call is not an error: the tool never ran, a gate held it — that is
-      # the `blocked_gates` grader's business, not `must_not: tool_error`'s.
+      # the `blocked_gates` grader's business, not `must_not: tool_error`'s. Nor is a
+      # HELD one: it waits for the customer, and `phantom_action` reads the reply.
       def errored_tools
         Array(tool_calls).reject do |t|
           status = t["status"] || t[:status]
-          Assertions.ok_status?(status) || status.to_s == "blocked"
+          Assertions.ok_status?(status) || %w[blocked held].include?(status.to_s)
         end
       end
 
