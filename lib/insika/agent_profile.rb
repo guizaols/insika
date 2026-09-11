@@ -41,6 +41,8 @@ module Insika
     :prompt_refs,                     # names in the Prompt Catalog
     :limits,                          # timeouts/budgets
     :approvals_required,              # tools that require approval (ApprovalRequired)
+    :customer_confirm,                # tools the CUSTOMER confirms on the next message: the
+    #                                   call is held, the turn ends with a question (nil = none)
     :capabilities,                    # intents the agent can trigger.
     #                                   nil = NONE (opt-in, see above).
     :subagents,                       # allowlist of child agent ids this agent MAY spawn
@@ -332,6 +334,7 @@ module Insika
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
                    skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
+                   customer_confirm: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
                    prompt_caching: nil, tool_persistence: nil, tool_output_compression: nil,
                    fencing: nil, params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
@@ -349,6 +352,7 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
                                      tools_allow_groups: tools_allow_groups),
         prompt_refs: Array(prompt_refs),
         limits: DEFAULT_LIMITS.merge(limits), approvals_required: approvals_required,
+        customer_confirm: normalize_customer_confirm(customer_confirm, approvals_required),
         capabilities: capabilities,
         # opt-in like capabilities: nil => NONE. Array-normalize a present value so
         # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
@@ -457,6 +461,23 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
       unless bad.empty?
         raise Insika::ValidationError,
               "briefing_fields must match #{ToolDefinition::NAME_RE.inspect}: #{bad.join(', ')}"
+      end
+      names
+    end
+
+    # nil/empty -> nil (off); else [String], trimmed, uniq. A tool is confirmed by
+    # the customer OR approved by the operator, never both: the two hold a call in
+    # opposite ways (the turn ends with a question vs. the turn suspends), and one
+    # tool cannot do both at once.
+    def self.normalize_customer_confirm(list, approvals)
+      names = Array(list).map { |n| n.to_s.strip }.reject(&:empty?).uniq
+      return nil if names.empty?
+
+      both = names & Array(approvals).map(&:to_s)
+      unless both.empty?
+        raise Insika::ValidationError,
+              "customer_confirm and approvals_required overlap (#{both.join(', ')}): a tool is " \
+              "confirmed by the customer or approved by the operator, not both"
       end
       names
     end

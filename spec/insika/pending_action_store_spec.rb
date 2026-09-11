@@ -81,4 +81,47 @@ RSpec.describe Insika::PendingActionStore do
     pa = create
     expect { store.resolve(pa.id, decision: :maybe) }.to raise_error(Insika::ValidationError, /decision/)
   end
+
+  describe "kind and session (customer confirmation)" do
+    it "defaults to an operator pending, with no session" do
+      pa = create
+      expect(pa.kind).to eq("operator")
+      expect(pa.session_id).to be_nil
+    end
+
+    it "a stored row without kind reads as operator (rows written before the field)" do
+      backend.set("pending_actions", "pending:old", { "id" => "old", "task_id" => "t", "turn" => 1, "tool" => "charge",
+                                                       "args" => {}, "status" => "pending", "requested_at" => "x" })
+      expect(store.find("old").kind).to eq("operator")
+    end
+
+    it "filters open pendings by kind, per task, per session and overall" do
+      create
+      cust = store.create(task_id: "t", turn: 1, tool: "create_order", session_id: "s1",
+                          kind: Insika::PendingActionStore::CUSTOMER,
+                          id: Insika::PendingActionStore.confirmation_id("s1", "create_order"))
+      expect(cust.id).to eq("confirm:s1:create_order")
+      expect(store.open_for("t").size).to eq(2)
+      expect(store.open_for("t", kind: "operator").map(&:tool)).to eq(["charge"])
+      expect(store.open_for_session("s1", kind: "customer").map(&:tool)).to eq(["create_order"])
+      expect(store.all_open(kind: "customer").size).to eq(1)
+      expect(store.all_open.size).to eq(2)
+    end
+
+    it "expire_customer_holds rejects the session's customer holds from OTHER tasks and returns them" do
+      old = store.create(task_id: "t1", turn: 1, tool: "create_order", session_id: "s1", kind: "customer", id: "confirm:s1:create_order")
+      mine = store.create(task_id: "t2", turn: 1, tool: "delete_customer", session_id: "s1", kind: "customer", id: "confirm:s1:delete_customer")
+      store.create(task_id: "t1", turn: 1, tool: "charge", session_id: "s1") # operator: untouched
+      other = store.create(task_id: "t1", turn: 1, tool: "create_order", session_id: "s2", kind: "customer", id: "confirm:s2:create_order")
+
+      expired = store.expire_customer_holds(session_id: "s1", except_task_id: "t2")
+
+      expect(expired.map(&:id)).to eq([old.id])
+      expect(store.find(old.id).status).to eq(:rejected)
+      expect(store.find(old.id).resolved_by).to eq("engine:expired")
+      expect(store.find(mine.id).status).to eq(:pending)
+      expect(store.find(other.id).status).to eq(:pending)
+      expect(store.all_open(kind: "operator").size).to eq(1)
+    end
+  end
 end

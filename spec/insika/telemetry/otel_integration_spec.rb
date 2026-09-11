@@ -138,6 +138,18 @@ RSpec.describe "Insika::Telemetry — real OTEL metrics boundary", if: OTEL_METR
     expect(cost.unit).to eq("{USD}")
     expect(cost.data_points.first.value).to eq(1.0)
   end
+  it "counts the life of a customer confirmation by outcome" do
+    recorder.record(ev(:task_started, { agent: "shop" }))
+    recorder.record(ev(:confirmation_requested, { pending_id: "confirm:s:create_order", tool: "create_order", args: { "cart_id" => "c1" } }))
+    recorder.record(ev(:confirmation_confirmed, { pending_id: "confirm:s:create_order", tool: "create_order" }))
+    holds = snapshot("insika.confirmation")
+    expect(holds.unit).to eq("{hold}")
+    outcomes = holds.data_points.map { |dp| [dp.attributes["insika.outcome"], dp.value] }.sort
+    expect(outcomes).to eq([["confirmed", 1], ["requested", 1]])
+    expect(holds.data_points.first.attributes).to include("insika.tool" => "create_order", "insika.agent" => "shop")
+    expect(holds.data_points.first.attributes.keys).not_to include("args", "cart_id")
+  end
+
   it "counts provenance blocks without putting argument values in metric labels" do
     recorder.record(ev(:task_started, { agent: "shop" }))
     recorder.record(ev(:tool_blocked, { name: "write", gate: "provenance", param: "id" }))

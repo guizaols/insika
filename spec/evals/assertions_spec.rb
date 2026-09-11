@@ -119,6 +119,12 @@ RSpec.describe Insika::Evals::Assertions do
       expect(other.failures.first.detail).to eq("not held (blocked: add_to_cart:budget)")
     end
 
+    it "a HELD call (awaiting the customer) is not a tool_error either, and a reply claiming it is a phantom" do
+      held = [{ "name" => "create_order", "status" => "held", "gate" => "confirmation" }]
+      expect(described_class.evaluate(golden("must_not" => ["tool_error"]), result(tool_calls: held)).pass?).to be(true)
+      expect(result(tool_calls: held).blocked_tools).to eq([])
+    end
+
     it "a BLOCKED call is not a tool_error (the tool never ran)" do
       blocked = [{ "name" => "add_to_cart", "status" => "blocked", "gate" => "provenance" }]
       r = described_class.evaluate(golden("must_not" => ["tool_error"]), result(tool_calls: blocked))

@@ -2378,7 +2378,7 @@ end
     # Task detail: @task is set by the route. Adds the open approvals for this task
     # and its latest checkpoint (both degrade to empty when the store is absent).
     def render_task_detail(id)
-      @pending = insika[:pending_action_store] ? insika[:pending_action_store].open_for(id) : []
+      @pending = insika[:pending_action_store] ? insika[:pending_action_store].open_for(id, kind: Insika::PendingActionStore::OPERATOR) : []
       @checkpoint = insika[:checkpoint_store]&.latest(id)
       view("task")
     end
@@ -2390,7 +2390,7 @@ end
       pstore = insika[:pending_action_store]
       tstore = insika[:task_store]
       @agent = presence(request.params["agent"])
-      @approvals = pstore ? pstore.all_open.map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
+      @approvals = pstore ? pstore.all_open(kind: Insika::PendingActionStore::OPERATOR).map { |pa| { pending: pa, task: tstore&.find(pa.task_id) } } : []
       if @agent
         @approvals = @approvals.select { |a| task_agent(a[:task]) == @agent if a[:task] }
       end

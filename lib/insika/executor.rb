@@ -981,6 +981,7 @@ module Insika
       # wire the approval gate into the state (the ToolEnvelope reads it at stage 6).
       state.actor = actor
       state.approval_coordinator = self
+      state.pending_action_store = @pending_action_store
       state.requires_approval = resolution.requires_approval
       state.allowed_tools = wrap_tools(assemble_tool_instances(resolution.allowed_tools, state), state, skip)
       state.allowed_skills = resolution.allowed_skills
@@ -1201,6 +1202,7 @@ module Insika
       # but is not honored (last stage); :cancel here still raises.
       actor.drain!
       persist_turn(task, profile, st, content, timing: timing)
+      expire_customer_confirmations(task)
 
       # the cache-hit stamp — the usage exists only now. The
       # stamped entry is durable before anything is delivered (same slot as the
@@ -2426,6 +2428,20 @@ module Insika
     # So a long session legitimately has a Checkpoint SHORTER than the Session:
     # that is not drift to reconcile — it is the point. Do NOT "fix" the checkpoint
     # to carry the full history (it would defeat the budget) nor evict the session.
+    # A customer confirmation lives for exactly one more customer message: a hold
+    # an EARLIER task of this session left open, and this turn neither confirmed
+    # nor cancelled, is rejected here, once the turn is durable. Fail-closed — a
+    # customer who changed the subject did not agree. Best-effort like the other
+    # stage-8 side writes: a store failure must not re-fail a committed turn.
+    def expire_customer_confirmations(task)
+      return unless @pending_action_store && task.session_id
+
+      expired = @pending_action_store.expire_customer_holds(session_id: task.session_id, except_task_id: task.id)
+      expired.each { |pa| emit(:confirmation_expired, { pending_id: pa.id, tool: pa.tool }, task: task) }
+    rescue StandardError
+      nil
+    end
+
     def persist_turn(task, profile, state, content, session: true, reply_origin: nil, timing: nil)
       new_messages = turn_transcript(state, content, origin: command_origin(task), reply_origin: reply_origin)
       transcript = flatten_history(state.context.history) + new_messages
@@ -2800,6 +2816,7 @@ module Insika
       require_relative "tools/load_knowledge"
       require_relative "tools/tool_search"
       require_relative "tools/remember"
+      require_relative "tools/confirm_pending"
       require_relative "tools/subagent"
       require_relative "tools/subagents"
       require_relative "tools/stuck_signal"

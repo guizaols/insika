@@ -41,7 +41,7 @@ module Insika
       # renaming one breaks every dashboard built on it.
       class Instruments
         attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration,
-                    :cache_hit_rate, :loop_intervened, :context_compacted, :tool_blocked
+                    :cache_hit_rate, :loop_intervened, :context_compacted, :tool_blocked, :confirmations
 
         def initialize(meter)
           @turns = meter.create_counter("insika.turns", unit: "{turn}",
@@ -62,6 +62,8 @@ module Insika
                                                                                  description: "Loop-detector warnings delivered to the model")
           @tool_blocked = meter.create_counter("insika.tool.blocked", unit: "{call}",
                                                description: "Tool calls blocked before execution")
+          @confirmations = meter.create_counter("insika.confirmation", unit: "{hold}",
+                                                description: "Calls held for the customer's confirmation, by outcome")
           @context_compacted = meter.create_counter("insika.context.compacted", unit: "{compaction}",
                                                                                 description: "In-session compactions persisted (RFC-0044)")
         end
@@ -84,6 +86,10 @@ module Insika
         when :data_tool_call then point_tool(meta, data)
         when :tool_loop_intervened then count_loop(meta, data)
         when :tool_blocked then count_blocked(meta, data)
+        when :confirmation_requested then count_confirmation(meta, data, "requested")
+        when :confirmation_confirmed then count_confirmation(meta, data, "confirmed")
+        when :confirmation_cancelled then count_confirmation(meta, data, "cancelled")
+        when :confirmation_expired then count_confirmation(meta, data, "expired")
         when :context_compacted then count_compaction(data)
         when :task_completed then finish_turn(meta, data, :ok)
         when :task_failed    then finish_turn(meta, data, :error)
@@ -207,6 +213,17 @@ module Insika
         turn = @turns[meta[:task_id]] or return
         labels = turn.labels.merge(attrs("insika.tool" => data[:name]&.to_s))
         @instruments.loop_intervened.add(1, attributes: labels)
+      end
+
+      # One counter for the whole life of a customer hold; `outcome` tells the
+      # four moments apart, so requested minus the other three is what is open.
+      def count_confirmation(meta, data, outcome)
+        return unless @instruments
+
+        turn = @turns[meta[:task_id]]
+        labels = (turn ? turn.labels : {}).merge(attrs("insika.tool" => data[:tool]&.to_s,
+                                                       "insika.outcome" => outcome))
+        @instruments.confirmations.add(1, attributes: labels)
       end
 
       def count_blocked(meta, data)

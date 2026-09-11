@@ -1751,6 +1751,26 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "customer_confirm configuration" do
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
+
+    def findings(**attrs)
+      config_store.put("agents", "shop", { "id" => "shop", "customer_confirm" => ["create_order"] }.merge(attrs.transform_keys(&:to_s)))
+      doctor(profile_source: profiles).run.findings.select { |f| f.check == "customer_confirm" }
+    end
+
+    it "warns when the held tool is denied or left out of an explicit allowlist" do
+      expect(findings(tools_deny: ["create_order"]).map(&:severity)).to eq([:warn])
+      expect(findings(tools_allow: ["search"]).map(&:severity)).to eq([:warn])
+    end
+
+    it "stays silent when the tool is allowed, when the allowlist is open, or when an mcp: entry supplies the names" do
+      expect(findings(tools_allow: %w[search create_order]).map(&:severity)).to eq([:ok])
+      expect(findings.map(&:severity)).to eq([:ok])
+      expect(findings(tools_allow: ["mcp:store"]).map(&:severity)).to eq([:ok])
+    end
+  end
+
   describe "provenance configuration" do
     let(:tools) { Insika::ToolStore.new(config_store: config_store) }
     let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }

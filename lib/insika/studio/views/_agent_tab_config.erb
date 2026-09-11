@@ -471,6 +471,9 @@
           <label>approvals required <span class="muted">(tools whose call suspends for a human)</span>
             <input type="text" name="approvals_required" value="<%= agent_list(@agent.approvals_required) %>" placeholder="send_discount_coupon">
           </label>
+          <label>customer confirm <span class="muted">(tools held until the customer says yes on the next message)</span>
+            <input type="text" name="customer_confirm" value="<%= agent_list(@agent.customer_confirm) %>" placeholder="create_order">
+          </label>
           <label>policies <span class="muted">(registry names)</span>
             <input type="text" name="policies" value="<%= agent_list(@agent.policies) %>" placeholder="tool_allowlist, skill_allowlist">
           </label>

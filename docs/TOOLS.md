@@ -281,6 +281,41 @@ backend rules such as quantity limits remain the backend's responsibility.
 The per-tool timeout starts after both gates are acquired. Trace duration includes
 queueing time, so it measures how long the model waited, not just backend execution.
 
+### Customer confirmation: a write the conversation approves
+
+Some writes should not happen on the strength of one ambiguous line — closing an
+order, deleting a record, sending a message on someone's behalf. Name them on the
+agent and the engine holds the call for the customer's word:
+
+```ruby
+customer_confirm "create_order"          # DSL; the Studio field is "customer confirm"
+```
+
+When the model calls a held tool, nothing runs. The engine records a pending action
+for the session and returns a `pending_confirmation` result carrying the arguments
+and an instruction: tell the customer exactly what will happen and ask. The turn ends
+with that question. On the next message the open hold is rendered at the tail of the
+context, and two system tools are available: `confirm_pending` runs the original call
+with the arguments recorded at the hold (no path exists to confirm different ones),
+`cancel_pending` drops it. A hold that the next message neither confirms nor cancels
+expires on its own — a customer who changed the subject did not agree.
+
+Three controls now sit on a write, and they compose in this order:
+
+| Control | Who decides | What happens to the turn | Declared on |
+| --- | --- | --- | --- |
+| Provenance (`requires_evidence`) | the ledger | the call is refused, the model is told how to resolve the id | the tool |
+| Customer confirmation (`customer_confirm`) | the customer, next message | the turn ends with a question | the agent |
+| Operator approval (`approvals_required`) | a person in the Studio | the turn suspends and waits | the agent |
+
+A tool is confirmed by the customer or approved by the operator, never both. The
+confirmed run still passes provenance, fencing, the side-effect record and the trace;
+the trace shows the hold as `gate: confirmation`, and the `:tool_result` event and the
+Responses stream report it as `status: held`, which the evals treat as neither a
+success nor an error. Whether the customer's "sim" means yes is the model's reading;
+what the engine guarantees is that the write runs only after an explicit question, a
+customer turn, and an explicit tool call.
+
 ### Grounding: policing claims against the ledger
 
 With the ledger fed, the pack declares how claims are policed — data on the agent,
