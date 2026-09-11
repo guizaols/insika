@@ -33,6 +33,9 @@ module Insika
           "the user you found nothing. Do not narrate the retries. Then conclude.\n" \
           "- Tool error: read the error, fix the arguments or try another path; never " \
           "repeat the exact same call.\n" \
+          "- Report an action as done only after its tool call returned success. Never " \
+          "say it happened before the call, and never for a call that failed, was " \
+          "blocked, or is still awaiting confirmation.\n" \
           "- A URL in a tool result (e.g. a `url` field): quote it byte-for-byte. Never " \
           "construct, guess, or rewrite the domain, host, or path."
 
