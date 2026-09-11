@@ -42,6 +42,11 @@
           "detail": "no tool errors"
         },
         {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
           "name": "policy:ask_once",
           "pass": false,
           "detail": "turn 1 asked 3 questions (max 2): \"Oi! 😊 Tudo bem?\\n\\nPelo que vi aqui, você pode solicitar troca em até **7 dias após o recebimento** — e como foi semana passada, deve estar dentro do prazo sim!\\n\\n\""

@@ -18,6 +18,16 @@ require "insika"
 
 BENCH_SCORECARD = ENV.fetch("BENCH_SCORECARD", "A").upcase
 
+# The bisection this file also serves: cut 3 found phantom `add_to_cart` claims only
+# in scorecard B, task 10, never in A. B differs from A in exactly three ways — set
+# below to whichever the environment says, default = B unchanged — so a `BENCH_B_*`
+# var can drop ONE of them per run and the phantom either follows it or doesn't.
+# None of this touches what a real deployment declares; it exists to answer one
+# question about this bench's own B row.
+b_fencing = ENV.fetch("BENCH_B_FENCING", "true") == "true"
+b_evidence = ENV.fetch("BENCH_B_EVIDENCE", "true") == "true"
+b_persistence = ENV.fetch("BENCH_B_PERSISTENCE", "true") == "true"
+
 BENCH = Insika.agent("bench") do
   model ENV.fetch("BENCH_MODEL", "deepseek/deepseek-v4-flash")
   provider :openrouter
@@ -31,20 +41,26 @@ BENCH = Insika.agent("bench") do
 
   if BENCH_SCORECARD == "B"
     # Third-party text is data, never instructions — a store's tool output is
-    # third-party text.
-    fencing true
+    # third-party text. (b_fencing off = the bisection's "what if not")
+    fencing true if b_fencing
+    tool_persistence false unless b_persistence
 
     # What the deployment trusts each tool with. The server describes what its tools
     # DO; only we can say which of its answers are evidence and which parameter may
-    # only ever carry an id the customer was actually shown.
-    mcp "store", transport: :http, url: ENV.fetch("BENCH_STORE_MCP"),
-        tools: {
-          "search_products" => { evidence: { kind: "products", items: "products",
-                                             id: "product_id", line: "line" } },
-          "view_cart" => { evidence: { kind: "cart", items: "items",
-                                       id: "product_id", line: "line" } },
-          "add_to_cart" => { requires_evidence: ["product_id"] }
-        }
+    # only ever carry an id the customer was actually shown. (b_evidence off = the
+    # plain MCP declaration, same shape as A's.)
+    if b_evidence
+      mcp "store", transport: :http, url: ENV.fetch("BENCH_STORE_MCP"),
+          tools: {
+            "search_products" => { evidence: { kind: "products", items: "products",
+                                               id: "product_id", line: "line" } },
+            "view_cart" => { evidence: { kind: "cart", items: "items",
+                                         id: "product_id", line: "line" } },
+            "add_to_cart" => { requires_evidence: ["product_id"] }
+          }
+    else
+      mcp "store", transport: :http, url: ENV.fetch("BENCH_STORE_MCP")
+    end
   else
     tool_persistence false
     mcp "store", transport: :http, url: ENV.fetch("BENCH_STORE_MCP")

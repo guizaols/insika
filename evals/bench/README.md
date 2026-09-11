@@ -318,6 +318,13 @@ store_state:
     cart_items: [{ product_id: "…" }]
 ```
 
+The mutation tasks (07, 09, 10) also pin each turn's calls (`turns[i].tools_called`)
+and every task carries `must_not: phantom_action` with the store's `claims:` (the
+words its agent uses to say it did each mutation): a reply that says "adicionado ao
+carrinho" on a turn that never called `add_to_cart` fails, even when a later turn
+leaves the store looking right. Both came out of cut 3 — see "The reply that claimed
+an action" below.
+
 Grading reads the store's own dump, not the MCP surface: the harnesses under test
 reach the store over MCP and nothing else, but the grader is not a harness, and
 reading the dumped truth is stricter than asking the same surface the agent could
@@ -333,6 +340,24 @@ in the fixture.
 `deepseek/deepseek-v4-flash` at reasoning `medium`. The evidence is in
 `cuts/2026-09-09/`, one JSON per cell with the store's own dump and every reply
 verbatim; the tables below are `scorecard.rb` run over that directory and nothing else.
+
+**Corrected 2026-09-11.** The `phantom_action` grader (see "Two follow-ups from cut
+3's QA pass" below) found a class of failure no earlier check read: a reply that
+claims a mutation the store never saw succeed. Applied to this cut's own recorded
+transcripts with `regrade.rb` — no cell re-run, same evidence, better checks —
+two numbers on this page moved:
+
+- **pi, scorecard A: 100% (36/36) -> 97% (35/36).** Its task 10 had the identical
+  bug ours does — a turn-one reply claiming `add_to_cart` never called — just with
+  no other check downstream to catch it, so it read as a clean pass. The gap
+  between pi's A and B rows narrows from -6 to -3 points; nothing about the "Δ is
+  zero" reading below changes, one fewer point of daylight does.
+- **insika, scorecard B, probe-off arm: 90% (27/30) -> 83% (25/30).** Two of our
+  own already-recorded cells had the same claim-without-call pattern and weren't
+  caught before.
+- insika's own scorecard A/B rows here are unchanged (94%/94%) — both failing
+  cells were already failing for another reason; the new grader adds a second
+  reason, not a new failure.
 
 ### Scorecard A — parity
 
@@ -430,6 +455,77 @@ It is a response strategy, not an engine property, which means it is copyable. I
 has a cost worth naming before anyone copies it: asking *"which product?"* about an
 item already in the cart ignores the context the customer just gave. The task rewards
 that. A customer might not.
+
+### The reply that claimed an action
+
+Reading the cut's transcripts found a cell the graders had passed and should not
+have. Task 10, our own row, scorecard B: turn one answered "Adicionado ao carrinho!
+✅" having called `search_products` and nothing else; turn two then added the other
+item, and the cart ended with exactly the right line in it. `store_state:` was
+satisfied, `tools_called` reads the last turn only, and the one grader that fired
+(`must_not: tool_error`, because `remove_from_cart` failed on an item that was never
+there) blamed the wrong turn.
+
+Two graders came out of it. A turn can now pin its own calls
+(`turns[i].tools_called`), and `must_not: phantom_action` fails any reply that
+claims a mutation the store never saw succeed — never called, errored, or blocked
+alike. `regrade.rb` applies the current graders to recorded transcripts, so the
+numbers below cost no cells:
+
+| Where | Turn-ones of task 10 that claimed "adicionei" with no `add_to_cart` |
+| --- | --- |
+| insika, scorecard B, every arm | 6 of 26 |
+| insika, scorecard A | 0 of 6 |
+| pi | 1 of 6 |
+| opencode | 1 of 6 |
+| openclaw, hermes, claude-code | 0 of 6 each |
+
+Three cells flip from pass to fail under the new graders (two of ours in the
+reasoning-off probe, one of pi's in scorecard A); the other five phantoms were
+already failing on the downstream tool error. The published cut keeps the verdicts
+it was published with. Two things the table says: the phantom lives in our
+scorecard B and not in A, so it is something the B configuration does to this model
+and the next cut has to bisect it; and the provenance gate never fired in any of
+these — there is no `blocked` call anywhere in our 692 cells — so the claim is an
+invention, not a refusal the reply talked over.
+
+### Two follow-ups from cut 3's QA pass, and what they found
+
+The phantom-action grader above was one of two things a QA review of cut 3 asked
+for. The other two — what causes it, and where the latency goes — got a real
+answer each, and neither is the story it looked like from the outside.
+
+**The phantom, bisected — inconclusive.** `harnesses/insika/agent.rb` grew three
+`BENCH_B_*` env toggles (`FENCING`, `EVIDENCE`, `PERSISTENCE`, default = B
+unchanged) so scorecard B's three differences from A could be turned off one at a
+time. Ten rounds of task 10 per arm: baseline 0/10, no-fencing 1/10, no-evidence
+0/10, no-persistence 0/10. That is not a result — the historical rate at the same
+reasoning setting was 17-30% (`runs` 1/6, `runs-probe-medium` 3/10), and the
+BASELINE arm here, which should reproduce it, drew zero in ten. Ten rounds cannot
+tell a 10% rate from a 30% one; getting zero from a true ~25% rate happens about
+6% of the time. Read this as "not caused by any one of the three, cleanly" rather
+than "caused by none of them" — confirming either needs three times the rounds,
+and that cost wasn't spent without asking first.
+
+**The latency, decomposed — mostly not us.** `driver` gained a `BENCH_PERF=1` split
+(`boot_ms` / `reply_ms` / `drain_ms`, wall clock around `require_relative "agent"`,
+the `reply` call, and the store's admin read) and, under the engine's own
+`INSIKA_TURN_TIMING`, the finer `prep_ms` / `ttft_ms` / `gen_ms` it already
+computes per turn. On a single-tool task: boot ~100-300ms, drain ~5-10ms — both
+negligible next to a 6-12s turn, which rules out process spawn and the store's own
+log read as the extra cost. `prep_ms` (local work before the provider is asked) is
+also negligible, ~20ms. Almost everything is `gen_ms`: 4-6s typical for ~100-160
+visible output tokens, which reads like slow generation. The obvious suspect —
+`param :thinking` reasoning tokens streaming as content and inflating `gen_ms`
+while `output_tokens` only counts the visible ones — was tested directly (6 rounds
+medium vs. 6 off, same task) and refuted: mean `gen_ms` was ~4.9s either way.
+`TurnTiming`'s marks are once per TURN, first-write-wins, so they cannot currently
+tell a single slow call from two sequential ones (a store turn calls the model
+once to decide on the tool, once more to answer from its result) — separating
+those needs a per-CALL mark in `lib/insika/turn_timing.rb`, which is an engine
+change and wasn't made here. What this run does establish: the offset is inside
+the provider round-trip(s) the tool loop makes, not in anything this bench's
+harness wrapper does before or after them.
 
 ### What the retired cut established, and what it cost
 

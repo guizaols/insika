@@ -49,8 +49,22 @@ module Insika
         end
       end
 
+      # The tools turn `i` (0-based) must call, same `name?` optional marker as above.
+      # [] for a turn that pins nothing.
+      def turn_tools_called(i)
+        Array(turns.dig(i, "tools_called")).map do |ref|
+          s = ref.to_s
+          optional = s.end_with?("?")
+          { name: optional ? s[0..-2] : s, optional: optional }
+        end
+      end
+
       # Names of the negative assertions to run (e.g. "pii_leak", "tool_error").
       def must_not = Array(expect["must_not"]).map(&:to_s)
+
+      # `claims:` — tool name => the words a reply uses to say it did that (a regex
+      # source, matched case-insensitively). What `must_not: phantom_action` reads.
+      def claims = (expect["claims"] || {}).transform_keys(&:to_s)
 
       # The graders over the turn's CALLS and its published REPLY — each optional,
       # each deterministic. Every positive has a negative: `never_calls` pins what a
@@ -342,6 +356,28 @@ module Insika
 
           raise InvalidGolden, "#{source}: blocked_gates entries are 'tool:gate' (got #{pair.inspect}, case '#{id}')"
         end
+
+        validate_claims!(expect, id: id, source: source)
+      end
+
+      # A phantom-action check with no words to look for would pass everything, and a
+      # pattern that does not compile would fail every cell at grading time instead of
+      # the one author at load time.
+      def validate_claims!(expect, id:, source:)
+        claims = expect["claims"]
+        phantom = Array(expect["must_not"]).map(&:to_s).include?("phantom_action")
+        if phantom && !(claims.is_a?(Hash) && !claims.empty?)
+          raise InvalidGolden, "#{source}: must_not: phantom_action needs a non-empty 'claims:' map (case '#{id}')"
+        end
+        return if claims.nil?
+
+        raise InvalidGolden, "#{source}: 'claims' must be a map of tool => pattern (case '#{id}')" unless claims.is_a?(Hash)
+
+        claims.each do |tool, pattern|
+          Regexp.new(pattern.to_s)
+        rescue RegexpError => e
+          raise InvalidGolden, "#{source}: claims.#{tool} is not a valid pattern — #{e.message} (case '#{id}')"
+        end
       end
 
       # A typo'd policy must not silently mean "no policy" — the case would go on
@@ -368,6 +404,11 @@ module Insika
 
       # turns: a non-empty array of { "user" => String }. Rejects anything else so a
       # typo (e.g. `users:`) surfaces at load time, not as an empty replay.
+      #
+      # A turn may also carry `tools_called: [names]` — the calls THAT turn must make.
+      # The case-level `tools_called` reads the last turn only, and the bench found a
+      # reply that said "adicionado ao carrinho" on turn one without ever calling
+      # add_to_cart, then recovered on turn two so the final store looked right.
       def normalize_turns(turns, id:, source:)
         unless turns.is_a?(Array) && !turns.empty?
           raise InvalidGolden, "#{source}: 'turns' must be a non-empty array (case '#{id}')"
@@ -376,7 +417,12 @@ module Insika
         turns.each_with_index.map do |t, i|
           user = t.is_a?(Hash) ? presence(t["user"]) : nil
           user || (raise InvalidGolden, "#{source}: turns[#{i}] needs a non-empty 'user' (case '#{id}')")
-          { "user" => user }
+          tools = t["tools_called"]
+          unless tools.nil? || (tools.is_a?(Array) && tools.all? { |n| presence(n) })
+            raise InvalidGolden, "#{source}: turns[#{i}].tools_called must be a list of tool names (case '#{id}')"
+          end
+
+          tools.nil? ? { "user" => user } : { "user" => user, "tools_called" => tools.map(&:to_s) }
         end
       end
 

@@ -1,6 +1,6 @@
 # Cross-harness commerce bench
 
-Generated 2026-09-10T10:48:01Z.
+Generated 2026-09-11T11:48:22Z.
 
 ## Scorecard A — parity (same tools, same model, same prompt)
 
@@ -10,8 +10,8 @@ Generated 2026-09-10T10:48:01Z.
 | hermes | 36 | 35 | 97% | 8.5s | 24.0s | 10964 | $0.0011 | 1 store left wrong | — |
 | insika | 36 | 34 | 94% | 10.0s | 27.3s | 2170 | $0.0002 | 1 more than one question · 1 wrong tool behaviour · 1 duplicate side effect · 1 store left wrong | — |
 | openclaw | 36 | 35 | 97% | 14.3s | 30.6s | 14122 | $0.0014 | 1 wrong tool behaviour · 1 duplicate side effect · 1 store left wrong | — |
-| opencode | 36 | 31 | 86% | 8.8s | 21.0s | 2973 | $0.0003 | 5 store left wrong · 2 duplicate side effect · 1 wrong tool behaviour · 1 reply missed the point | — |
-| pi | 36 | 36 | 100% | 6.2s | 14.2s | 2619 | $0.0003 | — | — |
+| opencode | 36 | 31 | 86% | 8.8s | 21.0s | 2973 | $0.0003 | 5 wrong tool behaviour · 5 store left wrong · 2 duplicate side effect · 1 reply missed the point · 1 invention | — |
+| pi | 36 | 35 | 97% | 6.2s | 14.2s | 2571 | $0.0003 | 2 wrong tool behaviour · 1 invention | — |
 
 ## Scorecard B — out of the box (each harness as it ships)
 
@@ -19,7 +19,7 @@ Generated 2026-09-10T10:48:01Z.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | claude-code | 36 | 34 | 94% | 7.4s | 19.7s | 13237 | $0.0013 | 2 store left wrong · 1 wrong tool behaviour · 1 duplicate side effect | — |
 | hermes | 36 | 32 | 89% | 20.7s | 46.1s | 45256 | $0.0045 | 4 no answer from the harness | — |
-| insika | 36 | 34 | 94% | 11.8s | 31.5s | 2263 | $0.0002 | 1 wrong tool behaviour · 1 duplicate side effect · 1 store left wrong · 1 invention | — |
+| insika | 36 | 34 | 94% | 11.8s | 31.5s | 2263 | $0.0002 | 2 wrong tool behaviour · 2 invention · 1 duplicate side effect · 1 store left wrong | — |
 | openclaw | 36 | 35 | 97% | 23.1s | 37.4s | 102196 | $0.0102 | 1 wrong tool behaviour · 1 duplicate side effect · 1 store left wrong | — |
 | opencode | 36 | 35 | 97% | 6.8s | 16.5s | 2462 | $0.0002 | 1 wrong tool behaviour · 1 duplicate side effect · 1 store left wrong | — |
 | pi | 36 | 34 | 94% | 7.5s | 14.6s | 3717 | $0.0004 | 1 duplicate side effect · 1 no answer from the harness | — |
@@ -35,7 +35,7 @@ A measures the harness; B measures the product. The distance between a harness's
 | insika | 34/36 (94%) | 34/36 (94%) | 0 | 2170 | 2263 |
 | openclaw | 35/36 (97%) | 35/36 (97%) | 0 | 14122 | 102196 |
 | opencode | 31/36 (86%) | 35/36 (97%) | +11 | 2973 | 2462 |
-| pi | 36/36 (100%) | 34/36 (94%) | -6 | 2619 | 3717 |
+| pi | 35/36 (97%) | 34/36 (94%) | -3 | 2571 | 3717 |
 
 ## How to read the numbers
 

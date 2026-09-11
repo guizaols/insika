@@ -47,6 +47,9 @@ services:
       BENCH_MODEL: ${BENCH_MODEL:?set BENCH_MODEL — one model, identical for all}
       BENCH_STORE_MCP: http://store:8931/mcp
       BENCH_SCORECARD: ${BENCH_SCORECARD:-A}
+      BENCH_B_FENCING: ${BENCH_B_FENCING:-true}
+      BENCH_B_EVIDENCE: ${BENCH_B_EVIDENCE:-true}
+      BENCH_B_PERSISTENCE: ${BENCH_B_PERSISTENCE:-true}
     volumes:
       - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/prompt/AGENTS.md:ro
       - insika-data:/data

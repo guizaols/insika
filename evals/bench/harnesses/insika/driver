@@ -20,12 +20,22 @@ def calls(store, since)
   JSON.parse(Net::HTTP.get(URI("#{store}/admin/calls?since=#{since}")))
 end
 
+# Latency decomposition (#6b follow-up): the wall clock the runner measures is one
+# number for "boot the graph", "the model+tools loop" and "read the store's log
+# back" — three costs with different owners, and only the second is ours to spend
+# tokens on. `perf.ms` in the answer is `{boot:, reply:, drain:}` in milliseconds;
+# BENCH_PERF=1 turns it on so a normal run's answer shape never changes.
+perf_on = ENV["BENCH_PERF"] == "1"
+clock = Process.method(:clock_gettime)
+t0 = clock.call(Process::CLOCK_MONOTONIC)
+
 answer = { "output_text" => "", "tool_calls" => [], "error" => nil, "usage" => nil }
 blocked = []
 mark = calls(store, 0)["count"]
 
 begin
   require_relative "agent"
+  t1 = clock.call(Process::CLOCK_MONOTONIC)
   # Token usage rides the graph's event stream (the same `task_completed` the SSE
   # surface turns into `response.completed`), because `reply` returns the text and
   # nothing else. Without it our cost column would read as "not measured" while a
@@ -36,9 +46,16 @@ begin
   # turn that did nothing.
   usage = stream&.subscribe(types: %i[task_completed tool_blocked])
   answer["output_text"] = BENCH.reply(input.fetch("message"), session: input.fetch("conv")).to_s
+  t2 = clock.call(Process::CLOCK_MONOTONIC)
   events = usage&.drain_nonblocking || []
   reported = events.filter_map { |e| e.data[:usage] }.last
   answer["usage"] = reported if reported
+  # The engine's OWN per-call breakdown (prep/ttft/gen), under INSIKA_TURN_TIMING —
+  # rides the same task_completed event `usage` already subscribes to, so a
+  # BENCH_PERF run sees whether the offset is local prep, the provider round trip,
+  # or streaming, without adding a second engine hook.
+  timing = events.filter_map { |e| e.data[:timing] }.last
+  answer["timing"] = timing if perf_on && timing
   blocked = events.select { |e| e.type == :tool_blocked }
                   .map { |e| { "name" => e.data[:name].to_s, "status" => "blocked", "gate" => e.data[:gate].to_s } }
   usage&.close
@@ -49,4 +66,19 @@ end
 answer["tool_calls"] = calls(store, mark)["calls"]
                        .map { |c| { "name" => c["name"].sub(/\Astore__/, ""), "status" => c["status"] } } +
                        Array(blocked)
+if perf_on
+  t3 = clock.call(Process::CLOCK_MONOTONIC)
+  # A failure before a mark ran (e.g. `require_relative` itself raised) leaves it
+  # nil; fold it into the mark before so the split still sums to the total instead
+  # of crashing the driver on its own instrumentation.
+  t1 ||= t0
+  t2 ||= t1
+  ms = ->(a, b) { ((b - a) * 1000).round }
+  # boot: `require_relative "agent"` — loads insika, builds the graph, connects the
+  #       store's MCP. Paid once per PROCESS, not per turn, in a real deployment.
+  # reply: the turn itself — model calls, tool round-trips, our own engine loop.
+  # drain: usage events + the store's own admin read, both after the clock a real
+  #        customer's turn would have already stopped.
+  answer["perf"] = { "boot_ms" => ms.call(t0, t1), "reply_ms" => ms.call(t1, t2), "drain_ms" => ms.call(t2, t3) }
+end
 puts JSON.generate(answer)

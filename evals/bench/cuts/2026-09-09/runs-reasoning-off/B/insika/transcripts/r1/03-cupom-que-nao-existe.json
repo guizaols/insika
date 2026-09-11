@@ -75,6 +75,11 @@
       "detail": "no tool errors"
     },
     {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
       "name": "store_state:count:orders",
       "pass": true,
       "detail": "expected 1, saw 1"

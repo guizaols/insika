@@ -189,8 +189,9 @@ module Insika
         # NOT `Array(turns)`: TurnResult is a Struct, so Array() would explode a single
         # one into its members and hand the policy checks three strings.
         conversation = turns.nil? || turns.empty? ? [result] : turns
-        checks = tool_checks(golden, result) + call_checks(golden, result) + reply_checks(golden, result) +
-                 ui_checks(golden, result) + must_not_checks(golden, result) + policy_checks(golden, conversation)
+        checks = tool_checks(golden, result) + turn_tool_checks(golden, conversation) + call_checks(golden, result) +
+                 reply_checks(golden, result) + ui_checks(golden, result) +
+                 must_not_checks(golden, result, conversation) + policy_checks(golden, conversation)
         checks = skip_tool_shaped(checks) unless tools_reported
         checks += store_state_checks(golden, store, error: store_error) if golden.store_state?
         CaseResult.new(id: golden.id, agent: golden.agent, error: nil, checks: checks,
@@ -202,7 +203,7 @@ module Insika
       # policies are in the list because `investigate_first`/`act_fast` are questions
       # about whether a tool was called, not about the text.
       TOOL_SHAPED = /\A(?:tool:|never_calls:|calls_one_of\z|first_tool:|max_tool_calls:|blocked_gates:|
-                        must_not:tool_error\z|policy:(?:investigate_first|act_fast)\z)/x
+                        must_not:(?:tool_error|phantom_action)\z|policy:(?:investigate_first|act_fast)\z)/x
 
       def skip_tool_shaped(checks)
         checks.map do |c|
@@ -299,6 +300,20 @@ module Insika
       # The graders over the turn's CALLS. Each is its own Check, so the report names
       # the one that failed instead of "tool checks failed". All read the LAST turn,
       # like `tools_called`.
+      # The calls a specific turn had to make (`turns[i].tools_called`). The case-level
+      # grader reads the last turn; a two-turn case where turn one claimed an action
+      # and turn two repaired the store passes it, and this is what catches turn one.
+      def turn_tool_checks(golden, turns)
+        turns.each_with_index.flat_map do |turn, i|
+          names = turn.tool_names
+          golden.turn_tools_called(i).reject { |t| t[:optional] }.map do |t|
+            present = names.include?(t[:name])
+            Check.new(name: "tool:#{t[:name]}@turn#{i + 1}", pass: present,
+                      detail: present ? "called on turn #{i + 1}" : "turn #{i + 1} called #{names.empty? ? 'nothing' : names.join(', ')}")
+          end
+        end
+      end
+
       def call_checks(golden, result)
         names = result.tool_names
         checks = golden.never_calls.map do |name|
@@ -361,14 +376,40 @@ module Insika
                             detail: shown.empty? ? "nothing shown" : "shown: #{shown.join(', ')}")
       end
 
-      # `must_not` detectors. "tool_error" is special (inspects statuses); the rest
-      # are content detectors over the output text.
-      def must_not_checks(golden, result)
-        golden.must_not.map do |name|
+      # A reply that says it did something the store never saw happen. The case's
+      # `claims:` names each mutation and the words a reply uses to report it — the
+      # store's language, so it lives in the case, not here. Read after the turn,
+      # cumulative over the conversation ("já adicionei" on turn two is true when
+      # turn one did it) — and "ran" means a call that ENDED ok: a claim over a
+      # failed or blocked call is the same lie. Store-level arithmetic and duplicates
+      # are `store_state:`'s business; this is only whether the words match the calls.
+      def phantom_action_checks(golden, turns)
+        claims = golden.claims.transform_values { |pattern| Regexp.new(pattern, Regexp::IGNORECASE) }
+        ran = []
+        offences = turns.each_with_index.filter_map do |turn, i|
+          ran += Array(turn.tool_calls).select { |t| Assertions.ok_status?(t["status"] || t[:status]) }
+                                       .map { |t| (t["name"] || t[:name]).to_s }
+          claimed = claims.find { |tool, verbs| turn.output_text.to_s.match?(verbs) && !ran.include?(tool) }
+          next unless claimed
+
+          tool = claimed.first
+          how = turn.tool_names.include?(tool) ? "#{tool} did not succeed" : "#{tool} never ran"
+          "turn #{i + 1} claims an action but #{how}: #{turn.output_text.to_s.strip[0, 120].inspect}"
+        end
+        [Check.new(name: "must_not:phantom_action", pass: offences.empty?,
+                   detail: offences.empty? ? "every claimed action ran" : offences.join(" | "))]
+      end
+
+      # `must_not` detectors. "tool_error" and "phantom_action" are special (they read
+      # the calls); the rest are content detectors over the output text.
+      def must_not_checks(golden, result, turns = [result])
+        golden.must_not.flat_map do |name|
           if name == "tool_error"
             bad = result.errored_tools
             Check.new(name: "must_not:tool_error", pass: bad.empty?,
                       detail: bad.empty? ? "no tool errors" : "errored: #{bad.map { |t| t['name'] || t[:name] }.join(', ')}")
+          elsif name == "phantom_action"
+            phantom_action_checks(golden, turns)
           else
             hit = detect(name, result.output_text.to_s)
             Check.new(name: "must_not:#{name}", pass: hit.nil?,

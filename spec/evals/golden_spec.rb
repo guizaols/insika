@@ -182,3 +182,32 @@ RSpec.describe Insika::Evals::GoldenLoader do
       .to raise_error(described_class::InvalidGolden, /records.orders must be a non-empty list/)
   end
 end
+
+# A turn that pins its own calls — the shape the bench's mutation tasks use.
+RSpec.describe Insika::Evals::GoldenLoader do
+  it "keeps a turn's tools_called and reads it back per turn" do
+    g = described_class.build({ "id" => "c", "agent" => "bia", "expect" => {},
+                              "turns" => [{ "user" => "oi", "tools_called" => ["add_to_cart", "view_cart?"] },
+                                          { "user" => "ok" }] })
+    expect(g.turn_tools_called(0)).to eq([{ name: "add_to_cart", optional: false }, { name: "view_cart", optional: true }])
+    expect(g.turn_tools_called(1)).to eq([])
+    expect(g.user_turns).to eq(%w[oi ok])
+  end
+
+  it "refuses phantom_action without claims, and a claims pattern that does not compile" do
+    base = { "id" => "c", "agent" => "bia", "turns" => [{ "user" => "oi" }] }
+    expect { described_class.build(base.merge("expect" => { "must_not" => ["phantom_action"] })) }
+      .to raise_error(described_class::InvalidGolden, /needs a non-empty 'claims:'/)
+    expect { described_class.build(base.merge("expect" => { "claims" => { "add_to_cart" => "(" } })) }
+      .to raise_error(described_class::InvalidGolden, /claims.add_to_cart is not a valid pattern/)
+    ok = described_class.build(base.merge("expect" => { "must_not" => ["phantom_action"], "claims" => { "add_to_cart" => "adicionei" } }))
+    expect(ok.claims).to eq("add_to_cart" => "adicionei")
+  end
+
+  it "rejects a turn's tools_called that is not a list of names" do
+    expect do
+      described_class.build({ "id" => "c", "agent" => "bia", "expect" => {},
+                            "turns" => [{ "user" => "oi", "tools_called" => "add_to_cart" }] })
+    end.to raise_error(described_class::InvalidGolden, /tools_called must be a list/)
+  end
+end

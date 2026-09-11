@@ -109,7 +109,8 @@ check, and the report names the one that failed.
 
 | Key | Checks |
 |-----|--------|
-| `tools_called: [name, name?]` | each required tool was called (`?` = optional, never fails) |
+| `tools_called: [name, name?]` | each required tool was called on the LAST turn (`?` = optional, never fails) |
+| `turns[i].tools_called: [names]` | the calls one specific turn must make — a two-turn case where turn one claimed an action and turn two repaired the store passes the key above and fails this one |
 | `never_calls: [names]` | none of these was called — the negative every `tools_called` needs |
 | `calls_one_of: [names]` | at least one of these was called |
 | `first_tool: name` | the first call's name |
@@ -119,7 +120,8 @@ check, and the report names the one that failed.
 | `blocked_gates: ["tool:gate"]` | each pair appears among the turn's blocked calls |
 | `ui_components: [names]` | a presentation tool showed at least one card of each component (the `insika.ui` frames) |
 | `no_ui: true` | the turn showed nothing — the negative of `ui_components` |
-| `must_not: [detectors]` | the negative detectors (`pii_leak`, `tool_error`, …); a blocked call is not a tool error |
+| `must_not: [detectors]` | the negative detectors (`pii_leak`, `tool_error`, `phantom_action`, …); a blocked call is not a tool error |
+| `claims: { tool: pattern }` | what `phantom_action` reads — per mutation, the words a reply uses to say it did it (a regex, case-insensitive); the store's language, so it lives in the case |
 
 **Every positive has a negative.** A case that only says `tools_called: [add_to_cart]`
 passes an agent that also re-searched, or that echoed the SKU to the customer. Pin
@@ -128,6 +130,22 @@ in the same case. Snapshots avoid the model calls needed to reconstruct the setu
 use the simulator when later customer messages need to branch on the replies.
 
 `tools_called` confirms an attempted call, not a successful backend mutation.
+
+`must_not: phantom_action` reads the other direction: a reply that SAYS it did
+something ("adicionei", "removi", "fechei o pedido") on a turn where the matching
+tool never ran, errored, or was blocked. It is cumulative over the conversation, so
+"já adicionei" on turn two is true when turn one did it, and it only pins the words
+against the calls — a cart that ended up right by accident is still a lie to the
+customer. The words come from the case's `claims:` map, in the store's own
+language, past tense on purpose: "quer adicionar?" is a question.
+
+```yaml
+expect:
+  must_not: [tool_error, phantom_action]
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei)\b'
+    create_order: '\b(?:fechei|finalizei|pedido (?:criado|fechado))\b'
+```
 Arguments are collected for inspection; there is no generic argument or cart-state
 grader. `blocked_gates` needs completion statuses from the HTTP transport. The
 in-process `GraphTransport` records tool names and UI events, but not completion

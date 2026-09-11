@@ -1,6 +1,6 @@
 # Cross-harness commerce bench
 
-Generated 2026-09-10T10:48:01Z.
+Generated 2026-09-11T11:48:23Z.
 
 ## Scorecard A — parity (same tools, same model, same prompt)
 

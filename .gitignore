@@ -29,6 +29,7 @@ evals/bench/runs-reasoning-off/
 evals/bench/runs-probe-medium/
 evals/bench/runs-probe-off/
 evals/bench/runs-probe-09/
+evals/bench/bisect-runs/
 evals/bench/REPORT.md
 evals/bench/REPORT-unguarded.md
 evals/bench/REPORT-reasoning-off.md
