@@ -38,6 +38,7 @@ evals/bench/REPORT-probe-off.md
 evals/bench/REPORT-probe-09.md
 # The viewer's page, same rule: regenerate it from a cut, never track it.
 evals/bench/bench.html
+evals/bench/bench-cut3-2026-09-09.zip
 # Deployment-specific eval material (real-store baselines/goldens) — never shipped
 evals/internal/
 # A captured baseline is per-deployment data (evals/run.rb --update-baseline)
