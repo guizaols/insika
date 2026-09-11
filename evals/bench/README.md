@@ -135,6 +135,11 @@ reply verbatim, tool calls, timing. Clicking a task id instead lays every harnes
 answer to that task side by side, which is how you see that Hermes never mentions
 closing the order. The file is gitignored; regenerate it from the cut, which is not.
 
+`compare.rb` sets two cuts side by side, cell by cell — `ruby compare.rb
+cuts/2026-09-09/runs runs` — and marks any task whose file changed between them as
+not comparable. Task 07 changed after cut 3 (it gained a third turn), so its row is
+two questions, not one number.
+
 ## Reproduce it, or contest it
 
 Reproducible and contestable are the same property, and neither survives a table whose

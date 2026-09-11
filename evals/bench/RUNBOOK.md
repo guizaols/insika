@@ -111,13 +111,24 @@ done
 ```bash
 mkdir -p cuts/$(date +%F)
 cp -R runs runs-unguarded REPORT.md REPORT-unguarded.md cuts/$(date +%F)/
+cp -R tasks cuts/$(date +%F)/tasks       # the questions this cut answered, frozen with it
 # plus any arm or probe root the cut produced: runs-reasoning-off, runs-probe-*
 ./viewer.rb --runs cuts/$(date +%F)     # the page the team reads
+ruby compare.rb cuts/<previous>/runs cuts/$(date +%F)/runs   # cell by cell against the last cut
 ```
 
 `runs/`, `REPORT.md` and `bench.html` are gitignored working output; `cuts/<date>/` is
 the published record and IS tracked. Then rewrite the results sections of `README.md`
 against the new tables.
+
+`compare.rb` prints, per scorecard, harness and task, the cells passed before and
+after and the difference — and marks a task whose file differs between the two cuts'
+`tasks/` snapshots as **not comparable**, because its two rows answer two different
+questions. Cut 3's snapshot was reconstructed from its commit (`4b84450`); from cut 4
+on, the `cp -R tasks` line above is what makes the mark possible. Two cuts are
+comparable on a task only when the task, the store image, the model and the
+reasoning setting are the same; the script checks the first, the RUNBOOK's traps
+above are how you check the rest.
 
 Before any public push, check that the history is clean. The tree is anonymised — the
 fixture store is a pseudonym and its one customer is fabricated — but a branch whose
