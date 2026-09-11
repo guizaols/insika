@@ -94,8 +94,9 @@ RSpec.describe Studio::App do
   # RSpec constants leak to top-level Object, so a shared name would clobber.
   StudioPendingRow = Struct.new(:id, :task_id, :turn, :tool, :args, :status, :requested_at, keyword_init: true)
   PendingStoreDouble = Struct.new(:pendings) do # pendings: [StudioPendingRow]
-    def all_open = pendings.select { |p| p.status == :pending }
-    def open_for(tid) = pendings.select { |p| p.status == :pending && p.task_id == tid }
+    # `kind:` is the real store's operator/customer filter; the fake rows are all operator's.
+    def all_open(kind: nil) = pendings.select { |p| p.status == :pending }
+    def open_for(tid, kind: nil) = pendings.select { |p| p.status == :pending && p.task_id == tid }
   end
   StudioCheckpointRow = Struct.new(:turn, :messages, :completed_side_effects, :created_at, keyword_init: true)
   CheckpointStoreDouble = Struct.new(:by_task) do # by_task: { id => StudioCheckpointRow }

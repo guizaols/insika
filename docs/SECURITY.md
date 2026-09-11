@@ -246,6 +246,13 @@ resume path is durable: an approval that arrives after a restart still resumes t
 turn from its checkpoint (see
 [Architecture](ARCHITECTURE.md#durability-checkpoints-and-resume)).
 
+There is a second approver: the customer. `customer_confirm: [tool names]` holds a
+call the same way, but the turn *ends* with a question instead of suspending, and the
+next message of the conversation decides it through `confirm_pending` /
+`cancel_pending`. A hold nobody resolves expires when that next turn ends. Use it for
+the write the person on the other end must agree to; use approval for the one a staff
+member must. A tool cannot be on both lists. See [Tools](TOOLS.md#customer-confirmation-a-write-the-conversation-approves).
+
 ## Egress: the SSRF boundary
 
 Every outbound HTTP call from a data tool passes through the **EgressGuard**, a

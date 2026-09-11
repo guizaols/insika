@@ -85,6 +85,7 @@ module Studio
         context_providers: allowlist_patch(r, "context_providers"),
         workflows_allow: allowlist_patch(r, "workflows_allow"),
         approvals_required: list_patch(r, "approvals_required"),
+        customer_confirm: list_patch(r, "customer_confirm"),
         policies: list_patch(r, "policies").map(&:to_sym),
         prompt_refs: list_patch(r, "prompt_refs"),
         capabilities_declared: list_patch(r, "capabilities_declared"),

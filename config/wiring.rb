@@ -99,6 +99,7 @@ module Insika
       Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store),
       # Session briefing: read path. Inert for agents without
       # briefing_fields.
+      Insika::Context::Providers::PendingConfirmation.new(pending_action_store: PENDING_ACTION_STORE),
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
     ] # NOT frozen: load_plugins appends plugin providers at boot (pre-listen)

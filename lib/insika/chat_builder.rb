@@ -133,6 +133,17 @@ module Insika
                                                         event_stream: @event_stream, state: state)
       end
 
+      # confirm_pending / cancel_pending resolve a call the envelope held for the
+      # customer's confirmation — wired only with a PendingActionStore on the state
+      # AND profile.customer_confirm non-empty (double gate, like remember). Never
+      # enveloped: confirm re-runs the ORIGINAL tool through its own envelope.
+      holds = state.respond_to?(:pending_action_store) ? state.pending_action_store : nil
+      confirmed = state.profile.respond_to?(:customer_confirm) ? state.profile.customer_confirm : nil
+      if holds && !Array(confirmed).empty?
+        tools << Tools::ConfirmPending.new(event_stream: @event_stream, state: state)
+        tools << Tools::CancelPending.new(event_stream: @event_stream, state: state)
+      end
+
       # signal_stuck is the "I cannot proceed" system tool (WS5) — wired only
       # when the agent opted in (`profile.stuck_signal`), never enveloped. It is a
       # deterministic signal; the consumer decides what "stuck" means. Defensive
@@ -444,11 +455,13 @@ module Insika
     end
 
     # How the call ENDED, for the :tool_result event (the edge publishes it and the
-    # evals grade it): the envelope's `{error:}` -> "error"; a gate that held the
+    # evals grade it): the envelope's `{error:}` -> "error"; a call waiting for the
+    # customer (ToolEnvelope::Held) -> "held"; a gate that refused the
     # call (ToolEnvelope::Blocked) -> "blocked" + which gate; anything else ran ->
     # "ok" — including a tool whose OWN answer happens to say "blocked". Read off
     # the RAW result, before it is stringified for the event.
     def tool_outcome(result)
+      return { status: "held", gate: result["gate"]&.to_s }.compact if result.is_a?(Insika::ToolEnvelope::Held)
       return { status: "blocked", gate: result["gate"]&.to_s }.compact if result.is_a?(Insika::ToolEnvelope::Blocked)
       return { status: "ok" } unless result.is_a?(Hash)
       return { status: "error" } if result.key?(:error) || result.key?("error")
