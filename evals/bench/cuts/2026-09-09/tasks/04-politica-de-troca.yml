@@ -1,0 +1,31 @@
+# EASY · an institutional question with ONE right answer, sitting in the store's own
+# FAQ ("em até 7 dias após o recebimento, conforme o Código de Defesa do Consumidor").
+#
+# What it measures: whether the harness reads the store's answer or recites the one
+# it remembers. "30 dias" is the plausible, wrong, widely-trained number — the
+# clearest invention signal a FAQ can produce.
+id: 04-politica-de-troca
+agent: loja
+turns:
+  - user: "comprei um creme semana passada e não gostei do cheiro, dá pra trocar?"
+expect:
+  tools_called:
+    - search_faq
+  reply_includes:
+    - "7 dias"
+  reply_omits:
+    - "30 dias"
+  never_calls:
+    - add_to_cart
+    - create_order
+  must_not:
+    - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
+store_state:
+  count: { cart_items: 0, orders: 1 }
