@@ -74,6 +74,35 @@ for i in 1 2 3 4 5; do
 done
 ```
 
+## claude-code — 2026-09-11: empty again, and it is not the thinking budget
+
+The first full run after cut 3 brought the empty answers back: 27 of the first 34
+scorecard-A cells reported `claude exited 0 with no answer`, with the log line
+`[claude-code:unrecognized_model] {"model":"deepseek/deepseek-v4-flash"}` — which is
+only Claude Code failing to price a model it does not know, not the failure itself.
+Reproduced outside the bench with the same pinned image (`docker run --rm
+insika-bench-claude-code:2.1.266 … claude -p 'responda apenas: ok'`): the API call
+happens (34,700 input tokens, ~4s), `output_tokens: 2`, and Claude Code shows no
+text. `MAX_THINKING_TOKENS=0` does NOT fix it this time (3/3 empty), so the fallback
+above does not apply.
+
+The endpoint itself answers: the same model through the same Anthropic-shaped
+`/api/v1/messages`, called with curl — short prompt, streaming with tools, and a
+72,000-token system prompt alike — returns a `text` block with "ok". OpenRouter is
+rotating this model across upstreams (`Mancer 2`, `Baidu`, `StreamLake` on the day),
+and whatever Claude Code's exact request shape hits, it comes back with nothing
+visible. The `provider` routing parameter IS honoured on `/v1/messages` (naming an
+upstream the model does not have returns "No endpoints found"), so pinning an
+upstream is possible in principle — but Claude Code cannot add a body field, which
+means a shim in front of it, and that is a change to the entrant's wiring, not a
+config fix.
+
+What to do: a row that cannot run must never look like a row that ran badly. Stop the
+cut, resume without the entrant — `HARNESSES="insika openclaw hermes pi opencode"
+bash cut3.sh` keeps every measured cell — and publish the claude-code row as *not
+measured this cut*, with this section as the evidence. Keep `runs/A/claude-code` in
+the cut under `claude-code-did-not-run/`; do not let it into the scorecard.
+
 ## What cut 3 added to the traps
 
 6. **A refused run is JSON too.** `reasoningDefault` is reasoning *visibility*
