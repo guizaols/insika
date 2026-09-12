@@ -95,7 +95,9 @@ header = File.exist?(manifest) ? JSON.parse(File.read(manifest)) : {}
 lines = []
 lines << "# Customer confirmation — one variable, two arms"
 lines << ""
-lines << "Generated #{Time.now.utc.iso8601}. #{all.size} measured conversations, " \
+measured = all.reject(&:error).size
+lines << "Generated #{Time.now.utc.iso8601}. #{all.size} conversations" \
+         "#{measured == all.size ? '' : " (#{measured} measured, #{all.size - measured} lost to the provider)"}, " \
          "scorecard B, #{all.map(&:rep).uniq.size} repetitions per scenario per arm."
 lines << ""
 if header.any?

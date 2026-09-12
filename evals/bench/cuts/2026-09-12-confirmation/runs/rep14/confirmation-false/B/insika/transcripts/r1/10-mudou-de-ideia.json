@@ -1,0 +1,50 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-12T20:46:12Z",
+  "conv": "r1-10-mudou-de-ideia",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "Feito! Adicionei **1x Desodorante Colônia Vento Masculino 100ml** (R$ 189,90) ao seu carrinho. 🎉\n\nQuer mais alguma coisa ou já pode fechar o pedido?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 15598
+    },
+    {
+      "user": "na verdade é presente pra minha esposa, troca pelo feminino",
+      "reply": "",
+      "error": "Insika::Error: turn failed: Provider returned error",
+      "tool_calls": [
+        {
+          "name": "remove_from_cart",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        }
+      ],
+      "ms": 12930
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: Insika::Error: turn failed: Provider returned error"
+    }
+  ]
+}

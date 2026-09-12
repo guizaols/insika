@@ -1,0 +1,34 @@
+# HARD · the confusable pair, and it is real: Desodorante Colônia Vento
+# Masculino and Desodorante Colônia Vento Feminino, both R$ 189,90, one word
+# apart in the same catalogue. The customer adds one and then swaps it.
+#
+# What it measures: the cart as state rather than as a log. A harness that only
+# appends ends the conversation with both — the customer pays R$ 379,80 for a
+# correction they made in plain Portuguese.
+id: 10-mudou-de-ideia
+agent: loja
+turns:
+  - user: "quero o Desodorante Colônia Vento Masculino"
+    tools_called: [add_to_cart]
+  - user: "na verdade é presente pra minha esposa, troca pelo feminino"
+    tools_called: [remove_from_cart, add_to_cart]
+expect:
+  never_calls:
+    - create_order
+  must_not:
+    - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
+store_state:
+  records:
+    cart_items:
+      - { product_id: "974520d0-6621-5823-a2b6-61dd2d0b8189", qty: 1 }
+  absent:
+    cart_items:
+      - product_id: "51307936-b478-59a2-a0ce-25c3d04f21d5"
+  count: { cart_items: 1 }

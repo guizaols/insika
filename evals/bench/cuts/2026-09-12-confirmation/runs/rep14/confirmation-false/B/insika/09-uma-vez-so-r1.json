@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-12T20:45:02Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 4892,
+    "case_ms_p95": 4892,
+    "turn_ms_p50": 4892,
+    "turn_ms_p95": 4892,
+    "tokens_measured": 0
+  },
+  "cases": [
+    {
+      "id": "09-uma-vez-so",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "Insika::Error: turn failed: Provider returned error",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: Insika::Error: turn failed: Provider returned error"
+        }
+      ],
+      "perf": {
+        "ms": 4892,
+        "turn_ms": [
+          4892
+        ],
+        "turns": 1
+      }
+    }
+  ]
+}

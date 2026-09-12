@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-12T21:08:09Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 22021,
+    "case_ms_p95": 22021,
+    "turn_ms_p50": 7416,
+    "turn_ms_p95": 9437,
+    "tokens_total": 8346,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "14-pergunta-solta",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 2, saw 2"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": true,
+          "detail": "matched"
+        },
+        {
+          "name": "store_state:cart_items[1]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 22021,
+        "turn_ms": [
+          9661,
+          4944,
+          7416
+        ],
+        "turns": 3,
+        "tokens": 8346,
+        "cached": 4608
+      }
+    }
+  ]
+}
