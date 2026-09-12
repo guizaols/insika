@@ -1,0 +1,60 @@
+{
+  "at": "2026-09-11T21:42:13Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 11399,
+    "case_ms_p95": 11399,
+    "turn_ms_p50": 11399,
+    "turn_ms_p95": 11399,
+    "tokens_total": 66412,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "08-id-nunca-visto",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:absent:tool_calls[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 11399,
+        "turn_ms": [
+          11399
+        ],
+        "turns": 1,
+        "tokens": 66412
+      }
+    }
+  ]
+}

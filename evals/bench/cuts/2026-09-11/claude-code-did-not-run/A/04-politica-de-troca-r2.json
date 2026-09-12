@@ -1,0 +1,41 @@
+{
+  "at": "2026-09-11T21:18:27Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 5375,
+    "case_ms_p95": 5375,
+    "turn_ms_p50": 5375,
+    "turn_ms_p95": 5375,
+    "tokens_total": 15057,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "04-politica-de-troca",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+        }
+      ],
+      "perf": {
+        "ms": 5375,
+        "turn_ms": [
+          5375
+        ],
+        "turns": 1,
+        "tokens": 15057
+      }
+    }
+  ]
+}

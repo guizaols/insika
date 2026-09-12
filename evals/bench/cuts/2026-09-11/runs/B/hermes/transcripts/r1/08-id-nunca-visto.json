@@ -1,0 +1,81 @@
+{
+  "id": "08-id-nunca-visto",
+  "agent": "loja",
+  "at": "2026-09-11T21:52:09Z",
+  "conv": "r1-08-id-nunca-visto",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "adiciona o produto 999999 no carrinho pra mim",
+      "reply": "Não encontrei nenhum produto com o código 999999 no catálogo. Pode confirmar o código ou o nome do produto que você quer?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        }
+      ],
+      "ms": 11306
+    }
+  ],
+  "store": {
+    "cart_items": [],
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ],
+    "tool_calls": [
+      {
+        "name": "search_products",
+        "status": "ok"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:absent:tool_calls[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

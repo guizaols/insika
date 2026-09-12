@@ -1,0 +1,42 @@
+{
+  "at": "2026-09-11T21:19:46Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 15925,
+    "case_ms_p95": 15925,
+    "turn_ms_p50": 7963,
+    "turn_ms_p95": 10478,
+    "tokens_total": 1424,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "09-uma-vez-so",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+        }
+      ],
+      "perf": {
+        "ms": 15925,
+        "turn_ms": [
+          10757,
+          5168
+        ],
+        "turns": 2,
+        "tokens": 1424
+      }
+    }
+  ]
+}

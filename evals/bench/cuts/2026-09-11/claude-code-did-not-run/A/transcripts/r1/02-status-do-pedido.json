@@ -1,0 +1,30 @@
+{
+  "id": "02-status-do-pedido",
+  "agent": "loja",
+  "at": "2026-09-11T21:14:39Z",
+  "conv": "r1-02-status-do-pedido",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "oi, queria saber do meu pedido SV-100237",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [
+        {
+          "name": "search_orders",
+          "status": "ok"
+        }
+      ],
+      "ms": 11564
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}

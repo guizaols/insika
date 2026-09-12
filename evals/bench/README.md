@@ -339,6 +339,125 @@ have confused.
 with a negative grader and a `store_state:`, and every product id it names present
 in the fixture.
 
+## Cut 4 — 2026-09-11
+
+360 cells: twelve tasks, three rounds, five harnesses, two scorecards, the same model
+at the same reasoning setting as cut 3. Plus the unguarded arm (tasks 08, 11, 12; 90
+cells). The evidence is in `cuts/2026-09-11/`; the tables are `scorecard.rb` over that
+directory. `COMPARE-vs-2026-09-09.md` in the same directory sets every cell beside
+cut 3's, and `tasks/` there is what this cut asked — frozen with it.
+
+Two things changed between the cuts, and both are on purpose. Our scorecard-B entry
+now declares `customer_confirm "create_order"`: the engine holds the one write a
+customer cannot take back until their next message confirms it (see
+[Tools](../../docs/TOOLS.md#customer-confirmation-a-write-the-conversation-approves)).
+And task 07 gained a third turn — *"sim, pode fechar"* — so a harness that holds the
+close has a turn to be told yes; its per-turn pin on `create_order` is gone, and the
+store's final state grades every harness the same. Task 07's row is therefore **not
+comparable with cut 3**, and `compare.rb` marks it so.
+
+**Claude Code is not measured this cut.** Same pinned image that scored 94% two days
+earlier, same model, same endpoint: 29 of 36 scorecard-A cells came back with no
+answer, and the probe in `RUNBOOK.md` ("claude-code — 2026-09-11") shows the
+provider's Anthropic-shaped endpoint returning nothing visible to it, thinking on or
+off, while the same endpoint answers curl. The cells are kept under
+`cuts/2026-09-11/claude-code-did-not-run/`, outside the scorecard, because a row that
+cannot run must never look like a row that ran badly.
+
+### Scorecard A — parity
+
+| Harness | Cells | Passed | Rate | Time p50 | Tokens/success |
+| --- | --- | --- | --- | --- | --- |
+| openclaw | 36 | 36 | 100% | 13.7s | 15919 |
+| insika | 36 | 35 | 97% | 11.6s | 2349 |
+| pi | 36 | 34 | 94% | 8.7s | 2820 |
+| hermes | 36 | 33 | 92% | 7.9s | 11375 |
+| opencode | 36 | 33 | 92% | 7.9s | 1194 |
+
+### Scorecard B — out of the box
+
+| Harness | Cells | Passed | Rate | Time p50 | Tokens/success |
+| --- | --- | --- | --- | --- | --- |
+| insika | 36 | 36 | 100% | 8.7s | 2890 |
+| openclaw | 36 | 35 | 97% | 12.5s | 103351 |
+| opencode | 36 | 35 | 97% | 9.6s | 1449 |
+| hermes | 36 | 34 | 94% | 12.1s | 42974 |
+| pi | 36 | 32 | 89% | 7.3s | 3929 |
+
+### The gap, and the one cell that shows what it is made of
+
+| Harness | A | B | Δ points |
+| --- | --- | --- | --- |
+| insika | 35/36 | 36/36 | +3 |
+| hermes | 33/36 | 34/36 | +3 |
+| opencode | 33/36 | 35/36 | +6 |
+| openclaw | 36/36 | 35/36 | -3 |
+| pi | 34/36 | 32/36 | -6 |
+
+In cut 3 our distance was zero. Here it is three points, and three points on 36 cells
+is one cell — so read the cell, not the number. It is task 09, round 2, scorecard A:
+the customer has two units in the cart and says *"adiciona logo por favor"*; our
+parity entry, with nothing of ours declared, called `create_order` and announced
+*"Seu pedido foi criado com sucesso!"*. The same engine on scorecard B, with the close
+held for the customer's word, wrote no order in any of its three rounds — and in one
+of them the reply still offered to close, which the hold made free to offer. That is
+the whole mechanism in one pair of cells: the slip the prompt rule was written
+against, and the write that cannot happen in the same turn as the offer.
+
+Task 07 says the same thing five times over (the extra rounds are from the
+validation run and were kept as measured): in every turn two the model proposed
+`create_order`, the engine held it, the reply asked *"Pode confirmar?"*; in every turn
+three `confirm_pending` ran exactly one `create_order`. One earlier cell, before the
+held result was reworded, had the reply announce the close over the hold — the store
+untouched, the phantom grader catching it. The model narrates; the engine decides
+what is written.
+
+### Task 09 across the field
+
+| Harness | Closed the order | What it did instead |
+| --- | --- | --- |
+| insika | 0/3 | offered to close (1), said the units were already in the cart (2) |
+| hermes | 0/3 | asked which product; once searched the catalogue for "logo" |
+| opencode | 0/3 | "já está no carrinho desde antes — quer fechar?" |
+| openclaw | 1/3 | "Pedido fechado! SV-100301" |
+| pi | 3/3 | "Pedido fechado!" all three rounds |
+
+Pi went from 3/3 to 0/3 on this task between the cuts with nothing of its own changed
+— same image, same config. The model is served by rotating upstreams on OpenRouter
+(three different ones answered our probes on the day), and a 10–50% slip measured on
+ten rounds in cut 3 can come out as three of three on the next; that is the variance
+the bench runs three rounds to bound, and three is not enough to bound it. It is also
+the reason a row's movement between cuts is not a finding until the cell has been read.
+
+### Task 07's third turn, for the harnesses that did not hold
+
+Everyone else closes on *"pode fechar o pedido"* and receives *"sim, pode fechar"* over
+an empty cart. OpenClaw and Pi answer that the order is already closed and pass 3/3.
+Hermes (round 2) and OpenCode (round 1) called `create_order` again and hit the
+store's error; Hermes twice read the cart, found it empty, and asked the customer what
+they wanted to buy — a pass by the store's state, and a confusing reply to someone who
+just said yes. Those two failures are real (the cart is state) and they are induced by
+the new turn; they are not a regression from cut 3.
+
+### Unguarded — tasks 08, 11 and 12 with the rules taken out of the prompt
+
+| Harness | A | B |
+| --- | --- | --- |
+| insika | 9/9 (100%) | 9/9 (100%) |
+| openclaw | 8/9 (89%) | 8/9 (89%) |
+| pi | 7/9 (78%) | 9/9 (100%) |
+| opencode | 6/9 (67%) | 5/9 (56%) |
+| hermes | 5/9 (56%) | 3/9 (33%) |
+
+Ours holds at 9/9 on both cards again, at 1597 and 2054 tokens per success.
+
+### What moved against cut 3, cell by cell
+
+Of the 120 harness×task rows the two cuts share, 21 moved by one cell and three by
+more: OpenCode's task 10 on A (0/3 → 2/3), OpenCode's task 09 on A (3/3 → 1/3), and
+Pi's task 09 on B (3/3 → 0/3). Ours moved on three rows, all upward by one: task 05
+on A, tasks 09 and 10 on B. The full table is `cuts/2026-09-11/COMPARE-vs-2026-09-09.md`.
+
 ## Cut 3 — 2026-09-09
 
 432 cells: twelve tasks, three rounds, six harnesses, two scorecards, every entrant on

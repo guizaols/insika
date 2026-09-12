@@ -1,0 +1,25 @@
+{
+  "id": "01-produto-por-necessidade",
+  "agent": "loja",
+  "at": "2026-09-11T21:17:47Z",
+  "conv": "r2-01-produto-por-necessidade",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "oi, queria um hidratante pra mão que não deixe a mão grudenta",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [],
+      "ms": 3752
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}

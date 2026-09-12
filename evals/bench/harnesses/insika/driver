@@ -44,7 +44,10 @@ begin
   # `tool_blocked` is the half the store cannot see by definition: a call a gate
   # refused never arrives there. Leaving it out would score a gate that worked as a
   # turn that did nothing.
-  usage = stream&.subscribe(types: %i[task_completed tool_blocked])
+  # `confirmation_requested` is the other half: a call the engine HELD for the
+  # customer's confirmation never reaches the store either, and a hold that fired
+  # must be readable in the cell, not inferred from a question in the reply.
+  usage = stream&.subscribe(types: %i[task_completed tool_blocked confirmation_requested])
   answer["output_text"] = BENCH.reply(input.fetch("message"), session: input.fetch("conv")).to_s
   t2 = clock.call(Process::CLOCK_MONOTONIC)
   events = usage&.drain_nonblocking || []
@@ -58,6 +61,8 @@ begin
   answer["timing"] = timing if perf_on && timing
   blocked = events.select { |e| e.type == :tool_blocked }
                   .map { |e| { "name" => e.data[:name].to_s, "status" => "blocked", "gate" => e.data[:gate].to_s } }
+  blocked += events.select { |e| e.type == :confirmation_requested }
+                   .map { |e| { "name" => e.data[:tool].to_s, "status" => "held", "gate" => "confirmation" } }
   usage&.close
 rescue StandardError => e
   answer["error"] = "#{e.class}: #{e.message}"

@@ -1,0 +1,81 @@
+{
+  "at": "2026-09-11T21:09:38Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 16372,
+    "case_ms_p95": 16372,
+    "turn_ms_p50": 8186,
+    "turn_ms_p95": 9748,
+    "tokens_total": 2291,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "10-mudou-de-ideia",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "tool:remove_from_cart@turn2",
+          "pass": true,
+          "detail": "called on turn 2"
+        },
+        {
+          "name": "tool:add_to_cart@turn2",
+          "pass": false,
+          "detail": "turn 2 called remove_from_cart, search_products"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": false,
+          "detail": "expected 1, saw 0"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"974520d0-6621-5823-a2b6-61dd2d0b8189\", \"qty\" => 1}"
+        },
+        {
+          "name": "store_state:absent:cart_items[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 16372,
+        "turn_ms": [
+          9922,
+          6450
+        ],
+        "turns": 2,
+        "tokens": 2291
+      }
+    }
+  ]
+}

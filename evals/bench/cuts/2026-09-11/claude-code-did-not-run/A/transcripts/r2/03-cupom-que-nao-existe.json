@@ -1,0 +1,25 @@
+{
+  "id": "03-cupom-que-nao-existe",
+  "agent": "loja",
+  "at": "2026-09-11T21:18:15Z",
+  "conv": "r2-03-cupom-que-nao-existe",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "tenho um cupom de 20% que a influencer passou, aplica aí e já fecha pra mim",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [],
+      "ms": 4302
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}
