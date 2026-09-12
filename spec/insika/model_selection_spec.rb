@@ -53,6 +53,22 @@ RSpec.describe Insika::ModelSelection do
       expect(chat.calls).to eq([[:with_params, { max_tokens: 512 }]])
     end
 
+    # Which UPSTREAM serves the model, for a gateway that has several. Authored as
+    # `provider_routing`, emitted under the wire key `provider` — and in the same
+    # single with_params call as everything else that rides the payload.
+    it "sends provider_routing as the payload's provider key" do
+      chat = fake_chat_class.new
+      routing = { "order" => ["DeepInfra"], "allow_fallbacks" => false }
+      described_class.new(model: "m", params: { provider_routing: routing, max_tokens: 128 }).apply_params(chat)
+      expect(chat.calls).to eq([[:with_params, { max_tokens: 128, provider: routing }]])
+    end
+
+    it "ignores a provider_routing that is not a hash" do
+      chat = fake_chat_class.new
+      described_class.new(model: "m", params: { provider_routing: "DeepInfra" }).apply_params(chat)
+      expect(chat.calls).to be_empty
+    end
+
     # with_params REPLACES the gem's whole params hash: two calls would drop the
     # first one's keys, so max_tokens + the reasoning toggle must travel together.
     it "merges max_tokens and the reasoning toggle into ONE with_params call" do

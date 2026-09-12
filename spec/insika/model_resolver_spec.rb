@@ -115,6 +115,14 @@ RSpec.describe Insika::ModelResolver do
       )
       expect(sel.params).to eq(temperature: 0.3, max_tokens: 100)
     end
+
+    it "carries provider_routing through, as authored" do
+      routing = { "order" => ["DeepInfra"], "allow_fallbacks" => false }
+      sel = described_class.new(settings_store: settings).resolve(
+        profile: profile(model: "m", params: { "provider_routing" => routing })
+      )
+      expect(sel.params).to eq(provider_routing: routing)
+    end
   end
 
   # 4-layer reasoning control: thinking resolved Chat > Agent > Model > Global.
