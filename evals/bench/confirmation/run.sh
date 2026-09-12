@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# The customer-confirmation experiment: the SAME deployment, twice, differing only
+# in whether create_order is held for the customer's word.
+#
+#   SMOKE=1 ./run.sh       one cell per scenario per arm, into runs-smoke/ — not
+#                          the sample, and never mixed into it
+#   ./run.sh               the measured sample: REPS x 7 scenarios x 2 arms
+#
+# The arms are SEQUENTIAL: ../run.sh resets the shared `insika-bench` compose
+# project and its volumes between cells, so two benches cannot run at once.
+#
+# Arm order alternates between repetitions. A provider that gets slower or dumber
+# through the evening would otherwise land entirely on whichever arm always went
+# second, and the table would read that as the gate.
+set -euo pipefail
+
+cd "$(dirname "$0")"
+CONF_DIR="$PWD"
+BENCH_DIR="$(cd .. && pwd)"
+
+REPS="${REPS:-20}"
+# One upstream for both arms. OpenRouter fronts sixteen for this model and picks
+# per request; unpinned, half the difference between two arms could be which
+# machine answered. Verified on the wire: a name the model does not have comes
+# back "No endpoints found" in a second, which is how we know the field travels.
+export BENCH_PROVIDER="${BENCH_PROVIDER:-DeepInfra}"
+export BENCH_REASONING="${BENCH_REASONING:-medium}"
+
+if [ "${SMOKE:-0}" = "1" ]; then
+  REPS=1
+  OUT="${OUT:-$CONF_DIR/runs-smoke}"
+else
+  OUT="${OUT:-$CONF_DIR/runs}"
+fi
+mkdir -p "$OUT"
+
+# WHAT PRODUCED THIS SAMPLE. Non-secret by construction: ids and digests, never a
+# key. Written before the first cell, so a run that dies half way still says what
+# it was running.
+manifest="$OUT/manifest.json"
+if [ ! -s "$manifest" ]; then
+  ruby -rjson -rdigest -e '
+    dir = ARGV[0]
+    sha = ->(path) { Digest::SHA256.file(path).hexdigest[0, 16] }
+    tasks = Dir[File.join(dir, "tasks", "*.yml")].sort
+    puts JSON.pretty_generate(
+      "at" => Time.now.utc.iso8601,
+      "commit" => `git rev-parse HEAD`.strip,
+      "dirty" => !`git status --porcelain`.strip.empty?,
+      "image" => `docker images -q insika-bench-insika:local`.strip,
+      "store_image" => `docker images -q insika-bench-store:1.0.0`.strip,
+      "model" => ENV["BENCH_MODEL"], "provider" => ENV["BENCH_PROVIDER"],
+      "reasoning" => ENV["BENCH_REASONING"], "scorecard" => "B", "reps" => ENV["REPS"],
+      "prompt_sha256" => sha.call(File.join(dir, "..", "prompt", "AGENTS.md")),
+      "seed_sha256" => sha.call(File.join(dir, "..", "seed", "store.json")),
+      "tasks_sha256" => tasks.to_h { |t| [File.basename(t, ".yml"), sha.call(t)] }
+    )
+  ' "$CONF_DIR" > "$manifest"
+  echo "manifest: $manifest"
+fi
+
+for rep in $(seq 1 "$REPS"); do
+  if [ $((rep % 2)) -eq 1 ]; then arms="true false"; else arms="false true"; fi
+  for arm in $arms; do
+    root="$OUT/rep$rep/confirmation-$arm"
+    echo "=== repetition $rep | confirmation=$arm"
+    # Each repetition gets its own root: ../run.sh skips a cell whose report JSON
+    # is already on disk, and one shared root would let repetition 2 "resume"
+    # repetition 1's cells — a sample of one, reported as twenty.
+    HARNESSES=insika SCORECARD=B ROUNDS=1 \
+      TASKS_DIR="$CONF_DIR/tasks" \
+      BENCH_B_CONFIRMATION="$arm" \
+      RUNS_ROOT="$root" BENCH_REPORT="$root/REPORT.md" \
+      bash "$BENCH_DIR/run.sh"
+  done
+done
+
+ruby "$CONF_DIR/report.rb" --runs "$OUT" --out "${BENCH_REPORT:-$CONF_DIR/REPORT.md}"
