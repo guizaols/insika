@@ -1,0 +1,40 @@
+# MEDIUM · the artifact the whole bench exists to grade: two items, then "fecha".
+# Creme Corporal Antiatrito Vento (R$ 49,90) + Sabonete Diadia Frutas Vermelhas
+# (R$ 34,90) = R$ 84,80, arithmetic the store does and the reply must not contradict.
+#
+# What it measures: does an order actually exist when the conversation says one does.
+# A confident "pedido confirmado!" over a store where nothing happened is the single
+# most expensive failure in this whole table, and it is invisible to every grader
+# that only reads text.
+id: 07-fechar-o-pedido
+agent: loja
+turns:
+  - user: "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas"
+    tools_called: [add_to_cart]
+  - user: "isso mesmo, pode fechar o pedido"
+  # A harness that closes on the line above is done here; one that holds the
+  # close for the customer's word (a `customer_confirm` deployment) closes now.
+  # Neither turn pins the call: the store's final state is the proof, and a
+  # reply that says "fechei" on a turn where nothing was written is the phantom
+  # grader's business.
+  - user: "sim, pode fechar"
+expect:
+  must_not:
+    - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
+store_state:
+  records:
+    orders:
+      - total: 84.80
+        items:
+          - { product_id: "49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e", qty: 1 }
+          - { product_id: "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd", qty: 1 }
+  # One new order beside the fixture's, and the cart handed over to it rather than
+  # left behind as a second copy of the same purchase.
+  count: { orders: 2, cart_items: 0 }
