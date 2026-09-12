@@ -64,7 +64,11 @@ if [ ! -s "$manifest" ]; then
 fi
 
 for rep in $(seq 1 "$REPS"); do
-  if [ $((rep % 2)) -eq 1 ]; then arms="true false"; else arms="false true"; fi
+  # ARMS names the arms to run, for a re-measurement that can only touch one of
+  # them (the held instruction does not exist when the hold is off). Unset = both,
+  # alternating.
+  if [ -n "${ARMS:-}" ]; then arms="$ARMS"
+  elif [ $((rep % 2)) -eq 1 ]; then arms="true false"; else arms="false true"; fi
   for arm in $arms; do
     root="$OUT/rep$rep/confirmation-$arm"
     echo "=== repetition $rep | confirmation=$arm"
