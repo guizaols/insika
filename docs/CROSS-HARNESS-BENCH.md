@@ -39,10 +39,11 @@ measurement.
 layer, ours included. **B is out of the box** — each harness as it ships. The distance
 between a harness's two rows is what its product adds over the bare harness.
 
-That distance is the number this bench was built to produce, and in cut 3 it is zero
-for us. Scorecard B does not show our commerce layer paying for itself. It is a null
-result, it is published as one, and the same is true of every other entrant: zero for
-two of them, negative for two, positive for one.
+That distance is the number this bench was built to produce. In cut 3 it was zero for
+us: scorecard B did not show our commerce layer paying for itself, and it was published
+as a null result. In cut 4, with the one irreversible write held for the customer's
+word, it is one cell — and that cell is described below, because one cell is a
+mechanism to read, not a number to quote.
 
 ## What cut 3 found, for us
 
@@ -68,6 +69,31 @@ measures the prompt. Re-run with those rules removed, our rows hold at 9/9 on bo
 scorecards while the field spreads from 44% to 100%. That is the engine holding a rule
 the prompt no longer states — the closest thing to a claim in this bench, and it is
 about the engine, not about scorecard B.
+
+## What cut 4 found, for us
+
+Same model, same setting, run 2026-09-11, with our scorecard-B entry declaring
+`customer_confirm "create_order"` — the close is held until the customer's next
+message confirms it — and task 07 given the third turn that makes that answerable.
+
+| | Scorecard A | Scorecard B |
+| --- | --- | --- |
+| Passed | 35/36 (97%) | 36/36 (100%) |
+| Tokens per success | 2349 | 2890 |
+| Wall clock p50 | 11.6s | 8.7s |
+
+The one A cell we lose is task 09: *"adiciona logo por favor"* over two units already
+in the cart, and the parity entry closed the order. The B entry, same engine, wrote no
+order in any round of that task and closed task 07 on the confirming turn every time.
+That pair of rows is the distance between A and B made of exactly one thing, and it is
+the thing [Agents](AGENTS.md#do-not-offer-the-irreversible-action) describes: an
+action the reply may offer freely because the engine will not run it in the same turn.
+Three rounds is the floor, not a proof; the mechanism is in `docs/TOOLS.md`, the cells
+in `evals/bench/cuts/2026-09-11/`.
+
+Claude Code did not run this cut — the provider's Anthropic-shaped endpoint returned
+nothing visible to it, with the same image that scored 94% two days earlier. Its cells
+are kept outside the scorecard; a row that cannot run is not a row that ran badly.
 
 ## Reasoning is a deployment variable, not an axis
 

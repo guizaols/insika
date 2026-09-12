@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-11T20:42:13Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 23650,
+    "case_ms_p95": 23650,
+    "turn_ms_p50": 7325,
+    "turn_ms_p95": 11069,
+    "tokens_total": 28818,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "07-fechar-o-pedido",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": false,
+          "detail": "errored: create_order"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 2, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:orders[0]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 23650,
+        "turn_ms": [
+          11485,
+          7325,
+          4840
+        ],
+        "turns": 3,
+        "tokens": 28818
+      }
+    }
+  ]
+}

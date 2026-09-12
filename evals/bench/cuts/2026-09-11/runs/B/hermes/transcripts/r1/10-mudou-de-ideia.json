@@ -1,0 +1,111 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-11T21:53:20Z",
+  "conv": "r1-10-mudou-de-ideia",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "Feito! Adicionei **1x Desodorante Colônia Vento Masculino 100ml — R$ 189,90** ao carrinho.\n\nSe quiser mais algum, é só falar. Quando quiser fechar o pedido, é só avisar.",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 14620
+    },
+    {
+      "user": "na verdade é presente pra minha esposa, troca pelo feminino",
+      "reply": "Pronto! Troquei pelo **Desodorante Colônia Vento Feminino 100ml — R$ 189,90**. Mesmo preço, mesmo tamanho, só a versão feminina. Sua esposa vai gostar!\n\nQuer fechar o pedido ou precisa de mais alguma coisa?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "view_cart",
+          "status": "ok"
+        },
+        {
+          "name": "get_product",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "remove_from_cart",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 21450
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "974520d0-6621-5823-a2b6-61dd2d0b8189",
+        "name": "Desodorante Colônia Vento Feminino 100ml",
+        "qty": 1,
+        "unit_price": 189.9
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
+      "name": "tool:remove_from_cart@turn2",
+      "pass": true,
+      "detail": "called on turn 2"
+    },
+    {
+      "name": "tool:add_to_cart@turn2",
+      "pass": true,
+      "detail": "called on turn 2"
+    },
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    },
+    {
+      "name": "store_state:absent:cart_items[0]",
+      "pass": true,
+      "detail": "absent"
+    }
+  ]
+}

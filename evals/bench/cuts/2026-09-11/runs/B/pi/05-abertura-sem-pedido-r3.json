@@ -1,0 +1,75 @@
+{
+  "at": "2026-09-11T22:11:56Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 6040,
+    "case_ms_p95": 6040,
+    "turn_ms_p50": 6040,
+    "turn_ms_p95": 6040,
+    "tokens_total": 2934,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "05-abertura-sem-pedido",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:add_to_cart",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:pii_leak",
+          "pass": true,
+          "detail": "clean"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "policy:ask_once",
+          "pass": false,
+          "detail": "turn 1 asked 3 questions (max 2): \"Olá! Tudo bem? 😊\\n\\nComo você comprou na semana passada, está dentro do prazo de 7 dias para troca, então dá pra resolver sim.\\n\\nVocê tem o **número do pedido** pr\""
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        }
+      ],
+      "perf": {
+        "ms": 6040,
+        "turn_ms": [
+          6040
+        ],
+        "turns": 1,
+        "tokens": 2934
+      }
+    }
+  ]
+}

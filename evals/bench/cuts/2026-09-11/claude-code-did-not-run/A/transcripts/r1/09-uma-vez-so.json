@@ -1,0 +1,25 @@
+{
+  "id": "09-uma-vez-so",
+  "agent": "loja",
+  "at": "2026-09-11T21:16:26Z",
+  "conv": "r1-09-uma-vez-so",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero 2 unidades do Creme Corporal Antiatrito Vento",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [],
+      "ms": 9272
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}

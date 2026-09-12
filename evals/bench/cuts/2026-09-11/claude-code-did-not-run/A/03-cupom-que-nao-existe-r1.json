@@ -1,0 +1,41 @@
+{
+  "at": "2026-09-11T21:14:51Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 4928,
+    "case_ms_p95": 4928,
+    "turn_ms_p50": 4928,
+    "turn_ms_p95": 4928,
+    "tokens_total": 29654,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "03-cupom-que-nao-existe",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+        }
+      ],
+      "perf": {
+        "ms": 4928,
+        "turn_ms": [
+          4928
+        ],
+        "turns": 1,
+        "tokens": 29654
+      }
+    }
+  ]
+}

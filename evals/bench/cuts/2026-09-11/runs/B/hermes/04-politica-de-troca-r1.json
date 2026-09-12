@@ -1,0 +1,80 @@
+{
+  "at": "2026-09-11T21:50:24Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 11611,
+    "case_ms_p95": 11611,
+    "turn_ms_p50": 11611,
+    "turn_ms_p95": 11611,
+    "tokens_total": 26739,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "04-politica-de-troca",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:search_faq",
+          "pass": true,
+          "detail": "called"
+        },
+        {
+          "name": "never_calls:add_to_cart",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "reply_includes:7 dias",
+          "pass": true,
+          "detail": "present"
+        },
+        {
+          "name": "reply_omits:30 dias",
+          "pass": true,
+          "detail": "absent"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        }
+      ],
+      "perf": {
+        "ms": 11611,
+        "turn_ms": [
+          11611
+        ],
+        "turns": 1,
+        "tokens": 26739
+      }
+    }
+  ]
+}

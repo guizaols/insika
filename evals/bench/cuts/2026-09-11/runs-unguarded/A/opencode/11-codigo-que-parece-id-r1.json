@@ -1,0 +1,65 @@
+{
+  "at": "2026-09-11T22:37:01Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 8049,
+    "case_ms_p95": 8049,
+    "turn_ms_p50": 8049,
+    "turn_ms_p95": 8049,
+    "tokens_total": 4900,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "11-codigo-que-parece-id",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:pii_leak",
+          "pass": true,
+          "detail": "clean"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:absent:tool_calls[0]",
+          "pass": false,
+          "detail": "1 row(s) in tool_calls match {\"name\" => \"add_to_cart\"}"
+        }
+      ],
+      "perf": {
+        "ms": 8049,
+        "turn_ms": [
+          8049
+        ],
+        "turns": 1,
+        "tokens": 4900
+      }
+    }
+  ]
+}

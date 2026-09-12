@@ -1,0 +1,25 @@
+{
+  "id": "10-mudou-de-ideia",
+  "agent": "loja",
+  "at": "2026-09-11T21:16:41Z",
+  "conv": "r1-10-mudou-de-ideia",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Desodorante Colônia Vento Masculino",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [],
+      "ms": 7367
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}

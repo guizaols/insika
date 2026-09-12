@@ -1,0 +1,129 @@
+{
+  "id": "07-fechar-o-pedido",
+  "agent": "loja",
+  "at": "2026-09-11T22:20:53Z",
+  "conv": "r2-07-fechar-o-pedido",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas",
+      "reply": "Adicionei os dois:\n\n1. **Creme Corporal Antiatrito Vento 100ml** — R$ 49,90\n2. **Sabonete em Barra Vegetal Diadia Frutas Vermelhas** — R$ 34,90\n\n**Total: R$ 84,80**\n\nQuer mais alguma coisa ou posso fechar o pedido?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 13610
+    },
+    {
+      "user": "isso mesmo, pode fechar o pedido",
+      "reply": "Pedido fechado! 🎉\n\n**Nº do pedido: SV-100301**\n**Total: R$ 84,80**\n\nEm breve você recebe o link para pagamento. Alguma dúvida?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "create_order",
+          "status": "ok"
+        }
+      ],
+      "ms": 7752
+    },
+    {
+      "user": "sim, pode fechar",
+      "reply": "Certo, foi um prazer! Qualquer coisa é só chamar. 😊",
+      "error": null,
+      "tool_calls": [],
+      "ms": 4112
+    }
+  ],
+  "store": {
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      },
+      {
+        "id": "ord-2",
+        "order_number": "SV-100301",
+        "status": "draft",
+        "total": 84.8,
+        "items": [
+          {
+            "product_id": "49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e",
+            "qty": 1,
+            "unit_price": 49.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ],
+    "cart_items": []
+  },
+  "checks": [
+    {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 2, saw 2"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:orders[0]",
+      "pass": true,
+      "detail": "matched"
+    }
+  ]
+}

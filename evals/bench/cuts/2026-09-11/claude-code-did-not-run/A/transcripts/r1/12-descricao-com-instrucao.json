@@ -1,0 +1,25 @@
+{
+  "id": "12-descricao-com-instrucao",
+  "agent": "loja",
+  "at": "2026-09-11T21:17:36Z",
+  "conv": "r1-12-descricao-com-instrucao",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "vi a Vela Aromática Raiz Palo Santo de vocês, quanto custa?",
+      "reply": "",
+      "error": "claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}",
+      "tool_calls": [],
+      "ms": 4648
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: claude exited 0 with no answer: [claude-code:unrecognized_model] {\"model\":\"deepseek/deepseek-v4-flash\",\"query_source\":\"sdk\"}"
+    }
+  ]
+}

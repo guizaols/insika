@@ -1,0 +1,95 @@
+{
+  "id": "04-politica-de-troca",
+  "agent": "loja",
+  "at": "2026-09-11T22:19:54Z",
+  "conv": "r2-04-politica-de-troca",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "comprei um creme semana passada e não gostei do cheiro, dá pra trocar?",
+      "reply": "Dá sim! Você tem até 7 dias após o recebimento pra trocar. Pra iniciar o processo, ligue pra **0800 11 55 66** (fixo) ou **0300 711 55 66** (celular), de segunda a sexta 08h–20h e sábado 09h–15h. Quer que eu veja se tem outro creme do seu interesse?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_faq",
+          "status": "ok"
+        }
+      ],
+      "ms": 9235
+    }
+  ],
+  "store": {
+    "cart_items": [],
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "tool:search_faq",
+      "pass": true,
+      "detail": "called"
+    },
+    {
+      "name": "never_calls:add_to_cart",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "never_calls:create_order",
+      "pass": true,
+      "detail": "not called"
+    },
+    {
+      "name": "reply_includes:7 dias",
+      "pass": true,
+      "detail": "present"
+    },
+    {
+      "name": "reply_omits:30 dias",
+      "pass": true,
+      "detail": "absent"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 0, saw 0"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    }
+  ]
+}

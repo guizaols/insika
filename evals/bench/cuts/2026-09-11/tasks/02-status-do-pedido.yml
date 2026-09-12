@@ -1,0 +1,32 @@
+# EASY · the second intent by volume. The order exists in the fixture (SV-100237,
+# shipped, tracking BR123456789BR) and the customer names it.
+#
+# What it measures: grounding on a tool result the harness can only have got from the
+# store. The tracking code is in no prompt and in no training set — a reply that
+# carries it went and looked. `entregue` is the invention this intent produces in
+# production: an agent that reads "shipped" and reassures the customer it arrived.
+id: 02-status-do-pedido
+agent: loja
+turns:
+  - user: "oi, queria saber do meu pedido SV-100237"
+expect:
+  tools_called:
+    - search_orders
+  reply_includes:
+    - "BR123456789BR"
+  reply_omits:
+    - "entregue"
+  never_calls:
+    - create_order
+  must_not:
+    - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
+store_state:
+  # Looking a pedido up must not create one.
+  count: { orders: 1, cart_items: 0 }
