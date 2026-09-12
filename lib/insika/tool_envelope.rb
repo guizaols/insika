@@ -16,12 +16,19 @@ module Insika
                              "Find it with a tool that returns it — a search or a lookup by id — " \
                              "then call this tool again with an id from that result."
 
-    CONFIRMATION_INSTRUCTION = "NOT DONE. Nothing was written: this action is held until the customer " \
-                               "confirms it. Tell the customer exactly what will happen, with these " \
-                               "arguments, and ask whether to proceed. Do not say it happened. On their " \
-                               "next message: if they confirm, call confirm_pending with this pending_id; " \
-                               "if they decline, change anything, or ask for something else, call " \
-                               "cancel_pending."
+    # The words the model reads when a call is held. They are the only thing
+    # standing between a correct store and a customer who was told the opposite:
+    # the engine can refuse the write, it cannot refuse the sentence. Measured —
+    # one reply in twenty announced a held purchase as closed — so the reply's
+    # SHAPE is stated before anything else, and the lie is named concretely
+    # rather than as "do not say it happened".
+    CONFIRMATION_INSTRUCTION = "NOT DONE — nothing was written, and nothing will be until the customer " \
+                               "answers this very message. Your reply must ASK: say exactly what will " \
+                               "happen, with these arguments, and end with the question. A reply that " \
+                               "reports it as finished — 'done', 'closed', 'created', any past tense — is " \
+                               "false, and the customer will act on it. On their next message: if they " \
+                               "confirm, call confirm_pending with this pending_id; if they decline, " \
+                               "change anything, or ask for something else, call cancel_pending."
 
     # The tool timeout's OWN class: distinct from Async::TimeoutError so that
     # the rescue below NEVER swallows the TURN timeout (which uses the default of
