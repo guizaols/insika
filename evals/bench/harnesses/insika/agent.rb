@@ -27,6 +27,13 @@ BENCH_SCORECARD = ENV.fetch("BENCH_SCORECARD", "A").upcase
 b_fencing = ENV.fetch("BENCH_B_FENCING", "true") == "true"
 b_evidence = ENV.fetch("BENCH_B_EVIDENCE", "true") == "true"
 b_persistence = ENV.fetch("BENCH_B_PERSISTENCE", "true") == "true"
+# The customer-confirmation experiment's ONE variable. Default = today's B, so a
+# cut that does not set it is the row the published cuts already carry.
+b_confirmation = ENV.fetch("BENCH_B_CONFIRMATION", "true") == "true"
+# Which OpenRouter upstream serves the model. Unset = whatever the gateway routes
+# to that minute, which is what every cut so far measured; set, the two arms of an
+# A/B cannot differ by the upstream they happened to land on.
+b_provider = ENV["BENCH_PROVIDER"].to_s.strip
 
 BENCH = Insika.agent("bench") do
   model ENV.fetch("BENCH_MODEL", "deepseek/deepseek-v4-flash")
@@ -36,6 +43,7 @@ BENCH = Insika.agent("bench") do
   # default in six different clients — and the table would read that as a harness
   # difference.
   param :thinking, ENV.fetch("BENCH_REASONING", "medium")
+  param :provider_routing, { "order" => [b_provider], "allow_fallbacks" => false } unless b_provider.empty?
 
   instructions File.read(ENV.fetch("BENCH_PROMPT", "/prompt/AGENTS.md"))
 
@@ -47,7 +55,9 @@ BENCH = Insika.agent("bench") do
     # Closing the order is the one write the customer cannot take back, so the
     # deployment holds it for their word: the model proposes, the engine records
     # the hold, the reply asks, and the next message confirms or cancels it.
-    customer_confirm "create_order"
+    # (b_confirmation off = the same deployment without the hold, which is the
+    # other arm of the confirmation experiment and nothing else.)
+    customer_confirm "create_order" if b_confirmation
 
     # What the deployment trusts each tool with. The server describes what its tools
     # DO; only we can say which of its answers are evidence and which parameter may
