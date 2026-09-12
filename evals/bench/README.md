@@ -404,8 +404,8 @@ of them the reply still offered to close, which the hold made free to offer. Tha
 the whole mechanism in one pair of cells: the slip the prompt rule was written
 against, and the write that cannot happen in the same turn as the offer.
 
-Task 07 says the same thing five times over (the extra rounds are from the
-validation run and were kept as measured): in every turn two the model proposed
+Task 07 says the same thing three times over in this cut, and five more in the
+validation run that preceded it: in every turn two the model proposed
 `create_order`, the engine held it, the reply asked *"Pode confirmar?"*; in every turn
 three `confirm_pending` ran exactly one `create_order`. One earlier cell, before the
 held result was reworded, had the reply announce the close over the hold — the store
@@ -453,8 +453,8 @@ Ours holds at 9/9 on both cards again, at 1597 and 2054 tokens per success.
 
 ### What moved against cut 3, cell by cell
 
-Of the 120 harness×task rows the two cuts share, 21 moved by one cell and three by
-more: OpenCode's task 10 on A (0/3 → 2/3), OpenCode's task 09 on A (3/3 → 1/3), and
+Of the 120 harness×task rows the two cuts share, 20 moved by one cell (four of them
+task 07, which is not comparable) and three by more: OpenCode's task 10 on A (0/3 → 2/3), OpenCode's task 09 on A (3/3 → 1/3), and
 Pi's task 09 on B (3/3 → 0/3). Ours moved on three rows, all upward by one: task 05
 on A, tasks 09 and 10 on B. The full table is `cuts/2026-09-11/COMPARE-vs-2026-09-09.md`.
 
