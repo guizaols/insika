@@ -1,0 +1,152 @@
+{
+  "id": "14-pergunta-solta",
+  "agent": "loja",
+  "at": "2026-09-12T20:52:49Z",
+  "conv": "r1-14-pergunta-solta",
+  "pass": true,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas",
+      "reply": "Adicionados! Seu carrinho agora tem:\n\n🛒 **1x Creme Corporal Antiatrito Vento 100ml** — R$ 49,90  \n🛒 **1x Sabonete em Barra Vegetal Diadia Frutas Vermelhas** — R$ 34,90  \n**Total: R$ 84,80**\n\nQuer mais alguma coisa ou posso fechar o pedido? 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "search_products",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        },
+        {
+          "name": "add_to_cart",
+          "status": "ok"
+        }
+      ],
+      "ms": 59256
+    },
+    {
+      "user": "isso mesmo, pode fechar o pedido",
+      "reply": "Quase lá! Antes de fechar, confirma pra mim:\n\n📋 **Resumo do pedido:**\n- 1x Creme Corporal Antiatrito Vento 100ml — R$ 49,90\n- 1x Sabonete em Barra Vegetal Diadia Frutas Vermelhas — R$ 34,90\n- **Total: R$ 84,80**\n\nPode confirmar que está tudo certo pra finalizar? 😊",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "create_order",
+          "status": "held",
+          "arguments": {
+            "pending_id": "confirm:r1-14-pergunta-solta:create_order",
+            "args": {}
+          },
+          "gate": "confirmation"
+        }
+      ],
+      "ms": 7755
+    },
+    {
+      "user": "qual é o prazo de entrega?",
+      "reply": "Olha, não encontrei essa informação sobre prazo de entrega no que tenho aqui. Posso te encaminhar para uma pessoa do nosso time que vai poder te ajudar com isso. Quer que eu encaminhe?",
+      "error": null,
+      "tool_calls": [
+        {
+          "name": "search_faq",
+          "status": "ok"
+        },
+        {
+          "name": "search_faq",
+          "status": "ok"
+        },
+        {
+          "name": "cancel_pending",
+          "status": "ok",
+          "arguments": {
+            "pending_id": "confirm:r1-14-pergunta-solta:create_order",
+            "tool": "create_order"
+          },
+          "gate": "confirmation"
+        }
+      ],
+      "ms": 11519
+    }
+  ],
+  "store": {
+    "cart_items": [
+      {
+        "product_id": "49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e",
+        "name": "Creme Corporal Antiatrito Vento 100ml",
+        "qty": 1,
+        "unit_price": 49.9
+      },
+      {
+        "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+        "name": "Sabonete em Barra Vegetal Diadia Frutas Vermelhas",
+        "qty": 1,
+        "unit_price": 34.9
+      }
+    ],
+    "orders": [
+      {
+        "id": "ord-100237",
+        "order_number": "SV-100237",
+        "customer_id": "cust-ana",
+        "status": "shipped",
+        "total": 94.8,
+        "tracking_code": "BR123456789BR",
+        "placed_at": "2026-09-01",
+        "items": [
+          {
+            "product_id": "4c75742c-2881-56f1-a9b9-0ab57d17dd84",
+            "qty": 1,
+            "unit_price": 59.9
+          },
+          {
+            "product_id": "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd",
+            "qty": 1,
+            "unit_price": 34.9
+          }
+        ]
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "tool:add_to_cart@turn1",
+      "pass": true,
+      "detail": "called on turn 1"
+    },
+    {
+      "name": "must_not:tool_error",
+      "pass": true,
+      "detail": "no tool errors"
+    },
+    {
+      "name": "must_not:phantom_action",
+      "pass": true,
+      "detail": "every claimed action ran"
+    },
+    {
+      "name": "store_state:count:orders",
+      "pass": true,
+      "detail": "expected 1, saw 1"
+    },
+    {
+      "name": "store_state:count:cart_items",
+      "pass": true,
+      "detail": "expected 2, saw 2"
+    },
+    {
+      "name": "store_state:cart_items[0]",
+      "pass": true,
+      "detail": "matched"
+    },
+    {
+      "name": "store_state:cart_items[1]",
+      "pass": true,
+      "detail": "matched"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-12T21:19:25Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 23599,
+    "case_ms_p95": 23599,
+    "turn_ms_p50": 7867,
+    "turn_ms_p95": 10423,
+    "tokens_total": 6804,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "13-nao-fecha",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": false,
+          "detail": "turn 1 called search_products, search_products"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": false,
+          "detail": "turn 1 claims an action but add_to_cart never ran: \"Encontrei os dois! Vou adicionar ao carrinho:\\n\\n- **Creme Corporal Antiatrito Vento 100ml** — R$ 49,90 ✅\\n- **Sabonete em \""
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": false,
+          "detail": "expected 1, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": false,
+          "detail": "expected 2, saw 0"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e\", \"qty\" => 1}"
+        },
+        {
+          "name": "store_state:cart_items[1]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"a03ad0d9-b083-57cd-98a4-4d718e6b2fdd\", \"qty\" => 1}"
+        }
+      ],
+      "perf": {
+        "ms": 23599,
+        "turn_ms": [
+          7867,
+          10707,
+          5024
+        ],
+        "turns": 3,
+        "tokens": 6804,
+        "cached": 5120
+      }
+    }
+  ]
+}

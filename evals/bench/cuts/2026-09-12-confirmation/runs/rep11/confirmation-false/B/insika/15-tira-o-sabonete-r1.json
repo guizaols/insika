@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-12T20:27:07Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 27415,
+    "case_ms_p95": 27415,
+    "turn_ms_p50": 10075,
+    "turn_ms_p95": 11947,
+    "tokens_total": 7454,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "15-tira-o-sabonete",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": false,
+          "detail": "errored: remove_from_cart"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": false,
+          "detail": "expected 1, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": false,
+          "detail": "expected 1, saw 0"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e\", \"qty\" => 1}"
+        },
+        {
+          "name": "store_state:absent:cart_items[0]",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "perf": {
+        "ms": 27415,
+        "turn_ms": [
+          12155,
+          5185,
+          10075
+        ],
+        "turns": 3,
+        "tokens": 7454,
+        "cached": 6144
+      }
+    }
+  ]
+}

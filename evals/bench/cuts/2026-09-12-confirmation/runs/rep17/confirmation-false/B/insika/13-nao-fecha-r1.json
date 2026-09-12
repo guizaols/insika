@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-12T21:15:44Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 28814,
+    "case_ms_p95": 28814,
+    "turn_ms_p50": 5568,
+    "turn_ms_p95": 16729,
+    "tokens_total": 7386,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "13-nao-fecha",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": false,
+          "detail": "expected 1, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": false,
+          "detail": "expected 2, saw 0"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e\", \"qty\" => 1}"
+        },
+        {
+          "name": "store_state:cart_items[1]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"a03ad0d9-b083-57cd-98a4-4d718e6b2fdd\", \"qty\" => 1}"
+        }
+      ],
+      "perf": {
+        "ms": 28814,
+        "turn_ms": [
+          17969,
+          5568,
+          5278
+        ],
+        "turns": 3,
+        "tokens": 7386,
+        "cached": 5632
+      }
+    }
+  ]
+}
