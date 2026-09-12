@@ -25,8 +25,11 @@ module ConfirmationProof
   def read(turns, tool: "create_order")
     held = turns_with(turns, tool, "held")
     executed = turns_with(turns, tool, "ok")
-    verdict = { "held_turns" => held, "executed_turns" => executed, "decisions" => decisions(turns),
-                "proven" => false, "reason" => nil }
+    # Turns are where consent is read; WRITES are counted one by one — two of them
+    # inside one turn is the duplicate purchase, and a turn index cannot see it.
+    count = executions(turns, tool)
+    verdict = { "held_turns" => held, "executed_turns" => executed, "executions" => count,
+                "decisions" => decisions(turns), "proven" => false, "reason" => nil }
 
     if executed.empty?
       verdict.merge("reason" => held.empty? ? "no #{tool} and no hold" : "held, never executed")
@@ -34,8 +37,8 @@ module ConfirmationProof
       verdict.merge("reason" => "#{tool} executed with no hold on record")
     elsif (early = executed.find { |e| held.none? { |h| h < e } })
       verdict.merge("reason" => "#{tool} executed on turn #{early + 1} before any hold the customer could answer")
-    elsif executed.size > 1
-      verdict.merge("reason" => "#{tool} executed #{executed.size} times")
+    elsif count > 1
+      verdict.merge("reason" => "#{tool} executed #{count} times")
     else
       verdict.merge("proven" => true)
     end
@@ -49,6 +52,13 @@ module ConfirmationProof
         decision && { "turn" => i + 1, "decision" => decision,
                       "pending_id" => c.dig("arguments", "pending_id") }
       end
+    end
+  end
+
+  # How many writes the STORE logged for this tool, across the whole conversation.
+  def executions(turns, tool)
+    Array(turns).sum do |t|
+      Array(t["tool_calls"]).count { |c| c["name"].to_s == tool && c["status"].to_s == "ok" }
     end
   end
 
