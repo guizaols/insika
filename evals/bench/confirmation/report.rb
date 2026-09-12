@@ -38,9 +38,14 @@ def cells(root)
     rep = path[%r{rep(\d+)}, 1].to_i
     report = File.join(File.dirname(path), "..", "..", "#{t['id']}-r1.json")
     perf = File.exist?(report) ? JSON.parse(File.read(report))["perf"] : {}
+    proof = ConfirmationProof.read(t["turns"])
+    # The transcript dumps only the tables the TASK pins, so a scenario that never
+    # mentions orders (09, 10) has none to read — there, the store's own call log
+    # is what says whether a purchase happened.
+    orders = t.dig("store", "orders")
     Cell.new(scenario: t["id"], arm: arm, rep: rep,
-             created: Array(t.dig("store", "orders")).size - 1, # the fixture ships one
-             proof: ConfirmationProof.read(t["turns"]), checks: t["checks"], turns: t["turns"],
+             created: orders ? orders.size - 1 : proof["executions"], # the fixture ships one
+             proof: proof, checks: t["checks"], turns: t["turns"],
              ms: perf["case_ms_p50"], tokens: perf["tokens_total"],
              error: t["turns"].filter_map { |x| x["error"] }.first)
   end
@@ -71,7 +76,7 @@ def row(scenario, arm, group)
   [scenario, arm, measured.size,
    want.positive? ? "#{bought}/#{measured.size}" : "—",
    unwanted.to_s, early.to_s,
-   measured.count { |c| c.proof["executed_turns"].size > 1 }.to_s,
+   measured.count { |c| c.proof["executions"] > 1 }.to_s,
    measured.count { |c| failed?(c, "must_not:phantom_action") }.to_s,
    measured.count { |c| c.proof["held_turns"].any? }.to_s,
    decisions.empty? ? "—" : decisions.map { |d, n| "#{d} #{n}" }.join(" · "),

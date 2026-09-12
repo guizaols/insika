@@ -101,10 +101,16 @@ RSpec.describe "the customer-confirmation bench" do
       expect(verdict["reason"]).to match(/before any hold/)
     end
 
-    it "rejects a second execution of the same purchase" do
-      verdict = described_class.read([turn(held), turn(wrote), turn(wrote)])
-      expect(verdict["proven"]).to be(false)
-      expect(verdict["reason"]).to match(/executed 2 times/)
+    it "rejects a second execution of the same purchase, in a later turn or the same one" do
+      later = described_class.read([turn(held), turn(wrote), turn(wrote)])
+      expect(later).to include("proven" => false, "executions" => 2)
+      expect(later["reason"]).to match(/executed 2 times/)
+
+      # Two writes inside ONE turn: a turn index cannot see the second, so the
+      # writes are counted one by one.
+      same = described_class.read([turn(held), turn(wrote, wrote)])
+      expect(same).to include("proven" => false, "executions" => 2)
+      expect(same["reason"]).to match(/executed 2 times/)
     end
 
     it "reads how each hold ended, in order, without turning a decision into a write" do

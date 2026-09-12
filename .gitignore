@@ -30,12 +30,16 @@ evals/bench/runs-probe-medium/
 evals/bench/runs-probe-off/
 evals/bench/runs-probe-09/
 evals/bench/bisect-runs/
+evals/bench/confirmation/runs/
+evals/bench/confirmation/runs-smoke/
 evals/bench/REPORT.md
 evals/bench/REPORT-unguarded.md
 evals/bench/REPORT-reasoning-off.md
 evals/bench/REPORT-probe-medium.md
 evals/bench/REPORT-probe-off.md
 evals/bench/REPORT-probe-09.md
+evals/bench/confirmation/REPORT.md
+evals/bench/confirmation/REPORT-smoke.md
 # The viewer's page, same rule: regenerate it from a cut, never track it.
 evals/bench/bench.html
 evals/bench/bench-cut3-2026-09-09.zip
