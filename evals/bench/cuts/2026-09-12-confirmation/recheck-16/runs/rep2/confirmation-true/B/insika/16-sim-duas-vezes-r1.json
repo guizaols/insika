@@ -1,0 +1,69 @@
+{
+  "at": "2026-09-12T23:02:24Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 17726,
+    "case_ms_p95": 17726,
+    "turn_ms_p50": 4092,
+    "turn_ms_p95": 7034,
+    "tokens_total": 10492,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "16-sim-duas-vezes",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": false,
+          "detail": "turn 1 called search_products, search_products"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": true,
+          "detail": "expected 2, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 0, saw 0"
+        },
+        {
+          "name": "store_state:orders[0]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 17726,
+        "turn_ms": [
+          4370,
+          7504,
+          3814,
+          2038
+        ],
+        "turns": 4,
+        "tokens": 10492,
+        "cached": 8960
+      }
+    }
+  ]
+}

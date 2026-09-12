@@ -68,6 +68,13 @@ module Insika
       payload[:max_tokens] = p[:max_tokens] if numeric?(p[:max_tokens])
       toggle = thinking_toggle(p[:thinking])
       payload[:thinking] = { type: toggle } if toggle
+      # WHICH upstream serves the model, for a gateway that has several. Authored
+      # as `provider_routing` and emitted under the wire key `provider` —
+      # OpenRouter's, the only shape that exists for this today; a provider
+      # without the field ignores an unknown body key. Same modelling debt as
+      # max_tokens above: a raw provider key is not authorable, so the one
+      # capability gets a name of its own.
+      payload[:provider] = p[:provider_routing] if p[:provider_routing].is_a?(Hash)
       chat.with_params(**payload) unless payload.empty?
     end
 

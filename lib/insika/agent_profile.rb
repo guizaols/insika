@@ -97,7 +97,10 @@ module Insika
     #                                   release: the goldens were baselined on unfenced bytes.
     :params,                          # LLM generation params: a Hash with
     #                                   temperature/max_tokens/thinking, applied to the chat at
-    #                                   stage 5. {} = provider defaults (parity).
+    #                                   stage 5. {} = provider defaults (parity). Plus
+    #                                   `provider_routing` — which UPSTREAM serves the model, for
+    #                                   a gateway that has several; emitted under the wire key
+    #                                   `provider` (OpenRouter's shape).
     :budget,                          # spend caps per (tenant, agent) over
     #                                   CALENDAR windows (WS2): { "daily" => int,
     #                                   "monthly" => int, "soft" => bool, "alert_at" => 0.8 }.
