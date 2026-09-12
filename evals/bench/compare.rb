@@ -28,21 +28,27 @@ def cells(root)
   end
 end
 
-# A task file that changed is stamped by its digest in the run when available;
-# otherwise the current tasks/ tree is compared against the cut's own copy.
-def changed_tasks(before_root)
-  snapshot = File.join(File.dirname(before_root), "tasks")
-  return {} unless Dir.exist?(snapshot)
+# Each cut carries a `tasks/` snapshot beside its runs; a live `runs/` root has
+# none, so the bench's own tasks/ stand in for it. Works from any directory.
+def tasks_for(root)
+  beside = File.join(File.dirname(root), "tasks")
+  Dir.exist?(beside) ? beside : File.join(__dir__, "tasks")
+end
 
-  Dir["tasks/*.yml"].each_with_object({}) do |f, acc|
-    old = File.join(snapshot, File.basename(f))
+def changed_tasks(before_root, after_root)
+  old_dir = tasks_for(before_root)
+  new_dir = tasks_for(after_root)
+  return {} unless Dir.exist?(old_dir) && Dir.exist?(new_dir)
+
+  Dir["#{new_dir}/*.yml"].each_with_object({}) do |f, acc|
+    old = File.join(old_dir, File.basename(f))
     acc[File.basename(f, ".yml")] = true if !File.exist?(old) || Digest::SHA256.file(old) != Digest::SHA256.file(f)
   end
 end
 
 b = cells(before)
 a = cells(after)
-changed = changed_tasks(before)
+changed = changed_tasks(before, after)
 keys = (b.keys | a.keys).sort
 keys = keys.select { |k| k[0] == opts[:card] } if opts[:card]
 
