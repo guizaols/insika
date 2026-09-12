@@ -164,7 +164,7 @@ module Insika
       out = {}
       params.each do |k, v|
         key = k.to_sym
-        out[key] = v if %i[temperature max_tokens thinking].include?(key)
+        out[key] = v if %i[temperature max_tokens thinking provider_routing].include?(key)
       end
       out
     end
