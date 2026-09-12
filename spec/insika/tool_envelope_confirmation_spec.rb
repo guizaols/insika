@@ -144,4 +144,37 @@ RSpec.describe "ToolEnvelope — customer confirmation" do
     Sync { env.call({ "cart_id" => "c1" }) }
     expect(traces.first).to include("tool" => "create_order", "gate" => "confirmation")
   end
+
+  # The whole loop, in the order a conversation runs it: the envelope holds on the
+  # turn that proposed, a LATER turn of the same session decides. One write, and
+  # the three ways the hold can end are visible from the outside as three events.
+  it "the next turn decides it: confirm writes once, cancel and expiry never write" do
+    require "insika/tools/confirm_pending"
+    tool = HeldOrderTool.new
+    proposing = state_for(task_id: "t1")
+    held = Sync { envelope(tool, proposing).call({ "cart_id" => "c1" }) }
+    expect(tool.calls).to be_empty
+
+    answering = state_for(task_id: "t2")
+    answering.allowed_tools = [envelope(tool, answering)]
+    Sync { Insika::Tools::ConfirmPending.new(event_stream: event_stream, state: answering).execute(pending_id: held["pending_id"]) }
+
+    expect(tool.calls).to eq([{ "cart_id" => "c1" }])
+    expect(events.map(&:type)).to eq(%i[confirmation_requested confirmation_confirmed])
+    # Resolved is resolved: the same pending_id cannot be spent twice.
+    again = Sync { Insika::Tools::ConfirmPending.new(event_stream: event_stream, state: answering).execute(pending_id: held["pending_id"]) }
+    expect(again[:error]).to match(/already approved/)
+    expect(tool.calls.size).to eq(1)
+
+    # Cancelled, then expired — neither reaches the tool.
+    cancelled = Sync { envelope(HeldOrderTool.new, state_for(task_id: "t3")).call({ "cart_id" => "c2" }) }
+    Insika::Tools::CancelPending.new(event_stream: event_stream, state: state_for(task_id: "t4"))
+                                .execute(pending_id: cancelled["pending_id"])
+    expect(pending.find(cancelled["pending_id"]).status).to eq(:rejected)
+
+    expired_hold = Sync { envelope(HeldOrderTool.new, state_for(task_id: "t5")).call({ "cart_id" => "c3" }) }
+    pending.expire_customer_holds(session_id: "s1", except_task_id: "t6")
+    expect(pending.find(expired_hold["pending_id"]).resolved_by).to eq("engine:expired")
+    expect(pending.open_for_session("s1", kind: "customer")).to be_empty
+  end
 end
