@@ -29,8 +29,12 @@ export BENCH_REASONING="${BENCH_REASONING:-medium}"
 if [ "${SMOKE:-0}" = "1" ]; then
   REPS=1
   OUT="${OUT:-$CONF_DIR/runs-smoke}"
+  # Its own report file too: a smoke that overwrote REPORT.md would put cells the
+  # sample deliberately excludes where the sample's own table belongs.
+  REPORT="${BENCH_REPORT:-$CONF_DIR/REPORT-smoke.md}"
 else
   OUT="${OUT:-$CONF_DIR/runs}"
+  REPORT="${BENCH_REPORT:-$CONF_DIR/REPORT.md}"
 fi
 mkdir -p "$OUT"
 
@@ -75,4 +79,4 @@ for rep in $(seq 1 "$REPS"); do
   done
 done
 
-ruby "$CONF_DIR/report.rb" --runs "$OUT" --out "${BENCH_REPORT:-$CONF_DIR/REPORT.md}"
+ruby "$CONF_DIR/report.rb" --runs "$OUT" --out "$REPORT"
