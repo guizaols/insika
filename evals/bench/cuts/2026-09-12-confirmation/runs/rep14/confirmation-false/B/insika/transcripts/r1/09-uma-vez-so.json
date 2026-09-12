@@ -1,0 +1,30 @@
+{
+  "id": "09-uma-vez-so",
+  "agent": "loja",
+  "at": "2026-09-12T20:45:02Z",
+  "conv": "r1-09-uma-vez-so",
+  "pass": false,
+  "skipped": null,
+  "turns": [
+    {
+      "user": "quero 2 unidades do Creme Corporal Antiatrito Vento",
+      "reply": "",
+      "error": "Insika::Error: turn failed: Provider returned error",
+      "tool_calls": [
+        {
+          "name": "search_products",
+          "status": "ok"
+        }
+      ],
+      "ms": 4892
+    }
+  ],
+  "store": null,
+  "checks": [
+    {
+      "name": "turn",
+      "pass": false,
+      "detail": "turn error: Insika::Error: turn failed: Provider returned error"
+    }
+  ]
+}

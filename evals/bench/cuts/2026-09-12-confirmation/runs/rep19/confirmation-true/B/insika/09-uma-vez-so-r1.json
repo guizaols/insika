@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-12T21:25:16Z",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 9040,
+    "case_ms_p95": 9040,
+    "turn_ms_p50": 4520,
+    "turn_ms_p95": 6212,
+    "tokens_total": 3984,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "09-uma-vez-so",
+      "agent": "loja",
+      "pass": true,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": true,
+          "detail": "not called"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 1, saw 1"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 9040,
+        "turn_ms": [
+          6400,
+          2639
+        ],
+        "turns": 2,
+        "tokens": 3984,
+        "cached": 3328
+      }
+    }
+  ]
+}

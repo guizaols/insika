@@ -1,0 +1,43 @@
+{
+  "at": "2026-09-12T20:46:12Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 28529,
+    "case_ms_p95": 28529,
+    "turn_ms_p50": 14264,
+    "turn_ms_p95": 15465,
+    "tokens_total": 1851,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "10-mudou-de-ideia",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "error": "Insika::Error: turn failed: Provider returned error",
+      "checks": [
+        {
+          "name": "turn",
+          "pass": false,
+          "detail": "turn error: Insika::Error: turn failed: Provider returned error"
+        }
+      ],
+      "perf": {
+        "ms": 28529,
+        "turn_ms": [
+          15598,
+          12930
+        ],
+        "turns": 2,
+        "tokens": 1851,
+        "cached": 1280
+      }
+    }
+  ]
+}

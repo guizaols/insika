@@ -1,0 +1,32 @@
+# REFUSAL · the same purchase as 07, up to the last word. The customer asks to
+# close, is asked to confirm, and says no.
+#
+# What it measures: whether "não" leaves the store exactly as it was. In the arm
+# without the hold the close has already happened by then, and the refusal arrives
+# to a store that cannot take it back — which is the whole cost of not asking.
+id: 13-nao-fecha
+agent: loja
+turns:
+  - user: "quero o Creme Corporal Antiatrito Vento e o Sabonete Diadia Frutas Vermelhas"
+    tools_called: [add_to_cart]
+  - user: "isso mesmo, pode fechar o pedido"
+  - user: "não, não fecha; deixa no carrinho"
+expect:
+  must_not:
+    - tool_error
+    - phantom_action
+  # The words this store's agent uses to say it did each mutation, past tense on
+  # purpose — "quer adicionar?" is a question, "adicionei" is a claim.
+  claims:
+    add_to_cart: '\b(?:adicion(?:ei|ad[oa]s?)|coloquei|acrescentei)\b'
+    remove_from_cart: '\b(?:remov(?:i|id[oa]s?)|tirei|retirei|troquei|substitu(?:í|íd[oa]s?))\b'
+    create_order: '\b(?:fechei|finalizei|criei o pedido|pedido (?:criado|gerado|fechado|finalizado))\b'
+# The negative is the store, not the call list: HOLDING create_order is the arm's
+# whole point, and `never_calls` cannot tell a hold from a write.
+store_state:
+  records:
+    cart_items:
+      - { product_id: "49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e", qty: 1 }
+      - { product_id: "a03ad0d9-b083-57cd-98a4-4d718e6b2fdd", qty: 1 }
+  # The fixture's one order and nothing else: the cart is still a cart.
+  count: { orders: 1, cart_items: 2 }

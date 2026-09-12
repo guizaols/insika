@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-12T21:28:50Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 12453,
+    "case_ms_p95": 12453,
+    "turn_ms_p50": 6227,
+    "turn_ms_p95": 7537,
+    "tokens_total": 3891,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "09-uma-vez-so",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "never_calls:create_order",
+          "pass": false,
+          "detail": "called create_order"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": false,
+          "detail": "expected 1, saw 0"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": false,
+          "detail": "no row of 0 in cart_items matches {\"product_id\" => \"49599f78-7ba8-58ba-b9d8-3dfdfa7cfd1e\", \"qty\" => 2}"
+        }
+      ],
+      "perf": {
+        "ms": 12453,
+        "turn_ms": [
+          7683,
+          4770
+        ],
+        "turns": 2,
+        "tokens": 3891,
+        "cached": 2560
+      }
+    }
+  ]
+}

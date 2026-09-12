@@ -20,6 +20,12 @@ module Insika
         return [nil, "no held action with pending_id #{pending_id}"] if pending.nil?
         return [nil, "#{pending_id} is not a customer confirmation"] unless pending.kind == CUSTOMER
         return [nil, "#{pending_id} belongs to another conversation"] unless pending.session_id.to_s == state.task.session_id.to_s
+        # The hold and the answer to it are two customer messages, which is two
+        # TASKS. A hold THIS task created has not been put to the customer yet —
+        # the reply carrying it has not even been sent. Deciding it here would be
+        # the model confirming itself, and the write would land with nobody's word
+        # behind it.
+        return [nil, "#{pending_id} was held on this same turn; the customer has not answered it yet"] if pending.task_id.to_s == state.task.id.to_s
         return [nil, "#{pending_id} was already #{pending.status}"] unless pending.status == :pending
 
         [pending, nil]

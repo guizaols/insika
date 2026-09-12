@@ -47,7 +47,11 @@ begin
   # `confirmation_requested` is the other half: a call the engine HELD for the
   # customer's confirmation never reaches the store either, and a hold that fired
   # must be readable in the cell, not inferred from a question in the reply.
-  usage = stream&.subscribe(types: %i[task_completed tool_blocked confirmation_requested])
+  # The decisions too (confirmed/cancelled/expired): what the store sees is the
+  # write, never WHY it did or did not happen. They ride under their own names —
+  # a decision is not a store call, and a cell must never count one write twice.
+  usage = stream&.subscribe(types: %i[task_completed tool_blocked confirmation_requested
+                                      confirmation_confirmed confirmation_cancelled confirmation_expired])
   answer["output_text"] = BENCH.reply(input.fetch("message"), session: input.fetch("conv")).to_s
   t2 = clock.call(Process::CLOCK_MONOTONIC)
   events = usage&.drain_nonblocking || []
@@ -62,7 +66,19 @@ begin
   blocked = events.select { |e| e.type == :tool_blocked }
                   .map { |e| { "name" => e.data[:name].to_s, "status" => "blocked", "gate" => e.data[:gate].to_s } }
   blocked += events.select { |e| e.type == :confirmation_requested }
-                   .map { |e| { "name" => e.data[:tool].to_s, "status" => "held", "gate" => "confirmation" } }
+                   .map do |e|
+                     { "name" => e.data[:tool].to_s, "status" => "held", "gate" => "confirmation",
+                       "arguments" => { "pending_id" => e.data[:pending_id].to_s, "args" => e.data[:args] } }
+                   end
+  decisions = { confirmation_confirmed: "confirm_pending", confirmation_cancelled: "cancel_pending",
+                confirmation_expired: "confirmation_expired" }
+  blocked += events.filter_map do |e|
+    name = decisions[e.type]
+    next unless name
+
+    { "name" => name, "status" => "ok", "gate" => "confirmation",
+      "arguments" => { "pending_id" => e.data[:pending_id].to_s, "tool" => e.data[:tool].to_s } }
+  end
   usage&.close
 rescue StandardError => e
   answer["error"] = "#{e.class}: #{e.message}"

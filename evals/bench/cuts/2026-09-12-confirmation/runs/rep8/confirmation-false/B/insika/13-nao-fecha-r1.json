@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-12T20:01:56Z",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "judge_pending": 0,
+  "perf": {
+    "cases_measured": 1,
+    "case_ms_p50": 27484,
+    "case_ms_p95": 27484,
+    "turn_ms_p50": 9526,
+    "turn_ms_p95": 13039,
+    "tokens_total": 7695,
+    "tokens_measured": 1
+  },
+  "cases": [
+    {
+      "id": "13-nao-fecha",
+      "agent": "loja",
+      "pass": false,
+      "judge_pending": false,
+      "checks": [
+        {
+          "name": "tool:add_to_cart@turn1",
+          "pass": true,
+          "detail": "called on turn 1"
+        },
+        {
+          "name": "must_not:tool_error",
+          "pass": true,
+          "detail": "no tool errors"
+        },
+        {
+          "name": "must_not:phantom_action",
+          "pass": true,
+          "detail": "every claimed action ran"
+        },
+        {
+          "name": "store_state:count:orders",
+          "pass": false,
+          "detail": "expected 1, saw 2"
+        },
+        {
+          "name": "store_state:count:cart_items",
+          "pass": true,
+          "detail": "expected 2, saw 2"
+        },
+        {
+          "name": "store_state:cart_items[0]",
+          "pass": true,
+          "detail": "matched"
+        },
+        {
+          "name": "store_state:cart_items[1]",
+          "pass": true,
+          "detail": "matched"
+        }
+      ],
+      "perf": {
+        "ms": 27484,
+        "turn_ms": [
+          9526,
+          4529,
+          13429
+        ],
+        "turns": 3,
+        "tokens": 7695,
+        "cached": 6144
+      }
+    }
+  ]
+}

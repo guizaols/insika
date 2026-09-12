@@ -19,6 +19,25 @@ RSpec.describe "confirm_pending / cancel_pending" do
     def call(args) = (@calls << args) && { "order_id" => "o-1" }
   end
 
+
+  # A checkout whose basket lives in the backend, not in the arguments: the same
+  # `cart_id` points at different contents before and after the customer amends it.
+  class CartCheckoutTool
+    attr_reader :orders
+
+    def initialize(cart)
+      @cart = cart
+      @orders = []
+    end
+
+    def name = "create_order"
+
+    def call(args)
+      @orders << { "cart_id" => args["cart_id"], "items" => @cart.fetch(args["cart_id"]).dup }
+      { "order_id" => "o-#{@orders.size}" }
+    end
+  end
+
   def state(session_id: "s1", task_id: "t2", tools: [])
     profile = Insika::AgentProfile.build(id: "a", model: "m", customer_confirm: ["create_order"])
     task = Struct.new(:id, :session_id).new(task_id, session_id)
@@ -88,5 +107,61 @@ RSpec.describe "confirm_pending / cancel_pending" do
     expect(pending.find(pa.id).status).to eq(:rejected)
     expect(pending.find(pa.id).resolved_by).to eq("customer")
     expect(events.map(&:type)).to eq([:confirmation_cancelled])
+  end
+
+  # The hold and the answer to it are two customer messages, which is two TASKS.
+  # A model that holds and confirms inside ONE turn writes without the customer
+  # ever having replied — the gate becomes a formality it can wave at itself.
+  it "refuses a hold this same task created — the customer has not answered it yet" do
+    tool = ConfirmableOrderTool.new
+    st = state(task_id: "t1")
+    st.allowed_tools = [enveloped(tool, st)]
+    pa = hold # created by task "t1": this very turn
+
+    confirm = Insika::Tools::ConfirmPending.new(event_stream: event_stream, state: st)
+    expect(Sync { confirm.execute(pending_id: pa.id) }[:error]).to match(/has not answered/)
+    # cancel travels the same door: a hold the customer has not seen is not the
+    # model's to drop either, and dropping it would lose the question it asked.
+    cancel = Insika::Tools::CancelPending.new(event_stream: event_stream, state: st)
+    expect(cancel.execute(pending_id: pa.id)[:error]).to match(/has not answered/)
+
+    expect(tool.calls).to be_empty
+    expect(pending.find(pa.id).status).to eq(:pending)
+    expect(events).to be_empty
+  end
+
+  # The engine rejects a hold the next message neither confirmed nor cancelled
+  # (Executor#expire_customer_confirmations). What is rejected can never run.
+  it "confirm on an EXPIRED hold runs nothing" do
+    tool = ConfirmableOrderTool.new
+    st = state
+    st.allowed_tools = [enveloped(tool, st)]
+    pa = hold
+    expired = pending.expire_customer_holds(session_id: "s1", except_task_id: "t9")
+
+    expect(expired.map(&:id)).to eq([pa.id])
+    expect(pending.find(pa.id).resolved_by).to eq("engine:expired")
+    result = Insika::Tools::ConfirmPending.new(event_stream: event_stream, state: st).execute(pending_id: pa.id)
+    expect(result[:error]).to match(/already rejected/)
+    expect(tool.calls).to be_empty
+  end
+
+  # What the contract freezes is the ARGUMENTS, not the basket they point at. A
+  # checkout proposed as `cart_id: c1` and confirmed a turn later runs against
+  # whatever c1 holds THEN. This is why an amendment between the proposal and the
+  # answer has to be cancelled: confirming it would buy the new cart, not the one
+  # the customer was shown.
+  it "replays the recorded arguments over the CURRENT backend state" do
+    cart = { "c1" => %w[creme sabonete] }
+    tool = CartCheckoutTool.new(cart)
+    st = state
+    st.allowed_tools = [enveloped(tool, st)]
+    pa = hold(args: { "cart_id" => "c1" })
+    cart["c1"] = %w[creme] # the customer took the soap out after the proposal
+
+    Sync { Insika::Tools::ConfirmPending.new(event_stream: event_stream, state: st).execute(pending_id: pa.id) }
+
+    expect(tool.orders.first["cart_id"]).to eq("c1")
+    expect(tool.orders.first["items"]).to eq(%w[creme])
   end
 end

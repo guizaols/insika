@@ -50,6 +50,11 @@ services:
       BENCH_B_FENCING: ${BENCH_B_FENCING:-true}
       BENCH_B_EVIDENCE: ${BENCH_B_EVIDENCE:-true}
       BENCH_B_PERSISTENCE: ${BENCH_B_PERSISTENCE:-true}
+      BENCH_B_CONFIRMATION: ${BENCH_B_CONFIRMATION:-true}
+      # Unset = the gateway routes the model wherever it likes, which is what every
+      # cut so far measured. Named, both arms of an A/B share one upstream.
+      BENCH_PROVIDER: ${BENCH_PROVIDER:-}
+      BENCH_REASONING: ${BENCH_REASONING:-medium}
     volumes:
       - ${BENCH_PROMPT_FILE:-./prompt/AGENTS.md}:/prompt/AGENTS.md:ro
       - insika-data:/data
