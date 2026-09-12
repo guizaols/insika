@@ -353,9 +353,12 @@ changes the subject, amends the purchase, or says yes twice.
 unwanted orders in 79 measured cells**; with it, **0 in 80** — and in 60 of those
 the order the direct arm wrote already existed by the time the customer's last
 message arrived. Authorised purchases were unaffected (40/40 in both arms) and the
-hold costs one more customer message plus ~1k tokens per task. The one blemish is
+hold costs one more customer message plus ~1k tokens per task. The one blemish was
 on our side of the gate: in one cell of 20, the reply announced a purchase that was
-only held.
+only held — nothing written, store right, customer told a turn early. The engine's
+held-call text was rewritten to state the reply's shape first, and that scenario
+re-measured at the same denominator: 20/20, no such claim, every held turn ending
+with the question (`cuts/2026-09-12-confirmation/recheck-16/`).
 
 The evidence is in `cuts/2026-09-12-confirmation/` — the report, the frozen tasks,
 and every transcript. `confirmation/run.sh` re-runs it; `confirmation/proof.rb` is
