@@ -95,3 +95,5 @@ packs/
 /evals/SOAK.md
 /evals/soak/
 /harvest/
+evals/bench/confirmation/runs-16-recheck/
+evals/bench/confirmation/REPORT-16-recheck.md

@@ -71,6 +71,10 @@ DONE … Do not say it happened" and the model wrote otherwise. Two further phan
 claims in the held arm (`14`, `15`) are about `add_to_cart` on turn 1 and have
 nothing to do with confirmation; the direct arm has eight of the same class.
 
+That text was rewritten afterwards and `16` re-measured at the same denominator —
+20/20, none of them claiming the purchase early. It is a separate measurement
+under a new image, kept in `recheck-16/` rather than folded into the cells above.
+
 **`10` as a regression check.** The shared prompt is fixed across both arms, and
 `10` — the confusable pair, nothing to do with checkout — came out 0 unwanted and
 0 phantom on both sides. The change did not disturb what was already working.
