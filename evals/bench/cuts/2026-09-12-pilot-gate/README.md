@@ -43,6 +43,23 @@ mais alguma coisa ou posso fechar o pedido?"* — an offer of a next step, which
 is not the same act as asking permission to do what the customer already asked
 for clearly.
 
+## The six regression smokes
+
+07, 10, 13, 14 and 15 green. **09 fails its `never_calls: create_order` check,
+and it is not this change's doing.** The same check fires in **3 of the 20**
+held-arm cells of the pre-change sample (`confirmation/runs`, repetitions 4, 12
+and 13), with a shape identical to the smoke's: the impatient *"adiciona logo por
+favor"* is read as consent to close, `create_order` is **held**, and the store
+ends with 0 orders and the cart at qty 2 — the correct outcome.
+
+`never_calls` cannot tell a hold from a write. Task 13 already says so in its own
+comment and drops the check for exactly this reason; task 09 still carries it.
+Left alone here on purpose: editing the task would change its digest and break
+comparability with the recheck in the middle of the gate it is grading.
+
+By the criteria the plan actually names — correct cart/order outcome, no invented
+successful action, correct cancellation and expiration — all six are clean.
+
 ## What this is not
 
 One scenario at n=20, one model, one provider, one synthetic store. This is the

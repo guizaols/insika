@@ -43,14 +43,24 @@ mkdir -p "$OUT"
 # it was running.
 manifest="$OUT/manifest.json"
 if [ ! -s "$manifest" ]; then
-  ruby -rjson -rdigest -e '
+  BENCH_MANIFEST_OUT="$OUT" ruby -rjson -rdigest -e '
     dir = ARGV[0]
     sha = ->(path) { Digest::SHA256.file(path).hexdigest[0, 16] }
     tasks = Dir[File.join(dir, "tasks", "*.yml")].sort
     puts JSON.pretty_generate(
       "at" => Time.now.utc.iso8601,
       "commit" => `git rev-parse HEAD`.strip,
-      "dirty" => !`git status --porcelain`.strip.empty?,
+      # The SOURCE tree, not this run's own output. The shell truncates
+      # manifest.json into the (untracked) OUT directory before this block runs,
+      # so a bare `git status` reports every cut as dirty and the flag stops
+      # meaning anything. Paths under OUT are excluded; nothing else is.
+      "dirty" => begin
+        out = File.expand_path(ENV.fetch("BENCH_MANIFEST_OUT", dir))
+        root = `git rev-parse --show-toplevel`.strip
+        `git status --porcelain`.lines.reject { |l|
+          File.expand_path(File.join(root, l[3..].to_s.strip.split(" -> ").last)).start_with?(out)
+        }.any?
+      end,
       "image" => `docker images -q insika-bench-insika:local`.strip,
       "store_image" => `docker images -q insika-bench-store:1.0.0`.strip,
       "model" => ENV["BENCH_MODEL"], "provider" => ENV["BENCH_PROVIDER"],
