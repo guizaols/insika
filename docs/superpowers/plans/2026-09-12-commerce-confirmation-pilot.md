@@ -1,6 +1,55 @@
 # Commerce Confirmation Pilot Implementation Plan
 
-> **For agentic workers:** Use superpowers:executing-plans to execute this plan task by task. Check off completed steps.
+> **CLOSED 2026-09-13 — not executed, and deliberately so.** Step 1 asked for the
+> real pack and tool names before anything live. They say the pilot has no target:
+> no store agent in the fleet can write an order. Closing is a `<finalizar/>`
+> marker or `send_finalize_button`, both of which send a **button** the customer
+> taps, with payment in the backend checkout. That tap is already a stronger
+> agreement than a chat "sim", and `customer_confirm` has nothing to hold.
+>
+> Doing it by prompt would mean giving the agent an order-writing tool — creating
+> the hazard first, then installing the guard against it, to land roughly where
+> the button already is but with the model's reading of "sim" in the loop. The
+> store owner's call, 2026-09-13: **don't**.
+>
+> Step 2 ran anyway and earned its keep: it found a real prompt defect and fixed it
+> (`evals/bench/cuts/2026-09-12-pilot-gate/`). Steps 3 and 4 were never started —
+> no pack was edited, nothing was activated.
+>
+> Findings: `2026-09-12-commerce-confirmation-pilot-record.md`.
+> Reopen only for a deployment with a native checkout that writes an order from a
+> chat turn. The open question that remains is a funnel one, not a gate one: is the
+> button costing conversions? Measurable today, no engine change.
+
+
+> **Status: not applicable to current stores. Do not execute this pilot.** The original proposal below is retained as history, not an active implementation plan.
+
+## Deployment correction
+
+The user confirmed that none of the 22 current stores exposes a tool that creates
+orders. `send_finalize_button` sends a checkout button; the customer proceeds by
+tapping it, with the purchase completed in the checkout. The agent does not close
+an order through text. There is therefore no order write for `customer_confirm`
+to hold in these deployments.
+
+- Keep the existing button/checkout flow. Do not add an order-writing tool or a
+  conversational confirmation step to make this pilot applicable.
+- Retain the synthetic bench as evidence about the generic runtime capability.
+  Reconsider a pilot only if a real deployment independently needs agent-executed
+  order creation.
+- The 67 unwanted orders in the direct benchmark arm are not an estimate of risk
+  in today's button-based stores. In 60 of those cases, the benchmark's later
+  refusal/question/amendment arrived after an earlier explicit checkout request;
+  those cases measure a reconsideration window, not 60 initially unauthorized
+  purchases.
+- If checkout conversion becomes the concern, first establish what existing
+  records can correlate button delivery, customer interaction and completed orders.
+  No funnel measurement or checkout change has been authorized by this correction.
+- The reported Ocean Drop mismatch between `AGENTS.md` and `TOOLS.md` is a separate
+  documentation/tool-configuration question. Its production allowlist impact remains
+  unverified and is not a reason to activate this pilot.
+
+## Original proposal — inactive
 
 **Goal:** Pilot customer-confirmed checkout in one store without asking customers to confirm ordinary cart additions.
 
