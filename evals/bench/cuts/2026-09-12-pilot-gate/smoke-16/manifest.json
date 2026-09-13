@@ -1,0 +1,23 @@
+{
+  "at": "2026-09-13T00:10:02Z",
+  "commit": "c99c51db3ec8b5e2df1bb9fdb5bef4dcca2f0f11",
+  "dirty": true,
+  "image": "b85636928cc3",
+  "store_image": "6cb1d62ac7f6",
+  "model": "deepseek/deepseek-v4-flash",
+  "provider": "DeepInfra",
+  "reasoning": "medium",
+  "scorecard": "B",
+  "reps": null,
+  "prompt_sha256": "0809c4cfa1cffa75",
+  "seed_sha256": "147a8f7348d9637f",
+  "tasks_sha256": {
+    "07-fechar-o-pedido": "181fb095acff7f3d",
+    "09-uma-vez-so": "4c79150869510a1c",
+    "10-mudou-de-ideia": "3b58dc258c853b6d",
+    "13-nao-fecha": "30489f6c6090422d",
+    "14-pergunta-solta": "7b1ffdb1797fb04b",
+    "15-tira-o-sabonete": "e01e146514aa0f25",
+    "16-sim-duas-vezes": "bda0d31f7689c731"
+  }
+}
