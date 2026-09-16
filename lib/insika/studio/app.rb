@@ -2388,7 +2388,20 @@ end
       @facts = mem ? mem.facts(tenant: cell[:tenant], customer: cell[:customer]) : []
       @notes = mem ? mem.notes(tenant: cell[:tenant], customer: cell[:customer], limit: 50) : []
       @audit = insika[:memory_audit_store]&.for_cell(scope) || []
-      view("customer")
+      # master column: the detail page IS the shell when visited directly;
+      # only a frame request renders the pane alone.
+      agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
+      @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |c|
+        { cell: c, count: mem.fact_count(tenant: c[:tenant], customer: c[:customer]) }
+      end : []
+      @agent = presence(request.params["agent"])
+      @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
+      @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
+      if turbo_frame?("detail")
+        render("customer", locals: { frame_only: true }, layout: false)
+      else
+        view("customer", locals: { frame_only: false })
+      end
     end
 
     def customer_path(scope)
