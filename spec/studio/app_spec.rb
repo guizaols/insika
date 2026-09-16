@@ -3714,6 +3714,32 @@ end
     expect(body).to include(refinement_window_text)
   end
 
+  # Neither RunRefinement nor POST /studio/refinement guards against starting
+  # a new run while an older one is still parked awaiting_approval, so an
+  # agent can have an older awaiting_approval run AND a newer terminal run at
+  # the same time. Default selection is awaiting_approval-first, not
+  # newest-first — matching Facts' master queue (pending surfaces before
+  # anything else). This is intentional: pin it down so a future "fix" to
+  # newest-first doesn't slip in unnoticed.
+  it "an older awaiting_approval run outranks a newer terminal run for default selection" do
+    app, = build_app
+    store = app.insika[:refinement_store]
+    awaiting_run(store) # started 2026-08-05T10:00:00Z -> ends :awaiting_approval
+    newer = store.create(agent_id: "bia", at: "2026-08-06T10:00:00Z") # started AFTER it
+    store.complete(newer.id,
+                    findings: [{ "kind" => "tool_error", "count" => 2, "title" => "newer report, not selected" }])
+
+    body = login(app).get("/refinement?agent=bia").body
+
+    # the older awaiting_approval run's own proposal is the detail pane...
+    expect(body).to include("Ask for the CEP first.")
+    # ...not the newer terminal run's findings, even though it's more recent.
+    expect(body).not_to include("newer report, not selected")
+    # the newer run is still visible in the master pane, just not selected.
+    expect(body.scan('<a class="drill-item').size).to eq(2) # both runs are rows in the master pane
+    expect(body).to include("completed") # the newer run's status pill in the master pane
+  end
+
   def refinement_window_text = "last 200 conversation(s)"
 
   it "redirects an approval back to a safe local path, ignoring an external back" do
