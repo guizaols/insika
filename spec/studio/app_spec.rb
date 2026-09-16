@@ -2303,6 +2303,46 @@ RSpec.describe Studio::App do
     expect(full).to include('data-turbo-action="advance"')
   end
 
+  # a96ef97 regressed once: a click that switches config group (or prompt file)
+  # is a real Turbo Frame navigation, which reconnects the `tabs` controller —
+  # but Turbo's history push drops the URL fragment, so `data-tabs-default-value`
+  # is the ONLY thing telling the reconnected controller which tab to land on.
+  # This walks the exact scenario named in the task: switch group, switch
+  # agent, switch group again — the config-groups master's active row and the
+  # config-group's hidden/shown state must also stay in lockstep throughout,
+  # since both are re-rendered by the server on every one of these requests
+  # (they live inside the frame, unlike the outer agents list).
+  it "switching config group, then agent, then config group again keeps the tab/group state correct (a96ef97 regression guard)" do
+    app, = build_app
+    client = login(app)
+
+    # 1) switch group inside "bia" — a frame nav, like clicking a drill-item
+    res = client.get("/agents/bia?cfg=guardrails", frame: "agent-detail")
+    expect(res.status).to eq(200)
+    expect(res.body).to include('data-tabs-default-value="config"')
+    expect(res.body).to include('data-config-group="guardrails">') # active group: not hidden
+    expect(res.body).to include('data-config-group="model" hidden>') # every other group: hidden
+    expect(res.body).to match(%r{<a class="drill-item active"\s+href="/studio/agents/bia\?cfg=guardrails#config"})
+
+    # 2) switch agent — a fresh full navigation, no cfg param: must NOT carry
+    # bia's guardrails selection over to chef, and must NOT force the "config"
+    # tab (the client falls back to the tabs' own first tab, "config", on its
+    # own — the server only overrides when it actually knows better).
+    res2 = client.get("/agents/chef", frame: "agent-detail")
+    expect(res2.status).to eq(200)
+    expect(res2.body).to include('data-tabs-default-value=""')
+    expect(res2.body).to include('data-config-group="model">') # defaults back to the first group
+    expect(res2.body).to include('data-config-group="guardrails" hidden>')
+
+    # 3) switch group again, on chef — the fix must still hold on the second agent
+    res3 = client.get("/agents/chef?cfg=routing", frame: "agent-detail")
+    expect(res3.status).to eq(200)
+    expect(res3.body).to include('data-tabs-default-value="config"')
+    expect(res3.body).to include('data-config-group="routing">')
+    expect(res3.body).to include('data-config-group="model" hidden>')
+    expect(res3.body).not_to include('data-config-group="guardrails">') # no bleed from step 1
+  end
+
   it "tools: a frame request renders the detail pane alone" do
     app, = build_app
     client = login(app)
@@ -3108,7 +3148,7 @@ RSpec.describe Studio::App do
     expect(body).to include('data-controller="transport-fields"')
     expect(body).to include('data-transport-fields-target="stdio"')
     expect(body).to include('data-transport-fields-target="http"')
-    expect(body).to include("<code>search</code>")
+    expect(body).to include('<code class="mono">search</code>')
     expect(body).to include("web search")
     expect(body).to include("1 tool(s)")
   end
@@ -3128,14 +3168,38 @@ RSpec.describe Studio::App do
     expect(body).to include('data-list-filter-target="query"')
     expect(body).to include('data-filter-text="alpha http on enabled 1 tool(s)"')
     expect(body.index("alpha")).to be < body.index("zeta") # sorted, not insertion order
-    # the tools cache renders as a disclosure on the selected instance's pane
-    expect(body).to include('class="mcp-tools-details"')
+    # the tools cache renders as a filterable row list on the selected instance's pane
+    expect(body).to include('class="mcp-tools-panel"')
+    expect(body).to include('class="mcp-tool-row"')
     # the editor form is the pane's primary content (transport-aware)
     expect(body).to include('class="mcp-edit"')
     expect(body).to include('data-controller="transport-fields"')
     # miller columns: master rows frame-navigate with the URL advancing
     expect(body).to include('data-turbo-frame="mcp-detail"')
     expect(body).to include('data-turbo-action="advance"')
+  end
+
+  it "the MCP tools row list is its own list-filter scope, with mono names, ellipsis previews and per-row <details>" do
+    cfg = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    mcp_store = Insika::McpStore.new(config_store: cfg)
+    mcp_store.upsert("name" => "big", "transport" => "http", "url" => "https://x", "enabled" => true)
+    tools = (1..370).map { |i| { "name" => "tool_#{i}", "description" => "does thing number #{i} in great detail" } }
+    mcp_store.set_tools_cache("big", tools)
+    app = Class.new(Studio::App)
+    app.configure(command_bus: BusDouble.new([]), profile_source: ProfileSourceDouble.new([profile("bia")]),
+                  event_stream: nil, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
+    body = login(app).get("/mcp?i=big").body
+
+    # the head carries the count, so it's visible without opening anything
+    expect(body).to include("370 tool(s)")
+    # the tools panel is its own list-filter scope (distinct from the master's)
+    expect(body.scan('data-controller="list-filter"').size).to eq(2)
+    expect(body).to include('data-filter-text="tool_1 does thing number 1 in great detail"')
+    # each row: mono name, an ellipsis-clipped preview, and a <details> to expand the full text
+    expect(body).to include('<code class="mono">tool_1</code>')
+    expect(body).to include('class="mcp-tool-desc"')
+    expect(body).to include('class="mcp-tool-full"')
+    expect(body.scan('<details class="mcp-tool-row">').size).to eq(370)
   end
 
   it "an enabled instance with no cached tools shows 'untested'" do

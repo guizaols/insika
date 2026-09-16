@@ -17,10 +17,13 @@
      ]
      active = config_groups.find { |k, _| k == @config_group } || config_groups.first
      @config_group = active[0] %>
-  <div class="section-head"><h2>Configuration</h2><p class="muted">every profile field, editable hot — pick a group to the left — saved via <code>update_agent</code>.</p></div>
+  <%# The group nav is its own master column (like Prompts' file list) — not a
+      "Configuration" card wrapping a duplicate "Configuration" card. Its own
+      drill-pane-head carries the title; the detail pane's head carries the
+      active group's name + description, same as every other drill-detail. %>
   <div class="drill config-drill">
     <aside class="drill-pane drill-master">
-      <div class="drill-pane-head"><div class="title"><strong>Configuration</strong></div></div>
+      <div class="drill-pane-head"><div class="title"><strong>Configuration <span class="count"><%= config_groups.size %></span></strong></div></div>
       <nav class="drill-pane-body drill-list" aria-label="config groups">
         <% config_groups.each do |key, label, sub| %>
           <a class="drill-item<%== ' active' if @config_group == key %>"
@@ -34,7 +37,7 @@
     </aside>
     <section class="drill-pane drill-detail">
       <div class="drill-pane-head">
-        <div class="title"><strong><%= active[1] %></strong></div>
+        <div class="title"><strong><%= active[1] %></strong><span class="count"><%= active[2] %></span></div>
         <button type="submit" form="config-form" class="btn primary" data-turbo-submits-with="Saving…">Save config</button>
       </div>
       <div class="drill-pane-body">

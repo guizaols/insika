@@ -58,7 +58,7 @@
       <div class="drill-pane-head">
         <div class="title">
           <strong class="mono"><%= m["name"] %></strong>
-          <span class="count"><%= m["transport"] %><%== " · #{m['description']}" if m["description"].to_s != "" %></span>
+          <span class="count"><%= m["transport"] %><%== " · #{m['description']}" if m["description"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></span>
         </div>
         <div class="head-actions">
           <form method="post" action="/studio/mcp/test">
@@ -74,16 +74,32 @@
         </div>
       </div>
       <div class="drill-pane-body">
+        <%# ~370 tools on a chatty server would be one unscannable wall of
+            paragraphs — a filterable row list (mono name + one-line preview,
+            <details> for the rest) scales the same way the master lists do. %>
         <% tools = Array(m["tools_cache"]) %>
         <% if tools.any? %>
-          <details class="mcp-tools-details" open>
-            <summary><%= tools.size %> tool(s) · live cache</summary>
-            <ul class="mcp-tools muted">
+          <div class="mcp-tools-panel" data-controller="list-filter">
+            <div class="filter-bar">
+              <input type="search" class="filter-input" placeholder="Filter tools by name or description…" aria-label="Filter tools"
+                     data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+              <span class="filter-count mono muted" data-list-filter-target="count"></span>
+            </div>
+            <ul class="mcp-tools-list">
               <% tools.each do |t| %>
-                <li><code><%= t["name"] %></code><% if presence(t["description"]) %> — <%= t["description"] %><% end %></li>
+                <li data-list-filter-target="item" data-filter-text="<%= t["name"] %> <%= t["description"] %>">
+                  <details class="mcp-tool-row">
+                    <summary>
+                      <code class="mono"><%= t["name"] %></code>
+                      <span class="mcp-tool-desc"><%= presence(t["description"]) || "no description" %></span>
+                    </summary>
+                    <p class="mcp-tool-full"><%= presence(t["description"]) || "No description." %></p>
+                  </details>
+                </li>
               <% end %>
             </ul>
-          </details>
+            <div class="empty" data-list-filter-target="empty" hidden>No tools match your filter.</div>
+          </div>
         <% end %>
 
         <form class="mcp-edit" method="post" action="/studio/mcp" data-controller="transport-fields">
