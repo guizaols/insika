@@ -17,7 +17,7 @@
     <div class="card">
       <div class="skill-name mono">
         <%= pa.tool %>
-        <% if task %><span class="pill <%= status_class(task.status) %>"><%= task.status %></span><% end %>
+        <% if task %><span class="status <%= status_class(task.status) %>"><%= task.status %></span><% end %>
       </div>
       <div class="skill-desc muted">
         <a class="mono" href="<%= task_path(pa.task_id) %>">task <%= pa.task_id[0, 12] %></a>

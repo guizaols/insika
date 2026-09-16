@@ -3167,6 +3167,14 @@ RSpec.describe Studio::App do
     expect(res.body).to include("running")
   end
 
+  it "renders the tasks list as the Ledger table (table.grid), status via .status not a bare .pill" do
+    app, = build_app(tasks: { "t1" => task(id: "t1", status: :completed) })
+    body = login(app).get("/tasks").body
+    expect(body).to include('<table class="grid">')
+    expect(body).to include('<span class="status ok">completed</span>')
+    expect(body).not_to include('<span class="pill ok">completed</span>')
+  end
+
   it "shows the tasks empty-state when there are none" do
     app, = build_app
     expect(login(app).get("/tasks").body).to include("No tasks yet")
@@ -3249,6 +3257,14 @@ RSpec.describe Studio::App do
     expect(res.status).to eq(200)
     expect(res.body).to include("charge_card")
     expect(res.body).to include("waiting")
+  end
+
+  it "renders the task status on the approvals page via .status + status_class, not a bare .pill" do
+    app, = build_app(tasks: { "t1" => task(status: :waiting) },
+                     pendings: [pending(tool: "charge_card")])
+    body = login(app).get("/approvals").body
+    expect(body).to include('<span class="status warn">waiting</span>')
+    expect(body).not_to include('<span class="pill warn">waiting</span>')
   end
 
   it "shows the approvals empty-state when nothing is pending" do
@@ -4466,6 +4482,53 @@ end
       app, = build_app(agents: [profile("chef")])
       body = login(app).get("/harvest?agent=store-support").body
       expect(body).to include("No harvest")
+    end
+
+    it "the awaiting-approval badge renders via .status (the real awaiting_approval status is warn), not a hardcoded ok pill" do
+      app, = harvest_app(candidates: [{ name: "pix-recovery", description: "d", status: "awaiting" }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<span class="status warn">gated</span>')
+      expect(body).not_to include('<span class="pill ok">gated</span>')
+    end
+
+    it "the blocked badge renders via .status err, not a hardcoded pill" do
+      app, = harvest_app(candidates: [{ name: "phantom", description: "d", status: "blocked" }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<span class="status err">blocked</span>')
+      expect(body).not_to include('<span class="pill err">blocked</span>')
+    end
+
+    it "the pending-gate badge renders via .status warn (the real pending status), not a bare pill" do
+      app, = harvest_app(candidates: [{ name: "fresh", description: "d", status: "pending" }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<span class="status warn">pending</span>')
+      expect(body).not_to include('<span class="pill">pending</span>')
+    end
+
+    it "the promoted/rolled-back badges render via .status ok/err, not hardcoded pills" do
+      app, = harvest_app(promotions: [
+                           { id: "p1", skill: "live-skill" },
+                           { id: "p2", skill: "dead-skill", rolled_back: true }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<span class="status ok">promoted</span>')
+      expect(body).to include('<span class="status err">rolled back</span>')
+    end
+
+    it "the runs list renders as the Ledger table (table.grid), status per outcome via status_class" do
+      app, = harvest_app(runs: [{ agent: "store-support", candidates: 3 }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<table class="grid">')
+      expect(body).to include('<span class="status ok">completed</span>')
+    end
+
+    it "a failed run renders its status as .status err, not the old failed-only ternary (mining/no_candidates were both mislabeled ok before)" do
+      store = Insika::HarvestStore.new(store: Insika::Stores::Memory.new)
+      run = store.create_run(agent_id: "store-support", window: { "last_sessions" => 3 })
+      store.fail_run(run.id, error: "boom")
+      app, = build_app(agents: [profile("store-support"), profile("chef")], harvest_store: store)
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include('<span class="status err">failed</span>')
     end
 
     it "the nav row is present" do

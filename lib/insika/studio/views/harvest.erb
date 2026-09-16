@@ -48,7 +48,7 @@
     <% @candidates.each do |cand| %>
       <div class="card">
         <div class="skill-desc">
-          <span class="pill ok">gated</span>
+          <span class="status <%= status_class(cand.status) %>">gated</span>
           <span class="mono"><%= cand.name %></span>
           <span class="muted">· <%= cand.description %></span>
         </div>
@@ -100,7 +100,7 @@
       <ul class="history">
         <% @blocked.each do |cand| %>
           <li>
-            <span class="pill err">blocked</span>
+            <span class="status <%= status_class('blocked') %>">blocked</span>
             <span class="mono"><%= cand.name %></span>
             <span class="preview muted">
               <% reason = (cand.conversion_gate || {})["reason"] %>
@@ -126,7 +126,7 @@
       <ul class="history">
         <% @pending_gates.each do |cand| %>
           <li>
-            <span class="pill">pending</span>
+            <span class="status <%= status_class(cand.status) %>"><%= cand.status %></span>
             <span class="mono"><%= cand.name %></span>
             <span class="preview muted"><%= cand.description %></span>
             <form method="post" action="/studio/harvest/gate" class="actions inline">
@@ -150,9 +150,9 @@
         <% @promotions.each do |row| %>
           <li>
             <% if row.rolled_back_at %>
-              <span class="pill err">rolled back</span>
+              <span class="status <%= status_class('rejected') %>">rolled back</span>
             <% else %>
-              <span class="pill ok">promoted</span>
+              <span class="status <%= status_class('approved') %>">promoted</span>
             <% end %>
             <span class="mono"><%= row.skill %></span>
             <span class="preview muted">
@@ -216,19 +216,22 @@
   <% if @runs.any? %>
     <h2>Runs<span class="sub">most recent first</span></h2>
     <div class="card">
-      <ul class="history">
-        <% @runs.each do |run| %>
-          <li>
-            <span class="pill <%= run.status == 'failed' ? 'err' : 'ok' %>"><%= run.status %></span>
-            <span class="mono"><%= run.id[0, 12] %></span>
-            <span class="preview muted">
-              <%= run.candidates %> candidate(s) ·
-              <% if run.cost && run.cost["spent"].to_i.positive? %><%= run.cost["spent"] %> tokens · <% end %>
-              <%= run.started_at %>
-            </span>
-          </li>
-        <% end %>
-      </ul>
+      <table class="grid">
+        <thead>
+          <tr><th>status</th><th>run</th><th class="num">candidates</th><th class="num">tokens</th><th class="time">started</th></tr>
+        </thead>
+        <tbody>
+          <% @runs.each do |run| %>
+            <tr>
+              <td><span class="status <%= status_class(run.status) %>"><%= run.status %></span></td>
+              <td class="mono"><%= run.id[0, 12] %></td>
+              <td class="num"><%= run.candidates %></td>
+              <td class="num"><%= run.cost && run.cost["spent"].to_i.positive? ? run.cost["spent"] : "—" %></td>
+              <td class="time"><%= run.started_at %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
     </div>
   <% end %>
 <% end %>
