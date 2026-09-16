@@ -50,10 +50,12 @@ support degrade to the plain swap.
 
 ## Miller columns / master-detail
 
-Every Console-shell page (see Design system below — Agents, Skills, Tools, MCP,
-Settings, Chats/Session, Customers, Facts, Refinement, Knowledge, Evals)
-renders a two-column drill whose detail pane IS a `<turbo-frame>`. The
-pattern, end to end:
+Most Console-shell pages (see Design system below — Agents, Tools, MCP,
+Chats/Session, Customers, Facts, Refinement) render a two-column drill whose
+detail pane IS a `<turbo-frame>`. Skills, Settings, Knowledge and Evals use
+the same `.drill` two-column layout but link to a plain full-page detail —
+no `<turbo-frame>` — so the pattern below applies to the frame-based group
+only:
 
 - **View**: index and detail share the master partial; rows carry
   `data-turbo-frame="<id>" data-turbo-action="advance"` so the detail loads
@@ -92,24 +94,29 @@ look with three page shells built on a shared token set (`views/_kpi.erb`,
 Every page in `views/` now uses one of these, or the plain `.page-head` +
 `.card`/list layout for pages simple enough not to need one:
 
-- **Console** (miller columns / master-detail drill: a master list beside a
-  `<turbo-frame>` detail pane, row clicks advance the URL without a full
-  reload): **Agents**, **Skills**, **Tools**, **MCP**, **Settings**, **Chats**
-  + the **Session** viewer, **Customers**, **Facts**, **Refinement**,
-  **Knowledge**, **Evals**.
+- **Console** (miller columns / master-detail drill, a `.drill` master list
+  beside a detail pane): **Agents**, **Tools**, **MCP**, **Chats** + the
+  **Session** viewer, **Customers**, **Facts**, **Refinement** render the
+  detail pane as a `<turbo-frame>` — row clicks advance the URL without a
+  full reload. **Skills**, **Settings**, **Knowledge**, **Evals** use the
+  same two-column `.drill` layout but link to a plain full-page detail, with
+  no `<turbo-frame>`.
 - **Board** (a `.kpi-strip` of `_kpi.erb` tiles opens the page, followed by an
   inline-SVG `.chart`): **Home** (the Overview — KPI strip + a 24h `.chart`
   line + a 14-day bar chart), **Funnel** (a KPI strip + `.chart-funnel` per
   store), **Follow-ups** (a KPI strip + a `table.grid` of records).
 - **Ledger** (`table.grid`: a sticky-header table, row-actions revealed on
-  hover, `.identity`/`.status` cells): **Artifacts**, **Harvest**, **Tasks**,
-  **Parity**.
+  hover, `.identity`/`.status` cells): **Artifacts**, **Harvest**, **Tasks**.
 
 **Playground** is its own full-height chat surface (config bar, scrolling
 transcript, pinned composer) under a `.page-head`, not one of the three
 shells above. **Approvals**, **Task** (detail), and **System files** are
 plain `.page-head` + card/list pages, simple enough that they don't need a
-shell.
+shell. **Parity** predates this redesign and wasn't converted — it only
+picked up the shared `crumbs_for` breadcrumb and an arrow-in-label cleanup
+from Task 1; its `table.grid` markup is a coincidental pre-existing table,
+not the Ledger shell, and it still renders `.pill` throughout rather than
+`.identity`/`.status`.
 
 ### Shared partials
 

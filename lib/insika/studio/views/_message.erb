@@ -12,7 +12,7 @@
 <% if role == "tool" %>
   <% artifact_url = artifact_link_in(m["content"]) %>
   <% if artifact_url %>
-    <p class="artifact-chip"><%== chip_icon(:artifact) %><a class="btn sm" href="<%= artifact_url %>" target="_blank" rel="noopener">open artifact</a></p>
+    <p class="artifact-chip"><%== chip_icon(:artifact) %><a class="btn btn-sm" href="<%= artifact_url %>" target="_blank" rel="noopener">open artifact</a></p>
   <% end %>
   <details class="toolcard result">
     <summary><%== chip_icon(:result) %><strong>tool result</strong><% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %></summary>

@@ -3,6 +3,9 @@
     <%== crumbs_for("Harvest") %>
     <h1>Harvest<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
   </div>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/harvest", @agent) %>
+  </div>
 </header>
 
 <% if insika[:harvest_store].nil? %>
@@ -33,14 +36,6 @@
       gate AND a human approval.
     </div>
   </div>
-
-  <% if @agents.size > 1 %>
-    <div class="filter-bar">
-      <% @agents.each do |id| %>
-        <a class="btn" href="/studio/harvest?agent=<%= Rack::Utils.escape(id) %>"<%== ' aria-current="page"' if id == @agent %>><%= id %></a>
-      <% end %>
-    </div>
-  <% end %>
 
   <%# The human's inbox. %>
   <% if @candidates.any? %>

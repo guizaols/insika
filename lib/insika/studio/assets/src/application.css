@@ -417,7 +417,7 @@
   .pill::before { content:""; width:.35rem; height:.35rem; border-radius:50%; background:currentColor; }
   .pill.plain::before { display:none; }
   .pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent);}
-  .pill.warn,.pill.run{color:var(--warn);background:color-mix(in srgb,var(--warn) 13%,transparent);}
+  .pill.warn,.pill.run,.status.run{color:var(--warn);background:color-mix(in srgb,var(--warn) 13%,transparent);}
   .pill.err{color:var(--err);background:color-mix(in srgb,var(--err) 12%,transparent);}
   .pill.info{color:var(--info);background:color-mix(in srgb,var(--info) 12%,transparent);}
   .pill:not(.ok):not(.warn):not(.run):not(.err):not(.info){color:var(--dim);background:var(--surface-2);}
@@ -551,6 +551,11 @@
      is — the bug this fixes was `.chart`'s width:100% scaling the SVG (and
      its bars) up to the full viewport. */
   .chart-funnel { max-width:720px; }
+  /* Home's 24h sparkline: with no height, .chart's width:100% + this SVG's
+     preserveAspectRatio="none" scales the polyline from viewBox aspect alone,
+     stretching it tall on a wide viewport. Scoped here (not on bare .chart)
+     so Funnel's chart, which relies on width-only sizing, is unaffected. */
+  .chart-sparkline { height:3rem; }
 
   /* ── Overview home: KPI strip + activity chart + conversations ───────── */
   .home-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:.75rem; align-items:start; }

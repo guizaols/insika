@@ -2420,8 +2420,6 @@ end
       "/studio/customers/#{Rack::Utils.escape_path(scope)}"
     end
 
-    private
-
     # Shared helper for Customers index and detail: loads all customer cells,
     # counts facts per cell, filters by agent if ?agent= is present, and
     # groups by tenant. Sets @rows and @by_tenant.
