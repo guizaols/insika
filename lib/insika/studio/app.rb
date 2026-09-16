@@ -1230,7 +1230,10 @@ end
       # hit the stores, mutations go through the bus); the ONLY mutation — the
       # approve/reject/dismiss answer — dispatches :resolve_proposal.
       r.on "facts" do
-        r.get { render_facts }
+        r.is do
+          r.get { render_facts }
+        end
+
         r.post "resolve" do
           check_csrf!
           decision = presence(r.params["decision"])
@@ -1242,7 +1245,17 @@ end
                                           operator: "studio" })
           end
           filter = presence(r.params["filter"])
-          r.redirect("/studio/facts#{filter ? "?store=#{Rack::Utils.escape(filter)}" : ""}")
+          # lands the operator on the NEXT pending item (same filter scope), not
+          # an empty list — resolving one fact should feed straight into the next.
+          r.redirect(next_fact_path(filter))
+        end
+
+        # GET /studio/facts/:id — one fact's evidence + decision (pending/stale)
+        # or its resolution (recent). Same miller-column pattern as agent_detail:
+        # a Turbo-Frame request gets the pane alone, a plain hit gets the shell.
+        r.on String do |id|
+          id = utf8(id)
+          r.get { render_fact_detail(id) }
         end
       end
 
@@ -2652,6 +2665,32 @@ end
     # a link, never a copy: the excerpt is read from the session at request
     # time); the mutations dispatch :resolve_proposal on the bus.
     def render_facts
+      facts_queues
+      # The landing selection: the first pending item (the operator's next
+      # thing to review) — falling back to stale, then a resolved one, so the
+      # pane is never blank while ANY proposal exists. `.empty` only when the
+      # whole queue (pending + stale + recent) is.
+      @selected = @pending.first || @stale.first || @recent.first
+      view("facts")
+    end
+
+    # GET /studio/facts/:id — a specific proposal, whatever its status. Reads
+    # the store directly (a resolved fact past the `resolved(limit: 20)` window
+    # still opens by id — the truncated lists are for the queue, not a lookup).
+    def render_fact_detail(id)
+      facts_queues
+      @selected = insika[:proposal_store]&.find(id)
+      next_404 unless @selected
+      if turbo_frame?("fact-detail")
+        render("fact_detail", locals: { frame_only: true }, layout: false)
+      else
+        view("fact_detail", locals: { frame_only: false })
+      end
+    end
+
+    # Shared read for both Facts routes: the three queues (pending/stale/
+    # recent), the `?agent=`/`?store=` filter, and the scope picklist.
+    def facts_queues
       store = insika[:proposal_store]
       @pending = store ? store.pending(limit: 100) : []
       @stale   = store ? store.stale(limit: 50) : []
@@ -2671,7 +2710,6 @@ end
       @stores  = (insika[:profile_source].ids.sort +
                   (@pending + @stale + @recent).map(&:scope)).uniq.sort
       @sessions = insika[:session_store]
-      view("facts")
     end
 
     # A proposal matches the filter as the memory scope it carries, or as the
@@ -2681,6 +2719,19 @@ end
 
       session = insika[:session_store]&.find(proposal.session_ref)
       session && session_agent(session) == filter
+    end
+
+    # Where a resolve POST lands: the next pending item in the SAME filtered
+    # scope the operator was working, so approve/reject/dismiss feeds straight
+    # into the next thing to review instead of dumping them back on a list.
+    # No pending left (in that scope) -> the plain facts list (stale/recent,
+    # or the empty state).
+    def next_fact_path(filter)
+      store = insika[:proposal_store]
+      pending = store ? store.pending(limit: 100) : []
+      pending = pending.select { |p| scope_matches?(p, filter) } if filter
+      base = pending.first ? "/studio/facts/#{Rack::Utils.escape(pending.first.id)}" : "/studio/facts"
+      filter ? "#{base}?store=#{Rack::Utils.escape(filter)}" : base
     end
 
     # the Harvest page — the human gate on mined skills. Reads

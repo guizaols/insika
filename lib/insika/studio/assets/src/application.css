@@ -691,6 +691,16 @@
   .drill-item.drill-item-sm { padding:.3rem .6rem; }
   .drill-item .drill-item-name .pill { margin-left:auto; }
   .drill-group-label { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--faint); padding:.75rem .6rem .3rem; }
+  /* Facts queue row: confidence (a number + a bar, not a pill) and a status
+     dot on the left, the relative age pinned right. Geometry via SVG
+     attributes, paint via a class — CSP forbids inline style (same grammar
+     as .chart/.barchart above). */
+  .fact-item-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; white-space:nowrap; }
+  .fact-item-conf { display:flex; align-items:center; gap:.35rem; min-width:0; overflow:hidden; }
+  .fact-item-age { flex:0 0 auto; }
+  .conf-bar { flex:0 0 auto; vertical-align:middle; overflow:visible; }
+  .conf-bar .track { fill:var(--line-2); }
+  .conf-bar .fill { fill:var(--accent-weak); }
   /* tool matrix top line inside the detail (counter + all-tools switch) */
   .matrix-topline { display:flex; align-items:center; gap:.8rem; margin-bottom:.5rem; }
   .matrix-topline .count-badge { font-size:var(--text-xs); font-weight:600; color:var(--dim); padding:.12rem .5rem; border:1px solid var(--line-1); border-radius:999px; background:var(--surface-1); white-space:nowrap; }

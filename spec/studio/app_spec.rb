@@ -4044,6 +4044,72 @@ end
       body = login(app).get("/home").body
       expect(body).to include("Facts")
     end
+
+    it "the index opens with the first pending fact already selected" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      body = login(app).get("/facts").body
+      expect(body).to include('<turbo-frame id="fact-detail"')
+      expect(body).to include("Approve &amp; save to memory")
+    end
+
+    it "the index shows the empty state when the queue is empty" do
+      app, = facts_app(rows: [])
+      body = login(app).get("/facts").body
+      expect(body).to include("No proposals yet")
+    end
+
+    it "a frame request for a fact renders the detail pane alone; a plain hit renders the shell" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      client = login(app)
+      full = client.get("/facts/p1").body
+      expect(full).to include("app-shell")
+      expect(full).to include('<turbo-frame id="fact-detail"')
+      pane = client.get("/facts/p1", frame: "fact-detail").body
+      expect(pane).to include('<turbo-frame id="fact-detail"')
+      expect(pane).not_to include("app-shell")
+      # the master rows frame-navigate with the URL advancing
+      expect(full).to include('data-turbo-frame="fact-detail"')
+      expect(full).to include('data-turbo-action="advance"')
+    end
+
+    it "GET /facts/:id for an unknown proposal 404s" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      expect(login(app).get("/facts/nope").status).to eq(404)
+    end
+
+    it "a resolved fact's detail shows its resolution and the Recent ledger" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M", status: "approved")])
+      body = login(app).get("/facts/p1").body
+      expect(body).to include("Resolved by studio")
+      expect(body).to include("Recent")
+    end
+
+    it "the resolve POST redirects to the NEXT pending fact, not an empty list" do
+      store = seed_facts([fact("p1", key: "size", value: "M"),
+                          fact("p2", key: "color", value: "blue")])
+      app, = build_app(agents: [profile("funnel-store"), profile("chef")], proposal_store: store)
+      client = login(app)
+      csrf = csrf_from(client.get("/facts").body)
+      # The spec's bus is a recording double (see BusDouble) — it does not run
+      # the real :resolve_proposal command, so the transition is applied
+      # directly on the same store the route reads, exactly as the real
+      # command handler would leave it before the response is built.
+      store.approve(id: "p1", operator: "studio")
+      res = client.post("/facts/resolve", params: { "proposal_id" => "p1", "decision" => "approved",
+                                                    "_csrf" => csrf })
+      expect(res.headers["location"]).to include("/studio/facts/p2")
+    end
+
+    it "the resolve POST redirects to the plain facts list once no pending fact remains" do
+      store = seed_facts([fact("p1", key: "size", value: "M")])
+      app, = build_app(agents: [profile("funnel-store"), profile("chef")], proposal_store: store)
+      client = login(app)
+      csrf = csrf_from(client.get("/facts").body)
+      store.approve(id: "p1", operator: "studio")
+      res = client.post("/facts/resolve", params: { "proposal_id" => "p1", "decision" => "approved",
+                                                    "_csrf" => csrf })
+      expect(res.headers["location"]).to match(%r{/studio/facts\z})
+    end
   end
 
   describe "Harvest page " do
