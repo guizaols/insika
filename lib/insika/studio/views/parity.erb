@@ -1,6 +1,6 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><span>operate</span></nav>
+    <%== crumbs_for("Parity") %>
     <h1>Parity<span class="sub">the shadow experiment</span></h1>
   </div>
   <div class="head-actions">
@@ -133,7 +133,7 @@
           <span class="mono"><%= p.id[0, 12] %></span>
           <% if p.agent %><span class="mono"><%= p.agent %></span><% end %>
           <% if p.outcome %><span class="pill"><%= p.outcome %></span><% end %>
-          <% if p.session_id %><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(p.session_id) %>">session →</a><% end %>
+          <% if p.session_id %><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(p.session_id) %>">open session</a><% end %>
           <div class="skill-desc muted"><strong>customer:</strong> <%= p.inbound.to_s %></div>
           <div class="skill-desc"><strong>incumbent:</strong> <%= p.incumbent_reply.to_s %></div>
           <div class="skill-desc"><strong>insika:</strong> <%= p.insika_reply.to_s %></div>

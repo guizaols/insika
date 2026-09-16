@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Embedded webfonts ───────────────────────────────────────────────────
+   IBM Plex (OFL), latin subset, woff2, served from the same origin as
+   everything else — `font-src 'self'` needs no widening and there is no
+   runtime dependency on a CDN. The sans is the variable wght axis (one
+   44KB file covers 100–700); the mono ships the three weights the UI
+   actually sets. `font-display:swap` so a cold cache shows the fallback
+   stack immediately instead of invisible text.
+   The URLs are static because CSS cannot call `asset_path`; the Ruby side
+   mirrors this prefix in `font_path` (app.rb), which the preload links use.
+   ───────────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family:"IBM Plex Sans"; font-style:normal; font-weight:100 700; font-display:swap;
+  src:url("/studio/assets/dist/fonts/ibm-plex-sans-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family:"IBM Plex Mono"; font-style:normal; font-weight:400; font-display:swap;
+  src:url("/studio/assets/dist/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family:"IBM Plex Mono"; font-style:normal; font-weight:500; font-display:swap;
+  src:url("/studio/assets/dist/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family:"IBM Plex Mono"; font-style:normal; font-weight:600; font-display:swap;
+  src:url("/studio/assets/dist/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+}
+
 /* ============================================================================
    Insika Studio — design system v2 (Linear/Vercel-inspired refresh)
    Operator cockpit for an agent engine. Dark-first, information-dense.
@@ -38,10 +66,11 @@
     --av-7-bg:#fbdcd9; --av-7-fg:#b03128;
     --av-8-bg:#dde4f7; --av-8-fg:#36409c;
     --av-9-bg:#e3f3c9; --av-9-fg:#4f6d10;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
-    /* Platform UI font (SF Pro on macOS, Segoe on Windows) — the CSP rules
-       out webfonts, so the system font IS the product font. */
-    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    /* IBM Plex first (embedded above, same-origin); the platform stack stays
+       as the fallback for the swap window and for anything outside the
+       latin subset. */
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --radius:8px; --radius-sm:6px; --radius-lg:12px; --radius-xl:16px;
     --shadow:0 1px 2px rgba(16,20,40,.05),0 1px 3px rgba(16,20,40,.04);
     --shadow-lg:0 12px 32px rgba(16,20,40,.10);
@@ -119,6 +148,17 @@
     --shadow:0 1px 2px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.25);
     --shadow-lg:0 16px 40px rgba(0,0,0,.5);
     color-scheme:dark;
+  }
+
+  /* ── Geometry tokens ─────────────────────────────────────────────────
+     Theme-independent, so they live in their own :root rule rather than
+     being repeated in every palette block above. A 4px spacing step, the
+     height of one dense list/table row, and the width of a miller-column
+     master pane. The instrument-panel components below are built from
+     these instead of literal rems. */
+  :root {
+    --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
+    --row-h:44px; --master-w:300px;
   }
 
   html { -webkit-text-size-adjust:100%; }
@@ -274,6 +314,13 @@
   .page-head .head-actions { display:flex; align-items:center; gap:.5rem; flex:0 0 auto; }
   h1 { font-size:var(--text-xl); font-weight:700; letter-spacing:-.015em; margin:.05rem 0; line-height:1.2; text-wrap:balance; }
   h1 .sub { display:block; font-size:var(--text-sm); font-weight:400; color:var(--dim); letter-spacing:-.004em; margin-top:.3rem; }
+  /* A section heading's sub-label sits on the SAME line as the heading (an h2
+     is a band, not a page title), so unlike `h1 .sub` it needs its own gap —
+     without one the two runs touch and read as one word ("Pendingoldest
+     first"). Same dim/400 treatment otherwise. */
+  h2 .sub { display:inline-block; margin-left:var(--s-2); font-size:var(--text-sm); font-weight:400; color:var(--dim); letter-spacing:-.004em; }
+  /* Item count beside a page or pane title — the quantity, not a heading. */
+  .page-head .count { margin-left:var(--s-2); font-size:var(--text-sm); font-weight:500; color:var(--faint); font-variant-numeric:tabular-nums; }
   .muted { color:var(--dim); }
   .eyebrow { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
 
@@ -373,6 +420,115 @@
   .empty { color:var(--dim); padding:2.5rem 2rem; text-align:center; border:1px solid var(--line-1); border-radius:var(--radius); background:var(--panel); }
   .empty.big { padding:5rem 2rem; }
   .empty.big h1 { font-size:var(--text-3xl); margin:0; letter-spacing:-.02em; color:var(--faint); }
+  /* Structured empty state (views/_empty.erb): an icon from nav_icons.rb, the
+     message, an optional action. Stays a plain block — the existing
+     free-text `.empty` divs must keep centring exactly as they do today. */
+  .empty .ic { display:block; margin:0 auto var(--s-3); color:var(--faint); }
+  .empty .ic svg { width:1.5rem; height:1.5rem; }
+  .empty .msg { margin:0 auto; max-width:52ch; }
+  .empty .act { margin-top:var(--s-4); }
+
+  /* ── Status pill ──────────────────────────────────────────────────────
+     The `.pill` grammar restated for the one job the instrument panel needs:
+     a lifecycle state, always a dot + a word. Variants come from
+     `status_class` (app.rb), so the Ruby and the CSS share one vocabulary. */
+  .status {
+    display:inline-flex; align-items:center; gap:var(--s-1); white-space:nowrap;
+    font-size:var(--text-xs); font-weight:500; letter-spacing:.01em;
+    padding:2px var(--s-2); border-radius:999px;
+    color:var(--dim); background:var(--surface-2);
+  }
+  .status::before { content:""; flex:0 0 auto; width:5px; height:5px; border-radius:50%; background:currentColor; }
+  .status.ok { color:var(--ok); background:color-mix(in srgb,var(--ok) 13%,transparent); }
+  .status.warn { color:var(--warn); background:color-mix(in srgb,var(--warn) 13%,transparent); }
+  .status.err { color:var(--err); background:color-mix(in srgb,var(--err) 12%,transparent); }
+  .status.info { color:var(--info); background:color-mix(in srgb,var(--info) 12%,transparent); }
+  /* neutral is the "nothing happened" tone — cancelled/dismissed is not red. */
+  .status.neutral { color:var(--faint); background:var(--surface-2); }
+
+  /* ── KPI strip ────────────────────────────────────────────────────────
+     The Board shell's top band: a label, one number, an optional delta.
+     auto-fit so a two-metric page fills the row and a nine-metric page
+     wraps, without either declaring a column count. */
+  .kpi-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:var(--s-3); margin-bottom:var(--s-5); }
+  .kpi {
+    display:flex; flex-direction:column; gap:var(--s-1); min-width:0;
+    padding:var(--s-3) var(--s-4); border:1px solid var(--line-1);
+    border-radius:var(--radius); background:var(--panel);
+  }
+  .kpi .label {
+    font-size:var(--text-xs); font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .kpi .value { font-size:var(--text-2xl); font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  .kpi .sub { font-size:var(--text-xs); color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .kpi .delta { font-family:var(--mono); font-size:var(--text-xs); color:var(--dim); }
+  .kpi .delta.up { color:var(--ok); }
+  .kpi .delta.down { color:var(--err); }
+
+  /* ── Identity ─────────────────────────────────────────────────────────
+     Avatar + name + mono sub-line, the unit every list of agents/customers/
+     sessions is built from. `min-width:0` on both the row and the text
+     column so a long name truncates instead of widening its grid/flex cell. */
+  .identity { display:flex; align-items:center; gap:var(--s-2); min-width:0; }
+  .identity .av {
+    flex:0 0 28px; width:28px; height:28px; border-radius:50%; display:grid; place-items:center;
+    font-size:var(--text-xs); font-weight:700; text-transform:uppercase;
+    background:var(--surface-2); color:var(--dim);
+  }
+  .identity .who { display:flex; flex-direction:column; min-width:0; line-height:1.3; }
+  .identity .name { font-weight:600; font-size:var(--text-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .identity .id { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* Hue from avatar_hue(id) — the same nine themed ramps the agent cards use. */
+  .identity .av-1 { background:var(--av-1-bg); color:var(--av-1-fg); }
+  .identity .av-2 { background:var(--av-2-bg); color:var(--av-2-fg); }
+  .identity .av-3 { background:var(--av-3-bg); color:var(--av-3-fg); }
+  .identity .av-4 { background:var(--av-4-bg); color:var(--av-4-fg); }
+  .identity .av-5 { background:var(--av-5-bg); color:var(--av-5-fg); }
+  .identity .av-6 { background:var(--av-6-bg); color:var(--av-6-fg); }
+  .identity .av-7 { background:var(--av-7-bg); color:var(--av-7-fg); }
+  .identity .av-8 { background:var(--av-8-bg); color:var(--av-8-fg); }
+  .identity .av-9 { background:var(--av-9-bg); color:var(--av-9-fg); }
+
+  /* ── Data table ───────────────────────────────────────────────────────
+     `table.grid` shipped with no rules at all, so Tailwind's preflight left
+     the cells padding-less: the header row collapsed into a single run of
+     text with no visible relation to the columns under it. Padding + a
+     shared text-align on th/td is the whole fix; the sticky head keeps the
+     column names in view down a long list. */
+  table.grid { width:100%; border-collapse:collapse; font-size:var(--text-sm); }
+  table.grid thead { position:sticky; top:0; z-index:1; background:var(--panel); }
+  table.grid th {
+    text-align:left; padding:var(--s-2) var(--s-3); white-space:nowrap;
+    font-family:var(--mono); font-size:var(--text-xs); font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+    border-bottom:1px solid var(--line-2);
+  }
+  table.grid td { text-align:left; padding:var(--s-2) var(--s-3); border-bottom:1px solid var(--line-1); vertical-align:middle; }
+  table.grid tbody tr { height:var(--row-h); transition:background var(--t-fast); }
+  table.grid tbody tr:hover, table.grid tbody tr:focus-within { background:var(--surface-1); }
+  table.grid tbody tr:last-child td { border-bottom:0; }
+  /* Numbers and timestamps align on their right edge — in the head too, or
+     the column name sits over the wrong side of its own column. */
+  table.grid th.num, table.grid td.num,
+  table.grid th.time, table.grid td.time { text-align:right; font-variant-numeric:tabular-nums; }
+  /* Row actions are chrome: present for the keyboard, invisible until the row
+     is pointed at, so a long table reads as data and not as a wall of buttons. */
+  table.grid .row-actions { display:flex; align-items:center; justify-content:flex-end; gap:var(--s-2); opacity:0; transition:opacity var(--t-fast); }
+  table.grid tr:hover .row-actions, table.grid tr:focus-within .row-actions { opacity:1; }
+
+  /* ── Inline SVG chart ─────────────────────────────────────────────────
+     Base for the Board shell's bar charts. Geometry comes from SVG
+     attributes and paint from these classes — CSP forbids inline style.
+     Bars are capped at 28px wide by the markup that emits them, so a
+     two-point series reads as two bars and not as two slabs. Axis labels are
+     sans (dim, --text-xs), NOT mono: they are prose, not identifiers. */
+  .chart { display:block; width:100%; overflow:visible; }
+  .chart .bar { fill:var(--accent-bg); transition:filter var(--t-fast); }
+  .chart .bar:hover { filter:brightness(1.1); }
+  .chart .bar-empty { fill:var(--line-2); }
+  .chart .axis { stroke:var(--line-2); stroke-width:1; }
+  .chart-labels { display:flex; justify-content:space-between; gap:var(--s-2); margin-top:var(--s-1); font-size:var(--text-xs); color:var(--dim); }
 
   /* ── Overview home: stat cards + activity chart + conversations ─────── */
   .stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.75rem; margin-bottom:1.25rem; }

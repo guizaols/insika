@@ -11,6 +11,15 @@
   <meta name="csp-nonce" content="<%= csp_nonce %>">
   <title>Insika Studio</title>
   <link rel="icon" type="image/svg+xml" href="<%= asset_path("favicon.svg") %>">
+  <%# The two webfonts every page uses on first paint (body sans + mono at 400).
+      Without the preload the browser only discovers them after the stylesheet
+      parses, which is one round-trip of fallback text. The other mono weights
+      are rare enough to stay lazy. The hrefs must match the @font-face `src:`
+      in application.css exactly — see font_path in app.rb. %>
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="<%= font_path("ibm-plex-sans-latin-wght-normal.woff2") %>">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="<%= font_path("ibm-plex-mono-latin-400-normal.woff2") %>">
   <link rel="stylesheet" href="<%= asset_path("application.css") %>">
   <script type="module" src="<%= asset_path("application.js") %>" defer></script>
 </head>

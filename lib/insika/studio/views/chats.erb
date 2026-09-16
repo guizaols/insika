@@ -1,11 +1,11 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/agents">agents</a> / <span>chats</span></nav>
+    <nav class="crumbs"><a href="/studio/agents">agents</a></nav>
     <h1>Chats<span class="sub"><%= @sessions.size %> recent conversation(s)</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/chats", @agent) %>
-    <a class="btn primary" href="/studio/playground">New conversation →</a>
+    <a class="btn primary" href="/studio/playground">New conversation</a>
   </div>
 </header>
 

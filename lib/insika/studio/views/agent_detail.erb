@@ -9,12 +9,12 @@
 <% unless frame_only %>
   <header class="page-head">
     <div>
-      <nav class="crumbs"><a href="/studio/agents">agents</a> / <span><%= @agent.id %></span></nav>
+      <nav class="crumbs"><a href="/studio/agents">agents</a></nav>
       <h1><span class="avatar sm <%= avatar_class(@agent.id) %>"><%= @agent.id[0, 2].upcase %></span><%= @agent.id %>
         <span class="sub"><%= @agent.model %><%== " · #{h(@agent.provider)}" if @agent.provider %></span>
       </h1>
     </div>
-    <a class="btn primary" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>">Open playground →</a>
+    <a class="btn primary" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>">Open playground</a>
   </header>
 
   <div class="drill" data-controller="list-filter">

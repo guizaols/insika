@@ -1,0 +1,17 @@
+<%# One metric in a `.kpi-strip`. Locals:
+      label: — what is being counted (rendered uppercase by the CSS)
+      value: — the number itself
+      sub:   — optional qualifier under the value ("last 7 days")
+      delta: — optional change vs the previous period, e.g. "+12%"; a leading
+               "-" colors it red, anything else green. Pass nil for "no
+               comparison available" — an absent delta is not a zero delta. %>
+<% sub = defined?(sub) ? sub : nil %>
+<% delta = defined?(delta) ? delta : nil %>
+<div class="kpi">
+  <span class="label"><%= label %></span>
+  <span class="value tnum"><%= value %></span>
+  <% if delta %>
+    <span class="delta <%= delta.to_s.start_with?("-") ? "down" : "up" %>"><%= delta %></span>
+  <% end %>
+  <% if sub %><span class="sub"><%= sub %></span><% end %>
+</div>

@@ -10,7 +10,7 @@
 <% unless frame_only %>
   <header class="page-head">
     <div>
-      <nav class="crumbs"><a href="/studio/chats">chats</a> / <span>session</span></nav>
+      <nav class="crumbs"><a href="/studio/chats">chats</a></nav>
       <h1>Session
         <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @session.id %>">
           <span class="mono"><%= @session.id[0, 16] %></span>
@@ -19,7 +19,7 @@
         <span class="sub"><%= Array(@session.messages).size %> message(s) · updated <%= @session.updated_at %></span>
       </h1>
     </div>
-    <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground →</a>
+    <a class="btn" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>">Continue in playground</a>
   </header>
 
   <div class="drill" data-controller="list-filter">
