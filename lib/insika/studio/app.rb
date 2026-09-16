@@ -1098,6 +1098,14 @@ end
           control_action(:resolve_refinement, payload, ok: ok)
           r.redirect("/studio/refinement?agent=#{Rack::Utils.escape(agent.to_s)}")
         end
+
+        # GET /studio/refinement/:id — one run's findings/proposal/diff. Same
+        # miller-column pattern as agent_detail/fact_detail: a Turbo-Frame
+        # request gets the pane alone, a plain hit gets the shell.
+        r.on String do |id|
+          id = utf8(id)
+          r.get { render_refinement_detail(id) }
+        end
       end
 
       # --- Harvest: the gated skill loop  ----------------------
@@ -2487,19 +2495,43 @@ end
 
     # Refinement -----------------------------
 
-    # The agent's latest failure report + its run history. Empty-state when no store
-    # was injected or the agent has never been run — the page is the invitation to
-    # run it, so there is nothing to hide behind a nil.
+    # The index: master pane lists the scoped agent's run history; the detail
+    # pane defaults to the run that most needs a look — one awaiting a human
+    # answer if there is one (at most one is possible: gating requires a
+    # `completed` run and there is one lifecycle per record), else the most
+    # recent terminal run. Empty-state when no store was injected or the
+    # agent has never been run — the page is the invitation to run it, so
+    # there is nothing to hide behind a nil.
     def render_refinement
+      refinement_rows(request.params["agent"])
+      @selected = @runs.find(&:awaiting_approval?) || @runs.find(&:terminal?)
+      view("refinement")
+    end
+
+    # GET /studio/refinement/:id — one run, whatever its status, with the
+    # master pane scoped to ITS agent (a deep link may land on a run that
+    # isn't the current default selection).
+    def render_refinement_detail(id)
+      @selected = insika[:refinement_store]&.find(id)
+      next_404 unless @selected
+
+      refinement_rows(@selected.agent_id)
+      if turbo_frame?("refinement-detail")
+        render("refinement_detail", locals: { frame_only: true }, layout: false)
+      else
+        view("refinement_detail", locals: { frame_only: false })
+      end
+    end
+
+    # Shared read for both Refinement routes: every agent id (the Run form's
+    # target and the scope filter's options), the ?agent= scope (falling back
+    # to the first agent so there is always something to show), and that
+    # agent's run history, most recent first.
+    def refinement_rows(requested_agent)
       @agents = insika[:profile_source].ids.sort
-      @agent = presence(request.params["agent"]) || @agents.first
+      @agent = presence(requested_agent) || @agents.first
       store = insika[:refinement_store]
       @runs = @agent && store ? store.for_agent(@agent, limit: 10) : []
-      @run = @runs.find(&:terminal?)
-      # The one run that owes this agent a human answer. At most one is possible:
-      # gating requires a `completed` run and there is one lifecycle per record.
-      @proposal = @runs.find(&:awaiting_approval?)
-      view("refinement")
     end
 
     # --- Parity  -------------------------------------------------
@@ -3039,6 +3071,24 @@ end
       "last #{window['last_sessions'] || Insika::Refinement::EvidenceCollector::DEFAULT_WINDOW} conversation(s)"
     end
 
+    # How long a run took (finished_at - started_at), or how long an open one
+    # has been running so far (against now) — compact, like time_ago's units.
+    def refinement_elapsed(run)
+      start = parse_time(run.started_at)
+      return nil unless start
+
+      finish = run.finished_at ? parse_time(run.finished_at) : Time.now
+      return nil unless finish
+
+      secs = (finish - start).to_i
+      return "#{secs}s" if secs < 60
+
+      mins = secs / 60
+      return "#{mins}min" if mins < 60
+
+      "#{mins / 60}h"
+    end
+
     # An operator control (pause/resume/cancel/approve): audits the ATTEMPT to the
     # shared EventStream BEFORE dispatching — accountability survives a Command
     # failure (parity with server/admin's `act`) — then dispatches via the bus with
@@ -3073,11 +3123,11 @@ end
     # cancelled or dismissed item is not a failure.
     def status_class(status)
       case status.to_s
-      when "completed", "fired", "approved", "ok" then "ok"
+      when "completed", "fired", "approved", "ok", "applied" then "ok"
       when "running" then "run"
-      when "pending", "waiting", "queued", "paused" then "warn"
+      when "pending", "waiting", "queued", "paused", "awaiting_approval" then "warn"
       when "blocked", "failed", "rejected" then "err"
-      when "cancelled", "dismissed" then "neutral"
+      when "cancelled", "dismissed", "no_findings" then "neutral"
       else "info"
       end
     end

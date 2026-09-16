@@ -1,0 +1,245 @@
+<%# Refinement run detail — the DETAIL pane of the Refinement miller shell.
+    Full page (direct visit/refresh): the two-column shell — master run list
+    plus this pane. Turbo-Frame request (a row click, a Run/propose/resolve
+    POST's redirect): the pane alone, so the master's scroll state and
+    selection survive every interaction. @selected is a
+    Insika::RefinementStore::Run — its `status` picks what shows below the
+    findings: a gated proposal awaiting approval, what auto_apply already
+    changed, or why the gate refused. The review IS the product: a gated
+    proposal shows the exact edit, what it claims to fix, and how it scored
+    against the accepted baseline, because approving is a decision and a
+    decision needs those three things. %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
+  <header class="page-head">
+    <div>
+      <nav class="crumbs"><a href="/studio/refinement">refinement</a></nav>
+      <h1>Refinement<span class="sub"><%= @agent || "no agent" %></span></h1>
+    </div>
+    <div class="head-actions">
+      <%== agent_filter_form("/studio/refinement", @agent) %>
+    </div>
+  </header>
+
+  <div class="drill" data-controller="list-filter">
+    <%== render("_refinement_master", locals: { active_id: @selected&.id }) %>
+<% end %>
+    <turbo-frame id="refinement-detail" class="drill-pane drill-detail">
+      <%# A frame response never sees the layout, so the flash strip lives here
+          too — without it, run/propose/resolve confirmations would vanish on
+          frame submits (the layout's copy only renders on full pages). %>
+      <% if frame_only %>
+        <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+        <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+      <% end %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <% if @selected %>
+            <strong class="mono"><%= short_id(@selected.id) %></strong>
+            <span class="status <%= status_class(@selected.status) %>"><%= @selected.status %></span>
+            <span class="count">
+              <%= @selected.findings.size %> finding(s) · <%= refinement_window(@selected.window) %> ·
+              <%= refinement_elapsed(@selected) %>
+            </span>
+          <% else %>
+            <strong>No run yet</strong>
+            <span class="count">for <span class="mono"><%= @agent %></span></span>
+          <% end %>
+        </div>
+        <% if @agent %>
+          <form method="post" action="/studio/refinement" class="actions inline" data-turbo-frame="_top">
+            <%== csrf_tag %>
+            <input type="hidden" name="agent" value="<%= @agent %>">
+            <label class="check" title="Ignore the previous run and read the full window instead of only what happened since.">
+              <input type="checkbox" name="full" value="1"> full window
+            </label>
+            <button type="submit" class="btn primary btn-sm" data-turbo-submits-with="Running…">Run</button>
+          </form>
+        <% end %>
+      </div>
+      <div class="drill-pane-body">
+        <% if @agent.nil? %>
+          <div class="empty">No agents yet. Create one first — a refinement run reads an agent's own traffic.</div>
+        <% elsif @selected.nil? %>
+          <div class="empty">No run yet for <span class="mono"><%= @agent %></span>. Press Run to read the last conversations.</div>
+        <% else %>
+          <%# The review IS the product. A gated proposal shows the exact
+              edit, what it claims to fix, and how it scored against the accepted baseline,
+              because approving is a decision and a decision needs those three things. %>
+          <% if @selected.status == :awaiting_approval %>
+            <div class="section">
+              <div class="section-head">
+                <h2>Proposal<span class="sub">gated · awaiting your approval</span></h2>
+              </div>
+              <div class="card">
+                <% cand = @selected.candidate || {} %>
+                <div class="skill-desc">
+                  <span class="pill ok">gate passed</span>
+                  <span class="mono"><%= @selected.gate["passed_cases"] %>/<%= @selected.gate["cases"] %> case(s)</span>
+                  <span class="muted">no regression against <%= @selected.gate["baseline_cases"] %> baselined case(s)</span>
+                  <span class="muted">· proposed by <span class="mono"><%= cand["proposer"] %></span></span>
+                  <%# When a PANEL ran, the operator is looking at the winner of
+                      several, and which ones it beat is part of the decision. %>
+                  <% if @selected.panel.size > 1 %>
+                    <span class="muted">· best of <%= @selected.panel.size %> candidate(s)</span>
+                  <% end %>
+                  <% if @selected.cost && @selected.cost["spent"].to_i.positive? %>
+                    <span class="muted">· <%= @selected.cost["spent"] %> tokens<% if @selected.cost["cached"].to_i.positive? %>
+                      (<%= @selected.cost["cached"] %> cached)<% end %></span>
+                  <% end %>
+                </div>
+                <% if presence(cand["rationale"]) %>
+                  <div class="skill-desc muted"><%= cand["rationale"] %></div>
+                <% end %>
+
+                <% Array(cand["edits"]).each do |e| %>
+                  <div class="skill-desc">
+                    <span class="pill"><%= e["op"] %></span>
+                    <span class="mono"><%= e["file"] %></span>
+                    <% if presence(e["anchor"]) %><span class="muted"><%= e["anchor"] %></span><% end %>
+                    <% if Array(e["addresses"]).any? %>
+                      <span class="muted">· addresses <%= Array(e["addresses"]).join(", ") %></span>
+                    <% end %>
+                  </div>
+                  <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
+<% end %><span class="ins">+ <%= e["after"] %></span></pre>
+                <% end %>
+
+                <form method="post" action="/studio/refinement/resolve" class="actions">
+                  <%== csrf_tag %>
+                  <input type="hidden" name="agent" value="<%= @agent %>">
+                  <input type="hidden" name="run_id" value="<%= @selected.id %>">
+                  <label>
+                    Note
+                    <input type="text" name="note" placeholder="why (optional)">
+                  </label>
+                  <button type="submit" class="primary" name="decision" value="approved">Approve &amp; apply</button>
+                  <button type="submit" class="ghost" name="decision" value="rejected">Reject</button>
+                </form>
+                <div class="skill-desc muted">
+                  Approving writes the edits to the agent's files and versions the previous
+                  content — undo it any time from the file's History.
+                </div>
+              </div>
+
+              <%# The candidates that LOST. Shown because the panel's value is comparative: an
+                  operator deciding whether the loop earns its keep needs to see that three
+                  models were asked and what the other two wrote. %>
+              <% losers = @selected.panel.reject { |e| (e["candidate"] || {})["id"] == cand["id"] } %>
+              <% if losers.any? %>
+                <div class="section-head">
+                  <h2>Also proposed<span class="sub">scored and not chosen</span></h2>
+                </div>
+                <div class="card">
+                  <ul class="history">
+                    <% losers.each do |entry| %>
+                      <% other = entry["candidate"] || {}; verdict = entry["gate"] || {} %>
+                      <li>
+                        <span class="pill <%= verdict["passed"] ? 'ok' : 'err' %>"><%= verdict["passed"] ? "passed" : "no" %></span>
+                        <span class="mono"><%= Array(entry["proposers"]).join(" + ") %></span>
+                        <span class="preview muted">
+                          <%= Array(other["edits"]).size %> edit(s)
+                          <% if verdict["cases"].to_i.positive? %>· <%= verdict["passed_cases"] %>/<%= verdict["cases"] %> case(s)<% end %>
+                          <% if presence(verdict["reason"]) %>· <%= verdict["reason"] %><% end %>
+                        </span>
+                      </li>
+                    <% end %>
+                  </ul>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <%# `mode: auto_apply` changed this agent's files with nobody in
+              the loop, so the page owes the operator exactly three things: what changed, why,
+              and where to undo it. The write versioned, so History IS the undo. %>
+          <% if @selected.status == :applied && (@selected.decision || {})["by"] == "auto_apply" %>
+            <div class="card">
+              <div class="skill-desc">
+                <span class="pill ok">auto-applied</span>
+                <span class="muted"><%= (@selected.decision || {})["note"] %> · <%= (@selected.decision || {})["at"] %></span>
+              </div>
+              <% Array((@selected.candidate || {})["edits"]).each do |e| %>
+                <div class="skill-desc">
+                  <span class="pill"><%= e["op"] %></span>
+                  <a class="mono" href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?file=<%= Rack::Utils.escape(e["file"]) %>"><%= e["file"] %></a>
+                </div>
+                <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
+<% end %><span class="ins">+ <%= e["after"] %></span></pre>
+              <% end %>
+              <div class="skill-desc muted">
+                Undo it from the file's History — the previous content is one click away.
+              </div>
+            </div>
+          <% end %>
+
+          <%# A gate that refused is the most useful thing on this page and the easiest to
+              lose: without it, pressing Propose and getting nothing back reads as a bug. %>
+          <% if @selected.status == :rejected && @selected.gate.is_a?(Hash) && !@selected.gate_passed? %>
+            <div class="card">
+              <div class="skill-desc">
+                <span class="pill err">gate refused</span>
+                <span class="mono"><%= @selected.gate["reason"] %></span>
+              </div>
+              <% Array((@selected.candidate || {})["dropped"]).each do |d| %>
+                <div class="skill-desc muted">dropped <span class="mono"><%= d["file"] %></span> — <%= d["reason"] %></div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <h2>Findings<span class="sub"><%= @selected.findings.size %> · <%= @selected.status %><% if @selected.excluded.to_i.positive? %> · <%= @selected.excluded %> turn(s) excluded<% end %> · <%= @selected.finished_at || @selected.started_at %></span></h2>
+
+          <%# The model writes the candidate, the gate scores it. Offered on
+              a finished report and only when nothing is already awaiting an answer: a second
+              proposal while one is pending would ask the operator to review two edits to the
+              same file that were never scored together. %>
+          <% if @selected.status == :completed && @selected.findings.any? %>
+            <div class="card">
+              <form method="post" action="/studio/refinement/propose" class="actions">
+                <%== csrf_tag %>
+                <input type="hidden" name="agent" value="<%= @agent %>">
+                <input type="hidden" name="run_id" value="<%= @selected.id %>">
+                <button type="submit" class="primary">Propose a fix</button>
+              </form>
+              <div class="skill-desc muted">
+                Asks this agent's configured proposer(s) for a small, anchored edit to its
+                allowlisted files, then scores each one by replaying the golden set against a
+                throwaway clone and keeps the best. Nothing is written until you approve it.
+                Takes a while and costs provider calls — the replay is a real conversation per
+                case, per candidate.
+              </div>
+            </div>
+          <% end %>
+
+          <% if @selected.status == :failed %>
+            <div class="empty">This run failed: <span class="mono"><%= @selected.error %></span></div>
+          <% elsif @selected.findings.empty? %>
+            <div class="empty">Nothing found in this window. Either traffic was clean, or the window was empty.</div>
+          <% else %>
+            <div class="card">
+              <ul class="history">
+                <% @selected.findings.each do |f| %>
+                  <li>
+                    <span class="pill"><%= f["kind"] %></span>
+                    <span class="mono">×<%= f["count"] %></span>
+                    <span class="preview"><%= f["title"] %></span>
+                    <% if f["detail"] %><div class="skill-desc muted"><%= f["detail"] %></div><% end %>
+                    <% if Array(f["sessions"]).any? %>
+                      <div class="skill-desc muted">
+                        <% Array(f["sessions"]).each do |sid| %>
+                          <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid[0, 12] %></a>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </turbo-frame>
+<% unless frame_only %>
+  </div>
+<% end %>
