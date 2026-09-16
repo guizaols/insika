@@ -527,6 +527,12 @@
      is pointed at, so a long table reads as data and not as a wall of buttons. */
   table.grid .row-actions { display:flex; align-items:center; justify-content:flex-end; gap:var(--s-2); opacity:0; transition:opacity var(--t-fast); }
   table.grid tr:hover .row-actions, table.grid tr:focus-within .row-actions { opacity:1; }
+  /* Truncates a long value (a report title, e.g.) with an ellipsis instead of
+     stretching the row wider than the card. The cap sits on the inline child
+     itself (a hard ch width), not on table-layout — table.grid stays
+     auto-layout everywhere else, so this is opt-in per cell and never
+     resizes any other column on any other page. */
+  table.grid td.ellipsis > * { display:inline-block; max-width:40ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
 
   /* ── Inline SVG chart ─────────────────────────────────────────────────
      Base for the Board shell's bar charts. Geometry comes from SVG
