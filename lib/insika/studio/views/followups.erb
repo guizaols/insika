@@ -93,10 +93,10 @@
 
     <%# D3: the A/B card — a READ-ONLY fold over the same records. The
         ruler outside the card is the operator's baseline; this card only
-        reads it (the note says so). NB: the conversion-% and opt-outs cells
-        stay bare <td> (no class/wrapper) — a regression spec matches their
-        exact markup ("…100.0%</td><td>1</td>…") to prove the opt-out count
-        is arm-scoped, never a global revoked count. %>
+        reads it (the note says so). A regression spec matches the
+        conversion-% and opt-outs cells' text content ("…100.0%…1…") to
+        prove the opt-out count is arm-scoped, never a global revoked
+        count — it doesn't pin the exact opening-tag markup. %>
     <div class="card">
       <div class="section-head">
         <h3>A/B readout <span class="muted">last 30 days · per arm</span></h3>
@@ -116,7 +116,7 @@
                 <td class="num tnum"><%= row[:sent] %></td>
                 <td class="num tnum"><%= row[:conversions] %></td>
                 <td class="num tnum"><%= row[:sent].zero? ? "—" : format("%.1f", row[:conversions].to_f / row[:sent] * 100) %>%</td>
-                <td><%= row[:opt_outs] %></td>
+                <td class="num tnum"><%= row[:opt_outs] %></td>
               </tr>
             <% end %>
           </tbody>

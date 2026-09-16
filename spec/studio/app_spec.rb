@@ -3925,8 +3925,8 @@ end
       body = login(app).get("/followups").body
       # the arm row ends "…<conversion%> | <opt-outs>" — one real opt-out, and
       # NOT the 3 a global revoked-count would show.
-      expect(body).to match(%r{100\.0%<\/td>\s*<td>1</td>})
-      expect(body).not_to match(%r{100\.0%<\/td>\s*<td>3</td>})
+      expect(body).to match(%r{100\.0%</td>\s*<td[^>]*>1</td>})
+      expect(body).not_to match(%r{100\.0%</td>\s*<td[^>]*>3</td>})
     end
 
     it "the revoke POST dispatches :revoke_contact with customer + tenant" do
