@@ -4495,6 +4495,22 @@ end
       expect(filtered).not_to include("clean")
     end
 
+    # The chip-based agent filter (a button per agent) and the chip-row
+    # all/conflicts toggle are gone: the ONE shared agent_filter_form select
+    # is the only agent scope selector, and all/conflicts is a segmented
+    # control living in the master pane's own drill-pane-head.
+    it "has no chip-based filters — the shared agent select and a segmented status control replace them" do
+      app, = knowledge_app(concepts: { ["store-support", "cep-13"] => "b" },
+                            agents: [profile("store-support"), profile("chef")])
+      body = login(app).get("/knowledge?agent=store-support").body
+
+      expect(body).not_to include("filter-bar")
+      expect(body).to include('<select name="agent"')
+      expect(body).to include('<div class="segmented"')
+      expect(body).to include(">All <span")
+      expect(body).to include(">Conflicts <span")
+    end
+
     it "the write POST dispatches :write_concept and redirects to the concept's own page" do
       app, bus = knowledge_app
       client = login(app)
