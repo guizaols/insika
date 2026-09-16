@@ -23,32 +23,29 @@
   </header>
 
   <div class="drill" data-controller="list-filter">
-    <aside class="drill-pane drill-master">
-      <div class="drill-pane-head">
-        <div class="title"><strong>Conversations <span class="count"><%= @sessions.size %></span></strong></div>
-      </div>
-      <div class="drill-search">
-        <input type="search" class="filter-input" placeholder="Filter conversations…" aria-label="Filter conversations"
-               data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-      </div>
-      <nav class="drill-pane-body drill-list" aria-label="conversations" data-controller="active-link">
-        <% @sessions.each do |s| %>
-          <a class="drill-item<%== ' active' if s.id == @session.id %>"
-             href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>"
-             data-turbo-frame="session-detail" data-turbo-action="advance"
-             data-list-filter-target="item" data-filter-text="<%= s.id %> <%= session_preview(s) %>"
-             data-active-link-target="item" data-action="click->active-link#select">
-            <div class="drill-item-name"><span class="txt mono"><%= s.id[0, 18] %></span></div>
-            <div class="drill-item-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></div>
-          </a>
-        <% end %>
-      </nav>
-    </aside>
+    <%== render("_chats_master", locals: { active_id: @session.id }) %>
 <% end %>
     <turbo-frame id="session-detail" class="drill-pane drill-detail session-pane">
       <div class="session-columns">
         <%# ── Center: the transcript ───────────────────────────────────── %>
-        <section class="session-transcript" aria-label="transcript">
+        <%# live-transcript (T11): the SAME SSE island the playground uses,
+            scoped to THIS session — a turn landing on it while an operator has
+            it open here streams in live, right alongside the replayed history
+            below. The controller lives on THIS section, not the outer
+            turbo-frame: a row click in the master re-renders this whole
+            section from scratch (Turbo's default frame swap replaces the
+            frame's content wholesale, no morphing configured anywhere in this
+            app — see live_transcript_reconnect.test.mjs), so Stimulus tears
+            down the old controller (closing its EventSource) and boots a
+            fresh one scoped to the newly-selected session_id. Putting the
+            controller on the turbo-frame element itself would defeat this:
+            that element persists across the swap, so its session-value would
+            change under a live controller instance with no valueChanged
+            callback to notice — the stream would keep serving the PREVIOUS
+            session. %>
+        <section class="session-transcript" aria-label="transcript"
+                 data-controller="live-transcript"
+                 data-live-transcript-session-value="<%= @session.id %>">
           <%# Session markers in the margin: start, agent,
               shape — ghost pills, right-aligned, from data the view already
               has. %>
@@ -60,39 +57,36 @@
             <span class="ghost-pill"><%= Array(@session.messages).size %> messages</span>
           </div>
 
-          <% if Array(@session.messages).empty? %>
-            <div class="empty">This session has no messages.</div>
-          <% else %>
-            <div class="thread">
-              <%# A skill loaded by the model shows up here on its own: load_skill is a tool,
-                  so its body is a persisted `role: tool` message. A skill injected by CONTEXT
-                  (triggers/skills_eager) is part of the system prompt — never a message — so
-                  the thread had no trace of it at all. Synthesized from the context trace so
-                  both activation paths read the same way in the transcript.
+          <div class="thread" data-live-transcript-target="stream">
+            <%# A skill loaded by the model shows up here on its own: load_skill is a tool,
+                so its body is a persisted `role: tool` message. A skill injected by CONTEXT
+                (triggers/skills_eager) is part of the system prompt — never a message — so
+                the thread had no trace of it at all. Synthesized from the context trace so
+                both activation paths read the same way in the transcript.
 
-                  Placed by TIME, not by counting turns: every message of a turn is persisted
-                  together at the end of it, and the context stage always runs before that, so
-                  each entry lands at the top of its own turn. Ordinal counting would drift on
-                  a steered message (one that joins a turn already running). A message with no
-                  `at` (older sessions) simply flushes nothing. %>
-              <% pending = (@context_traces || [])
-                           .select { |c| Array((c["categories"] || {}).dig("skilltrigger", "labels")).any? }
-                           .sort_by { |c| c["at"].to_s } %>
-              <% Array(@session.messages).each_with_index do |m, i| %>
-                <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
-                  <% pending.shift %>
-                  <% labels = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
-                  <details class="toolcard skill">
-                    <summary><%== chip_icon(:skill) %><strong>skills · <%= skill_mode(labels) %> (<%= labels.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
-                    <pre><%= labels.map { |l| skill_label(l) }.join("\n") %></pre>
-                  </details>
-                <% end %>
-                <%# `prev` is what makes a STEERED message visible: a customer message that lands
-                    right after a tool result arrived mid-run. See _message.erb. %>
-                <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+                Placed by TIME, not by counting turns: every message of a turn is persisted
+                together at the end of it, and the context stage always runs before that, so
+                each entry lands at the top of its own turn. Ordinal counting would drift on
+                a steered message (one that joins a turn already running). A message with no
+                `at` (older sessions) simply flushes nothing. %>
+            <% pending = (@context_traces || [])
+                         .select { |c| Array((c["categories"] || {}).dig("skilltrigger", "labels")).any? }
+                         .sort_by { |c| c["at"].to_s } %>
+            <% Array(@session.messages).each_with_index do |m, i| %>
+              <% while (entry = pending.first) && !m["at"].to_s.empty? && entry["at"].to_s <= m["at"].to_s %>
+                <% pending.shift %>
+                <% labels = Array(entry["categories"]["skilltrigger"]["labels"]).uniq %>
+                <details class="toolcard skill">
+                  <summary><%== chip_icon(:skill) %><strong>skills · <%= skill_mode(labels) %> (<%= labels.length %>)</strong><span class="at"><%= entry["at"] %></span></summary>
+                  <pre><%= labels.map { |l| skill_label(l) }.join("\n") %></pre>
+                </details>
               <% end %>
-            </div>
-          <% end %>
+              <%# `prev` is what makes a STEERED message visible: a customer message that lands
+                  right after a tool result arrived mid-run. See _message.erb. %>
+              <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+            <% end %>
+          </div>
+          <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@session.messages).empty? %>>This session has no messages.</div>
         </section>
 
         <%# ── Right margin: the session's metadata ──────────────────────── %>

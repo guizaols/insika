@@ -1899,6 +1899,37 @@ RSpec.describe Studio::App do
     expect(login(app).get("/sessions/nope").status).to eq(404)
   end
 
+  # T11 — the transcript is a live-transcript island (same SSE the playground
+  # uses), scoped to THIS session: a turn landing on it while the viewer is
+  # open streams straight into the replayed history instead of requiring a
+  # reload. The controller lives on the transcript section INSIDE the
+  # turbo-frame, not on the frame element itself — only that placement gets
+  # torn down and rebuilt (closing the old EventSource, opening a new one
+  # scoped to the new session_id) when a row click swaps the frame's content.
+  it "the session viewer wires the transcript to live-transcript, scoped to the open session" do
+    sess = StoredSession.new(id: "sess-live-wire", updated_at: "t",
+                              messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-live-wire" => sess })
+    body = login(app).get("/sessions/sess-live-wire").body
+    frame = body[body.index('<turbo-frame id="session-detail"')..]
+    expect(frame).to include('data-controller="live-transcript"')
+    expect(frame).to include('data-live-transcript-session-value="sess-live-wire"')
+    expect(frame).to include('data-live-transcript-target="stream"')
+    expect(frame).to include('data-live-transcript-target="empty"')
+    # the controller must sit on the transcript section, INSIDE the frame's
+    # swapped content — not on the frame element, which persists across a row
+    # click and would never reconnect the socket to the new session.
+    expect(body).not_to match(/<turbo-frame id="session-detail"[^>]*data-controller="live-transcript"/)
+  end
+
+  it "a session with no messages still gets a stream target (SSE has somewhere to land its first message)" do
+    sess = StoredSession.new(id: "sess-empty-live", updated_at: "t", messages: [])
+    app, = build_app(sessions: { "sess-empty-live" => sess })
+    body = login(app).get("/sessions/sess-empty-live").body
+    expect(body).to include('data-live-transcript-target="stream"')
+    expect(body).to include("This session has no messages.")
+  end
+
   it "session viewer shows the context breakdown by category" do
     sess = StoredSession.new(id: "sess-c", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     ctx = { "sess-c" => [{ task_id: "t1", turn: 1, at: "2026-08-10T00:00:00Z",
@@ -2196,10 +2227,13 @@ RSpec.describe Studio::App do
                              ])
     app, = build_app(sessions: { "sess-parity" => sess })
     body = login(app).get("/sessions/sess-parity").body
-    # bubbles carry the label row, not the avatar circle
+    # bubbles carry the label row, not the avatar circle — scoped to the
+    # transcript itself: the master list's rows legitimately use .identity
+    # (and its .who span) for the customer (T11), which is a different pane.
+    thread = body[body.index('class="thread"')..]
     expect(body).to include('class="msg user"')
     expect(body).to include("msg-meta")
-    expect(body).not_to include('class="who"')
+    expect(thread).not_to include('class="who"')
     # tool traffic renders as chips BETWEEN bubbles
     expect(body).to include('class="toolcard call"')
     expect(body).to include("chip-sub")
@@ -2743,6 +2777,66 @@ RSpec.describe Studio::App do
     app, = build_app
     body = login(app).get("/chats").body
     expect(body).to include("No conversations")
+  end
+
+  # T11 — Chats becomes the Console master pane: same miller shell as
+  # Agents/Customers/Refinement, a row per session with .identity for the
+  # customer, the agent, a truncated last message, time_ago and an "active"
+  # presence dot for a session touched in the last 5 minutes.
+  it "chats: a Console shell — master rows show identity, agent, preview, time_ago and the active dot" do
+    fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
+                               vars: { "agent" => "bia", "customer" => "maria" },
+                               messages: [{ "role" => "user", "content" => "quero um presente" },
+                                          { "role" => "assistant", "content" => "Claro, para quem é?" }])
+    stale = StoredSession.new(id: "sess-stale", updated_at: "2020-01-01T00:00:00Z",
+                               vars: { "agent" => "bia" },
+                               messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-fresh" => fresh, "sess-stale" => stale })
+    body = login(app).get("/chats").body
+
+    expect(body).to include("app-shell")
+    expect(body).to include('<turbo-frame id="session-detail"')
+    expect(body).to include('data-turbo-frame="session-detail"')
+    expect(body).to include('data-turbo-action="advance"')
+    # the customer's identity + agent (an .identity call: avatar, name, sub) —
+    # exact spans, not a loose ">bia<" (the agent filter's <option> would
+    # false-positive on that).
+    expect(body).to include('class="identity"')
+    expect(body).to include('<span class="name">maria</span>')
+    expect(body).to include('<span class="id">bia</span>')
+    # truncated last message + relative time
+    expect(body).to include("Claro, para quem é?")
+    expect(body).to include("just now")
+    # active dot: lit for the fresh session, not for the stale one
+    fresh_row = body[body.index("sess-fresh")..body.index("sess-stale")]
+    expect(fresh_row).to include('class="presence present"')
+    stale_row = body[body.index("sess-stale")..]
+    expect(stale_row).not_to include('class="presence present"')
+  end
+
+  it "chats: a frame request for session-detail still renders the full page (no row is pre-selected on the index)" do
+    sess = StoredSession.new(id: "sess-idx-frame", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-idx-frame" => sess })
+    body = login(app).get("/chats", frame: "session-detail").body
+    # the index's landing pane has no session selected — a frame hit here is
+    # unrelated to /sessions/:id's own frame handling and must not 404 or
+    # blank the shell.
+    expect(body).to include("app-shell")
+    expect(body).to include("Pick a conversation")
+  end
+
+  it "chats and the session viewer render the SAME master list markup for a session (no duplicated logic)" do
+    sess = StoredSession.new(id: "sess-shared-master", updated_at: "t",
+                              vars: { "agent" => "bia", "customer" => "joao" },
+                              messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-shared-master" => sess })
+    client = login(app)
+    index_row = client.get("/chats").body[/<a class="drill-item[^"]*"\s+href="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
+    detail_row = client.get("/sessions/sess-shared-master").body[/<a class="drill-item[^"]*"\s+href="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
+    expect(index_row).not_to be_nil
+    # the detail's row differs only by the "active" class (this IS the
+    # selected session there); strip it before comparing the rest.
+    expect(detail_row.sub(" active", "")).to eq(index_row)
   end
 
   # --- Overview home (T3) --------------------------------------------------
