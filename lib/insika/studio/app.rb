@@ -2894,10 +2894,19 @@ end
       store = insika[:followup_store]
       return {} unless store
 
-      from = (Time.now.utc - 30 * 86_400).iso8601
-      fired = store.for_agent(tenant: presence(request.params["tenant"]) || "platform",
-                              agent: agent_id)
-                .select { |r| r.status == "fired" && r.at.to_s >= from }
+      fired_all = store.for_agent(tenant: presence(request.params["tenant"]) || "platform",
+                                  agent: agent_id)
+                    .select { |r| r.status == "fired" }
+      return {} if fired_all.empty?
+
+      # The window is the arm's own last 30 days of FIRES (fired_at, never the
+      # scheduled `at` — followup_store.rb's rule, the same one the frequency
+      # ceiling follows), anchored on the most recent fire rather than the
+      # wall clock. A wall-clock anchor would blank the card between visits —
+      # this keeps it reading the arm's last real 30 days of activity.
+      latest = fired_all.filter_map { |r| parse_time(r.fired_at || r.at) }.max
+      from = (latest - 30 * 86_400).iso8601
+      fired = fired_all.select { |r| (r.fired_at || r.at).to_s >= from }
       fired.group_by(&:arm).each_with_object({}) do |(arm, records), acc|
         sessions = records.filter_map(&:session_id)
         acc[arm] = { sent: records.size, conversions: conversions_for(agent_id, sessions),
