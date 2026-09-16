@@ -45,38 +45,43 @@
           <h3><%= tenant || "platform" %><span class="muted">folded by the tick · recomputable from the outcome store</span></h3>
           <span class="muted">primary <strong><%= decl.primary %></strong> · attribution window <%= decl.attribution_window %> (carried, never computed)</span>
         </div>
-        <svg class="barchart" viewBox="0 0 700 120" preserveAspectRatio="none" role="img" aria-label="stage counts, last <%= @period %> days">
-          <% bw = 700.0 / decl.stages.length * 0.6 %>
+
+        <%# D6: spend next to the counts, NOT cost-per-conversion. The
+            BudgetLedger holds current-window TOKEN totals, no currency and no
+            per-day series; a cost/conversion ratio is deferred until
+            the ruler proves itself (E3). %>
+        <div class="kpi-strip">
+          <%== render("_kpi", locals: { label: decl.first_stage, value: first, sub: "last #{@period}d" }) %>
+          <%== render("_kpi", locals: { label: decl.primary, value: counts[decl.primary].to_i }) %>
+          <%== render("_kpi", locals: { label: "Conversion", value: conversion ? format("%.4f", conversion) : "—" }) %>
+          <%== render("_kpi", locals: { label: "Tokens today", value: spend[:daily], sub: "month #{spend[:monthly]}" }) %>
+        </div>
+
+        <%# Chart geometry lives in a 720-unit viewBox and the .chart-funnel
+            cap holds the RENDERED width at 720px too — a wide viewport never
+            stretches the SVG past that, so a bar drawn at <= 28 units stays
+            <= 28 real pixels instead of scaling up with the page. %>
+        <svg class="chart chart-funnel" viewBox="0 0 720 120" preserveAspectRatio="none" role="img" aria-label="stage counts, last <%= @period %> days">
+          <% bw = [720.0 / decl.stages.length * 0.6, 28.0].min %>
           <% decl.stages.each_with_index do |stage, i| %>
             <% c = counts[stage].to_i %>
             <% h = (c.to_f / max) * 96.0 %>
-            <% x = (i * (700.0 / decl.stages.length)) + ((700.0 / decl.stages.length - bw) / 2.0) %>
+            <% x = (i * (720.0 / decl.stages.length)) + ((720.0 / decl.stages.length - bw) / 2.0) %>
             <rect class="bar<%== ' bar-empty' if c.zero? %>" x="<%= format('%.1f', x) %>" y="<%= format('%.1f', c.zero? ? 108.0 : 108.0 - h) %>"
                   width="<%= format('%.1f', bw) %>" height="<%= format('%.1f', c.zero? ? 3.0 : [h, 3.0].max) %>" rx="2">
               <title><%= stage %> · <%= c %></title>
             </rect>
           <% end %>
-          <line class="barchart-axis-line" x1="0" y1="108" x2="700" y2="108" />
+          <line class="axis" x1="0" y1="108" x2="720" y2="108" />
         </svg>
-        <div class="barchart-axis">
+        <div class="chart-labels">
           <% decl.stages.each do |stage| %>
             <span><%= stage %> · <%= counts[stage].to_i %></span>
           <% end %>
         </div>
-        <div class="skill-desc">
-          <span class="pill <%= conversion && conversion.positive? ? 'ok' : 'info' %>">
-            conversion <%= conversion ? format("%.4f", conversion) : "—" %>
-          </span>
-          <span class="muted"><%= counts[decl.primary].to_i %> × <%= decl.primary %> / <%= counts[decl.first_stage].to_i %> × <%= decl.first_stage %>, last <%= @period %> days</span>
-          <%# D6: spend next to the counts, NOT cost-per-conversion. The
-              BudgetLedger holds current-window TOKEN totals, no currency and no
-              per-day series; a cost/conversion ratio is deferred until
-              the ruler proves itself (E3). %>
-          <span class="muted">· tokens today <strong><%= spend[:daily] %></strong> / this month <strong><%= spend[:monthly] %></strong></span>
-        </div>
 
         <% baseline = insika[:funnel_store]&.baseline(tenant: tenant, agent: profile.id) %>
-        <div class="skill-desc">
+        <div class="actions">
           <% if baseline %>
             <span class="pill ok">baseline frozen</span>
             <span class="muted"><%= baseline["from"] %> → <%= baseline["to"] %> · <%= baseline["primary"] %> <%= baseline["primary_count"] %> · conversion <%= baseline["conversion"] ? format("%.4f", baseline["conversion"]) : "—" %> · <%= baseline["window"] %> window · frozen <%= baseline["frozen_at"] %></span>
@@ -84,22 +89,22 @@
             <span class="pill warn">no baseline</span>
             <span class="muted">≥ 28 days of data required — the freeze refuses a shorter span</span>
           <% end %>
+          <form method="post" action="/studio/funnel/<%= Rack::Utils.escape(profile.id) %>/freeze" class="actions">
+            <%== csrf_tag %>
+            <label>
+              From
+              <input type="date" name="from" value="<%= baseline && baseline["from"] %>">
+            </label>
+            <label>
+              To
+              <input type="date" name="to" value="<%= baseline && baseline["to"] %>">
+            </label>
+            <button type="submit" class="primary">Freeze baseline</button>
+            <% if tenant %>
+              <input type="hidden" name="tenant" value="<%= tenant %>">
+            <% end %>
+          </form>
         </div>
-        <form method="post" action="/studio/funnel/<%= Rack::Utils.escape(profile.id) %>/freeze" class="actions">
-          <%== csrf_tag %>
-          <label>
-            From
-            <input type="date" name="from" value="<%= baseline && baseline["from"] %>">
-          </label>
-          <label>
-            To
-            <input type="date" name="to" value="<%= baseline && baseline["to"] %>">
-          </label>
-          <button type="submit" class="primary">Freeze baseline</button>
-          <% if tenant %>
-            <input type="hidden" name="tenant" value="<%= tenant %>">
-          <% end %>
-        </form>
       </div>
     <% end %>
   <% end %>
