@@ -1,4 +1,4 @@
-<%# Overview home: stat cards + activity chart + recent
+<%# Overview home: KPI strip + activity chart + recent
     conversations, all LIVE over the existing SSE channel (live_home_controller
     subscribes to /studio/events; the server-rendered numbers are its baseline).
     Charts are inline SVG (geometry via attributes, fill via stylesheet —
@@ -22,19 +22,15 @@
     </div>
   </header>
 
-  <div class="stat-cards">
+  <div class="kpi-strip">
     <% [["conversations", "Conversations", @conv_trend],
         ["messages", "Messages", @msg_trend],
         ["agents", "Agents", nil],
         ["skills", "Skills", nil],
         ["tools", "Tools", nil],
         ["providers", "LLM providers", nil]].each do |key, label, trend| %>
-      <div class="stat-card">
-        <div class="stat-num tnum"><%= @counts[key] %></div>
-        <div class="stat-label"><%= label %><% if trend && !trend.zero? %>
-          <span class="trend <%= trend.positive? ? "up" : "down" %>" title="vs yesterday"><%= trend.positive? ? "+" : "−" %><%= trend.abs %></span>
-        <% end %></div>
-      </div>
+      <% delta = (trend && !trend.zero?) ? "#{trend.positive? ? '+' : '-'}#{trend.abs}" : nil %>
+      <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta }) %>
     <% end %>
   </div>
 
@@ -44,9 +40,10 @@
         <h2>Activity</h2>
         <span class="muted">conversations touched · last 14 days</span>
       </div>
-      <%# 24h sparkline: area-fill + 1.5px line over the hourly
-          series; same session scan, finer buckets. Geometry via attributes,
-          colors via classes — CSP-safe like the barchart below. %>
+      <%# 24h sparkline: area-fill + 1.5px line over the hourly series, on the
+          shared .chart base (Task 1) — same hairline axis and sans labels as
+          the funnel's bar chart, just a line/time-series shape instead of
+          bars. Geometry via attributes, colors via classes — CSP-safe. %>
       <% s_max = [@activity_24h.map(&:last).max || 0, 1].max %>
       <% s_n = @activity_24h.size %>
       <% s_pts = @activity_24h.each_with_index.map do |(_t, c), i|
@@ -57,11 +54,16 @@
         <div class="sparkline-meta">
           <b class="tnum"><%= @activity_24h.sum { |_t, c| c } %></b> conversations · last 24h
         </div>
-        <svg class="sparkline" viewBox="0 0 480 48" preserveAspectRatio="none" role="img"
+        <svg class="chart" viewBox="0 0 480 48" preserveAspectRatio="none" role="img"
              aria-label="conversations per hour, last 24 hours">
           <polygon class="spark-area" points="<%= s_line %> 480,48 0,48"/>
           <polyline class="spark-line" points="<%= s_line %>" vector-effect="non-scaling-stroke"/>
+          <line class="axis" x1="0" y1="44" x2="480" y2="44" />
         </svg>
+        <div class="chart-labels">
+          <span><%= @activity_24h.first&.first&.strftime('%-l%P') %></span>
+          <span>now</span>
+        </div>
       </div>
       <% max = [@activity.map(&:last).max || 0, 1].max %>
       <svg class="barchart" viewBox="0 0 700 176" preserveAspectRatio="none" role="img" aria-label="conversations per day, last 14 days">

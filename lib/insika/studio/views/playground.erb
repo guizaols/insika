@@ -1,6 +1,13 @@
 <%# Playground — chat surface (T4): config bar on top, transcript scrolls, composer
    pinned at the bottom. Same form fields/route + live-transcript targets as before;
    fires the same send_message as the API. %>
+<header class="page-head">
+  <div>
+    <%== crumbs_for("Playground") %>
+    <h1>Playground<span class="sub">start or resume a conversation</span></h1>
+  </div>
+</header>
+
 <div class="chat"
      data-controller="live-transcript"
      data-live-transcript-session-value="<%= @session_id %>">
