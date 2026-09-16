@@ -212,6 +212,59 @@ RSpec.describe "Studio artifacts" do
     end
   end
 
+  describe "the Ledger row markup" do
+    it "renders mime as a fixed .status.neutral badge, not a semantic pill" do
+      seed(store)
+      body = client.get("/artifacts?agent=reporter").body
+      expect(body).to include('<span class="status neutral">text/html</span>')
+      expect(body).not_to include('<span class="pill">text/html</span>')
+    end
+
+    it "truncates a long task id to 8 chars, keeping the full value in title and data-copy" do
+      long_task = "11111111-2222-3333-4444-555555555555"
+      store.create(tenant: "platform", agent: "reporter", task_id: long_task, title: "Daily report",
+                   mime: "text/html", content: "<html></html>", id: "a-2",
+                   now: Time.iso8601("2026-08-19T12:00:00Z"))
+      body = client.get("/artifacts?agent=reporter").body
+      expect(body).to include(%(title="#{long_task}" data-copy="#{long_task}"))
+      expect(body).to include(">#{long_task[0, 8]}<")
+      expect(body).not_to include(">#{long_task}<")
+    end
+
+    it "shows the owning agent as an .identity block when artifacts span agents" do
+      seed(store)
+      body = client.get("/artifacts").body
+      expect(body).to include('class="identity"')
+      expect(body).to include('<span class="name">reporter</span>')
+    end
+
+    it "keeps the timestamp relative, with the full ISO value in title" do
+      seed(store)
+      body = client.get("/artifacts?agent=reporter").body
+      expect(body).to include('title="2026-08-19T12:00:00Z"')
+      expect(body).not_to include(">2026-08-19T12:00:00Z<")
+    end
+
+    it "keeps delete inside .row-actions, styled as a destructive action, not a bare link" do
+      seed(store)
+      body = client.get("/artifacts?agent=reporter").body
+      row_actions = body[%r{<td class="row-actions">.*?</td>}m]
+      expect(row_actions).not_to be_nil
+      expect(row_actions).to include('class="btn ghost btn-sm danger"')
+      expect(row_actions).to include(">delete<")
+      expect(row_actions).to match(/<button[^>]*class="btn ghost btn-sm danger"[^>]*>delete<\/button>/)
+    end
+
+    it "a very long artifact title is wrapped for CSS truncation, not left to break the row" do
+      long_title = "A" * 200
+      store.create(tenant: "platform", agent: "reporter", task_id: "t-1", title: long_title,
+                   mime: "text/html", content: "<html></html>", id: "a-3",
+                   now: Time.iso8601("2026-08-19T12:00:00Z"))
+      body = client.get("/artifacts?agent=reporter").body
+      expect(body).to include(%(<td class="ellipsis"><a href="/studio/artifacts/a-3">#{long_title}</a></td>))
+    end
+  end
+
   describe "delete" do
     it "dispatches :delete_artifact and redirects back to the list" do
       seed(store)

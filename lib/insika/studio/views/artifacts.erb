@@ -29,26 +29,28 @@
       <thead>
         <tr>
           <% unless @agent %><th>agent</th><% end %>
-          <th>title</th><th>mime</th><th>task</th><th>created_at</th><th></th>
+          <th>title</th><th>mime</th><th>task</th><th class="time">created</th><th></th>
         </tr>
       </thead>
       <tbody>
         <% @artifacts.each do |a| %>
           <tr>
-            <% unless @agent %><td class="mono"><%= a.agent %></td><% end %>
-            <td><a href="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>"><%= a.title %></a></td>
-            <td><span class="pill"><%= a.mime %></span></td>
-            <td class="mono"><%= a.task_id %></td>
-            <td class="mono"><%= a.created_at %></td>
+            <% unless @agent %>
+              <td><%== render("_identity", locals: { id: a.agent, name: a.agent, sub: nil }) %></td>
+            <% end %>
+            <td class="ellipsis"><a href="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>"><%= a.title %></a></td>
+            <td><span class="status neutral"><%= a.mime %></span></td>
+            <td class="mono"><span title="<%= a.task_id %>" data-copy="<%= a.task_id %>"><%= short_id(a.task_id) %></span></td>
+            <td class="time"><span title="<%= a.created_at %>"><%= time_ago(a.created_at) %></span></td>
             <td class="row-actions">
               <% if @signed_available %>
-                <button type="button" class="btn ghost sm" data-copy="<%= signed_artifact_url(a.id) %>">copy link</button>
+                <button type="button" class="btn ghost btn-sm" data-copy="<%= signed_artifact_url(a.id) %>">copy link</button>
               <% end %>
               <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>/delete"
                     class="inline" data-confirm="Delete this artifact?">
                 <%== csrf_tag %>
                 <input type="hidden" name="agent" value="<%= a.agent %>">
-                <button class="btn ghost sm danger">delete</button>
+                <button class="btn ghost btn-sm danger">delete</button>
               </form>
             </td>
           </tr>
