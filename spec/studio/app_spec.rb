@@ -3696,7 +3696,8 @@ end
     expect(body).to include("greeted · 15")
     expect(body).to include("qualified · 8")
     expect(body).to include("paid · 3")
-    expect(body).to include("conversion 0.2000") # 3 / 15
+    # the KPI strip's conversion tile — 3 / 15
+    expect(body).to match(%r{Conversion</span>\s*<span class="value tnum">0\.2000</span>})
   end
 
   it "the period param switches the window" do
@@ -3802,13 +3803,16 @@ end
   it "the spend block renders 0 without budget_ledger" do
     app, = funnel_app
     body = login(app).get("/funnel").body
-    expect(body).to include("tokens today <strong>0</strong>")
+    # the KPI strip's "Tokens today" tile — value + "month N" sub-line
+    expect(body).to match(%r{Tokens today</span>\s*<span class="value tnum">0</span>})
+    expect(body).to include("month 0")
   end
 
   it "the spend block renders the BudgetLedger's current counters when wired" do
     app, = funnel_app(budget: [{ tenant: nil, agent: "funnel-store", by: 1_234 }])
     body = login(app).get("/funnel").body
-    expect(body).to include("tokens today <strong>1234</strong>")
+    expect(body).to match(%r{Tokens today</span>\s*<span class="value tnum">1234</span>})
+    expect(body).to include("month 1234")
   end
 
   it "the baseline block renders when a baseline exists" do
@@ -3826,6 +3830,42 @@ end
     body = login(app).get("/funnel").body
     expect(body).to include("baseline frozen")
     expect(body).to include("2026-07-01")
+  end
+
+  it "the KPI strip shows the first-stage count, the primary metric, conversion, and tokens today/month" do
+    cells = [funnel_cell(1, counts: { "greeted" => 10, "paid" => 2 })]
+    app, = funnel_app(funnel_cells: cells, budget: [{ tenant: nil, agent: "funnel-store", by: 500 }])
+    body = login(app).get("/funnel").body
+
+    expect(body).to include('<div class="kpi-strip">')
+    expect(body).to match(%r{<span class="label">greeted</span>\s*<span class="value tnum">10</span>}) # first stage
+    expect(body).to match(%r{<span class="label">paid</span>\s*<span class="value tnum">2</span>})     # primary metric
+    expect(body).to match(%r{<span class="label">Conversion</span>\s*<span class="value tnum">0\.2000</span>})
+    expect(body).to match(%r{<span class="label">Tokens today</span>\s*<span class="value tnum">500</span>})
+    expect(body).to include("month 500")
+  end
+
+  it "the chart is capped at 720px with the .chart-funnel class and every bar is at most 28px wide" do
+    cells = [funnel_cell(1, counts: { "greeted" => 10, "qualified" => 6, "cart" => 4, "paid" => 2 })]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel").body
+
+    expect(body).to include('class="chart chart-funnel"')
+    expect(body).to include('viewBox="0 0 720 120"')
+    widths = body.scan(/<rect[^>]*\bwidth="([\d.]+)"/).flatten.map(&:to_f)
+    expect(widths).not_to be_empty
+    expect(widths).to all(be <= 28.0)
+  end
+
+  it "the baseline value and the freeze form share a single row" do
+    cells = [funnel_cell(1, counts: { "greeted" => 1 })]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel").body
+    # no </div> sits between the baseline pill and the freeze form's closing
+    # </form> — they are ONE .actions row, not two separate blocks
+    expect(body).to match(
+      %r{<div class="actions">\s*<span class="pill warn">no baseline</span>.*?<form method="post" action="/studio/funnel/funnel-store/freeze".*?</form>\s*</div>}m
+    )
   end
 
   it "the session page shows the stage-history block for a declared agent" do

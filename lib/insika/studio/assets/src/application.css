@@ -546,6 +546,11 @@
   .chart .bar-empty { fill:var(--line-2); }
   .chart .axis { stroke:var(--line-2); stroke-width:1; }
   .chart-labels { display:flex; justify-content:space-between; gap:var(--s-2); margin-top:var(--s-1); font-size:var(--text-xs); color:var(--dim); }
+  /* Funnel's chart: caps the RENDERED width at 720px on every viewport, so a
+     5-bar viewBox never stretches past that regardless of how wide the page
+     is — the bug this fixes was `.chart`'s width:100% scaling the SVG (and
+     its bars) up to the full viewport. */
+  .chart-funnel { max-width:720px; }
 
   /* ── Overview home: stat cards + activity chart + conversations ─────── */
   .stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.75rem; margin-bottom:1.25rem; }
