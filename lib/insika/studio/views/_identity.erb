@@ -1,0 +1,16 @@
+<%# Avatar + name + mono sub-line: the unit every list of agents, customers
+    and sessions is built from. Locals:
+      name: — the human-readable label (truncates if long)
+      sub:  — the mono second line, usually short_id(...) or a model name
+      id:   — the stable identifier the avatar hue is derived from, so the
+              same subject keeps its colour across pages and renders.
+    The initial comes from the name when there is one, else from the id — an
+    unnamed row still gets a mark rather than an empty circle. %>
+<% mark = (name.to_s.strip.empty? ? id.to_s : name.to_s)[0, 1] %>
+<span class="identity">
+  <span class="av av-<%= avatar_hue(id) %>" aria-hidden="true"><%= mark %></span>
+  <span class="who">
+    <span class="name"><%= name %></span>
+    <% if sub %><span class="id"><%= sub %></span><% end %>
+  </span>
+</span>

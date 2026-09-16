@@ -1,9 +1,9 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><span>refinement</span></nav>
+    <%== crumbs_for("Refinement") %>
     <h1>Refinement<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
   </div>
-  <a class="btn" href="/studio/chats">Chats →</a>
+  <a class="btn" href="/studio/chats">Open chats</a>
 </header>
 
 <% if @agents.empty? %>

@@ -97,14 +97,20 @@ module Insika
     # bracket classes collapsed), so the corpus data's `voc[êe]`-style
     # patterns are caught by the same table.
     def domain_content?(path)
-      text = path.to_s.end_with?(".rb") ? ruby_text(path) : File.read(path)
-      fold(text).match?(PT_BR_TOKENS)
+      fold(payload_text(path)).match?(PT_BR_TOKENS)
     end
 
     # -> bool: does a payload file mention the demo persona name (`bia`)?
     def persona_content?(path)
-      text = path.to_s.end_with?(".rb") ? ruby_text(path) : File.read(path)
-      text.match?(PERSONA_NAME)
+      payload_text(path).match?(PERSONA_NAME)
+    end
+
+    # -> String: the text the audit scans. Ruby goes through `ruby_text`;
+    # everything else is read as-is with invalid UTF-8 DROPPED — the payload
+    # also carries binary assets (the Studio's embedded webfonts), which hold
+    # no readable content but would otherwise raise on the first match.
+    def payload_text(path)
+      path.to_s.end_with?(".rb") ? ruby_text(path) : File.read(path).scrub("")
     end
 
     # The Ruby source as the audit reads it: heredoc bodies verbatim, string +

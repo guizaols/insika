@@ -4,7 +4,7 @@
    (nil = none, "" = new, name = edit). %>
 <header class="page-head">
   <div>
-    <nav class="crumbs"><span>knowledge</span></nav>
+    <%== crumbs_for("Knowledge") %>
     <h1>Knowledge<span class="sub"><%= @agent ? @agent.to_s : "no agent" %></span></h1>
   </div>
 </header>

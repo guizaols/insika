@@ -4315,4 +4315,50 @@ end
       expect(body).to include("Knowledge")
     end
   end
+
+  # --- Shared view helpers (the design-system primitives) -------------------
+
+  describe "the identity/status view helpers" do
+    # The helpers are private to the app instance (every view helper is); the
+    # views call them from inside that instance, the spec reaches them the only
+    # other way there is.
+    def helpers(path = "/home")
+      Studio::App.new(Rack::MockRequest.env_for(path))
+    end
+
+    it "avatar_hue is deterministic and always lands in 1..9" do
+      subject_ids = (1..500).map { |n| "agent-#{n}" } + ["", "x", "a" * 400]
+      hues = subject_ids.map { |id| helpers.send(:avatar_hue, id) }
+      expect(hues).to all(be_between(1, 9))
+      # Same id, different instance -> same hue: the colour survives a re-render.
+      expect(helpers.send(:avatar_hue, "store-support")).to eq(helpers.send(:avatar_hue, "store-support"))
+      # ...and the nine ramps are actually all reachable.
+      expect(hues.uniq.sort).to eq((1..9).to_a)
+    end
+
+    it "short_id takes the head of a uuid and never raises on a short or nil id" do
+      expect(helpers.send(:short_id, "0189d4f2-1c3e-4a6b-9f00-112233445566")).to eq("0189d4f2")
+      expect(helpers.send(:short_id, "abc")).to eq("abc")
+      expect(helpers.send(:short_id, nil)).to eq("")
+    end
+
+    it "status_class maps every lifecycle word onto the shared vocabulary" do
+      app = helpers
+      {
+        "completed" => "ok", "fired" => "ok", "approved" => "ok",
+        "running" => "run",
+        "pending" => "warn", "queued" => "warn",
+        "blocked" => "err", "failed" => "err", "rejected" => "err",
+        "cancelled" => "neutral", "dismissed" => "neutral",
+        "something-else" => "info", nil => "info"
+      }.each { |status, klass| expect(app.send(:status_class, status)).to eq(klass) }
+    end
+  end
+
+  it "a page's breadcrumb is its nav group, never a repeat of its own title" do
+    app, = build_app
+    body = login(app).get("/knowledge?agent=bia").body
+    expect(body).to include(%(<nav class="crumbs"><span>operate</span></nav>))
+    expect(body).not_to include(%(<nav class="crumbs"><span>knowledge</span></nav>))
+  end
 end

@@ -1,0 +1,15 @@
+<%# Empty state: why this list is empty and, where there is one, the single
+    thing to do about it. Locals:
+      icon:         — a key from Studio::NavIcons::NAV_ICONS
+      text:         — the message
+      action_href:  — optional link for the one action
+      action_label: — its label; both must be present for the action to render. %>
+<% action_href = defined?(action_href) ? action_href : nil %>
+<% action_label = defined?(action_label) ? action_label : nil %>
+<div class="empty">
+  <span class="ic" aria-hidden="true"><%== nav_icon(icon) %></span>
+  <p class="msg"><%= text %></p>
+  <% if action_href && action_label %>
+    <p class="act"><a class="btn" href="<%= action_href %>"><%= action_label %></a></p>
+  <% end %>
+</div>

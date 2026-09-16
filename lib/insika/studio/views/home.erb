@@ -18,7 +18,7 @@
         <b class="tnum" data-live-home-target="count"><%= @active_now %></b> active now
         <span class="live-ago muted" data-live-home-target="ago"></span>
       </span>
-      <a class="btn primary" href="/studio/playground">Open playground →</a>
+      <a class="btn primary" href="/studio/playground">Open playground</a>
     </div>
   </header>
 
@@ -85,7 +85,7 @@
     <section class="card home-recent">
       <div class="section-head">
         <h2>Recent conversations</h2>
-        <a class="muted" href="/studio/chats">all →</a>
+        <a class="muted" href="/studio/chats">See all</a>
       </div>
       <% cutoff = Time.now - (5 * 60) %>
       <ul class="convo-rail" data-live-home-target="list">

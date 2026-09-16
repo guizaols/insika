@@ -216,6 +216,14 @@ module Studio
 
       # Versioned assets: public (the UI loads the bundle BEFORE login).
       r.on "assets", "dist" do
+        # The embedded webfonts are the one sub-directory under dist; the "fonts"
+        # segment is matched literally, so serve_asset still only ever joins a
+        # basename onto a path this app chose.
+        r.on "fonts" do
+          r.get String do |name|
+            serve_asset(name, "fonts")
+          end
+        end
         r.get String do |name|
           serve_asset(name)
         end
@@ -1463,6 +1471,25 @@ end
       target = href.sub(%r{\A/studio}, "")
       path = request.path.sub(%r{\A/studio}, "")
       path == target || path.start_with?("#{target}/")
+    end
+
+    # The nav group the current page sits in ("build" / "runtime" / "operate"),
+    # or nil for the ungrouped Home.
+    def nav_group
+      group, = nav_sections.find { |_, items| items.any? { |(_, href, _)| nav_active?(href) } }
+      presence(group)
+    end
+
+    # The one-segment breadcrumb above a page title. It is always the nav GROUP,
+    # never the page's own name: a crumb that echoes the title ("knowledge /
+    # Knowledge") tells the operator nothing. Renders "" when there is no group,
+    # or when the group would only repeat the title. Pages with a real hierarchy
+    # (agents / :id, chats / session) spell their crumbs out in the view.
+    def crumbs_for(title)
+      group = nav_group
+      return "" if group.nil? || group.casecmp?(title.to_s)
+
+      %(<nav class="crumbs"><span>#{h(group)}</span></nav>)
     end
 
     # CSP nonce for inline styles (CodeMirror's injected theme). Stable PER SESSION,
@@ -2962,15 +2989,18 @@ end
     # is the operator). Mirrors server/admin's operator_of default.
     def operator_label = "studio"
 
-    # Semantic status class for the .pill CSS (completed=ok, running=run,
-    # waiting/queued/paused=warn, failed/cancelled=err). Parity with admin's
-    # status_pill mapping; used by the tasks/approvals views.
+    # Semantic status class, shared by the `.pill` and `.status` CSS: one
+    # vocabulary (ok / warn / err / info / neutral, plus the pill-only `run`)
+    # for every status string the console renders — task lifecycle, follow-up
+    # arms, approval decisions. `neutral` is the "nothing happened" tone: a
+    # cancelled or dismissed item is not a failure.
     def status_class(status)
       case status.to_s
-      when "completed" then "ok"
+      when "completed", "fired", "approved", "ok" then "ok"
       when "running" then "run"
-      when "waiting", "queued", "paused" then "warn"
-      when "failed", "cancelled" then "err"
+      when "pending", "waiting", "queued", "paused" then "warn"
+      when "blocked", "failed", "rejected" then "err"
+      when "cancelled", "dismissed" then "neutral"
       else "info"
       end
     end
@@ -3045,6 +3075,16 @@ end
       "avatar-h#{id.to_s.bytes.sum % 10}"
     end
 
+    # Same idea for `.identity`'s 28px circle, but over the NINE themed --av-N
+    # ramps only (no h0 — the brand accent is reserved for the product's own
+    # marks, not for an arbitrary row). Deterministic: the same id always
+    # yields the same hue, so a list keeps its colours across renders.
+    def avatar_hue(id) = (id.to_s.bytes.sum % 9) + 1
+
+    # The readable head of a uuid. Callers put the FULL value in `title` and
+    # `data-copy` so nothing is lost by the truncation.
+    def short_id(uuid) = uuid.to_s[0, 8]
+
     # Where a prompt POST lands back: the same file open in the drill, scrolled
     # to the prompts section. No file (a delete, say) → the agent page itself.
     def prompt_edit_path(id, file)
@@ -3053,11 +3093,14 @@ end
     end
 
     # Serves a versioned asset from dist. `File.basename` kills path traversal; only
-    # files that exist in the dist dir are served.
-    def serve_asset(name)
+    # files that exist in the dist dir are served. `dir` is the one allowed
+    # sub-directory ("fonts"), passed by the route as a literal — never by the
+    # client — so the traversal guard still holds.
+    def serve_asset(name, dir = nil)
       base = File.basename(name)
-      path = File.join(ASSETS_DIR, base)
-      unless File.file?(path) && File.fnmatch(File.join(ASSETS_DIR, "*"), path)
+      root = dir ? File.join(ASSETS_DIR, dir) : ASSETS_DIR
+      path = File.join(root, base)
+      unless File.file?(path) && File.fnmatch(File.join(root, "*"), path)
         response.status = 404
         return "not found"
       end
@@ -3068,7 +3111,9 @@ end
       # Assets are tiny and same-origin, so the revalidation cost is negligible —
       # correctness over caching for an actively-edited admin UI.
       response["cache-control"] = "no-cache"
-      File.read(path)
+      # Webfonts are binary: File.read would tag the bytes UTF-8 and any later
+      # String operation on the body would raise on the first invalid sequence.
+      base.end_with?(".woff2") ? File.binread(path) : File.read(path)
     end
 
     # Cache-busting URL for a dist asset. Dist files are served under a STABLE
@@ -3083,6 +3128,12 @@ end
       v = File.file?(path) ? File.mtime(path).to_i : 0
       "/studio/assets/dist/#{base}?v=#{v}"
     end
+
+    # URL of an embedded webfont. No `?v=` cache-bust on purpose: the file name
+    # already names the family and weight (a different font is a different
+    # file), and the preload link in layout.erb has to match the @font-face
+    # `src:` in application.css BYTE FOR BYTE or the browser fetches twice.
+    def font_path(file) = "/studio/assets/dist/fonts/#{file}"
 
     def presence(str) = Insika::Coercion.presence(str)
 

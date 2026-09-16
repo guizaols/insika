@@ -1,11 +1,11 @@
 <header class="page-head">
   <div>
-    <nav class="crumbs"><span>approvals</span></nav>
+    <%== crumbs_for("Approvals") %>
     <h1>Approvals<span class="sub"><%= @approvals.size %> pending</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/approvals", @agent) %>
-    <a class="btn" href="/studio/tasks">Tasks →</a>
+    <a class="btn" href="/studio/tasks">Open tasks</a>
   </div>
 </header>
 
