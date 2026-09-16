@@ -2899,11 +2899,14 @@ end
                     .select { |r| r.status == "fired" }
       return {} if fired_all.empty?
 
-      # The window is the arm's own last 30 days of FIRES (fired_at, never the
-      # scheduled `at` — followup_store.rb's rule, the same one the frequency
-      # ceiling follows), anchored on the most recent fire rather than the
-      # wall clock. A wall-clock anchor would blank the card between visits —
-      # this keeps it reading the arm's last real 30 days of activity.
+      # The window is 30 days of FIRES (fired_at, never the scheduled `at` —
+      # followup_store.rb's rule, the same one the frequency ceiling follows),
+      # anchored on the most recent fire across ALL arms of this agent — not
+      # per arm — rather than the wall clock. A wall-clock anchor would blank
+      # the card between visits. One shared window (not each arm's own last
+      # fire) is also the right call for an A/B readout: both arms are then
+      # measured over the same calendar span, so their percentages are
+      # actually comparable.
       latest = fired_all.filter_map { |r| parse_time(r.fired_at || r.at) }.max
       from = (latest - 30 * 86_400).iso8601
       fired = fired_all.select { |r| (r.fired_at || r.at).to_s >= from }
