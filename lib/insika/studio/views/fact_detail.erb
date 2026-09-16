@@ -1,0 +1,123 @@
+<%# Fact detail — the DETAIL pane of the Facts miller shell.
+    Full page (direct visit/refresh): the two-column shell — master queue plus
+    this pane. Turbo-Frame request (a row click, a resolve POST's redirect):
+    the pane alone, so the master's scroll state and selection survive every
+    interaction. @selected is a Insika::ProposalStore::Proposal — its `status`
+    picks the body: pending (evidence + the three actions), stale (the CAS-lost
+    compare, dismiss only) or a terminal status (the resolution, plus the
+    Recent ledger for audit context — never a fourth full card). %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
+  <header class="page-head">
+    <div>
+      <nav class="crumbs"><a href="/studio/facts">facts</a></nav>
+      <h1><span class="mono"><%= @selected.key %></span> = <%= @selected.value %>
+        <span class="sub"><%= @selected.scope %></span>
+      </h1>
+    </div>
+  </header>
+
+  <div class="drill" data-controller="list-filter">
+    <%== render("_facts_master", locals: { active_id: @selected.id }) %>
+<% end %>
+    <turbo-frame id="fact-detail" class="drill-pane drill-detail">
+      <%# A frame response never sees the layout, so the flash strip lives here
+          too — without it, resolve confirmations would vanish on frame submits
+          (the layout's copy only renders on full pages). %>
+      <% if frame_only %>
+        <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+        <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+      <% end %>
+      <% if @selected.nil? %>
+        <%== render("_empty", locals: { icon: :facts,
+                                        text: "No proposals yet — facts appear here when a session's traffic is distilled. Nothing is ever applied automatically." }) %>
+      <% else %>
+        <div class="drill-pane-head">
+          <div class="title">
+            <strong class="mono"><%= @selected.key %></strong>
+            <span class="count">= <%= @selected.value %></span>
+          </div>
+          <span class="status <%= status_class(@selected.status) %>"><%= @selected.status %></span>
+        </div>
+        <div class="drill-pane-body">
+          <p class="muted">
+            <%= @selected.scope %> ·
+            <a href="/studio/sessions/<%= Rack::Utils.escape(@selected.session_ref) %>"><%= @selected.session_ref %></a>
+            <% if @selected.confidence %> · confidence <span class="tnum"><%= format("%.2f", @selected.confidence) %></span><% end %>
+          </p>
+
+          <% if @selected.status == "pending" %>
+            <% excerpt = proposal_excerpt(@selected) %>
+            <% unless excerpt.empty? %>
+              <div class="skill-desc muted">
+                <% excerpt.each do |line| %>
+                  <div class="evidence"><%= line %></div>
+                <% end %>
+              </div>
+            <% end %>
+            <div class="actions">
+              <form method="post" action="/studio/facts/resolve" class="inline">
+                <%== csrf_tag %>
+                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+                <input type="hidden" name="decision" value="approved">
+                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+                <button type="submit" class="primary">Approve &amp; save to memory</button>
+              </form>
+              <form method="post" action="/studio/facts/resolve" class="inline">
+                <%== csrf_tag %>
+                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+                <input type="hidden" name="decision" value="rejected">
+                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+                <input type="text" name="note" placeholder="reason (optional)">
+                <button type="submit" class="secondary">Reject</button>
+              </form>
+              <form method="post" action="/studio/facts/resolve" class="inline">
+                <%== csrf_tag %>
+                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+                <input type="hidden" name="decision" value="dismissed">
+                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+                <button type="submit" class="ghost">Dismiss<span class="muted"> — will not be proposed again</span></button>
+              </form>
+            </div>
+          <% elsif @selected.status == "stale" %>
+            <p class="skill-desc">
+              The proposed value was not applied — the fact stands as you left it
+              (CAS lost, the operator's edit wins).
+            </p>
+            <p><s><%= @selected.value %></s> → <strong><%= @selected.current_value %></strong> <span class="muted">(your edit)</span></p>
+            <div class="actions">
+              <form method="post" action="/studio/facts/resolve" class="inline">
+                <%== csrf_tag %>
+                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+                <input type="hidden" name="decision" value="dismissed">
+                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+                <button type="submit" class="ghost">Dismiss<span class="muted"> — resolve the re-present</span></button>
+              </form>
+            </div>
+          <% else %>
+            <p class="skill-desc">
+              Resolved by <%= @selected.operator %>.
+              <% if @selected.note && !@selected.note.to_s.empty? %>“<%= @selected.note %>”<% end %>
+            </p>
+            <% unless @recent.empty? %>
+              <div class="drill-section">
+                <div class="drill-section-head"><h3>Recent</h3><span class="muted">resolved, most recent first</span></div>
+                <ul class="history">
+                  <% @recent.each do |r| %>
+                    <li>
+                      <span class="mono"><%= r.key %></span> = <span class="preview"><%= r.value %></span>
+                      <span class="status <%= status_class(r.status) %>"><%= r.status %></span>
+                      <span class="muted"><%= r.operator %></span>
+                    </li>
+                  <% end %>
+                </ul>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+      <% end %>
+    </turbo-frame>
+<% unless frame_only %>
+  </div>
+<% end %>
