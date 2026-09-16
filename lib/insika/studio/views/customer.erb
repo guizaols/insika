@@ -26,7 +26,7 @@
   <div class="drill" data-controller="list-filter">
     <%== render("_customers_master", locals: { active_scope: @cell[:scope] }) %>
 <% end %>
-    <turbo-frame id="detail" class="drill-pane drill-detail">
+    <turbo-frame id="customer-detail" class="drill-pane drill-detail">
       <%# A frame response never sees the layout, so the flash strip lives here
           too — without it, save confirmations would vanish on frame submits
           (the layout's copy only renders on full pages). %>

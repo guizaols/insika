@@ -2368,15 +2368,7 @@ end
     # reads per conversation on every render).
     def render_customers
       mem = insika[:memory_store]
-      agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
-      @agent = presence(request.params["agent"])
-      @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |cell|
-        { cell: cell, count: mem.fact_count(tenant: cell[:tenant], customer: cell[:customer]) }
-      end : []
-      # ?agent= narrows to one tenant — the memory scope is the agent (the
-      # agent-memory tab writes under tenant = agent id).
-      @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
-      @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
+      setup_customer_rows(mem)
       view("customers")
     end
 
@@ -2390,14 +2382,8 @@ end
       @audit = insika[:memory_audit_store]&.for_cell(scope) || []
       # master column: the detail page IS the shell when visited directly;
       # only a frame request renders the pane alone.
-      agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
-      @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |c|
-        { cell: c, count: mem.fact_count(tenant: c[:tenant], customer: c[:customer]) }
-      end : []
-      @agent = presence(request.params["agent"])
-      @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
-      @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
-      if turbo_frame?("detail")
+      setup_customer_rows(mem)
+      if turbo_frame?("customer-detail")
         render("customer", locals: { frame_only: true }, layout: false)
       else
         view("customer", locals: { frame_only: false })
@@ -2409,6 +2395,22 @@ end
       # does not turn '+' back into a space (escape's form-encoding would).
       "/studio/customers/#{Rack::Utils.escape_path(scope)}"
     end
+
+    private
+
+    # Shared helper for Customers index and detail: loads all customer cells,
+    # counts facts per cell, filters by agent if ?agent= is present, and
+    # groups by tenant. Sets @rows and @by_tenant.
+    def setup_customer_rows(mem)
+      agent_ids = insika[:profile_source] ? insika[:profile_source].all.map(&:id) : []
+      @rows = mem ? mem.customer_cells(reserved: Array(agent_ids) + ["_default"]).map do |cell|
+        { cell: cell, count: mem.fact_count(tenant: cell[:tenant], customer: cell[:customer]) }
+      end : []
+      @agent = presence(request.params["agent"])
+      @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
+      @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
+    end
+end
 
     # Tasks & Approvals --------------------------------
 

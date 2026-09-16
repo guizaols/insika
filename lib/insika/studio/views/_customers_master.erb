@@ -21,7 +21,7 @@
         <% scope = "#{cell[:tenant]}:#{cell[:customer]}" %>
         <a class="drill-item<%== ' active' if scope == active_scope %>"
            href="<%= customer_path(scope) %>"
-           data-turbo-frame="detail" data-turbo-action="advance"
+           data-turbo-frame="customer-detail" data-turbo-action="advance"
            data-list-filter-target="item" data-filter-text="<%= cell[:customer] %> <%= cell[:tenant] %>"
            data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-name">

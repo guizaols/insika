@@ -2512,7 +2512,7 @@ RSpec.describe Studio::App do
       store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
       client = login(app.first)
       # Simulate a Turbo frame request (row click in master list)
-      res = client.get(path, frame: "detail")
+      res = client.get(path, frame: "customer-detail")
 
       expect(res.status).to eq(200)
       # Frame response should NOT include the master list (drill-master class)
