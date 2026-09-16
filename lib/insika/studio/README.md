@@ -50,8 +50,10 @@ support degrade to the plain swap.
 
 ## Miller columns / master-detail
 
-Agents, Tools, MCP and the session viewer render a two-column drill whose
-detail pane IS a `<turbo-frame>`. The pattern, end to end:
+Every Console-shell page (see Design system below — Agents, Skills, Tools, MCP,
+Settings, Chats/Session, Customers, Facts, Refinement, Knowledge, Evals)
+renders a two-column drill whose detail pane IS a `<turbo-frame>`. The
+pattern, end to end:
 
 - **View**: index and detail share the master partial; rows carry
   `data-turbo-frame="<id>" data-turbo-action="advance"` so the detail loads
@@ -82,8 +84,65 @@ studio/
   tailwind.config.js
 ```
 
-## Status (Stage E — tasks 12-14)
+## Design system
 
-Pages ready: **login**, **agents (list)**, **playground (SSE)**. The authoring pages
-(agents-detail/prompts/skills/tools/mcp/settings/system-files/chats) arrive in
-Stages F/G. Config backend (Stages A–D) already complete.
+A visual redesign (13 tasks) replaced the original card-per-record, chip-filter
+look with three page shells built on a shared token set (`views/_kpi.erb`,
+`.chart`, `.page-head`, `table.grid`, `.drill` from the Task 1 foundation).
+Every page in `views/` now uses one of these, or the plain `.page-head` +
+`.card`/list layout for pages simple enough not to need one:
+
+- **Console** (miller columns / master-detail drill: a master list beside a
+  `<turbo-frame>` detail pane, row clicks advance the URL without a full
+  reload): **Agents**, **Skills**, **Tools**, **MCP**, **Settings**, **Chats**
+  + the **Session** viewer, **Customers**, **Facts**, **Refinement**,
+  **Knowledge**, **Evals**.
+- **Board** (a `.kpi-strip` of `_kpi.erb` tiles opens the page, followed by an
+  inline-SVG `.chart`): **Home** (the Overview — KPI strip + a 24h `.chart`
+  line + a 14-day bar chart), **Funnel** (a KPI strip + `.chart-funnel` per
+  store), **Follow-ups** (a KPI strip + a `table.grid` of records).
+- **Ledger** (`table.grid`: a sticky-header table, row-actions revealed on
+  hover, `.identity`/`.status` cells): **Artifacts**, **Harvest**, **Tasks**,
+  **Parity**.
+
+**Playground** is its own full-height chat surface (config bar, scrolling
+transcript, pinned composer) under a `.page-head`, not one of the three
+shells above. **Approvals**, **Task** (detail), and **System files** are
+plain `.page-head` + card/list pages, simple enough that they don't need a
+shell.
+
+### Shared partials
+
+- `_kpi.erb(label:, value:, sub: nil, delta: nil)` — one metric in a
+  `.kpi-strip`; `delta` colors green/red from a leading `-`.
+- `_identity.erb(name:, sub:, id:)` — the avatar + name + mono sub-line unit
+  every list of agents, customers and sessions renders a row from; the avatar
+  hue comes from `avatar_hue(id)` so the same subject keeps its color across
+  pages.
+- `_empty.erb(icon:, text:, action_href: nil, action_label: nil)` — the empty
+  state for a list: an icon, why it's empty, and (optionally) the one thing
+  to do about it.
+
+### Shared helpers (`app.rb`)
+
+- `avatar_hue(id)` — a stable 1–9 hue bucket derived from the id's bytes, so
+  an avatar's color never changes across renders or pages.
+- `short_id(uuid)` — the readable 8-char head of a uuid; callers keep the
+  full value in `title`/`data-copy` so nothing is lost to the truncation.
+- `status_class(status)` — maps a status string to one of `ok`/`run`/`warn`/
+  `err`/`neutral`/`info` for the `.status` pill, one mapping shared by every
+  page instead of each view inventing its own.
+- `agent_filter_form(path, current)` — the one shared "Agent: [all|<id>]"
+  select, auto-submitting on change; replaces the old per-page chip rows.
+
+### Embedded fonts
+
+IBM Plex Sans (variable, weights 100–700, one 44KB `woff2-variations` file)
+and IBM Plex Mono (400/500/600, three `woff2` files) — OFL-licensed, latin
+subset — live under `assets/dist/fonts/` and are declared as `@font-face` at
+the top of `application.css`, served same-origin via `font_path` (`app.rb`)
+and preloaded from `layout.erb`. They are embedded rather than pulled from a
+CDN (e.g. Google Fonts) because the Studio's CSP is `'self'` with no widened
+`font-src`: a CDN font would either need a CSP exception or fail to load.
+Same-origin fonts also mean no external request, and no runtime dependency
+that can go down or get blocked, on every page load.
