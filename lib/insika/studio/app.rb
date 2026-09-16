@@ -2410,7 +2410,6 @@ end
       @rows = @rows.select { |row| row[:cell][:tenant] == @agent } if @agent
       @by_tenant = @rows.group_by { |row| row[:cell][:tenant] }
     end
-end
 
     # Tasks & Approvals --------------------------------
 
