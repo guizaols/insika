@@ -1,0 +1,38 @@
+<%# Master column of the Refinement miller shell — rendered by the index
+    (refinement.erb) and the detail (refinement_detail.erb). One agent's run
+    history, most recent first (@runs — see refinement_rows). Rows target the
+    refinement-detail turbo-frame with data-turbo-action="advance": the detail
+    loads beside the list while the URL moves, so refresh/deep-link render the
+    same screen. Local: active_id lights the current row. %>
+<aside class="drill-pane drill-master">
+  <div class="drill-pane-head">
+    <div class="title"><strong>Runs <span class="count"><%= @runs.size %></span></strong></div>
+  </div>
+  <div class="drill-search">
+    <input type="search" class="filter-input" placeholder="Filter runs by status or id…" aria-label="Filter runs"
+           data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+  </div>
+  <nav class="drill-pane-body drill-list" aria-label="refinement runs" data-controller="active-link">
+    <% active_id = defined?(active_id) ? active_id : nil %>
+    <% if @runs.empty? %>
+      <div class="empty">No runs yet for <span class="mono"><%= @agent %></span>.</div>
+    <% else %>
+      <% @runs.each do |run| %>
+        <a class="drill-item<%== ' active' if run.id == active_id %>"
+           href="/studio/refinement/<%= Rack::Utils.escape(run.id) %>"
+           data-turbo-frame="refinement-detail" data-turbo-action="advance"
+           data-list-filter-target="item" data-filter-text="<%= run.status %> <%= run.id %>"
+           data-active-link-target="item" data-action="click->active-link#select">
+          <div class="drill-item-name">
+            <span class="status <%= status_class(run.status) %>"><%= run.status %></span>
+            <span class="mono txt" title="<%= run.id %>"><%= short_id(run.id) %></span>
+          </div>
+          <div class="drill-item-sub">
+            <%= run.findings.size %> finding(s) · <%= refinement_window(run.window) %> · <%= refinement_elapsed(run) %>
+          </div>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No runs match your filter.</div>
+    <% end %>
+  </nav>
+</aside>

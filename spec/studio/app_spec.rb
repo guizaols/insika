@@ -3661,6 +3661,61 @@ end
     expect(bus.types).not_to include(:run_refinement)
   end
 
+  # Refinement: the Console shell -----------------
+
+  # The chip-based filter (a button per agent) is gone; the ONE shared
+  # agent_filter_form select is the only scope selector on this page.
+  it "has no chip-based filter — the shared agent select is the only scope selector" do
+    app, = build_app
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).not_to include("filter-bar")
+    expect(body).to include('<select name="agent"')
+  end
+
+  it "a frame request for a run renders the detail pane alone; a plain hit renders the shell" do
+    app, = build_app
+    run = awaiting_run(app.insika[:refinement_store])
+    client = login(app)
+
+    frame_res = client.get("/refinement/#{run.id}", frame: "refinement-detail")
+    expect(frame_res.status).to eq(200)
+    expect(frame_res.body).not_to include("drill-master")
+    expect(frame_res.body).to include("drill-pane-head")
+    expect(frame_res.body).to include("Ask for the CEP first.")
+
+    full_res = client.get("/refinement/#{run.id}")
+    expect(full_res.status).to eq(200)
+    expect(full_res.body).to include("drill-master")
+    expect(full_res.body).to include("drill-detail")
+    expect(full_res.body).to include("Ask for the CEP first.")
+  end
+
+  it "direct navigation to a run's URL pre-selects it in the master list" do
+    app, = build_app
+    run = awaiting_run(app.insika[:refinement_store])
+
+    body = login(app).get("/refinement/#{run.id}").body
+
+    expect(body).to include("drill-item active")
+  end
+
+  it "GET /refinement/:id for an unknown run 404s" do
+    app, = build_app
+    expect(login(app).get("/refinement/nope").status).to eq(404)
+  end
+
+  it "the master pane lists a run's status, finding count, window and elapsed time" do
+    app, = build_app(refinement_runs: [{ agent: "bia", findings: [{ "kind" => "x", "count" => 1, "title" => "t" }] }])
+    body = login(app).get("/refinement?agent=bia").body
+
+    expect(body).to include('class="status')
+    expect(body).to include("1 finding(s)")
+    expect(body).to include(refinement_window_text)
+  end
+
+  def refinement_window_text = "last 200 conversation(s)"
+
   it "redirects an approval back to a safe local path, ignoring an external back" do
     app, = build_app(pendings: [pending])
     client = login(app)

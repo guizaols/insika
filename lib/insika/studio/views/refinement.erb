@@ -1,234 +1,25 @@
+<%# Refinement — miller columns: master run list | detail frame, scoped to
+    one agent at a time via agent_filter_form (a run always belongs to one
+    agent). A row click loads the detail beside the list (no full page load)
+    and advances the URL. The detail pane defaults to the run that most needs
+    a look — see render_refinement — and hosts the Run form in its head, since
+    starting a run is an action on the CURRENTLY VIEWED agent. %>
 <header class="page-head">
   <div>
     <%== crumbs_for("Refinement") %>
-    <h1>Refinement<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
+    <h1>Refinement<span class="sub"><%= @agent || "no agent" %></span></h1>
   </div>
-  <a class="btn" href="/studio/chats">Open chats</a>
+  <div class="head-actions">
+    <%== agent_filter_form("/studio/refinement", @agent) %>
+    <a class="btn" href="/studio/chats">Open chats</a>
+  </div>
 </header>
 
 <% if @agents.empty? %>
   <div class="empty">No agents yet. Create one first — a refinement run reads an agent's own traffic.</div>
 <% else %>
-  <div class="card">
-    <form method="post" action="/studio/refinement" class="actions">
-      <%== csrf_tag %>
-      <label>
-        Agent
-        <select name="agent">
-          <% @agents.each do |id| %>
-            <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
-          <% end %>
-        </select>
-      </label>
-      <label title="Ignore the previous run and read the full window instead of only what happened since.">
-        <input type="checkbox" name="full" value="1"> full window
-      </label>
-      <button type="submit" class="primary">Run</button>
-    </form>
-    <div class="skill-desc muted">
-      A run reads this agent's own tasks, transcripts and tool traces and records what
-      broke, ranked. It never edits the agent and never calls a model.
-    </div>
+  <div class="drill" data-controller="list-filter">
+    <%== render("_refinement_master", locals: { active_id: @selected&.id }) %>
+    <%== render("refinement_detail", locals: { frame_only: true }) %>
   </div>
-
-  <% if @agent && @agents.size > 1 %>
-    <div class="filter-bar">
-      <% @agents.each do |id| %>
-        <a class="btn" href="/studio/refinement?agent=<%= Rack::Utils.escape(id) %>"<%== ' aria-current="page"' if id == @agent %>><%= id %></a>
-      <% end %>
-    </div>
-  <% end %>
-
-  <%# The review IS the product. A gated proposal shows the exact
-      edit, what it claims to fix, and how it scored against the accepted baseline,
-      because approving is a decision and a decision needs those three things. %>
-  <% if @proposal %>
-    <h2>Proposal<span class="sub">gated · awaiting your approval</span></h2>
-    <div class="card">
-      <% cand = @proposal.candidate || {} %>
-      <div class="skill-desc">
-        <span class="pill ok">gate passed</span>
-        <span class="mono"><%= @proposal.gate["passed_cases"] %>/<%= @proposal.gate["cases"] %> case(s)</span>
-        <span class="muted">no regression against <%= @proposal.gate["baseline_cases"] %> baselined case(s)</span>
-        <span class="muted">· proposed by <span class="mono"><%= cand["proposer"] %></span></span>
-        <%# When a PANEL ran, the operator is looking at the winner of
-            several, and which ones it beat is part of the decision. %>
-        <% if @proposal.panel.size > 1 %>
-          <span class="muted">· best of <%= @proposal.panel.size %> candidate(s)</span>
-        <% end %>
-        <% if @proposal.cost && @proposal.cost["spent"].to_i.positive? %>
-          <span class="muted">· <%= @proposal.cost["spent"] %> tokens<% if @proposal.cost["cached"].to_i.positive? %>
-            (<%= @proposal.cost["cached"] %> cached)<% end %></span>
-        <% end %>
-      </div>
-      <% if presence(cand["rationale"]) %>
-        <div class="skill-desc muted"><%= cand["rationale"] %></div>
-      <% end %>
-
-      <% Array(cand["edits"]).each do |e| %>
-        <div class="skill-desc">
-          <span class="pill"><%= e["op"] %></span>
-          <span class="mono"><%= e["file"] %></span>
-          <% if presence(e["anchor"]) %><span class="muted"><%= e["anchor"] %></span><% end %>
-          <% if Array(e["addresses"]).any? %>
-            <span class="muted">· addresses <%= Array(e["addresses"]).join(", ") %></span>
-          <% end %>
-        </div>
-        <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
-<% end %><span class="ins">+ <%= e["after"] %></span></pre>
-      <% end %>
-
-      <form method="post" action="/studio/refinement/resolve" class="actions">
-        <%== csrf_tag %>
-        <input type="hidden" name="agent" value="<%= @agent %>">
-        <input type="hidden" name="run_id" value="<%= @proposal.id %>">
-        <label>
-          Note
-          <input type="text" name="note" placeholder="why (optional)">
-        </label>
-        <button type="submit" class="primary" name="decision" value="approved">Approve &amp; apply</button>
-        <button type="submit" class="ghost" name="decision" value="rejected">Reject</button>
-      </form>
-      <div class="skill-desc muted">
-        Approving writes the edits to the agent's files and versions the previous
-        content — undo it any time from the file's History.
-      </div>
-    </div>
-
-    <%# The candidates that LOST. Shown because the panel's value is comparative: an
-        operator deciding whether the loop earns its keep needs to see that three
-        models were asked and what the other two wrote. %>
-    <% losers = @proposal.panel.reject { |e| (e["candidate"] || {})["id"] == cand["id"] } %>
-    <% if losers.any? %>
-      <h2>Also proposed<span class="sub">scored and not chosen</span></h2>
-      <div class="card">
-        <ul class="history">
-          <% losers.each do |entry| %>
-            <% other = entry["candidate"] || {}; verdict = entry["gate"] || {} %>
-            <li>
-              <span class="pill <%= verdict["passed"] ? 'ok' : 'err' %>"><%= verdict["passed"] ? "passed" : "no" %></span>
-              <span class="mono"><%= Array(entry["proposers"]).join(" + ") %></span>
-              <span class="preview muted">
-                <%= Array(other["edits"]).size %> edit(s)
-                <% if verdict["cases"].to_i.positive? %>· <%= verdict["passed_cases"] %>/<%= verdict["cases"] %> case(s)<% end %>
-                <% if presence(verdict["reason"]) %>· <%= verdict["reason"] %><% end %>
-              </span>
-            </li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-  <% end %>
-
-  <% if @run.nil? %>
-    <div class="empty">No run yet for <span class="mono"><%= @agent %></span>. Press Run to read the last conversations.</div>
-  <% else %>
-    <h2>Findings<span class="sub"><%= @run.findings.size %> · <%= @run.status %><% if @run.excluded.to_i.positive? %> · <%= @run.excluded %> turn(s) excluded<% end %> · <%= @run.finished_at || @run.started_at %></span></h2>
-
-    <%# The model writes the candidate, the gate scores it. Offered on
-        a finished report and only when nothing is already awaiting an answer: a second
-        proposal while one is pending would ask the operator to review two edits to the
-        same file that were never scored together. %>
-    <% if @proposal.nil? && @run.status == :completed && @run.findings.any? %>
-      <div class="card">
-        <form method="post" action="/studio/refinement/propose" class="actions">
-          <%== csrf_tag %>
-          <input type="hidden" name="agent" value="<%= @agent %>">
-          <input type="hidden" name="run_id" value="<%= @run.id %>">
-          <button type="submit" class="primary">Propose a fix</button>
-        </form>
-        <div class="skill-desc muted">
-          Asks this agent's configured proposer(s) for a small, anchored edit to its
-          allowlisted files, then scores each one by replaying the golden set against a
-          throwaway clone and keeps the best. Nothing is written until you approve it.
-          Takes a while and costs provider calls — the replay is a real conversation per
-          case, per candidate.
-        </div>
-      </div>
-    <% end %>
-
-    <%# `mode: auto_apply` changed this agent's files with nobody in
-        the loop, so the page owes the operator exactly three things: what changed, why,
-        and where to undo it. The write versioned, so History IS the undo. %>
-    <% if @run.status == :applied && (@run.decision || {})["by"] == "auto_apply" %>
-      <div class="card">
-        <div class="skill-desc">
-          <span class="pill ok">auto-applied</span>
-          <span class="muted"><%= (@run.decision || {})["note"] %> · <%= (@run.decision || {})["at"] %></span>
-        </div>
-        <% Array((@run.candidate || {})["edits"]).each do |e| %>
-          <div class="skill-desc">
-            <span class="pill"><%= e["op"] %></span>
-            <a class="mono" href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?file=<%= Rack::Utils.escape(e["file"]) %>"><%= e["file"] %></a>
-          </div>
-          <pre class="diff"><% if e["op"] == "replace" %><span class="del">- <%= e["before"] %></span>
-<% end %><span class="ins">+ <%= e["after"] %></span></pre>
-        <% end %>
-        <div class="skill-desc muted">
-          Undo it from the file's History — the previous content is one click away.
-        </div>
-      </div>
-    <% end %>
-
-    <%# A gate that refused is the most useful thing on this page and the easiest to
-        lose: without it, pressing Propose and getting nothing back reads as a bug. %>
-    <% if @run.status == :rejected && @run.gate.is_a?(Hash) && !@run.gate_passed? %>
-      <div class="card">
-        <div class="skill-desc">
-          <span class="pill err">gate refused</span>
-          <span class="mono"><%= @run.gate["reason"] %></span>
-        </div>
-        <% Array((@run.candidate || {})["dropped"]).each do |d| %>
-          <div class="skill-desc muted">dropped <span class="mono"><%= d["file"] %></span> — <%= d["reason"] %></div>
-        <% end %>
-      </div>
-    <% end %>
-
-    <% if @run.status == :failed %>
-      <div class="empty">This run failed: <span class="mono"><%= @run.error %></span></div>
-    <% elsif @run.findings.empty? %>
-      <div class="empty">Nothing found in this window. Either traffic was clean, or the window was empty.</div>
-    <% else %>
-      <div class="card">
-        <ul class="history">
-          <% @run.findings.each do |f| %>
-            <li>
-              <span class="pill"><%= f["kind"] %></span>
-              <span class="mono">×<%= f["count"] %></span>
-              <span class="preview"><%= f["title"] %></span>
-              <% if f["detail"] %><div class="skill-desc muted"><%= f["detail"] %></div><% end %>
-              <% if Array(f["sessions"]).any? %>
-                <div class="skill-desc muted">
-                  <% Array(f["sessions"]).each do |sid| %>
-                    <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid[0, 12] %></a>
-                  <% end %>
-                </div>
-              <% end %>
-            </li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
-  <% end %>
-
-  <% if @runs.any? %>
-    <h2>Runs<span class="sub">most recent first</span></h2>
-    <div class="card">
-      <ul class="history">
-        <% @runs.each do |run| %>
-          <li>
-            <span class="pill <%= run.status == :failed ? 'err' : 'ok' %>"><%= run.status %></span>
-            <span class="mono"><%= run.id[0, 12] %></span>
-            <span class="preview muted">
-              <%= run.findings.size %> finding(s) ·
-              window <%= refinement_window(run.window) %> ·
-              <% if run.panel.size > 1 %><%= run.panel.size %> candidate(s) · <% end %>
-              <% if run.cost && run.cost["spent"].to_i.positive? %><%= run.cost["spent"] %> tokens · <% end %>
-              <%= run.started_at %>
-            </span>
-          </li>
-        <% end %>
-      </ul>
-    </div>
-  <% end %>
 <% end %>
