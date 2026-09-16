@@ -54,7 +54,7 @@
         <div class="sparkline-meta">
           <b class="tnum"><%= @activity_24h.sum { |_t, c| c } %></b> conversations · last 24h
         </div>
-        <svg class="chart" viewBox="0 0 480 48" preserveAspectRatio="none" role="img"
+        <svg class="chart chart-sparkline" viewBox="0 0 480 48" preserveAspectRatio="none" role="img"
              aria-label="conversations per hour, last 24 hours">
           <polygon class="spark-area" points="<%= s_line %> 480,48 0,48"/>
           <polyline class="spark-line" points="<%= s_line %>" vector-effect="non-scaling-stroke"/>

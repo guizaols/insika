@@ -454,6 +454,32 @@ RSpec.describe Studio::App do
     expect(res.status).to eq(404)
   end
 
+  # status_class("running") returns "run" — the bundle must color .status.run
+  # the same as .pill.run (--warn), or a running item looks identical to a
+  # cancelled one (the review fix).
+  it "colors .status.run the same as .pill.run (the review fix)" do
+    app, = build_app
+    css = Client.new(app).get("/assets/dist/application.css").body
+    # The minifier is free to reorder the selector list, so match the rule
+    # by finding the block that mentions .status.run and assert its selector
+    # list also carries .pill.run and its declaration uses --warn.
+    rule = css[/([^{}]*\.status\.run[^{}]*)\{([^}]*)\}/, 0]
+    expect(rule).not_to be_nil
+    expect(rule).to include(".pill.run")
+    expect(rule).to match(/color:var\(--warn\)/)
+  end
+
+  # .chart alone has no height (Funnel relies on that — width-only sizing
+  # plus its own max-width:720px cap). The sparkline needs a fixed height so
+  # its viewBox's aspect ratio doesn't stretch it tall on a wide viewport —
+  # scoped to .chart-sparkline so Funnel's .chart-funnel usage is untouched.
+  it "gives the sparkline a fixed height without touching the bare .chart rule (the review fix)" do
+    app, = build_app
+    css = Client.new(app).get("/assets/dist/application.css").body
+    expect(css).to match(/\.chart-sparkline\s*\{[^}]*height:\s*3rem/)
+    expect(css).to match(/\.chart\s*\{[^}]*display:\s*block;\s*width:\s*100%;\s*overflow:\s*visible;?\s*\}/)
+  end
+
   # --- Playground ----------------------------------------------------------
 
   it "dispatches send_message via the bus and redirects (no direct writes)" do
@@ -2269,7 +2295,9 @@ RSpec.describe Studio::App do
     # 24h sparkline: the old standalone .sparkline class is gone, the SVG now
     # shares the Board shell's .chart base (hairline axis, sans .chart-labels)
     expect(body).not_to include('class="sparkline"')
-    expect(body).to match(/<svg class="chart" viewBox="0 0 480 48"/)
+    # .chart-sparkline gives the line its 3rem height back (.chart alone has
+    # none, so Funnel's chart-funnel usage keeps sizing from width only).
+    expect(body).to match(/<svg class="chart chart-sparkline" viewBox="0 0 480 48"/)
     expect(body).to include('<line class="axis"')
     expect(body).to include('class="chart-labels"')
     expect(body).to include("last 24h")
@@ -2299,7 +2327,7 @@ RSpec.describe Studio::App do
     expect(body).to include('<span class="delta up">+2</span>')
     expect(body).not_to include('class="delta down"')
     # and it lands in the newest 24h bucket, not below a floor set in the future
-    expect(body).to match(/<svg class="chart" viewBox="0 0 480 48"/)
+    expect(body).to match(/<svg class="chart chart-sparkline" viewBox="0 0 480 48"/)
     expect(body).to match(/<rect[^>]*class="bar"/)
   end
 
@@ -4627,6 +4655,17 @@ end
       body_a = login(app).get("/harvest?agent=store-support").body
       expect(body_a).to include("a-skill")
       expect(body_a).not_to include("b-skill")
+    end
+
+    # The chip-based filter (a button per agent, like Refinement used to
+    # have) is gone; the ONE shared agent_filter_form select is the only
+    # scope selector on this page too.
+    it "has no chip-based filter — the shared agent select is the only scope selector" do
+      app, = harvest_app
+      body = login(app).get("/harvest?agent=store-support").body
+
+      expect(body).not_to include("filter-bar")
+      expect(body).to include('<select name="agent"')
     end
 
     it "the evidence excerpt renders ONE message per index — an index valid in one origin session is not replayed against the others (the review fix)" do
