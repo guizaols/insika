@@ -3332,6 +3332,23 @@ it "offers a template when nothing is selected (an empty store is not a dead end
   expect(body).to include("No case yet", "insika evals:import", "min_score")
 end
 
+# Regression: the default case template used to be built with a heredoc split
+# across an ERB tag boundary (`<%= @case_yaml || <<~YAML %>` with the body and
+# terminator sitting in the surrounding template text). Erubi's tag scanner has
+# no notion of Ruby heredocs, so it closed the tag right there, and the plain
+# template text (and ITS OWN compiled buffer-append source) in between ended up
+# spliced into the still-open heredoc's string value — leaking things like
+# `.freeze; @_out_buf << ` straight into the rendered textarea.
+it "the default case template has no ERB/Ruby compiler internals leaked into it" do
+  app, = build_app
+  body = login(app).get("/evals").body
+  textarea = body[%r{<textarea name="yaml".*?</textarea>}m]
+
+  expect(textarea).not_to be_nil
+  expect(textarea).not_to include("_out_buf", ".freeze", "@_out_buf")
+  expect(textarea).to start_with('<textarea name="yaml" rows="22" spellcheck="false" class="mono">id: my-agent-coupon')
+end
+
 it "POST /evals dispatches :write_golden with the parsed case" do
   app, bus = build_app
   client = login(app)

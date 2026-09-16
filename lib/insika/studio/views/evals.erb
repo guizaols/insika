@@ -58,27 +58,38 @@
         deterministically, with no model involved. Saved through
         <code>write_golden</code> and validated on the way in.
       </p>
+      <%
+        # Erubi's tag scanner is a plain text scanner: it has no notion of Ruby
+        # comments, strings or heredocs, so it closes a code tag on the first
+        # literal percent-angle-bracket close marker it sees, wherever it is.
+        # A heredoc opened here therefore has to open, hold its whole body and
+        # close ALL inside this one tag, with that close marker appearing
+        # nowhere in between (not even in a comment) - otherwise the template
+        # text and its compiled buffer-append boilerplate between two tags
+        # gets spliced into the middle of the heredoc's own string value,
+        # which is how compiler internals ended up leaking into this textarea.
+        default_case_yaml = <<~YAML
+          id: my-agent-coupon
+          agent: my-agent
+          turns:
+            - user: "tem cupom de desconto?"
+          expect:
+            tools_called:
+              - search_voucher
+            must_not:
+              - pii_leak
+              - tool_error
+            rubric: |
+              Consults the active coupon with the tool and says what it is — does NOT
+              invent a code or a discount. If there is none, says so kindly.
+            min_score: 0.7
+        YAML
+      %>
       <form id="set-golden" method="post" action="/studio/evals">
         <%== csrf_tag %>
         <input type="hidden" name="id" value="<%= @case&.id %>">
         <label>case (YAML)
-          <textarea name="yaml" rows="22" spellcheck="false" class="mono"><%= @case_yaml || <<~YAML %>
-            id: my-agent-coupon
-            agent: my-agent
-            turns:
-              - user: "tem cupom de desconto?"
-            expect:
-              tools_called:
-                - search_voucher
-              must_not:
-                - pii_leak
-                - tool_error
-              rubric: |
-                Consults the active coupon with the tool and says what it is — does NOT
-                invent a code or a discount. If there is none, says so kindly.
-              min_score: 0.7
-          YAML
-          </textarea>
+          <textarea name="yaml" rows="22" spellcheck="false" class="mono"><%= @case_yaml || default_case_yaml %></textarea>
         </label>
       </form>
     </div>
