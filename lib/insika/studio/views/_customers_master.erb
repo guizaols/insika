@@ -1,0 +1,37 @@
+<%# Master column of the Customers miller shell — rendered by the
+    index (customers.erb) and the detail (customer.erb). Rows target the
+    detail turbo-frame with data-turbo-action="advance": the detail
+    loads beside the list while the URL moves, so refresh/deep-link render the
+    same screen. Locals: active_scope lights the current row (nil on the index). %>
+<aside class="drill-pane drill-master">
+  <div class="drill-pane-head">
+    <div class="title"><strong>Customers <span class="count"><%= @rows.size %></span></strong></div>
+  </div>
+  <div class="drill-search">
+    <input type="search" class="filter-input" placeholder="Filter customers by id or tenant…" aria-label="Filter customers"
+           data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+  </div>
+  <nav class="drill-pane-body drill-list" aria-label="customers" data-controller="active-link">
+    <% active_scope = defined?(active_scope) ? active_scope : nil %>
+    <% if @rows.empty? %>
+      <div class="empty">No customers with memory yet — facts appear here when a turn or the operator writes to a customer cell.</div>
+    <% else %>
+      <% @rows.each do |row| %>
+        <% cell = row[:cell] %>
+        <% scope = "#{cell[:tenant]}:#{cell[:customer]}" %>
+        <a class="drill-item<%== ' active' if scope == active_scope %>"
+           href="<%= customer_path(scope) %>"
+           data-turbo-frame="detail" data-turbo-action="advance"
+           data-list-filter-target="item" data-filter-text="<%= cell[:customer] %> <%= cell[:tenant] %>"
+           data-active-link-target="item" data-action="click->active-link#select">
+          <div class="drill-item-name">
+            <span class="avatar sm <%= avatar_class(cell[:customer]) %>"><%= cell[:customer][0, 2].upcase %></span>
+            <span class="txt" title="<%= cell[:customer] %>"><%= cell[:customer] %></span>
+          </div>
+          <div class="drill-item-sub"><%= cell[:tenant] %><%== " · #{row[:count]} fact#{row[:count] == 1 ? '' : 's'}" %></div>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No customers match your filter.</div>
+    <% end %>
+  </nav>
+</aside>

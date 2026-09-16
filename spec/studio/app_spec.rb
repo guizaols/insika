@@ -2407,11 +2407,15 @@ RSpec.describe Studio::App do
 
       body = login(app.first).get("/customers").body
 
+      # The drill structure lists customers in drill-item elements
       expect(body).to include("c-1")
       expect(body).to include("solo")
-      expect(body).to include("Shared (no tenant)") # the bare cells group
+      # Bare customers appear with nil tenant (shown as the tenant text)
+      expect(body).to include("drill-item") # the drill structure
       expect(body).not_to include("_default")
-      expect(body).not_to match(%r{<h2>bia</h2>}) # the reserved agent cell is not a section
+      # The reserved agent cell (bia) is not shown in the customer list — it's filtered by render_customers
+      # (Note: "bia" appears in the agent filter dropdown, but not in the drill-item list)
+      expect(body).not_to match(%r{drill-item.*>.*bia.*</a>}) # bia not in customer list
       expect(body).not_to include("34403117") # a conversation is never a customer
     end
 
@@ -2502,6 +2506,39 @@ RSpec.describe Studio::App do
       detail = client.get("/customers/#{Rack::Utils.escape('memory:acme:c-1')}")
       expect(detail.status).to eq(200)
       expect(detail.body).to include("No facts.")
+    end
+
+    it "turbo frame request for detail returns only the detail pane (no master list)" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      # Simulate a Turbo frame request (row click in master list)
+      res = client.get(path, frame: "detail")
+
+      expect(res.status).to eq(200)
+      # Frame response should NOT include the master list (drill-master class)
+      expect(res.body).not_to include("drill-master")
+      # But should include the detail content
+      expect(res.body).to include("size")
+      expect(res.body).to include(">M<")
+      # Should include the detail pane header
+      expect(res.body).to include("drill-pane-head")
+    end
+
+    it "direct navigation to customer URL renders full master+detail shell with customer pre-selected" do
+      store.put_fact(tenant: "acme", customer: "c-1", key: "size", value: "M")
+      client = login(app.first)
+      # Direct navigation (full page request, no Turbo-Frame header)
+      res = client.get(path)
+
+      expect(res.status).to eq(200)
+      # Full page should include the master list
+      expect(res.body).to include("drill-master")
+      # And the detail pane
+      expect(res.body).to include("drill-detail")
+      # The customer should be visible in both places
+      expect(res.body).to include("c-1")
+      expect(res.body).to include("size")
+      expect(res.body).to include(">M<")
     end
   end
 

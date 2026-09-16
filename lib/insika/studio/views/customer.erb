@@ -1,20 +1,57 @@
-<header class="page-head">
-  <div>
-    <nav class="crumbs"><a href="/studio/customers">customers</a></nav>
-    <h1><span class="mono"><%= @cell[:customer] || @cell[:scope] %></span><span class="sub">customer memory</span></h1>
-  </div>
-  <div class="actions">
-    <form method="post" action="<%= customer_path(@cell[:scope]) %>/export">
-      <%== csrf_tag %>
-      <button type="submit" class="btn" data-turbo-submits-with="Exporting…">Export</button>
-    </form>
-    <form method="post" action="<%= customer_path(@cell[:scope]) %>/forget"
-          data-turbo-confirm="Forget <%= @cell[:customer] %>? Their memory cell AND their sessions are purged. This cannot be undone.">
-      <%== csrf_tag %>
-      <button type="submit" class="btn danger" data-turbo-submits-with="Forgetting…">Forget</button>
-    </form>
-  </div>
-</header>
+<%# Customer detail — the DETAIL pane of the Customers miller shell.
+    Full page (direct visit/refresh): the two-column shell — master list plus
+    this pane. Turbo-Frame request (a row click, a form submission): the pane alone,
+    so the master's scroll state and selection survive every interaction. %>
+<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<% frame_only = defined?(frame_only) && frame_only %>
+<% unless frame_only %>
+  <header class="page-head">
+    <div>
+      <nav class="crumbs"><a href="/studio/customers">customers</a></nav>
+      <h1><span class="mono"><%= @cell[:customer] || @cell[:scope] %></span><span class="sub">customer memory</span></h1>
+    </div>
+    <div class="actions">
+      <form method="post" action="<%= customer_path(@cell[:scope]) %>/export">
+        <%== csrf_tag %>
+        <button type="submit" class="btn" data-turbo-submits-with="Exporting…">Export</button>
+      </form>
+      <form method="post" action="<%= customer_path(@cell[:scope]) %>/forget"
+            data-turbo-confirm="Forget <%= @cell[:customer] %>? Their memory cell AND their sessions are purged. This cannot be undone.">
+        <%== csrf_tag %>
+        <button type="submit" class="btn danger" data-turbo-submits-with="Forgetting…">Forget</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="drill" data-controller="list-filter">
+    <%== render("_customers_master", locals: { active_scope: @cell[:scope] }) %>
+<% end %>
+    <turbo-frame id="detail" class="drill-pane drill-detail">
+      <%# A frame response never sees the layout, so the flash strip lives here
+          too — without it, save confirmations would vanish on frame submits
+          (the layout's copy only renders on full pages). %>
+      <% if frame_only %>
+        <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+        <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+      <% end %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <strong class="mono"><%= @cell[:customer] || @cell[:scope] %></strong>
+          <span class="count">customer memory</span>
+        </div>
+        <div class="actions">
+          <form method="post" action="<%= customer_path(@cell[:scope]) %>/export">
+            <%== csrf_tag %>
+            <button type="submit" class="btn btn-sm" data-turbo-submits-with="Exporting…">Export</button>
+          </form>
+          <form method="post" action="<%= customer_path(@cell[:scope]) %>/forget"
+                data-turbo-confirm="Forget <%= @cell[:customer] %>? Their memory cell AND their sessions are purged. This cannot be undone.">
+            <%== csrf_tag %>
+            <button type="submit" class="btn btn-sm danger" data-turbo-submits-with="Forgetting…">Forget</button>
+          </form>
+        </div>
+      </div>
+      <div class="drill-pane-body">
 
 <section class="section">
   <div class="section-head">
@@ -92,3 +129,8 @@
     <% end %>
   </div>
 </section>
+      </div>
+    </turbo-frame>
+<% unless frame_only %>
+  </div>
+<% end %>
