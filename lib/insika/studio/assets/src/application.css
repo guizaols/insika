@@ -711,6 +711,12 @@
   .drill-item-sub { font-size:var(--text-xs); color:var(--dim); margin-top:.1rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .drill-item.drill-item-sm { padding:.3rem .6rem; }
   .drill-item .drill-item-name .pill { margin-left:auto; }
+  /* Chats/History row: an .identity (customer) plus its presence dot, same
+     "pin the trailing badge right" trick as .drill-item-name .pill above —
+     .identity itself is a reusable partial, so the dot lives beside it
+     instead of being threaded through as another local. */
+  .drill-item-top { display:flex; align-items:center; gap:.4rem; }
+  .drill-item-top .presence { margin-left:auto; }
   .drill-group-label { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--faint); padding:.75rem .6rem .3rem; }
   /* Facts queue row: confidence (a number + a bar, not a pill) and a status
      dot on the left, the relative age pinned right. Geometry via SVG

@@ -1782,6 +1782,22 @@ end
       vars.is_a?(Hash) ? vars["agent"].to_s : ""
     end
 
+    # The customer a session belongs to — blank for a session that never got
+    # far enough to identify one (a fresh playground run, an abandoned turn).
+    # Same vars lookup as session_agent, one key over.
+    def session_customer(session)
+      vars = session.respond_to?(:vars) ? session.vars : nil
+      vars.is_a?(Hash) ? vars["customer"].to_s : ""
+    end
+
+    # The Chats/History "active" presence dot: lit while the session's last
+    # activity sits inside the same 5-minute window the home dashboard's
+    # conversation rail uses (views/home.erb) — one rule, read in both places.
+    def session_fresh?(session, cutoff: Time.now - 300)
+      t = parse_time(session.updated_at)
+      !t.nil? && t >= cutoff
+    end
+
     # The distill button's scope (the DistillEngine's own scan, scoped to ONE
     # agent): the agent's sessions that are idle past the pack's window, long
     # enough, and not yet distilled. Oldest first, capped — each entry is a

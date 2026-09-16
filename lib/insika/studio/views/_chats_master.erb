@@ -1,0 +1,39 @@
+<%# Master column of the Chats miller shell — rendered by the index
+    (chats.erb) and the detail (session.erb, the read-only viewer). Rows target
+    the session-detail turbo-frame with data-turbo-action="advance": the detail
+    loads beside the list while the URL moves, so refresh/deep-link render the
+    same screen. Local: active_id lights the current row (nil on the index). %>
+<aside class="drill-pane drill-master">
+  <div class="drill-pane-head">
+    <div class="title"><strong>Conversations <span class="count"><%= @sessions.size %></span></strong></div>
+  </div>
+  <div class="drill-search">
+    <input type="search" class="filter-input" placeholder="Filter conversations by customer, agent or preview…" aria-label="Filter conversations"
+           data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+  </div>
+  <nav class="drill-pane-body drill-list" aria-label="conversations" data-controller="active-link">
+    <% active_id = defined?(active_id) ? active_id : nil %>
+    <% if @sessions.empty? %>
+      <div class="empty">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div>
+    <% else %>
+      <% @sessions.each do |s| %>
+        <% customer = presence(session_customer(s)) %>
+        <% agent = presence(session_agent(s)) %>
+        <% preview = session_preview(s) %>
+        <a class="drill-item<%== ' active' if s.id == active_id %>"
+           href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>"
+           data-turbo-frame="session-detail" data-turbo-action="advance"
+           data-list-filter-target="item" data-filter-text="<%= s.id %> <%= customer %> <%= agent %> <%= preview %>"
+           data-active-link-target="item" data-action="click->active-link#select">
+          <div class="drill-item-top">
+            <%== render("_identity", locals: { id: customer || s.id, name: customer || "anonymous", sub: agent }) %>
+            <span class="presence<%== ' present' if session_fresh?(s) %>" title="touched in the last 5 minutes"></span>
+          </div>
+          <div class="drill-item-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></div>
+          <% if preview %><div class="drill-item-sub"><%= preview[0, 90] %></div><% end %>
+        </a>
+      <% end %>
+      <div class="empty" data-list-filter-target="empty" hidden>No conversations match your filter.</div>
+    <% end %>
+  </nav>
+</aside>
