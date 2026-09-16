@@ -495,6 +495,12 @@ RSpec.describe Studio::App do
     expect(res.body).to include('data-controller="live-transcript"')
   end
 
+  it "playground renders under a .page-head" do
+    app, = build_app
+    body = login(app).get("/playground").body
+    expect(body).to match(%r{<header class="page-head">\s*<div>.*?<h1>Playground}m)
+  end
+
   it "playground GET suggests recent sessions in a datalist combobox" do
     sessions = {
       "s-recent" => StoredSession.new(id: "s-recent",
@@ -1301,7 +1307,7 @@ RSpec.describe Studio::App do
     it "home?agent= narrows the counts and the recent list" do
       app, = build_app(sessions: { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") })
       body = login(app).get("/home?agent=bia").body
-      expect(body).to include("1</div>")
+      expect(body).to include('<span class="value tnum">1</span>')
       expect(body).not_to include("s-2")
     end
 
@@ -2243,7 +2249,7 @@ RSpec.describe Studio::App do
     expect(body).to match(/agent · bia/)
   end
 
-  it "home renders the live layer, the 24h sparkline and the trend affordances" do
+  it "home renders the live layer, the 24h sparkline on .chart, and the KPI deltas" do
     sess = StoredSession.new(id: "s-live", updated_at: Time.now.utc.iso8601,
                              vars: { "agent" => "bia" },
                              messages: [{ "role" => "user", "content" => "oi" },
@@ -2256,10 +2262,18 @@ RSpec.describe Studio::App do
     expect(body).to include('data-live-home-active-value="1"')
     expect(body).to include("live-badge")
     expect(body).to include("presence")
-    # 24h sparkline + trend deltas
-    expect(body).to include('class="sparkline"')
+    # counts render as _kpi.erb inside a .kpi-strip — no more .stat-card
+    expect(body).to include('<div class="kpi-strip">')
+    expect(body).not_to include("stat-card")
+    expect(body).to match(%r{<span class="label">Conversations</span>})
+    # 24h sparkline: the old standalone .sparkline class is gone, the SVG now
+    # shares the Board shell's .chart base (hairline axis, sans .chart-labels)
+    expect(body).not_to include('class="sparkline"')
+    expect(body).to match(/<svg class="chart" viewBox="0 0 480 48"/)
+    expect(body).to include('<line class="axis"')
+    expect(body).to include('class="chart-labels"')
     expect(body).to include("last 24h")
-    expect(body).to match(/class="trend (up|down)"/)
+    expect(body).to match(/class="delta (up|down)"/)
   end
 
   # The home charts bucket by CALENDAR parts (date, hour) of a stamp the engine
@@ -2277,15 +2291,15 @@ RSpec.describe Studio::App do
     app, = build_app(sessions: { "s-utc" => sess })
     body = login(app).get("/home").body
 
-    # today's conversation and its messages both counted -> both cards trend up.
-    # The conversations card is the one that used to read "−1" on the day's
+    # today's conversation and its messages both counted -> both KPIs delta up.
+    # The conversations KPI is the one that used to read "−1" on the day's
     # first conversation: the 14-day series is oldest-first, and the last pair
     # was destructured as [today, yesterday] instead of [yesterday, today].
-    expect(body).to include('<span class="trend up" title="vs yesterday">+1')
-    expect(body).to include('<span class="trend up" title="vs yesterday">+2')
-    expect(body).not_to include('class="trend down"')
+    expect(body).to include('<span class="delta up">+1</span>')
+    expect(body).to include('<span class="delta up">+2</span>')
+    expect(body).not_to include('class="delta down"')
     # and it lands in the newest 24h bucket, not below a floor set in the future
-    expect(body).to include('class="sparkline"')
+    expect(body).to match(/<svg class="chart" viewBox="0 0 480 48"/)
     expect(body).to match(/<rect[^>]*class="bar"/)
   end
 
