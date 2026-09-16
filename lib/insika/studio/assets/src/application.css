@@ -321,6 +321,13 @@
   h2 .sub { display:inline-block; margin-left:var(--s-2); font-size:var(--text-sm); font-weight:400; color:var(--dim); letter-spacing:-.004em; }
   /* Item count beside a page or pane title — the quantity, not a heading. */
   .page-head .count { margin-left:var(--s-2); font-size:var(--text-sm); font-weight:500; color:var(--faint); font-variant-numeric:tabular-nums; }
+  /* Inside a page head the title, the count and the sub sit on ONE line —
+     same treatment as `h2 .sub` above. Scoped to `.page-head` on purpose:
+     the global `h1 .sub { display:block }` stays as it is, so pages that do
+     not use `.page-head` keep their two-line title block. `max-width:100%`
+     plus the `min-width:0` on the head's first child keeps a long sub
+     wrapping inside the heading instead of pushing the head actions out. */
+  .page-head h1 .sub { display:inline-block; max-width:100%; margin-left:var(--s-2); margin-top:0; }
   .muted { color:var(--dim); }
   .eyebrow { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
 
@@ -491,12 +498,16 @@
   .identity .av-9 { background:var(--av-9-bg); color:var(--av-9-fg); }
 
   /* ── Data table ───────────────────────────────────────────────────────
-     `table.grid` shipped with no rules at all, so Tailwind's preflight left
-     the cells padding-less: the header row collapsed into a single run of
-     text with no visible relation to the columns under it. Padding + a
-     shared text-align on th/td is the whole fix; the sticky head keeps the
-     column names in view down a long list. */
-  table.grid { width:100%; border-collapse:collapse; font-size:var(--text-sm); }
+     The class name `grid` collides with Tailwind's `.grid` utility: seeing
+     `class="grid"` in a view, the JIT emits `.grid{display:grid}` into the
+     utilities layer, which is AFTER this one — so the table became a CSS
+     grid container, <thead>/<tbody> were blockified, and the header row
+     rendered as a run of text unrelated to the columns under it. Hence the
+     explicit `display:table` below: it is (0,1,1) against the utility's
+     (0,1,0), so specificity wins over source order. Do NOT drop it.
+     Padding and a shared text-align on th/td finish the job; the sticky
+     head keeps the column names in view down a long list. */
+  table.grid { display:table; width:100%; border-collapse:collapse; font-size:var(--text-sm); }
   table.grid thead { position:sticky; top:0; z-index:1; background:var(--panel); }
   table.grid th {
     text-align:left; padding:var(--s-2) var(--s-3); white-space:nowrap;
