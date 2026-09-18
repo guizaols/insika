@@ -45,6 +45,28 @@ module Studio
       end
       smm = edge_int(r.params["steer_max_messages"], "steer_max_messages")
       smm.nil? ? limits.delete(:steer_max_messages) : limits[:steer_max_messages] = smm
+      # The debounce window is what makes `collect`/`steer` merge a burst AT THE
+      # DOOR; without it a steer agent only ever absorbs mid-run, at a tool
+      # boundary, and a turn that never calls one absorbs nothing. Same opt-in
+      # convention as above: blank DELETES, 0 = no window.
+      %w[debounce_ms debounce_max_ms].each do |field|
+        v = edge_int(r.params[field], field)
+        v.nil? ? limits.delete(field.to_sym) : limits[field.to_sym] = v
+      end
+      # Refused HERE (config time) and not at resolve time: a template without
+      # the placeholder drops the customer's message while the turn still looks
+      # steered — the same rule QueuePolicy#join! enforces, moved to where the
+      # operator is.
+      if (join = presence(r.params["steer_join"]))
+        unless join.include?(Insika::QueuePolicy::JOIN_PLACEHOLDER)
+          raise Insika::ValidationError,
+                "steer_join must contain #{Insika::QueuePolicy::JOIN_PLACEHOLDER}"
+        end
+
+        limits[:steer_join] = join
+      else
+        limits.delete(:steer_join)
+      end
       {
         id: @agent.id,
         model: presence(r.params["model"]),
