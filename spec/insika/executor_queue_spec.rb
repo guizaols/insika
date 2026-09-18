@@ -112,6 +112,30 @@ before { session_store.create(id: "s1") }
     end
   end
 
+  # regression: the two doors have to agree on what the model SEES. A steered
+  # message lands as its own `user` message (SteerInjector#absorb_pending!, framed by
+  # `steer_join`); a merged one is concatenated into the queued turn's payload. Without
+  # the same framing here, a burst of five arrives as one run-on paragraph and the last
+  # constraint gets dropped by the model (staging, Época Cosméticos, 2026-09-18: a
+  # 5-message burst merged 4/4 and the answer never mentioned the fifth).
+  it "frames a merged fragment with steer_join, like the steer door does" do
+    executor = build_executor
+    executor.supervised = true
+    allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+    joined = profile({ queue_mode: "collect", debounce_ms: 50, steer_join: "— %{message}" })
+
+    Sync do |top|
+      command = Insika::Command.build(:send_message, { agent: "a", message: "oi" })
+      task = task_store.create(command: command.to_h, session_id: "s1", id: "t1")
+      executor.spawn_in_session(task, profile: joined)
+      top.sleep(0.01)
+
+      expect(executor.collect_into_pending("s1", "queria o pedido", profile: joined)).to eq("t1")
+      expect(task_store.find("t1").command["payload"]["message"]).to eq("oi\n— queria o pedido")
+      stop_serving(executor)
+    end
+  end
+
   # a `steer` agent that set a window has BOTH windows. The door one is
   # the same policy's other half — the buffer it replaces was doing both and the
   # enum just failed to compose.

@@ -360,7 +360,14 @@ module Insika
       actor = @session_actors[session_id]
       return nil unless actor&.alive?
 
-      actor.collect(text)
+      # FRAMED, like the steer door does at `SteerInjector#absorb_pending!`. The two
+      # doors used to disagree: a steered message became its OWN `user` message in the
+      # transcript (so the model saw a separate ask) while a merged one was concatenated
+      # into the queued turn's single payload by a bare "\n" — five customer messages
+      # arrived as one run-on paragraph, and a trailing constraint got answered by
+      # nothing. `steer_join` is the knob that already exists for exactly this, and a
+      # nil one returns the text untouched, so a wiring that never set it is unchanged.
+      actor.collect(policy.frame(text))
     end
 
     # the `steer` door: a message for a session whose turn is ALREADY
