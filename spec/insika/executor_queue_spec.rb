@@ -56,13 +56,30 @@ before { session_store.create(id: "s1") }
     end
   end
 
-  it "returns nil for collect WITHOUT a window — there is nothing to hold a turn at the door" do
+  # regression (burst): "the message arrived BEFORE the turn started"
+  # includes a turn QUEUED behind the one in flight, which is where a burst lands
+  # between two turns. The window widens the door; it is not what creates it —
+  # requiring one here made every such message a turn of its own, and the
+  # `stream=false` caller then waited out both before hearing anything.
+  it "merges into a turn queued behind the running one, with NO window configured" do
     executor = build_executor
     executor.supervised = true
+    blocking = FakeChat.new
+    blocking.script = proc { loop { Async::Task.current.sleep(0.01) } }
+    allow(executor).to receive(:create_chat).and_return(blocking)
+    windowless = profile({ queue_mode: "collect" })
 
-    Sync do
-      expect(executor.collect_into_pending("s1", "oi", profile: profile({ queue_mode: "collect" })))
-        .to be_nil
+    Sync do |top|
+      %w[t1 t2].each_with_index do |id, i|
+        command = Insika::Command.build(:send_message, { agent: "a", message: "msg#{i}" })
+        task = task_store.create(command: command.to_h, session_id: "s1", id: id)
+        executor.spawn_in_session(task, profile: windowless)
+      end
+      top.sleep(0.02) # t1 is running (blocked in `ask`), t2 waits in the FIFO
+
+      expect(executor.collect_into_pending("s1", "pode ser importado", profile: windowless)).to eq("t2")
+      expect(task_store.find("t2").command["payload"]["message"]).to eq("msg1\npode ser importado")
+      stop_serving(executor)
     end
   end
 

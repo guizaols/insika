@@ -182,18 +182,71 @@ RSpec.describe Insika::SessionActor do
       end
     end
 
-    it "no policy (and a policy without a window) keeps today's path: no door, no merging" do
+    it "no policy (and followup) keeps today's path: no door, no merging" do
       Sync do |top|
         exec = CollectExec.new
         sa = described_class.new(session_id: "s", executor: exec, parent: top)
         sa.enqueue(task("t1"), profile: nil)
-        sa.enqueue(task("t2"), profile: nil, policy: policy(debounce_ms: 0))
+        sa.enqueue(task("t2"), profile: nil, policy: policy(debounce_ms: 0, mode: :followup))
 
         top.sleep(0.02)
         expect(exec.events).to eq([[:start, "t1"]])
         expect(sa.collecting?).to be(false)
         expect(sa.collect("nada pra mesclar")).to be_nil
         expect(exec.coalesced).to be_empty
+        2.times { exec.release.enqueue(:go) }
+        sa.stop
+      end
+    end
+
+    # regression (burst): a turn QUEUED behind the one in flight is at
+    # the door for as long as the turn in front runs, window or no window. Without
+    # this, a burst that landed between two turns joined nothing and became a third
+    # turn — and the `stream=false` caller waited out both before hearing anything.
+    it "merges into a turn queued behind the running one, with NO debounce window" do
+      Sync do |top|
+        exec = CollectExec.new
+        sa = described_class.new(session_id: "s", executor: exec, parent: top)
+        sa.enqueue(task("t1"), profile: nil, policy: policy(debounce_ms: 0))
+        sa.enqueue(task("t2"), profile: nil, policy: policy(debounce_ms: 0))
+        top.sleep(0.02)
+
+        expect(exec.events).to eq([[:start, "t1"]]) # t1 runs, t2 waits its turn
+        expect(sa.collecting?).to be(true)
+        expect(sa.collect("e pode ser importado")).to eq("t2")
+        expect(exec.task_store.messages["t2"]).to eq(["e pode ser importado"])
+
+        exec.release.enqueue(:go) # t1 completes, t2 starts carrying the fragment
+        top.sleep(0.02)
+        expect(exec.coalesced.first&.first).to eq("t2")
+        expect(exec.coalesced.first&.at(1)).to eq(2)
+        expect(sa.collecting?).to be(false)
+        expect(sa.collect("tarde demais")).to be_nil
+        exec.release.enqueue(:go)
+        sa.stop
+      end
+    end
+
+    # Two turns at the door at once: each carries its OWN count. A single slot
+    # let the newer turn inherit the older one's fragments, and the older then ran
+    # with a message the store had already grown past.
+    it "keeps one door per queued turn: a fragment lands on the LAST one only" do
+      Sync do |top|
+        exec = CollectExec.new
+        sa = described_class.new(session_id: "s", executor: exec, parent: top)
+        sa.enqueue(task("t1"), profile: nil, policy: policy(debounce_ms: 0))
+        top.sleep(0.01)
+        exec.release.enqueue(:go) # t1 runs and completes
+
+        sa.enqueue(task("t2"), profile: nil, policy: policy(debounce_ms: 0))
+        sa.enqueue(task("t3"), profile: nil, policy: policy(debounce_ms: 0))
+        top.sleep(0.02)
+        expect(sa.collect("fragmento de t3")).to eq("t3")
+
+        exec.release.enqueue(:go) # t2 runs — untouched, and announces no merge
+        top.sleep(0.02)
+        expect(exec.task_store.messages["t2"]).to be_empty
+        expect(exec.coalesced.map(&:first)).not_to include("t2")
         2.times { exec.release.enqueue(:go) }
         sa.stop
       end
