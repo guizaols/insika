@@ -17,6 +17,10 @@ module Insika
   # tools rewritten; the allowlists (prompt_files/skills/tools_allow) are
   # AUTHORITATIVE from the pack, so whatever left the pack leaves the agent
   # (isolation and no drift). An in-flight turn keeps the profile it captured.
+  #
+  # `limits` and `params` are the exception, and the only one: they MERGE per key
+  # (see KNOB_BAGS). A client that publishes two limits is not saying the agent has
+  # only two.
   class PackImporter
     def initialize(bus:, profiles:)
       @bus = bus
@@ -30,10 +34,11 @@ module Insika
       id = presence(pack.config[:id]) ||
            (raise Insika::ValidationError, "pack missing config.id")
 
-      created = @profiles[id].nil?
+      existing = @profiles[id]
+      created = existing.nil?
       # create_agent rejects an already-existing id; update_agent requires it to
       # exist — the choice by presence makes the import an upsert.
-      dispatch(created ? :create_agent : :update_agent, agent_attrs(pack, id))
+      dispatch(created ? :create_agent : :update_agent, agent_attrs(pack, id, existing))
 
       pack.files.each { |name, body| dispatch(:write_agent_file, { agent_id: id, file: name, content: body }) }
       pack.skills.each { |name, body| dispatch(:write_skill, { name: name, content: body }) }
@@ -70,9 +75,10 @@ module Insika
     #     the tools of the enabled groups (union with tools_allow) go to the model;
     #     those of disabled groups are cut BEFORE the turn (resolves the OpenClaw
     #     tool-call waste, where the flag only exists in Rails).
-    def agent_attrs(pack, id)
+    def agent_attrs(pack, id, existing = nil)
       attrs = pack.config.dup
       attrs[:id] = id
+      merge_knob_bags!(attrs, existing)
       attrs[:prompt_files] = pack.files.keys unless pack.files.empty?
       attrs[:skills] = pack.skills.keys
 
@@ -84,6 +90,43 @@ module Insika
       attrs[:tools_allow_groups] = groups unless groups.nil?
       attrs
     end
+
+    # The bags a re-import must not ERASE. `limits` and `params` are flat
+    # `key => scalar` maps whose keys are independent of one another: a provisioning
+    # client that sends two of them is saying something about those two and nothing
+    # about the rest. `update_agent` replaces a sent field wholesale (correct for the
+    # Studio, which always posts the complete bag), so without this a client that
+    # publishes `limits: {turn_timeout:, context_budget:}` silently drops every knob
+    # an operator set here — `queue_mode`, `debounce_ms`, `chat_rate_limit` — on the
+    # next publish of an unrelated playbook.
+    #
+    # NOT the authoritative list (`prompt_files`/`skills`/`tools_allow`), which the
+    # pack is supposed to erase: those are isolation boundaries and a name that left
+    # the pack must leave the agent. A knob is not a boundary.
+    #
+    # The pack still WINS per key. What it cannot do is remove a key by omission —
+    # removing a knob is Studio (or operator) work, which is where it was set.
+    KNOB_BAGS = %i[limits params].freeze
+
+    # Keys are symbolized on BOTH sides before merging: the profile holds symbols and
+    # the pack's nested hashes arrive with whatever the JSON had, so a raw merge would
+    # leave `:turn_timeout` and `"turn_timeout"` side by side and let the later
+    # normalization pick by insertion order.
+    def merge_knob_bags!(attrs, existing)
+      return if existing.nil?
+
+      KNOB_BAGS.each do |bag|
+        patch = attrs[bag]
+        next unless patch.is_a?(Hash)
+
+        current = existing.respond_to?(bag) ? existing.public_send(bag) : nil
+        next unless current.is_a?(Hash)
+
+        attrs[bag] = sym_keys(current).merge(sym_keys(patch))
+      end
+    end
+
+    def sym_keys(hash) = hash.each_with_object({}) { |(k, v), acc| acc[k.to_sym] = v }
 
     # PER-FLAG CUT (/, STATIC pilot): derives the agent's
     # per-group allowlist from FLAGS declared in the pack config — DATA, never a
