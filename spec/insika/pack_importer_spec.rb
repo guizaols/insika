@@ -98,6 +98,56 @@ RSpec.describe Insika::PackImporter do
       expect(bus.of(:update_agent).size).to eq(1)
       expect(out[:created]).to be(false)
     end
+
+    # A profile that answers the knob bags (the double above is an Object, which
+    # exercises the respond_to? guard).
+    def profile_with(limits: {}, params: {})
+      Struct.new(:limits, :params).new(limits, params)
+    end
+
+    def update_attrs(existing, **over)
+      importer = described_class.new(bus: bus, profiles: profiles("loja-7" => existing))
+      importer.import(pack(config: { id: "loja-7", model: "m" }.merge(over)))
+      bus.of(:update_agent).first.payload
+    end
+
+    # regression: a provisioning client publishes the two limits it
+    # knows about; every knob an operator set HERE used to leave with that publish.
+    it "re-import keeps the knobs it did not send, and still wins on the ones it did" do
+      existing = profile_with(limits: { queue_mode: :steer, debounce_ms: 3_000, turn_timeout: 900 })
+
+      attrs = update_attrs(existing, limits: { turn_timeout: 1_200, context_budget: 60_000 })
+
+      expect(attrs[:limits]).to eq(queue_mode: :steer, debounce_ms: 3_000,
+                                   turn_timeout: 1_200, context_budget: 60_000)
+    end
+
+    it "symbolizes both sides: a wire key does not land beside its own symbol" do
+      existing = profile_with(limits: { turn_timeout: 900, debounce_ms: 3_000 })
+
+      attrs = update_attrs(existing, limits: { "turn_timeout" => 1_200 })
+
+      expect(attrs[:limits]).to eq(turn_timeout: 1_200, debounce_ms: 3_000)
+    end
+
+    it "`params` is the same kind of bag and is kept the same way" do
+      existing = profile_with(params: { temperature: 0.2, thinking: "on" })
+
+      attrs = update_attrs(existing, params: { thinking: "off" })
+
+      expect(attrs[:params]).to eq(temperature: 0.2, thinking: "off")
+    end
+
+    # The pack still erases what it is authoritative for — a name that left the pack
+    # must leave the agent. A knob is not a boundary; an allowlist is.
+    it "does NOT extend the same courtesy to the authoritative allowlists" do
+      existing = profile_with
+      allow(existing).to receive(:skills).and_return(%w[antiga])
+
+      attrs = update_attrs(existing)
+
+      expect(attrs[:skills]).to contain_exactly("escalation", "promo")
+    end
   end
 
   describe "allowlist with tools_allow in the config" do
