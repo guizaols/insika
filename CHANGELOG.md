@@ -10,6 +10,16 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- **A merged fragment is framed by `steer_join`, like a steered one already was.** The
+  two burst doors disagreed on what the model sees: a steered message becomes its OWN
+  `user` message in the transcript (framed by `steer_join`), while a merged one was
+  concatenated into the queued turn's single payload by a bare `\n`. A burst therefore
+  reached the model as one run-on paragraph with no boundary between the asks, and a
+  trailing constraint could be answered by nothing (staging, Época Cosméticos,
+  2026-09-18: five messages merged 4/4, and the answer never mentioned the fifth).
+  `steer_join` now applies to both doors; the default `nil` returns the text untouched,
+  so a wiring that never set it is unchanged.
+
 - **The door is open for as long as a turn is queued, not only during a debounce
   window.** `collect`/`steer` merged a fragment only while a turn sat in a
   `debounce_ms` window; a message that arrived while a turn waited behind the one in
