@@ -24,7 +24,7 @@ module Insika
   #
   #   session vars["queue_mode"]   — one conversation pinned by an operator
   #   profile.limits[:<key>]       — per-agent (a PRESENT key wins, incl. nil/0 = off)
-  #   settings["queue"][<key>]     — platform default, editable in the Studio
+  #   settings["queue"][<key>]     — platform default (Studio > Settings > Burst)
   #   DEFAULTS[<key>]              — = today's behavior
   #
   # Every default is off: a bare wiring behaves exactly as it did before this
@@ -126,9 +126,14 @@ module Insika
     # "inherit the platform default". Same semantics EdgeLimiter documents at
     # `edge_limiter.rb:57`, and for the same reason: an imported pack carrying an
     # explicit null must not silently re-enable a platform behavior.
+    #
+    # The PLATFORM layer reads nil the other way round: its form (Studio > Settings >
+    # Burst) writes nil for every blank field, and blank there means "no platform
+    # default", not 0 — a blank `steer_max_messages` must not become "never steer"
+    # for the whole deploy. An agent still says "off" with an explicit 0.
     def self.pick(key, limits, platform)
       return limits[key].to_i if limits.key?(key)
-      return platform[key.to_s].to_i if platform.key?(key.to_s)
+      return platform[key.to_s].to_i unless platform[key.to_s].nil?
 
       DEFAULTS[key]
     end
