@@ -28,23 +28,39 @@ module Insika
       @executor = executor
       @queue = Async::Queue.new
       @running = false
-      # The turn currently sitting at the door: created and :queued, but not yet
-      # released to run. `collect` merges into THIS one. nil whenever there is
-      # nothing mergeable — which is the common case and the safe default.
-      @pending = nil
+      # The turns sitting at the door: created and :queued, but not yet released to
+      # run — whether waiting out a debounce window or simply queued behind the turn
+      # in flight. `collect` merges into the LAST one (the turn that has not
+      # answered yet; appending to an older one would put a newer fragment in an
+      # older message). Keyed by task so a turn released from the FIFO still finds
+      # its OWN count — with a single slot, a second turn enqueued behind the first
+      # would take the first's fragments with it. Empty is the common case and the
+      # safe default: a policy that does not merge never opens one.
+      @doors = {}
       @loop = parent.async { |t| t.annotate("session:#{session_id}"); run_loop }
     end
 
     # Enqueues a turn (FIFO). Non-blocking: the handler responds with an
     # immediate {task_id:} even if the turn stays :queued behind another. -> task.id.
     #
-    # `policy` (a QueuePolicy) opens the debounce window for this turn; nil or a
-    # policy without a window behaves exactly as before — dequeued and run at once.
+    # `policy` (a QueuePolicy) decides the door: a merging mode (`collect`/`steer`)
+    # opens it here, and a `debounce_ms` on top of that also holds the turn once it
+    # reaches the front. A nil policy or `followup` behaves exactly as before —
+    # nothing to merge into, dequeued and run at once.
     #
     # `timing`  is the channel clock a channel turn allocated at 202
     # acceptance and already stamped `:inbound`; it rides the queue so the debounce
     # window and the FIFO wait land INSIDE first_balloon_ms.
     def enqueue(task, profile:, resume_from: nil, policy: nil, timing: nil)
+      # The door opens HERE, not when the turn is dequeued. "Created and not yet
+      # started" lasts as long as the turn IN FRONT takes, and that whole wait is
+      # mergeable: the turn has not spoken, so a fragment appended to it costs
+      # nothing and saves an answer. Opening the door only for a debounce window
+      # (where it used to live) left every message that arrived while a turn sat in
+      # the FIFO with nothing to join — it became a turn of its own behind two
+      # others, and a `stream=false` caller then waited for BOTH to run before it
+      # heard anything. A window is now what EXTENDS the door, never what creates it.
+      @doors[task.id] = open_door(task) if policy&.collect?
       @queue.enqueue([task, profile, resume_from, policy, timing])
       task.id
     end
@@ -58,7 +74,7 @@ module Insika
     # and neither yields between the check and the write below, so the "is it
     # still mergeable" test and the append cannot interleave.
     def collect(text)
-      pending = @pending
+      pending = @doors.values.last
       return nil if pending.nil?
 
       @executor.task_store.append_message(pending[:task_id], text)
@@ -88,8 +104,9 @@ module Insika
     # request's path.
     attr_reader :current_task
 
-    # Is there a turn at the door that `collect` could still merge into?
-    def collecting? = !@pending.nil?
+    # Is there a turn at the door that `collect` could still merge into? True from
+    # the moment a merging policy enqueues one until it starts running.
+    def collecting? = !@doors.empty?
 
     # Is the loop still alive? (the Executor revalidates before reusing from the
     # cache — a dead loop would black-hole queued turns).
@@ -121,42 +138,47 @@ module Insika
       end
     end
 
-    # the debounce window. Sleeps on the LOOP's fiber, never on the
-    # request's, so the POST is acked immediately and the platform does not retry.
-    # Returns the task to run (re-read from the store when fragments merged into it,
-    # since the in-memory Task is a frozen snapshot of an older message).
+    # Closes the turn's door and reports what it caught. The debounce
+    # window (when the policy has one) is the EXTRA wait held here, on the LOOP's
+    # fiber and never on the request's, so the POST is acked immediately and the
+    # platform does not retry. Returns the task to run — re-read from the store when
+    # fragments merged into it, since the in-memory Task is a frozen snapshot of an
+    # older message.
     def hold_at_the_door(task, policy)
-      return task unless policy&.debounce?
+      pending = @doors[task.id]
+      return task if pending.nil?
 
-      @pending = { task_id: task.id, count: 1, version: 0, arrivals: [Time.now.utc.iso8601] }
       begin
-        wait_for_quiet(policy)
-        merged = @pending[:count]
-        arrivals = @pending[:arrivals]
+        wait_for_quiet(policy, pending) if policy&.debounce?
+        merged = pending[:count]
       ensure
-        # The window is closed BEFORE the turn runs, under every exit path: a
-        # `collect` that slipped in here would append to a task about to be read.
-        @pending = nil
+        # The door closes BEFORE the turn runs, under every exit path: a `collect`
+        # that slipped in here would append to a task about to be read.
+        @doors.delete(task.id)
       end
 
       return task if merged == 1
 
-      @executor.emit_coalesced(task, merged: merged, arrivals: arrivals)
+      @executor.emit_coalesced(task, merged: merged, arrivals: pending[:arrivals])
       @executor.task_store.find(task.id) || task
+    end
+
+    def open_door(task)
+      { task_id: task.id, count: 1, version: 0, arrivals: [Time.now.utc.iso8601] }
     end
 
     # Sleeps in `debounce_ms` slices, restarting whenever a fragment arrives
     # (`version` moved), until either a slice passes in silence or the total
     # deferral reaches `debounce_max_ms` — the ceiling that stops a customer who
     # keeps typing from postponing their own answer forever.
-    def wait_for_quiet(policy)
+    def wait_for_quiet(policy, pending)
       quiet = policy.debounce_ms / 1000.0
       deadline = monotonic + (policy.debounce_max_ms / 1000.0)
 
       loop do
-        mark = @pending[:version]
+        mark = pending[:version]
         Async::Task.current.sleep(quiet)
-        break if @pending[:version] == mark # a full slice of silence
+        break if pending[:version] == mark # a full slice of silence
         break if monotonic >= deadline
       end
     end
