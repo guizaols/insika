@@ -78,7 +78,7 @@
       <label>steer_max_messages <span class="muted">(messages ONE running turn may absorb; blank = default 5, 0 = never steer)</span>
         <input type="text" name="steer_max_messages" value="<%= @agent.limits[:steer_max_messages] %>" inputmode="numeric" placeholder="5">
       </label>
-      <label>debounce_ms <span class="muted">(quiet window at the door; blank/0 = no window, so collect/steer never merge a burst)</span>
+      <label>debounce_ms <span class="muted">(extra quiet window at the door; blank/0 = none — collect/steer still merge into a turn that is queued behind another)</span>
         <input type="text" name="debounce_ms" value="<%= @agent.limits[:debounce_ms] %>" inputmode="numeric" placeholder="0">
       </label>
       <label>debounce_max_ms <span class="muted">(ceiling on the TOTAL wait; blank = default 10000)</span>

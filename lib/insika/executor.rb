@@ -349,7 +349,13 @@ module Insika
       return nil unless @supervised && session_id
 
       policy = queue_policy(profile, session_id)
-      return nil unless policy.collect? && policy.debounce?
+      # The MODE is the whole gate. `debounce_ms` used to be required here too,
+      # which made "the message arrived before the turn started" mean only "inside a
+      # window an operator configured": a burst landing on a turn already queued
+      # behind another joined nothing and became a third turn. A window still
+      # widens the door (it holds the turn at the front of the FIFO); it no longer
+      # is the door.
+      return nil unless policy.collect?
 
       actor = @session_actors[session_id]
       return nil unless actor&.alive?
@@ -376,8 +382,8 @@ module Insika
       return nil unless session_actor&.alive?
 
       # No turn running (or one still at the door): there is nothing to steer INTO.
-      # A turn at the door is the collect door's other window — a steer agent with a
-      # debounce merges there instead , so no message waits on either.
+      # A turn at the door is the collect door's business — a steer agent merges
+      # there instead (`collect?` is true for :steer), so no message waits on either.
       task = session_actor.current_task
       return nil if task.nil?
       # A workflow turn orchestrates RubyLLM itself and has no Insika chat to append to

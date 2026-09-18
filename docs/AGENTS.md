@@ -253,7 +253,7 @@ Which mode you want depends on **when** the message arrives:
 | `queue_mode` | The message arrives… | What happens |
 |---|---|---|
 | `followup` (default) | any time | it waits its turn in the queue — today's behavior, named |
-| `collect` | before the turn starts | the fragments merge into ONE turn |
+| `collect` | before the turn starts — including while it waits behind another turn | the fragments merge into ONE turn |
 | `steer` | while the turn is running tools | it is appended to the run in flight |
 | `interrupt` | while a turn is running that is now **wrong** | that turn is abandoned; this message becomes its own turn |
 
@@ -271,6 +271,13 @@ limit :debounce_max_ms, 10_000 # ceiling on the total wait, so typing forever
 
 With those settings the three fragments above become one turn carrying
 `"oi\nqueria saber do pedido\n1234567"`, released 2 s after the last one.
+
+**The window is not what opens the door.** A turn is "not started" from the moment
+it is created until it runs, and that includes the whole time it waits behind the
+turn in flight — so with `debounce_ms` at 0 a fragment still merges into a queued
+turn. What the window buys is the case where nothing is running: it holds the turn
+at the front of the queue so fragments have something to land on. Without it a
+burst on an idle session becomes one turn per message, each answered in order.
 
 All three follow the platform-layer rule above, with one extra rung on top:
 **session vars → this agent's limits → the platform default (Studio, `queue.*`) →
@@ -306,11 +313,13 @@ separately lives in one event, emitted when the window closes:
 Times and counts, never content. That is what answers "the customer says they
 sent the order number" without keeping a throwaway task per fragment.
 
-> **`steer` also collects at the door.** The two windows are the same policy's
-> halves, not two modes: a `steer` agent that set a `debounce_ms` also merges the
-> fragments that land before the turn starts. The window value is what
-> an operator replaces the legacy pre-batch buffer with — `steer` catches anything
-> that arrives after the turn started, the door window the fragments before it.
+> **`steer` also collects at the door.** The two are the same policy's halves, not
+> two modes: a `steer` agent merges the fragments that land before the turn starts
+> and appends the ones that land after it — `debounce_ms` only widens the first
+> half. That pairing is what makes a burst answerable at all: whatever the customer
+> sends either joins the run in flight (`steered`) or the turn behind it (`merged`),
+> and the caller hears which one immediately instead of holding a connection open
+> until someone else's turn ends.
 
 #### `steer` — the message arrives while the turn is already running
 

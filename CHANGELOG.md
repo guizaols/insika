@@ -8,6 +8,21 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The door is open for as long as a turn is queued, not only during a debounce
+  window.** `collect`/`steer` merged a fragment only while a turn sat in a
+  `debounce_ms` window; a message that arrived while a turn waited behind the one in
+  flight joined nothing and became a turn of its own, third in line. A
+  `POST /v1/messages?stream=false` caller then held its connection through TWO turns
+  and timed out — on the WhatsApp integration that surfaced as a technical apology
+  to the customer, once per excess message of a burst. A queued turn is now mergeable
+  with or without a window, so every burst message answers immediately with `merged`
+  or `steered`. `followup` (the default) is untouched.
+- One door per queued turn: with two turns waiting, the second used to take over the
+  first's fragment count, and the first then ran from a message snapshot the store had
+  already grown past.
+
 ## [0.9.0] - 2026-09-07
 
 The commerce-agent wave: the engine now enforces what the prompt used to ask for —
