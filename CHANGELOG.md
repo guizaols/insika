@@ -19,6 +19,14 @@ it is released. Entries land with the pull request that makes the change.
   to the customer, once per excess message of a burst. A queued turn is now mergeable
   with or without a window, so every burst message answers immediately with `merged`
   or `steered`. `followup` (the default) is untouched.
+- **Re-importing a pack no longer erases the knobs it did not send.** `limits` and
+  `params` now MERGE per key on an update (`PackImporter::KNOB_BAGS`); everything
+  else keeps replacing. A provisioning client that publishes
+  `limits: {turn_timeout:, context_budget:}` used to drop every other knob on the
+  agent — `queue_mode`, `debounce_ms`, `chat_rate_limit` — so an unrelated playbook
+  publish silently reset the queue policy an operator had set in the Studio. The
+  authoritative allowlists (`prompt_files`/`skills`/`tools_allow`) are unchanged: a
+  name that left the pack still leaves the agent.
 - One door per queued turn: with two turns waiting, the second used to take over the
   first's fragment count, and the first then ran from a message snapshot the store had
   already grown past.
