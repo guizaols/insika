@@ -4,6 +4,7 @@
      ["general", "General", "streaming, timeouts"],
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
      ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
+     ["burst",   "Burst policy", "what happens to a message that lands on a busy session"],
      ["evals",   "Evals", "who grades a rubric, and how a panel agrees"],
      ["llm",     "LLM providers", "keys, base URL, models per provider"],
      ["demo",    "Demo data", "see every loop working at once"]
@@ -104,6 +105,32 @@
             <label>agent_token_window (s)<input type="text" name="agent_token_window" value="<%= @settings.dig("edge", "agent_token_window") %>" inputmode="numeric" placeholder="86400"></label>
           </div>
           <label>limit_response <span class="muted">(safe reply on breach; blank = neutral built-in)</span><input type="text" name="limit_response" value="<%= @settings.dig("edge", "limit_response") %>" placeholder="Estou recebendo muitas mensagens agora…"></label>
+        </form>
+      </div>
+
+    <% elsif @section == "burst" %>
+      <div class="drill-pane-head">
+        <div class="title"><strong>Burst policy</strong></div>
+        <button type="submit" form="set-queue" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+      </div>
+      <div class="drill-pane-body">
+        <p class="muted">What happens to a message that lands on a session that is <strong>already busy</strong>: <code>followup</code> waits in line (today's behavior), <code>collect</code> merges fragments that arrived before the turn started, <code>steer</code> also appends into the run in flight at a tool boundary, <code>interrupt</code> abandons it. This is the <strong>platform</strong> answer — every agent still overrides it in its own config, and a session var pins one conversation. Blank = no platform default (falls through to followup / no window / steer_max 5).</p>
+        <form id="set-queue" method="post" action="/studio/settings/queue">
+          <%== csrf_tag %>
+          <label>queue_mode
+            <select name="queue_mode">
+              <option value=""<%== " selected" if @settings.dig("queue", "queue_mode").nil? %>>— none (followup)</option>
+              <% Insika::QueuePolicy::MODES.each do |mode| %>
+                <option value="<%= mode %>"<%== " selected" if @settings.dig("queue", "queue_mode").to_s == mode.to_s %>><%= mode %></option>
+              <% end %>
+            </select>
+          </label>
+          <div class="grid-2">
+            <label>debounce_ms <span class="muted">(quiet window at the door before the turn starts; blank/0 = none)</span><input type="text" name="debounce_ms" value="<%= @settings.dig("queue", "debounce_ms") %>" inputmode="numeric" placeholder="0"></label>
+            <label>debounce_max_ms <span class="muted">(ceiling on the TOTAL wait; blank = 10000)</span><input type="text" name="debounce_max_ms" value="<%= @settings.dig("queue", "debounce_max_ms") %>" inputmode="numeric" placeholder="10000"></label>
+            <label>steer_max_messages <span class="muted">(messages ONE running turn may absorb; blank = 5, 0 = never steer)</span><input type="text" name="steer_max_messages" value="<%= @settings.dig("queue", "steer_max_messages") %>" inputmode="numeric" placeholder="5"></label>
+          </div>
+          <label>steer_join <span class="muted">(template framing an absorbed message — at the door and mid-run; must carry <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>; blank = the raw text)</span><input type="text" name="steer_join" value="<%= @settings.dig("queue", "steer_join") %>" placeholder="the customer just added: <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>"></label>
         </form>
       </div>
 

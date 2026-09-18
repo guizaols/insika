@@ -45,6 +45,17 @@ RSpec.describe Insika::QueuePolicy do
 
       expect(policy.mode).to eq(:followup)
     end
+
+    it "a platform key present with nil is NO platform default, not 0 (the Studio form writes nil for a blank field)" do
+      policy = described_class.resolve(profile({}),
+                                       settings_store: settings({ "queue_mode" => "steer",
+                                                                  "steer_max_messages" => nil,
+                                                                  "debounce_max_ms" => nil }))
+
+      expect(policy.steer_max_messages).to eq(5)      # QueuePolicy::DEFAULTS, not "never steer"
+      expect(policy.debounce_max_ms).to eq(10_000)
+      expect(policy.steer?).to be(true)
+    end
   end
 
   describe "a PRESENT key wins even carrying nil/0 (off, never inherit)" do

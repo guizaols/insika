@@ -719,6 +719,17 @@ module Studio
           r.redirect("/studio/settings?s=edge")
         end
 
+        # Burst policy: the platform QueuePolicy layer. Its own form for the same
+        # reason as edge — and so "apply to every agent" is one save instead of
+        # one edit per agent (each agent still overrides in its config).
+        r.post "queue" do
+          check_csrf!
+          with_flash("Burst policy saved.") do
+            dispatch(:update_settings, { patch: queue_patch(r) })
+          end
+          r.redirect("/studio/settings?s=burst")
+        end
+
         # Evals: the judge PANEL and how it agrees. Its own
         # form, like models and edge — a save here must not clobber those.
         r.post "evals" do
@@ -2279,7 +2290,7 @@ end
     # same keys; a bogus ?cfg= falls back to the first group.
     CONFIG_SECTIONS = %w[model guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
 
-    SETTINGS_SECTIONS = %w[general models edge evals llm demo].freeze
+    SETTINGS_SECTIONS = %w[general models edge burst evals llm demo].freeze
     def render_settings
       store = insika[:settings_store]
       @settings = store ? store.get : Insika::SettingsStore::DEFAULTS

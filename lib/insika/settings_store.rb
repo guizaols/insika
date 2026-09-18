@@ -103,6 +103,19 @@ module Insika
         "agent_token_ceiling" => nil,
         "agent_token_window" => 86_400,
         "limit_response" => nil
+      },
+      # Burst policy — the platform layer of the QueuePolicy (session vars >
+      # agent limits > HERE > QueuePolicy::DEFAULTS). nil = no platform default:
+      # the key falls through to QueuePolicy::DEFAULTS (followup, no window,
+      # steer_max 5, raw text). Same keys the agent config form writes into
+      # profile.limits, so one deploy-wide answer no longer means editing every
+      # agent. Additive key — reads overlay DEFAULTS.
+      "queue" => {
+        "queue_mode" => nil,
+        "debounce_ms" => nil,
+        "debounce_max_ms" => nil,
+        "steer_max_messages" => nil,
+        "steer_join" => nil
       }
     }.freeze
 

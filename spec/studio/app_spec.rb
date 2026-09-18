@@ -2762,6 +2762,47 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_settings)).to be_nil # nothing dispatched
   end
 
+  it "the burst form dispatches update_settings with the queue layer only" do
+    app, bus = build_app
+    client = login(app)
+    body = client.get("/settings?s=burst").body
+    expect(body).to include('name="queue_mode"')
+    expect(body).to include('name="steer_join"')
+    csrf = csrf_from(body)
+    client.post("/settings/queue", params: {
+                  "queue_mode" => "steer", "debounce_ms" => "3000", "debounce_max_ms" => "20000",
+                  "steer_max_messages" => "5",
+                  "steer_join" => "o cliente acrescentou: %{message}", "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch.keys).to eq(["queue"])
+    expect(patch["queue"]["queue_mode"]).to eq("steer")
+    expect(patch["queue"]["debounce_ms"]).to eq(3_000)
+    expect(patch["queue"]["debounce_max_ms"]).to eq(20_000)
+    expect(patch["queue"]["steer_join"]).to eq("o cliente acrescentou: %{message}")
+  end
+
+  it "the burst form writes nil for a blank field (no platform default, NOT 0)" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    res = client.post("/settings/queue", params: { "debounce_ms" => "3000", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+    queue = bus.last(:update_settings).payload[:patch]["queue"]
+    expect(queue["steer_max_messages"]).to be_nil
+    expect(queue["queue_mode"]).to be_nil
+  end
+
+  it "the burst form REJECTS an unknown mode and a steer_join that drops the message" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings").body)
+    expect(client.post("/settings/queue", params: { "queue_mode" => "steerr", "_csrf" => csrf }).status).to eq(302)
+    expect(bus.last(:update_settings)).to be_nil
+    client.post("/settings/queue", params: { "steer_join" => "o cliente acrescentou algo", "_csrf" => csrf })
+    expect(bus.last(:update_settings)).to be_nil
+  end
+
   it "the model-defaults form does NOT touch the general-settings keys (scoped save)" do
     app, bus = build_app
     client = login(app)

@@ -526,6 +526,30 @@ module Studio
       { "edge" => edge }
     end
 
+    # Burst policy — the PLATFORM layer of the QueuePolicy, saved from its own form
+    # (a sub-resource, like edge/models). Every field writes nil when blank, and nil
+    # here means "no platform default" (QueuePolicy.pick skips it) — NOT 0, which on
+    # `steer_max_messages` would read as "never steer" deploy-wide. The two refusals
+    # are the agent form's, verbatim: an unknown mode and a `steer_join` that would
+    # drop the customer's message are config errors, caught where the operator is.
+    def queue_patch(r)
+      mode = presence(r.params["queue_mode"])
+      if mode && !Insika::QueuePolicy::MODES.map(&:to_s).include?(mode)
+        raise Insika::ValidationError, "queue_mode must be one of: #{Insika::QueuePolicy::MODES.join(', ')}"
+      end
+
+      join = presence(r.params["steer_join"])
+      if join && !join.include?(Insika::QueuePolicy::JOIN_PLACEHOLDER)
+        raise Insika::ValidationError, "steer_join must contain #{Insika::QueuePolicy::JOIN_PLACEHOLDER}"
+      end
+
+      queue = { "queue_mode" => mode, "steer_join" => join }
+      %w[debounce_ms debounce_max_ms steer_max_messages].each do |f|
+        queue[f] = edge_int(r.params[f], f)
+      end
+      { "queue" => queue }
+    end
+
     # An eval case arrives as the YAML text the operator edited — the same shape the
     # corpus files hold, so there is one format to learn and a pull request can review
     # what was authored. Decoding happens HERE, at the transport edge; the SHAPE is
