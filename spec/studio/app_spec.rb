@@ -871,6 +871,43 @@ RSpec.describe Studio::App do
     expect(limits).not_to have_key(:steer_max_messages)
   end
 
+  it "config writes debounce_ms/debounce_max_ms/steer_join; blank DELETES" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: {
+                  "model" => "x", "queue_mode" => "steer", "debounce_ms" => "3000",
+                  "debounce_max_ms" => "8000", "steer_join" => "o cliente acrescentou: %{message}",
+                  "_csrf" => csrf
+                })
+    limits = bus.last(:update_agent).payload[:limits]
+    expect(limits[:debounce_ms]).to eq(3000)
+    expect(limits[:debounce_max_ms]).to eq(8000)
+    expect(limits[:steer_join]).to eq("o cliente acrescentou: %{message}")
+
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf })
+    limits = bus.last(:update_agent).payload[:limits]
+    expect(limits).not_to have_key(:debounce_ms)
+    expect(limits).not_to have_key(:debounce_max_ms)
+    expect(limits).not_to have_key(:steer_join)
+  end
+
+  # Mesma recusa do QueuePolicy#join!, no lugar onde o operador está: um template
+  # sem o placeholder derrubaria a mensagem da cliente com o turno ainda parecendo
+  # steerado.
+  it "config recusa steer_join sem o placeholder" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    res = client.post("/agents/bia/config", params: {
+                        "model" => "x", "steer_join" => "o cliente acrescentou algo", "_csrf" => csrf
+                      })
+    expect(res.status).to eq(302)
+    expect(client.get(res.headers["location"]).body).to include("steer_join must contain")
+    expect(bus.types).not_to include(:update_agent)
+  end
+
   it "config recusa queue_mode desconhecida com flash de erro" do
     app, bus = build_app
     client = login(app)

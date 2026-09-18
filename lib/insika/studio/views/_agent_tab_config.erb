@@ -78,6 +78,15 @@
       <label>steer_max_messages <span class="muted">(messages ONE running turn may absorb; blank = default 5, 0 = never steer)</span>
         <input type="text" name="steer_max_messages" value="<%= @agent.limits[:steer_max_messages] %>" inputmode="numeric" placeholder="5">
       </label>
+      <label>debounce_ms <span class="muted">(quiet window at the door; blank/0 = no window, so collect/steer never merge a burst)</span>
+        <input type="text" name="debounce_ms" value="<%= @agent.limits[:debounce_ms] %>" inputmode="numeric" placeholder="0">
+      </label>
+      <label>debounce_max_ms <span class="muted">(ceiling on the TOTAL wait; blank = default 10000)</span>
+        <input type="text" name="debounce_max_ms" value="<%= @agent.limits[:debounce_max_ms] %>" inputmode="numeric" placeholder="10000">
+      </label>
+      <label>steer_join <span class="muted">(template framing a mid-run message; must carry <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>; blank = the raw text)</span>
+        <input type="text" name="steer_join" value="<%= @agent.limits[:steer_join] %>" placeholder="the customer just added: <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>">
+      </label>
     </div>
     <label class="check">
       <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
