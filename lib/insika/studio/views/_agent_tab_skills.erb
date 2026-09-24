@@ -2,9 +2,9 @@
 <section class="section" id="skills" data-tabs-target="panel">
   <div class="section-head">
     <h2>Skills</h2>
-    <p class="muted">which catalog skills this agent may load (<code>load_skill</code>).</p>
+    <p class="muted">Choose which catalog skills this agent may load. Save skills applies this selection to <strong><%= @agent.id %></strong>.</p>
   </div>
-  <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/skills" data-controller="toggle-counter">
+  <form class="card" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/skills" data-controller="toggle-counter dirty-guard">
     <%== csrf_tag %>
     <div class="matrix-topline">
       <% if @all_skills.empty? %>

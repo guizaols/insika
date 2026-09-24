@@ -1,4 +1,4 @@
-<header class="page-head">
+<header class="page-head operation-head">
   <div>
     <nav class="crumbs"><a href="/studio/tasks">tasks</a></nav>
     <h1>Task
@@ -11,7 +11,7 @@
   </div>
 </header>
 
-<div class="card">
+<div class="card operation-summary">
   <div class="actions">
     <span class="pill <%= status_class(@task.status) %>"><%= @task.status %></span>
     <% if @task.session_id %>
@@ -40,6 +40,7 @@
       <div class="card">
         <div class="skill-name mono"><%= pa.tool %></div>
         <div class="skill-desc muted">turn <%= pa.turn %> · requested <%= pa.requested_at %></div>
+        <p class="muted">Review the requested arguments before allowing this tool to run.</p>
         <pre><%= message_content(pa.args) %></pre>
         <div class="actions">
           <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>">
@@ -61,12 +62,7 @@
   </section>
 <% end %>
 
-<section class="section">
-  <div class="section-head"><h2>Command</h2></div>
-  <div class="card"><pre><%= message_content(@task.command) %></pre></div>
-</section>
-
-<section class="section">
+<section class="section operation-history">
   <div class="section-head"><h2>Executions <span class="muted">· <%= Array(@task.executions).size %></span></h2></div>
   <% if Array(@task.executions).empty? %>
     <div class="empty">No executions yet.</div>
@@ -88,9 +84,14 @@
   <% end %>
 </section>
 
+<details class="card operation-diagnostics">
+  <summary>Command</summary>
+  <div class="card"><pre><%= message_content(@task.command) %></pre></div>
+</details>
+
 <% if @task.timing && !@task.timing.empty? %>
-  <section class="section">
-    <div class="section-head"><h2>Timing <span class="muted">· the turn's latency windows</span></h2></div>
+  <details class="card operation-diagnostics">
+    <summary>Timing</summary>
     <div class="card">
       <ul class="kv">
         <% @task.timing.each do |key, value| %>
@@ -98,11 +99,11 @@
         <% end %>
       </ul>
     </div>
-  </section>
+  </details>
 <% end %>
 
-<section class="section">
-  <div class="section-head"><h2>Latest checkpoint</h2></div>
+<details class="card operation-diagnostics">
+  <summary>Latest checkpoint</summary>
   <% if @checkpoint.nil? %>
     <div class="empty">No checkpoint recorded.</div>
   <% else %>
@@ -115,10 +116,11 @@
       </ul>
     </div>
   <% end %>
-</section>
+</details>
 
-<section class="section">
-  <div class="section-head"><h2>Model requests</h2></div>
+<details class="card operation-diagnostics">
+  <% failures = @llm_trace["entries"].count { |entry| entry["status"] == "failed" || entry["exception_class"] } %>
+  <summary>Model requests<% if failures.positive? %> <span class="status err"><%= failures %> failed events</span><% end %></summary>
   <p class="muted">Native retries are attempt usage, separate from task executions. Reported cost is diagnostic; aggregate spend uses turn accounting. Tokens: input / output / cache read / cache write / thinking.</p>
   <% if @llm_trace["truncated"] %><p class="muted">Latest 200 events shown; earlier diagnostics were discarded.</p><% end %>
   <% if @llm_trace["entries"].empty? %>
@@ -143,4 +145,4 @@
       </table>
     </div>
   <% end %>
-</section>
+</details>

@@ -1,3 +1,4 @@
+<div class="reports-page reports-artifacts">
 <%# the Artifacts page: the report destination. Reads the ArtifactStore
    directly (the listing IS the history); the only mutation — delete —
    dispatches :delete_artifact on the bus. The preview is a sandboxed iframe
@@ -5,7 +6,7 @@
 <header class="page-head">
   <div>
     <%== crumbs_for("Artifacts") %>
-    <h1>Artifacts<span class="sub">the report destination — saved pages, per agent</span></h1>
+    <h1>Artifacts<span class="sub">Saved reports & pages</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/artifacts", @agent) %>
@@ -19,17 +20,17 @@
       has <span class="mono">save_artifact</span> in its <span class="mono">tools_allow</span>
       writes its reports here.
     <% else %>
-      No artifacts yet, for any agent.
+      No artifacts yet. Reports appear here when an agent uses <code>save_artifact</code>.
     <% end %>
   </div>
 <% else %>
-  <h2><%= @agent || "all agents" %><span class="sub"><%= @artifacts.size %> artifact(s)</span></h2>
-  <div class="card">
+  <div class="section-head"><h2>Saved artifacts</h2><span class="muted"><%= @artifacts.size %> reports · newest first</span></div>
+  <div class="card report-table">
     <table class="grid">
       <thead>
         <tr>
           <% unless @agent %><th>agent</th><% end %>
-          <th>title</th><th>mime</th><th>task</th><th class="time">created</th><th></th>
+          <th>Title</th><th>Format</th><th>Task</th><th class="time">Created</th><th><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
       <tbody>
@@ -47,7 +48,7 @@
                 <button type="button" class="btn ghost btn-sm" data-copy="<%= signed_artifact_url(a.id) %>">copy link</button>
               <% end %>
               <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(a.id) %>/delete"
-                    class="inline" data-confirm="Delete this artifact?">
+                    class="inline" data-turbo-confirm="Delete this artifact?">
                 <%== csrf_tag %>
                 <input type="hidden" name="agent" value="<%= a.agent %>">
                 <button class="btn ghost btn-sm danger">delete</button>
@@ -59,3 +60,5 @@
     </table>
   </div>
 <% end %>
+
+</div>

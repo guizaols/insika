@@ -1,7 +1,8 @@
+<div class="reports-page reports-parity">
 <header class="page-head">
   <div>
     <%== crumbs_for("Parity") %>
-    <h1>Parity<span class="sub">the shadow experiment</span></h1>
+    <h1>Parity<span class="sub">Compare replies in the shadow experiment</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/parity", @agent) %>
@@ -28,7 +29,7 @@
     </div>
     <% sha_check = r.checks.find { |c| c.id == :criterion_sha } %>
     <div class="skill-desc">
-      <span class="mono"><%= r.criterion_sha %></span>
+      <details class="report-details"><summary>Frozen criterion</summary><p class="mono"><%= r.criterion_sha %></p></details>
       <% if sha_check&.met %>
         <span class="pill ok">frozen · matches every pair in the window</span>
       <% else %>
@@ -37,8 +38,32 @@
     </div>
   </div>
 
-  <h2>Checks<span class="sub">the arithmetic, not the conclusion</span></h2>
+  <h2>Judge a batch</h2>
   <div class="card">
+    <form method="post" action="/studio/parity" class="actions">
+      <%== csrf_tag %>
+      <label>
+        Agent (all stores when blank)
+        <input type="text" name="agent" placeholder="agent-id" value="<%= @agent %>">
+      </label>
+      <label>
+        Limit
+        <input type="number" name="limit" value="50" min="1" max="200">
+      </label>
+      <button type="submit" class="primary" data-turbo-submits-with="Judging…">Judge <%= @pending %> complete pair(s)</button>
+    </form>
+    <p class="muted">Only complete pairs are judged, up to the batch limit. <a href="/studio/settings?s=evals">Configure judges</a></p>
+    <div class="skill-desc muted">
+      Cost: <span class="mono"><%= @judge_cost %></span> provider calls
+      (<%= @pending %> pairs × <%= @criterion.rule.min_judge_models %> judges × 2 orders).
+      <% if Array((@judge_models || {})["judges"]).empty? %>
+        <span class="pill err">No judges configured. Configure judges in Settings before running a batch.</span>
+      <% end %>
+    </div>
+  </div>
+
+  <h2>Readiness checks<span class="sub">Each requirement must pass</span></h2>
+  <div class="card report-table">
     <table class="grid">
       <thead><tr><th>check</th><th>required</th><th>actual</th><th></th></tr></thead>
       <tbody>
@@ -55,7 +80,7 @@
   </div>
 
   <h2>Pairs / day<span class="sub">floor <%= @criterion.rule.pairs_per_day %> · a gap day invalidates the window</span></h2>
-  <div class="card">
+  <div class="card report-table">
     <table class="grid">
       <thead><tr><th>date</th><th>pairs</th><th>decided</th><th></th></tr></thead>
       <tbody>
@@ -72,8 +97,8 @@
   </div>
 
   <% if r.counts %>
-    <h2>Per store<span class="sub">a store blocks its own cut even when the aggregate passes</span></h2>
-    <div class="card">
+    <h2>Per store<span class="sub">Each agent must meet its own threshold</span></h2>
+    <div class="card report-table">
       <table class="grid">
         <thead><tr><th>store</th><th>decided</th><th>win-or-tie</th><th>worse</th><th>meets floor</th></tr></thead>
         <tbody>
@@ -101,42 +126,21 @@
     </div>
   <% end %>
 
-  <h2>Judge a batch</h2>
-  <div class="card">
-    <form method="post" action="/studio/parity" class="actions">
-      <%== csrf_tag %>
-      <label>
-        Agent (all stores when blank)
-        <input type="text" name="agent" placeholder="agent-id">
-      </label>
-      <label>
-        Limit
-        <input type="number" name="limit" value="50" min="1" max="200">
-      </label>
-      <button type="submit" class="primary">Judge <%= @pending %> complete pair(s)</button>
-    </form>
-    <div class="skill-desc muted">
-      Cost: <span class="mono"><%= @judge_cost %></span> provider calls
-      (<%= @pending %> pairs × <%= @criterion.rule.min_judge_models %> judges × 2 orders).
-      <% if Array((@judge_models || {})["judges"]).empty? %>
-        <span class="pill err">no judges configured in settings['evals'] — the press will refuse</span>
-      <% end %>
-    </div>
-  </div>
-
   <h2>Recent pairs<span class="sub">inbound · incumbent · insika</span></h2>
   <div class="card">
     <ul class="history">
       <% @pairs.each do |p| %>
         <li>
           <span class="pill <%= { open: 'warn', complete: 'info', silent: 'info', judged: 'ok', incomplete: 'err' }.fetch(p.status, 'info') %>"><%= p.status %></span>
-          <span class="mono"><%= p.id[0, 12] %></span>
+          <span class="mono" title="<%= p.id %>"><%= p.id[0, 12] %></span>
           <% if p.agent %><span class="mono"><%= p.agent %></span><% end %>
           <% if p.outcome %><span class="pill"><%= p.outcome %></span><% end %>
           <% if p.session_id %><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(p.session_id) %>">open session</a><% end %>
           <div class="skill-desc muted"><strong>customer:</strong> <%= p.inbound.to_s %></div>
+          <details class="report-details"><summary>Compare replies</summary>
           <div class="skill-desc"><strong>incumbent:</strong> <%= p.incumbent_reply.to_s %></div>
           <div class="skill-desc"><strong>insika:</strong> <%= p.insika_reply.to_s %></div>
+          </details>
           <% if p.verdict.is_a?(Hash) && presence(p.verdict["reason"]) %>
             <div class="skill-desc muted">why: <%= p.verdict["reason"] %></div>
           <% end %>
@@ -145,3 +149,5 @@
     </ul>
   </div>
 <% end %>
+
+</div>

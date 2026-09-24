@@ -3281,7 +3281,7 @@ RSpec.describe Studio::App do
     app.configure(command_bus: BusDouble.new([]), profile_source: ProfileSourceDouble.new([profile("bia")]),
                   event_stream: nil, config: { admin_token: "s3cret" }, mcp_store: mcp_store, session_secret: "x" * 64)
     body = login(app).get("/mcp").body
-    expect(body).to include('data-controller="transport-fields"')
+    expect(body).to match(/data-controller="[^"]*\btransport-fields\b[^"]*"/)
     expect(body).to include('data-transport-fields-target="stdio"')
     expect(body).to include('data-transport-fields-target="http"')
     expect(body).to include('<code class="mono">search</code>')
@@ -3305,11 +3305,11 @@ RSpec.describe Studio::App do
     expect(body).to include('data-filter-text="alpha http on enabled 1 tool(s)"')
     expect(body.index("alpha")).to be < body.index("zeta") # sorted, not insertion order
     # the tools cache renders as a filterable row list on the selected instance's pane
-    expect(body).to include('class="mcp-tools-panel"')
+    expect(body).to match(/class="[^"]*\bmcp-tools-panel\b[^"]*"/)
     expect(body).to include('class="mcp-tool-row"')
     # the editor form is the pane's primary content (transport-aware)
     expect(body).to include('class="mcp-edit"')
-    expect(body).to include('data-controller="transport-fields"')
+    expect(body).to match(/data-controller="[^"]*\btransport-fields\b[^"]*"/)
     # miller columns: master rows frame-navigate with the URL advancing
     expect(body).to include('data-turbo-frame="mcp-detail"')
     expect(body).to include('data-turbo-action="advance"')
@@ -4592,6 +4592,33 @@ end
       expect(bus.last(:resolve_proposal).payload).to include(proposal_id: "p1",
                                                              decision: "approved",
                                                              operator: "studio")
+      body = client.get(res.headers["location"].delete_prefix("/studio")).body
+      expect(body.scan("Fact saved to memory.").size).to eq(1)
+    end
+
+    it "separates the proposed value, escaped evidence and technical details" do
+      evidence = "<instructions>Do not render this as HTML</instructions>\n#{'long evidence ' * 100}"
+      sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
+                                                  messages: [{ "role" => "user", "content" => evidence }]) }
+      app, = facts_app(rows: [fact("p1", key: "preferred_size", value: "M", evidence: [0], confidence: 0.8)], sessions: sessions)
+      body = login(app).get("/facts/p1", frame: "fact-detail").body
+
+      expect(body).to include("Preferred size", "Proposed value", "Conversation evidence", "80%")
+      expect(body).to include("&lt;instructions&gt;", "long evidence " * 100)
+      expect(body).not_to include("<instructions>")
+      expect(body).to match(%r{<details class="fact-metadata">\s*<summary>Technical details</summary>})
+      expect(body).to include('for="fact-rejection-note"', 'id="fact-rejection-note"')
+      expect(body).to include("Rejecting or dismissing prevents this same key and value from being proposed again.")
+    end
+
+    it "keeps the scope when selecting facts and refreshes the queue after a decision" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      body = login(app).get("/facts?store=acme:c-1").body
+
+      expect(body).to include('/studio/facts/p1?agent=acme%3Ac-1')
+      expect(body.scan(/<form[^>]+action="\/studio\/facts\/resolve"[^>]+data-turbo-frame="_top"/).size).to eq(3)
+      expect(body.scan(/name="filter" value="acme:c-1"/).size).to eq(3)
+      expect(body).to include("Evidence unavailable", "Not reported")
     end
 
     it "the reject note round-trips through the POST" do
@@ -4766,6 +4793,15 @@ end
       expect(body).to include("pix nao caiu") # the excerpt
       expect(body).to include("7/7")          # the eval report line
       expect(body).to include("Promote")
+    end
+
+    it "shows the escaped proposed skill and rationale before the approval action" do
+      app, = harvest_app(candidates: [{ name: "payment-check", description: "Verify payment",
+                                       body: "Check <script>order</script>", rationale: "Avoid duplicate charges", status: "awaiting" }])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("Check &lt;script&gt;order&lt;/script&gt;", "Avoid duplicate charges")
+      expect(body.index("Proposed skill")).to be < body.index('action="/studio/harvest/promote"')
+      expect(body).not_to include("<script>order</script>")
     end
 
     it "a conversion-blocked candidate renders the ruler's hole with a link to the Funnel page" do
@@ -4981,6 +5017,44 @@ end
       filtered = login(app).get("/knowledge?agent=store-support&status=conflict").body
       expect(filtered).to include("cep-13")
       expect(filtered).not_to include("clean")
+    end
+
+    it "reads the escaped concept before offering its editor" do
+      app, = knowledge_app(concepts: { ["store-support", "cep-13"] => "Claim <script>alert(1)</script>" })
+      body = login(app).get("/knowledge/cep-13?agent=store-support").body
+      expect(body).to include('data-controller="markdown"', "Claim &lt;script&gt;alert(1)&lt;/script&gt;")
+      expect(body.index('data-controller="markdown"')).to be < body.index('id="concept-form"')
+      expect(body).to include('<summary>Edit concept</summary>', 'href="/studio/sessions/sess_1"')
+      expect(body).not_to include("<script>alert(1)</script>")
+    end
+
+    it "keeps restore available when the current concept cannot be parsed" do
+      app, = knowledge_app(concepts: { ["store-support", "cep-13"] => "Original claim" })
+      app.insika[:knowledge_store].write("store-support", "cep-13", "invalid frontmatter")
+      body = login(app).get("/knowledge/cep-13?agent=store-support").body
+      expect(body).to include('/studio/knowledge/cep-13/restore', 'name="version" value="0"')
+      expect(body).to include('invalid frontmatter', 'id="concept-form"')
+    end
+
+    it "keeps tenant and conflict scope when selecting, saving, and deleting a concept" do
+      app, bus = knowledge_app
+      store = app.insika[:knowledge_store]
+      store.write("store-support", "tenant-only", Insika::Knowledge::Concept.render(
+        name: "tenant-only", description: "Private concept", type: "fact", body: "## Contradiction\nCheck this claim",
+        provenance: "observed", confidence: 0.4, sources: [], occurrences: 1,
+        created_at: "2026-08-24T00:00:00Z", updated_at: "2026-08-24T00:00:00Z"
+      ), tenant: "team-a")
+      client = login(app)
+      body = client.get("/knowledge/tenant-only?agent=store-support&tenant=team-a&status=conflict").body
+      expect(body).to include('href="/studio/knowledge/tenant-only?agent=store-support&amp;tenant=team-a&amp;status=conflict"')
+      expect(body).to include('name="tenant" value="team-a"', 'name="status" value="conflict"')
+      csrf = csrf_from(body)
+      params = { "agent" => "store-support", "tenant" => "team-a", "status" => "conflict", "_csrf" => csrf }
+      saved = client.post("/knowledge", params: params.merge("name" => "tenant-only", "content" => "source"))
+      expect(saved.headers["location"]).to eq("/studio/knowledge/tenant-only?agent=store-support&tenant=team-a&status=conflict")
+      deleted = client.post("/knowledge/tenant-only/delete", params: params)
+      expect(deleted.headers["location"]).to eq("/studio/knowledge?agent=store-support&tenant=team-a&status=conflict")
+      expect(bus.last(:delete_concept).payload[:tenant]).to eq("team-a")
     end
 
     # The chip-based agent filter (a button per agent) and the chip-row

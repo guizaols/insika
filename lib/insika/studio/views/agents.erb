@@ -4,7 +4,7 @@
     create form; both submit to the top window so the fresh master list
     renders with the new agent in it. %>
 <header class="page-head">
-  <h1>Agents<span class="sub"><%= @agents.size %> configured · one agent each</span></h1>
+  <h1>Agents<span class="sub"><%= @agents.size %> configured · models, prompts and capabilities</span></h1>
   <a class="btn primary" href="/studio/playground">Open playground</a>
 </header>
 
@@ -14,15 +14,16 @@
   <turbo-frame id="agent-detail" class="drill-pane drill-detail">
     <div class="drill-pane-head">
       <div class="title">
-        <strong>Pick an agent</strong>
-        <span class="count">select on the left, or start a new one below</span>
+        <strong>Configure an agent</strong>
+        <span class="count">Select an agent or create one below</span>
       </div>
     </div>
     <div class="drill-pane-body">
       <% if @templates&.any? %>
-        <div class="section">
+        <details class="section newfile"<%== " open" if @agents.empty? %>>
+          <summary>Start from a template <span class="count"><%= @templates.size %></span></summary>
           <div class="section-head">
-            <h2>From template</h2>
+            <h2 class="sr-only">From template</h2>
             <p class="muted">Example agents shipped in the gem — pick one to see a working pattern, then edit it like any agent.</p>
           </div>
           <div class="template-grid">
@@ -47,15 +48,15 @@
               </article>
             <% end %>
           </div>
-        </div>
+        </details>
       <% end %>
 
       <div class="section">
         <div class="section-head">
           <h2>New agent</h2>
-          <p class="muted">id + model — give it an identity on its detail page.</p>
+          <p class="muted">Choose an ID and model, then add prompts and tools.</p>
         </div>
-        <form method="post" action="/studio/agents" data-turbo-frame="_top">
+        <form method="post" action="/studio/agents" data-turbo-frame="_top" data-controller="dirty-guard">
           <%== csrf_tag %>
           <div class="grid-2">
             <label>id <span class="muted">(unique slug, e.g. demo)</span>
