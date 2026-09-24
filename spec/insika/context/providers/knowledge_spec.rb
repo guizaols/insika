@@ -138,6 +138,16 @@ RSpec.describe Insika::Context::Providers::Knowledge do
     expect(fragment.content).not_to include("the answer")
   end
 
+  it "restores lexical top-K when the reranker returns too few indexes" do
+    3.times { |i| seed("campinas-#{i}", description: "campinas", body: "campinas") }
+    config = { "retrieve" => true, "top_k" => 2, "rerank" =>
+      { "provider" => "cohere", "model" => "rerank-v3.5", "candidate_limit" => 3, "timeout_seconds" => 2 } }
+    llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(2)]))
+    fragment = Async { described_class.new(store: store, llm: llm).call(
+      request(knowledge: config, message: "campinas")) }.wait.first
+    expect(fragment.labels.map { |label| label["name"] }).to eq(%w[campinas-0 campinas-1])
+  end
+
   it "scopes by tenant" do
     store.write("acme", "loja-a-only",
                 Insika::Knowledge::Concept.render(
