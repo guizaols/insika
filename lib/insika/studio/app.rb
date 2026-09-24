@@ -293,6 +293,10 @@ module Studio
         r.is { r.get { render_home } }
       end
 
+      r.on "models" do
+        r.is { r.get { render_models } }
+      end
+
       # --- Agents: list + detail/authoring ---------------------
       r.on "agents" do
         # /studio/agents — agents grid (reads the ProfileSource).
@@ -1473,6 +1477,7 @@ end
           # finished conversations; edit, delete, resolve a conflict.
           ["Knowledge", "/studio/knowledge", :knowledge],
           ["Tasks", "/studio/tasks", :tasks],
+          ["Models", "/studio/models", :settings],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
           ["Evals", "/studio/evals", :evals]
@@ -2454,6 +2459,15 @@ end
     end
 
     # Tasks & Approvals --------------------------------
+
+    def render_models
+      @period = request.params["period"]
+      @provider = presence(request.params["provider"])
+      @model = presence(request.params["model"])
+      @report = insika[:model_metrics_store]&.report(period: @period || "7d", provider: @provider, model: @model)
+      @period = @report ? @report["period"] : (%w[24h 7d 30d].include?(@period) ? @period : "7d")
+      view("models")
+    end
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     # `?agent=` narrows to one agent (the task's command payload stamps it).

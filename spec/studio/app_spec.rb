@@ -177,7 +177,7 @@ RSpec.describe Studio::App do
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
                  proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
-                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil)
+                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil, model_metrics_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -241,7 +241,7 @@ RSpec.describe Studio::App do
       session_store: SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
-      tool_trace_store: trace_store, llm_trace_store: llm_trace_store, context_trace_store: ctx_trace_store,
+      tool_trace_store: trace_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store, context_trace_store: ctx_trace_store,
       cache_series_store: series_store,
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
@@ -3459,6 +3459,69 @@ RSpec.describe Studio::App do
     expect(res.status).to eq(200)
     expect(res.body).to include("t1")
     expect(res.body).to include("running")
+  end
+
+  describe "Models dashboard" do
+    let(:metrics) do
+      {
+        "period" => "24h", "providers" => ["bad<provider", "other"],
+        "model_options" => ["model&one"],
+        "totals" => { "requests" => 2, "retries" => 1, "failures" => 1,
+                      "cost" => 0.25, "unknown_cost_requests" => 1,
+                      "p50_ms" => 100, "p90_ms" => 900, "p95_ms" => 900 },
+        "models" => [{ "provider" => "bad<provider", "model" => "model&one", "requests" => 2,
+                       "retries" => 1, "failures" => 1, "cost" => 0.25,
+                       "unknown_cost_requests" => 1, "p50_ms" => 100, "p90_ms" => 900,
+                       "p95_ms" => 900, "input_tokens" => 10, "output_tokens" => 5,
+                       "cache_read_tokens" => 3, "cache_write_tokens" => 2,
+                       "thinking_tokens" => nil }],
+        "slowest" => [{ "task_id" => "id & a/b", "provider" => "bad<provider",
+                        "model" => "model&one", "duration_ms" => 900,
+                        "status" => "failed", "cost" => nil,
+                        "unknown_cost_requests" => 1 }],
+        "history_note" => "History starts with deployment. Deleting a task removes its model history."
+      }
+    end
+
+    it "requires an operator session" do
+      app, = build_app(model_metrics_store: double(report: metrics))
+      res = Client.new(app).get("/models")
+      expect(res.status).to eq(302)
+      expect(res.headers["location"]).to eq("/studio/login")
+    end
+
+    it "passes native GET filters to the report and renders measured coverage safely" do
+      store = double
+      expect(store).to receive(:report).with(period: "24h", provider: "bad<provider", model: "model&one").and_return(metrics)
+      app, = build_app(model_metrics_store: store)
+      body = login(app).get("/models?period=24h&provider=bad%3Cprovider&model=model%26one").body
+
+      expect(body).to include('href="/studio/models"', 'aria-current="page"', 'name="period"', 'name="provider"', 'name="model"')
+      expect(body).to include("0.25", "1 of 2", "p50", "p90", "p95", "10", "5", "3", "2", "—")
+      expect(body).to include("bad&lt;provider", "model&amp;one", 'href="/studio/tasks/id+%26+a%2Fb"')
+      expect(body).not_to include("bad<provider", "model&one")
+    end
+
+    it "renders an empty state without a metrics store" do
+      app, = build_app
+      body = login(app).get("/models").body
+      expect(body).to include("No model requests yet", "History starts with deployment")
+    end
+
+    it "formats fractional latency and small costs and identifies partial token subtotals" do
+      metrics["totals"].merge!("p50_ms" => 12.3456789, "cost" => 0.000012)
+      metrics["models"].first.merge!("p50_ms" => 12.3456789, "cost" => 0.000012,
+        "cache_read_tokens" => 0, "unknown_cache_read_tokens_requests" => 1)
+      metrics["slowest"].first.merge!("duration_ms" => 12.3456789, "cost" => 0.000012)
+      app, = build_app(model_metrics_store: double(report: metrics))
+      body = login(app).get("/models").body
+
+      expect(body).to include("12.35 ms", ">12.35</td>", "p50 (ms)", "1 of 2 unknown (50.0%)")
+      expect(body.scan("0.000012").length).to eq(3)
+      expect(body).to include('title="Reported subtotal; 1 of 2 requests have unknown cache read tokens"')
+      expect(body).to include('aria-label="0 reported cache read tokens; 1 of 2 requests have unknown cache read tokens"')
+      expect(body).not_to include("12.3456789")
+    end
   end
 
   it "renders the tasks list as the Ledger table (table.grid), status via .status not a bare .pill" do

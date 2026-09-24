@@ -1,0 +1,112 @@
+<header class="page-head">
+  <div>
+    <%== crumbs_for("Models") %>
+    <h1>Models<span class="sub">native request metrics</span></h1>
+  </div>
+</header>
+
+<form method="get" action="/studio/models" class="actions">
+  <label>Period
+    <select name="period">
+      <% { "24h" => "24 hours", "7d" => "7 days", "30d" => "30 days" }.each do |value, label| %>
+        <option value="<%= value %>"<%== ' selected' if @period == value %>><%= label %></option>
+      <% end %>
+    </select>
+  </label>
+  <label>Provider
+    <select name="provider">
+      <option value="">All providers</option>
+      <% (Array(@report && @report["providers"]) + [@provider]).compact.uniq.sort.each do |provider| %>
+        <option value="<%= provider %>"<%== ' selected' if @provider == provider %>><%= provider %></option>
+      <% end %>
+    </select>
+  </label>
+  <label>Model
+    <select name="model">
+      <option value="">All models</option>
+      <% (Array(@report && @report["model_options"]) + [@model]).compact.uniq.sort.each do |model| %>
+        <option value="<%= model %>"<%== ' selected' if @model == model %>><%= model %></option>
+      <% end %>
+    </select>
+  </label>
+  <button type="submit" class="btn">Apply</button>
+</form>
+
+<p class="muted">Request latency includes native retries. Retries count usage attempts after the first, not task executions. Percentiles use completed requests with measured durations.</p>
+<p class="muted">History starts with deployment. Deleting a task removes its model history; retention and tenant purge remove it too. Earlier requests are not backfilled.</p>
+
+<% if !@report || @report["totals"]["requests"].zero? %>
+  <div class="empty">No model requests yet for these filters.</div>
+<% else %>
+  <% totals = @report["totals"] %>
+  <div class="kpi-strip">
+    <%== render("_kpi", locals: { label: "Requests", value: totals["requests"] }) %>
+    <%== render("_kpi", locals: { label: "Reported USD", value: totals["cost"].nil? ? "—" : format("%.6f", totals["cost"]), sub: "#{totals['unknown_cost_requests']} of #{totals['requests']} unknown (#{format('%.1f', totals['unknown_cost_requests'] * 100.0 / totals['requests'])}%)" }) %>
+    <%== render("_kpi", locals: { label: "Failures", value: totals["failures"] }) %>
+    <%== render("_kpi", locals: { label: "Retries", value: totals["retries"] }) %>
+  </div>
+  <div class="kpi-strip">
+    <% %w[p50 p90 p95].each do |pct| %>
+      <%== render("_kpi", locals: { label: "#{pct} latency", value: totals["#{pct}_ms"].nil? ? "—" : format("%.2f ms", totals["#{pct}_ms"]) }) %>
+    <% end %>
+  </div>
+  <p class="muted">Cost and token values are reported subtotals when coverage is incomplete. A dash means no value was reported.</p>
+
+  <section class="card">
+    <div class="section-head"><h2>By model</h2></div>
+    <table class="grid">
+      <thead><tr><th>provider</th><th>model</th><th class="num">req</th><th class="num">fail</th><th class="num">retry</th><th class="num">p50 (ms)</th><th class="num">p90 (ms)</th><th class="num">p95 (ms)</th></tr></thead>
+      <tbody>
+        <% @report["models"].each do |row| %>
+          <tr>
+            <td><%= row["provider"] || "—" %></td><td><%= row["model"] || "—" %></td>
+            <td class="num"><%= row["requests"] %></td><td class="num"><%= row["failures"] %></td><td class="num"><%= row["retries"] %></td>
+            <% %w[p50 p90 p95].each do |pct| %><td class="num"><%= row["#{pct}_ms"].nil? ? "—" : format("%.2f", row["#{pct}_ms"]) %></td><% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Reported usage by model</h2></div>
+    <table class="grid">
+      <thead><tr><th>model</th><th class="num">USD</th><th class="num">cost unknown</th><th class="num">input</th><th class="num">output</th><th class="num">cache read</th><th class="num">cache write</th><th class="num">thinking</th></tr></thead>
+      <tbody>
+        <% @report["models"].each do |row| %>
+          <tr>
+            <td><%= row["provider"] || "—" %> / <%= row["model"] || "—" %></td>
+            <td class="num"><%= row["cost"].nil? ? "—" : format("%.6f", row["cost"]) %></td>
+            <td class="num"><%= row["unknown_cost_requests"] %> of <%= row["requests"] %></td>
+            <% %w[input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].each do |field| %>
+              <% unknown = row.fetch("unknown_#{field}_requests", 0) %>
+              <% coverage = "#{unknown} of #{row['requests']} requests have unknown #{field.tr('_', ' ')}" %>
+              <td class="num"<% if unknown.positive? %> title="Reported subtotal; <%= coverage %>" aria-label="<%= row[field].nil? ? 'No' : row[field] %> reported <%= field.tr('_', ' ') %>; <%= coverage %>"<% end %>><%= row[field].nil? ? "—" : row[field] %></td>
+            <% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Slowest requests</h2><span class="muted">up to 20 measured requests</span></div>
+    <% if @report["slowest"].empty? %>
+      <div class="empty">No measured request durations yet.</div>
+    <% else %>
+      <table class="grid">
+        <thead><tr><th>task</th><th>provider</th><th>model</th><th>status</th><th class="num">ms</th><th class="num">reported USD</th></tr></thead>
+        <tbody>
+          <% @report["slowest"].each do |row| %>
+            <tr>
+              <td><a href="<%= task_path(row["task_id"]) %>"><%= row["task_id"] %></a></td>
+              <td><%= row["provider"] || "—" %></td><td><%= row["model"] || "—" %></td><td><%= row["status"] || "—" %></td>
+              <td class="num"><%= row["duration_ms"].nil? ? "—" : format("%.2f", row["duration_ms"]) %></td>
+              <td class="num"><%= row["cost"].nil? ? "—" : format("%.6f", row["cost"]) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </section>
+<% end %>
