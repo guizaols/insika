@@ -58,10 +58,41 @@ RSpec.describe Deploy::Wiring do
         upsert_mcp delete_mcp
         write_system_file delete_system_file restore_system_file
         write_data_tool delete_data_tool restore_data_tool
-        import_tools import_mcp_tools
+        import_tools import_mcp_tools refresh_mcp_tools
       ].each do |type|
         expect(w::BUS.registered?(type)).to be(true), "missing authoring command #{type}"
       end
+    end
+
+    it "imports through live discovery without overwriting a legacy MCP data tool" do
+      name = "legacy_import_spec"
+      tool_name = "legacy_import_tool"
+      w::MCP_STORE.upsert(name: name, transport: "stdio", command: "unused")
+      w::TOOL_STORE.write({ name: tool_name, description: "Legacy snapshot", group: "mcp:#{name}",
+                          request: { method: "POST", url: "https://example.test/mcp",
+                                     body: '{"jsonrpc":"2.0","method":"tools/call"}' } })
+      before = w::TOOL_STORE.get_raw(tool_name)
+      tool = double("MCP tool", name: tool_name, description: "Live tool", parameters_schema: {}, read_only?: false)
+      client = double("MCP client", tools: [tool])
+      allow(w::MCP_TOOL_REGISTRY).to receive(:client_for).and_return(client)
+      emitted = []
+      allow(w::EVENT_STREAM).to receive(:emit) { |event| emitted << event }
+
+      result = w::BUS.dispatch(Insika::Command.build(:import_mcp_tools, { "name" => name }))
+
+      expect(result).to eq(instance: name, tools: [{ "name" => tool_name, "description" => "Live tool", "inputSchema" => {},
+                                                   "annotations" => { "readOnlyHint" => false } }])
+      expect(w::MCP_STORE.get_raw(name)["tools_cache"]).to eq(result[:tools])
+      expect(w::TOOL_STORE.get_raw(tool_name)).to eq(before)
+      expect(w::TOOL_STORE.versions(tool_name)).to be_empty
+      w::TOOL_REGISTRY.reload
+      expect(w::TOOL_REGISTRY.resolve(tool_name)).to be_a(Insika::Tools::DataDefinedTool)
+      expect(emitted.map(&:type)).to eq([:mcp_tools_refreshed])
+      expect(emitted.first.data).to eq(instance: name, tools: 1)
+    ensure
+      w::MCP_STORE.delete(name)
+      w::TOOL_STORE.delete(tool_name)
+      w::TOOL_REGISTRY.reload
     end
 
     # the operator memory commands write the audit through the

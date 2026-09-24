@@ -164,14 +164,15 @@ module Insika
     # read/mutate/set path suspends, so no other writer can interleave
     # mid-RMW. The LLM call that produced the summary happened BEFORE this
     # method; only the plain write lives here.
-    def set_compaction(id, summary:, upto:, model: nil)
+    def set_compaction(id, summary: nil, upto:, model: nil, native: nil)
       record = fetch!(id)
       current = record["compaction"]
       upto = Integer(upto)
       return to_session(record) if current && upto <= current["upto"].to_i
 
       record["compaction"] = {
-        "summary" => Coercion.utf8(summary.to_s),
+        "summary" => native ? nil : Coercion.utf8(summary.to_s),
+        "native" => native && Coercion.deep_stringify(native),
         "upto" => upto,
         "runs" => (current ? current["runs"].to_i : 0) + 1,
         "model" => Coercion.presence(model.to_s),

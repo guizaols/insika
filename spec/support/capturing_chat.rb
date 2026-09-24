@@ -16,6 +16,7 @@ class CapturingChat < FakeChat
   end
 
   def add_message(role:, content:, tool_calls: nil, tool_call_id: nil)
+    @complete = false if role.to_s == "user"
     # content.to_s: the checkpoint's serialize_chat_message renders content as
     # a string ("", never nil) — the oracle must record the same byte.
     msg = { "role" => role.to_s, "content" => content.to_s }

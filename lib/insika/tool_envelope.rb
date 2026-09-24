@@ -9,8 +9,7 @@ module Insika
   # + recording of a non-idempotent side-effect BEFORE the result returns to the
   # model. Delegates everything else (name/description/params) to the real tool.
   #
-  # The tool loop belongs to RubyLLM; this is a decorator over the instances —
-  # the Executor never drives roundtrips.
+  # RubyLLM executes tools; this decorator enforces Insika's per-call policy.
   class ToolEnvelope < SimpleDelegator
     PROVENANCE_INSTRUCTION = "This value was not returned by any tool in this conversation. " \
                              "Find it with a tool that returns it — a search or a lookup by id — " \
@@ -58,14 +57,31 @@ module Insika
       @tool_registry = tool_registry
       @timeout = timeout
       @event_stream = event_stream
-      @skip_side_effects = Array(skip_side_effects) # ids already completed in the interrupted turn
+      @skip_side_effects = Array(skip_side_effects).dup # ids already completed in the interrupted turn
       @trace_recorder = trace_recorder # duck-type: #record(session_id:, entry:). nil = no trace.
     end
 
     # Entry point that RubyLLM invokes (Tool#call in the pinned version).
     # A timeout overflow returns to the MODEL as a serialized error — it does
     # not bring down the turn.
-    def call(args) = run(args, hold: true)
+    def call(args = {}, tool_call: nil, **kwargs)
+      @state.current_tool_call = tool_call if tool_call
+      run(args.merge(kwargs), hold: true, native_call: tool_call && native_approvals?)
+    end
+
+    def requires_approval? = native_approvals? && approval_required?
+
+    def approval_tool_name = real_name
+
+    # RubyLLM queries this while inspecting and partitioning pending calls.
+    # Keep it read-only; policy refusals still return through #call as tool results.
+    def approval_resolver
+      ->(call) do
+        next true if @skip_side_effects.include?(call.id.to_s) || provenance_block(call.arguments) || customer_confirm?
+
+        native_approval_decision(call.arguments, call.id)
+      end
+    end
 
     # The confirmed re-run of a held call (Tools::ConfirmPending): every check but
     # the hold itself — provenance, approval, fencing, evidence, the side-effect
@@ -74,12 +90,18 @@ module Insika
 
     private
 
-    def run(args, hold:)
+    def run(args, hold:, native_call: false)
       # A non-idempotent tool call ALREADY COMPLETED in the interrupted
       # turn -> respond with a marker, NEVER re-execute. The marker returns to
       # the model, keeping the tool-use protocol intact.
       call_id = correlation_id
-      return { "skipped" => "already_executed" } if call_id && @skip_side_effects.include?(call_id)
+      continuation = native_call && @state.approval_continuation
+      if call_id && @skip_side_effects.include?(call_id)
+        halt = continuation && continuation.dig("halts", call_id)
+        return ToolDefinition::Halt.new(content: halt["content"]) if halt
+
+        return { "skipped" => "already_executed" }
+      end
 
       started = monotonic
       if (blocked = provenance_block(args))
@@ -96,28 +118,34 @@ module Insika
         return held
       end
 
-      # Approval gate: a tool marked `approval` suspends the turn in
-      # :waiting until the operator resolves it. Delegates to the coordinator (the
-      # Executor), which creates/queries the PendingAction and blocks via the
-      # mailbox. Rejection returns to the MODEL as an error (the turn continues),
-      # it does not bring down the turn. CancelledError/TimeoutError from the wait
-      # propagate (they are not ToolTimeout).
+      # Native calls recheck the persisted decision after RubyLLM's resolver.
+      # Direct/workflow calls still create and await approval through the mailbox.
+      # Cancellation and turn timeout propagate from that wait (not ToolTimeout).
       if approval_required?
-        decision = @state.approval_coordinator.request_approval(
-          task: @state.task, turn: @state.turn, tool: real_name, args: args, actor: @state.actor
-        )
-        return { error: "rejected by operator" } unless decision.to_s == "approved"
+        approved = if native_call
+          native_approval_decision(args, call_id) == true
+        else
+          @state.approval_coordinator.request_approval(
+            task: @state.task, turn: @state.turn, tool: real_name, args: args, actor: @state.actor
+          ).to_s == "approved"
+        end
+        return { error: "rejected by operator" } unless approved
       end
 
       started = monotonic
-      result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { __getobj__.call(args) } }
+      result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { invoke(args) } }
       # the ONE seam every tool result passes on its way to the model.
       # For a declared-evidence tool: reshape to the lean envelope, record the ids
       # on the ledger, hoard the attachments. No evidence = the result passes
       # through untouched (one nil-check — parity).
       result = process_evidence(result)
       result = fence(result)
-      record_side_effect!(call_id) if side_effect?
+      if side_effect?
+        halt = { "content" => result.content } if continuation && result.is_a?(ToolDefinition::Halt)
+        record_side_effect!(call_id, **(halt ? { halt: halt } : {}))
+        (continuation["halts"] ||= {})[call_id] = halt if halt
+        @skip_side_effects << call_id if native_call
+      end
       trace(call_id, args, result, started)
       result
     rescue ToolTimeout
@@ -127,6 +155,15 @@ module Insika
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    def invoke(args)
+      tool = __getobj__
+      if tool.respond_to?(:parameters_schema)
+        tool.call(**args.transform_keys(&:to_sym), tool_call: @state.current_tool_call)
+      else
+        tool.call(args)
+      end
+    end
 
     # with parallel tool calls on, the turn's shared semaphore
     # (TurnState#tool_gate, sized by `limits[:tool_concurrency]`) caps how many run
@@ -178,7 +215,9 @@ module Insika
     # (DataDefinedTool exposes its definition's schema; a code tool exposes none
     # -> every declared parameter is treated as required).
     def optional_params(tool)
-      return [] unless tool.respond_to?(:params_schema) && (schema = tool.params_schema).is_a?(Hash)
+      return [] unless tool.respond_to?(:parameters_schema) && (schema = tool.parameters_schema).is_a?(Hash)
+
+      schema = Coercion.deep_stringify(schema)
 
       (schema["properties"] || {}).keys.map(&:to_s) - Array(schema["required"]).map(&:to_s)
     end
@@ -254,8 +293,18 @@ module Insika
     # Does the current tool require approval? (names come from the Resolution
     # via state).
     def approval_required?
-      @state.respond_to?(:requires_approval) &&
-        Array(@state.requires_approval).include?(real_name)
+      (@state.respond_to?(:requires_approval) && Array(@state.requires_approval).include?(real_name)) ||
+        (__getobj__.respond_to?(:requires_approval?) && __getobj__.requires_approval?)
+    end
+
+    def native_approvals?
+      @state.respond_to?(:native_approvals) && @state.native_approvals == true
+    end
+
+    def native_approval_decision(args, call_id)
+      @state.approval_coordinator.approval_decision(
+        task: @state.task, turn: @state.turn, tool: real_name, args: args, call_id: call_id
+      )
     end
 
     # The call's correlation: the provider id (RubyLLM chat, via
@@ -275,11 +324,11 @@ module Insika
     end
 
     # Written BEFORE the tool result returns to the model.
-    def record_side_effect!(call_id)
+    def record_side_effect!(call_id, **metadata)
       return if call_id.to_s.empty?
 
       @checkpoint_store.record_side_effect(@state.task.id, turn: @state.turn,
-                                                           tool_call_id: call_id)
+                                                           tool_call_id: call_id, **metadata)
     end
 
     # ----   fencing ----------------------------------------------

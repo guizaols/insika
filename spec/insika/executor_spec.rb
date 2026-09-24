@@ -164,7 +164,7 @@ RSpec.describe Insika::Executor do
       response.define_singleton_method(:status) { 429 }
       response.define_singleton_method(:headers) { { "retry-after" => retry_after } }
       response.define_singleton_method(:body) { "rate limited" }
-      RubyLLM::RateLimitError.new(response, "rate limited")
+      RubyLLM::RateLimitError.new("rate limited", response: response)
     end
 
     it "wraps a provider-family error to :ruby_llm carrying kind/retryable/retry_after" do

@@ -8,7 +8,33 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Changed
+
+- Studio tools are grouped by origin and MCP server, with name/server filtering,
+  collapsible sections and per-section select/deselect actions. Selection keeps
+  denied tools blocked and requires saving before permissions change.
+
+- Workflow and tool argument validation now use JSONSchemer. Explicit nulls and
+  declared constraints are enforced; existing tool scalar leniency remains.
+- Distillation, harvest, knowledge and refinement use native structured responses.
+  Retired MCP import delegates to live discovery instead of generating HTTP snapshots.
+
+- RubyLLM 2.0 migration candidate: native loop control, tool schemas, cache markers,
+  and usage readers. MCP now uses the native RubyLLM client, replacing
+  `ruby_llm-mcp` and the Origin-header patch. Legacy SSE requires migration to
+  Streamable HTTP. Publication remains blocked by the native-MCP RubyLLM release
+  and performance gate; see
+  [migration results](docs/RUBYLLM_2_MIGRATION.md).
+
 ### Fixed
+
+- Native chat usage includes tool rounds and retries, and failed turns expose
+  recorded usage. Responses projects cache-inclusive totals; negotiated pricing
+  no longer subtracts cache reads from already non-cached input.
+- Reliability honors session model pins and model allowlists without multiplying
+  its attempt budget by RubyLLM transport retries.
+- Speech response reads stop at the byte limit before buffering the entire body.
+- Workflow schemas accept valid `false` values.
 
 - **A merged fragment is framed by `steer_join`, like a steered one already was.** The
   two burst doors disagreed on what the model sees: a steered message becomes its OWN

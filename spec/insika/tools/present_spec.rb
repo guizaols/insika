@@ -35,8 +35,8 @@ RSpec.describe Insika::Tools::Present do
     t = tool(state)
     expect(t.name).to eq("present_products")
     expect(t.description).to eq("Show product cards")
-    expect(t.params_schema["properties"].keys).to eq(%w[product_ids title])
-    expect(t.parameters.keys).to eq(%i[product_ids title])
+    expect(t.parameters_schema["properties"].keys).to eq(%w[product_ids title])
+    expect(t.parameters_schema["properties"].keys).to eq(%w[product_ids title])
   end
 
   it "shows the known ids that have a card, in the model's order, deduped" do

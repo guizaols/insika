@@ -14,13 +14,13 @@ module Insika
     # loads it lazily inside create_chat.
     class LoadSkill < RubyLLM::Tool
       description "Loads the complete instructions (SKILL.md) of a skill by name"
-      param :name, desc: "Exact skill name, as listed in <available_skills>"
+      parameter :name, description: "Exact skill name, as listed in <available_skills>"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class it produces
       # "insika--tools--load_skill", not "load_skill" (which wire_callbacks/
       # :skill_activated and SkillCatalog#format_for_prompt assume). Explicit
       # override. Coexists with
-      # `param :name` (verified: the param is still present).
+      # `parameter :name` (verified: the param is still present).
       def name = "load_skill"
 
       # trace_recorder/state are OPTIONAL (nil = no trace, parity): this tool is

@@ -255,6 +255,22 @@ module Insika
       !actor.nil?
     end
 
+    # RubyLLM may query this repeatedly while partitioning pending tools.
+    # Only the persisted, exactly matching operator decision authorizes a call.
+    def approval_decision(task:, turn:, tool:, args:, call_id:)
+      raise Insika::Error, "PendingActionStore is not configured" unless @pending_action_store
+      raise Insika::ValidationError, "approval requires a tool call id" if call_id.to_s.empty?
+
+      action = @pending_action_store.find(native_pending_id(task.id, turn, call_id))
+      return nil unless action
+
+      unless action.kind == PendingActionStore::OPERATOR && action.task_id == task.id.to_s &&
+          action.turn == turn && action.tool == tool.to_s && action.args == Coercion.deep_stringify(args || {})
+        raise Insika::ValidationError, "approval does not match the pending tool call"
+      end
+      { approved: true, rejected: false }[action.status]
+    end
+
     # Approval gate, called by the ToolEnvelope at stage 6 when the
     # tool requires approval. Creates/queries the PendingAction (deterministic id
     # by task+turn+tool — per-tool correlation as with the side-effect),
@@ -600,6 +616,7 @@ module Insika
 
     # Stages 2..9. Runs INSIDE the task's fiber.
     def execute(task, profile:, actor:, resume_from: nil, timing: nil)
+      state = nil
       # Resume of a crash orphan: the interrupted attempt's Execution was left OPEN
       # (the fiber died). The TaskStore forbids opening a second one while one is
       # open -> close the orphan as :interrupted before opening the N+1 (a new
@@ -613,7 +630,7 @@ module Insika
       emit(:task_started, started_data(task, profile), task: task)
 
       actor.drain!
-      run_pipeline(task, profile, actor, resume_from, timing)
+      run_pipeline(task, profile, actor, resume_from, timing) { |current| state = current }
     # SINGLE capture at the top of the fiber: a single place maps
     # error -> terminal state -> events. Stages do no rescue of their own
     # (except tool, RubyLLM semantics). The fiber NEVER re-raises.
@@ -622,51 +639,53 @@ module Insika
       # Execution), then finish_execution closes it with outcome :cancelled.
       @task_store.transition(task.id, to: :cancelled)
       @task_store.finish_execution(task.id, outcome: :cancelled)
-      emit(:task_cancelled, { task_id: task.id }, task: task)
+      data = { task_id: task.id }
+      data[:usage] = state.usage if state&.usage
+      emit(:task_cancelled, data, task: task)
     rescue PolicyDenied => e
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
-      fail_task(task, e, stage: :policy)
+      fail_task(task, e, stage: :policy, usage: state&.usage)
     rescue BudgetExceeded => e
       # WS2 hard budget: a typed, retryable failure — the envelope reads
       # budget_exceeded + retry_after (window roll), never a silent drop.
-      fail_task(task, e, stage: :budget)
+      fail_task(task, e, stage: :budget, usage: state&.usage)
     rescue CircuitOpenError => e
       # WS3 breaker: the turn died BEFORE the provider call — the envelope
       # reads circuit_open + retry_after (cooldown remaining). Worth its own
       # stage: an open breaker is a reliability decision, not an error bug.
-      fail_task(task, e, stage: :reliability)
+      fail_task(task, e, stage: :reliability, usage: state&.usage)
     rescue Insika::RoutingError => e
       # WS4: a route's delegate is missing or its turn failed — an operator
       # config error, staged so the envelope names routing, never :unknown.
-      fail_task(task, e, stage: :routing)
+      fail_task(task, e, stage: :routing, usage: state&.usage)
     rescue Insika::MediaError => e
       # WS9: a voice message that could not be fetched/transcribed (or a media
       # URL the egress guard refused) — heard-loud, never a silent drop.
-      fail_task(task, e, stage: :media)
+      fail_task(task, e, stage: :media, usage: state&.usage)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
       # is validated synchronously in TriggerWorkflow -> 422, never reaches here.)
-      fail_task(task, e, stage: :workflow_schema)
+      fail_task(task, e, stage: :workflow_schema, usage: state&.usage)
     rescue ContextError => e
-      fail_task(task, e, stage: :context)
+      fail_task(task, e, stage: :context, usage: state&.usage)
     rescue CapabilityError => e
-      fail_task(task, e, stage: :capability)
+      fail_task(task, e, stage: :capability, usage: state&.usage)
     rescue ProviderError => e
-      fail_task(task, e, stage: :ruby_llm)
+      fail_task(task, e, stage: :ruby_llm, usage: state&.usage)
     rescue StoreError => e
-      fail_task(task, e, stage: :persistence)
+      fail_task(task, e, stage: :persistence, usage: state&.usage)
     rescue TimeoutError => e
-      fail_task(task, e, stage: e.stage)
+      fail_task(task, e, stage: e.stage, usage: state&.usage)
     rescue StandardError => e
       # A provider/transport failure is NOT an :unknown bug: wrap it with its
       # action classification (B9) so the envelope can quote retryable and the
       # provider's own retry_after (A8). The classifier is class-name based —
       # the :ruby_llm stage stays reachable even under the smoke-shim's fake.
       if ProviderErrorClassifier.provider_error?(e)
-        fail_task(task, ProviderErrorClassifier.wrap(e), stage: :ruby_llm)
+        fail_task(task, ProviderErrorClassifier.wrap(e), stage: :ruby_llm, usage: state&.usage)
       else
-        fail_task(task, e, stage: :unknown)
+        fail_task(task, e, stage: :unknown, usage: state&.usage)
       end
     ensure
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
@@ -792,6 +811,7 @@ module Insika
     # than once in a turn collides (the 2nd reuses the 1st's decision) — per-step
     # checkpointing is a future slice. One call per tool is safe.
     def pending_id(task_id, turn, tool) = "#{task_id}:#{turn}:#{tool}"
+    def native_pending_id(task_id, turn, call_id) = "#{task_id}:#{turn}:call:#{call_id}"
 
     # all readings of the persisted command go through rebuild_command
     # (the single normalizer). command_type stays a STRING (the :task_started
@@ -812,7 +832,7 @@ module Insika
     # the open Execution (real TaskStore) — do NOT call finish_execution
     # (double-close). The previous checkpoint is NEVER touched on failure. Never
     # re-raises: the fiber dies clean.
-    def fail_task(task, error, stage:)
+    def fail_task(task, error, stage:, usage: nil)
       # Defense-in-depth: if the task is already terminal (e.g. a failure in
       # cleanup AFTER transition(:completed)), completed->failed is invalid and
       # would raise ArgumentError INSIDE the rescue, leaking from the fiber. In
@@ -834,6 +854,7 @@ module Insika
       spec = spec.merge(classification) unless classification.empty?
       @task_store.transition(task.id, to: :failed, error: spec)
       data = { task_id: task.id, error: error.class.name, message: error.message }
+      data[:usage] = usage if usage
       data = data.merge(classification) unless classification.empty?
       emit(:task_failed, data, task: task)
       # a FAILED delegation child still delivers — the parent
@@ -876,6 +897,7 @@ module Insika
         # possibly rewritten by before_task). Subject == result == TurnState
         # (the Response content lives in the :done event).
         @hooks.around(:task, state) do |state|
+        yield state if block_given?
         prepare_turn(task, profile, state, actor, resume_from) # stages 2-3 (mutates state)
 
         # stage 4: Middleware wraps stages 5-9. A link that
@@ -926,6 +948,8 @@ module Insika
       stamp_customer_session(task, profile)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
       state.resumed = !resume_from.nil? # EdgeLimiter: an admitted turn is never re-counted
+      state.approval_continuation = resume_from&.continuation
+      state.usage = state.approval_continuation&.fetch("usage", nil)&.transform_keys(&:to_sym)
       state.fence_max_chars = fence_max_chars if Insika::Fence.enabled?(profile)
       # resolved for the RUN, not per message, so what the turn accepts cannot
       # change under it. Same cost as the EdgeLimiter's per-turn resolution. Only for a
@@ -938,6 +962,10 @@ module Insika
       # validator/enforcer read the union, stage 8 flushes.
       state.evidence_ledger = Insika::EvidenceLedger.new(store: @session_store,
                                                          session_id: task.session_id)
+      if (evidence = state.approval_continuation&.fetch("evidence", nil))
+        state.evidence_ledger.record(evidence["ids"])
+        state.evidence_ledger.record_cards(evidence["cards"])
+      end
       state
     end
 
@@ -1081,7 +1109,7 @@ module Insika
     # approximating RubyLLM's rendering (honest in the doc: the reason's job is
     # the CONTEXT categories; the tool hash is a guard rail).
     def serialize_tools(tools)
-      tools.map { |t| "#{t.name} #{t.description} #{t.parameters.inspect}" }.join(" ")
+      tools.map { |t| "#{t.name} #{t.description} #{t.parameters_schema.inspect}" }.join(" ")
     end
 
     # the stage-8 stamp — the usage (cached_tokens,
@@ -1161,7 +1189,7 @@ module Insika
     # Same yardstick as the fragments (TokenEstimator), so the categories are
     # comparable. `parameters` is not guaranteed JSON-safe — inspect it.
     def estimate_tools_tokens(tools)
-      TokenEstimator.estimate(tools.map { |t| "#{t.name} #{t.description} #{t.parameters.inspect}" }.join(" "))
+      TokenEstimator.estimate(tools.map { |t| "#{t.name} #{t.description} #{t.parameters_schema.inspect}" }.join(" "))
     rescue StandardError
       0
     end
@@ -1320,13 +1348,6 @@ module Insika
         # release the redactor's retained tail (a value that never completed into a
         # match is emitted redacted-if-needed, not lost) before reading anything back.
         output.flush
-        # MERGED, not overwritten: a WS4 routing call already banked its tokens in
-        # state.usage before the ask — the classifier's cost must survive the ask
-        # (it feeds the EdgeLimiter's ceiling/budget and the terminal usage).
-        unless halted?(response)
-          state.usage = merge_usage(with_model_source(usage_of(response), state.model_selection),
-                                    state.usage)
-        end
 
         # BOUNDARY BEFORE THE ANSWER GOES OUT. A cancel that arrived while the provider
         # was working used to be observed at stage 8 — AFTER `:content` had already been
@@ -1352,8 +1373,8 @@ module Insika
       { response: asked, asked: asked, output: output }
     end
 
-    # stage 6, WS3 path: the Reliability coordinator drives retries, backoff,
-    # circuit breaker and the fallback rotation. Each ATTEMPT gets a fresh chat
+    # Native chats own transport retries. Reliability keeps the circuit breaker
+    # and fallback rotation (and retries for non-native integrations). Each rotation gets a fresh chat
     # + output (a failed `ask` leaves its message in the chat, so re-asking the
     # same one would double the input) and, on a fallback, state.model_selection
     # follows — the turn's usage is attributed to the model that actually spoke
@@ -1365,8 +1386,10 @@ module Insika
       attempt_output = nil
       attempt_asked = nil
       primary = state.model_selection
+      # Native transport owns retries per request; the coordinator only rotates models.
+      coordinator_policy = state.chat.is_a?(RubyLLM::Chat) ? policy.merge("retries" => 0) : policy
       response = @reliability.call(
-        policy: policy, tenant: task_tenant(task), agent: state.profile.id.to_s,
+        policy: coordinator_policy, tenant: task_tenant(task), agent: state.profile.id.to_s,
         selection: primary, chain: reliability_chain(state)
       ) do |selection, tries|
         first_attempt = state.chat && selection == primary && tries == 1
@@ -1377,12 +1400,27 @@ module Insika
           chat = build_attempt_chat(state, selection)
           state.chat = chat
         end
+        filter&.flush # Discard the failed stream's retained tail before the next attempt.
         attempt_output = new_turn_output(task, state, filter)
+        configure_reliable_chat(state.chat, policy)
         wire_chat_output(task, state, attempt_output)
         attempt_asked = ask_on(task, state, state.chat, attempt_output, timing)
         attempt_asked
       end
       { response: response, asked: attempt_asked, output: attempt_output }
+    end
+
+    def configure_reliable_chat(chat, policy)
+      return unless chat.is_a?(RubyLLM::Chat)
+
+      config = (chat.context&.config || RubyLLM.config).dup
+      config.max_retries = [policy["retries"].to_i, 0].max
+      timeout = policy["timeout"].to_i
+      config.request_timeout = timeout.positive? ? timeout : Reliability::DEFAULT_TIMEOUT
+      if policy["backoff"]
+        config.retry_backoff_factor = policy["backoff"] == "exponential" ? 2 : 1
+      end
+      chat.with_context(RubyLLM::Context.new(config))
     end
 
     # The fallback chain for WS3: profile's `reliability["fallback"]` refs first,
@@ -1392,6 +1430,8 @@ module Insika
     # primary. Deduped by ref, primary excluded.
     def reliability_chain(state)
       primary = state.model_selection
+      return [] if primary.pinned?
+
       refs = Array((state.profile.reliability || {})["fallback"]).map(&:to_s)
       nodes = refs.filter_map { |r| parse_model_ref(r) }.reject { |n| n[:model].to_s.empty? }
       nodes.concat(Array(primary.fallbacks).map { |f| { model: f[:model], provider: f[:provider] } })
@@ -1407,6 +1447,19 @@ module Insika
         duplicate = ref.include?("/") ? seen[ref]
                                       : seen.keys.any? { |known| known.split("/").last == ref }
         next if duplicate
+
+        unless ModelPolicy.allowed?(state.profile.model_policy, model: node[:model], provider: node[:provider])
+          next if node[:provider]
+          next unless Array(ModelPolicy.allow_list(state.profile.model_policy)).any? { |allowed| allowed.to_s.include?("/") }
+
+          begin
+            node[:provider] = RubyLLM.models.find(node[:model]).provider.to_sym
+          rescue RubyLLM::ModelNotFoundError
+            next
+          end
+          next unless ModelPolicy.allowed?(state.profile.model_policy, model: node[:model], provider: node[:provider])
+          ref = model_ref(node)
+        end
 
         seen[ref] = true
         Insika::ModelSelection.new(model: node[:model], provider: node[:provider],
@@ -1633,12 +1686,18 @@ module Insika
     def merge_usage(main, extra)
       return main || extra if main.nil? || extra.nil?
 
-      Insika::Routing::TOKEN_FIELDS.each_with_object(main.dup) do |k, acc|
+      merged = Insika::Routing::TOKEN_FIELDS.each_with_object(extra.merge(main)) do |k, acc|
         next if extra[k].nil?
         next unless main.key?(k) || extra[k].to_i.positive?
 
         acc[k] = main[k].to_i + extra[k].to_i
       end
+      if main.key?(:cost_usd) || extra.key?(:cost_usd)
+        costs = [main[:cost_usd], extra[:cost_usd]]
+        merged[:cost_usd] = costs.sum unless costs.any?(&:nil?)
+        merged[:cost_usd] = nil if costs.any?(&:nil?)
+      end
+      merged
     end
 
     # "provider/model" for any selection duck (ModelSelection | { model:, provider: }).
@@ -1678,6 +1737,7 @@ module Insika
 
     def new_turn_output(task, state, filter)
       TurnOutput.new(filter: filter, emit: ->(type, data) { emit(type, data, task: task) },
+                     halt_text: state.approval_continuation&.fetch("halt_text", ""),
                      public_intermediate: state.profile.stream_public?(:intermediate))
     end
 
@@ -1686,6 +1746,7 @@ module Insika
     # anything is appended after it — the gem's callbacks are additive and run
     # in registration order.
     def wire_chat_output(task, state, output)
+      state.turn_output = output
       chat = state.chat
       chat.after_message { |message| output.message_ended(message) } if chat.respond_to?(:after_message)
       state.steer_injector = install_steer_injector(task, state)
@@ -1709,16 +1770,10 @@ module Insika
       return if halted?(result[:response])
       return if injector.absorb_pending!.zero?
 
-      # TWO provider round trips now. Bank the first one's tokens BEFORE the response
-      # is replaced — stage 6's merge only sees whatever `result[:response]` ends up
-      # being, so without this the extra round silently erases the first round's cost
-      # from the terminal usage and from the EdgeLimiter's budget.
-      state.usage = merge_usage(with_model_source(usage_of(result[:response]), state.model_selection),
-                                state.usage)
       # COMPLETE, not `ask(nil)`: the messages are already in the history, and an
       # ask with no text appends an EMPTY user message after them — which is both a
       # duplicate turn-opener and something providers refuse outright.
-      extra = state.chat.complete(&turn_chunk_handler(task, state, result[:output], timing))
+      extra = complete_chat(state, state.chat, &turn_chunk_handler(task, state, result[:output], timing))
       result[:response] = extra
       result[:asked] = extra
     end
@@ -1736,12 +1791,120 @@ module Insika
       # An image with no caption asks with NIL, not "": an empty text part is a
       # thing some providers refuse, and nil is how RubyLLM says "attachments
       # only".
-      if state.media_attachments
+      if state.native_approvals && state.approval_continuation
+        continuation = state.approval_continuation
+        @chat_builder.seed_history(chat, continuation.fetch("messages"))
+        if continuation.key?("halt")
+          close_halted_tool_calls(state, chat)
+          return ToolDefinition::Halt.new(content: continuation["halt"])
+        end
+      elsif state.media_attachments
         text = state.message.to_s.empty? ? nil : state.message
-        chat.ask(text, with: state.media_attachments, &each_chunk)
+        chat.ask_later(text, with: state.media_attachments)
       else
-        chat.ask(state.message, &each_chunk)
+        chat.ask_later(state.message)
       end
+      complete_chat(state, chat, &each_chunk)
+    end
+
+    def complete_chat(state, chat, &on_chunk)
+      before = usage_of(chat)
+      state.tool_halt = nil
+      response = nil
+      loop do
+        if chat.awaiting_approval?
+          break unless state.native_approvals
+
+          save_approval_continuation(state, chat, before)
+          await_native_approvals(state, chat)
+        end
+        response = chat.step(&on_chunk)
+        close_halted_tool_calls(state, chat) if state.native_approvals && state.tool_halt
+        save_approval_continuation(state, chat, before) if state.tool_halt || !chat.complete?
+        break if state.tool_halt || chat.complete?
+      end
+      state.tool_halt || response
+    ensure
+      # Native chat totals include tool rounds and failed provider attempts. Take
+      # a delta because a steered message can continue this same chat once more.
+      usage = chat_usage_since(chat, before, response)
+      state.usage = merge_usage(with_model_source(usage, state.model_selection), state.usage) if usage
+    end
+
+    def chat_usage_since(chat, before, response = nil)
+      usage = chat.respond_to?(:tokens) ? usage_of(chat) : usage_of(response)
+      if usage
+        if before
+          Insika::Routing::TOKEN_FIELDS.each do |key|
+            usage[key] -= before[key].to_i if usage.key?(key)
+          end
+          if usage[:cost_usd]
+            prior_reported = Insika::Routing::TOKEN_FIELDS.any? { |key| before.key?(key) }
+            usage[:cost_usd] = if before[:cost_usd] || !prior_reported
+                                 usage[:cost_usd] - before[:cost_usd].to_f
+                               end
+          end
+        end
+      end
+      usage
+    end
+
+    # A terminal result can leave approval-gated siblings unanswered. Close them
+    # without executing them so the persisted batch is valid on the next turn.
+    def close_halted_tool_calls(state, chat)
+      index = chat.messages.rindex { |message| message.role == :assistant && message.tool_call? }
+      return unless index
+
+      answered = chat.messages.drop(index + 1).filter_map(&:tool_call_id)
+      chat.messages[index].tool_calls.each_value do |call|
+        action = @pending_action_store&.find(native_pending_id(state.task.id, state.turn, call.id))
+        if action&.status == :pending
+          @pending_action_store.resolve(action.id, decision: :rejected, operator: "engine:halted")
+          emit(:approval_resolved, { pending_id: action.id, decision: :rejected,
+                                    task_id: state.task.id, resolved_by: "engine:halted" }, task: state.task)
+        end
+        next if answered.include?(call.id)
+
+        chat.add_message(role: :tool, tool_call_id: call.id,
+          content: JSON.generate(error: "Tool call not executed because the turn halted."))
+      end
+    end
+
+    def save_approval_continuation(state, chat, before)
+      return unless state.native_approvals
+      return unless state.approval_continuation || state.profile.reliability || chat.tools.values.any?(&:requires_approval?)
+
+      continuation = {
+        "messages" => recorded_turn_messages(state, chat: chat),
+        "tools" => chat.tools.keys.map(&:to_s),
+        "halt_text" => state.turn_output&.halt_text,
+        "usage" => merge_usage(with_model_source(chat_usage_since(chat, before), state.model_selection), state.usage),
+        "evidence" => { "ids" => state.evidence_ledger&.ids, "cards" => state.evidence_ledger&.cards }
+      }
+      continuation["halt"] = state.tool_halt.content if state.tool_halt
+      saved = @checkpoint_store.save_continuation(state.task.id, turn: state.turn, continuation: continuation)
+      state.approval_continuation = saved.continuation
+    end
+
+    def await_native_approvals(state, chat)
+      task = state.task
+      chat.pending_approvals.each do |call|
+        tool = chat.tools[call.name.to_sym]
+        unless tool.respond_to?(:approval_tool_name)
+          raise Insika::Error, "native approval has no Insika tool binding"
+        end
+        name = tool.approval_tool_name
+        approval_decision(task: task, turn: state.turn, tool: name, args: call.arguments, call_id: call.id)
+        id = native_pending_id(task.id, state.turn, call.id)
+        next if @pending_action_store.find(id)
+
+        @pending_action_store.create(id: id, task_id: task.id, session_id: task.session_id,
+          turn: state.turn, tool: name, args: call.arguments)
+        emit(:approval_requested, { pending_id: id, tool: name, args: call.arguments }, task: task)
+      end
+      @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
+      state.actor.await(reason: :approval) while chat.awaiting_approval?
+      @task_store.transition(task.id, to: :running)
     end
 
     # The per-round chunk sink. Built FRESH per round: `ttft_sent` is that round's
@@ -1803,7 +1966,7 @@ module Insika
     # stage, because the `:agent` after-hook runs after the message boundary and is
     # allowed to have the last word.
     def turn_answer(response, asked, output, filter)
-      # HALTED BY A TOOL RESULT (`halt_when`): RubyLLM returns the Tool::Halt itself
+      # HALTED BY A TOOL RESULT (`halt_when`): complete_chat returns the marker
       # instead of a Message, and its `content` is the tool PAYLOAD — publishing it
       # would ship the envelope to the customer as the answer. The turn is worth
       # exactly the lead-in of the message that called the tool (the model's "vou te
@@ -1836,7 +1999,7 @@ module Insika
       Insika::ToolDefinition.halt_say_of(content_of(response)).to_s
     end
 
-    def halted?(response) = response.is_a?(RubyLLM::Tool::Halt)
+    def halted?(response) = response.is_a?(Insika::ToolDefinition::Halt)
 
     def content_of(response) = response.respond_to?(:content) ? response.content : response.to_s
 
@@ -1885,27 +2048,20 @@ module Insika
       usage
     end
 
-    # Token usage of the provider's response (RubyLLM::Message exposes
-    # input_tokens/output_tokens/cached_tokens/model_id). Duck-typed: a provider/
-    # fake with no counting -> nil (nothing to report). Shape compatible with the
-    # OpenAI Responses usage (input/output/total) + model, consumed by
-    # /v1/responses and Telemetry.
+    # Internal buckets are disjoint; total_tokens is the input/output subtotal.
+    # The Responses adapter projects cache-inclusive input/total at the HTTP edge.
+    # Budgets and evals already add the separate cache buckets to this subtotal.
     def usage_of(response)
-      return nil unless response.respond_to?(:input_tokens)
+      return nil unless response.respond_to?(:tokens) && (tokens = response.tokens)
 
-      input = response.input_tokens.to_i
-      output = response.output_tokens.to_i
-      usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
-      if response.respond_to?(:cached_tokens) && response.cached_tokens
-        usage[:cached_tokens] = response.cached_tokens.to_i # cache_read_input_tokens
+      usage = { input_tokens: tokens.input, output_tokens: tokens.output,
+                cached_tokens: tokens.cache_read, cache_creation_tokens: tokens.cache_write }.compact
+      reported = [tokens.input, tokens.output].compact
+      usage[:total_tokens] = reported.sum unless reported.empty?
+      usage[:cost_usd] = response.cost.total if response.respond_to?(:cost)
+      if response.respond_to?(:model) && (model = response.model)
+        usage[:model] = model.respond_to?(:id) ? model.id : model.to_s
       end
-      # R3: prompt-cache WRITE tokens (Anthropic cache_creation_input_tokens),
-      # billed at ~1.25x. Reported so the first (write) turn vs later (read) turns
-      # are distinguishable in telemetry/usage.
-      if response.respond_to?(:cache_creation_tokens) && response.cache_creation_tokens
-        usage[:cache_creation_tokens] = response.cache_creation_tokens.to_i
-      end
-      usage[:model] = response.model_id.to_s if response.respond_to?(:model_id) && response.model_id
       usage
     end
 
@@ -2505,7 +2661,7 @@ module Insika
       # transcript crossed the threshold this turn, summarize the old prefix
       # with the cheap model and move the boundary — off the critical path,
       # same terminal hook, same best-effort discipline as the other three.
-      finalize_compaction(task, profile)
+      finalize_compaction(task, profile, state.chat)
     end
 
     # Records the answer in the outbox and dispatches it. The discriminator is the
@@ -2661,7 +2817,7 @@ module Insika
     # finalize_knowledge_extraction: inline when non-supervised, a child of the
     # turn supervisor when serving. Best-effort: any failure leaves the session
     # record untouched and the next turn re-plans.
-    def finalize_compaction(task, profile)
+    def finalize_compaction(task, profile, chat = nil)
       return unless task.session_id && @settings_store
 
       config = Coercion.deep_stringify(@settings_store.get["compaction"])
@@ -2671,22 +2827,54 @@ module Insika
       return unless session
 
       state = session.respond_to?(:compaction) ? session.compaction : nil
+      native = config["mode"] == "native"
+      binding = Compaction.native_binding(chat) if native
+      return if native && !binding
+
+      # A portable summary must start from the original prefix, not an opaque
+      # native marker, when the operator switches compaction modes.
+      state = nil if !native && state && state["native"]
       plan = Insika::Compaction.plan(messages: session.messages, state: state, config: config)
       return unless plan
 
       # compaction.model -> platform utility_model -> inert (never a guess);
       # `insika doctor` warns on enabled-with-no-model. @llm rides along so a
       # deployment (or spec) that injects its LLM seam covers this call too.
-      summarizer = Compaction::SummarizerFactory.build(config, utility_model: utility_model, llm: @llm)
-      return unless summarizer
+      if native
+        run = lambda { run_native_compaction(task, profile, session, plan, chat, binding) }
+      else
+        summarizer = Compaction::SummarizerFactory.build(config, utility_model: utility_model, llm: @llm)
+        return unless summarizer
 
-      run = lambda { run_compaction(task, profile, session, state, plan, config, summarizer) }
+        run = lambda { run_compaction(task, profile, session, state, plan, config, summarizer) }
+      end
       return run.call unless @supervised
 
       turn_parent.async do |t|
         t.annotate("compaction:#{task.id}")
         run.call
       end
+    end
+
+    def run_native_compaction(task, profile, session, plan, source, binding)
+      # Rebuild from persisted, filtered messages; never copy the live chat's raw output.
+      chat = source.context.chat(model: source.model.id, provider: binding.fetch("provider"),
+        protocol: :responses, assume_model_exists: true)
+      @chat_builder.seed_history(chat, session.messages.take(plan.upto))
+      message = chat.compact
+      raw = message.raw_content
+      return unless Compaction.native_payload?(raw)
+
+      native = { "binding" => binding, "message" => {
+        "role" => "assistant", "content" => "", "raw_content" => raw
+      } }
+      updated = @session_store.set_compaction(task.session_id, native: native,
+        upto: plan.upto, model: binding.fetch("model"))
+      emit(:context_compacted, { task_id: task.id, agent: profile.id, from: 0, upto: plan.upto,
+        messages: plan.upto, runs: updated.compaction["runs"], model: binding.fetch("model"),
+        usage: usage_of(chat) }, task: task)
+    rescue StandardError
+      nil # A failed compaction cannot fail the already-committed turn.
     end
 
     def run_compaction(task, profile, session, state, plan, config, summarizer)
@@ -2759,8 +2947,7 @@ module Insika
 
     # Slices the chat's messages added DURING this turn and serializes them.
     # [] when there is no recorded transcript (baseline nil / no #messages).
-    def recorded_turn_messages(state)
-      chat = state.chat
+    def recorded_turn_messages(state, chat: state.chat)
       baseline = state.chat_baseline
       return [] unless chat && baseline && chat.respond_to?(:messages)
 
@@ -2769,6 +2956,7 @@ module Insika
 
     # A RubyLLM::Message (duck-typed) -> string-keyed Hash. Assistant carries
     # "tool_calls" only when present; tool carries "tool_call_id" + a clipped content.
+    # Do not persist raw_content: native replay would bypass redaction and clipping.
     def serialize_chat_message(msg)
       role = msg_field(msg, :role).to_s
       content = msg_field(msg, :content).to_s

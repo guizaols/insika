@@ -11,6 +11,11 @@ RSpec.describe Insika::ToolCatalog do
   def catalog = described_class.new(tool_registry: registry)
 
   describe "#all" do
+    it "preserves the registered MCP origin" do
+      registry.register("execute_sql", plugin: "mcp:metabase") { FakeTool.new("Runs SQL") }
+      expect(catalog.all.first.plugin).to eq("mcp:metabase")
+    end
+
     it "one Entry(name, description) per registry entry, in registry order" do
       registry.register("send_email") { FakeTool.new("Sends an e-mail to the recipient") }
       registry.register("fetch_page") { FakeTool.new("Downloads a web page") }

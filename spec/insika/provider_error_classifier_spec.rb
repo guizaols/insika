@@ -49,12 +49,12 @@ RSpec.describe Insika::ProviderErrorClassifier do
     end
 
     it "a generic RubyLLM::Error is classified by its HTTP status (503 -> retryable)" do
-      error = RubyLLM::Error.new(fake_response(503), "overloaded")
+      error = RubyLLM::Error.new("overloaded", response: fake_response(503))
       expect(described_class.classify(error).kind).to eq(:retryable)
     end
 
     it "429 without a Retry-After header -> :rate_limited_short with the default" do
-      error = RubyLLM::RateLimitError.new(fake_response(429), "slow down")
+      error = RubyLLM::RateLimitError.new("slow down", response: fake_response(429))
       c = described_class.classify(error)
       expect(c.kind).to eq(:rate_limited_short)
       expect(c.retryable).to be(true)
@@ -62,12 +62,12 @@ RSpec.describe Insika::ProviderErrorClassifier do
     end
 
     it "429-de-RPM != 429-de-quota: a short Retry-After is short, a long one is long" do
-      rpm = RubyLLM::RateLimitError.new(fake_response(429, { "retry-after" => "5" }), "rpm")
+      rpm = RubyLLM::RateLimitError.new("rpm", response: fake_response(429, { "retry-after" => "5" }))
       c_rpm = described_class.classify(rpm)
       expect(c_rpm.kind).to eq(:rate_limited_short)
       expect(c_rpm.retry_after).to eq(5)
 
-      quota = RubyLLM::RateLimitError.new(fake_response(429, { "retry-after" => "120" }), "quota")
+      quota = RubyLLM::RateLimitError.new("quota", response: fake_response(429, { "retry-after" => "120" }))
       c_quota = described_class.classify(quota)
       expect(c_quota.kind).to eq(:rate_limited_long)
       expect(c_quota.retry_after).to eq(120)
@@ -100,7 +100,7 @@ RSpec.describe Insika::ProviderErrorClassifier do
 
   describe ".wrap" do
     it "builds the typed ProviderError the executor stores and emits" do
-      error = RubyLLM::RateLimitError.new(fake_response(429, { "retry-after" => "90" }), "quota")
+      error = RubyLLM::RateLimitError.new("quota", response: fake_response(429, { "retry-after" => "90" }))
       wrapped = described_class.wrap(error)
 
       expect(wrapped).to be_a(Insika::ProviderError)

@@ -16,7 +16,7 @@ module Insika
     # loads it lazily inside create_chat, same as load_skill.
     class LoadKnowledge < RubyLLM::Tool
       description "Loads the complete content of a learned concept by name"
-      param :name, desc: "Exact concept name, as listed in <knowledge>"
+      parameter :name, description: "Exact concept name, as listed in <knowledge>"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class it
       # produces "insika--tools--load_knowledge", not "load_knowledge" (which

@@ -11,7 +11,7 @@ module Insika
     # the provider sees.
     #
     # Tolerant by construction: JSON-schema hashes reach us with symbol keys (the
-    # class-level `params(...)` form) or string keys (anything that round-tripped
+    # class-level `parameters(...)` form) or string keys (anything that round-tripped
     # through JSON), and a shape we do not recognize is returned UNTOUCHED — a
     # schema we failed to annotate still works, one we corrupted would break every
     # delegation.

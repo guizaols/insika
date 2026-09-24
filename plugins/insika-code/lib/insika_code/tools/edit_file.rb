@@ -11,9 +11,9 @@ module InsikaCode
     class EditFile < Base
       description "Replaces an exact string in an existing workspace file. Fails if the string " \
                   "is not found or is not unique. Requires human approval."
-      param :path, desc: "Path to the file, relative to the workspace root"
-      param :old_string, desc: "Exact text to replace (must occur exactly once)"
-      param :new_string, desc: "Replacement text"
+      parameter :path, description: "Path to the file, relative to the workspace root"
+      parameter :old_string, description: "Exact text to replace (must occur exactly once)"
+      parameter :new_string, description: "Replacement text"
 
       def name = "edit_file"
 

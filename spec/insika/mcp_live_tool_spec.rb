@@ -3,35 +3,37 @@
 require "spec_helper"
 require "insika/mcp_live_tool" # the registry loads it lazily; explicit in the test
 
-# One live MCP tool call. name/description/params_schema come
+# One live MCP tool call. name/description/parameters_schema come
 # from the cached descriptor; #execute is the only thing that reaches the
 # client, and — like every tool in this codebase — never raises.
 RSpec.describe Insika::McpLiveTool do
   FakeGemTool = Struct.new(:reply) do
-    def execute(**params) = reply.is_a?(Exception) ? raise(reply) : reply
+    attr_accessor :name
+    def call(**params) = reply.is_a?(Exception) ? raise(reply) : reply
   end
 
   def build(tool_hash, gem_tool)
+    gem_tool.name = tool_hash.fetch("name")
     described_class.new(instance_name: "fs", tool: tool_hash, client_for: -> { double_client(gem_tool) })
   end
 
   def double_client(gem_tool)
-    Class.new { define_method(:tool) { |_name| gem_tool } }.new
+    Class.new { define_method(:tools) { [gem_tool].compact } }.new
   end
 
-  it "name/description/params_schema come from the cached descriptor" do
+  it "name/description/parameters_schema come from the cached descriptor" do
     tool = build({ "name" => "list_files", "description" => "Lists files",
                    "inputSchema" => { "type" => "object", "properties" => { "path" => { "type" => "string" } } } },
                  FakeGemTool.new({}))
 
     expect(tool.name).to eq("list_files")
     expect(tool.description).to eq("Lists files")
-    expect(tool.params_schema).to eq("type" => "object", "properties" => { "path" => { "type" => "string" } })
+    expect(tool.parameters_schema).to eq("type" => "object", "properties" => { "path" => { "type" => "string" } })
   end
 
   it "a blank inputSchema defaults to an empty object schema" do
     tool = build({ "name" => "x", "description" => "d", "inputSchema" => {} }, FakeGemTool.new({}))
-    expect(tool.params_schema).to eq("type" => "object", "properties" => {})
+    expect(tool.parameters_schema).to eq("type" => "object", "properties" => {})
   end
 
   it "delegates execute to the gem's own tool and returns its (already unwrapped) result verbatim" do
@@ -75,8 +77,9 @@ RSpec.describe Insika::McpLiveTool do
     def tool(descriptor, overrides, result: nil)
       client = Object.new
       live = Object.new
-      live.define_singleton_method(:execute) { |**| result }
-      client.define_singleton_method(:tool) { |_n| live }
+      live.define_singleton_method(:name) { descriptor.fetch("name") }
+      live.define_singleton_method(:call) { |**| result }
+      client.define_singleton_method(:tools) { [live] }
       described_class.new(instance_name: "store", tool: descriptor, overrides: overrides,
                           client_for: -> { client })
     end

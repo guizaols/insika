@@ -13,8 +13,8 @@ module Insika
       description "Stores information to remember in future conversations. Use `key` " \
                   "for a durable key-value fact (overwrites the previous one); omit " \
                   "`key` for a free-form note."
-      param :value, desc: "The content to remember"
-      param :key, desc: "Fact key (e.g.: 'plan', 'name'); omit for a note", required: false
+      parameter :value, description: "The content to remember"
+      parameter :key, description: "Fact key (e.g.: 'plan', 'name'); omit for a note", required: false
 
       # otherwise RubyLLM derives "insika--tools--remember" from the class name.
       def name = "remember"

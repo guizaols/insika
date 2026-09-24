@@ -235,7 +235,7 @@ RSpec.describe Studio::App do
         # is the identity, so the entry keeps the bare shared name.
         own_skills.each_with_object({}) { |((a, n), c), acc| acc[[a, n]] = SkillEntry.new(name: n, description: "d", body: c) }
       ),
-      tool_catalog: ToolCatalogDouble.new(tools),
+      tool_catalog: ToolCatalogDouble.new(tools.map { |t| t.is_a?(Insika::ToolCatalog::Entry) ? t : Insika::ToolCatalog::Entry.new(name: t.name, description: t.description) }),
       tool_store: tool_store,
       memory_store: MemoryStoreDouble.new(memory),
       session_store: SessionStoreDouble.new(sessions),
@@ -2428,6 +2428,22 @@ RSpec.describe Studio::App do
     pane = client.get("/tools?a=bia", frame: "tool-detail").body
     expect(pane).to include('<turbo-frame id="tool-detail"')
     expect(pane).not_to include("app-shell")
+  end
+
+  it "groups tools by origin without changing checkbox names or values" do
+    tools = [Insika::ToolCatalog::Entry.new(name: "menu", description: "Native"),
+             Insika::ToolCatalog::Entry.new(name: "cep", description: "HTTP"),
+             Insika::ToolCatalog::Entry.new(name: "execute_sql", description: "SQL", plugin: "mcp:metabase"),
+             Insika::ToolCatalog::Entry.new(name: "search", description: "Search", plugin: "mcp:other")]
+    app, = build_app(tools: tools, data_tools: [data_tool(name: "cep")])
+    client = login(app)
+    [client.get("/tools"), client.get("/tools?a=bia", frame: "tool-detail")].each do |response|
+      expect(response.status).to eq(200)
+      expect(response.body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
+      tools.each do |tool|
+        expect(response.body.scan(%(name="tools[]" value="#{tool.name}")).size).to eq(1)
+      end
+    end
   end
 
   it "mcp: a frame request renders the detail pane alone, and ?i= selects the instance" do

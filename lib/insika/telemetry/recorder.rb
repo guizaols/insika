@@ -18,8 +18,8 @@ module Insika
     # a deliberate LOW-CARDINALITY subset of the span attributes — never task_id or
     # session_id. `meter:` nil -> spans only (the metrics SDK is optional).
     #
-    # `pricing:` nil -> no cost attribute/metric. Cost is an ESTIMATE from an
-    # operator-declared rates table (see Pricing) — the engine ships no prices.
+    # Native attempt-time cost is the default. An operator-declared rates table
+    # can override it with a negotiated-price estimate (see Pricing).
     #
     # PURE/testable: talks to a DUCK-TYPED `tracer` (start_span/set_attribute/
     # record_error/finish) and `meter` (create_counter/create_histogram -> add/
@@ -267,7 +267,7 @@ module Insika
         @instruments.tool_duration.record(seconds, attributes: labels) if seconds
       end
 
-      def estimated_cost(usage) = @pricing&.cost(usage)
+      def estimated_cost(usage) = @pricing&.cost(usage) || usage&.fetch(:cost_usd, nil)
 
       # -----------------------------------------------------------------------
 

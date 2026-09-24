@@ -20,8 +20,8 @@ module Insika
                   "when the customer agrees to be contacted again (a product, a " \
                   "cart, a pending payment). The cancellation policy is permanent: " \
                   "a customer who opted out can never be rescheduled."
-      param :at, desc: "ISO 8601 (absolute) or relative '+6h' / '+2d'"
-      param :reason, desc: "Short machine-readable reason, e.g. 'pix pending, " \
+      parameter :at, description: "ISO 8601 (absolute) or relative '+6h' / '+2d'"
+      parameter :reason, description: "Short machine-readable reason, e.g. 'pix pending, " \
                            "customer said she would pay tonight'"
 
       def name = "schedule"
@@ -127,7 +127,7 @@ module Insika
     class CancelFollowup < RubyLLM::Tool
       description "Cancel a previously scheduled follow-up by its id. A follow-up " \
                   "that already fired cannot be cancelled."
-      param :id, desc: "The id returned by the schedule tool"
+      parameter :id, description: "The id returned by the schedule tool"
 
       def name = "cancel_followup"
 

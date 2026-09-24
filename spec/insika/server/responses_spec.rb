@@ -150,6 +150,12 @@ RSpec.describe Insika::Server::Responses do
       expect(f).to end_with("data: [DONE]\n\n")
     end
 
+    it "projects disjoint cache buckets into inclusive Responses input and total tokens" do
+      f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 10, output_tokens: 2,
+        total_tokens: 12, cached_tokens: 90, cache_creation_tokens: 20, model: "gpt-4o" } }))
+      expect(f).to include('"input_tokens":120', '"total_tokens":122')
+    end
+
     it "task_completed with usage -> response.completed carries usage (tokens) + model" do
       f = described_class.frame_for(ev(:task_completed, { usage: { input_tokens: 12, output_tokens: 8,
                                                                     total_tokens: 20, model: "deepseek-chat" } }))

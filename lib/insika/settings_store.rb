@@ -36,7 +36,7 @@ module Insika
       # platform utility_model) into one history fragment. `prompt` replaces
       # the engine default wholesale (the distill convention). enabled: false
       # = parity (nothing runs). Additive keys — reads overlay DEFAULTS.
-      "compaction" => { "enabled" => false, "keep_last" => 20,
+      "compaction" => { "enabled" => false, "mode" => "summary", "keep_last" => 20,
                         "compact_after" => 40, "model" => nil },
       # Fencing (per-agent `fencing` flag): the cap on ONE string leaf of a tool
       # result after sanitizing. Platform-wide — the leaf size is a context-budget

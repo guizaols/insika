@@ -218,8 +218,6 @@ require_relative "insika/refinement/gate"
 # candidate format and the gate's Report shape, so it loads after both.
 require_relative "insika/refinement/panel"
 require_relative "insika/mcp_store"
-require_relative "insika/mcp_http_client"
-require_relative "insika/mcp_tool_ingestor"
 # require "ruby_llm/mcp" itself is LAZY, inside .for — this require_relative only
 # loads the thin factory (see spec/insika/load_guard_spec.rb).
 require_relative "insika/mcp_client"
@@ -324,7 +322,6 @@ require_relative "insika/commands/write_data_tool"
 require_relative "insika/commands/delete_data_tool"
 require_relative "insika/commands/restore_data_tool"
 require_relative "insika/commands/import_tools"
-require_relative "insika/commands/import_mcp_tools"
 require_relative "insika/commands/refresh_mcp_tools"
 # the demo seed (OSS onboarding): one bundled agent + golden
 # set + the Seeder that populates every loop's stores at once, and its bus

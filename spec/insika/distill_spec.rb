@@ -31,11 +31,12 @@ RSpec.describe Insika::Distill do
     end
 
     it "reports the cost when the ask answers with a message carrying token counts" do
-      message = Struct.new(:content, :input_tokens, :output_tokens, :cached_tokens)
-                .new(JSON.generate([{ "name" => "size", "value" => "M" }]), 100, 20, 500)
+      message = RubyLLM::Message.new(role: :assistant, content: JSON.generate([{ "name" => "size", "value" => "M" }]),
+                                     input_tokens: 100, output_tokens: 20, cache_read_tokens: 500,
+                                     cache_write_tokens: 30, thinking_tokens: 10)
       distiller = described_class.new(ask: ->(_prompt) { message }, model: "utility_model")
       result = distiller.distill(prompt: "p", message_count: 10)
-      expect(result[:cost]).to eq("spent" => 620, "cached" => 500)
+      expect(result[:cost]).to eq("spent" => 650, "cached" => 500)
       expect(result[:proposals].size).to eq(1)
     end
 

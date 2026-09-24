@@ -135,20 +135,11 @@ RSpec.describe Insika::Harvest do
     it "cost is nil for a plain String ask and present for a message-bearing one" do
       expect(parse(json: "[]")[:cost]).to be_nil
 
-      message = Class.new do
-        attr_reader :input_tokens, :output_tokens, :cached_tokens
-
-        def initialize
-          @input_tokens = 100
-          @output_tokens = 40
-          @cached_tokens = 60
-        end
-
-        def content = "[]"
-      end.new
+      message = RubyLLM::Message.new(role: :assistant, content: "[]", input_tokens: 100, output_tokens: 40,
+                                     cache_read_tokens: 60, cache_write_tokens: 30, thinking_tokens: 10)
       miner = described_class::Miner.new(ask: ->(_prompt) { message }, model: "m")
       expect(miner.mine(prompt: "p", message_counts: [10])[:cost])
-        .to eq("spent" => 200, "cached" => 60)
+        .to eq("spent" => 230, "cached" => 60)
     end
 
     it "records the model ref on the miner" do

@@ -14,8 +14,8 @@ module InsikaCode
     class WriteFile < Base
       description "Creates or overwrites a file in the workspace with the given content. " \
                   "Creates parent directories as needed. Requires human approval."
-      param :path, desc: "Path to the file, relative to the workspace root"
-      param :content, desc: "Full UTF-8 content to write"
+      parameter :path, description: "Path to the file, relative to the workspace root"
+      parameter :content, description: "Full UTF-8 content to write"
 
       def name = "write_file"
 

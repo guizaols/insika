@@ -4,7 +4,7 @@ require "spec_helper"
 
 # — estimated cost. Pricing is PURE: an operator-declared rates table
 # (USD per million tokens) times the turn's usage. Proves the token accounting
-# (cached is a subset of input, cache-creation is not), the "unknown model -> nil"
+# (input, cached and cache-creation are disjoint), the "unknown model -> nil"
 # rule (a missing price is not a zero cost) and that a malformed table can never
 # raise.
 RSpec.describe Insika::Telemetry::Pricing do
@@ -16,22 +16,32 @@ RSpec.describe Insika::Telemetry::Pricing do
 
   subject(:pricing) { described_class.new(rates) }
 
+  it "does not invent a zero cost for unreported usage" do
+    expect(pricing.cost({ model: "deepseek-chat" })).to be_nil
+  end
+
+  it "does not treat a missing rate as free usage" do
+    cost = described_class.new({ "m" => { "input" => 1.0 } })
+      .cost({ model: "m", input_tokens: 10, output_tokens: 5 })
+    expect(cost).to be_nil
+  end
+
   it "prices input + output at the declared per-million rates" do
     cost = described_class.new({ "m" => { "input" => 1.0, "output" => 2.0 } })
              .cost({ model: "m", input_tokens: 1_000_000, output_tokens: 500_000 })
     expect(cost).to eq(2.0) # 1.0 + (0.5 * 2.0)
   end
 
-  it "bills cached tokens at cached_input and subtracts them from the fresh input" do
+  it "bills cached tokens separately from non-cached input" do
     cost = described_class.new({ "m" => { "input" => 1.0, "output" => 0.0, "cached_input" => 0.1 } })
              .cost({ model: "m", input_tokens: 1_000_000, cached_tokens: 400_000, output_tokens: 0 })
-    expect(cost).to eq(0.64) # 0.6M fresh @1.0 + 0.4M cached @0.1
+    expect(cost).to eq(1.04) # 1M fresh @1.0 + 0.4M cached @0.1
   end
 
   it "leaves cached tokens at the input rate when no cached_input is declared" do
     cost = described_class.new({ "m" => { "input" => 1.0, "output" => 0.0 } })
              .cost({ model: "m", input_tokens: 1_000_000, cached_tokens: 400_000, output_tokens: 0 })
-    expect(cost).to eq(1.0) # cached is a SUBSET of input — not subtracted, not double-counted
+    expect(cost).to eq(1.4)
   end
 
   it "bills cache-creation tokens on top (they are not inside input_tokens)" do

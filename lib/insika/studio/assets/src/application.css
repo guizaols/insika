@@ -1173,6 +1173,9 @@
   .switch input:checked + .switch-track::after { transform:translateX(.85rem); }
   .switch input:focus-visible + .switch-track { box-shadow:0 0 0 3px var(--ring); }
   .tool-grid.is-open { opacity:.45; }
+  .tool-section { padding:.75rem 0; border-bottom:1px solid var(--line-2); }
+  .tool-section > summary { cursor:pointer; font-weight:600; overflow-wrap:anywhere; }
+  .tool-grid .tool-check[hidden] { display:none; }
   label.check.tool-check.locked { color:var(--faint); cursor:not-allowed; }
   label.check.tool-check.locked input { accent-color:var(--faint); }
   .pill.locked { color:var(--err); background:color-mix(in srgb,var(--err) 11%,transparent); }

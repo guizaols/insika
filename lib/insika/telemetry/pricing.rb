@@ -22,9 +22,9 @@ module Insika
     # nothing is emitted and the dashboard shows a gap instead of a lie.
     #
     # Token accounting (matches `Executor#usage_of`, which mirrors the providers):
-    # `cached_tokens` is a SUBSET of `input_tokens`, `cache_creation_tokens` is not.
-    #   - `cached_input` given -> cached tokens are billed at that rate and
-    #     subtracted from the fresh input; absent -> they stay at the input rate.
+    # All buckets are disjoint, matching RubyLLM::Tokens.
+    #   - `cached_input` given -> cached tokens are billed at that rate;
+    #     absent -> they use the input rate.
     #   - `cache_write` given -> cache-creation tokens billed at that rate; absent
     #     -> at the input rate (they are input tokens the provider did write).
     class Pricing
@@ -47,18 +47,14 @@ module Insika
 
         rate = rate_for(usage[:model]) or return nil
 
-        input   = usage[:input_tokens].to_i
-        cached  = usage[:cached_tokens].to_i
-        written = usage[:cache_creation_tokens].to_i
-        output  = usage[:output_tokens].to_i
+        buckets = [[usage[:input_tokens], rate["input"]],
+                   [usage[:output_tokens], rate["output"]],
+                   [usage[:cached_tokens], rate["cached_input"] || rate["input"]],
+                   [usage[:cache_creation_tokens], rate["cache_write"] || rate["input"]]]
+        return nil if buckets.all? { |count, _| count.nil? }
+        return nil if buckets.any? { |count, price| count.to_i.positive? && price.nil? }
 
-        cached_rate = rate["cached_input"]
-        fresh = cached_rate ? [input - cached, 0].max : input
-
-        millionths = fresh * rate["input"].to_f +
-                     (cached_rate ? cached * cached_rate.to_f : 0.0) +
-                     written * (rate["cache_write"] || rate["input"]).to_f +
-                     output * rate["output"].to_f
+        millionths = buckets.sum { |count, price| count.to_i * price.to_f }
         (millionths / 1_000_000.0).round(PRECISION)
       end
 

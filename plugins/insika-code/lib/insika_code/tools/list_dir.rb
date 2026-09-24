@@ -8,7 +8,7 @@ module InsikaCode
     # recursive). Read-only.
     class ListDir < Base
       description "Lists the entries (files and sub-directories) of a directory in the sandbox."
-      param :path, desc: "Directory path relative to the workspace root (default: the root)",
+      parameter :path, description: "Directory path relative to the workspace root (default: the root)",
                    required: false
 
       def name = "list_dir"

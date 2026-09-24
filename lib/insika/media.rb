@@ -201,8 +201,7 @@ module Insika
     # behind lazy requires:
     #  · image — RubyLLM.paint (the gem has vision AND painting), billed
     #    tokens merged into the turn's usage like any ask;
-    #  · tts — RubyLLM still has NO speech API (as of 1.16.0), so the default
-    #    is a thin POST to the OpenAI-compatible `<base>/audio/speech`
+    #  · tts — a capped POST to the OpenAI-compatible `<base>/audio/speech`
     #    endpoint (base + key from the provider config the chat uses — a
     #    deployment pointing OpenAI at a gateway keeps TTS pointing there).
     #    OpenAI's speech API reports no token usage; the part carries the
@@ -256,8 +255,8 @@ module Insika
 
           enforce_embedded_size!(data, "generated image")
           mime = image.respond_to?(:mime_type) ? image.mime_type : nil
-          model_id = image.respond_to?(:model_id) ? image.model_id : nil
-          usage = image.respond_to?(:usage) ? token_usage(image.usage) : {}
+          model_id = image.model
+          usage = { input_tokens: image.tokens.input, output_tokens: image.tokens.output }.compact
           part = { "type" => "image", "mime_type" => presence(mime) || "image/png",
                    "base64" => data, "model" => presence(model_id) }
           [part.compact, usage]
@@ -292,20 +291,24 @@ module Insika
           req.body = JSON.generate(model: model, voice: voice, input: text.to_s,
                                    response_format: format)
           opts = { use_ssl: uri.scheme == "https", open_timeout: 30, read_timeout: 60 }
+          # RubyLLM 2.0 buffers non-audio/error responses without yielding chunks.
+          # Keep this bounded transport until native speech caps every response.
           bytes = Net::HTTP.start(uri.host, uri.port, opts) do |http|
-            resp = http.request(req)
-            raise Insika::MediaError, "TTS HTTP #{resp.code}" unless resp.is_a?(Net::HTTPSuccess)
-
-            # stream into the cap — a rogue/broken endpoint must not grow the
-            # process past MAX_EMBEDDED_BYTES before the refusal.
             buf = +"".b
-            resp.read_body do |chunk|
-              buf << chunk
-              break if buf.bytesize > MAX_EMBEDDED_BYTES
+            http.request(req) do |resp|
+              raise Insika::MediaError, "TTS HTTP #{resp.code}" unless resp.is_a?(Net::HTTPSuccess)
+
+              resp.read_body do |chunk|
+                size = buf.bytesize + chunk.bytesize
+                if size > MAX_EMBEDDED_BYTES
+                  raise Insika::MediaError,
+                        "synthesized speech too large to embed (#{size} bytes > #{MAX_EMBEDDED_BYTES})"
+                end
+                buf << chunk
+              end
             end
             buf
           end
-          enforce_embedded_size!(bytes, "synthesized speech")
           part = { "type" => "audio", "mime_type" => mime_for(format), "base64" => Base64.strict_encode64(bytes), "model" => model }
           [part.compact, {}]
         rescue URI::InvalidURIError
@@ -350,14 +353,6 @@ module Insika
           return nil unless url
 
           Insika::Media.url_attachment(url, max_bytes: Insika::Media::MAX_IMAGE_BYTES)
-        end
-
-        def token_usage(raw)
-          usage = raw.is_a?(Hash) ? raw : {}
-          {
-            input_tokens: usage[:input_tokens] || usage["input_tokens"] || usage["prompt_tokens"],
-            output_tokens: usage[:output_tokens] || usage["output_tokens"] || usage["completion_tokens"]
-          }.compact
         end
 
         def mime_for(format)

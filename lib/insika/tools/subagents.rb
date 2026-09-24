@@ -20,9 +20,9 @@ module Insika
                   "subtasks whose results you'll combine: it runs them concurrently " \
                   "(much faster). Each child runs in an ISOLATED context, so put " \
                   "everything it needs in its `message`."
-      # array-of-objects param via the explicit JSON-schema form (the `param` DSL
+      # array-of-objects param via the explicit JSON-schema form (the `parameter` DSL
       # only reaches strings/scalars). Top-level `tasks` arrives as a kwarg to execute.
-      params(
+      parameters(
         type: "object",
         properties: {
           tasks: {
@@ -60,7 +60,7 @@ module Insika
         "#{super} Agents you may spawn: #{@allowed.join(', ')}."
       end
 
-      def params_schema
+      def parameters_schema
         @agent_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @allowed, path: %i[tasks agent])
       end
 

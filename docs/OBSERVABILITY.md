@@ -202,10 +202,10 @@ metric attribute with per-turn cardinality is how you destroy a metrics backend.
 | `insika.status` | string | `turn` | turn instruments | `ok` / `error` / `cancelled` / `abandoned` |
 | `insika.model` | string | `turn` | all except tool | model id the provider reported |
 | `insika.model_source` | string | `turn` | — | which config layer resolved the model (chat / agent / model / global) |
-| `insika.tokens.input` | int | `turn` | — | input tokens (**includes** the cached ones) |
+| `insika.tokens.input` | int | `turn` | — | non-cached input tokens |
 | `insika.tokens.output` | int | `turn` | — | output tokens |
-| `insika.tokens.total` | int | `turn` | — | input + output |
-| `insika.tokens.cached` | int | `turn` | — | cache **reads**, a subset of `tokens.input` |
+| `insika.tokens.total` | int | `turn` | — | non-cached input + output subtotal; cache buckets are separate |
+| `insika.tokens.cached` | int | `turn` | — | cache **reads**, separate from `tokens.input` |
 | `insika.tokens.cache_creation` | int | `turn` | — | cache **writes**, *not* inside `tokens.input` |
 | `insika.token.type` | string | — | `insika.tokens` | `input` / `output` / `cached` / `cache_creation` |
 | `insika.cost.usd` | double | `turn` | — | estimated cost of the turn (span attribute; the metric is the `insika.cost` counter) |
@@ -232,12 +232,17 @@ attributes are there for it.
 
 ## Estimated cost
 
-Insika ships **no prices**. They change weekly, differ per contract and per region,
-and a stale table inside the engine would be worse than no number. You declare the
-rates; Insika multiplies. Unset, no cost is reported anywhere.
+RubyLLM supplies attempt-time usage and cost. Insika aggregates native chat usage
+across tool rounds and retries, including recorded usage before a failure, and
+exports the recorded `cost_usd`. Unknown costs remain unknown, not zero.
+Insika maintains no competing provider price catalog.
 
-Set `INSIKA_MODEL_PRICING` to a JSON object of model id → rates in **USD per
-million tokens**:
+Internal token buckets are disjoint. The `total_tokens` field retains its historical
+non-cached input/output subtotal; budgets and evals add the cache buckets once.
+The Responses HTTP adapter projects cache-inclusive `input_tokens` and `total_tokens`.
+
+For negotiated rates, `INSIKA_MODEL_PRICING` optionally overrides telemetry cost
+with an estimate from a JSON object of model id to rates in **USD per million tokens**:
 
 ```bash
 INSIKA_MODEL_PRICING='{
@@ -250,13 +255,16 @@ INSIKA_MODEL_PRICING='{
   `provider/` prefix — `deepseek/deepseek-v4-flash` and `deepseek-v4-flash` both hit the
   same entry.
 - `input` / `output` are required (one of them is enough for the entry to load).
-- `cached_input`, when given, bills cache **reads** at that rate and subtracts them
-  from the fresh input. Omit it and cached tokens simply stay at the input rate.
+- `cached_input`, when given, bills cache **reads** separately at that rate.
+  Omit it and cache reads use the input rate; they are never subtracted from fresh input.
 - `cache_write`, when given, bills cache **creation** tokens at that rate. Omit it
   and they are billed at the input rate.
-- An **unpriced model reports nothing** — no attribute, no metric point. A missing
-  price is not a zero cost, and a dashboard should show the gap.
-- A malformed table degrades to "no cost". Telemetry config can never stop a boot.
+- A missing custom rate falls back to recorded native cost. If neither supplies
+  a cost, there is no attribute or metric point. A missing price is not zero.
+- A malformed table disables the override. Telemetry config cannot stop a boot.
+
+The custom table estimates aggregate tokens at the terminal model's rate. For
+mixed-model routing/fallback turns, use the native recorded cost instead of this override.
 
 The number is an **estimate for trend and attribution**, not a bill. Reconcile
 against your provider's invoice, never the other way round.
@@ -390,7 +398,7 @@ Set the OTEL envs on the deployment and every worker exports to your collector:
 INSIKA_OTEL=1
 OTEL_EXPORTER_OTLP_ENDPOINT=https://<your-collector>:4318
 OTEL_SERVICE_NAME=insika        # optional; names the service
-INSIKA_MODEL_PRICING='{...}'    # optional; unlocks the cost attribute + counter
+INSIKA_MODEL_PRICING='{...}'    # optional negotiated-rate override for telemetry
 # plus any standard OTEL_EXPORTER_OTLP_HEADERS your backend needs
 ```
 
