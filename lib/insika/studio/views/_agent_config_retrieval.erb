@@ -1,0 +1,70 @@
+<% knowledge = @agent.knowledge || {} %>
+<p class="muted">Memory keeps facts and notes across conversations. Knowledge stores reusable concepts. Reranking only changes which saved information is selected for a turn.</p>
+<% [["memory", "Memory", @agent.memory_retrieval || {}], ["knowledge", "Knowledge", knowledge]].each do |source, title, config| %>
+  <fieldset class="subgroup">
+    <legend><%= title %></legend>
+    <% if source == "memory" %>
+      <label class="check">
+        <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
+        Remember across conversations
+      </label>
+      <p class="muted">Without reranking, memory uses saved facts and the ten most recent notes. Turning memory off does not delete them.</p>
+    <% else %>
+      <label class="check">
+        <input type="checkbox" name="knowledge_extract" value="1"<%== " checked" if Insika::Coercion.truthy?(knowledge["extract"]) %>>
+        Learn concepts from conversations
+      </label>
+      <label class="check">
+        <input type="checkbox" name="knowledge_retrieve" value="1"<%== " checked" if Insika::Coercion.truthy?(knowledge["retrieve"]) %>>
+        Use knowledge in replies
+      </label>
+      <p class="muted">Learning and retrieval work independently. Turning them off does not delete saved concepts.</p>
+      <label>Concepts selected per turn
+        <input type="number" name="knowledge_top_k" value="<%= knowledge.fetch("top_k", 5) %>" min="1" step="1">
+      </label>
+      <details class="newfile">
+        <summary>Knowledge learning settings</summary>
+        <div class="grid-2">
+          <label>Concept types <span class="muted">— comma-separated; blank = default types</span>
+            <input type="text" name="knowledge_types" value="<%= Array(knowledge["types"]).join(", ") %>" placeholder="fact, policy, objection">
+          </label>
+          <label>Learning model <span class="muted">— blank = platform utility model</span>
+            <input type="text" name="knowledge_model" value="<%= knowledge["model"] %>" placeholder="inherit platform utility model">
+          </label>
+        </div>
+        <label>Learning instructions <span class="muted">— blank = default instructions</span>
+          <textarea name="knowledge_prompt" rows="4"><%= knowledge["prompt"] %></textarea>
+        </label>
+      </details>
+    <% end %>
+    <% rerank = config["rerank"] || {} %>
+    <label class="check">
+      <input type="checkbox" name="<%= source %>_rerank_enabled" value="1"<%== " checked" if config["rerank"] %>>
+      Rerank <%= source %> by relevance
+    </label>
+    <p class="muted">Off by default. Adds a provider call and may increase cost. Requires <%= source == "memory" ? "memory" : "knowledge retrieval" %> to be on. Provider credentials are configured separately.</p>
+    <details class="newfile"<%== " open" if config["rerank"] %>>
+      <summary><%= title %> rerank settings</summary>
+      <div class="grid-2">
+        <label>Rerank provider
+          <input type="text" name="<%= source %>_rerank_provider" value="<%= rerank["provider"] %>" placeholder="cohere">
+        </label>
+        <label>Rerank model
+          <input type="text" name="<%= source %>_rerank_model" value="<%= rerank["model"] %>" placeholder="rerank-v3.5">
+        </label>
+        <% if source == "memory" %>
+          <label>Memory items selected per turn
+            <input type="number" name="memory_top_k" value="<%= config.fetch("top_k", 5) %>" min="1" max="100" step="1">
+          </label>
+        <% end %>
+        <label>Candidate limit <span class="muted">— at least the selected count, up to 100</span>
+          <input type="number" name="<%= source %>_rerank_candidate_limit" value="<%= rerank.fetch("candidate_limit", 20) %>" min="1" max="100" step="1">
+        </label>
+        <label>Rerank timeout (seconds)
+          <input type="number" name="<%= source %>_rerank_timeout_seconds" value="<%= rerank.fetch("timeout_seconds", 2) %>" min="0.001" step="any">
+        </label>
+      </div>
+      <p class="muted">Choose a rerank model registered for this provider. On failure, the agent uses the usual retrieval. Disabling rerank clears these rerank settings.</p>
+    </details>
+  </fieldset>
+<% end %>
