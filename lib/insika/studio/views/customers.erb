@@ -1,21 +1,22 @@
-<header class="page-head">
+<header class="page-head operation-head">
   <h1>Customers<span class="sub"><%= @rows.size %> with memory</span></h1>
   <div class="head-actions">
     <%== agent_filter_form("/studio/customers", @agent) %>
   </div>
 </header>
 
-<div class="drill" data-controller="list-filter">
+<div class="drill operation-workspace" data-controller="list-filter">
   <%== render("_customers_master", locals: { active_scope: nil }) %>
 
   <turbo-frame id="customer-detail" class="drill-pane drill-detail">
     <div class="drill-pane-head">
       <div class="title">
         <strong>Pick a customer</strong>
-        <span class="count">select on the left</span>
+        <span class="count">review memory used in future conversations</span>
       </div>
     </div>
-    <div class="drill-pane-body">
+    <div class="drill-empty">
+      <div><h2>Customer memory</h2><p>Select a customer to read saved facts and notes, add a fact or review changes.</p></div>
     </div>
   </turbo-frame>
 </div>

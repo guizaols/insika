@@ -5,10 +5,10 @@
    ONLY mutations — cancel a pending record, force-revoke a contact —
    dispatch bus commands. Nothing here is engine vocabulary: the arm names,
    the reasons and the policy values are the pack's (D1/D8). %>
-<header class="page-head">
+<header class="page-head operation-head">
   <div>
     <%== crumbs_for("Follow-ups") %>
-    <h1>Follow-ups<span class="sub">scheduled, fired, blocked, cancelled — per agent</span></h1>
+    <h1>Follow-ups<span class="sub">Review scheduled messages and delivery history</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/followups", @agent) %>
@@ -27,11 +27,17 @@
   <%== render("_empty", locals: { icon: :followups,
     text: "No follow-ups — add a followup: block to an agent's pack and the records it schedules land here." }) %>
 <% else %>
+  <div class="operation-followups" data-controller="list-filter">
+    <div class="filter-bar">
+      <input type="search" class="filter-input" placeholder="Filter by customer, reason or status…" aria-label="Filter follow-ups"
+             data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <span class="filter-count mono muted" data-list-filter-target="count"></span>
+    </div>
   <% @stores.each do |store| %>
     <% profile, policy, records = store[:profile], store[:policy], store[:records] %>
-    <h2><%= profile.id %><span class="sub">arm <strong><%= policy.arm %></strong> · <%= policy.cancel_keywords.size %> keyword(s) · silence after <%= policy.silence_after_sends %> send(s)</span></h2>
+    <h2><a href="<%= agent_path(profile.id) %>"><%= profile.id %></a><span class="sub"><%= records.count { |r| r.status == "pending" } %> pending · <%= records.size %> records</span></h2>
 
-    <div class="card">
+    <div class="card operation-table">
       <div class="section-head">
         <h3>Schedule records</h3>
       </div>
@@ -42,13 +48,13 @@
         <table class="grid">
           <thead>
             <tr>
-              <th>customer</th><th>at</th><th>reason</th><th>arm</th><th>status</th><th></th>
+              <th>Customer</th><th>Scheduled for</th><th>Reason</th><th>Arm</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <% records.each do |r| %>
-              <tr>
-                <td class="mono"><%= r.customer %></td>
+              <tr data-list-filter-target="item" data-filter-text="<%= profile.id %> <%= r.customer %> <%= r.reason %> <%= r.arm %> <%= r.status %> <%= r.blocked_reason %>">
+                <td class="mono"><%= r.customer %><% if presence(r.session_id) %><br><a href="/studio/sessions/<%= Rack::Utils.escape(r.session_id) %>">Conversation ↗</a><% end %></td>
                 <td class="mono"><%= r.at %></td>
                 <td><%= r.reason %></td>
                 <td><span class="status info"><%= r.arm %></span></td>
@@ -80,15 +86,16 @@
         </table>
       <% end %>
 
-      <div class="section-head" style="margin-top: 1.2rem;">
-        <h3>Policy <span class="muted">pack data — edit it on the agent's pack</span></h3>
-      </div>
-      <div class="skill-desc">
+      <details class="operation-diagnostics">
+        <summary>Follow-up policy</summary>
+        <p class="muted">Arm <strong><%= policy.arm %></strong> · silence after <%= policy.silence_after_sends %> send(s). <a href="<%= agent_path(profile.id, "config", "cfg=followups") %>">Edit policy ↗</a></p>
         <% qh = policy.quiet_hours %>
-        <span class="status info"><%= qh ? "quiet #{qh.start}-#{qh.end} <#{qh.timezone}>" : "no quiet hours" %></span>
-        <span class="status info"><%= policy.max_frequency ? "max #{policy.max_frequency}" : "no frequency ceiling" %></span>
-        <span class="muted"><%= policy.cancel_keywords.empty? ? "no cancellation keywords" : "keywords: #{policy.cancel_keywords.join(' · ')}" %></span>
-      </div>
+        <p class="skill-desc">
+          <span class="status info"><%= qh ? "quiet #{qh.start}-#{qh.end} <#{qh.timezone}>" : "no quiet hours" %></span>
+          <span class="status info"><%= policy.max_frequency ? "max #{policy.max_frequency}" : "no frequency ceiling" %></span>
+          <span class="muted"><%= policy.cancel_keywords.empty? ? "no cancellation keywords" : "keywords: #{policy.cancel_keywords.join(' · ')}" %></span>
+        </p>
+      </details>
     </div>
 
     <%# D3: the A/B card — a READ-ONLY fold over the same records. The
@@ -97,7 +104,7 @@
         conversion-% and opt-outs cells' text content ("…100.0%…1…") to
         prove the opt-out count is arm-scoped, never a global revoked
         count — it doesn't pin the exact opening-tag markup. %>
-    <div class="card">
+    <div class="card operation-table">
       <div class="section-head">
         <h3>A/B readout <span class="muted">last 30 days · per arm</span></h3>
         <span class="muted">the A/B is the operator's — the card reads the baseline</span>
@@ -124,4 +131,6 @@
       <% end %>
     </div>
   <% end %>
+    <div class="empty" data-list-filter-target="empty" hidden>No follow-ups match your filter.</div>
+  </div>
 <% end %>
