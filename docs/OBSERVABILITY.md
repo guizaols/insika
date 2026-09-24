@@ -98,6 +98,9 @@ not land. `:ttft` is additive debug, absent unless `INSIKA_TURN_TIMING` is set.
 Rerank requests have `operation: "rerank"` in native model diagnostics. Their
 reported cost is tracked separately from chat and included once in the total.
 If any rerank request lacks usage, the rerank and total cost remain unknown.
+Reported native rerank tokens, including reported failed attempts, count once
+against agent token ceilings and calendar budgets, separately from chat usage.
+Unknown token fields stay unknown. Diagnostics carry the task and captured turn.
 Candidate and selected counts measure narrowing, not recall: records excluded
 by the lexical index or recent-note window cannot appear in those counts.
 
