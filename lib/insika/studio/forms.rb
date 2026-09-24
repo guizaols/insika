@@ -72,6 +72,8 @@ module Studio
         model: presence(r.params["model"]),
         provider: r.params["provider"].to_s,
         memory: r.params["memory"] == "1",
+        memory_retrieval: memory_retrieval_patch(r),
+        knowledge: knowledge_patch(r),
         limits: limits,
         params: params_patch(r),
         model_policy: model_policy_patch(r),
@@ -113,6 +115,48 @@ module Studio
         capabilities_declared: list_patch(r, "capabilities_declared"),
         skills_eager: skills_eager_patch(r)
       }
+    end
+
+    def memory_retrieval_patch(r)
+      rerank = retrieval_rerank_patch(r, "memory")
+      return nil unless rerank
+
+      { "top_k" => retrieval_top_k(r, "memory"), "rerank" => rerank }
+    end
+
+    def knowledge_patch(r)
+      # Preserve pack options the form does not expose, such as the index.
+      out = (@agent.knowledge || {}).except("extract", "retrieve", "top_k", "types", "model", "prompt", "rerank")
+      out.merge!("extract" => r.params["knowledge_extract"] == "1",
+                 "retrieve" => r.params["knowledge_retrieve"] == "1",
+                 "top_k" => retrieval_top_k(r, "knowledge"))
+      types = list(r.params["knowledge_types"])
+      out["types"] = types unless types.empty?
+      %w[model prompt].each do |key|
+        value = presence(r.params["knowledge_#{key}"])
+        out[key] = value if value
+      end
+      rerank = retrieval_rerank_patch(r, "knowledge")
+      out["rerank"] = rerank if rerank
+      out
+    end
+
+    def retrieval_top_k(r, source)
+      field = "#{source}_top_k"
+      value = edge_int(r.params[field], field) || 5
+      raise Insika::ValidationError, "#{field} must be positive" unless value.positive?
+
+      value
+    end
+
+    def retrieval_rerank_patch(r, source)
+      return nil unless r.params["#{source}_rerank_enabled"] == "1"
+
+      prefix = "#{source}_rerank"
+      { "provider" => presence(r.params["#{prefix}_provider"]),
+        "model" => presence(r.params["#{prefix}_model"]),
+        "candidate_limit" => edge_int(r.params["#{prefix}_candidate_limit"], "#{prefix}_candidate_limit") || 20,
+        "timeout_seconds" => edge_float(r.params["#{prefix}_timeout_seconds"], "#{prefix}_timeout_seconds") || 2 }
     end
 
     # grounding — { "mode" => "flag"|"enforce", "matcher" =>

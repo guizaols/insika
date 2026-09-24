@@ -146,6 +146,15 @@ conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
 
+In Studio, open **Agents → select an agent → Configuration → Memory & knowledge**.
+Memory, knowledge learning and knowledge retrieval have separate switches. Each
+source has its own optional rerank provider, model, candidate limit and timeout;
+reranking is off by default. Disabling rerank keeps memory and knowledge working
+with their usual retrieval and clears only that source's rerank configuration.
+The memory selection count applies only while memory reranking is on. The knowledge
+selection count also applies without reranking. Provider credentials are configured
+separately, never in this form. Changes apply to this agent's future turns.
+
 To select a smaller memory block for each message, keep `"memory": true` and add
 `"memory_retrieval": {"top_k": 3, "rerank": {"provider": "cohere", "model": "rerank-v3.5", "candidate_limit": 20, "timeout_seconds": 2}}`
 to the agent profile or pack. The engine first reads only the current memory cell,
