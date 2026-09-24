@@ -188,7 +188,7 @@ module Deploy
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
-      Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      Insika::Context::Providers::Memory.new(store: MEMORY_STORE, llm: LLM_CONTEXT),
       Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store, llm: LLM_CONTEXT),
       Insika::Context::Providers::PendingConfirmation.new(pending_action_store: PENDING_ACTION_STORE),
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),

@@ -56,6 +56,7 @@ module Insika
     :memory,                          # cross-session memory.
     #                                   nil/false = OFF (parity: provider []; the `remember`
     #                                   tool not wired); true = ON. Same opt-in as capabilities.
+    :memory_retrieval,                # optional reranked context selection; nil = legacy memory block.
     :prompt_caching,                  # Anthropic prompt caching (R3): nil/false = OFF
     #                                   (parity); true = ON. Same opt-in as `memory`. When ON
     #                                   AND the resolved provider is Anthropic, ChatBuilder sets
@@ -338,7 +339,7 @@ module Insika
                    skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    customer_confirm: nil,
-                   capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil,
+                   capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil, memory_retrieval: nil,
                    prompt_caching: nil, tool_persistence: nil, tool_output_compression: nil,
                    fencing: nil, params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
@@ -361,6 +362,7 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
         subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
         tools_deferred: tools_deferred, memory: memory,
+        memory_retrieval: normalize_memory_retrieval(memory_retrieval),
         prompt_caching: prompt_caching, tool_persistence: tool_persistence,
         tool_output_compression: tool_output_compression, fencing: fencing,
         # The free-form hashes arrive with symbol keys (internal build) OR string
@@ -424,27 +426,40 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
       config = Coercion.deep_stringify(value)
       return config unless config.is_a?(Hash) && config.key?("rerank")
 
-      rerank = config["rerank"]
-      raise ValidationError, "knowledge.rerank must be an object" unless rerank.is_a?(Hash)
+      validate_rerank(config, "knowledge")
+      config
+    end
 
-      top_k = config.fetch("top_k", 5)
+    def self.normalize_memory_retrieval(value)
+      return nil if value.nil?
+
+      config = Coercion.deep_stringify(value)
+      raise ValidationError, "memory_retrieval must be an object" unless config.is_a?(Hash)
+
+      validate_rerank(config, "memory_retrieval", require_top_k: true)
+      config
+    end
+
+    def self.validate_rerank(config, field, require_top_k: false)
+      rerank = config["rerank"]
+      raise ValidationError, "#{field}.rerank must be an object" unless rerank.is_a?(Hash)
+
+      top_k = require_top_k ? config["top_k"] : config.fetch("top_k", 5)
       limit = rerank["candidate_limit"]
       timeout = rerank["timeout_seconds"]
       valid = top_k.is_a?(Integer) && top_k.positive? &&
               limit.is_a?(Integer) && limit >= top_k && limit <= 100 &&
               timeout.is_a?(Numeric) && timeout.finite? && timeout.positive? &&
               %w[provider model].all? { |key| rerank[key].is_a?(String) && !rerank[key].strip.empty? }
-      raise ValidationError, "invalid knowledge.rerank configuration" unless valid
+      raise ValidationError, "invalid #{field}.rerank configuration" unless valid
 
       require "ruby_llm"
       begin
         model = RubyLLM.models.find(rerank["model"], provider: rerank["provider"])
       rescue RubyLLM::ModelNotFoundError
-        raise ValidationError, "knowledge.rerank model is not registered for provider"
+        raise ValidationError, "#{field}.rerank model is not registered for provider"
       end
-      raise ValidationError, "knowledge.rerank model does not support reranking" unless model.type == :rerank
-
-      config
+      raise ValidationError, "#{field}.rerank model does not support reranking" unless model.type == :rerank
     end
 
     # Declaring a tool allow/deny list IS opting into it. The list is only ever

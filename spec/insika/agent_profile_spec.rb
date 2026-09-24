@@ -1,6 +1,26 @@
 # frozen_string_literal: true
 
 RSpec.describe Insika::AgentProfile do
+  describe "memory retrieval configuration" do
+    let(:rerank) { { provider: "cohere", model: "rerank-v3.5", candidate_limit: 3, timeout_seconds: 2 } }
+
+    it "keeps nil legacy behavior and normalizes an opt-in" do
+      expect(described_class.build(id: "a", memory: true).memory_retrieval).to be_nil
+      profile = described_class.build(id: "a", memory: true, memory_retrieval: { top_k: 2, rerank: rerank })
+      expect(profile.memory_retrieval).to eq("top_k" => 2, "rerank" => rerank.transform_keys(&:to_s))
+    end
+
+    it "requires valid selection settings for every nonnil declaration" do
+      [ {}, { top_k: 2 }, { top_k: 0, rerank: rerank },
+        { top_k: 2, rerank: rerank.merge(candidate_limit: 1) },
+        { top_k: 2, rerank: rerank.merge(timeout_seconds: 0) },
+        { top_k: 2, rerank: rerank.merge(model: "not-a-model") } ].each do |config|
+        expect { described_class.build(id: "a", memory_retrieval: config) }
+          .to raise_error(Insika::ValidationError)
+      end
+    end
+  end
+
   describe "knowledge rerank configuration" do
     let(:valid) { { provider: "cohere", model: "rerank-v3.5", candidate_limit: 20, timeout_seconds: 2 } }
 

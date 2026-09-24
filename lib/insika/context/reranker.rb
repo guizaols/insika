@@ -20,8 +20,8 @@ module Insika
         per_document = [(tokens - query_tokens) / documents.length, 400].min
         return nil if per_document < 1
 
-        bounded = documents.map { |text| trim(text, per_document) }
-        bounded_query = trim(query, query_tokens)
+        bounded = documents.map { |text| trim(Insika::Safety::Detectors.redact(text).first, per_document) }
+        bounded_query = trim(Insika::Safety::Detectors.redact(query).first, query_tokens)
         llm = operation_context(emit, config)
         result = Async::Task.current.with_timeout(config.fetch("timeout_seconds")) do
           llm.rerank(bounded_query, bounded, provider: config.fetch("provider"),
