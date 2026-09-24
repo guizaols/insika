@@ -204,6 +204,8 @@ RSpec.describe Insika::Server::Responses do
 
     it "events with no match -> nil (skipped)" do
       expect(described_class.frame_for(ev(:task_started))).to be_nil
+      expect(described_class.frame_for(ev(:llm_request, { "model" => "internal" }))).to be_nil
+      expect(described_class.frame_for(ev(:llm_usage, { "input_tokens" => 10 }))).to be_nil
       expect(described_class.frame_for(ev(:tool_call_pending, {}))).to be_nil
       expect(described_class.frame_for(ev(:skill_activated, { name: "s" }))).to be_nil
     end
@@ -237,6 +239,8 @@ RSpec.describe Insika::Server::Responses do
       stream.emit(ev(:tool_call, { name: "search_products" }))
       stream.emit(ev(:content, { delta: " tudo bem?" }))
       stream.emit(ev(:task_started)) # no match: does not become a frame
+      stream.emit(ev(:llm_request, { "model" => "internal-model" }))
+      stream.emit(ev(:llm_usage, { "input_tokens" => 10 }))
       stream.emit(ev(:task_completed, {}))
       sub.close
       collector.wait
@@ -249,7 +253,7 @@ RSpec.describe Insika::Server::Responses do
     expect(joined).to include('"delta":" tudo bem?"')
     expect(joined).to include('"type":"response.completed"')
     expect(joined).to end_with("data: [DONE]\n\n")
-    expect(joined).not_to include("task_started") # skipped event
+    expect(joined).not_to include("task_started", "llm_request", "llm_usage", "internal-model") # skipped events
     expect(joined).not_to include("vou saudar o cliente") # reasoning stays internal
   end
 
