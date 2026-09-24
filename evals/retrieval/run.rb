@@ -8,21 +8,21 @@ require "async"
 module RetrievalEval
   ROOT = File.expand_path("golden", __dir__)
   RERANK = { provider: "cohere", model: "rerank-v3.5", candidate_limit: 3, timeout_seconds: 2 }.freeze
-  CaseShape = Data.define(:kind, :target, :forbidden, :reachable, :seed)
+  CaseShape = Data.define(:kind, :target, :forbidden, :seed)
   SHAPES = {
-    "lexical-ambiguity" => CaseShape.new(:knowledge, "cedar-delivery", ["cedar-sale"], true,
-      [["cedar-sale", "cedar delivery sale", "cedar delivery sale"], ["cedar-delivery", "cedar delivery window", "cedar arrives Tuesday"]]),
-    "older-memory" => CaseShape.new(:memory, "note:older", ["note:newer"], true, nil),
-    "paraphrase-no-overlap" => CaseShape.new(:knowledge, "sofa-care", [], false,
-      [["sofa-care", "upholstery cleaning", "vacuum fabric weekly"]]),
-    "empty-results" => CaseShape.new(:knowledge, nil, [], false, []),
-    "expired-fact" => CaseShape.new(:memory, nil, ["fact:retired"], false, nil),
-    "tenant-isolation" => CaseShape.new(:knowledge, "tenant-visible", ["tenant-private"], true,
-      [["tenant-visible", "cedar delivery", "cedar arrives Tuesday"]]),
-    "provider-failure" => CaseShape.new(:knowledge, "cedar-delivery", [], true,
-      [["cedar-delivery", "cedar delivery", "cedar arrives Tuesday"]]),
-    "outside-note-window" => CaseShape.new(:memory, "note:oldest", [], false, nil),
-    "deleted-concept" => CaseShape.new(:knowledge, nil, ["deleted-concept"], false,
+    "lexical-ambiguity" => CaseShape.new(:knowledge, "cedar-delivery", ["cedar-sale"],
+      [["cedar-sale", "cedar delivery sale", "cedar delivery sale"], ["cedar-delivery", "cedar arrives Tuesday", "delivery detail"]]),
+    "older-memory" => CaseShape.new(:memory, "note:older", ["note:newer"], nil),
+    "paraphrase-no-overlap" => CaseShape.new(:knowledge, "sofa-care", [],
+      [["sofa-care", "vacuum fabric weekly", "upholstery cleaning"]]),
+    "empty-results" => CaseShape.new(:knowledge, nil, [], []),
+    "expired-fact" => CaseShape.new(:memory, nil, ["fact:retired"], nil),
+    "tenant-isolation" => CaseShape.new(:knowledge, "tenant-visible", ["tenant-private"],
+      [["tenant-visible", "cedar arrives Tuesday", "delivery detail"]]),
+    "provider-failure" => CaseShape.new(:knowledge, "cedar-delivery", [],
+      [["cedar-delivery", "cedar arrives Tuesday", "delivery detail"]]),
+    "outside-note-window" => CaseShape.new(:memory, "note:oldest", [], nil),
+    "deleted-concept" => CaseShape.new(:knowledge, nil, ["deleted-concept"],
       [["deleted-concept", "cedar delivery", "removed answer"]])
   }.freeze
 
@@ -38,9 +38,6 @@ module RetrievalEval
       @documents = documents
       raise IOError, "synthetic provider failure" if @fail
 
-      if @shape.reachable && !documents.any? { |doc| doc.include?(@shape.target.delete_prefix("note:")) }
-        raise "oracle target missing from candidates"
-      end
       ordered = (0...documents.size).sort_by do |i|
         [documents[i].include?(@shape.target.to_s.delete_prefix("note:")) ? 0 : 1, i]
       end
@@ -98,27 +95,25 @@ module RetrievalEval
     start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     fragments = Async { provider.call(request) }.wait
     elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start) * 1000
-    if enabled && shape.reachable && !oracle.documents.any? { |doc| doc.include?(shape.target.delete_prefix("note:")) }
-      raise "#{golden.id}: expected target missing from rerank candidates"
-    end
     content = fragments.map(&:content).join("\n")
     selected = if shape.kind == :knowledge
                  fragments.flat_map { |fragment| fragment.labels.map { |label| label.fetch("name") } }
                else
                  memory_ids(content, golden)
                end
+    isolation_safe = golden.id != "tenant-isolation" ||
+      !(oracle.documents + [content]).join.include?("PRIVATE_SCOPE_LEAK")
     answer = if shape.kind == :memory
                content[/<note>(.*?)<\/note>/m, 1] || content[/<fact key="[^"]+">(.*?)<\/fact>/m, 1] || "unknown"
-             elsif selected.any?
-               Insika::Knowledge::Concept.parse(knowledge.get(golden.agent, selected.first, tenant: golden.tenant))[:body]
              else
-               "unknown"
+               content[/<concept\b[^>]*>(.*?)<\/concept>/m, 1] || "unknown"
              end
     result = Insika::Evals::TurnResult.new(output_text: answer, tool_calls: [], ui: [])
     checks = Insika::Evals::Assertions.evaluate(golden, result)
     { "candidates" => oracle.documents, "selected" => selected, "events" => events,
+      "emitted_context" => content, "isolation_safe" => isolation_safe,
       "context_correct" => (shape.target.nil? || selected.include?(shape.target)) &&
-        (selected & shape.forbidden).empty?, "answer_correct" => checks.pass?,
+        (selected & shape.forbidden).empty? && isolation_safe, "answer_correct" => checks.pass?,
       "provider_calls" => oracle.calls, "latency_ms" => elapsed }
   end
 
@@ -145,7 +140,11 @@ module RetrievalEval
         knowledge.write(golden.agent, name, content, tenant: golden.tenant)
       end
       if golden.id == "tenant-isolation"
-        knowledge.write(golden.agent, "tenant-private", knowledge.get(golden.agent, "tenant-visible", tenant: golden.tenant), tenant: "other")
+        private_content = Insika::Knowledge::Concept.render(name: "tenant-private",
+          description: "PRIVATE_SCOPE_LEAK cedar delivery", type: "fact", body: "private-only",
+          provenance: "observed", confidence: 0.6, sources: ["fixture"], occurrences: 1,
+          created_at: "2026-09-01T00:00:00Z", updated_at: "2026-09-01T00:00:00Z")
+        knowledge.write(golden.agent, "tenant-private", private_content, tenant: "other")
       elsif golden.id == "deleted-concept"
         knowledge.delete(golden.agent, "deleted-concept", tenant: golden.tenant)
       end
@@ -163,16 +162,16 @@ module RetrievalEval
 
   def recall(shape, row, enabled:)
     return "N/A (no relevant record)" if shape.target.nil?
-    return "1/1" if !enabled && row.fetch("selected").include?(shape.target)
-    return "0/1 (outside candidate window)" if shape.kind == :memory && !shape.reachable
-    return "0/1 (no lexical candidate)" if shape.kind == :knowledge && !shape.reachable
-    return "0/1" unless enabled
-
-    row.fetch("candidates").any? { |doc| doc.include?(shape.target.delete_prefix("note:")) } ? "1/1" : "0/1"
+    hit = if enabled
+            row.fetch("candidates").any? { |doc| doc.include?(shape.target.delete_prefix("note:")) }
+          else
+            row.fetch("selected").include?(shape.target)
+          end
+    hit ? "1/1" : "0/1"
   end
 
   def summarize(row)
-    row.slice("candidates", "selected", "context_correct", "answer_correct", "provider_calls", "events")
+    row.slice("candidates", "selected", "context_correct", "answer_correct", "provider_calls", "events", "isolation_safe")
   end
 
   def latency(rows)
