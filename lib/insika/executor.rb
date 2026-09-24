@@ -18,7 +18,7 @@ module Insika
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
-                   tool_trace_store: nil, settings_store: nil, content_filter_factory: nil,
+                   tool_trace_store: nil, llm_trace_store: nil, model_metrics_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
@@ -39,6 +39,8 @@ module Insika
       @workflow_registry = workflow_registry # stage 6 of trigger_workflow
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
+      @llm_trace_store = llm_trace_store
+      @model_metrics_store = model_metrics_store
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
@@ -1729,7 +1731,7 @@ module Insika
     # state (the seed history is identical), baseline reset -> the transcript
     # recorded from than point is the attempt that spoke.
     def build_attempt_chat(state, selection)
-      chat = build_chat(selection, state.model_selection)
+      chat = build_chat(selection, state.model_selection, state: state)
       @chat_builder.assemble(chat, state, emit: ->(type, data) { emit(type, data, task: state.task) })
       state.chat_baseline = Array(chat.messages).size if chat.respond_to?(:messages)
       chat
@@ -3032,22 +3034,36 @@ module Insika
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
       state.model_selection = selection
-      build_chat(selection, selection)
+      build_chat(selection, selection, state: state)
     end
 
     # The gem boundary: one chat for a model selection (the resolved primary or
     # a WS3 fallback node). The primary's generation params apply to the whole
     # chain (params_source: ModelSelection#apply_params).
-    def build_chat(selection, params_source)
+    def build_chat(selection, params_source, state: nil)
       model = selection.respond_to?(:model) ? selection.model : selection[:model]
       provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
-      chat = (@llm || RubyLLM).chat(
+      chat = llm_operation_context(state, model).chat(
         model: model,
         provider: provider,
         assume_model_exists: !provider.nil?
       )
       params_source.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
       chat
+    end
+
+    def llm_operation_context(state, model)
+      source = @llm || RubyLLM
+      return source unless state.respond_to?(:task) && state.task && source.respond_to?(:config)
+
+      require_relative "telemetry/ruby_llm_instrumenter"
+      config = source.config.dup
+      task, turn = state.task, state.turn
+      config.instrumenter = Telemetry::RubyLLMInstrumenter.new(
+        delegate: config.instrumenter, operation: "chat", model: model,
+        emit: ->(type, data) { emit(type, data.merge("turn" => turn), task: task) }
+      )
+      RubyLLM::Context.new(config)
     end
 
     # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
@@ -3058,9 +3074,18 @@ module Insika
     # absent tenant -> the meta is byte-identical to before.
     def emit(type, data, task:)
       meta = { task_id: task.id, session_id: task.session_id,
-               seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601 }
+               seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601(6) }
       tenant = task_tenant(task)
       meta[:tenant] = tenant unless tenant.nil?
+      if type == :llm_request || type == :llm_usage
+        [@llm_trace_store, @model_metrics_store].each do |store|
+          begin
+            store&.record(task_id: task.id, entry: data.merge("type" => type.to_s, "at" => meta[:at]))
+          rescue StandardError
+            # Recorders fail independently; diagnostics must not interrupt the model.
+          end
+        end
+      end
       @event_stream.emit(Insika::Event.new(type: type, data: data, meta: meta))
     end
 

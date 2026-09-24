@@ -5,7 +5,33 @@ nav_order: 1
 permalink: /observability/
 ---
 
-# Observability — OpenTelemetry (opt-in)
+# Observability — native model diagnostics and OpenTelemetry
+
+## Studio Models
+
+Open the operator-authenticated `/studio/models` page to filter native
+requests by the last 24 hours, 7 days, or 30 days, provider, and model. It shows
+request volume, failures, retries, reported USD cost and unknown-cost coverage,
+p50/p90/p95 latency, separate input/output/cache-read/cache-write/thinking token
+subtotals, and the 20 slowest measured requests linked to their tasks.
+
+Charts show request volume, reported cost, and p50/p90/p95 latency over time,
+plus a ranked cost comparison by model. They share the page filters. The 24-hour
+view uses hourly intervals, 7 days uses six-hour intervals, and 30 days uses
+daily intervals, all in UTC. Each chart has an expandable table of exact values.
+Missing cost or duration leaves a gap; no-call intervals have zero requests.
+The page is a snapshot: apply the filters again to refresh it.
+
+Request latency includes native retries. Retries count usage attempts beyond the
+first within a request, not Insika task executions. Percentiles use completed
+requests with measured durations. Cost and token values sum only reported usage;
+when coverage is incomplete, they are subtotals, and a dash means no value was
+reported. An unknown-cost failed attempt followed by a priced success leaves
+partial cost coverage even when the subtotal is known.
+
+The page reads content-free summaries stored independently of the capped task
+trace. History starts when the summaries are deployed; earlier requests are not
+backfilled. Task deletion, retention, and tenant purge remove their summaries.
 
 Insika already has an observability spine: the **event stream**. Every turn emits
 structured events (`task_started`, `tool_call`/`tool_result`, `data_tool_call`,
@@ -80,7 +106,7 @@ The bridge speaks the standard the market already runs on: point any OTLP backen
 at Insika and a real turn shows up as a full trace, next to counters and histograms
 you can chart without touching a span.
 
-**This page is a convention, not an integration.** Insika ships no dashboard, no
+**The OpenTelemetry section is a convention, not an integration.** Insika ships no OTEL dashboard, no
 backend config, no vendor file. It ships a stable set of attribute and instrument
 names, and the recipes below tell you what to chart against them — in whatever you
 already run.
@@ -96,6 +122,7 @@ masked result; `insika tools:report` lists blocked calls separately from errors.
 ## Contents
 
 - [Turning it on](#turning-it-on-opt-in-parity-when-off)
+- [Native model diagnostics](#native-model-diagnostics)
 - [Traces: the span reference](#traces-the-span-reference)
 - [Metrics: the instrument reference](#metrics-the-instrument-reference)
 - [Attribute reference](#attribute-reference)
@@ -123,11 +150,35 @@ stay on; `OTEL_METRIC_EXPORT_INTERVAL` (ms) sets the export period. If the metri
 SDK is not in the bundle at all, the bridge degrades to traces only rather than
 failing to boot.
 
-**Off (the default):** `Insika::Telemetry.setup` returns `nil`, the OTEL gems are
-**never loaded** (lazy `require`, like the LLM client), and nothing is
-instrumented — zero overhead. This is enforced by a test
+**Off (the default):** `Insika::Telemetry.setup` returns `nil` and the OTEL gems are
+**never loaded** (lazy `require`, like the LLM client). No OTEL spans or metrics
+are exported; native model diagnostics remain available in Studio. The lazy
+load is enforced by a test
 (`spec/insika/load_guard_spec.rb`: "require insika does not load
 OpenTelemetry").
+
+## Native model diagnostics
+
+The Studio task page shows `llm_request` and `llm_usage` rows from RubyLLM. A
+request is one logical model operation, including RubyLLM's transport retries;
+each attempt has its own usage row. A successful task can therefore show a failed
+attempt followed by a successful attempt under one request. These are not extra
+task executions. Each request has a locally generated `request_id` that links its
+rows; it is not the provider's HTTP request ID. The rows show operation,
+provider, model, outcome, and five token buckets (input, output, cache read,
+cache write, thinking). Only the request has a measured duration. Attempts have
+no measured duration. Cost is exactly RubyLLM's reported attempt cost: unknown
+remains an em dash, while a reported zero remains zero. These diagnostic values
+do not add to turn usage, `insika.tokens`, or `insika.cost`.
+
+The diagnostic store retains the latest 200 events per task. Studio marks a
+truncated tail; deleting the task deletes its diagnostics. Insika stores and
+exports only allowlisted scalar fields: event type, timestamp, turn number,
+operation, provider, model, outcome, request ID, duration, exception class,
+token counts, and cost. It excludes prompts, messages, tool arguments, responses,
+URLs, exception messages, and arbitrary RubyLLM payload fields. This restriction
+applies to Insika's diagnostics; an application-supplied RubyLLM instrumenter
+still receives RubyLLM's original payload under the host's own policy.
 
 ## Traces: the span reference
 
@@ -139,16 +190,29 @@ Latency is the span duration, reconstructed from the events' real `at` timestamp
 | `insika.turn` | one per turn, opened on `task_started`, closed on the terminal event | root |
 | `insika.tool` | one per tool call, `tool_call` → `tool_result` (FIFO-correlated) | `insika.turn` |
 | `insika.data_tool` | one per data-tool call — point-in-time (the engine emits a single event) | `insika.turn` |
+| `insika.llm.request` | one per retained native request with measured duration, exported when the turn ends | `insika.turn` |
 
 A turn that ends with `task_failed` also carries the OTEL **error status**, with
-the failure message.
+the exception class (or `Task failed` when the class is unavailable), never the
+exception message. A failed native request uses the same class-only rule.
+
+Request spans carry `insika.llm.request_id`, `insika.model`, `insika.provider`,
+`insika.operation`, `insika.status`, `insika.llm.duration_ms`,
+`insika.llm.attempts`, and `insika.llm.failures`. Each retained attempt adds
+`insika.llm.attempt.N.status` and, when known,
+`insika.llm.attempt.N.input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_write_tokens`, `thinking_tokens`, and `cost`. The `N` starts at 1. Unknown
+values are omitted. Request spans wait until the turn ends so usage emitted after
+request completion is included. When the 200-event buffer overflows,
+`insika.llm.truncated=true` appears on the turn and request spans: their attempt
+counts describe only the retained tail.
 
 ## Metrics: the instrument reference
 
 The same events feed instruments, so volume, latency, tokens and cost are chartable
 **without aggregating spans** — which not every backend does, and none does cheaply
-at retention. Metrics are recorded on the *terminal* event, so every point already
-knows its outcome.
+at retention. Turn metrics are recorded on the *terminal* event, when its outcome
+is known. Native attempt counters are recorded as usage arrives.
 
 | Instrument | Type | Unit | Recorded when |
 |------------|------|------|----------------|
@@ -163,6 +227,13 @@ knows its outcome.
 | `insika.cache.hit_rate` | histogram | `%` | a turn reported billed prompt tokens (see below) |
 | `insika.tool.loop_intervened` | counter | `{intervention}` | the loop detector delivered its one-shot warning |
 | `insika.context.compacted` | counter | `{compaction}` | an in-session compaction was persisted (RFC-0044) |
+| `insika.llm.attempts` | counter | `{attempt}` | each native usage event, including retries |
+| `insika.llm.failures` | counter | `{attempt}` | each native usage event with failed status |
+
+The native attempt counters count every received attempt, even when the span
+buffer has discarded earlier rows. They use the turn's agent/tenant/command
+labels plus `insika.model`, `insika.provider`, `insika.operation`, and
+`insika.status`; neither task nor request ID becomes a metric label.
 
 `insika.tool.duration` is deliberately **not** recorded for data-tools: those are a
 single point-in-time event, so there is no measured duration to report. A tool left

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require_relative "../../lib/insika/telemetry/ruby_llm_instrumenter"
 
 RSpec.describe "RubyLLM execution replacement gates" do
   let(:context) do
@@ -98,6 +99,65 @@ RSpec.describe "RubyLLM execution replacement gates" do
     usage = events.filter_map { |name, payload| payload if name == "usage.ruby_llm" }
     expect(usage.map { |payload| payload[:status] }).to eq(%i[failed succeeded])
     expect(usage.first.keys).to contain_exactly(:operation, :provider, :model, :status, :tokens, :cost)
+  end
+
+  it "bridges a native retry as one request and two correlated usage attempts" do
+    events = []
+    context.config.instrumenter = Insika::Telemetry::RubyLLMInstrumenter.new(
+      emit: ->(type, data) { events << [type, data] }, operation: "chat", model: "deepseek-chat")
+    attempts = 0
+    allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
+      original.receiver.connection.adapter :test do |stub|
+        stub.post("/chat/completions") do
+          attempts += 1
+          raise Faraday::TimeoutError, "private provider detail" if attempts == 1
+          [200, { "Content-Type" => "application/json" }, JSON.generate(
+            model: "deepseek-chat", choices: [{ message: { role: "assistant", content: "Done" } }],
+            usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 })]
+        end
+      end
+      original.call(*args, **kwargs, &block)
+    end
+
+    expect(chat.ask("private user prompt").content).to eq("Done")
+    requests = events.select { |type, _| type == :llm_request }.map(&:last)
+    usage = events.select { |type, _| type == :llm_usage }.map(&:last)
+    expect(attempts).to eq(2)
+    expect(requests.size).to eq(1)
+    expect(usage.map { |row| row["status"] }).to eq(%w[failed succeeded])
+    expect(usage.map { |row| row["request_id"] }).to eq([requests.first["request_id"]] * 2)
+    expect(usage.first).to include("input_tokens" => nil, "output_tokens" => nil, "cost" => nil)
+    expect(usage.last).to include("input_tokens" => 7, "output_tokens" => 2)
+    expect(usage).to all(satisfy { |row| !row.key?("duration_ms") && !row.key?("exception_class") })
+    expect(JSON.generate(events)).not_to include("private", "Done", "api.deepseek.com")
+  end
+
+  it "attributes requests to the active native fallback model and clears completed correlation" do
+    events = []
+    context.config.max_retries = 0
+    bridge = Insika::Telemetry::RubyLLMInstrumenter.new(
+      emit: ->(type, data) { events << [type, data] }, operation: "chat", model: "deepseek-chat")
+    context.config.instrumenter = bridge
+    chat.with_fallbacks(RubyLLM::Model.new(id: "deepseek-reasoner", provider: "deepseek"))
+    allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
+      original.receiver.connection.adapter :test do |stub|
+        stub.post("/chat/completions") do |env|
+          model = JSON.parse(env.body).fetch("model")
+          raise RubyLLM::ServerError, "private" if model == "deepseek-chat"
+          [200, { "Content-Type" => "application/json" }, JSON.generate(
+            model: model, choices: [{ message: { role: "assistant", content: "Done" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 })]
+        end
+      end
+      original.call(*args, **kwargs, &block)
+    end
+    expect(chat.ask("private").content).to eq("Done")
+    requests = events.select { |type, _| type == :llm_request }.map(&:last)
+    expect(requests.map { |row| row["model"] }).to eq(%w[deepseek-chat deepseek-reasoner])
+    expect(requests.map { |row| row["status"] }).to eq(%w[failed succeeded])
+    expect(requests.map { |row| row["request_id"] }.uniq.size).to eq(2)
+    bridge.instrument("usage.ruby_llm", operation: :embedding, model: "auxiliary")
+    expect(events.last.last["request_id"]).to be_nil
   end
 
   it "restores the primary model after fallback and uses it for the next generation" do

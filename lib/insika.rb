@@ -148,6 +148,8 @@ require_relative "insika/skill_store"
 require_relative "insika/secret_masking"
 require_relative "insika/tool_store"
 require_relative "insika/tool_trace_store"
+require_relative "insika/llm_trace_store"
+require_relative "insika/model_metrics_store"
 require_relative "insika/tool_usage_report"
 require_relative "insika/context_trace_store"
 # the model-visible payload of one ask + its durable trace —

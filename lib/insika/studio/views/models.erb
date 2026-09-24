@@ -1,0 +1,130 @@
+<% totals = @report && @report["totals"] %>
+<% requests = totals ? totals["requests"] : 0 %>
+<div class="models-page">
+  <header class="page-head">
+    <div><%== crumbs_for("Models") %><h1>Models<span class="sub">Usage, cost & performance</span></h1></div>
+    <div class="model-updated"><span class="model-indicator"></span>Snapshot<% if @report && @report["to"] %> · <%= Time.iso8601(@report["to"]).utc.strftime("%H:%M UTC") %><% end %></div>
+  </header>
+
+  <form method="get" action="/studio/models" class="model-toolbar">
+    <div class="model-filter-group">
+      <label><span>Provider</span><select name="provider"><option value="">All providers</option>
+        <% (Array(@report && @report["providers"]) + [@provider]).compact.uniq.sort.each do |provider| %><option value="<%= provider %>"<%== ' selected' if @provider == provider %>><%= provider %></option><% end %>
+      </select></label>
+      <label><span>Model</span><select name="model"><option value="">All models</option>
+        <% (Array(@report && @report["model_options"]) + [@model]).compact.uniq.sort.each do |model| %><option value="<%= model %>"<%== ' selected' if @model == model %>><%= model %></option><% end %>
+      </select></label>
+    </div>
+    <div class="model-filter-group">
+      <label class="sr-only" for="model-period">Period</label>
+      <select id="model-period" name="period"><% { "24h" => "Last 24 hours", "7d" => "Last 7 days", "30d" => "Last 30 days" }.each do |value, label| %><option value="<%= value %>"<%== ' selected' if @period == value %>><%= label %></option><% end %></select>
+      <button type="submit" class="model-apply">Apply filters <span aria-hidden="true">↗</span></button>
+    </div>
+  </form>
+
+  <section class="model-summary" aria-label="Model metrics summary">
+    <div class="model-stat"><span class="model-stat-label">Requests</span><strong><%= requests %></strong><span><%= @report ? @report["models"].size : 0 %> models in this period</span></div>
+    <div class="model-stat"><span class="model-stat-label">Reported cost <small>USD</small></span><strong><%= model_chart_value(totals && totals["cost"], "USD") %></strong><span><%= requests.positive? ? "#{totals['unknown_cost_requests']} of #{requests} unknown (#{format('%.1f', totals['unknown_cost_requests'] * 100.0 / requests)}%)" : "Awaiting cost data" %></span></div>
+    <div class="model-stat"><span class="model-stat-label">p95 latency</span><strong><%= model_chart_value(totals && totals["p95_ms"], "ms") %></strong><span>p50 <%= model_chart_value(totals && totals["p50_ms"], "ms") %> · p90 <%= model_chart_value(totals && totals["p90_ms"], "ms") %></span></div>
+    <div class="model-stat"><span class="model-stat-label">Failure rate</span><strong><%= requests.positive? ? format("%.1f%%", totals["failures"] * 100.0 / requests) : "—" %></strong><span><%= totals ? totals["failures"] : 0 %> failed requests · <%= totals ? totals["retries"] : 0 %> retries</span></div>
+  </section>
+
+  <% if requests.zero? %><div class="model-notice"><strong>No model requests yet for these filters.</strong><span>Choose another period or <a href="/studio/playground">make a request in Playground</a>.</span></div><% end %>
+
+  <div class="model-charts">
+    <section class="card model-panel">
+      <div class="model-panel-head"><div><h2>Requests over time</h2><p>Recorded volume across the selected models</p></div><span class="model-unit">REQUESTS</span></div>
+      <%== render("_model_chart", locals: { title: "Requests over time", fields: [["requests", "Requests"]], unit: "requests", empty: "No recorded requests" }) %>
+    </section>
+    <section class="card model-panel">
+      <div class="model-panel-head"><div><h2>Reported cost over time</h2><p>Known cost only · missing values remain gaps</p></div><span class="model-unit cost">USD</span></div>
+      <%== render("_model_chart", locals: { title: "Reported cost over time", fields: [["cost", "Reported cost"]], unit: "USD", empty: requests.zero? ? "No recorded costs" : "Cost unavailable" }) %>
+    </section>
+    <section class="card model-panel">
+      <div class="model-panel-head"><div><h2>Latency over time</h2><p>Request duration, including native retries</p></div></div>
+      <div class="model-legend"><span class="p50">p50</span><span class="p90">p90</span><span class="p95">p95</span></div>
+      <%== render("_model_chart", locals: { title: "Latency over time", fields: [["p95_ms", "p95"], ["p90_ms", "p90"], ["p50_ms", "p50"]], unit: "ms", empty: requests.zero? ? "No measured requests" : "Latency unavailable" }) %>
+    </section>
+    <section class="card model-panel">
+      <div class="model-panel-head"><div><h2>Cost by model</h2><p>Where your reported spend is going</p></div><span class="model-unit cost">USD</span></div>
+      <% ranked = Array(@report && @report["models"]).sort_by { |row| -(row["cost"] || -1) } %>
+      <% maximum = [ranked.filter_map { |r| r["cost"] }.max || 0, 0.000001].max %>
+      <% if ranked.empty? %><div class="model-ranking-empty"><strong>No model usage yet</strong><span>Your model mix will appear here.</span></div><% else %>
+        <div class="model-ranking">
+          <% ranked.first(6).each_with_index do |row, index| %>
+            <div class="model-rank">
+              <div class="model-rank-label"><span class="model-rank-number"><%= index + 1 %></span><div><strong><%= row["model"] || "Unknown model" %></strong><span><%= row["provider"] || "Unknown provider" %> · <%= row["requests"] %> requests<% if row["unknown_cost_requests"].positive? %> · partial coverage<% end %></span></div><b><%= model_chart_value(row["cost"], "USD") %></b></div>
+              <svg class="model-rank-bar" viewBox="0 0 100 4" preserveAspectRatio="none" role="img" aria-label="<%= row["model"] %>: <%= model_chart_value(row["cost"], 'USD') %> reported cost"><rect class="track" width="100" height="4" rx="2"/><% unless row["cost"].nil? %><rect class="fill" width="<%= row["cost"].to_f / maximum * 100 %>" height="4" rx="2"/><% end %></svg>
+            </div>
+          <% end %>
+        </div>
+        <p class="model-ranking-note">Top <%= [ranked.size, 6].min %> by reported cost. Full breakdown below.</p>
+      <% end %>
+    </section>
+  </div>
+
+  <% if requests.positive? %>
+  <section class="card model-panel model-detail">
+    <div class="section-head"><h2>Model performance</h2><span class="muted">Exact values for the selected period</span></div>
+    <div class="model-table-scroll"><table class="grid">
+      <thead><tr><th>provider</th><th>model</th><th class="num">req</th><th class="num">fail</th><th class="num">retry</th><th class="num">p50 (ms)</th><th class="num">p90 (ms)</th><th class="num">p95 (ms)</th></tr></thead>
+      <tbody>
+        <% @report["models"].each do |row| %>
+          <tr>
+            <td><span class="model-provider"><%= row["provider"] || "—" %></span></td><td class="model-name"><%= row["model"] || "—" %></td>
+            <td class="num"><%= row["requests"] %></td><td class="num"><%= row["failures"] %></td><td class="num"><%= row["retries"] %></td>
+            <% %w[p50 p90 p95].each do |pct| %><td class="num"><%= row["#{pct}_ms"].nil? ? "—" : format("%.2f", row["#{pct}_ms"]) %></td><% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="card model-panel model-detail">
+    <div class="section-head"><h2>Token breakdown</h2><span class="muted">Reported subtotals · thinking tokens shown separately</span></div>
+    <div class="model-table-scroll"><table class="grid">
+      <thead><tr><th>model</th><th class="num">USD</th><th class="num">cost unknown</th><th class="num">input</th><th class="num">output</th><th class="num">cache read</th><th class="num">cache write</th><th class="num">thinking</th></tr></thead>
+      <tbody>
+        <% @report["models"].each do |row| %>
+          <tr>
+            <td><%= row["provider"] || "—" %> / <%= row["model"] || "—" %></td>
+            <td class="num"><%= row["cost"].nil? ? "—" : format("%.6f", row["cost"]) %></td>
+            <td class="num"><%= row["unknown_cost_requests"] %> of <%= row["requests"] %></td>
+            <% %w[input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].each do |field| %>
+              <% unknown = row.fetch("unknown_#{field}_requests", 0) %>
+              <% coverage = "#{unknown} of #{row['requests']} requests have unknown #{field.tr('_', ' ')}" %>
+              <td class="num"<% if unknown.positive? %> title="Reported subtotal; <%= coverage %>" aria-label="<%= row[field].nil? ? 'No' : row[field] %> reported <%= field.tr('_', ' ') %>; <%= coverage %>"<% end %>><%= row[field].nil? ? "—" : row[field] %></td>
+            <% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="card model-panel model-detail">
+    <div class="section-head"><h2>Slowest requests</h2><span class="muted">up to 20 measured requests</span></div>
+    <% if @report["slowest"].empty? %>
+      <div class="empty">No measured request durations yet.</div>
+    <% else %>
+      <div class="model-table-scroll"><table class="grid">
+        <thead><tr><th>task</th><th>provider</th><th>model</th><th>status</th><th class="num">ms</th><th class="num">reported USD</th></tr></thead>
+        <tbody>
+          <% @report["slowest"].each do |row| %>
+            <tr>
+              <td><a href="<%= task_path(row["task_id"]) %>"><span title="<%= row["task_id"] %>"><%= row["task_id"].to_s.length > 18 ? "#{row["task_id"][0, 8]}…#{row["task_id"][-6, 6]}" : row["task_id"] %></span></a></td>
+              <td><span class="model-provider"><%= row["provider"] || "—" %></span></td><td class="model-name"><%= row["model"] || "—" %></td><td><%= row["status"] || "—" %></td>
+              <td class="num"><%= row["duration_ms"].nil? ? "—" : format("%.2f", row["duration_ms"]) %></td>
+              <td class="num"><%= row["cost"].nil? ? "—" : format("%.6f", row["cost"]) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table></div>
+    <% end %>
+  </section>
+  <% end %>
+  <details class="model-methodology"><summary>About these metrics</summary>
+    <p>Request latency includes native retries. Retries count usage attempts after the first, not task executions. Percentiles use measured durations, never averages of bucket percentiles.</p>
+    <p>Cost and token values are reported subtotals when coverage is incomplete. A dash means no value was reported. Chart intervals use UTC; missing measurements are not interpolated.</p>
+    <p>History starts with deployment. Deleting a task removes its model history; retention and tenant purge remove it too. Earlier requests are not backfilled.</p>
+  </details>
+</div>

@@ -29,7 +29,7 @@ module Insika
     # Robust: `record` NEVER raises (telemetry doesn't bring down a turn). Timestamps
     # come from each event's `meta.at` (spans reconstructed with real time).
     class Recorder
-      Turn = Struct.new(:span, :tools, :labels, :start) # tools = FIFO queue of open tools
+      Turn = Struct.new(:span, :tools, :labels, :start, :requests, :requests_truncated) # tools = FIFO queue of open tools
       OpenTool = Struct.new(:span, :name, :start)
 
       # Ceiling of open turns: a kill -9 without a terminal event would leave the turn
@@ -41,9 +41,11 @@ module Insika
       # renaming one breaks every dashboard built on it.
       class Instruments
         attr_reader :turns, :turn_duration, :tokens, :cost, :tool_calls, :tool_duration,
-                    :cache_hit_rate, :loop_intervened, :context_compacted, :tool_blocked, :confirmations
+                    :cache_hit_rate, :loop_intervened, :context_compacted, :tool_blocked, :confirmations, :llm_attempts, :llm_failures
 
         def initialize(meter)
+          @llm_attempts = meter.create_counter("insika.llm.attempts", unit: "{attempt}", description: "Native model attempts")
+          @llm_failures = meter.create_counter("insika.llm.failures", unit: "{attempt}", description: "Failed native model attempts")
           @turns = meter.create_counter("insika.turns", unit: "{turn}",
                                                         description: "Turns completed, by outcome")
           @turn_duration = meter.create_histogram("insika.turn.duration", unit: "s",
@@ -81,6 +83,7 @@ module Insika
         data = event.data || {}
         case event.type
         when :task_started   then start_turn(meta, data)
+        when :llm_request, :llm_usage then model_event(meta, data, event.type)
         when :tool_call      then start_tool(meta, data)
         when :tool_result    then finish_tool(meta)
         when :data_tool_call then point_tool(meta, data)
@@ -114,7 +117,7 @@ module Insika
           "insika.turn", parent: nil, start_time: at,
           attributes: labels.merge(attrs("insika.task_id" => id, "insika.session_id" => meta[:session_id]))
         )
-        @turns[id] = Turn.new(span, [], labels, at)
+        @turns[id] = Turn.new(span, [], labels, at, [], false)
       end
 
       def start_tool(meta, data)
@@ -154,10 +157,62 @@ module Insika
         usage = data[:usage]
         set_usage(turn.span, usage)
         turn.span.set_attribute("insika.status", status.to_s)
-        turn.span.record_error(data[:message].to_s) if status == :error
+        turn.span.record_error(exception_class(data[:error])) if status == :error
+        finish_requests(turn)
         turn.tools.each { |t| t.span.finish(end_time: at) } # orphans (failure mid-way)
         turn.span.finish(end_time: at)
         count_turn(turn, usage, status.to_s, elapsed(turn.start, at))
+      end
+
+      def exception_class(value)
+        value.is_a?(String) && value.match?(/\A[A-Z]\w*(?:::[A-Z]\w*)*\z/) ? value[0, 256] : "Task failed"
+      end
+
+      def model_event(meta, data, type)
+        turn = @turns[meta[:task_id]] or return
+        entry = LLMTraceStore.sanitize(data.merge("type" => type.to_s, "at" => meta[:at]))
+        turn.requests << entry
+        if turn.requests.size > LLMTraceStore::MAX_PER_TASK
+          turn.requests.shift
+          turn.requests_truncated = true
+        end
+        return unless @instruments && type == :llm_usage
+
+        labels = turn.labels.merge(attrs("insika.model" => entry["model"], "insika.provider" => entry["provider"],
+                                          "insika.operation" => entry["operation"], "insika.status" => entry["status"]))
+        @instruments.llm_attempts.add(1, attributes: labels)
+        @instruments.llm_failures.add(1, attributes: labels) if entry["status"] == "failed"
+      end
+
+      # Success usage can arrive after request completion. Reconstruct at the turn
+      # terminal, so exported spans include late usage without modifying closed spans.
+      def finish_requests(turn)
+        turn.span.set_attribute("insika.llm.truncated", true) if turn.requests_truncated
+        turn.requests.group_by { |entry| entry["request_id"] }.each do |id, entries|
+          next if id.nil? || id.empty?
+          request = entries.find { |entry| entry["type"] == "llm_request" }
+          next unless request && request["duration_ms"]
+
+          at = ts(request["at"])
+          next unless at
+          attempts = entries.select { |entry| entry["type"] == "llm_usage" }
+          attributes = attrs("insika.llm.request_id" => id, "insika.model" => request["model"],
+            "insika.provider" => request["provider"], "insika.operation" => request["operation"],
+            "insika.status" => request["status"], "insika.llm.duration_ms" => request["duration_ms"],
+            "insika.llm.truncated" => turn.requests_truncated,
+            "insika.llm.attempts" => attempts.size, "insika.llm.failures" => attempts.count { |e| e["status"] == "failed" })
+          attempts.each_with_index do |attempt, index|
+            (%w[status] + LLMTraceStore::NUMBER_FIELDS - %w[turn duration_ms]).each do |key|
+              attributes["insika.llm.attempt.#{index + 1}.#{key}"] = attempt[key] unless attempt[key].nil?
+            end
+          end
+          span = @tracer.start_span("insika.llm.request", parent: turn.span,
+            start_time: at - request["duration_ms"] / 1000.0, attributes: attributes)
+          span.record_error(exception_class(request["exception_class"])) if request["status"] == "failed"
+          span.finish(end_time: at)
+        rescue StandardError
+          # A failed exporter must not prevent remaining requests or the turn closing.
+        end
       end
 
       def set_usage(span, usage)
@@ -277,6 +332,7 @@ module Insika
 
         turn.tools.each { |t| t.span.finish(end_time: nil) }
         turn.span.set_attribute("insika.status", "abandoned")
+        finish_requests(turn)
         turn.span.finish(end_time: nil)
         count_turn(turn, nil, "abandoned", nil)
       end
