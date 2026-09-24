@@ -337,6 +337,7 @@ module Insika
         return nil unless RubyLLM.respond_to?(:context)
 
         primary = provider_name
+        # Preserve the host instrumenter; Executor wraps a copy for each task chat.
         RubyLLM.context do |cfg|
           provider_names.each do |provider|
             # The explicit api_key/api_base belong to the PRIMARY provider; the

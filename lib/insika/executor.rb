@@ -1729,7 +1729,7 @@ module Insika
     # state (the seed history is identical), baseline reset -> the transcript
     # recorded from than point is the attempt that spoke.
     def build_attempt_chat(state, selection)
-      chat = build_chat(selection, state.model_selection)
+      chat = build_chat(selection, state.model_selection, state: state)
       @chat_builder.assemble(chat, state, emit: ->(type, data) { emit(type, data, task: state.task) })
       state.chat_baseline = Array(chat.messages).size if chat.respond_to?(:messages)
       chat
@@ -3032,22 +3032,36 @@ module Insika
       # enforced, fallback chain resolved. Kept on the state for telemetry (usage).
       selection = @model_resolver.resolve(profile: profile, session: state.session)
       state.model_selection = selection
-      build_chat(selection, selection)
+      build_chat(selection, selection, state: state)
     end
 
     # The gem boundary: one chat for a model selection (the resolved primary or
     # a WS3 fallback node). The primary's generation params apply to the whole
     # chain (params_source: ModelSelection#apply_params).
-    def build_chat(selection, params_source)
+    def build_chat(selection, params_source, state: nil)
       model = selection.respond_to?(:model) ? selection.model : selection[:model]
       provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
-      chat = (@llm || RubyLLM).chat(
+      chat = llm_operation_context(state, model).chat(
         model: model,
         provider: provider,
         assume_model_exists: !provider.nil?
       )
       params_source.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
       chat
+    end
+
+    def llm_operation_context(state, model)
+      source = @llm || RubyLLM
+      return source unless state.respond_to?(:task) && state.task && source.respond_to?(:config)
+
+      require_relative "telemetry/ruby_llm_instrumenter"
+      config = source.config.dup
+      task, turn = state.task, state.turn
+      config.instrumenter = Telemetry::RubyLLMInstrumenter.new(
+        delegate: config.instrumenter, operation: "chat", model: model,
+        emit: ->(type, data) { emit(type, data.merge("turn" => turn), task: task) }
+      )
+      RubyLLM::Context.new(config)
     end
 
     # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
