@@ -1,123 +1,114 @@
-<%# Fact detail — the DETAIL pane of the Facts miller shell.
-    Full page (direct visit/refresh): the two-column shell — master queue plus
-    this pane. Turbo-Frame request (a row click, a resolve POST's redirect):
-    the pane alone, so the master's scroll state and selection survive every
-    interaction. @selected is a Insika::ProposalStore::Proposal — its `status`
-    picks the body: pending (evidence + the three actions), stale (the CAS-lost
-    compare, dismiss only) or a terminal status (the resolution, plus the
-    Recent ledger for audit context — never a fourth full card). %>
-<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
-<% frame_only = defined?(frame_only) && frame_only %>
-<% unless frame_only %>
-  <header class="page-head">
-    <div>
-      <nav class="crumbs"><a href="/studio/facts">facts</a></nav>
-      <h1><span class="mono"><%= @selected.key %></span> = <%= @selected.value %>
-        <span class="sub"><%= @selected.scope %></span>
-      </h1>
+<%# Shared detail for the Facts page and Turbo frame navigation. %>
+<turbo-frame id="fact-detail" class="drill-pane drill-detail fact-detail">
+  <% if turbo_frame?("fact-detail") %>
+    <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
+    <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
+  <% end %>
+  <% if @selected.nil? %>
+    <div class="drill-empty">
+      <%== render("_empty", locals: { icon: :facts, text: "No proposals yet — facts appear here when a session's traffic is distilled. Nothing is ever applied automatically." }) %>
     </div>
-  </header>
-
-  <div class="drill" data-controller="list-filter">
-    <%== render("_facts_master", locals: { active_id: @selected.id }) %>
-<% end %>
-    <turbo-frame id="fact-detail" class="drill-pane drill-detail">
-      <%# A frame response never sees the layout, so the flash strip lives here
-          too — without it, resolve confirmations would vanish on frame submits
-          (the layout's copy only renders on full pages). %>
-      <% if frame_only %>
-        <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
-        <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
-      <% end %>
-      <% if @selected.nil? %>
-        <%== render("_empty", locals: { icon: :facts,
-                                        text: "No proposals yet — facts appear here when a session's traffic is distilled. Nothing is ever applied automatically." }) %>
-      <% else %>
-        <div class="drill-pane-head">
-          <div class="title">
-            <strong class="mono"><%= @selected.key %></strong>
-            <span class="count">= <%= @selected.value %></span>
+  <% else %>
+    <div class="drill-pane-body">
+      <div class="fact-content">
+        <header class="fact-proposal" aria-labelledby="fact-title">
+          <div class="fact-summary">
+            <div class="fact-title-row">
+              <h2 id="fact-title"><%= @selected.key.tr("_", " ").sub(/\A./, &:upcase) %></h2>
+              <span class="status <%= status_class(@selected.status) %>"><%= @selected.status %></span>
+            </div>
+            <span class="sr-only">Proposed value</span>
+            <p class="fact-value"><%= @selected.value %></p>
           </div>
-          <span class="status <%= status_class(@selected.status) %>"><%= @selected.status %></span>
-        </div>
-        <div class="drill-pane-body">
-          <p class="muted">
-            <%= @selected.scope %> ·
-            <a href="/studio/sessions/<%= Rack::Utils.escape(@selected.session_ref) %>"><%= @selected.session_ref %></a>
-            <% if @selected.confidence %> · confidence <span class="tnum"><%= format("%.2f", @selected.confidence) %></span><% end %>
-          </p>
+          <dl class="fact-context">
+            <div><dt>Model confidence</dt><dd><%= @selected.confidence ? "#{(@selected.confidence * 100).round}%" : "Not reported" %></dd></div>
+            <div><dt>Proposed</dt><dd><time datetime="<%= @selected.created_at %>" title="<%= @selected.created_at %>"><%= time_ago(@selected.created_at) %></time></dd></div>
+          </dl>
+        </header>
 
-          <% if @selected.status == "pending" %>
-            <% excerpt = proposal_excerpt(@selected) %>
-            <% unless excerpt.empty? %>
-              <div class="skill-desc muted">
-                <% excerpt.each do |line| %>
-                  <div class="evidence"><%= line %></div>
-                <% end %>
-              </div>
-            <% end %>
-            <div class="actions">
-              <form method="post" action="/studio/facts/resolve" class="inline">
-                <%== csrf_tag %>
-                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
-                <input type="hidden" name="decision" value="approved">
-                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
-                <button type="submit" class="primary">Approve &amp; save to memory</button>
-              </form>
-              <form method="post" action="/studio/facts/resolve" class="inline">
+        <section class="card fact-evidence" aria-labelledby="fact-evidence-title">
+          <div class="fact-section-head">
+            <h3 id="fact-evidence-title">Conversation evidence</h3>
+            <a href="/studio/sessions/<%= Rack::Utils.escape(@selected.session_ref) %>" data-turbo-frame="_top">Open conversation ↗</a>
+          </div>
+          <% excerpt = proposal_excerpt(@selected) %>
+          <% if excerpt.empty? %>
+            <p class="muted">Evidence unavailable. The source messages may no longer be available.</p>
+          <% else %>
+            <div class="fact-quotes" tabindex="0" role="region" aria-label="Evidence excerpts">
+              <% excerpt.each do |line| %>
+                <blockquote><%= line %></blockquote>
+              <% end %>
+            </div>
+          <% end %>
+        </section>
+
+        <% if @selected.status == "pending" %>
+          <section class="card fact-decision" aria-labelledby="fact-decision-title">
+            <h3 id="fact-decision-title">Save this fact to memory?</h3>
+            <p class="muted">Approval makes this value available in future conversations with this customer.</p>
+            <form method="post" action="/studio/facts/resolve" data-turbo-frame="_top">
+              <%== csrf_tag %>
+              <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+              <input type="hidden" name="decision" value="approved">
+              <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+              <button type="submit" class="primary" data-turbo-submits-with="Saving…">Approve &amp; save to memory</button>
+            </form>
+            <details class="fact-decline">
+              <summary>Reject or dismiss</summary>
+              <p class="muted">Rejecting or dismissing prevents this same key and value from being proposed again.</p>
+              <form method="post" action="/studio/facts/resolve" data-turbo-frame="_top">
                 <%== csrf_tag %>
                 <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
                 <input type="hidden" name="decision" value="rejected">
                 <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
-                <input type="text" name="note" placeholder="reason (optional)">
-                <button type="submit" class="secondary">Reject</button>
+                <label for="fact-rejection-note">Reason for rejection <span class="muted">(optional)</span></label>
+                <textarea id="fact-rejection-note" name="note" rows="2" placeholder="Why should this fact not be saved?"></textarea>
+                <button type="submit" class="secondary" data-turbo-submits-with="Rejecting…">Reject</button>
               </form>
-              <form method="post" action="/studio/facts/resolve" class="inline">
+              <form method="post" action="/studio/facts/resolve" data-turbo-frame="_top">
                 <%== csrf_tag %>
                 <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
                 <input type="hidden" name="decision" value="dismissed">
                 <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
-                <button type="submit" class="ghost">Dismiss<span class="muted"> — will not be proposed again</span></button>
+                <button type="submit" class="ghost" data-turbo-submits-with="Dismissing…">Dismiss without a reason</button>
               </form>
-            </div>
-          <% elsif @selected.status == "stale" %>
-            <p class="skill-desc">
-              The proposed value was not applied — the fact stands as you left it
-              (CAS lost, the operator's edit wins).
-            </p>
-            <p><s><%= @selected.value %></s> → <strong><%= @selected.current_value %></strong> <span class="muted">(your edit)</span></p>
-            <div class="actions">
-              <form method="post" action="/studio/facts/resolve" class="inline">
-                <%== csrf_tag %>
-                <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
-                <input type="hidden" name="decision" value="dismissed">
-                <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
-                <button type="submit" class="ghost">Dismiss<span class="muted"> — resolve the re-present</span></button>
-              </form>
-            </div>
-          <% else %>
-            <p class="skill-desc">
-              Resolved by <%= @selected.operator %>.
-              <% if @selected.note && !@selected.note.to_s.empty? %>“<%= @selected.note %>”<% end %>
-            </p>
-            <% unless @recent.empty? %>
-              <div class="drill-section">
-                <div class="drill-section-head"><h3>Recent</h3><span class="muted">resolved, most recent first</span></div>
-                <ul class="history">
-                  <% @recent.each do |r| %>
-                    <li>
-                      <span class="mono"><%= r.key %></span> = <span class="preview"><%= r.value %></span>
-                      <span class="status <%= status_class(r.status) %>"><%= r.status %></span>
-                      <span class="muted"><%= r.operator %></span>
-                    </li>
-                  <% end %>
-                </ul>
-              </div>
-            <% end %>
-          <% end %>
-        </div>
-      <% end %>
-    </turbo-frame>
-<% unless frame_only %>
-  </div>
-<% end %>
+            </details>
+          </section>
+        <% elsif @selected.status == "stale" %>
+          <section class="card fact-decision" aria-labelledby="fact-decision-title">
+            <h3 id="fact-decision-title">Memory changed since this proposal</h3>
+            <p class="muted">Your edit was kept. This proposal has not overwritten it.</p>
+            <dl class="fact-comparison">
+              <div><dt>Proposed value</dt><dd><s><%= @selected.value %></s></dd></div>
+              <div><dt>Current value</dt><dd><%= @selected.current_value %></dd></div>
+            </dl>
+            <form method="post" action="/studio/facts/resolve" data-turbo-frame="_top">
+              <%== csrf_tag %>
+              <input type="hidden" name="proposal_id" value="<%= @selected.id %>">
+              <input type="hidden" name="decision" value="dismissed">
+              <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
+              <button type="submit" class="secondary" data-turbo-submits-with="Dismissing…">Dismiss outdated proposal</button>
+            </form>
+          </section>
+        <% else %>
+          <section class="card fact-decision" aria-label="Resolution">
+            <h3><%= @selected.status == "approved" ? "Saved to memory" : "Not saved to memory" %></h3>
+            <p class="muted">Resolved by <%= @selected.operator %>.</p>
+            <% if @selected.note && !@selected.note.to_s.empty? %><p class="fact-resolution-note"><%= @selected.note %></p><% end %>
+          </section>
+        <% end %>
+
+        <details class="fact-metadata">
+          <summary>Technical details</summary>
+          <dl>
+            <div><dt>Memory key</dt><dd><code><%= @selected.key %></code></dd></div>
+            <div><dt>Memory scope</dt><dd><%= @selected.scope %></dd></div>
+            <div><dt>Source session</dt><dd><%= @selected.session_ref %></dd></div>
+            <div><dt>Proposal ID</dt><dd><%= @selected.id %></dd></div>
+          </dl>
+        </details>
+      </div>
+    </div>
+  <% end %>
+</turbo-frame>

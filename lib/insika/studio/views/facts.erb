@@ -6,17 +6,17 @@
    ProposalStore + SessionStore directly (evidence is a link, never a
    copy — D7); the approve/reject/dismiss mutations dispatch :resolve_proposal
    on the bus. %>
-<header class="page-head">
+<header class="page-head facts-head">
   <div>
     <%== crumbs_for("Facts") %>
-    <h1>Facts<span class="sub">distilled customer facts, human-gated</span></h1>
+    <h1>Facts<span class="sub">Review what your agents remember</span></h1>
   </div>
   <div class="head-actions">
     <form method="get" action="/studio/facts" class="actions inline">
       <label>
         Agent / scope
         <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">
-          <option value="">all</option>
+          <option value="">All agents / scopes</option>
           <% @stores.each do |scope| %>
             <option value="<%= scope %>"<%== ' selected' if scope == @filter %>><%= scope %></option>
           <% end %>
@@ -30,8 +30,8 @@
   <%== render("_empty", locals: { icon: :facts,
                                   text: "Distillation is off — nothing distills until an agent declares a distill: block in its pack." }) %>
 <% else %>
-  <div class="drill" data-controller="list-filter">
+  <div class="drill facts-workspace" data-controller="list-filter">
     <%== render("_facts_master", locals: { active_id: @selected&.id }) %>
-    <%== render("fact_detail", locals: { frame_only: true }) %>
+    <%== render("fact_detail") %>
   </div>
 <% end %>
