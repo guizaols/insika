@@ -102,7 +102,7 @@ RSpec.describe "Insika.embed" do
       executor = runtime.graph.executor
       executor.instance_variable_set(:@event_stream, streams[index])
       allow(executor.instance_variable_get(:@chat_builder)).to receive(:assemble)
-      task = Struct.new(:id, :session_id, :command).new("task-#{index}", "session-#{index}", {})
+      task = runtime.graph.task_store.create(id: "task-#{index}", session_id: "session-#{index}", command: {})
       Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: index + 1, message: "private")
     end
     keys = []
@@ -132,6 +132,9 @@ RSpec.describe "Insika.embed" do
     streams.each_with_index do |stream, index|
       events = stream.events.select { |event| %i[llm_request llm_usage].include?(event.type) }
       expect(events.size).to eq(4)
+      trace = runtimes[index].graph.llm_trace_store.for_task("task-#{index}")
+      expect(trace["entries"].size).to eq(4)
+      expect(trace["entries"].map { |entry| entry["at"] }).to all(match(/\.\d{6}Z\z/))
       expect(events.map { |event| event.meta[:task_id] }.uniq).to eq(["task-#{index}"])
       expect(events.map { |event| event.meta[:session_id] }.uniq).to eq(["session-#{index}"])
       expect(events.map { |event| event.data["turn"] }.uniq).to eq([index + 1])
@@ -148,6 +151,21 @@ RSpec.describe "Insika.embed" do
     expect(streams.sum { |stream| stream.events.size }).to eq(8)
   ensure
     RubyLLM.config.instrumenter = previous
+  end
+
+  it "keeps model output and events when diagnostic storage fails" do
+    runtime = embed(Insika::Stores::Memory.new, key: "A").runtime
+    executor = runtime.graph.executor
+    stream = SpyEventStream.new
+    executor.instance_variable_set(:@event_stream, stream)
+    allow(runtime.graph.llm_trace_store).to receive(:record).and_raise("private storage failure")
+    task = runtime.graph.task_store.create(id: "t", command: {})
+    state = Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: 1, message: "private")
+    context = executor.send(:llm_operation_context, state, "deepseek-chat")
+    result = context.config.instrumenter.instrument("request.ruby_llm", provider: "deepseek") { "answer" }
+    expect(result).to eq("answer")
+    expect(stream.events.map(&:type)).to eq([:llm_request])
+    expect(stream.events.first.data.inspect).not_to include("private storage")
   end
 
   describe ".2 — two graphs, two stores" do

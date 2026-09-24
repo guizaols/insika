@@ -89,6 +89,7 @@ Studio::App.configure(
   memory_store: W::MEMORY_STORE, session_store: W::SESSION_STORE,
   settings_store: W::SETTINGS_STORE, llm_provider_store: W::LLM_PROVIDER_STORE,
   mcp_store: W::MCP_STORE, system_file_store: W::SYSTEM_FILE_STORE,
+  llm_trace_store: W::GRAPH.llm_trace_store,
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
   context_trace_store: W::CONTEXT_TRACE_STORE, # context breakdown card
   cache_series_store: W::CACHE_SERIES_STORE, # per-agent cache-hit series

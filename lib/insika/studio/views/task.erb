@@ -116,3 +116,31 @@
     </div>
   <% end %>
 </section>
+
+<section class="section">
+  <div class="section-head"><h2>Model requests</h2></div>
+  <p class="muted">Native retries are attempt usage, separate from task executions. Reported cost is diagnostic; aggregate spend uses turn accounting. Tokens: input / output / cache read / cache write / thinking.</p>
+  <% if @llm_trace["truncated"] %><p class="muted">Latest 200 events shown; earlier diagnostics were discarded.</p><% end %>
+  <% if @llm_trace["entries"].empty? %>
+    <div class="empty">No model request diagnostics recorded.</div>
+  <% else %>
+    <div class="card">
+      <table class="grid">
+        <thead><tr><th>Event / request</th><th>Operation</th><th>Provider / model</th><th>Request duration</th><th>Outcome</th><th>Tokens</th><th>Reported cost</th></tr></thead>
+        <tbody>
+          <% @llm_trace["entries"].each do |entry| %>
+            <tr data-llm-event="<%= entry["type"] %>">
+              <td><%= entry["type"] == "llm_request" ? "Request" : "Attempt usage" %><br><span class="mono"><%= entry["request_id"] %></span></td>
+              <td><%= entry["operation"] || "—" %></td>
+              <td><%= entry["provider"] || "—" %> / <%= entry["model"] || "—" %></td>
+              <td><%= entry["duration_ms"] ? format("%.2f ms", entry["duration_ms"]) : "—" %></td>
+              <td><%= entry["status"] || "—" %><% if entry["exception_class"] %> (<%= entry["exception_class"] %>)<% end %></td>
+              <td><%= %w[input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].map { |key| entry[key] || "—" }.join(" / ") %></td>
+              <td><%= entry["cost"].nil? ? "—" : "$#{entry['cost']}" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</section>

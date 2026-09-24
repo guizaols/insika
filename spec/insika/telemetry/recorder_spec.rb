@@ -102,11 +102,11 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(turn_span.attributes).not_to include("insika.agent")
     end
 
-    it "task_failed -> status error + record_error(message)" do
+    it "task_failed exports the exception class without its private message" do
       recorder.record(ev(:task_started, { agent: "bia" }))
       recorder.record(ev(:task_failed, { error: "Boom", message: "estourou" }))
       expect(turn_span.attributes["insika.status"]).to eq("error")
-      expect(turn_span.error).to eq("estourou")
+      expect(turn_span.error).to eq("Boom")
     end
 
     # the tenant is the one operator-set grouping label; it rides the
@@ -380,4 +380,59 @@ RSpec.describe Insika::Telemetry::Recorder do
       expect(turn_span.start_time).to be_nil
     end
   end
+  describe "native request diagnostics" do
+    let(:meter) { FakeMeter.new }
+    subject(:recorder) { described_class.new(tracer: tracer, meter: meter) }
+
+    it "correlates interleaved and late attempts by request id without billing twice" do
+      recorder.record(ev(:task_started, { agent: "a" }))
+      recorder.record(ev(:llm_usage, { "request_id" => "r1", "status" => "failed", "input_tokens" => 3 }))
+      recorder.record(ev(:llm_request, { "request_id" => "r2", "model" => "m2", "duration_ms" => 200, "status" => "succeeded" }, at: "2026-07-15T12:00:02.5Z"))
+      recorder.record(ev(:llm_request, { "request_id" => "r1", "model" => "m1", "duration_ms" => 500, "status" => "succeeded" }, at: "2026-07-15T12:00:03.5Z"))
+      recorder.record(ev(:llm_usage, { "request_id" => "r2", "status" => "succeeded", "input_tokens" => 8, "cost" => 0.1 }))
+      recorder.record(ev(:llm_usage, { "request_id" => "r1", "status" => "succeeded", "input_tokens" => 9, "cost" => nil, "messages" => "secret" }))
+      recorder.record(ev(:task_completed, { usage: { input_tokens: 17, cost_usd: 0.1 } }))
+      requests = tracer.spans.select { |span| span.name == "insika.llm.request" }.to_h { |span| [span.attributes["insika.llm.request_id"], span] }
+      expect(requests.keys).to contain_exactly("r1", "r2")
+      expect(requests["r1"].parent).to eq(turn_span)
+      expect(requests["r1"].attributes).to include("insika.llm.attempts" => 2, "insika.llm.failures" => 1,
+        "insika.llm.attempt.1.input_tokens" => 3, "insika.llm.attempt.2.input_tokens" => 9)
+      expect(requests["r1"].attributes).not_to have_key("insika.llm.attempt.2.cost")
+      expect(requests["r1"].end_time - requests["r1"].start_time).to eq(0.5)
+      expect(requests["r2"].attributes).to include("insika.llm.attempt.1.input_tokens" => 8)
+      expect(requests.values).to all(be_finished)
+      expect(requests.values.map(&:attributes).inspect).not_to include("secret")
+      expect(meter["insika.tokens"].points.sum(&:first)).to eq(17)
+      expect(meter["insika.cost"].points.sum(&:first)).to eq(0.1)
+      expect(meter["insika.llm.attempts"].points.sum(&:first)).to eq(3)
+      expect(meter["insika.llm.failures"].points.sum(&:first)).to eq(1)
+    end
+
+    it "discloses a truncated request history and still counts all attempts" do
+      recorder.record(ev(:task_started))
+      201.times { recorder.record(ev(:llm_usage, { "request_id" => "r", "status" => "failed" })) }
+      recorder.record(ev(:llm_request, { "request_id" => "r", "status" => "failed", "duration_ms" => 1 }))
+      recorder.record(ev(:task_failed, { message: "private", error: { message: "private" } }))
+      request = tracer.spans.find { |span| span.name == "insika.llm.request" }
+      expect(request.attributes).to include("insika.llm.truncated" => true, "insika.llm.attempts" => 199)
+      expect(turn_span.attributes).to include("insika.llm.truncated" => true)
+      expect(turn_span.error).to eq("Task failed")
+      expect(meter["insika.llm.attempts"].points.sum(&:first)).to eq(201)
+    end
+
+    it "closes the turn when the model span exporter fails" do
+      recorder.record(ev(:task_started))
+      recorder.record(ev(:llm_request, { "request_id" => "r", "status" => "succeeded", "duration_ms" => 1 }))
+      allow(tracer).to receive(:start_span).with("insika.llm.request", any_args).and_raise("private")
+      expect { recorder.record(ev(:task_completed)) }.not_to raise_error
+      expect(turn_span).to be_finished
+    end
+
+    it "isolates exporter failures" do
+      allow(tracer).to receive(:start_span).and_raise("private exporter error")
+      expect { recorder.record(ev(:task_started)) }.not_to raise_error
+      expect { recorder.record(ev(:llm_request, { "request_id" => "r" })) }.not_to raise_error
+    end
+  end
+
 end

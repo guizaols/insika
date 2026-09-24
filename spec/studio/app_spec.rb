@@ -177,7 +177,7 @@ RSpec.describe Studio::App do
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
                  proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
-                 negative_list: nil, knowledge_store: nil)
+                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -241,7 +241,7 @@ RSpec.describe Studio::App do
       session_store: SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
-      tool_trace_store: trace_store, context_trace_store: ctx_trace_store,
+      tool_trace_store: trace_store, llm_trace_store: llm_trace_store, context_trace_store: ctx_trace_store,
       cache_series_store: series_store,
       task_store: TaskStoreDouble.new(tasks),
       pending_action_store: PendingStoreDouble.new(pendings),
@@ -3472,6 +3472,21 @@ RSpec.describe Studio::App do
   it "shows the tasks empty-state when there are none" do
     app, = build_app
     expect(login(app).get("/tasks").body).to include("No tasks yet")
+  end
+
+  it "shows native request duration separately from retry attempts and escapes metadata" do
+    traces = double("LLM traces", for_task: { "truncated" => true, "entries" => [
+      { "type" => "llm_request", "operation" => "chat", "provider" => "<script>p</script>", "model" => "<img>", "duration_ms" => 42.5, "status" => "succeeded" },
+      { "type" => "llm_usage", "operation" => "chat", "status" => "failed", "cost" => nil },
+      { "type" => "llm_usage", "operation" => "chat", "status" => "succeeded", "input_tokens" => 12, "cost" => nil }
+    ] })
+    app, = build_app(tasks: { "t1" => task(executions: [ExecDouble.new(attempt: 1)]) }, llm_trace_store: traces)
+    body = login(app).get("/tasks/t1").body
+    expect(body).to include("Model requests", "Request duration", "42.50 ms", "Attempt usage", "Latest 200 events", "&lt;script&gt;p&lt;/script&gt;", "&lt;img&gt;")
+    expect(body).not_to include("<script>p</script>", "<img>")
+    expect(body.scan('data-llm-event="llm_usage"').size).to eq(2)
+    expect(body).to match(/Reported cost.*?—/m)
+    expect(body).to include("Executions <span class=\"muted\">· 1")
   end
 
   it "renders a task detail with command + operator controls (GET /tasks/:id)" do
