@@ -749,6 +749,7 @@
      inside the scrollable pane body instead of re-computing a viewport height.
      div.drill for the specificity win over .section .drill below. */
   .drill-pane-body div.drill { height:auto; min-height:22rem; }
+  .drill-pane-body .drill-master { flex-basis:220px; }
   /* The agent-detail pane body carries the tabs-page; its sections need the
      page's side padding back (the pane body already pads, so trim). */
   .mcp-edit { margin-top:.9rem; }
@@ -1458,6 +1459,7 @@
     .review-decision { border-left:0; border-top:1px solid var(--line-1); padding:1rem 0 0; }
     .drill { min-height:0; }
     .drill-detail .drill-pane-body { overflow:visible; padding:1rem; }
+    .drill-pane-body .drill-master { flex-basis:auto; }
     .page-head .head-actions { flex:1 1 100%; }
     .page-head .head-actions > form { max-width:100%; }
   }
