@@ -22,7 +22,7 @@ module Deploy
 
     class Calc < RubyLLM::Tool
       description "Evaluates a simple arithmetic expression (e.g. '45 + 49 + 12'). Only digits and + - * / ( )."
-      param :expression, desc: "The expression to compute, e.g. '45 + 45'"
+      parameter :expression, description: "The expression to compute, e.g. '45 + 45'"
       def name = "calc"
 
       def execute(expression:)

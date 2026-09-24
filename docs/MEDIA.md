@@ -117,8 +117,10 @@ end
 - **Seams, not magic.** The generator is injectable per kind (specs stub it);
   the defaults are lazy: images via RubyLLM (paint), speech via a thin POST to
   the OpenAI-compatible `/audio/speech` endpoint using the same provider
-  config the chat uses — RubyLLM as of 1.16.0 has no speech API. A generated
-  part over 8 MB refuses loudly, never silently truncates.
+  config the chat uses. RubyLLM 2 has a speech API, but its inspected native
+  transport buffers non-audio/error responses without yielding chunks. Insika
+  retains its bounded HTTP transport until native limits cover those responses.
+  A generated part over 8 MB refuses loudly, never silently truncates.
 - **Not here:** what the generated image *means* — a fitting room, a product
   mockup — is a skill on top. The engine transports bytes and cost.
 

@@ -244,7 +244,7 @@ module Insika
       attr_reader :model, :types
 
       # ask:   ->(prompt) { "<raw model text>" } | something answering #content
-      #        (+ #input_tokens/#output_tokens/#cached_tokens for cost).
+      #        (+ RubyLLM-compatible #tokens for cost).
       # model: the ref recorded on the concept's provenance ("utility_model"
       #        default).
       # types: the allowed concept types (the profile's `knowledge.types`,
@@ -262,7 +262,7 @@ module Insika
       #      cost: { "spent" => N, "cached" => N } | nil }
       def extract(prompt:, max_concepts: 10)
         answer = @ask.call(prompt)
-        raw = parse(text_of(answer))
+        raw = parse(answer)
         concepts = []
         dropped = DROP_KEYS.to_h { |k| [k, 0] }
         seen = {}
@@ -291,21 +291,25 @@ module Insika
       def text_of(answer) = (answer.respond_to?(:content) ? answer.content : answer).to_s
 
       def cost_of(answer)
-        return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
+        return nil unless answer.respond_to?(:tokens)
 
-        input = answer.input_tokens.to_i
-        output = answer.output_tokens.to_i
-        cached = answer.respond_to?(:cached_tokens) ? answer.cached_tokens.to_i : 0
-        spent = input + output + cached
+        usage = answer.tokens
+        input = usage.input.to_i
+        output = usage.output.to_i
+        cached = usage.cache_read.to_i
+        spent = input + output + cached + usage.cache_write.to_i
         spent.positive? ? { "spent" => spent, "cached" => cached } : nil
       end
 
-      # Fences stripped, parsed STRICTLY: a model that improvises a schema
-      # fails here instead of producing half a concept, never persisted
-      # half-parsed.
-      def parse(raw)
-        body = raw.strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
-        parsed = JSON.parse(body)
+      # Native responses own JSON parsing; injected text asks retain their
+      # existing fenced-JSON contract. Domain validation still runs below.
+      def parse(answer)
+        parsed = if answer.respond_to?(:parsed)
+                   answer.parsed
+                 else
+                   JSON.parse(text_of(answer).strip.gsub(/\A```(?:json)?\s*|\s*```\z/, ""))
+                 end
+        parsed = parsed["items"] if parsed.is_a?(Hash)
         raise Unusable, "the extractor's answer is not an array" unless parsed.is_a?(Array)
 
         parsed
@@ -368,12 +372,17 @@ module Insika
       # Temperature 0: extraction should be deterministic for the same turn.
       # `ruby_llm` required lazily so nothing loads a provider gem until an
       # extractor is actually configured (load_guard stays green).
-      def ruby_llm_ask(model, provider, llm: nil)
+      def ruby_llm_ask(model, provider, llm: nil, schema: nil)
         require "ruby_llm"
         llm ||= RubyLLM
         lambda do |prompt|
+          unless schema
+            prompt = "#{prompt}\n\nReturn the requested array inside a JSON object with the key \"items\"."
+          end
+          response_schema = schema || { "type" => "object", "properties" => { "items" => CONCEPT_SCHEMA.json_schema },
+                                        "required" => ["items"], "additionalProperties" => false }
           llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).ask(prompt)
+             .with_temperature(0).with_schema("schema" => response_schema, "strict" => false).ask(prompt)
         end
       end
     end
@@ -434,7 +443,7 @@ module Insika
       # -> { verdict: :related, merged_body: String } | { verdict: :contradicting }
       def resolve(existing_body:, new_body:)
         answer = @ask.call(prompt_for(existing_body, new_body))
-        parsed = parse(text_of(answer))
+        parsed = parse(answer)
         raise Unusable, "not a JSON object" unless VERDICT_SCHEMA.call(parsed).success?
 
         classify(parsed)
@@ -455,9 +464,12 @@ module Insika
 
       def text_of(answer) = (answer.respond_to?(:content) ? answer.content : answer).to_s
 
-      def parse(raw)
-        body = raw.strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
-        parsed = JSON.parse(body)
+      def parse(answer)
+        parsed = if answer.respond_to?(:parsed)
+                   answer.parsed
+                 else
+                   JSON.parse(text_of(answer).strip.gsub(/\A```(?:json)?\s*|\s*```\z/, ""))
+                 end
         raise Unusable, "the consolidator's answer is not an object" unless parsed.is_a?(Hash)
 
         parsed
@@ -492,7 +504,9 @@ module Insika
         return nil if ref.nil?
 
         provider, model = ExtractorFactory.split_ref(ref)
-        factory = ask_factory || ->(m, p) { ExtractorFactory.ruby_llm_ask(m, p, llm: llm) }
+        factory = ask_factory || ->(m, p) {
+          ExtractorFactory.ruby_llm_ask(m, p, llm: llm, schema: Consolidator::VERDICT_SCHEMA.json_schema)
+        }
         Consolidator.new(ask: factory.call(model, provider), model: ref)
       end
     end

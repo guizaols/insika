@@ -45,7 +45,7 @@ module Insika
                   "its target agent and score the whole conversation with the configured " \
                   "judge panel. Refuses if the target exposes a tool that could write for " \
                   "real."
-      param :case_id, desc: "Id of the persona case to run"
+      parameter :case_id, description: "Id of the persona case to run"
 
       def name = "run_persona_eval"
 
@@ -111,7 +111,7 @@ module Insika
         "#{super} Cases you may run: #{ids.join(', ')}."
       end
 
-      def params_schema
+      def parameters_schema
         Insika::Tools::AgentEnum.inject(super, case_ids, path: %i[case_id])
       end
 
@@ -319,9 +319,7 @@ module Insika
         return if @budget_ledger.nil? || meter.empty?
 
         tokens = meter.sum do |m|
-          m.input_tokens.to_i + m.output_tokens.to_i +
-            (m.respond_to?(:cached_tokens) ? m.cached_tokens.to_i : 0) +
-            (m.respond_to?(:cache_creation_tokens) ? m.cache_creation_tokens.to_i : 0)
+          m.tokens.input.to_i + m.tokens.output.to_i + m.tokens.cache_read.to_i + m.tokens.cache_write.to_i
         end
         return if tokens.zero?
 

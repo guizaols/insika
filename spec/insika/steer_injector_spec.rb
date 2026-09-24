@@ -29,7 +29,7 @@ RSpec.describe Insika::SteerInjector do
     calls = ids.to_h { |id| [id, FakeChat::ToolCall.new("search", {}, id)] }
     inj.message_ended(FakeChat::Message.new("assistant", "vou buscar", calls))
     ids.each do |id|
-      inj.tool_result(id == halt ? RubyLLM::Tool::Halt.new("done") : "ok")
+      inj.tool_result(id == halt ? Insika::ToolDefinition::Halt.new("done") : "ok")
       inj.message_ended(FakeChat::Message.new("tool", "ok", nil))
     end
   end
@@ -123,6 +123,34 @@ RSpec.describe Insika::SteerInjector do
 
       expect(user_messages).to eq(%w[primeiro segundo])
       expect(inj.injected).to eq(2)
+    end
+  end
+
+  it "does not reopen a closed batch for extra tool results" do
+    Sync do
+      inj = injector
+      run_batch(inj, %w[c1])
+      actor.post(:user_message, "next message")
+      inj.message_ended(FakeChat::Message.new("tool", "extra result", nil))
+
+      expect(user_messages).to be_empty
+      expect(events).to be_empty
+      run_batch(inj, %w[c2])
+      expect(user_messages).to eq(["next message"])
+      expect(inj.injected).to eq(1)
+    end
+  end
+
+  it "preserves a halted sibling until the batch closes, then resets for the next batch" do
+    Sync do
+      inj = injector
+      actor.post(:user_message, "pending message")
+      run_batch(inj, %w[c1 c2], halt: "c1")
+
+      expect(user_messages).to be_empty
+      expect(events).to be_empty
+      run_batch(inj, %w[c3])
+      expect(user_messages).to eq(["pending message"])
     end
   end
 

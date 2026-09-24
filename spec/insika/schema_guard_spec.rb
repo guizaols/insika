@@ -29,6 +29,41 @@ RSpec.describe Insika::SchemaGuard do
 
   def pairs(value) = violation({ query_filter_pairs: value })
 
+  it "enforces explicit null and additional property constraints" do
+    schema = { "type" => "object", "properties" => { "flag" => { "type" => "boolean" } },
+               "additionalProperties" => false }
+    expect(violation({ flag: false }, schema: schema)).to be_nil
+    expect(violation({ flag: nil }, schema: schema)).to match(/flag/)
+    expect(violation({ extra: true }, schema: schema)).to match(/invalid arguments/)
+  end
+
+  it "keeps scalar compatibility without changing the original arguments" do
+    args = { "query_filter_pairs" => [{ "query" => 42 }], "catalog_mode" => "false" }
+    expect(violation(args)).to be_nil
+    expect(args).to eq("query_filter_pairs" => [{ "query" => 42 }], "catalog_mode" => "false")
+  end
+
+  it "preserves exact numeric values when enforcing constraints" do
+    schema = { "type" => "object", "properties" => {
+      "amount" => { "type" => "number", "maximum" => 9_007_199_254_740_992 }
+    } }
+    expect(violation({ amount: 9_007_199_254_740_993 }, schema: schema)).to match(/invalid arguments/)
+    expect(violation({ amount: "9007199254740993" }, schema: schema)).to match(/invalid arguments/)
+  end
+
+  it "keeps top-level blank checks separate from nested required key presence" do
+    expect(pairs("  ")).to match(/missing required parameter/)
+    expect(pairs([{ "query" => "" }])).to be_nil
+    expect(violation({ flag: false }, schema: {
+      "type" => "object", "properties" => { "flag" => { "type" => "boolean" } }, "required" => ["flag"]
+    })).to be_nil
+  end
+
+  it "rejects external references without fetching them" do
+    expect { violation({}, schema: { "$ref" => "https://example.test/schema.json" }) }
+      .to raise_error(Insika::ValidationError, /external schema reference/)
+  end
+
   it "passes a call that matches the schema" do
     expect(pairs([{ "query" => "trufa", "filters" => { "brand" => "Acme" } }])).to be_nil
   end
@@ -85,6 +120,7 @@ RSpec.describe Insika::SchemaGuard do
 
     it "accepts the string form of a number/integer/boolean" do
       expect(violation({ qty: "2", price: "9.90", flag: "true" }, schema: scalars)).to be_nil
+      expect(violation({ qty: "02", price: "09.90", flag: "false" }, schema: scalars)).to be_nil
     end
 
     it "accepts a number where a string is declared (it stringifies losslessly)" do

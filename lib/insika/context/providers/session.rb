@@ -71,6 +71,8 @@ module Insika
         # Symbol-keyed message preserving tool_calls / tool_call_id when present
         # (a plain message keeps just {role, content} — parity with the old shape).
         def normalize(msg)
+          return msg if msg["native_compaction"]
+
           h = { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] }
           tool_calls = msg[:tool_calls] || msg["tool_calls"]
           tool_call_id = msg[:tool_call_id] || msg["tool_call_id"]
@@ -114,9 +116,22 @@ module Insika
           fresh = fresh_session(session)
           return [[], nil] if fresh.nil?
 
-          messages = fresh.messages || []
+          # Operator corrections affect replay only, never the stored content or tool protocol.
+          messages = (fresh.messages || []).map do |message|
+            if message["role"] == "assistant" && Array(message["tool_calls"]).empty? && message["context_content"].is_a?(String)
+              message.merge("content" => message["context_content"])
+            else
+              message
+            end
+          end
           state = fresh.respond_to?(:compaction) ? fresh.compaction : nil
           upto = state ? state["upto"].to_i : 0
+          if upto.positive? && state["native"]
+            # ponytail: budget the full fallback too; model-aware allocation can
+            # recover this headroom once model selection precedes context building.
+            prefix = { "native_compaction" => state["native"], "messages" => messages.take(upto) }
+            return [[prefix] + messages.drop(upto), nil]
+          end
           return [messages, nil] unless upto.positive? && Coercion.present?(state["summary"])
 
           [messages.drop([upto, messages.size].min), state]

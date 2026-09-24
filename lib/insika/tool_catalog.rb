@@ -14,7 +14,11 @@ module Insika
   # no instantiation at all; a broken factory surfaces on first use (where the
   # Executor would also catch it at stage 3), not at construction.
   class ToolCatalog
-    Entry = Data.define(:name, :description)
+    Entry = Data.define(:name, :description, :plugin) do
+      def initialize(name:, description:, plugin: nil)
+        super
+      end
+    end
 
     def initialize(tool_registry:)
       @tool_registry = tool_registry
@@ -76,7 +80,7 @@ module Insika
 
     def build_entries
       @tool_registry.entries.map do |entry|
-        Entry.new(name: entry.name, description: entry.factory.call.description.to_s)
+        Entry.new(name: entry.name, description: entry.factory.call.description.to_s, plugin: entry.plugin)
       end
     end
 

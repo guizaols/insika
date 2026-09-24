@@ -44,6 +44,8 @@
 #   --history-turns N     prior messages for the multi_turn scenario  (default: 10)
 #   --output-tokens N     tokens the stub streams per turn            (default: 48)
 #   --json                emit the results as JSON (for CI gating)
+#   --ruby-llm            real RubyLLM Chat with an offline provider; tool_call
+#                         executes two tool rounds (no HTTP or provider keys)
 #   --help                show this help and exit
 #
 # The run is hermetic: it forces the in-memory backend (ignores INSIKA_DB) and a
@@ -65,7 +67,7 @@ require_relative "../lib/insika"
 require "async"
 
 # --- flag parsing (--name value / boolean --name) -----------------------------
-BOOL_FLAGS = %w[json help].freeze
+BOOL_FLAGS = %w[json help ruby-llm].freeze
 VALUE_FLAGS = %w[scenario iterations warmup concurrency waves identity-tokens
                  history-turns output-tokens].freeze
 
@@ -112,6 +114,7 @@ IDENTITY   = int_arg("identity-tokens", 2000)
 HISTORY    = int_arg("history-turns", 10)
 OUT_TOKENS = [int_arg("output-tokens", 48), 1].max
 JSON_OUT   = ARGS.fetch("json", false)
+REAL_CHAT  = ARGS.fetch("ruby-llm", false)
 
 ALL_SCENARIOS = %w[greeting tool_call multi_turn].freeze
 WANT = ARGS.fetch("scenario", "all")
@@ -155,10 +158,12 @@ end
 # is handed out per turn so the per-turn callbacks are clean.
 class StubChat
   Chunk    = Struct.new(:content)
+  Message  = Struct.new(:role, :content)
   ToolCall = Struct.new(:name, :arguments, :id)
   # A token-bearing response (duck-typed like RubyLLM::Message) so the engine's
   # usage path runs; the numbers are synthetic and are NOT reported as a claim.
-  Response = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
+  Tokens = Struct.new(:input, :output, :cache_read, :cache_write, :thinking)
+  Response = Struct.new(:content, :tokens, :model)
 
   def initialize(output_tokens:, tool_call:, input_tokens:)
     @output_tokens = output_tokens
@@ -169,11 +174,15 @@ class StubChat
 
   def with_instructions(_text) = self
   def with_tools(*_tools) = self
-  def add_message(**attrs) = (@messages << attrs) && self
+  def add_message(attrs) = (@messages << Message.new(attrs[:role], attrs[:content])) && self
   def before_tool_call(&blk) = (@before = blk) && self
   def after_tool_result(&blk) = (@after = blk) && self
   attr_reader :messages
   def model = nil # provider check (anthropic caching) -> false
+  def ask_later(_message) = self
+  def complete? = true
+  def awaiting_approval? = false
+  def step(&block) = ask(nil, &block)
 
   # Simulates one model interaction: an optional single tool round-trip, then a
   # streamed answer of @output_tokens chunks, then the final response.
@@ -183,8 +192,61 @@ class StubChat
       @after&.call("tool result")
     end
     @output_tokens.times { yield Chunk.new("token ") } if block_given?
-    Response.new("done", @input_tokens, @output_tokens, "stub-model")
+    Response.new("done", Tokens.new(@input_tokens, @output_tokens), "stub-model")
   end
+end
+
+if REAL_CHAT
+  require "ruby_llm"
+
+  # Only the provider is synthetic: Chat owns history, callbacks and tool execution.
+  # Native Usage::Tracker supplies model_info before accounting; mirror it here.
+  class BenchOffline < RubyLLM::Provider
+    COUNTS = Hash.new(0)
+
+    def self.slug = "bench_offline"
+    def api_base = "http://benchmark.invalid"
+    def preprocess_message(message, **) = message
+
+    def complete(messages, tools:, model:, **)
+      COUNTS[:provider_calls] += 1
+      results = messages.select { |message| message.role == :tool }
+      results.each_with_index do |message, index|
+        raise "benchmark tool result missing" unless message.content.to_s.include?("lookup #{index + 1}")
+      end
+      if results.empty?
+        COUNTS[:history_messages] += messages.count { |message| message.content.to_s.start_with?("Prior message ") }
+      end
+
+      if tools.key?(:lookup) && results.size < 2
+        round = results.size + 1
+        call = RubyLLM::ToolCall.new(id: "call_#{round}", name: "lookup", arguments: { "q" => round.to_s })
+        return RubyLLM::Message.new(role: :assistant, content: "", tool_calls: { call.id => call },
+                                    model: model.id, tokens: RubyLLM::Tokens.new(input: IDENTITY, output: 1)).tap { |message| message.model_info = model }
+      end
+
+      OUT_TOKENS.times do
+        yield RubyLLM::Chunk.new(role: :assistant, content: "token ")
+        COUNTS[:streamed_chunks] += 1
+      end
+      RubyLLM::Message.new(role: :assistant, content: "token " * OUT_TOKENS,
+                           model: model.id, tokens: RubyLLM::Tokens.new(input: IDENTITY, output: OUT_TOKENS)).tap { |message| message.model_info = model }
+    end
+  end
+
+  class BenchLookup < RubyLLM::Tool
+    description "Deterministic, offline benchmark lookup."
+    parameter :q, type: :string, description: "Lookup number"
+
+    def name = "lookup"
+
+    def execute(q:)
+      BenchOffline::COUNTS[:tool_calls] += 1
+      "lookup #{q}"
+    end
+  end
+
+  RubyLLM::Provider.register(:bench_offline, BenchOffline)
 end
 
 # ---------------------------------------------------------------------------
@@ -197,7 +259,11 @@ class Scenario
     @name = name
     @definition = build_definition
     @graph = @definition.runtime.graph # builds the graph + imports the pack
-    install_stub
+    if REAL_CHAT
+      @graph.code_tool_registry.register("lookup") { BenchLookup.new } if name == "tool_call"
+    else
+      install_stub
+    end
   end
 
   # The turn payload for this scenario (agent + message + optional history).
@@ -218,10 +284,12 @@ class Scenario
     ident = identity_text(IDENTITY)
     Insika.agent("bench-#{name}") do
       model "stub-model"
-      provider "stub"
+      provider(REAL_CHAT ? "bench_offline" : "stub")
       instructions "Synthetic benchmark agent (#{name})."
       prompt_file "IDENTITY.md", ident
-      if name == "tool_call"
+      if name == "tool_call" && REAL_CHAT
+        tools "lookup"
+      elsif name == "tool_call"
         data_tool(
           name: "lookup",
           description: "Synthetic lookup tool used only to exercise the tool path.",
@@ -298,9 +366,11 @@ end
 # Run one scenario: a sequential latency pass (precise per-turn timing) and a
 # concurrent throughput pass (wall-clock turns/s).
 def run_scenario(name)
+  BenchOffline::COUNTS.clear if REAL_CHAT
   scenario = Scenario.new(name)
   latency = nil
   throughput = nil
+  allocations = nil
   errors = 0
 
   Async do |parent|
@@ -308,6 +378,7 @@ def run_scenario(name)
 
     # Warmup — JIT / lazy init / page cache, not measured.
     WARMUP.times { |i| driver.await([driver.dispatch(-(i + 1))]) }
+    allocated_before = GC.stat(:total_allocated_objects)
 
     # Latency pass: one turn at a time; timing comes from INSIKA_TURN_TIMING
     # (monotonic, provider-free), not wall-clock, so scheduler noise stays out.
@@ -335,6 +406,8 @@ def run_scenario(name)
       driver.await(ids).each { |r| completed += 1; errors += 1 unless r[:ok] }
     end
     wall = mono - started
+    allocated = GC.stat(:total_allocated_objects) - allocated_before
+    allocations = { total: allocated, per_turn: (allocated.to_f / (ITERS + completed)).round(1) }
     gen_p50 = latency.dig(:gen, :p50)
     # Pipeline cost per streamed token (µs) — the insika's own per-token work
     # (filter/emit/event stream), NOT model generation speed (provider-bound).
@@ -347,7 +420,9 @@ def run_scenario(name)
     scenario.executor.stop_session_actors
   end
 
-  { scenario: name, errors: errors, latency: latency, throughput: throughput }
+  result = { scenario: name, errors: errors, latency: latency, throughput: throughput, allocations: allocations }
+  result[:ruby_llm_activity] = BenchOffline::COUNTS.dup if REAL_CHAT
+  result
 end
 
 # ---------------------------------------------------------------------------
@@ -357,12 +432,14 @@ if JSON_OUT
   require "json"
   puts JSON.pretty_generate(
     engine: "insika #{Insika::VERSION}",
+    mode: REAL_CHAT ? "ruby_llm" : "stub",
+    ruby_llm: REAL_CHAT ? Gem.loaded_specs.fetch("ruby_llm").version.to_s : nil,
     ruby: RUBY_DESCRIPTION,
     yjit: (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?),
     config: { iterations: ITERS, warmup: WARMUP, concurrency: CONC, waves: WAVES,
               identity_tokens: IDENTITY, history_turns: HISTORY, output_tokens: OUT_TOKENS },
-    note: "provider-free engine benchmark; latency = insika overhead only " \
-          "(no model call). See docs/BENCHMARK.md.",
+    note: REAL_CHAT ? "Offline RubyLLM Chat benchmark; includes Chat/tool-loop overhead, excludes HTTP and provider latency." :
+          "provider-free engine benchmark; latency = insika overhead only (no model call). See docs/BENCHMARK.md.",
     results: results
   )
   exit 0
@@ -370,6 +447,7 @@ end
 
 yjit = (defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?) ? "YJIT" : "no-YJIT"
 puts "insika bench — engine overhead, provider-free (no LLM call)"
+puts "RubyLLM #{Gem.loaded_specs.fetch('ruby_llm').version}: real Chat, offline provider; includes Chat/tool-loop overhead" if REAL_CHAT
 puts "engine #{Insika::VERSION} · #{RUBY_ENGINE} #{RUBY_VERSION} (#{yjit})"
 puts "config: iters=#{ITERS} warmup=#{WARMUP} conc=#{CONC} waves=#{WAVES} " \
      "identity=#{IDENTITY}tok history=#{HISTORY} out=#{OUT_TOKENS}tok"
@@ -389,6 +467,7 @@ results.each do |r|
          l[:gen][:p50], l[:gen][:p95])
   puts "  throughput (concurrency=#{t[:concurrency]}):"
   puts "    #{t[:turns_per_s]} turns/s over #{t[:wall_s]}s (#{t[:completed]} turns)"
+  puts "    allocations: #{r[:allocations][:per_turn]} objects/turn (includes benchmark driver)"
   puts "    pipeline overhead: #{t[:per_token_overhead_us] || '-'} µs/token " \
        "(insika per-token work — NOT model generation speed, which is provider-bound)"
 end

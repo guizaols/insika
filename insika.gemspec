@@ -53,8 +53,8 @@ Gem::Specification.new do |spec|
   # does exactly that). The load guard (spec/insika/load_guard_spec.rb) is the
   # test that nothing below drags ruby_llm/roda/falcon in at require time.
   spec.add_dependency "async", "~> 2.0"       # reactor, SQLite write semaphore
-  spec.add_dependency "ruby_llm", ">= 1.15", "< 2.0" # before_tool_call/after_tool_result need 1.15+; 2.0 drops Tool::Halt and with_params
-  spec.add_dependency "ruby_llm-mcp", "~> 1.0" # MCP transports (stdio/Streamable HTTP/SSE), lazy-required (Insika::McpClient)
+  spec.add_dependency "json_schemer", "~> 2.5" # workflow and tool argument validation
+  spec.add_dependency "ruby_llm", "~> 2.0.0" # model operations, tool loop and native MCP (Git-pinned until release)
   spec.add_dependency "falcon", "~> 0.55"     # async server
   spec.add_dependency "sqlite3", "~> 2.0"     # the durable Store backend
   spec.add_dependency "rack", "~> 3.0"        # transport

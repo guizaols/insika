@@ -16,7 +16,7 @@ web control UI. Point an existing Responses client at it and serve many agents f
 deployment.
 
 - **Drop-in `/v1/responses`** — SSE streaming and usage, the shape existing clients already speak.
-- **Durable & resumable** — every turn checkpoints; a crash resumes without repeating side-effects.
+- **Durable & resumable** — every turn checkpoints; recorded side-effect calls are deduplicated on replay. External writes still need idempotency.
 - **Agents as data** — agents, prompts, skills and tools are editable at runtime (UI or API), no redeploy.
 - **Tools & skills** — code, HTTP data and live MCP tools; skills load on demand.
 - **Evidence-backed actions** — ID checks before writes, serial side effects per session, and selected evidence cards ([Tools](docs/TOOLS.md)).

@@ -87,6 +87,28 @@ Compaction does not replace the budget: eviction stays as the hard backstop
 for a single oversized turn. Tune `context_budget` and keep the identity lean
 regardless.
 
+#### Native Responses compaction
+
+Set `compaction.mode` to `"native"` alongside `enabled: true` to use RubyLLM's
+manual compaction endpoint on supported OpenAI, Azure and xAI Responses chats.
+The default is `"summary"`, described above. Native mode uses the turn's resolved
+model and credential context; `compaction.model`, `prompt` and `utility_model`
+do not apply. Unsupported providers remain uncompacted; there is no second
+summary request or automatic switch to another provider.
+
+After the turn commits, a fresh chat compacts the stored, filtered prefix.
+The original messages remain stored. Opaque state is separate from the spoken
+transcript and is replayed only with the same provider, model and protocol.
+Fallbacks and protocol changes restore the original prefix. Checkpoints retain
+both alternatives. A native marker is also skipped if another context provider
+has already supplied history, because Responses would replace that history.
+
+The budget conservatively counts the original prefix as well as the native state,
+and can evict this entire unit. This version reduces provider input when that unit
+fits; it does not increase local context-budget capacity. Each compaction rebuilds
+the whole stored prefix rather than chaining opaque state. Native usage is reported
+on `context_compacted`; the opaque payload is not included in that event.
+
 One cheap half **is** wired, opt-in per agent: `tool_output_compression` (DSL
 `tool_output_compression`, or `"tool_output_compression": true` in the pack).
 When on, byte-identical repeated **tool results** in the replayed history
@@ -101,6 +123,15 @@ budget first.
 > tokens per category (identity, history, memory, …), the tools-schema estimate
 > and the budget verdict (`used / cap`, evicted sources). Counts only, never
 > fragment content.
+
+### Repairing stored assistant context
+
+An operator may attach a string `context_content` to a stored plain assistant
+message. Session replay uses that text while preserving the original `content`
+for display and audit. User messages, tool results, assistant tool calls, explicit
+history and checkpoint replay ignore this field. Existing compaction summaries
+are not rewritten. This is a targeted data repair, not an automatic tool-markup
+parser; text is never converted into tool execution.
 
 ## Memory
 

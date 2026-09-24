@@ -41,7 +41,7 @@ module Insika
       dispatch(created ? :create_agent : :update_agent, agent_attrs(pack, id, existing))
 
       pack.files.each { |name, body| dispatch(:write_agent_file, { agent_id: id, file: name, content: body }) }
-      pack.skills.each { |name, body| dispatch(:write_skill, { name: name, content: body }) }
+      pack.skills.each { |name, body| dispatch(:write_skill, { name: name, content: body, agent: id }) }
       pack.tools.each { |defn| dispatch(:write_data_tool, defn) }
 
       { agent_id: id, created: created,
@@ -49,8 +49,8 @@ module Insika
     end
 
     # Removes the agent (delete_agent). Does NOT delete skills/tools/files: they
-    # may be shared and the SkillStore/ToolStore are global — selective removal is
-    # operator work. NotFoundError (missing agent) propagates -> 404.
+    # may be needed again on re-import; tools may also be shared. Selective removal
+    # is operator work. NotFoundError (missing agent) propagates -> 404.
     def delete(id)
       dispatch(:delete_agent, { id: id })
       { agent_id: id, deleted: true }

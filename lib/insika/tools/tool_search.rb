@@ -6,13 +6,13 @@ module Insika
   module Tools
     # Level 2 of TOOLS progressive disclosure (analog of LoadSkill):
     # searches the deferred catalog and PROMOTES the relevant ones into the live chat via
-    # chat.with_tools (verified to propagate on the next round of the same `ask`
-    # in ruby_llm 1.16). `require "ruby_llm"` stays in THIS file (it inherits from
+    # chat.with_tools (propagates on the next round of the same `ask`).
+    # `require "ruby_llm"` stays in THIS file (it inherits from
     # RubyLLM::Tool) — it does not enter lib/insika.rb; the Executor loads it lazily in
     # configure_chat (like LoadSkill).
     class ToolSearch < RubyLLM::Tool
       description "Searches and enables additional tools by describing the need"
-      param :query, desc: "What you need to do (e.g.: 'send email', 'generate invoice')"
+      parameter :query, description: "What you need to do (e.g.: 'send email', 'generate invoice')"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class
       # (Insika::Tools::ToolSearch) it produces "insika--tools--tool_search", not
@@ -81,11 +81,13 @@ module Insika
 
       def describe(entry)
         tool = @tool_registry.resolve(entry.name)
+        schema = Coercion.deep_stringify(tool.parameters_schema || {})
         {
           name: entry.name,
           description: entry.description,
-          parameters: tool.parameters.transform_values do |p|
-            { type: p.type, description: p.description, required: p.required }
+          parameters: schema.fetch("properties", {}).to_h do |name, property|
+            [name.to_sym, { type: property["type"], description: property["description"],
+                            required: Array(schema["required"]).include?(name) }]
           end
         }
       rescue Insika::NotFoundError

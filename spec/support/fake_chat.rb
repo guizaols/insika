@@ -21,10 +21,7 @@ class FakeChat
   ThinkingChunk = Struct.new(:content, :thinking)
 
   attr_reader :instructions, :tools, :messages, :asked
-  # whatever the LAST with_tools passed as `concurrency:` (nil = the
-  # serial default). The real Chat exposes it as #concurrency; the contract spec
-  # pins that the keyword exists there too.
-  attr_reader :concurrency
+  attr_reader :concurrency, :temperature, :max_output_tokens, :provider_options, :thinking
   # how many times #complete was driven (the steer overflow round).
   attr_reader :completes
   # script: proc run in the chat's context during #ask (may call
@@ -48,18 +45,29 @@ class FakeChat
     @script = nil
     @final_content = "final"
     @completes = 0
+    @complete = false
+    @provider_options = {}
   end
 
-  def with_instructions(text)
-    @instructions = text
+  def with_instructions(text, append: false, cache_until_here: false)
+    @instructions = append ? [@instructions, text].compact.join("\n") : text
     self
   end
 
-  def with_tools(*tools, concurrency: nil)
+  def with_tools(*tools)
     @tools.concat(tools)
+    self
+  end
+
+  def with_tool_options(concurrency: nil, **)
     @concurrency = concurrency
     self
   end
+
+  def with_temperature(value) = (@temperature = value; self)
+  def with_max_output_tokens(value) = (@max_output_tokens = value; self)
+  def with_provider_options(value) = (@provider_options.merge!(value); self)
+  def with_thinking(enabled = true, **options) = (@thinking = enabled ? options : false; self)
 
   # tool_calls/tool_call_id are optional (R1 rehydration): recorded only when
   # present, so existing callers that seed plain {role, content} are unaffected.
@@ -68,6 +76,7 @@ class FakeChat
     msg[:tool_calls] = tool_calls if tool_calls
     msg[:tool_call_id] = tool_call_id if tool_call_id
     @messages << msg
+    @complete = false if role.to_s == "user"
     self
   end
 
@@ -103,11 +112,12 @@ class FakeChat
   # own text, so the "did this one stream anything?" tracker resets with it.
   def fire_end_message(role: "assistant", content: nil, tool_calls: nil)
     @streamed = +""
+    @complete = true if role.to_s == "assistant" && (tool_calls.nil? || tool_calls.empty?)
     @after_message.each { |blk| blk.call(Message.new(role, content, tool_calls)) }
   end
 
   # Only the RAW-result callback (the gem's `after_tool_result`), which is where a
-  # `Tool::Halt` is still recognizable. The `role: tool` message that follows it in the
+  # `ToolDefinition::Halt` is still recognizable. The `role: tool` message that follows it in the
   # gem is #fire_tool_result_message — a script that needs the batch boundary calls both,
   # in that order.
   def fire_tool_result(result)
@@ -129,6 +139,27 @@ class FakeChat
     round(&on_chunk)
   end
 
+  def ask_later(message, with: nil)
+    @asked = message
+    @attachments = with
+    @pending_ask = true
+    @complete = false
+    self
+  end
+
+  def step(&on_chunk)
+    @complete = true
+    if @pending_ask
+      @pending_ask = false
+      @attachments ? ask(@asked, with: @attachments, &on_chunk) : ask(@asked, &on_chunk)
+    else
+      complete(&on_chunk)
+    end
+  end
+
+  def complete? = @complete
+  def awaiting_approval? = false
+
   # The gem's `Chat#complete`: another model step on the history AS IT IS, with no
   # new user message. The steer overflow round goes through here — `ask(nil)` would
   # append an empty user message after the injected ones, which providers refuse.
@@ -145,15 +176,12 @@ class FakeChat
     else
       emit_chunk(@final_content)
     end
-    # A tool with `halt_when` ended the turn: the REAL Chat returns the Tool::Halt
-    # from its loop instead of a Message (see ruby_llm_contract_spec), so the double
-    # must be able to as well — otherwise the Executor's branch is untestable here and
-    # only production would find out. A halt always came from a tool call, so the
-    # assistant message that carried it is closed here for the scripts that halt
-    # without going through #fire_tool_call.
+    # The executor captures this raw tool result and stops driving Chat#step.
     if @halt_with
       fire_end_message(role: "assistant", tool_calls: { "call_halt" => "halt" })
-      return RubyLLM::Tool::Halt.new(@halt_with)
+      halt = Insika::ToolDefinition::Halt.new(@halt_with)
+      fire_tool_result(halt)
+      return halt
     end
 
     # A real provider's message content IS what it streamed — the gem builds the
@@ -165,7 +193,7 @@ class FakeChat
     Response.new(@final_content)
   end
 
-  # Makes the next #ask return a Tool::Halt carrying this payload.
+  # Makes the next round emit Insika's halt marker carrying this payload.
   def halt_with!(payload) = (@halt_with = payload)
 
   # Emits a streaming chunk (as RubyLLM does in the ask block).

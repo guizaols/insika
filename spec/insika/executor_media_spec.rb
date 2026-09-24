@@ -63,8 +63,8 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     chat = FakeChat.new
     def chat.ask(message, with: nil, &on_chunk)
       super
-      Struct.new(:content, :input_tokens, :output_tokens, :model_id)
-            .new(@final_content, 80, 12, "vision-m")
+      RubyLLM::Message.new(role: :assistant, content: @final_content, model: "vision-m",
+                          tokens: RubyLLM::Tokens.new(input: 80, output: 12))
     end
     run(executor, task("foto aqui", parts: [{ "type" => "image", "url" => "https://cdn.example.com/foto.png" }]), chat)
 

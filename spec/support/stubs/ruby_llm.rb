@@ -8,16 +8,7 @@
 module RubyLLM
   class Tool
     def self.description(_text = nil); end
-    def self.param(_name, **_opts); end
-
-    # `halt_when`: DataDefinedTool returns one of these and the Executor branches on
-    # it. Mirrors the gem's shape (content-only value object) so the suite behaves the
-    # same with and without the real gem.
-    class Halt
-      attr_reader :content
-
-      def initialize(content) = (@content = content)
-      def to_s = @content.to_s
-    end
+    def self.parameter(_name, **_opts); end
+    def self.parameters(*_args, **_opts); end
   end
 end

@@ -41,14 +41,7 @@ module Insika
 
       def name = @definition.name
       def description = @definition.description
-      def params_schema = @definition.parameters
-
-      def parameters
-        @parameters ||= @definition.top_level_params.each_with_object({}) do |p, acc|
-          sym = p[:name].to_sym
-          acc[sym] = RubyLLM::Parameter.new(sym, type: p[:type], desc: p[:description], required: p[:required])
-        end
-      end
+      def parameters_schema = @definition.parameters
 
       def execute(**kwargs)
         spec = @definition.presentation

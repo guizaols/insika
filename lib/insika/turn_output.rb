@@ -49,12 +49,12 @@ module Insika
     # public_intermediate: the agent opted this channel in (`edge_stream`), so the
     #   narration is TAGGED and `/v1/responses` gives it its own frame. Default false:
     #   an internal event stays internal unless someone said otherwise.
-    def initialize(filter:, emit:, public_intermediate: false)
+    def initialize(filter:, emit:, public_intermediate: false, halt_text: "")
       @filter = filter
       @emit = emit
       @public_intermediate = public_intermediate
       @pending = +""           # text of the message currently streaming
-      @last_intermediate = +"" # text of the last message that turned out NOT to be the answer
+      @last_intermediate = halt_text.to_s # already filtered when checkpointed
       @candidate = nil
     end
 

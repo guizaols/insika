@@ -27,9 +27,9 @@ module Insika
                   "prompt alone — UNLESS this turn carries an inbound photo, in which case " \
                   "that photo is edited by default (pass source_image_urls explicitly to " \
                   "generate from scratch instead)."
-      # explicit JSON-schema form (the `param` DSL only reaches strings/scalars,
+      # explicit JSON-schema form (the `parameter` DSL only reaches strings/scalars,
       # and source_image_urls needs a typed array — the bare-array gotcha, #128).
-      params(
+      parameters(
         type: "object",
         properties: {
           prompt: { type: "string", description: "What to draw, or what edit to make, in detail" },

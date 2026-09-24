@@ -19,8 +19,8 @@ module InsikaCode
 
       description "Searches files in the workspace for lines matching a Ruby regular expression. " \
                   "Returns matches as {path, line, text}."
-      param :pattern, desc: "Ruby-compatible regular expression"
-      param :path, desc: "File or directory to search, relative to the root (default: the root)",
+      parameter :pattern, description: "Ruby-compatible regular expression"
+      parameter :path, description: "File or directory to search, relative to the root (default: the root)",
                    required: false
 
       def name = "grep"

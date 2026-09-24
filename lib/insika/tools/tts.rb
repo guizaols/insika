@@ -20,8 +20,8 @@ module Insika
       description "Synthesize speech for the reply — a voice clip travels as an " \
                   "output part in the envelope, the channel supports it. Use when the " \
                   "customer should HEAR the answer rather than read it."
-      param :text, desc: "The words to speak"
-      param :voice, desc: "Optional voice override (default from the agent config)",
+      parameter :text, description: "The words to speak"
+      parameter :voice, description: "Optional voice override (default from the agent config)",
             required: false
 
       def name = "tts"

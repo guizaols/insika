@@ -53,8 +53,8 @@ module Insika
         names.empty? ? BASE_DESCRIPTION : "#{BASE_DESCRIPTION} field must be one of: #{names.join(', ')}."
       end
 
-      param :field, desc: "The briefing field name (one of the declared list)"
-      param :value, desc: "The value learned. Blank clears the field."
+      parameter :field, description: "The briefing field name (one of the declared list)"
+      parameter :value, description: "The value learned. Blank clears the field."
 
       def name = "update_briefing"
 
@@ -72,7 +72,7 @@ module Insika
 
       # The declared names become the `field` enum in the schema the provider
       # sees — per-turn data, like the subagent allowlist (Tools::AgentEnum).
-      def params_schema
+      def parameters_schema
         @field_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @fields, path: %i[field])
       end
 
@@ -99,7 +99,7 @@ module Insika
 
         description "Records the next step agreed with the customer " \
                     "(e.g. 'send the payment link tomorrow at 10'). Blank clears it."
-        param :text, desc: "The agreed next step, in one sentence"
+        parameter :text, description: "The agreed next step, in one sentence"
 
         def name = "set_next_step"
 

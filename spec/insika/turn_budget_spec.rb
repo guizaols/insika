@@ -90,9 +90,9 @@ RSpec.describe Insika::TurnBudget do
   end
 
   it "a halted batch (halt_when) receives nothing — nobody would read it" do
-    skip "RubyLLM::Tool::Halt not loaded" unless defined?(RubyLLM::Tool::Halt)
+    skip "Insika::ToolDefinition::Halt not loaded" unless defined?(Insika::ToolDefinition::Halt)
     b = budget(max: 12)
-    2.times { call_cycle(b, RubyLLM::Tool::Halt.new("done")) }
+    2.times { call_cycle(b, Insika::ToolDefinition::Halt.new("done")) }
     expect(notices).to be_empty
   end
 

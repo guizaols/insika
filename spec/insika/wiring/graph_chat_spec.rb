@@ -13,7 +13,7 @@ require "spec_helper"
 # tool existed only for DSL-built graphs, never for config/deployment.rb's,
 # which round1 and real production both boot through).
 RSpec.describe Insika::Wiring::GraphChat do
-  Msg = Struct.new(:content, :input_tokens, :output_tokens, :cached_tokens, :cache_creation_tokens, keyword_init: true)
+  Msg = Struct.new(:content, :tokens, keyword_init: true)
 
   class StubbedRawChat
     def initialize(script) = @script = script
@@ -79,9 +79,9 @@ RSpec.describe Insika::Wiring::GraphChat do
       with_scripted_llm(graph, final: "aqui estão algumas opções reais")
 
       raw_chats = {
-        "persona-model" => StubbedRawChat.new(->(_p) { Msg.new(content: "<<goal_met>>", input_tokens: 1, output_tokens: 1) }),
+        "persona-model" => StubbedRawChat.new(->(_p) { Msg.new(content: "<<goal_met>>", tokens: RubyLLM::Tokens.new(input: 1, output: 1)) }),
         "judge-model" => StubbedRawChat.new(lambda { |_p|
-          Msg.new(content: '{"score": 0.9, "reason": "handled it well"}', input_tokens: 2, output_tokens: 2)
+          Msg.new(content: '{"score": 0.9, "reason": "handled it well"}', tokens: RubyLLM::Tokens.new(input: 2, output: 2))
         })
       }
       allow(RubyLLM).to receive(:chat) { |model:, provider: nil, assume_model_exists: false| raw_chats.fetch(model) }
@@ -151,9 +151,9 @@ RSpec.describe Insika::Wiring::GraphChat do
       graph.executor.define_singleton_method(:create_chat) { |*_a, **_k| chat }
 
       raw_chats = {
-        "persona-model" => StubbedRawChat.new(->(_p) { Msg.new(content: "<<goal_met>>", input_tokens: 1, output_tokens: 1) }),
+        "persona-model" => StubbedRawChat.new(->(_p) { Msg.new(content: "<<goal_met>>", tokens: RubyLLM::Tokens.new(input: 1, output: 1)) }),
         "judge-model" => StubbedRawChat.new(lambda { |_p|
-          Msg.new(content: '{"score": 1.0, "reason": "confirmou o pedido"}', input_tokens: 1, output_tokens: 1)
+          Msg.new(content: '{"score": 1.0, "reason": "confirmou o pedido"}', tokens: RubyLLM::Tokens.new(input: 1, output: 1))
         })
       }
       allow(RubyLLM).to receive(:chat) { |model:, provider: nil, assume_model_exists: false| raw_chats.fetch(model) }

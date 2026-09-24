@@ -80,13 +80,8 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     fallback_chat.define_singleton_method(:ask) do |message, &on_chunk|
       @asked = message
       on_chunk&.call(FakeChat::Response.new("final"))
-      resp = Object.new.tap do |o|
-        o.define_singleton_method(:input_tokens) { 10 }
-        o.define_singleton_method(:output_tokens) { 5 }
-        o.define_singleton_method(:cached_tokens) { 0 }
-        o.define_singleton_method(:cache_creation_tokens) { 0 }
-      end
-      resp
+      RubyLLM::Message.new(role: :assistant, content: "final",
+                          tokens: RubyLLM::Tokens.new(input: 10, output: 5, cache_read: 0, cache_write: 0))
     end
 
     run_turn(executor, make_task("oi", id: "r1"), primary_chat)

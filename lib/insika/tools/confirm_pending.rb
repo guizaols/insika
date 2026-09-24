@@ -60,7 +60,7 @@ module Insika
       description "Runs an action the customer has just confirmed. Call it only when the customer's " \
                   "message agrees to exactly what was proposed; a change, a question or a new request " \
                   "is cancel_pending instead."
-      param :pending_id, desc: "The pending_id the held action returned"
+      parameter :pending_id, description: "The pending_id the held action returned"
 
       def name = "confirm_pending"
 
@@ -89,7 +89,7 @@ module Insika
     class CancelPending < RubyLLM::Tool
       description "Drops an action that was waiting for the customer's confirmation, because they " \
                   "declined, changed something, or asked for something else."
-      param :pending_id, desc: "The pending_id the held action returned"
+      parameter :pending_id, description: "The pending_id the held action returned"
 
       def name = "cancel_pending"
 

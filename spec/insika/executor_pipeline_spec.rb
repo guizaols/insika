@@ -86,18 +86,19 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
   end
 
   describe "token usage in the terminal event (observability)" do
-    TokenResponse = Struct.new(:content, :input_tokens, :output_tokens, :model_id)
 
     it "captures input/output/total/model from the response -> :task_completed" do
       session_store.create(id: "s1")
       executor = build_executor
       chat = FakeChat.new
-      allow(chat).to receive(:ask).and_return(TokenResponse.new("oi", 12, 8, "deepseek-chat"))
+      allow(chat).to receive(:ask).and_return(RubyLLM::Message.new(role: :assistant, content: "oi", model: "deepseek-chat",
+                                                                tokens: RubyLLM::Tokens.new(input: 12, output: 8)))
 
       run_turn(executor, make_task, fake_chat: chat)
 
       ev = event_stream.events.find { |e| e.type == :task_completed }
-      expect(ev.data[:usage]).to eq(input_tokens: 12, output_tokens: 8, total_tokens: 20, model: "deepseek-chat")
+      expect(ev.data[:usage]).to eq(input_tokens: 12, output_tokens: 8, total_tokens: 20,
+                                    model: "deepseek-chat", cost_usd: nil)
     end
 
     it "response without token counts -> usage nil (does not invent zeros)" do
@@ -110,8 +111,8 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
 
     it "surfaces prompt-cache read + write tokens when the provider reports them (R3)" do
       executor = build_executor
-      resp = Struct.new(:input_tokens, :output_tokens, :model_id, :cached_tokens, :cache_creation_tokens)
-                   .new(100, 20, "claude", 80, 4096)
+      resp = RubyLLM::Message.new(role: :assistant, content: "", model: "claude",
+                                 tokens: RubyLLM::Tokens.new(input: 100, output: 20, cache_read: 80, cache_write: 4096))
 
       usage = executor.send(:usage_of, resp)
 
@@ -832,7 +833,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       Class.new do
         def name = "search_products"
         def description = "Search the catalog"
-        def parameters = { "query" => "string" }
+        def parameters_schema = { "type" => "object", "properties" => { "query" => { "type" => "string" } } }
       end.new
     end
 

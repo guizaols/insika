@@ -39,7 +39,7 @@ module Insika
     # From after_tool_result, with the RAW result: a Tool::Halt is only
     # recognizable there.
     def halt!(result)
-      @halted = true if defined?(RubyLLM::Tool::Halt) && result.is_a?(RubyLLM::Tool::Halt)
+      @halted = true if defined?(Insika::ToolDefinition::Halt) && result.is_a?(Insika::ToolDefinition::Halt)
     end
 
     def halted? = @halted

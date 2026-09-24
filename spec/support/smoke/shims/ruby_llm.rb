@@ -21,22 +21,12 @@ module RubyLLM
   end
 
   # Base of the tools (LoadSkill inherits). Only the class methods used in the class
-  # DEFINITION (description/param) — in the smoke the profile has no skills, so
+  # DEFINITION (description/parameter) — in the smoke the profile has no skills, so
   # LoadSkill isn't even instantiated.
   class Tool
     def self.description(_text = nil); end
-    def self.param(_name, **_opts); end
-    def self.params(*_args, **_opts); end # array-of-objects schema DSL (spawn_subagents)
-
-    # `halt_when`: the Executor tests every response with `is_a?(Tool::Halt)`, so the
-    # class must exist here too — without it the smoke turn dies on a NameError that
-    # looks like a hang. The smoke never produces one; it only needs to be nameable.
-    class Halt
-      attr_reader :content
-
-      def initialize(content) = (@content = content)
-      def to_s = @content.to_s
-    end
+    def self.parameter(_name, **_opts); end
+    def self.parameters(*_args, **_opts); end
   end
 
   # Scripted chat. Two modes:
@@ -47,12 +37,28 @@ module RubyLLM
     Response = Struct.new(:content)
 
     def initialize = (@tools = [])
-    def with_instructions(_text) = self
+    def with_instructions(_text, append: false, cache_until_here: false) = self
     def add_message(role:, content:) = self
     def before_tool_call(&blk) = (@before = blk) && self
     def after_tool_result(&blk) = (@after = blk) && self
 
     def with_tools(*tools) = (@tools.concat(tools); self)
+    def with_tool_options(**) = self
+
+    def ask_later(message, with: nil)
+      @message = message
+      @complete = false
+      self
+    end
+
+    def step(&on_chunk)
+      response = ask(@message, &on_chunk)
+      @complete = true
+      response
+    end
+
+    def complete? = @complete
+    def awaiting_approval? = false
 
     def ask(message, with: nil, &on_chunk)
       on_chunk&.call(Response.new("processando... "))
@@ -62,7 +68,7 @@ module RubyLLM
       # blocks in here; on approval it executes and returns). Covers's smoke
       # (suspend -> kill -9 -> reboot -> approve -> complete).
       if ENV["SMOKE_APPROVAL"] && (tool = @tools.find { |t| t.name.to_s == "charge" })
-        return Response.new("resultado: #{tool.call("amount" => 10)}")
+        return Response.new("resultado: #{tool.call(amount: 10)}")
       end
 
       return Response.new("resposta final para: #{message}") if ENV["SMOKE_MODE"] == "complete"

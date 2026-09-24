@@ -55,6 +55,7 @@ module Insika
       "embedding" => "docs/EMBEDDING.md",
       "sandbox" => "docs/SANDBOX.md",
       "benchmark" => "docs/BENCHMARK.md",
+      "rubyllm-2-migration" => "docs/RUBYLLM_2_MIGRATION.md",
       "observability" => "docs/OBSERVABILITY.md",
       "schedules" => "docs/SCHEDULING.md",
       "artifacts" => "docs/ARTIFACTS.md",

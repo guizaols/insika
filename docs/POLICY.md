@@ -39,6 +39,11 @@ ID is blocked without asking the operator. See
 [Tools](TOOLS.md#provenance-checking-ids-before-a-write) and
 [Security](SECURITY.md#human-approval).
 
+Checkpoints preserve tools enabled by `tool_search`; resuming restores only those
+still allowed by the current policy. If a tool halts the turn, unanswered sibling
+calls receive a non-execution result instead of waiting for approval or executing.
+Their outstanding operator approvals are rejected with `resolved_by: engine:halted`.
+
 ## Layer 3: Guardrails (content safety)
 
 `guardrails` configures input/output content safety per agent — **opt-in**, so an
@@ -95,8 +100,8 @@ budget daily: 100_000, monthly: 2_000_000, soft: false   # or soft: true
 
 ### Reliability — retries, fallback, circuit breaker
 
-The provider interaction is a single attempt by default (RubyLLM's own 2
-transport retries aside). For a store that cannot have a dead model take the
+Without a reliability policy, transport retries use the provider context's
+configuration. For a store that cannot have a dead model take the
 chat down, the reliability policy is DATA on the profile:
 
 ```ruby
@@ -105,11 +110,12 @@ reliability retries: 2, backoff: "exponential",
             circuit_breaker: { after: 10, within: 60, cooldown: 300 }
 ```
 
-- **Retries** — transient failures (`:retryable` / `:rate_limited_*` per the
-  error classification) retry with exponential backoff, up to `retries`.
-  A `:fatal` (auth, billing, bad request) is NEVER retried or rotated. Each
-  attempt runs on a fresh chat — the customer-visible answer comes only from
-  the attempt that returns.
+- **Retries** — RubyLLM owns transport retries for native chats, up to `retries`
+  per request, using its transient-error classification and backoff. Once stream
+  data has arrived, the same request is not retried. `backoff: "exponential"`
+  doubles the native interval; `"constant"` keeps it fixed. Interval and jitter
+  come from the provider context. Insika does not add another retry loop.
+  Fatal authentication/billing/request errors do not trigger model rotation.
 - **Fallback** — after a node's retries, the turn ROTATES to the next model in
   the chain: the profile's `fallback` refs first, then the platform
   `fallback_models`. The turn's usage is attributed to the model that actually
@@ -118,12 +124,15 @@ reliability retries: 2, backoff: "exponential",
   `within` seconds open the circuit; while open, the turn fail-fasts with the
   typed `circuit_open` + `retry_after` (remaining cooldown) and the provider is
   never touched. After `cooldown` a half-open trial closes the circuit on
-  success or reopens it on failure.
-- **`timeout`** — per-attempt ceiling (default 30s), counted as a retryable
-  failure.
+  success or reopens it on failure. A native retry sequence that ultimately
+  fails counts once, not once per internal HTTP attempt. `provider_failure`
+  reports that exhausted sequence; native usage records retain individual attempts.
+- **`timeout`** — the native request timeout and the overall ceiling for one
+  model's execution (default 30s), including its retries. Exhaustion can rotate
+  to the next allowed model but never adds another same-model retry.
 
-Absent `reliability` = the plain single attempt, byte-for-byte today's
-behavior.
+Absent `reliability` leaves the provider context unchanged and does not enable
+Insika's model rotation or circuit breaker.
 
 ### Intent routing — classify before you answer
 

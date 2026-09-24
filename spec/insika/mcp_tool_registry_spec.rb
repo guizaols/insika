@@ -7,9 +7,10 @@ require "spec_helper"
 # execution (the factory) never depends on the cache and never breaks turn
 # ASSEMBLY on a downed server — only that tool's own call.
 RSpec.describe Insika::McpToolRegistry do
-  # duck-typed MCP tool (RubyLLM::MCP::Tool's shape: name/description/params_schema/execute).
-  FakeRegistryTool = Struct.new(:name, :description, :params_schema, :behavior) do
-    def execute(**params)
+  # Native MCP tool contract, without network requests.
+  FakeRegistryTool = Struct.new(:name, :description, :parameters_schema, :behavior) do
+    def read_only? = false
+    def call(**params)
       case behavior
       when :boom then raise "connection reset"
       else { echoed: params }
@@ -18,16 +19,12 @@ RSpec.describe Insika::McpToolRegistry do
   end
 
   FakeRegistryClient = Struct.new(:tool_list, :start_error) do
-    def alive? = @alive || false
-    def start
+    attr_reader :closed
+    def tools
       raise start_error if start_error
-
-      @alive = true
+      tool_list
     end
-
-    def stop = @alive = false
-    def tools = tool_list
-    def tool(name) = tool_list.find { |t| t.name == name }
+    def close = @closed = true
   end
 
   let(:mcp_store) { Insika::McpStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new)) }
@@ -76,6 +73,14 @@ RSpec.describe Insika::McpToolRegistry do
       expect(registry.entries).to eq([])
     end
 
+    it "does not trust a string-valued read-only annotation" do
+      seed
+      mcp_store.set_tools_cache("fs", [{ "name" => "write_file", "inputSchema" => {},
+                                         "annotations" => { "readOnlyHint" => "true" } }])
+      registry = described_class.new(mcp_store: mcp_store)
+      expect(registry.entries.first.metadata[:side_effect]).to be(true)
+    end
+
     it "building an instance from an entry never touches the client (lazy)" do
       seed
       mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }])
@@ -94,7 +99,8 @@ RSpec.describe Insika::McpToolRegistry do
 
       discovered = registry.refresh("fs")
 
-      expect(discovered).to eq([{ "name" => "list_files", "description" => "Lists files", "inputSchema" => { "type" => "object" } }])
+      expect(discovered).to eq([{ "name" => "list_files", "description" => "Lists files", "inputSchema" => { "type" => "object" },
+                                 "annotations" => { "readOnlyHint" => false } }])
       expect(mcp_store.get_raw("fs")["tools_cache"]).to eq(discovered)
     end
 
@@ -109,12 +115,13 @@ RSpec.describe Insika::McpToolRegistry do
       expect { registry.refresh("fs") }.to raise_error(Insika::ValidationError, /disabled/)
     end
 
-    it "rebuilds the client every call, even one that's still alive? — an edited command/env " \
+    it "rebuilds and closes the previous client on every refresh — an edited command/env " \
        "must take effect without a process restart (grafana-stg gotcha)" do
       seed
       old_tool = FakeRegistryTool.new("old_tool", "d", {})
       new_tool = FakeRegistryTool.new("new_tool", "d", {})
-      clients = [FakeRegistryClient.new([old_tool]), FakeRegistryClient.new([new_tool])]
+      old_client = FakeRegistryClient.new([old_tool])
+      clients = [old_client, FakeRegistryClient.new([new_tool])]
       registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { clients.shift })
 
       first = registry.refresh("fs")
@@ -122,6 +129,7 @@ RSpec.describe Insika::McpToolRegistry do
 
       expect(first.map { |t| t["name"] }).to eq(["old_tool"])
       expect(second.map { |t| t["name"] }).to eq(["new_tool"])
+      expect(old_client.closed).to be(true)
     end
   end
 
@@ -134,7 +142,7 @@ RSpec.describe Insika::McpToolRegistry do
       registry.refresh("fs")
 
       instance = registry.entries.first.factory.call
-      expect(instance.call({ "path" => "/tmp" })).to eq(echoed: { path: "/tmp" })
+      expect(instance.call(path: "/tmp")).to eq(echoed: { path: "/tmp" })
     end
 
     it "a client that fails to start returns {error:}, never raises (turn survives)" do
@@ -144,8 +152,8 @@ RSpec.describe Insika::McpToolRegistry do
       registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { client })
 
       instance = registry.entries.first.factory.call
-      expect { instance.call({}) }.not_to raise_error
-      expect(instance.call({})).to eq(error: "MCP instance 'fs' tool 'list_files' failed: connection refused")
+      expect { instance.call }.not_to raise_error
+      expect(instance.call).to eq(error: "MCP instance 'fs' tool 'list_files' failed: connection refused")
     end
 
     it "a tool that raises during execute returns {error:}, never raises" do
@@ -156,7 +164,7 @@ RSpec.describe Insika::McpToolRegistry do
       registry.refresh("fs")
 
       instance = registry.entries.first.factory.call
-      expect(instance.call({})).to eq(error: "MCP instance 'fs' tool 'list_files' failed: connection reset")
+      expect(instance.call).to eq(error: "MCP instance 'fs' tool 'list_files' failed: connection reset")
     end
 
     it "the client is memoized: one factory call serves every tool call for that instance" do
@@ -170,7 +178,7 @@ RSpec.describe Insika::McpToolRegistry do
       registry = described_class.new(mcp_store: mcp_store, client_factory: client_factory)
       registry.refresh("fs")
       instance = registry.entries.first.factory.call
-      3.times { instance.call({}) }
+      3.times { instance.call }
 
       expect(calls).to eq(1)
     end

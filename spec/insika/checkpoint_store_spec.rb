@@ -58,6 +58,87 @@ RSpec.describe Insika::CheckpointStore do
     end
   end
 
+  describe "#save_continuation" do
+    let(:continuation) do
+      { "messages" => [{ "role" => "assistant", "content" => "Checking" }],
+        "metadata" => { "tool_call_id" => "call_pending" } }
+    end
+
+    it "defaults to nil for existing constructors and old records" do
+      expect(checkpoint.continuation).to be_nil
+      record = checkpoints.save(checkpoint).to_h.transform_keys(&:to_s)
+      record.delete("continuation")
+      backend.set("checkpoints", "checkpoint:t:turn:1", record)
+
+      expect(checkpoints.latest("t").continuation).to be_nil
+    end
+
+    it "updates only continuation and preserves the current turn's spill key" do
+      original = checkpoints.save(checkpoint(side_effects: ["call_completed"]))
+      checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_spill")
+
+      saved = checkpoints.save_continuation("t", turn: 1, continuation: continuation)
+
+      expect(saved.to_h.except(:continuation)).to eq(original.to_h.except(:continuation))
+      expect(saved.continuation).to eq(continuation)
+      expect(checkpoints.latest("t")).to eq(saved)
+      expect(backend.get("checkpoints", "sideeffects:t:turn:1")).to eq(["call_spill"])
+    end
+
+    it "rejects absent and stale turns without changing checkpoints" do
+      checkpoints.save(checkpoint(turn: 1))
+      latest = checkpoints.save(checkpoint(turn: 2))
+
+      [["missing", 1], ["t", 1], ["t", 3]].each do |task_id, turn|
+        expect { checkpoints.save_continuation(task_id, turn: turn, continuation: continuation) }
+          .to raise_error(ArgumentError)
+      end
+      expect(checkpoints.latest("t")).to eq(latest)
+      expect(checkpoints.find("t", turn: 1).continuation).to be_nil
+      expect(checkpoints.latest("missing")).to be_nil
+    end
+
+    it "rejects a non-object continuation" do
+      original = checkpoints.save(checkpoint)
+      expect { checkpoints.save_continuation("t", turn: 1, continuation: []) }
+        .to raise_error(ArgumentError)
+      expect(checkpoints.latest("t")).to eq(original)
+    end
+
+    it "rolls back a failure after the update and preserves spill keys" do
+      original = checkpoints.save(checkpoint)
+      checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_spill")
+      allow(backend).to receive(:set).and_wrap_original do |method, *args|
+        method.call(*args)
+        raise Insika::StoreError, "simulated failure after write"
+      end
+
+      expect { checkpoints.save_continuation("t", turn: 1, continuation: continuation) }
+        .to raise_error(Insika::StoreError, "simulated failure after write")
+      expect(checkpoints.latest("t")).to eq(original)
+      expect(backend.get("checkpoints", "sideeffects:t:turn:1")).to eq(["call_spill"])
+    end
+
+    it "survives a SQLite close and reopen with JSON string keys" do
+      require "tmpdir"
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "checkpoints.db")
+        sqlite = Insika::Stores::SQLite.new(path: path)
+        store = described_class.new(store: sqlite)
+        original = store.save(checkpoint)
+        store.save_continuation("t", turn: 1, continuation: { messages: [{ role: :assistant, content: "Checking" }] })
+        sqlite.close
+        sqlite = Insika::Stores::SQLite.new(path: path)
+        found = described_class.new(store: sqlite).latest("t")
+
+        expect(found.to_h.except(:continuation)).to eq(original.to_h.except(:continuation))
+        expect(found.continuation).to eq("messages" => [{ "role" => "assistant", "content" => "Checking" }])
+      ensure
+        sqlite&.close
+      end
+    end
+  end
+
   describe "#latest" do
     it "returns the highest turn (sequential)" do
       [1, 2, 3].each { |n| checkpoints.save(checkpoint(turn: n)) }
@@ -85,6 +166,56 @@ RSpec.describe Insika::CheckpointStore do
   end
 
   describe "side-effects" do
+    it "records halt metadata with the side effect and preserves the checkpoint" do
+      checkpoints.save(checkpoint(side_effects: ["call_completed"]))
+      original = checkpoints.save_continuation("t", turn: 1, continuation: {
+        "messages" => [{ "role" => "assistant", "content" => "Checking" }],
+        "halts" => { "call_previous" => { "content" => "Previous" } }
+      })
+
+      2.times do
+        checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_halt", halt: { content: "Done" })
+      end
+
+      found = checkpoints.latest("t")
+      expect(found.to_h.except(:continuation)).to eq(original.to_h.except(:continuation))
+      expect(found.continuation).to eq(original.continuation.merge("halts" => {
+        "call_previous" => { "content" => "Previous" }, "call_halt" => { "content" => "Done" }
+      }))
+      expect(backend.get("checkpoints", "sideeffects:t:turn:1")).to eq(["call_halt"])
+    end
+
+    it "rejects halt metadata without a matching checkpoint continuation" do
+      checkpoints.save(checkpoint)
+
+      [1, 2].each do |turn|
+        expect { checkpoints.record_side_effect("t", turn: turn, tool_call_id: "call_halt", halt: { "content" => "Done" }) }
+          .to raise_error(ArgumentError)
+        expect(checkpoints.side_effects("t", turn: turn)).to eq([])
+      end
+    end
+
+    it "rejects non-object halt metadata" do
+      expect { checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_halt", halt: false) }
+        .to raise_error(ArgumentError)
+      expect(checkpoints.side_effects("t", turn: 1)).to eq([])
+    end
+
+    it "rolls back both the halt and spill ID when the checkpoint write fails" do
+      checkpoints.save(checkpoint)
+      original = checkpoints.save_continuation("t", turn: 1, continuation: { "messages" => [] })
+      checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_previous")
+      allow(backend).to receive(:set).and_wrap_original do |method, *args|
+        method.call(*args)
+        raise Insika::StoreError, "simulated halt write failure" if args[1] == "checkpoint:t:turn:1"
+      end
+
+      expect { checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_halt", halt: { "content" => "Done" }) }
+        .to raise_error(Insika::StoreError, "simulated halt write failure")
+      expect(checkpoints.latest("t")).to eq(original)
+      expect(checkpoints.side_effects("t", turn: 1)).to eq(["call_previous"])
+    end
+
     it "record_side_effect is idempotent" do
       checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_a")
       checkpoints.record_side_effect("t", turn: 1, tool_call_id: "call_a")

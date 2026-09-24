@@ -32,17 +32,17 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       response: { extract: "json_path", path: "localidade" } }
   end
 
-  it "name/description/parameters per instance; params_schema is derived" do
+  it "name/description/parameters per instance; parameters_schema is derived" do
     t = tool(cep_def, result: { status: 200, body: "{}" })
     expect(t.name).to eq("cep")
     expect(t.description).to eq("Consulta CEP")
-    expect(t.parameters.keys).to eq([:cep])
-    expect(t.params_schema["properties"]).to have_key("cep")
-    expect(t.params_schema["required"]).to include("cep")
+    expect(t.parameters_schema["properties"].keys).to eq(["cep"])
+    expect(t.parameters_schema["properties"]).to have_key("cep")
+    expect(t.parameters_schema["required"]).to include("cep")
   end
 
   # — PROOF: a NESTED parameter (search_products) is exposed to the
-  # model via params_schema (what the providers serialize) AND interpolated into the body.
+  # model via parameters_schema (what the providers serialize) AND interpolated into the body.
   describe "nested param (JSON Schema)" do
     let(:search_def) do
       {
@@ -70,9 +70,9 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       }
     end
 
-    it "exposes the nested schema to the model via params_schema" do
+    it "exposes the nested schema to the model via parameters_schema" do
       t = tool(search_def, result: { status: 200, body: "ok" })
-      schema = t.params_schema
+      schema = t.parameters_schema
       items = schema.dig("properties", "query_filter_pairs", "items")
       expect(items["type"]).to eq("object")
       expect(items["properties"]).to have_key("query")
@@ -311,26 +311,26 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     it "returns Tool::Halt when the status matches (RubyLLM ends its loop)" do
       body = '{"tool_result":{"status":"SUBSCRIBED","llm_instruction":"nada a dizer"}}'
       result = tool(subscribe_def, result: { status: 200, body: body }).execute(id: 6)
-      expect(result).to be_a(RubyLLM::Tool::Halt)
+      expect(result).to be_a(Insika::ToolDefinition::Halt)
       expect(result.content).to eq(body) # the payload still reaches the transcript
     end
 
     it "does NOT halt on another status — the model has to explain the failure" do
       body = '{"tool_result":{"status":"SUBSCRIPTION_FAILED","llm_instruction":"já inscrito"}}'
       result = tool(subscribe_def, result: { status: 200, body: body }).execute(id: 6)
-      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+      expect(result).not_to be_a(Insika::ToolDefinition::Halt)
       expect(result).to eq(body)
     end
 
     it "does NOT halt on a non-2xx that happens to carry the value (failure reaches the model)" do
       body = '{"tool_result":{"status":"SUBSCRIBED"}}'
       result = tool(subscribe_def, result: { status: 500, body: body }).execute(id: 6)
-      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+      expect(result).not_to be_a(Insika::ToolDefinition::Halt)
     end
 
     it "does NOT halt on a non-JSON body — never end a turn on a guess" do
       result = tool(subscribe_def, result: { status: 200, body: "SUBSCRIBED" }).execute(id: 6)
-      expect(result).not_to be_a(RubyLLM::Tool::Halt)
+      expect(result).not_to be_a(Insika::ToolDefinition::Halt)
     end
 
     it "without halt_when nothing changes (the default is the model speaking)" do

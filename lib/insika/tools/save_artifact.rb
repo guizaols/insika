@@ -18,10 +18,10 @@ module Insika
       description "Save an HTML (or markdown / SVG) page — a report, a digest, " \
                   "a summary — and get back a URL to share. Use when the answer " \
                   "is a document the channel message cannot carry."
-      param :title, desc: "Short human-readable title (<= 200 chars)"
-      param :content, desc: "The page content: HTML with inline SVG for charts, " \
+      parameter :title, description: "Short human-readable title (<= 200 chars)"
+      parameter :content, description: "The page content: HTML with inline SVG for charts, " \
                             "markdown, or SVG. No scripts, no external resources."
-      param :mime, desc: "text/html (default), text/markdown, or image/svg+xml",
+      parameter :mime, description: "text/html (default), text/markdown, or image/svg+xml",
                    required: false
 
       def name = "save_artifact"

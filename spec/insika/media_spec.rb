@@ -189,14 +189,107 @@ RSpec.describe Insika::Media do
       expect(seams.keys).to eq(%i[image tts])
     end
 
+    describe ".synthesize_speech" do
+      let(:context) do
+        RubyLLM.context do |config|
+          config.openai_api_key = "tenant-key"
+          config.openai_api_base = "https://speech.example.test/v1"
+        end
+      end
+      let(:http) { double("http") }
+      let(:response) { Net::HTTPOK.new("1.1", "200", "OK") }
+
+      before do
+        require "ruby_llm"
+        require "net/http"
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+        allow(http).to receive(:request) do |_request, &block|
+          raise "speech response was buffered before its size check" unless block
+
+          block.call(response)
+          response
+        end
+      end
+
+      it "aborts the response while reading at the byte limit" do
+        stub_const("Insika::Media::Output::MAX_EMBEDDED_BYTES", 4)
+        allow(response).to receive(:read_body) do |&block|
+          block.call("1234")
+          block.call("5")
+          raise "read continued after the byte limit"
+        end
+
+        expect { described_class.synthesize_speech("hello", config: {}, context: context) }
+          .to raise_error(Insika::MediaError, /synthesized speech too large/)
+      end
+
+      it "keeps credentials and endpoints isolated while preserving requested audio format" do
+        other_context = RubyLLM.context do |config|
+          config.openai_api_key = "other-key"
+          config.openai_api_base = "https://other.example.test/v1"
+        end
+        requests = []
+        allow(http).to receive(:request) do |request, &block|
+          requests << request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body).and_yield("\x00\xFF".b)
+
+        [context, other_context].each do |ctx|
+          part, usage = described_class.synthesize_speech("hello", context: ctx,
+            config: { "model" => "custom-tts", "voice" => "nova", "format" => "wav" })
+          expect(part).to eq("type" => "audio", "mime_type" => "audio/wav",
+                            "base64" => "AP8=", "model" => "custom-tts")
+          expect(usage).to eq({})
+        end
+
+        expect(requests.map { |request| request["Authorization"] })
+          .to eq(["Bearer tenant-key", "Bearer other-key"])
+        expect(requests.map { |request| request.uri.to_s })
+          .to eq(["https://speech.example.test/v1/audio/speech", "https://other.example.test/v1/audio/speech"])
+        expect(JSON.parse(requests.first.body)).to eq("model" => "custom-tts", "voice" => "nova",
+                                                    "input" => "hello", "response_format" => "wav")
+      end
+
+      it "accepts exactly the byte limit with the default speech settings" do
+        stub_const("Insika::Media::Output::MAX_EMBEDDED_BYTES", 4)
+        allow(response).to receive(:read_body).and_yield("1234")
+
+        part, usage = described_class.synthesize_speech("hello", config: {}, context: context)
+
+        expect(part).to eq("type" => "audio", "mime_type" => "audio/mpeg",
+                          "base64" => "MTIzNA==", "model" => "tts-1")
+        expect(usage).to eq({})
+        expect(http).to have_received(:request) do |request|
+          expect(JSON.parse(request.body)).to include("voice" => "alloy", "response_format" => "mp3")
+        end
+      end
+
+      it "projects HTTP errors without reading or exposing their response body" do
+        error = Net::HTTPUnauthorized.new("1.1", "401", "Unauthorized")
+        allow(http).to receive(:request).and_yield(error)
+        expect(error).not_to receive(:read_body)
+
+        expect { described_class.synthesize_speech("hello", config: {}, context: context) }
+          .to raise_error(Insika::MediaError, "TTS HTTP 401")
+      end
+
+      it "propagates cancellation without consuming the remaining response" do
+        cancellation = Class.new(Exception)
+        allow(response).to receive(:read_body) do |&block|
+          block.call("1234")
+          raise cancellation, "cancelled"
+        end
+
+        expect { described_class.synthesize_speech("hello", config: {}, context: context) }
+          .to raise_error(cancellation, "cancelled")
+      end
+    end
+
     describe ".generate_image (text-to-image + editing)" do
       def fake_image
-        img = Object.new
-        def img.data = "QUJD"
-        def img.mime_type = "image/png"
-        def img.model_id = "gpt-image-1"
-        def img.usage = { input_tokens: 5, output_tokens: 3 }
-        img
+        RubyLLM::Image.new(data: "QUJD", mime_type: "image/png", model: "gpt-image-1",
+                           usage: { "input_tokens" => 5, "output_tokens" => 3 })
       end
 
       # A tiny paint double capturing the kwargs — the provider boundary
@@ -215,7 +308,7 @@ RSpec.describe Insika::Media do
         part, usage = described_class.generate_image("a red sofa", config: {}, context: context)
 
         expect(context.calls.last).to include(with: nil, mask: nil, size: "1024x1024")
-        expect(part).to include("type" => "image", "base64" => "QUJD")
+        expect(part).to include("type" => "image", "base64" => "QUJD", "model" => "gpt-image-1")
         expect(usage).to eq(input_tokens: 5, output_tokens: 3)
       end
 

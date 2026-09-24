@@ -15,7 +15,7 @@ RSpec.describe Insika::ChatBuilder do
   TaskStub = Struct.new(:id, :session_id)
   ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching, :skills_eager, :id)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
-                     :current_tool_call, :current_tool_name, keyword_init: true)
+                     :current_tool_call, :current_tool_name, :approval_continuation, keyword_init: true)
 
   let(:inert) { Object.new }
   let(:skill_catalog) { instance_double("Insika::SkillCatalog") }
@@ -56,16 +56,20 @@ RSpec.describe Insika::ChatBuilder do
       before { require "ruby_llm" }
 
       def anthropic_chat
-        FakeChat.new.tap { |c| c.model = Struct.new(:provider).new("anthropic") }
+        RubyLLM.context { |config| config.anthropic_api_key = "offline" }
+               .chat(model: "claude-test", provider: :anthropic, assume_model_exists: true)
+      end
+
+      def cache_blocks(chat)
+        RubyLLM::Protocols::Anthropic::Chat.build_system_content(chat.messages.select { |m| m.role == :system })
       end
 
       it "sets ONE system cache breakpoint when caching is on, provider is Anthropic and the system has no split" do
         c = anthropic_chat
         builder.configure_chat(c, state(system: "SOUL", prompt_caching: true))
-        raw = c.instructions
-        expect(raw).to be_a(RubyLLM::Content::Raw)
-        expect(raw.value.size).to eq(1)
-        block = raw.value.first
+        blocks = cache_blocks(c)
+        expect(blocks.size).to eq(1)
+        block = blocks.first
         expect(block[:text]).to eq("SOUL")
         expect(block[:cache_control]).to eq(type: "ephemeral")
       end
@@ -84,7 +88,7 @@ RSpec.describe Insika::ChatBuilder do
       it "emits TWO blocks with a volatile layer: the breakpoint on the identity text only" do
         c = anthropic_chat
         builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: true))
-        blocks = c.instructions.value
+        blocks = cache_blocks(c)
         expect(blocks.size).to eq(2)
         expect(blocks[0]).to eq(type: "text", text: "SOUL", cache_control: { type: "ephemeral" })
         expect(blocks[1]).to eq(type: "text", text: "memory: ana")
@@ -93,14 +97,14 @@ RSpec.describe Insika::ChatBuilder do
       it "an empty volatile layer emits one block, byte-identical to the no-split shape" do
         c = anthropic_chat
         builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: ""), prompt_caching: true))
-        expect(c.instructions.value).to eq([{ type: "text", text: "SOUL", cache_control: { type: "ephemeral" } }])
+        expect(cache_blocks(c)).to eq([{ type: "text", text: "SOUL", cache_control: { type: "ephemeral" } }])
       end
 
       it "a hook that rewrote `system` alone wins: one block over the new text, no stale layers" do
         c = anthropic_chat
         pkg = package(identity: "SOUL", volatile: "memory: ana").with(system: "REPLACED")
         builder.configure_chat(c, state_with(pkg, prompt_caching: true))
-        expect(c.instructions.value).to eq([{ type: "text", text: "REPLACED", cache_control: { type: "ephemeral" } }])
+        expect(cache_blocks(c)).to eq([{ type: "text", text: "REPLACED", cache_control: { type: "ephemeral" } }])
       end
 
       it "a split package on a NON-Anthropic provider stays a plain joined string" do
@@ -118,7 +122,7 @@ RSpec.describe Insika::ChatBuilder do
       it "uses a plain string when caching is off, even on Anthropic (parity default)" do
         c = anthropic_chat
         builder.configure_chat(c, state(system: "SOUL", prompt_caching: nil))
-        expect(c.instructions).to eq("SOUL")
+        expect(cache_blocks(c)).to eq([{ type: "text", text: "SOUL" }])
       end
 
       it "stays off (plain string) when there is no resolved model" do
