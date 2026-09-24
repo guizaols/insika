@@ -92,7 +92,7 @@ module Studio
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     memory_audit_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
-                    system_file_store: nil, tool_trace_store: nil, llm_trace_store: nil, context_trace_store: nil,
+                    system_file_store: nil, tool_trace_store: nil, llm_trace_store: nil, model_metrics_store: nil, context_trace_store: nil,
                     cache_series_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil,
@@ -122,7 +122,7 @@ module Studio
           mcp_store: mcp_store, system_file_store: system_file_store,
           # per-session tool-call trace (debug): args + result + status per
           # turn, rendered in the session viewer.
-          tool_trace_store: tool_trace_store, llm_trace_store: llm_trace_store,
+          tool_trace_store: tool_trace_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store,
           # per-session context breakdown: tokens by category +
           # budget per turn, on the same viewer. Counts only, no content.
           context_trace_store: context_trace_store,

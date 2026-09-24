@@ -202,6 +202,9 @@ module Insika
     # be deleted under its own fiber).
     def delete(id)
       @store.transaction do
+        @store.list(ModelMetricsStore::SCOPE, ModelMetricsStore.task_prefix(id)).each do |key|
+          @store.delete(ModelMetricsStore::SCOPE, key)
+        end
         @store.delete(LLMTraceStore::SCOPE, id.to_s)
         @store.delete(SCOPE, key_for(id))
       end
