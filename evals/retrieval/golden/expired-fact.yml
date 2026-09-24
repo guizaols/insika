@@ -1,0 +1,12 @@
+id: expired-fact
+agent: retrieval-eval
+tenant: acme
+state:
+  memory:
+    facts:
+      retired: cedar arrives Monday
+turns:
+  - user: cedar delivery
+expect:
+  reply_includes: ["unknown"]
+  reply_omits: ["Monday"]

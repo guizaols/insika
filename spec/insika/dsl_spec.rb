@@ -178,6 +178,17 @@ RSpec.describe Insika::DSL do
   end
 
   describe "PARITY — DSL profile == hand-written equivalent pack" do
+    it "generates the same memory retrieval profile as a hand-written pack" do
+      settings = { top_k: 1, rerank: { provider: "cohere", model: "rerank-v3.5",
+                                     candidate_limit: 2, timeout_seconds: 2 } }
+      dsl = Insika.agent("retrieval") { memory true; memory_retrieval settings }
+      hand = Insika::Pack.from_h(config: { id: "retrieval", memory: true,
+                                         memory_retrieval: settings,
+                                         policies: %i[tool_allowlist skill_allowlist] })
+      expect(import_and_read(dsl.to_pack)).to eq(import_and_read(hand))
+      expect(import_and_read(dsl.to_pack).memory_retrieval["top_k"]).to eq(1)
+    end
+
     let(:dsl_agent) do
       Insika.agent("bia") do
         model "deepseek-chat"

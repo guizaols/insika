@@ -81,6 +81,20 @@ module Insika
     # smoke wiring) registers the profiles.
     PROFILES = {}.freeze
 
+    # One lazy, graph-owned LLM context. The base root still loads without
+    # RubyLLM; the first model operation captures its config for this graph.
+    LLM_CONTEXT = Module.new do
+      def self.context
+        @context ||= begin
+          require "ruby_llm"
+          RubyLLM::Context.new(RubyLLM.config.dup)
+        end
+      end
+
+      def self.method_missing(name, *args, **kwargs, &block) = context.public_send(name, *args, **kwargs, &block)
+      def self.respond_to_missing?(name, include_private = false) = context.respond_to?(name, include_private)
+    end
+
     CONTEXT_PROVIDERS = [
       Insika::Context::Providers::Request.new,
       Insika::Context::Providers::Prompt.new(base: "", catalog: PROMPT_CATALOG),
@@ -93,10 +107,10 @@ module Insika
       # Inert for agents without tools_deferred (returns []).
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       # Cross-session memory: read path. Inert for agents without `memory`.
-      Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      Insika::Context::Providers::Memory.new(store: MEMORY_STORE, llm: LLM_CONTEXT),
       # Learned knowledge: read path. Inert for agents without
       # `knowledge.retrieve`.
-      Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store),
+      Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store, llm: LLM_CONTEXT),
       # Session briefing: read path. Inert for agents without
       # briefing_fields.
       Insika::Context::Providers::PendingConfirmation.new(pending_action_store: PENDING_ACTION_STORE),
@@ -109,7 +123,7 @@ module Insika
       tool_registry: REGISTRY, tool_catalog: TOOL_CATALOG,
       skill_catalog: CATALOG, prompt_catalog: PROMPT_CATALOG,
       guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS,
-      edge_limiter: EDGE_LIMITER
+      edge_limiter: EDGE_LIMITER, executor_extra: { llm: LLM_CONTEXT }
     )
 
     CONTEXT_BUILDER = GRAPH.context_builder

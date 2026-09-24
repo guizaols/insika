@@ -46,6 +46,7 @@ module Deploy
     c.request_timeout = 120
     c.max_retries = 2
   end
+  LLM_CONTEXT = RubyLLM::Context.new(RubyLLM.config.dup)
 
   MODEL = ENV.fetch("DEEPSEEK_MODEL", "deepseek-v4-flash") # the old "deepseek-chat" alias is retired
   ROOT  = File.expand_path("..", __dir__)
@@ -132,13 +133,12 @@ module Deploy
     TOOL_CATALOG  = Insika::ToolCatalog.new(tool_registry: TOOL_REGISTRY)
 
     # General settings + LLM providers authorable at runtime: durable in the same
-    # backend. The LLMConfigurator re-applies the providers to RubyLLM without a
-    # restart (per-provider key/base). Seed: the deepseek provider from boot already
-    # lives in the global config (RubyLLM.configure above) — the store is the editable
-    # source from here on.
+    # backend. Provider edits update this deployment's LLM context without a restart.
     SETTINGS_STORE    = Insika::SettingsStore.new(config_store: CONFIG_STORE)
     LLM_PROVIDER_STORE = Insika::LLMProviderStore.new(config_store: CONFIG_STORE)
-    LLM_CONFIGURATOR  = Insika::LLMConfigurator.new(provider_store: LLM_PROVIDER_STORE)
+    LLM_CONFIGURATOR  = Insika::LLMConfigurator.new(
+      provider_store: LLM_PROVIDER_STORE, configure: ->(&block) { block.call(LLM_CONTEXT.config) }
+    )
 
     # LLM config v2: seed the PLATFORM default so a modelless agent works out of
     # the box (Chat > Agent > platform default). Idempotent — only seeds when the
@@ -163,7 +163,7 @@ module Deploy
     # per-turn OutputFilter (stream redaction) injected into the Executor. Per-agent
     # `guardrails:` config auto-enables/disables each turn; the moderator resolves the
     # platform utility_model (SettingsStore, #18) as its fallback model.
-    GUARDRAILS = Insika::Safety::Factory.new(settings_store: SETTINGS_STORE)
+    GUARDRAILS = Insika::Safety::Factory.new(settings_store: SETTINGS_STORE, llm: LLM_CONTEXT)
 
     # Production edge: rate-limit per chat + token ceiling per
     # agent, both opt-in (Studio > Settings > Edge limits; per-agent overrides in
@@ -188,8 +188,8 @@ module Deploy
       Insika::Context::Providers::Skill.new(catalog: CATALOG),
       Insika::Context::Providers::SkillTrigger.new(catalog: CATALOG),
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
-      Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
-      Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store),
+      Insika::Context::Providers::Memory.new(store: MEMORY_STORE, llm: LLM_CONTEXT),
+      Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store, llm: LLM_CONTEXT),
       Insika::Context::Providers::PendingConfirmation.new(pending_action_store: PENDING_ACTION_STORE),
       Insika::Context::Providers::Briefing.new(session_store: SESSION_STORE),
       Insika::Context::Providers::Session.new(session_store: SESSION_STORE)
@@ -224,6 +224,7 @@ module Deploy
       guardrails: GUARDRAILS, context_providers: CONTEXT_PROVIDERS,
       edge_limiter: EDGE_LIMITER,
       executor_extra: {
+        llm: LLM_CONTEXT,
         settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks
         tool_trace_store: TOOL_TRACE_STORE,
         context_trace_store: CONTEXT_TRACE_STORE,
@@ -298,7 +299,7 @@ module Deploy
     # needs `GOLDEN_STORE`/`SETTINGS_STORE`, and neither lives on the spine —
     # the minimal wiring builds without either) — registered here, the same
     # call `DSL::Runtime` makes for its own graph.
-    Insika::Wiring::Graph.register_persona_eval_tool(GRAPH, golden_store: GOLDEN_STORE, settings_store: SETTINGS_STORE)
+    Insika::Wiring::Graph.register_persona_eval_tool(GRAPH, golden_store: GOLDEN_STORE, settings_store: SETTINGS_STORE, llm: LLM_CONTEXT)
 
     # Refinement: a candidate is scored by RUNNING it —
     # clone the agent, apply the edits to the clone, replay the golden set over the
@@ -341,7 +342,7 @@ module Deploy
           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
-      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) }
     )
     # Who WRITES the candidates. Per agent (`refinement.proposers`, a
     # PANEL — or `refinement.proposer`, one), falling back to the platform
@@ -352,7 +353,7 @@ module Deploy
     # spend money on.
     PROPOSER_FACTORY = lambda { |config|
       Insika::Refinement::ProposerFactory.panel(
-        config, utility_model: (SETTINGS_STORE.get || {})["utility_model"]
+        config, utility_model: (SETTINGS_STORE.get || {})["utility_model"], llm: LLM_CONTEXT
       )
     }
     # `mode: auto_apply` reuses this handler rather than writing files itself, so
@@ -407,7 +408,7 @@ module Deploy
           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
-      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) }
     )
     # The second ruler: the store's funnel metric against the frozen baseline.
     # nil criterion -> the gate refuses with :no_criterion.
@@ -419,7 +420,10 @@ module Deploy
       session_store: SESSION_STORE, task_store: TASK_STORE,
       skill_store: SKILL_STORE, tool_trace_store: TOOL_TRACE_STORE,
       settings_store: SETTINGS_STORE, negative_list: HARVEST_NEGATIVE,
-      miner_factory: nil, # resolves harvest.miner.model -> the platform utility_model
+      miner_factory: ->(config) {
+        Insika::Harvest::MinerFactory.build(config,
+          utility_model: (SETTINGS_STORE.get || {})["utility_model"], llm: LLM_CONTEXT)
+      },
       event_stream: EVENT_STREAM
     )
     # the automated loop rides the deployment's own runner (the negative
@@ -457,7 +461,7 @@ module Deploy
       BUS.register(:judge_shadow_pairs,
                    Insika::Commands::JudgeShadowPairs.new(
                      shadow_pairs: SPINE.shadow_pair_store, settings_store: SETTINGS_STORE,
-                     criterion: PARITY_CRITERION, event_stream: EVENT_STREAM
+                     criterion: PARITY_CRITERION, event_stream: EVENT_STREAM, llm: LLM_CONTEXT
                    ))
     end
 

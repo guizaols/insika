@@ -35,11 +35,20 @@ module Insika
       self
     end
 
-    def call(state, &terminal)
-      chain = @middlewares.reverse.reduce(terminal) do |nxt, mw|
+    # Paid retrieval prepares context inside the leading edge limiter. Other
+    # middleware still receives the completed context and policy resolution.
+    def call(state, prepare: nil, &terminal)
+      edge = @middlewares.first if prepare && @middlewares.first.is_a?(EdgeLimiter)
+      links = edge ? @middlewares.drop(1) : @middlewares
+      chain = links.reverse.reduce(terminal) do |nxt, mw|
         proc { |s| mw.call(s, &nxt) }
       end
-      chain.call(state)
+      if edge
+        edge.call(state, prepare: prepare, &chain)
+      else
+        prepare&.call(state)
+        chain.call(state)
+      end
     end
   end
 end

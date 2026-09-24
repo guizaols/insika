@@ -1,0 +1,10 @@
+id: outside-note-window
+agent: retrieval-eval
+tenant: acme
+state:
+  memory:
+    notes: ["oldest pickup Tuesday"]
+turns:
+  - user: pickup
+expect:
+  reply_includes: ["pickup Tuesday"]

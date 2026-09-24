@@ -1,0 +1,7 @@
+id: empty-results
+agent: retrieval-eval
+tenant: acme
+turns:
+  - user: cedar delivery
+expect:
+  reply_includes: ["unknown"]

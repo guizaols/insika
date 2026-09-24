@@ -108,6 +108,46 @@ RSpec.describe Insika::Context::Providers::Knowledge do
     expect(frags.first.labels.size).to eq(2)
   end
 
+  it "does not call the reranker when the profile omitted it" do
+    seed("cep-13-campinas", description: "d", body: "campinas")
+    llm = double
+    expect(llm).not_to receive(:rerank)
+    fragment = described_class.new(store: store, llm: llm).call(request(knowledge: { "retrieve" => true })).first
+    expect(fragment.labels.map { |label| label["name"] }).to eq(["cep-13-campinas"])
+  end
+
+  it "reranks only scoped candidates before one-hop expansion" do
+    seed("lexical-first", description: "campinas campinas", body: "campinas")
+    seed("lexical-second", description: "campinas", body: "campinas")
+    seed("best-answer", description: "campinas", body: "the answer [[linked-answer]]")
+    seed("linked-answer", description: "related", body: "detail")
+    store.write("acme", "other-tenant", Insika::Knowledge::Concept.render(
+      name: "other-tenant", description: "campinas", type: "fact", body: "tenant secret",
+      provenance: "observed", confidence: 0.6, sources: [], occurrences: 1,
+      created_at: Time.now.utc.iso8601, updated_at: Time.now.utc.iso8601), tenant: "other")
+    llm = double
+    allow(llm).to receive(:rerank) do |_query, docs, **_opts|
+      expect(docs.join).not_to include("tenant secret")
+      Struct.new(:results).new([Struct.new(:index).new(2), Struct.new(:index).new(0)])
+    end
+    config = { "retrieve" => true, "top_k" => 2, "rerank" =>
+      { "provider" => "cohere", "model" => "rerank-v3.5", "candidate_limit" => 3, "timeout_seconds" => 2 } }
+    provider = described_class.new(store: store, llm: llm)
+    fragment = Async { provider.call(request(knowledge: config, message: "campinas")) }.wait.first
+    expect(fragment.labels.map { |label| label["name"] }).to eq(%w[best-answer lexical-first linked-answer])
+    expect(fragment.content).not_to include("the answer")
+  end
+
+  it "restores lexical top-K when the reranker returns too few indexes" do
+    3.times { |i| seed("campinas-#{i}", description: "campinas", body: "campinas") }
+    config = { "retrieve" => true, "top_k" => 2, "rerank" =>
+      { "provider" => "cohere", "model" => "rerank-v3.5", "candidate_limit" => 3, "timeout_seconds" => 2 } }
+    llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(2)]))
+    fragment = Async { described_class.new(store: store, llm: llm).call(
+      request(knowledge: config, message: "campinas")) }.wait.first
+    expect(fragment.labels.map { |label| label["name"] }).to eq(%w[campinas-0 campinas-1])
+  end
+
   it "scopes by tenant" do
     store.write("acme", "loja-a-only",
                 Insika::Knowledge::Concept.render(

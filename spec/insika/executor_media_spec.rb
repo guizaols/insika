@@ -6,7 +6,7 @@ require "async"
 # WS9 (input half): content parts on the message become a turn — audio is
 # transcribed (text enters the message marked `source: :voice`), image parts
 # attach to the model ask. The STT seam is injected so nothing touches the
-# network; the real fetch+RubyLLM path is the default, lazy and untested here.
+# network; the default RubyLLM path uses fake audio and a provider seam below.
 RSpec.describe "Insika::Executor + media (WS9)" do
   let(:backend) { Insika::Stores::Memory.new }
   let(:session_store) { Insika::SessionStore.new(store: backend) }
@@ -16,7 +16,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
   let(:guardrails) { Insika::Safety::Factory.new }
   let(:profile) { Insika::AgentProfile.build(id: "a", model: "m") }
 
-  def build_executor(media: nil)
+  def build_executor(media: nil, llm: nil)
     Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
       middleware: Insika::MiddlewareStack.new([guardrails.input_guardrail]),
@@ -24,7 +24,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
       tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
       profiles: {}, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: event_stream,
-      content_filter_factory: guardrails.content_filter_factory, media: media
+      content_filter_factory: guardrails.content_filter_factory, media: media, llm: llm
     )
   end
 
@@ -165,6 +165,45 @@ RSpec.describe "Insika::Executor + media (WS9)" do
   end
 
   describe "#media_transcribe (STT vocabulary prompt)" do
+    [false, true].each do |delegated|
+      it "transcribes on its own current key and refuses deletion (delegated context: #{delegated})" do
+        global = RubyLLM.config.dup
+        global.openai_api_key = "spec-global"
+        global.default_transcription_model = "whisper-1"
+        context = RubyLLM::Context.new(global.dup)
+        context.config.openai_api_key = "spec-graph"
+        allow(RubyLLM).to receive(:config).and_return(global)
+        allow(Insika::Media).to receive(:fetch_binary).and_return("audio bytes")
+        keys = []
+        allow_any_instance_of(RubyLLM::Providers::OpenAI).to receive(:transcribe) do |provider, path, **|
+          expect(File.binread(path)).to eq("audio bytes")
+          keys << provider.headers.fetch("Authorization")
+          RubyLLM::Transcription.new(text: "heard", model: "whisper-1")
+        end
+        llm = context
+        if delegated
+          require_relative "../../config/wiring"
+          llm = Insika::Wiring::LLM_CONTEXT
+          allow(llm).to receive(:context).and_return(context)
+        end
+        executor = build_executor(llm: llm)
+        state = Insika::TurnState.new(task: nil, profile: profile, turn: 1, message: "")
+        configurator = Insika::LLMConfigurator.new(provider_store: nil,
+          configure: ->(&block) { block.call(context.config) })
+
+        expect(executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state)).to eq("heard")
+        configurator.apply([{ "api" => "openai", "api_key" => "spec-rotated" }])
+        expect(executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state)).to eq("heard")
+        expect(keys).to eq(["Bearer spec-graph", "Bearer spec-rotated"])
+        configurator.unapply("openai")
+        expect { executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state) }
+          .to raise_error(RubyLLM::ConfigurationError)
+        expect(keys.size).to eq(2)
+        expect(global.openai_api_key).to eq("spec-global")
+      end
+
+    end
+
     it "resolves the agent profile's stt_prompt over the deployment env default" do
       executor = build_executor
       with_prompt = Insika::AgentProfile.build(id: "a", model: "m", stt_prompt: "Ocean Drop, tênis")
@@ -174,7 +213,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
       executor.send(:media_transcribe, "https://cdn.example.com/voz.ogg", state)
 
       expect(Insika::Media).to have_received(:default_transcriber)
-        .with(stt_model: nil, stt_language: nil, stt_prompt: "Ocean Drop, tênis")
+        .with(stt_model: nil, stt_language: nil, stt_prompt: "Ocean Drop, tênis", context: nil)
     end
 
     it "falls back to INSIKA_STT_PROMPT when the profile sets none" do
@@ -190,7 +229,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
       end
 
       expect(Insika::Media).to have_received(:default_transcriber)
-        .with(stt_model: nil, stt_language: nil, stt_prompt: "deployment default")
+        .with(stt_model: nil, stt_language: nil, stt_prompt: "deployment default", context: nil)
     end
 
     it "an injected @media seam bypasses default_transcriber entirely (specs/consumers stay untouched)" do

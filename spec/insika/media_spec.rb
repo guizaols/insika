@@ -159,7 +159,7 @@ RSpec.describe Insika::Media do
       transcriber.call("https://cdn.example.com/voz.ogg")
 
       expect(calls).to eq([["https://cdn.example.com/voz.ogg",
-                            { model: "whisper-1", language: nil, prompt: "Ocean Drop, tênis" }]])
+                            { model: "whisper-1", language: nil, prompt: "Ocean Drop, tênis", context: nil }]])
     end
 
     it "fetch_and_transcribe passes prompt: to the provider only when present, via a tempfile PATH" do

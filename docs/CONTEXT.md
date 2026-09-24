@@ -146,6 +146,29 @@ conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
 
+To select a smaller memory block for each message, keep `"memory": true` and add
+`"memory_retrieval": {"top_k": 3, "rerank": {"provider": "cohere", "model": "rerank-v3.5", "candidate_limit": 20, "timeout_seconds": 2}}`
+to the agent profile or pack. The engine first reads only the current memory cell,
+ranks active facts and considers the newest `candidate_limit` notes by word overlap and recency,
+then sends at most `candidate_limit` redacted candidates to the configured reranker.
+An empty message or reranker failure keeps the usual full facts and ten recent notes.
+Older notes outside that read window remain available in the store and Studio, but
+cannot be selected for the turn.
+
+Knowledge can use the same opt-in reranker: set `knowledge.retrieve: true`,
+`knowledge.top_k: 3`, and `knowledge.rerank` to the `provider`, `model`,
+`candidate_limit`, and `timeout_seconds` object above. The Scan index first
+finds matching concepts in the agent and tenant scope. The reranker can reorder
+only those candidates; a paraphrase with no matching terms still finds nothing.
+Knowledge sends the candidate name, description, and body; memory sends the
+fact key/value or note text. The built-in PII and secret detector redacts
+recognized patterns before transmission, but it cannot recognize every secret.
+Use a provider and credentials appropriate for this external text transfer.
+Reranker failure keeps lexical knowledge matches or the usual memory block.
+The reranker adds a provider call and may add cost; missing provider usage is
+reported as unknown, not zero. Keep reranking off until an agent's own live
+evaluation shows better answers within its latency and cost budget.
+
 Facts carry **provenance metadata**: every fact record stores `origin`
 (who wrote it — `"engine"`, `"operator"`, `"legacy"` or `"distilled"`),
 `created_at` / `updated_at` timestamps, and an optional `expires_at` (ISO8601) —

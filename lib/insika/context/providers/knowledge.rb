@@ -9,8 +9,9 @@ module Insika
       # `SkillTrigger`, unlike the static `CatalogProvider` subclasses — this
       # builds its `<knowledge>` block directly in `call`, never a fixed list.
       class Knowledge < ContextProvider
-        def initialize(store:)
+        def initialize(store:, llm: nil)
           @store = store
+          @reranker = Reranker.new(llm: llm) if llm
           # One Index PER TYPE, built once and reused for every agent/turn —
           # never per call. This provider instance itself lives for the
           # process's lifetime (built once at boot, see wiring), so an
@@ -33,9 +34,25 @@ module Insika
 
           top_k = positive_int(config["top_k"]) || 5
           index = @indexes[config["index"].to_s]
+          rerank = config["rerank"]
+          candidate_limit = rerank ? rerank.fetch("candidate_limit") : top_k
           matches = index.search(request.profile.id, tenant: request.tenant,
-                                 query: request.message.to_s, top_k: top_k)
+                                 query: request.message.to_s, top_k: candidate_limit)
           return [] if matches.empty?
+
+          if rerank && @reranker
+            # Leave room inside the Builder's outer provider timeout to return
+            # lexical results when the reranker times out.
+            timeout = [rerank.fetch("timeout_seconds"),
+                       (request.profile.limits[:provider_timeout] || 5) * 0.9].min
+            documents = matches.map { |c| [c[:name], c[:description], c[:body]].join("\n") }
+            indexes = @reranker.select(query: request.message.to_s, documents: documents,
+                                       config: rerank.merge("timeout_seconds" => timeout), top_k: top_k,
+                                       emit: request.diagnostics, budget: request.profile.limits[:context_budget] || 8_000)
+            matches = indexes ? indexes.map { |i| matches[i] } : matches.first(top_k)
+          else
+            matches = matches.first(top_k)
+          end
 
           hits = matches.map { |c| [c, "top-K match"] } +
                  expand_links(matches, request, top_k).map { |c| [c, "one-hop link"] }
