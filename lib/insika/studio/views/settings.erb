@@ -9,6 +9,9 @@
      ["llm",     "LLM providers", "keys, base URL, models per provider"],
      ["demo",    "Demo data", "see every loop working at once"]
    ] %>
+<header class="page-head">
+  <h1>Settings<span class="sub">Platform defaults · agents can override supported settings</span></h1>
+</header>
 <div class="drill">
   <aside class="drill-pane drill-master">
     <div class="drill-pane-head"><div class="title"><strong>Settings</strong></div></div>
@@ -26,11 +29,11 @@
     <% if @section == "general" %>
       <div class="drill-pane-head">
         <div class="title"><strong>General</strong></div>
-        <button type="submit" form="set-general" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+        <button type="submit" form="set-general" class="btn primary" data-turbo-submits-with="Saving…">Save general settings</button>
       </div>
       <div class="drill-pane-body">
-        <p class="muted">Streaming and timeouts — saved via <code>update_settings</code> (durable, applies next turn).</p>
-        <form id="set-general" method="post" action="/studio/settings">
+        <p class="muted">Save these platform defaults to apply them on future turns.</p>
+        <form id="set-general" method="post" action="/studio/settings" data-controller="dirty-guard">
           <%== csrf_tag %>
           <label class="check">
             <input type="checkbox" name="streaming" value="1"<%== " checked" if @settings["streaming"] %>>
@@ -44,7 +47,8 @@
             <label>Memory TTL (days)<input type="text" name="memory_ttl_days" value="<%= @settings["memory_ttl_days"] %>" inputmode="numeric" placeholder="blank = off"></label>
           </div>
           <p class="muted">Memory TTL: how many days a customer memory cell lives before the daily sweep prunes it (per-fact <code>expires_at</code> overrides always win). Editing here sets the platform default for <strong>every</strong> cell; a per-tenant map authored in the settings record is replaced by this save.</p>
-          <hr>
+          <details class="newfile">
+            <summary>Conversation compaction</summary>
           <label class="check">
             <input type="checkbox" name="compaction_enabled" value="1"<%== " checked" if @settings.dig("compaction", "enabled") %>>
             in-session compaction — summarize old turns past the threshold
@@ -55,17 +59,18 @@
           </div>
           <label>compaction model <span class="muted">(blank = the platform utility_model)</span><input type="text" name="compaction_model" value="<%= @settings.dig("compaction", "model") %>" placeholder="deepseek-v4-flash"></label>
           <p class="muted">When a session's uncompacted transcript grows past <code>compact_after</code> messages, everything but the last <code>keep_last</code> is summarized by the cheap model into one <code>&lt;conversation_summary&gt;</code> fragment; the tail stays verbatim and the boundary is stable (the prompt cache holds after it). Runs post-turn, off the critical path.</p>
+          </details>
         </form>
       </div>
 
     <% elsif @section == "models" %>
       <div class="drill-pane-head">
         <div class="title"><strong>Model defaults</strong></div>
-        <button type="submit" form="set-models" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+        <button type="submit" form="set-models" class="btn primary" data-turbo-submits-with="Saving…">Save model defaults</button>
       </div>
       <div class="drill-pane-body">
         <p class="muted">The platform model layer, resolved at turn start as <strong>Chat pin › Agent model › platform default</strong>. An agent with no model of its own inherits <code>default_model</code>.</p>
-        <form id="set-models" method="post" action="/studio/settings/models">
+        <form id="set-models" method="post" action="/studio/settings/models" data-controller="dirty-guard">
           <%== csrf_tag %>
           <div class="grid-2">
             <label>default_model <span class="muted">(agents without their own model)</span><input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-v4-flash"></label>
@@ -78,25 +83,27 @@
           </label>
         </form>
 
-        <hr>
-        <p class="muted">Per-model reasoning defaults — the layer between global and agent (resolved <strong>Chat › Agent › Model › Global</strong>). One per line.</p>
-        <form id="set-model-params" method="post" action="/studio/settings/model-params">
+        <details class="newfile">
+          <summary>Reasoning overrides by model</summary>
+        <p class="muted">Saved separately from platform model defaults. Per-model reasoning defaults — the layer between global and agent (resolved <strong>Chat › Agent › Model › Global</strong>). One per line.</p>
+        <form id="set-model-params" method="post" action="/studio/settings/model-params" data-controller="dirty-guard">
           <%== csrf_tag %>
           <label>model_params <span class="muted">(one per line: <code>provider/model | off|on|low|medium|high</code>)</span>
             <textarea name="model_params" rows="4" placeholder="deepseek/deepseek-v4-flash | off"><%= model_params_text(@settings["model_params"]) %></textarea>
           </label>
           <div class="actions"><button type="submit" class="btn primary" data-turbo-submits-with="Saving…">Save per-model</button></div>
         </form>
+        </details>
       </div>
 
     <% elsif @section == "edge" %>
       <div class="drill-pane-head">
         <div class="title"><strong>Edge limits</strong></div>
-        <button type="submit" form="set-edge" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+        <button type="submit" form="set-edge" class="btn primary" data-turbo-submits-with="Saving…">Save edge limits</button>
       </div>
       <div class="drill-pane-body">
         <p class="muted">The named place where volume/cost abuse is cut, <strong>before any LLM spend</strong>. Blank/0 = off (opt-in). A breached turn completes gracefully with the safe reply below. Per-agent overrides live in each agent's config.</p>
-        <form id="set-edge" method="post" action="/studio/settings/edge">
+        <form id="set-edge" method="post" action="/studio/settings/edge" data-controller="dirty-guard">
           <%== csrf_tag %>
           <div class="grid-2">
             <label>chat_rate_limit <span class="muted">(turn attempts per chat per window)</span><input type="text" name="chat_rate_limit" value="<%= @settings.dig("edge", "chat_rate_limit") %>" inputmode="numeric" placeholder="off"></label>
@@ -111,11 +118,11 @@
     <% elsif @section == "burst" %>
       <div class="drill-pane-head">
         <div class="title"><strong>Burst policy</strong></div>
-        <button type="submit" form="set-queue" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+        <button type="submit" form="set-queue" class="btn primary" data-turbo-submits-with="Saving…">Save burst policy</button>
       </div>
       <div class="drill-pane-body">
         <p class="muted">What happens to a message that lands on a session that is <strong>already busy</strong>: <code>followup</code> waits in line (today's behavior), <code>collect</code> merges fragments that arrived before the turn started, <code>steer</code> also appends into the run in flight at a tool boundary, <code>interrupt</code> abandons it. This is the <strong>platform</strong> answer — every agent still overrides it in its own config, and a session var pins one conversation. Blank = no platform default (falls through to followup / no window / steer_max 5).</p>
-        <form id="set-queue" method="post" action="/studio/settings/queue">
+        <form id="set-queue" method="post" action="/studio/settings/queue" data-controller="dirty-guard">
           <%== csrf_tag %>
           <label>queue_mode
             <select name="queue_mode">
@@ -137,11 +144,11 @@
 <% elsif @section == "evals" %>
   <div class="drill-pane-head">
     <div class="title"><strong>Evals</strong></div>
-    <button type="submit" form="set-evals" class="btn primary" data-turbo-submits-with="Saving…">Save</button>
+    <button type="submit" form="set-evals" class="btn primary" data-turbo-submits-with="Saving…">Save eval settings</button>
   </div>
   <div class="drill-pane-body">
     <p class="muted">Who grades a <a href="/studio/evals">case</a>'s rubric. <strong>One model per line</strong> as <code>provider/model</code> — several lines make a PANEL, and two different models disagreeing is the signal worth having (sampling one model N times mostly measures its own variance). Empty = deterministic assertions only, and rubric'd cases read as <code>judge_pending</code>.</p>
-    <form id="set-evals" method="post" action="/studio/settings/evals">
+    <form id="set-evals" method="post" action="/studio/settings/evals" data-controller="dirty-guard">
       <%== csrf_tag %>
       <label>judges<textarea name="judges" rows="4" spellcheck="false" placeholder="deepseek/deepseek-v4-flash&#10;openai/gpt-5-mini"><%= Array(@settings.dig("evals", "judges")).map { |j| [j["provider"], j["model"]].compact.reject(&:empty?).join("/") }.join("\n") %></textarea></label>
       <div class="grid-2">
@@ -212,7 +219,7 @@
                 <button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button>
               </form>
             </div>
-            <form method="post" action="/studio/settings/providers">
+            <form method="post" action="/studio/settings/providers" data-controller="dirty-guard">
               <%== csrf_tag %>
               <input type="hidden" name="api" value="<%= p["api"] %>">
               <div class="grid-2">
@@ -228,7 +235,7 @@
 
         <details class="card newfile"<%== " open" if @providers.empty? %>>
           <summary>+ new provider</summary>
-          <form method="post" action="/studio/settings/providers">
+          <form method="post" action="/studio/settings/providers" data-controller="dirty-guard">
             <%== csrf_tag %>
             <div class="grid-2">
               <label>api <span class="muted">(slug, e.g. deepseek)</span><input type="text" name="api" placeholder="openai" required></label>

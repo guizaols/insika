@@ -3,10 +3,11 @@
     subscribes to /studio/events; the server-rendered numbers are its baseline).
     Charts are inline SVG (geometry via attributes, fill via stylesheet —
     CSP-safe, no inline style). %>
-<div data-controller="live-home" data-live-home-active-value="<%= @active_now %>">
+<div class="reports-page reports-home" data-controller="live-home" data-live-home-active-value="<%= @active_now %>">
   <header class="page-head">
     <div>
-      <h1>Overview<span class="sub">at a glance</span></h1>
+      <%== crumbs_for("Overview") %>
+      <h1>Overview<span class="sub">Conversations & activity</span></h1>
     </div>
     <div class="head-actions">
       <%== agent_filter_form("/studio/home", @agent) %>
@@ -33,6 +34,8 @@
       <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta }) %>
     <% end %>
   </div>
+
+  <p class="report-note">Conversation and message totals reflect this agent filter. Configuration counts include all agents. Changes compare today with yesterday.</p>
 
   <div class="home-grid">
     <section class="card home-activity">
@@ -87,7 +90,7 @@
     <section class="card home-recent">
       <div class="section-head">
         <h2>Recent conversations</h2>
-        <a class="muted" href="/studio/chats">See all</a>
+        <a class="muted" href="/studio/chats<%= "?agent=#{Rack::Utils.escape(@agent)}" if @agent %>">See all</a>
       </div>
       <% cutoff = Time.now - (5 * 60) %>
       <ul class="convo-rail" data-live-home-target="list">
@@ -100,7 +103,7 @@
               <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
                 <span class="avatar sm <%= avatar_class(s.id) %>"><%= s.id[0, 2].upcase %></span>
                 <span class="convo-main">
-                  <span class="convo-id mono"><%= s.id[0, 20] %></span>
+                  <span class="convo-id mono" title="<%= s.id %>"><%= s.id[0, 20] %></span>
                   <span class="convo-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></span>
                 </span>
                 <span class="presence<%= " present" if fresh %>" title="touched in the last 5 minutes"></span>

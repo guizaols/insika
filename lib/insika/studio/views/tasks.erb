@@ -1,13 +1,15 @@
-<header class="page-head">
+<header class="page-head operation-head">
   <div>
     <%== crumbs_for("Tasks") %>
-    <h1>Tasks<span class="sub"><%= @tasks.size %> task(s)</span></h1>
+    <h1>Tasks<span class="sub"><%= @tasks.size %> recent tasks</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/tasks", @agent) %>
     <a class="btn" href="/studio/approvals">Open approvals</a>
   </div>
 </header>
+
+<p class="muted">Open a task to review its execution history, resolve approvals or control a running turn.</p>
 
 <% if @tasks.empty? %>
   <div class="empty">No tasks yet. A task is born when an agent runs a turn.</div>
@@ -18,11 +20,11 @@
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
       <span class="filter-count mono muted" data-list-filter-target="count"></span>
     </div>
-    <div class="card">
+    <div class="card operation-table">
       <table class="grid">
         <thead>
           <tr>
-            <th>id</th><th>status</th><th>session</th><th class="num">executions</th><th class="time">updated</th>
+            <th>Task</th><th>Status</th><th>session</th><th class="num">executions</th><th class="time">updated</th>
           </tr>
         </thead>
         <tbody>
@@ -30,7 +32,7 @@
             <tr data-list-filter-target="item" data-filter-text="<%= t.id %> <%= t.status %> <%= t.session_id %>">
               <td><a href="<%= task_path(t.id) %>"><span class="mono"><%= t.id[0, 12] %></span></a></td>
               <td><span class="status <%= status_class(t.status) %>"><%= t.status %></span></td>
-              <td><% if t.session_id %><span class="mono"><%= t.session_id[0, 12] %></span><% else %><span class="muted">—</span><% end %></td>
+              <td><% if t.session_id %><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(t.session_id) %>"><%= t.session_id[0, 12] %></a><% else %><span class="muted">—</span><% end %></td>
               <td class="num"><%= Array(t.executions).size %></td>
               <td class="time"><span title="<%= t.updated_at %>"><%= time_ago(t.updated_at) %></span></td>
             </tr>

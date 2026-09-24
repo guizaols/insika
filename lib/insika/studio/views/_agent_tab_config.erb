@@ -2,7 +2,7 @@
 <!-- ── Config / model ────────────────────────────────────────────────────── -->
 <section class="section" id="config" data-tabs-target="panel">
   <% config_groups = [
-       ["model", "Model & limits", "model, provider, timeouts, ceilings, generation, fence"],
+       ["model", "Model & limits", "model, memory, generation and runtime limits"],
        ["guardrails", "Guardrails", "input/output checks, strictness, safe replies"],
        ["grounding", "Grounding", "evidence behind product claims"],
        ["funnel", "Outcome funnel", "stage vocabulary"],
@@ -41,10 +41,13 @@
         <button type="submit" form="config-form" class="btn primary" data-turbo-submits-with="Saving…">Save config</button>
       </div>
       <div class="drill-pane-body">
-        <form id="config-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/config">
+        <form id="config-form" method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/config" data-controller="dirty-guard">
           <%== csrf_tag %>
           <input type="hidden" name="cfg" value="<%= @config_group %>">
+          <p class="muted">Save config applies changes to <strong><%= @agent.id %></strong>. Changes take effect on future turns.</p>
           <div class="config-group" data-config-group="model"<%== " hidden" unless @config_group == "model" %>>
+    <fieldset class="subgroup">
+      <legend>Model &amp; memory</legend>
     <div class="grid-2">
       <label>model <span class="muted">(blank = platform <code>default_model</code>)</span>
         <input type="text" name="model" value="<%= @agent.model %>" placeholder="inherit platform default">
@@ -52,6 +55,32 @@
       <label>provider
         <input type="text" name="provider" value="<%= @agent.provider %>" placeholder="deepseek">
       </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
+      cross-session memory (the agent remembers across conversations)
+    </label>
+    </fieldset>
+
+    <fieldset class="subgroup">
+      <legend>Response generation <span class="muted">— blank = provider default</span></legend>
+      <div class="grid-3">
+        <label>temperature
+          <input type="text" name="temperature" value="<%= agent_param(@params, :temperature) %>" inputmode="decimal" placeholder="0.7">
+        </label>
+        <label>max_tokens
+          <input type="text" name="max_tokens" value="<%= agent_param(@params, :max_tokens) %>" inputmode="numeric" placeholder="4096">
+        </label>
+        <label>reasoning <span class="muted">(off/on/effort — blank = inherit model/platform)</span>
+          <%== thinking_select("thinking", agent_param(@params, :thinking), "inherit") %>
+        </label>
+      </div>
+    </fieldset>
+
+    <details class="newfile">
+      <summary>Runtime limits &amp; allowed models</summary>
+      <p class="muted">Control turn duration, tool concurrency and usage. Blank limits inherit platform defaults where indicated.</p>
+      <div class="grid-2">
       <label>turn_timeout (s)
         <input type="text" name="turn_timeout" value="<%= @agent.limits[:turn_timeout] %>" inputmode="numeric">
       </label>
@@ -67,6 +96,16 @@
       <label>agent_token_ceiling <span class="muted">(tokens/window; blank = platform, 0 = off)</span>
         <input type="text" name="agent_token_ceiling" value="<%= @agent.limits[:agent_token_ceiling] %>" inputmode="numeric" placeholder="inherit platform edge">
       </label>
+      </div>
+    <label>model fence <span class="muted">(<code>model_policy.allow</code> — one ref per line: <code>provider/model</code>, <code>provider/*</code> or <code>model</code>; blank = no fence)</span>
+      <textarea name="model_policy_allow" rows="3" placeholder="deepseek/*&#10;openai/gpt-4o-mini"><%= @model_policy_allow %></textarea>
+    </label>
+    </details>
+
+    <details class="newfile">
+      <summary>Messages received while busy</summary>
+      <p class="muted">Choose whether new messages wait, combine, steer or interrupt a running turn.</p>
+      <div class="grid-2">
       <label>queue_mode <span class="muted">(burst policy: followup | collect | steer | interrupt; blank = platform/default followup)</span>
         <select name="queue_mode">
           <option value=""<%== " selected" if @agent.limits[:queue_mode].nil? %>>— inherit</option>
@@ -87,30 +126,9 @@
       <label>steer_join <span class="muted">(template framing a mid-run message; must carry <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>; blank = the raw text)</span>
         <input type="text" name="steer_join" value="<%= @agent.limits[:steer_join] %>" placeholder="the customer just added: <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>">
       </label>
-    </div>
-    <label class="check">
-      <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
-      cross-session memory (the agent remembers across conversations)
-    </label>
-
-    <fieldset class="subgroup">
-      <legend>generation params <span class="muted">— blank = provider default</span></legend>
-      <div class="grid-3">
-        <label>temperature
-          <input type="text" name="temperature" value="<%= agent_param(@params, :temperature) %>" inputmode="decimal" placeholder="0.7">
-        </label>
-        <label>max_tokens
-          <input type="text" name="max_tokens" value="<%= agent_param(@params, :max_tokens) %>" inputmode="numeric" placeholder="4096">
-        </label>
-        <label>reasoning <span class="muted">(off/on/effort — blank = inherit model/platform)</span>
-          <%== thinking_select("thinking", agent_param(@params, :thinking), "inherit") %>
-        </label>
       </div>
-    </fieldset>
+    </details>
 
-    <label>model fence <span class="muted">(<code>model_policy.allow</code> — one ref per line: <code>provider/model</code>, <code>provider/*</code> or <code>model</code>; blank = no fence)</span>
-      <textarea name="model_policy_allow" rows="3" placeholder="deepseek/*&#10;openai/gpt-4o-mini"><%= @model_policy_allow %></textarea>
-    </label>
           </div>
 
           <div class="config-group" data-config-group="guardrails"<%== " hidden" unless @config_group == "guardrails" %>>
@@ -179,7 +197,7 @@
 
           <div class="config-group" data-config-group="funnel"<%== " hidden" unless @config_group == "funnel" %>>
     <fieldset class="subgroup">
-      <legend>outcome funnel <span class="muted">— the stage vocabulary the engine folds WS7 outcomes into</span></legend>
+      <legend>outcome funnel <span class="muted">— the stages used to track recorded outcomes</span></legend>
       <% fun = @agent.funnel || {} %>
       <div class="grid-2">
         <label>stages <span class="muted">(one per line, in order; blank = no funnel)</span>
@@ -384,7 +402,7 @@
       </fieldset>
 
       <fieldset class="subgroup">
-        <legend>reliability <span class="muted">— WS3: retries, fallback chain, circuit breaker</span></legend>
+        <legend>reliability <span class="muted">— retries, fallback chain, circuit breaker</span></legend>
         <% rel = @agent.reliability || {}; brk = rel["circuit_breaker"] || {} %>
         <div class="grid-3">
           <label>retries
@@ -420,10 +438,10 @@
           <div class="config-group" data-config-group="routing"<%== " hidden" unless @config_group == "routing" %>>
       <fieldset class="subgroup">
         <legend>routing, media, alerts &amp; the edge</legend>
-        <label>routes <span class="muted">— WS4 JSON: intent → description / delegate / stuck (blank = no routing)</span>
+        <label>routes <span class="muted">— JSON: intent → description / delegate / stuck (blank = no routing)</span>
           <textarea name="routes" rows="4" spellcheck="false" class="mono" placeholder='{ "shopping": "the customer wants to browse", "default": "shopping" }'><%= agent_json(@agent.routes) %></textarea>
         </label>
-        <label>outputs <span class="muted">— WS9 JSON: generated media the agent may produce (blank = none)</span>
+        <label>outputs <span class="muted">— JSON: generated media the agent may produce (blank = none)</span>
           <textarea name="outputs" rows="3" spellcheck="false" class="mono" placeholder='{ "image": { "model": "gpt-image-1" } }'><%= agent_json(@agent.outputs) %></textarea>
         </label>
         <label>STT vocabulary prompt <span class="muted">— domain words (products, brands) expected in this agent's voice notes (blank = deployment default)</span>
@@ -435,7 +453,7 @@
           </label>
           <label class="check">
             <input type="checkbox" name="stuck_signal" value="1"<%== " checked" if @agent.stuck_signal %>>
-            stuck signal <span class="muted">— the model may end a turn <code>stuck</code> (WS5)</span>
+            stuck signal <span class="muted">— the model may end a turn <code>stuck</code></span>
           </label>
         </div>
         <div class="grid-2">
