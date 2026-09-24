@@ -14,31 +14,36 @@
 <% else %>
   <% @approvals.each do |a| %>
     <% pa = a[:pending]; task = a[:task] %>
-    <div class="card">
-      <div class="skill-name mono">
+    <article class="card approval-review">
+      <div class="review-heading"><div><h2 class="mono">
         <%= pa.tool %>
+      </h2></div>
         <% if task %><span class="status <%= status_class(task.status) %>"><%= task.status %></span><% end %>
       </div>
       <div class="skill-desc muted">
         <a class="mono" href="<%= task_path(pa.task_id) %>">task <%= pa.task_id[0, 12] %></a>
         · turn <%= pa.turn %> · requested <%= pa.requested_at %>
       </div>
-      <pre><%= message_content(pa.args) %></pre>
+      <div class="review-columns">
+        <section><h3>Requested action</h3><pre class="review-source"><%= message_content(pa.args) %></pre></section>
+        <section class="review-decision"><h3>Allow this action?</h3><p class="muted">Approval resumes the task and allows this tool call. Rejection resumes the turn with the tool denied.</p>
       <div class="actions">
         <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>">
           <%== csrf_tag %>
           <input type="hidden" name="decision" value="approved">
-          <input type="hidden" name="back" value="/studio/approvals">
-          <button type="submit" class="primary">Approve</button>
+          <input type="hidden" name="back" value="<%= @agent ? "/studio/approvals?agent=#{Rack::Utils.escape(@agent)}" : "/studio/approvals" %>">
+          <button type="submit" class="primary" data-turbo-submits-with="Approving…">Approve</button>
         </form>
         <form method="post" action="/studio/approvals/<%= Rack::Utils.escape(pa.id) %>"
               data-turbo-confirm="Reject this action? The turn resumes as if the tool was denied.">
           <%== csrf_tag %>
           <input type="hidden" name="decision" value="rejected">
-          <input type="hidden" name="back" value="/studio/approvals">
-          <button type="submit" class="danger">Reject</button>
+          <input type="hidden" name="back" value="<%= @agent ? "/studio/approvals?agent=#{Rack::Utils.escape(@agent)}" : "/studio/approvals" %>">
+          <button type="submit" class="danger" data-turbo-submits-with="Rejecting…">Reject</button>
         </form>
       </div>
-    </div>
+        </section>
+      </div>
+    </article>
   <% end %>
 <% end %>
