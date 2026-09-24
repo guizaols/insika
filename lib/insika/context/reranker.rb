@@ -28,7 +28,7 @@ module Insika
                      model: config.fetch("model"), top_n: top_k)
         end
         indexes = result.results.map(&:index)
-        unless indexes.any? && indexes.length <= top_k &&
+        unless indexes.length == [top_k, documents.length].min &&
                indexes.all? { |index| index.is_a?(Integer) && index >= 0 && index < documents.length } &&
                indexes.uniq.length == indexes.length
           safe_emit(emit, :provider_warning, { provider: source, message: "invalid rerank indexes" })

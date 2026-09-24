@@ -25,6 +25,20 @@ RSpec.describe Insika::Context::Reranker do
     end
   end
 
+  it "rejects an undersized response instead of dropping a lexical hit" do
+    llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(0)]))
+    result = Async { described_class.new(llm: llm).select(query: "q", documents: documents,
+      config: config, top_k: 2) }.wait
+    expect(result).to be_nil
+  end
+
+  it "accepts every candidate when fewer candidates exist than top_k" do
+    llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(1), Struct.new(:index).new(0)]))
+    result = Async { described_class.new(llm: llm).select(query: "q", documents: documents.first(2),
+      config: config, top_k: 5) }.wait
+    expect(result).to eq([1, 0])
+  end
+
   it "falls back on provider errors without recording provider text" do
     llm = double
     allow(llm).to receive(:rerank).and_raise(StandardError, "secret body")
