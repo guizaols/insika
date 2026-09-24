@@ -86,6 +86,133 @@ RSpec.describe "Insika.embed" do
     end
   end
 
+  it "isolates native telemetry across interleaved graph tasks and their fallback chats" do
+    host_events = []
+    host = Object.new
+    host.define_singleton_method(:instrument) do |name, payload, &block|
+      host_events << name
+      block&.call(payload)
+    end
+    previous = RubyLLM.config.instrumenter
+    RubyLLM.config.instrumenter = host
+    runtimes = [embed(Insika::Stores::Memory.new, key: "A").runtime,
+                embed(Insika::Stores::Memory.new, key: "B").runtime]
+    streams = runtimes.map { SpyEventStream.new }
+    states = runtimes.each_with_index.map do |runtime, index|
+      executor = runtime.graph.executor
+      executor.instance_variable_set(:@event_stream, streams[index])
+      allow(executor.instance_variable_get(:@chat_builder)).to receive(:assemble)
+      task = runtime.graph.task_store.create(id: "task-#{index}", session_id: "session-#{index}", command: {})
+      Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: index + 1, message: "private")
+    end
+    keys = []
+    allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
+      original.receiver.connection.adapter :test do |stub|
+        stub.post("/v1/chat/completions") do |env|
+          keys << env.request_headers["Authorization"]
+          Async::Task.current.sleep(0.001)
+          [200, { "Content-Type" => "application/json" }, JSON.generate(
+            choices: [{ message: { role: "assistant", content: "Done" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 })]
+        end
+      end
+      original.call(*args, **kwargs, &block)
+    end
+    Sync do |parent|
+      runtimes.each_with_index.map do |runtime, index|
+        parent.async do
+          executor = runtime.graph.executor
+          chat = executor.send(:create_chat, states[index].profile, states[index])
+          chat.ask("private")
+          selection = Insika::ModelSelection.new(model: "deepseek-reasoner", provider: :deepseek)
+          executor.send(:build_attempt_chat, states[index], selection).ask("private fallback")
+        end
+      end.each(&:wait)
+    end
+    streams.each_with_index do |stream, index|
+      events = stream.events.select { |event| %i[llm_request llm_usage].include?(event.type) }
+      expect(events.size).to eq(4)
+      trace = runtimes[index].graph.llm_trace_store.for_task("task-#{index}")
+      expect(trace["entries"].size).to eq(4)
+      report = runtimes[index].graph.model_metrics_store.report
+      expect(report["totals"]).to include("requests" => 2, "attempts" => 2, "input_tokens" => 2)
+      expect(report["models"].map { |row| row["model"] }).to eq(%w[deepseek-chat deepseek-reasoner])
+      expect(report["slowest"].map { |row| row["task_id"] }.uniq).to eq(["task-#{index}"])
+      expect(trace["entries"].map { |entry| entry["at"] }).to all(match(/\.\d{6}Z\z/))
+      expect(events.map { |event| event.meta[:task_id] }.uniq).to eq(["task-#{index}"])
+      expect(events.map { |event| event.meta[:session_id] }.uniq).to eq(["session-#{index}"])
+      expect(events.map { |event| event.data["turn"] }.uniq).to eq([index + 1])
+      expect(events.map { |event| event.data["model"] }.uniq).to eq(%w[deepseek-chat deepseek-reasoner])
+      expect(events.map { |event| event.meta[:seq] }).to eq([1, 2, 3, 4])
+      expect(runtimes[index].llm.config.instrumenter).to equal(host)
+    end
+    expect(keys).to contain_exactly("Bearer A", "Bearer A", "Bearer B", "Bearer B")
+    expect(host_events.count("request.ruby_llm")).to eq(4)
+    expect(RubyLLM.config.instrumenter).to equal(host)
+    # Auxiliary operations using graph config keep only the host's correlation.
+    runtimes.first.llm.chat(model: "deepseek-chat", provider: :deepseek, assume_model_exists: true)
+      .context.config.instrumenter.instrument("usage.ruby_llm", {})
+    expect(streams.sum { |stream| stream.events.size }).to eq(8)
+  ensure
+    RubyLLM.config.instrumenter = previous
+  end
+
+  it "summarizes native transport retries within one measured request" do
+    runtime = embed(Insika::Stores::Memory.new, key: "A").runtime
+    runtime.llm.config.max_retries = 1
+    runtime.llm.config.retry_interval = 0
+    runtime.llm.config.retry_interval_randomness = 0
+    executor = runtime.graph.executor
+    allow(executor.instance_variable_get(:@chat_builder)).to receive(:assemble)
+    task = runtime.graph.task_store.create(id: "retry", command: {})
+    state = Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: 1, message: "private")
+    attempts = 0
+    allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
+      original.receiver.connection.adapter :test do |stub|
+        stub.post("/v1/chat/completions") do
+          attempts += 1
+          if attempts == 1
+            [500, { "Content-Type" => "application/json" }, '{"error":{"message":"private failure"}}']
+          else
+            [200, { "Content-Type" => "application/json" }, JSON.generate(
+              choices: [{ message: { role: "assistant", content: "Done" } }],
+              usage: { prompt_tokens: 5, completion_tokens: 2 })]
+          end
+        end
+      end
+      original.call(*args, **kwargs, &block)
+    end
+    Sync { executor.send(:create_chat, state.profile, state).ask("private") }
+    report = runtime.graph.model_metrics_store.report
+    expect(attempts).to eq(2)
+    expect(report["totals"]).to include("requests" => 1, "attempts" => 2, "retries" => 1,
+      "failed_attempts" => 1, "failures" => 0, "input_tokens" => 5, "output_tokens" => 2,
+      "unknown_cost_requests" => 1, "measured_requests" => 1)
+    expect(report["totals"]["p50_ms"]).to be >= 0
+    expect(JSON.generate(report)).not_to include("private")
+  end
+
+  it "keeps model output and events when diagnostic storage fails" do
+    runtime = embed(Insika::Stores::Memory.new, key: "A").runtime
+    executor = runtime.graph.executor
+    stream = SpyEventStream.new
+    executor.instance_variable_set(:@event_stream, stream)
+    allow(runtime.graph.llm_trace_store).to receive(:record).and_raise("private storage failure")
+    task = runtime.graph.task_store.create(id: "t", command: {})
+    state = Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: 1, message: "private")
+    context = executor.send(:llm_operation_context, state, "deepseek-chat")
+    result = context.config.instrumenter.instrument("request.ruby_llm", provider: "deepseek") { "answer" }
+    expect(result).to eq("answer")
+    expect(stream.events.map(&:type)).to eq([:llm_request])
+    expect(stream.events.first.data.inspect).not_to include("private storage")
+    expect(runtime.graph.model_metrics_store.report["totals"]["requests"]).to eq(1)
+    allow(runtime.graph.model_metrics_store).to receive(:record).and_raise("metrics failure")
+    allow(runtime.graph.llm_trace_store).to receive(:record).and_call_original
+    context.config.instrumenter.instrument("request.ruby_llm", provider: "deepseek") { "answer" }
+    expect(runtime.graph.llm_trace_store.for_task("t")["entries"].size).to eq(1)
+    expect(stream.events.size).to eq(2)
+  end
+
   describe ".2 — two graphs, two stores" do
     it "a session created in one graph is invisible to the other" do
       a = embed(Insika::Stores::Memory.new, key: "k1").runtime

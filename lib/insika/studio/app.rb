@@ -92,7 +92,7 @@ module Studio
                     tool_catalog: nil, tool_store: nil, memory_store: nil, session_store: nil,
                     memory_audit_store: nil,
                     settings_store: nil, llm_provider_store: nil, mcp_store: nil,
-                    system_file_store: nil, tool_trace_store: nil, context_trace_store: nil,
+                    system_file_store: nil, tool_trace_store: nil, llm_trace_store: nil, model_metrics_store: nil, context_trace_store: nil,
                     cache_series_store: nil,
                     task_store: nil, checkpoint_store: nil, pending_action_store: nil,
                     refinement_store: nil, golden_store: nil, session_secret: nil,
@@ -122,7 +122,7 @@ module Studio
           mcp_store: mcp_store, system_file_store: system_file_store,
           # per-session tool-call trace (debug): args + result + status per
           # turn, rendered in the session viewer.
-          tool_trace_store: tool_trace_store,
+          tool_trace_store: tool_trace_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store,
           # per-session context breakdown: tokens by category +
           # budget per turn, on the same viewer. Counts only, no content.
           context_trace_store: context_trace_store,
@@ -291,6 +291,10 @@ module Studio
       # --- Overview: at-a-glance dashboard ---------------------
       r.on "home" do
         r.is { r.get { render_home } }
+      end
+
+      r.on "models" do
+        r.is { r.get { render_models } }
       end
 
       # --- Agents: list + detail/authoring ---------------------
@@ -1473,6 +1477,7 @@ end
           # finished conversations; edit, delete, resolve a conflict.
           ["Knowledge", "/studio/knowledge", :knowledge],
           ["Tasks", "/studio/tasks", :tasks],
+          ["Models", "/studio/models", :settings],
           ["Approvals", "/studio/approvals", :approvals],
           ["Refinement", "/studio/refinement", :refinement],
           ["Evals", "/studio/evals", :evals]
@@ -2455,6 +2460,43 @@ end
 
     # Tasks & Approvals --------------------------------
 
+    def render_models
+      @period = request.params["period"]
+      @provider = presence(request.params["provider"])
+      @model = presence(request.params["model"])
+      @report = insika[:model_metrics_store]&.report(period: @period || "7d", provider: @provider, model: @model)
+      @period = @report ? @report["period"] : (%w[24h 7d 30d].include?(@period) ? @period : "7d")
+      view("models")
+    end
+
+    def model_chart_value(value, unit)
+      return "—" if value.nil?
+
+      case unit
+      when "USD" then format("$%.6f", value)
+      when "ms" then format("%.2f ms", value)
+      else value.to_i.to_s
+      end
+    end
+
+    def model_chart_tick(value, unit)
+      return "$0" if unit == "USD" && value.zero?
+      return format("$%.4g", value) if unit == "USD"
+      return format("%.1f s", value / 1000.0) if unit == "ms" && value >= 1000
+      return format("%.3g ms", value) if unit == "ms"
+
+      format("%.3g", value)
+    end
+
+    def model_chart_paths(points)
+      points.slice_when { |left, right| left.nil? || right.nil? }.filter_map do |segment|
+        values = segment.compact
+        next if values.empty?
+
+        "M" + values.map { |x, y| format("%.2f %.2f", x, y) }.join(" L")
+      end
+    end
+
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     # `?agent=` narrows to one agent (the task's command payload stamps it).
     def render_tasks
@@ -2476,6 +2518,7 @@ end
     def render_task_detail(id)
       @pending = insika[:pending_action_store] ? insika[:pending_action_store].open_for(id, kind: Insika::PendingActionStore::OPERATOR) : []
       @checkpoint = insika[:checkpoint_store]&.latest(id)
+      @llm_trace = insika[:llm_trace_store]&.for_task(id) || { "entries" => [], "truncated" => false }
       view("task")
     end
 

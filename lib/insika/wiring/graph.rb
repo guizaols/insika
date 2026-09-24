@@ -43,6 +43,8 @@ module Insika
       def spine(backend:, extra_policy_builtins: {})
         session_store        = Insika::SessionStore.new(store: backend)
         task_store           = Insika::TaskStore.new(store: backend)
+        llm_trace_store       = Insika::LLMTraceStore.new(store: backend)
+        model_metrics_store  = Insika::ModelMetricsStore.new(store: backend)
         checkpoint_store     = Insika::CheckpointStore.new(store: backend)
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
@@ -122,7 +124,7 @@ module Insika
 
         Spine.new(
           backend: backend, event_stream: Insika::EventStream.new,
-          session_store: session_store, task_store: task_store,
+          session_store: session_store, task_store: task_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
           memory_store: memory_store, memory_audit_store: memory_audit_store,
@@ -197,6 +199,7 @@ module Insika
         middleware: middleware, hooks: spine.hooks,
         tool_registry: tool_registry, skill_catalog: skill_catalog, profiles: profiles,
         session_store: spine.session_store, task_store: spine.task_store,
+        llm_trace_store: spine.llm_trace_store, model_metrics_store: spine.model_metrics_store,
         checkpoint_store: spine.checkpoint_store, event_stream: spine.event_stream,
         workflow_registry: spine.workflow_registry, pending_action_store: spine.pending_action_store,
         capability_registry: spine.capability_registry, tool_catalog: tool_catalog,
@@ -218,6 +221,7 @@ module Insika
         # the per-turn extraction hook (nil = the loop is off,
         # parity). Gated per-agent by `profile.knowledge`.
         knowledge_store: spine.knowledge_store,
+        # llm stays graph-scoped; Executor binds instrumentation on operation copies.
         **executor_extra
       )
 
@@ -343,6 +347,7 @@ module Insika
         Graph::Result.new(
           backend: spine.backend, event_stream: spine.event_stream,
           session_store: spine.session_store, task_store: spine.task_store,
+          llm_trace_store: spine.llm_trace_store, model_metrics_store: spine.model_metrics_store,
           checkpoint_store: spine.checkpoint_store, pending_action_store: spine.pending_action_store,
           delegation_store: spine.delegation_store,
           memory_store: spine.memory_store, memory_audit_store: spine.memory_audit_store,
@@ -618,7 +623,7 @@ module Insika
       # Infra spine (phase 1 output). Value object — the roots read these to promote
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
-        :backend, :event_stream, :session_store, :task_store, :checkpoint_store,
+        :backend, :event_stream, :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
         :harvest_store,
@@ -636,7 +641,7 @@ module Insika
       # deployment's overlay, or the same code registry at the base).
       Result = Struct.new(
         :backend, :event_stream,
-        :session_store, :task_store, :checkpoint_store, :pending_action_store, :delegation_store,
+        :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store, :pending_action_store, :delegation_store,
         :memory_store, :memory_audit_store, :refinement_store, :outbox_store, :shadow_pair_store,
         :inbound_log, :token_store,
         :budget_ledger, :circuit_state, :outcome_store, :funnel_store,

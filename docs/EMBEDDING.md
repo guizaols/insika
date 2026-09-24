@@ -98,6 +98,16 @@ It also holds for runtime reconfiguration. Editing a provider key in the Studio
 (or dispatching `:upsert_llm_provider`) applies to **that graph only** — the
 change is real, takes effect without a restart, and stops at the graph boundary.
 
+Each turn's chat gets a copied RubyLLM configuration with Insika's diagnostic
+instrumenter. It composes with a host instrumenter already on that configuration:
+host notifications still run, and the graph and global configurations keep the
+host instrumenter. Insika attributes only those chat operations to the task;
+auxiliary model work on the graph's original context has no task correlation.
+Each graph stores its task diagnostics in its own backend, so separate backends
+keep those records isolated. Insika's diagnostic fields are allowlisted, but a
+host instrumenter receives RubyLLM's original payload and must apply its own
+data policy. See [Observability](OBSERVABILITY.md#native-model-diagnostics).
+
 ### 3. The process still owns signals and the reactor
 
 Draining in-flight turns on SIGTERM ([the process model](DEPLOY.md)) is a process

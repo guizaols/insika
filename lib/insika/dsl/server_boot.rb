@@ -95,6 +95,8 @@ module Insika
           session_store: @graph.session_store,
           settings_store: @rt.component(:settings_store), llm_provider_store: @rt.component(:provider_store),
           mcp_store: @rt.component(:mcp_store), system_file_store: @rt.component(:system_file_store),
+          llm_trace_store: @graph.llm_trace_store,
+          model_metrics_store: @graph.model_metrics_store,
           tool_trace_store: @rt.component(:tool_trace_store),
           context_trace_store: @rt.component(:context_trace_store),
           # the per-agent cache-hit series (agent-detail card).
