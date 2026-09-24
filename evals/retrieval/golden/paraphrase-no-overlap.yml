@@ -1,0 +1,7 @@
+id: paraphrase-no-overlap
+agent: retrieval-eval
+tenant: acme
+turns:
+  - user: how do I maintain my couch
+expect:
+  reply_includes: ["vacuum fabric weekly"]
