@@ -1,10 +1,12 @@
+<div class="reports-page reports-evals">
 <header class="page-head">
   <div>
     <%== crumbs_for("Evals") %>
-    <h1>Evals<span class="sub"><%= @cases.size %> case(s)</span></h1>
+    <h1>Evals<span class="sub">Cases that check your agents</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/evals", @filter) %>
+    <a class="btn" href="/studio/evals<%= "?agent=#{Rack::Utils.escape(@filter)}" if @filter %>">New case</a>
     <a class="btn" href="/studio/settings?s=evals">Configure judges</a>
   </div>
 </header>
@@ -17,9 +19,12 @@
   </div>
 <% end %>
 
-<div class="drill">
+<div class="drill report-workspace" data-controller="list-filter">
   <aside class="drill-pane drill-master">
-    <div class="drill-pane-head"><div class="title"><strong>Cases</strong></div></div>
+    <div class="drill-pane-head"><div class="title"><strong>Cases <span class="count"><%= @cases.size %> case(s)</span></strong></div></div>
+    <div class="drill-search">
+      <input type="search" class="filter-input" placeholder="Search cases…" aria-label="Filter cases by ID, agent or opening message" data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+    </div>
     <nav class="drill-pane-body drill-list" aria-label="eval cases">
       <% if @cases.empty? %>
         <div class="empty">No case yet. Seed the corpus with <code>insika evals:import</code>, or write one on the right.</div>
@@ -27,12 +32,13 @@
       <% @by_agent.each do |agent, cases| %>
         <div class="nav-label"><%= agent %></div>
         <% cases.each do |g| %>
-          <a class="drill-item<%== ' active' if @case && @case.id == g.id %>" href="/studio/evals?id=<%= Rack::Utils.escape(g.id) %>">
+          <a class="drill-item<%== ' active' if @case && @case.id == g.id %>" href="/studio/evals?<%= Rack::Utils.build_query({ "id" => g.id, "agent" => @filter }.compact) %>" data-list-filter-target="item" data-filter-text="<%= g.id %> <%= agent %> <%= g.opens_with %>"<%== ' aria-current="page"' if @case && @case.id == g.id %>>
             <div class="drill-item-name"><span class="txt mono"><%= g.id %></span><% if g.rubric.to_s.strip.empty? %><span class="pill info plain">no rubric</span><% end %><% if g.simulated? %><span class="pill accent plain">simulated</span><% end %></div>
             <div class="drill-item-sub"><%= g.opens_with.to_s %></div>
           </a>
         <% end %>
       <% end %>
+      <% if @cases.any? %><div class="empty" data-list-filter-target="empty" hidden>No cases match your search.</div><% end %>
     </nav>
   </aside>
 
@@ -51,13 +57,12 @@
       </div>
     </div>
     <div class="drill-pane-body">
-      <p class="muted">
-        A case is data, in the same YAML the corpus files hold — so this is what a pull
-        request reviews. <code>expect.rubric</code> is plain language and is the part a
-        judge scores; <code>tools_called</code> and <code>must_not</code> are checked
-        deterministically, with no model involved. Saved through
-        <code>write_golden</code> and validated on the way in.
-      </p>
+      <p class="muted">Define the conversation and the behavior you expect. Saving validates the case before adding it to your corpus.</p>
+      <details class="report-details">
+        <summary>Case format and scoring</summary>
+        <p>Cases use the same YAML as the corpus files. <code>expect.rubric</code> describes what the judge scores; <code>tools_called</code> and <code>must_not</code> are checked without a model.</p>
+        <p>Import cases with <code>insika evals:import</code>. Configure judges in Settings.</p>
+      </details>
       <%
         # Erubi's tag scanner is a plain text scanner: it has no notion of Ruby
         # comments, strings or heredocs, so it closes a code tag on the first
@@ -85,7 +90,7 @@
             min_score: 0.7
         YAML
       %>
-      <form id="set-golden" method="post" action="/studio/evals">
+      <form id="set-golden" method="post" action="/studio/evals" data-controller="dirty-guard">
         <%== csrf_tag %>
         <input type="hidden" name="id" value="<%= @case&.id %>">
         <label>case (YAML)
@@ -94,4 +99,6 @@
       </form>
     </div>
   </section>
+</div>
+
 </div>
