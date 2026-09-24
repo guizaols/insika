@@ -7,7 +7,7 @@ require "ruby_llm"
 module WeatherPlugin
   class GetWeather < RubyLLM::Tool
     description "Looks up the current weather for a city"
-    param :city, desc: "City name"
+    parameter :city, description: "City name"
 
     def execute(city:)
       # STUB — plug in a real weather API here.

@@ -20,7 +20,7 @@ module Insika
   #     "group" => string|nil, "tags" => ["b2b",...] }  #//
   #
   # `parameters` is **JSON Schema** (the interlingua of OpenAI/Anthropic/MCP):
-  # a nestable object, fed straight into RubyLLM's `params_schema` (provider-
+  # a nestable object, fed straight into RubyLLM's `parameters_schema` (provider-
   # agnostic). The **flat array** (`[{name,type,required}]`) is SUGAR for the simple
   # case: it is lifted to JSON Schema at build time. The sugar covers scalars and
   # `array:<scalar>` — it CANNOT express an array of objects, and says so instead of
@@ -41,6 +41,11 @@ module Insika
   )
 
   class ToolDefinition
+    # Terminal tool results finish the current batch without another model request.
+    Halt = Data.define(:content) do
+      def to_s = content.to_s
+    end
+
     # Flat-sugar types: the SCALARS, plus `array:<scalar>` for a list. There is no bare
     # `array`: an array without an item type is an INCOMPLETE declaration, and the
     # engine refuses to guess one (see lift_flat_params).
@@ -543,7 +548,7 @@ module Insika
       nil
     end
 
-    # HOW `say` REACHES THE EXECUTOR. RubyLLM's `Tool::Halt` carries one value, and
+    # HOW `say` REACHES THE EXECUTOR. Insika::ToolDefinition::Halt carries one value, and
     # that value is the tool's payload (the trace records it, and the model never
     # sees it — the halt ends the loop). So a halt that has something to publish
     # carries BOTH, under keys distinctive enough that a trace reader knows what
@@ -577,7 +582,7 @@ module Insika
 
     # FLAT view of the top-level properties (name/type/description/required) — for
     # RubyLLM's `#parameters` (discovery/tool_search) and the simple authoring UI.
-    # The full nested schema goes through `params_schema` (DataDefinedTool). Symbol-
+    # The full nested schema goes through `parameters_schema` (DataDefinedTool). Symbol-
     # keyed for compat with callers that already consumed the flat params.
     def top_level_params
       props = parameters["properties"] || {}

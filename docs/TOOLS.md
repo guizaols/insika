@@ -20,8 +20,8 @@ kinds, and the distinction that matters is **who can change one at runtime**:
 **MCP tools are not data tools.** Configuring an enabled MCP **instance** (any
 surface below) is enough — its tools appear automatically, tagged
 `mcp:<instance>`, and each CALL goes straight to the server through a live,
-held client (stdio process / Streamable HTTP / SSE, with the full protocol
-handshake) — never a frozen snapshot. See [MCP servers](#mcp-servers) below.
+held native RubyLLM client (stdio / Streamable HTTP, with discovery and legacy
+handshake fallback) — never a frozen snapshot. See [MCP servers](#mcp-servers) below.
 
 Code tools **win name collisions** — you cannot register a data tool whose name
 shadows a code tool.
@@ -425,6 +425,21 @@ any other way must ship literal values** — a real URL, and a real (masked on
 read) header value. `{{ctx.*}}` and `{{param}}` work everywhere (they resolve
 at turn time, not ingestion).
 
+The Studio **Tools** screen groups permissions by origin: native tools, HTTP
+tools, and MCP tools by server instance. Selection remains per tool; grouping
+does not change tool names or grant permissions.
+Each section can be collapsed. Filtering by tool or server name opens matching
+sections without changing selections; clearing the filter restores their state.
+Section selection buttons affect every tool in that section, including filtered
+tools, but never override denied tools. Save tools applies the changes.
+
+An MCP instance is a connection, not a single tool. Enable its individual tools
+for the agent in Studio. **Test connection** validates discovery with that
+instance's credentials; it does not validate a separate HTTP data tool or every
+remote tool's execution permissions. When replacing an HTTP tool with MCP,
+remove the old tool from the agent's permissions and update prompt references
+to the actual MCP tool names. Keep the egress allowlist restricted to required hosts.
+
 ## MCP servers
 
 An MCP **instance** is durable config — transport, target, credentials, an
@@ -434,19 +449,31 @@ instance is enabled, its tools appear in the catalog automatically (group
 server through a live, held client — the runtime never converts an MCP tool
 into a stored data tool.
 
-**Three transports**, picked by `transport:`:
+The deployment's legacy `import_mcp_tools` command now aliases
+`refresh_mcp_tools`: it returns `{ instance:, tools: }` and emits
+`mcp_tools_refreshed`, replacing the old created/updated import report.
+Previously imported data tools remain unchanged and take precedence over live
+tools with the same name. After refreshing and verifying the live instance,
+delete those snapshots through the normal data-tool controls to use live calls.
+`insika doctor` identifies them by their `mcp:<instance>` group.
+
+**Two supported transports**, picked by `transport:`:
 
 | Transport | Target | Notes |
 |---|---|---|
 | `stdio` | `command` + `args`, run as a child process, `env` is its process environment | requires `INSIKA_MCP_STDIO=1` — see below |
-| `http` | `url` + `headers` (Streamable HTTP, the modern default) | egress-guarded like any outbound URL |
-| `sse` | `url` + `headers` | same egress guard as `http` |
+| `http` | `url` + `headers` (Streamable HTTP) | egress-guarded; HTTPS required outside loopback |
+
+Legacy `sse` records remain stored, but cannot connect through the native client.
+Change the record to `http` with the server's Streamable HTTP endpoint. Event-stream
+responses over Streamable HTTP remain supported; only the old SSE transport is removed.
 
 **The stdio gate.** A stdio instance is arbitrary command execution by
 config — it saves, but refuses to start ("stdio disabled by env") until the
 operator sets `INSIKA_MCP_STDIO=1` (config-over-convention, the same pattern
-as the egress envs). `http`/`sse` need no such gate; their URL is checked by
-the normal egress allowlist instead.
+as the egress envs). `http` needs no such gate; its URL is checked by
+the normal egress allowlist instead. Native MCP additionally refuses plain HTTP
+outside loopback, even when `INSIKA_EGRESS_ALLOW_HTTP` is enabled.
 
 **Credentials are never visible in plaintext.** `env` (stdio) and `headers`
 (http/sse) mask every value as `__OCULTO__` on read, everywhere (CLI, API,
@@ -524,7 +551,7 @@ held client, which does its own discovery on first use regardless of whether
 
    `insika mcp import FILE.json` upserts every entry (a bare `command` implies
    `stdio`; a bare `url` implies `http`; add `"transport": "sse"` explicitly
-   for SSE — the bare format has no other way to spell it). The same parser
+   only to retain a legacy SSE record pending migration). The same parser
    backs `PUT /v1/mcp` and Studio's "Import JSON" box; `export` produces the
    document back with secrets masked as `__OCULTO__`, so round-tripping an
    export never wipes a stored credential.

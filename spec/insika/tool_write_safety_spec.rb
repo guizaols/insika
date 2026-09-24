@@ -50,10 +50,17 @@ RSpec.describe "data-tool write safety" do
       expect(write.call({ "product_id" => "999999" })).to include("gate" => "provenance")
       expect(writes).to be_empty
       expect(search.call({})).to include("items")
-      RubyLLM::ToolConcurrency.run(:fibers, { "a" => "A", "b" => "B" }) do |id|
-        state.current_tool_call = Struct.new(:id).new("call-#{id}")
-        expect(write.call({ "product_id" => id })).to include('"status":"added"')
+      chat = RubyLLM.context { |config| config.openai_api_key = "spec-only" }
+                    .chat(model: "gpt-4o-mini", provider: :openai, assume_model_exists: true)
+      chat.with_tools(write).with_tool_options(concurrency: :fibers)
+      chat.before_tool_call { |call| state.current_tool_call = call }
+      calls = %w[A B].to_h do |id|
+        ["call-#{id}", RubyLLM::ToolCall.new(id: "call-#{id}", name: "add_to_cart", arguments: { "product_id" => id })]
       end
+      chat.add_message(role: :assistant, content: "", tool_calls: calls)
+      chat.run_tools
+      expect(chat.messages.select { |message| message.role == :tool }.map(&:content))
+        .to all(include('"status":"added"'))
     end
 
     expect(cart).to eq(%w[A B])

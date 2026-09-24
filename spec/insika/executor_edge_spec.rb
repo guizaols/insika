@@ -181,13 +181,8 @@ RSpec.describe "Insika::Executor + EdgeLimiter" do
       token_chat.define_singleton_method(:ask) do |message, &on_chunk|
         @asked = message
         on_chunk&.call(FakeChat::Response.new("final"))
-        resp = Object.new.tap do |o|
-          o.define_singleton_method(:input_tokens) { 300 }
-          o.define_singleton_method(:output_tokens) { 200 }
-          o.define_singleton_method(:cached_tokens) { 500 }
-          o.define_singleton_method(:cache_creation_tokens) { 0 }
-        end
-        resp
+        RubyLLM::Message.new(role: :assistant, content: "final",
+                            tokens: RubyLLM::Tokens.new(input: 300, output: 200, cache_read: 500, cache_write: 0))
       end
 
       run_with(executor, make_tenant_task("oi", id: "e1"), budget_profile("daily" => 5_000),

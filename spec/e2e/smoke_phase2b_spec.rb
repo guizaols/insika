@@ -18,7 +18,7 @@ RSpec.describe "smoke E2E: capability resolution + tool search",:smoke do
     def initialize(name) = (@name = name)
     def name = @name
     def description = "fake #{@name}"
-    def parameters = {} # a real RubyLLM tool always responds to this (used by tool_search#describe)
+    def parameters_schema = {} # used by tool_search#describe
     def call(_args = {}) = "executed:#{@name}"
   end
 

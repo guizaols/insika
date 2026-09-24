@@ -48,6 +48,30 @@ module Insika
 
     module_function
 
+    # RubyLLM 2.0 has no public protocol reader. Remove the ivar read when it does;
+    # ignoring a per-chat override would replay Responses state on another protocol.
+    def native_binding(chat)
+      return nil unless defined?(RubyLLM::Chat) && chat.is_a?(RubyLLM::Chat)
+
+      provider = chat.model.provider.to_s
+      setting = "#{provider}_protocol"
+      override = chat.instance_variable_get(:@protocol)
+      override ||= chat.context.config.public_send(setting) if chat.context.config.respond_to?(setting)
+      protocol = override ? chat.provider.protocols[override.to_sym] : chat.provider.protocol_for(chat.model)
+      return nil unless protocol&.ancestors&.include?(RubyLLM::Protocols::Responses::Compaction)
+
+      { "provider" => provider, "model" => chat.model.id, "protocol" => "responses" }
+    end
+
+    def native_payload?(raw)
+      return false unless raw.is_a?(Hash) && raw["object"] == "response.compaction" && raw["output"].is_a?(Array)
+
+      raw["output"].any? do |item|
+        item.is_a?(Hash) && item["type"] == "compaction" &&
+          item["encrypted_content"].is_a?(String) && !item["encrypted_content"].empty?
+      end
+    end
+
     # Decides whether (and what) to compact. -> Plan | nil.
     #   messages: the session transcript (append-only, RFC-0016).
     #   state:    the persisted "compaction" hash ({"upto"=>, ...}) | nil.
@@ -121,7 +145,7 @@ module Insika
       class Unusable < Insika::ValidationError; end
 
       # ask:   ->(prompt) { "<raw model text>" } | something answering #content
-      #        (+ #input_tokens/#output_tokens/#cached_tokens for cost).
+      #        (+ RubyLLM-compatible #tokens for cost).
       # model: the ref recorded on the event ("utility_model" default).
       attr_reader :model
 
@@ -147,12 +171,14 @@ module Insika
       # nil when the provider said nothing — never 0 (the Distiller's
       # discipline). The cached prefix is INCLUDED in the spent total.
       def cost_of(answer)
-        return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
+        return nil unless answer.respond_to?(:tokens)
 
-        input = answer.input_tokens.to_i
-        output = answer.output_tokens.to_i
-        cached = answer.respond_to?(:cached_tokens) ? answer.cached_tokens.to_i : 0
-        { "spent" => input + output, "cached" => cached }
+        usage = answer.tokens
+        input = usage.input.to_i
+        output = usage.output.to_i
+        cached = usage.cache_read.to_i
+        spent = input + output + cached + usage.cache_write.to_i
+        spent.positive? ? { "spent" => spent, "cached" => cached } : nil
       end
     end
 

@@ -112,6 +112,7 @@ module Insika
     # results + final assistant — into the transcript. nil = no chat recorded
     # (workflow/halt) → persist_turn falls back to the {user, assistant} pair.
     attr_accessor :chat_baseline
+    attr_accessor :tool_halt
 
     # Internal: impl_name(String) -> STABLE name of the capability that
     # resolved it, computed by resolve_capabilities BEFORE the policy_request and
@@ -166,6 +167,7 @@ module Insika
     # creates the PendingAction/suspends/waits; `actor` = the turn's mailbox (used
     # by the coordinator for await(:approval)).
     attr_accessor :requires_approval, :approval_coordinator, :actor
+    attr_accessor :native_approvals, :approval_continuation, :turn_output
 
     # Customer confirmation: the store a `customer_confirm` call is held in by the
     # ToolEnvelope and resolved from by confirm_pending/cancel_pending. nil = the

@@ -8,6 +8,28 @@ RSpec.describe Insika::Workflow do
   describe Insika::Workflow::Schema do
     def schema(hash) = described_class.new(hash)
 
+    it "accepts false in required boolean properties with string or symbol keys" do
+      s = schema("type" => "object", "properties" => { "enabled" => { "type" => "boolean" } },
+                 "required" => ["enabled"])
+      expect(s.call("enabled" => false).success?).to be(true)
+      expect(s.call(enabled: false).success?).to be(true)
+    end
+
+    it "validates composition, local references and additional properties" do
+      s = schema("$defs" => { "flag" => { "type" => "boolean" } }, "type" => "object",
+                 "properties" => { "flag" => { "$ref" => "#/$defs/flag" } }, "additionalProperties" => false,
+                 "anyOf" => [{ "required" => ["flag"] }])
+      expect(s.call("flag" => false).success?).to be(true)
+      expect(s.call("flag" => "false").success?).to be(false)
+      expect(s.call("flag" => false, "extra" => 1).success?).to be(false)
+      expect(s.call({}).success?).to be(false)
+    end
+
+    it "rejects external references without fetching them" do
+      s = schema("$ref" => "https://example.test/schema.json")
+      expect { s.call({}) }.to raise_error(Insika::ValidationError, /external schema reference/)
+    end
+
     it "accepts a conforming object and reports success with no errors" do
       s = schema("type" => "object",
                  "properties" => { "q" => { "type" => "string" }, "n" => { "type" => "integer" } },

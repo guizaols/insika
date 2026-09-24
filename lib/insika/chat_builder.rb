@@ -54,6 +54,7 @@ module Insika
     # data). The system tools (Tools::ToolSearch/LoadSkill/Remember) were already
     # lazy-loaded by Executor#create_chat before reaching here.
     def assemble(chat, state, emit:)
+      state.native_approvals = defined?(RubyLLM::Chat) && chat.is_a?(RubyLLM::Chat)
       configure_chat(chat, state)
       seed_history(chat, Array(state.context.history))
       wire_callbacks(chat, state, emit)
@@ -79,7 +80,8 @@ module Insika
                          end
 
       unless deferred_allowed.empty?
-        tools.reject! { |t| deferred_allowed.include?(t.name.to_s) }
+        restored = Array(state.approval_continuation&.fetch("tools", nil))
+        tools.reject! { |t| deferred_allowed.include?(t.name.to_s) && !restored.include?(t.name.to_s) }
         # a system tool (outside the allowlist), like load_skill — never enveloped.
         tools << Tools::ToolSearch.new(@tool_catalog, deferred_allowed, chat,
                                        tool_registry: @tool_registry,
@@ -199,7 +201,7 @@ module Insika
         # the operator configured is OUR cap (ToolAssembly#install_tool_gate);
         # the gem has none.
         if tool_concurrency_for(state)
-          chat.with_tools(*tools, concurrency: :fibers)
+          chat.with_tools(*tools).with_tool_options(concurrency: :fibers)
         else
           chat.with_tools(*tools)
         end
@@ -284,13 +286,8 @@ module Insika
     # memory fact or knowledge hit changing between turns (those bytes sit below
     # the breakpoint, so they never enter the cached prefix). An empty volatile
     # layer emits ONE block — byte-identical to the pre-split shape.
-    # RubyLLM::Content::Raw is Anthropic-specific: build_system_content emits
-    # its blocks verbatim, so the cache_control rides along.
-    #
-    # Any other case (caching off, or a non-Anthropic provider) uses the plain
-    # string — OpenAI caches its prefix on its own; the Raw shape would confuse
-    # non-Anthropic providers. The gem only supports MANUAL caching, and only for
-    # Anthropic.
+    # RubyLLM's native message cache marker places that boundary on the wire.
+    # Other providers keep the plain string and their existing caching behavior.
     #
     # What still breaks a read hit: a context provider that declares
     # `layer :identity` and emits per-turn bytes (a timestamp, request data).
@@ -298,26 +295,15 @@ module Insika
     # shows it as `broke: <category>`.
     def apply_instructions(chat, context, state)
       if state.profile.prompt_caching && anthropic_provider?(chat)
-        chat.with_instructions(RubyLLM::Providers::Anthropic::Content.new(parts: cache_blocks(context)))
+        identity, volatile = system_layers(context)
+        chat.with_instructions(identity.empty? ? nil : identity, cache_until_here: !identity.empty?)
+        chat.with_instructions(volatile, append: true) unless volatile.empty?
       else
         chat.with_instructions(context.system.to_s)
       end
     end
 
-    # [{type:, text:, cache_control:?}] — identity block with the breakpoint,
-    # volatile block plain. Empty texts are skipped (Anthropic rejects an empty
-    # text block). `system` is authoritative: a package without the split (a
-    # custom builder's Struct) or one whose `system` was rewritten alone (an
-    # after_prompt hook doing `pkg.with(system: …)`) reads as all-identity —
-    # one block over the whole text, never bytes the hook did not put there.
-    def cache_blocks(context)
-      identity, volatile = system_layers(context)
-      blocks = []
-      blocks << { type: "text", text: identity, cache_control: { type: "ephemeral" } } unless identity.empty?
-      blocks << { type: "text", text: volatile } unless volatile.empty?
-      blocks
-    end
-
+    # A hook rewriting only `system` wins over the original split layers.
     def system_layers(context)
       system = context.system.to_s
       return [system, ""] unless context.respond_to?(:system_volatile)
@@ -348,6 +334,17 @@ module Insika
     # keyword). This is what lets the model SEE the tools it already called.
     def seed_history(chat, messages)
       Array(messages).flatten(1).each do |m|
+        if (native = m["native_compaction"])
+          binding = Compaction.native_binding(chat)
+          raw = native.dig("message", "raw_content")
+          if binding && native["binding"] == binding && Compaction.native_payload?(raw) &&
+              chat.messages.none? { |message| message.role != :system }
+            chat.add_message(role: :assistant, content: "", raw_content: raw)
+          else
+            seed_history(chat, m.fetch("messages"))
+          end
+          next
+        end
         attrs = { role: (m[:role] || m["role"]).to_sym, content: m[:content] || m["content"] }
         tool_calls = m[:tool_calls] || m["tool_calls"]
         tool_call_id = m[:tool_call_id] || m["tool_call_id"]
@@ -435,6 +432,7 @@ module Insika
       end
 
       chat.after_tool_result do |result|
+        state.tool_halt = result if result.is_a?(ToolDefinition::Halt)
         # the RAW result — the only place a Tool::Halt (halt_when) is
         # still recognizable, and a halted batch must receive no intervention.
         detector&.tool_result(result)

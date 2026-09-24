@@ -96,6 +96,22 @@ RSpec.describe Insika::ToolEnvelope do
   end
 
   describe "skip-on-resume (side-effect already executed in the interrupted turn)" do
+    it "uses explicit RubyLLM call context without forwarding it as a tool argument" do
+      tool = EnvEchoTool.new
+      state = state_for
+      env = envelope(tool, state, skip_side_effects: ["call-42"])
+      call = RubyLLM::ToolCall.new(id: "call-42", name: "echo", arguments: { "amount" => 10 })
+
+      result = Sync do
+        value = env.call(amount: 10, tool_call: call)
+        expect(state.current_tool_call).to equal(call)
+        value
+      end
+
+      expect(result).to eq("skipped" => "already_executed")
+      expect(tool.calls).to be_empty
+    end
+
     it "call_id in skip_side_effects -> {skipped} marker, does NOT re-execute the tool" do
       tool = EnvEchoTool.new
       state = state_for(current_tool_call: Struct.new(:id).new("call-42"))
@@ -130,6 +146,29 @@ RSpec.describe Insika::ToolEnvelope do
   end
 
   describe "record_side_effect! (records BEFORE the result returns to the model)" do
+    it "can repeat an external effect when recording fails after execution" do
+      tool = EnvEchoTool.new
+      registry = FakeToolRegistry.new(side_effect_names: ["echo"])
+      state = state_for(current_tool_call: Struct.new(:id).new("call-7"))
+      allow(checkpoint_store).to receive(:record_side_effect).and_raise(Insika::StoreError, "write failed")
+
+      expect { Sync { envelope(tool, state, tool_registry: registry).call({ "amount" => 10 }) } }
+        .to raise_error(Insika::StoreError, "write failed")
+      expect(tool.calls).to eq([{ "amount" => 10 }])
+      recorded = checkpoint_store.side_effects("t", turn: 1)
+      expect(recorded).to be_empty
+
+      allow(checkpoint_store).to receive(:record_side_effect).and_call_original
+      resumed = state_for(current_tool_call: Struct.new(:id).new("call-7"))
+      result = Sync do
+        envelope(tool, resumed, tool_registry: registry, skip_side_effects: recorded).call({ "amount" => 10 })
+      end
+
+      expect(result).to eq("echoed")
+      expect(tool.calls).to eq([{ "amount" => 10 }, { "amount" => 10 }])
+      expect(checkpoint_store.side_effects("t", turn: 1)).to eq(["call-7"])
+    end
+
     it "tool marked as a side-effect -> records the correlation call_id in the checkpoint_store" do
       registry = FakeToolRegistry.new(side_effect_names: ["echo"])
       state = state_for(current_tool_call: Struct.new(:id).new("call-7"))
@@ -585,7 +624,7 @@ RSpec.describe Insika::ToolEnvelope do
       schema_tool = Class.new(EnvEchoTool) do
         def requires_evidence = { "params" => %w[product_id coupon_id] }
 
-        def params_schema
+        def parameters_schema
           { "type" => "object", "properties" => { "product_id" => {}, "coupon_id" => {} }, "required" => ["product_id"] }
         end
       end.new

@@ -54,13 +54,9 @@ RSpec.describe Insika::Refinement::Panel do
     Insika::Refinement::Proposer.new(model: model, ask: lambda { |_prompt|
       raise raises if raises
 
-      tokens ? FakeMessage.new(body, tokens) : body
+      tokens ? RubyLLM::Message.new(role: :assistant, content: body,
+                                    tokens: RubyLLM::Tokens.new(input: tokens / 2, output: tokens - tokens / 2)) : body
     })
-  end
-
-  FakeMessage = Struct.new(:content, :total) do
-    def input_tokens = total / 2
-    def output_tokens = total - input_tokens
   end
 
   def edit(after, file: "TOOLS.md", before: "Use shipping_quote to quote freight.")

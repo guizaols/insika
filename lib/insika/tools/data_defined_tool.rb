@@ -12,7 +12,7 @@ module Insika
     # it is NOT required in lib/insika.rb; the overlay loads it lazily at registration
     #
     # Contract preserved by duck-typing: it overrides name/description/parameters/
-    # execute; RubyLLM's params_schema derives from #parameters automatically.
+    # execute; RubyLLM's parameters_schema derives from #parameters automatically.
     # execute NEVER raises — an error (missing param, blocked egress, HTTP, parse)
     # becomes `{ error: }` to the model, like the other tools.
     class DataDefinedTool < RubyLLM::Tool
@@ -49,20 +49,11 @@ module Insika
       def evidence = @definition.evidence
       def requires_evidence = @definition.requires_evidence
 
-      # FULL (nested) JSON Schema straight into RubyLLM's params_schema — it is what
+      # FULL (nested) JSON Schema straight into RubyLLM's parameters_schema — it is what
       # the providers serialize (OpenAI/Anthropic/Gemini/Bedrock prefer
-      # params_schema; parameters is just a fallback). Provider-agnostic and
+      # parameters_schema; parameters is just a fallback). Provider-agnostic and
       # the only form that expresses nesting (object/array/enum).,.
-      def params_schema = @definition.parameters
-
-      # FLAT top-level view for discovery (tool_search calls #parameters on the resolved
-      # tool). The real nested schema goes through #params_schema above.
-      def parameters
-        @parameters ||= @definition.top_level_params.each_with_object({}) do |p, acc|
-          sym = p[:name].to_sym
-          acc[sym] = RubyLLM::Parameter.new(sym, type: p[:type], desc: p[:description], required: p[:required])
-        end
-      end
+      def parameters_schema = @definition.parameters
 
       # The args are checked against the tool's own JSON Schema BEFORE the request is
       # built: a call the schema does not allow becomes `{ error: }` the model can act
@@ -81,7 +72,7 @@ module Insika
         payload = extract(result)
         # The RESPONSE says the turn is over (`halt_when`): the backend already
         # answered the customer, so letting the model comment would deliver the
-        # message twice. RubyLLM's Tool::Halt ends its loop right here — no second
+        # message twice. Insika::ToolDefinition::Halt ends its loop right here — no second
         # provider call, and the decision is the engine's, not a request in a prompt.
         # Only on a 2xx: an error body that happens to carry the value is a failure,
         # and a failure must reach the model.
@@ -90,7 +81,7 @@ module Insika
           # the model wrote no lead-in. Wrapped only when there is one, so every tool
           # that declares no `say` keeps producing exactly the payload it always did.
           say = @definition.halt_say(result[:body])
-          return RubyLLM::Tool::Halt.new(say ? Insika::ToolDefinition.wrap_halt(payload, say) : payload)
+          return Insika::ToolDefinition::Halt.new(say ? Insika::ToolDefinition.wrap_halt(payload, say) : payload)
         end
 
         payload

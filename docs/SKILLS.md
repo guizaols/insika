@@ -249,9 +249,11 @@ in the allowlist → the model never sees it in `<available_skills>`.
 Two ways to satisfy both:
 
 - **Via a definition/pack import.** The import writes each skill directory into
-  the store and sets the agent's `skills` allowlist **authoritatively** from the
-  skills present — so a re-import that drops a skill also removes it. Keep the
-  definition complete.
+  that agent's scope, without overwriting another agent's or a shared skill, and
+  sets the agent's `skills` allowlist **authoritatively** from the skills present.
+  Dropping a skill removes it from the allowlist, not storage. Keep the definition
+  complete. Packs previously imported into shared scope must be reimported from
+  their original sources; the overwritten shared body cannot recover each agent's version.
 - **Directly (Studio / API / DSL).** Write the skill (upserts the row and reloads
   the catalog atomically — live immediately), then attach it to the agent(s) by
   adding its name to the `skills` allowlist.

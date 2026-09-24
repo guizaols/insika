@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json_schemer"
+
 module Insika
   # Checks a tool call's ARGUMENTS against the tool's JSON Schema, at call time.
   # `violation` returns nil (fine) or ONE message describing what is wrong —
@@ -13,10 +15,8 @@ module Insika
   # 200, and the wrong results came back with no error anywhere. Validating here
   # closes that loop *and* names the fix in the message the model reads next.
   #
-  # Scope: the safe subset ToolDefinition already validates
-  # (object/array/string/number/integer/boolean + enum + minItems/maxItems). Only what
-  # the schema DECLARES is checked; undeclared keys pass (providers add nothing, and
-  # `additionalProperties` is a tool author's business, not ours).
+  # JSONSchemer enforces declared constraints, including explicit null types and
+  # additionalProperties. External references are disabled.
   #
   # NEVER coerces. The value the model sent is what reaches the request — the guard
   # only decides whether the call may proceed, so turning it on cannot change the
@@ -41,14 +41,11 @@ module Insika
       missing = missing_top_level(schema, values)
       return "missing required parameter(s): #{missing.join(', ')}" unless missing.empty?
 
-      problems = []
-      (schema["properties"] || {}).each do |pname, pschema|
-        value = values[pname.to_s]
-        next if value.nil?
-
-        problems.concat(check(value, pschema, pname.to_s))
-        break if problems.length >= MAX_REPORTED
-      end
+      validator = JSONSchemer.schema(schema, ref_resolver: ->(uri) {
+        raise Insika::ValidationError, "external schema reference is not allowed: #{uri}"
+      })
+      problems = validator.validate(validation_value(values, schema)).lazy.flat_map { |error| messages(error) }
+                          .take(MAX_REPORTED).to_a
       return nil if problems.empty?
 
       "invalid arguments: #{problems.first(MAX_REPORTED).join('; ')}"
@@ -62,73 +59,47 @@ module Insika
       Array(schema["required"]).map(&:to_s).reject { |n| Insika::Coercion.present?(values[n]) }
     end
 
-    # -> [String] problems found at/below `path`.
-    def check(value, schema, path)
-      return [] unless schema.is_a?(Hash)
+    # Normalize only a validation copy; request interpolation still gets the
+    # original arguments. Legacy scalar leniency applies to direct properties/items.
+    def validation_value(value, schema)
+      return value unless schema.is_a?(Hash)
 
-      case schema["type"].to_s
-      when "object" then check_object(value, schema, path)
-      when "array" then check_array(value, schema, path)
-      else check_scalar(value, schema, path)
+      case value
+      when Hash
+        value.to_h { |name, child| [name, validation_value(child, schema.fetch("properties", {})[name])] }
+      when Array
+        value.map { |child| validation_value(child, schema["items"]) }
+      when nil then nil
+      else
+        case schema["type"]
+        when "string" then value.to_s
+        when "integer" then INTEGER_RE.match?(value.to_s) ? value.to_i : value
+        when "number"
+          value.is_a?(String) && NUMERIC_RE.match?(value) ? BigDecimal(value) : value
+        when "boolean" then BOOLEAN_STRINGS.include?(value.to_s) ? value.to_s == "true" : value
+        else value
+        end
       end
     end
 
-    def check_object(value, schema, path)
-      return ["#{path}: expected an object, got #{kind(value)}"] unless value.is_a?(Hash)
-
-      props = schema["properties"] || {}
-      missing = Array(schema["required"]).map(&:to_s).reject { |k| value.key?(k) }
-      problems = missing.map { |k| "#{path}.#{k}: missing (required)" }
-
-      props.each do |pname, pschema|
-        child = value[pname.to_s]
-        next if child.nil?
-
-        problems.concat(check(child, pschema, "#{path}.#{pname}"))
+    def messages(error)
+      path = error["data_pointer"].split("/").drop(1).map { |part| part.gsub("~1", "/").gsub("~0", "~") }
+                  .map { |part| /\A\d+\z/.match?(part) ? "[#{part}]" : ".#{part}" }.join.sub(/\A\./, "")
+      value, schema, type = error.values_at("data", "schema", "type")
+      if type == "required"
+        return error.fetch("details").fetch("missing_keys").map { |name| "#{path}.#{name}: missing (required)" }
       end
-      problems
-    end
 
-    def check_array(value, schema, path)
-      return ["#{path}: expected a list, got #{kind(value)}"] unless value.is_a?(Array)
-
-      problems = size_problems(value, schema, path)
-      problems + value.each_with_index.flat_map { |item, i| check(item, schema["items"], "#{path}[#{i}]") }
-    end
-
-    # minItems/maxItems are the only cardinality the authors actually write (a search
-    # that takes "1 or more pairs"), and an empty list is exactly the call that reads as
-    # success and returns nothing.
-    def size_problems(value, schema, path)
-      min = schema["minItems"]
-      max = schema["maxItems"]
-      problems = []
-      problems << "#{path}: needs at least #{min} item(s), got #{value.length}" if min.is_a?(Numeric) && value.length < min
-      problems << "#{path}: accepts at most #{max} item(s), got #{value.length}" if max.is_a?(Numeric) && value.length > max
-      problems
-    end
-
-    def check_scalar(value, schema, path)
-      type = schema["type"].to_s
-      return ["#{path}: expected #{type}, got #{kind(value)}"] unless scalar_ok?(value, type)
-
-      enum = schema["enum"]
-      return [] unless enum.is_a?(Array) && !enum.empty?
-      return [] if enum.map(&:to_s).include?(value.to_s)
-
-      ["#{path}: #{value.to_s.inspect} is not one of #{enum.map(&:to_s).join('/')}"]
-    end
-
-    def scalar_ok?(value, type)
-      return false if value.is_a?(Hash) || value.is_a?(Array)
-
-      case type
-      when "string" then true                       # any scalar stringifies losslessly
-      when "number" then value.is_a?(Numeric) || NUMERIC_RE.match?(value.to_s)
-      when "integer" then value.is_a?(Integer) || INTEGER_RE.match?(value.to_s)
-      when "boolean" then [true, false].include?(value) || BOOLEAN_STRINGS.include?(value.to_s)
-      else true                                     # unknown type: not ours to police
-      end
+      message = case type
+                when "object" then "expected an object, got #{kind(value)}"
+                when "array" then "expected a list, got #{kind(value)}"
+                when "string", "number", "integer", "boolean", "null" then "expected #{type}, got #{kind(value)}"
+                when "enum" then "#{value.to_s.inspect} is not one of #{schema['enum'].map(&:to_s).join('/')}"
+                when "minItems" then "needs at least #{schema['minItems']} item(s), got #{value.length}"
+                when "maxItems" then "accepts at most #{schema['maxItems']} item(s), got #{value.length}"
+                else error["error"]
+                end
+      ["#{path}: #{message}"]
     end
 
     # Walks a dotted path on a plain object: nil when a segment

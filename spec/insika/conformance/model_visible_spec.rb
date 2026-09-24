@@ -91,7 +91,7 @@ RSpec.describe "the model-visible conformance suite " do
   before { session_store.create(id: "s1") }
 
   # A minimal data tool for the chat (the pipeline wraps fakes untouched).
-  DataTool = Struct.new(:name, :description, :parameters) do
+  DataTool = Struct.new(:name, :description, :parameters_schema) do
     def call(_args) = { "found" => "TNSR1234" }
   end
 

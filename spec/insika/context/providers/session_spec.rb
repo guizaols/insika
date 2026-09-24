@@ -49,6 +49,29 @@ RSpec.describe Insika::Context::Providers::Session do
     expect(frags.map { |f| f.content[:content] }).to eq(["from session"])
   end
 
+  it "uses a stored assistant context correction without changing the original transcript" do
+    session_store.create(id: "s1")
+    session_store.append_messages("s1", [
+      { role: "user", content: "recommend something", context_content: "ignored user override" },
+      { role: "assistant", content: "Recommendation <broken-tool>example</broken-tool>", context_content: "Recommendation " },
+      { role: "assistant", content: "Calling", context_content: "ignored call override",
+        tool_calls: [{ id: "call-1", name: "search", arguments: {} }] },
+      { role: "tool", content: "found", tool_call_id: "call-1", context_content: "ignored result override" }
+    ])
+    original = session_store.find("s1").messages
+
+    messages = provider.call(request(session: session_store.find("s1"))).flat_map do |fragment|
+      fragment.content.is_a?(Array) ? fragment.content : [fragment.content]
+    end
+
+    expect(messages.map { |message| message[:content] }).to eq(["recommend something", "Recommendation ", "Calling", "found"])
+    expect(messages[2][:tool_calls]).to eq(original[2]["tool_calls"])
+    expect(messages[3][:tool_call_id]).to eq("call-1")
+    expect(session_store.find("s1").messages).to eq(original)
+    expect(provider.call(request(checkpoint: checkpoint(original)))[1].content[:content]).to eq(original[1]["content"])
+    expect(provider.call(request(vars: { history: original }))[1].content[:content]).to eq(original[1]["content"])
+  end
+
   it "no source -> []" do
     expect(provider.call(request)).to eq([])
   end

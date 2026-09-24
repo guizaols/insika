@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json_schemer"
+
 module Insika
   # Workflow surface (COMPETITIVE-ANALYSIS). A workflow is a Ruby
   # callable orchestrating RubyLLM Agents/Workflows FROM WITHIN (RubyLLM First);
@@ -13,9 +15,7 @@ module Insika
   # A schema is any dry-schema-compatible validator: `#call(value)` returning a
   # result that responds to `#success?` and `#errors` (dry-schema's own contract).
   # As a batteries-included default, a plain JSON Schema Hash (the interlingua the
-  # ToolDefinition already speaks) is accepted and validated by the zero-dependency
-  # Schema below — "config over convention": bring dry-schema for richer contracts,
-  # or hand a JSON Schema for the common case.
+  # ToolDefinition already speaks) is accepted and validated by JSONSchemer.
   module Workflow
     # Bundles a registered workflow's callable factory with its metadata (schemas +
     # description). Built lazily by WorkflowRegistry#definition — it does NOT resolve
@@ -74,13 +74,8 @@ module Insika
       end
     end
 
-    # Zero-dependency instance validator for a plain JSON Schema Hash, speaking the
-    # same safe subset (object/array/string/number/integer/boolean + enum) the
-    # ToolDefinition validates its parameters against. It implements the SAME
-    # `#call(value) -> result{#success?, #errors}` contract as dry-schema, so the
-    # Definition treats both uniformly. Not a full JSON Schema engine (no
-    # composition/$ref — the subset the insika supports everywhere); permissive on
-    # unknown keys (JSON Schema's additionalProperties default).
+    # JSON Schema validation with the same result contract as dry-schema.
+    # References may resolve within the supplied document, never over the network.
     class Schema
       # dry-schema-compatible result. `errors` is { "field.path" => ["message", …] }.
       Result = Data.define(:errors) do
@@ -104,66 +99,33 @@ module Insika
         end
 
         @json_schema = Insika::Coercion.deep_stringify(json_schema)
+        @validator = JSONSchemer.schema(@json_schema, ref_resolver: ->(uri) {
+          raise Insika::ValidationError, "external schema reference is not allowed: #{uri}"
+        })
       end
 
       def call(value)
-        Result.new(errors: collect(@json_schema, value, "").freeze)
+        errors = {}
+        @validator.validate(Insika::Coercion.deep_stringify(value)).each do |error|
+          path = error["data_pointer"].split("/").drop(1).map { |part| part.gsub("~1", "/").gsub("~0", "~") }.join(".")
+          if error["type"] == "required"
+            error.fetch("details").fetch("missing_keys").each do |name|
+              (errors[join(path, name)] ||= []) << "is required"
+            end
+          else
+            message = case error["type"]
+                      when "object", "array", "string", "integer", "number", "boolean", "null"
+                        "must be #{error['type']}, got #{ruby_type(error['data'])}"
+                      when "enum" then "must be one of #{error['schema']['enum'].inspect}"
+                      else error["error"]
+                      end
+            (errors[path.empty? ? "(root)" : path] ||= []) << message
+          end
+        end
+        Result.new(errors: errors.freeze)
       end
 
       private
-
-      # -> { path => [messages] }. Empty = valid.
-      def collect(schema, value, path)
-        type = schema["type"].to_s
-        return { key(path) => ["must be #{type}, got #{ruby_type(value)}"] } unless type.empty? || matches?(type, value)
-
-        errors = {}
-        case type
-        when "object" then check_object(schema, value, path, errors)
-        when "array"  then check_array(schema, value, path, errors)
-        end
-        check_enum(schema, value, path, errors)
-        errors
-      end
-
-      def check_object(schema, value, path, errors)
-        props = schema["properties"] || {}
-        Array(schema["required"]).each do |name|
-          errors[key(join(path, name))] = ["is required"] unless value.key?(name.to_s) || value.key?(name.to_sym)
-        end
-        props.each do |name, subschema|
-          next unless value.key?(name.to_s) || value.key?(name.to_sym)
-
-          sub = value[name.to_s] || value[name.to_sym]
-          errors.merge!(collect(subschema || {}, sub, join(path, name)))
-        end
-      end
-
-      def check_array(schema, value, path, errors)
-        items = schema["items"]
-        return if items.nil?
-
-        value.each_with_index { |el, i| errors.merge!(collect(items, el, "#{join(path, i)}")) }
-      end
-
-      def check_enum(schema, value, path, errors)
-        return unless schema.key?("enum")
-
-        allowed = Array(schema["enum"])
-        errors[key(path)] = ["must be one of #{allowed.inspect}"] unless allowed.include?(value)
-      end
-
-      def matches?(type, value)
-        case type
-        when "object"  then value.is_a?(Hash)
-        when "array"   then value.is_a?(Array)
-        when "string"  then value.is_a?(String)
-        when "integer" then value.is_a?(Integer) && !value.is_a?(TrueClass) && !value.is_a?(FalseClass)
-        when "number"  then value.is_a?(Numeric) && !value.is_a?(TrueClass) && !value.is_a?(FalseClass)
-        when "boolean" then value == true || value == false
-        else true # unknown type in the schema -> do not block (permissive)
-        end
-      end
 
       def ruby_type(value)
         case value
@@ -179,7 +141,6 @@ module Insika
       end
 
       def join(path, segment) = path.empty? ? segment.to_s : "#{path}.#{segment}"
-      def key(path) = path.empty? ? "(root)" : path
     end
   end
 end

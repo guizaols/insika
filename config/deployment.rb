@@ -468,7 +468,9 @@ module Deploy
     # LIVE re-discovery — connects, lists, writes
     # MCP_STORE#tools_cache; TOOL_REGISTRY's live tools (MCP_TOOL_REGISTRY,
     # wired above) never depend on this cache to execute.
-    BUS.register(:refresh_mcp_tools, Insika::Commands::RefreshMcpTools.new(mcp_registry: MCP_TOOL_REGISTRY, event_stream: EVENT_STREAM))
+    REFRESH_MCP_TOOLS = Insika::Commands::RefreshMcpTools.new(mcp_registry: MCP_TOOL_REGISTRY, event_stream: EVENT_STREAM)
+    BUS.register(:refresh_mcp_tools, REFRESH_MCP_TOOLS)
+    BUS.register(:import_mcp_tools, REFRESH_MCP_TOOLS) # Legacy command name, live discovery.
     BUS.register(:write_system_file, Insika::Commands::WriteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:delete_system_file, Insika::Commands::DeleteSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
     BUS.register(:restore_system_file, Insika::Commands::RestoreSystemFile.new(system_file_store: SYSTEM_FILE_STORE, event_stream: EVENT_STREAM))
@@ -491,20 +493,6 @@ module Deploy
     # the env var (e.g.: {{secret.INSIKA_INTERNAL_API_TOKEN}}, {{env.CONSUMER_INTERNAL_URL}}).
     IMPORT_TOOLS = Insika::Commands::ImportTools.new(tool_store: TOOL_STORE, registry: TOOL_REGISTRY, tool_catalog: TOOL_CATALOG, event_stream: EVENT_STREAM, secrets: ENV, env: ENV)
     BUS.register(:import_tools, IMPORT_TOOLS)
-
-    # RETIRED: this SNAPSHOT path froze each MCP tool as an
-    # HTTP data-tool via a minimal JSON-RPC client with no real MCP lifecycle.
-    # MCP_TOOL_REGISTRY (above, folded into TOOL_REGISTRY) replaces it with
-    # LIVE execution over real transports (stdio/Streamable HTTP/SSE) — the
-    # only thing to reach for going forward. Kept wired (never deleting a
-    # working command) so any :mcp:* data-tool already ingested by a PAST
-    # run of this command keeps executing; `insika doctor` flags such tools
-    # with a migration hint.
-    MCP_TOOL_INGESTOR = Insika::McpToolIngestor.new(
-      mcp_store: MCP_STORE, import_tools: IMPORT_TOOLS,
-      client_factory: ->(record) { Insika::McpHttpClient.new(url: record["url"], egress_options: EGRESS_OPTIONS) }
-    )
-    BUS.register(:import_mcp_tools, Insika::Commands::ImportMcpTools.new(ingestor: MCP_TOOL_INGESTOR, event_stream: EVENT_STREAM))
 
     # Pack provisioning: imports an agent from a standardized pack by
     # emitting the Commands above. Consumes the bus + READS the ProfileSource (upsert).

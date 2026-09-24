@@ -64,8 +64,8 @@ RSpec.describe "Integration: pack provisioning" do
     expect(agent_files.read("loja-7", "IDENTITY.md")).to eq("Sou a BIA da loja 7.")
 
     # skills are effective in the catalog (write_skill reloaded)
-    expect(skill_catalog.find("escalation")).not_to be_nil
-    expect(skill_catalog.find("promo").description).to eq("promotions")
+    expect(skill_catalog.find("escalation", agent: profile.id)).not_to be_nil
+    expect(skill_catalog.find("promo", agent: profile.id).description).to eq("promotions")
 
     # data-tool in the registry (overlay reload) and resolvable
     expect(registry.names).to include("add_to_cart")
@@ -79,6 +79,22 @@ RSpec.describe "Integration: pack provisioning" do
     expect(result[:created]).to be(false)
     profile = profiles.fetch("loja-7")
     expect(profile.prompt_files).to contain_exactly("IDENTITY.md", "SOUL.md") # no duplicate
+  end
+
+  it "isolates same-named pack skills across agents and preserves shared skills on re-import" do
+    content = ->(body) { "---\nname: recommendation-formatting\ndescription: Recommendations\n---\n#{body}\n" }
+    skill_store.write("recommendation-formatting", content.call("shared"))
+    %w[beauty furniture beauty].each_with_index do |agent, index|
+      importer.import(Insika::Pack.from_h(
+        config: { id: agent, model: "deepseek-chat" },
+        skills: { "recommendation-formatting" => content.call("#{agent}-#{index}") }
+      ))
+    end
+
+    expect(skill_catalog.find("recommendation-formatting", agent: "beauty").body.strip).to eq("beauty-2")
+    expect(skill_catalog.find("recommendation-formatting", agent: "furniture").body.strip).to eq("furniture-1")
+    expect(skill_catalog.find("recommendation-formatting").body.strip).to eq("shared")
+    expect(skill_catalog.find("recommendation-formatting", agent: "unrelated").body.strip).to eq("shared")
   end
 
   it "re-provisioning with fewer files removes what left the pack (authoritative allowlist)" do

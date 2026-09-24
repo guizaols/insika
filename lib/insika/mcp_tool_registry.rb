@@ -11,7 +11,7 @@ module Insika
   # `refresh` is the ONLY thing that talks to a server ahead of time: it
   # connects, lists live, and writes the result back to tools_cache (display/
   # doctor). Calling a tool never depends on that cache — Insika::McpLiveTool
-  # always goes through the live, memoized client (and RubyLLM::MCP::Client
+  # always goes through the live, memoized client (and RubyLLM::MCP
   # does its own real `tools/list` on ITS first use per instance, regardless
   # of whether `refresh` ever ran).
   class McpToolRegistry
@@ -29,7 +29,7 @@ module Insika
 
     # Connects to `name` LIVE, lists its tools, and writes McpStore#tools_cache.
     # ALWAYS drops any memoized client first and rebuilds from the current
-    # record: a stdio process can be `alive?` (still running) yet permanently
+    # record: a stdio process can still be running yet permanently
     # broken (e.g. wrong transport args — see grafana-stg gotcha), and an
     # edited command/url/env must take effect without a process restart —
     # there's no SSH into a Railway dyno to do that by hand.
@@ -43,7 +43,10 @@ module Insika
 
       evict(record["name"])
       client = client_for(record)
-      discovered = client.tools.map { |t| { "name" => t.name, "description" => t.description, "inputSchema" => t.params_schema } }
+      discovered = client.tools.map do |tool|
+        { "name" => tool.name, "description" => tool.description, "inputSchema" => tool.parameters_schema,
+          "annotations" => { "readOnlyHint" => tool.read_only? } }
+      end
       @mcp_store.set_tools_cache(name, discovered)
       discovered
     end
@@ -56,7 +59,7 @@ module Insika
     # to restart a process by hand on a Railway dyno).
     def evict(name)
       client = @mutex.synchronize { @clients.delete(name.to_s) }
-      client&.stop
+      client&.close
     rescue StandardError
       nil # best-effort teardown of a possibly already-dead process
     end
@@ -80,7 +83,7 @@ module Insika
     # (`annotations.readOnlyHint`): a write is never re-run on resume and runs
     # serially within the session; a declared read keeps `tool_concurrency`.
     def read_only?(tool)
-      Coercion.truthy?(tool.dig("annotations", "readOnlyHint"))
+      tool.dig("annotations", "readOnlyHint") == true
     end
 
     # Lazy require (McpLiveTool < RubyLLM::Tool pulls in ruby_llm) — kept out
@@ -93,16 +96,14 @@ module Insika
                               client_for: -> { client_for(record) })
     end
 
-    # A started, MEMOIZED client for `record` — one real connection per
+    # A lazy, MEMOIZED client for `record` — one client per
     # instance name, reused across calls/turns. Raises on a gated/unreachable
     # instance; only called from `refresh` and from a running McpLiveTool's
     # `#execute` (which rescues) — never from `entries`/`build_tool`, so a
     # downed server never breaks turn ASSEMBLY, only that tool's own call.
     def client_for(record)
       @mutex.synchronize do
-        client = (@clients[record["name"]] ||= @client_factory.call(record))
-        client.start unless client.alive?
-        client
+        @clients[record["name"]] ||= @client_factory.call(record)
       end
     end
   end

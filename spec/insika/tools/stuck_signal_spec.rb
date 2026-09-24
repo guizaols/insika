@@ -20,7 +20,7 @@ RSpec.describe Insika::Tools::StuckSignal do
     result = tool.execute(reason: "out of scope", message: "I'll transfer you")
 
     expect(state.stuck_outcome).to eq(reason: "out of scope", message: "I'll transfer you")
-    expect(result).to be_a(::RubyLLM::Tool::Halt) # ends the tool loop there
+    expect(result).to be_a(::Insika::ToolDefinition::Halt) # ends the tool loop there
   end
 
   it "a Halt with no custom say publishes no fallback (the model's lead-in wins)" do

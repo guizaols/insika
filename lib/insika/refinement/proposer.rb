@@ -38,11 +38,32 @@ module Insika
 
       MAX_FINDINGS = 10
 
+      RESPONSE_SCHEMA = {
+        "type" => "object",
+        "properties" => {
+          "rationale" => { "type" => "string" },
+          "edits" => {
+            "type" => "array",
+            "items" => {
+              "type" => "object",
+              "properties" => {
+                "file" => { "type" => "string" }, "op" => { "type" => "string", "enum" => %w[replace append] },
+                "anchor" => { "type" => "string" }, "before" => { "type" => "string" },
+                "after" => { "type" => "string" },
+                "addresses" => { "type" => "array", "items" => { "type" => "string" } }
+              },
+              "required" => %w[file op after]
+            }
+          }
+        },
+        "required" => ["edits"]
+      }.freeze
+
       # The model ref, so a panel can name WHICH proposer failed without guessing.
       attr_reader :model
 
       # ask:   ->(prompt) { "<raw model text>" }, or something answering `#content`
-      #        plus `#input_tokens`/`#output_tokens` (a RubyLLM message). The second
+      #        plus RubyLLM-compatible `#tokens`. The second
       #        shape is what lets the panel's budget count what a proposal cost; a
       #        plain String stays valid and simply reports no cost, which is what
       #        every existing caller and every fake does.
@@ -63,7 +84,7 @@ module Insika
         raise Unusable, "no writable file has any content to anchor an edit in" if files.empty?
 
         answer = @ask.call(build_prompt(agent_id, Array(findings).first(MAX_FINDINGS), files, limits))
-        parsed = parse(text_of(answer))
+        parsed = parse(answer)
         parsed["proposer"] = @model
         parsed["tokens"] = tokens_of(answer)
         parsed["cached"] = cached_of(answer)
@@ -80,29 +101,33 @@ module Insika
       # reason `Evals::Runner#billed_tokens` includes it: a ceiling that cannot see
       # what the cache served is not a ceiling on what was sent.
       def tokens_of(answer)
-        return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
+        return nil unless answer.respond_to?(:tokens)
 
-        total = answer.input_tokens.to_i + answer.output_tokens.to_i + cached_of(answer).to_i
+        usage = answer.tokens
+        total = usage.input.to_i + usage.output.to_i + usage.cache_read.to_i + usage.cache_write.to_i
         total.positive? ? total : nil
       end
 
       def cached_of(answer)
-        return nil unless answer.respond_to?(:cached_tokens)
+        return nil unless answer.respond_to?(:tokens)
 
-        cached = answer.cached_tokens.to_i
+        cached = answer.tokens.cache_read.to_i
         cached.positive? ? cached : nil
       end
 
-      # JSON or nothing. ````json` fences are the common wrapper and stripping them is
-      # not leniency — the payload inside is still parsed strictly, so a model that
-      # improvises a schema fails here instead of producing half a candidate.
-      def parse(raw)
-        body = raw.strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
-        first = body.index("{")
-        last = body.rindex("}")
-        raise Unusable, "the proposer answered with no JSON object" if first.nil? || last.nil? || last < first
+      # Native responses own JSON parsing. Only injected text asks retain the
+      # existing prose/fence extraction contract.
+      def parse(answer)
+        if answer.respond_to?(:parsed)
+          parsed = answer.parsed
+        else
+          body = text_of(answer).strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
+          first = body.index("{")
+          last = body.rindex("}")
+          raise Unusable, "the proposer answered with no JSON object" if first.nil? || last.nil? || last < first
 
-        parsed = JSON.parse(body[first..last])
+          parsed = JSON.parse(body[first..last])
+        end
         raise Unusable, "the proposer's JSON is not an object" unless parsed.is_a?(Hash)
         raise Unusable, "the proposer's JSON carries no `edits`" unless parsed["edits"].is_a?(Array)
 
@@ -254,7 +279,7 @@ module Insika
         llm ||= RubyLLM
         lambda do |prompt|
           llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).ask(prompt)
+             .with_temperature(0).with_schema("schema" => Proposer::RESPONSE_SCHEMA, "strict" => false).ask(prompt)
         end
       end
     end

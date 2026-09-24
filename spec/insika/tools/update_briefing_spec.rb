@@ -61,12 +61,12 @@ RSpec.describe Insika::Tools::UpdateBriefing do
   end
 
   it "the schema carries the declared names as the `field` enum " do
-    schema = tool(fields: %w[size budget delivery_day]).params_schema
+    schema = tool(fields: %w[size budget delivery_day]).parameters_schema
     expect(schema.dig("properties", "field", "enum")).to eq(%w[size budget delivery_day])
   end
 
   it "no fields declared -> no enum and no empty 'one of: .' placeholder (review trap)" do
-    schema = tool(fields: []).params_schema
+    schema = tool(fields: []).parameters_schema
     expect(schema.dig("properties", "field")).not_to have_key("enum")
     expect(tool(fields: []).description).not_to include("one of:")
   end

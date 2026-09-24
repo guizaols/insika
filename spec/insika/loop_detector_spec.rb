@@ -91,7 +91,7 @@ RSpec.describe Insika::LoopDetector do
     det.message_ended(assistant_with_calls(2))
     det.tool_call("lookup", { "q" => "x" })
     det.tool_call("lookup", { "q" => "x" })
-    det.tool_result(RubyLLM::Tool::Halt.new("payload"))
+    det.tool_result(Insika::ToolDefinition::Halt.new("payload"))
     det.message_ended(tool_message)
     det.tool_result("r2")
     det.message_ended(tool_message)

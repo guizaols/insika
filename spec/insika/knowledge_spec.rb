@@ -265,11 +265,12 @@ RSpec.describe Insika::Knowledge do
     end
 
     it "reports the cost when the ask answers with a message carrying token counts" do
-      message = Struct.new(:content, :input_tokens, :output_tokens, :cached_tokens)
-                .new(JSON.generate([concept]), 100, 20, 500)
+      message = RubyLLM::Message.new(role: :assistant, content: JSON.generate([concept]), input_tokens: 100,
+                                     output_tokens: 20, cache_read_tokens: 500, cache_write_tokens: 30,
+                                     thinking_tokens: 10)
       extractor = described_class.new(ask: ->(_prompt) { message }, model: "utility_model")
       result = extractor.extract(prompt: "p")
-      expect(result[:cost]).to eq("spent" => 620, "cached" => 500)
+      expect(result[:cost]).to eq("spent" => 650, "cached" => 500)
     end
 
     it "a prose answer raises Unusable" do
