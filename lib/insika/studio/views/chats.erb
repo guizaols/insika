@@ -3,10 +3,10 @@
     same shell as Agents/Customers/Refinement. The detail pane's landing state
     just points at the playground — there is no "create a session" form here,
     conversations are born there, not authored in Studio. %>
-<header class="page-head">
+<header class="page-head operation-head">
   <div>
     <nav class="crumbs"><a href="/studio/agents">agents</a></nav>
-    <h1>Chats<span class="sub"><%= @sessions.size %> recent conversation(s)</span></h1>
+    <h1>Chats<span class="sub"><%= @sessions.size %> recent conversations</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/chats", @agent) %>
@@ -14,7 +14,7 @@
   </div>
 </header>
 
-<div class="drill" data-controller="list-filter">
+<div class="drill operation-workspace" data-controller="list-filter">
   <%== render("_chats_master", locals: { active_id: nil }) %>
 
   <turbo-frame id="session-detail" class="drill-pane drill-detail">
@@ -24,8 +24,8 @@
         <span class="count">select on the left, or start a new one in the playground</span>
       </div>
     </div>
-    <div class="drill-pane-body">
-      <div class="empty">Select a conversation from the list to read its transcript.</div>
+    <div class="drill-empty">
+      <div><h2>Read the conversation</h2><p>Review messages, the latest briefing and stage history. New messages appear as they arrive.</p></div>
     </div>
   </turbo-frame>
 </div>

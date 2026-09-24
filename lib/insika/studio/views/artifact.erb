@@ -1,23 +1,36 @@
+<div class="reports-page reports-artifact">
 <%# the artifact preview page. The content renders ONLY inside a SANDBOXED
    iframe (no scripts, no same-origin, no forms) on top of the content
    route's own restrictive CSP — artifact content is LLM output, untrusted. %>
 <header class="page-head">
   <div>
-    <nav class="crumbs"><a href="/studio/artifacts">Artifacts</a></nav>
-    <h1><%= @artifact.title %><span class="sub"><span class="mono"><%= @artifact.id %></span> · <%= @artifact.mime %> · <%= @artifact.created_at %></span></h1>
+    <nav class="crumbs"><a href="/studio/artifacts?agent=<%= Rack::Utils.escape(@artifact.agent) %>">Artifacts</a></nav>
+    <h1><%= @artifact.title %><span class="sub"><%= @artifact.agent %> · <%= time_ago(@artifact.created_at) %></span></h1>
   </div>
   <div class="head-actions">
     <% if @signed_url %>
       <button type="button" class="btn btn-sm" data-copy="<%= @signed_url %>">copy signed link</button>
     <% end %>
     <a class="btn btn-sm ghost" href="<%= @content_url %>" target="_blank" rel="noopener">open raw</a>
-    <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(@artifact.id) %>/delete" class="inline">
+    <form method="post" action="/studio/artifacts/<%= Rack::Utils.escape_path(@artifact.id) %>/delete" class="inline" data-turbo-confirm="Delete this artifact?">
       <%== csrf_tag %>
+      <input type="hidden" name="agent" value="<%= @artifact.agent %>">
       <button class="btn btn-sm ghost danger">delete</button>
     </form>
   </div>
 </header>
 
+<details class="report-details">
+  <summary>Artifact details</summary>
+  <dl class="kv">
+    <dt>ID</dt><dd class="mono"><%= @artifact.id %></dd>
+    <dt>Format</dt><dd><%= @artifact.mime %></dd>
+    <dt>Created</dt><dd><%= @artifact.created_at %></dd>
+    <dt>Task</dt><dd><a href="<%= task_path(@artifact.task_id) %>"><%= @artifact.task_id %></a></dd>
+  </dl>
+</details>
+
 <div class="card artifact-frame">
   <iframe sandbox src="<%= @content_url %>" title="<%= @artifact.title %>"></iframe>
+</div>
 </div>

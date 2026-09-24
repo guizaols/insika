@@ -40,7 +40,7 @@
               <span class="txt" title="<%= m["name"] %>"><%= m["name"] %></span>
               <span class="pill <%= status_cls %>"><%= status_label %></span>
             </div>
-            <div class="drill-item-sub"><%= m["transport"] %><%== " · #{m['url']}" if m["url"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></div>
+            <div class="drill-item-sub"><%= m["transport"] %><%== " · #{h(m['url'])}" if m["url"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></div>
           </a>
         <% end %>
         <div class="empty" data-list-filter-target="empty" hidden>No MCP instances match your filter.</div>
@@ -55,10 +55,11 @@
     <% end %>
     <% if @selected_mcp %>
       <% m = @selected_mcp %>
+      <% status_label, status_cls = m["enabled"] ? mcp_status(m) : ["off", "warn"] %>
       <div class="drill-pane-head">
         <div class="title">
-          <strong class="mono"><%= m["name"] %></strong>
-          <span class="count"><%= m["transport"] %><%== " · #{m['description']}" if m["description"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></span>
+          <strong class="mono"><%= m["name"] %> <span class="pill <%= status_cls %>"><%= status_label %></span></strong>
+          <span class="count"><%= m["transport"] %><%== " · #{h(m['description'])}" if m["description"].to_s != "" %><%== " · #{Array(m['tools_cache']).size} tool(s)" if Array(m["tools_cache"]).any? %></span>
         </div>
         <div class="head-actions">
           <form method="post" action="/studio/mcp/test">
@@ -79,7 +80,8 @@
             <details> for the rest) scales the same way the master lists do. %>
         <% tools = Array(m["tools_cache"]) %>
         <% if tools.any? %>
-          <div class="mcp-tools-panel" data-controller="list-filter">
+          <details class="mcp-tools-panel newfile" data-controller="list-filter">
+            <summary>Discovered tools <span class="count"><%= tools.size %></span></summary>
             <div class="filter-bar">
               <input type="search" class="filter-input" placeholder="Filter tools by name or description…" aria-label="Filter tools"
                      data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
@@ -99,10 +101,11 @@
               <% end %>
             </ul>
             <div class="empty" data-list-filter-target="empty" hidden>No tools match your filter.</div>
-          </div>
+          </details>
         <% end %>
 
-        <form class="mcp-edit" method="post" action="/studio/mcp" data-controller="transport-fields">
+        <div class="section-head"><h2>Connection</h2><p class="muted">Save changes before testing the connection. Test connection uses the saved settings.</p></div>
+        <form class="mcp-edit" method="post" action="/studio/mcp" data-controller="transport-fields dirty-guard">
           <%== csrf_tag %>
           <input type="hidden" name="name" value="<%= m["name"] %>">
           <div class="grid-2">
@@ -130,12 +133,16 @@
           <label>description
             <input type="text" name="description" value="<%= m["description"] %>">
           </label>
+          <fieldset class="subgroup">
+            <legend>Credentials &amp; environment</legend>
+            <p class="muted">Saved credentials are masked. Keep masked values to preserve them; clear a line to remove it.</p>
           <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
             <textarea name="env" rows="4"><%= env_lines(m["env"]) %></textarea>
           </label>
           <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
             <textarea name="headers" rows="4"><%= env_lines(m["headers"]) %></textarea>
           </label>
+          </fieldset>
           <div class="actions">
             <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save instance</button>
           </div>
@@ -144,12 +151,12 @@
     <% else %>
       <div class="drill-pane-head">
         <div class="title">
-          <strong>Pick an instance</strong>
-          <span class="count">select on the left, or add one below</span>
+          <strong>Connect an MCP server</strong>
+          <span class="count">Create an instance or import an existing configuration</span>
         </div>
       </div>
       <div class="drill-pane-body">
-        <form method="post" action="/studio/mcp" data-controller="transport-fields" data-turbo-frame="_top">
+        <form method="post" action="/studio/mcp" data-controller="transport-fields dirty-guard" data-turbo-frame="_top">
           <%== csrf_tag %>
           <div class="grid-2">
             <label>name <span class="muted">(slug)</span>
@@ -177,22 +184,29 @@
           <label>description
             <input type="text" name="description">
           </label>
+          <fieldset class="subgroup">
+            <legend>Credentials &amp; environment</legend>
+            <p class="muted">Saved credentials are masked. Keep masked values to preserve them; clear a line to remove it.</p>
           <label data-transport-fields-target="stdio">env <span class="muted">(stdio process env, one <code>KEY=value</code> per line)</span>
             <textarea name="env" rows="4" placeholder="TAVILY_API_KEY=tvly-…"></textarea>
           </label>
           <label data-transport-fields-target="http">headers <span class="muted">(http/sse request headers, one <code>Name=value</code> per line)</span>
             <textarea name="headers" rows="4" placeholder="Authorization=Bearer tvly-…"></textarea>
           </label>
+          </fieldset>
           <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create instance</button></div>
         </form>
 
-        <form method="post" action="/studio/mcp/import" data-turbo-frame="_top">
+        <details class="newfile">
+          <summary>Import an existing configuration</summary>
+        <form method="post" action="/studio/mcp/import" data-turbo-frame="_top" data-controller="dirty-guard">
           <%== csrf_tag %>
           <label>mcpServers JSON <span class="muted">(paste a <code>{"mcpServers": {...}}</code> document — the same format Claude Desktop/Cursor use)</span>
             <textarea name="json" rows="8" placeholder='{"mcpServers": {"tavily": {"url": "https://mcp.tavily.com/mcp", "headers": {"Authorization": "Bearer …"}}}}'></textarea>
           </label>
           <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Importing…">Import</button></div>
         </form>
+        </details>
       </div>
     <% end %>
   </turbo-frame>

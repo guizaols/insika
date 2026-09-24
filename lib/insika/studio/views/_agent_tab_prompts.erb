@@ -2,7 +2,7 @@
 <section class="section" id="prompts" data-tabs-target="panel">
   <div class="section-head">
     <h2>Prompts <span class="pill info plain"><%= @prompt_files.size %></span></h2>
-    <p class="muted">the agent's own identity (store-backed, versioned). Empty = uses the deployment default.</p>
+    <p class="muted">Define this agent’s identity and voice. Save each prompt separately; no files means the deployment default is used.</p>
   </div>
 
   <div class="drill" data-controller="list-filter">
@@ -60,19 +60,17 @@
             <% else %>
               <input type="hidden" name="file" value="<%= @prompt_selected %>">
             <% end %>
-            <label>content <span class="muted">(markdown — the agent's identity/voice)</span></label>
+            <label for="prompt-content">content <span class="muted">(markdown — the agent's identity/voice)</span></label>
             <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
-              <textarea name="content" data-code-editor-target="source" rows="18"><%= new ? "" : (pf ? pf[:content] : "") %></textarea>
+              <textarea id="prompt-content" name="content" data-code-editor-target="source" rows="18"><%= new ? "" : (pf ? pf[:content] : "") %></textarea>
             </div>
           </form>
 
           <% if !new && pf %>
             <% unless pf[:versions].empty? %>
-              <div class="drill-section">
-                <div class="drill-section-head">
-                  <h3>Versions</h3>
-                  <span class="muted">store-backed history — restore replaces the current content.</span>
-                </div>
+              <details class="drill-section newfile">
+                <summary>Previous versions <span class="count"><%= pf[:versions].size %></span></summary>
+                <p class="muted">Restore replaces the current content.</p>
                 <ul class="versions-list">
                   <% pf[:versions].each_with_index do |v, i| %>
                     <li>
@@ -86,7 +84,7 @@
                     </li>
                   <% end %>
                 </ul>
-              </div>
+              </details>
             <% end %>
 
             <div class="drill-section">

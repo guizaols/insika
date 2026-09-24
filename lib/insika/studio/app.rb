@@ -897,7 +897,8 @@ module Studio
             next_404 unless @session
 
             # master column: recent conversations, current one active
-            @sessions = recent_sessions(limit: 60)
+            @agent = presence(r.params["agent"])
+            @sessions = agent_sessions(recent_sessions(limit: 60), @agent)
             # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
@@ -945,7 +946,7 @@ module Studio
                          expires_at: presence(r.params["expires_at"]), operator: "studio"
                        })
             end
-            r.redirect(customer_path(scope))
+            r.redirect(customer_path(scope, agent: presence(r.params["agent"])))
           end
 
           r.post "forget-fact" do
@@ -956,7 +957,7 @@ module Studio
                          key: presence(r.params["key"]), operator: "studio"
                        })
             end
-            r.redirect(customer_path(scope))
+            r.redirect(customer_path(scope, agent: presence(r.params["agent"])))
           end
 
           # The LGPD access right: JSON download of the cell's content (D7 —
@@ -975,7 +976,7 @@ module Studio
             JSON.pretty_generate(result)
           rescue Insika::ValidationError => e
             flash["error"] = e.message
-            r.redirect(customer_path(scope))
+            r.redirect(customer_path(scope, agent: presence(r.params["agent"])))
           end
 
           # The LGPD forget — purges the cell AND the customer's sessions.
@@ -986,7 +987,8 @@ module Studio
                          tenant: cell[:tenant], customer: cell[:customer], operator: "studio"
                        })
             end
-            r.redirect("/studio/customers")
+            agent = presence(r.params["agent"])
+            r.redirect(agent ? "/studio/customers?agent=#{Rack::Utils.escape(agent)}" : "/studio/customers")
           end
         end
       end
@@ -1195,7 +1197,7 @@ end
               dispatch(:write_concept, { agent: agent, name: name, tenant: tenant,
                                         content: r.params["content"].to_s }.compact)
             end
-            r.redirect(knowledge_path(agent, name, tenant))
+            r.redirect(knowledge_path(agent, name, tenant, status: presence(r.params["status"])))
           end
         end
 
@@ -1232,7 +1234,7 @@ end
             with_flash("Concept removed.") do
               dispatch(:delete_concept, { agent: agent, name: name, tenant: tenant }.compact)
             end
-            r.redirect("/studio/knowledge?agent=#{Rack::Utils.escape(agent.to_s)}")
+            r.redirect(knowledge_path(agent, nil, tenant, status: presence(r.params["status"])))
           end
 
           r.post "restore" do
@@ -1243,7 +1245,7 @@ end
               dispatch(:restore_concept, { agent: agent, name: name, tenant: tenant,
                                           version: r.params["version"] }.compact)
             end
-            r.redirect(knowledge_path(agent, name, tenant))
+            r.redirect(knowledge_path(agent, name, tenant, status: presence(r.params["status"])))
           end
         end
       end
@@ -2439,10 +2441,11 @@ end
       end
     end
 
-    def customer_path(scope)
+    def customer_path(scope, agent: nil)
       # escape_path, not escape: the route decodes with unescape_path, which
       # does not turn '+' back into a space (escape's form-encoding would).
-      "/studio/customers/#{Rack::Utils.escape_path(scope)}"
+      path = "/studio/customers/#{Rack::Utils.escape_path(scope)}"
+      agent ? "#{path}?agent=#{Rack::Utils.escape(agent)}" : path
     end
 
     # Shared helper for Customers index and detail: loads all customer cells,
@@ -2805,9 +2808,9 @@ end
       @selected = insika[:proposal_store]&.find(id)
       next_404 unless @selected
       if turbo_frame?("fact-detail")
-        render("fact_detail", locals: { frame_only: true }, layout: false)
+        render("fact_detail", layout: false)
       else
-        view("fact_detail", locals: { frame_only: false })
+        view("facts")
       end
     end
 
@@ -2894,7 +2897,7 @@ end
     # occurrences/updated_at). A record that fails to parse (corrupted by a
     # hand edit) still shows by name, blank elsewhere, rather than vanishing.
     def load_knowledge_master(agent:, tenant: nil)
-      @status ||= "all"
+      @status ||= presence(request.params["status"]) || "all"
       store = insika[:knowledge_store]
       names = agent && store ? store.names(agent, tenant: tenant) : []
       concepts = names.filter_map do |n|
@@ -2948,9 +2951,10 @@ end
 
     # The redirect/link target after a knowledge write or restore — back to
     # the concept's own detail pane when a name is known, else the index.
-    def knowledge_path(agent, name, tenant)
+    def knowledge_path(agent, name, tenant, status: nil)
       q = "agent=#{Rack::Utils.escape(agent.to_s)}"
       q += "&tenant=#{Rack::Utils.escape(tenant)}" if tenant
+      q += "&status=#{Rack::Utils.escape(status)}" if status
       name ? "/studio/knowledge/#{Rack::Utils.escape(name)}?#{q}" : "/studio/knowledge?#{q}"
     end
 

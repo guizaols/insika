@@ -1,4 +1,5 @@
-<%# the outcome funnel per store. Reads the fold's cells and the
+<div class="reports-page reports-funnel">
+<%# Outcomes & conversion by agent. Reads the fold's cells and the
    BudgetLedger's current counters (D6); the ONLY mutation on this page — the
    baseline freeze — dispatches :freeze_funnel_baseline on the bus (D7). No
    stage vocabulary of the engine's own: everything here comes from the pack
@@ -6,19 +7,26 @@
 <header class="page-head">
   <div>
     <%== crumbs_for("Funnel") %>
-    <h1>Funnel<span class="sub">the outcome funnel per store</span></h1>
+    <h1>Funnel<span class="sub">Outcomes & conversion by agent</span></h1>
   </div>
   <div class="head-actions">
-    <%== agent_filter_form("/studio/funnel", @agent) %>
     <form method="get" action="/studio/funnel" class="actions inline">
-      <label>
-        Period (days)
-        <select name="period" data-controller="auto-submit" data-action="change->auto-submit#submit">
-          <% [7, 30, 90].each do |p| %>
-            <option value="<%= p %>"<%== ' selected' if @period == p %>><%= p %></option>
+      <label>Agent
+        <select name="agent">
+          <option value="">All agents</option>
+          <% insika[:profile_source].ids.sort.each do |id| %>
+            <option value="<%= id %>"<%== ' selected' if @agent == id %>><%= id %></option>
           <% end %>
         </select>
       </label>
+      <label>Period
+        <select name="period">
+          <% ([7, 30, 90] + [@period]).uniq.sort.each do |p| %>
+            <option value="<%= p %>"<%== ' selected' if @period == p %>>Last <%= p %> days</option>
+          <% end %>
+        </select>
+      </label>
+      <button type="submit">Apply filters</button>
     </form>
   </div>
 </header>
@@ -42,8 +50,8 @@
       <% max = [counts.values.max || 0, 1].max %>
       <div class="card">
         <div class="section-head">
-          <h3><%= tenant || "platform" %><span class="muted">folded by the tick · recomputable from the outcome store</span></h3>
-          <span class="muted">primary <strong><%= decl.primary %></strong> · attribution window <%= decl.attribution_window %> (carried, never computed)</span>
+          <h3><%= tenant || "platform" %></h3>
+          <span class="muted">Primary outcome · <strong><%= decl.primary %></strong></span>
         </div>
 
         <%# D6: spend next to the counts, NOT cost-per-conversion. The
@@ -80,6 +88,12 @@
           <% end %>
         </div>
 
+        <details class="report-details">
+          <summary>How this funnel is counted</summary>
+          <p>Counts are folded by the tick and can be recomputed from the outcome store. Conversion is the primary outcome count divided by the first-stage count.</p>
+          <p>Attribution window: <%= decl.attribution_window %> (carried, never computed). Token totals use the current budget window.</p>
+        </details>
+
         <% baseline = insika[:funnel_store]&.baseline(tenant: tenant, agent: profile.id) %>
         <div class="actions">
           <% if baseline %>
@@ -109,3 +123,5 @@
     <% end %>
   <% end %>
 <% end %>
+
+</div>

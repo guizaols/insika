@@ -21,15 +21,15 @@
         <% agent = presence(session_agent(s)) %>
         <% preview = session_preview(s) %>
         <a class="drill-item<%== ' active' if s.id == active_id %>"
-           href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>"
+           href="/studio/sessions/<%= Rack::Utils.escape(s.id) %><%= @agent ? "?agent=#{Rack::Utils.escape(@agent)}" : "" %>"
            data-turbo-frame="session-detail" data-turbo-action="advance"
            data-list-filter-target="item" data-filter-text="<%= s.id %> <%= customer %> <%= agent %> <%= preview %>"
            data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-top">
             <%== render("_identity", locals: { id: customer || s.id, name: customer || "anonymous", sub: agent }) %>
-            <span class="presence<%== ' present' if session_fresh?(s) %>" title="touched in the last 5 minutes"></span>
+            <span class="presence<%== ' present' if session_fresh?(s) %>" title="<%= session_fresh?(s) ? "Activity in the last 5 minutes" : "No activity in the last 5 minutes" %>"></span>
           </div>
-          <div class="drill-item-sub"><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></div>
+          <div class="drill-item-sub"><%= Array(s.messages).size %> messages · <%= time_ago(s.updated_at) %></div>
           <% if preview %><div class="drill-item-sub"><%= preview[0, 90] %></div><% end %>
         </a>
       <% end %>

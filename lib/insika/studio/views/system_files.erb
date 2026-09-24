@@ -5,7 +5,7 @@
   </div>
 </header>
 
-<p class="muted matrix-hint">GLOBAL prompts/rules: the runtime injects these files <strong>before</strong> each agent's own identity, every turn. Store-backed and versioned (like per-agent prompts). Empty = no global injection (the prompt stays exactly as before).</p>
+<p class="muted matrix-hint">Rules shared by <strong>every agent</strong>, loaded before each agent’s own prompts. Save each file separately; previous versions can be restored below.</p>
 
 <% if @system_files.empty? %>
   <div class="empty">No system files. Create one below (e.g. <code>HOUSE_RULES.md</code>) for a rule that applies to every agent.</div>
@@ -24,8 +24,8 @@
     <form method="post" action="/studio/system-files" data-controller="dirty-guard">
       <%== csrf_tag %>
       <input type="hidden" name="file" value="<%= sf[:name] %>">
-      <div data-controller="code-editor" data-code-editor-language-value="markdown">
-        <textarea name="content" data-code-editor-target="source" rows="10"><%= sf[:content] %></textarea>
+      <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
+        <textarea aria-label="Content of <%= sf[:name] %>" name="content" data-code-editor-target="source" rows="10"><%= sf[:content] %></textarea>
       </div>
       <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save file</button></div>
     </form>
@@ -50,15 +50,15 @@
   </div>
 <% end %>
 
-<details class="card newfile">
+<details class="card newfile"<%== " open" if @system_files.empty? %>>
   <summary>+ new system file</summary>
   <form method="post" action="/studio/system-files" data-controller="dirty-guard">
     <%== csrf_tag %>
     <label>file name
       <input type="text" name="file" placeholder="HOUSE_RULES.md" required>
     </label>
-    <div data-controller="code-editor" data-code-editor-language-value="markdown">
-      <textarea name="content" data-code-editor-target="source" rows="8" placeholder="# House rules&#10;Every agent must..."></textarea>
+    <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
+      <textarea aria-label="New system file content" name="content" data-code-editor-target="source" rows="8" placeholder="# House rules&#10;Every agent must..."></textarea>
     </div>
     <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Creating…">Create file</button></div>
   </form>
