@@ -29,14 +29,14 @@
       <%# A frame response never sees the layout, so the flash strip lives here
           too — without it, run/propose/resolve confirmations would vanish on
           frame submits (the layout's copy only renders on full pages). %>
-      <% if frame_only %>
+      <% if request.env["HTTP_TURBO_FRAME"] == "refinement-detail" %>
         <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
         <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
       <% end %>
       <div class="drill-pane-head">
         <div class="title">
           <% if @selected %>
-            <strong class="mono"><%= short_id(@selected.id) %></strong>
+            <strong>Conversation review</strong>
             <span class="status <%= status_class(@selected.status) %>"><%= @selected.status %></span>
             <span class="count">
               <%= @selected.findings.size %> finding(s) · <%= refinement_window(@selected.window) %> ·
@@ -58,7 +58,7 @@
           </form>
         <% end %>
       </div>
-      <div class="drill-pane-body">
+      <div class="drill-pane-body refinement-review">
         <% if @agent.nil? %>
           <div class="empty">No agents yet. Create one first — a refinement run reads an agent's own traffic.</div>
         <% elsif @selected.nil? %>
@@ -106,7 +106,7 @@
 <% end %><span class="ins">+ <%= e["after"] %></span></pre>
                 <% end %>
 
-                <form method="post" action="/studio/refinement/resolve" class="actions">
+                <form method="post" action="/studio/refinement/resolve" class="actions" data-turbo-frame="_top">
                   <%== csrf_tag %>
                   <input type="hidden" name="agent" value="<%= @agent %>">
                   <input type="hidden" name="run_id" value="<%= @selected.id %>">
@@ -114,8 +114,8 @@
                     Note
                     <input type="text" name="note" placeholder="why (optional)">
                   </label>
-                  <button type="submit" class="primary" name="decision" value="approved">Approve &amp; apply</button>
-                  <button type="submit" class="ghost" name="decision" value="rejected">Reject</button>
+                  <button type="submit" class="primary" name="decision" value="approved" data-turbo-submits-with="Applying…">Approve &amp; apply</button>
+                  <button type="submit" class="ghost" name="decision" value="rejected" data-turbo-submits-with="Rejecting…">Reject</button>
                 </form>
                 <div class="skill-desc muted">
                   Approving writes the edits to the agent's files and versions the previous
@@ -128,10 +128,8 @@
                   models were asked and what the other two wrote. %>
               <% losers = @selected.panel.reject { |e| (e["candidate"] || {})["id"] == cand["id"] } %>
               <% if losers.any? %>
-                <div class="section-head">
-                  <h2>Also proposed<span class="sub">scored and not chosen</span></h2>
-                </div>
-                <div class="card">
+                <details class="card review-details">
+                  <summary>Also proposed <span class="muted">· scored and not chosen</span></summary>
                   <ul class="history">
                     <% losers.each do |entry| %>
                       <% other = entry["candidate"] || {}; verdict = entry["gate"] || {} %>
@@ -146,7 +144,7 @@
                       </li>
                     <% end %>
                   </ul>
-                </div>
+                </details>
               <% end %>
             </div>
           <% end %>
@@ -196,11 +194,11 @@
               same file that were never scored together. %>
           <% if @selected.status == :completed && @selected.findings.any? %>
             <div class="card">
-              <form method="post" action="/studio/refinement/propose" class="actions">
+              <form method="post" action="/studio/refinement/propose" class="actions" data-turbo-frame="_top">
                 <%== csrf_tag %>
                 <input type="hidden" name="agent" value="<%= @agent %>">
                 <input type="hidden" name="run_id" value="<%= @selected.id %>">
-                <button type="submit" class="primary">Propose a fix</button>
+                <button type="submit" class="primary" data-turbo-submits-with="Evaluating…">Propose a fix</button>
               </form>
               <div class="skill-desc muted">
                 Asks this agent's configured proposer(s) for a small, anchored edit to its

@@ -1,33 +1,37 @@
-<%# Knowledge — drill-down, single-agent-scoped (like Harvest, not Skills'
-   shared+override shape): the KnowledgeStore is a real per-agent partition.
-   @agent/@tenant/@status pick the scope; @selected drives the detail pane
-   (nil = none, "" = new, name = edit). %>
 <header class="page-head">
   <div>
     <%== crumbs_for("Knowledge") %>
-    <h1>Knowledge<span class="sub"><%= @agent ? @agent.to_s : "no agent" %></span></h1>
+    <h1>Knowledge<span class="sub">Review what your agents learn</span></h1>
   </div>
   <div class="head-actions">
-    <%== agent_filter_form("/studio/knowledge", @agent) %>
+    <form method="get" action="/studio/knowledge" class="actions inline">
+      <input type="hidden" name="status" value="<%= @status %>">
+      <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
+      <label>Agent
+        <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">
+          <% @agents.each do |id| %><option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option><% end %>
+        </select>
+      </label>
+    </form>
+    <% if insika[:knowledge_store] && @agents.any? %>
+      <a class="btn primary" href="<%= knowledge_path(@agent, 'new', @tenant) %>">New concept</a>
+    <% end %>
   </div>
 </header>
-
-<p class="muted matrix-hint">Concepts the engine extracted from finished conversations — facts, procedures, policies, objections. Learned content is <code>provenance: observed</code>; an operator promotes one to <code>policy</code> by editing it here. A conflict is never resolved automatically — a human decides.</p>
 
 <% if insika[:knowledge_store].nil? %>
   <div class="empty">No knowledge — the store is not wired.</div>
 <% elsif @agents.empty? %>
   <div class="empty">No agents yet. Add a <span class="mono">knowledge:</span> block to an agent's pack to start learning from its traffic.</div>
 <% else %>
-  <div class="drill" data-controller="list-filter">
+  <div class="drill knowledge-workspace" data-controller="list-filter">
     <aside class="drill-pane drill-master">
       <div class="drill-pane-head">
         <div class="title"><strong>Concepts <span class="count"><%= @concepts.size %></span></strong></div>
         <div class="segmented" role="group" aria-label="status filter">
-          <a href="/studio/knowledge?agent=<%= Rack::Utils.escape(@agent.to_s) %>&status=all"<%== ' aria-current="page"' if @status == "all" %>>All <span class="count"><%= @all_count %></span></a>
-          <a href="/studio/knowledge?agent=<%= Rack::Utils.escape(@agent.to_s) %>&status=conflict"<%== ' aria-current="page"' if @status == "conflict" %>>Conflicts <span class="count"><%= @conflict_count %></span></a>
+          <a href="<%= knowledge_path(@agent, nil, @tenant, status: 'all') %>"<%== ' aria-current="page"' if @status == "all" %>>All <span class="count"><%= @all_count %></span></a>
+          <a href="<%= knowledge_path(@agent, nil, @tenant, status: 'conflict') %>"<%== ' aria-current="page"' if @status == "conflict" %>>Conflicts <span class="count"><%= @conflict_count %></span></a>
         </div>
-        <a class="btn primary btn-sm" href="/studio/knowledge/new?agent=<%= Rack::Utils.escape(@agent.to_s) %>">+ new</a>
       </div>
       <div class="drill-search">
         <input type="search" class="filter-input" placeholder="Search concepts…" aria-label="Filter concepts"
@@ -36,79 +40,94 @@
       <nav class="drill-pane-body drill-list" aria-label="concepts">
         <% @concepts.each do |c| %>
           <a class="drill-item<%== ' active' if @selected == c[:name] %>"
-             href="/studio/knowledge/<%= Rack::Utils.escape(c[:name]) %>?agent=<%= Rack::Utils.escape(@agent.to_s) %>"
+             href="<%= knowledge_path(@agent, c[:name], @tenant, status: @status) %>"
+             <%== ' aria-current="page"' if @selected == c[:name] %>
              data-list-filter-target="item" data-filter-text="<%= c[:name] %> <%= c[:description] %>">
-            <div class="drill-item-name">
-              <span class="txt mono"><%= c[:name] %></span>
-              <% if concept_conflict?(c) %><span class="pill warn">conflict</span><% end %>
-              <span class="pill"><%= c[:type] %></span>
+            <div class="drill-item-name"><span class="txt"><%= c[:name].tr('-', ' ') %></span></div>
+            <div class="drill-item-sub"><%= c[:description] %></div>
+            <div class="review-item-meta">
+              <% if concept_conflict?(c) %><span class="pill warn">conflict</span><% else %><span class="muted"><%= c[:type] %></span><% end %>
+              <span class="muted"><%= c[:occurrences] %> occurrence(s)</span>
             </div>
-            <div class="drill-item-sub"><%= c[:description] %> · <span class="pill info"><%= format("%.2f", c[:confidence]) %></span> · ×<%= c[:occurrences] %></div>
           </a>
         <% end %>
-        <div class="empty" data-list-filter-target="empty" hidden>No concepts match your filter.</div>
+        <div class="empty" data-list-filter-target="empty"<%== ' hidden' if @concepts.any? %>>No concepts match your filter.</div>
       </nav>
     </aside>
 
     <section class="drill-pane drill-detail">
       <% if @selected.nil? %>
-        <div class="drill-empty">
-          <div>
-            <h2>Knowledge</h2>
-            <p>Pick a concept on the left to read or edit it — or create one by hand.</p>
-          </div>
-        </div>
+        <div class="drill-empty"><div><h2>No concepts to review</h2><p>Concepts appear as your agent learns from finished conversations. You can also create one by hand.</p></div></div>
       <% else %>
-        <% new_concept = @selected == "" %>
-        <div class="drill-pane-head">
-          <div class="title">
-            <strong class="mono"><%= new_concept ? "New concept" : @selected %></strong>
-            <% if !new_concept && concept_conflict?(@selected_concept) %><span class="pill warn">conflict — resolve by editing below</span><% end %>
-          </div>
-          <button type="submit" form="concept-form" class="btn primary" data-turbo-submits-with="Saving…">Save concept</button>
-        </div>
+        <% new_concept = @selected == ""; concept = @selected_concept %>
         <div class="drill-pane-body">
+          <div class="review-heading">
+            <div>
+              <h2><%= new_concept ? "New concept" : @selected.tr('-', ' ') %></h2>
+              <% if concept %><p class="muted"><%= concept[:description] %></p><% end %>
+            </div>
+            <% if concept %><span class="pill <%= concept_conflict?(concept) ? 'warn' : 'plain' %>"><%= concept_conflict?(concept) ? 'conflict' : concept[:provenance] %></span><% end %>
+          </div>
+          <% if concept_conflict?(concept) %>
+            <div class="flash warn" role="status">This concept contains conflicting claims. Review the sources, then edit it to resolve the contradiction.</div>
+          <% end %>
+          <% if !new_concept && concept %>
+            <article class="card knowledge-reading">
+              <div class="review-item-meta"><span class="muted"><%= concept[:type] %></span><span class="muted">Confidence <%= format('%.2f', concept[:confidence]) %> · <%= concept[:occurrences] %> occurrence(s)</span></div>
+              <div class="markdown-preview knowledge-body" data-controller="markdown"><%= concept[:body] %></div>
+            </article>
+          <% end %>
           <% unless new_concept %>
-            <form method="post" action="/studio/knowledge/<%= Rack::Utils.escape(@selected) %>/delete<%= @tenant ? "?tenant=#{Rack::Utils.escape(@tenant)}" : '' %>" data-turbo-confirm="Remove concept &quot;<%= @selected %>&quot;? This can't be undone.">
+            <details class="card review-details">
+              <summary>Sources and history <span class="muted">· <%= Array(concept&.dig(:sources)).size %> source(s)</span></summary>
+              <% if concept %><p class="muted">Updated <%= concept[:updated_at] %> · Created <%= concept[:created_at] %></p><% end %>
+              <% if Array(concept&.dig(:sources)).empty? %><p class="muted">No source conversations recorded.</p><% end %>
+              <ul class="history">
+                <% Array(concept&.dig(:sources)).each do |sid| %><li><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid %></a></li><% end %>
+              </ul>
+              <% Array(@concept_versions).each_with_index do |v, i| %>
+                <form method="post" action="/studio/knowledge/<%= Rack::Utils.escape(@selected) %>/restore" class="actions">
+                  <%== csrf_tag %>
+                  <input type="hidden" name="agent" value="<%= @agent %>">
+                  <input type="hidden" name="status" value="<%= @status %>">
+                  <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
+                  <input type="hidden" name="version" value="<%= i %>">
+                  <span class="muted"><%= v['at'] %></span><button type="submit" class="ghost">Restore</button>
+                </form>
+              <% end %>
+            </details>
+          <% end %>
+          <details class="card review-details"<%== ' open' if new_concept || concept.nil? %>>
+            <summary><%= new_concept ? 'Write a concept' : 'Edit concept' %></summary>
+            <p class="muted">Edit the claim and its metadata. Set <code>provenance: policy</code> only for a policy you have verified.</p>
+            <form id="concept-form" method="post" action="/studio/knowledge" data-controller="dirty-guard">
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= @agent %>">
-              <div class="actions"><button type="submit" class="ghost danger" data-turbo-submits-with="Removing…">Remove</button></div>
+              <input type="hidden" name="status" value="<%= @status %>">
+              <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
+              <% if new_concept %>
+                <label>Name <span class="muted">Match the name in the frontmatter.</span><input type="text" name="name" placeholder="my-concept" required></label>
+              <% else %>
+                <input type="hidden" name="name" value="<%= @selected %>">
+              <% end %>
+              <label for="concept-content">Concept markdown</label>
+              <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
+                <textarea id="concept-content" name="content" data-code-editor-target="source" rows="18"><%= @concept_content %></textarea>
+              </div>
+              <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Saving…">Save concept</button></div>
             </form>
-          <% end %>
-          <form id="concept-form" method="post" action="/studio/knowledge" data-controller="dirty-guard">
-            <%== csrf_tag %>
-            <input type="hidden" name="agent" value="<%= @agent %>">
-            <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
-            <% if new_concept %>
-              <label>name <span class="muted">(canonical — same as <code>name:</code> in the frontmatter)</span>
-                <input type="text" name="name" placeholder="my-concept" required>
-              </label>
-            <% else %>
-              <input type="hidden" name="name" value="<%= @selected %>">
-            <% end %>
-            <label>Concept markdown <span class="muted">YAML frontmatter (<code>name</code>, <code>description</code>, <code>type</code>, <code>provenance</code>, <code>confidence</code>, …) + the durable claim</span></label>
-            <div data-controller="code-editor" data-code-editor-language-value="markdown" data-code-editor-preview-value="true">
-              <textarea name="content" data-code-editor-target="source" rows="18"><%= @concept_content %></textarea>
-            </div>
-          </form>
-
-          <% if !new_concept && Array(@concept_versions).any? %>
-            <details class="versions">
-              <summary><%= @concept_versions.size %> previous version(s)</summary>
-              <ul>
-                <% @concept_versions.each_with_index do |v, i| %>
-                  <li>
-                    <span class="muted mono"><%= v["at"] %></span>
-                    <form method="post" action="/studio/knowledge/<%= Rack::Utils.escape(@selected) %>/restore">
-                      <%== csrf_tag %>
-                      <input type="hidden" name="agent" value="<%= @agent %>">
-                      <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
-                      <input type="hidden" name="version" value="<%= i %>">
-                      <button type="submit" class="ghost">Restore</button>
-                    </form>
-                  </li>
-                <% end %>
-              </ul>
+          </details>
+          <% unless new_concept %>
+            <details class="review-details">
+              <summary>Remove concept</summary>
+              <p class="muted">Permanently remove this concept from the selected scope.</p>
+              <form method="post" action="/studio/knowledge/<%= Rack::Utils.escape(@selected) %>/delete" data-turbo-confirm="Remove concept &quot;<%= @selected %>&quot;? This can't be undone.">
+                <%== csrf_tag %>
+                <input type="hidden" name="agent" value="<%= @agent %>">
+                <input type="hidden" name="status" value="<%= @status %>">
+                <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
+                <button type="submit" class="danger" data-turbo-submits-with="Removing…">Remove concept</button>
+              </form>
             </details>
           <% end %>
         </div>

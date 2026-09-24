@@ -5,11 +5,14 @@
 <%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
 <% frame_only = defined?(frame_only) && frame_only %>
 <% unless frame_only %>
+<header class="page-head">
+  <h1>Tools<span class="sub">Manage tool definitions and agent access</span></h1>
+</header>
 <div class="drill" data-controller="list-filter">
   <aside class="drill-pane drill-master">
     <div class="drill-pane-head">
       <div class="title"><strong>Tools <span class="count"><%= @tools.size %></span></strong></div>
-      <a class="btn primary btn-sm" href="/studio/tools/def/new">+ data tool</a>
+      <a class="btn primary btn-sm" href="/studio/tools/def/new">+ New tool</a>
     </div>
     <div class="drill-search">
       <input type="search" class="filter-input" placeholder="Filter agents…" aria-label="Filter agents"
@@ -59,6 +62,7 @@
       <div class="drill-pane-head">
         <div class="title">
           <strong class="mono"><%= a.id %></strong>
+          <span class="count">Tool access</span>
         </div>
         <button type="submit" form="tools-form" class="btn primary" data-turbo-submits-with="Saving…">Save tools</button>
       </div>
@@ -74,7 +78,7 @@
           <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectNone"
                   title="uncheck every tool (deny-all — Save tools to apply)">none</button>
         </div>
-        <p class="muted">Checked tools are allowed next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
+        <p class="muted">Save tools to apply this selection to <strong><%= a.id %></strong> on its next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
         <input type="search" class="filter-input" placeholder="Filter tools or servers..." aria-label="Filter tools or servers"
                data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
         <p class="empty" data-list-filter-target="empty" hidden>No tools match your filter.</p>
