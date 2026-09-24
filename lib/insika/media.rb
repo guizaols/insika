@@ -93,9 +93,9 @@ module Insika
     # when the turn first carries audio. `stt_prompt` is the Whisper-family
     # vocabulary hint (product names, brand terms) — OPERATOR config
     # (agent profile / deployment env), never customer input.
-    def self.default_transcriber(stt_model:, stt_language: nil, stt_prompt: nil)
+    def self.default_transcriber(stt_model:, stt_language: nil, stt_prompt: nil, context: nil)
       lambda do |url|
-        fetch_and_transcribe(url, model: stt_model, language: stt_language, prompt: stt_prompt)
+        fetch_and_transcribe(url, model: stt_model, language: stt_language, prompt: stt_prompt, context: context)
       end
     end
 
@@ -110,7 +110,7 @@ module Insika
     # RubyLLM raises ArgumentError when it's true without an explicit
     # `provider` (see ModelSelection#assume_model_exists?), and `stt_model` here
     # is a bare ref like `utility_model` elsewhere — the registry resolves it.
-    def self.fetch_and_transcribe(url, model:, language:, prompt: nil)
+    def self.fetch_and_transcribe(url, model:, language:, prompt: nil, context: nil)
       require "net/http"
       require "uri"
       require "ruby_llm" # lazy — the core loads without it (load-guard)
@@ -120,6 +120,7 @@ module Insika
       options = { model: model }
       options[:language] = language if language
       options[:prompt] = prompt if prompt
+      options[:context] = context if context
       Tempfile.create(["insika-media-", File.extname(filename_for(url).to_s)]) do |file|
         file.binmode
         file.write(bytes)

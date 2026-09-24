@@ -1546,7 +1546,7 @@ module Insika
       transcriber = @media || Insika::Media.default_transcriber(
         stt_model: Insika::EnvSchema.read("INSIKA_STT_MODEL"),
         stt_language: Insika::EnvSchema.read("INSIKA_STT_LANGUAGE"),
-        stt_prompt: resolved_stt_prompt(state.profile)
+        stt_prompt: resolved_stt_prompt(state.profile), context: @llm
       )
       transcriber.call(url)
     end
