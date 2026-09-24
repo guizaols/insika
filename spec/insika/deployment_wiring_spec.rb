@@ -148,6 +148,46 @@ RSpec.describe Deploy::Wiring do
     end
   end
 
+  describe "deployment-owned provider credentials" do
+    it "uses Studio key updates and deletion in an already-built guardrail ask" do
+      context = Deploy::LLM_CONTEXT
+      old_key, old_base = context.config.deepseek_api_key, context.config.deepseek_api_base
+      previous = w::LLM_PROVIDER_STORE.get_raw("deepseek")
+      global_key = RubyLLM.config.deepseek_api_key
+      seen = []
+      chat = double
+      allow(chat).to receive(:with_temperature).and_return(chat)
+      allow(chat).to receive(:ask).and_return(Struct.new(:content).new("ok"))
+      allow(context).to receive(:chat) { seen << context.config.deepseek_api_key; chat }
+      expect(RubyLLM).not_to receive(:chat)
+      ask = w::GUARDRAILS.send(:build_ask, "deepseek-v4-flash", "deepseek")
+
+      w::BUS.dispatch(Insika::Command.build(:upsert_llm_provider, { api: "deepseek", api_key: "spec-rotated" }))
+      ask.call("check")
+      w::BUS.dispatch(Insika::Command.build(:delete_llm_provider, { api: "deepseek" }))
+      ask.call("check")
+
+      expect(seen).to eq(["spec-rotated", nil])
+      expect(RubyLLM.config.deepseek_api_key).to eq(global_key)
+    ensure
+      w::LLM_PROVIDER_STORE.upsert(previous) if previous
+      context.config.deepseek_api_key, context.config.deepseek_api_base = old_key, old_base
+    end
+
+    it "passes the same context to the side-work factories" do
+      context = Deploy::LLM_CONTEXT
+      config = { "model" => "deepseek/deepseek-v4-flash" }
+      expect(Insika::Evals::JudgePanel).to receive(:judge).with(anything, llm: context).twice
+      [w::REFINEMENT_GATE, w::HARVEST_GATE].each { |gate| gate.instance_variable_get(:@judge_factory).call }
+      expect(Insika::Refinement::ProposerFactory).to receive(:panel).with(anything, utility_model: anything, llm: context)
+      w::PROPOSER_FACTORY.call(config)
+      expect(Insika::Distill::DistillerFactory).to receive(:build).with(config, utility_model: anything, llm: context)
+      w::EXECUTOR.distill_engine.instance_variable_get(:@runner).instance_variable_get(:@distiller_factory).call(config)
+      expect(Insika::Harvest::MinerFactory).to receive(:build).with(config, utility_model: anything, llm: context)
+      w::HARVEST_RUN.instance_variable_get(:@miner_factory).call(config)
+    end
+  end
+
   describe "execution graph" do
     it "builds the Executor with the overlay tool registry (code + data-defined tools)" do
       expect(w::EXECUTOR).to be_a(Insika::Executor)

@@ -1,0 +1,10 @@
+id: older-memory
+agent: retrieval-eval
+tenant: acme
+state:
+  memory:
+    notes: ["older pickup Tuesday", "newer delivery Wednesday"]
+turns:
+  - user: pickup
+expect:
+  reply_includes: ["pickup Tuesday"]
